@@ -1,0 +1,11 @@
+.DS_Store
+# Third-party tooling and Apple's binaries are never committed.
+.claude/Xcode.app/
+.claude/ghidra_12.1.4_PUBLIC/
+.claude/ghidra-mcp/
+# Dirty-room scratch (decompiler output, disassembly) stays local only.
+research/dirty/
+ycode/.build/
+ycode/.swiftpm/
+*.gpr
+*.rep/

@@ -1,0 +1,232 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0A0000000000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000001 /* main.swift */; };
+		0A0000000000000000000002 /* My-View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000002 /* My-View.swift */; settings = {COMPILER_FLAGS = "-Onone"; }; };
+		0A0000000000000000000003 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = 0F0000000000000000000002 /* ArgumentParser */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0B0000000000000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		0B0000000000000000000002 /* My-View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "My-View.swift"; sourceTree = "<group>"; };
+		0B0000000000000000000003 /* Hello.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Hello.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0C0000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0A0000000000000000000003 /* ArgumentParser in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0D0000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				0D0000000000000000000002 /* Hello */,
+				0D0000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		0D0000000000000000000002 /* Hello */ = {
+			isa = PBXGroup;
+			children = (
+				0B0000000000000000000001 /* main.swift */,
+				0B0000000000000000000002 /* My-View.swift */,
+			);
+			path = Hello;
+			sourceTree = "<group>";
+		};
+		0D0000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0B0000000000000000000003 /* Hello.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0E0000000000000000000001 /* Hello */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0E0000000000000000000011 /* Build configuration list for PBXNativeTarget "Hello" */;
+			buildPhases = (
+				0C0000000000000000000001 /* Sources */,
+				0C0000000000000000000002 /* Frameworks */,
+				0C0000000000000000000003 /* Lint */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Hello;
+			packageProductDependencies = (
+				0F0000000000000000000002 /* ArgumentParser */,
+			);
+			productName = Hello;
+			productReference = 0B0000000000000000000003 /* Hello.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0E0000000000000000000002 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				TargetAttributes = {
+					0E0000000000000000000001 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+				};
+			};
+			buildConfigurationList = 0E0000000000000000000012 /* Build configuration list for PBXProject "Hello" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 0D0000000000000000000001;
+			packageReferences = (
+				0F0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 0D0000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0E0000000000000000000001 /* Hello */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		0C0000000000000000000003 /* Lint */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = Lint;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "echo \"linting\"\nexit 0\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0C0000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0A0000000000000000000001 /* main.swift in Sources */,
+				0A0000000000000000000002 /* My-View.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0E0000000000000000000021 /* Debug configuration for PBXNativeTarget "Hello" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.example.Hello-World";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		0E0000000000000000000022 /* Release configuration for PBXNativeTarget "Hello" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.example.Hello-World";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		0E0000000000000000000023 /* Debug configuration for PBXProject "Hello" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		0E0000000000000000000024 /* Release configuration for PBXProject "Hello" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0E0000000000000000000011 /* Build configuration list for PBXNativeTarget "Hello" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0E0000000000000000000021 /* Debug configuration for PBXNativeTarget "Hello" */,
+				0E0000000000000000000022 /* Release configuration for PBXNativeTarget "Hello" */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0E0000000000000000000012 /* Build configuration list for PBXProject "Hello" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0E0000000000000000000023 /* Debug configuration for PBXProject "Hello" */,
+				0E0000000000000000000024 /* Release configuration for PBXProject "Hello" */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		0F0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-argument-parser" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-argument-parser.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0F0000000000000000000002 /* ArgumentParser */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0F0000000000000000000001 /* XCRemoteSwiftPackageReference "swift-argument-parser" */;
+			productName = ArgumentParser;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 0E0000000000000000000002 /* Project object */;
+}

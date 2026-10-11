@@ -1,0 +1,7137 @@
+[
+ {
+  "binary_size": 141696,
+  "deps": [
+   "AssetCatalogCocoaTouchFoundation",
+   "AssetCatalogFoundation",
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "AssetCatalogAppleTVFoundation",
+  "objc_classes": 6,
+  "open_source": null,
+  "path": "Contents/Frameworks/AssetCatalogAppleTVFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 137360,
+  "deps": [
+   "AssetCatalogAppleTVFoundation",
+   "AssetCatalogCocoaTouchFoundation",
+   "AssetCatalogCocoaTouchKit",
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "CoreThemeDefinition",
+   "CoreUI",
+   "DVTFoundation",
+   "DVTStructuredLayoutKit",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "AssetCatalogAppleTVKit",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/Frameworks/AssetCatalogAppleTVKit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 181248,
+  "deps": [
+   "AssetCatalogCocoaTouchFoundation",
+   "AssetCatalogFoundation",
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "AssetCatalogAppleWatchFoundation",
+  "objc_classes": 6,
+  "open_source": null,
+  "path": "Contents/Frameworks/AssetCatalogAppleWatchFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 82480,
+  "deps": [
+   "AssetCatalogAppleWatchFoundation",
+   "AssetCatalogCocoaTouchKit",
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "DVTFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "AssetCatalogAppleWatchKit",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/Frameworks/AssetCatalogAppleWatchKit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 253088,
+  "deps": [
+   "AssetCatalogFoundation",
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "AssetCatalogCocoaTouchFoundation",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/Frameworks/AssetCatalogCocoaTouchFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 138736,
+  "deps": [
+   "AssetCatalogCocoaTouchFoundation",
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "DVTFoundation",
+   "IDEInterfaceBuilderCocoaTouchIntegration",
+   "IDEInterfaceBuilderKit",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "AssetCatalogCocoaTouchKit",
+  "objc_classes": 9,
+  "open_source": null,
+  "path": "Contents/Frameworks/AssetCatalogCocoaTouchKit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 3256160,
+  "deps": [
+   "CoreSVG",
+   "CoreThemeDefinition",
+   "CoreUI",
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "AssetCatalogFoundation",
+  "objc_classes": 243,
+  "open_source": null,
+  "path": "Contents/Frameworks/AssetCatalogFoundation.framework",
+  "swift_types": 8
+ },
+ {
+  "binary_size": 2345488,
+  "deps": [
+   "AssetCatalogFoundation",
+   "CoreSimulator",
+   "CoreUI",
+   "DVTCocoaAdditionsKit",
+   "DVTCoreGlyphs",
+   "DVTFoundation",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDENoticesFoundation",
+   "IconFoundation",
+   "IconServices",
+   "ODTDevTool"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "AssetCatalogKit",
+  "objc_classes": 172,
+  "open_source": null,
+  "path": "Contents/Frameworks/AssetCatalogKit.framework",
+  "swift_types": 4
+ },
+ {
+  "binary_size": 102176,
+  "deps": [
+   "AssetCatalogCocoaTouchFoundation",
+   "AssetCatalogCocoaTouchKit",
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "AssetCatalogVisionFoundation",
+   "CoreUI",
+   "DVTFoundation",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "AssetCatalogVisionExtensions",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/Frameworks/AssetCatalogVisionExtensions.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 104064,
+  "deps": [
+   "AssetCatalogCocoaTouchFoundation",
+   "AssetCatalogFoundation",
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "AssetCatalogVisionFoundation",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/Frameworks/AssetCatalogVisionFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 427632,
+  "deps": [
+   "AssetCatalogCocoaTouchFoundation",
+   "AssetCatalogCocoaTouchKit",
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "AssetCatalogVisionFoundation",
+   "CoreRE",
+   "CoreUI",
+   "DVTFoundation",
+   "DVTStructuredLayoutKit",
+   "IDEFoundation",
+   "IDEKit",
+   "TextureIO"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "AssetCatalogVisionKit",
+  "objc_classes": 20,
+  "open_source": null,
+  "path": "Contents/Frameworks/AssetCatalogVisionKit.framework",
+  "swift_types": 19
+ },
+ {
+  "binary_size": 402848,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTNFASupport",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/Frameworks/DVTNFASupport.framework",
+  "swift_types": 34
+ },
+ {
+  "binary_size": 68784,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTiOSPlistStructDefs",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/Frameworks/DVTiOSPlistStructDefs.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1074608,
+  "deps": [
+   "CoreSimulator",
+   "DTXConnectionServices",
+   "DVTFoundation",
+   "DebugHierarchyFoundation",
+   "DebugHierarchyKit",
+   "IBAutolayoutFoundation",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DebuggerFoundation",
+  "objc_classes": 66,
+  "open_source": null,
+  "path": "Contents/Frameworks/DebuggerFoundation.framework",
+  "swift_types": 7
+ },
+ {
+  "binary_size": 76128,
+  "deps": [
+   "DVTFoundation",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DebuggerLLDBService",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/Frameworks/DebuggerLLDBService.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 6672480,
+  "deps": [
+   "DVTFoundation",
+   "DVTMacroFoundation",
+   "DVTPortal",
+   "DevToolsSupport",
+   "IDEDistribution",
+   "IDEFoundation",
+   "XCTHarness",
+   "libclang.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DevToolsCore",
+  "objc_classes": 284,
+  "open_source": null,
+  "path": "Contents/Frameworks/DevToolsCore.framework",
+  "swift_types": 174
+ },
+ {
+  "binary_size": 187856,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DevToolsSupport",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/Frameworks/DevToolsSupport.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1759392,
+  "deps": [
+   "GameCenterResourcesCoreModels"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "GameCenterResourcesAppStoreConnectClient",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/Frameworks/GameCenterResourcesAppStoreConnectClient.framework",
+  "swift_types": 135
+ },
+ {
+  "binary_size": 1190176,
+  "deps": [
+   "GameCenterResourcesAppStoreConnectClient",
+   "GameCenterResourcesCoreModels"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "GameCenterResourcesCore",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/Frameworks/GameCenterResourcesCore.framework",
+  "swift_types": 19
+ },
+ {
+  "binary_size": 1492096,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "GameCenterResourcesCoreModels",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/Frameworks/GameCenterResourcesCoreModels.framework",
+  "swift_types": 96
+ },
+ {
+  "binary_size": 1138048,
+  "deps": [
+   "AssetCatalogFoundation",
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IBAutolayoutFoundation",
+  "objc_classes": 92,
+  "open_source": null,
+  "path": "Contents/Frameworks/IBAutolayoutFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 492928,
+  "deps": [
+   "AssetCatalogFoundation",
+   "DVTFoundation",
+   "IBAutolayoutFoundation",
+   "IDEInterfaceBuilderKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IBCocoaTouchToolFoundation",
+  "objc_classes": 75,
+  "open_source": null,
+  "path": "Contents/Frameworks/IBCocoaTouchToolFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 82400,
+  "deps": [
+   "DVTFoundation",
+   "PackageKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEDownloadablePackageKitSupport",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDEDownloadablePackageKitSupport.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 151952,
+  "deps": [
+   "DVTFoundation",
+   "IDEKit",
+   "IDESourceEditor",
+   "IDESourceEditorGalleryExhibit",
+   "PreviewsIDEAPI",
+   "PreviewsXcode",
+   "SourceEditor"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEEditorGalleryPreviewSupport",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDEEditorGalleryPreviewSupport.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 88576,
+  "deps": [
+   "DVTFoundation",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEEvaluationKit",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDEEvaluationKit.framework",
+  "swift_types": 4
+ },
+ {
+  "binary_size": 29840032,
+  "deps": [
+   "AssertionServices",
+   "AuthKit",
+   "BuildServerProtocol",
+   "CodeCompletionFoundation",
+   "DNTDocumentationModel",
+   "DNTDocumentationSupport",
+   "DNTSourceKitSupport",
+   "DTDeviceServices",
+   "DTXConnectionServices",
+   "DVTDeviceFoundation",
+   "DVTDocumentation",
+   "DVTFoundation",
+   "DVTInstrumentsFoundation",
+   "DVTInstrumentsUtilities",
+   "DVTKeychain",
+   "DVTKeychainService",
+   "DVTMacroFoundation",
+   "DVTPortal",
+   "DVTSourceControl",
+   "DVTSystemPrerequisites",
+   "IDENoticesFoundation",
+   "IDEResultKit",
+   "LanguageServerProtocol",
+   "LanguageServerProtocolTransport",
+   "Localization",
+   "NetworkStatistics",
+   "OAHSoftwareUpdate",
+   "OSAnalytics",
+   "PlugInKit",
+   "SoftLinking",
+   "SourceKit",
+   "Testing",
+   "XCResultKit",
+   "XCSourceControl",
+   "XCStringsParser",
+   "XCTDaemonControl",
+   "XCTHarness",
+   "XCTest",
+   "XcodeKit",
+   "libXCTestSwiftSupport.dylib",
+   "libclang.dylib",
+   "login"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEFoundation",
+  "objc_classes": 1225,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDEFoundation.framework",
+  "swift_types": 1234
+ },
+ {
+  "binary_size": 493840,
+  "deps": [
+   "GameCenterResourcesCoreModels"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEGameKitCommonEditor",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDEGameKitCommonEditor.framework",
+  "swift_types": 15
+ },
+ {
+  "binary_size": 3803456,
+  "deps": [
+   "AuthKit",
+   "DVTAppStoreConnect",
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "GameCenterResourcesAppStoreConnectClient",
+   "GameCenterResourcesCore",
+   "GameCenterResourcesCoreModels",
+   "IDEFoundation",
+   "IDEGameKitCommonEditor",
+   "IDEKit",
+   "iCalendar"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEGameKitEditor",
+  "objc_classes": 7,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDEGameKitEditor.framework",
+  "swift_types": 79
+ },
+ {
+  "binary_size": 679680,
+  "deps": [
+   "DTXConnectionServices",
+   "DVTCoreDeviceCore",
+   "DVTFoundation",
+   "GameCenterResourcesCoreModels",
+   "GameServices",
+   "GameServicesCore",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEGameKitInspectorCore",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDEGameKitInspectorCore.framework",
+  "swift_types": 5
+ },
+ {
+  "binary_size": 1523216,
+  "deps": [
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "GameCenterResourcesCoreModels",
+   "GameServices",
+   "IDEGameKitCommonEditor",
+   "IDEGameKitInspectorCore",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEGameKitInspectorEditor",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDEGameKitInspectorEditor.framework",
+  "swift_types": 35
+ },
+ {
+  "binary_size": 37495936,
+  "deps": [
+   "AuthKit",
+   "AuthKitUI",
+   "DFRFoundation",
+   "DNTDocumentationSupport",
+   "DTGraphKit",
+   "DVTCocoaAdditionsKit",
+   "DVTCoreGlyphs",
+   "DVTDeviceFoundation",
+   "DVTDeviceKit",
+   "DVTDocumentation",
+   "DVTExplorableKit",
+   "DVTFeedbackReporting",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTLibraryKit",
+   "DVTPortal",
+   "DVTSmartSearch",
+   "DVTSourceControl",
+   "DVTStructuredLayoutKit",
+   "DVTSystemPrerequisites",
+   "DVTSystemPrerequisitesUI",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "DiskManagement",
+   "IDEFoundation",
+   "IDENoticesFoundation",
+   "IconServices",
+   "Localization",
+   "OSAnalytics",
+   "PackageKit",
+   "SignpostSupport",
+   "TextInput",
+   "ViewBridge",
+   "XCSourceControl",
+   "XCTHarness",
+   "XCTest",
+   "XcodeKit",
+   "libXCTestSwiftSupport.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEKit",
+  "objc_classes": 1344,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDEKit.framework",
+  "swift_types": 1344
+ },
+ {
+  "binary_size": 795744,
+  "deps": [
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "GenerativeFunctionsFoundation",
+   "GenerativeModels",
+   "IDEFoundation",
+   "IDEKit",
+   "ModelCatalog",
+   "TokenGeneration"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDELanguageModelKit",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDELanguageModelKit.framework",
+  "swift_types": 39
+ },
+ {
+  "binary_size": 711040,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDENoticesFoundation",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDENoticesFoundation.framework",
+  "swift_types": 47
+ },
+ {
+  "binary_size": 952512,
+  "deps": [
+   "DVTExplorableKit",
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDENoticesFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDENoticesKit",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDENoticesKit.framework",
+  "swift_types": 50
+ },
+ {
+  "binary_size": 193472,
+  "deps": [
+   "CoreSimulator",
+   "DVTFoundation",
+   "DVTPlaygroundCommunication",
+   "IDEPlaygroundsFoundation",
+   "IDEPlaygroundsKit",
+   "IDESimulatorFoundation",
+   "IDEiOSSupportCore",
+   "SimulatorKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEPlaygroundSimulator",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDEPlaygroundSimulator.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 2912384,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDELanguageModelKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDESettingsPanel",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDESettingsPanel.framework",
+  "swift_types": 134
+ },
+ {
+  "binary_size": 681200,
+  "deps": [
+   "CoreSimulator",
+   "DVTDownloads",
+   "DVTFoundation",
+   "DVTNFASupport",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDESimulatorFoundation",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDESimulatorFoundation.framework",
+  "swift_types": 10
+ },
+ {
+  "binary_size": 230640,
+  "deps": [
+   "DVTFoundation",
+   "DVTSourceEditor",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEKit",
+   "IDESourceEditor",
+   "SourceEditor"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDESourceEditorGalleryExhibit",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDESourceEditorGalleryExhibit.framework",
+  "swift_types": 10
+ },
+ {
+  "binary_size": 75616,
+  "deps": [
+   "DFRFoundation",
+   "DVTFoundation",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDETestingPlatformSupport",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDETestingPlatformSupport.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1071360,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTExplorableKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTSourceEditor",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDESourceEditor",
+   "SourceEditor"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDETrayKit",
+  "objc_classes": 20,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDETrayKit.framework",
+  "swift_types": 65
+ },
+ {
+  "binary_size": 165776,
+  "deps": [
+   "DTXConnectionServices",
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "DebugHierarchyFoundation",
+   "DebugHierarchyKit",
+   "DebuggerFoundation",
+   "DebuggerKit",
+   "DebuggerUI",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEiOSDebugger",
+  "objc_classes": 8,
+  "open_source": null,
+  "path": "Contents/Frameworks/IDEiOSDebugger.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 288416,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SiriSSUKit",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/Frameworks/SiriSSUKit.framework",
+  "swift_types": 24
+ },
+ {
+  "binary_size": 1203072,
+  "deps": [
+   "SiriSSUKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SiriSSUKitModel",
+  "objc_classes": 22,
+  "open_source": null,
+  "path": "Contents/Frameworks/SiriSSUKitModel.framework",
+  "swift_types": 47
+ },
+ {
+  "binary_size": 1492032,
+  "deps": [
+   "DVTFoundation",
+   "DVTMacroFoundation",
+   "DVTPortal",
+   "DVTSystemPrerequisites",
+   "DevToolsCore",
+   "IDEFoundation",
+   "XCTHarness"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "Xcode3Core",
+  "objc_classes": 20,
+  "open_source": null,
+  "path": "Contents/Frameworks/Xcode3Core.framework",
+  "swift_types": 20
+ },
+ {
+  "binary_size": 6276032,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTMacroFoundation",
+   "DVTPortal",
+   "DVTSourceEditor",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "DevToolsCore",
+   "IDEFoundation",
+   "IDEKit",
+   "SourceEditor",
+   "Xcode3Core"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "Xcode3UI",
+  "objc_classes": 310,
+  "open_source": null,
+  "path": "Contents/Frameworks/Xcode3UI.framework",
+  "swift_types": 140
+ },
+ {
+  "binary_size": 588528,
+  "deps": [
+   "AXAssetLoader",
+   "AXCoreUtilities",
+   "AccessibilityPlatformTranslation",
+   "AccessibilitySupport",
+   "DTXConnectionServices",
+   "UIUnderstanding"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "AccessibilityAudit",
+  "objc_classes": 53,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/AccessibilityAudit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 35136,
+  "deps": [
+   "AccessibilityEvents",
+   "AccessibilityFoundation",
+   "AccessibilityKit",
+   "AccessibilityVisuals"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "AccessibilitySupport",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/AccessibilitySupport.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 226480,
+  "deps": [
+   "AssetCatalogCocoaTouchFoundation",
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "AppResourceGeneration",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/AppResourceGeneration.framework",
+  "swift_types": 12
+ },
+ {
+  "binary_size": 1756160,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "AppThinning",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/AppThinning.framework",
+  "swift_types": 137
+ },
+ {
+  "binary_size": 805520,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "ArgumentParser",
+  "objc_classes": 1,
+  "open_source": "apple/swift-argument-parser",
+  "path": "Contents/SharedFrameworks/ArgumentParser.framework",
+  "swift_types": 31
+ },
+ {
+  "binary_size": 245152,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "AssetRuntimeSupport",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/AssetRuntimeSupport.framework",
+  "swift_types": 11
+ },
+ {
+  "binary_size": 484384,
+  "deps": [
+   "OpenAPIRuntime"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "AuthenticationAPI",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/AuthenticationAPI.framework",
+  "swift_types": 74
+ },
+ {
+  "binary_size": 488816,
+  "deps": [
+   "LanguageServerProtocol"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "BuildServerProtocol",
+  "objc_classes": 0,
+  "open_source": "swiftlang/sourcekit-lsp",
+  "path": "Contents/SharedFrameworks/BuildServerProtocol.framework",
+  "swift_types": 68
+ },
+ {
+  "binary_size": 273488,
+  "deps": [
+   "ManagedBackgroundAssetsXPC"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "ChooseIdentity",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/ChooseIdentity.framework",
+  "swift_types": 3
+ },
+ {
+  "binary_size": 499488,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "CodeCompletionFoundation",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/CodeCompletionFoundation.framework",
+  "swift_types": 52
+ },
+ {
+  "binary_size": 54896,
+  "deps": [
+   "SourceEditor",
+   "_CodeCompletionFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "CodeCompletionKit",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/CodeCompletionKit.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 2311824,
+  "deps": [
+   "GenerativeFunctions",
+   "GenerativeFunctionsFoundation",
+   "GenerativeModels",
+   "PromptKit",
+   "SourceEditor",
+   "SwiftBasicFormat",
+   "SwiftDiagnostics",
+   "SwiftParser",
+   "SwiftParserDiagnostics",
+   "SwiftSyntax",
+   "SwiftSyntaxBuilder",
+   "TokenGeneration"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "CodeGenerationIntelligence",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/CodeGenerationIntelligence.framework",
+  "swift_types": 244
+ },
+ {
+  "binary_size": 105312,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "CombineXPC",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/CombineXPC.framework",
+  "swift_types": 2
+ },
+ {
+  "binary_size": 54224,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "CommonXcodeCloudAPI",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/CommonXcodeCloudAPI.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 2592096,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "ContentDelivery",
+  "objc_classes": 149,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/ContentDelivery.framework",
+  "swift_types": 3
+ },
+ {
+  "binary_size": 51968,
+  "deps": [
+   "AppStoreService",
+   "ITunesConnectFoundation",
+   "ITunesContentDelivery",
+   "ITunesPackage",
+   "MZXMLMarshalling"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "ContentDeliveryServices",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/ContentDeliveryServices.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 88688,
+  "deps": [
+   "CoreDevice",
+   "CoreDeviceUtilities"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "CoreDeviceWeakShim",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/CoreDeviceWeakShim.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 10275472,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "CoreDocumentation",
+  "objc_classes": 25,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/CoreDocumentation.framework",
+  "swift_types": 685
+ },
+ {
+  "binary_size": 7875424,
+  "deps": [
+   "DebugSymbolsDT"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "CoreSymbolicationDT",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/CoreSymbolicationDT.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 834320,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "CreateMLSwiftProtobuf",
+  "objc_classes": 8,
+  "open_source": "apple/swift-protobuf",
+  "path": "Contents/SharedFrameworks/CreateMLSwiftProtobuf.framework",
+  "swift_types": 78
+ },
+ {
+  "binary_size": 2070320,
+  "deps": [
+   "CoreDocumentation",
+   "SpotlightIndex"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DNTDocumentationModel",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DNTDocumentationModel.framework",
+  "swift_types": 181
+ },
+ {
+  "binary_size": 4260640,
+  "deps": [
+   "CoreDocumentation",
+   "DNTDocumentationModel",
+   "DNTSourceKitSupport",
+   "SpotlightIndex",
+   "VectorSearch"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DNTDocumentationSupport",
+  "objc_classes": 23,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DNTDocumentationSupport.framework",
+  "swift_types": 194
+ },
+ {
+  "binary_size": 889856,
+  "deps": [
+   "CoreDocumentation",
+   "DNTDocumentationModel",
+   "SpotlightIndex"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DNTSourceKitSupport",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DNTSourceKitSupport.framework",
+  "swift_types": 28
+ },
+ {
+  "binary_size": 1644672,
+  "deps": [
+   "CoreDocumentation",
+   "DNTDocumentationModel",
+   "DNTDocumentationSupport",
+   "SpotlightIndex"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DNTTransformer",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DNTTransformer.framework",
+  "swift_types": 153
+ },
+ {
+  "binary_size": 126416,
+  "deps": [
+   "DTDeviceKitBase",
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DTDeviceKit",
+  "objc_classes": 6,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTDeviceKit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 91856,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DTDeviceKitBase",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTDeviceKitBase.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 209536,
+  "deps": [
+   "FrontBoardServices",
+   "InstallCoordination",
+   "MobileInstallation",
+   "RunningBoardServices"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DTDeviceServices",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTDeviceServices.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 948464,
+  "deps": [
+   "DTGanache"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DTGTGraph",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTGTGraph.framework",
+  "swift_types": 54
+ },
+ {
+  "binary_size": 1772592,
+  "deps": [
+   "DTGanache"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DTGTTimeline",
+  "objc_classes": 64,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTGTTimeline.framework",
+  "swift_types": 99
+ },
+ {
+  "binary_size": 1928160,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DTGanache",
+  "objc_classes": 61,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTGanache.framework",
+  "swift_types": 184
+ },
+ {
+  "binary_size": 251104,
+  "deps": [
+   "DTGanache"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DTGanacheBufferViewer",
+  "objc_classes": 7,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTGanacheBufferViewer.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 231872,
+  "deps": [
+   "DTGanache"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DTGanacheImageProcessor",
+  "objc_classes": 10,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTGanacheImageProcessor.framework",
+  "swift_types": 16
+ },
+ {
+  "binary_size": 1403824,
+  "deps": [
+   "DTGanache",
+   "DTGanacheImageProcessor"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DTGanacheImageViewer",
+  "objc_classes": 30,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTGanacheImageViewer.framework",
+  "swift_types": 55
+ },
+ {
+  "binary_size": 250176,
+  "deps": [
+   "DTGanache",
+   "DTGanacheBufferViewer",
+   "DTGanacheImageViewer"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DTGanacheTensorViewer",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTGanacheTensorViewer.framework",
+  "swift_types": 9
+ },
+ {
+  "binary_size": 1496448,
+  "deps": [
+   "DTGTTimeline",
+   "DVTInstrumentsUtilities",
+   "SymbolicationDT"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DTGraphKit",
+  "objc_classes": 110,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTGraphKit.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 1082144,
+  "deps": [
+   "DTGTGraph",
+   "DTGanache",
+   "DTGanacheBufferViewer",
+   "DTGanacheTensorViewer",
+   "IconServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DTMLOpGraph",
+  "objc_classes": 19,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTMLOpGraph.framework",
+  "swift_types": 55
+ },
+ {
+  "binary_size": 800080,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DTXConnectionServices",
+  "objc_classes": 19,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DTXConnectionServices.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 7474112,
+  "deps": [
+   "DVTAnalyticsClient",
+   "DVTAppStoreConnect",
+   "DVTCrashLogFoundation",
+   "DVTFoundation",
+   "DVTProducts",
+   "DVTServices",
+   "PowerLog",
+   "XCServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTAnalytics",
+  "objc_classes": 100,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTAnalytics.framework",
+  "swift_types": 646
+ },
+ {
+  "binary_size": 1070752,
+  "deps": [
+   "AuthKit",
+   "DVTFoundation",
+   "DVTServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTAnalyticsClient",
+  "objc_classes": 61,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTAnalyticsClient.framework",
+  "swift_types": 59
+ },
+ {
+  "binary_size": 664624,
+  "deps": [
+   "DVTAnalytics",
+   "DVTFoundation",
+   "DVTProducts",
+   "DVTProductsUI",
+   "DVTUserInterfaceKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTAnalyticsKit",
+  "objc_classes": 16,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTAnalyticsKit.framework",
+  "swift_types": 30
+ },
+ {
+  "binary_size": 1930720,
+  "deps": [
+   "DVTAnalytics",
+   "DVTAnalyticsMetricsClient",
+   "DVTFoundation",
+   "DVTProducts"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTAnalyticsMetrics",
+  "objc_classes": 33,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTAnalyticsMetrics.framework",
+  "swift_types": 153
+ },
+ {
+  "binary_size": 532240,
+  "deps": [
+   "DVTAnalyticsClient",
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTAnalyticsMetricsClient",
+  "objc_classes": 31,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTAnalyticsMetricsClient.framework",
+  "swift_types": 37
+ },
+ {
+  "binary_size": 1594224,
+  "deps": [
+   "AuthKit",
+   "DVTFoundation",
+   "XCServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTAppStoreConnect",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTAppStoreConnect.framework",
+  "swift_types": 133
+ },
+ {
+  "binary_size": 513728,
+  "deps": [
+   "DVTFoundation",
+   "DataDetectorsCore",
+   "IconServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTCocoaAdditionsKit",
+  "objc_classes": 7,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTCocoaAdditionsKit.framework",
+  "swift_types": 5
+ },
+ {
+  "binary_size": 810000,
+  "deps": [
+   "CoreDevice",
+   "DTXConnectionServices",
+   "DVTFoundation",
+   "MobileDevice"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTCoreDeviceCore",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTCoreDeviceCore.framework",
+  "swift_types": 6
+ },
+ {
+  "binary_size": 109792,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTCoreGlyphs",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTCoreGlyphs.framework",
+  "swift_types": 2
+ },
+ {
+  "binary_size": 340848,
+  "deps": [
+   "DVTFoundation",
+   "OSAnalytics"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTCrashLogFoundation",
+  "objc_classes": 18,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTCrashLogFoundation.framework",
+  "swift_types": 10
+ },
+ {
+  "binary_size": 75744,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTDeviceFoundation",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTDeviceFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 77536,
+  "deps": [
+   "AuthKit",
+   "AuthKitUI",
+   "DVTCocoaAdditionsKit",
+   "DVTDeviceFoundation",
+   "DVTFoundation",
+   "DVTPortal",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTDeviceKit",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTDeviceKit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 69248,
+  "deps": [
+   "ConfigurationProfiles",
+   "DVTCoreDeviceCore",
+   "DVTFoundation",
+   "MobileDevice"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTDeviceProvisioning",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTDeviceProvisioning.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 896944,
+  "deps": [
+   "DNTDocumentationModel",
+   "DNTDocumentationSupport",
+   "DNTSourceKitSupport",
+   "DNTTransformer",
+   "DVTFoundation",
+   "libclang.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTDocumentation",
+  "objc_classes": 16,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTDocumentation.framework",
+  "swift_types": 60
+ },
+ {
+  "binary_size": 1566560,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTUserInterfaceKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTExplorableKit",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTExplorableKit.framework",
+  "swift_types": 77
+ },
+ {
+  "binary_size": 205728,
+  "deps": [
+   "DVTFoundation",
+   "Feedback"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTFeedbackReporting",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTFeedbackReporting.framework",
+  "swift_types": 8
+ },
+ {
+  "binary_size": 11178560,
+  "deps": [
+   "AppleSystemInfo",
+   "AssertionServices",
+   "AssetCacheServices",
+   "AuthKit",
+   "CoreAnalytics",
+   "CoreSymbolicationDT",
+   "DTXConnectionServices",
+   "DVTDarwinup",
+   "DVTInstrumentsFoundation",
+   "DVTInternalCanary",
+   "DVTKeychain",
+   "DVTKeychainService",
+   "DVTNFASupport",
+   "DebugSymbolsDT",
+   "DiskImages",
+   "DiskManagement",
+   "LoggingSupport",
+   "MobileAsset",
+   "PackedPaths",
+   "SymbolicationDT"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTFoundation",
+  "objc_classes": 510,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTFoundation.framework",
+  "swift_types": 452
+ },
+ {
+  "binary_size": 180576,
+  "deps": [
+   "DVTFoundation",
+   "DVTITunesSoftwareServiceFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTITunesSoftware",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTITunesSoftware.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 440432,
+  "deps": [
+   "AuthKit",
+   "ContentDelivery",
+   "ContentDeliveryServices",
+   "DVTFoundation",
+   "Notarization"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTITunesSoftwareServiceFoundation",
+  "objc_classes": 24,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTITunesSoftwareServiceFoundation.framework",
+  "swift_types": 17
+ },
+ {
+  "binary_size": 1148064,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTIconKit",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTIconKit.framework",
+  "swift_types": 124
+ },
+ {
+  "binary_size": 8854160,
+  "deps": [
+   "DVTInstrumentsUtilities"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTInstrumentsAnalysisCore",
+  "objc_classes": 137,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTInstrumentsAnalysisCore.framework",
+  "swift_types": 323
+ },
+ {
+  "binary_size": 5175264,
+  "deps": [
+   "AssistantServices",
+   "CoreSymbolicationDT",
+   "DTXConnectionServices",
+   "DVTInstrumentsUtilities",
+   "GPURawCounter",
+   "IconServices",
+   "LoggingSupport",
+   "MallocStackLoggingDT",
+   "ManagedBackgroundAssetsXcodeSupport",
+   "MetricKitSource",
+   "NetworkStatistics",
+   "PlugInKit",
+   "RecountDT",
+   "StreamingZip",
+   "SymbolicationDT",
+   "kperf",
+   "kperfdataDT",
+   "ktraceDT"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTInstrumentsFoundation",
+  "objc_classes": 192,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTInstrumentsFoundation.framework",
+  "swift_types": 66
+ },
+ {
+  "binary_size": 1675168,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTInstrumentsUtilities",
+  "objc_classes": 86,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTInstrumentsUtilities.framework",
+  "swift_types": 10
+ },
+ {
+  "binary_size": 74656,
+  "deps": [
+   "DVTKeychainUtilities"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTKeychain",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTKeychain.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 75200,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTKeychainService",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTKeychainService.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 71296,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTKeychainUtilities",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTKeychainUtilities.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1517344,
+  "deps": [
+   "AuthKit",
+   "AuthKitUI",
+   "CodeCompletionFoundation",
+   "DVTCocoaAdditionsKit",
+   "DVTFeedbackReporting",
+   "DVTFoundation",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "XCTest"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTKit",
+  "objc_classes": 100,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTKit.framework",
+  "swift_types": 16
+ },
+ {
+  "binary_size": 600304,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTLibraryKit",
+  "objc_classes": 16,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTLibraryKit.framework",
+  "swift_types": 27
+ },
+ {
+  "binary_size": 405424,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTMacroFoundation",
+  "objc_classes": 45,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTMacroFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 463024,
+  "deps": [
+   "CommonMark"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTMarkup",
+  "objc_classes": 34,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTMarkup.framework",
+  "swift_types": 37
+ },
+ {
+  "binary_size": 113296,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTPlaygroundCommunication",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTPlaygroundCommunication.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 35184,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTPlaygroundStubMacServices",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTPlaygroundStubMacServices.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 2721040,
+  "deps": [
+   "ConfigurationProfiles",
+   "DVTFoundation",
+   "DVTServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTPortal",
+  "objc_classes": 93,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTPortal.framework",
+  "swift_types": 187
+ },
+ {
+  "binary_size": 2714720,
+  "deps": [
+   "DVTAppStoreConnect",
+   "DVTFoundation",
+   "DVTITunesSoftware",
+   "DVTITunesSoftwareServiceFoundation",
+   "DVTServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTProducts",
+  "objc_classes": 38,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTProducts.framework",
+  "swift_types": 242
+ },
+ {
+  "binary_size": 1243968,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTProducts",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTProductsUI",
+  "objc_classes": 23,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTProductsUI.framework",
+  "swift_types": 85
+ },
+ {
+  "binary_size": 129968,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTServices",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTServices.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 631552,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTSmartSearch",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTSmartSearch.framework",
+  "swift_types": 62
+ },
+ {
+  "binary_size": 2608304,
+  "deps": [
+   "PlugInKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTSourceControl",
+  "objc_classes": 104,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTSourceControl.framework",
+  "swift_types": 93
+ },
+ {
+  "binary_size": 1406304,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTMarkup",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "MarkupSupport",
+   "RenderedEditor",
+   "SourceEditor",
+   "SourceKit",
+   "SourceKitSupport",
+   "SourceModel",
+   "SourceModelSupport",
+   "SymbolCache",
+   "SymbolCacheSupport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTSourceEditor",
+  "objc_classes": 29,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTSourceEditor.framework",
+  "swift_types": 81
+ },
+ {
+  "binary_size": 209232,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTStructuredLayoutKit",
+  "objc_classes": 14,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTStructuredLayoutKit.framework",
+  "swift_types": 3
+ },
+ {
+  "binary_size": 179184,
+  "deps": [
+   "PackageKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTSystemPrerequisites",
+  "objc_classes": 12,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTSystemPrerequisites.framework",
+  "swift_types": 2
+ },
+ {
+  "binary_size": 743328,
+  "deps": [
+   "DVTSystemPrerequisites",
+   "PackageKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTSystemPrerequisitesUI",
+  "objc_classes": 7,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTSystemPrerequisitesUI.framework",
+  "swift_types": 31
+ },
+ {
+  "binary_size": 9615936,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTIconKit",
+   "DVTStructuredLayoutKit",
+   "DVTViewControllerKit",
+   "FeatureFlags",
+   "IconServices",
+   "UniversalAccess"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTUserInterfaceKit",
+  "objc_classes": 326,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTUserInterfaceKit.framework",
+  "swift_types": 409
+ },
+ {
+  "binary_size": 133728,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DVTViewControllerKit",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DVTViewControllerKit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 962144,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DebugHierarchyFoundation",
+  "objc_classes": 25,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DebugHierarchyFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 703408,
+  "deps": [
+   "DebugHierarchyFoundation",
+   "RemoteServiceDiscovery",
+   "RemoteXPC"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DebugHierarchyKit",
+  "objc_classes": 49,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DebugHierarchyKit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 776672,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DebugSymbolsDT",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DebugSymbolsDT.framework",
+  "swift_types": 12
+ },
+ {
+  "binary_size": 330032,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DeltaFoundation",
+  "objc_classes": 22,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DeltaFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1487712,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTSourceEditor",
+   "DVTUserInterfaceKit",
+   "DeltaFoundation",
+   "IDEKit",
+   "IDESourceEditor",
+   "SourceEditor",
+   "SourceModel",
+   "SourceModelSupport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DeltaKit",
+  "objc_classes": 39,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DeltaKit.framework",
+  "swift_types": 110
+ },
+ {
+  "binary_size": 12455792,
+  "deps": [
+   "AVConference",
+   "AccessibilityAudit",
+   "AccessibilitySharedSupport",
+   "AuthKitUI",
+   "BackgroundTaskManagement",
+   "BuildProductServices",
+   "CoreAnalytics",
+   "CoreDevice",
+   "CoreDeviceUtilities",
+   "CoreDeviceWeakShim",
+   "HID",
+   "IconServices",
+   "OnBoardingKit",
+   "RemotePairing",
+   "ScreenSharing",
+   "UniversalHIDKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DeviceKit",
+  "objc_classes": 76,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/DeviceKit.framework",
+  "swift_types": 166
+ },
+ {
+  "binary_size": 460272,
+  "deps": [
+   "OpenAPIRuntime"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "EventsAPI",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/EventsAPI.framework",
+  "swift_types": 75
+ },
+ {
+  "binary_size": 119280,
+  "deps": [
+   "GLToolsCore",
+   "GPUTools",
+   "GPUToolsCore"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GLTools",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GLTools.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 670368,
+  "deps": [
+   "GLTools",
+   "GLToolsCore",
+   "GPUTools",
+   "GPUToolsCore",
+   "GPUToolsServices"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GLToolsAnalysisEngine",
+  "objc_classes": 8,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GLToolsAnalysisEngine.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 530720,
+  "deps": [
+   "GPUToolsCore"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GLToolsCore",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GLToolsCore.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 638176,
+  "deps": [
+   "GLTools",
+   "GLToolsAnalysisEngine",
+   "GLToolsCore",
+   "GLToolsServices",
+   "GPUTools",
+   "GPUToolsCore",
+   "GPUToolsServices"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GLToolsExpert",
+  "objc_classes": 60,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GLToolsExpert.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 102848,
+  "deps": [
+   "GLToolsCore",
+   "GPUToolsCore",
+   "GPUToolsRenderer",
+   "GPUToolsServices"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GLToolsInterface",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GLToolsInterface.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 623856,
+  "deps": [
+   "GLTools",
+   "GLToolsAnalysisEngine",
+   "GLToolsCore",
+   "GPUTools",
+   "GPUToolsCore",
+   "GPUToolsServices"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GLToolsServices",
+  "objc_classes": 23,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GLToolsServices.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 159248,
+  "deps": [
+   "GLTools",
+   "GLToolsCore",
+   "GLToolsServices",
+   "GPUTools",
+   "GPUToolsCore",
+   "GPUToolsPlatform",
+   "GPUToolsServices",
+   "GPUToolsShaderProfiler"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GLToolsShaderProfiler",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GLToolsShaderProfiler.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 533168,
+  "deps": [
+   "GPUToolsCore"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GPUTools",
+  "objc_classes": 29,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GPUTools.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 746080,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GPUToolsCore",
+  "objc_classes": 25,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GPUToolsCore.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 135648,
+  "deps": [
+   "GPUTools",
+   "GPUToolsCore",
+   "GPUToolsServices"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GPUToolsDesktopFoundation",
+  "objc_classes": 9,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GPUToolsDesktopFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 186608,
+  "deps": [
+   "DVTFoundation",
+   "GPUTools",
+   "GPUToolsCore",
+   "GPUToolsServices",
+   "MobileDevice"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GPUToolsMobileFoundation",
+  "objc_classes": 14,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GPUToolsMobileFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 127584,
+  "deps": [
+   "GPUTools",
+   "GPUToolsCore"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GPUToolsPlatform",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GPUToolsPlatform.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 6587616,
+  "deps": [
+   "GPUTools",
+   "GPUToolsCore",
+   "GPUToolsPlatform",
+   "GPUToolsServices",
+   "GPUToolsShaderProfiler",
+   "MTLTools",
+   "MTLToolsAnalysisEngine"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GPUToolsPlatformSupport",
+  "objc_classes": 40,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GPUToolsPlatformSupport.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 394000,
+  "deps": [
+   "GPUTools",
+   "GPUToolsCore"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "GPUToolsRenderer",
+  "objc_classes": 24,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GPUToolsRenderer.framework",
+  "swift_types": 26
+ },
+ {
+  "binary_size": 849440,
+  "deps": [
+   "CoreSymbolication",
+   "DebugSymbols",
+   "GLToolsCore",
+   "GPUTools",
+   "GPUToolsCore",
+   "GPUToolsPlatform"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GPUToolsServices",
+  "objc_classes": 76,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GPUToolsServices.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 218464,
+  "deps": [
+   "GPUTools",
+   "GPUToolsCore",
+   "LLDB"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GPUToolsShaderProfiler",
+  "objc_classes": 13,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GPUToolsShaderProfiler.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1241264,
+  "deps": [
+   "GraphicsServices"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GPUToolsTransportXcode",
+  "objc_classes": 266,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GPUToolsTransportXcode.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 929072,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTLibraryKit",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "GameToolsFoundation",
+  "objc_classes": 72,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/GameToolsFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 388944,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "HexFiend",
+  "objc_classes": 51,
+  "open_source": "HexFiend/HexFiend",
+  "path": "Contents/SharedFrameworks/HexFiend.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 376032,
+  "deps": [
+   "DVTAnalyticsMetrics",
+   "DVTAnalyticsMetricsClient",
+   "DVTFoundation",
+   "DVTProducts",
+   "IDEProducts"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEAnalyticsMetrics",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEAnalyticsMetrics.framework",
+  "swift_types": 22
+ },
+ {
+  "binary_size": 701152,
+  "deps": [
+   "DVTUserInterfaceKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDECanvasUI",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDECanvasUI.framework",
+  "swift_types": 31
+ },
+ {
+  "binary_size": 641840,
+  "deps": [
+   "CodeGenerationIntelligence",
+   "DVTFoundation",
+   "DVTSourceEditor",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "DeltaFoundation",
+   "DeltaKit",
+   "IDEFoundation",
+   "IDESourceEditor",
+   "SourceEditor",
+   "SourceModel",
+   "SourceModelSupport",
+   "SymbolCache",
+   "SymbolCacheIndexing",
+   "SymbolCacheSupport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDECodeGenerationIntelligence",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDECodeGenerationIntelligence.framework",
+  "swift_types": 27
+ },
+ {
+  "binary_size": 2550560,
+  "deps": [
+   "AppThinning",
+   "DVTAppStoreConnect",
+   "DVTFoundation",
+   "DVTITunesSoftware",
+   "DVTITunesSoftwareServiceFoundation",
+   "DVTMacroFoundation",
+   "DVTPortal",
+   "DVTServices",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEDistribution",
+  "objc_classes": 218,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEDistribution.framework",
+  "swift_types": 123
+ },
+ {
+  "binary_size": 1308320,
+  "deps": [
+   "AuthKit",
+   "DVTFoundation",
+   "DVTITunesSoftware",
+   "DVTPortal",
+   "DVTProductsUI",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEDistribution",
+   "IDEFoundation",
+   "IDEKit",
+   "IDENotificationsKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEDistributionKit",
+  "objc_classes": 95,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEDistributionKit.framework",
+  "swift_types": 44
+ },
+ {
+  "binary_size": 144496,
+  "deps": [
+   "DVTFoundation",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEMLCompilerCore",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEMLCompilerCore.framework",
+  "swift_types": 4
+ },
+ {
+  "binary_size": 202768,
+  "deps": [
+   "DVTFoundation",
+   "IDEMLCompilerCore"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEMLModelCore",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEMLModelCore.framework",
+  "swift_types": 5
+ },
+ {
+  "binary_size": 7323392,
+  "deps": [
+   "CoreAnalytics",
+   "DTMLOpGraph",
+   "DTXConnectionServices",
+   "DVTCocoaAdditionsKit",
+   "DVTDeviceKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "GPUToolsTransportXcode",
+   "IDEFoundation",
+   "IDEKit",
+   "IDEMLCompilerCore",
+   "IDEMLModelCore",
+   "MLCloudDeployment",
+   "MLCoreKit",
+   "MLModelKit",
+   "MLRecipeCore",
+   "MLShared",
+   "MLSharedKit",
+   "MLToolsCoreML"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEMLModelEditorKit",
+  "objc_classes": 26,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEMLModelEditorKit.framework",
+  "swift_types": 543
+ },
+ {
+  "binary_size": 72800,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDENotifications",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDENotifications.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 204864,
+  "deps": [
+   "DVTFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDENotificationsKit",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDENotificationsKit.framework",
+  "swift_types": 7
+ },
+ {
+  "binary_size": 905424,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTMarkup",
+   "DVTSourceEditor",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEConsoleKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDENoticesFoundation",
+   "IDEPlaygroundExecution",
+   "IDEPlaygroundResultsFoundation",
+   "IDEPlaygroundResultsKit",
+   "IDEPlaygroundsFoundation",
+   "IDEPlaygroundsKit",
+   "IDESourceEditor",
+   "SourceEditor"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEPlaygroundEditor",
+  "objc_classes": 11,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEPlaygroundEditor.framework",
+  "swift_types": 32
+ },
+ {
+  "binary_size": 608048,
+  "deps": [
+   "DVTFoundation",
+   "DVTPlaygroundCommunication",
+   "DVTPlaygroundStubMacServices",
+   "IDEFoundation",
+   "IDEPlaygroundResultsFoundation",
+   "IDEPlaygroundsFoundation",
+   "IDEPlaygroundsKit",
+   "LLDBRPC",
+   "SourceEditor",
+   "ViewBridge"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEPlaygroundExecution",
+  "objc_classes": 12,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEPlaygroundExecution.framework",
+  "swift_types": 12
+ },
+ {
+  "binary_size": 505680,
+  "deps": [
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "IDEPlaygroundsFoundation",
+   "SourceEditor",
+   "SwiftParser",
+   "SwiftSyntax"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEPlaygroundResultsFoundation",
+  "objc_classes": 43,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEPlaygroundResultsFoundation.framework",
+  "swift_types": 15
+ },
+ {
+  "binary_size": 3199920,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFeedbackReporting",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTSourceEditor",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDECanvasUI",
+   "IDEKit",
+   "IDEPlaygroundResultsFoundation",
+   "IDEPlaygroundsFoundation",
+   "IDESourceEditor",
+   "SourceEditor"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEPlaygroundResultsKit",
+  "objc_classes": 80,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEPlaygroundResultsKit.framework",
+  "swift_types": 126
+ },
+ {
+  "binary_size": 1175328,
+  "deps": [
+   "DVTFoundation",
+   "DVTMacroFoundation",
+   "DVTPortal",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDENoticesFoundation",
+   "SwiftParser",
+   "SwiftSyntax",
+   "XCBProjectModel"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEPlaygroundsFoundation",
+  "objc_classes": 42,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEPlaygroundsFoundation.framework",
+  "swift_types": 33
+ },
+ {
+  "binary_size": 329792,
+  "deps": [
+   "DVTFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDEPlaygroundResultsFoundation",
+   "IDEPlaygroundsFoundation",
+   "IDESourceEditor",
+   "ViewBridge"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEPlaygroundsKit",
+  "objc_classes": 13,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEPlaygroundsKit.framework",
+  "swift_types": 8
+ },
+ {
+  "binary_size": 644640,
+  "deps": [
+   "DVTFoundation",
+   "DVTITunesSoftware",
+   "DVTProducts",
+   "DVTServices",
+   "IDEDistribution",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEProducts",
+  "objc_classes": 21,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEProducts.framework",
+  "swift_types": 15
+ },
+ {
+  "binary_size": 79712,
+  "deps": [
+   "XCResultKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEResultKit",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IDEResultKit.framework",
+  "swift_types": 2
+ },
+ {
+  "binary_size": 95680,
+  "deps": [
+   "IndexStoreDB_Index",
+   "IndexStoreDB_LLVMSupport"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IndexStoreDB_CIndexStoreDB",
+  "objc_classes": 0,
+  "open_source": "swiftlang/indexstore-db",
+  "path": "Contents/SharedFrameworks/IndexStoreDB_CIndexStoreDB.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 72112,
+  "deps": [
+   "IndexStoreDB_LLVMSupport",
+   "IndexStoreDB_Support"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IndexStoreDB_Core",
+  "objc_classes": 0,
+  "open_source": "swiftlang/indexstore-db",
+  "path": "Contents/SharedFrameworks/IndexStoreDB_Core.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 249168,
+  "deps": [
+   "IndexStoreDB_Core",
+   "IndexStoreDB_LLVMSupport",
+   "IndexStoreDB_Support"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IndexStoreDB_Database",
+  "objc_classes": 0,
+  "open_source": "swiftlang/indexstore-db",
+  "path": "Contents/SharedFrameworks/IndexStoreDB_Database.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 401008,
+  "deps": [
+   "IndexStoreDB_Core",
+   "IndexStoreDB_Database",
+   "IndexStoreDB_LLVMSupport",
+   "IndexStoreDB_Support"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IndexStoreDB_Index",
+  "objc_classes": 0,
+  "open_source": "swiftlang/indexstore-db",
+  "path": "Contents/SharedFrameworks/IndexStoreDB_Index.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1102336,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IndexStoreDB_LLVMSupport",
+  "objc_classes": 0,
+  "open_source": "swiftlang/indexstore-db",
+  "path": "Contents/SharedFrameworks/IndexStoreDB_LLVMSupport.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 107904,
+  "deps": [
+   "IndexStoreDB_LLVMSupport"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IndexStoreDB_Support",
+  "objc_classes": 0,
+  "open_source": "swiftlang/indexstore-db",
+  "path": "Contents/SharedFrameworks/IndexStoreDB_Support.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 159024,
+  "deps": [
+   "IndexStoreDB_CIndexStoreDB"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IndexStoreDatabase",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/IndexStoreDatabase.framework",
+  "swift_types": 17
+ },
+ {
+  "binary_size": 191698400,
+  "deps": [
+   "CoreAnalytics",
+   "Python3",
+   "lib_CompilerSwiftBasicFormat.dylib",
+   "lib_CompilerSwiftCompilerPluginMessageHandling.dylib",
+   "lib_CompilerSwiftDiagnostics.dylib",
+   "lib_CompilerSwiftIDEUtils.dylib",
+   "lib_CompilerSwiftIfConfig.dylib",
+   "lib_CompilerSwiftLexicalLookup.dylib",
+   "lib_CompilerSwiftOperators.dylib",
+   "lib_CompilerSwiftParser.dylib",
+   "lib_CompilerSwiftParserDiagnostics.dylib",
+   "lib_CompilerSwiftSyntax.dylib",
+   "lib_CompilerSwiftSyntaxBuilder.dylib",
+   "lib_CompilerSwiftSyntaxMacroExpansion.dylib",
+   "lib_CompilerSwiftSyntaxMacros.dylib",
+   "lib_CompilerSwiftWarningControl.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "LLDB",
+  "objc_classes": 0,
+  "open_source": "llvm/llvm-project (lldb)",
+  "path": "Contents/SharedFrameworks/LLDB.framework",
+  "swift_types": 836
+ },
+ {
+  "binary_size": 1626176,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "LLDBRPC",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/LLDBRPC.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 2783728,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "LanguageServerProtocol",
+  "objc_classes": 4,
+  "open_source": "swiftlang/sourcekit-lsp",
+  "path": "Contents/SharedFrameworks/LanguageServerProtocol.framework",
+  "swift_types": 403
+ },
+ {
+  "binary_size": 296752,
+  "deps": [
+   "BuildServerProtocol",
+   "LanguageServerProtocol",
+   "SKLogging",
+   "ToolsProtocolsSwiftExtensions"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "LanguageServerProtocolTransport",
+  "objc_classes": 0,
+  "open_source": "swiftlang/sourcekit-lsp",
+  "path": "Contents/SharedFrameworks/LanguageServerProtocolTransport.framework",
+  "swift_types": 12
+ },
+ {
+  "binary_size": 99504,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "LiveExecutionResultsFoundation",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/LiveExecutionResultsFoundation.framework",
+  "swift_types": 12
+ },
+ {
+  "binary_size": 208688,
+  "deps": [
+   "LiveExecutionResultsFoundation",
+   "PreviewsFoundationHost",
+   "PreviewsMessagingHost"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "LiveExecutionResultsHost",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/LiveExecutionResultsHost.framework",
+  "swift_types": 8
+ },
+ {
+  "binary_size": 1312080,
+  "deps": [
+   "XCStringsParser"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "Localization",
+  "objc_classes": 75,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/Localization.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 772624,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "LoggingSupportHost",
+  "objc_classes": 68,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/LoggingSupportHost.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 78720,
+  "deps": [
+   "CreateMLSwiftProtobuf",
+   "MLCloudDeploymentXPCServiceProtocol"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLCloudDeployment",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLCloudDeployment.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 103232,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLCloudDeploymentXPCServiceProtocol",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLCloudDeploymentXPCServiceProtocol.framework",
+  "swift_types": 4
+ },
+ {
+  "binary_size": 396800,
+  "deps": [
+   "MLFeature"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLCore",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLCore.framework",
+  "swift_types": 80
+ },
+ {
+  "binary_size": 367968,
+  "deps": [
+   "MLCore",
+   "MLRecipeCore"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLCoreKit",
+  "objc_classes": 13,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLCoreKit.framework",
+  "swift_types": 91
+ },
+ {
+  "binary_size": 98624,
+  "deps": [
+   "MLCore",
+   "MLPersistenceEntity",
+   "MLShared"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLDataSource",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLDataSource.framework",
+  "swift_types": 3
+ },
+ {
+  "binary_size": 525520,
+  "deps": [
+   "MLChartKit",
+   "MLCore",
+   "MLCoreKit",
+   "MLDataSource",
+   "MLEvaluation",
+   "MLExplorationKit",
+   "MLFeature",
+   "MLPersistenceEngine",
+   "MLPersistenceEntity",
+   "MLRecipeExecutionServiceProtocol",
+   "MLShared",
+   "MLSharedKit",
+   "RealityToolKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLDataSourceKit",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLDataSourceKit.framework",
+  "swift_types": 8
+ },
+ {
+  "binary_size": 233584,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLDocumentFormat",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLDocumentFormat.framework",
+  "swift_types": 14
+ },
+ {
+  "binary_size": 783280,
+  "deps": [
+   "MLCore",
+   "MLDataSource",
+   "MLFeature",
+   "MLPersistenceEntity",
+   "MLRecipeCore",
+   "MLRecipeExecutionController",
+   "MLShared"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLEvaluation",
+  "objc_classes": 8,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLEvaluation.framework",
+  "swift_types": 132
+ },
+ {
+  "binary_size": 1026528,
+  "deps": [
+   "MLCore",
+   "MLCoreKit",
+   "MLDataSource",
+   "MLEvaluation",
+   "MLExperiment",
+   "MLExplorationKit",
+   "MLFeature",
+   "MLPersistenceEngine",
+   "MLRecipeCore",
+   "MLShared",
+   "MLSharedKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLEvaluationKit",
+  "objc_classes": 9,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLEvaluationKit.framework",
+  "swift_types": 5
+ },
+ {
+  "binary_size": 349344,
+  "deps": [
+   "MLCore",
+   "MLEvaluation",
+   "MLModelCore",
+   "MLPersistenceEntity",
+   "MLRecipeCore",
+   "MLRecipeExecutionController",
+   "MLShared"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLExperiment",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLExperiment.framework",
+  "swift_types": 46
+ },
+ {
+  "binary_size": 369936,
+  "deps": [
+   "MLCore",
+   "MLCoreKit",
+   "MLEvaluation",
+   "MLModelCore",
+   "MLModelKit",
+   "MLShared",
+   "MLSharedKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLExplorationKit",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLExplorationKit.framework",
+  "swift_types": 36
+ },
+ {
+  "binary_size": 74512,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLFeature",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLFeature.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 191968,
+  "deps": [
+   "Leonardo",
+   "MLDocumentFormat",
+   "RealityIO"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLKnownObjectTracking",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLKnownObjectTracking.framework",
+  "swift_types": 16
+ },
+ {
+  "binary_size": 556480,
+  "deps": [
+   "MLAssetIO",
+   "MLCore",
+   "MLFeature",
+   "MLModelFormatEditor",
+   "MLPersistenceEngine",
+   "MLPersistenceEntity",
+   "MLRecipeCore",
+   "MLRecipeExecutionController",
+   "MLShared"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLModelCore",
+  "objc_classes": 20,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLModelCore.framework",
+  "swift_types": 65
+ },
+ {
+  "binary_size": 1697152,
+  "deps": [
+   "CreateMLSwiftProtobuf",
+   "MLAssetIO",
+   "MLRecipeCore"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLModelFormatEditor",
+  "objc_classes": 88,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLModelFormatEditor.framework",
+  "swift_types": 5
+ },
+ {
+  "binary_size": 2772096,
+  "deps": [
+   "MLAssetIO",
+   "MLCore",
+   "MLCoreKit",
+   "MLDocumentFormat",
+   "MLExperiment",
+   "MLFeature",
+   "MLModelCore",
+   "MLPersistenceEngine",
+   "MLPersistenceEntity",
+   "MLRecipeCore",
+   "MLRecipeExecutionController",
+   "MLShared",
+   "MLSharedKit",
+   "MLToolsCoreML",
+   "MLTraceReport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLModelKit",
+  "objc_classes": 84,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLModelKit.framework",
+  "swift_types": 67
+ },
+ {
+  "binary_size": 183040,
+  "deps": [
+   "MLCore",
+   "MLPersistenceEntity",
+   "MLRecipeCore",
+   "MLRecipeExecutionServiceProtocol"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLPersistenceEngine",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLPersistenceEngine.framework",
+  "swift_types": 12
+ },
+ {
+  "binary_size": 753216,
+  "deps": [
+   "MLCore",
+   "MLRecipeCore"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLPersistenceEntity",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLPersistenceEntity.framework",
+  "swift_types": 57
+ },
+ {
+  "binary_size": 999568,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLRecipeCore",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLRecipeCore.framework",
+  "swift_types": 120
+ },
+ {
+  "binary_size": 267792,
+  "deps": [
+   "CombineXPC",
+   "DVTFoundation",
+   "LoggingSupport",
+   "MLRecipeCore",
+   "MLRecipeExecutionServiceProtocol"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLRecipeExecutionController",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLRecipeExecutionController.framework",
+  "swift_types": 9
+ },
+ {
+  "binary_size": 98064,
+  "deps": [
+   "CombineXPC",
+   "MLRecipeCore"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLRecipeExecutionServiceProtocol",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLRecipeExecutionServiceProtocol.framework",
+  "swift_types": 3
+ },
+ {
+  "binary_size": 370864,
+  "deps": [
+   "CoreAnalytics",
+   "MLCore",
+   "MLFeature",
+   "MLPersistenceEngine",
+   "MLPersistenceEntity",
+   "MLRecipeCore",
+   "MLRecipeExecutionController"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLShared",
+  "objc_classes": 8,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLShared.framework",
+  "swift_types": 63
+ },
+ {
+  "binary_size": 1232576,
+  "deps": [
+   "MLCore",
+   "MLCoreKit",
+   "MLDataSource",
+   "MLEvaluation",
+   "MLExperiment",
+   "MLFeature",
+   "MLModelCore",
+   "MLPersistenceEngine",
+   "MLPersistenceEntity",
+   "MLRecipeCore",
+   "MLRecipeExecutionController",
+   "MLShared"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLSharedKit",
+  "objc_classes": 14,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLSharedKit.framework",
+  "swift_types": 113
+ },
+ {
+  "binary_size": 344096,
+  "deps": [
+   "DTMLOpGraph",
+   "MLAssetIO",
+   "MLModelSpecification"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLToolsCoreML",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLToolsCoreML.framework",
+  "swift_types": 9
+ },
+ {
+  "binary_size": 135776,
+  "deps": [
+   "perfdata"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MLTraceReport",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MLTraceReport.framework",
+  "swift_types": 5
+ },
+ {
+  "binary_size": 642560,
+  "deps": [
+   "GPUTools",
+   "GPUToolsCore",
+   "MetalTools"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "MTLTools",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MTLTools.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 76064,
+  "deps": [
+   "GPUToolsPlatform",
+   "GPUToolsServices"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "MTLToolsAnalysisEngine",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MTLToolsAnalysisEngine.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 75872,
+  "deps": [
+   "GPUTools",
+   "GPUToolsCore",
+   "GPUToolsPlatform",
+   "GPUToolsServices",
+   "MTLTools",
+   "MTLToolsAnalysisEngine"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "MTLToolsServices",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MTLToolsServices.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 773840,
+  "deps": [
+   "GPUTools",
+   "GPUToolsCore",
+   "GPUToolsPlatform",
+   "GPUToolsShaderProfiler",
+   "GTShaderProfiler",
+   "LLDB",
+   "MTLTools"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "MTLToolsShaderProfiler",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MTLToolsShaderProfiler.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 242736,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "MallocStackLoggingDT",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MallocStackLoggingDT.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 704144,
+  "deps": [
+   "ArgumentParserInternal"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "ManagedBackgroundAssetsXcodeSupport",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/ManagedBackgroundAssetsXcodeSupport.framework",
+  "swift_types": 16
+ },
+ {
+  "binary_size": 276512,
+  "deps": [
+   "DVTMarkup",
+   "SourceEditor"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "MarkupSupport",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/MarkupSupport.framework",
+  "swift_types": 17
+ },
+ {
+  "binary_size": 9300304,
+  "deps": [
+   "AuthKit",
+   "DiskImages",
+   "PackageKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "Notarization",
+  "objc_classes": 67,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/Notarization.framework",
+  "swift_types": 916
+ },
+ {
+  "binary_size": 1200992,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "ODTDevTool",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/ODTDevTool.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 508096,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "OpenAPIRuntime",
+  "objc_classes": 0,
+  "open_source": "apple/swift-openapi-runtime",
+  "path": "Contents/SharedFrameworks/OpenAPIRuntime.framework",
+  "swift_types": 23
+ },
+ {
+  "binary_size": 109936,
+  "deps": [
+   "OpenAPIRuntime"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "OpenAPIURLSession",
+  "objc_classes": 0,
+  "open_source": "apple/swift-openapi-urlsession",
+  "path": "Contents/SharedFrameworks/OpenAPIURLSession.framework",
+  "swift_types": 3
+ },
+ {
+  "binary_size": 134960,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "PackedPaths",
+  "objc_classes": 9,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PackedPaths.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 2525616,
+  "deps": [
+   "AppContainer",
+   "CoreDevice",
+   "CoreDeviceUtilities",
+   "CoreSimulator",
+   "DTXConnectionServices",
+   "DVTFoundation",
+   "DVTInstrumentsFoundation",
+   "PreviewsFoundationHost",
+   "PreviewsMessagingHost",
+   "PreviewsModel",
+   "PreviewsPipeline",
+   "PreviewsPlatforms",
+   "PreviewsServices",
+   "PreviewsServicesUI",
+   "PreviewsUI",
+   "SimulatorKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsDeveloperTools",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PreviewsDeveloperTools.framework",
+  "swift_types": 172
+ },
+ {
+  "binary_size": 3747152,
+  "deps": [
+   "CoreAnalytics",
+   "RunningBoardServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsFoundationHost",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PreviewsFoundationHost.framework",
+  "swift_types": 354
+ },
+ {
+  "binary_size": 3220448,
+  "deps": [
+   "PreviewsFoundationHost",
+   "PreviewsServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsMessagingHost",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PreviewsMessagingHost.framework",
+  "swift_types": 361
+ },
+ {
+  "binary_size": 4635568,
+  "deps": [
+   "PreviewsFoundationHost",
+   "PreviewsMessagingHost",
+   "PreviewsSyntax",
+   "SourceEditor",
+   "SwiftDiagnostics",
+   "SwiftOperators",
+   "SwiftParser",
+   "SwiftParserDiagnostics",
+   "SwiftSyntax",
+   "SwiftSyntaxBuilder"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsModel",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PreviewsModel.framework",
+  "swift_types": 318
+ },
+ {
+  "binary_size": 11845872,
+  "deps": [
+   "PreviewsFoundationHost",
+   "PreviewsMessagingHost",
+   "PreviewsModel",
+   "PreviewsSyntax",
+   "SourceEditor",
+   "SwiftSyntax",
+   "SwiftSyntaxBuilder"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsPipeline",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PreviewsPipeline.framework",
+  "swift_types": 813
+ },
+ {
+  "binary_size": 1020416,
+  "deps": [
+   "PreviewsFoundationHost",
+   "PreviewsMessagingHost",
+   "PreviewsModel",
+   "PreviewsPipeline",
+   "PreviewsServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsPlatforms",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PreviewsPlatforms.framework",
+  "swift_types": 50
+ },
+ {
+  "binary_size": 409152,
+  "deps": [
+   "PreviewsFoundationHost",
+   "PreviewsMessagingHost",
+   "PreviewsModel",
+   "PreviewsPipeline",
+   "SourceEditor",
+   "SwiftSyntax"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsScenes",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PreviewsScenes.framework",
+  "swift_types": 14
+ },
+ {
+  "binary_size": 528944,
+  "deps": [
+   "SwiftParser",
+   "SwiftSyntax",
+   "SwiftSyntaxBuilder"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsSyntax",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PreviewsSyntax.framework",
+  "swift_types": 15
+ },
+ {
+  "binary_size": 280896,
+  "deps": [
+   "PreviewsFoundationHost",
+   "PreviewsModel"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsUI",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PreviewsUI.framework",
+  "swift_types": 19
+ },
+ {
+  "binary_size": 141664,
+  "deps": [
+   "CoreRE",
+   "PreviewsFoundationHost",
+   "PreviewsMessagingHost"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsXROSMessaging",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PreviewsXROSMessaging.framework",
+  "swift_types": 7
+ },
+ {
+  "binary_size": 97600,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsXROSServices",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/PreviewsXROSServices.framework",
+  "swift_types": 5
+ },
+ {
+  "binary_size": 419136,
+  "deps": [
+   "CoreRE",
+   "CoreRealityIO",
+   "RealityIO",
+   "SourceEditor",
+   "SourceModel",
+   "SourceModelSupport",
+   "SymbolCache",
+   "SymbolCacheSupport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "RCPUserCode",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/RCPUserCode.framework",
+  "swift_types": 20
+ },
+ {
+  "binary_size": 143952,
+  "deps": [
+   "CoreRE"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "RealityKitAdditions",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/RealityKitAdditions.framework",
+  "swift_types": 9
+ },
+ {
+  "binary_size": 664976,
+  "deps": [
+   "CoreRE",
+   "SpatialInspectorFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "RealityKitInspection",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/RealityKitInspection.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 2369104,
+  "deps": [
+   "CoreAnalytics",
+   "CoreOCModules",
+   "CoreRE",
+   "RealityKitAdditions"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "RealityToolKit",
+  "objc_classes": 70,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/RealityToolKit.framework",
+  "swift_types": 130
+ },
+ {
+  "binary_size": 126000,
+  "deps": [
+   "CoreDevice",
+   "CoreDeviceUtilities",
+   "DTXConnectionServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "RealityToolsDeviceSupport",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/RealityToolsDeviceSupport.framework",
+  "swift_types": 2
+ },
+ {
+  "binary_size": 1961920,
+  "deps": [
+   "kperf",
+   "ktrace"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "RecountDT",
+  "objc_classes": 8,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/RecountDT.framework",
+  "swift_types": 50
+ },
+ {
+  "binary_size": 3175648,
+  "deps": [
+   "SourceEditor",
+   "SourceModel",
+   "SourceModelSupport",
+   "_CodeCompletionFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "RenderedEditor",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/RenderedEditor.framework",
+  "swift_types": 99
+ },
+ {
+  "binary_size": 2430544,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "ResultDataPublisher",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/ResultDataPublisher.framework",
+  "swift_types": 117
+ },
+ {
+  "binary_size": 165792,
+  "deps": [
+   "ToolsProtocolsSwiftExtensions"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SKLogging",
+  "objc_classes": 2,
+  "open_source": "swiftlang/sourcekit-lsp",
+  "path": "Contents/SharedFrameworks/SKLogging.framework",
+  "swift_types": 11
+ },
+ {
+  "binary_size": 1008288,
+  "deps": [
+   "AccessibilityPlatformTranslation",
+   "CoreSimulator"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SimulatorKit",
+  "objc_classes": 32,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SimulatorKit.framework",
+  "swift_types": 73
+ },
+ {
+  "binary_size": 13928928,
+  "deps": [
+   "LoggingSupport",
+   "_CodeCompletionFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SourceEditor",
+  "objc_classes": 115,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SourceEditor.framework",
+  "swift_types": 1420
+ },
+ {
+  "binary_size": 700320,
+  "deps": [
+   "LanguageServerProtocol",
+   "LanguageServerProtocolTransport",
+   "SKLogging",
+   "SourceEditor",
+   "SourceModel",
+   "SourceModelSupport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SourceEditorLSPSupport",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SourceEditorLSPSupport.framework",
+  "swift_types": 20
+ },
+ {
+  "binary_size": 140272,
+  "deps": [
+   "SourceEditor",
+   "SourceModel",
+   "SourceModelSupport",
+   "SymbolCache",
+   "SymbolCacheSupport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SourceEditorRegExSupport",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SourceEditorRegExSupport.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 141184,
+  "deps": [
+   "SourceEditor",
+   "SourceKitSupport",
+   "SourceModel",
+   "SourceModelSupport",
+   "SymbolCache",
+   "SymbolCacheSupport",
+   "_CodeCompletionFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SourceEditorSwiftSupport",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SourceEditorSwiftSupport.framework",
+  "swift_types": 2
+ },
+ {
+  "binary_size": 199712,
+  "deps": [
+   "IndexStoreDB_LLVMSupport",
+   "IndexStoreDB_Support"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SourceKit",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SourceKit.framework",
+  "swift_types": 9
+ },
+ {
+  "binary_size": 5708960,
+  "deps": [
+   "BuildServerProtocol",
+   "IndexStoreDatabase",
+   "LanguageServerProtocol",
+   "LanguageServerProtocolTransport",
+   "SKLogging",
+   "SwiftBasicFormat",
+   "SwiftDiagnostics",
+   "SwiftIDEUtils",
+   "SwiftOperators",
+   "SwiftParser",
+   "SwiftParserDiagnostics",
+   "SwiftRefactor",
+   "SwiftSyntax",
+   "SwiftSyntaxBuilder",
+   "ToolsProtocolsSwiftExtensions"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SourceKitLSPSupport",
+  "objc_classes": 18,
+  "open_source": "swiftlang/sourcekit-lsp (partial)",
+  "path": "Contents/SharedFrameworks/SourceKitLSPSupport.framework",
+  "swift_types": 204
+ },
+ {
+  "binary_size": 1402016,
+  "deps": [
+   "SourceEditor",
+   "SourceKit",
+   "_CodeCompletionFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SourceKitSupport",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SourceKitSupport.framework",
+  "swift_types": 78
+ },
+ {
+  "binary_size": 3811760,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SourceModel",
+  "objc_classes": 39,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SourceModel.framework",
+  "swift_types": 2
+ },
+ {
+  "binary_size": 1065984,
+  "deps": [
+   "SourceEditor",
+   "SourceModel",
+   "_CodeCompletionFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SourceModelSupport",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SourceModelSupport.framework",
+  "swift_types": 34
+ },
+ {
+  "binary_size": 783744,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SpatialInspectorFoundation",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SpatialInspectorFoundation.framework",
+  "swift_types": 27
+ },
+ {
+  "binary_size": 56224,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SpatialInspectorHost",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SpatialInspectorHost.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 372432,
+  "deps": [
+   "OpenAPIRuntime"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "StatusAPI",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/StatusAPI.framework",
+  "swift_types": 74
+ },
+ {
+  "binary_size": 456912,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "Subprocess",
+  "objc_classes": 5,
+  "open_source": "swiftlang/swift-subprocess",
+  "path": "Contents/SharedFrameworks/Subprocess.framework",
+  "swift_types": 37
+ },
+ {
+  "binary_size": 145248,
+  "deps": [
+   "SwiftSyntax"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftBasicFormat",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-syntax",
+  "path": "Contents/SharedFrameworks/SwiftBasicFormat.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 3395472,
+  "deps": [
+   "BuildServerProtocol",
+   "LanguageServerProtocol",
+   "LanguageServerProtocolTransport",
+   "SWBProjectModel",
+   "SWBProtocol",
+   "SWBUtil",
+   "ToolsProtocolsSwiftExtensions"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftBuild",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-build",
+  "path": "Contents/SharedFrameworks/SwiftBuild.framework",
+  "swift_types": 325
+ },
+ {
+  "binary_size": 157776,
+  "deps": [
+   "SwiftSyntax"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftDiagnostics",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-syntax",
+  "path": "Contents/SharedFrameworks/SwiftDiagnostics.framework",
+  "swift_types": 13
+ },
+ {
+  "binary_size": 129952,
+  "deps": [
+   "SwiftDiagnostics",
+   "SwiftParser",
+   "SwiftSyntax"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftIDEUtils",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-syntax",
+  "path": "Contents/SharedFrameworks/SwiftIDEUtils.framework",
+  "swift_types": 9
+ },
+ {
+  "binary_size": 182192,
+  "deps": [
+   "SwiftDiagnostics",
+   "SwiftParser",
+   "SwiftSyntax"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftOperators",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-syntax",
+  "path": "Contents/SharedFrameworks/SwiftOperators.framework",
+  "swift_types": 8
+ },
+ {
+  "binary_size": 29400288,
+  "deps": [
+   "DVTFoundation",
+   "DVTSourceControl",
+   "IDEFoundation",
+   "SWBProjectModel",
+   "SwiftBuild",
+   "XCBProjectModel",
+   "XCBuild"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftPM",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-package-manager",
+  "path": "Contents/SharedFrameworks/SwiftPM.framework",
+  "swift_types": 2556
+ },
+ {
+  "binary_size": 1216400,
+  "deps": [
+   "SwiftSyntax"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftParser",
+  "objc_classes": 2,
+  "open_source": "swiftlang/swift-syntax",
+  "path": "Contents/SharedFrameworks/SwiftParser.framework",
+  "swift_types": 81
+ },
+ {
+  "binary_size": 627728,
+  "deps": [
+   "SwiftBasicFormat",
+   "SwiftDiagnostics",
+   "SwiftParser",
+   "SwiftSyntax"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftParserDiagnostics",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-syntax",
+  "path": "Contents/SharedFrameworks/SwiftParserDiagnostics.framework",
+  "swift_types": 53
+ },
+ {
+  "binary_size": 340048,
+  "deps": [
+   "SwiftBasicFormat",
+   "SwiftParser",
+   "SwiftSyntax",
+   "SwiftSyntaxBuilder"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftRefactor",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-syntax",
+  "path": "Contents/SharedFrameworks/SwiftRefactor.framework",
+  "swift_types": 46
+ },
+ {
+  "binary_size": 4752352,
+  "deps": [
+   "SwiftSyntaxCShims"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftSyntax",
+  "objc_classes": 1,
+  "open_source": "swiftlang/swift-syntax",
+  "path": "Contents/SharedFrameworks/SwiftSyntax.framework",
+  "swift_types": 717
+ },
+ {
+  "binary_size": 555856,
+  "deps": [
+   "SwiftBasicFormat",
+   "SwiftDiagnostics",
+   "SwiftParser",
+   "SwiftParserDiagnostics",
+   "SwiftSyntax"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftSyntaxBuilder",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-syntax",
+  "path": "Contents/SharedFrameworks/SwiftSyntaxBuilder.framework",
+  "swift_types": 55
+ },
+ {
+  "binary_size": 52064,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "SwiftSyntaxCShims",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-syntax",
+  "path": "Contents/SharedFrameworks/SwiftSyntaxCShims.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 216352,
+  "deps": [
+   "SourceEditor",
+   "SwiftParser",
+   "SwiftSyntax"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftSyntaxSupport",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SwiftSyntaxSupport.framework",
+  "swift_types": 8
+ },
+ {
+  "binary_size": 11040336,
+  "deps": [
+   "AttributeGraph",
+   "RunningBoardServices",
+   "ktraceDT"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SwiftUITracingSupportDT",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SwiftUITracingSupportDT.framework",
+  "swift_types": 555
+ },
+ {
+  "binary_size": 1548816,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SymbolCache",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SymbolCache.framework",
+  "swift_types": 113
+ },
+ {
+  "binary_size": 3162048,
+  "deps": [
+   "SourceEditor",
+   "SourceModel",
+   "SourceModelSupport",
+   "SymbolCache",
+   "_CodeCompletionFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SymbolCacheIndexing",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SymbolCacheIndexing.framework",
+  "swift_types": 276
+ },
+ {
+  "binary_size": 6673264,
+  "deps": [
+   "SourceEditor",
+   "SourceModel",
+   "SourceModelSupport",
+   "SymbolCache",
+   "SymbolCacheIndexing",
+   "_CodeCompletionFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SymbolCacheSupport",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SymbolCacheSupport.framework",
+  "swift_types": 445
+ },
+ {
+  "binary_size": 5715680,
+  "deps": [
+   "CoreAnalytics",
+   "CoreSymbolicationDT",
+   "CrashReporterSupport",
+   "MallocStackLoggingDT"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SymbolicationDT",
+  "objc_classes": 97,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/SymbolicationDT.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 6906064,
+  "deps": [
+   "CoreAnalytics",
+   "Evaluations",
+   "OSAnalytics",
+   "XCResultKit",
+   "XCTAutomationSupport",
+   "XCTHarness",
+   "XCTest",
+   "XCUIAutomation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "TestResultsUI",
+  "objc_classes": 112,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/TestResultsUI.framework",
+  "swift_types": 362
+ },
+ {
+  "binary_size": 7430656,
+  "deps": [
+   "CrashReporterSupport",
+   "lib_TestingInterop.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "Testing",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-testing",
+  "path": "Contents/SharedFrameworks/Testing.framework",
+  "swift_types": 279
+ },
+ {
+  "binary_size": 201456,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "ToolsProtocolsSwiftExtensions",
+  "objc_classes": 0,
+  "open_source": "swiftlang/swift-tools-protocols",
+  "path": "Contents/SharedFrameworks/ToolsProtocolsSwiftExtensions.framework",
+  "swift_types": 12
+ },
+ {
+  "binary_size": 68928,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "USDLib_FormatLoaderProxy_Xcode",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/USDLib_FormatLoaderProxy_Xcode.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1537616,
+  "deps": [
+   "CoreSimulator",
+   "DVTFoundation",
+   "DVTMarkup",
+   "IDEFoundation",
+   "IDEKit",
+   "PreviewsDeveloperTools",
+   "PreviewsFoundationHost",
+   "PreviewsIDEAPI",
+   "PreviewsMessagingHost",
+   "PreviewsModel",
+   "PreviewsPipeline",
+   "PreviewsScenes",
+   "PreviewsXcode",
+   "SimulatorKit",
+   "SourceEditor",
+   "libXCTestSwiftSupport.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "UVTestSupport",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/UVTestSupport.framework",
+  "swift_types": 78
+ },
+ {
+  "binary_size": 52544,
+  "deps": [
+   "SwiftBuild"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XCBuild",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCBuild.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 19445424,
+  "deps": [
+   "OSAnalytics"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XCResultKit",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCResultKit.framework",
+  "swift_types": 1722
+ },
+ {
+  "binary_size": 26530080,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XCServices",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCServices.framework",
+  "swift_types": 2655
+ },
+ {
+  "binary_size": 1735696,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XCSourceControl",
+  "objc_classes": 58,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCSourceControl.framework",
+  "swift_types": 128
+ },
+ {
+  "binary_size": 2558864,
+  "deps": [
+   "SwiftParser",
+   "SwiftSyntax"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XCStringsParser",
+  "objc_classes": 28,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCStringsParser.framework",
+  "swift_types": 121
+ },
+ {
+  "binary_size": 1783328,
+  "deps": [
+   "AXRuntime",
+   "AutomationMode",
+   "DTXConnectionServices",
+   "XCTestSupport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XCTAutomationSupport",
+  "objc_classes": 54,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCTAutomationSupport.framework",
+  "swift_types": 6
+ },
+ {
+  "binary_size": 759056,
+  "deps": [
+   "DTXConnectionServices",
+   "RemoteServiceDiscovery",
+   "XCTAutomationSupport",
+   "XCTestCore",
+   "XCTestSupport"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "XCTDaemonControl",
+  "objc_classes": 22,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCTDaemonControl.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 895664,
+  "deps": [
+   "CoreDevice",
+   "DTXConnectionServices",
+   "DVTInstrumentsFoundation",
+   "MobileDevice",
+   "XCTDaemonControl"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XCTDaemonControlMobileDevice",
+  "objc_classes": 7,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCTDaemonControlMobileDevice.framework",
+  "swift_types": 11
+ },
+ {
+  "binary_size": 5331184,
+  "deps": [
+   "CoreAnalytics",
+   "CoreDevice",
+   "ResultDataPublisher",
+   "Testing",
+   "XCResultKit",
+   "XCTAutomationSupport",
+   "XCTDaemonControl",
+   "XCTest",
+   "XCTestSupport",
+   "libXCTestSwiftSupport.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XCTHarness",
+  "objc_classes": 121,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCTHarness.framework",
+  "swift_types": 265
+ },
+ {
+  "binary_size": 260224,
+  "deps": [
+   "MetricMeasurement",
+   "XCTAutomationSupport",
+   "XCTestCore",
+   "XCUIAutomation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "XCTest",
+  "objc_classes": 2,
+  "open_source": "swiftlang/swift-corelibs-xctest (API-compatible)",
+  "path": "Contents/SharedFrameworks/XCTest.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 4930880,
+  "deps": [
+   "CoreAnalytics",
+   "CoreSymbolicationDT",
+   "DTXConnectionServices",
+   "DVTInstrumentsFoundation",
+   "MetricMeasurement",
+   "ResultDataPublisher",
+   "SymbolicationDT",
+   "Testing",
+   "XCTAutomationSupport",
+   "XCTestSupport",
+   "lib_TestingInterop.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XCTestCore",
+  "objc_classes": 147,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCTestCore.framework",
+  "swift_types": 37
+ },
+ {
+  "binary_size": 334080,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XCTestSupport",
+  "objc_classes": 12,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCTestSupport.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 4852832,
+  "deps": [
+   "AccessibilityUtilities",
+   "CoreDevice",
+   "DFRFoundation",
+   "DTXConnectionServices",
+   "XCTAutomationSupport",
+   "XCTDaemonControl",
+   "XCTestCore",
+   "XCTestSupport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XCUIAutomation",
+  "objc_classes": 78,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCUIAutomation.framework",
+  "swift_types": 20
+ },
+ {
+  "binary_size": 133472,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "XCUnit",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XCUnit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 18389312,
+  "deps": [
+   "OpenAPIRuntime"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XcodeCloudAPI",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XcodeCloudAPI.framework",
+  "swift_types": 2832
+ },
+ {
+  "binary_size": 3481472,
+  "deps": [
+   "AuthenticationAPI",
+   "CommonXcodeCloudAPI",
+   "EventsAPI",
+   "OpenAPIRuntime",
+   "StatusAPI",
+   "XcodeCloudAPI"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XcodeCloudCombineAPI",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XcodeCloudCombineAPI.framework",
+  "swift_types": 141
+ },
+ {
+  "binary_size": 1050704,
+  "deps": [
+   "AuthenticationAPI",
+   "CommonXcodeCloudAPI",
+   "OpenAPIRuntime",
+   "XcodeCloudAPI",
+   "XcodeCloudCombineAPI",
+   "XcodeCloudFoundation",
+   "XcodeCloudModels"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XcodeCloudDataSource",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XcodeCloudDataSource.framework",
+  "swift_types": 51
+ },
+ {
+  "binary_size": 327152,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XcodeCloudFoundation",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XcodeCloudFoundation.framework",
+  "swift_types": 28
+ },
+ {
+  "binary_size": 22881184,
+  "deps": [
+   "AuthKit",
+   "AuthenticationAPI",
+   "CommonXcodeCloudAPI",
+   "CoreAnalytics",
+   "DVTDocumentation",
+   "DVTExplorableKit",
+   "DVTFeedbackReporting",
+   "DVTFoundation",
+   "DVTSourceControl",
+   "DVTUserInterfaceKit",
+   "EventsAPI",
+   "IDEFoundation",
+   "IDEKit",
+   "IDETestResultsUI",
+   "IconServices",
+   "OpenAPIRuntime",
+   "OpenAPIURLSession",
+   "StatusAPI",
+   "TestResultsUI",
+   "XCResultKit",
+   "XCTHarness",
+   "XcodeCloudAPI",
+   "XcodeCloudCombineAPI",
+   "XcodeCloudDataSource",
+   "XcodeCloudFoundation",
+   "XcodeCloudModels",
+   "XcodeCloudUI",
+   "_IconServices_SwiftUI"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XcodeCloudKit",
+  "objc_classes": 245,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XcodeCloudKit.framework",
+  "swift_types": 1565
+ },
+ {
+  "binary_size": 181936,
+  "deps": [
+   "IDEFoundation",
+   "XcodeCloudAPI"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XcodeCloudModels",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XcodeCloudModels.framework",
+  "swift_types": 12
+ },
+ {
+  "binary_size": 3612240,
+  "deps": [
+   "DVTUserInterfaceKit",
+   "IconServices",
+   "OpenAPIRuntime",
+   "XcodeCloudAPI",
+   "XcodeCloudCombineAPI",
+   "XcodeCloudDataSource",
+   "XcodeCloudFoundation",
+   "XcodeCloudModels",
+   "_IconServices_SwiftUI"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XcodeCloudUI",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/XcodeCloudUI.framework",
+  "swift_types": 209
+ },
+ {
+  "binary_size": 498112,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "_CodeCompletionFoundation",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/_CodeCompletionFoundation.framework",
+  "swift_types": 52
+ },
+ {
+  "binary_size": 203584,
+  "deps": [
+   "Testing",
+   "_Testing_CoreGraphics"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "_Testing_AppKit",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/_Testing_AppKit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 245296,
+  "deps": [
+   "Testing"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "_Testing_CoreGraphics",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/_Testing_CoreGraphics.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 173600,
+  "deps": [
+   "Testing",
+   "_Testing_CoreGraphics"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "_Testing_CoreImage",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/_Testing_CoreImage.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 219248,
+  "deps": [
+   "Testing"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "_Testing_CoreTransferable",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/_Testing_CoreTransferable.framework",
+  "swift_types": 2
+ },
+ {
+  "binary_size": 268672,
+  "deps": [
+   "Testing"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "_Testing_Foundation",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/_Testing_Foundation.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 134576,
+  "deps": [
+   "Testing"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "_Testing_UIKit",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/_Testing_UIKit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 292672,
+  "deps": [
+   "kperf"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "kperfdataDT",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/kperfdataDT.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 2091376,
+  "deps": [
+   "CoreSymbolicationDT",
+   "DebugSymbolsDT",
+   "LoggingSupport",
+   "kperfdataDT"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "ktraceDT",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/SharedFrameworks/ktraceDT.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1474368,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "llbuild",
+  "objc_classes": 7,
+  "open_source": "swiftlang/swift-llbuild",
+  "path": "Contents/SharedFrameworks/llbuild.framework",
+  "swift_types": 50
+ },
+ {
+  "binary_size": 86496,
+  "deps": [
+   "AppShortcutsEditorUI",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "AppShortcutsEditor",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/PlugIns/AppShortcutsEditor.framework",
+  "swift_types": 3
+ },
+ {
+  "binary_size": 974272,
+  "deps": [
+   "DVTUserInterfaceKit",
+   "LinkMetadataDT",
+   "SiriSSUKit",
+   "SiriSSUKitModel"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "AppShortcutsEditorUI",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/PlugIns/AppShortcutsEditorUI.framework",
+  "swift_types": 48
+ },
+ {
+  "binary_size": 2378672,
+  "deps": [],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "ConsoleFoundation",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/PlugIns/ConsoleFoundation.framework",
+  "swift_types": 164
+ },
+ {
+  "binary_size": 205344,
+  "deps": [
+   "ConsoleFoundation",
+   "DVTFoundation",
+   "DVTInstrumentsFoundation",
+   "DVTInstrumentsUtilities"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DVTConsoleFoundation",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/PlugIns/DVTConsoleFoundation.framework",
+  "swift_types": 5
+ },
+ {
+  "binary_size": 68784,
+  "deps": [],
+  "kind": "dvtplugin",
+  "links_swift": false,
+  "name": "DVTCorePlistStructDefs",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/PlugIns/DVTCorePlistStructDefs.dvtplugin",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 72960,
+  "deps": [
+   "DiagnosticExtensions"
+  ],
+  "kind": "appex",
+  "links_swift": true,
+  "name": "DVTFeedbackReportingDiagnosticExtension",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/PlugIns/DVTFeedbackReportingDiagnosticExtension.appex",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 317536,
+  "deps": [
+   "DTXConnectionServices",
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit",
+   "RealityToolsDeviceSupport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DebugHelperSupportUI",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/PlugIns/DebugHelperSupportUI.framework",
+  "swift_types": 15
+ },
+ {
+  "binary_size": 108480,
+  "deps": [
+   "DVTFoundation",
+   "DVTKit",
+   "DebugHierarchyKit",
+   "DebuggerFoundation",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "DebuggerKit",
+  "objc_classes": 6,
+  "open_source": null,
+  "path": "Contents/PlugIns/DebuggerKit.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 3026112,
+  "deps": [
+   "ConsoleFoundation",
+   "DTXConnectionServices",
+   "DVTFoundation",
+   "DebuggerFoundation",
+   "IDEFoundation",
+   "LLDB",
+   "LLDBRPC"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DebuggerLLDB",
+  "objc_classes": 146,
+  "open_source": null,
+  "path": "Contents/PlugIns/DebuggerLLDB.framework",
+  "swift_types": 157
+ },
+ {
+  "binary_size": 3878832,
+  "deps": [
+   "DTGraphKit",
+   "DVTCocoaAdditionsKit",
+   "DVTExplorableKit",
+   "DVTFeedbackReporting",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTSourceEditor",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "DebugHierarchyFoundation",
+   "DebugHierarchyKit",
+   "DebuggerFoundation",
+   "DebuggerKit",
+   "DebuggerLLDB",
+   "HexEditor",
+   "HexFiend",
+   "IBAutolayoutFoundation",
+   "IDEFoundation",
+   "IDEInterfaceBuilderKit",
+   "IDEKit",
+   "IDEMemoryGraphDebugger",
+   "IDEPerformanceDebugger",
+   "IDESourceEditor",
+   "IDESourceEditorGalleryExhibit",
+   "SourceEditor",
+   "SourceModelSupport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "DebuggerUI",
+  "objc_classes": 239,
+  "open_source": null,
+  "path": "Contents/PlugIns/DebuggerUI.framework",
+  "swift_types": 63
+ },
+ {
+  "binary_size": 13901872,
+  "deps": [
+   "CoreAnalytics",
+   "CoreSymbolication",
+   "DNTDocumentationModel",
+   "DNTDocumentationSupport",
+   "DTGraphKit",
+   "DVTDocumentation",
+   "DVTFoundation",
+   "DVTSourceEditor",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "DebuggerUI",
+   "Feedback",
+   "GLTools",
+   "GLToolsCore",
+   "GLToolsInterface",
+   "GLToolsServices",
+   "GPUTools",
+   "GPUToolsASVC",
+   "GPUToolsAdvancedUI",
+   "GPUToolsCore",
+   "GPUToolsDesktopFoundation",
+   "GPUToolsGraphLayout",
+   "GPUToolsMobileFoundation",
+   "GPUToolsPlatform",
+   "GPUToolsRenderer",
+   "GPUToolsServices",
+   "GPUToolsShaderProfiler",
+   "GPUToolsTransportAgents",
+   "GTGraph",
+   "GTShaderProfiler",
+   "GTTimeline",
+   "Ganache",
+   "GanacheBufferViewer",
+   "GanacheImageProcessor",
+   "GanacheImageViewer",
+   "GanacheTensorViewer",
+   "IDEFoundation",
+   "IDEIODebugGaugesUI",
+   "IDEKit",
+   "IDENoticesFoundation",
+   "IDESourceEditor",
+   "MLIR_ML",
+   "MLOpGraph",
+   "MPSToolsUI",
+   "MTLTools",
+   "MTLToolsAnalysisEngine",
+   "MTLToolsServices",
+   "MTLToolsShaderProfiler",
+   "SourceEditor"
+  ],
+  "kind": "ideplugin",
+  "links_swift": true,
+  "name": "GPUDebugger",
+  "objc_classes": 837,
+  "open_source": null,
+  "path": "Contents/PlugIns/GPUDebugger.ideplugin",
+  "swift_types": 414
+ },
+ {
+  "binary_size": 1407616,
+  "deps": [
+   "DVTFoundation",
+   "GLTools",
+   "GLToolsAnalysisEngine",
+   "GLToolsCore",
+   "GLToolsExpert",
+   "GLToolsInterface",
+   "GLToolsServices",
+   "GLToolsShaderProfiler",
+   "GPUDebugger",
+   "GPUTools",
+   "GPUToolsCore",
+   "GPUToolsPlatform",
+   "GPUToolsServices",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "ideplugin",
+  "links_swift": false,
+  "name": "GPUDebuggerGLSupport",
+  "objc_classes": 25,
+  "open_source": null,
+  "path": "Contents/PlugIns/GPUDebuggerGLSupport.ideplugin",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 129584,
+  "deps": [
+   "DVTFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "HexFiend",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "HexEditor",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/PlugIns/HexEditor.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 103840,
+  "deps": [
+   "DVTFoundation",
+   "IDEFoundation"
+  ],
+  "kind": "ideplugin",
+  "links_swift": false,
+  "name": "IBBuildSupport",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/PlugIns/IBBuildSupport.ideplugin",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 35152,
+  "deps": [
+   "DVTFoundation"
+  ],
+  "kind": "ideplugin",
+  "links_swift": false,
+  "name": "IBCocoaBuildSupport",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/PlugIns/IBCocoaBuildSupport.ideplugin",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 35168,
+  "deps": [],
+  "kind": "ideplugin",
+  "links_swift": false,
+  "name": "IBExternalGeniusResults",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/PlugIns/IBExternalGeniusResults.ideplugin",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 202080,
+  "deps": [
+   "IDEIntelligenceProtocol"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEAXSpecialist",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEAXSpecialist.framework",
+  "swift_types": 2
+ },
+ {
+  "binary_size": 441904,
+  "deps": [
+   "DVTAnalytics",
+   "DVTFoundation",
+   "DVTProducts",
+   "IDEProducts"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEAnalytics",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEAnalytics.framework",
+  "swift_types": 18
+ },
+ {
+  "binary_size": 2632784,
+  "deps": [
+   "DVTAnalytics",
+   "DVTAnalyticsClient",
+   "DVTAnalyticsKit",
+   "DVTCocoaAdditionsKit",
+   "DVTCrashLogFoundation",
+   "DVTDeviceKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTProducts",
+   "DVTProductsUI",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEAnalytics",
+   "IDEFoundation",
+   "IDEKit",
+   "IDENotifications",
+   "IDEProducts",
+   "IDEProductsUI"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEAnalyticsKit",
+  "objc_classes": 71,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEAnalyticsKit.framework",
+  "swift_types": 129
+ },
+ {
+  "binary_size": 2241920,
+  "deps": [
+   "DVTAnalytics",
+   "DVTAnalyticsKit",
+   "DVTAnalyticsMetrics",
+   "DVTAnalyticsMetricsClient",
+   "DVTFoundation",
+   "DVTProducts",
+   "DVTProductsUI",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEAnalyticsMetrics",
+   "IDEFoundation",
+   "IDEKit",
+   "IDENotifications",
+   "IDEProducts",
+   "IDEProductsUI"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEAnalyticsMetricsKit",
+  "objc_classes": 27,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEAnalyticsMetricsKit.framework",
+  "swift_types": 100
+ },
+ {
+  "binary_size": 134288,
+  "deps": [
+   "DVTAnalyticsMetrics",
+   "DVTFoundation",
+   "IDEAnalyticsMetrics"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEAnalyticsMetricsNotifications",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEAnalyticsMetricsNotifications.framework",
+  "swift_types": 3
+ },
+ {
+  "binary_size": 4287424,
+  "deps": [
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "IDECanvasUI",
+   "IDEFoundation",
+   "IDEKit",
+   "IDESourceEditor",
+   "PreviewsDeveloperTools",
+   "PreviewsFoundationHost",
+   "PreviewsIDEAPI",
+   "PreviewsMessagingHost",
+   "PreviewsModel",
+   "PreviewsPipeline",
+   "PreviewsScenes",
+   "PreviewsServices",
+   "PreviewsServicesUI",
+   "PreviewsXcode",
+   "SourceEditor"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDECanvas",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDECanvas.framework",
+  "swift_types": 216
+ },
+ {
+  "binary_size": 875200,
+  "deps": [
+   "ConsoleFoundation",
+   "CoreSymbolication",
+   "DVTConsoleFoundation",
+   "DVTFoundation",
+   "DebuggerLLDB",
+   "IDEFoundation",
+   "XCResultKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEConsoleFoundation",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEConsoleFoundation.framework",
+  "swift_types": 33
+ },
+ {
+  "binary_size": 2132720,
+  "deps": [
+   "ConsoleFoundation",
+   "DVTCocoaAdditionsKit",
+   "DVTFeedbackReporting",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTSourceEditor",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "DebuggerLLDB",
+   "DebuggerUI",
+   "IDEConsoleFoundation",
+   "IDEFoundation",
+   "IDEKit",
+   "IDESourceEditor",
+   "SourceEditor",
+   "SourceModelSupport",
+   "_CodeCompletionFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEConsoleKit",
+  "objc_classes": 22,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEConsoleKit.framework",
+  "swift_types": 99
+ },
+ {
+  "binary_size": 2385840,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTSourceControl",
+   "DVTSourceEditor",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "DeltaFoundation",
+   "DeltaKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDESourceControlUI",
+   "IDESourceEditor",
+   "IDESourceEditorGalleryExhibit",
+   "SourceEditor",
+   "XCSourceControl"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEDelta",
+  "objc_classes": 73,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEDelta.framework",
+  "swift_types": 131
+ },
+ {
+  "binary_size": 1734112,
+  "deps": [
+   "CoreSimulator",
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEIntelligenceFoundation",
+   "IDEIntelligenceProtocol",
+   "IDEIntelligenceProtocolUI",
+   "IDEKit",
+   "Recap",
+   "XCTAutomationSupport",
+   "XCTHarness",
+   "XCTest",
+   "libXCTestSwiftSupport.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEDeviceInteraction",
+  "objc_classes": 8,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEDeviceInteraction.framework",
+  "swift_types": 131
+ },
+ {
+  "binary_size": 1111680,
+  "deps": [
+   "Bom",
+   "CoreDocumentation",
+   "DNTDocumentationModel",
+   "DNTDocumentationSupport",
+   "DVTCocoaAdditionsKit",
+   "DVTDocumentation",
+   "DVTExplorableKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEDocumentation",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEDocViewer",
+  "objc_classes": 48,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEDocViewer.framework",
+  "swift_types": 41
+ },
+ {
+  "binary_size": 1191568,
+  "deps": [
+   "CoreDocumentation",
+   "DNTDocumentationModel",
+   "DNTDocumentationSupport",
+   "DNTTransformer",
+   "DVTCocoaAdditionsKit",
+   "DVTDocumentation",
+   "DVTExplorableKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEKit",
+   "XCSourceControl"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEDocumentation",
+  "objc_classes": 16,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEDocumentation.framework",
+  "swift_types": 57
+ },
+ {
+  "binary_size": 206640,
+  "deps": [
+   "CoreDocumentation",
+   "DNTDocumentationSupport",
+   "DVTCocoaAdditionsKit",
+   "DVTDocumentation",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTSourceEditor",
+   "IDEDocumentation",
+   "IDEKit",
+   "IDESourceEditor",
+   "SourceEditor",
+   "SourceKitSupport"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEDocumentationLivePreview",
+  "objc_classes": 6,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEDocumentationLivePreview.framework",
+  "swift_types": 6
+ },
+ {
+  "binary_size": 180960,
+  "deps": [
+   "DTXConnectionServices",
+   "DVTFoundation",
+   "IDEFoundation",
+   "NetworkStatistics"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEIODebugGaugesCore",
+  "objc_classes": 21,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIODebugGaugesCore.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 548736,
+  "deps": [
+   "DTGraphKit",
+   "DVTCocoaAdditionsKit",
+   "DVTDeviceKit",
+   "DVTFoundation",
+   "DVTInstrumentsUtilities",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEIODebugGaugesCore",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEIODebugGaugesUI",
+  "objc_classes": 46,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIODebugGaugesUI.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 125616,
+  "deps": [
+   "DVTFoundation",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEInstrumentsService",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEInstrumentsService.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 4412880,
+  "deps": [
+   "DVTFoundation",
+   "DVTKeychainService",
+   "IDEIntelligenceFoundation",
+   "IDEIntelligenceMessaging",
+   "IDEIntelligenceProtocol"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEIntelligenceACP",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntelligenceACP.framework",
+  "swift_types": 369
+ },
+ {
+  "binary_size": 10872720,
+  "deps": [
+   "AppSandbox",
+   "DVTFoundation",
+   "DVTKeychain",
+   "DVTKeychainService",
+   "IDEFoundation",
+   "IDEIntelligenceFoundation",
+   "IDEIntelligenceProtocol"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEIntelligenceAgents",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntelligenceAgents.framework",
+  "swift_types": 1136
+ },
+ {
+  "binary_size": 383152,
+  "deps": [
+   "AppSandbox",
+   "DVTFoundation",
+   "DVTKeychainService",
+   "IDEIntelligenceACP",
+   "IDEIntelligenceAgents",
+   "IDEIntelligenceFoundation",
+   "IDEIntelligenceMessaging",
+   "IDEIntelligenceProtocol"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEIntelligenceAntigravity",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntelligenceAntigravity.framework",
+  "swift_types": 10
+ },
+ {
+  "binary_size": 36481680,
+  "deps": [
+   "AppSandbox",
+   "CodeGenerationIntelligence",
+   "DVTCocoaAdditionsKit",
+   "DVTDocumentation",
+   "DVTFeedbackReporting",
+   "DVTFoundation",
+   "DVTKeychain",
+   "DVTKeychainService",
+   "DVTKit",
+   "DVTSmartSearch",
+   "DVTSourceControl",
+   "DVTSourceEditor",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "DeltaFoundation",
+   "DeltaKit",
+   "DiagnosticExtensionsDaemon",
+   "Feedback",
+   "FeedbackCore",
+   "FeedbackService",
+   "GenerativeFunctions",
+   "GenerativeFunctionsFoundation",
+   "GenerativeModels",
+   "GenerativePartnerServiceUI",
+   "IDECodeGenerationIntelligence",
+   "IDEDelta",
+   "IDEEvaluationKit",
+   "IDEFoundation",
+   "IDEIntelligenceAgents",
+   "IDEIntelligenceFoundation",
+   "IDEIntelligenceMessaging",
+   "IDEIntelligenceModelService",
+   "IDEIntelligenceProtocol",
+   "IDEIntelligenceProtocolUI",
+   "IDEIntelligenceSemanticSearch",
+   "IDEKit",
+   "IDELanguageModelKit",
+   "IDENoticesFoundation",
+   "IDEPlaygroundsFoundation",
+   "IDESourceControlUI",
+   "IDESourceEditor",
+   "IDESourceEditorGalleryExhibit",
+   "IconServices",
+   "ModelCatalog",
+   "ModelManagerServices",
+   "OSEligibility",
+   "OnBoardingKit",
+   "PromptKit",
+   "RenderedEditor",
+   "SourceEditor",
+   "SourceModel",
+   "SourceModelSupport",
+   "SwiftParser",
+   "SwiftSyntax",
+   "SymbolCache",
+   "SymbolCacheSupport",
+   "TokenGeneration",
+   "VectorSearch",
+   "ViewBridge",
+   "_CodeCompletionFoundation",
+   "_IconServices_SwiftUI"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEIntelligenceChat",
+  "objc_classes": 107,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntelligenceChat.framework",
+  "swift_types": 2132
+ },
+ {
+  "binary_size": 3891136,
+  "deps": [
+   "AppSandbox",
+   "DVTFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEIntelligenceFoundation",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntelligenceFoundation.framework",
+  "swift_types": 351
+ },
+ {
+  "binary_size": 1163216,
+  "deps": [
+   "BaseBoard",
+   "BoardServices",
+   "DVTFoundation",
+   "IDEIntelligenceFoundation",
+   "RunningBoardServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEIntelligenceMessaging",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntelligenceMessaging.framework",
+  "swift_types": 130
+ },
+ {
+  "binary_size": 4251680,
+  "deps": [
+   "DVTFoundation",
+   "GenerativeFunctions",
+   "GenerativeFunctionsFoundation",
+   "GenerativeModelsFoundation",
+   "GenerativePartnerServiceUI",
+   "IDEIntelligenceFoundation",
+   "IDEIntelligenceMessaging",
+   "ModelCatalog",
+   "PromptKit",
+   "TokenGeneration"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEIntelligenceModelService",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntelligenceModelService.framework",
+  "swift_types": 422
+ },
+ {
+  "binary_size": 3357968,
+  "deps": [
+   "DVTFoundation",
+   "IDEIntelligenceFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEIntelligenceProtocol",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntelligenceProtocol.framework",
+  "swift_types": 326
+ },
+ {
+  "binary_size": 753248,
+  "deps": [
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEIntelligenceFoundation",
+   "IDEIntelligenceProtocol"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEIntelligenceProtocolUI",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntelligenceProtocolUI.framework",
+  "swift_types": 43
+ },
+ {
+  "binary_size": 1371616,
+  "deps": [
+   "MediaAnalysisServices",
+   "VectorSearch"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEIntelligenceSemanticSearch",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntelligenceSemanticSearch.framework",
+  "swift_types": 84
+ },
+ {
+  "binary_size": 881728,
+  "deps": [
+   "DVTFoundation",
+   "IDEFoundation",
+   "IntentsFoundation"
+  ],
+  "kind": "ideplugin",
+  "links_swift": false,
+  "name": "IDEIntentBuilderCore",
+  "objc_classes": 71,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntentBuilderCore.ideplugin",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1089360,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEIntentBuilderCore",
+   "IDEKit",
+   "Localization",
+   "Xcode3UI"
+  ],
+  "kind": "ideplugin",
+  "links_swift": false,
+  "name": "IDEIntentBuilderEditor",
+  "objc_classes": 94,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEIntentBuilderEditor.ideplugin",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 5007312,
+  "deps": [
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "DVTCocoaAdditionsKit",
+   "DVTCoreGlyphs",
+   "DVTFoundation",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "IBAutolayoutFoundation",
+   "IDEFoundation",
+   "IDEInterfaceBuilderKit",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEInterfaceBuilderCocoaIntegration",
+  "objc_classes": 553,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEInterfaceBuilderCocoaIntegration.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 21644720,
+  "deps": [
+   "AssetCatalogCocoaTouchFoundation",
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "AssetRuntimeSupport",
+   "CoreSimulator",
+   "DTDeviceKit",
+   "DTDeviceKitBase",
+   "DVTCoreGlyphs",
+   "DVTFoundation",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "IBAutolayoutFoundation",
+   "IBCocoaTouchToolFoundation",
+   "IDEFoundation",
+   "IDEInterfaceBuilderCocoaIntegration",
+   "IDEInterfaceBuilderKit",
+   "IDEKit",
+   "IDESimulatorFoundation",
+   "SourceModel"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEInterfaceBuilderCocoaTouchIntegration",
+  "objc_classes": 835,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEInterfaceBuilderCocoaTouchIntegration.framework",
+  "swift_types": 384
+ },
+ {
+  "binary_size": 430784,
+  "deps": [
+   "AssetCatalogFoundation",
+   "DVTFoundation",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "IBAutolayoutFoundation",
+   "IDEInterfaceBuilderCocoaIntegration",
+   "IDEInterfaceBuilderKit",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEInterfaceBuilderDFRSupport",
+  "objc_classes": 44,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEInterfaceBuilderDFRSupport.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 106656,
+  "deps": [
+   "AssetCatalogFoundation",
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "IDEInterfaceBuilderCocoaIntegration",
+   "IDEInterfaceBuilderKit",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEInterfaceBuilderEditorDFRSupport",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEInterfaceBuilderEditorDFRSupport.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 10444320,
+  "deps": [
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "DVTCocoaAdditionsKit",
+   "DVTCoreGlyphs",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTLibraryKit",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IBAutolayoutFoundation",
+   "IDEFoundation",
+   "IDEKit",
+   "IDENoticesFoundation",
+   "SourceKit",
+   "SourceModel"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEInterfaceBuilderKit",
+  "objc_classes": 753,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEInterfaceBuilderKit.framework",
+  "swift_types": 38
+ },
+ {
+  "binary_size": 307760,
+  "deps": [
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "CoreSimulator",
+   "DTDeviceKit",
+   "DTDeviceKitBase",
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "IBAutolayoutFoundation",
+   "IBCocoaTouchToolFoundation",
+   "IDEFoundation",
+   "IDEInterfaceBuilderCocoaTouchIntegration",
+   "IDEInterfaceBuilderKit",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEInterfaceBuilderiOSIntegration",
+  "objc_classes": 21,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEInterfaceBuilderiOSIntegration.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 82096,
+  "deps": [
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "DVTFoundation",
+   "IBAutolayoutFoundation",
+   "IBCocoaTouchToolFoundation",
+   "IDEFoundation",
+   "IDEInterfaceBuilderCocoaTouchIntegration",
+   "IDEInterfaceBuilderKit",
+   "IDEInterfaceBuilderiOSIntegration",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEInterfaceBuilderiOSMacIntegration",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEInterfaceBuilderiOSMacIntegration.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1550096,
+  "deps": [
+   "DVTFoundation",
+   "IDEFoundation",
+   "IDEXCStringsSupportCore",
+   "Localization",
+   "XCStringsParser"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDELocalizationCatalogCore",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDELocalizationCatalogCore.framework",
+  "swift_types": 89
+ },
+ {
+  "binary_size": 3136176,
+  "deps": [
+   "CoreDocumentation",
+   "DVTCocoaAdditionsKit",
+   "DVTFeedbackReporting",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDELanguageModelKit",
+   "IDELocalizationCatalogCore",
+   "IDENoticesFoundation",
+   "IDEXCStringsSupportCore",
+   "XCStringsParser"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDELocalizationCatalogEditor",
+  "objc_classes": 64,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDELocalizationCatalogEditor.framework",
+  "swift_types": 169
+ },
+ {
+  "binary_size": 548736,
+  "deps": [
+   "DTGraphKit",
+   "DTXConnectionServices",
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTInstrumentsFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "DebuggerFoundation",
+   "IDEFoundation",
+   "IDEKit",
+   "SymbolicationDT"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEMemoryGraphDebugger",
+  "objc_classes": 27,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEMemoryGraphDebugger.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1912016,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDEModelFoundation",
+   "IDENoticesFoundation",
+   "Xcode3UI"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEModelEditor",
+  "objc_classes": 146,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEModelEditor.framework",
+  "swift_types": 5
+ },
+ {
+  "binary_size": 1081216,
+  "deps": [
+   "CoreSimulator",
+   "DVTFoundation",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEModelFoundation",
+  "objc_classes": 73,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEModelFoundation.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 107664,
+  "deps": [
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEPDFViewer",
+  "objc_classes": 6,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEPDFViewer.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 218320,
+  "deps": [
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTSourceEditor",
+   "DVTUserInterfaceKit",
+   "IDEKit",
+   "IDESourceEditor",
+   "SourceEditor"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEPegasusSourceEditor",
+  "objc_classes": 6,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEPegasusSourceEditor.framework",
+  "swift_types": 9
+ },
+ {
+  "binary_size": 458256,
+  "deps": [
+   "CallstackAnalysis",
+   "DTXConnectionServices",
+   "DVTFoundation",
+   "DVTInstrumentsFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "DebuggerFoundation",
+   "DebuggerLLDB",
+   "IDEFoundation",
+   "IDEKit",
+   "SymbolicationDT",
+   "XCServices",
+   "XCTest"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEPerformanceDebugger",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEPerformanceDebugger.framework",
+  "swift_types": 32
+ },
+ {
+  "binary_size": 1595648,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTProducts",
+   "DVTProductsUI",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEDistribution",
+   "IDEDistributionKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDENotificationsKit",
+   "IDEProducts"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEProductsUI",
+  "objc_classes": 55,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEProductsUI.framework",
+  "swift_types": 70
+ },
+ {
+  "binary_size": 617120,
+  "deps": [
+   "DNTDocumentationModel",
+   "DNTDocumentationSupport",
+   "DNTSourceKitSupport",
+   "DNTTransformer",
+   "DVTCocoaAdditionsKit",
+   "DVTDocumentation",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTMarkup",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEDocViewer",
+   "IDEDocumentation",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEQuickHelp",
+  "objc_classes": 14,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEQuickHelp.framework",
+  "swift_types": 22
+ },
+ {
+  "binary_size": 169024,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEQuickLookEditor",
+  "objc_classes": 9,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEQuickLookEditor.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 217472,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDERTFEditor",
+  "objc_classes": 10,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDERTFEditor.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 2698448,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTLibraryKit",
+   "DVTSourceEditor",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "GameToolsFoundation",
+   "IDEFoundation",
+   "IDEKit",
+   "IDENoticesFoundation",
+   "IDESourceEditor",
+   "MarkupSupport",
+   "SourceEditor",
+   "SourceKitSupport",
+   "SourceModelSupport"
+  ],
+  "kind": "ideplugin",
+  "links_swift": true,
+  "name": "IDESceneKitEditor",
+  "objc_classes": 165,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDESceneKitEditor.ideplugin",
+  "swift_types": 12
+ },
+ {
+  "binary_size": 130688,
+  "deps": [
+   "DVTFoundation",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEScriptingDefinitionEditor",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEScriptingDefinitionEditor.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 7728272,
+  "deps": [
+   "AuthKitUI",
+   "DVTCocoaAdditionsKit",
+   "DVTExplorableKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTSourceControl",
+   "DVTSourceEditor",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "DeltaFoundation",
+   "DeltaKit",
+   "IDEFoundation",
+   "IDEKit",
+   "SourceEditor",
+   "SourceModel",
+   "XCSourceControl"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDESourceControlUI",
+  "objc_classes": 225,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDESourceControlUI.framework",
+  "swift_types": 396
+ },
+ {
+  "binary_size": 7487152,
+  "deps": [
+   "CodeCompletionKit",
+   "DVTCocoaAdditionsKit",
+   "DVTCoreGlyphs",
+   "DVTDocumentation",
+   "DVTDownloads",
+   "DVTFoundation",
+   "DVTIconKit",
+   "DVTKit",
+   "DVTLibraryKit",
+   "DVTMarkup",
+   "DVTSourceEditor",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "GenerativeFunctionsFoundation",
+   "IDEFoundation",
+   "IDEKit",
+   "IDELanguageModelKit",
+   "IDENoticesFoundation",
+   "MarkupSupport",
+   "RenderedEditor",
+   "SourceEditor",
+   "SourceEditorLSPSupport",
+   "SourceEditorRegExSupport",
+   "SourceEditorSwiftSupport",
+   "SourceKitSupport",
+   "SourceModel",
+   "SourceModelSupport",
+   "SwiftParser",
+   "SwiftSyntax",
+   "SwiftSyntaxSupport",
+   "SymbolCache",
+   "SymbolCacheSupport",
+   "TokenGeneration",
+   "TokenGenerationCore",
+   "XCTHarness",
+   "XcodeKit",
+   "_CodeCompletionFoundation",
+   "libXCTestSwiftSupport.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDESourceEditor",
+  "objc_classes": 97,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDESourceEditor.framework",
+  "swift_types": 332
+ },
+ {
+  "binary_size": 2200080,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTLibraryKit",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "DebuggerFoundation",
+   "DebuggerKit",
+   "DebuggerUI",
+   "GameToolsFoundation",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "ideplugin",
+  "links_swift": false,
+  "name": "IDESpriteKitParticleEditor",
+  "objc_classes": 150,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDESpriteKitParticleEditor.ideplugin",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 111152,
+  "deps": [
+   "DVTFoundation",
+   "IDEFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEStandardExecutionActionsCore",
+  "objc_classes": 6,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEStandardExecutionActionsCore.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 164960,
+  "deps": [
+   "DVTFoundation",
+   "DVTKit",
+   "DVTSourceEditor",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDEStandardExecutionActionsCore",
+   "SourceEditor"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEStandardExecutionActionsUI",
+  "objc_classes": 7,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEStandardExecutionActionsUI.framework",
+  "swift_types": 2
+ },
+ {
+  "binary_size": 3446256,
+  "deps": [
+   "AppleMediaServices",
+   "DTXConnectionServices",
+   "DVTAppStoreConnect",
+   "DVTFoundation",
+   "DVTInstrumentsFoundation",
+   "FeatureFlags",
+   "IDEFoundation",
+   "XCServices"
+  ],
+  "kind": "ideplugin",
+  "links_swift": true,
+  "name": "IDEStoreKitCore",
+  "objc_classes": 6,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEStoreKitCore.ideplugin",
+  "swift_types": 171
+ },
+ {
+  "binary_size": 5463296,
+  "deps": [
+   "CoreAnalytics",
+   "DTXConnectionServices",
+   "DVTAppStoreConnect",
+   "DVTCocoaAdditionsKit",
+   "DVTDeviceKit",
+   "DVTFoundation",
+   "DVTInstrumentsFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDEStoreKitCore",
+   "XCSourceControl"
+  ],
+  "kind": "ideplugin",
+  "links_swift": true,
+  "name": "IDEStoreKitEditor",
+  "objc_classes": 40,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEStoreKitEditor.ideplugin",
+  "swift_types": 255
+ },
+ {
+  "binary_size": 3306752,
+  "deps": [
+   "DVTDeviceFoundation",
+   "DVTFoundation",
+   "DVTMacroFoundation",
+   "DVTPortal",
+   "DVTSourceControl",
+   "IDEFoundation",
+   "IDENoticesFoundation",
+   "SWBProjectModel",
+   "SwiftBuild",
+   "SwiftPM",
+   "XCBProjectModel",
+   "XCBuild"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDESwiftPackageCore",
+  "objc_classes": 68,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDESwiftPackageCore.framework",
+  "swift_types": 179
+ },
+ {
+  "binary_size": 4491488,
+  "deps": [
+   "AppResourceGeneration",
+   "AssetCatalogFoundation",
+   "AssetCatalogKit",
+   "CoreDocumentation",
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTSourceControl",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDESourceEditor",
+   "IDESwiftPackageCore",
+   "SWBProjectModel",
+   "SourceEditor",
+   "SwiftBuild",
+   "SwiftPM",
+   "XCSourceControl",
+   "_CodeCompletionFoundation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDESwiftPackageUI",
+  "objc_classes": 66,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDESwiftPackageUI.framework",
+  "swift_types": 257
+ },
+ {
+  "binary_size": 2098992,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEIntelligenceFoundation",
+   "IDEIntelligenceProtocol",
+   "IDEKit",
+   "IDENoticesFoundation",
+   "IDESourceEditor",
+   "SourceEditor",
+   "Testing",
+   "XCTHarness",
+   "XCTest",
+   "libXCTestSwiftSupport.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDETestPlanEditor",
+  "objc_classes": 35,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDETestPlanEditor.framework",
+  "swift_types": 118
+ },
+ {
+  "binary_size": 931568,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFeedbackReporting",
+   "DVTFoundation",
+   "DVTSourceEditor",
+   "DVTUserInterfaceKit",
+   "IDEConsoleKit",
+   "IDEFoundation",
+   "IDEKit",
+   "LoggingSupport",
+   "SourceEditor",
+   "SourceModelSupport",
+   "TestResultsUI",
+   "XCResultKit",
+   "XCTHarness",
+   "XCTest",
+   "XCUIAutomation"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDETestResultsUI",
+  "objc_classes": 12,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDETestResultsUI.framework",
+  "swift_types": 31
+ },
+ {
+  "binary_size": 699984,
+  "deps": [
+   "DTGTTimeline",
+   "DTGraphKit",
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTInstrumentsUtilities",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDETimeline",
+  "objc_classes": 18,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDETimeline.framework",
+  "swift_types": 50
+ },
+ {
+  "binary_size": 2029632,
+  "deps": [
+   "DVTFoundation",
+   "DVTMacroFoundation",
+   "DVTPortal",
+   "DevToolsCore",
+   "IDEFoundation",
+   "IDENoticesFoundation",
+   "SwiftBuild"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEXCBuildSupportCore",
+  "objc_classes": 8,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEXCBuildSupportCore.framework",
+  "swift_types": 50
+ },
+ {
+  "binary_size": 247840,
+  "deps": [
+   "DVTFoundation",
+   "DVTKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDENoticesFoundation",
+   "IDEXCBuildSupportCore",
+   "XCBuild"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEXCBuildSupportUI",
+  "objc_classes": 2,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEXCBuildSupportUI.framework",
+  "swift_types": 10
+ },
+ {
+  "binary_size": 1030368,
+  "deps": [
+   "DVTFoundation",
+   "GenerativeFunctionsFoundation",
+   "IDEFoundation",
+   "IDEKit",
+   "IDELanguageModelKit",
+   "IDEXCStringsSupport",
+   "IDEXCStringsSupportCore",
+   "SwiftParser",
+   "SwiftSyntax",
+   "SwiftSyntaxBuilder",
+   "TokenGeneration",
+   "XCStringsParser"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEXCStringsCommentGenerationSupport",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEXCStringsCommentGenerationSupport.framework",
+  "swift_types": 38
+ },
+ {
+  "binary_size": 3623360,
+  "deps": [
+   "DVTFoundation",
+   "DVTSourceEditor",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "DeltaKit",
+   "IDEDelta",
+   "IDEFoundation",
+   "IDEIntelligenceChat",
+   "IDEIntelligenceFoundation",
+   "IDEIntelligenceProtocol",
+   "IDEIntelligenceProtocolUI",
+   "IDEKit",
+   "IDELocalizationCatalogCore",
+   "IDELocalizationCatalogEditor",
+   "IDESourceControlUI",
+   "IDESourceEditor",
+   "IDEXCStringsSupportCore",
+   "Localization",
+   "SourceEditor",
+   "SourceModel",
+   "SourceModelSupport",
+   "SwiftSyntax",
+   "SwiftSyntaxBuilder",
+   "SymbolCache",
+   "SymbolCacheSupport",
+   "XCStringsParser"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEXCStringsSupport",
+  "objc_classes": 38,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEXCStringsSupport.framework",
+  "swift_types": 199
+ },
+ {
+  "binary_size": 2468400,
+  "deps": [
+   "DVTFoundation",
+   "DVTSourceControl",
+   "IDEFoundation",
+   "Localization",
+   "SwiftParser",
+   "SwiftSyntax",
+   "XCStringsParser"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEXCStringsSupportCore",
+  "objc_classes": 3,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEXCStringsSupportCore.framework",
+  "swift_types": 151
+ },
+ {
+  "binary_size": 747824,
+  "deps": [
+   "CoreDevice",
+   "CoreSimulator",
+   "DTDeviceKitBase",
+   "DTXConnectionServices",
+   "DVTDarwinup",
+   "DVTDeviceFoundation",
+   "DVTFoundation",
+   "DVTInstrumentsFoundation",
+   "DVTMacroFoundation",
+   "DebuggerLLDBService",
+   "IDEFoundation",
+   "MobileDevice",
+   "XCTDaemonControlMobileDevice",
+   "XCTHarness"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "IDEiOSSupportCore",
+  "objc_classes": 33,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEiOSSupportCore.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 205280,
+  "deps": [
+   "CoreSimulator",
+   "DVTCocoaAdditionsKit",
+   "DVTCoreGlyphs",
+   "DVTDeviceKit",
+   "DVTFoundation",
+   "DVTLibraryKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "IDEFoundation",
+   "IDEKit",
+   "IDEiOSSupportCore",
+   "Xcode3UI"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "IDEiPhoneSupport",
+  "objc_classes": 16,
+  "open_source": null,
+  "path": "Contents/PlugIns/IDEiPhoneSupport.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 1298352,
+  "deps": [
+   "CodeGenerationIntelligence",
+   "DVTFoundation",
+   "DVTMacroFoundation",
+   "DVTPortal",
+   "DVTSourceEditor",
+   "DVTUserInterfaceKit",
+   "GenerativeFunctionsFoundation",
+   "IDECanvas",
+   "IDECodeGenerationIntelligence",
+   "IDEFoundation",
+   "IDEKit",
+   "IDELanguageModelKit",
+   "IDENoticesFoundation",
+   "IDEPlaygroundEditor",
+   "IDEPlaygroundResultsFoundation",
+   "IDEPlaygroundResultsKit",
+   "IDEPlaygroundsFoundation",
+   "IDEPlaygroundsKit",
+   "IDESourceEditor",
+   "LiveExecutionResultsFoundation",
+   "LiveExecutionResultsHost",
+   "PreviewsDeveloperTools",
+   "PreviewsFoundationHost",
+   "PreviewsMessagingHost",
+   "PreviewsModel",
+   "PreviewsPipeline",
+   "PreviewsPlatforms",
+   "PreviewsScenes",
+   "PreviewsXcode",
+   "SourceEditor",
+   "SwiftDiagnostics",
+   "SwiftParser",
+   "SwiftParserDiagnostics",
+   "SwiftSyntax",
+   "TokenGeneration",
+   "TokenGenerationCore",
+   "XCBProjectModel"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PlaygroundLiveExecution",
+  "objc_classes": 11,
+  "open_source": null,
+  "path": "Contents/PlugIns/PlaygroundLiveExecution.framework",
+  "swift_types": 84
+ },
+ {
+  "binary_size": 272848,
+  "deps": [
+   "DVTFoundation",
+   "DVTMacroFoundation",
+   "IDEFoundation",
+   "IDEKit",
+   "libXCTestSwiftSupport.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsIDEAPI",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/PlugIns/PreviewsIDEAPI.framework",
+  "swift_types": 11
+ },
+ {
+  "binary_size": 4891312,
+  "deps": [
+   "BaseBoard",
+   "DNTDocumentationModel",
+   "DNTDocumentationSupport",
+   "DNTTransformer",
+   "DVTCocoaAdditionsKit",
+   "DVTDocumentation",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTLibraryKit",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "DVTViewControllerKit",
+   "GenerativeFunctions",
+   "GenerativeModels",
+   "GenerativeModelsFoundation",
+   "IDEFoundation",
+   "IDEKit",
+   "IDESourceEditor",
+   "ModelCatalog",
+   "PreviewsDeveloperTools",
+   "PreviewsFoundationHost",
+   "PreviewsIDEAPI",
+   "PreviewsMessagingHost",
+   "PreviewsModel",
+   "PreviewsPipeline",
+   "PreviewsPlatforms",
+   "PreviewsScenes",
+   "PreviewsServicesUI",
+   "PreviewsUI",
+   "PromptKit",
+   "SimulatorKit",
+   "SourceEditor",
+   "TokenGeneration",
+   "ViewBridge",
+   "libXCTestSwiftSupport.dylib"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsXcode",
+  "objc_classes": 14,
+  "open_source": null,
+  "path": "Contents/PlugIns/PreviewsXcode.framework",
+  "swift_types": 287
+ },
+ {
+  "binary_size": 1181408,
+  "deps": [
+   "CoreRE",
+   "DVTFoundation",
+   "IDECanvas",
+   "PreviewsDeveloperTools",
+   "PreviewsFoundationHost",
+   "PreviewsMessagingHost",
+   "PreviewsModel",
+   "PreviewsPipeline",
+   "PreviewsPlatforms",
+   "PreviewsXROSMessaging",
+   "PreviewsXROSServices",
+   "PreviewsXcode",
+   "SimulatorKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsXcodeXROSSupport",
+  "objc_classes": 4,
+  "open_source": null,
+  "path": "Contents/PlugIns/PreviewsXcodeXROSSupport.framework",
+  "swift_types": 85
+ },
+ {
+  "binary_size": 73280,
+  "deps": [
+   "PreviewsXROSServices"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "PreviewsXcodeXROSUI",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/PlugIns/PreviewsXcodeXROSUI.framework",
+  "swift_types": 1
+ },
+ {
+  "binary_size": 165472,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "framework",
+  "links_swift": false,
+  "name": "PropertyListEditor",
+  "objc_classes": 8,
+  "open_source": null,
+  "path": "Contents/PlugIns/PropertyListEditor.framework",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 101696,
+  "deps": [],
+  "kind": "appex",
+  "links_swift": false,
+  "name": "ProvisoningProfileQuicklookExtension",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/PlugIns/ProvisoningProfileQuicklookExtension.appex",
+  "swift_types": 0
+ },
+ {
+  "binary_size": 123680,
+  "deps": [
+   "DVTFoundation",
+   "IDEFoundation",
+   "IDEKit"
+  ],
+  "kind": "ideplugin",
+  "links_swift": true,
+  "name": "RCPIDESupportUI",
+  "objc_classes": 5,
+  "open_source": null,
+  "path": "Contents/PlugIns/RCPIDESupportUI.ideplugin",
+  "swift_types": 6
+ },
+ {
+  "binary_size": 3427680,
+  "deps": [
+   "DVTCocoaAdditionsKit",
+   "DVTExplorableKit",
+   "DVTFoundation",
+   "DVTKit",
+   "DVTStructuredLayoutKit",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit",
+   "RealityKitAdditions",
+   "SpatialInspectorHost"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "SpatialInspectorXcodePlugin",
+  "objc_classes": 35,
+  "open_source": null,
+  "path": "Contents/PlugIns/SpatialInspectorXcodePlugin.framework",
+  "swift_types": 219
+ },
+ {
+  "binary_size": 119584,
+  "deps": [
+   "DiagnosticExtensions"
+  ],
+  "kind": "appex",
+  "links_swift": true,
+  "name": "XCCFeedbackReportingDiagnosticExtension",
+  "objc_classes": 1,
+  "open_source": null,
+  "path": "Contents/PlugIns/XCCFeedbackReportingDiagnosticExtension.appex",
+  "swift_types": 3
+ },
+ {
+  "binary_size": 254128,
+  "deps": [
+   "DVTFoundation",
+   "DVTKit",
+   "DVTUserInterfaceKit",
+   "IDEFoundation",
+   "IDEKit",
+   "XcodeCloudAPI",
+   "XcodeCloudFoundation",
+   "XcodeCloudKit"
+  ],
+  "kind": "framework",
+  "links_swift": true,
+  "name": "XcodeCloud",
+  "objc_classes": 10,
+  "open_source": null,
+  "path": "Contents/PlugIns/XcodeCloud.framework",
+  "swift_types": 14
+ },
+ {
+  "binary_size": 79472,
+  "deps": [],
+  "kind": "app",
+  "links_swift": false,
+  "name": "Xcode",
+  "objc_classes": 0,
+  "open_source": null,
+  "path": "Contents/MacOS/Xcode",
+  "swift_types": 0
+ }
+]
