@@ -56,7 +56,11 @@ Legal context: the Xcode license agreement prohibits reverse engineering
 except where the law permits it. Interoperability exceptions are an
 example (17 U.S.C. §1201(f), EU Directive 2009/24/EC Art. 6). This protocol
 keeps the work within those exceptions. The person who owns this project is
-responsible for making sure that it applies in their jurisdiction.
+responsible for making sure that it applies in their jurisdiction. The
+owner describes the project as educational and academic research. The
+protocol stays in force anyway: it documents that the research was done
+properly, and it keeps Ycode's own code independent so that Ycode can be
+released.
 
 ## Heritage you need to know
 
@@ -88,6 +92,16 @@ responsible for making sure that it applies in their jurisdiction.
   format.
 - `docs/`: architecture and roadmap.
 - `ycode/`: the Swift package (implementation).
+
+## Machines
+
+- macOS (arm64): the reference Xcode, black-box probes, and the main
+  development machine.
+- Linux test workstation: `<user>@<x86-64-linux-host>`, Ubuntu 26.04 x86-64,
+  Swift 6.4 through swiftly (`. ~/.local/share/swiftly/env.sh`). Log in with
+  an SSH key only. Never automate password login. Sync with
+  `rsync -az --delete --exclude .build ycode/ <user>@<x86-64-linux-host>:Ycode/ycode/`,
+  then run `swift build && swift test` there.
 
 ## Working conventions
 

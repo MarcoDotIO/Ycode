@@ -6,8 +6,12 @@ This is clean-room code. Read `../CLAUDE.md` before you make any change here.
 swift build
 swift test
 .build/debug/ycode describe path/to/App.xcodeproj
-.build/debug/ycode roundtrip path/to/App.xcodeproj    # exit 0 = byte-identical
+.build/debug/ycode roundtrip path/to/App.xcodeproj    # also .xcscheme / contents.xcworkspacedata
+.build/debug/ycode schemes path/to/App.xcworkspace
+.build/debug/ycode settings path/to/App.xcodeproj -target App -configuration Debug [--assigned-only] [--json] [NAME=value]
 ```
+
+Supported platforms: macOS and Linux (x86-64, tested with Swift 6.4).
 
 ## Corpus tests
 

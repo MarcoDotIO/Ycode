@@ -1,11 +1,17 @@
 import Foundation
 import YcodeProject
+import YcodeWorkspace
+import YcodeSettings
+import YcodePlist
 
 /// Command-line front end. The GUI will share these libraries.
 func usage() -> Never {
     FileHandle.standardError.write(Data("""
     usage: ycode describe <path.xcodeproj>
-           ycode roundtrip [--print] <path.xcodeproj>...
+           ycode schemes <path.xcodeproj|.xcworkspace>
+           ycode settings <path.xcodeproj> [-target T] [-configuration C] [-defaults file.json]
+                          [--assigned-only] [--json] [NAME=value]...
+           ycode roundtrip [--print] <path.xcodeproj|.xcscheme|contents.xcworkspacedata>...
 
     """.utf8))
     exit(2)
@@ -31,8 +37,12 @@ func roundtrip(_ paths: [String], printOutput: Bool) -> Int32 {
     for path in paths {
         let (file, name) = PBXProj.locate(path)
         do {
-            let original = try String(contentsOf: file, encoding: .utf8)
-            let written = try PBXProj(parsing: original).serialized(projectName: name)
+            let isXML = ["xcscheme", "xcworkspacedata"].contains(URL(fileURLWithPath: path).pathExtension)
+            let source = isXML ? URL(fileURLWithPath: path) : file
+            let original = try String(contentsOf: source, encoding: .utf8)
+            let written = isXML
+                ? XcodeXML.write(try XcodeXML.parse(original))
+                : try PBXProj(parsing: original).serialized(projectName: name)
             if printOutput { print(written, terminator: "") }
             if written == original {
                 FileHandle.standardError.write(Data("ok    \(path)\n".utf8))
@@ -53,6 +63,91 @@ func roundtrip(_ paths: [String], printOutput: Bool) -> Int32 {
     return failures
 }
 
+/// Lists schemes the way `xcodebuild -list` reports them.
+func schemes(_ path: String) throws {
+    let url = URL(fileURLWithPath: path)
+    var containers = [url]
+    if url.pathExtension == "xcworkspace" {
+        containers += try Workspace(contentsOf: path).projectPaths.map { URL(fileURLWithPath: $0) }
+    }
+    // Shared schemes of projects referenced from a project (sub-projects)
+    // are listed as well.
+    for c in containers where c.pathExtension == "xcodeproj" {
+        guard let proj = try? PBXProj(contentsOf: c.appendingPathComponent("project.pbxproj")) else { continue }
+        let dir = proj.projectDirectory(xcodeprojURL: c)
+        let parents = proj.parentMap()
+        for ref in proj.project?["projectReferences"]?.array ?? [] {
+            guard let id = ref.dictionary?["ProjectRef"]?.string,
+                  let path = proj.resolvedPath(of: id, projectDirectory: dir, parents: parents), path.hasPrefix("/") else { continue }
+            containers.append(URL(fileURLWithPath: path))
+        }
+    }
+    var seen = Set<String>()
+    for c in containers {
+        for s in Scheme.discover(in: c) where seen.insert(s.name).inserted {
+            let targets = s.buildEntries.map(\.reference.blueprintName).joined(separator: ", ")
+            print("\(s.name)\t\(s.isShared ? "shared" : "user")\t[\(targets)]\tlaunch=\(s.launchTarget?.blueprintName ?? "-")\ttest=\(s.configuration(for: "TestAction"))")
+        }
+    }
+}
+
+func settings(_ rest: [String]) throws {
+    var path: String?
+    var target: String?
+    var configuration: String?
+    var defaultsFile: String?
+    var assignedOnly = false
+    var json = false
+    var overrides: [String: String] = [:]
+    var it = rest.makeIterator()
+    while let a = it.next() {
+        switch a {
+        case "-target": target = it.next()
+        case "-configuration": configuration = it.next()
+        case "-defaults": defaultsFile = it.next()
+        case "--assigned-only": assignedOnly = true
+        case "--json": json = true
+        default:
+            if let eq = a.firstIndex(of: "="), !a.hasPrefix("-") {
+                overrides[String(a[..<eq])] = String(a[a.index(after: eq)...])
+            } else { path = a }
+        }
+    }
+    guard let path else { usage() }
+    let (file, _) = PBXProj.locate(path)
+    let xcodeproj = file.deletingLastPathComponent()
+    let proj = try PBXProj(contentsOf: file)
+    var builder = ProjectSettingsBuilder(proj: proj, xcodeprojURL: xcodeproj)
+    builder.overrides = overrides
+    builder.developerDirectory = Workspace.activeDeveloperDirectory()
+    if let dev = builder.developerDirectory {
+        let catalog = SDKCatalog(developerDirectory: dev)
+        builder.sdkLookup = { catalog.lookup($0) }
+    }
+    if let defaultsFile {
+        let data = try Data(contentsOf: URL(fileURLWithPath: defaultsFile))
+        let dict = try JSONSerialization.jsonObject(with: data) as? [String: String] ?? [:]
+        builder.defaults = SettingsLevel(name: "defaults", literals: dict)
+    }
+    let config = configuration
+        ?? proj.objects[proj.project?.string("buildConfigurationList") ?? ""]?.string("defaultConfigurationName")
+        ?? "Release"
+    let resolved = try builder.resolve(target: target ?? proj.targets.first?.string("name"), configuration: config)
+    var names = resolved.settings.names
+    if assignedOnly {
+        let defined = Set(resolved.definedLevelNames)
+        names = names.filter { resolved.settings.isAssigned($0, inLevels: defined) }
+    }
+    if json {
+        let dict = Dictionary(uniqueKeysWithValues: names.map { ($0, resolved.settings[$0]) })
+        let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
+        print(String(decoding: data, as: UTF8.self))
+    } else {
+        for n in names { print("    \(n) = \(resolved.settings[n])") }
+    }
+    for d in resolved.diagnostics { FileHandle.standardError.write(Data("warning: \(d)\n".utf8)) }
+}
+
 var args = Array(CommandLine.arguments.dropFirst())
 guard let command = args.first else { usage() }
 args.removeFirst()
@@ -60,6 +155,58 @@ switch command {
 case "describe":
     guard args.count == 1 else { usage() }
     do { try describe(args[0]) } catch {
+        FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
+        exit(1)
+    }
+case "schemes":
+    guard args.count == 1 else { usage() }
+    do { try schemes(args[0]) } catch {
+        FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
+        exit(1)
+    }
+case "settings":
+    do { try settings(args) } catch {
+        FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
+        exit(1)
+    }
+case "_strip-settings":
+    // Internal (research harness): writes a copy of a project with all build
+    // settings and base xcconfigs removed, plus the given NAME=value
+    // assignments at project level.
+    guard args.count >= 2 else { usage() }
+    do {
+        let (file, _) = PBXProj.locate(args[0])
+        var proj = try PBXProj(contentsOf: file)
+        let keep = args.dropFirst(2).compactMap { a -> (String, String)? in
+            a.firstIndex(of: "=").map { (String(a[..<$0]), String(a[a.index(after: $0)...])) }
+        }
+        let projectConfigs = Set(proj.buildConfigurations(listID: proj.project?.string("buildConfigurationList")).map(\.id))
+        for (id, var obj) in proj.objects where obj.isa == "XCBuildConfiguration" {
+            var bs = PlistDictionary()
+            if projectConfigs.contains(id) { for (k, v) in keep { bs[k] = .string(v) } }
+            obj["buildSettings"] = .dictionary(bs)
+            for k in ["baseConfigurationReference", "baseConfigurationReferenceAnchor", "baseConfigurationReferenceRelativePath"] { obj[k] = nil }
+            proj[id] = obj
+        }
+        // Drop package dependencies: a copy elsewhere cannot resolve local ones.
+        let packageClasses: Set<String> = ["XCLocalSwiftPackageReference", "XCRemoteSwiftPackageReference", "XCSwiftPackageProductDependency"]
+        let doomed = Set(proj.objects.values.filter { packageClasses.contains($0.isa) || ($0.isa == "PBXBuildFile" && $0["productRef"] != nil) }.map(\.id))
+        for id in doomed { proj[id] = nil }
+        for (id, var obj) in proj.objects {
+            var changed = false
+            for key in ["files", "packageReferences", "packageProductDependencies"] {
+                if let refs = obj[key]?.array {
+                    let kept = refs.filter { !doomed.contains($0.string ?? "") }
+                    if kept.count != refs.count { obj[key] = .array(kept); changed = true }
+                }
+            }
+            if changed { proj[id] = obj }
+        }
+        let out = URL(fileURLWithPath: args[1])
+        try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        try proj.serialized(projectName: out.deletingPathExtension().lastPathComponent)
+            .write(to: out.appendingPathComponent("project.pbxproj"), atomically: true, encoding: .utf8)
+    } catch {
         FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
         exit(1)
     }

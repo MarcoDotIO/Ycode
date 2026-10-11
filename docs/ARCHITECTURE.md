@@ -63,15 +63,19 @@ still the frame that holds everything together.
 
     YcodePlist        OpenStep, XML, and binary plist I/O                  [done: OpenStep]
     YcodeProject      pbxproj object graph, typed model, mutations         [done: I/O + views]
-    YcodeWorkspace    .xcworkspace, xcschemes, xcuserdata, xcconfig
-    YcodeSettings     build-setting macro language and level resolution
+    YcodeWorkspace    .xcworkspace, .xcscheme (Xcode-exact XML I/O)      [done: M2]
+    YcodeSettings     xcconfig, macro language, levels, derived rules    [done: M2]
     YcodeBuild        PIF generation → swift-build, diagnostics stream
     YcodeLanguage     LSP client (sourcekit-lsp/clangd), index queries
     YcodeDebug        DAP client to lldb-dap
     YcodeDevices      simctl/devicectl wrappers
     YcodeUI           AppKit shell: workspace window, navigators, editor
-    ycode             CLI (describe / roundtrip / build / test)
-    Ycode.app         GUI
+    YcodeFirmware     IPSW/IMG4/kernelcache/device tree toolkit           (simulator track)
+    ycode             CLI (describe / schemes / settings / roundtrip / build / test)
+    Ycode.app         GUI (macOS); Linux front end TBD
+
+All library modules build and pass their tests on macOS (arm64) and Linux
+(x86-64, Swift 6.4). The Linux workstation is the CI target for portability.
 
 ## 4. Milestones
 
@@ -80,7 +84,9 @@ still the frame that holds everything together.
    are next.)*
 2. **M2: Workspace and schemes.** Parse `.xcworkspacedata`, `.xcscheme`, and
    `.xcconfig`. Resolve build settings the way `xcodebuild -showBuildSettings`
-   does, and verify by diffing against it (black-box).
+   does, and verify by diffing against it (black-box). *(Done. See
+   `specs/build-settings.md` and `research/notes/m2-status.md`. Still open:
+   the spec-defaults level.)*
 3. **M3: Build.** Generate PIF, drive swift-build, and stream diagnostics.
    `ycode build` must produce the same products as `xcodebuild` for the
    corpus.
@@ -93,6 +99,11 @@ still the frame that holds everything together.
    variables view, and the console.
 7. **M7: Tests and devices.** The test navigator, results, simulators, and
    devices.
+
+**Simulator track (parallel):** the owner's goal is to run an app from an
+`.ipsw` on x86-64 Linux. This means full-system emulation, not a port of
+Xcode's Simulator. See `docs/SIMULATOR.md` for the staged plan and its open
+decisions.
 
 ## 5. Research queue (dirty room)
 

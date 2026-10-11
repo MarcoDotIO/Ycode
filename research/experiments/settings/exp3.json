@@ -1,0 +1,5 @@
+{
+ "project_xcconfig": "P1 = /a/b\nP2 = /a/b/c/d\nP3 = rel/x/y\nP4 = file\nP5 = /\nP6 = noext\nP7 = .hidden\nP8 = /a/b/\nEMPTYV =\nU = Élan ÿ 3\nTABQ = a\\b\n",
+ "target_xcconfig": "R1 = $(P1:relativeto=/a/b/c/d)\nR2 = $(P2:relativeto=/a/b)\nR3 = $(P2:relativeto=/x/y)\nR4 = $(P1:relativeto=/a/b)\nR5 = $(P3:relativeto=/a)\nA1 = $(P3:absolutepath)\nA2 = $(P3:standardizepath)\nD1 = $(P4:dir)\nD2 = $(P5:dir)\nD3 = $(P8:dir)\nD4 = $(P8:file)\nD5 = $(P8:base)\nB1 = $(P6:base)\nB2 = $(P6:suffix)\nB3 = $(P7:base)\nB4 = $(P7:suffix)\nF1 = $(EMPTYV:default=fb)\nF2 = $(EMPTYV:default=$(P6))\nQ1 = [$(EMPTYV:quote)]\nQ2 = $(TABQ:quote)\nI1 = $(U:identifier)\nI2 = $(U:rfc1034identifier)\nI3 = $(U:lower)\nI4 = $(U:upper)\nI5 = $(U:c99extidentifier)\nS1 = $(P8:standardizepath)\nS2 = $(P5:standardizepath)\n",
+ "query": ["R1","R2","R3","R4","R5","A1","A2","D1","D2","D3","D4","D5","B1","B2","B3","B4","F1","F2","Q1","Q2","I1","I2","I3","I4","I5","S1","S2","PROJECT_DIR"]
+}

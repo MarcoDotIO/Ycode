@@ -1,0 +1,8 @@
+{
+ "project_xcconfig": "// comment line\nPX = from-project-xcconfig\nLV = px\nE1 = one\nE1 = $(inherited) two\nE2_BASE = base\nE3 = plain-first\nE3[config=Debug] = cond-second\nE4[config=Debug] = cond-first\nE4 = plain-second\nE5 = value // trailing comment\nE6 = semi;\nE7 = http://example.com\nNAME = My App-Name 2.0\nPATHV = /a/b/../c/./d.tar.gz\nB = $(B) self\nEMPTY =\nNESTSEL = X\nNEST_X = nested-ok\nINC_FROM_PROJECT = $(inherited) pinc\n#include \"inc.xcconfig\"\n#include? \"missing.xcconfig\"\n",
+ "extra_files": {"inc.xcconfig": "INCLUDED = yes\nINC_FROM_PROJECT = included\n"},
+ "project_settings": {"LV": "$(inherited) ps", "B": "base"},
+ "target_xcconfig": "LV = $(inherited) tx\nE8 = $(LV)\n",
+ "target_settings": {"LV": "$(inherited) ts", "PS_COND": "plain", "PS_COND[config=Debug]": "cond"},
+ "query": ["PX","LV","E1","E3","E4","E5","E6","E7","B","INCLUDED","INC_FROM_PROJECT","E8","PS_COND"]
+}

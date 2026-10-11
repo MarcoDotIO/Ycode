@@ -9,3 +9,8 @@ ycode/.build/
 ycode/.swiftpm/
 *.gpr
 *.rep/
+.env
+# Firmware and extracted firmware are inputs, never committed.
+*.ipsw
+*.im4p
+*.img4
