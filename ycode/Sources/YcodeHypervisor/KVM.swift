@@ -54,8 +54,9 @@ func kvmCheck(_ result: Int32, _ operation: String) throws -> Int32 {
 /// One KVM memslot: a guest-physical range backed by host memory the VM owns.
 public struct MemorySlot: Sendable, CustomStringConvertible {
     /// `shared`: the host memory of a `SharedMemoryObject`, owned by the
-    /// object (never unmapped by the VM).
-    public enum Kind: Sendable, Equatable { case ram, anonymousPool, file, shared }
+    /// object (never unmapped by the VM). `readOnlyFiles`: the process-wide
+    /// `SharedFileArena` (never unmapped by the VM; registered read-only).
+    public enum Kind: Sendable, Equatable { case ram, anonymousPool, file, shared, readOnlyFiles }
     public var slot: UInt32
     public var gpa: UInt64
     public var size: UInt64
@@ -64,6 +65,9 @@ public struct MemorySlot: Sendable, CustomStringConvertible {
     public var kind: Kind
     /// For tracing: the file path or the purpose.
     public var name: String
+    /// Registered with KVM_MEM_READONLY: guest writes exit as MMIO, and the
+    /// VMM refuses to write it.
+    public var readOnly: Bool = false
 
     public var end: UInt64 { gpa + size }
     public func contains(gpa a: UInt64, count: Int) -> Bool {
@@ -91,6 +95,8 @@ public final class VirtualMachine: @unchecked Sendable {
     private var vcpuList: [VCPU] = []
     /// `KVM_CAP_NR_MEMSLOTS`: the number of memslots the VM may register.
     public let maxMemorySlots: Int
+    /// `KVM_CAP_READONLY_MEM`: memslots may be registered read-only.
+    public let supportsReadOnlyMemory: Bool
     /// `KVM_CAP_MAX_VCPUS` (the hard limit) and `KVM_CAP_NR_VCPUS` (the
     /// recommended limit), from the VM fd (falling back to /dev/kvm).
     public let maxVCPUs: Int
@@ -108,6 +114,10 @@ public final class VirtualMachine: @unchecked Sendable {
     /// True once `close()` released the VM.
     public var isClosed: Bool { closedFlag.load(ordering: .acquiring) }
 
+    /// KVM_CAP_READONLY_MEM and KVM_MEM_READONLY (linux/kvm.h).
+    static let capReadOnlyMemory = 81
+    static let memoryFlagReadOnly: UInt32 = 1 << 1
+
     public static let defaultRAMGPA: UInt64 = 0x4000_0000
     public static let defaultRAMSize = 512 << 20
 
@@ -116,6 +126,7 @@ public final class VirtualMachine: @unchecked Sendable {
         var vm: Int32 = -1
         var ramPointer: UnsafeMutableRawPointer?
         var slotLimit = 0
+        var readOnlyMemory = false
         var vcpuLimits = (max: 0, recommended: 0)
         do {
             let version = try kvmCheck(ckvm_get_api_version(kvm), "KVM_GET_API_VERSION")
@@ -124,6 +135,8 @@ public final class VirtualMachine: @unchecked Sendable {
             // The VM-level check reports the per-VM limit; fall back to the system one.
             slotLimit = Int(ckvm_check_extension(vm, Int(CKVM_CAP_NR_MEMSLOTS)))
             if slotLimit <= 0 { slotLimit = Int(ckvm_check_extension(kvm, Int(CKVM_CAP_NR_MEMSLOTS))) }
+            readOnlyMemory = ckvm_check_extension(vm, Self.capReadOnlyMemory) > 0
+                || ckvm_check_extension(kvm, Self.capReadOnlyMemory) > 0
             guard slotLimit > 0 else { throw KVMError("KVM_CAP_NR_MEMSLOTS", detail: "the kernel reports no memslots") }
             func capability(_ cap: Int) -> Int {
                 let v = Int(ckvm_check_extension(vm, cap))
@@ -152,6 +165,7 @@ public final class VirtualMachine: @unchecked Sendable {
         self.ramSize = ramSize
         self.ram = ramPointer!
         self.maxMemorySlots = slotLimit
+        self.supportsReadOnlyMemory = readOnlyMemory
         self.maxVCPUs = vcpuLimits.max
         self.recommendedVCPUs = vcpuLimits.recommended
         self.slotList = [MemorySlot(slot: 0, gpa: ramGPA, size: UInt64(ramSize),
@@ -165,18 +179,27 @@ public final class VirtualMachine: @unchecked Sendable {
     /// the anonymous pool reservation, file mappings). No vCPU may be
     /// running. Afterwards every guest-physical access fails (no memslot)
     /// and `makeVCPU`/`addMemorySlot` throw. Idempotent.
+    ///
+    /// The VM is marked closed and its slots dropped under the VM's lock;
+    /// the slow part (KVM tears down the stage-2 tables and waits for an
+    /// SRCU grace period: milliseconds to tens of milliseconds for a VM
+    /// that ran) happens after, without the lock. Callers should not hold
+    /// the kernel lock across `close()` either (stage 6 §5).
     public func close() {
-        lock.withLock {
-            guard !closedFlag.exchange(true, ordering: .acquiringAndReleasing) else { return }
-            vcpuList.forEach { $0.close() }
+        let detached: (vcpus: [VCPU], slots: [MemorySlot])? = lock.withLock {
+            guard !closedFlag.exchange(true, ordering: .acquiringAndReleasing) else { return nil }
+            let taken = (vcpuList, slotList)
             vcpuList.removeAll()
-            _ = ckvm_close(vmFD)
-            for slot in slotList where slot.kind != .shared {
-                _ = ckvm_free_anonymous(UnsafeMutableRawPointer(bitPattern: slot.hostAddress)!, Int(slot.size))
-            }
             slotList.removeAll()
-            _ = ckvm_close(kvmFD)
+            return taken
         }
+        guard let detached else { return }
+        detached.vcpus.forEach { $0.close() }
+        _ = ckvm_close(vmFD)
+        for slot in detached.slots where slot.kind != .shared && slot.kind != .readOnlyFiles {
+            _ = ckvm_free_anonymous(UnsafeMutableRawPointer(bitPattern: slot.hostAddress)!, Int(slot.size))
+        }
+        _ = ckvm_close(kvmFD)
     }
 
     /// Creates and initializes a vCPU (preferred target, PSCI 0.2). `id`
@@ -197,29 +220,41 @@ public final class VirtualMachine: @unchecked Sendable {
     /// `gpa`. The VM takes ownership of the host mapping (it is unmapped when
     /// the VM is destroyed). `gpa`, `size`, and `host` must be aligned to the
     /// host page size, and the range must not overlap another slot. Throws a
-    /// fatal error when the VM has no memslot left.
+    /// fatal error when the VM has no memslot left. `readOnly` registers it
+    /// with KVM_MEM_READONLY (needs `supportsReadOnlyMemory`).
     @discardableResult
     public func addMemorySlot(gpa: UInt64, size: UInt64, host: UnsafeMutableRawPointer,
-                              kind: MemorySlot.Kind, name: String) throws -> MemorySlot {
-        try lock.withLock { try addMemorySlotLocked(gpa: gpa, size: size, host: host, kind: kind, name: name) }
+                              kind: MemorySlot.Kind, name: String, readOnly: Bool = false) throws -> MemorySlot {
+        try lock.withLock {
+            try addMemorySlotLocked(gpa: gpa, size: size, host: host, kind: kind, name: name, readOnly: readOnly)
+        }
     }
 
     private func addMemorySlotLocked(gpa: UInt64, size: UInt64, host: UnsafeMutableRawPointer,
-                                     kind: MemorySlot.Kind, name: String) throws -> MemorySlot {
+                                     kind: MemorySlot.Kind, name: String, readOnly: Bool) throws -> MemorySlot {
         guard !isClosed else { throw KVMError("KVM_SET_USER_MEMORY_REGION", errno: EBADF, detail: "the VM is closed") }
         guard Int(nextSlotNumber) < maxMemorySlots else {
             throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "memslots exhausted (KVM_CAP_NR_MEMSLOTS = \(maxMemorySlots)) mapping \(name)")
         }
         guard size > 0 else { throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "empty slot for \(name)") }
-        if let clash = slotList.first(where: { gpa < $0.end && $0.gpa < gpa + size }) {
-            throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "GPA range of \(name) overlaps \(clash)")
+        if readOnly && !supportsReadOnlyMemory {
+            throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "read-only memslots are not supported (\(name))")
+        }
+        // The slots are sorted by GPA: only the neighbours can overlap.
+        let index = slotIndex(after: gpa)
+        for i in [index - 1, index] where i >= 0 && i < slotList.count {
+            let other = slotList[i]
+            if gpa < other.end && other.gpa < gpa + size {
+                throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "GPA range of \(name) overlaps \(other)")
+            }
         }
         let number = nextSlotNumber
-        try kvmCheck(ckvm_set_user_memory_region(vmFD, number, 0, gpa, size, UInt64(UInt(bitPattern: host))),
+        try kvmCheck(ckvm_set_user_memory_region(vmFD, number, readOnly ? Self.memoryFlagReadOnly : 0, gpa, size,
+                                                 UInt64(UInt(bitPattern: host))),
                      "KVM_SET_USER_MEMORY_REGION slot \(number) (\(name))")
         nextSlotNumber += 1
-        let slot = MemorySlot(slot: number, gpa: gpa, size: size, hostAddress: UInt(bitPattern: host), kind: kind, name: name)
-        let index = slotList.firstIndex { $0.gpa > gpa } ?? slotList.count
+        let slot = MemorySlot(slot: number, gpa: gpa, size: size, hostAddress: UInt(bitPattern: host), kind: kind, name: name,
+                              readOnly: readOnly)
         slotList.insert(slot, at: index)
         return slot
     }
@@ -229,6 +264,16 @@ public final class VirtualMachine: @unchecked Sendable {
 
     // MARK: Guest-physical access
 
+    /// The index of the first slot whose start is > gpa (binary search). Call under `lock`.
+    private func slotIndex(after gpa: UInt64) -> Int {
+        var low = 0, high = slotList.count
+        while low < high {
+            let mid = (low + high) / 2
+            if slotList[mid].gpa <= gpa { low = mid + 1 } else { high = mid }
+        }
+        return low
+    }
+
     /// The memslot that holds `gpa` (binary search for the last slot whose
     /// start is <= gpa). RAM (slot 0) is answered without taking the lock.
     public func memorySlot(containing gpa: UInt64) -> MemorySlot? {
@@ -237,14 +282,22 @@ public final class VirtualMachine: @unchecked Sendable {
             return MemorySlot(slot: 0, gpa: ramGPA, size: UInt64(ramSize), hostAddress: UInt(bitPattern: ram), kind: .ram, name: "RAM")
         }
         return lock.withLock {
-            var low = 0, high = slotList.count
-            while low < high {
-                let mid = (low + high) / 2
-                if slotList[mid].gpa <= gpa { low = mid + 1 } else { high = mid }
-            }
+            let low = slotIndex(after: gpa)
             guard low > 0, gpa < slotList[low - 1].end else { return nil }
             return slotList[low - 1]
         }
+    }
+
+    /// The host address of [gpa, gpa+count) for writing: it must lie inside
+    /// one memslot that is not read-only.
+    public func writableHostPointer(gpa: UInt64, count: Int) throws -> UnsafeMutableRawPointer {
+        guard let slot = memorySlot(containing: gpa), slot.contains(gpa: gpa, count: count) else {
+            throw KVMError("guest physical access", detail: "GPA 0x\(String(gpa, radix: 16)) + \(count) is outside every memslot")
+        }
+        guard !slot.readOnly else {
+            throw KVMError("guest physical write", errno: EFAULT, detail: "GPA 0x\(String(gpa, radix: 16)) is in read-only \(slot)")
+        }
+        return UnsafeMutableRawPointer(bitPattern: slot.hostAddress)! + Int(gpa - slot.gpa)
     }
 
     /// True when [gpa, gpa+count) lies inside one memslot.
@@ -278,7 +331,7 @@ public final class VirtualMachine: @unchecked Sendable {
     }
 
     public func write(gpa: UInt64, bytes: [UInt8]) throws {
-        let destination = try pointer(gpa: gpa, count: bytes.count)
+        let destination = try writableHostPointer(gpa: gpa, count: bytes.count)
         bytes.withUnsafeBytes { if $0.count > 0 { destination.copyMemory(from: $0.baseAddress!, byteCount: $0.count) } }
     }
 
@@ -288,13 +341,13 @@ public final class VirtualMachine: @unchecked Sendable {
     }
 
     public func writeU64(gpa: UInt64, _ value: UInt64) throws {
-        let destination = try pointer(gpa: gpa, count: 8)
+        let destination = try writableHostPointer(gpa: gpa, count: 8)
         destination.storeBytes(of: value.littleEndian, as: UInt64.self)
     }
 
     /// Zero-fills [gpa, gpa+count).
     public func zero(gpa: UInt64, count: Int) throws {
-        let destination = try pointer(gpa: gpa, count: count)
+        let destination = try writableHostPointer(gpa: gpa, count: count)
         destination.initializeMemory(as: UInt8.self, repeating: 0, count: count)
     }
 }

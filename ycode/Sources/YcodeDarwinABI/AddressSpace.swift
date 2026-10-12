@@ -1,7 +1,8 @@
 // The guest's virtual address space in stage 3: an allocator over the VA
 // map, the stage-1 tables that describe it, and the physical backing that
 // the hypervisor (or an in-memory fake) supplies.
-// Contract: specs/simulator/stage3-contract.md §2, §3, §4.
+// Contract: specs/simulator/stage3-contract.md §2, §3, §4; stage 6 §5
+// (performance: O(log n) mapping operations, shared read-only file views).
 
 // MARK: - Protection
 
@@ -45,15 +46,33 @@ public protocol PhysicalBacking: AnyObject {
     /// Bytes past the end of the file must read as zero. The file is never
     /// modified.
     func mapFile(_ file: GuestFile, offset: UInt64, size: UInt64) throws -> UInt64
+    /// A view of `file` bytes [offset, offset+size) (alignment as `mapFile`)
+    /// that is never written, neither by the guest nor by the VMM: the
+    /// backing may share it with every other read-only mapping of the same
+    /// file, in any address space. Nil when the backing has no such view for
+    /// this request (the caller then uses `mapFile`). Writing to the GPA
+    /// range is an error.
+    func mapFileReadOnly(_ file: GuestFile, offset: UInt64, size: UInt64) throws -> UInt64?
     /// Returns anonymous pages to the pool. They must read as zero when
-    /// allocated again.
+    /// allocated again. The address space also calls it for the pages of a
+    /// private file mapping (`mapFile`), which a backing may serve from its
+    /// pool; GPAs the backing did not allocate from its pool are ignored.
     func release(gpa: UInt64, size: UInt64)
     func readPhysical(gpa: UInt64, count: Int) throws -> [UInt8]
     func writePhysical(gpa: UInt64, bytes: [UInt8]) throws
+    /// `writePhysical` from a raw buffer (page-table writes).
+    func writePhysical(gpa: UInt64, from bytes: UnsafeRawBufferPointer) throws
     /// The GPA at which all of `object` is visible in this guest physical
     /// space (registered on first use, the same GPA afterwards). The backing
     /// keeps the object alive while it is registered.
     func mapShared(_ object: SharedMemoryObject) throws -> UInt64
+}
+
+extension PhysicalBacking {
+    public func mapFileReadOnly(_ file: GuestFile, offset: UInt64, size: UInt64) throws -> UInt64? { nil }
+    public func writePhysical(gpa: UInt64, from bytes: UnsafeRawBufferPointer) throws {
+        try writePhysical(gpa: gpa, bytes: Array(bytes))
+    }
 }
 
 // MARK: - Regions
@@ -126,14 +145,21 @@ public protocol GuestVirtualMemory: GuestMemoryAccess, AnyObject {
     func share(va: UInt64, size: UInt64) throws -> (object: SharedMemoryObject, offset: UInt64)
     /// The mappings, ascending by VA.
     var regions: [GuestRegion] { get }
+    /// The mapping that contains `va`, if any.
+    func region(containing va: UInt64) -> GuestRegion?
+    /// The mappings that intersect `range`, ascending by VA (whole, not clipped).
+    func regions(overlapping range: Range<UInt64>) -> [GuestRegion]
     /// Bumps on every page-table change.
     var generation: UInt64 { get }
 }
 
 extension GuestVirtualMemory {
-    /// The mapping that contains `va`, if any.
     public func region(containing va: UInt64) -> GuestRegion? {
         regions.first { $0.va <= va && va < $0.end }
+    }
+
+    public func regions(overlapping range: Range<UInt64>) -> [GuestRegion] {
+        regions.filter { $0.va < range.upperBound && range.lowerBound < $0.end }
     }
 }
 
@@ -153,8 +179,15 @@ extension GuestVirtualMemory {
 ///   above the base, [base, limit). It skips the shared region and the
 ///   commpage reservation.
 /// - A change that touches a permanent region is EINVAL and changes nothing.
+///
+/// Costs: the mappings are an `IntervalMap`, so finding, inserting,
+/// removing, and placing a mapping is O(log n) in the number of mappings;
+/// the tables (`GuestPageTables`) cost O(pages changed). A file mapping
+/// without write access uses the backing's shared read-only view of the file
+/// when it has one; such pages move to a private copy-on-write view before
+/// they can be written (`protect` adding write, a VMM write).
 public final class GuestAddressSpace: GuestVirtualMemory {
-    private struct Chunk {
+    private struct Chunk: IntervalMapElement {
         var va: UInt64
         var size: UInt64
         var protection: VMProtection
@@ -164,7 +197,10 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         var fileOffset: UInt64
         var shared: SharedMemoryObject?
         var permanent: Bool
+        /// `gpa` is the backing's shared read-only view of `file`.
+        var readOnlyShared: Bool = false
         var end: UInt64 { va + size }
+        var start: UInt64 { va }
 
         /// The part of this chunk in [lo, hi), which must intersect it.
         func slice(_ lo: UInt64, _ hi: UInt64) -> Chunk {
@@ -176,53 +212,86 @@ public final class GuestAddressSpace: GuestVirtualMemory {
             c.fileOffset = fileOffset + (start - va)
             return c
         }
+
+        var isAnonymous: Bool { file == nil && shared == nil }
+        /// Pages the backing may have allocated from its pool: anonymous
+        /// memory and private file views.
+        var isReleasable: Bool { shared == nil && !readOnlyShared }
     }
 
     public let backing: any PhysicalBacking
-    public private(set) var pageTables: PageTableBuilder
+    public let pageTables: GuestPageTables
     public private(set) var generation: UInt64 = 0
     /// When true (the default), `read`/`write` need EL0 access to each page,
     /// as a kernel's copyin/copyout would. The VMM turns it off to fill
     /// read-only pages.
     public var requireEL0Access: Bool
+    /// Pages moved from a shared read-only file view to a private one (statistics).
+    public private(set) var privatizedPages: UInt64 = 0
 
     /// VA ranges that "anywhere" placement never uses.
     public let anywhereExclusions: [Range<UInt64>] = [
         VMLayout.sharedRegionBase..<VMLayout.sharedRegionEnd,
         VMLayout.commpageReservationBase..<VMLayout.commpageReservationEnd,
     ]
+    private let sortedExclusions: [Range<UInt64>]
 
-    /// Sorted by VA, non-overlapping.
-    private var chunks: [Chunk] = []
+    /// Held by every public operation (recursive).
+    public let mutex = RecursiveMutex()
+    /// Ordered by VA, disjoint.
+    private let chunks = IntervalMap<Chunk>()
+    private var readOnlySharedChunks = 0
+    private var regionsCache: [GuestRegion]?
+    /// Set by `discardAll()`: every later operation fails.
+    public private(set) var isDiscarded = false
 
     /// `pageTables` may already hold the EL1 identity regions (they live
-    /// below `userVAFloor`, where guest mappings never go). Its dirty tables
-    /// are written on the first change or by `flushPageTables()`.
+    /// below `userVAFloor`, where guest mappings never go). Its tables are
+    /// written on the first change or by `flushPageTables()`.
     public init(backing: any PhysicalBacking, pageTables: PageTableBuilder = .stage3(), requireEL0Access: Bool = true) {
         self.backing = backing
-        self.pageTables = pageTables
+        self.pageTables = GuestPageTables(pageTables)
         self.requireEL0Access = requireEL0Access
+        sortedExclusions = anywhereExclusions.sorted { $0.lowerBound < $1.lowerBound }
     }
 
     // MARK: Queries
 
-    public var regions: [GuestRegion] {
-        chunks.map { c in
-            let backing: GuestRegion.Backing
-            if let object = c.shared {
-                backing = .shared(serial: object.serial, offset: c.fileOffset, gpa: c.gpa)
-            } else if let file = c.file {
-                backing = .file(path: file.guestPath, offset: c.fileOffset, gpa: c.gpa)
-            } else {
-                backing = .anonymous(gpa: c.gpa)
-            }
-            return GuestRegion(va: c.va, size: c.size, protection: c.protection, backing: backing, permanent: c.permanent)
+    private func region(of c: Chunk) -> GuestRegion {
+        let backing: GuestRegion.Backing
+        if let object = c.shared {
+            backing = .shared(serial: object.serial, offset: c.fileOffset, gpa: c.gpa)
+        } else if let file = c.file {
+            backing = .file(path: file.guestPath, offset: c.fileOffset, gpa: c.gpa)
+        } else {
+            backing = .anonymous(gpa: c.gpa)
         }
+        return GuestRegion(va: c.va, size: c.size, protection: c.protection, backing: backing, permanent: c.permanent)
     }
+
+    public var regions: [GuestRegion] { mutex.withLock { regionsLocked } }
+
+    private var regionsLocked: [GuestRegion] {
+        if let cached = regionsCache { return cached }
+        let list = chunks.elements.map(region(of:))
+        regionsCache = list
+        return list
+    }
+
+    public func region(containing va: UInt64) -> GuestRegion? {
+        mutex.withLock { chunks.element(containing: va).map(region(of:)) }
+    }
+
+    public func regions(overlapping range: Range<UInt64>) -> [GuestRegion] {
+        mutex.withLock { chunks.overlapping(range.lowerBound, range.upperBound).map(region(of:)) }
+    }
+
+    /// The number of mappings.
+    public var regionCount: Int { mutex.withLock { chunks.count } }
 
     /// The file mapped at `va`, if the mapping there is file-backed.
     public func file(at va: UInt64) -> GuestFile? {
-        chunks.first { $0.va <= va && va < $0.end }?.file
+        mutex.withLock { chunks.element(containing: va)?.file }
     }
 
     // MARK: GuestVirtualMemory
@@ -246,14 +315,14 @@ public final class GuestAddressSpace: GuestVirtualMemory {
     }
 
     public func share(va: UInt64, size: UInt64) throws -> (object: SharedMemoryObject, offset: UInt64) {
+        try mutex.withLock { try shareLocked(va: va, size: size) }
+    }
+
+    private func shareLocked(va: UInt64, size: UInt64) throws -> (object: SharedMemoryObject, offset: UInt64) {
+        try checkLive()
         let (lo, hi) = try checkedRange(va: va, size: size, permanent: false)
-        let affected = chunks.filter { $0.va < hi && lo < $0.end }
-        var cursor = lo
-        for c in affected {
-            guard c.va <= cursor else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
-            cursor = max(cursor, c.end)
-        }
-        guard cursor >= hi else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
+        let affected = chunks.overlapping(lo, hi)
+        try checkCovered(affected, lo, hi)
         guard !affected.contains(where: \.permanent) else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         // Already one shared mapping: the same object.
         if affected.count == 1, let object = affected[0].shared {
@@ -263,7 +332,6 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         let gpa: UInt64
         do { gpa = try backing.mapShared(object) } catch { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
         // Move the contents, then point every page at the object.
-        var pt = pageTables
         var moved: [Chunk] = []
         for c in affected.map({ $0.slice(lo, hi) }) {
             let bytes = try backing.readPhysical(gpa: c.gpa, count: Int(c.size))
@@ -273,17 +341,18 @@ public final class GuestAddressSpace: GuestVirtualMemory {
             n.file = nil
             n.shared = object
             n.fileOffset = c.va - lo
+            n.readOnlyShared = false
             moved.append(n)
         }
-        try unmapPages(of: affected, lo: lo, hi: hi, in: &pt)
         do {
-            for c in moved { try pt.map(va: c.va, pa: c.gpa, size: c.size, attributes: c.protection.el0PageAttributes) }
+            try pageTables.unmap(va: lo, size: hi - lo)
+            for c in moved { try pageTables.map(va: c.va, pa: c.gpa, size: c.size, attributes: c.protection.el0PageAttributes) }
         } catch {
             throw mapPageTableError(error)
         }
         releaseAnonymous(affected, lo: lo, hi: hi)
-        chunks = (carve(chunks, lo: lo, hi: hi) + moved).sorted { $0.va < $1.va }
-        try commit(pt)
+        replaceChunks(lo, hi, with: moved)
+        try commit()
         return (object, 0)
     }
 
@@ -296,53 +365,63 @@ public final class GuestAddressSpace: GuestVirtualMemory {
     }
 
     public func unmap(va: UInt64, size: UInt64) throws {
+        try mutex.withLock { try unmapLocked(va: va, size: size) }
+    }
+
+    private func unmapLocked(va: UInt64, size: UInt64) throws {
+        try checkLive()
         let (lo, hi) = try checkedRange(va: va, size: size, permanent: false)
-        let affected = chunks.filter { $0.va < hi && lo < $0.end }
+        let affected = chunks.overlapping(lo, hi)
         guard !affected.isEmpty else { return }
         guard !affected.contains(where: \.permanent) else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
-        var pt = pageTables
-        try unmapPages(of: affected, lo: lo, hi: hi, in: &pt)
+        do { try pageTables.unmap(va: lo, size: hi - lo) } catch { throw mapPageTableError(error) }
         releaseAnonymous(affected, lo: lo, hi: hi)
-        chunks = carve(chunks, lo: lo, hi: hi)
-        try commit(pt)
+        replaceChunks(lo, hi, with: [])
+        try commit()
     }
 
     public func protect(va: UInt64, size: UInt64, protection: VMProtection) throws {
+        try mutex.withLock { try protectLocked(va: va, size: size, protection: protection) }
+    }
+
+    private func protectLocked(va: UInt64, size: UInt64, protection: VMProtection) throws {
+        try checkLive()
         let (lo, hi) = try checkedRange(va: va, size: size, permanent: false)
         // Every page must be mapped (Darwin mprotect: ENOMEM otherwise).
-        var cursor = lo
-        let affected = chunks.filter { $0.va < hi && lo < $0.end }
-        for c in affected {
-            guard c.va <= cursor else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
-            cursor = max(cursor, c.end)
-        }
-        guard cursor >= hi else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
+        var affected = chunks.overlapping(lo, hi)
+        try checkCovered(affected, lo, hi)
         guard !affected.contains(where: \.permanent) else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
-        var pt = pageTables
+        if protection.contains(.write), affected.contains(where: \.readOnlyShared) {
+            try privatize(lo, hi)
+            affected = chunks.overlapping(lo, hi)
+        }
         do {
-            try pt.protect(va: lo, size: hi - lo, attributes: protection.el0PageAttributes)
+            try pageTables.protect(va: lo, size: hi - lo, attributes: protection.el0PageAttributes)
         } catch {
             throw mapPageTableError(error)
         }
-        var updated = carve(chunks, lo: lo, hi: hi)
-        for var c in affected.map({ $0.slice(lo, hi) }) {
-            c.protection = protection
-            updated.append(c)
+        replaceChunks(lo, hi, with: affected.map { c in
+            var s = c.slice(lo, hi)
+            s.protection = protection
+            return s
+        })
+        try commit()
+    }
+
+    /// Drops every mapping and file reference at once, without changing the
+    /// page tables or returning anonymous memory: for an address space whose
+    /// VM is destroyed next. Afterwards every operation fails (reads and
+    /// writes as unmapped, changes with ENOMEM). O(n).
+    public func discardAll() {
+        mutex.withLock {
+            isDiscarded = true
+            chunks.removeAll()
+            readOnlySharedChunks = 0
+            regionsCache = []
         }
-        chunks = updated.sorted { $0.va < $1.va }
-        try commit(pt)
     }
 
     // MARK: Memory access (GuestMemoryAccess)
-
-    private func translator(requireEL0Access: Bool) -> TranslatingGuestMemory {
-        let backing = self.backing
-        return TranslatingGuestMemory(
-            pageTables: pageTables,
-            requireEL0Access: requireEL0Access,
-            readPhysical: { pa, count in try backing.readPhysical(gpa: pa, count: count) },
-            writePhysical: { pa, bytes in try backing.writePhysical(gpa: pa, bytes: Array(bytes)) })
-    }
 
     public func read(va: UInt64, count: Int) throws -> [UInt8] {
         try read(va: va, count: count, checkingEL0Access: requireEL0Access)
@@ -352,17 +431,73 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         try write(va: va, bytes: bytes, checkingEL0Access: requireEL0Access)
     }
 
+    /// Splits [va, va+count) into physically contiguous pieces, one per page,
+    /// checking every page first (TBI0: the top byte of `va` is ignored).
+    private func physicalPieces(va: UInt64, count: Int, write: Bool, checkingEL0Access: Bool) throws -> [(pa: UInt64, count: Int)] {
+        guard count >= 0, UInt64(count) <= UInt64.max - va else { throw GuestMemoryError.badRange(va: va, count: count) }
+        var pieces: [(pa: UInt64, count: Int)] = []
+        var cursor = va & VMLayout.addressWithoutTag
+        if isDiscarded, count > 0 { throw GuestMemoryError.unmapped(va: cursor) }
+        var remaining = UInt64(count)
+        while remaining > 0 {
+            guard let (pa, attributes) = pageTables.translate(cursor) else { throw GuestMemoryError.unmapped(va: cursor) }
+            if checkingEL0Access {
+                let ok = write ? attributes.access.isEL0Writable : attributes.access.isEL0Readable
+                guard ok else { throw GuestMemoryError.accessDenied(va: cursor) }
+            }
+            let inPage = VMLayout.pageSize - (cursor & (VMLayout.pageSize - 1))
+            let n = min(inPage, remaining)
+            pieces.append((pa, Int(n)))
+            cursor += n
+            remaining -= n
+        }
+        return pieces
+    }
+
     /// Reads with an explicit permission check choice.
     public func read(va: UInt64, count: Int, checkingEL0Access: Bool) throws -> [UInt8] {
-        try translator(requireEL0Access: checkingEL0Access).read(va: va, count: count)
+        try mutex.withLock { try readLocked(va: va, count: count, checkingEL0Access: checkingEL0Access) }
+    }
+
+    private func readLocked(va: UInt64, count: Int, checkingEL0Access: Bool) throws -> [UInt8] {
+        let pieces = try physicalPieces(va: va, count: count, write: false, checkingEL0Access: checkingEL0Access)
+        if pieces.count == 1 { return try backing.readPhysical(gpa: pieces[0].pa, count: pieces[0].count) }
+        var out: [UInt8] = []
+        out.reserveCapacity(max(0, count))
+        for piece in pieces { out += try backing.readPhysical(gpa: piece.pa, count: piece.count) }
+        return out
     }
 
     /// Writes with an explicit permission check choice. Every page is checked
     /// before the first byte is written.
     public func write(va: UInt64, bytes: [UInt8], checkingEL0Access: Bool) throws {
-        let t = translator(requireEL0Access: checkingEL0Access)
-        _ = try t.physicalPieces(va: va, count: bytes.count, write: true)
-        try t.write(va: va, bytes: bytes)
+        try mutex.withLock { try writeLocked(va: va, bytes: bytes, checkingEL0Access: checkingEL0Access) }
+    }
+
+    private func writeLocked(va: UInt64, bytes: [UInt8], checkingEL0Access: Bool) throws {
+        if !checkingEL0Access, readOnlySharedChunks > 0, !bytes.isEmpty, !isDiscarded {
+            // A VMM write into a shared read-only file view: those pages get
+            // a private view first (with EL0 checks, such pages are never
+            // EL0-writable, so the check below refuses the write anyway).
+            let start = va & VMLayout.addressWithoutTag
+            if UInt64(bytes.count) <= UInt64.max - start {
+                let lo = start & ~Self.pageMask
+                let end = start + UInt64(bytes.count)
+                let hi = end > UInt64.max - Self.pageMask ? UInt64.max & ~Self.pageMask : (end + Self.pageMask) & ~Self.pageMask
+                if chunks.overlapping(lo, hi).contains(where: \.readOnlyShared) {
+                    try privatize(lo, hi)
+                    try commit()
+                }
+            }
+        }
+        let pieces = try physicalPieces(va: va, count: bytes.count, write: true, checkingEL0Access: checkingEL0Access)
+        var offset = 0
+        try bytes.withUnsafeBytes { raw in
+            for piece in pieces {
+                try backing.writePhysical(gpa: piece.pa, from: UnsafeRawBufferPointer(rebasing: raw[offset..<(offset + piece.count)]))
+                offset += piece.count
+            }
+        }
     }
 
     /// Reads a NUL-terminated string of at most `maxLength` bytes (without
@@ -386,15 +521,23 @@ public final class GuestAddressSpace: GuestVirtualMemory {
     /// Writes the tables changed since the last write (for example the EL1
     /// identity regions added before `init`) and bumps `generation` if any.
     public func flushPageTables() throws {
-        let dirty = pageTables.drainDirtyTables()
-        guard !dirty.isEmpty else { return }
+        try mutex.withLock { try flushLocked() }
+    }
+
+    private func flushLocked() throws {
+        guard pageTables.hasDirtyTables else { return }
         generation &+= 1
-        for t in dirty { try backing.writePhysical(gpa: t.gpa, bytes: t.bytes) }
+        let backing = self.backing
+        try pageTables.writeDirtyTables { gpa, bytes in try backing.writePhysical(gpa: gpa, from: bytes) }
     }
 
     // MARK: Implementation
 
     private static let pageMask = VMLayout.pageSize - 1
+
+    private func checkLive() throws {
+        if isDiscarded { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
+    }
 
     /// Validates and rounds a range; returns [lo, hi).
     private func checkedRange(va: UInt64, size: UInt64, permanent: Bool) throws -> (UInt64, UInt64) {
@@ -408,8 +551,27 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         return (va, va + rounded)
     }
 
+    /// ENOMEM unless `affected` (ascending) covers all of [lo, hi).
+    private func checkCovered(_ affected: [Chunk], _ lo: UInt64, _ hi: UInt64) throws {
+        var cursor = lo
+        for c in affected {
+            guard c.va <= cursor else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
+            cursor = max(cursor, c.end)
+        }
+        guard cursor >= hi else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
+    }
+
     private func map(file: GuestFile?, shared: SharedMemoryObject? = nil, offset: UInt64, at: UInt64?, size: UInt64,
                      protection: VMProtection, hint: UInt64?, permanent: Bool) throws -> UInt64 {
+        try mutex.withLock {
+            try mapLocked(file: file, shared: shared, offset: offset, at: at, size: size, protection: protection, hint: hint,
+                          permanent: permanent)
+        }
+    }
+
+    private func mapLocked(file: GuestFile?, shared: SharedMemoryObject? = nil, offset: UInt64, at: UInt64?, size: UInt64,
+                     protection: VMProtection, hint: UInt64?, permanent: Bool) throws -> UInt64 {
+        try checkLive()
         guard size > 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         guard offset & Self.pageMask == 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         guard size <= UInt64.max - Self.pageMask else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
@@ -423,15 +585,22 @@ public final class GuestAddressSpace: GuestVirtualMemory {
             lo = try findFree(size: rounded, hint: hint)
             hi = lo + rounded
         }
-        let replaced = chunks.filter { $0.va < hi && lo < $0.end }
+        let replaced = chunks.overlapping(lo, hi)
         guard !replaced.contains(where: \.permanent) else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        do { try pageTables.checkCapacity(va: lo, size: rounded) } catch { throw mapPageTableError(error) }
 
+        var readOnlyShared = false
         let gpa: UInt64
         do {
             if let shared {
                 gpa = try backing.mapShared(shared) + offset
             } else if let file {
-                gpa = try backing.mapFile(file, offset: offset, size: rounded)
+                if !protection.contains(.write), let view = try backing.mapFileReadOnly(file, offset: offset, size: rounded) {
+                    gpa = view
+                    readOnlyShared = true
+                } else {
+                    gpa = try backing.mapFile(file, offset: offset, size: rounded)
+                }
             } else {
                 gpa = try backing.allocateAnonymous(size: rounded)
             }
@@ -441,21 +610,64 @@ public final class GuestAddressSpace: GuestVirtualMemory {
             throw DarwinErrnoError(DarwinErrnoCode.ENOMEM)
         }
 
-        var pt = pageTables
         do {
-            try unmapPages(of: replaced, lo: lo, hi: hi, in: &pt)
-            try pt.map(va: lo, pa: gpa, size: rounded, attributes: protection.el0PageAttributes)
+            guard gpa < 1 << VMLayout.physicalAddressBits, rounded <= (1 << VMLayout.physicalAddressBits) - gpa else {
+                throw PageTableError.physicalAddressOutOfRange(pa: gpa, size: rounded)
+            }
+            if !replaced.isEmpty { try pageTables.unmap(va: lo, size: rounded) }
+            try pageTables.map(va: lo, pa: gpa, size: rounded, attributes: protection.el0PageAttributes)
         } catch {
-            if file == nil && shared == nil { backing.release(gpa: gpa, size: rounded) }
+            if shared == nil && !readOnlyShared { backing.release(gpa: gpa, size: rounded) }
             throw mapPageTableError(error)
         }
         releaseAnonymous(replaced, lo: lo, hi: hi)
-        var updated = carve(chunks, lo: lo, hi: hi)
-        updated.append(Chunk(va: lo, size: rounded, protection: protection, gpa: gpa, file: file,
-                             fileOffset: offset, shared: shared, permanent: permanent))
-        chunks = updated.sorted { $0.va < $1.va }
-        try commit(pt)
+        replaceChunks(lo, hi, with: [Chunk(va: lo, size: rounded, protection: protection, gpa: gpa, file: file,
+                                           fileOffset: offset, shared: shared, permanent: permanent,
+                                           readOnlyShared: readOnlyShared)])
+        try commit()
         return lo
+    }
+
+    /// Moves the shared read-only file pages of [lo, hi) (page-aligned) to
+    /// private copy-on-write views of the same file bytes. Same protections.
+    private func privatize(_ lo: UInt64, _ hi: UInt64) throws {
+        for c in chunks.overlapping(lo, hi) where c.readOnlyShared {
+            var s = c.slice(lo, hi)
+            guard let file = s.file else { continue }
+            let gpa: UInt64
+            do { gpa = try backing.mapFile(file, offset: s.fileOffset, size: s.size) } catch let e as DarwinErrnoError {
+                throw e
+            } catch {
+                throw DarwinErrnoError(DarwinErrnoCode.ENOMEM)
+            }
+            do {
+                try pageTables.unmap(va: s.va, size: s.size)
+                try pageTables.map(va: s.va, pa: gpa, size: s.size, attributes: s.protection.el0PageAttributes)
+            } catch {
+                throw mapPageTableError(error)
+            }
+            s.gpa = gpa
+            s.readOnlyShared = false
+            replaceChunks(s.va, s.end, with: [s])
+            privatizedPages += s.size / VMLayout.pageSize
+        }
+    }
+
+    /// Replaces the mappings in [lo, hi) with `inside` (which must lie in
+    /// it); mappings that straddle a bound keep their outside parts.
+    private func replaceChunks(_ lo: UInt64, _ hi: UInt64, with inside: [Chunk]) {
+        for c in chunks.extract(lo, hi) {
+            if c.readOnlyShared { readOnlySharedChunks -= 1 }
+            if c.va < lo { insertChunk(c.slice(c.va, lo)) }
+            if c.end > hi { insertChunk(c.slice(hi, c.end)) }
+        }
+        for c in inside { insertChunk(c) }
+        regionsCache = nil
+    }
+
+    private func insertChunk(_ c: Chunk) {
+        if c.readOnlyShared { readOnlySharedChunks += 1 }
+        chunks.insert(c)
     }
 
     /// First fit for `size` bytes at or above `max(hint, anonymousVABase)`.
@@ -469,52 +681,30 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         throw DarwinErrnoError(DarwinErrnoCode.ENOMEM)
     }
 
+    /// The lowest va >= `start` with [va, va+size) below `userVALimit`, free
+    /// of mappings, and outside every exclusion. O(log n) per exclusion.
     private func firstFit(size: UInt64, from start: UInt64) -> UInt64? {
         let limit = VMLayout.userVALimit
-        let obstacles = (chunks.map { $0.va..<$0.end } + anywhereExclusions).sorted { $0.lowerBound < $1.lowerBound }
-        var candidate = start
-        for o in obstacles {
-            guard candidate < limit, size <= limit - candidate else { return nil }
-            if o.upperBound <= candidate { continue }
-            if o.lowerBound >= candidate + size { return candidate }
-            candidate = max(candidate, o.upperBound)
+        var a = start
+        for ex in sortedExclusions + [limit..<limit] {
+            guard a < limit else { return nil }
+            if ex.upperBound <= a && ex.lowerBound < limit { continue }
+            let b = min(ex.lowerBound, limit)
+            if b > a, let p = chunks.firstGap(from: a, size: size), p < b, size <= b - p { return p }
+            a = max(a, ex.upperBound)
         }
-        guard candidate < limit, size <= limit - candidate else { return nil }
-        return candidate
-    }
-
-    /// Clears the pages of `affected` that lie in [lo, hi).
-    private func unmapPages(of affected: [Chunk], lo: UInt64, hi: UInt64, in pt: inout PageTableBuilder) throws {
-        for c in affected {
-            let s = c.slice(lo, hi)
-            do { try pt.unmap(va: s.va, size: s.size) } catch { throw mapPageTableError(error) }
-        }
+        return nil
     }
 
     private func releaseAnonymous(_ affected: [Chunk], lo: UInt64, hi: UInt64) {
-        for c in affected where c.file == nil && c.shared == nil {
+        for c in affected where c.isReleasable {
             let s = c.slice(lo, hi)
             backing.release(gpa: s.gpa, size: s.size)
         }
     }
 
-    /// `list` without [lo, hi): chunks that straddle a bound are split.
-    private func carve(_ list: [Chunk], lo: UInt64, hi: UInt64) -> [Chunk] {
-        var out: [Chunk] = []
-        for c in list {
-            if c.end <= lo || c.va >= hi {
-                out.append(c)
-                continue
-            }
-            if c.va < lo { out.append(c.slice(c.va, lo)) }
-            if c.end > hi { out.append(c.slice(hi, c.end)) }
-        }
-        return out
-    }
-
-    private func commit(_ pt: PageTableBuilder) throws {
-        pageTables = pt
-        try flushPageTables()
+    private func commit() throws {
+        try flushLocked()
     }
 
     private func mapPageTableError(_ error: Error) -> Error {
@@ -538,9 +728,12 @@ public struct FakePhysicalBackingError: Error, Equatable, Sendable, CustomString
 
 /// An in-memory `PhysicalBacking` for tests. It backs RAM (memslot 0), the
 /// anonymous pool, and file slots with sparse 16 KiB pages that read as
-/// zero until written. Anonymous memory comes from a first-fit free list
+/// zero until written. Anonymous memory comes from a first-fit allocator
 /// over the pool; file slots are bump-allocated from `fileSlotGPABase` and
-/// filled by reading the host file (zero past its end).
+/// filled by reading the host file (zero past its end). With
+/// `sharedReadOnlyFiles`, `mapFileReadOnly` serves one read-only copy of each
+/// file (by host path and size) that every later read-only request reuses,
+/// and writes to it fail.
 public final class FakePhysicalBacking: PhysicalBacking {
     public struct FileSlot: Equatable, Sendable {
         public var gpa: UInt64
@@ -554,12 +747,19 @@ public final class FakePhysicalBacking: PhysicalBacking {
     public let anonymousPoolGPA: UInt64
     public let anonymousPoolSize: UInt64
     public let fileSlotGPABase: UInt64
+    public let sharedReadOnlyFiles: Bool
 
     private var pages: [UInt64: [UInt8]] = [:]
-    /// Free anonymous ranges, sorted and coalesced.
-    private var free: [Range<UInt64>]
+    private let pool: RangeAllocator
+    /// Anonymous bytes currently allocated.
+    public var anonymousBytesInUse: UInt64 { pool.bytesInUse }
     private var nextFileSlotGPA: UInt64
     public private(set) var fileSlots: [FileSlot] = []
+    /// Read-only file views: (host path, size) -> GPA of offset 0.
+    private var readOnlyViews: [String: (gpa: UInt64, span: UInt64)] = [:]
+    private let readOnlyRanges = IntervalMap<PlainInterval>()
+    /// `mapFileReadOnly` calls answered with a view.
+    public private(set) var readOnlyViewRequests = 0
     /// Shared objects visible in this space: GPA ranges served by the object's memory.
     private var sharedSlots: [(gpa: UInt64, object: SharedMemoryObject)] = []
     /// Every `writePhysical` call, in order (for checking table writes).
@@ -567,37 +767,24 @@ public final class FakePhysicalBacking: PhysicalBacking {
 
     public init(ramGPA: UInt64 = VMLayout.ramGPA, ramSize: UInt64 = VMLayout.stage3RAMSize,
                 anonymousPoolGPA: UInt64 = VMLayout.anonymousPoolGPA, anonymousPoolSize: UInt64 = VMLayout.anonymousPoolSize,
-                fileSlotGPABase: UInt64 = VMLayout.fileSlotGPABase) {
+                fileSlotGPABase: UInt64 = VMLayout.fileSlotGPABase, sharedReadOnlyFiles: Bool = false) {
         self.ramGPA = ramGPA
         self.ramSize = ramSize
         self.anonymousPoolGPA = anonymousPoolGPA
         self.anonymousPoolSize = anonymousPoolSize
         self.fileSlotGPABase = fileSlotGPABase
-        self.free = [anonymousPoolGPA..<(anonymousPoolGPA + anonymousPoolSize)]
+        self.sharedReadOnlyFiles = sharedReadOnlyFiles
         self.nextFileSlotGPA = fileSlotGPABase
-    }
-
-    /// Anonymous bytes currently allocated.
-    public var anonymousBytesInUse: UInt64 {
-        anonymousPoolSize - free.reduce(0) { $0 + ($1.upperBound - $1.lowerBound) }
+        self.pool = RangeAllocator(base: anonymousPoolGPA, size: anonymousPoolSize)
     }
 
     public func allocateAnonymous(size: UInt64) throws -> UInt64 {
         guard size > 0, VMLayout.isPageAligned(size) else { throw FakePhysicalBackingError("bad anonymous size \(hex(size))") }
-        guard let i = free.firstIndex(where: { $0.upperBound - $0.lowerBound >= size }) else {
-            throw DarwinErrnoError(DarwinErrnoCode.ENOMEM)
-        }
-        let gpa = free[i].lowerBound
-        if free[i].upperBound - gpa == size { free.remove(at: i) } else { free[i] = (gpa + size)..<free[i].upperBound }
+        guard let gpa = pool.allocate(size) else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
         return gpa
     }
 
-    public func mapFile(_ file: GuestFile, offset: UInt64, size: UInt64) throws -> UInt64 {
-        guard size > 0, VMLayout.isPageAligned(size), VMLayout.isPageAligned(offset) else {
-            throw FakePhysicalBackingError("bad file mapping offset \(hex(offset)) size \(hex(size))")
-        }
-        let gpa = nextFileSlotGPA
-        nextFileSlotGPA += size
+    private func fill(gpa: UInt64, file: GuestFile, offset: UInt64, size: UInt64) throws {
         let page = VMLayout.pageSize
         var o: UInt64 = 0
         while o < size {
@@ -608,8 +795,40 @@ public final class FakePhysicalBacking: PhysicalBacking {
             if bytes.count < Int(page) { break }
             o += page
         }
+    }
+
+    public func mapFile(_ file: GuestFile, offset: UInt64, size: UInt64) throws -> UInt64 {
+        guard size > 0, VMLayout.isPageAligned(size), VMLayout.isPageAligned(offset) else {
+            throw FakePhysicalBackingError("bad file mapping offset \(hex(offset)) size \(hex(size))")
+        }
+        let gpa = nextFileSlotGPA
+        nextFileSlotGPA += size
+        try fill(gpa: gpa, file: file, offset: offset, size: size)
         fileSlots.append(FileSlot(gpa: gpa, size: size, path: file.guestPath, offset: offset))
         return gpa
+    }
+
+    public func mapFileReadOnly(_ file: GuestFile, offset: UInt64, size: UInt64) throws -> UInt64? {
+        guard sharedReadOnlyFiles else { return nil }
+        guard size > 0, VMLayout.isPageAligned(size), VMLayout.isPageAligned(offset) else {
+            throw FakePhysicalBackingError("bad file mapping offset \(hex(offset)) size \(hex(size))")
+        }
+        let key = "\(file.hostPath)#\(file.size)"
+        let view: (gpa: UInt64, span: UInt64)
+        if let v = readOnlyViews[key] {
+            view = v
+        } else {
+            let span = (file.size + VMLayout.pageSize - 1) & ~(VMLayout.pageSize - 1)
+            guard span > 0 else { return nil }
+            view = (nextFileSlotGPA, span)
+            nextFileSlotGPA += span
+            try fill(gpa: view.gpa, file: file, offset: 0, size: span)
+            readOnlyViews[key] = view
+            readOnlyRanges.insert(PlainInterval(start: view.gpa, end: view.gpa + span))
+        }
+        guard offset <= view.span, size <= view.span - offset else { return nil }
+        readOnlyViewRequests += 1
+        return view.gpa + offset
     }
 
     public func mapShared(_ object: SharedMemoryObject) throws -> UInt64 {
@@ -624,24 +843,16 @@ public final class FakePhysicalBacking: PhysicalBacking {
         sharedSlots.first { gpa >= $0.gpa && gpa - $0.gpa < $0.object.size }
     }
 
+    /// Releases the allocated parts of [gpa, gpa+size); their pages read as zero.
     public func release(gpa: UInt64, size: UInt64) {
         guard size > 0 else { return }
-        var p = gpa
-        while p < gpa + size {
-            pages[p] = nil
-            p += VMLayout.pageSize
-        }
-        free.append(gpa..<(gpa + size))
-        free.sort { $0.lowerBound < $1.lowerBound }
-        var merged: [Range<UInt64>] = []
-        for r in free {
-            if let last = merged.last, last.upperBound >= r.lowerBound {
-                merged[merged.count - 1] = last.lowerBound..<max(last.upperBound, r.upperBound)
-            } else {
-                merged.append(r)
+        for r in pool.free(gpa, size) {
+            var p = r.lowerBound
+            while p < r.upperBound {
+                pages[p] = nil
+                p += VMLayout.pageSize
             }
         }
-        free = merged
     }
 
     private func isBacked(_ gpa: UInt64) -> Bool {
@@ -671,6 +882,9 @@ public final class FakePhysicalBacking: PhysicalBacking {
     }
 
     public func writePhysical(gpa: UInt64, bytes: [UInt8]) throws {
+        if !bytes.isEmpty, readOnlyRanges.intersects(gpa, gpa + UInt64(bytes.count)) {
+            throw FakePhysicalBackingError("write to read-only file memory at gpa \(hex(gpa))")
+        }
         var cursor = gpa
         var offset = 0
         while offset < bytes.count {

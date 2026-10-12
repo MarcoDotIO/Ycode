@@ -81,3 +81,30 @@ of per-process registration; then a design proposal (not code) for taking
 per-process VM operations out of the global kernel lock. The integrator
 does not edit Q's files during this time (route requests through the
 orchestrator).
+
+### 5.1 Performance results and lock design (agent Q, 2026-10-12)
+
+- Address-space operations are O(log n) (interval treap, in-place page
+  tables with dirty tracking): `vm_allocate`/`vm_protect`/`vm_deallocate`
+  ~12–19 µs independent of mapping count (were 130–660 µs and growing).
+- **Shared read-only file window:** one host reservation per `ycode-simd`
+  process (64 GiB, `PROT_NONE`); each file (dev, ino, size, mtime) is mapped
+  once `MAP_SHARED`/`PROT_READ`; every VM registers the window once as one
+  `KVM_MEM_READONLY` memslot at **GPA `0x80_0000_0000`**. Read-only file
+  maps cost no host mmap and no ioctl; small writable file maps are copied
+  into pool memory. File-backed RSS of a boot fell from 4.7 to 2.4 GB.
+- Full boot, 90 s, release: 100 → 130–140 successful spawns; kernel-lock
+  time per spawn −36 %. The lock is now dominated by host file-system
+  syscalls (`stat`, `open`, `getdirentries64`, image loading in
+  `posix_spawn`), ~35–40 % of lock time, versus ~8–10 % for VM traps.
+- **Lock design (adopted direction):** L0 = the global kernel lock (all
+  shared state: processes, Mach, kevent, descriptor tables, wait queues,
+  cross-task memory); L1 = a per-address-space recursive mutex (in place);
+  L2 = leaf locks (VM slots, the file window, shared objects). Order
+  L0 → L1 → L2; never take L0 holding L1; never wait holding L1; never hold
+  two spaces (cross-task copies go through a host buffer). **First step:**
+  drop L0 around host file-system I/O (resolve under L0, do the I/O
+  unlocked, install the result under L0). Second step: a fast path for
+  self-targeted VM traps under L1 only.
+- VM teardown: `discardAll()` under the lock, `vm.close()` outside it
+  (KVM teardown takes 2–70 ms).

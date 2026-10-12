@@ -311,3 +311,12 @@ These were settled while building stage 2 and are now part of the contract.
   Linux kernel's public KVM API documentation (level 1).
 - The 16 KiB granule is available in KVM guests on the Thor:
   `research/experiments/linux-host/kvm_probe.py` (level 3).
+
+## Addendum (stage 6): read-only file window
+
+From stage 6 every VM also has a read-only memslot at GPA
+`0x80_0000_0000` (64 GiB) that maps the `ycode-simd` process's shared file
+window (each guest-mapped file mapped once, read-only, shared by all VMs).
+The file-mapping bump window ends below it. Guest writes to it fault;
+copy-on-write privatizes the page into pool memory first
+(`stage6-contract.md` §5.1).
