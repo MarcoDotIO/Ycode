@@ -162,3 +162,25 @@ Metal names** (backboardd then renders on the CPU, R6).
 Coverage: every record of the minimal home-screen set plus most others
 (render 0–130 subset, compute 200–215 subset, blit 300–318 subset, events
 400/401); unknown records become `.unknown` and never crash. 25 tests.
+
+## 8. Milestone 8a-T: hello triangle (owner request, 2026-10-12)
+
+Before the home screen: our own guest program draws the classic hello
+triangle with Metal inside a Ycode device on the Thor, through
+`YcodeMetalHost` → `YcodeVulkan` → `ycode-airc` on the Thor's GPU.
+
+- **Probe** `p_metal_triangle` (our own code, owned by VK, in
+  `ycode/SimShim/guest-tests/stage8/`, built on macOS like the other
+  probes): a command-line tool (no UIKit, no display services) that gets
+  `MTLCreateSystemDefaultDevice`, loads a **precompiled** metallib bundled
+  next to it (`newLibraryWithURL:`, so the guest's shader compiler service
+  is not needed), draws one triangle with per-vertex red/green/blue into a
+  512×512 BGRA8 texture cleared to a dark background, reads it back with
+  `getBytes`, writes it as a PNG (or raw + header) under `/tmp`, and prints
+  `triangle ok` plus the device name and a few sampled pixels.
+- **Run:** `ycode-simd --device D --oneshot "<path>/p_metal_triangle"`
+  (with the runtime's job set or a minimal one; the Metal names must be
+  registered — I3's wiring) on the Thor, release build.
+- **Done when** the PNG shows the triangle with correct colors and
+  orientation (compared with the same probe run under CoreSimulator on the
+  Mac), and the orchestrator sends it to the owner.
