@@ -226,6 +226,20 @@ public final class MachHostTask: @unchecked Sendable {
         }
     }
 
+    /// A memory entry (`mach_make_memory_entry_64` with MAP_MEM_NAMED_CREATE)
+    /// for all of `object`, read-write, with one send right named in the
+    /// host task. Mapping it in any guest task maps the same host pages. The
+    /// entry lives while send rights to it exist. Returns its name.
+    public func makeMemoryEntry(_ object: SharedMemoryObject) throws -> UInt32 {
+        try lock.withLock {
+            guard let (p, name) = ipc.makeKernelObjectName(.memoryEntry(serial: ipc.nextSerial())) else {
+                throw MachHostError(MachKern.noSpace)
+            }
+            p.memoryEntry = MachMemoryEntry(object: object, offset: 0, size: object.size, protection: .readWrite)
+            return name
+        }
+    }
+
     /// A new port set. Returns its name.
     public func makePortSet() throws -> UInt32 {
         try lock.withLock {

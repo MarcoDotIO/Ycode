@@ -803,7 +803,10 @@ public final class DarwinKernel {
         case 221, 229, 524:  // setattrlist, fsetattrlist, setattrlistat
             return .value(try setAttributeListCall(n, a, &call, mem))
 
-        case BSD.fsgetpath, BSD.getattrlistbulk:
+        case BSD.getattrlistbulk:
+            return .value(try attributeListBulkCall(a, &call, mem))
+
+        case BSD.fsgetpath:
             throw Failure(errno: Errno.ENOTSUP)
 
         case BSD.issetugid:

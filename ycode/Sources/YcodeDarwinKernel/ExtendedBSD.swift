@@ -40,6 +40,11 @@ struct ExtendedBSDState {
     ]
     var umask: UInt16 = 0o022
     var directoryCursors: [Int32: DirectoryCursor] = [:]
+    /// I/O policies (iopolicysys): process scope by iotype, thread scope by
+    /// thread id and iotype, and the darwin-background scope.
+    var ioPolicies: [Int32: Int32] = [:]
+    var threadIOPolicies: [UInt64: [Int32: Int32]] = [:]
+    var darwinBackgroundIOPolicy: Int32 = 0
 }
 
 extension DarwinKernel {
@@ -184,6 +189,40 @@ extension DarwinKernel {
         switch n {
         case BSD2.readv, BSD2.writev:
             return .value(try vectoredIO(write: n == BSD2.writev, a, &call, mem))
+
+        case 322:
+            // iopolicysys(cmd, struct _iopol_param_t *) (xnu bsd/kern/
+            // kern_resource.c, sys/resource.h; level 1): cmd 0 sets, 1 gets
+            // {int iop_scope; int iop_iotype; int iop_policy}; scope 0
+            // process, 1 thread, 2 darwin background. Ycode schedules no
+            // I/O, but a policy that is set reads back (NSFileCoordinator
+            // checks the dataless-materialization policy it set). Unset
+            // policies read as 0 (IOPOL_DEFAULT).
+            let cmd = int(0)
+            let raw = try mem.read(va: a[1], count: 12)
+            let scope = raw.readLE(Int32.self, at: 0), iotype = raw.readLE(Int32.self, at: 4)
+            let policy = raw.readLE(Int32.self, at: 8)
+            call = "iopolicysys(cmd=\(cmd), scope=\(scope), iotype=\(iotype), policy=\(policy))"
+            guard (0...1).contains(cmd), (0...2).contains(scope), (0...15).contains(iotype) else {
+                throw Failure(errno: Errno.EINVAL)
+            }
+            let thread = current.threadID
+            if cmd == 0 {
+                switch scope {
+                case 0: extended.ioPolicies[iotype] = policy
+                case 1: extended.threadIOPolicies[thread, default: [:]][iotype] = policy
+                default: extended.darwinBackgroundIOPolicy = policy
+                }
+                return .value(0)
+            }
+            let value: Int32 = switch scope {
+            case 0: extended.ioPolicies[iotype] ?? 0
+            case 1: extended.threadIOPolicies[thread]?[iotype] ?? 0
+            default: extended.darwinBackgroundIOPolicy
+            }
+            try mem.write(va: a[1] + 8, bytes: le32(UInt32(bitPattern: value)))
+            call += " [\(value)]"
+            return .value(0)
 
         case 89:
             // getdtablesize(): the descriptor-table size, i.e. the soft
@@ -713,7 +752,7 @@ extension DarwinKernel {
     /// The entries of an open directory. The descriptor is read with the
     /// kernel lock; the host listing and the per-entry stats run without it
     /// (stage6-contract.md §5.1).
-    private func listDirectory(fd: Int32, file: GuestFile) throws -> [(name: String, ino: UInt64, type: UInt8)] {
+    func listDirectory(fd: Int32, file: GuestFile) throws -> [(name: String, ino: UInt64, type: UInt8)] {
         let selfStat = try fileSystem.fstat(fd)
         let fileSystem = self.fileSystem
         return try lock.unlocked { try Self.listDirectory(file: file, selfStat: selfStat, fileSystem: fileSystem) }

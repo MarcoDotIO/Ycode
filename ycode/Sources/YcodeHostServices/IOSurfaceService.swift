@@ -1,0 +1,514 @@
+// The host IOSurface service `com.apple.IOSurface.Remote`
+// (specs/simulator/iosurface-remote.md), served by the VMM's host task.
+// Written from the spec; nothing here comes from the research test server.
+//
+// - Clients connect with the hand-shake 0x77303074 (§2.2): descriptor 0 is
+//   the connection port (a receive right the service keeps and serves),
+//   descriptor 1 a client port (kept, never used).
+// - Requests 0x10000000 carry one `!CPX` dictionary with `Method` (§3);
+//   replies 0x20000000 carry one `!CPX` dictionary with `ErrorCode`
+//   (an IOReturn sign-extended to 64 bits) (§2.3, §2.4).
+// - Each surface is a SharedMemoryObject (host memory that every guest VM
+//   maps) behind a memory entry (§6); look-up by ID works for every
+//   surface of the device, look-up by port for ports from Method 14.
+// - A connection's references go when its port loses its senders (the
+//   client process ended, §2.5); a surface goes when no connection holds a
+//   reference and no Method-14 port has senders (§8 item 8).
+
+import Foundation
+import YcodeDarwinABI
+import YcodeDarwinKernel
+import YcodeXPC
+
+/// One surface's pixels, copied for the host (screenshots).
+public struct IOSurfaceSnapshot: Sendable {
+    public var id: UInt32
+    public var name: String
+    public var width: Int, height: Int, bytesPerRow: Int, bytesPerElement: Int
+    public var pixelFormat: UInt32
+    public var bytes: [UInt8]
+}
+
+public final class IOSurfaceHostService: @unchecked Sendable {
+    public static let serviceName = "com.apple.IOSurface.Remote"
+    static let handshakeID: Int32 = 0x7730_3074
+    static let requestID: Int32 = 0x1000_0000
+    static let replyID: Int32 = 0x2000_0000
+
+    enum IOReturn {
+        static let success: UInt32 = 0
+        static let badArgument: UInt32 = 0xE000_02C2
+        static let unsupported: UInt32 = 0xE000_02C7
+        static let notFound: UInt32 = 0xE000_02F0
+        static let noMemory: UInt32 = 0xE000_02BD
+    }
+
+    final class Surface {
+        let id: UInt32
+        let memory: SharedMemoryObject
+        let entry: UInt32  // the host task's send right to the memory entry
+        var width: UInt32, height: UInt32, bytesPerRow: UInt32, allocationSize: UInt32
+        var pixelFormat: UInt32, cacheMode: UInt32, planeCount: UInt32
+        var bytesPerElement: UInt32, elementWidth: UInt32, elementHeight: UInt32
+        var seed: UInt32 = 0
+        var castingAllowed = true
+        var serial: UInt32
+        var name: String
+        var creation: [(key: String, value: OSValue)]
+        var planes: [OSValue]
+        var values: [(key: String, value: OSValue)] = []
+        var attachments: [String: XPCObject] = [:]
+        var lockCount = 0
+        var useCount = 0
+        var purgeable: UInt64 = 0
+        var ports: Set<UInt32> = []
+
+        init(id: UInt32, memory: SharedMemoryObject, entry: UInt32, serial: UInt32, name: String,
+             creation: [(key: String, value: OSValue)], planes: [OSValue], layout: Layout) {
+            self.id = id
+            self.memory = memory
+            self.entry = entry
+            self.serial = serial
+            self.name = name
+            self.creation = creation
+            self.planes = planes
+            width = layout.width
+            height = layout.height
+            bytesPerRow = layout.bytesPerRow
+            allocationSize = layout.allocationSize
+            pixelFormat = layout.pixelFormat
+            cacheMode = layout.cacheMode
+            planeCount = UInt32(planes.count)
+            bytesPerElement = layout.bytesPerElement
+            elementWidth = layout.elementWidth
+            elementHeight = layout.elementHeight
+            castingAllowed = layout.castingAllowed
+        }
+
+        /// SurfaceState (§4.1): 18 u32.
+        var state: [UInt8] {
+            let words: [UInt32] = [0, id, allocationSize, width, height, bytesPerRow, 0, pixelFormat, cacheMode, planeCount,
+                                   bytesPerElement, elementWidth, elementHeight, seed, 0,
+                                   (castingAllowed ? 1 : 0) | serial << 8, 1, 1]
+            return words.flatMap(le32)
+        }
+    }
+
+    struct Layout {
+        var width: UInt32 = 0, height: UInt32 = 0, bytesPerRow: UInt32 = 0, allocationSize: UInt32 = 0
+        var pixelFormat: UInt32 = 0, cacheMode: UInt32 = 0
+        var bytesPerElement: UInt32 = 1, elementWidth: UInt32 = 1, elementHeight: UInt32 = 1
+        var castingAllowed = true
+    }
+
+    final class Connection {
+        let clientPort: UInt32
+        var references: [UInt32: Int] = [:]
+        init(clientPort: UInt32) { self.clientPort = clientPort }
+    }
+
+    public let host: MachHostTask
+    /// The service port: a receive right of the host task, with a send right
+    /// under the same name (registered into the guest with 701).
+    public let servicePort: UInt32
+    private let portSet: UInt32
+    private let log: (String) -> Void
+    private let lock = NSLock()
+    private var surfaces: [UInt32: Surface] = [:]
+    private var connections: [UInt32: Connection] = [:]
+    private var surfacePorts: [UInt32: UInt32] = [:]
+    private var nextSurfaceSerial: UInt32 = 1
+    private var stopping = false
+    private var thread: Thread?
+    /// Statistics.
+    public private(set) var requestCount = 0
+
+    public init(host: MachHostTask, log: @escaping (String) -> Void) throws {
+        self.host = host
+        self.log = log
+        servicePort = try host.makePort(sendRight: true, qlimit: 1024)
+        portSet = try host.makePortSet()
+        try host.addMember(servicePort, to: portSet)
+    }
+
+    public func start() {
+        let t = Thread { [self] in run() }
+        t.name = "ycode-iosurface"
+        thread = t
+        t.start()
+    }
+
+    public func stop() { lock.withLock { stopping = true } }
+
+    private func run() {
+        while !lock.withLock({ stopping }) {
+            let m: MachHostReceivedMessage
+            do {
+                m = try host.receive(on: portSet, timeout: 200_000_000)
+            } catch let e as MachHostError where e == .timedOut || e == .interrupted {
+                continue
+            } catch {
+                if !lock.withLock({ stopping }) { log("iosurface: receive failed: \(error); stopping") }
+                return
+            }
+            handle(m)
+        }
+    }
+
+    // MARK: Messages
+
+    func handle(_ m: MachHostReceivedMessage) {
+        if m.localPort == servicePort {
+            if m.id == Self.handshakeID { connect(m) } else { drop(m) }
+            return
+        }
+        if m.id == MachNotify.noSenders {
+            noSenders(on: m.localPort)
+            return
+        }
+        guard m.id == Self.requestID, lock.withLock({ connections[m.localPort] != nil }) else {
+            drop(m)
+            return
+        }
+        request(m)
+    }
+
+    private func connect(_ m: MachHostReceivedMessage) {
+        guard m.descriptors.count >= 2, case let .port(connection, type) = m.descriptors[0], type == 16,
+              case let .port(client, _) = m.descriptors[1] else {
+            log("iosurface: malformed hand-shake")
+            drop(m)
+            return
+        }
+        do {
+            try host.addMember(connection, to: portSet)
+            // No-senders on the connection port itself: the client ended.
+            _ = try host.requestNotification(connection, id: MachNotify.noSenders, sync: 0, notifyPort: connection)
+        } catch {
+            log("iosurface: cannot serve connection \(connection): \(error)")
+            try? host.destroyPort(connection)
+            try? host.deallocate(client)
+            return
+        }
+        lock.withLock { connections[connection] = Connection(clientPort: client) }
+    }
+
+    /// The right a request or notification brought, dropped (a send right to
+    /// one of the service's own ports drops only that send reference).
+    private func drop(_ m: MachHostReceivedMessage) {
+        var names: [UInt32] = []
+        if MachPortName.isValid(m.replyPort) { names.append(m.replyPort) }
+        for d in m.descriptors { if case let .port(name, _) = d { names.append(name) } }
+        for name in names where MachPortName.isValid(name) {
+            guard let (type, _) = host.rights(of: name) else { continue }
+            if type & MachPortType.receive != 0 {
+                if type & MachPortType.send != 0 { try? host.modRefs(name, right: MachPortRight.send, delta: -1) }
+            } else {
+                try? host.deallocate(name)
+            }
+        }
+    }
+
+    private func noSenders(on port: UInt32) {
+        var freed: [Surface] = []
+        lock.withLock {
+            if let c = connections.removeValue(forKey: port) {
+                try? host.destroyPort(port)
+                try? host.deallocate(c.clientPort)
+                for id in c.references.keys { if let s = releaseIfUnused(id) { freed.append(s) } }
+            } else if let id = surfacePorts.removeValue(forKey: port) {
+                try? host.destroyPort(port)
+                surfaces[id]?.ports.remove(port)
+                if let s = releaseIfUnused(id) { freed.append(s) }
+            }
+        }
+        for s in freed { try? host.deallocate(s.entry) }
+    }
+
+    /// Removes the surface when no connection references it and no port
+    /// has senders (lock held). Returns it so the caller drops its entry.
+    private func releaseIfUnused(_ id: UInt32) -> Surface? {
+        guard let s = surfaces[id], s.ports.isEmpty,
+              !connections.values.contains(where: { ($0.references[id] ?? 0) > 0 }) else { return nil }
+        surfaces[id] = nil
+        return s
+    }
+
+    private func request(_ m: MachHostReceivedMessage) {
+        let wire: [XPCWireDescriptor] = m.descriptors.map {
+            switch $0 {
+            case let .port(name, type): return .port(name: name, disposition: type)
+            case let .ool(data, _, _): return .ool(bytes: data)
+            case let .oolPorts(names, type): return .oolPorts(names: names, disposition: type)
+            case let .guardedPort(name, _, type): return .guardedPort(name: name, disposition: type)
+            }
+        }
+        var reply: [(String, XPCObject)]
+        var afterReply: (() -> Void)?
+        do {
+            let object = try XPCWire.decode(body: m.body, descriptors: wire)
+            guard case let .dictionary(d) = object else { throw XPCWireError.noPayload }
+            (reply, afterReply) = perform(d, connection: m.localPort)
+        } catch {
+            log("iosurface: undecodable request: \(error)")
+            reply = [("ErrorCode", Self.code(IOReturn.badArgument))]
+        }
+        requestCount += 1
+        do {
+            let encoded = try XPCWire.encode(.dictionary(XPCDict(reply.map { XPCDict.Entry(key: $0.0, value: $0.1) })),
+                                             magic: XPCWire.sim2hostMagic)
+            let descriptors: [MachHostDescriptor] = encoded.descriptors.compactMap {
+                if case let .port(name, disposition) = $0 { return .port(name: name, disposition: disposition) }
+                return nil
+            }
+            try host.reply(to: m, id: Self.replyID, descriptors: descriptors, body: encoded.body)
+        } catch {
+            log("iosurface: reply failed: \(error)")
+        }
+        var rest = m
+        rest.replyPort = 0
+        drop(rest)
+        afterReply?()
+    }
+
+    static func code(_ ioReturn: UInt32) -> XPCObject { .uint64(UInt64(bitPattern: Int64(Int32(bitPattern: ioReturn)))) }
+
+    // MARK: Methods (§3)
+
+    /// The reply entries for one request, and work to do after the reply is
+    /// sent (arming a no-senders request for a new surface port).
+    func perform(_ d: XPCDict, connection: UInt32) -> ([(String, XPCObject)], (() -> Void)?) {
+        let method = d["Method"]?.uint64Value ?? .max
+        let surfaceID = d["SurfaceID"].flatMap { $0.uint64Value }.map { UInt32(truncatingIfNeeded: $0) }
+        return lock.withLock {
+            func fail(_ e: UInt32) -> ([(String, XPCObject)], (() -> Void)?) { ([("ErrorCode", Self.code(e))], nil) }
+            func withState(_ s: Surface, _ extra: [(String, XPCObject)] = []) -> ([(String, XPCObject)], (() -> Void)?) {
+                ([("ErrorCode", Self.code(0)), ("SurfaceState", .data(s.state)), ("SurfaceID", .uint64(UInt64(s.id)))] + extra, nil)
+            }
+            switch method {
+            case 0:
+                let limits: [UInt32] = [1, 0x3FFF, 0x7F, 0x8000, 0x4000, 0x4000, 1, 0, 1, 0]
+                return ([("Limits", .data(limits.flatMap(le32))), ("ErrorCode", Self.code(0)), ("ProtocolVersion", .uint64(1))], nil)
+            case 2:
+                return createOrLookUp(d, connection: connection)
+            default:
+                break
+            }
+            guard let id = surfaceID, let s = surfaces[id] else { return fail(IOReturn.notFound) }
+            switch method {
+            case 3:
+                if let c = connections[connection], let n = c.references[id], n > 0 {
+                    c.references[id] = n - 1
+                    if let freed = releaseIfUnused(id) { try? host.deallocate(freed.entry) }
+                }
+                return fail(0)
+            case 4:
+                let options = d["Options"]?.uint64Value ?? 0
+                if options & 1 == 0 { s.seed &+= 1 }
+                s.lockCount += 1
+                return withState(s)
+            case 5:
+                guard s.lockCount > 0 else { return fail(IOReturn.badArgument) }
+                s.lockCount -= 1
+                return withState(s)
+            case 6:
+                let index = Int(d["PlaneIndex"]?.uint64Value ?? 0)
+                guard index < s.planes.count else { return fail(IOReturn.badArgument) }
+                return withState(s, [("PlaneState", .data(planeState(s, index)))])
+            case 9:
+                guard case let .data(blob)? = d["PropertiesDictionary"], let v = try? OSSerialize.decode(blob) else {
+                    return fail(IOReturn.badArgument)
+                }
+                if v["isSetValues"]?.boolValue == true, let values = v["value"]?.dictionaryValue {
+                    for (k, value) in values { setValue(s, k, value) }
+                } else if let k = v["key"]?.stringValue, let value = v["value"] {
+                    setValue(s, k, value)
+                } else {
+                    return fail(IOReturn.badArgument)
+                }
+                return withState(s)
+            case 10:
+                return withState(s, [("PropertiesDictionary", .data(OSSerialize.encode(allValues(s))))])
+            case 11:
+                guard let key = d["PropertyKey"]?.stringValue else { return fail(IOReturn.badArgument) }
+                s.values.removeAll { $0.key == key }
+                return withState(s)
+            case 12:
+                s.values.removeAll()
+                return withState(s)
+            case 13:
+                let old = s.purgeable
+                let new = (d["NewState"]?.uint64Value ?? 3) & 0xFF
+                if new != 3 { s.purgeable = new }
+                return withState(s, [("OldState", .uint64(old))])
+            case 14:
+                guard let port = try? host.makePort() else { return fail(IOReturn.noMemory) }
+                surfacePorts[port] = id
+                s.ports.insert(port)
+                let host = self.host, set = portSet
+                return ([("ErrorCode", Self.code(0)), ("SurfaceState", .data(s.state)), ("SurfaceID", .uint64(UInt64(id))),
+                         ("MachPort", .sendRight(XPCPort(name: port, disposition: XPCDisposition.makeSend)))], {
+                    try? host.addMember(port, to: set)
+                    _ = try? host.requestNotification(port, id: MachNotify.noSenders, sync: 1, notifyPort: port)
+                })
+            case 15:
+                s.useCount += 1
+                return withState(s)
+            case 16:
+                s.useCount = max(0, s.useCount - 1)
+                return withState(s)
+            case 17:
+                return withState(s, [("IsInUse", .bool(s.useCount > 0 || !s.ports.isEmpty))])
+            case 20:
+                for e in d.entries where Self.attachmentDefaults[e.key] != nil { s.attachments[e.key] = e.value }
+                return withState(s)
+            case 21:
+                let all = Self.attachmentOrder.map { ($0, s.attachments[$0] ?? Self.attachmentDefaults[$0]!) }
+                return withState(s, all)
+            default:
+                return fail(IOReturn.unsupported)
+            }
+        }
+    }
+
+    static let attachmentOrder = ["ChromaLocationTopField", "ChromaLocationBottomField", "FieldCount", "FieldDetail",
+                                  "ChromaSubsampling", "PremultipliedAlpha", "TransferFunctionIndex", "ColorPrimariesIndex",
+                                  "YCbCrMatrixIndex", "GammaLevel", "EDRFactor", "ContentLightLevelInfo", "PixelAspectRatio",
+                                  "MasteringDisplayColorVolume", "CleanAperture"]
+    static let attachmentDefaults: [String: XPCObject] = [
+        "ChromaLocationTopField": .uint64(0), "ChromaLocationBottomField": .uint64(0), "FieldCount": .uint64(0),
+        "FieldDetail": .uint64(0), "ChromaSubsampling": .uint64(0x80), "PremultipliedAlpha": .uint64(0),
+        "TransferFunctionIndex": .uint64(0), "ColorPrimariesIndex": .uint64(0), "YCbCrMatrixIndex": .uint64(0),
+        "GammaLevel": .data([UInt8](repeating: 0, count: 8)), "EDRFactor": .data([UInt8](repeating: 0, count: 8)),
+        "ContentLightLevelInfo": .data([UInt8](repeating: 0, count: 8)),
+        "PixelAspectRatio": .data([UInt8](repeating: 0, count: 24)),
+        "MasteringDisplayColorVolume": .data([UInt8](repeating: 0, count: 32)),
+        "CleanAperture": .data([UInt8](repeating: 0, count: 40)),
+    ]
+
+    private func setValue(_ s: Surface, _ key: String, _ value: OSValue) {
+        if key == "IOSurfaceName", let name = value.stringValue { s.name = name }
+        if let i = s.values.firstIndex(where: { $0.key == key }) { s.values[i].value = value } else { s.values.append((key, value)) }
+    }
+
+    /// Method 10's blob: the stored values plus the three the service adds (§3.1).
+    private func allValues(_ s: Surface) -> OSValue {
+        var pairs = s.values
+        if !pairs.contains(where: { $0.key == "IOSurfaceName" }) { pairs.append(("IOSurfaceName", .string(s.name))) }
+        var creation = s.creation
+        if !creation.contains(where: { $0.key == "IOSurfacePixelSizeCastingAllowed" }) {
+            creation.append(("IOSurfacePixelSizeCastingAllowed", .bool(s.castingAllowed)))
+        }
+        pairs.append(("CreationProperties", .dictionary(creation)))
+        if !pairs.contains(where: { $0.key == "HorizontalDisparityAdjustment" }) {
+            pairs.append(("HorizontalDisparityAdjustment", .number(0, bits: 32)))
+        }
+        return .dictionary(pairs)
+    }
+
+    private func planeState(_ s: Surface, _ index: Int) -> [UInt8] {
+        let p = s.planes[index]
+        func n(_ key: String) -> UInt32 { UInt32(truncatingIfNeeded: p[key]?.numberValue ?? 0) }
+        var words = [UInt32](repeating: 0, count: 18)
+        words[0] = UInt32(index) << 16
+        words[1] = n("IOSurfacePlaneWidth")
+        words[2] = n("IOSurfacePlaneHeight")
+        words[3] = n("IOSurfacePlaneOffset")
+        words[4] = n("IOSurfacePlaneBytesPerRow")
+        words[5] = n("IOSurfacePlaneSize")
+        words[10] = (n("IOSurfacePlaneBytesPerElement") & 0xFF) | 1 << 16 | 1 << 24
+        return words.flatMap(le32)
+    }
+
+    // MARK: Create and look up (Method 2)
+
+    private func createOrLookUp(_ d: XPCDict, connection: UInt32) -> ([(String, XPCObject)], (() -> Void)?) {
+        func fail(_ e: UInt32) -> ([(String, XPCObject)], (() -> Void)?) { ([("ErrorCode", Self.code(e))], nil) }
+        let surface: Surface
+        if case let .data(blob)? = d["PropertiesDictionary"] {
+            guard let props = try? OSSerialize.decode(blob), let pairs = props.dictionaryValue,
+                  let layout = Self.layout(props) else { return fail(IOReturn.badArgument) }
+            let size = (UInt64(layout.allocationSize) + 0x3FFF) & ~0x3FFF
+            guard let memory = try? SharedMemoryObject(size: size), let entry = try? host.makeMemoryEntry(memory) else {
+                return fail(IOReturn.noMemory)
+            }
+            var id: UInt32 = 1
+            while surfaces[id] != nil { id += 1 }
+            let name = props["IOSurfaceName"]?.stringValue ?? ""
+            surface = Surface(id: id, memory: memory, entry: entry, serial: nextSurfaceSerial, name: name, creation: pairs,
+                              planes: props["IOSurfacePlaneInfo"]?.arrayValue ?? [], layout: layout)
+            nextSurfaceSerial &+= 1
+            surfaces[id] = surface
+        } else if let lookup = d["LookupID"]?.uint64Value {
+            guard let s = surfaces[UInt32(truncatingIfNeeded: lookup)] else { return fail(IOReturn.notFound) }
+            surface = s
+        } else if case let .sendRight(port)? = d["MachPort"] {
+            guard let id = surfacePorts[port.name], let s = surfaces[id] else { return fail(IOReturn.notFound) }
+            surface = s
+        } else {
+            return fail(IOReturn.badArgument)
+        }
+        connections[connection]?.references[surface.id, default: 0] += 1
+        return ([("MemoryObject", .sharedMemory(size: UInt32(surface.memory.size),
+                                                port: XPCPort(name: surface.entry, disposition: XPCDisposition.copySend))),
+                 ("ErrorCode", Self.code(0)), ("SurfaceState", .data(surface.state))], nil)
+    }
+
+    /// §4.2: bytes per row and allocation size, computed when not given.
+    static func layout(_ p: OSValue) -> Layout? {
+        func n(_ key: String) -> UInt64? { p[key]?.numberValue }
+        var l = Layout()
+        guard let width = n("IOSurfaceWidth"), let height = n("IOSurfaceHeight"), width > 0, height > 0,
+              width <= 0x4000, height <= 0x4000 else { return nil }
+        l.width = UInt32(width)
+        l.height = UInt32(height)
+        l.bytesPerElement = UInt32(max(n("IOSurfaceBytesPerElement") ?? 1, 1))
+        l.elementWidth = UInt32(max(n("IOSurfaceElementWidth") ?? 1, 1))
+        l.elementHeight = UInt32(max(n("IOSurfaceElementHeight") ?? 1, 1))
+        l.pixelFormat = UInt32(truncatingIfNeeded: n("IOSurfacePixelFormat") ?? 0)
+        l.cacheMode = UInt32(truncatingIfNeeded: n("IOSurfaceCacheMode") ?? 0)
+        if let casting = p["IOSurfacePixelSizeCastingAllowed"]?.boolValue { l.castingAllowed = casting }
+        let rowGiven = n("IOSurfaceBytesPerRow")
+        let row = rowGiven ?? ((width * UInt64(l.bytesPerElement) + 127) & ~127)
+        guard row > 0, row <= 0x40000 else { return nil }
+        l.bytesPerRow = UInt32(row)
+        var alloc = n("IOSurfaceAllocSize") ?? 0
+        if alloc == 0 {
+            var total = row * height
+            if let planes = p["IOSurfacePlaneInfo"]?.arrayValue {
+                for plane in planes {
+                    let end = (plane["IOSurfacePlaneOffset"]?.numberValue ?? 0) + (plane["IOSurfacePlaneSize"]?.numberValue ?? 0)
+                    total = max(total, end)
+                }
+            }
+            alloc = (total + 0x3FFF) & ~0x3FFF
+        }
+        guard alloc > 0, alloc <= 1 << 31 else { return nil }
+        l.allocationSize = UInt32(alloc)
+        return l
+    }
+
+    /// Tests: a connection without a Mach port behind it.
+    func addTestConnection(_ name: UInt32) { lock.withLock { connections[name] = Connection(clientPort: 0) } }
+
+    // MARK: Host access
+
+    /// A copy of a surface's pixels and layout, or nil.
+    public func snapshot(surfaceID: UInt32) -> IOSurfaceSnapshot? {
+        lock.withLock {
+            guard let s = surfaces[surfaceID] else { return nil }
+            let count = Int(min(UInt64(s.allocationSize), s.memory.size))
+            let bytes = [UInt8](UnsafeRawBufferPointer(start: s.memory.host, count: count))
+            return IOSurfaceSnapshot(id: s.id, name: s.name, width: Int(s.width), height: Int(s.height),
+                                     bytesPerRow: Int(s.bytesPerRow), bytesPerElement: Int(s.bytesPerElement),
+                                     pixelFormat: s.pixelFormat, bytes: bytes)
+        }
+    }
+
+    /// The IDs and names of the live surfaces (diagnostics).
+    public var surfaceSummary: [(id: UInt32, name: String, width: Int, height: Int)] {
+        lock.withLock { surfaces.values.sorted { $0.id < $1.id }.map { ($0.id, $0.name, Int($0.width), Int($0.height)) } }
+    }
+}
+
+func le32(_ v: UInt32) -> [UInt8] { [UInt8(v & 0xFF), UInt8(v >> 8 & 0xFF), UInt8(v >> 16 & 0xFF), UInt8(v >> 24)] }

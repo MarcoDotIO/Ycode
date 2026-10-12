@@ -111,18 +111,24 @@ public final class LaunchSimControl: @unchecked Sendable {
         return bytes + [UInt8](repeating: 0, count: 128 - bytes.count)
     }
 
-    /// One routine: sends, waits for the reply (nil = forever), returns it.
-    private func call(_ id: Int32, _ operation: String, descriptors: [MachHostDescriptor] = [], body: [UInt8] = [],
-                      timeout: UInt64? = 30_000_000_000) throws -> MachHostReceivedMessage {
+    /// Sends one routine request; returns the reply port (a receive right
+    /// of the host task, to destroy after the reply).
+    private func send(_ id: Int32, _ operation: String, descriptors: [MachHostDescriptor], body: [UInt8]) throws -> UInt32 {
         let reply = try host.makePort()
-        defer { try? host.destroyPort(reply) }
         do {
             try host.send(MachHostOutgoingMessage(remotePort: channel, remoteDisposition: MachMsgType.copySend,
                                                   localPort: reply, localDisposition: MachMsgType.makeSendOnce,
                                                   id: id, descriptors: descriptors, body: body), timeout: 5_000_000_000)
         } catch let e as MachHostError {
+            try? host.destroyPort(reply)
             throw LaunchSimControlError(operation: operation, code: e.code)
         }
+        return reply
+    }
+
+    /// Waits for the reply of a request sent with `send` and checks it.
+    private func receive(_ reply: UInt32, _ id: Int32, _ operation: String, timeout: UInt64?) throws -> MachHostReceivedMessage {
+        defer { try? host.destroyPort(reply) }
         let m: MachHostReceivedMessage
         do {
             m = try host.receive(on: reply, timeout: timeout)
@@ -141,6 +147,27 @@ public final class LaunchSimControl: @unchecked Sendable {
             }
         }
         return m
+    }
+
+    /// One routine: sends, waits for the reply (nil = forever), returns it.
+    private func call(_ id: Int32, _ operation: String, descriptors: [MachHostDescriptor] = [], body: [UInt8] = [],
+                      timeout: UInt64? = 30_000_000_000) throws -> MachHostReceivedMessage {
+        let reply = try send(id, operation, descriptors: descriptors, body: body)
+        return try receive(reply, id, operation, timeout: timeout)
+    }
+
+    /// 701 sent without waiting: before the 808 reply hands the service
+    /// port over, the request queues on it and is answered once launchd_sim
+    /// has created its domains (launch-sim-control.md §5.1). Returns a token
+    /// for `finishRegistration`.
+    public func queueRegistration(_ name: String, port: UInt32) throws -> UInt32 {
+        try send(Self.register, "register \(name)", descriptors: [.port(name: port, disposition: MachMsgType.copySend)],
+                 body: Self.ndr + Self.name128(name))
+    }
+
+    /// Waits for a queued 701's reply.
+    public func finishRegistration(_ token: UInt32, name: String, timeout: UInt64? = 60_000_000_000) throws {
+        _ = try receive(token, Self.register, "register \(name)", timeout: timeout)
     }
 
     // MARK: Operations

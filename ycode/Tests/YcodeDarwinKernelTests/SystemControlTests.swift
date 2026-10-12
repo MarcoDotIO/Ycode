@@ -75,6 +75,17 @@ import YcodeDarwinABI
         #expect(env.svc(440, [18, 100, 0, 0, 0]).1.x[0] == 22)      // freezer: EINVAL
         #expect(env.svc(165, [s, 0x300, 501, 0]).1.x[0] == 45)      // quotactl: ENOTSUP
         #expect(env.svc(89, []).1.x[0] == 256)                      // getdtablesize: soft NOFILE
+        // iopolicysys: a set policy reads back (thread scope, iotype 3 = dataless materialization).
+        try env.put(le32(1) + le32(3) + le32(1), at: s + 0x600)
+        #expect(!env.svc(322, [0, s + 0x600]).1.carry)
+        try env.put(le32(1) + le32(3) + le32(0), at: s + 0x600)
+        #expect(!env.svc(322, [1, s + 0x600]).1.carry)
+        #expect(try env.u32(s + 0x608) == 1)
+        try env.put(le32(0) + le32(3) + le32(7), at: s + 0x600)
+        #expect(!env.svc(322, [1, s + 0x600]).1.carry)
+        #expect(try env.u32(s + 0x608) == 0)                        // process scope: unset
+        try env.put(le32(5) + le32(3) + le32(0), at: s + 0x600)
+        #expect(env.svc(322, [1, s + 0x600]).1.x[0] == 22)
         try env.put(le32(0x10), at: s)
         #expect(env.svc(483, [0, s, 4]).1.x[0] == 1)                // csr_check: EPERM
         try env.put(le32(0xFFFF), at: s)

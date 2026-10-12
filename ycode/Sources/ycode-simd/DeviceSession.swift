@@ -23,6 +23,10 @@ final class DeviceSession: @unchecked Sendable {
     /// One line per one-shot (by index; 1000 = app install, 1001 = app launch).
     private var results: [Int: String] = [:]
     private var thread: Thread?
+    /// Host-side names to register into user/<uid> (701), each a host-task
+    /// send right, and the tokens of the queued requests.
+    var hostServices: [(name: String, port: UInt32)] = []
+    private var queuedRegistrations: [(name: String, token: UInt32)] = []
 
     init(layout: DeviceLayout, host: MachHostTask, makeFileSystem: @escaping () -> DarwinFileSystem) {
         self.layout = layout
@@ -32,10 +36,30 @@ final class DeviceSession: @unchecked Sendable {
 
     private func emit(_ text: String) { stderrLine("ycode-simd: " + text) }
 
+    /// The service port exists and is about to be handed over: queue the
+    /// host-side names' 701 requests on it (launch-sim-control.md §5.2 step 1).
+    func servicePortCreated(_ channel: UInt32) {
+        let c = LaunchSimControl(host: host, channel: channel, log: { [weak self] in self?.emit($0) })
+        var queued: [(name: String, token: UInt32)] = []
+        for (name, port) in hostServices {
+            do { queued.append((name, try c.queueRegistration(name, port: port))) } catch {
+                emit("control: 701 register \(name) could not be queued: \(error)")
+            }
+        }
+        lock.withLock {
+            control = c
+            queuedRegistrations = queued
+        }
+    }
+
     /// The control channel arrived (service thread): start the session thread.
     func channelArrived(_ channel: UInt32) {
-        let c = LaunchSimControl(host: host, channel: channel, log: { [weak self] in self?.emit($0) })
-        lock.withLock { control = c }
+        let c = lock.withLock { () -> LaunchSimControl in
+            if let c = control, c.channel == channel { return c }
+            let c = LaunchSimControl(host: host, channel: channel, log: { [weak self] in self?.emit($0) })
+            control = c
+            return c
+        }
         let t = Thread { [self] in run(c) }
         t.name = "ycode-session"
         lock.withLock { thread = t }
@@ -50,6 +74,14 @@ final class DeviceSession: @unchecked Sendable {
             try c.bindSession()
         } catch {
             emit("control: bind failed: \(error) (system-domain jobs stay held)")
+        }
+        for (name, token) in lock.withLock({ queuedRegistrations }) {
+            do {
+                try c.finishRegistration(token, name: name)
+                emit("control: 701 registered \(name)")
+            } catch {
+                emit("control: 701 register \(name) failed: \(error)")
+            }
         }
         if layout.stagedAppGuestPath != nil || layout.launchBundleID != nil {
             let t = Thread { [self] in runApps(c) }

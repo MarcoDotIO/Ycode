@@ -95,6 +95,9 @@ public enum XPCWire {
     public static let magic: UInt32 = 0x7870_633F
     /// `@cpx`, also accepted.
     public static let alternateMagic: UInt32 = 0x7870_6340
+    /// `!CPX`: the magic of connections marked sim2host
+    /// (iosurface-remote.md §2.1); accepted, and written on request.
+    public static let sim2hostMagic: UInt32 = 0x5850_4321
     public static let version: UInt32 = 5
     /// Data longer than this travels as a memory-object port (§3.2).
     public static let inlineDataLimit = 16384
@@ -125,13 +128,13 @@ public enum XPCWire {
     /// version 5. The descriptors are the rights of the port-bearing
     /// objects, in the order they are written, with each `XPCPort`'s
     /// disposition.
-    public static func encode(_ root: XPCObject) throws -> XPCWireEncoding {
-        let body = try encodePayload(root)
+    public static func encode(_ root: XPCObject, magic: UInt32 = XPCWire.magic) throws -> XPCWireEncoding {
+        let body = try encodePayload(root, magic: magic)
         return XPCWireEncoding(body: body, descriptors: root.ports.map { .port(name: $0.name, disposition: $0.disposition) })
     }
 
     /// The payload bytes only (header and root object).
-    public static func encodePayload(_ root: XPCObject) throws -> [UInt8] {
+    public static func encodePayload(_ root: XPCObject, magic: UInt32 = XPCWire.magic) throws -> [UInt8] {
         var w = Writer()
         w.u32(magic)
         w.u32(version)
@@ -173,7 +176,7 @@ public enum XPCWire {
     public static func decodePayload(_ payload: [UInt8], ports: [XPCPort]?) throws -> XPCObject {
         var r = Reader(bytes: payload, ports: ports)
         let m = try r.u32()
-        guard m == magic || m == alternateMagic else { throw XPCWireError.badMagic(m) }
+        guard m == magic || m == alternateMagic || m == sim2hostMagic else { throw XPCWireError.badMagic(m) }
         let v = try r.u32()
         guard v == version else { throw XPCWireError.badVersion(v) }
         let root = try r.object(depth: 0)

@@ -104,29 +104,30 @@ YC_EXPORT int __commpage_gettimeofday(void *tp)
 
 /* int setiopolicy_np(int iotype, int scope, int policy);
  * int getiopolicy_np(int iotype, int scope);
- * Public API (setiopolicy_np(3)): scope is IOPOL_SCOPE_PROCESS (0),
- * IOPOL_SCOPE_THREAD (1), or IOPOL_SCOPE_DARWIN_BG (2); anything else is
- * EINVAL. Ycode has no I/O scheduling classes: a set is accepted and a get
- * reports IOPOL_DEFAULT (0). */
-YC_HIDDEN void __ycode_set_errno(int value);
+ * Public API (setiopolicy_np(3)) over __iopolicysys(cmd, param) (BSD 322;
+ * xnu sys/resource.h: IOPOL_CMD_SET 0, IOPOL_CMD_GET 1, struct
+ * _iopol_param_t {scope, iotype, policy}). The kernel keeps what is set,
+ * per process, thread or darwin-background scope; get returns the policy. */
+int __iopolicysys(int cmd, void *param);
+
+struct yc_iopol_param {
+    int scope;
+    int iotype;
+    int policy;
+};
 
 YC_EXPORT int setiopolicy_np(int iotype, int scope, int policy)
 {
-    (void)policy;
-    if (iotype < 0 || scope < 0 || scope > 2) {
-        __ycode_set_errno(22);
-        return -1;
-    }
-    return 0;
+    struct yc_iopol_param p = {scope, iotype, policy};
+    return __iopolicysys(0, &p);
 }
 
 YC_EXPORT int getiopolicy_np(int iotype, int scope)
 {
-    if (iotype < 0 || scope < 0 || scope > 2) {
-        __ycode_set_errno(22);
+    struct yc_iopol_param p = {scope, iotype, 0};
+    if (__iopolicysys(1, &p) != 0)
         return -1;
-    }
-    return 0;
+    return p.policy;
 }
 
 /* posix_madvise: on Darwin the same call as madvise(2), with the POSIX_

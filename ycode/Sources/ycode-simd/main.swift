@@ -71,6 +71,17 @@
 // `--guest-tools <dir>` (default: <shim dir>/guest-tests/stage7, as built by
 // SimShim/guest-tests/build-stage7.sh) and copied to DEV/data/tmp/ycode-tools.
 //
+// SIMULATOR_FRAMEBUFFER_FRAMEWORK names Ycode's headless SimFramebuffer
+// library (SimGuestFrameworks/build.sh; specs/simulator/simframebuffer.md),
+// copied to DEV/ycode-frameworks: `--framebuffer-library <binary>`, default
+// SimGuestFrameworks/out/SimFramebuffer.framework/SimFramebuffer next to the
+// shim's SimShim directory when it exists; `none` leaves the variable empty.
+// The VMM serves com.apple.IOSurface.Remote (iosurface-remote.md), registered
+// with 701 before any job starts. `--screenshot <path.png>` writes the
+// presented display buffer as a PNG at the end of the run (before the
+// session ends); `--screenshot-at S` (repeatable) also at S seconds, as
+// <path>-<S>s.png.
+//
 // Stage 6 (stage6-contract.md §1): `--runtime-paths` puts CoreSimulator's
 // four job directories first in `Paths` (RR/System/Library/LaunchDaemons,
 // RR/System/Library/LaunchAngels, RR/Developer/Library/LaunchDaemons,
@@ -115,7 +126,8 @@ let usage = """
            ycode-simd --device <dir> --runtime-root <dir> [--udid <UDID>] [--job-path <dir>]... [--env K=V]...
                       [--runtime-paths] [--oneshot "/guest/program arg..."]... [--oneshot-delay S] [--runtime-job <label>]...
                       [--install-app <host .app>] [--launch <bundle id> [--app-arg A]... [--app-env K=V]...]
-                      [--guest-tools <dir with ylaunch>]
+                      [--guest-tools <dir with ylaunch>] [--framebuffer-library <SimFramebuffer binary> | none]
+                      [--screenshot <path.png> [--screenshot-at S]...]
                       [--debug-plist-bool KEY=true|false]... [--debug-no-session-end]
                       [--trace] [--keep-going] [--timeout-ms N] [--host-libs <dir>] [--debug-bootstrap-discard]
                       [--exec-args <arg>...]
@@ -162,6 +174,12 @@ struct Options {
     /// Debug: at the end of a device run, kill every process instead of
     /// ending the control session (launchd_sim's clean shutdown).
     var debugNoSessionEnd = false
+    /// PNG captures of the display (`--screenshot PATH`, at the end of the
+    /// run; `--screenshot-at S`, repeatable: PATH with `-<S>s` before `.png`).
+    var screenshotPath: String?
+    var screenshotTimes: [Int] = []
+    /// Debug: offer no host services (IOSurface) to the guest.
+    var debugNoHostServices = false
     /// Stage 7: install a host `.app`, launch a bundle id, with these
     /// arguments and environment; `ylaunch` comes from `guestTools`.
     var installApp: String?
@@ -169,6 +187,8 @@ struct Options {
     var appArguments: [String] = []
     var appEnvironment: [String] = []
     var guestTools: String?
+    /// The headless SimFramebuffer library (`--framebuffer-library`; "none" = empty variable).
+    var framebufferLibrary: String?
     /// Debug: the identity (pid, uid, gid) the host task's messages carry.
     var debugHostIdentity: (pid: Int32, uid: UInt32, gid: UInt32)?
     /// Debug: at the end of a device run, report every image's vCPUs
@@ -291,6 +311,11 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--runtime-paths": options.runtimePaths = true
         case "--debug-thread-report": options.debugThreadReport = true
         case "--debug-no-session-end": options.debugNoSessionEnd = true
+        case "--debug-no-host-services": options.debugNoHostServices = true
+        case "--screenshot": options.screenshotPath = value(for: argument)
+        case "--screenshot-at":
+            guard let n = Int(value(for: argument)), n > 0 else { die("--screenshot-at needs seconds > 0", status: 64) }
+            options.screenshotTimes.append(n)
         case "--install-app": options.installApp = value(for: argument)
         case "--launch": options.launchBundleID = value(for: argument)
         case "--app-arg": options.appArguments.append(value(for: argument))
@@ -299,6 +324,7 @@ func parseOptions(_ arguments: [String]) -> Options {
             guard let eq = pair.firstIndex(of: "="), eq != pair.startIndex else { die("--app-env needs K=V", status: 64) }
             options.appEnvironment.append(pair)
         case "--guest-tools": options.guestTools = value(for: argument)
+        case "--framebuffer-library": options.framebufferLibrary = value(for: argument)
         case "--debug-host-identity":
             let parts = value(for: argument).split(separator: ":").compactMap { Int64($0) }
             guard parts.count == 3 else { die("--debug-host-identity needs PID:UID:GID", status: 64) }

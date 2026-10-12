@@ -129,14 +129,21 @@ import YcodeDarwinABI
         #expect(!d.carry)
         let db = try env.space.read(va: s + 0x400, count: 40)
         #expect(u32(db, 0) == 32 && u32(db, 12) == 0x1 && u32(db, 16) == 0 && u32(db, 24) == 2)  // VDIR
-        // fgetattrlist on a descriptor; volume capabilities need ATTR_VOL_INFO.
+        // fgetattrlist on a descriptor; volume attributes with or without
+        // ATTR_VOL_INFO (the Mac answers both; stage 7).
         let fd = env.svc(5, [s + 0x100, 0, 0]).1.x[0]
         try env.space.write(va: s + 0x200, bytes: alist([0x1, 0, 0, 0, 0]))
         let (_, f) = env.svc(228, [fd, s + 0x200, s + 0x400, 2048, 0])
         #expect(!f.carry)
         #expect(string(try env.space.read(va: s + 0x400, count: 64), reference: 4) == "job.plist")
         try env.space.write(va: s + 0x200, bytes: alist([0, 0x0002_0000, 0, 0, 0]))
-        #expect(env.svc(220, [s + 0x180, s + 0x200, s + 0x400, 2048, 0]).1.x[0] == 22)  // EINVAL
+        #expect(!env.svc(220, [s + 0x180, s + 0x200, s + 0x400, 2048, 0]).1.carry)
+        #expect(u32(try env.space.read(va: s + 0x400, count: 8), 0) == 36)
+        // ATTR_VOL_UUID: 16 nonzero bytes.
+        try env.space.write(va: s + 0x200, bytes: alist([0, 0x0004_0000, 0, 0, 0]))
+        #expect(!env.svc(220, [s + 0x180, s + 0x200, s + 0x400, 2048, 0]).1.carry)
+        let uuid = try env.space.read(va: s + 0x404, count: 16)
+        #expect(u32(try env.space.read(va: s + 0x400, count: 4), 0) == 20 && uuid.contains { $0 != 0 })
         try env.space.write(va: s + 0x200, bytes: alist([0, 0x8002_0000, 0, 0, 0]))
         #expect(!env.svc(220, [s + 0x180, s + 0x200, s + 0x400, 2048, 0]).1.carry)
         #expect(u32(try env.space.read(va: s + 0x400, count: 8), 0) == 36)

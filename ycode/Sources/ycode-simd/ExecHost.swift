@@ -13,6 +13,7 @@ import YcodeDarwinABI
 import YcodeDarwinKernel
 import YcodeHypervisor
 import YcodeMachO
+import YcodeHostServices
 
 /// What every image of a run shares: the runtime, the shim, the host stubs,
 /// the host libraries, and the root's VFS layout.
@@ -65,6 +66,15 @@ final class ExecConfiguration: @unchecked Sendable {
             layout.launchBundleID = options.launchBundleID
             layout.appArguments = options.appArguments
             layout.appEnvironment = options.appEnvironment
+            if options.framebufferLibrary != "none" {
+                let fallback = options.shimPath.map { shim -> String in
+                    let simShim = ((absolutePath(shim) as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+                    return ((simShim as NSString).deletingLastPathComponent as NSString)
+                        .appendingPathComponent("SimGuestFrameworks/out/SimFramebuffer.framework/SimFramebuffer")
+                }
+                layout.framebufferLibrary = options.framebufferLibrary.map(absolutePath)
+                    ?? fallback.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
+            }
             layout.guestTools = options.guestTools.map(absolutePath)
                 ?? options.shimPath.map { ((absolutePath($0) as NSString).deletingLastPathComponent as NSString)
                     .appendingPathComponent("guest-tests/stage7") }
@@ -245,6 +255,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     // logging service receives on it.
     var bootstrapLogger: HostBootstrapLogger?
     var session: DeviceSession?
+    var ioSurfaceService: IOSurfaceHostService?
     if config.device != nil || config.options.hostBootstrap {
         system.mach.hostBootstrapIsDefault = true
         let logPath = config.device?.hostBootstrapLogPath ?? config.runDir + "/ycode-host-bootstrap.log"
@@ -268,6 +279,18 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
             // The control session (launch-sim-control.md §5.2).
             let s = DeviceSession(layout: device, host: system.hostTask, makeFileSystem: { config.makeRootFileSystem() })
             logger.onControlChannel = { [weak s] channel in s?.channelArrived(channel) }
+            logger.beforeServicePortHandoff = { [weak s] port in s?.servicePortCreated(port) }
+            // Host services (stage 7): com.apple.IOSurface.Remote (iosurface-remote.md).
+            if !config.options.debugNoHostServices {
+                do {
+                    let service = try IOSurfaceHostService(host: system.hostTask, log: { stderrLine("ycode-simd: " + $0) })
+                    service.start()
+                    s.hostServices.append((IOSurfaceHostService.serviceName, service.servicePort))
+                    ioSurfaceService = service
+                } catch {
+                    stderrLine("ycode-simd: warning: cannot start the IOSurface service: \(error)")
+                }
+            }
             session = s
         }
         do { try logger.start() } catch { die("cannot start the host bootstrap service: \(error)", status: 1) }
@@ -338,7 +361,25 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         }
     }
 
+    // Screenshots at fixed times (a background thread) and at the end.
+    var capture: ScreenCapture?
+    if let device = config.device, let service = ioSurfaceService, let path = config.options.screenshotPath {
+        let c = ScreenCapture(statePath: device.framebufferStatePath, service: service)
+        capture = c
+        for seconds in config.options.screenshotTimes.sorted() {
+            let at = (path as NSString).deletingPathExtension + "-\(seconds)s.png"
+            Thread.detachNewThread {
+                Thread.sleep(until: Date(timeIntervalSinceNow: 0).addingTimeInterval(
+                    max(0, Double(seconds) - Double(monotonicMilliseconds() - started) / 1000)))
+                stderrLine("ycode-simd: screenshot at \(seconds) s: " + c.capture(to: at))
+            }
+        }
+    }
+
     var result = launcher.superviseRoot(timeoutMilliseconds: config.timeout)
+    if let capture, let path = config.options.screenshotPath {
+        stderrLine("ycode-simd: screenshot: " + capture.capture(to: path))
+    }
     if config.options.debugExtraWait, !result.watchdog {
         let left = launcher.superviseAll(deadline: started + config.timeout)
         if left > 0 { result = (71, "watchdog: \(left) images still running after \(config.timeout) ms", true) }

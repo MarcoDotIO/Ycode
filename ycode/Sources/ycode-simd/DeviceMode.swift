@@ -30,6 +30,10 @@ struct DeviceLayout {
     var appArguments: [String] = []
     var appEnvironment: [String] = []
     var guestTools: String?
+    /// Ycode's headless SimFramebuffer library (host path of the binary;
+    /// SimGuestFrameworks/build.sh), copied into DEV and named by
+    /// SIMULATOR_FRAMEBUFFER_FRAMEWORK. Nil: the variable is empty.
+    var framebufferLibrary: String?
 
     // Device identity (stage4c-contract.md §2).
     static let deviceName = "Ycode"
@@ -82,6 +86,14 @@ struct DeviceLayout {
     var launchdSimPath: String { runtimeRoot + "/sbin/launchd_sim" }
     /// The job directory Ycode fills for `--runtime-job`.
     var ycodeJobsPath: String { dev + "/ycode-jobs" }
+
+    /// The headless framebuffer library's frame record (guest path = host path).
+    var framebufferStatePath: String { data + "/tmp/ycode-framebuffer.state" }
+
+    /// Where the framebuffer library is copied (a guest-readable DEV path).
+    var framebufferGuestPath: String? {
+        framebufferLibrary.map { _ in dev + "/ycode-frameworks/SimFramebuffer.framework/SimFramebuffer" }
+    }
 
     // MARK: Apps (stage7-contract.md §3.2 items 2, 3)
 
@@ -212,7 +224,11 @@ struct DeviceLayout {
             "SIMULATOR_BOOT_TIME": String(bootTime),
             "SIMULATOR_HOST_HOME": dev,
             "SIMULATOR_LOG_ROOT": logRoot,
-            "SIMULATOR_FRAMEBUFFER_FRAMEWORK": "",
+            // The binary's path (simframebuffer.md §2): Ycode's headless library.
+            "SIMULATOR_FRAMEBUFFER_FRAMEWORK": framebufferGuestPath ?? "",
+            // Ycode's headless library writes its frame record here (the
+            // presented IOSurface; screenshots).
+            "YCODE_FRAMEBUFFER_STATE": framebufferStatePath,
             "SIMULATOR_HID_SYSTEM_MANAGER": "",
             "SIMULATOR_AUDIO_DEVICES_PLIST_PATH": audioPlistPath,
             "SIMULATOR_AUDIO_SETTINGS_PATH": audioSettingsPath,
@@ -318,6 +334,12 @@ struct DeviceLayout {
             if fm.fileExists(atPath: ylaunchPath) { try fm.removeItem(atPath: ylaunchPath) }
             try fm.copyItem(atPath: tools + "/ylaunch", toPath: ylaunchPath)
             for path in [appStdoutHostPath, appStderrHostPath] where fm.fileExists(atPath: path) { try fm.removeItem(atPath: path) }
+        }
+        if fm.fileExists(atPath: framebufferStatePath) { try fm.removeItem(atPath: framebufferStatePath) }
+        if let framebufferLibrary, let target = framebufferGuestPath {
+            try dir((target as NSString).deletingLastPathComponent)
+            if fm.fileExists(atPath: target) { try fm.removeItem(atPath: target) }
+            try fm.copyItem(atPath: framebufferLibrary, toPath: target)
         }
         // Copies, never links: the runtime's files stay where they are and
         // nothing from the runtime enters the repository.

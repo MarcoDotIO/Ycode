@@ -61,10 +61,8 @@ import YcodeDarwinABI
         #expect(env.svc(327).1.x[0] == 0)
         let (_, ioctl) = env.svc(54, [1, 0x4004_7400, 0])
         #expect(ioctl.carry && ioctl.x[0] == 25)
-        for n: UInt64 in [427, 461] {  // fsgetpath, getattrlistbulk
-            let (_, g) = env.svc(n)
-            #expect(g.carry && g.x[0] == 45)
-        }
+        let (_, g) = env.svc(427)  // fsgetpath
+        #expect(g.carry && g.x[0] == 45)
         #expect(env.sink.lines.contains("trap bsd 6 close(99) -> error 9 (EBADF)"))
     }
 

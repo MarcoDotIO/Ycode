@@ -13,10 +13,12 @@ enum MetadataBSD {
     static let chmod = 15, chown = 16, chflags = 34, fchflags = 35, mincore = 78, fchown = 123, fchmod = 124,
                rename = 128, utimes = 138, futimes = 139, truncate = 200, lchown = 364, macSyscall = 381,
                clonefileat = 462, renameat = 465, fchmodat = 467, fchownat = 468, renameatxNp = 488,
-               fclonefileat = 517
+               fclonefileat = 517, ffsctl = 245, chmodExtended = 282, fchmodExtended = 283
     static let all: Set<Int> = [chmod, chown, chflags, fchflags, mincore, fchown, fchmod, rename, utimes, futimes,
                                 truncate, lchown, macSyscall, clonefileat, renameat, fchmodat, fchownat, renameatxNp,
-                                fclonefileat]
+                                fclonefileat, ffsctl, chmodExtended, fchmodExtended]
+    /// KAUTH_UID_NONE / KAUTH_GID_NONE (xnu sys/kauth.h): "do not change".
+    static let kauthIDNone: UInt32 = 0xFFFF_FFFF - 100
     static let atSymlinkNoFollow: Int32 = 0x20
     static let enoPolicy: Int32 = 103
 }
@@ -44,6 +46,36 @@ extension DarwinKernel {
             call = "chmod(\"\(path)\", 0o\(String(m & 0o7777, radix: 8)))"
             try fs.chmod(path, mode: m, followSymlinks: !(at && int(3) & MetadataBSD.atSymlinkNoFollow != 0))
             return .value(0)
+
+        case MetadataBSD.chmodExtended, MetadataBSD.fchmodExtended:
+            // chmod_extended(path, uid, gid, mode, xsecurity) / fchmod_extended(fd, …)
+            // (xnu bsd/vfs/vfs_syscalls.c; level 1): owner and group unless
+            // KAUTH_UID_NONE/KAUTH_GID_NONE, mode unless -1 (permission bits
+            // only), and an ACL (xsecurity), which Ycode accepts and does not
+            // keep (no ACLs).
+            let isFD = n == MetadataBSD.fchmodExtended
+            let path = isFD ? "" : try readPath(a[0], mem)
+            let uid = u32(1), gid = u32(2), newMode = int(3)
+            call = (isFD ? "fchmod_extended(\(int(0)), " : "chmod_extended(\"\(path)\", ")
+                + "uid=\(hx(uid)), gid=\(hx(gid)), mode=\(newMode == -1 ? "-1" : "0o" + String(newMode, radix: 8)), xsecurity=\(hx(a[4])))"
+            if uid != MetadataBSD.kauthIDNone || gid != MetadataBSD.kauthIDNone {
+                let u = uid == MetadataBSD.kauthIDNone ? UInt32.max : uid, g = gid == MetadataBSD.kauthIDNone ? UInt32.max : gid
+                if isFD { try fs.fchown(int(0), uid: u, gid: g) } else { try fs.chown(path, uid: u, gid: g, followSymlinks: true) }
+            }
+            if newMode != -1 {
+                let m = UInt16(truncatingIfNeeded: newMode) & 0o7777
+                if isFD { try fs.fchmod(int(0), mode: m) } else { try fs.chmod(path, mode: m, followSymlinks: true) }
+            }
+            return .value(0)
+
+        case MetadataBSD.ffsctl:
+            // ffsctl(fd, cmd, data, options): Ycode's volumes answer no
+            // file-system control command; as an unknown ioctl, ENOTTY
+            // (xnu fsctl_internal → VNOP_IOCTL; level 1). copyfile then
+            // takes its plain-copy path.
+            call = "ffsctl(\(int(0)), cmd=\(hx(UInt64(u32(1)))), data=\(hx(a[2])), options=\(hx(a[3])))"
+            _ = try fs.fstat(int(0))
+            throw fail(25)
 
         case MetadataBSD.fchmod:
             call = "fchmod(\(int(0)), 0o\(String(mode(1) & 0o7777, radix: 8)))"
@@ -123,9 +155,13 @@ extension DarwinKernel {
             if let raw = try? mem.read(va: a[2], count: 64) {
                 let words = (0..<8).map { raw.readLE(UInt64.self, at: 8 * $0) }
                 call += " [arg " + words.map { hx($0) }.joined(separator: " ")
-                for w in words where w > 0x1_0000_0000 && w < 0x10_0000_0000 {
-                    if let text = try? readString(w, length: 96, mem), text.count >= 2,
-                       text.utf8.allSatisfy({ (0x20..<0x7F).contains($0) }) { call += " \"\(text)\"" }
+                for (i, w) in words.enumerated() where w > 0x1_0000_0000 && w < 0x10_0000_0000 {
+                    if let text = try? readString(w, length: 256, mem), text.count >= 2,
+                       text.utf8.allSatisfy({ (0x20..<0x7F).contains($0) }) {
+                        call += " w\(i)=\"\(text)\""
+                    } else if let bytes = try? mem.read(va: w, count: 32) {
+                        call += " w\(i)->" + bytes.map { String(format: "%02x", $0) }.joined()
+                    }
                 }
                 call += "]"
             }
@@ -134,6 +170,9 @@ extension DarwinKernel {
             // the Sandbox policy's check call (2) allows everything. Its other
             // calls, and every other policy, find no policy (xnu ENOPOLICY).
             if policy == "Sandbox", int(1) == 2 { return .value(0) }
+            // Sandbox extensions (issue, consume, release): permissive answers
+            // (sandbox-extensions.md; level 3).
+            if policy == "Sandbox", let value = try sandboxExtensionCall(int(1), arg: a[2], mem) { return .value(value) }
             throw fail(MetadataBSD.enoPolicy)
 
         default:  // clonefileat, fclonefileat

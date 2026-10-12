@@ -44,6 +44,10 @@ final class HostBootstrapLogger: @unchecked Sendable {
     /// Called (on the service thread) with the control channel's host-task
     /// name right after the 808 reply.
     var onControlChannel: ((UInt32) -> Void)?
+    /// Called with the new service port's host-task name before the 808
+    /// reply moves its receive right to launchd_sim (701s queued there are
+    /// answered once the domains exist; launch-sim-control.md §5.1).
+    var beforeServicePortHandoff: ((UInt32) -> Void)?
 
     init(host: MachHostTask, logPath: String, discard: Bool) {
         self.host = host
@@ -124,6 +128,7 @@ final class HostBootstrapLogger: @unchecked Sendable {
     /// requester, the host keeps a send right (the control channel).
     private func serveServicePortRequest(_ m: MachHostReceivedMessage) throws {
         let port = try host.makePort(sendRight: true)
+        beforeServicePortHandoff?(port)
         do {
             try host.reply(to: m, id: XPCBootstrap.launchdSimServiceReplyID, descriptors: [.port(name: port, disposition: MachMsgType.moveReceive)], body: [])
         } catch {

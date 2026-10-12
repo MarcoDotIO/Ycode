@@ -26,9 +26,15 @@ let package = Package(
         .target(name: "YcodeDarwinABI"),
         .target(name: "YcodeDarwinKernel", dependencies: ["YcodeDarwinABI"]),
         .target(name: "YcodeXPC"),
+        // Host services the VMM offers the guest (stage 7: IOSurface)
+        .target(name: "YcodeHostServices", dependencies: ["YcodeDarwinABI", "YcodeDarwinKernel", "YcodeXPC"]),
+        // Stage 8a (specs/simulator/stage8-contract.md §5): the Metal host service and its Vulkan back end
+        .target(name: "YcodeMetalHost", dependencies: ["YcodeXPC", "YcodeDarwinKernel"]),
+        .target(name: "CVulkan"),
+        .target(name: "YcodeVulkan", dependencies: ["CVulkan", "YcodeMetalHost"]),
         .target(name: "CKVM"),
         .target(name: "YcodeHypervisor", dependencies: ["CKVM", "YcodeDarwinABI"]),
-        .executableTarget(name: "ycode-simd", dependencies: ["YcodeHypervisor", "YcodeDarwinABI", "YcodeDarwinKernel", "YcodeMachO", "YcodeXPC"]),
+        .executableTarget(name: "ycode-simd", dependencies: ["YcodeHypervisor", "YcodeDarwinABI", "YcodeDarwinKernel", "YcodeMachO", "YcodeXPC", "YcodeHostServices", "YcodeMetalHost", "YcodeVulkan"]),
         .executableTarget(name: "ycode", dependencies: ["YcodePlist", "YcodeProject", "YcodeWorkspace", "YcodeSettings", "YcodeMachO"]),
         .testTarget(name: "YcodePlistTests", dependencies: ["YcodePlist"]),
         .testTarget(name: "YcodeProjectTests", dependencies: ["YcodeProject"], resources: [.copy("Fixtures")]),
@@ -38,5 +44,8 @@ let package = Package(
         .testTarget(name: "YcodeDarwinABITests", dependencies: ["YcodeDarwinABI"]),
         .testTarget(name: "YcodeDarwinKernelTests", dependencies: ["YcodeDarwinKernel"]),
         .testTarget(name: "YcodeXPCTests", dependencies: ["YcodeXPC"]),
+        .testTarget(name: "YcodeMetalHostTests", dependencies: ["YcodeMetalHost"]),
+        .testTarget(name: "YcodeVulkanTests", dependencies: ["YcodeVulkan"]),
+        .testTarget(name: "YcodeHostServicesTests", dependencies: ["YcodeHostServices", "YcodeDarwinKernel", "YcodeXPC"]),
     ]
 )

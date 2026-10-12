@@ -124,7 +124,11 @@ extension DarwinKernel {
               extended ? fork & ~AttrList.cmnExtValid == 0 : fork == 0
         else { throw Failure(errno: Errno.EINVAL) }
         if volume != 0 {
-            guard volume & AttrList.volInfo != 0, dir == 0, file == 0 else { throw Failure(errno: Errno.EINVAL) }
+            // ATTR_VOL_INFO is documented as required, but the Mac's kernel
+            // answers volume attributes without it, on any directory of the
+            // volume (level 3: our probe `getattrlist-volume/ga.c` on the
+            // simulator; installd asks for ATTR_VOL_UUID alone).
+            guard dir == 0, file == 0 else { throw Failure(errno: Errno.EINVAL) }
         }
 
         let info = try attrObject(object.path, follow: object.follow)
@@ -212,7 +216,10 @@ extension DarwinKernel {
 
     private func packCommon(_ bits: UInt32, _ o: AttrObject, _ p: inout AttrPacker) {
         let st = o.stat
-        for bit in 0..<31 where bits & (1 << UInt32(bit)) != 0 {
+        // ATTR_CMN_ERROR comes right after ATTR_CMN_RETURNED_ATTRS, before
+        // every other attribute (the getattrlistbulk(2) manual page; level 1).
+        if bits & 0x2000_0000 != 0 { p.u32(0) }
+        for bit in 0..<31 where bits & (1 << UInt32(bit)) != 0 && bit != 29 {
             switch UInt32(1) << UInt32(bit) {
             case 0x1: p.reference(Self.lastComponent(o.path))                // NAME
             case 0x2: p.u32(st.dev)                                        // DEVID
@@ -246,10 +253,23 @@ extension DarwinKernel {
             case 0x4000000: p.u64(o.parentID)                              // PARENTID
             case 0x8000000: p.reference(o.path)                            // FULLPATH
             case 0x10000000: p.time(.init())                               // ADDEDTIME
-            case 0x20000000, 0x40000000: p.u32(0)                          // ERROR, DATA_PROTECT_FLAGS
+            case 0x40000000: p.u32(0)                                      // DATA_PROTECT_FLAGS
             default: break
             }
         }
+    }
+
+    /// A stable, nonzero UUID per volume device (the Mac reports a real
+    /// UUID; installd compares volumes by it). Version-4 layout bits.
+    static func volumeUUID(device: UInt32) -> [UInt8] {
+        var h: UInt64 = 0xCBF2_9CE4_8422_2325, bytes: [UInt8] = []
+        for round in 0..<2 {
+            for b in le32(device) + [UInt8(round)] { h = (h ^ UInt64(b)) &* 0x0000_0100_0000_01B3 }
+            bytes += le64(h)
+        }
+        bytes[6] = (bytes[6] & 0x0F) | 0x40
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        return bytes
     }
 
     private func packVolume(_ bits: UInt32, _ o: AttrObject, _ p: inout AttrPacker) {
@@ -274,7 +294,7 @@ extension DarwinKernel {
             case 0x20000:                                                  // CAPABILITIES
                 p.u32(AttrList.formatCaps); p.u32(AttrList.interfaceCaps); p.u32(0); p.u32(0)
                 p.u32(AttrList.formatValid); p.u32(AttrList.interfaceValid); p.u32(0); p.u32(0)
-            case 0x40000: p.zeros(16)                                      // UUID
+            case 0x40000: p.align(); p.fixed += Self.volumeUUID(device: o.stat.dev)  // UUID
             case 0x80000: p.u32(0)                                         // MOUNTEXTFLAGS
             case 0x100000: p.reference("apfs")                             // FSTYPENAME
             case 0x200000: p.u32(0)                                        // FSSUBTYPE
@@ -471,5 +491,72 @@ extension DarwinKernel {
             try setProtectionClass(f, Int32(bitPattern: protection))
         }
         return 0
+    }
+}
+
+// MARK: - getattrlistbulk
+
+// getattrlistbulk(dirfd, alist, buffer, size, options) (the getattrlistbulk(2)
+// manual page, sys/attr.h; level 1): the attributes of the next entries of
+// an open directory, one record per entry, packed as getattrlist packs one
+// object (u32 length, attribute_set_t of the returned attributes, fixed
+// attributes, variable data), each record a multiple of 8 bytes. "." and
+// ".." are not returned; entries are not followed (a symbolic link reports
+// itself). ATTR_CMN_RETURNED_ATTRS is required; volume attributes are
+// EINVAL; `forkattr` holds the extended common attributes. The read
+// position is the descriptor's directory position (shared with
+// getdirentries64). Returns the number of records, 0 at the end.
+extension DarwinKernel {
+    func attributeListBulkCall(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        let fd = Int32(truncatingIfNeeded: a[0])
+        let options = a[4]
+        call = "getattrlistbulk(dirfd=\(fd), alist=\(hx(a[1])), buffer=\(hx(a[2])), size=\(a[3]), options=\(hx(options)))"
+        let raw = try mem.read(va: a[1], count: 24)
+        let groups = (0..<5).map { raw.readLE(UInt32.self, at: 4 + 4 * $0) }
+        let (common, volume, dir, file, fork) = (groups[0], groups[1], groups[2], groups[3], groups[4])
+        guard raw.readLE(UInt16.self, at: 0) == AttrList.bitmapCount, common & AttrList.returnedAttrs != 0, volume == 0,
+              dir & ~AttrList.dirValid == 0, file & ~AttrList.fileValid == 0, fork & ~AttrList.cmnExtValid == 0
+        else { throw Failure(errno: Errno.EINVAL) }
+        let handle = try fileSystem.file(for: fd)
+        guard handle.isDirectory else { throw Failure(errno: Errno.ENOTDIR) }
+        if extended.directoryCursors[fd].map({ $0.file !== handle }) ?? true {
+            extended.directoryCursors[fd] = .init(file: handle, entries: try listDirectory(fd: fd, file: handle))
+        }
+        var cursor = extended.directoryCursors[fd]!
+        let base = handle.guestPath
+        let capacity = Int(min(a[3], 1 << 20))
+        let packInvalid = options & AttrList.packInvalAttrs != 0
+        var out: [UInt8] = []
+        var count = 0
+        while cursor.next < cursor.entries.count {
+            let e = cursor.entries[cursor.next]
+            if e.name == "." || e.name == ".." { cursor.next += 1; continue }
+            let path = base == "/" ? "/" + e.name : base + "/" + e.name
+            guard let info = try? attrObject(path, follow: false) else { cursor.next += 1; continue }
+            let isDir = info.stat.isDirectory
+            var packer = AttrPacker()
+            packer.zeros(20)
+            packCommon(common, info, &packer)
+            if isDir || packInvalid { packDirectory(dir, info, valid: isDir, &packer) }
+            if !isDir || packInvalid { packFile(file, info, valid: !isDir, &packer) }
+            packCommonExtended(fork, info, &packer)
+            var record = packer.encoded()
+            record.putLE(common, at: 4)
+            record.putLE(UInt32(0), at: 8)
+            record.putLE(isDir ? dir : 0, at: 12)
+            record.putLE(isDir ? 0 : file, at: 16)
+            record.putLE(fork, at: 20)
+            while record.count % 8 != 0 { record.append(0) }
+            record.putLE(UInt32(record.count), at: 0)
+            if out.count + record.count > capacity { break }
+            out += record
+            count += 1
+            cursor.next += 1
+        }
+        if count == 0 && cursor.next < cursor.entries.count { throw Failure(errno: Errno.ERANGE) }
+        extended.directoryCursors[fd] = cursor
+        if !out.isEmpty { try mem.write(va: a[2], bytes: out) }
+        call += " [\(count) entries]"
+        return UInt64(count)
     }
 }
