@@ -578,7 +578,13 @@ public final class DarwinFileSystem {
     private struct Descriptor {
         var file: DarwinOpenFile
         var closeOnExec: Bool
+        /// A guarded descriptor (`guarded_open_np` & co., xnu `kern_guarded.c`).
+        var guardState: DescriptorGuard? = nil
     }
+
+    /// Told about every guard violation (the operation also fails with
+    /// EPERM). The kernel logs it; see `checkGuard`.
+    public var guardViolation: ((_ fd: Int32, _ flavor: UInt32, _ guard: UInt64) -> Void)?
 
     public let prefixes: [Prefix]
     private let console: (Int32, [UInt8]) -> Void
@@ -942,6 +948,7 @@ public final class DarwinFileSystem {
     /// Closes a descriptor. The description (and a host file, which a mapping
     /// may also hold) lives on while anything else refers to it.
     public func close(_ fd: Int32) throws {
+        try checkGuard(fd, DarwinGuard.close, flavor: DarwinGuard.exceptionClose)
         guard remove(fd) != nil else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
     }
 
@@ -985,6 +992,13 @@ public final class DarwinFileSystem {
     /// Writes at the description's offset (at the end with O_APPEND) and
     /// advances it. Console output goes to the console sink.
     public func write(_ fd: Int32, _ bytes: [UInt8]) throws -> Int {
+        try write(fd, bytes, guardChecked: false)
+    }
+
+    /// `write`; with `guardChecked` (guarded_write_np matched the guard)
+    /// a GUARD_WRITE descriptor may be written.
+    public func write(_ fd: Int32, _ bytes: [UInt8], guardChecked: Bool) throws -> Int {
+        if !guardChecked { try checkGuard(fd, DarwinGuard.write, flavor: DarwinGuard.exceptionWrite) }
         let d = try entry(fd)
         switch d.file.node {
         case let .console(stream):
@@ -1007,6 +1021,12 @@ public final class DarwinFileSystem {
 
     /// Writes at `offset` without moving the description's offset (`pwrite`).
     public func pwrite(_ fd: Int32, _ bytes: [UInt8], offset: UInt64) throws -> Int {
+        try pwrite(fd, bytes, offset: offset, guardChecked: false)
+    }
+
+    /// `pwrite`; `guardChecked` as for `write`.
+    public func pwrite(_ fd: Int32, _ bytes: [UInt8], offset: UInt64, guardChecked: Bool) throws -> Int {
+        if !guardChecked { try checkGuard(fd, DarwinGuard.write, flavor: DarwinGuard.exceptionWrite) }
         let d = try entry(fd)
         guard d.file.isWritable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
         switch d.file.node {
@@ -1087,6 +1107,11 @@ public final class DarwinFileSystem {
     /// Sets or clears FD_CLOEXEC (`F_SETFD`).
     public func setCloseOnExec(_ fd: Int32, _ on: Bool) throws {
         var d = try entry(fd)
+        // A guarded descriptor stays close-on-exec (kGUARD_EXC_NOCLOEXEC).
+        if let g = d.guardState, !on {
+            guardViolation?(fd, DarwinGuard.exceptionNoCloexec, g.value)
+            throw DarwinErrnoError(DarwinErrnoCode.EPERM)
+        }
         d.closeOnExec = on
         descriptors[fd] = d
     }
@@ -1140,6 +1165,7 @@ extension DarwinFileSystem {
     public func install(_ file: DarwinOpenFile, closeOnExec: Bool, at fd: Int32? = nil) throws -> Int32 {
         if let fd {
             guard fd >= 0, fd < maxDescriptors else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
+            if descriptors[fd] != nil { try checkGuard(fd, DarwinGuard.close, flavor: DarwinGuard.exceptionClose) }
             let old = descriptors[fd]
             descriptors[fd] = Descriptor(file: file, closeOnExec: closeOnExec)
             if old != nil { descriptorClosed?(fd) }
@@ -1161,6 +1187,7 @@ extension DarwinFileSystem {
     /// `F_DUPFD_CLOEXEC` when `closeOnExec`.
     public func dup(_ fd: Int32, minimum: Int32, closeOnExec: Bool) throws -> Int32 {
         let d = try entry(fd)
+        try checkGuard(fd, DarwinGuard.dup, flavor: DarwinGuard.exceptionDup)
         guard minimum >= 0, minimum < maxDescriptors else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         let n = try lowestFreeDescriptor(from: minimum)
         descriptors[n] = Descriptor(file: d.file, closeOnExec: closeOnExec)
@@ -1172,6 +1199,7 @@ extension DarwinFileSystem {
     /// it is open. EBADF for a closed `from` or a `to` outside the table.
     public func dup2(_ from: Int32, _ to: Int32) throws {
         let d = try entry(from)
+        try checkGuard(from, DarwinGuard.dup, flavor: DarwinGuard.exceptionDup)
         guard to >= 0, to < maxDescriptors else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
         if from == to { return }
         try install(d.file, closeOnExec: false, at: to)
@@ -1434,5 +1462,122 @@ public final class DarwinDevice: DarwinDescriptorObject {
                           ino: 300 + index, uid: console ? DarwinFileSystem.guestUID : 0, gid: 0, rdev: rdev,
                           atime: created, mtime: created, ctime: created, birthtime: created, size: 0, blocks: 0,
                           blksize: 131_072)
+    }
+}
+
+// MARK: - Guarded descriptors
+
+/// A descriptor's guard: a nonzero 64-bit value and the GUARD_* flags.
+public struct DescriptorGuard: Equatable, Sendable {
+    public var value: UInt64
+    public var flags: UInt32
+
+    public init(value: UInt64, flags: UInt32) {
+        self.value = value
+        self.flags = flags
+    }
+}
+
+/// Guarded-descriptor values (xnu `sys/guarded.h`, `kern_guarded.c`).
+public enum DarwinGuard {
+    public static let close: UInt32 = 1 << 0
+    public static let dup: UInt32 = 1 << 1
+    public static let socketIPC: UInt32 = 1 << 2
+    public static let fileport: UInt32 = 1 << 3
+    public static let write: UInt32 = 1 << 4
+    /// Every guard must include GUARD_DUP; no other bits are allowed.
+    public static let required: UInt32 = dup
+    public static let all: UInt32 = close | dup | socketIPC | fileport | write
+    // EXC_GUARD flavors for file descriptors (kGUARD_EXC_*).
+    public static let exceptionClose: UInt32 = 1, exceptionDup: UInt32 = 2, exceptionNoCloexec: UInt32 = 4,
+                      exceptionSocketIPC: UInt32 = 8, exceptionFileport: UInt32 = 16, exceptionMismatch: UInt32 = 32,
+                      exceptionWrite: UInt32 = 64
+
+    /// Guard flags a new guard may have: GUARD_DUP plus any of the others.
+    public static func isValid(_ flags: UInt32) -> Bool { flags & required == required && flags & ~all == 0 }
+}
+
+extension DarwinFileSystem {
+    /// The guard of `fd` (nil when unguarded). EBADF if not open.
+    public func guardState(of fd: Int32) throws -> DescriptorGuard? { try entry(fd).guardState }
+
+    /// Fails with EPERM when `fd` is guarded with all of `flags` (an
+    /// operation the guard forbids). On Darwin this also raises a fatal
+    /// EXC_GUARD exception that ends the process; Ycode only reports it to
+    /// `guardViolation` (the kernel logs it) and returns EPERM, so a guest
+    /// that trips a guard keeps running. A closed `fd` passes (the caller
+    /// reports EBADF).
+    public func checkGuard(_ fd: Int32, _ flags: UInt32, flavor: UInt32) throws {
+        guard let g = descriptors[fd]?.guardState, g.flags & flags == flags else { return }
+        guardViolation?(fd, flavor, g.value)
+        throw DarwinErrnoError(DarwinErrnoCode.EPERM)
+    }
+
+    /// `guarded_open_np`: `open` with a guard. `flags` must include
+    /// O_CLOEXEC, `guardFlags` must be valid and `guard` nonzero (EINVAL).
+    /// The descriptor is close-on-exec. `mode` is used as given (the
+    /// caller applies the umask).
+    public func openGuarded(_ path: String, flags: Int32, mode: UInt16, guard value: UInt64,
+                            guardFlags: UInt32) throws -> Int32 {
+        guard flags & DarwinOpen.O_CLOEXEC != 0, DarwinGuard.isValid(guardFlags), value != 0 else {
+            throw DarwinErrnoError(DarwinErrnoCode.EINVAL)
+        }
+        let fd = try open(path, flags: flags, mode: mode)
+        descriptors[fd]?.guardState = DescriptorGuard(value: value, flags: guardFlags)
+        descriptors[fd]?.closeOnExec = true
+        return fd
+    }
+
+    /// Puts a guard on a new descriptor (`guarded_kqueue_np`): close-on-exec.
+    public func setGuard(_ fd: Int32, _ g: DescriptorGuard) throws {
+        guard DarwinGuard.isValid(g.flags), g.value != 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        _ = try entry(fd)
+        descriptors[fd]?.guardState = g
+        descriptors[fd]?.closeOnExec = true
+    }
+
+    /// `guarded_close_np`: closes a guarded descriptor whose guard value is
+    /// `value`. Unguarded: EINVAL; another value: EPERM (no exception).
+    public func guardedClose(_ fd: Int32, guard value: UInt64) throws {
+        guard let g = try entry(fd).guardState else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        guard g.value == value else { throw DarwinErrnoError(DarwinErrnoCode.EPERM) }
+        remove(fd)
+    }
+
+    /// Checks `guard value` for a guarded write (`guarded_write_np` & co.).
+    /// Unguarded: EINVAL; another value: EPERM.
+    public func checkGuardValue(_ fd: Int32, _ value: UInt64) throws {
+        guard let g = try entry(fd).guardState else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        guard g.value == value else { throw DarwinErrnoError(DarwinErrnoCode.EPERM) }
+    }
+
+    /// `change_fdguard_np` (xnu semantics). `old`/`new` are nil when the
+    /// guest passed NULL for that guard pointer (`oldFlags`/`newFlags` are
+    /// the flag arguments as given). `fdFlags` is the value at `fdflagsp`
+    /// (0 if NULL): FD_CLOEXEC (1) restores close-on-exec when a guard is
+    /// removed. Adding a guard makes the descriptor close-on-exec.
+    public func changeGuard(_ fd: Int32, old: UInt64?, oldFlags: UInt32, new: UInt64?, newFlags: UInt32,
+                            fdFlags: Int32) throws {
+        let d = try entry(fd)
+        if let g = d.guardState {
+            guard old != nil, oldFlags != 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+            guard old != 0 else { throw DarwinErrnoError(DarwinErrnoCode.EPERM) }
+            if let new {
+                guard new != 0, DarwinGuard.isValid(newFlags) else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+                guard old == g.value, oldFlags == g.flags else { throw DarwinErrnoError(DarwinErrnoCode.EPERM) }
+                descriptors[fd]?.guardState = DescriptorGuard(value: new, flags: newFlags)
+            } else {
+                guard newFlags == 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+                guard old == g.value, oldFlags == g.flags else { throw DarwinErrnoError(DarwinErrnoCode.EPERM) }
+                descriptors[fd]?.guardState = nil
+                descriptors[fd]?.closeOnExec = fdFlags & 1 != 0
+            }
+        } else {
+            guard old == nil, oldFlags == 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+            guard let new else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+            guard new != 0, DarwinGuard.isValid(newFlags) else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+            descriptors[fd]?.guardState = DescriptorGuard(value: new, flags: newFlags)
+            descriptors[fd]?.closeOnExec = true
+        }
     }
 }

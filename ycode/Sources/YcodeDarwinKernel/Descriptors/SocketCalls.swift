@@ -319,6 +319,7 @@ extension DarwinKernel {
         for i in 0..<count {
             let fd = c.readLE(Int32.self, at: 12 + 4 * i)
             let file = try fileSystem.openFile(for: fd)
+            try fileSystem.checkGuard(fd, DarwinGuard.socketIPC, flavor: DarwinGuard.exceptionSocketIPC)
             if file.object?.isConfined ?? false { throw fail(Code.EINVAL) }
             files.append(file)
         }
