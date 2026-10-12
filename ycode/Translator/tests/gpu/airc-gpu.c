@@ -593,7 +593,9 @@ static int compileOnly(char **argv) {
     cbs.pAttachments = cba;
     VkFormat fmts[4] = {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM};
     VkPipelineRenderingCreateInfo rci = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO, NULL, 0, 4, fmts};
-    VkGraphicsPipelineCreateInfo gpi = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, &rci, 0, 2, st, &vis, &ias, NULL, &vps, &rs, &ms,
+    // AIRC_GPU_NOOPT=1: VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT.
+    VkPipelineCreateFlags flags = getenv("AIRC_GPU_NOOPT") ? VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT : 0;
+    VkGraphicsPipelineCreateInfo gpi = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, &rci, flags, 2, st, &vis, &ias, NULL, &vps, &rs, &ms,
         NULL, &cbs, NULL, layout, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 0};
     VkPipeline pipe;
     clock_gettime(CLOCK_MONOTONIC, &t0);

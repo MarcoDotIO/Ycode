@@ -10,7 +10,8 @@
 //   ycode-airc translate IN.metallib|IN.bc [-f NAME] [-o OUT.spv] [-r OUT.json] [-S OUT.spvasm]
 //              [--opt] [--link-vertex VS.metallib[:NAME]] [--link LIB.metallib]...
 //              [--constant INDEX=VALUE]... [--cache DIR]
-//   ycode-airc serve [--cache DIR] [--timeout SECONDS] [--no-isolate]
+//   ycode-airc serve [--cache DIR] [--timeout SECONDS] [--no-isolate] [--dump-dir DIR]
+//   ycode-airc replay DIR [--changed-only]
 //   ycode-airc corpus [--json REPORT.json] [--quiet] [--timeout SECONDS] [--opt] [--library LIB.metallib]... PATH...
 //
 // Exit status: 0 success, 1 translation error (a JSON error document is
@@ -26,6 +27,9 @@
 //              of these sizes: visible functions the function calls),
 //              "optimize": BOOL?, "assembly": BOOL?}; payload = the metallib
 //              (functionIR)
+//   --dump-dir DIR saves every translate request as NNNNNN.request.json
+//   (header), NNNNNN.payload (payload as received) and NNNNNN.result.json
+//   (status, error, key, stage, time); `replay DIR` runs them again in order.
 //   Each translation runs in a forked child (a crash or a timeout becomes
 //   an "internal" error reply; the server keeps running) unless
 //   --no-isolate.
@@ -51,6 +55,7 @@
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -137,8 +142,8 @@ struct Job {
 };
 
 static bool isBitcode(const std::string &d) {
-    return d.size() >= 4 && ((uint8_t)d[0] == 'B' && (uint8_t)d[1] == 'C' && (uint8_t)d[2] == 0xC0 && (uint8_t)d[3] == 0xDE ||
-                             (uint8_t)d[0] == 0xDE && (uint8_t)d[1] == 0xC0 && (uint8_t)d[2] == 0x17 && (uint8_t)d[3] == 0x0B);
+    return d.size() >= 4 && (((uint8_t)d[0] == 'B' && (uint8_t)d[1] == 'C' && (uint8_t)d[2] == 0xC0 && (uint8_t)d[3] == 0xDE) ||
+                             ((uint8_t)d[0] == 0xDE && (uint8_t)d[1] == 0xC0 && (uint8_t)d[2] == 0x17 && (uint8_t)d[3] == 0x0B));
 }
 
 static Job planRequest(Cache &cache, const std::string &metallib, const Request &rq) {
@@ -419,17 +424,79 @@ static bool sendFrame(const Json &header, const void *payload, size_t n) {
     return writeAll(1, &total, 4) && writeAll(1, &hl, 4) && writeAll(1, h.data(), h.size()) && (n == 0 || writeAll(1, payload, n));
 }
 
+// Fills a Request from a serve header; `payload` keeps the main metallib.
+static bool parseRequest(const Json &req, std::string &payload, Request &rq) {
+    rq.function = req.getString("function");
+    rq.linkVertex = req.getString("link_vertex");
+    rq.optimize = req.getBool("optimize");
+    rq.assembly = req.getBool("assembly");
+    if (const Json *ls = req.get("linked")) {
+        // Payload = the main metallib, then the linked metallibs of these sizes.
+        size_t tail = 0;
+        for (auto &n : ls->arr) tail += (size_t)n.num;
+        if (tail > payload.size()) return false;
+        size_t at = payload.size() - tail;
+        for (auto &n : ls->arr) {
+            rq.linked.push_back(payload.substr(at, (size_t)n.num));
+            at += (size_t)n.num;
+        }
+        payload.resize(payload.size() - tail);
+    }
+    if (const Json *c = req.get("constants"))
+        for (auto &p : c->obj) rq.constants[(unsigned)std::stoul(p.first)] = p.second.kind == Json::Bool ? (p.second.b ? 1 : 0) : p.second.num;
+    if (const Json *v = req.get("varyings")) {
+        rq.haveVaryings = true;
+        for (auto &p : v->obj) rq.varyings[p.first] = (unsigned)p.second.num;
+    }
+    return true;
+}
+
+// serve --dump-dir: every translate request (header and payload, as
+// received) and its outcome, for offline replay (`ycode-airc replay`).
+static void dumpExchange(const std::string &dir, unsigned seq, const Json &req, const std::string &payload, const Json &rsp, double ms) {
+    char base[32];
+    snprintf(base, sizeof base, "/%06u", seq);
+    std::string b = dir + base;
+    std::string h = req.dump(1) + "\n";
+    writeFile(b + ".request.json", h.data(), h.size());
+    writeFile(b + ".payload", payload.data(), payload.size());
+    Json out = Json::object();
+    for (const char *k : {"status", "cached", "key", "error"})
+        if (const Json *v = rsp.get(k)) out.set(k, *v);
+    if (const Json *r = rsp.get("reflection")) {
+        out.set("stage", r->getString("stage"));
+        out.set("spirv_words", r->getNumber("spirv_words"));
+        out.set("hash", r->getString("hash"));
+    }
+    out.set("ms", (double)(long long)(ms * 10) / 10);
+    std::string o = out.dump(1) + "\n";
+    writeFile(b + ".result.json", o.data(), o.size());
+}
+
 static int cmdServe(int argc, char **argv) {
-    std::string cacheDir;
+    std::string cacheDir, dumpDir;
     bool isolate = true;
     int timeout = 60;
     for (int i = 0; i < argc; i++) {
         if (!strcmp(argv[i], "--cache") && i + 1 < argc) cacheDir = argv[++i];
         else if (!strcmp(argv[i], "--no-isolate")) isolate = false;
         else if (!strcmp(argv[i], "--timeout") && i + 1 < argc) timeout = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--dump-dir") && i + 1 < argc) dumpDir = argv[++i];
     }
     Cache cache(cacheDir);
     signal(SIGPIPE, SIG_IGN);
+    unsigned seq = 0;
+    if (!dumpDir.empty()) {
+        mkdir(dumpDir.c_str(), 0755);
+        // Continue numbering after earlier sessions in the same directory.
+        if (DIR *d = opendir(dumpDir.c_str())) {
+            while (dirent *e = readdir(d)) {
+                unsigned n = 0;
+                if (sscanf(e->d_name, "%u.request.json", &n) == 1 && n >= seq) seq = n + 1;
+            }
+            closedir(d);
+        }
+    }
     for (;;) {
         uint32_t total = 0, hl = 0;
         if (!readAll(0, &total, 4)) return 0;  // EOF: the host closed the pipe
@@ -472,34 +539,16 @@ static int cmdServe(int argc, char **argv) {
             sendFrame(rsp, nullptr, 0);
             return 0;
         }
+        std::string fullPayload = payload;
         Request rq;
-        rq.function = req.getString("function");
-        rq.linkVertex = req.getString("link_vertex");
-        rq.optimize = req.getBool("optimize");
-        rq.assembly = req.getBool("assembly");
-        if (const Json *ls = req.get("linked")) {
-            // Payload = the main metallib, then the linked metallibs of these sizes.
-            size_t tail = 0;
-            for (auto &n : ls->arr) tail += (size_t)n.num;
-            if (tail > payload.size()) {
-                rsp.set("status", "error");
-                rsp.set("error", errorJson(Error("bad-request", "linked sizes exceed the payload"), ""));
-                if (!sendFrame(rsp, nullptr, 0)) return 2;
-                continue;
-            }
-            size_t at = payload.size() - tail;
-            for (auto &n : ls->arr) {
-                rq.linked.push_back(payload.substr(at, (size_t)n.num));
-                at += (size_t)n.num;
-            }
-            payload.resize(payload.size() - tail);
+        if (!parseRequest(req, payload, rq)) {
+            rsp.set("status", "error");
+            rsp.set("error", errorJson(Error("bad-request", "linked sizes exceed the payload"), ""));
+            if (!dumpDir.empty()) dumpExchange(dumpDir, seq++, req, fullPayload, rsp, 0);
+            if (!sendFrame(rsp, nullptr, 0)) return 2;
+            continue;
         }
-        if (const Json *c = req.get("constants"))
-            for (auto &p : c->obj) rq.constants[(unsigned)std::stoul(p.first)] = p.second.kind == Json::Bool ? (p.second.b ? 1 : 0) : p.second.num;
-        if (const Json *v = req.get("varyings")) {
-            rq.haveVaryings = true;
-            for (auto &p : v->obj) rq.varyings[p.first] = (unsigned)p.second.num;
-        }
+        auto t0 = std::chrono::steady_clock::now();
         try {
             if (op != "translate") fail("bad-request", "unknown op " + op);
             Job job = planRequest(cache, payload, rq);
@@ -511,10 +560,14 @@ static int cmdServe(int argc, char **argv) {
             rsp.set("key", r.key);
             rsp.set("reflection", r.reflection);
             if (rq.assembly) rsp.set("assembly", r.assembly);
+            if (!dumpDir.empty())
+                dumpExchange(dumpDir, seq++, req, fullPayload, rsp, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
             if (!sendFrame(rsp, r.spirv.data(), r.spirv.size() * 4)) return 2;
         } catch (const Error &e) {
             rsp.set("status", "error");
             rsp.set("error", errorJson(e, rq.function));
+            if (!dumpDir.empty())
+                dumpExchange(dumpDir, seq++, req, fullPayload, rsp, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
             if (!sendFrame(rsp, nullptr, 0)) return 2;
         }
     }
@@ -730,12 +783,76 @@ static int cmdDecls(int argc, char **argv) {
     return 0;
 }
 
+// replay DIR: runs the requests a `serve --dump-dir` saved, in order, in one
+// cache (so link_vertex resolves as it did), and compares the outcomes.
+static int cmdReplay(int argc, char **argv) {
+    if (argc < 1) { fprintf(stderr, "usage: ycode-airc replay DIR [--changed-only]\n"); return 2; }
+    std::string dir = argv[0];
+    bool changedOnly = argc > 1 && !strcmp(argv[1], "--changed-only");
+    std::vector<unsigned> seqs;
+    if (DIR *d = opendir(dir.c_str())) {
+        while (dirent *e = readdir(d)) {
+            unsigned n = 0;
+            char tail[64] = {0};
+            if (sscanf(e->d_name, "%u%63s", &n, tail) == 2 && !strcmp(tail, ".request.json")) seqs.push_back(n);
+        }
+        closedir(d);
+    }
+    std::sort(seqs.begin(), seqs.end());
+    Cache cache("");
+    std::map<std::string, int> counts;
+    for (unsigned n : seqs) {
+        char base[32];
+        snprintf(base, sizeof base, "/%06u", n);
+        std::string h, payload, before;
+        if (!readFile(dir + base + ".request.json", h) || !readFile(dir + base + ".payload", payload)) continue;
+        readFile(dir + base + ".result.json", before);
+        std::string was = "?";
+        try {
+            Json b = Json::parse(before);
+            was = b.getString("status");
+            if (const Json *e = b.get("error")) was += " " + e->getString("code") + ": " + e->getString("detail");
+        } catch (...) {}
+        std::string now;
+        Json req;
+        try {
+            req = Json::parse(h);
+            Request rq;
+            if (!parseRequest(req, payload, rq)) fail("bad-request", "linked sizes exceed the payload");
+            Job job = planRequest(cache, payload, rq);
+            Reply r;
+            if (!lookup(cache, job, rq, r)) r = finish(cache, job, translateIsolated(job, 60));
+            now = "ok";
+        } catch (const Error &e) {
+            now = "error " + e.code + ": " + e.detail;
+        } catch (const std::exception &e) {
+            now = std::string("error bad-request: ") + e.what();
+        }
+        bool changed = now.substr(0, 2) != was.substr(0, 2) || (now != "ok" && now != was);
+        counts[now == "ok" ? "ok" : "error"]++;
+        if (changed) counts["changed"]++;
+        if (!changedOnly || changed)
+            printf("%06u %-40s was: %s\n       %-40s now: %s\n", n, req.getString("function").c_str(), was.substr(0, 160).c_str(), "", now.substr(0, 160).c_str());
+    }
+    printf("replayed %zu requests: %d ok, %d errors, %d changed\n", seqs.size(), counts["ok"], counts["error"], counts["changed"]);
+    return 0;
+}
+
 int main(int argc, char **argv) {
+    if (const char *o = getenv("AIRC_LLVM_OPTIONS")) {
+        // Experiments: LLVM options such as pass thresholds.
+        std::vector<std::string> words;
+        std::istringstream ss(o);
+        for (std::string w; ss >> w;) words.push_back(w);
+        std::vector<const char *> av{"ycode-airc"};
+        for (auto &w : words) av.push_back(w.c_str());
+        llvm::cl::ParseCommandLineOptions((int)av.size(), av.data());
+    }
     if (argc < 2) {
         fprintf(stderr,
                 "usage: ycode-airc version | list IN.metallib | translate IN.metallib [-f NAME] [-o OUT.spv] [-r OUT.json] "
                 "[-S OUT.spvasm] [--opt] [--link-vertex VS.metallib[:NAME]] [--constant INDEX=VALUE]... [--cache DIR] | "
-                "serve [--cache DIR] [--timeout S] [--no-isolate] | "
+                "serve [--cache DIR] [--timeout S] [--no-isolate] [--dump-dir DIR] | replay DIR [--changed-only] | "
                 "corpus [--json REPORT] [--quiet] [--timeout S] [--opt] [--library LIB.metallib]... PATH...\n");
         return 2;
     }
@@ -743,6 +860,7 @@ int main(int argc, char **argv) {
     if (cmd == "version") { printf("%s\n", kTranslatorVersion); return 0; }
     if (cmd == "list") return cmdList(argc - 2, argv + 2);
     if (cmd == "decls") return cmdDecls(argc - 2, argv + 2);
+    if (cmd == "replay") return cmdReplay(argc - 2, argv + 2);
     if (cmd == "translate") return cmdTranslate(argc - 2, argv + 2);
     if (cmd == "serve") return cmdServe(argc - 2, argv + 2);
     if (cmd == "corpus") return cmdCorpus(argc - 2, argv + 2);

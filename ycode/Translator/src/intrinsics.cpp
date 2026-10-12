@@ -1077,6 +1077,17 @@ static std::string fmtHex(uint64_t v) {
 void Translator::call(CallInst *C) {
     Function *Fn = C->getCalledFunction();
     if (!Fn) fail("unsupported-feature", "indirect call (visible function or function pointer)");
+    auto helper = fnIds.find(Fn);
+    if (helper != fnIds.end()) {
+        std::vector<std::string> a;
+        for (unsigned i = 0; i < C->arg_size(); i++) a.push_back(val(C->getArgOperand(i)));
+        std::string r = E.fresh();
+        E.body << r << " = OpFunctionCall " << type(C->getType()) << " " << helper->second;
+        for (auto &x : a) E.body << " " << x;
+        E.body << "\n";
+        if (!C->getType()->isVoidTy()) bind(C, r);
+        return;
+    }
     StringRef n = Fn->getName();
     if (n.starts_with("llvm.lifetime") || n.starts_with("llvm.assume") || n.starts_with("llvm.experimental.noalias.scope.decl") ||
         n.starts_with("llvm.dbg") || n.starts_with("llvm.invariant") || n.starts_with("llvm.var.annotation") ||
@@ -1140,6 +1151,15 @@ void Translator::call(CallInst *C) {
         return;
     }
     if (n == "air.discard_fragment") {
+        if (EI.stage == Stage::Kernel) {
+            // Metal accepts a kernel whose code calls discard_fragment only
+            // when specialization removes the call (observed on the Mac: the
+            // function with the call still reachable fails with "uses illegal
+            // function"). Here the call sits on a path guarded by a function
+            // constant, so it is never executed: no operation.
+            uses.insert("discard_in_kernel_ignored");
+            return;
+        }
         if (EI.stage != Stage::Fragment) fail("unsupported-feature", "discard_fragment outside a fragment function");
         E.caps.insert("DemoteToHelperInvocation");
         E.stmt("OpDemoteToHelperInvocation");

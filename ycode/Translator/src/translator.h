@@ -33,6 +33,7 @@ struct TranslateOptions {
     // (by name); used to link functions of the same library.
     std::function<bool(const std::string &name, std::string &module)> resolveVisible;
     bool wantAssembly = false;      // keep the SPIR-V text
+
     // Function constant values by index (specializes the function the way
     // MTLFunctionConstantValues does; constants not given stay
     // specialization constants).

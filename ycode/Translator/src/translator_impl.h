@@ -40,7 +40,13 @@ struct Translator {
     const llvm::DataLayout &DL;
     const TranslateOptions &opts;
     Emitter E;
-    StructurePlan plan;
+    StructurePlan plan;                         // of the function being emitted
+    // Helpers kept out of line (SPIR-V functions marked DontInline).
+    std::vector<llvm::Function *> helpers;
+    std::map<llvm::Function *, StructurePlan> helperPlans;
+    std::map<const llvm::Function *, std::string> fnIds;
+    llvm::Function *cur = nullptr;              // the function being emitted
+
 
     std::map<const llvm::Value *, std::string> vals;
     std::map<const llvm::BasicBlock *, std::string> labels;
@@ -122,6 +128,10 @@ struct Translator {
     void setupInterface();
     void prologue();
     void layoutMemory();
+    std::vector<llvm::Function *> allFunctions();
+    void loadTableAddr();
+    void globalAddresses(llvm::Function &G);
+    void emitBlocks(llvm::Function &G);
     uint64_t wgStaticBytesAligned() const;
     void instruction(llvm::Instruction &I);
     void terminator(llvm::BasicBlock &B);

@@ -45,6 +45,7 @@ constexpr unsigned kBindingSamplers = 2;         // VK_DESCRIPTOR_TYPE_SAMPLER, 
 // rendering local read; not update-after-bind).
 constexpr unsigned kInputAttachmentSet = 1;
 
+
 // Specialization constants.
 constexpr unsigned kSpecWorkgroupX = 0, kSpecWorkgroupY = 1, kSpecWorkgroupZ = 2;
 constexpr unsigned kSpecThreadgroupBytes = 3;    // total threadgroup memory in bytes (multiple of 16)

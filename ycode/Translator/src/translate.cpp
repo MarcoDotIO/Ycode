@@ -14,6 +14,7 @@
 #include "llvm/Linker/Linker.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -21,6 +22,7 @@
 #include "spirv-tools/optimizer.hpp"
 
 #include <chrono>
+#include <functional>
 #include <cmath>
 #include <cstring>
 
@@ -224,13 +226,44 @@ std::string Translator::workgroupElement(const std::string &addr, unsigned width
 
 std::string Translator::privateWord(const std::string &wordIndex) {
     if (arenaVar.empty()) {
-        // Private memory without allocas (pointers that never point
-        // anywhere valid, e.g. in test functions): a minimal arena.
+        // One per-invocation arena shared by all functions (pointers to
+        // private memory are byte offsets into it).
         std::string arr = E.global("arena", "OpTypeArray " + E.tInt(32) + " " + E.u32(std::max<uint64_t>(4, (privateBytes + 3) / 4)));
+        std::string pt = E.tPtr("Private", arr);
         arenaVar = E.fresh();
-        E.fnvars << arenaVar << " = OpVariable " << E.tPtr("Function", arr) << " Function\n";
+        E.globals << arenaVar << " = OpVariable " << pt << " Private\n";
+        E.interface.push_back(arenaVar);
     }
-    return E.op("OpAccessChain", E.tPtr("Function", E.tInt(32)), {arenaVar, toU32(wordIndex)});
+    return E.op("OpAccessChain", E.tPtr("Private", E.tInt(32)), {arenaVar, toU32(wordIndex)});
+}
+
+std::vector<Function *> Translator::allFunctions() {
+    std::vector<Function *> v{&F};
+    v.insert(v.end(), helpers.begin(), helpers.end());
+    return v;
+}
+
+void Translator::loadTableAddr() {
+    unsigned member = EI.stage == Stage::Fragment ? 1 : 0;
+    std::string p = E.op("OpAccessChain", E.tPtr("PushConstant", E.tInt(64)), {pcVar, E.u32(member)});
+    tableAddr = E.op("OpLoad", E.tInt(64), {p});
+}
+
+void Translator::globalAddresses(Function &G) {
+    std::set<GlobalVariable *> used;
+    for (BasicBlock &B : G)
+        for (Instruction &I : B)
+            for (Value *Op : I.operands())
+                if (auto *GV = dyn_cast<GlobalVariable>(Op)) used.insert(GV);
+    for (GlobalVariable *GV : used) {
+        if (wgStaticOffset.count(GV)) globalAddr[GV] = E.u64(wgStaticOffset[GV]);
+        else if (constDataOffset.count(GV)) globalAddr[GV] = addConst(tableEntry(abi::kTableConstantData), (int64_t)constDataOffset[GV]);
+        else if (constexprSamplerIndex.count(GV)) {
+            unsigned i = constexprSamplerIndex[GV];
+            if (i >= abi::kMaxConstexprSamplers) fail("unsupported-feature", "more than 16 constexpr samplers");
+            globalAddr[GV] = tableEntry(abi::kTableConstexprSampler0 + i);
+        }
+    }
 }
 
 static unsigned bitsOf(Type *T) { return T->isPointerTy() ? 64 : T->getPrimitiveSizeInBits(); }
@@ -435,8 +468,11 @@ static void serialize(const DataLayout &DL, Constant *C, std::string &out, uint6
 }
 
 void Translator::layoutMemory() {
-    // Private memory: every alloca gets a fixed offset in one word arena.
-    for (BasicBlock &B : F)
+    // Private memory: every alloca of every function gets a fixed offset in
+    // one word arena (Metal functions do not recurse, so frames of
+    // different functions never need to coexist twice).
+    for (Function *G : allFunctions())
+    for (BasicBlock &B : *G)
         for (Instruction &I : B)
             if (auto *A = dyn_cast<AllocaInst>(&I)) {
                 auto *N = dyn_cast<ConstantInt>(A->getArraySize());
@@ -446,9 +482,10 @@ void Translator::layoutMemory() {
                 allocaOffset[A] = off;
                 privateBytes = off + DL.getTypeAllocSize(A->getAllocatedType()) * N->getZExtValue();
             }
-    // Globals referenced by the function.
+    // Globals referenced by the functions.
     std::set<GlobalVariable *> used;
-    for (BasicBlock &B : F)
+    for (Function *G : allFunctions())
+    for (BasicBlock &B : *G)
         for (Instruction &I : B)
             for (Value *Op : I.operands())
                 if (auto *G = dyn_cast<GlobalVariable>(Op)) used.insert(G);
@@ -713,11 +750,7 @@ void Translator::setupInterface() {
 void Translator::prologue() {
     std::string u32 = E.tInt(32), u64 = E.tInt(64), v3 = E.tVec(u32, 3);
     // This stage's argument table address.
-    {
-        unsigned member = EI.stage == Stage::Fragment ? 1 : 0;
-        std::string p = E.op("OpAccessChain", E.tPtr("PushConstant", u64), {pcVar, E.u32(member)});
-        tableAddr = E.op("OpLoad", u64, {p});
-    }
+    loadTableAddr();
     // Threadgroup memory size and slots (kernels).
     std::string wgBase;
     for (auto &a : EI.args)
@@ -1060,25 +1093,7 @@ void Translator::prologue() {
         }
     }
     // Global addresses.
-    std::set<GlobalVariable *> used;
-    for (BasicBlock &B : F)
-        for (Instruction &I : B)
-            for (Value *Op : I.operands())
-                if (auto *G = dyn_cast<GlobalVariable>(Op)) used.insert(G);
-    for (GlobalVariable *G : used) {
-        if (wgStaticOffset.count(G)) globalAddr[G] = E.u64(wgStaticOffset[G]);
-        else if (constDataOffset.count(G)) globalAddr[G] = addConst(tableEntry(abi::kTableConstantData), (int64_t)constDataOffset[G]);
-        else if (constexprSamplerIndex.count(G)) {
-            unsigned i = constexprSamplerIndex[G];
-            if (i >= abi::kMaxConstexprSamplers) fail("unsupported-feature", "more than 16 constexpr samplers");
-            globalAddr[G] = tableEntry(abi::kTableConstexprSampler0 + i);
-        }
-    }
-    if (privateBytes) {
-        std::string arr = E.global("arena", "OpTypeArray " + u32 + " " + E.u32((privateBytes + 3) / 4));
-        arenaVar = E.fresh();
-        E.fnvars << arenaVar << " = OpVariable " << E.tPtr("Function", arr) << " Function\n";
-    }
+    globalAddresses(F);
 }
 
 // ---------------------------------------------------------------------------
@@ -1356,6 +1371,13 @@ void Translator::instruction(Instruction &I) {
             }
         }
         unsigned as = P->getType()->getPointerAddressSpace();
+        if ((as == kDevice || as == kConstant) && isa<ConstantPointerNull>(getUnderlyingObject(P, 32))) {
+            // A load through a null buffer pointer has no defined value
+            // (functions specialized with a constant that disables a
+            // buffer keep such loads on dead paths).
+            bind(&I, E.undef(type(L->getType())));
+            return;
+        }
         bind(&I, load(val(P), as, L->getType(), L->getAlign().value()));
         return;
     }
@@ -1453,6 +1475,11 @@ void Translator::terminator(BasicBlock &B) {
         return;
     }
     if (auto *R = dyn_cast<ReturnInst>(T)) {
+        if (cur && cur != &F) {
+            if (Value *V = R->getReturnValue()) E.stmt("OpReturnValue " + val(V));
+            else E.stmt("OpReturn");
+            return;
+        }
         if (Value *V = R->getReturnValue()) {
             std::string v = val(V);
             for (unsigned i = 0; i < outputs.size(); i++) {
@@ -1493,22 +1520,18 @@ void Translator::terminator(BasicBlock &B) {
 // ---------------------------------------------------------------------------
 // Module assembly, validation, reflection
 
-std::string Translator::run() {
-    layoutMemory();
-    setupInterface();
-    std::string fnT = E.tFunc(E.tVoid());
-    std::string mainId = E.fresh();
-    std::ostringstream head;
-    head << mainId << " = OpFunction " << E.tVoid() << " None " << fnT << "\n";
+void Translator::emitBlocks(Function &G) {
     bool first = true;
-    std::string entryLabel;
-    std::ostringstream fn;
     for (BasicBlock *B : plan.order) {
         E.body << label(B) << " = OpLabel\n";
         if (first) {
-            entryLabel = label(B);
-            E.body << "@FNVARS@\n";
-            prologue();
+            if (&G == &F) {
+                E.body << "@FNVARS@\n";
+                prologue();
+            } else {
+                loadTableAddr();
+                globalAddresses(G);
+            }
             first = false;
         }
         for (Instruction &I : *B) {
@@ -1518,6 +1541,46 @@ std::string Translator::run() {
         terminator(*B);
     }
     E.body << "OpFunctionEnd\n";
+}
+
+std::string Translator::run() {
+    layoutMemory();
+    setupInterface();
+    std::string fnT = E.tFunc(E.tVoid());
+    std::string mainId = E.fresh();
+    for (Function *H : helpers) fnIds[H] = E.fresh();
+    std::ostringstream head;
+    head << mainId << " = OpFunction " << E.tVoid() << " None " << fnT << "\n";
+    cur = &F;
+    emitBlocks(F);
+    // Helpers: fresh per-function state.
+    StructurePlan entryPlanSaved = plan;
+    for (Function *H : helpers) {
+        vals.clear();
+        labels.clear();
+        tableLoads.clear();
+        globalAddr.clear();
+        cur = H;
+        plan = helperPlans[H];
+        std::string rt = type(H->getReturnType());
+        std::string key = "fn" + rt, decl = "OpTypeFunction " + rt;
+        std::vector<std::string> pts;
+        for (Argument &A : H->args()) {
+            pts.push_back(type(A.getType()));
+            key += "," + pts.back();
+            decl += " " + pts.back();
+        }
+        std::string ft = E.global(key, decl);
+        E.body << fnIds[H] << " = OpFunction " << rt << " DontInline " << ft << "\n";
+        for (Argument &A : H->args()) {
+            std::string p = E.fresh();
+            E.body << p << " = OpFunctionParameter " << type(A.getType()) << "\n";
+            vals[&A] = p;
+        }
+        emitBlocks(*H);
+    }
+    plan = entryPlanSaved;
+    cur = &F;
     std::string bodyText = E.body.str();
     size_t at = bodyText.find("@FNVARS@\n");
     bodyText.replace(at, 9, E.fnvars.str());
@@ -2014,12 +2077,63 @@ TranslateResult translate(const std::string &module, const std::string &name, co
         }
     };
     stats("before");
+    if (getenv("AIRC_STATS_CALLS")) {
+        // Call graph of defined helpers reachable from F: size and call sites (counts only).
+        std::map<Function *, size_t> sites;
+        std::set<Function *> seen;
+        std::vector<Function *> work{F};
+        while (!work.empty()) {
+            Function *G = work.back();
+            work.pop_back();
+            if (!seen.insert(G).second) continue;
+            for (BasicBlock &B : *G)
+                for (Instruction &I : B)
+                    if (auto *CI = dyn_cast<CallInst>(&I))
+                        if (Function *H = CI->getCalledFunction())
+                            if (!H->isDeclaration()) { sites[H]++; work.push_back(H); }
+        }
+        std::vector<std::tuple<size_t, size_t, size_t>> v;
+        for (auto &p : sites) {
+            size_t n = 0;
+            for (BasicBlock &B : *p.first) n += B.size();
+            v.push_back({(p.second - 1) * n, n, p.second});
+        }
+        std::sort(v.rbegin(), v.rend());
+        fprintf(stderr, "airc-calls: %zu helpers\n", v.size());
+        for (size_t i = 0; i < v.size() && i < 15; i++)
+            fprintf(stderr, "    size %zu sites %zu\n", std::get<1>(v[i]), std::get<2>(v[i]));
+    }
     uint64_t ibStride = imageblockStride(EI);
-    bool guarded = prepareFunction(M, *F, wantGuard, [&](Function &G) { expandImageblockSlices(G, ibStride); });
+    std::vector<Function *> helpers;
+    bool guarded = prepareFunction(M, *F, wantGuard, [&](Function &G) { expandImageblockSlices(G, ibStride); }, &helpers);
     stats("prepared");
+    if (EI.stage == Stage::Kernel) {
+        // A kernel that still calls discard_fragment with no function
+        // constant left to remove the call is what Metal refuses.
+        bool discard = false, constants = false;
+        std::set<const GlobalVariable *> fcGlobals;
+        for (auto &fc : functionConstants(M)) {
+            if (fc.value) fcGlobals.insert(fc.value);
+            if (fc.init) fcGlobals.insert(fc.init);
+        }
+        std::vector<Function *> fs{F};
+        fs.insert(fs.end(), helpers.begin(), helpers.end());
+        for (Function *G : fs)
+            for (BasicBlock &B : *G)
+                for (Instruction &I : B) {
+                    if (auto *C = dyn_cast<CallInst>(&I))
+                        if (Function *H = C->getCalledFunction()) discard |= H->getName() == "air.discard_fragment";
+                    if (auto *L = dyn_cast<LoadInst>(&I))
+                        if (auto *GV = dyn_cast<GlobalVariable>(L->getPointerOperand()->stripPointerCasts()))
+                            constants |= fcGlobals.count(GV) && !(GV->hasInitializer() && !isa<UndefValue>(GV->getInitializer()));
+                }
+        if (discard && !constants) fail("unsupported-feature", "kernel function calls discard_fragment (Metal refuses this function)");
+    }
     Translator X(M, *F, EI, opts);
     X.gridGuard = guarded;
     X.plan = planStructure(*F);
+    X.helpers = helpers;
+    for (Function *H : helpers) X.helperPlans[H] = planStructure(*H);
     stats("planned");
     std::string text = X.run();
     stats("emitted");

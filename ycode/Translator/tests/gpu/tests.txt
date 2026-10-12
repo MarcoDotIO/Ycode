@@ -17,6 +17,7 @@ compute t_control        compute_basic t_control        512 1 1   64 1 1  8192  
 compute t_private        compute_basic t_private        1024 1 1  64 1 1  8192   exact
 compute t_vector         compute_basic t_vector         256 1 1   64 1 1  4096   approx
 compute t_struct         compute_basic t_struct         64 1 1    32 1 1  1024   exact
+compute t_calls          compute_basic t_calls          256 1 1   64 1 1  4096   approx
 compute call_visible     compute_basic call_visible     256 1 1   64 1 1  1024   exact
 compute t_tg_static      compute_group t_tg_static      256 1 1   64 1 1  2048   exact
 compute t_tg_dynamic     compute_group t_tg_dynamic     256 1 1   64 1 1  1024   approx

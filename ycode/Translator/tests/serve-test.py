@@ -97,5 +97,23 @@ check("disk cache", h.get("cached") is True and w[:4] == struct.pack("<I", 0x072
 p.stdin.close()
 p.wait(timeout=10)
 check("exit on EOF", p.returncode == 0, str(p.returncode))
+# --dump-dir saves requests and outcomes; replay runs them again.
+import os, shutil
+dump = cache + "/dump"
+shutil.rmtree(dump, ignore_errors=True)
+p = subprocess.Popen([airc, "serve", "--dump-dir", dump], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+h, _ = request({"id": 20, "op": "translate", "function": "draw_vs"}, render)
+vs_hash = h["reflection"]["hash"]
+request({"id": 21, "op": "translate", "function": "draw_fs_swapped", "link_vertex": vs_hash}, render)
+request({"id": 22, "op": "translate", "function": "tess_vs"}, kinds)
+request({"id": 23, "op": "translate", "function": "call_visible", "linked": [len(basic)]}, basic + basic)
+p.stdin.close()
+p.wait(timeout=10)
+files = sorted(os.listdir(dump))
+check("dump files", len([f for f in files if f.endswith(".request.json")]) == 4 and len(files) == 12, str(files))
+res = json.load(open(dump + "/000002.result.json"))
+check("dumped error", res["status"] == "error" and res["error"]["code"] == "unsupported-feature", str(res))
+out = subprocess.run([airc, "replay", dump], capture_output=True, text=True).stdout
+check("replay", "replayed 4 requests: 3 ok, 1 errors, 0 changed" in out, out)
 print("serve tests: %d failed" % failures)
 sys.exit(1 if failures else 0)

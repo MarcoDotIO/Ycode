@@ -165,3 +165,33 @@ kernel void call_visible(device float *out [[buffer(0)]], uint gid [[thread_posi
 {
     out[gid] = vis_twice(float(gid));
 }
+
+// K = 4: helpers that the Metal compiler keeps as calls (noinline), each
+// called more than once: ycode-airc keeps such helpers out of line. They
+// take a private array and a constant pointer, and return a struct.
+struct Pair2 { float a; uint b; };
+
+constant float kBias[4] = {0.5f, 1.0f, 1.5f, 2.0f};
+
+__attribute__((noinline)) Pair2 helper_poly(float x, thread float *coeffs, constant float *bias, uint n)
+{
+    Pair2 r = {0.0f, 0u};
+    for (uint i = 0; i < n; i++) {
+        r.a = r.a * x + coeffs[i];
+        if (r.a > 100.0f) { r.a *= 0.5f; r.b++; }
+    }
+    r.a += bias[n & 3u];
+    return r;
+}
+
+kernel void t_calls(device float *out [[buffer(0)]], uint gid [[thread_position_in_grid]])
+{
+    float c[6];
+    for (uint i = 0; i < 6; i++) c[i] = float(i + gid % 5u) * 0.75f;
+    Pair2 p = helper_poly(float(gid) * 0.01f, c, kBias, gid & 3u);
+    Pair2 q = helper_poly(1.0f + float(gid & 7u) * 0.1f, c, kBias, 6);
+    out[gid * 4] = p.a;
+    out[gid * 4 + 1] = q.a;
+    out[gid * 4 + 2] = float(q.b + p.b);
+    out[gid * 4 + 3] = c[gid % 6u];
+}

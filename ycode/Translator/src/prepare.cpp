@@ -283,14 +283,160 @@ static void runStaticInitializers(Module &M, Function &F) {
     }
 }
 
-bool prepareFunction(Module &M, Function &F, bool gridGuard, const std::function<void(Function &)> &afterInline) {
-    runStaticInitializers(M, F);
-    // 1. Inline every defined function into F.
+// Helpers kept out of line (emitted as SPIR-V functions marked DontInline):
+// the Thor's driver compile time grows faster than linearly with function
+// size and honours DontInline (measured: a helper called 13 times compiled
+// in 42 ms out of line, 213 ms inlined). A helper qualifies when it is
+// called from several places and is not small, and when nothing in it
+// depends on the entry function (static-initializer globals, interpolants,
+// by-value aggregates, recursion).
+static std::vector<Function *> chooseOutOfLine(Module &M, Function &F) {
+    std::vector<Function *> keep;
+    if (getenv("AIRC_INLINE_ALL")) return keep;
+    unsigned minSize = 40;
+    if (const char *v = getenv("AIRC_OUTLINE_MIN")) minSize = (unsigned)atoi(v);
+    std::map<Function *, unsigned> sites;
+    std::set<Function *> reach;
+    std::vector<Function *> work{&F};
+    while (!work.empty()) {
+        Function *G = work.back();
+        work.pop_back();
+        if (!reach.insert(G).second) continue;
+        for (BasicBlock &B : *G)
+            for (Instruction &I : B)
+                if (auto *C = dyn_cast<CallBase>(&I))
+                    if (Function *H = C->getCalledFunction())
+                        if (!H->isDeclaration()) {
+                            sites[H]++;
+                            work.push_back(H);
+                        }
+    }
+    // Globals the static initializer writes (function-constant values).
+    std::set<const GlobalVariable *> written;
+    for (Function &G : M)
+        if (!G.isDeclaration() && G.getSection() == "air.static_init")
+            for (BasicBlock &B : G)
+                for (Instruction &I : B)
+                    if (auto *S = dyn_cast<StoreInst>(&I))
+                        if (auto *GV = dyn_cast<GlobalVariable>(getUnderlyingObject(S->getPointerOperand()))) written.insert(GV);
+    std::map<Function *, bool> eligibleMemo;
+    std::function<bool(Function *, std::set<Function *> &)> eligible = [&](Function *H, std::set<Function *> &stack) -> bool {
+        auto m = eligibleMemo.find(H);
+        if (m != eligibleMemo.end()) return m->second;
+        if (!stack.insert(H).second) return false;  // recursion
+        bool ok = !H->isVarArg();
+        for (Argument &A : H->args())
+            if (A.hasByValAttr() || A.hasStructRetAttr() || A.hasInAllocaAttr()) ok = false;
+        for (BasicBlock &B : *H)
+            for (Instruction &I : B) {
+                for (Value *Op : I.operands()) {
+                    std::vector<Value *> todo{Op};
+                    while (!todo.empty() && ok) {
+                        Value *V = todo.back();
+                        todo.pop_back();
+                        if (auto *GV = dyn_cast<GlobalVariable>(V)) {
+                            if (written.count(GV) || (GV->getAddressSpace() == 2 && !GV->isConstant())) ok = false;
+                        } else if (auto *CE = dyn_cast<ConstantExpr>(V)) {
+                            for (Value *O : CE->operands()) todo.push_back(O);
+                        }
+                    }
+                }
+                if (auto *C = dyn_cast<CallBase>(&I)) {
+                    Function *G = C->getCalledFunction();
+                    if (!G) { ok = false; continue; }
+                    StringRef n = G->getName();
+                    if (n.starts_with("air.interpolate_") || n.starts_with("airc.") || n.starts_with("air.write_imageblock_slice")) ok = false;
+                    if (!G->isDeclaration() && !eligible(G, stack)) ok = false;
+                }
+            }
+        stack.erase(H);
+        eligibleMemo[H] = ok;
+        return ok;
+    };
+    for (auto &p : sites) {
+        Function *H = p.first;
+        if (H == &F) continue;
+        size_t n = 0;
+        for (BasicBlock &B : *H) n += B.size();
+        std::set<Function *> stack;
+        if (p.second >= 2 && n >= minSize && eligible(H, stack)) keep.push_back(H);
+    }
+    return keep;
+}
+
+// The per-function pipeline after inlining: scalar replacement, clean-up,
+// memory intrinsics, then the CFG normalizations for structured control
+// flow.
+static void cleanupFunction(Function &F, FunctionAnalysisManager &FAM) {
+    // Pure AIR intrinsics (math, conversions) may run speculatively, so that
+    // CFG simplification can turn small branches into selects (the Thor's
+    // driver compile time grows with the number of branches).
+    if (!getenv("AIRC_NO_SPECULATE"))
+        for (Function &D : *F.getParent())
+            if (D.isDeclaration() && D.getName().starts_with("air.") && D.doesNotAccessMemory() && !D.isConvergent() &&
+                !D.getName().starts_with("air.discard"))
+                D.addFnAttr(Attribute::Speculatable);
+    {
+        // Scalar replacement and light clean-up: constant propagation, dead
+        // code, CFG simplification (branches on specialized function
+        // constants disappear here). No InstCombine: it would introduce
+        // LLVM intrinsics outside the lowered set.
+        FunctionPassManager FPM;
+        FPM.addPass(SROAPass(SROAOptions::PreserveCFG));
+        if (!getenv("AIRC_NO_SIMPLIFY")) {
+            FPM.addPass(EarlyCSEPass());
+            FPM.addPass(SCCPPass());
+            FPM.addPass(ADCEPass());
+            FPM.addPass(SimplifyCFGPass());
+        }
+        FPM.run(F, FAM);
+    }
+    expandMemIntrinsics(F);
+    FAM.invalidate(F, PreservedAnalyses::none());
+}
+
+static size_t condBranches(Function &F) {
+    size_t n = 0;
+    for (BasicBlock &B : F)
+        if (auto *Br = dyn_cast<BranchInst>(B.getTerminator())) n += Br->isConditional();
+        else if (auto *SW = dyn_cast<SwitchInst>(B.getTerminator())) n += SW->getNumCases();
+    return n;
+}
+
+static void structureFunction(Function &F, FunctionAnalysisManager &FAM) {
+    FAM.invalidate(F, PreservedAnalyses::none());
+    {
+        FunctionPassManager FPM;
+        FPM.addPass(LowerSwitchPass());
+        FPM.addPass(UnifyFunctionExitNodesPass());
+        FPM.addPass(FixIrreduciblePass());
+        FPM.addPass(UnifyLoopExitsPass());
+        FPM.addPass(LoopSimplifyPass());
+        if (!getenv("AIRC_NO_STRUCTURIZE")) FPM.addPass(StructurizeCFGPass());
+        FPM.run(F, FAM);
+    }
+    removeUnreachableBlocks(F);
+    lowerConstantExprs(F);  // the passes may fold new ones
+    std::string err;
+    raw_string_ostream os(err);
+    if (verifyFunction(F, &os)) fail("internal", "LLVM verifier after preparation: " + os.str());
+}
+
+bool prepareFunction(Module &M, Function &F, bool gridGuard, const std::function<void(Function &)> &afterInline,
+                     std::vector<Function *> *helpers) {
+    // 1. Inline every defined function into F, except helpers kept out of line.
+    std::vector<Function *> keep = chooseOutOfLine(M, F);
+    std::set<Function *> keepSet(keep.begin(), keep.end());
     bool calls = false;
     for (Function &G : M) {
         if (&G == &F || G.isDeclaration()) continue;
-        G.removeFnAttr(Attribute::NoInline);
         G.removeFnAttr(Attribute::OptimizeNone);
+        if (keepSet.count(&G)) {
+            G.removeFnAttr(Attribute::AlwaysInline);
+            G.addFnAttr(Attribute::NoInline);
+            continue;
+        }
+        G.removeFnAttr(Attribute::NoInline);
         G.addFnAttr(Attribute::AlwaysInline);
         calls = true;
     }
@@ -309,58 +455,43 @@ bool prepareFunction(Module &M, Function &F, bool gridGuard, const std::function
         MPM.addPass(AlwaysInlinerPass(false));
         MPM.run(M, MAM);
     }
-    for (BasicBlock &B : F)
-        for (Instruction &I : B)
-            if (auto *C = dyn_cast<CallInst>(&I))
-                if (Function *G = C->getCalledFunction())
-                    if (!G->isDeclaration()) fail("unsupported-feature", "call that could not be inlined: " + G->getName().str());
-
-    // 2. Constant expressions, memory intrinsics, unreachable blocks.
-    lowerConstantExprs(F);
-    if (afterInline) afterInline(F);
-    removeUnreachableBlocks(F);
-    if (gridGuard) {
-        for (BasicBlock &B : F)
+    // Function-constant globals are now used by F itself (helpers that use
+    // them are never kept out of line).
+    runStaticInitializers(M, F);
+    std::vector<Function *> all{&F};
+    all.insert(all.end(), keep.begin(), keep.end());
+    for (Function *G : all)
+        for (BasicBlock &B : *G)
             for (Instruction &I : B)
                 if (auto *C = dyn_cast<CallInst>(&I))
-                    if (Function *G = C->getCalledFunction())
-                        if (G->getName().contains("barrier")) gridGuard = false;
+                    if (Function *H = C->getCalledFunction())
+                        if (!H->isDeclaration() && !keepSet.count(H))
+                            fail("unsupported-feature", "call that could not be inlined: " + H->getName().str());
+
+    // 2. Constant expressions, memory intrinsics, unreachable blocks.
+    for (Function *G : all) {
+        lowerConstantExprs(*G);
+        if (afterInline) afterInline(*G);
+        removeUnreachableBlocks(*G);
+    }
+    if (gridGuard) {
+        for (Function *G : all)
+            for (BasicBlock &B : *G)
+                for (Instruction &I : B)
+                    if (auto *C = dyn_cast<CallInst>(&I))
+                        if (Function *H = C->getCalledFunction())
+                            if (H->getName().contains("barrier")) gridGuard = false;
     }
     if (gridGuard) insertGridGuard(F);
 
-    // 3. Scalar replacement, then the CFG normalizations.
-    {
-        // Scalar replacement and light clean-up: constant propagation, dead
-        // code, CFG simplification (branches on specialized function
-        // constants disappear here). No InstCombine: it would introduce
-        // LLVM intrinsics outside the lowered set.
-        FunctionPassManager FPM;
-        FPM.addPass(SROAPass(SROAOptions::PreserveCFG));
-        if (!getenv("AIRC_NO_SIMPLIFY")) {
-            FPM.addPass(EarlyCSEPass());
-            FPM.addPass(SCCPPass());
-            FPM.addPass(ADCEPass());
-            FPM.addPass(SimplifyCFGPass());
-        }
-        FPM.run(F, FAM);
+    // 3. Per-function clean-up and structuring.
+    for (Function *G : all) cleanupFunction(*G, FAM);
+    for (Function *G : all) {
+        size_t before = G->size();
+        structureFunction(*G, FAM);
+        if (getenv("AIRC_STATS")) fprintf(stderr, "airc-structure: %zu -> %zu blocks, %zu conditional branches\n", before, G->size(), condBranches(*G));
     }
-    expandMemIntrinsics(F);
-    FAM.invalidate(F, PreservedAnalyses::none());
-    {
-        FunctionPassManager FPM;
-        FPM.addPass(LowerSwitchPass());
-        FPM.addPass(UnifyFunctionExitNodesPass());
-        FPM.addPass(FixIrreduciblePass());
-        FPM.addPass(UnifyLoopExitsPass());
-        FPM.addPass(LoopSimplifyPass());
-        FPM.addPass(StructurizeCFGPass());
-        FPM.run(F, FAM);
-    }
-    removeUnreachableBlocks(F);
-    lowerConstantExprs(F);  // the passes may fold new ones
-    std::string err;
-    raw_string_ostream os(err);
-    if (verifyFunction(F, &os)) fail("internal", "LLVM verifier after preparation: " + os.str());
+    if (helpers) *helpers = keep;
     return gridGuard;
 }
 
