@@ -45,6 +45,21 @@ public struct KVMError: Error, CustomStringConvertible, Equatable, Sendable {
 import Glibc
 import Synchronization
 
+/// Diagnostics (`YCODE_DEBUG_QUARANTINE=1`): host memory the VMM gives back
+/// (guest RAM, pool, file slots, vCPU run areas) stays reserved as
+/// inaccessible pages instead of being unmapped, so a stale access faults
+/// at once instead of landing in whatever the host maps there next.
+let quarantineHostMemory = getenv("YCODE_DEBUG_QUARANTINE").map { String(cString: $0) == "1" } ?? false
+
+/// Unmaps [address, address+size) (or quarantines it, see above).
+func releaseHostMemory(_ address: UnsafeMutableRawPointer, _ size: Int) {
+    if quarantineHostMemory {
+        _ = mmap(address, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0)
+    } else {
+        munmap(address, size)
+    }
+}
+
 @discardableResult
 func kvmCheck(_ result: Int32, _ operation: String) throws -> Int32 {
     if result < 0 { throw KVMError(operation, errno: -result, detail: String(cString: strerror(-result))) }
@@ -197,7 +212,7 @@ public final class VirtualMachine: @unchecked Sendable {
         detached.vcpus.forEach { $0.close() }
         _ = ckvm_close(vmFD)
         for slot in detached.slots where slot.kind != .shared && slot.kind != .readOnlyFiles {
-            _ = ckvm_free_anonymous(UnsafeMutableRawPointer(bitPattern: slot.hostAddress)!, Int(slot.size))
+            releaseHostMemory(UnsafeMutableRawPointer(bitPattern: slot.hostAddress)!, Int(slot.size))
         }
         _ = ckvm_close(kvmFD)
     }
@@ -470,7 +485,7 @@ public final class VCPU: @unchecked Sendable {
     func close() {
         guard !closed else { return }
         closed = true
-        munmap(runArea, runSize)
+        releaseHostMemory(runArea, runSize)
         _ = ckvm_close(fd)
     }
 

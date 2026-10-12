@@ -20,6 +20,17 @@ import YcodeDarwinABI
 import YcodeDarwinKernel
 import YcodeXPC
 
+/// A surface as the host sees it (no copy): its shared memory and layout.
+public struct IOSurfaceInfo: @unchecked Sendable {
+    public var id: UInt32
+    public var memory: SharedMemoryObject
+    public var width: Int, height: Int, bytesPerRow: Int, bytesPerElement: Int
+    public var pixelFormat: UInt32
+    public var allocationSize: Int
+    /// Per plane (planar surfaces): offset, width, height, bytes per row.
+    public var planes: [(offset: Int, width: Int, height: Int, bytesPerRow: Int)]
+}
+
 /// One surface's pixels, copied for the host (screenshots).
 public struct IOSurfaceSnapshot: Sendable {
     public var id: UInt32
@@ -492,6 +503,24 @@ public final class IOSurfaceHostService: @unchecked Sendable {
     func addTestConnection(_ name: UInt32) { lock.withLock { connections[name] = Connection(clientPort: 0) } }
 
     // MARK: Host access
+
+    /// The surface behind a Method-14 port (a host-task name), or nil.
+    public func surface(forPort port: UInt32) -> IOSurfaceInfo? {
+        lock.withLock { surfacePorts[port].flatMap { surfaces[$0] }.map(info) }
+    }
+
+    /// The surface with `id`, or nil.
+    public func surface(id: UInt32) -> IOSurfaceInfo? { lock.withLock { surfaces[id].map(info) } }
+
+    private func info(_ s: Surface) -> IOSurfaceInfo {
+        let planes = s.planes.map { p -> (offset: Int, width: Int, height: Int, bytesPerRow: Int) in
+            func n(_ key: String) -> Int { Int(truncatingIfNeeded: p[key]?.numberValue ?? 0) }
+            return (n("IOSurfacePlaneOffset"), n("IOSurfacePlaneWidth"), n("IOSurfacePlaneHeight"), n("IOSurfacePlaneBytesPerRow"))
+        }
+        return IOSurfaceInfo(id: s.id, memory: s.memory, width: Int(s.width), height: Int(s.height), bytesPerRow: Int(s.bytesPerRow),
+                             bytesPerElement: Int(s.bytesPerElement), pixelFormat: s.pixelFormat,
+                             allocationSize: Int(s.allocationSize), planes: planes)
+    }
 
     /// A copy of a surface's pixels and layout, or nil.
     public func snapshot(surfaceID: UInt32) -> IOSurfaceSnapshot? {

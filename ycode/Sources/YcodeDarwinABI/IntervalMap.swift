@@ -157,6 +157,14 @@ public final class IntervalMap<Element: IntervalMapElement> {
     /// Inserts `element`, which must not overlap any interval.
     public func insert(_ element: Element) {
         precondition(element.end > element.start, "IntervalMap: empty interval")
+        // Disjointness (O(log n)): an overlap would corrupt the subtree
+        // aggregates and trap later, far from the culprit.
+        if intersects(element.start, element.end) {
+            let f = floor(element.start), c = ceiling(element.start)
+            preconditionFailure("IntervalMap: insert of [0x\(String(element.start, radix: 16)), 0x\(String(element.end, radix: 16))) "
+                + "overlaps " + [f, c].compactMap { $0 }.map { "[0x\(String($0.start, radix: 16)), 0x\(String($0.end, radix: 16)))" }
+                    .joined(separator: " / "))
+        }
         let n = makeNode(element)
         let (l, r) = split(root, element.start)
         root = merge(merge(l, n), r)

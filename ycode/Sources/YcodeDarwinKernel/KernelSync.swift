@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import YcodeDarwinABI
 #if canImport(Glibc)
 import Glibc
@@ -52,7 +53,16 @@ public enum WaitResult: Equatable, Sendable {
 /// made at nesting depth 1.
 public final class KernelLock: @unchecked Sendable {
     private let mutex: UnsafeMutablePointer<pthread_mutex_t>
-    private var ownerThread: pthread_t?
+    /// The holding host thread (`threadToken`), 0 when free. Atomic: other
+    /// threads read it (`isHeldByCurrentThread`) without the mutex.
+    private let owner = Atomic<UInt>(0)
+    @inline(__always) private static var threadToken: UInt {
+        #if canImport(Darwin)
+        UInt(bitPattern: pthread_self())
+        #else
+        UInt(pthread_self())
+        #endif
+    }
     private var depth = 0
     /// Every thread blocked in a `WaitQueue` of this lock.
     private var waiters: [ObjectIdentifier: WaitQueue.Waiter] = [:]
@@ -112,8 +122,7 @@ public final class KernelLock: @unchecked Sendable {
 
     /// True when the calling host thread holds the lock.
     public var isHeldByCurrentThread: Bool {
-        guard let o = ownerThread else { return false }
-        return pthread_equal(o, pthread_self()) != 0
+        owner.load(ordering: .relaxed) == Self.threadToken
     }
 
     /// Runs `body` with the lock held, without a guest-thread context.
@@ -131,7 +140,7 @@ public final class KernelLock: @unchecked Sendable {
             return try body()
         }
         pthread_mutex_lock(mutex)
-        ownerThread = pthread_self()
+        owner.store(Self.threadToken, ordering: .relaxed)
         depth = 1
         currentContext = context
         noteAcquired()
@@ -139,7 +148,7 @@ public final class KernelLock: @unchecked Sendable {
             noteReleasing()
             currentContext = nil
             depth = 0
-            ownerThread = nil
+            owner.store(0, ordering: .relaxed)
             pthread_mutex_unlock(mutex)
         }
         return try body()
@@ -187,13 +196,13 @@ public final class KernelLock: @unchecked Sendable {
         precondition(isHeldByCurrentThread && depth == 1, "KernelLock.yield needs the lock at depth 1")
         let saved = currentContext
         noteReleasing()
-        ownerThread = nil
+        owner.store(0, ordering: .relaxed)
         depth = 0
         currentContext = nil
         pthread_mutex_unlock(mutex)
         sched_yield()
         pthread_mutex_lock(mutex)
-        ownerThread = pthread_self()
+        owner.store(Self.threadToken, ordering: .relaxed)
         depth = 1
         currentContext = saved
         noteAcquired()
@@ -208,13 +217,13 @@ public final class KernelLock: @unchecked Sendable {
         guard isHeldByCurrentThread, depth == 1 else { return try body() }
         let saved = currentContext
         noteReleasing()
-        ownerThread = nil
+        owner.store(0, ordering: .relaxed)
         depth = 0
         currentContext = nil
         pthread_mutex_unlock(mutex)
         defer {
             pthread_mutex_lock(mutex)
-            ownerThread = pthread_self()
+            owner.store(Self.threadToken, ordering: .relaxed)
             depth = 1
             currentContext = saved
             noteAcquired()
@@ -233,7 +242,7 @@ public final class KernelLock: @unchecked Sendable {
         precondition(depth == 1, "WaitQueue.wait inside a nested withLock")
         let saved = currentContext
         noteReleasing()
-        ownerThread = nil
+        owner.store(0, ordering: .relaxed)
         depth = 0
         currentContext = nil
         var rc: Int32 = 0
@@ -254,7 +263,7 @@ public final class KernelLock: @unchecked Sendable {
         } else {
             rc = pthread_cond_wait(cond, mutex)
         }
-        ownerThread = pthread_self()
+        owner.store(Self.threadToken, ordering: .relaxed)
         depth = 1
         currentContext = saved
         noteAcquired()

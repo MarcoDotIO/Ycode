@@ -667,7 +667,8 @@ public final class DarwinFileSystem {
             while p.hostPath.count > 1 && p.hostPath.hasSuffix("/") { p.hostPath.removeLast() }
             normalized.append(p)
         }
-        self.init(normalizedPrefixes: normalized, console: console, sockets: SocketNamespace())
+        self.init(normalizedPrefixes: normalized, console: console, sockets: SocketNamespace(),
+                  directoryPrefixes: DirectoryPrefixCache())
         for fd: Int32 in 0...2 {
             let flags = fd == 0 ? DarwinOpen.O_RDONLY : DarwinOpen.O_WRONLY
             descriptors[fd] = Descriptor(file: DarwinOpenFile(node: .console(stream: fd), statusFlags: flags),
@@ -675,10 +676,12 @@ public final class DarwinFileSystem {
         }
     }
 
-    private init(normalizedPrefixes: [Prefix], console: @escaping (Int32, [UInt8]) -> Void, sockets: SocketNamespace) {
+    private init(normalizedPrefixes: [Prefix], console: @escaping (Int32, [UInt8]) -> Void, sockets: SocketNamespace,
+                 directoryPrefixes: DirectoryPrefixCache) {
         self.prefixes = normalizedPrefixes
         self.console = console
         self.sockets = sockets
+        self.directoryPrefixes = directoryPrefixes
     }
 
     // MARK: Paths
@@ -862,15 +865,32 @@ public final class DarwinFileSystem {
     private func isSyntheticAncestor(_ path: String) -> Bool {
         if path == "/" { return true }
         let below = path + "/"
-        if directoryPrefixPaths == nil {
+        let directories = directoryPrefixes.paths {
             // Single-file prefixes (the host libraries) make no directories
             // (host-libraries.md §5: other /usr/lib/system paths stay ENOENT).
-            directoryPrefixPaths = prefixes.filter { (try? hostStatCall($0.hostPath, follow: true))?.isDirectory ?? false }
-                .map(\.guestPath)
+            prefixes.filter { (try? hostStatCall($0.hostPath, follow: true))?.isDirectory ?? false }.map(\.guestPath)
         }
-        return directoryPrefixPaths!.contains { $0.hasPrefix(below) } || guestSymlinks.keys.contains { $0.hasPrefix(below) }
+        return directories.contains { $0.hasPrefix(below) } || guestSymlinks.keys.contains { $0.hasPrefix(below) }
     }
-    private var directoryPrefixPaths: [String]?
+
+    /// The guest paths of the prefixes that are directories, computed on
+    /// first use. Path resolution runs without the kernel lock (stage 6
+    /// §5.1), so several threads may ask at once: the cache has its own lock
+    /// (two first lookups once assigned the array concurrently and corrupted
+    /// the host heap). Child copies share it (same prefixes).
+    private final class DirectoryPrefixCache: @unchecked Sendable {
+        private let lock = NSLockLike()
+        private var value: [String]?
+        func paths(_ compute: () -> [String]) -> [String] {
+            lock.withLock {
+                if let value { return value }
+                let computed = compute()
+                value = computed
+                return computed
+            }
+        }
+    }
+    private let directoryPrefixes: DirectoryPrefixCache
 
     /// The canonical guest path: absolute, normalized, with every symbolic
     /// link resolved inside the allowlist. The path must exist.
@@ -1316,7 +1336,8 @@ extension DarwinFileSystem {
     /// `newProcess` (posix_spawn, not an exec in place): confined
     /// descriptions (`F_SETCONFINED`) stay behind (xnu fdt_fork).
     public func makeChildCopy(newProcess: Bool = true) -> DarwinFileSystem {
-        let child = DarwinFileSystem(normalizedPrefixes: prefixes, console: console, sockets: sockets)
+        let child = DarwinFileSystem(normalizedPrefixes: prefixes, console: console, sockets: sockets,
+                                     directoryPrefixes: directoryPrefixes)
         child.cwdStorage = cwdStorage
         child.maxDescriptors = maxDescriptors
         child.servesDevices = servesDevices

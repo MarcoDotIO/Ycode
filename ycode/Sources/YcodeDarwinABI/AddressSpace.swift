@@ -843,9 +843,17 @@ public final class FakePhysicalBacking: PhysicalBacking {
         sharedSlots.first { gpa >= $0.gpa && gpa - $0.gpa < $0.object.size }
     }
 
+    /// Releases of pool ranges that were not entirely allocated (a double
+    /// release, or a release of memory never handed out): the real backing
+    /// ignores them, but each one is a bug in the caller.
+    public private(set) var releaseViolations: [String] = []
+
     /// Releases the allocated parts of [gpa, gpa+size); their pages read as zero.
     public func release(gpa: UInt64, size: UInt64) {
         guard size > 0 else { return }
+        if gpa >= anonymousPoolGPA, gpa - anonymousPoolGPA < anonymousPoolSize, !pool.isAllocated(gpa, size) {
+            releaseViolations.append("release of \(hex(gpa))+\(hex(size)), not entirely allocated")
+        }
         for r in pool.free(gpa, size) {
             var p = r.lowerBound
             while p < r.upperBound {

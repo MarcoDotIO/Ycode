@@ -127,7 +127,8 @@ let usage = """
                       [--runtime-paths] [--oneshot "/guest/program arg..."]... [--oneshot-delay S] [--runtime-job <label>]...
                       [--install-app <host .app>] [--launch <bundle id> [--app-arg A]... [--app-env K=V]...]
                       [--guest-tools <dir with ylaunch>] [--framebuffer-library <SimFramebuffer binary> | none]
-                      [--screenshot <path.png> [--screenshot-at S]...]
+                      [--screenshot <path.png> [--screenshot-at S]...] [--skip-first-boot-migration]
+                      [--metal-translator <ycode-airc>] (default: $YCODE_AIRC, next to ycode-simd, $PATH)
                       [--debug-plist-bool KEY=true|false]... [--debug-no-session-end]
                       [--trace] [--keep-going] [--timeout-ms N] [--host-libs <dir>] [--debug-bootstrap-discard]
                       [--exec-args <arg>...]
@@ -177,7 +178,14 @@ struct Options {
     /// PNG captures of the display (`--screenshot PATH`, at the end of the
     /// run; `--screenshot-at S`, repeatable: PATH with `-<S>s` before `.png`).
     var screenshotPath: String?
+    /// Record the first-boot data migration as done before the boot.
+    var skipFirstBootMigration = false
     var screenshotTimes: [Int] = []
+    /// Debug: start no Metal host service.
+    var debugNoMetal = false
+    /// The shader translator (`ycode-airc`) for the Metal back end; nil:
+    /// $YCODE_AIRC, next to this executable, or on $PATH.
+    var metalTranslator: String?
     /// Debug: offer no host services (IOSurface) to the guest.
     var debugNoHostServices = false
     /// Stage 7: install a host `.app`, launch a bundle id, with these
@@ -312,7 +320,10 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--debug-thread-report": options.debugThreadReport = true
         case "--debug-no-session-end": options.debugNoSessionEnd = true
         case "--debug-no-host-services": options.debugNoHostServices = true
+        case "--debug-no-metal": options.debugNoMetal = true
+        case "--metal-translator": options.metalTranslator = value(for: argument)
         case "--screenshot": options.screenshotPath = value(for: argument)
+        case "--skip-first-boot-migration": options.skipFirstBootMigration = true
         case "--screenshot-at":
             guard let n = Int(value(for: argument)), n > 0 else { die("--screenshot-at needs seconds > 0", status: 64) }
             options.screenshotTimes.append(n)

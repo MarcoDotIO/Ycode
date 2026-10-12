@@ -240,6 +240,17 @@ public final class MachHostTask: @unchecked Sendable {
         }
     }
 
+    /// The memory entry a right of the host task names (a send right
+    /// received in a message, or one made by `makeMemoryEntry`): its
+    /// shared object, the entry's offset in it, and its size. Nil for any
+    /// other name.
+    public func memoryEntry(_ name: UInt32) -> (object: SharedMemoryObject, offset: UInt64, size: UInt64)? {
+        lock.withLock {
+            guard let e = ipc.memoryEntry(named: name) else { return nil }
+            return (e.object, e.offset, e.size)
+        }
+    }
+
     /// A new port set. Returns its name.
     public func makePortSet() throws -> UInt32 {
         try lock.withLock {

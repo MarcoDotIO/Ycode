@@ -14,6 +14,8 @@ import YcodeDarwinKernel
 import YcodeHypervisor
 import YcodeMachO
 import YcodeHostServices
+import YcodeMetalHost
+import YcodeVulkan
 
 /// What every image of a run shares: the runtime, the shim, the host stubs,
 /// the host libraries, and the root's VFS layout.
@@ -75,6 +77,7 @@ final class ExecConfiguration: @unchecked Sendable {
                 layout.framebufferLibrary = options.framebufferLibrary.map(absolutePath)
                     ?? fallback.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             }
+            layout.skipFirstBootMigration = options.skipFirstBootMigration
             layout.guestTools = options.guestTools.map(absolutePath)
                 ?? options.shimPath.map { ((absolutePath($0) as NSString).deletingLastPathComponent as NSString)
                     .appendingPathComponent("guest-tests/stage7") }
@@ -256,6 +259,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     var bootstrapLogger: HostBootstrapLogger?
     var session: DeviceSession?
     var ioSurfaceService: IOSurfaceHostService?
+    var metalService: MetalHostService?
     if config.device != nil || config.options.hostBootstrap {
         system.mach.hostBootstrapIsDefault = true
         let logPath = config.device?.hostBootstrapLogPath ?? config.runDir + "/ycode-host-bootstrap.log"
@@ -289,6 +293,35 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                     ioSurfaceService = service
                 } catch {
                     stderrLine("ycode-simd: warning: cannot start the IOSurface service: \(error)")
+                }
+                // The Metal host service (stage8-contract.md §5.2): only with a
+                // usable GPU back end. Without one no Metal name is offered, and
+                // the runtime renders on the CPU (headless-rendering.md).
+                if !config.options.debugNoMetal {
+                    // The back end's own messages go to stderr; the shader
+                    // translator is --metal-translator, else $YCODE_AIRC,
+                    // next to ycode-simd, or on $PATH.
+                    var backendOptions = VulkanMetalBackend.Options()
+                    backendOptions.log = { stderrLine("ycode-simd: metal backend: " + $0) }
+                    let translator: (any ShaderTranslator)? = config.options.metalTranslator
+                        .map { AircProcessTranslator(executable: URL(fileURLWithPath: $0)) }
+                    let backend = VulkanMetalBackend(translator: translator, options: backendOptions)
+                    if backend.isAvailable {
+                        do {
+                            let metal = try MetalHostService(host: system.hostTask, backend: backend,
+                                                             memory: HostMemoryEntryResolver(host: system.hostTask),
+                                                             surfaces: ioSurfaceService.map { IOSurfacePortResolver(service: $0) },
+                                                             log: { stderrLine("ycode-simd: " + $0) })
+                            metal.start()
+                            s.hostServices.append((MetalHostService.serviceNames[0], metal.servicePort))
+                            metalService = metal
+                            stderrLine("ycode-simd: Metal host service: \(MetalHostService.serviceNames[0]) on Vulkan")
+                        } catch {
+                            stderrLine("ycode-simd: warning: cannot start the Metal host service: \(error)")
+                        }
+                    } else {
+                        stderrLine("ycode-simd: Metal host service: no Vulkan device; no Metal name offered")
+                    }
                 }
             }
             session = s
@@ -467,6 +500,8 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     if !quietSummary {
         stderrLine("ycode-simd: host: \(HostStats.current())" + (stillAlive > 0 ? "; \(stillAlive) images not torn down" : ""))
     }
+    metalService?.stop()
+    ioSurfaceService?.stop()
     if let bootstrapLogger {
         bootstrapLogger.stop()
         if stillAlive == 0 { system.hostTask.shutdown() }

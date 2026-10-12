@@ -44,7 +44,21 @@ public final class SharedMemoryObject: @unchecked Sendable {
         }
     }
 
-    deinit { munmap(host, Int(size)) }
+    deinit {
+        if Self.quarantine {
+            // Diagnostics (`YCODE_DEBUG_QUARANTINE=1`): keep the range reserved
+            // and inaccessible, so a stale access faults at once.
+            _ = mmap(host, Int(size), PROT_NONE, MAP_PRIVATE | Self.anonymous | MAP_FIXED, -1, 0)
+        } else {
+            munmap(host, Int(size))
+        }
+    }
+    private static let quarantine = getenv("YCODE_DEBUG_QUARANTINE").map { String(cString: $0) == "1" } ?? false
+    #if canImport(Darwin)
+    private static let anonymous = MAP_ANON
+    #else
+    private static let anonymous = MAP_ANONYMOUS | MAP_NORESERVE
+    #endif
 
     /// Bytes [offset, offset+count), which must lie inside the object.
     public func read(offset: UInt64, count: Int) -> [UInt8] {

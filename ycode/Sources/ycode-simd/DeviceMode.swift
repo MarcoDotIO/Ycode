@@ -34,6 +34,9 @@ struct DeviceLayout {
     /// SimGuestFrameworks/build.sh), copied into DEV and named by
     /// SIMULATOR_FRAMEBUFFER_FRAMEWORK. Nil: the variable is empty.
     var framebufferLibrary: String?
+    /// Record the first-boot data migration as done for this runtime build
+    /// before the boot (`--skip-first-boot-migration`).
+    var skipFirstBootMigration = false
 
     // Device identity (stage4c-contract.md §2).
     static let deviceName = "Ycode"
@@ -336,6 +339,7 @@ struct DeviceLayout {
             for path in [appStdoutHostPath, appStderrHostPath] where fm.fileExists(atPath: path) { try fm.removeItem(atPath: path) }
         }
         if fm.fileExists(atPath: framebufferStatePath) { try fm.removeItem(atPath: framebufferStatePath) }
+        if skipFirstBootMigration { try recordMigrationDone() }
         if let framebufferLibrary, let target = framebufferGuestPath {
             try dir((target as NSString).deletingLastPathComponent)
             if fm.fileExists(atPath: target) { try fm.removeItem(atPath: target) }
@@ -362,6 +366,26 @@ struct DeviceLayout {
         ]
         try writeXML(audio, to: audioPlistPath)
         try writeXML(bootstrapPlist, to: plistPath)
+    }
+
+    /// The data-migration preferences (`DEV/data/Library/Preferences/
+    /// com.apple.migration.plist`, read as a file format from a Mac device
+    /// after its first boot; level 2): `LastSystemVersion` = the runtime
+    /// build (datamigrator logs "System build version changed from (null)"
+    /// without it), `DMLastMigrationResults` = {buildVersion, success: true},
+    /// `DMUserDataDisposition` = {buildVersion, EraseIsRapidReturnToService:
+    /// false, SyntheticDidUpgrade: false}. With them the boot does not run the
+    /// first-boot migrators. Kept if present.
+    func recordMigrationDone() throws {
+        let path = data + "/Library/Preferences/com.apple.migration.plist"
+        guard !FileManager.default.fileExists(atPath: path) else { return }
+        try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
+                                                withIntermediateDirectories: true)
+        let build = runtimeVersion().build
+        try writeXML(["LastSystemVersion": build,
+                      "DMLastMigrationResults": ["buildVersion": build, "success": true] as [String: Any],
+                      "DMUserDataDisposition": ["buildVersion": build, "EraseIsRapidReturnToService": false,
+                                                "SyntheticDidUpgrade": false] as [String: Any]], to: path)
     }
 
     private func writeXML(_ plist: [String: Any], to path: String) throws {

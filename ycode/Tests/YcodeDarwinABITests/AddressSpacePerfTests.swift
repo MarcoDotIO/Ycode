@@ -301,3 +301,38 @@ private func monotonicNanoseconds() -> UInt64 {
         #expect(throws: DarwinErrnoError.self) { try space.unmap(va: va, size: 0x4000) }
     }
 }
+
+/// Random map/unmap/protect/share/remap sequences on one address space:
+/// every pool range the space releases must be allocated (no double or
+/// stray release), and the pool holds exactly the space's anonymous pages.
+@Suite struct AddressSpaceReleaseFuzzTests {
+    @Test func releasesMatchAllocations() throws {
+        for seed in UInt64(1)...6 {
+            var rng = SplitMix(state: seed)
+            let backing = FakePhysicalBacking()
+            let space = GuestAddressSpace(backing: backing)
+            let page = VMLayout.pageSize
+            let base: UInt64 = 0x2_0000_0000
+            for step in 0..<3000 {
+                let va = base + rng.below(256) * page
+                let size = (rng.below(16) + 1) * page
+                switch rng.below(6) {
+                case 0, 1: _ = try? space.mapAnonymous(at: va, size: size, protection: .readWrite, hint: nil)
+                case 2: try? space.unmap(va: va, size: size)
+                case 3: try? space.protect(va: va, size: size, protection: rng.below(2) == 0 ? .read : .readWrite)
+                case 4:
+                    // vm_remap without copy: share the source, map the object elsewhere.
+                    if let (object, offset) = try? space.share(va: va, size: size) {
+                        let to = base + rng.below(256) * page
+                        _ = try? space.mapShared(object, offset: offset, at: to, size: size, protection: .readWrite, hint: nil)
+                    }
+                default: _ = try? space.mapAnonymous(at: nil, size: size, protection: .readWrite, hint: base)
+                }
+                #expect(backing.releaseViolations.isEmpty, "seed \(seed) step \(step): \(backing.releaseViolations)")
+                if !backing.releaseViolations.isEmpty { return }
+            }
+            for r in space.regions where !r.permanent { try space.unmap(va: r.va, size: r.size) }
+            #expect(backing.anonymousBytesInUse == 0, "seed \(seed): \(backing.anonymousBytesInUse) bytes leaked")
+        }
+    }
+}

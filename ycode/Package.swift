@@ -44,7 +44,7 @@ let package = Package(
         .testTarget(name: "YcodeDarwinABITests", dependencies: ["YcodeDarwinABI"]),
         .testTarget(name: "YcodeDarwinKernelTests", dependencies: ["YcodeDarwinKernel"]),
         .testTarget(name: "YcodeXPCTests", dependencies: ["YcodeXPC"]),
-        .testTarget(name: "YcodeMetalHostTests", dependencies: ["YcodeMetalHost"]),
+        .testTarget(name: "YcodeMetalHostTests", dependencies: ["YcodeMetalHost", "YcodeXPC", "YcodeDarwinKernel"]),
         .testTarget(name: "YcodeVulkanTests", dependencies: ["YcodeVulkan"]),
         .testTarget(name: "YcodeHostServicesTests", dependencies: ["YcodeHostServices", "YcodeDarwinKernel", "YcodeXPC"]),
     ]
