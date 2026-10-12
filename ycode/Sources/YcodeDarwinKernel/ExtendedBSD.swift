@@ -513,9 +513,10 @@ extension DarwinKernel {
             .max { $0.guestPath.count < $1.guestPath.count }
         let mountPoint = prefix?.guestPath ?? "/"
         let readOnly = !(prefix?.writable ?? false)
-        // Sizes and free space are the host volume's (as on the Mac, where a
-        // read-only system volume still reports its container's free space;
-        // level 3: a simulator process's statfs of "/"). Fallback: fixed values.
+        // Sizes and free space are the host volume's, also for read-only
+        // volumes (an APFS system volume reports its container's free space).
+        // Ycode decision (unverified; a level-3 probe can confirm). Fallback:
+        // fixed values.
         var blocks: UInt64 = 1 << 24, free: UInt64 = 1 << 23, files: UInt64 = 1 << 20, ffree: UInt64 = 1 << 19
         var vfs = statvfs()
         if statvfs(prefix?.hostPath ?? "/", &vfs) == 0, vfs.f_frsize > 0 {
@@ -543,7 +544,7 @@ extension DarwinKernel {
         b.putLE(UInt32(0x1A), at: 60)               // f_type
         // MNT_RDONLY, MNT_LOCAL, MNT_ROOTFS for "/", MNT_DOVOLFS, MNT_JOURNALED.
         b.putLE(UInt32((readOnly ? 0x1 : 0) | 0x1000 | (mountPoint == "/" ? 0x4000 : 0) | 0x8000 | 0x80_0000), at: 64)
-        b.putLE(UInt32(1), at: 68)                  // f_fssubtype (as the Mac's APFS volumes)
+        b.putLE(UInt32(1), at: 68)                  // f_fssubtype: Ycode decision (unverified; a level-3 probe can confirm)
         b.put(Array("apfs".utf8), at: 72)           // f_fstypename[16]
         b.put(Array(mountPoint.utf8.prefix(1023)), at: 88)       // f_mntonname[1024]
         b.put(Array("ycode-vfs".utf8), at: 1112)    // f_mntfromname[1024]

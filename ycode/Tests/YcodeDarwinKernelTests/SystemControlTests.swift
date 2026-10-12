@@ -78,6 +78,24 @@ import YcodeDarwinABI
         #expect(try env.space.read(va: s + 0x800, count: 4) == [0, 0, 0, 0])
     }
 
+    @Test func auditTokenOfAnotherTask() throws {
+        let env = try ProcEnv()
+        let k = env.rootKernel!
+        let at = ProcEnv.At.out
+        let pid = env.spawn(from: k).pid
+        // task_name_for_pid(mach_task_self(), pid, &name), then task_info(name, TASK_AUDIT_TOKEN).
+        _ = env.svc(k, UInt64(bitPattern: -44), [UInt64(WellKnownPort.task), UInt64(pid), at])
+        let name = env.u32(k, at)
+        #expect(name != 0)
+        env.put(k, le32(8), at: at + 0x40)
+        let r = env.svc(k, 0x7963_0006, [UInt64(name), 15, at + 0x100, at + 0x40]).1
+        #expect(r.x[0] == 0)
+        let token = env.read(k, at + 0x100, 32)
+        #expect(Int32(bitPattern: token.readLE(UInt32.self, at: 20)) == pid)    // val[5] = pid
+        // Not a task port: KERN_INVALID_ARGUMENT.
+        #expect(env.svc(k, 0x7963_0006, [UInt64(WellKnownPort.host), 15, at + 0x100, at + 0x40]).1.x[0] == 4)
+    }
+
     @Test func setAttributeList() throws {
         let env = try ProcEnv()
         let k = env.rootKernel!

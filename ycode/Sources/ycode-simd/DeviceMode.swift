@@ -102,6 +102,11 @@ struct DeviceLayout {
             "StandardErrorPath": oneshotOutputGuestPath(index, err: true),
         ]
         if let oneshotDelay { plist["StartInterval"] = oneshotDelay } else { plist["RunAtLoad"] = true }
+        // A program already named by its host path (in DEV or RR) is used as
+        // is; any other path is under RR (launchd-sim.md §4.3).
+        if let program = oneshots[index].first, program.hasPrefix(dev + "/") || program.hasPrefix(runtimeRoot + "/") {
+            plist["RootedSimulatorPath"] = true
+        }
         return plist
     }
 

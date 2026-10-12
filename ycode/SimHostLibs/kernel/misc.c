@@ -129,8 +129,9 @@ YC_EXPORT int getiopolicy_np(int iotype, int scope)
     return 0;
 }
 
-/* posix_madvise(3): on Darwin an alias of madvise(2) (same advice values,
- * -1 and errno on failure; level 3, the Mac's simulator). */
+/* posix_madvise: on Darwin the same call as madvise(2), with the POSIX_
+ * advice names for the same values, and -1 and errno on failure (the
+ * madvise(2) manual page; level 1). */
 int madvise(void *addr, yc_size_t len, int advice);
 YC_EXPORT int posix_madvise(void *addr, yc_size_t len, int advice)
 {

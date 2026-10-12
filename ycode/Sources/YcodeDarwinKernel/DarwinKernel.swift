@@ -748,8 +748,8 @@ public final class DarwinKernel {
             // … MADV_ZERO, sys/mman.h) is accepted; only MADV_ZERO (11) changes
             // memory: the range reads as zeros afterwards (xnu VM_BEHAVIOR_ZERO,
             // level 1). The others are hints or allow lazy discard, so keeping
-            // the pages is correct. Other values are EINVAL (level 3: the
-            // Mac's simulator).
+            // the pages is correct. Other values are EINVAL (the madvise(2)
+            // manual page: "the value of advice is incorrect"; level 1).
             call = "madvise(addr=\(hx(a[0])), len=\(hx(a[1])), advice=\(int(2)))"
             guard (0...11).contains(int(2)) else { throw Failure(errno: Errno.EINVAL) }
             if int(2) == 11, a[1] > 0 {
@@ -1391,19 +1391,37 @@ public final class DarwinKernel {
             call = "task_info(task=\(hx(a[0])), flavor=\(a[1] & 0xFFFF_FFFF), info=\(hx(a[2])), count=\(hx(a[3])))"
             if a[1] & 0xFFFF_FFFF == Self.taskAuditToken {
                 // TASK_AUDIT_TOKEN (15, 8 words; osfmk/mach/task_info.h): the
-                // caller's own token, as its messages carry it.
-                guard UInt32(truncatingIfNeeded: a[0]) == WellKnownPort.task else {
-                    return kr(KernReturn.invalidArgument, " [not the caller's task]")
+                // task's token, as its messages carry it. task_info takes a
+                // task_name_t (xnu osfmk/mach/task.defs; level 1), so any task
+                // flavor port works: control, name, read, inspect, of this
+                // task or another live one (runningboardd reads its clients'
+                // tokens through task_name_for_pid).
+                let target: DarwinKernel
+                if UInt32(truncatingIfNeeded: a[0]) == WellKnownPort.task {
+                    target = self
+                } else {
+                    guard let ipc = machIPC as? MachIPC,
+                          let (port, object) = ipc.kernelObject(named: UInt32(truncatingIfNeeded: a[0])) else {
+                        return kr(KernReturn.invalidArgument, " [not a task port]")
+                    }
+                    switch object {
+                    case .task, .taskName, .taskRead, .taskInspect: break
+                    default: return kr(KernReturn.invalidArgument, " [not a task port]")
+                    }
+                    guard port.active, let task = port.task, !task.isTerminated, let k = task.kernel, !k.isTerminating else {
+                        return kr(KernReturn.invalidArgument, " [task ended]")
+                    }
+                    target = k
                 }
                 do {
                     let count = try mem.read(va: a[3], count: 4).readLE(UInt32.self, at: 0)
                     guard count >= 8 else { return kr(KernReturn.invalidArgument) }
-                    try mem.write(va: a[2], bytes: descriptorAuditToken)
+                    try mem.write(va: a[2], bytes: target.descriptorAuditToken)
                     try writeU32(a[3], 8, mem)
                 } catch {
                     return kr(KernReturn.invalidAddress)
                 }
-                return kr(KernReturn.success, " [TASK_AUDIT_TOKEN]")
+                return kr(KernReturn.success, " [TASK_AUDIT_TOKEN pid \(target.pid)]")
             }
             guard a[1] & 0xFFFF_FFFF == Self.taskDyldInfo else {
                 return kr(KernReturn.invalidArgument, " [flavor not supported]")

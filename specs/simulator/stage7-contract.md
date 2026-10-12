@@ -89,3 +89,51 @@ prints at the end. A process without a scene (the one-shot fallback,
    `com.apple.backboard.display.services` is missing, report what
    headless backboardd does and propose the smallest host-side or
    guest-side answer before building it.
+
+## 4. Findings and decisions (7-i, first test, 2026-10-12)
+
+- **First test (level 3):** the probe app run as a plain one-shot blocks
+  in UIKit's display-services startup call (MIG id 6001013 to
+  `com.apple.backboard.display.services`) and never reaches
+  `didFinishLaunching`. SpringBoard blocks on the same call.
+- **Layer 1, fixed:** backboardd was stuck in its RunningBoard handshake
+  because `task_info(TASK_AUDIT_TOKEN)` refused a task *name* port;
+  `task_info` takes any task port flavor of a live task (xnu `task.defs`,
+  level 1). Stage 6's "backboardd runs headless" therefore meant "hangs at
+  start"; it now aborts honestly (below) and is throttled, so the stage-6
+  full-boot check is expected to list backboardd until stage 7 lands.
+- **Layer 2, open:** backboardd aborts with "Unable to load
+  SimFramebuffer.framework" because `SIMULATOR_FRAMEBUFFER_FRAMEWORK` is
+  empty. On the Mac it names CoreSimulator's
+  `…/Platforms/iphoneos/Library/PrivateFrameworks/SimFramebuffer.framework`,
+  a guest-platform (7) dylib supplied by CoreSimulator, not by the runtime
+  (level 3 `ps -E`, level 4 load commands).
+- **Decision (orchestrator):** Ycode will supply its **own clean-room,
+  headless `SimFramebuffer.framework`** (and later `SimulatorHID`): one
+  display of the device's configured geometry that presents nothing; stage
+  8 replaces the headless back end with a real render path. Research first
+  (§5).
+- `--oneshot` with a host path inside DEV or RR is written with
+  `RootedSimulatorPath = true` (`launchd-sim.md` §4.3).
+
+## 5. Research R4: the SimFramebuffer client interface
+
+Output: `specs/simulator/simframebuffer.md`. Question: what interface
+(exported functions and ObjC classes, call order, arguments, results, Mach
+services contacted) the runtime's display stack uses from
+SimFramebuffer.framework, enough to implement a headless replacement; the
+same survey for SimulatorHID.framework (interface only, for stage 8).
+
+Allowed evidence: level 4 on CoreSimulator's frameworks under
+`/Library/Developer/PrivateFrameworks` (exported symbol names, ObjC
+class/selector/type-encoding names, load commands — `nm`, `otool -L/-l`,
+ObjC metadata read at run time by our own program); level 3 black-box
+runs: our own programs on the Mac that load the real framework and call
+it, and our own **interposer** dylib that exports the same names, records
+each call's register arguments and results, and forwards to the real
+framework, loaded by a throwaway `launchd_sim` run started by our own
+harness (as in `bootstrap-wire.md` §A.3) with
+`SIMULATOR_FRAMEBUFFER_FRAMEWORK` pointing at it. **No disassembly or
+decompilation** of any Apple binary; no `.claude/Xcode.app`, no
+`research/dirty/`, no Ghidra. Argument meanings that runs cannot establish
+are reported as open, not guessed.

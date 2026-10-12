@@ -1,19 +1,25 @@
 import YcodeDarwinABI
 
-// Small system controls of stage 6, answered as the Mac answers a simulator
-// process (the simulator's processes run unprivileged under the host
-// kernel; level 3, our own probes with `xcrun simctl spawn`) where xnu's
-// answer depends on privileges, else per xnu (level 1):
+// Small system controls of stage 6. The simulator's processes run
+// unprivileged under the host kernel, so Ycode answers as an unprivileged
+// caller without entitlements would be answered. Call numbers and op codes
+// are xnu's (level 1); the answers are marked with their evidence:
 // - memorystatus_control (440): every command is EPERM (no entitlement,
-//   not root), except the freezer queries SET/GET_PROCESS_IS_FREEZABLE and
-//   GET_PROCESS_IS_FROZEN (18, 19, 24), which are EINVAL (no freezer).
-// - quotactl (165): ENOTSUP (no quotas on the volume).
+//   not root). Level 3 for the commands runningboardd uses
+//   (app-install-launch.md §3.3: "Memorystatus failed" with EPERM on the
+//   Mac). The freezer queries SET/GET_PROCESS_IS_FREEZABLE and
+//   GET_PROCESS_IS_FROZEN (18, 19, 24) are EINVAL (no freezer): Ycode
+//   decision (unverified; a level-3 probe can confirm).
+// - quotactl (165): ENOTSUP (no quotas on the volume). Ycode decision
+//   (unverified; a level-3 probe can confirm).
 // - csrctl (483, csr_check / csr_get_active_config): CSR_SYSCALL_CHECK (0)
 //   is EPERM for every mask (configuration protection on); CSR_SYSCALL_GET_
-//   ACTIVE_CONFIG (1) writes config 0.
+//   ACTIVE_CONFIG (1) writes config 0. Ycode decision (unverified; a
+//   level-3 probe can confirm).
 // - __persona (494, `kpersona_*`; ops from xnu `sys/persona.h`): no
 //   personas exist: GET, INFO, PIDINFO and GETPATH are ESRCH; FIND and
 //   FIND_BY_TYPE find none (*idlen = 0); ALLOC, PALLOC, DEALLOC are EPERM.
+//   Ycode decision (unverified; a level-3 probe can confirm).
 
 enum SystemControlBSD {
     static let quotactl = 165, memorystatusControl = 440, csrctl = 483, persona = 494
