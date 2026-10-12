@@ -102,6 +102,13 @@ released.
   an SSH key only. Never automate password login. Sync with
   `rsync -az --delete --exclude .build ycode/ <user>@<x86-64-linux-host>:Ycode/ycode/`,
   then run `swift build && swift test` there.
+- Thor (arm64 Linux), the Simulator-track host: `<user>@<arm64-linux-host>`
+  (NVIDIA Thor, Ubuntu 24.04 aarch64, 4 KB pages, 14 cores, 122 GB RAM).
+  Swift 6.4 through swiftly. Log in with an SSH key only. Checkout:
+  `~/Ycode/ycode`. Large data goes on the USB drive
+  `$YCODE_DATA`, never on the nearly full system disk. The
+  machine is shared, so touch only `<user>`'s files. The other USB drives
+  (`<other-drive>`, `Development`) are not ours.
 
 ## Working conventions
 
