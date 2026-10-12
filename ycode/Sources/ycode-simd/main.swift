@@ -695,7 +695,8 @@ func runExec(_ options: Options) throws -> Never {
     // plays the host dyld, so TSD, errno, and TLV reads work from the first
     // instruction.
     let threadBlock = MainThreadBlock(address: Stage3Layout.mainThreadPage, threadID: 1, threadPort: WellKnownPort.thread,
-                                      stackTop: VMLayout.userStackTop, stackSize: VMLayout.userStackSize)
+                                      stackTop: VMLayout.userStackTop, stackSize: VMLayout.userStackSize,
+                                      qos: DarwinKernel.mainThreadQoS, ptrMunge: apple.ptrMunge)
     _ = try space.mapAnonymous(at: Stage3Layout.mainThreadPage, size: Stage3Layout.mainThreadPageSize,
                                protection: .readWrite, hint: nil)
     try builder.poke(threadBlock.address, threadBlock.bytes)
@@ -749,6 +750,7 @@ func runExec(_ options: Options) throws -> Never {
         counterFrequency: frequency)
     kernel.allImageInfosAddress = HostPageLayout.allImageInfos
     kernel.mainStackTop = VMLayout.userStackTop
+    kernel.bootCounter = (try? vcpu.virtualCounter()) ?? 0
 
     // Image attribution and the milestone.
     let images = ImageMap(cachePath: cachePath)

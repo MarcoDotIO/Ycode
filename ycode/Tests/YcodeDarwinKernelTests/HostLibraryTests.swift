@@ -15,11 +15,13 @@ import YcodeDarwinABI
         #expect(u64(b, 224) == base)  // slot 0: self
         #expect(u64(b, 232) == base + 172)  // slot 1: &err_no
         #expect(u64(b, 248) == 0x203)  // slot 3: thread port
+        #expect(u64(b, 256) == 0x8FF)  // slot 4: QoS
+        #expect(u64(b, 280) == 0)  // slot 7: no munge token given
         // stackaddr / stackbottom at TSD − 48 / − 40.
         #expect(u64(b, 224 - 48) == 0x1_6FE0_0000)
         #expect(u64(b, 224 - 40) == 0x1_6FE0_0000 - (8 << 20))
         // Everything else is zero.
-        let set: Set<Int> = [176, 184, 216, 224, 232, 248]
+        let set: Set<Int> = [176, 184, 216, 224, 232, 248, 256]
         for o in stride(from: 0, to: b.count, by: 8) where !set.contains(o) {
             #expect(u64(b, o) == 0, "offset \(o)")
         }
@@ -28,6 +30,8 @@ import YcodeDarwinABI
         #expect(Stage3Layout.mainThreadPage + Stage3Layout.mainThreadPageSize <= Stage3Layout.anonymousBase)
         let other = MainThreadBlock(address: 0x1000, threadID: 7, threadPort: 0x1203, stackTop: 0x9000, stackSize: 0x1000)
         #expect(u64(other.bytes, 216) == 7 && u64(other.bytes, 248) == 0x1203 && u64(other.bytes, 184) == 0x8000)
+        let munged = MainThreadBlock(address: base, qos: 0x15FF, ptrMunge: 0xABCD_1234)
+        #expect(u64(munged.bytes, 256) == 0x15FF && u64(munged.bytes, 280) == 0xABCD_1234)
     }
 
     @Test func unimplementedLibraryFunctionTrap() throws {

@@ -85,9 +85,15 @@ vCPU, or vCPUs are multiplexed when the thread count grows.
      measured about 32 µs, which is a baseline to improve later.
    - The work was built by three parallel agents against
      `specs/simulator/vm-shim-protocol.md`.
-3. **Static-image runner.** *(3a done, 2026-10-11. libSystem's initializer
-   is running on Linux and calls Ycode's `libsystem_kernel`. 3b, getting
-   `hello` to `main`, is in progress.)*
+3. **Static-image runner.** *(Done, 2026-10-11.)* The iOS 27.1 simulator
+   runtime runs a command-line iOS-simulator program to completion on arm64
+   Linux:
+   - `ycode-simd --exec hello` prints `hello from the iOS simulator runtime
+     on Linux` and exits 0;
+   - 740 traps, all 11 shared-cache mappings, and no unimplemented call on
+     the path;
+   - it rests on Ycode's own clean-room `libsystem_kernel`,
+     `libsystem_platform`, and `libsystem_pthread` (`ycode/SimHostLibs`).
    - `dyld_sim` boots in the VM and maps all 11 cache mappings itself.
    - It stops at the three host libraries (`libsystem_kernel`,
      `libsystem_platform`, `libsystem_pthread`), which Ycode must now

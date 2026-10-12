@@ -363,7 +363,8 @@ Any other name → `KERN_INVALID_NAME`.
   in the main-thread block, so inline readers before `__pthread_init`
   see sane values.
 
-**Exit criterion (3b):** `ycode-simd --exec hello …` with **no debug flags**
+**Exit criterion (3b) — MET 2026-10-11** (orchestrator reproduction: exit 0, 740 traps,
+0 unimplemented under `--trace`): `ycode-simd --exec hello …` with **no debug flags**
 prints `hello from the iOS simulator runtime on Linux` and exits 0, and the
 `--trace` run shows no unimplemented library function or trap on the path.
 

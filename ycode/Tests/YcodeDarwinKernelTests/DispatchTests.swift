@@ -77,9 +77,9 @@ import YcodeDarwinABI
         let (o2, _) = env.svc(600)  // beyond the table: nosys
         guard case let .unimplemented(t2) = o2 else { Issue.record("expected unimplemented"); return }
         #expect(t2.hasPrefix("unimplemented bsd 600 nosys("))
-        let (o3, f3) = env.svc(UInt64(bitPattern: -33), [0x1003])  // semaphore_signal_trap
+        let (o3, f3) = env.svc(UInt64(bitPattern: -62), [0x1003])  // clock_sleep_trap
         guard case let .unimplemented(t3) = o3 else { Issue.record("expected unimplemented"); return }
-        #expect(t3.hasPrefix("unimplemented mach -33 semaphore_signal_trap(signal_name=0x1003)"))
+        #expect(t3.hasPrefix("unimplemented mach -62 clock_sleep_trap(clock_name=0x1003"))
         #expect(f3.x[0] == 5)
         let (o4, _) = env.svc(0x7963_0099)
         if case .unimplemented = o4 {} else { Issue.record("expected unimplemented private") }

@@ -82,6 +82,8 @@ public final class DarwinKernel {
         public static let invalidArgument: UInt64 = 4
         public static let failure: UInt64 = 5
         public static let invalidName: UInt64 = 15
+        public static let aborted: UInt64 = 14
+        public static let operationTimedOut: UInt64 = 49
         /// `MACH_SEND_INVALID_DEST`, what `mach_msg` returns in stage 3a.
         public static let sendInvalidDest: UInt64 = 0x1000_0003
 
@@ -94,6 +96,8 @@ public final class DarwinKernel {
             case invalidArgument: "KERN_INVALID_ARGUMENT"
             case failure: "KERN_FAILURE"
             case invalidName: "KERN_INVALID_NAME"
+            case aborted: "KERN_ABORTED"
+            case operationTimedOut: "KERN_OPERATION_TIMED_OUT"
             case sendInvalidDest: "MACH_SEND_INVALID_DEST"
             default: hx(k)
             }
@@ -125,7 +129,10 @@ public final class DarwinKernel {
                           taskSelf = -28, hostSelf = -29, machMsg = -31, threadSwitch = -61, timebaseInfo = -89,
                           vmMap = -15, portModRefs = -19, portGuard = -41, portUnguard = -42,
                           generateActivityID = -43, pidForTask = -46, threadGetSpecialReplyPort = -50,
-                          portType = -76, portRequestNotification = -77, waitUntil = -90
+                          portType = -76, portRequestNotification = -77, waitUntil = -90,
+                          semaphoreSignal = -33, semaphoreSignalAll = -34, semaphoreSignalThread = -35,
+                          semaphoreWait = -36, semaphoreWaitSignal = -37, semaphoreTimedwait = -38,
+                          semaphoreTimedwaitSignal = -39
     }
 
     /// Ycode-private trap numbers (`x16`, stage3-contract.md §5).
@@ -147,6 +154,13 @@ public final class DarwinKernel {
         /// A host-library stub for a function Ycode does not implement yet;
         /// `x0` = the NUL-terminated symbol name (`host-libraries.md` §4).
         public static let unimplementedLibraryFunction: UInt32 = 0x7963_0F00
+        /// Mach routines served directly (`host-libraries.md` §10): `0x7963_2000 + n`.
+        public static let hostGetClockService: UInt32 = 0x7963_2001
+        public static let clockGetTime: UInt32 = 0x7963_2002
+        public static let semaphoreCreate: UInt32 = 0x7963_2003
+        public static let semaphoreDestroy: UInt32 = 0x7963_2004
+        public static let taskGetSpecialPort: UInt32 = 0x7963_2005
+        public static let taskSetSpecialPort: UInt32 = 0x7963_2006
     }
 
     /// The address that the shared-cache builder patches into a missing
@@ -241,6 +255,15 @@ public final class DarwinKernel {
     public var mainStackTop: UInt64 = Stage3Layout.userStack
     /// Set by the first successful `bsdthread_register`.
     public private(set) var threadRegistration: ThreadRegistration?
+    /// The counter value at VM start (the system clock's epoch); the VMM sets it.
+    public var bootCounter: UInt64 = 0
+    /// Sleeps the host for `nanoseconds` (semaphore timed waits).
+    public var sleep: (UInt64) -> Void = { ns in
+        var ts = timespec(tv_sec: Int(ns / 1_000_000_000), tv_nsec: Int(ns % 1_000_000_000))
+        _ = nanosleep(&ts, nil)
+    }
+    /// `task_set_special_port` values, by `which`.
+    var specialPorts: [Int32: UInt32] = [:]
     /// The last `mach_generate_activity_id` value.
     var nextActivityID: UInt64 = 0
     /// Bookkeeping for the stage-3b BSD calls (signals, rlimits, directory cursors).
@@ -944,7 +967,7 @@ public final class DarwinKernel {
             call = "mach_port_type(target=\(hx(port(0))), name=\(hx(port(1))), ptype=\(hx(a[2])))"
             guard let kind = ports.kind(of: port(1)) else { return kr(KernReturn.invalidName) }
             let type: UInt32 = switch kind {
-            case .task, .thread, .host: 1 << 16          // MACH_PORT_TYPE_SEND
+            case .task, .thread, .host, .bootstrap, .clock, .semaphore: 1 << 16  // MACH_PORT_TYPE_SEND
             default: 1 << 17                              // MACH_PORT_TYPE_RECEIVE
             }
             guard (try? writeU32(a[2], type, mem)) != nil else { return kr(KernReturn.invalidAddress) }
@@ -956,6 +979,52 @@ public final class DarwinKernel {
             guard ports.contains(port(1)) else { return kr(KernReturn.invalidName) }
             if a[6] != 0 { guard (try? writeU32(a[6], 0, mem)) != nil else { return kr(KernReturn.invalidAddress) } }
             return kr(KernReturn.success, " [no notifications are ever sent]")
+
+        case Mach.semaphoreSignal, Mach.semaphoreSignalAll, Mach.semaphoreSignalThread:
+            let names = [Mach.semaphoreSignal: "semaphore_signal", Mach.semaphoreSignalAll: "semaphore_signal_all",
+                         Mach.semaphoreSignalThread: "semaphore_signal_thread"]
+            call = "\(names[n]!)(\(hx(port(0)))\(n == Mach.semaphoreSignalThread ? ", thread=\(hx(port(1)))" : ""))"
+            guard case let .semaphore(count) = ports.kind(of: port(0)) else { return kr(KernReturn.invalidName) }
+            let new = n == Mach.semaphoreSignalAll ? max(count, 0) : count &+ 1
+            ports.update(port(0), to: .semaphore(count: new))
+            return kr(KernReturn.success, " [count \(new)]")
+
+        case Mach.semaphoreWait, Mach.semaphoreWaitSignal:
+            let withSignal = n == Mach.semaphoreWaitSignal
+            call = withSignal ? "semaphore_wait_signal(wait=\(hx(port(0))), signal=\(hx(port(1))))"
+                : "semaphore_wait(\(hx(port(0))))"
+            if withSignal {
+                guard case let .semaphore(c) = ports.kind(of: port(1)) else { return kr(KernReturn.invalidName) }
+                ports.update(port(1), to: .semaphore(count: c &+ 1))
+            }
+            guard case let .semaphore(count) = ports.kind(of: port(0)) else { return kr(KernReturn.invalidName) }
+            if count > 0 {
+                ports.update(port(0), to: .semaphore(count: count - 1))
+                return kr(KernReturn.success, " [count \(count - 1)]")
+            }
+            log("DEADLOCK: semaphore_wait on \(hx(port(0))) with count \(count); the guest has one thread, "
+                + "so nothing can ever signal it")
+            return kr(KernReturn.aborted)
+
+        case Mach.semaphoreTimedwait, Mach.semaphoreTimedwaitSignal:
+            let withSignal = n == Mach.semaphoreTimedwaitSignal
+            let (sec, nsec) = withSignal ? (a[2], a[3]) : (a[1], a[2])
+            call = withSignal
+                ? "semaphore_timedwait_signal(wait=\(hx(port(0))), signal=\(hx(port(1))), sec=\(UInt32(truncatingIfNeeded: sec)), nsec=\(Int32(truncatingIfNeeded: nsec)))"
+                : "semaphore_timedwait(\(hx(port(0))), sec=\(UInt32(truncatingIfNeeded: sec)), nsec=\(Int32(truncatingIfNeeded: nsec)))"
+            if withSignal {
+                guard case let .semaphore(c) = ports.kind(of: port(1)) else { return kr(KernReturn.invalidName) }
+                ports.update(port(1), to: .semaphore(count: c &+ 1))
+            }
+            guard case let .semaphore(count) = ports.kind(of: port(0)) else { return kr(KernReturn.invalidName) }
+            if count > 0 {
+                ports.update(port(0), to: .semaphore(count: count - 1))
+                return kr(KernReturn.success, " [count \(count - 1)]")
+            }
+            let ns = UInt64(UInt32(truncatingIfNeeded: sec)) * 1_000_000_000
+                + UInt64(max(0, Int64(Int32(truncatingIfNeeded: nsec))))
+            sleep(ns)
+            return kr(KernReturn.operationTimedOut, " [slept \(ns) ns]")
 
         case Mach.waitUntil:
             call = "mach_wait_until(deadline=\(hx(a[0])))"
@@ -1125,6 +1194,67 @@ public final class DarwinKernel {
         case Private.notifyBeforeInitializers:
             call = "notifyMonitorOfDyldBeforeInitializers()"
             return ok(0)
+
+        case Private.hostGetClockService:
+            call = "host_get_clock_service(host=\(hx(UInt32(truncatingIfNeeded: a[0]))), clock_id=\(Int32(truncatingIfNeeded: a[1])), "
+                + "out=\(hx(a[2])))"
+            let id = Int32(truncatingIfNeeded: a[1])
+            guard id == 0 || id == 1 else { return kr(KernReturn.invalidArgument) }
+            let name = ports.allocate(.clock(id: id))
+            guard (try? writeU32(a[2], name, mem)) != nil else { ports.remove(name); return kr(KernReturn.invalidAddress) }
+            return kr(KernReturn.success, " [\(id == 0 ? "SYSTEM_CLOCK" : "CALENDAR_CLOCK") \(hx(name))]")
+
+        case Private.clockGetTime:
+            call = "clock_get_time(clock=\(hx(UInt32(truncatingIfNeeded: a[0]))), out=\(hx(a[1])))"
+            guard case let .clock(id) = ports.kind(of: UInt32(truncatingIfNeeded: a[0])) else {
+                return kr(KernReturn.invalidArgument)
+            }
+            let sec: UInt64, nsec: UInt64
+            if id == 0 {
+                let ticks = counter() &- bootCounter
+                let f = max(counterFrequency, 1)
+                sec = ticks / f
+                nsec = (ticks % f) * 1_000_000_000 / f
+            } else {
+                let w = wallClock()
+                sec = UInt64(max(0, w.seconds))
+                nsec = UInt64(max(0, w.nanoseconds))
+            }
+            var b: [UInt8] = []
+            b.appendLE(UInt32(truncatingIfNeeded: sec))
+            b.appendLE(Int32(truncatingIfNeeded: nsec))
+            guard (try? mem.write(va: a[1], bytes: b)) != nil else { return kr(KernReturn.invalidAddress) }
+            return kr(KernReturn.success, " [\(sec).\(String(format: "%09llu", nsec))]")
+
+        case Private.semaphoreCreate:
+            let value = Int32(truncatingIfNeeded: a[3])
+            call = "semaphore_create(task=\(hx(UInt32(truncatingIfNeeded: a[0]))), out=\(hx(a[1])), "
+                + "policy=\(Int32(truncatingIfNeeded: a[2])), value=\(value))"
+            guard value >= 0 else { return kr(KernReturn.invalidArgument) }
+            let name = ports.allocate(.semaphore(count: value))
+            guard (try? writeU32(a[1], name, mem)) != nil else { ports.remove(name); return kr(KernReturn.invalidAddress) }
+            return kr(KernReturn.success, " [\(hx(name))]")
+
+        case Private.semaphoreDestroy:
+            let name = UInt32(truncatingIfNeeded: a[1])
+            call = "semaphore_destroy(task=\(hx(UInt32(truncatingIfNeeded: a[0]))), semaphore=\(hx(name)))"
+            guard case .semaphore = ports.kind(of: name) else { return kr(KernReturn.invalidName) }
+            ports.remove(name)
+            return kr(KernReturn.success)
+
+        case Private.taskGetSpecialPort:
+            let which = Int32(truncatingIfNeeded: a[1])
+            call = "task_get_special_port(task=\(hx(UInt32(truncatingIfNeeded: a[0]))), which=\(which), out=\(hx(a[2])))"
+            let name = specialPorts[which] ?? (which == 4 ? WellKnownPort.bootstrap : 0)
+            guard (try? writeU32(a[2], name, mem)) != nil else { return kr(KernReturn.invalidAddress) }
+            return kr(KernReturn.success, " [\(hx(name))]")
+
+        case Private.taskSetSpecialPort:
+            let which = Int32(truncatingIfNeeded: a[1])
+            let name = UInt32(truncatingIfNeeded: a[2])
+            call = "task_set_special_port(task=\(hx(UInt32(truncatingIfNeeded: a[0]))), which=\(which), port=\(hx(name)))"
+            specialPorts[which] = name
+            return kr(KernReturn.success)
 
         case Private.unimplementedLibraryFunction:
             let name = (try? readString(a[0], length: 256, mem)) ?? "<unreadable name at \(hx(a[0]))>"

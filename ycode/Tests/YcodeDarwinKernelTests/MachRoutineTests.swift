@@ -1,0 +1,104 @@
+import Foundation
+import Testing
+import YcodeDarwinABI
+@testable import YcodeDarwinKernel
+
+/// `host-libraries.md` §10: private Mach-routine traps and semaphore traps.
+@Suite struct MachRoutineTests {
+    let s = Env.scratch
+    func m(_ n: Int) -> UInt64 { UInt64(bitPattern: Int64(n)) }
+
+    @Test func clocks() throws {
+        var ticks: UInt64 = 5_000
+        let env = try Env(counter: { ticks }, frequency: 1_000)
+        env.kernel.bootCounter = 5_000
+        let (_, a) = env.svc(0x7963_2001, [0x303, 0, s])
+        #expect(!a.carry && a.x[0] == 0)
+        let system = try env.u32(s)
+        #expect(env.kernel.ports.kind(of: system) == .clock(id: 0))
+        env.svc(0x7963_2001, [0x303, 1, s + 4])
+        let calendar = try env.u32(s + 4)
+        #expect(env.kernel.ports.kind(of: calendar) == .clock(id: 1) && calendar != system)
+        #expect(env.svc(0x7963_2001, [0x303, 2, s]).1.x[0] == 4)
+        #expect(env.svc(0x7963_2001, [0x303, 0, 0x10]).1.x[0] == 1)  // bad out pointer
+
+        ticks = 5_000 + 2_500  // 2.5 s of uptime at 1 kHz
+        #expect(env.svc(0x7963_2002, [UInt64(system), s + 0x10]).1.x[0] == 0)
+        #expect(try env.u32(s + 0x10) == 2 && env.u32(s + 0x14) == 500_000_000)
+        #expect(env.svc(0x7963_2002, [UInt64(calendar), s + 0x10]).1.x[0] == 0)
+        #expect(try env.u32(s + 0x10) == 1_700_000_000 && env.u32(s + 0x14) == 250_000_000)
+        #expect(env.svc(0x7963_2002, [0x103, s + 0x10]).1.x[0] == 4)  // not a clock
+        #expect(env.svc(0x7963_2002, [UInt64(system), 0x10]).1.x[0] == 1)
+        // Carry is not used.
+        var f = TrapFrame(spsr: 0x2000_0000)
+        env.svc(0x7963_2002, [UInt64(system), s + 0x10], frame: &f)
+        #expect(f.x[0] == 0 && !f.carry)
+    }
+
+    @Test func semaphores() throws {
+        let env = try Env()
+        var slept: [UInt64] = []
+        env.kernel.sleep = { slept.append($0) }
+        #expect(env.svc(0x7963_2003, [0x103, s, 0, UInt64(bitPattern: -1)]).1.x[0] == 4)
+        #expect(env.svc(0x7963_2003, [0x103, s, 0, 1]).1.x[0] == 0)
+        let sem = try env.u32(s)
+        #expect(env.kernel.ports.kind(of: sem) == .semaphore(count: 1))
+        #expect(env.svc(m(-36), [UInt64(sem)]).1.x[0] == 0)  // 1 → 0
+        // Count 0: wait is a deadlock on one thread.
+        #expect(env.svc(m(-36), [UInt64(sem)]).1.x[0] == 14)
+        #expect(env.sink.lines.contains { $0.hasPrefix("DEADLOCK: semaphore_wait") })
+        // Timed wait at 0: sleeps the timeout, then times out.
+        #expect(env.svc(m(-38), [UInt64(sem), 1, 500]).1.x[0] == 49)
+        #expect(slept == [1_000_000_500])
+        // Signal, then the waits succeed.
+        #expect(env.svc(m(-33), [UInt64(sem)]).1.x[0] == 0)
+        #expect(env.svc(m(-35), [UInt64(sem), 0x203]).1.x[0] == 0)
+        #expect(env.kernel.ports.kind(of: sem) == .semaphore(count: 2))
+        #expect(env.svc(m(-38), [UInt64(sem), 0, 0]).1.x[0] == 0)
+        #expect(env.svc(m(-36), [UInt64(sem)]).1.x[0] == 0)
+        // wait_signal: the signal comes first, so waiting on the same semaphore succeeds.
+        #expect(env.svc(m(-37), [UInt64(sem), UInt64(sem)]).1.x[0] == 0)
+        #expect(env.kernel.ports.kind(of: sem) == .semaphore(count: 0))
+        env.svc(0x7963_2003, [0x103, s + 4, 0, 0])
+        let other = try env.u32(s + 4)
+        #expect(env.svc(m(-39), [UInt64(sem), UInt64(other), 0, 10]).1.x[0] == 49)
+        #expect(env.kernel.ports.kind(of: other) == .semaphore(count: 1))
+        // signal_all: count = max(count, 0).
+        #expect(env.svc(m(-34), [UInt64(other)]).1.x[0] == 0)
+        #expect(env.kernel.ports.kind(of: other) == .semaphore(count: 1))
+        // Not a semaphore.
+        for n in [-33, -34, -36, -38] { #expect(env.svc(m(n), [0x103, 0, 0]).1.x[0] == 15) }
+        #expect(env.svc(m(-37), [UInt64(sem), 0x9999]).1.x[0] == 15)
+        // Destroy.
+        #expect(env.svc(0x7963_2004, [0x103, UInt64(sem)]).1.x[0] == 0)
+        #expect(!env.kernel.ports.contains(sem))
+        #expect(env.svc(0x7963_2004, [0x103, UInt64(sem)]).1.x[0] == 15)
+        #expect(env.svc(0x7963_2004, [0x103, 0x103]).1.x[0] == 15)
+        #expect(env.svc(0x7963_2003, [0x103, 0x10, 0, 0]).1.x[0] == 1)
+    }
+
+    @Test func specialPorts() throws {
+        let env = try Env()
+        try env.put(leBytes(0xFFFF_FFFF), at: s)
+        #expect(env.svc(0x7963_2005, [0x103, 4, s]).1.x[0] == 0)
+        #expect(try env.u32(s) == 0x503)
+        #expect(env.kernel.ports.kind(of: 0x503) == .bootstrap)
+        #expect(env.svc(0x7963_2005, [0x103, 1, s]).1.x[0] == 0)
+        #expect(try env.u32(s) == 0)  // MACH_PORT_NULL
+        #expect(env.svc(0x7963_2006, [0x103, 9, 0x1003]).1.x[0] == 0)
+        env.svc(0x7963_2005, [0x103, 9, s])
+        #expect(try env.u32(s) == 0x1003)
+        env.svc(0x7963_2006, [0x103, 4, 0x2003])
+        env.svc(0x7963_2005, [0x103, 4, s])
+        #expect(try env.u32(s) == 0x2003)
+        #expect(env.svc(0x7963_2005, [0x103, 4, 0x10]).1.x[0] == 1)
+        // mach_msg to the bootstrap port still fails.
+        var header: [UInt8] = []
+        for v: UInt32 in [0x13, 24, 0x503, 0, 0, 1] { header += (0..<4).map { UInt8(truncatingIfNeeded: v >> (8 * $0)) } }
+        try env.put(header, at: s + 0x40)
+        #expect(env.svc(m(-31), [s + 0x40, 1, 24, 0, 0, 0, 0]).1.x[0] == 0x1000_0003)
+        // The bootstrap name is permanent and typed as a send right.
+        #expect(env.svc(m(-76), [0x103, 0x503, s]).1.x[0] == 0)
+        #expect(try env.u32(s) == 1 << 16)
+    }
+}

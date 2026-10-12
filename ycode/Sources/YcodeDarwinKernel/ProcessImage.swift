@@ -57,6 +57,8 @@ public enum WellKnownPort {
     public static let task: UInt32 = 0x103
     public static let thread: UInt32 = 0x203
     public static let host: UInt32 = 0x303
+    /// The bootstrap port (`host-libraries.md` §10).
+    public static let bootstrap: UInt32 = 0x503
     public static let firstDynamic: UInt32 = 0x1003
     public static let dynamicStep: UInt32 = 0x100
 }
@@ -228,8 +230,11 @@ public struct MainThreadBlock: Equatable, Sendable {
     ///   - threadID: `thread_id` (+216).
     ///   - threadPort: slot 3, the Mach thread port name.
     ///   - stackTop, stackSize: `stackaddr` (+176) = top, `stackbottom` (+184) = top − size.
+    ///   - qos: slot 4 (default `0x8FF`, LEGACY QoS; `host-libraries.md` §10).
+    ///   - ptrMunge: slot 7, the `ptr_munge=` token (0 leaves the slot empty).
     public init(address: UInt64, threadID: UInt64 = 1, threadPort: UInt32 = WellKnownPort.thread,
-                stackTop: UInt64 = Stage3Layout.userStack, stackSize: UInt64 = Stage3Layout.stackSize) {
+                stackTop: UInt64 = Stage3Layout.userStack, stackSize: UInt64 = Stage3Layout.stackSize,
+                qos: UInt64 = 0x8FF, ptrMunge: UInt64 = 0) {
         precondition(address & 0xF == 0, "the main-thread block must be 16-byte aligned")
         self.address = address
         var b = [UInt8](repeating: 0, count: Self.byteCount)
@@ -239,6 +244,8 @@ public struct MainThreadBlock: Equatable, Sendable {
         b.putLE(address, at: Offset.slot(0))
         b.putLE(address + UInt64(Offset.errNo), at: Offset.slot(1))
         b.putLE(UInt64(threadPort), at: Offset.slot(3))
+        b.putLE(qos, at: Offset.slot(4))
+        b.putLE(ptrMunge, at: Offset.slot(7))
         bytes = b
     }
 }
