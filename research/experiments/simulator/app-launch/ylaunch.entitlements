@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Lets SpringBoard trust ylaunch's open requests, including __DebugOptions
+	     (stdio paths, environment, arguments). Simulator entitlements are read
+	     from the __TEXT,__entitlements section, not from the code signature. -->
+	<key>com.apple.frontboard.debugapplications</key><true/>
+</dict>
+</plist>
