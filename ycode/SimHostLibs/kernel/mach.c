@@ -10,11 +10,15 @@
  *    host-library-init.md section 9.2;
  *  - TSD slots 2 and 8 (MIG reply ports): host-library-init.md section 3.3;
  *  - the public Mach C API (the mach headers): routine signatures and constants
- *    such as MACH_SEND_MSG, MACH_RCV_MSG, MACH_SEND_INTERRUPT(ED),
- *    MACH_RCV_INTERRUPT(ED), MACH_PORT_RIGHT_RECEIVE, the mach_msg_header_t
- *    layout and mach_timespec_t.
+ *    such as MACH_PORT_RIGHT_*, MACH_PORT_TYPE_*, MPG_*, mach_timespec_t
+ *    and the thread_destruct_special_reply_port rights selector;
+ *  - port-routine behavior (mach_port_destroy, guard flags, special reply
+ *    ports, vouchers): mach-ipc.md sections 1.7, 4.2 and 4.3;
  *  - Ycode-private Mach-routine traps x16 = 0x7963_2000 + n:
- *    host-libraries.md section 10.
+ *    host-libraries.md section 10; n = 7 (host_create_mach_voucher):
+ *    stage4a-contract.md section 7.
+ * The message routines (mach_msg, mach_msg2_internal, ...) are in
+ * machmsg.c.
  */
 #include "yc_kernel.h"
 
@@ -173,6 +177,143 @@ YC_EXPORT int mach_port_request_notification(yc_port_t task, yc_port_t name, int
                              notify, notify_poly, (yc_uintptr_t)previous);
 }
 
+/* kern_return_t mach_port_guard_with_flags(ipc_space_t task,
+ *     mach_port_name_t name, mach_port_context_t guard, uint64_t flags)
+ * MPG_STRICT (0x01) maps onto the guard trap's strict argument.
+ * MPG_IMMOVABLE_RECEIVE (0x02) is accepted; the guard trap cannot record
+ * it, so immovability is not enforced (mach-ipc.md section 1.7). */
+#define YC_MPG_STRICT 0x01u
+#define YC_MPG_IMMOVABLE_RECEIVE 0x02u
+
+YC_EXPORT int mach_port_guard_with_flags(yc_port_t task, yc_port_t name, yc_u64 guard, yc_u64 flags)
+{
+    if (flags & ~(yc_u64)(YC_MPG_STRICT | YC_MPG_IMMOVABLE_RECEIVE))
+        return YC_KERN_INVALID_ARGUMENT;
+    return mach_port_guard(task, name, guard, (flags & YC_MPG_STRICT) ? 1 : 0);
+}
+
+/* kern_return_t mach_port_destroy(ipc_space_t task, mach_port_name_t name)
+ * Removes every right of the name (mach-ipc.md section 1.7), built from
+ * the port traps: a port set or send-once right is dropped with mod_refs;
+ * a receive right is destroyed (any send rights then become a dead name);
+ * the remaining send or dead-name urefs are dropped one at a time until the
+ * name is gone. NULL and DEAD succeed with no effect. */
+YC_EXPORT int mach_port_destroy(yc_port_t task, yc_port_t name)
+{
+    if (name == YC_MACH_PORT_NULL || name == YC_MACH_PORT_DEAD)
+        return YC_KERN_SUCCESS;
+    yc_u32 type = 0;
+    int kr = mach_port_type(task, name, &type);
+    if (kr != YC_KERN_SUCCESS)
+        return kr;
+    if (type & YC_MACH_PORT_TYPE_PORT_SET)
+        return mach_port_mod_refs(task, name, YC_MACH_PORT_RIGHT_PORT_SET, -1);
+    if (type & YC_MACH_PORT_TYPE_SEND_ONCE)
+        return mach_port_mod_refs(task, name, YC_MACH_PORT_RIGHT_SEND_ONCE, -1);
+    if (type & YC_MACH_PORT_TYPE_RECEIVE) {
+        kr = mach_port_mod_refs(task, name, YC_MACH_PORT_RIGHT_RECEIVE, -1);
+        if (kr != YC_KERN_SUCCESS)
+            return kr;
+    }
+    /* Send or dead-name urefs are at most 0xFFFF. */
+    for (yc_u32 i = 0; i <= 0x10000u; i++) {
+        if (mach_port_type(task, name, &type) != YC_KERN_SUCCESS)
+            return YC_KERN_SUCCESS; /* the name is gone */
+        if (!(type & (YC_MACH_PORT_TYPE_SEND | YC_MACH_PORT_TYPE_DEAD_NAME)))
+            return YC_KERN_SUCCESS;
+        if (mach_port_deallocate(task, name) != YC_KERN_SUCCESS)
+            return YC_KERN_SUCCESS;
+    }
+    return YC_KERN_SUCCESS;
+}
+
+/* The MIG-routine names of the port routines that have a trap
+ * (_kernelrpc_mach_port_*; the MIG fallback the library uses when a trap
+ * rejects a task other than the caller's). Ycode's kernel serves the
+ * caller's own space through the traps, so these use the traps too. Same
+ * C signatures as the mach_port_* routines above. */
+YC_EXPORT int _kernelrpc_mach_port_allocate(yc_port_t task, yc_u32 right, yc_port_t *name)
+{
+    return mach_port_allocate(task, right, name);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_deallocate(yc_port_t task, yc_port_t name)
+{
+    return mach_port_deallocate(task, name);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_mod_refs(yc_port_t task, yc_port_t name, yc_u32 right, int delta)
+{
+    return mach_port_mod_refs(task, name, right, delta);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_move_member(yc_port_t task, yc_port_t member, yc_port_t after)
+{
+    return mach_port_move_member(task, member, after);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_insert_right(yc_port_t task, yc_port_t name, yc_port_t poly, yc_u32 poly_poly)
+{
+    return mach_port_insert_right(task, name, poly, poly_poly);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_insert_member(yc_port_t task, yc_port_t name, yc_port_t pset)
+{
+    return mach_port_insert_member(task, name, pset);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_extract_member(yc_port_t task, yc_port_t name, yc_port_t pset)
+{
+    return mach_port_extract_member(task, name, pset);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_construct(yc_port_t task, void *options, yc_u64 context, yc_port_t *name)
+{
+    return mach_port_construct(task, options, context, name);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_destruct(yc_port_t task, yc_port_t name, int srdelta, yc_u64 guard)
+{
+    return mach_port_destruct(task, name, srdelta, guard);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_get_attributes(yc_port_t task, yc_port_t name, int flavor, void *info,
+                                                  yc_u32 *count)
+{
+    return mach_port_get_attributes(task, name, flavor, info, count);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_guard(yc_port_t task, yc_port_t name, yc_u64 guard, int strict)
+{
+    return mach_port_guard(task, name, guard, strict);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_guard_with_flags(yc_port_t task, yc_port_t name, yc_u64 guard, yc_u64 flags)
+{
+    return mach_port_guard_with_flags(task, name, guard, flags);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_unguard(yc_port_t task, yc_port_t name, yc_u64 guard)
+{
+    return mach_port_unguard(task, name, guard);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_type(yc_port_t task, yc_port_t name, yc_u32 *ptype)
+{
+    return mach_port_type(task, name, ptype);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_request_notification(yc_port_t task, yc_port_t name, int msgid, yc_u32 sync,
+                                                        yc_port_t notify, yc_u32 notify_poly, yc_port_t *previous)
+{
+    return mach_port_request_notification(task, name, msgid, sync, notify, notify_poly, previous);
+}
+
+YC_EXPORT int _kernelrpc_mach_port_destroy(yc_port_t task, yc_port_t name)
+{
+    return mach_port_destroy(task, name);
+}
+
 /* ------------------------------------------------- VM traps (-10..-15) */
 
 YC_EXPORT int mach_vm_allocate(yc_port_t task, yc_u64 *address, yc_u64 size, int flags)
@@ -264,91 +405,7 @@ YC_EXPORT int semaphore_timedwait_signal(yc_port_t wait_semaphore, yc_port_t sig
                          (yc_intptr_t)wait_time.tv_nsec);
 }
 
-/* -------------------------------------------------------------- mach_msg */
-
-#define YC_MACH_SEND_MSG 0x00000001u
-#define YC_MACH_RCV_MSG 0x00000002u
-#define YC_MACH_SEND_INTERRUPT 0x00000040u
-#define YC_MACH_RCV_INTERRUPT 0x00000400u
-#define YC_MACH_SEND_INTERRUPTED 0x10000007
-#define YC_MACH_RCV_INTERRUPTED 0x10004005
-
-struct yc_mach_msg_header {
-    yc_u32 msgh_bits;
-    yc_u32 msgh_size;
-    yc_port_t msgh_remote_port;
-    yc_port_t msgh_local_port;
-    yc_port_t msgh_voucher_port;
-    int msgh_id;
-};
-
-/* mach_msg_return_t mach_msg(mach_msg_header_t *msg, mach_msg_option_t
- *     option, mach_msg_size_t send_size, mach_msg_size_t rcv_size,
- *     mach_port_name_t rcv_name, mach_msg_timeout_t timeout,
- *     mach_port_name_t notify)
- * An interrupted send or receive is restarted unless the caller asked to
- * see interruptions; after a completed send only the receive is redone. */
-YC_EXPORT int mach_msg(struct yc_mach_msg_header *msg, yc_u32 option, yc_u32 send_size, yc_u32 rcv_size,
-                       yc_port_t rcv_name, yc_u32 timeout, yc_port_t notify)
-{
-    for (;;) {
-        int mr = (int)yc_mach_trap(YC_TRAP_MACH_MSG, (yc_uintptr_t)msg, option, send_size, rcv_size, rcv_name,
-                                   timeout, notify);
-        if (mr == YC_MACH_SEND_INTERRUPTED && !(option & YC_MACH_SEND_INTERRUPT))
-            continue;
-        if (mr == YC_MACH_RCV_INTERRUPTED && !(option & YC_MACH_RCV_INTERRUPT)) {
-            option &= ~YC_MACH_SEND_MSG;
-            continue;
-        }
-        return mr;
-    }
-}
-
-/* mach_msg_overwrite(msg, option, send_size, rcv_size, rcv_name, timeout,
- *     notify, rcv_msg, rcv_limit): the ninth argument (rcv_limit) is not
- * passed to the trap, so it is not read here. */
-YC_EXPORT int mach_msg_overwrite(struct yc_mach_msg_header *msg, yc_u32 option, yc_u32 send_size, yc_u32 rcv_size,
-                                 yc_port_t rcv_name, yc_u32 timeout, yc_port_t notify,
-                                 struct yc_mach_msg_header *rcv_msg)
-{
-    register yc_uintptr_t x7 __asm__("x7") = (yc_uintptr_t)rcv_msg;
-    for (;;) {
-        register yc_uintptr_t x0 __asm__("x0") = (yc_uintptr_t)msg;
-        register yc_uintptr_t x1 __asm__("x1") = option;
-        register yc_uintptr_t x2 __asm__("x2") = send_size;
-        register yc_uintptr_t x3 __asm__("x3") = rcv_size;
-        register yc_uintptr_t x4 __asm__("x4") = rcv_name;
-        register yc_uintptr_t x5 __asm__("x5") = timeout;
-        register yc_uintptr_t x6 __asm__("x6") = notify;
-        register long x16 __asm__("x16") = YC_TRAP_MACH_MSG_OVERWRITE;
-        __asm__ volatile("svc #0x80"
-                         : "+r"(x0), "+r"(x1)
-                         : "r"(x2), "r"(x3), "r"(x4), "r"(x5), "r"(x6), "r"(x7), "r"(x16)
-                         : "memory", "cc");
-        int mr = (int)x0;
-        if (mr == YC_MACH_SEND_INTERRUPTED && !(option & YC_MACH_SEND_INTERRUPT))
-            continue;
-        if (mr == YC_MACH_RCV_INTERRUPTED && !(option & YC_MACH_RCV_INTERRUPT)) {
-            option &= ~YC_MACH_SEND_MSG;
-            continue;
-        }
-        return mr;
-    }
-}
-
-YC_EXPORT int mach_msg_send(struct yc_mach_msg_header *msg)
-{
-    return mach_msg(msg, YC_MACH_SEND_MSG, msg->msgh_size, 0, YC_MACH_PORT_NULL, 0, YC_MACH_PORT_NULL);
-}
-
-YC_EXPORT int mach_msg_receive(struct yc_mach_msg_header *msg)
-{
-    return mach_msg(msg, YC_MACH_RCV_MSG, 0, msg->msgh_size, msg->msgh_local_port, 0, YC_MACH_PORT_NULL);
-}
-
 /* ------------------------------------------------------ MIG reply ports */
-
-#define YC_MACH_PORT_RIGHT_RECEIVE 1u
 
 /* Used while no TSD base is set (single-threaded early start). */
 static yc_port_t yc_reply_port_no_tsd;
@@ -370,8 +427,9 @@ static yc_port_t cached_port_get(int slot, yc_port_t *fallback, long trap)
     return port;
 }
 
-/* Forget the cached port and drop its receive right. */
-static void cached_port_dealloc(int slot, yc_port_t *fallback, yc_port_t given)
+/* Forget the cached port and return its name (or `given` if none was
+ * cached). */
+static yc_port_t cached_port_forget(int slot, yc_port_t *fallback, yc_port_t given)
 {
     yc_uintptr_t *tsd = yc_tsd_base();
     yc_port_t port = tsd ? (yc_port_t)tsd[slot] : *fallback;
@@ -379,8 +437,14 @@ static void cached_port_dealloc(int slot, yc_port_t *fallback, yc_port_t given)
         tsd[slot] = 0;
     else
         *fallback = YC_MACH_PORT_NULL;
-    if (port == YC_MACH_PORT_NULL)
-        port = given;
+    return port != YC_MACH_PORT_NULL ? port : given;
+}
+
+/* Forget the cached port and drop its receive right (the MIG reply port
+ * holds a receive right only, mach-ipc.md section 4.1). */
+static void cached_port_dealloc(int slot, yc_port_t *fallback, yc_port_t given)
+{
+    yc_port_t port = cached_port_forget(slot, fallback, given);
     if (port != YC_MACH_PORT_NULL)
         (void)mach_port_mod_refs(mach_task_self_, port, YC_MACH_PORT_RIGHT_RECEIVE, -1);
 }
@@ -410,9 +474,40 @@ YC_EXPORT yc_port_t mig_get_special_reply_port(void)
     return cached_port_get(YC_TSD_MACH_SPECIAL_REPLY, &yc_special_reply_port_no_tsd, YC_TRAP_SPECIAL_REPLY_PORT);
 }
 
+/* kern_return_t thread_destruct_special_reply_port(mach_port_name_t port,
+ *     thread_destruct_special_reply_port_rights_t rights)
+ * A special reply port holds a receive right and a send right under one
+ * name (mach-ipc.md section 4.2). The rights selector is the public enum
+ * THREAD_SPECIAL_REPLY_PORT_ALL (0), _RECEIVE_ONLY (1), _SEND_ONLY (2). */
+#define YC_SRP_ALL 0
+#define YC_SRP_RECEIVE_ONLY 1
+#define YC_SRP_SEND_ONLY 2
+
+YC_EXPORT int thread_destruct_special_reply_port(yc_port_t port, int rights)
+{
+    switch (rights) {
+    case YC_SRP_ALL: {
+        /* Receive right plus the one send uref; fall back to the receive
+         * right alone if the send right is already gone. */
+        int kr = mach_port_destruct(mach_task_self_, port, -1, 0);
+        if (kr != YC_KERN_SUCCESS)
+            kr = mach_port_mod_refs(mach_task_self_, port, YC_MACH_PORT_RIGHT_RECEIVE, -1);
+        return kr;
+    }
+    case YC_SRP_RECEIVE_ONLY:
+        return mach_port_mod_refs(mach_task_self_, port, YC_MACH_PORT_RIGHT_RECEIVE, -1);
+    case YC_SRP_SEND_ONLY:
+        return mach_port_deallocate(mach_task_self_, port);
+    default:
+        return YC_KERN_INVALID_ARGUMENT;
+    }
+}
+
 YC_EXPORT void mig_dealloc_special_reply_port(yc_port_t migport)
 {
-    cached_port_dealloc(YC_TSD_MACH_SPECIAL_REPLY, &yc_special_reply_port_no_tsd, migport);
+    yc_port_t port = cached_port_forget(YC_TSD_MACH_SPECIAL_REPLY, &yc_special_reply_port_no_tsd, migport);
+    if (port != YC_MACH_PORT_NULL)
+        (void)thread_destruct_special_reply_port(port, YC_SRP_ALL);
 }
 
 /* void mig_deallocate(vm_address_t addr, vm_size_t size) */
@@ -488,6 +583,18 @@ YC_EXPORT int host_page_size(yc_port_t host, yc_uintptr_t *size)
     return YC_KERN_SUCCESS;
 }
 
+/* host_t host_self(void): the same name as mach_host_self(). */
+YC_EXPORT yc_port_t host_self(void)
+{
+    return mach_host_self();
+}
+
+/* The MIG-routine name of host_page_size. */
+YC_EXPORT int _host_page_size(yc_port_t host, yc_uintptr_t *size)
+{
+    return host_page_size(host, size);
+}
+
 /* ------------------------------------------------ voucher message hooks */
 
 /* Forwarded to libdispatch's table (host-library-init.md section 2.3);
@@ -537,6 +644,7 @@ YC_EXPORT void voucher_mach_msg_revert(void *state)
 #define YC_PRIV_SEMAPHORE_DESTROY 4
 #define YC_PRIV_TASK_GET_SPECIAL_PORT 5
 #define YC_PRIV_TASK_SET_SPECIAL_PORT 6
+#define YC_PRIV_HOST_CREATE_MACH_VOUCHER 7
 
 /* kern_return_t host_get_clock_service(host_t host, clock_id_t clock_id,
  *     clock_serv_t *clock_serv) */
@@ -581,4 +689,71 @@ YC_EXPORT int task_set_special_port(yc_port_t task, int which_port, yc_port_t sp
 {
     return (int)YC_MACH3(YC_PRIV_ROUTINE(YC_PRIV_TASK_SET_SPECIAL_PORT), task, (yc_intptr_t)which_port,
                          special_port);
+}
+
+/* ------------------------------------------------------------- vouchers */
+
+/* kern_return_t host_create_mach_voucher(host_t host,
+ *     mach_voucher_attr_raw_recipe_array_t recipes,
+ *     mach_msg_type_number_t recipesCnt, ipc_voucher_t *voucher)
+ * Private trap 7 (stage4a-contract.md section 7): the VMM returns
+ * KERN_SUCCESS and writes *voucher = 0 (mach-ipc.md section 4.3). */
+YC_EXPORT int host_create_mach_voucher(yc_port_t host, const void *recipes, yc_u32 recipes_size,
+                                       yc_port_t *voucher)
+{
+    return (int)YC_MACH4(YC_PRIV_ROUTINE(YC_PRIV_HOST_CREATE_MACH_VOUCHER), host, recipes, recipes_size, voucher);
+}
+
+/* The MIG-routine name of the same call. */
+YC_EXPORT int _kernelrpc_host_create_mach_voucher(yc_port_t host, const void *recipes, yc_u32 recipes_size,
+                                                  yc_port_t *voucher)
+{
+    return host_create_mach_voucher(host, recipes, recipes_size, voucher);
+}
+
+/* kern_return_t mach_voucher_extract_attr_recipe(ipc_voucher_t voucher,
+ *     mach_voucher_attr_key_t key, mach_voucher_attr_raw_recipe_t recipe,
+ *     mach_msg_type_number_t *recipeCnt): Mach trap -72 with the same
+ * arguments. Name 0 or a name that is not a voucher gives
+ * MACH_SEND_INVALID_DEST (mach-ipc.md section 4.3). */
+YC_EXPORT int mach_voucher_extract_attr_recipe(yc_port_t voucher, yc_u32 key, void *recipe, yc_u32 *recipe_size)
+{
+    return (int)YC_MACH4(YC_TRAP_VOUCHER_EXTRACT_ATTR_RECIPE, voucher, key, recipe, recipe_size);
+}
+
+YC_EXPORT int _kernelrpc_mach_voucher_extract_attr_recipe(yc_port_t voucher, yc_u32 key, void *recipe,
+                                                          yc_u32 *recipe_size)
+{
+    return mach_voucher_extract_attr_recipe(voucher, key, recipe, recipe_size);
+}
+
+/* kern_return_t mach_voucher_deallocate(mach_voucher_t voucher): a voucher
+ * name is a send right, so this drops one uref; name 0 succeeds
+ * (mach-ipc.md sections 1.7 and 4.3). */
+YC_EXPORT int mach_voucher_deallocate(yc_port_t voucher)
+{
+    return mach_port_deallocate(mach_task_self_, voucher);
+}
+
+/* kern_return_t mach_voucher_attr_command(ipc_voucher_t voucher,
+ *     mach_voucher_attr_key_t key, mach_voucher_attr_command_t command,
+ *     mach_voucher_attr_content_t in_content,
+ *     mach_msg_type_number_t in_contentCnt,
+ *     mach_voucher_attr_content_t out_content,
+ *     mach_msg_type_number_t *out_contentCnt)
+ * A MIG call on the voucher port. Ycode's kernel creates no voucher
+ * objects (every voucher name is 0), so there is never a voucher server to
+ * reach: the result is MACH_SEND_INVALID_DEST, which libdispatch tolerates
+ * (mach-ipc.md section 4.3). */
+YC_EXPORT int mach_voucher_attr_command(yc_port_t voucher, yc_u32 key, yc_u32 command, const void *in_content,
+                                        yc_u32 in_size, void *out_content, yc_u32 *out_size)
+{
+    (void)voucher;
+    (void)key;
+    (void)command;
+    (void)in_content;
+    (void)in_size;
+    (void)out_content;
+    (void)out_size;
+    return YC_MACH_SEND_INVALID_DEST;
 }

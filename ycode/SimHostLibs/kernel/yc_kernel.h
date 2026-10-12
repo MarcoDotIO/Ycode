@@ -14,8 +14,40 @@ typedef yc_u32 yc_port_t;   /* mach_port_t / mach_port_name_t */
 typedef int yc_kern_return_t;
 
 #define YC_MACH_PORT_NULL 0u
+#define YC_MACH_PORT_DEAD 0xFFFFFFFFu
 #define YC_KERN_INVALID_ARGUMENT 4
 #define YC_KERN_FAILURE 5
+#define YC_KERN_INVALID_NAME 15
+#define YC_MACH_SEND_INVALID_DEST 0x10000003
+
+/* Port rights (mach_port_right_t) and type bits (mach_port_type_t). */
+#define YC_MACH_PORT_RIGHT_SEND 0u
+#define YC_MACH_PORT_RIGHT_RECEIVE 1u
+#define YC_MACH_PORT_RIGHT_SEND_ONCE 2u
+#define YC_MACH_PORT_RIGHT_PORT_SET 3u
+#define YC_MACH_PORT_RIGHT_DEAD_NAME 4u
+#define YC_MACH_PORT_TYPE_SEND (1u << 16)
+#define YC_MACH_PORT_TYPE_RECEIVE (1u << 17)
+#define YC_MACH_PORT_TYPE_SEND_ONCE (1u << 18)
+#define YC_MACH_PORT_TYPE_PORT_SET (1u << 19)
+#define YC_MACH_PORT_TYPE_DEAD_NAME (1u << 20)
+
+/* Message dispositions (mach-ipc.md section 2.4). */
+#define YC_MACH_MSG_TYPE_MOVE_RECEIVE 16u
+#define YC_MACH_MSG_TYPE_MOVE_SEND 17u
+#define YC_MACH_MSG_TYPE_MOVE_SEND_ONCE 18u
+#define YC_MACH_MSG_TYPE_COPY_SEND 19u
+#define YC_MACH_MSG_TYPE_MAKE_SEND 20u
+#define YC_MACH_MSG_TYPE_MAKE_SEND_ONCE 21u
+
+/* Trap-backed port routines (mach.c) used by the other sources. */
+int mach_port_deallocate(yc_port_t task, yc_port_t name);
+int mach_port_mod_refs(yc_port_t task, yc_port_t name, yc_u32 right, int delta);
+int mach_port_insert_right(yc_port_t task, yc_port_t name, yc_port_t poly, yc_u32 poly_poly);
+int mach_port_destruct(yc_port_t task, yc_port_t name, int srdelta, yc_u64 guard);
+int mach_port_unguard(yc_port_t task, yc_port_t name, yc_u64 guard);
+int mach_port_type(yc_port_t task, yc_port_t name, yc_u32 *ptype);
+int vm_deallocate(yc_port_t task, yc_uintptr_t address, yc_uintptr_t size);
 
 /* ---- TSD (host-library-init.md section 3) ---- */
 #define YC_TSD_SELF 0
@@ -150,7 +182,9 @@ static inline yc_uintptr_t yc_mach_trap(long number, yc_uintptr_t a0, yc_uintptr
 #define YC_TRAP_PORT_GET_ATTRIBUTES (-40)
 #define YC_TRAP_PORT_GUARD (-41)
 #define YC_TRAP_PORT_UNGUARD (-42)
+#define YC_TRAP_MACH_MSG2 (-47)
 #define YC_TRAP_SPECIAL_REPLY_PORT (-50)
+#define YC_TRAP_VOUCHER_EXTRACT_ATTR_RECIPE (-72)
 #define YC_TRAP_PORT_TYPE (-76)
 #define YC_TRAP_PORT_REQUEST_NOTIFICATION (-77)
 #define YC_TRAP_TIMEBASE_INFO (-89)

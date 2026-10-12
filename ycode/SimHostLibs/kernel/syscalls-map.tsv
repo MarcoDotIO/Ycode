@@ -233,25 +233,44 @@ ___write_nocancel	surface	bsd-syscall-private	397	cerror_nocancel
 ___writev_nocancel	surface	bsd-syscall-private	412	cerror_nocancel
 __exclaves_ctl_trap	table	mach-trap	-88	mach
 __exit	surface	bsd-syscall-private	1	noreturn
+__host_page_size	table	mach-routine	-	routine: mach.c
+__kernelrpc_host_create_mach_voucher	table	mach-routine	0x79632007	routine: mach.c: private trap, voucher 0
+__kernelrpc_mach_port_allocate	table	mach-routine	-16	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_allocate_trap	table	mach-trap	-16	mach
+__kernelrpc_mach_port_construct	table	mach-routine	-24	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_construct_trap	table	mach-trap	-24	mach
+__kernelrpc_mach_port_deallocate	table	mach-routine	-18	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_deallocate_trap	table	mach-trap	-18	mach
+__kernelrpc_mach_port_destroy	table	mach-routine	-76,-19,-18	routine: mach.c: MIG name, as mach_port_destroy
+__kernelrpc_mach_port_destruct	table	mach-routine	-25	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_destruct_trap	table	mach-trap	-25	mach
+__kernelrpc_mach_port_extract_member	table	mach-routine	-23	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_extract_member_trap	table	mach-trap	-23	mach
+__kernelrpc_mach_port_get_attributes	table	mach-routine	-40	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_get_attributes_trap	table	mach-trap	-40	mach
+__kernelrpc_mach_port_guard	table	mach-routine	-41	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_guard_trap	table	mach-trap	-41	mach
+__kernelrpc_mach_port_guard_with_flags	table	mach-routine	-41	routine: mach.c: MIG name, uses the trap
+__kernelrpc_mach_port_insert_member	table	mach-routine	-22	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_insert_member_trap	table	mach-trap	-22	mach
+__kernelrpc_mach_port_insert_right	table	mach-routine	-21	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_insert_right_trap	table	mach-trap	-21	mach
+__kernelrpc_mach_port_mod_refs	table	mach-routine	-19	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_mod_refs_trap	table	mach-trap	-19	mach
+__kernelrpc_mach_port_move_member	table	mach-routine	-20	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_move_member_trap	table	mach-trap	-20	mach
+__kernelrpc_mach_port_request_notification	table	mach-routine	-77	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_request_notification_trap	table	mach-trap	-77	mach
+__kernelrpc_mach_port_type	table	mach-routine	-76	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_type_trap	table	mach-trap	-76	mach
+__kernelrpc_mach_port_unguard	table	mach-routine	-42	routine: mach.c: MIG name, uses the trap
 __kernelrpc_mach_port_unguard_trap	table	mach-trap	-42	mach
 __kernelrpc_mach_vm_allocate_trap	table	mach-trap	-10	mach
 __kernelrpc_mach_vm_deallocate_trap	table	mach-trap	-12	mach
 __kernelrpc_mach_vm_map_trap	table	mach-trap	-15	mach
 __kernelrpc_mach_vm_protect_trap	table	mach-trap	-14	mach
 __kernelrpc_mach_vm_purgable_control_trap	table	mach-trap	-11	mach
+__kernelrpc_mach_voucher_extract_attr_recipe	table	mach-routine	-72	routine: mach.c
 _abort_with_payload	surface	bsd-syscall	521	noreturn
 _accept	surface	bsd-syscall	30	cerror
 _accept$NOCANCEL	surface	bsd-syscall	404	cerror_nocancel
@@ -279,6 +298,7 @@ _chflags	surface	bsd-syscall	34	cerror_nocancel
 _chmod	surface	bsd-syscall	15	cerror_nocancel
 _chown	surface	bsd-syscall	16	cerror_nocancel
 _chroot	table	bsd-syscall	61	cerror_nocancel
+_clock_get_time	surface	mach-routine	0x79632002	routine: mach.c: private trap
 _clock_sleep_trap	table	mach-trap	-62	mach
 _clonefileat	surface	bsd-syscall	462	cerror_nocancel
 _close	surface	bsd-syscall	6	cerror
@@ -376,7 +396,12 @@ _guarded_open_np	surface	bsd-syscall	-	hand-written
 _guarded_pwrite_np	surface	bsd-syscall	486	cerror_nocancel
 _guarded_write_np	surface	bsd-syscall	485	cerror_nocancel
 _guarded_writev_np	table	bsd-syscall	487	cerror_nocancel
+_host_create_mach_voucher	surface	mach-routine	0x79632007	routine: mach.c: private trap, voucher 0
 _host_create_mach_voucher_trap	table	mach-trap	-70	mach
+_host_get_clock_service	surface	mach-routine	0x79632001	routine: mach.c: private trap
+_host_info	surface	mach-routine	-	routine: mach.c: HOST_PRIORITY_INFO only
+_host_page_size	surface	mach-routine	-	routine: mach.c
+_host_self	table	mach-routine	-29	routine: mach.c: as mach_host_self
 _host_self_trap	table	mach-trap	-29	mach
 _ioctl	surface	bsd-syscall	-	hand-written
 _issetugid	surface	bsd-syscall	327	cerror_nocancel
@@ -400,15 +425,52 @@ _listxattr	surface	bsd-syscall	240	cerror_nocancel
 _lseek	surface	bsd-syscall	199	cerror_nocancel
 _lstat	surface	bsd-syscall	340	cerror_nocancel
 _lstat64	table	bsd-syscall	340	cerror_nocancel
+_mach_absolute_time	surface	mach-routine	-3	routine: mach.c
+_mach_continuous_time	surface	mach-routine	-4	routine: mach.c
 _mach_eventlink_signal	surface	bsd-syscall	-	stub: public kern_return_t API over a call that returns a packed u64
 _mach_eventlink_signal_wait_until	surface	bsd-syscall	-	stub: public kern_return_t API over a call that returns a packed u64
 _mach_eventlink_wait_until	surface	bsd-syscall	-	stub: public kern_return_t API over a call that returns a packed u64
 _mach_generate_activity_id	surface	mach-trap	-43	mach
+_mach_host_self	surface	mach-routine	-29	routine: mach.c
+_mach_msg	surface	mach-routine	-47	routine: machmsg.c: packed mach_msg2, MQ_CALL, interrupt retry
+_mach_msg2_internal	surface	mach-routine	-47	routine: machmsg.c: packed words passed through, library-only bits stripped, interrupt retry
 _mach_msg2_trap	table	mach-trap	-47	mach
+_mach_msg_destroy	surface	mach-routine	-18,-19,-21,-42,-12	routine: machmsg.c: library routine (mach-ipc.md 4.4)
+_mach_msg_overwrite	table	mach-routine	-47,-32	routine: machmsg.c: -32 only with a separate receive buffer
 _mach_msg_overwrite_trap	table	mach-trap	-32	mach
+_mach_msg_priority_encode	surface	mach-routine	-	routine: machmsg.c: library routine
+_mach_msg_receive	surface	mach-routine	-47	routine: machmsg.c: via mach_msg
+_mach_msg_send	surface	mach-routine	-47	routine: machmsg.c: via mach_msg
 _mach_msg_trap	table	mach-trap	-31	mach
+_mach_port_allocate	surface	mach-routine	-16	routine: mach.c
+_mach_port_construct	surface	mach-routine	-24	routine: mach.c
+_mach_port_deallocate	surface	mach-routine	-18	routine: mach.c
+_mach_port_destroy	surface	mach-routine	-76,-19,-18	routine: mach.c: library routine over the port traps
+_mach_port_destruct	surface	mach-routine	-25	routine: mach.c
+_mach_port_extract_member	surface	mach-routine	-23	routine: mach.c
+_mach_port_get_attributes	surface	mach-routine	-40	routine: mach.c
+_mach_port_guard	surface	mach-routine	-41	routine: mach.c
+_mach_port_guard_with_flags	table	mach-routine	-41	routine: mach.c: MPG_STRICT -> strict
+_mach_port_insert_member	surface	mach-routine	-22	routine: mach.c
+_mach_port_insert_right	surface	mach-routine	-21	routine: mach.c
+_mach_port_mod_refs	surface	mach-routine	-19	routine: mach.c
+_mach_port_move_member	surface	mach-routine	-20	routine: mach.c
+_mach_port_request_notification	surface	mach-routine	-77	routine: mach.c
+_mach_port_type	surface	mach-routine	-76	routine: mach.c
+_mach_port_unguard	surface	mach-routine	-42	routine: mach.c
 _mach_reply_port	table	mach-trap	-26	mach
+_mach_task_self	table	mach-routine	-	routine: mach.c: mach_task_self_
+_mach_thread_self	surface	mach-routine	-27	routine: mach.c
+_mach_timebase_info	surface	mach-routine	-89	routine: mach.c: cached
 _mach_timebase_info_trap	table	mach-trap	-89	mach
+_mach_vm_allocate	surface	mach-routine	-10	routine: mach.c
+_mach_vm_deallocate	surface	mach-routine	-12	routine: mach.c
+_mach_vm_map	surface	mach-routine	-15	routine: syscall_special.S: anonymous memory only
+_mach_vm_protect	surface	mach-routine	-14	routine: mach.c
+_mach_vm_purgable_control	surface	mach-routine	-11	routine: mach.c
+_mach_voucher_attr_command	surface	mach-routine	-	routine: mach.c: MACH_SEND_INVALID_DEST (no voucher objects)
+_mach_voucher_deallocate	surface	mach-routine	-18	routine: mach.c
+_mach_voucher_extract_attr_recipe	table	mach-routine	-72	routine: mach.c
 _mach_voucher_extract_attr_recipe_trap	table	mach-trap	-72	mach
 _mach_wait_until	surface	mach-trap	-90	mach
 _macx_backing_store_recovery	table	mach-trap	-53	mach
@@ -419,6 +481,12 @@ _macx_triggers	table	mach-trap	-51	mach
 _madvise	surface	bsd-syscall	75	cerror_nocancel
 _memorystatus_control	surface	bsd-syscall	440	cerror_nocancel
 _memorystatus_get_level	table	bsd-syscall	453	cerror_nocancel
+_mig_dealloc_reply_port	surface	mach-routine	-19	routine: mach.c
+_mig_dealloc_special_reply_port	surface	mach-routine	-25	routine: mach.c: thread_destruct_special_reply_port(ALL)
+_mig_deallocate	surface	mach-routine	-12	routine: mach.c
+_mig_get_reply_port	surface	mach-routine	-26	routine: mach.c: TSD slot 2
+_mig_get_special_reply_port	surface	mach-routine	-50	routine: mach.c: TSD slot 8
+_mig_put_reply_port	surface	mach-routine	-	routine: mach.c: no-op
 _mincore	surface	bsd-syscall	78	cerror_nocancel
 _minherit	table	bsd-syscall	250	cerror_nocancel
 _mk_timer_arm	surface	mach-trap	-93	mach
@@ -531,11 +599,20 @@ _sem_trywait	surface	bsd-syscall	272	cerror_nocancel
 _sem_unlink	surface	bsd-syscall	270	cerror_nocancel
 _sem_wait	surface	bsd-syscall	271	cerror
 _sem_wait$NOCANCEL	table	bsd-syscall	420	cerror_nocancel
+_semaphore_create	surface	mach-routine	0x79632003	routine: mach.c: private trap
+_semaphore_destroy	surface	mach-routine	0x79632004	routine: mach.c: private trap
+_semaphore_signal	surface	mach-routine	-33	routine: mach.c
+_semaphore_signal_all	surface	mach-routine	-34	routine: mach.c
 _semaphore_signal_all_trap	table	mach-trap	-34	mach
+_semaphore_signal_thread	table	mach-routine	-35	routine: mach.c
 _semaphore_signal_thread_trap	table	mach-trap	-35	mach
 _semaphore_signal_trap	table	mach-trap	-33	mach
+_semaphore_timedwait	surface	mach-routine	-38	routine: mach.c: mach_timespec_t split into sec, nsec
+_semaphore_timedwait_signal	surface	mach-routine	-39	routine: mach.c: mach_timespec_t split into sec, nsec
 _semaphore_timedwait_signal_trap	table	mach-trap	-39	mach
 _semaphore_timedwait_trap	table	mach-trap	-38	mach
+_semaphore_wait	surface	mach-routine	-36	routine: mach.c
+_semaphore_wait_signal	surface	mach-routine	-37	routine: mach.c
 _semaphore_wait_signal_trap	table	mach-trap	-37	mach
 _semaphore_wait_trap	table	mach-trap	-36	mach
 _semctl	surface	bsd-syscall	-	hand-written
@@ -598,11 +675,14 @@ _syscall_thread_switch	table	mach-trap	-61	mach
 _system_override	table	bsd-syscall	454	cerror_nocancel
 _task_dyld_process_info_notify_get	table	mach-trap	-13	mach
 _task_for_pid	surface	mach-trap	-45	mach
+_task_get_special_port	surface	mach-routine	0x79632005	routine: mach.c: private trap
 _task_inspect_for_pid	table	bsd-syscall	-	stub: kern_return_t API; the BSD call's result convention is not specified
 _task_name_for_pid	surface	mach-trap	-44	mach
 _task_read_for_pid	surface	bsd-syscall	-	stub: kern_return_t API; the BSD call's result convention is not specified
 _task_self_trap	table	mach-trap	-28	mach
+_task_set_special_port	surface	mach-routine	0x79632006	routine: mach.c: private trap
 _terminate_with_payload	table	bsd-syscall	520	cerror_nocancel
+_thread_destruct_special_reply_port	surface	mach-routine	-25,-19,-18	routine: mach.c
 _thread_get_special_reply_port	surface	mach-trap	-50	mach
 _thread_self_trap	table	mach-trap	-27	mach
 _thread_selfcounts	surface	bsd-syscall	186	cerror_nocancel
@@ -618,7 +698,12 @@ _unmount	surface	bsd-syscall	159	cerror_nocancel
 _usrctl	table	bsd-syscall	445	cerror_nocancel
 _utimes	surface	bsd-syscall	138	cerror_nocancel
 _vfs_purge	table	bsd-syscall	455	cerror_nocancel
+_vm_allocate	surface	mach-routine	-10	routine: mach.c
+_vm_deallocate	surface	mach-routine	-12	routine: mach.c
+_vm_map	surface	mach-routine	-15	routine: syscall_special.S: anonymous memory only
 _vm_pressure_monitor	table	bsd-syscall	296	cerror_nocancel
+_vm_protect	surface	mach-routine	-14	routine: mach.c
+_vm_purgable_control	surface	mach-routine	-11	routine: mach.c
 _wait4	surface	bsd-syscall	7	cerror
 _waitid	table	bsd-syscall	173	cerror
 _waitid$NOCANCEL	table	bsd-syscall	416	cerror_nocancel

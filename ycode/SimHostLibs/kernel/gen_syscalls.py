@@ -114,8 +114,108 @@ LEAVE_AS_STUB = {
     "_getdirentries": "legacy 32-bit-inode directory format",
 }
 
-# Mach-routine rows that are written by hand in mach.c on top of traps
-# (listed here only so the map file can report them).
+# Mach-routine rows written by hand in mach.c / machmsg.c on top of traps
+# (listed here only so the map file can report them; the generator emits
+# nothing for them). name -> (trap number(s) used, note). Private traps
+# are 0x7963_2000 + n (host-libraries.md section 10, stage4a-contract.md
+# section 7).
+MACH_ROUTINES = {
+    # time and self ports
+    "_mach_absolute_time": ("-3", "mach.c"),
+    "_mach_continuous_time": ("-4", "mach.c"),
+    "_mach_timebase_info": ("-89", "mach.c: cached"),
+    "_mach_task_self": ("-", "mach.c: mach_task_self_"),
+    "_mach_host_self": ("-29", "mach.c"),
+    "_host_self": ("-29", "mach.c: as mach_host_self"),
+    "_mach_thread_self": ("-27", "mach.c"),
+    # port routines over the _kernelrpc_mach_port_*_trap traps
+    "_mach_port_allocate": ("-16", "mach.c"),
+    "_mach_port_deallocate": ("-18", "mach.c"),
+    "_mach_port_mod_refs": ("-19", "mach.c"),
+    "_mach_port_move_member": ("-20", "mach.c"),
+    "_mach_port_insert_right": ("-21", "mach.c"),
+    "_mach_port_insert_member": ("-22", "mach.c"),
+    "_mach_port_extract_member": ("-23", "mach.c"),
+    "_mach_port_construct": ("-24", "mach.c"),
+    "_mach_port_destruct": ("-25", "mach.c"),
+    "_mach_port_get_attributes": ("-40", "mach.c"),
+    "_mach_port_guard": ("-41", "mach.c"),
+    "_mach_port_guard_with_flags": ("-41", "mach.c: MPG_STRICT -> strict"),
+    "_mach_port_unguard": ("-42", "mach.c"),
+    "_mach_port_type": ("-76", "mach.c"),
+    "_mach_port_request_notification": ("-77", "mach.c"),
+    "_mach_port_destroy": ("-76,-19,-18", "mach.c: library routine over the port traps"),
+    "__kernelrpc_mach_port_allocate": ("-16", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_deallocate": ("-18", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_mod_refs": ("-19", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_move_member": ("-20", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_insert_right": ("-21", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_insert_member": ("-22", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_extract_member": ("-23", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_construct": ("-24", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_destruct": ("-25", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_get_attributes": ("-40", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_guard": ("-41", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_guard_with_flags": ("-41", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_unguard": ("-42", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_type": ("-76", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_request_notification": ("-77", "mach.c: MIG name, uses the trap"),
+    "__kernelrpc_mach_port_destroy": ("-76,-19,-18", "mach.c: MIG name, as mach_port_destroy"),
+    # VM
+    "_mach_vm_allocate": ("-10", "mach.c"),
+    "_mach_vm_deallocate": ("-12", "mach.c"),
+    "_mach_vm_protect": ("-14", "mach.c"),
+    "_mach_vm_purgable_control": ("-11", "mach.c"),
+    "_mach_vm_map": ("-15", "syscall_special.S: anonymous memory only"),
+    "_vm_allocate": ("-10", "mach.c"),
+    "_vm_deallocate": ("-12", "mach.c"),
+    "_vm_protect": ("-14", "mach.c"),
+    "_vm_purgable_control": ("-11", "mach.c"),
+    "_vm_map": ("-15", "syscall_special.S: anonymous memory only"),
+    # semaphores
+    "_semaphore_signal": ("-33", "mach.c"),
+    "_semaphore_signal_all": ("-34", "mach.c"),
+    "_semaphore_signal_thread": ("-35", "mach.c"),
+    "_semaphore_wait": ("-36", "mach.c"),
+    "_semaphore_wait_signal": ("-37", "mach.c"),
+    "_semaphore_timedwait": ("-38", "mach.c: mach_timespec_t split into sec, nsec"),
+    "_semaphore_timedwait_signal": ("-39", "mach.c: mach_timespec_t split into sec, nsec"),
+    "_semaphore_create": ("0x79632003", "mach.c: private trap"),
+    "_semaphore_destroy": ("0x79632004", "mach.c: private trap"),
+    # other private-trap routines
+    "_host_get_clock_service": ("0x79632001", "mach.c: private trap"),
+    "_clock_get_time": ("0x79632002", "mach.c: private trap"),
+    "_task_get_special_port": ("0x79632005", "mach.c: private trap"),
+    "_task_set_special_port": ("0x79632006", "mach.c: private trap"),
+    # messages
+    "_mach_msg": ("-47", "machmsg.c: packed mach_msg2, MQ_CALL, interrupt retry"),
+    "_mach_msg_overwrite": ("-47,-32", "machmsg.c: -32 only with a separate receive buffer"),
+    "_mach_msg_send": ("-47", "machmsg.c: via mach_msg"),
+    "_mach_msg_receive": ("-47", "machmsg.c: via mach_msg"),
+    "_mach_msg2_internal": ("-47", "machmsg.c: packed words passed through, library-only bits stripped, interrupt retry"),
+    "_mach_msg_destroy": ("-18,-19,-21,-42,-12", "machmsg.c: library routine (mach-ipc.md 4.4)"),
+    "_mach_msg_priority_encode": ("-", "machmsg.c: library routine"),
+    # MIG reply ports and special reply ports
+    "_mig_get_reply_port": ("-26", "mach.c: TSD slot 2"),
+    "_mig_dealloc_reply_port": ("-19", "mach.c"),
+    "_mig_put_reply_port": ("-", "mach.c: no-op"),
+    "_mig_get_special_reply_port": ("-50", "mach.c: TSD slot 8"),
+    "_mig_dealloc_special_reply_port": ("-25", "mach.c: thread_destruct_special_reply_port(ALL)"),
+    "_thread_destruct_special_reply_port": ("-25,-19,-18", "mach.c"),
+    "_mig_deallocate": ("-12", "mach.c"),
+    # vouchers
+    "_host_create_mach_voucher": ("0x79632007", "mach.c: private trap, voucher 0"),
+    "__kernelrpc_host_create_mach_voucher": ("0x79632007", "mach.c: private trap, voucher 0"),
+    "_mach_voucher_extract_attr_recipe": ("-72", "mach.c"),
+    "__kernelrpc_mach_voucher_extract_attr_recipe": ("-72", "mach.c"),
+    "_mach_voucher_deallocate": ("-18", "mach.c"),
+    "_mach_voucher_attr_command": ("-", "mach.c: MACH_SEND_INVALID_DEST (no voucher objects)"),
+    # host
+    "_host_info": ("-", "mach.c: HOST_PRIORITY_INFO only"),
+    "_host_page_size": ("-", "mach.c"),
+    "__host_page_size": ("-", "mach.c"),
+}
+
 KNOWN_VARIANTS = {"NOCANCEL", "DARWIN_EXTSN"}
 
 
@@ -198,7 +298,7 @@ def main():
 
     table, bsd, mach = load(args.data_dir)
     names = {r["name"]: r for r in table}
-    for n in sorted(HANDWRITTEN | set(LEAVE_AS_STUB)):
+    for n in sorted(HANDWRITTEN | set(LEAVE_AS_STUB) | set(MACH_ROUTINES)):
         if n not in names:
             die("%s is listed but is not a row of the kernel table" % n)
 
@@ -215,6 +315,11 @@ def main():
         surf = "surface" if row["importers"] > 0 else "table"
         cname = name[1:]
         if row["kind"] != "function":
+            continue
+        if name in MACH_ROUTINES:
+            num, note = MACH_ROUTINES[name]
+            mapping.append((name, surf, cat, num, "routine: " + note))
+            bump("routine")
             continue
         is_bsd = cat in BSD_CATEGORIES or (cat in ALIAS_CATEGORIES and cname in ALIASES)
         is_mach = cat == "mach-trap"
