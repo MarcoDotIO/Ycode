@@ -1,0 +1,32 @@
+echo == system before death handler
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/rr/bin/launchctl v:launchctl,print,system n n n fd:1 fd:1 i:0 i:0 z
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 LP z
+launch_sim_set_death_handler s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 q blk
+echo == system after death handler
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/rr/bin/launchctl v:launchctl,print,system n n n fd:1 fd:1 i:0 i:0 z
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 LP z
+echo == spawn with arg9 = 1
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/lsguest v:lsguest-suspended n n n fd:1 fd:1 i:0 i:1 z
+sleep 1
+sh ps -ax -o pid,ppid,stat,command | grep lsguest | grep -v grep
+echo == spawn with cpu type arm64 and x86_64
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/lsguest v:lsguest-arm64 n n n fd:1 fd:1 i:0x0100000c i:0 z
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 LP z
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/lsguest v:lsguest-x86 n n n fd:1 fd:1 i:0x01000007 i:0 z
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 LP z
+echo == spawn missing program, relative path
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/nonexistent v:x n n n fd:1 fd:1 i:0 i:0 z
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:lsguest v:lsguest n n n fd:1 fd:1 i:0 i:0 z
+echo == register twice, and a name a guest job owns
+launch_sim_register_endpoint s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:com.ycode.dup P2
+launch_sim_register_endpoint s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:com.ycode.dup P2
+launch_sim_register_endpoint s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:com.ycode.r3.usvc P2
+echo == waitpid of a non-child and twice
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 i:1 z
+echo == bind to B, then destroy B
+launch_sim_bind_session_to_port s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 B
+sleep 1
+destroyB
+sleep 2
+sh ps -ax -o pid,stat,command | grep launchd_sim | grep -v grep
+launch_sim_getenv s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:X

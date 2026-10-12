@@ -1,0 +1,19 @@
+echo == our own messages only
+rawreg com.ycode.rawsvc P2
+rawfind com.ycode.rawsvc
+rawfind com.ycode.none
+rawspawn /tmp 0 0 -1 1 /tmp/ycode-R3/lsguest lsguest-raw,com.ycode.rawsvc YC_RAW=1
+sleep 0.5
+rawwait RP
+rawspawn - 0 0x0100000c -1 1 /tmp/ycode-R3/rr/bin/launchctl launchctl,setenv,YCODE_RAW,v1 -
+sleep 0.5
+rawwait RP
+rawgetenv YCODE_RAW
+rawgetenv NOPE
+rawdeath
+rawbind P2
+rawbind P2
+rawunreg com.ycode.rawsvc
+rawunreg com.ycode.rawsvc
+rawspawn - 0 0 -1 1 /tmp/ycode-R3/rr/bin/launchctl launchctl,print,system -
+sleep 0.5

@@ -1,0 +1,8 @@
+launch_sim_set_death_handler s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 q blk
+rawbind B
+sleep 1
+sh date +%T
+destroyB
+sleep 6
+sh date +%T
+sh ps -ax -o pid,stat,command | grep 'launchd_sim /tmp/ycode-R3' | grep -v grep

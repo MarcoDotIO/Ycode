@@ -1,0 +1,19 @@
+echo == getenv before bind
+launch_sim_getenv s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:SIMULATOR_UDID
+echo == register hostsvc, then spawn guest probe (no bind yet)
+launch_sim_register_endpoint s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:com.ycode.hostsvc P2
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/lsguest v:lsguest,com.ycode.hostsvc,com.ycode.unknown v:YC_A=1,YC_B=2 s:/tmp n fd:1 fd:1 i:0 i:0 z
+sleep 1
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 LP z
+echo == launchctl print user/501
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/rr/bin/launchctl v:launchctl,print,user/501 n n n fd:1 fd:1 i:0 i:0 z
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 LP z
+echo == bind
+launch_sim_bind_session_to_port s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 P2
+launch_sim_getenv s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:SIMULATOR_UDID
+launch_sim_getenv s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:HOME
+echo == unregister then probe again
+launch_sim_unregister_endpoint s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:com.ycode.hostsvc
+launch_sim_unregister_endpoint s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:com.ycode.hostsvc
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/lsguest v:lsguest,com.ycode.hostsvc n n n fd:1 fd:1 i:0 i:0 z
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 LP z

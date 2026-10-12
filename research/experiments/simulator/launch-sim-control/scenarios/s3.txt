@@ -1,0 +1,24 @@
+launch_sim_register_endpoint s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:com.ycode.hostsvc P2
+echo == print system before bind
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/rr/bin/launchctl v:launchctl,print,system n n n fd:1 fd:1 i:0 i:0 z
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 LP z
+echo == find guest services before bind
+launch_sim_find_endpoint s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:com.ycode.r3.sysvc z
+launch_sim_find_endpoint s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:com.ycode.r3.usvc z
+echo == getenv via launchctl setenv
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/rr/bin/launchctl v:launchctl,setenv,YCODE_X,hello-from-setenv n n n fd:1 fd:1 i:0 i:0 z
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 LP z
+launch_sim_getenv s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:YCODE_X
+echo == death handler
+launch_sim_set_death_handler s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 q blk
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/rr/bin/launchctl v:launchctl,print,user/501 n n n fd:1 fd:1 i:0 i:0 z
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 LP z
+echo == bind
+launch_sim_bind_session_to_port s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 P2
+sleep 1
+launch_sim_spawn s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:/tmp/ycode-R3/rr/bin/launchctl v:launchctl,print,system n n n fd:1 fd:1 i:0 i:0 z
+launch_sim_waitpid s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 LP z
+launch_sim_find_endpoint s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 s:com.ycode.r3.sysvc z
+echo == bind again
+launch_sim_bind_session_to_port s:com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003 P2
+sh cat /tmp/ycode-R3/dev/data/tmp/sysd.out

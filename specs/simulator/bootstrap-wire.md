@@ -428,7 +428,7 @@ MIG 708).
    whether any runtime component still calls it.
 4. The success layout of 805 as `launchd_sim` sends it (the probe produced
    only a host-mode answer and an `EPERM`).
-5. The control-channel protocol on the 708 service port (bind session,
+5. **Answered in `launch-sim-control.md` (stage 7).** The control-channel protocol on the 708 service port (bind session,
    register endpoint, spawn, `launch_sim_*`). It is private between
    `liblaunch_sim` and `launchd_sim` and is not covered here.
 6. The XPC connection protocol after look-up (`msgh_id` `0x77303074`, §3.2).

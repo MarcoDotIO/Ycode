@@ -484,7 +484,8 @@ GPU).
 1. The two `XPC_SIMULATOR_HOLDING_TANK_*` variables: fd 5 is a Unix socket
    connected to the syslog socket, and the pid did not exist at the time of
    the check. Is either needed? Test: start without them under Ycode.
-2. Message formats on the control channel (bind/register/find/spawn) and on
+2. **Answered:** the guest bootstrap port is `bootstrap-wire.md`; the control channel is `launch-sim-control.md` (MIG base 700).
+   Original question: message formats on the control channel (bind/register/find/spawn) and on
    the guest bootstrap port are not visible from metadata. The guest side
    uses the libxpc pipe and MIG-compatible bootstrap messages (import
    names). Ycode's host end must speak the control-channel format; the
@@ -500,7 +501,7 @@ GPU).
    Ycode by omitting the bind. **Partly answered (level 3, stage 4c-iii):**
    with `RequireDomainBinding = true` and no bind, `launchd_sim` defers the
    spawn of `system`-domain jobs indefinitely (`user/<uid>` jobs are not
-   affected). Ycode writes `false` until the bind is specified.
+   affected). Ycode writes `false` until the bind is specified. **Answered (stage 7):** control-channel operation 700 binds the session (`launch-sim-control.md` §3.1); after it `system` leaves bootstrap mode, so Ycode can write `true` once its host binds.
 5. ~~The send right in slot 0 of `mach_ports_lookup`~~ **Answered
    (level 3, Ycode runs, stage 4c-iii):** `launchd_sim` registers its
    service port (the receive right it got from the host's 708 reply) in

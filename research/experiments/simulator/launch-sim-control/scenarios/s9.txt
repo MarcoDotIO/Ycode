@@ -1,0 +1,10 @@
+rawspawn - 1 0 -1 1 /tmp/ycode-R3/lsguest lsguest-waittest -
+sh (sleep 2; pkill -9 -f lsguest-waittest) &
+sh date +%T
+rawwait RP
+sh date +%T
+rawwait RP
+rawspawn - 0 0 -1 1 /tmp/ycode-R3/lsguest lsguest-quick -
+sleep 1
+sh ps -ax -o pid,stat,command | grep lsguest-quick | grep -v grep
+rawwait RP

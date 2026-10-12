@@ -1,0 +1,7 @@
+sh date +%T.%N
+rawreg com.ycode.early P2
+sh date +%T
+rawfind com.ycode.early
+rawspawn - 0 0 -1 1 /tmp/ycode-R3/lsguest lsguest-early,com.ycode.early -
+sh date +%T
+sleep 0.5
