@@ -49,7 +49,8 @@ extension DarwinKernel {
                           kill = 37, pthreadKill = 328, semwaitSignal = 334, semwaitSignalNocancel = 423,
                           statfs64 = 345, fstatfs64 = 346, workqOpen = 367, workqKernreturn = 368, sendto = 133,
                           bsdthreadCreate = 360, bsdthreadTerminate = 361, bsdthreadCtl = 478,
-                          kqueueWorkloopCtl = 530, disableThreadsignal = 331
+                          kqueueWorkloopCtl = 530, disableThreadsignal = 331,
+                          sigsuspend = 111, sigsuspendNocancel = 410
         /// psynch calls that wait (can never be woken on one thread).
         public static let psynchWaits: [Int: String] = [
             297: "psynch_rw_longrdlock", 298: "psynch_rw_yieldwrlock", 300: "psynch_rw_upgrade",
@@ -245,6 +246,19 @@ extension DarwinKernel {
             guard (0...31).contains(sig) else { throw Failure(errno: Errno.EINVAL) }
             if sig == 0 { return .value(0) }
             return signalSelf(sig, &call)
+
+        case BSD2.sigsuspend, BSD2.sigsuspendNocancel:
+            // Replace the mask, wait until a signal is deliverable to this
+            // thread (none can be in stage 4a: only `KernelLock.interrupt`
+            // or the process ending wakes it), restore the mask. Always EINTR.
+            let mask = UInt32(truncatingIfNeeded: a[0])
+            call = "\(n == BSD2.sigsuspend ? "sigsuspend" : "__sigsuspend_nocancel")(mask=\(hx(mask)))"
+            let old = extended.signalMask
+            extended.signalMask = mask & ~SignalConstant.unblockable
+            let result = WaitQueue().wait(on: lock, deadline: nil)
+            extended.signalMask = old
+            call += " [\(result == .interrupted ? "interrupted" : "woken")]"
+            throw Failure(errno: Self.EINTR)
 
         case BSD2.disableThreadsignal:
             call = "__disable_threadsignal(\(int(0)))"

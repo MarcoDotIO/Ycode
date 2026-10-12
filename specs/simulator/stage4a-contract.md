@@ -1,6 +1,6 @@
 # Spec: stage 4a contract (threads, workqueues, kevent, in-process Mach IPC)
 
-Status: **contract**. Stage 4 runs `launchd_sim` (see
+Status: **done (2026-10-12)**. The §1 exit criterion is met on the Thor. Stage 4 runs `launchd_sim` (see
 `docs/SIMULATOR-LINUX.md`). It is split into three parts:
 
 | Part | Scope |
@@ -299,3 +299,8 @@ The orchestrator owns `Package.swift`, the specs, and the commits.
   - `p_dispatch` and `p_dispatch_main` were blocked by two gaps, which
     are now fixed: `mach_get_times` in libsystem_kernel, and `sigsuspend`
     (BSD 111/410) in the VMM.
+- **Final verification** (orchestrator, clean checkout, three rounds): the
+  self-test, `hello`, `p_threads`, `p_machmsg`, `p_dispatch`
+  (`dispatch ok sum=55`), and `p_dispatch_main` (`dispatch_main ok
+  ticks=3`) all exit 0 in every round (18 of 18). The tests pass on macOS,
+  x86-64 Linux, and the Thor.

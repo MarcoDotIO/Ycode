@@ -319,3 +319,42 @@ import YcodeDarwinABI
         #expect(sleeper() == .exit(status: 7))
     }
 }
+
+/// `sigsuspend` (111) and `__sigsuspend_nocancel` (410): block until a signal
+/// (none in stage 4a) or the end of the process.
+@Suite(.serialized) struct SigsuspendTests {
+    @Test func blocksWithTheMaskUntilInterrupted() throws {
+        let t = try T2Env()
+        let (a, _) = t.createThread()
+        let wait = t.spawn { t.svc(410, [0x0000_0100 | 0x0001_0000], context: a).1 }
+        #expect(t.eventually { t.blocked(a) })
+        Thread.sleep(forTimeInterval: 0.02)
+        #expect(t.blocked(a))
+        // The mask applies while it waits (SIGKILL/SIGSTOP never blocked).
+        #expect(t.kernel.lock.withLock { t.kernel.extended.signalMask } == 0)
+        #expect(t.kernel.lock.withLock { t.kernel.lock.interrupt(a) })
+        let f = try #require(wait())
+        #expect(f.carry && f.x[0] == 4)  // EINTR
+        #expect(t.kernel.lock.withLock { t.kernel.extended.signalMask } == 0)
+    }
+
+    @Test func maskIsAppliedAndRestored() throws {
+        let t = try T2Env()
+        let (a, _) = t.createThread()
+        let wait = t.spawn { t.svc(111, [0x4], context: a).1 }
+        #expect(t.eventually { t.blocked(a) })
+        #expect(t.kernel.lock.withLock { t.kernel.extended.signalMask } == 0x4)
+        t.kernel.lock.withLock { _ = t.kernel.lock.interrupt(a) }
+        #expect(wait()?.x[0] == 4)
+        #expect(t.kernel.lock.withLock { t.kernel.extended.signalMask } == 0)
+    }
+
+    @Test func processExitWakesIt() throws {
+        let t = try T2Env()
+        let (a, _) = t.createThread()
+        let wait = t.spawn { t.svc(410, [0], context: a).0 }
+        #expect(t.eventually { t.blocked(a) })
+        #expect(t.svc(1, [3]).0 == .exit(status: 3))
+        #expect(wait() == .exit(status: 3))
+    }
+}

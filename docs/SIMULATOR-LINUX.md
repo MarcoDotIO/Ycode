@@ -105,6 +105,16 @@ vCPU, or vCPUs are multiplexed when the thread count grows.
    stdout through `write` (BSD 4).
 4. **Syscall coverage driven by traces.** Run guest tools and log every
    unimplemented trap. Implement the most frequent first.
+4a. **Threads, dispatch, and in-process Mach IPC.** *(Done 2026-10-12.)*
+   - One KVM VM per process and one vCPU per thread, each vCPU on its own
+     host thread.
+   - Real `pthread_create`/join, workqueue worker threads, kevent (user
+     events, timers, workloops, Mach-port receive), multi-thread ulock and
+     semaphores, and a full in-process Mach IPC engine.
+   - On the Thor, `p_threads`, `p_machmsg`, `p_dispatch`, and
+     `p_dispatch_main` all pass, along with `hello` and the stage-2
+     self-test (18 of 18 runs over three rounds).
+   - Contract: `specs/simulator/stage4a-contract.md`.
 5. **Mach IPC and bootstrap.** Ports, rights, `mach_msg`, and bootstrap
    lookup, enough to run `launchd_sim` with no daemons.
 6. **launchd_sim plus the core daemons.** `cfprefsd`, `notifyd`,
