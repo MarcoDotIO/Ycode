@@ -67,6 +67,7 @@ HANDWRITTEN = {
     # two results / special return conventions
     "_pipe", "___fork",
     # extra kernel argument or by-value argument
+    "___gettimeofday",
     "_kill", "_sigsuspend", "_sigsuspend$NOCANCEL", "_reboot",
     # FD_SETSIZE check for the non-$DARWIN_EXTSN select family
     "_select", "_select$NOCANCEL", "_pselect", "_pselect$NOCANCEL",

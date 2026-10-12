@@ -870,8 +870,12 @@ static void test_once(void)
     CHECK(T(pthread_once)(&o, once_routine) == 0);
     CHECK(T(pthread_once)(&o, once_routine) == 0);
     CHECK(once_count == 1);
-    yonce_t bad = { 0x1234, { 0 } };
-    CHECK(T(pthread_once)(&bad, once_routine) == 22);
+    /* The signature is ignored: zero-filled and odd signatures run once. */
+    yonce_t zero = { 0, { 0 } }, odd = { 0x1234, { 0 } };
+    once_count = 0;
+    CHECK(T(pthread_once)(&zero, once_routine) == 0 && T(pthread_once)(&zero, once_routine) == 0);
+    CHECK(T(pthread_once)(&odd, once_routine) == 0);
+    CHECK(once_count == 2);
     once_count = 0;
     pthread_t th[8];
     for (int i = 0; i < 8; i++) pthread_create(&th[i], NULL, once_thread, NULL);

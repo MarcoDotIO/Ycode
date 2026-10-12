@@ -437,13 +437,33 @@ YC_EXPORT const char *YC_FN(_simple_getenv)(const char *envp[], const char *var)
 
 /* ---- simple ASL --------------------------------------------------------
  * The context lives in os_alloc_once slot 21 (LIBSYSTEM_PLATFORM_ASL) and
- * is set up by __libplatform_init (host-library-init.md section 1.3). */
+ * is set up by __libplatform_init (host-library-init.md section 1.3).
+ *
+ * The slot is shared with the simulator runtime's libsystem_sim_platform,
+ * which reads and locks the same object with its own (simulator) layout,
+ * so the layout follows Apple's open-source libplatform (src/simple/asl.c,
+ * evidence level 1):
+ *   host (macOS) build:  bool enabled @0, const char *progname @8,
+ *                        int fd @16, os_once_t connect_once @24   (32 bytes)
+ *   simulator build:     the same up to @16, then const char
+ *                        *sim_log_path @24, os_unfair_lock
+ *                        sim_connect_lock @32                     (40 bytes)
+ * Ycode allocates 48 zero-filled bytes so that the simulator's fields lie
+ * inside this allocation (sim_log_path NULL, the lock unlocked). On the Mac
+ * the host allocates only 32 bytes and the simulator's lock word falls on
+ * the first word of the next os_alloc_once allocation. Ycode never uses
+ * connect_once (it does not connect to a syslog socket). */
 
 struct asl_context {
-    const char *progname;
-    int fd;
-    int enabled;
+    yc_bool enabled;          /* 0 */
+    const char *progname;     /* 8 */
+    int fd;                   /* 16 */
+    long connect_once;        /* 24 (simulator: sim_log_path) */
+    yc_u32 sim_connect_lock;  /* 32 (simulator only) */
 };
+_Static_assert(__builtin_offsetof(struct asl_context, fd) == 16, "asl_fd at 16");
+_Static_assert(__builtin_offsetof(struct asl_context, sim_connect_lock) == 32, "sim_connect_lock at 32");
+#define YC_ASL_CONTEXT_SIZE 48
 
 void *YC_FN(_os_alloc_once)(struct yc_alloc_once_slot *, yc_size_t, void (*)(void *));
 
@@ -460,7 +480,7 @@ static struct asl_context *asl_context(void)
     struct yc_alloc_once_slot *slot = &YC_KFN(_os_alloc_once_table)[YC_OS_ALLOC_ONCE_KEY_LIBSYSTEM_PLATFORM_ASL];
     if (__atomic_load_n(&slot->once, __ATOMIC_ACQUIRE) == ~0l)
         return slot->ptr;
-    return YC_FN(_os_alloc_once)(slot, sizeof(struct asl_context), asl_context_init);
+    return YC_FN(_os_alloc_once)(slot, YC_ASL_CONTEXT_SIZE, asl_context_init);
 }
 
 /* ProgramVars: mh, NXArgcPtr, NXArgvPtr, environPtr, __prognamePtr. */

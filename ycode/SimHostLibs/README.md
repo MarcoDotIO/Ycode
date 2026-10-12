@@ -305,6 +305,26 @@ Contract: `specs/simulator/stage4b-contract.md` section 8, semantics in
 - `kernel/init.c`: `mach_init` sets `bootstrap_port` from
   `task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT)`.
 
+## Stage 4c fixes (launchd_sim)
+
+- `pthread_once` ignores the signature word, as Darwin's libpthread does:
+  libsystem_c's stdio `__sdidinit` is a zero-filled `pthread_once_t`.
+  Mutexes, conditions and rwlocks still reject an unknown signature
+  (EINVAL), as on Darwin.
+- `__gettimeofday` is hand-written: it passes 0 as BSD 116's third
+  argument (the `mach_absolute_time` out-pointer).
+- `kernel/mig.c`: `mach_port_set_attributes` (and its `_kernelrpc_` name)
+  is a MIG RPC, id 3218, to the task port, which the VMM serves.
+  `host_get_special_port` returns `KERN_INVALID_ARGUMENT` without a call:
+  guest tasks hold only the unprivileged host port.
+- The simple-ASL context (os_alloc_once slot 21) has libplatform's layout
+  and is 48 bytes, because the simulator's `libsystem_sim_platform` uses
+  the same slot with its own, larger layout: a `sim_connect_lock` at +32
+  (see `platform/simple.c`).
+- `os_unfair_lock`: a `__ulock_wait2` result of EOWNERDEAD (the word names
+  no thread) crashes with `brk #0x7964`, x0 = a message, x1 = the lock, and
+  LR = the client's return address, instead of retrying forever.
+
 ## Host tests
 
 `platform/tests/test_main.c` compiles the platform sources for the host

@@ -357,13 +357,6 @@ Lyc_cerror_nocancel:
     svc #0x80
     b.cs Lyc_cerror_nocancel
     ret
-    .globl "___gettimeofday"
-    .p2align 2
-"___gettimeofday":
-    mov x16, #116
-    svc #0x80
-    b.cs Lyc_cerror_nocancel
-    ret
     .globl "___getwgroups"
     .p2align 2
 "___getwgroups":

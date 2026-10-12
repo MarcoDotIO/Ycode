@@ -3,7 +3,9 @@
  *
  * Clean-room Ycode code, from POSIX pthread_once(3) and the static
  * initializer PTHREAD_ONCE_INIT (signature 0x30B1BCBA, then zero;
- * host-library-init.md section 5.3).
+ * host-library-init.md section 5.3). Like Darwin's libpthread, the
+ * signature word is ignored: only the state word at +8 matters, so an
+ * all-zero object (Libc's stdio __sdidinit) behaves as PTHREAD_ONCE_INIT.
  *
  * pthread_once_t is 16 bytes: the signature, then Ycode's state word at
  * +8 (0 not run, 1 running, 2 running with sleepers, 3 done). The routine
@@ -32,9 +34,9 @@ YC_EXPORT int YC_FN(pthread_once)(struct yc_once *o, void (*routine)(void))
         return YC_EINVAL;
     if (YC_LIKELY(YC_LOAD_ACQ(&o->state) == ONCE_DONE))
         return 0;
-    long sig = YC_LOAD(&o->sig);
-    if (sig != YC_SIG_ONCE_INIT && sig != YC_SIG_ONCE)
-        return YC_EINVAL;
+    /* The signature is not checked: a zero-filled pthread_once_t (a static
+     * without PTHREAD_ONCE_INIT, as libsystem_c's stdio __sdidinit) is a
+     * valid "not yet run" object, as in Darwin's libpthread. */
     yc_u32 me = (yc_u32)__yc_tsd()[YC_TSD_MACH_THREAD_SELF];
     if (me == 0)
         me = (yc_u32)(yc_uintptr_t)__yc_self();

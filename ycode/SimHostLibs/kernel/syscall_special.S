@@ -71,6 +71,19 @@ _kill:
     b.cs Lsp_cerror_nocancel
     ret
 
+// int __gettimeofday(struct timeval *tp, struct timezone *tzp): BSD 116
+// takes a third argument, an optional uint64_t * for mach_absolute_time,
+// which this entry point always passes as 0 (callers give only two
+// arguments, so x2 holds garbage otherwise and the kernel would write
+// through it or fail with EFAULT).
+    .globl ___gettimeofday
+    .p2align 2
+___gettimeofday:
+    mov x2, #0
+    BSD 116
+    b.cs Lsp_cerror_nocancel
+    ret
+
 // int reboot(int howto): BSD 55 also takes a message pointer.
     .globl _reboot
     .p2align 2

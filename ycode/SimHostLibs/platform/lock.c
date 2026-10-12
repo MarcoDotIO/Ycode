@@ -31,6 +31,27 @@
 
 /* ---- unfair lock core ---------------------------------------------- */
 
+/* A lock word that names no thread: crash at once (brk #0x7964) with the
+ * link register set to the return address saved by unfair_lock_slow, which
+ * the lock entry points reach by tail calls: the VMM's crash report then
+ * names the client that passed the corrupt lock. x0 holds a message and
+ * x1 the lock's address. */
+static YC_NOINLINE YC_NORETURN void unfair_lock_corrupt(yc_u32 *word)
+{
+#if defined(__aarch64__) && !defined(YC_HOST_TEST)
+    void **fp = __builtin_frame_address(0);       /* this function's frame */
+    void **slow = fp ? (void **)fp[0] : YC_NULL;  /* unfair_lock_slow's frame */
+    void *ra = slow ? slow[1] : YC_NULL;          /* its return address */
+    register const char *x0 __asm__("x0") = "os_unfair_lock: corrupt lock (the owner is not a thread)";
+    register yc_u32 *x1 __asm__("x1") = word;
+    __asm__ volatile("mov x30, %2\n\tbrk #0x7964" : : "r"(x0), "r"(x1), "r"(ra) : "x30", "memory");
+    __builtin_unreachable();
+#else
+    (void)word;
+    YC_CRASH();
+#endif
+}
+
 static YC_NOINLINE void unfair_lock_slow(yc_u32 *word, yc_u32 self)
 {
     yc_bool waited = 0;
@@ -50,7 +71,12 @@ static YC_NOINLINE void unfair_lock_slow(yc_u32 *word, yc_u32 self)
             cur &= ~1u;
         }
         int r = YC_KFN(__ulock_wait2)(YC_UL_UNFAIR_LOCK | YC_ULF_NO_ERRNO, word, cur, 0, 0);
-        (void)r; /* EINTR, a stale value, or a spurious wake: re-check */
+        /* EOWNERDEAD: the word names no thread, so it is not a lock held by
+         * anyone (a corrupt or never-initialized lock). Waiting again would
+         * spin forever; crash instead, as Darwin's libplatform does. */
+        if (r == -YC_EOWNERDEAD)
+            unfair_lock_corrupt(word);
+        /* EINTR, a stale value, or a spurious wake: re-check */
         waited = 1;
     }
 }

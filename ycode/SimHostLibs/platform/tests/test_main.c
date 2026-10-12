@@ -686,7 +686,16 @@ static void test_platform_init(void)
     CHECK(kernel_string_table && kernel_string_table[4] == (unsigned long)T(_platform_memmove));
     CHECK(kernel_string_table && kernel_string_table[16] == (unsigned long)T(_platform_strstr));
     CHECK(yc_testk__os_alloc_once_table[21].once == ~0l && yc_testk__os_alloc_once_table[21].ptr != NULL);
-    CHECK(strcmp(*(const char **)yc_testk__os_alloc_once_table[21].ptr, "hello") == 0);
+    {
+        /* libplatform's asl_context layout (shared with the simulator's
+         * libsystem_sim_platform): enabled @0, progname @8, fd @16, and a
+         * zero sim_connect_lock word @32 inside the allocation. */
+        const char *ctx = yc_testk__os_alloc_once_table[21].ptr;
+        CHECK(*(const unsigned char *)ctx == 1);
+        CHECK(strcmp(*(const char *const *)(ctx + 8), "hello") == 0);
+        CHECK(*(const int *)(ctx + 16) == -1);
+        CHECK(*(const uint32_t *)(ctx + 32) == 0 && *(const uint64_t *)(ctx + 24) == 0);
+    }
     T(__libplatform_init)(NULL, envp, apple, &vars); /* calling twice is harmless */
     CHECK(__yc_security_config() == 0x2A);
 }

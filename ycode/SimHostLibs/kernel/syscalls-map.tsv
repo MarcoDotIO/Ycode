@@ -55,7 +55,7 @@ ___getrlimit	table	bsd-syscall-private	194	cerror_nocancel
 ___getsgroups	table	bsd-syscall-private	288	cerror_nocancel
 ___getsockname	table	bsd-syscall-private	32	cerror_nocancel
 ___gettid	table	bsd-syscall-private	286	cerror_nocancel
-___gettimeofday	surface	bsd-syscall-private	116	cerror_nocancel
+___gettimeofday	surface	bsd-syscall-private	-	hand-written
 ___getwgroups	table	bsd-syscall-private	290	cerror_nocancel
 ___guarded_open_dprotected_np	table	bsd-syscall-private	484	cerror_nocancel
 ___guarded_open_np	table	bsd-syscall-private	441	cerror_nocancel
