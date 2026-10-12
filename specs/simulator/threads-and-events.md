@@ -1412,3 +1412,62 @@ repository):
 
 No Apple binary, `.claude/Xcode.app`, `research/dirty/`, or Ghidra project
 was opened for this spec.
+
+
+## Addendum (orchestrator, 2026-10-12): workqueue setup and workloop records
+
+Level 1: xnu `bsd/pthread/workqueue_syscalls.h`, libpthread
+`private/pthread/workqueue_private.h`, and libpthread `src/pthread.c`.
+
+### User-side `struct pthread_workqueue_config`
+
+libdispatch passes this to `pthread_workqueue_setup(cfg, cfg_size)`. It is
+48 bytes:
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u32 | `flags` (supported flags: 0) |
+| 4 | u32 | `version` (current 2, minimum 1) |
+| 8 | ptr | **`kevent_cb`** |
+| 16 | ptr | **`workloop_cb`** |
+| 24 | ptr | **`workq_cb`** |
+| 32 | u64 | `queue_serialno_offs` |
+| 40 | u64 | `queue_label_offs` |
+
+**Callback order is kevent, workloop, workq.** `flags` comes before
+`version`.
+
+### Kernel-side `struct workq_dispatch_config`
+
+This is the record for `workq_kernreturn(SETUP_DISPATCH)`. It is 24 bytes,
+packed and 4-byte aligned:
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | u32 | `wdc_version` (2) |
+| 4 | u32 | `wdc_flags` (0) |
+| 8 | u64 | `wdc_queue_serialno_offs` |
+| 16 | u64 | `wdc_queue_label_offs` |
+
+### `struct kqueue_workloop_params`
+
+This is the record for `__kqueue_workloop_ctl(cmd, options, addr, sz)`.
+Commands are CREATE (1) and DESTROY (2). It is 36 bytes, packed:
+
+| Offset | Type | Field |
+|---|---|---|
+| 0 | i32 | `kqwlp_version` = **sizeof(the struct) = 36** |
+| 4 | i32 | `kqwlp_flags`: SCHED_PRI 0x01, SCHED_POL 0x02, CPU_PERCENT 0x04, WORK_INTERVAL 0x08, WITH_BOUND_THREAD 0x10 |
+| 8 | u64 | `kqwlp_id` |
+| 16 | i32 | `sched_pri` |
+| 20 | i32 | `sched_pol` |
+| 24 | i32 | `cpu_percent` |
+| 28 | i32 | `cpu_refillms` |
+| 32 | u32 | `kqwl_wi_port` |
+
+### Other constants
+
+- `WQ_KEVENT_LIST_LEN` = 16 and `WQ_KEVENT_DATA_SIZE` = 32 KiB.
+- The workqueue thread flags `WQ_FLAG_THREAD_TSD_BASE_SET` (0x0020_0000),
+  `_WORKLOOP` (0x0040_0000), `_OUTSIDEQOS` (0x0080_0000), and
+  `_COOPERATIVE` (0x0100_0000).
