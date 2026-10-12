@@ -336,3 +336,91 @@ import YcodeXPC
         #expect(f.core.statistics.refused["8:1"] == 1 && f.core.statistics.refused["99"] == 1)
     }
 }
+
+/// Objects whose backend create call is still running when the process
+/// ends must be released once the call returns (no leaked GPU objects).
+@Suite struct CreateAfterEndTests {
+    /// Forwards to a NullBackend; `createBuffer` and `createFunction` wait at a gate.
+    final class GatedBackend: MetalBackend, @unchecked Sendable {
+        let inner = NullBackend()
+        let entered = DispatchSemaphore(value: 0)
+        let gate = DispatchSemaphore(value: 0)
+        var isAvailable: Bool { false }
+        func limits() -> MetalLimits { inner.limits() }
+        func createBuffer(_ h: MetalHandle, length: Int, storage: MetalStorageMode, guestMemory: GuestSharedRegion?) throws {
+            entered.signal(); gate.wait()
+            try inner.createBuffer(h, length: length, storage: storage, guestMemory: guestMemory)
+        }
+        func createTexture(_ h: MetalHandle, _ d: MetalTextureDescriptor, iosurface: IOSurfaceBacking?) throws {
+            try inner.createTexture(h, d, iosurface: iosurface)
+        }
+        func createTextureView(_ h: MetalHandle, parent: MetalHandle, _ d: MetalTextureViewDescriptor) throws {
+            try inner.createTextureView(h, parent: parent, d)
+        }
+        func createSampler(_ h: MetalHandle, _ d: MetalSamplerDescriptor) throws { try inner.createSampler(h, d) }
+        func createDepthStencilState(_ h: MetalHandle, _ d: MetalDepthStencilDescriptor) throws { try inner.createDepthStencilState(h, d) }
+        func createFunction(_ h: MetalHandle, metallib: [UInt8]) throws {
+            entered.signal(); gate.wait()
+            try inner.createFunction(h, metallib: metallib)
+        }
+        func createRenderPipeline(_ h: MetalHandle, _ d: MetalRenderPipelineDescriptor) throws { try inner.createRenderPipeline(h, d) }
+        func createComputePipeline(_ h: MetalHandle, function: MetalHandle) throws -> MetalComputePipelineInfo {
+            try inner.createComputePipeline(h, function: function)
+        }
+        func replaceRegion(texture: MetalHandle, _ r: MetalRegion, level: Int, slice: Int, bytes: [UInt8], bytesPerRow: Int,
+                           bytesPerImage: Int) throws {}
+        func getBytes(texture: MetalHandle, _ r: MetalRegion, level: Int, slice: Int, into: GuestSharedRegion, bytesPerRow: Int,
+                      bytesPerImage: Int) throws {}
+        func release(_ h: MetalHandle) { inner.release(h) }
+        func submit(_ cb: MetalCommandBuffer, scheduled: @escaping @Sendable () -> Void, completed: @escaping @Sendable (Int) -> Void) {
+            inner.submit(cb, scheduled: scheduled, completed: completed)
+        }
+    }
+
+    @Test func objectsCreatedWhileTheProcessEndsAreReleased() {
+        let backend = GatedBackend()
+        let memory = FakeMemory(), transport = FakeTransport()
+        let core = MetalHostCore(backend: backend, memory: memory, surfaces: nil, log: { _ in })
+        core.transport = transport
+        var processRef: UInt64 = 0
+        for type in 0..<3 as Range<UInt32> {
+            core.connectionOpened(0x100 + type, clientPort: 0x200)
+            let r = core.handle(["messageType": .uint64(0), "connectionType": .uint64(UInt64(type)), "processRef": .uint64(processRef)],
+                                connection: 0x100 + type).reply!
+            processRef = r["processRef"]!.uint64Value!
+        }
+        // A finished object, then a shared buffer and a function whose creates are stalled.
+        _ = core.handle(Build.message(8, Build.record(3) { $0.append(MetalDescriptorCodec.encodeSampler(MetalSamplerDescriptor())) }),
+                        connection: 0x101)
+        let (shm, _) = memory.entry(length: 16384)
+        let done = DispatchGroup()
+        DispatchQueue.global().async(group: done) {
+            _ = core.handle(["messageType": .uint64(1), "length": .uint64(64), "options": .uint64(0),
+                             "sharedMem": .sharedMemory(size: 16384, port: XPCPort(name: shm, disposition: 17))], connection: 0x101)
+        }
+        backend.entered.wait()
+        DispatchQueue.global().async(group: done) {
+            _ = core.handle(Build.message(15, Build.record(15) { $0.u32(0); $0.u32(0); $0.u32(0) }, [("functionIR", .data([1]))]),
+                            connection: 0x102)
+        }
+        backend.entered.wait()
+        // The process ends while both creates are in the backend.
+        for c in 0x100...0x102 as ClosedRange<UInt32> { core.connectionClosed(c) }
+        let releasedAtEnd = backend.inner.calls.filter { if case .release = $0 { true } else { false } }.count
+        #expect(releasedAtEnd == 1)  // only the sampler: the others are not created yet
+        backend.gate.signal(); backend.gate.signal()
+        done.wait()
+        let calls = backend.inner.calls
+        var created: Set<MetalHandle> = [], released: Set<MetalHandle> = []
+        for c in calls {
+            switch c {
+            case let .createBuffer(h, _, _, _), let .createFunction(h, _), let .createSampler(h, _): created.insert(h)
+            case let .release(h): released.insert(h)
+            default: break
+            }
+        }
+        #expect(created.count == 3 && created == released)
+        #expect(transport.dropped == [shm])
+        #expect(core.statistics.processes == 0 && core.statistics.liveObjects == 0)
+    }
+}

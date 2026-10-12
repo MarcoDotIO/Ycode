@@ -107,6 +107,8 @@ final class MetalHostCore: @unchecked Sendable {
         var heapUsed: UInt64 = 0
         var gpuAddress: UInt64 = 0
         var eventValue: UInt64 = 0
+        /// Between `add` and the end of the backend's create call.
+        var pendingCreate = false
         init(kind: MetalRefKind, ref: UInt32) { self.kind = kind; self.ref = ref }
     }
 
@@ -117,6 +119,9 @@ final class MetalHostCore: @unchecked Sendable {
         var eventPort: UInt32 = 0
         var tables: [MetalRefKind: RefTable] = [:]
         var objects: [MetalHandle: Object] = [:]
+        /// Objects whose create call was still running when the process
+        /// ended: `finishCreate` releases them.
+        var orphans: [MetalHandle: Object] = [:]
         var ended = false
         let events: DispatchQueue
         init(id: MetalProcessID) {
@@ -164,19 +169,42 @@ final class MetalHostCore: @unchecked Sendable {
         return client
     }
 
+    /// Whether objects of this kind exist in the backend.
+    static func isBackendObject(_ kind: MetalRefKind) -> Bool {
+        ![.queue, .argumentLayout, .argumentEncoder, .heap].contains(kind)
+    }
+
     private func tearDown(_ p: Process) {
         let objects = lock.withLock { () -> [(key: MetalHandle, value: Object)] in
-            let all = p.objects.sorted { $0.key > $1.key }
+            var all: [(key: MetalHandle, value: Object)] = []
+            for (h, o) in p.objects.sorted(by: { $0.key > $1.key }) {
+                if o.pendingCreate { p.orphans[h] = o } else { all.append((h, o)) }
+            }
             p.objects.removeAll()
             return all
         }
         for (h, o) in objects {
-            if o.kind != .queue && o.kind != .argumentLayout && o.kind != .argumentEncoder && o.kind != .heap {
-                backend.release(h)
-            }
+            if Self.isBackendObject(o.kind) { backend.release(h) }
             for r in o.rights { transport?.dropRight(r) }
         }
         log("metal: process \(p.id) ended; released \(objects.count) objects")
+    }
+
+    /// Called after every backend create call (successful or not, or
+    /// skipped). If the process ended meanwhile, the object is released
+    /// here, so nothing created for a dead process stays in the backend.
+    private func finishCreate(_ h: MetalHandle, _ p: Process) {
+        let orphan: Object? = lock.withLock {
+            let o = p.objects[h] ?? p.orphans[h]
+            o?.pendingCreate = false
+            guard p.ended else { return nil }
+            p.objects[h] = nil
+            return p.orphans.removeValue(forKey: h) ?? o
+        }
+        guard let o = orphan else { return }
+        log("metal: \(h) was created after process \(p.id) ended; released")
+        if Self.isBackendObject(o.kind) { backend.release(h) }
+        for r in o.rights { transport?.dropRight(r) }
     }
 
     // MARK: Messages
@@ -268,6 +296,7 @@ final class MetalHostCore: @unchecked Sendable {
             let ref = t.allocate(h)
             p.tables[kind] = t
             let o = Object(kind: kind, ref: ref)
+            o.pendingCreate = Self.isBackendObject(kind)
             configure(o)
             p.objects[h] = o
             return (h, ref)
@@ -340,6 +369,7 @@ final class MetalHostCore: @unchecked Sendable {
         do { try backend.createBuffer(h, length: length, storage: storage, guestMemory: region) } catch {
             backendFailed("createBuffer \(h)", error)
         }
+        finishCreate(h, p)
         return Outcome(reply: reply(ref), retained: retained)
     }
 
@@ -362,16 +392,19 @@ final class MetalHostCore: @unchecked Sendable {
                 let desc = try MetalDescriptorCodec.texture(&r)
                 let (h, ref) = add(.resource, p)
                 do { try backend.createTexture(h, desc, iosurface: nil) } catch { backendFailed("createTexture \(h)", error) }
+                finishCreate(h, p)
                 return Outcome(reply: Self.refReply(ref, words: 1))
             case 3:
                 let desc = try MetalDescriptorCodec.sampler(rec.body)
                 let (h, ref) = add(.sampler, p)
                 do { try backend.createSampler(h, desc) } catch { backendFailed("createSampler \(h)", error) }
+                finishCreate(h, p)
                 return Outcome(reply: Self.refReply(ref, words: 1))
             case 4:
                 let desc = try MetalDescriptorCodec.depthStencil(rec.body)
                 let (h, ref) = add(.depthStencil, p)
                 do { try backend.createDepthStencilState(h, desc) } catch { backendFailed("createDepthStencilState \(h)", error) }
+                finishCreate(h, p)
                 return Outcome(reply: Self.refReply(ref, words: 1))
             default:
                 refuse("8:\(rec.op)", "unknown object op")
@@ -406,6 +439,7 @@ final class MetalHostCore: @unchecked Sendable {
         }
         let (h, ref) = add(.resource, p) { $0.rights = retained }
         do { try backend.createTexture(h, desc, iosurface: backing) } catch { backendFailed("createTexture(IOSurface) \(h)", error) }
+        finishCreate(h, p)
         return Outcome(reply: Self.refReply(ref), retained: retained)
     }
 
@@ -417,6 +451,7 @@ final class MetalHostCore: @unchecked Sendable {
         }
         let (h, ref) = add(.function, p)
         do { try backend.createFunction(h, metallib: ir) } catch { backendFailed("createFunction \(h)", error) }
+        finishCreate(h, p)
         return Outcome(reply: Self.refReply(ref))
     }
 
@@ -460,7 +495,7 @@ final class MetalHostCore: @unchecked Sendable {
             log("metal: release op \(rec.op) of unknown ref \(ref) (process \(p.id))")
             return
         }
-        if ![.queue, .argumentLayout, .argumentEncoder, .heap].contains(o.kind) { backend.release(h) }
+        if Self.isBackendObject(o.kind) { backend.release(h) }
         for right in o.rights { transport?.dropRight(right) }
     }
 
@@ -576,6 +611,7 @@ final class MetalHostCore: @unchecked Sendable {
             } else {
                 log("metal: texture view of unknown parent ref \(parentRef)")
             }
+            finishCreate(h, p)
             return Self.refReply(ref)
         case 11:
             let fref = try MetalPipelineCodec.computeFunctionRef(try MetalPipelineCodec.payload(rec.body))
@@ -586,6 +622,7 @@ final class MetalHostCore: @unchecked Sendable {
             } else {
                 log("metal: compute pipeline with unknown function ref \(fref)")
             }
+            finishCreate(h, p)
             var w = MetalByteWriter()
             w.u32(ref); w.u32(0); w.u16(info.maxTotalThreadsPerThreadgroup); w.u16(info.threadExecutionWidth)
             w.pad(to: 24)
@@ -593,6 +630,7 @@ final class MetalHostCore: @unchecked Sendable {
         case 13:
             let (h, ref) = add(.fence, p)
             do { try backend.createFence(h) } catch { backendFailed("createFence \(h)", error) }
+            finishCreate(h, p)
             return Self.refReply(ref)
         case 14:
             let payload = try MetalPipelineCodec.payload(rec.body)
@@ -601,6 +639,7 @@ final class MetalHostCore: @unchecked Sendable {
             }
             let (h, ref) = add(.renderPipeline, p)
             do { try backend.createRenderPipeline(h, desc) } catch { backendFailed("createRenderPipeline \(h)", error) }
+            finishCreate(h, p)
             return Self.refReply(ref)
         case 16:
             let (_, ref) = add(.argumentLayout, p)
@@ -631,6 +670,7 @@ final class MetalHostCore: @unchecked Sendable {
             let (h, ref) = add(.resource, p) { $0.heap = heap; $0.heapBytes = heap == nil ? 0 : bytes }
             if let heap { lock.withLock { if let ho = p.objects[heap] { ho.heapUsed += bytes } } }
             do { try backend.createTexture(h, desc, iosurface: nil) } catch { backendFailed("createTexture(heap) \(h)", error) }
+            finishCreate(h, p)
             return Self.refReply(ref)
         case 22:
             let desc = try MetalDescriptorCodec.texture(&r)
@@ -652,6 +692,7 @@ final class MetalHostCore: @unchecked Sendable {
         case 28:
             let (h, ref) = add(.event, p)
             do { try backend.createEvent(h) } catch { backendFailed("createEvent \(h)", error) }
+            finishCreate(h, p)
             return Self.refReply(ref)
         case 30:
             let ref = try r.u32(), value = try r.u64()
