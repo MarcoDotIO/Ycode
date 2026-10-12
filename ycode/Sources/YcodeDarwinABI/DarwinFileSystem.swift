@@ -56,6 +56,7 @@ public enum DarwinErrnoCode {
     public static let ESRCH: Int32 = 3
     public static let ENXIO: Int32 = 6
     public static let EDOM: Int32 = 33
+    public static let EBUSY: Int32 = 16
     public static let EPIPE: Int32 = 32
     public static let ENOTSOCK: Int32 = 38
     public static let EDESTADDRREQ: Int32 = 39
@@ -75,7 +76,7 @@ public enum DarwinErrnoCode {
     public static let EOPNOTSUPP: Int32 = 102
 
     private static let names: [Int32: String] = [
-        1: "EPERM", 2: "ENOENT", 3: "ESRCH", 4: "EINTR", 5: "EIO", 6: "ENXIO", 9: "EBADF", 11: "EDEADLK", 12: "ENOMEM",
+        1: "EPERM", 2: "ENOENT", 3: "ESRCH", 4: "EINTR", 5: "EIO", 6: "ENXIO", 9: "EBADF", 16: "EBUSY", 11: "EDEADLK", 12: "ENOMEM",
         13: "EACCES", 14: "EFAULT", 17: "EEXIST", 19: "ENODEV", 20: "ENOTDIR", 21: "EISDIR", 22: "EINVAL",
         24: "EMFILE", 25: "ENOTTY", 27: "EFBIG", 28: "ENOSPC", 29: "ESPIPE", 30: "EROFS", 32: "EPIPE", 33: "EDOM",
         34: "ERANGE", 35: "EAGAIN", 38: "ENOTSOCK", 39: "EDESTADDRREQ", 40: "EMSGSIZE", 41: "EPROTOTYPE",
@@ -380,6 +381,16 @@ private func hostPWrite(_ fd: Int32, _ bytes: [UInt8], offset: UInt64) throws ->
 
 private func hostUnlink(_ path: String) throws {
     guard unlink(path) == 0 else { throw DarwinErrnoError(hostErrno()) }
+}
+
+private func hostMkdir(_ path: String, _ mode: UInt16) throws {
+    guard mkdir(path, mode_t(mode)) == 0 else { throw DarwinErrnoError(hostErrno()) }
+    // The host process's own umask must not change the guest's mode.
+    _ = chmod(path, mode_t(mode))
+}
+
+private func hostRmdir(_ path: String) throws {
+    guard rmdir(path) == 0 else { throw DarwinErrnoError(hostErrno()) }
 }
 
 private func hostReadLink(_ path: String) throws -> String {
@@ -1238,6 +1249,33 @@ extension DarwinFileSystem {
         if st.isDirectory { throw DarwinErrnoError(DarwinErrnoCode.EPERM) }
         guard r.prefix.writable else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
         try hostUnlink(r.hostPath)
+    }
+
+    /// `mkdir`: creates a directory with `mode & ~umask & 0o7777`. Any
+    /// existing name (file, directory, symbolic link, device, socket file)
+    /// is EEXIST; a missing parent ENOENT; a read-only prefix (and `/dev`)
+    /// EROFS. A final symbolic link is not followed.
+    public func mkdir(_ path: String, mode: UInt16, umask: UInt16) throws {
+        let r = try resolve(path, followFinal: false)
+        guard r.stat == nil else { throw DarwinErrnoError(DarwinErrnoCode.EEXIST) }
+        guard r.prefix.writable, !r.hostPath.isEmpty else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        try hostMkdir(r.hostPath, mode & ~umask & 0o7777)
+    }
+
+    /// `rmdir`: removes an empty directory. Missing: ENOENT; not a directory
+    /// (a symbolic link included): ENOTDIR; the root of a prefix or `/dev`:
+    /// EBUSY; a read-only prefix: EROFS; not empty (socket files count):
+    /// ENOTEMPTY.
+    public func rmdir(_ path: String) throws {
+        let r = try resolve(path, followFinal: false)
+        guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+        guard st.isDirectory else { throw DarwinErrnoError(DarwinErrnoCode.ENOTDIR) }
+        if r.guestPath == r.prefix.guestPath || prefixes.contains(where: { $0.guestPath == r.guestPath }) {
+            throw DarwinErrnoError(DarwinErrnoCode.EBUSY)
+        }
+        guard r.prefix.writable else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        if !socketNames(inDirectory: r.guestPath).isEmpty { throw DarwinErrnoError(DarwinErrnoCode.ENOTEMPTY) }
+        try hostRmdir(r.hostPath)
     }
 
     /// `readlink`: the target of a symbolic link (a guest-namespace link or

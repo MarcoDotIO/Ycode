@@ -38,7 +38,7 @@ enum DescriptorBSD {
                dup2 = 90, fcntl = 92, socket = 97, connect = 98, bind = 104, setsockopt = 105, listen = 106,
                getsockopt = 118, readv = 120, writev = 121, sendto = 133, shutdown = 134, socketpair = 135,
                pread = 153, pwrite = 154, lseek = 199, pthreadChdir = 348, pthreadFchdir = 349, unlinkat = 472,
-               readlink = 58, readlinkat = 473
+               readlink = 58, readlinkat = 473, mkdir = 136, rmdir = 137, mkdirat = 475
     /// `_nocancel` forms → the plain call (those `DarwinKernel.BSD.nocancelAliases` may not list).
     static let nocancel: [Int: Int] = [
         396: read, 397: write, 401: recvmsg, 402: sendmsg, 403: recvfrom, 404: accept, 409: connect,
@@ -104,10 +104,28 @@ extension DarwinKernel {
             return .value(0)
 
         case DescriptorBSD.unlinkat:
-            guard int(2) & DescriptorControl.atRemoveDir == 0 else { return nil }
             let path = try resolveAtPath(int(0), a[1], mem)
             call = "unlinkat(\(int(0)), \"\(path)\", flag=\(hx(a[2])))"
-            try fileSystem.unlink(path)
+            if int(2) & DescriptorControl.atRemoveDir != 0 {
+                try fileSystem.rmdir(path)
+            } else {
+                try fileSystem.unlink(path)
+            }
+            return .value(0)
+
+        case DescriptorBSD.mkdir, DescriptorBSD.mkdirat:
+            let isAt = n == DescriptorBSD.mkdirat
+            let path = isAt ? try resolveAtPath(int(0), a[1], mem) : try readPath(a[0], mem)
+            let mode = UInt16(truncatingIfNeeded: isAt ? a[2] : a[1])
+            call = isAt ? "mkdirat(\(int(0)), \"\(path)\", mode=0o\(String(mode & 0o7777, radix: 8)))"
+                : "mkdir(\"\(path)\", mode=0o\(String(mode & 0o7777, radix: 8)))"
+            try fileSystem.mkdir(path, mode: mode, umask: extended.umask)
+            return .value(0)
+
+        case DescriptorBSD.rmdir:
+            let path = try readPath(a[0], mem)
+            call = "rmdir(\"\(path)\")"
+            try fileSystem.rmdir(path)
             return .value(0)
 
         case DescriptorBSD.readlink, DescriptorBSD.readlinkat:

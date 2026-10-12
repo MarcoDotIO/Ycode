@@ -90,6 +90,36 @@ import YcodeDarwinABI
     }
 }
 
+extension DescriptorDeviceTests {
+    @Test func mkdirRmdirTraps() throws {
+        let e = try DEnv()
+        let p = DEnv.scratch + 0x100
+        e.putString(e.writable + "/state", at: p)
+        #expect(e.call(136, [p, 0o777]).value == 0)
+        #expect(e.call(136, [p, 0o777]).errno == 17)  // EEXIST
+        e.putString(e.writable + "/state", at: p)
+        #expect(e.call(338, [p, DEnv.scratch + 0x4000]).value == 0)
+        let st = try #require(DarwinStat(decodingStat64: e.get(DEnv.scratch + 0x4000, 144)))
+        #expect(st.isDirectory && st.mode & 0o777 == 0o755)  // the default umask 022
+        // mkdirat relative to a directory fd, unlinkat with AT_REMOVEDIR, rmdir.
+        let dir = e.call(5, [p, 0x10_0000, 0])
+        e.putString("sub", at: p)
+        #expect(e.call(475, [dir.x0, p, 0o700]).value == 0)
+        #expect(FileManager.default.fileExists(atPath: e.writable + "/state/sub"))
+        e.putString(e.writable + "/state", at: p)
+        #expect(e.call(137, [p]).errno == 66)  // ENOTEMPTY
+        e.putString("sub", at: p)
+        #expect(e.call(472, [dir.x0, p, 0x80]).value == 0)
+        e.putString(e.writable + "/state", at: p)
+        #expect(e.call(137, [p]).value == 0)
+        #expect(e.call(137, [p]).errno == 2)
+        e.putString("/dev/x", at: p)
+        #expect(e.call(136, [p, 0o755]).errno == 30)  // EROFS
+        e.putString(e.root, at: p)
+        #expect(e.call(137, [p]).errno == 16)  // EBUSY: a prefix root
+    }
+}
+
 extension DEnv {
     func string(_ va: UInt64) -> String {
         String(decoding: get(va, 256).prefix { $0 != 0 }, as: UTF8.self)
