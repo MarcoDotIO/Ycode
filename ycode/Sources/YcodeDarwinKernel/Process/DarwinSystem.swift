@@ -20,6 +20,19 @@ public final class DarwinSystem: @unchecked Sendable {
         mach = MachIPCSystem()
     }
 
+    /// Contract-pinned (§3.2): called (lock held) when a process exits for
+    /// good, with its wait status.
+    public var processExited: ((_ pid: Int32, _ status: Int32) -> Void)?
+
+    /// Contract-pinned (§3.2): makes the root process (pid 100, ppid 1) and
+    /// launches it. Stub: agent P implements.
+    public func spawnInitialProcess(_ request: ProcessImageRequest, fileSystem: DarwinFileSystem) throws -> DarwinKernel {
+        let kernel = DarwinKernel(fileSystem: fileSystem, system: self)
+        guard let launcher else { throw DarwinErrnoError(DarwinErrnoCode.ENOSYS) }
+        _ = try lock.withLock { try launcher.launch(request, kernel: kernel) }
+        return kernel
+    }
+
     /// Contract-pinned: the live (not zombie) kernel of `pid`'s current image.
     public func kernel(forPID pid: Int32) -> DarwinKernel? {
         nil

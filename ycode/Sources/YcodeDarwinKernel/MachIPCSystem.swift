@@ -17,3 +17,20 @@ extension MachIPC {
         nil
     }
 }
+
+/// One 24-byte port action of `posix_spawn` (`processes.md` §1.8).
+/// Contract-pinned name; agent M defines the fields.
+public struct SpawnPortAction: Equatable, Sendable {
+    public init() {}
+}
+
+extension MachIPC {
+    /// Contract-pinned (stage 4b §3.7). Stub: agent M implements.
+    public func inheritTaskPorts(from parent: MachIPC) {}
+
+    /// Contract-pinned (stage 4b §3.7). Stub: agent M implements.
+    public func applySpawnPortActions(_ actions: [SpawnPortAction], from caller: MachIPC) throws {}
+
+    /// Contract-pinned (stage 4b §3.7). Stub: agent M implements.
+    public func terminateTask() {}
+}

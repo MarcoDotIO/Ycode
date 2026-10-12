@@ -768,3 +768,55 @@ public final class DarwinFileSystem {
     /// The open descriptor numbers, ascending.
     public var openDescriptors: [Int32] { descriptors.keys.sorted() }
 }
+
+// MARK: - Stage 4b API (stage4b-contract.md §3.5; stubs, agent F implements)
+
+/// An open file description: what dup'd and inherited descriptors share
+/// (offset, status flags, the node). Contract-pinned name.
+public final class DarwinOpenFile {
+    public init() {}
+}
+
+extension DarwinFileSystem {
+    public func installObject(_ object: DarwinDescriptorObject, statusFlags: Int32, closeOnExec: Bool) throws -> Int32 {
+        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+    }
+
+    public func object(for fd: Int32) throws -> DarwinDescriptorObject? { nil }
+
+    public func openFile(for fd: Int32) throws -> DarwinOpenFile {
+        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+    }
+
+    public func install(_ file: DarwinOpenFile, closeOnExec: Bool, at fd: Int32? = nil) throws -> Int32 {
+        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+    }
+
+    public func dup(_ fd: Int32, minimum: Int32 = 0) throws -> Int32 {
+        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+    }
+
+    public func dup2(_ from: Int32, _ to: Int32) throws {
+        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+    }
+
+    public func makeChildCopy() -> DarwinFileSystem {
+        DarwinFileSystem(prefixes: prefixes, console: { _, _ in })
+    }
+
+    public func closeOnExecDescriptors(keepOnly: Set<Int32>? = nil) {}
+
+    public func closeAll() {}
+
+    public func chdir(_ path: String) throws {
+        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+    }
+
+    public func fchdir(_ fd: Int32) throws {
+        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+    }
+
+    public func hostPathForExec(_ path: String) throws -> (guestPath: String, hostPath: String) {
+        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+    }
+}
