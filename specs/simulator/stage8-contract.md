@@ -137,3 +137,28 @@ wallpaper and icons, not the compositor. With a Metal device present,
 backboardd switches to its Metal path, so Ycode's service must then be
 complete enough for backboardd's render records (§4). Denied Metal
 look-ups are frequent (8,469 per boot): Ycode's answer must be cheap.
+
+## 7. MT done (2026-10-12): the `YcodeMetalHost` API as built
+
+Refinements of §5.3 (agreed): the backend gets host-global, never-reused
+`MetalHandle`s (guest refs are per process/kind and reused; the service maps
+them); `createTextureView` (device ops 7, 8, 27); `createComputePipeline`
+returns `MetalComputePipelineInfo`; `replaceRegion`/`getBytes` take
+`bytesPerImage`; optional, defaulted `createEvent`, `createFence`,
+`signalEvent`, `eventValue`, `gpuAddress(ofBuffer:)`,
+`gpuResourceID(ofSampler:)`. Resolvers for I3: `IOSurfaceResolver.
+backing(forSurfacePort:plane:)` and `MetalGuestMemoryResolver.
+region(forMemoryEntry:)`. Service: `MetalHostService(host:backend:memory:
+surfaces:registryID:log:)`, `start()`, `servicePort`, `serviceNames`.
+
+Backend rules: thread-safe; creation failures are logged, never reported to
+the guest; unknown handles in commands are skipped; `release` may arrive
+while submitted work uses the object; `getBytes` sees all earlier work;
+command buffers on one queue run in order; `scheduled` only after IOSurface
+writes are in surface memory (else the service sends 100 then 101 at
+`completed`). **If `backend.isAvailable` is false, Ycode registers no
+Metal names** (backboardd then renders on the CPU, R6).
+
+Coverage: every record of the minimal home-screen set plus most others
+(render 0–130 subset, compute 200–215 subset, blit 300–318 subset, events
+400/401); unknown records become `.unknown` and never crash. 25 tests.
