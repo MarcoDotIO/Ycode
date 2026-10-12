@@ -1,0 +1,123 @@
+import Foundation
+import Testing
+import YcodeDarwinABI
+@testable import YcodeDarwinKernel
+
+/// The Ycode-private Mach routines (`host-libraries.md` §10, stage4a-contract
+/// §7) and the voucher traps, served by `MachIPC`.
+@Suite struct MachIPCRoutineTests {
+    let s = IPCEnv.scratch + 0x30000
+
+    @Test func clockService() throws {
+        let env = try IPCEnv()
+        env.ipc.systemClock = { (2, 500_000_000) }
+        env.ipc.calendarClock = { (1_700_000_000, 250_000_000) }
+        #expect(env.kr(0x7963_2001, [0x303, 0, s]) == 0)
+        let system = env.r32(s)
+        #expect(env.ipc.kernelObjectKind(of: system) == .clock(id: 0))
+        #expect(env.kr(0x7963_2001, [0x303, 1, s + 4]) == 0)
+        let calendar = env.r32(s + 4)
+        #expect(env.ipc.kernelObjectKind(of: calendar) == .clock(id: 1) && calendar != system)
+        // The same clock again: one name, one more reference.
+        #expect(env.kr(0x7963_2001, [0x303, 0, s + 8]) == 0)
+        #expect(env.r32(s + 8) == system && env.urefs(system) == 2)
+        #expect(env.kr(0x7963_2001, [0x303, 2, s]) == MachKern.invalidArgument)
+        #expect(env.kr(0x7963_2001, [0x303, 0, 0x10]) == MachKern.invalidAddress)
+        #expect(env.urefs(system) == 2)
+        #expect(env.kr(0x7963_2002, [UInt64(system), s + 0x10]) == 0)
+        #expect(env.r32(s + 0x10) == 2 && env.r32(s + 0x14) == 500_000_000)
+        #expect(env.kr(0x7963_2002, [UInt64(calendar), s + 0x10]) == 0)
+        #expect(env.r32(s + 0x10) == 1_700_000_000 && env.r32(s + 0x14) == 250_000_000)
+        #expect(env.kr(0x7963_2002, [0x103, s + 0x10]) == MachKern.invalidArgument)
+        #expect(env.kr(0x7963_2002, [UInt64(system), 0x10]) == MachKern.invalidAddress)
+        // Carry is clear.
+        var f = TrapFrame(spsr: 0x2000_0000)
+        f.x[0] = UInt64(system)
+        f.x[1] = s
+        _ = env.ipc.handleTrap(x16: 0x7963_2002, frame: &f, context: env.main, memory: env.space)
+        #expect(f.x[0] == 0 && !f.carry)
+    }
+
+    @Test func semaphores() throws {
+        let env = try IPCEnv()
+        #expect(env.kr(0x7963_2003, [0x103, s, 0, UInt64(UInt32(bitPattern: -1))]) == MachKern.invalidArgument)
+        #expect(env.kr(0x7963_2003, [0x103, s, 0, 3]) == 0)
+        let sem = env.r32(s)
+        if case .semaphore = env.ipc.kernelObjectKind(of: sem) {} else { Issue.record("not a semaphore port") }
+        let object = try #require(env.ipc.semaphore(named: sem))
+        #expect(object.count == 3)
+        #expect(env.ipc.semaphore(named: 0x103) == nil)
+        #expect(env.kr(0x7963_2003, [0x103, 0x10, 0, 0]) == MachKern.invalidAddress)
+        #expect(env.kr(0x7963_2004, [0x103, 0x103]) == MachKern.invalidName)
+        #expect(env.kr(0x7963_2004, [0x103, UInt64(sem)]) == 0)
+        #expect(object.isDestroyed)
+        #expect(env.ipc.semaphore(named: sem) == nil)
+        #expect(env.kr(0x7963_2004, [0x103, UInt64(sem)]) == MachKern.invalidName)
+    }
+
+    @Test func specialPorts() throws {
+        let env = try IPCEnv()
+        #expect(env.kr(0x7963_2005, [0x103, 4, s]) == 0)
+        #expect(env.r32(s) == 0x503)
+        #expect(env.urefs(0x503) == 2)
+        #expect(env.kr(0x7963_2005, [0x103, 3, s]) == 0)
+        #expect(env.r32(s) == 0)
+        let p = env.allocate()
+        #expect(env.insertRight(p, p, MachMsgType.makeSend) == 0)
+        #expect(env.kr(0x7963_2006, [0x103, 9, UInt64(p)]) == 0)
+        #expect(env.ipc.portCounters(p)?.srights == 2)  // the kernel holds a send right
+        #expect(env.kr(0x7963_2005, [0x103, 9, s]) == 0)
+        #expect(env.r32(s) == p && env.urefs(p) == 2)
+        #expect(env.kr(0x7963_2006, [0x103, 9, 0x55503]) == MachMsgReturn.sendInvalidRight)
+        #expect(env.kr(0x7963_2006, [0x103, 9, 0]) == 0)
+        #expect(env.ipc.portCounters(p)?.srights == 1)
+        #expect(env.kr(0x7963_2005, [0x103, 9, s]) == 0)
+        #expect(env.r32(s) == 0)
+        #expect(env.kr(0x7963_2005, [0x103, 4, 0x10]) == MachKern.invalidAddress)
+    }
+
+    @Test func vouchers() throws {
+        let env = try IPCEnv()
+        env.put(le32(0xFFFF_FFFF), at: s)
+        #expect(env.kr(0x7963_2007, [0x303, 0, 0, s]) == 0)
+        #expect(env.r32(s) == 0)
+        #expect(env.kr(0x7963_2007, [0x303, 0, 0, 0x10]) == MachKern.invalidAddress)
+        env.put(le32(0xFFFF_FFFF), at: s)
+        #expect(env.kr(-70, [0x303, 0, 16, s]) == 0)
+        #expect(env.r32(s) == 0)
+        #expect(env.kr(-70, [0x303, 0, UInt64(UInt32(bitPattern: -1)), s]) == MachKern.invalidArgument)
+        #expect(env.kr(-70, [0x303, 0, 100_000, s]) == MachKern.migArrayTooLarge)
+        #expect(env.kr(-72, [0, 1, s, s + 8]) == MachMsgReturn.sendInvalidDest)
+        // Unknown routines in the range.
+        var f = TrapFrame()
+        let outcome = env.ipc.handleTrap(x16: 0x7963_20AB, frame: &f, context: env.main, memory: env.space)
+        if case .unimplemented = outcome {} else { Issue.record("expected unimplemented, got \(String(describing: outcome))") }
+        #expect(f.carry)
+    }
+
+    @Test func attachedToADarwinKernel() throws {
+        let env = try Env()
+        let ipc = MachIPC(kernel: env.kernel)
+        env.kernel.machIPC = ipc
+        // A port trap through DarwinKernel.handle reaches MachIPC.
+        let (outcome, f) = env.svc(UInt64(bitPattern: -16), [0x103, 1, Env.scratch])
+        #expect(outcome == .resume && f.x[0] == 0)
+        let name = try env.u32(Env.scratch)
+        #expect(ipc.entry(name)?.type == MachPortType.receive)
+        #expect(env.sink.lines.contains { $0.hasPrefix("trap mach -16 mach_port_allocate") })
+        // The clock routine through the kernel, with the kernel's clocks.
+        let (_, g) = env.svc(0x7963_2001, [0x303, 1, Env.scratch + 8])
+        #expect(g.x[0] == 0)
+        let clock = try env.u32(Env.scratch + 8)
+        let (_, h) = env.svc(0x7963_2002, [UInt64(clock), Env.scratch + 0x10])
+        let seconds = try env.u32(Env.scratch + 0x10)
+        #expect(h.x[0] == 0 && seconds == 1_700_000_000)
+        // Semaphores made here are the kernel's semaphores.
+        let (_, k) = env.svc(0x7963_2003, [0x103, Env.scratch + 0x20, 0, 2])
+        #expect(k.x[0] == 0)
+        let semName = try env.u32(Env.scratch + 0x20)
+        #expect(env.kernel.semaphore(named: semName)?.count == 2)
+        // The kevent hook was installed by the kernel.
+        #expect(ipc.messageQueuedHandler != nil)
+    }
+}

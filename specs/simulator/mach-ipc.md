@@ -1389,3 +1389,46 @@ headers (level 1, APSL open source; interop facts only):
 - **Library-only option bits** `MACH_SEND_INTERRUPT` (0x40) and
   `MACH_RCV_INTERRUPT` (0x400) are stripped before the trap. The library
   retries itself on `MACH_SEND_INTERRUPTED` and `MACH_RCV_INTERRUPTED`.
+
+
+## Addendum (orchestrator, 2026-10-12): resolutions from the stage-4a implementation
+
+These are normative for Ycode. Agent I settled them where §1–§7 left room.
+
+- **mach_msg2 CFI rule 3:** a post-copyin `MACH_SEND_INVALID_OPTIONS`
+  pseudo-receives, following the §2.8 table.
+- **Unreadable or unwritable user pointers:**
+  - Mach traps return **EFAULT** (14).
+  - The private Mach-routine traps (host-libraries.md §10) return
+    `KERN_INVALID_ADDRESS`.
+  - A right that was allocated before an out-pointer fault stays allocated.
+- **Vouchers:**
+  - With voucher disposition 0, the raw voucher field passes through on
+    receive.
+  - Ycode has no voucher objects, so a nonzero voucher name with a
+    disposition returns `MACH_SEND_INVALID_VOUCHER`.
+  - Private trap `0x7963_2007` (`host_create_mach_voucher`) returns
+    voucher 0. It replaces "n = 7 reserved" in host-libraries.md §10.
+- **Header rights:**
+  - When dest == reply with MOVE_SEND twice and fewer than 2 urefs, the
+    result is `MACH_SEND_INVALID_DEST`.
+  - A port descriptor with a disposition outside 16…21 gives
+    `MACH_SEND_INVALID_TYPE`.
+- **Too-large receive** without `MACH_RCV_LARGE`: the bare header has
+  COMPLEX cleared (resolves open question 2).
+- **Direct handoff:** a receiver blocked in `MACH_RCV_MSG` lets a send
+  through even when the queue is full or qlimit is 0.
+- **Port destruction:**
+  - The queue is torn down before no-senders and dead-name notifications
+    are sent.
+  - Messages to dead or circular destinations are destroyed, and the send
+    returns success.
+- **Clock services:** one kernel-object port per clock id. A repeated
+  `host_get_clock_service` returns the same name with one more reference.
+- **`task_set_special_port`** holds a COPY_SEND right. An unknown name gives
+  `MACH_SEND_INVALID_RIGHT`.
+- **Kernel-object MIG:**
+  - The task-port server answers the `mach_port_*` routines (ids
+    3201–3238, including `special_reply_port_reset_link`).
+  - Any other request to a kernel-object port gets `MIG_BAD_ID`.
+  - The bootstrap port stays `MACH_SEND_INVALID_DEST` until stage 4b.
