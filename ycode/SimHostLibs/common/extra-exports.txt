@@ -1,0 +1,4 @@
+# Exports that are allowed although they are not rows of the surface JSON.
+# Format: <library> <mach-o name>
+# verify.py fails on any other export that is not in the surface table, so
+# that a missing visibility attribute cannot leak private helpers.

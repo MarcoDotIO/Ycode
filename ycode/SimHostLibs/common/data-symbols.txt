@@ -1,0 +1,37 @@
+# Data symbols of the three host libraries: required minimum size and the
+# initial value of the generated variable.
+#
+# Format:  <library> <mach-o name> <min-bytes> [<init>]
+#   <init> is one of  u32=<n>  u64=<n>  bytes=<hex>,<hex>,...  str=<text to end of line>
+#   Everything not initialized is zero.
+#
+# The generator (gen_stubs.py) reserves max(<min-bytes>, the surface JSON's
+# sizeUpperBound) bytes so that a client reading up to the host size never
+# runs into the next symbol. verify.py requires at least <min-bytes> before
+# the next symbol, whether the variable is generated or written by hand.
+# Rows for surface data symbols not listed here default to the JSON bound.
+#
+# Sizes follow the public C types where they are known
+# (host-library-surface.md section 10 question 4); values follow
+# host-libraries.md section 8.4 and host-library-init.md section 7.1.
+
+kernel   _mach_task_self_          4    u32=0x103
+kernel   _bootstrap_port           4    u32=0
+kernel   _vm_page_size             8    u64=16384
+kernel   _vm_page_mask             8    u64=16383
+kernel   _vm_page_shift            4    u32=14
+kernel   _vm_kernel_page_size      8    u64=16384
+kernel   _vm_kernel_page_mask      8    u64=16383
+kernel   _vm_kernel_page_shift     4    u32=14
+# NDR record: mig_vers 0, if_vers 0, reserved1 0, mig_encoding 0,
+# int_rep 1 (little endian), char_rep 0 (ASCII), float_rep 0 (IEEE), reserved2 0.
+kernel   _NDR_record               8    bytes=00,00,00,00,01,00,00,00
+kernel   __os_alloc_once_table     1600
+kernel   ___syscall_logger         8
+kernel   _errno                    4    u32=0
+kernel   ____kernelVersionString   1    str=@(#)PROGRAM:libsystem_kernel  PROJECT:Ycode-1\n
+platform _os_script_config_storage 16384
+pthread  ___unix_conforming        4    u32=1
+pthread  ___is_threaded            4    u32=0
+pthread  __pthread_tsd_shared_cache_first 4 u32=125
+pthread  __pthread_tsd_shared_cache_last  4 u32=209

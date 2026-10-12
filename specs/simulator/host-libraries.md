@@ -85,6 +85,21 @@ Dependencies between the three:
   `llvm-nm -gU`, or Ycode's export-trie reader if one exists). A missing
   symbol fails the build.
 
+### 3.1 Toolchain deviations (normative, from agent P)
+
+- **Untagged objects.** Swift 6.4's `ld64.lld` rejects input objects that
+  carry a Darwin platform tag. Objects are therefore compiled for
+  `-target arm64-apple-none-macho`, and the linker writes `LC_BUILD_VERSION`
+  (iOS Simulator 27.0/27.1) from `-platform_version`.
+- **`.tbd` link stubs.** Platform and pthread link against generated `.tbd`
+  stubs of the libraries below them, not the dylibs. The result has the
+  same `LC_LOAD_DYLIB` commands and two-level binds.
+- **No signature.** `-no_adhoc_codesign` is required. Without it lld adds a
+  code signature.
+- **Stub suppression.** Defining and exporting a symbol in any source file
+  under `kernel/`, `platform/`, or `pthread/` removes its generated stub
+  automatically (see `SimHostLibs/README.md`).
+
 ## 4. Unimplemented functions
 
 Every surface symbol must be exported from day one. A function that is not

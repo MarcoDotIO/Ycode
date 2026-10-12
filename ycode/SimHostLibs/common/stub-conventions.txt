@@ -1,0 +1,184 @@
+# Per-symbol failure conventions for generated unimplemented stubs
+# (host-libraries.md section 4). gen_stubs.py derives a default from each
+# row's category (and, for syscalls and Mach traps, from the return types
+# in specs/simulator/data/{bsd-syscalls,mach-traps}.json). This file
+# overrides the default where a name's C return type does not fit it.
+#
+# Conventions:
+#   errno     trap, errno = ENOSYS (78), return -1         (BSD-style)
+#   kern      trap, return KERN_NOT_SUPPORTED (46)          (Mach routines)
+#   zero      trap, return 0 / NULL / MACH_PORT_NULL / false (pointer, port, value)
+#   void      trap, return
+#   errret    trap, return ENOSYS (78) as the result        (pthread_*, posix_spawn*)
+#   noreturn  trap, then brk #0x7963 (never returns)
+#   nop       no trap, return; every register preserved   (stack probes)
+#
+# Format: <library> <mach-o name> <convention>
+
+# --- kernel: values, ports, pointers ---
+kernel _mach_absolute_time zero
+kernel _mach_approximate_time zero
+kernel _mach_continuous_time zero
+kernel _mach_continuous_approximate_time zero
+kernel _mach_boottime_usec zero
+kernel _mach_task_self zero
+kernel _mach_thread_self zero
+kernel _mach_host_self zero
+kernel _mig_get_reply_port zero
+kernel _mig_get_special_reply_port zero
+kernel _mach_error_string zero
+kernel _mach_error_type zero
+kernel _mig_strncpy zero
+kernel _mig_strncpy_zerofill zero
+kernel _mach_msg_priority_encode zero
+kernel _mach_msg_priority_is_pthread_priority zero
+kernel _mach_msg_priority_overide_qos zero
+kernel _mach_msg_priority_qos zero
+kernel _mach_msg_priority_relpri zero
+kernel _mach_host_special_port_description zero
+kernel _mach_vm_reclaim_is_available zero
+kernel __get_cpu_capabilities zero
+kernel _os_proc_available_memory zero
+kernel _kdebug_is_enabled zero
+kernel _kdebug_using_continuous_time zero
+kernel _kdebug_timestamp zero
+kernel _kdebug_timestamp_from_absolute zero
+kernel _kdebug_timestamp_from_continuous zero
+kernel _os_channel_create zero
+kernel _os_channel_create_extended zero
+kernel _os_channel_attr_create zero
+kernel _os_channel_rx_ring zero
+kernel _os_channel_tx_ring zero
+kernel _os_channel_get_next_slot zero
+kernel _work_interval_instance_alloc zero
+kernel _stackshot_config_create zero
+kernel _stackshot_config_get_stackshot_buffer zero
+kernel _stackshot_config_get_stackshot_size zero
+kernel _os_inet_checksum zero
+kernel _os_cpu_in_cksum zero
+kernel _os_cpu_in_cksum_mbuf zero
+kernel _os_cpu_copy_in_cksum zero
+kernel _os_copy_and_inet_checksum zero
+# --- kernel: void ---
+kernel _mig_dealloc_reply_port void
+kernel _mig_put_reply_port void
+kernel _mig_dealloc_special_reply_port void
+kernel _mach_msg_destroy void
+kernel _mach_error void
+kernel ___libkernel_init void
+kernel ___libkernel_init_late void
+kernel ___libkernel_init_after_boot_tasks void
+kernel ___libkernel_platform_init void
+kernel ___libkernel_voucher_init void
+kernel __init_cpu_capabilities void
+kernel _panic_init void
+kernel _port_obj_init void
+kernel _os_channel_attr_destroy void
+kernel _work_interval_instance_clear void
+kernel _work_interval_instance_free void
+kernel _work_interval_instance_set_complexity void
+kernel _work_interval_instance_set_deadline void
+kernel _work_interval_instance_set_finish void
+kernel _work_interval_instance_set_start void
+kernel _os_channel_advance_slot void
+kernel _os_channel_set_slot_properties void
+# --- kernel: never return ---
+kernel __exit noreturn
+kernel ___exit noreturn
+kernel _abort_with_reason noreturn
+kernel _abort_with_payload noreturn
+kernel _panic noreturn
+kernel _pkt_type_assert_fail noreturn
+kernel _pkt_subtype_assert_fail noreturn
+
+# --- platform ---
+platform _makecontext void
+platform __ctx_done void
+platform __os_semaphore_create zero
+platform __os_semaphore_dispose void
+platform __os_semaphore_signal void
+platform __os_semaphore_wait void
+platform ___platform_sigaction errno
+platform _getcontext errno
+platform _setcontext errno
+platform _swapcontext errno
+platform __os_log_simple void
+platform ___os_log_simple_offset zero
+platform _os_log_simple_now zero
+platform _os_log_simple_type_from_asl zero
+platform __simple_asl_get_fd errno
+platform __simple_asl_send void
+
+# --- pthread: values and pointers ---
+pthread _pthread_self zero
+pthread __pthread_self zero
+pthread _pthread_getspecific zero
+pthread _pthread_introspection_getspecific_np zero
+pthread _pthread_get_stackaddr_np zero
+pthread _pthread_get_stacksize_np zero
+pthread _pthread_mach_thread_np zero
+pthread _pthread_from_mach_thread_np zero
+pthread _pthread_main_np zero
+pthread _pthread_main_thread_np zero
+pthread _pthread_equal zero
+pthread _pthread_is_threaded_np zero
+pthread __pthread_is_threaded zero
+pthread _pthread_getconcurrency zero
+pthread _pthread_self_is_exiting_np zero
+pthread _pthread_current_stack_contains_np zero
+pthread _pthread_stack_frame_decode_np zero
+pthread _pthread_jit_write_protect_supported_np zero
+pthread _pthread_introspection_hook_install zero
+pthread _pthread_dependency_wait_np zero
+pthread __pthread_qos_class_encode zero
+pthread __pthread_qos_class_decode zero
+pthread __pthread_qos_class_encode_workqueue zero
+pthread __pthread_qos_class_and_override_encode zero
+pthread __pthread_qos_class_and_override_decode zero
+pthread __pthread_sched_pri_encode zero
+pthread __pthread_sched_pri_decode zero
+pthread __pthread_workqueue_supported zero
+pthread __pthread_workqueue_should_narrow zero
+pthread _pthread_qos_max_parallelism errno
+pthread _pthread_time_constraint_max_parallelism errno
+pthread _sigwait errret
+pthread _sigwait$NOCANCEL errret
+# --- pthread: void ---
+pthread _pthread_testcancel void
+pthread _pthread_yield_np void
+pthread _cthread_yield void
+pthread _pthread_jit_write_protect_np void
+pthread _pthread_jit_write_freeze_callbacks_np void
+pthread __pthread_clear_qos_tsd void
+pthread __pthread_exit_if_canceled void
+pthread __pthread_fork_prepare void
+pthread __pthread_fork_parent void
+pthread __pthread_fork_child void
+pthread __pthread_fork_child_postinit void
+pthread __pthread_atfork_prepare void
+pthread __pthread_atfork_parent void
+pthread __pthread_atfork_child void
+pthread __pthread_atfork_prepare_handlers void
+pthread __pthread_atfork_parent_handlers void
+pthread __pthread_atfork_child_handlers void
+pthread __pthread_set_self void
+pthread ___pthread_late_init void
+pthread __pthread_mutex_enable_legacy_mode void
+pthread __pthread_yield_to_enqueuer_4dispatch void
+pthread _pthread_dependency_init_np void
+pthread _pthread_dependency_fulfill_np void
+pthread _pthread_install_workgroup_functions_np void
+pthread _pthread_prefer_alternate_amx_self void
+pthread _pthread_prefer_alternate_cluster_self void
+# --- pthread: never return ---
+pthread _pthread_exit noreturn
+pthread __pthread_start noreturn
+pthread __pthread_wqthread noreturn
+pthread _thread_start noreturn
+pthread _start_wqthread noreturn
+# --- pthread: stack probes must preserve every register ---
+pthread ____chkstk_darwin nop
+pthread _thread_chkstk_darwin nop
+platform __simple_esprintf errno
+platform __simple_vesprintf errno
+platform __simple_esappend errno
