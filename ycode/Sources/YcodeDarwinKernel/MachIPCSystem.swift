@@ -90,6 +90,9 @@ extension MachIPC {
             // EBADF for a closed fd comes from the file system; a confined
             // description (kqueue) cannot be sent. The port holds the
             // description by keeping a strong reference to it.
+            // A descriptor guarded with GUARD_FILEPORT cannot become a
+            // fileport (EPERM and a guard exception, as in xnu).
+            try fileSystem.checkGuard(fd, DarwinGuard.fileport, flavor: DarwinGuard.exceptionFileport)
             let file = try fileSystem.openFile(for: fd)
             if file.object?.isConfined ?? false { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
             let p = newPort()

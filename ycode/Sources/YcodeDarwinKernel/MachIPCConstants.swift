@@ -125,6 +125,8 @@ public enum MachPortType {
     public static let portSet: UInt32 = 0x0008_0000
     public static let deadName: UInt32 = 0x0010_0000
     public static let dnRequest: UInt32 = 0x8000_0000
+    public static let spRequest: UInt32 = 0x4000_0000
+    public static let spRequestDelayed: UInt32 = 0x2000_0000
     public static let sendRights: UInt32 = 0x0005_0000
     public static let portRights: UInt32 = 0x0007_0000
     public static let allRights: UInt32 = 0x001F_0000

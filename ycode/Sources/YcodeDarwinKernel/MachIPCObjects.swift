@@ -94,8 +94,17 @@ final class IPCPort {
     /// Requests, each holding one send-once right to its notify port.
     var pdRequest: IPCPort?
     var nsRequest: IPCPort?
-    /// Dead-name requests by the watched (space, name).
+    /// Requests by the watched (space, name): one per entry, as in xnu
+    /// (dead-name or send-possible), each holding a send-once right.
     var dnRequests: [DNKey: IPCPort] = [:]
+    /// The entries of `dnRequests` that are send-possible requests, with
+    /// their armed state (`mach-ipc.md` §3; xnu `ipc_right_request_alloc`):
+    /// a request made with `sync` = 0 is delayed until a `MACH_SEND_NOTIFY`
+    /// send finds the queue full; an armed one fires when a message is
+    /// received from the port.
+    var spRequests: [DNKey: Bool] = [:]
+    /// True while some send-possible request is armed.
+    var hasArmedSendPossible: Bool { spRequests.values.contains(true) }
     /// Names whose dead-name request fired at death; their lazy conversion
     /// adds the notification's dead-name reference (§1.5).
     var deadNameNotified: Set<DNKey> = []

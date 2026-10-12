@@ -28,6 +28,11 @@ extension MachIPC {
         let replyRight = request.reply
         request.reply = .null
         var note = " [kernel object \(p.kernelObject?.description ?? "?") id \(m.id)"
+        if (3201...3238).contains(m.id), !m.complex, m.inline.count >= 16 {
+            // The routine's first arguments after the NDR record (name, and the flavor/right/…).
+            note += " args \(hx(m.inline.readLE(UInt32.self, at: 8))),\(m.inline.readLE(UInt32.self, at: 12))"
+            if m.inline.count >= 24 { note += ",\(m.inline.readLE(UInt32.self, at: 16)),\(hx(m.inline.readLE(UInt32.self, at: 20)))" }
+        }
         let reply: MIGReply?
         switch p.kernelObject {
         case .task:

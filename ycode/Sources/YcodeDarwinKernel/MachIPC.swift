@@ -206,6 +206,34 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     /// The per-space key of `name` (dead-name requests).
     func dn(_ name: UInt32) -> DNKey { DNKey(space: spaceID, name: name) }
 
+    /// The `MACH_PORT_TYPE_*` request bits of this space's `name` on `p`
+    /// (xnu `ipc_port_request_type`).
+    func requestTypeBits(_ p: IPCPort, _ name: UInt32) -> UInt32 {
+        guard p.dnRequests[dn(name)] != nil else { return 0 }
+        guard let armed = p.spRequests[dn(name)] else { return MachPortType.dnRequest }
+        return MachPortType.dnRequest | MachPortType.spRequest | (armed ? 0 : MachPortType.spRequestDelayed)
+    }
+
+    /// `MACH_SEND_NOTIFY` (xnu `ipc_port_request_sparm`): a send by this
+    /// space to `p` under `name` arms the entry's delayed send-possible
+    /// request when the queue is full.
+    func armSendPossible(_ p: IPCPort, name: UInt32) {
+        guard p.active, !p.isKernelObject, p.spRequests[dn(name)] == false,
+              p.messages.count >= p.qlimit else { return }
+        p.spRequests[dn(name)] = true
+    }
+
+    /// A message was received from `p` (xnu `ipc_port_spnotify`): every armed
+    /// send-possible request fires and is used up.
+    func fireSendPossible(_ p: IPCPort) {
+        guard p.hasArmedSendPossible else { return }
+        for (key, armed) in p.spRequests.sorted(by: { $0.key < $1.key }) where armed {
+            p.spRequests[key] = nil
+            guard let so = p.dnRequests.removeValue(forKey: key) else { continue }
+            sendNotification(to: so, id: MachNotify.sendPossible, body: machNDRRecord + le32(key.name))
+        }
+    }
+
     /// The identity this task's messages carry (`processes.md` §4.5).
     var senderIdentity: MachSenderIdentity {
         MachSenderIdentity(uid: uid, gid: gid, pid: kernel?.pid ?? pid, pidVersion: kernel?.pidVersion ?? pidVersion,
@@ -320,6 +348,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     func freeName(_ i: Int) {
         let name = nameOf(i)
         if let p = entries[i].port {
+            p.spRequests[dn(name)] = nil
             if let so = p.dnRequests.removeValue(forKey: dn(name)) {
                 if p.active {
                     sendNotification(to: so, id: MachNotify.portDeleted, body: machNDRRecord + le32(name))
@@ -521,6 +550,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
             sendNotification(to: so, id: MachNotify.deadName, body: machNDRRecord + le32(key.name))
         }
         p.dnRequests = [:]
+        p.spRequests = [:]
         if let s = p.semaphore {
             p.semaphore = nil
             s.destroy()
@@ -597,6 +627,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         if !p.messages.isEmpty { p.readyStamp = nextStamp() }
         for r in m.receiveRights { r.transitHolder = nil }
         p.sendWaiters.wakeAll()
+        fireSendPossible(p)
         return (m, seqno)
     }
 
@@ -697,7 +728,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         lock.withLock {
             guard let i = lookup(name) else { return nil }
             var type = entries[i].bits
-            if let p = entries[i].port, p.dnRequests[dn(name)] != nil { type |= MachPortType.dnRequest }
+            if let p = entries[i].port { type |= requestTypeBits(p, name) }
             return (type, entries[i].urefs)
         }
     }

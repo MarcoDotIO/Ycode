@@ -517,6 +517,18 @@ final class TaskWorld: @unchecked Sendable {
             #expect(throws: DarwinErrnoError(DarwinErrnoCode.EBADF)) {
                 _ = try a.ipc.fileportCall(430, [99, TaskWorld.out], fileSystem: fsA, memory: a.space)
             }
+            // A descriptor guarded with GUARD_FILEPORT: EPERM, no port; GUARD_DUP alone is fine.
+            let guarded = try fsA.installObject(Pipe(), statusFlags: 2, closeOnExec: false)
+            try fsA.changeGuard(guarded, old: nil, oldFlags: 0, new: 0xABC,
+                                newFlags: DarwinGuard.dup | DarwinGuard.fileport, fdFlags: 0)
+            let names = a.ipc.nameCount
+            #expect(throws: DarwinErrnoError(DarwinErrnoCode.EPERM)) {
+                _ = try a.ipc.fileportCall(430, [UInt64(guarded), TaskWorld.out], fileSystem: fsA, memory: a.space)
+            }
+            #expect(a.ipc.nameCount == names)
+            let dupOnly = try fsA.installObject(Pipe(), statusFlags: 2, closeOnExec: false)
+            try fsA.changeGuard(dupOnly, old: nil, oldFlags: 0, new: 0xDEF, newFlags: DarwinGuard.dup, fdFlags: 0)
+            #expect(try a.ipc.fileportCall(430, [UInt64(dupOnly), TaskWorld.out], fileSystem: fsA, memory: a.space) == 0)
         }
     }
 

@@ -377,7 +377,7 @@ extension MachIPC {
         if name == MachPortName.dead { return (MachKern.success, T.deadName) }
         guard let i = lookup(name) else { return (MachKern.invalidName, 0) }
         var type = entries[i].bits
-        if let p = entries[i].port, p.dnRequests[dn(name)] != nil { type |= T.dnRequest }
+        if let p = entries[i].port { type |= requestTypeBits(p, name) }
         return (MachKern.success, type)
     }
 
@@ -677,16 +677,42 @@ extension MachIPC {
             guard entries[i].bits & T.portRights != 0, let p = entries[i].port else {
                 return (MachKern.invalidRight, .null)
             }
+            p.spRequests[dn(name)] = nil
             let previous: CarriedRight = p.dnRequests.removeValue(forKey: dn(name)).map { .sendOnce($0) } ?? .null
             if let so { p.dnRequests[dn(name)] = so }
             return (MachKern.success, previous)
 
         case MachNotify.sendPossible:
+            // xnu `ipc_right_request_alloc`: the request shares the entry's
+            // request slot with dead-name requests (the previous one is
+            // returned). With `sync` != 0 it fires at once for a send-once
+            // entry, a kernel object, or a queue that is not full, and is
+            // armed otherwise; with `sync` = 0 it is stored delayed (armed by
+            // a MACH_SEND_NOTIFY send that finds the queue full). It fires
+            // when a message is next received from the port; port death
+            // turns it into a dead-name notification.
             guard let i = lookup(name) else { return (MachKern.invalidName, .null) }
-            guard entries[i].bits & T.send != 0 else { return (MachKern.invalidRight, .null) }
-            // Ycode fires it at once (§2.13).
-            if let so { sendNotification(to: so, id: MachNotify.sendPossible, body: machNDRRecord + le32(name)) }
-            return (MachKern.success, .null)
+            if entries[i].bits & T.deadName != 0 {
+                // Immediate w.r.t. dead names: a dead-name notification and one more reference.
+                guard let so else { return (MachKern.success, .null) }
+                entries[i].urefs = pegAdd(entries[i].urefs, 1)
+                sendNotification(to: so, id: MachNotify.deadName, body: machNDRRecord + le32(name))
+                return (MachKern.success, .null)
+            }
+            guard entries[i].bits & T.portRights != 0, let p = entries[i].port else {
+                return (MachKern.invalidRight, .null)
+            }
+            p.spRequests[dn(name)] = nil
+            let previous: CarriedRight = p.dnRequests.removeValue(forKey: dn(name)).map { .sendOnce($0) } ?? .null
+            guard let so else { return (MachKern.success, previous) }
+            let full = p.messages.count >= p.qlimit
+            if sync != 0, entries[i].bits & T.sendOnce != 0 || p.isKernelObject || !full {
+                sendNotification(to: so, id: MachNotify.sendPossible, body: machNDRRecord + le32(name))
+                return (MachKern.success, previous)
+            }
+            p.dnRequests[dn(name)] = so
+            p.spRequests[dn(name)] = sync != 0
+            return (MachKern.success, previous)
 
         default:
             return (MachKern.invalidValue, .null)

@@ -145,6 +145,9 @@ extension MachIPC {
         m.inline = inline
         m.aux = s.aux
         m.sender = senderIdentity
+        if options & MachMsgOption.sendNotify != 0, case let .send(p) = m.destination {
+            armSendPossible(p, name: s.remote)
+        }
 
         // 5. Body rights and memory.
         var oolBytes: UInt64 = 0
