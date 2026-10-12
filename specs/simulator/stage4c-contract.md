@@ -138,3 +138,37 @@ keys only, never `.env`, never a password, never sudo; the Thor is shared
 (touch only your own directories); scripts in `scratchpad/agent-<X>/`;
 do not commit. Report files changed, commands run with real output,
 gaps, and contract requests.
+
+## 8. Phase 4c-ii: serve `launchd_sim` (pinned 2026-10-12)
+
+Inputs: `bootstrap-wire.md` (R's spec, level 1/3) and the 4c-i harness.
+`launchd_sim` currently stops earlier, in `libsystem_malloc` (trap 357);
+agent P is on that (§8.4). 4c-ii work proceeds in parallel.
+
+### 8.1 Exit criterion
+
+`ycode-simd --device <dir>` on the Thor, no debug flags: `launchd_sim`
+gets its service port (708 → 808), finds its holding-tank child, creates
+the `system` and `user/501` domains (`TMP/launchd.log` shows them), and is
+still running when the run ends by `--timeout-ms` (then exit 0 for a
+timeout in device mode is acceptable — V documents the convention).
+
+### 8.2 Work split
+
+| Agent | Work | Owns |
+|---|---|---|
+| **X** (new) | `YcodeXPC`: the XPC object model and its serialization (`bootstrap-wire.md` §3: `?cpx`/`@cpx`, version 5, every tag in §3.2, dictionaries/arrays, key order kept but lookups by name, port-bearing objects matched to descriptors in depth-first order, inline vs. one-OOL payload §2.3), plus pipe-routine request/reply helpers (§2, §4: ids `0x40000000\|n`, reply `0x20000000`, one-way `0x10000000`, `error` replies, `{port}` replies). Pure Swift, no Mach dependency: a message is (id, body bytes, [descriptor]) with an abstract descriptor enum. Tests from the captured examples in the spec. | `Sources/YcodeXPC/**`, `Tests/YcodeXPCTests/**` |
+| **V** | The host bootstrap **server** in `HostBootstrap.swift`: 708 (size 24) → make a port, keep a send right as the control-channel end, reply per `bootstrap-wire.md` §5.2; pipe routines per §8 of that spec using `YcodeXPC` (207/804 → 1102 / 3, 206/805 → new receive right, others → `{error: 45}`), logging every request decoded. The holding-tank child via P's API (§8.3). Keeps the 4c-i logging (decoded now). | `Sources/ycode-simd/*` |
+| **P** | (after §8.4) `DarwinSystem.spawnInitialProcess(_:fileSystem:exitedChildEnvironmentKey:)`: when the key is given, create the root record, then an already-exited, unreaped child of it (no VM; status 0), add `KEY=<child pid>` to the root's environment, then launch. `wait4`/`waitpid` by the root reaps it as usual. | its files |
+
+### 8.3 Pinned
+
+- `spawnInitialProcess(_ request: ProcessImageRequest, fileSystem: DarwinFileSystem, exitedChildEnvironmentKey: String? = nil) throws -> DarwinKernel`.
+- The holding-tank key is `XPC_SIMULATOR_HOLDING_TANK_HACK`; `…_FD_HACK` is not set.
+
+### 8.4 The malloc stop (agent P)
+
+`launchd_sim` (also with `--exec`) ends with BRK #1 in `libsystem_malloc`
+right after `mach_vm_map(size 0x494000, flags 0x1000001, prot none)` and
+`vm_deallocate` of 1 MiB inside it. P investigates from open-source
+libmalloc/xnu and our own run state only.
