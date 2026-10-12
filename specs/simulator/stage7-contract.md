@@ -1,6 +1,6 @@
 # Contract: simulator stage 7 — a UIKit app, headless
 
-Status: **active (2026-10-12)**, research phase 7-r. Stage 7 of
+Status: **active (2026-10-12)**, implementation phase 7-i (research 7-r done). Stage 7 of
 `docs/SIMULATOR-LINUX.md`: the probe app
 (`research/experiments/simulator/ProbeApp`, our own code) is installed in
 a Ycode device, launched, and prints its `== YCODE-PROBE BEGIN … END`
@@ -42,6 +42,50 @@ that cannot be established from levels 1, 3, and 4 are reported as open,
 not guessed into the spec. Our probe sources go under
 `research/experiments/simulator/<name>/` (sources and build scripts only).
 
-## 3. Implementation (phase 7-i, after 7-r)
+## 3. Implementation (phase 7-i, pinned 2026-10-12)
 
-Pinned when the research lands.
+Research landed: `app-install-launch.md` (R2) and `launch-sim-control.md`
+(R3).
+
+### 3.1 Exit criterion
+
+On the Thor, `ycode-simd --device <dir> --runtime-paths --install-app
+<host path of YcodeProbe.app> --launch dev.ycode.probe` (release build, no
+debug flags): the probe app is installed through InstallCoordination,
+launched through FrontBoardServices with debug stdio options, and its
+`== YCODE-PROBE BEGIN … END` report appears in the stderr file the VMM
+prints at the end. A process without a scene (the one-shot fallback,
+`app-install-launch.md`) does not count, but is the first milestone.
+
+### 3.2 Work (integrator, all of `ycode/`)
+
+1. **Host control client** (`ycode-simd`): after the 708→808 exchange the
+   host holds the control-channel send right. Implement the MIG client of
+   `launch-sim-control.md`: 700 bind (with a session port the host owns;
+   then write `RequireDomainBinding = true`), 701 register (host-side
+   names, sent before the 808 reply hand-off so they exist before any job
+   starts; none required yet), 702 find, 703 getenv, 704 spawn and 705
+   waitpid (replace the `--oneshot` plist mechanism with real one-shots
+   using fileports for stdio, keeping the option's behavior), 709. Never
+   send other ids (`AbortOnUnknownIPC`). At exit, destroy the session
+   port's receive right so `launchd_sim` shuts down cleanly.
+2. **The launcher helper** `ylaunch` (our own guest program,
+   `research/experiments/simulator/app-launch/` → move a minimal version to
+   `ycode/SimShim/guest-tests/stage7/`, built on macOS like the probes,
+   with the `com.apple.frontboard.debugapplications` entitlement in
+   `__TEXT,__entitlements`): `install <bundle>` and `open <bundle id>
+   --stdout P --stderr P [--arg …] [--env K=V …]`, failing loudly when the
+   open completes with no process.
+3. **Device-mode options:** `--install-app <host .app>` (copied into
+   `DEV/data/tmp/ycode-apps/…` and installed by the helper through 704
+   spawn), `--launch <bundle id>` (after install; stdio to
+   `/tmp/ycode-app.{out,err}`, printed at the end), `--app-arg`,
+   `--app-env`.
+4. **Kernel support:** `proc_pidpath` for any pid; csops entitlement reads
+   that open the target's executable (`app-install-launch.md` §
+   entitlements); whatever install/launch hits next.
+5. **Display services question** (`app-install-launch.md` open question 1):
+   if UIKit stops before `didFinishLaunching` because
+   `com.apple.backboard.display.services` is missing, report what
+   headless backboardd does and propose the smallest host-side or
+   guest-side answer before building it.
