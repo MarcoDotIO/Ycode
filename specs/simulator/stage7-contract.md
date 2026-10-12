@@ -137,3 +137,21 @@ harness (as in `bootstrap-wire.md` §A.3) with
 decompilation** of any Apple binary; no `.claude/Xcode.app`, no
 `research/dirty/`, no Ghidra. Argument meanings that runs cannot establish
 are reported as open, not guessed.
+
+## 6. Research R5: the IOSurface path (2026-10-12)
+
+R4 (`simframebuffer.md`) found that with `com.apple.IOSurface.Remote`
+unavailable, backboardd reports a {0,0} screen even with a headless
+SimFramebuffer, and SpringBoard traps. Output:
+`specs/simulator/iosurface-remote.md`: which guest components use the
+host-side name `com.apple.IOSurface.Remote` (`launchd-sim.md` §6.3), the
+message protocol on it (ids, layouts, port and OOL/memory-entry
+descriptors, replies) for the calls the boot and a UIKit app make (create,
+lookup by id, lock/unlock, properties, use counts, release), and the
+minimum a Ycode host service must answer so that surfaces created by one
+guest process can be looked up and mapped by another. Evidence: levels 1
+(public IOSurface headers and docs), 3 (our own man-in-the-middle on the
+Mac: a throwaway `launchd_sim` under our harness registers our own port
+under the name via the control channel's 701 and forwards to the real
+host service, recording both directions), 4 (symbol and class names). No
+disassembly.
