@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "YcodeSettings", targets: ["YcodeSettings"]),
         .library(name: "YcodeMachO", targets: ["YcodeMachO"]),
         .library(name: "YcodeDarwinABI", targets: ["YcodeDarwinABI"]),
+        .library(name: "YcodeDarwinKernel", targets: ["YcodeDarwinKernel"]),
         .executable(name: "ycode-simd", targets: ["ycode-simd"]),
         .executable(name: "ycode", targets: ["ycode"]),
     ],
@@ -22,9 +23,10 @@ let package = Package(
         .target(name: "YcodeMachO"),
         // Simulator stage 2 (specs/simulator/vm-shim-protocol.md)
         .target(name: "YcodeDarwinABI"),
+        .target(name: "YcodeDarwinKernel", dependencies: ["YcodeDarwinABI"]),
         .target(name: "CKVM"),
         .target(name: "YcodeHypervisor", dependencies: ["CKVM", "YcodeDarwinABI"]),
-        .executableTarget(name: "ycode-simd", dependencies: ["YcodeHypervisor", "YcodeDarwinABI"]),
+        .executableTarget(name: "ycode-simd", dependencies: ["YcodeHypervisor", "YcodeDarwinABI", "YcodeDarwinKernel", "YcodeMachO"]),
         .executableTarget(name: "ycode", dependencies: ["YcodePlist", "YcodeProject", "YcodeWorkspace", "YcodeSettings", "YcodeMachO"]),
         .testTarget(name: "YcodePlistTests", dependencies: ["YcodePlist"]),
         .testTarget(name: "YcodeProjectTests", dependencies: ["YcodeProject"], resources: [.copy("Fixtures")]),
@@ -32,5 +34,6 @@ let package = Package(
         .testTarget(name: "YcodeSettingsTests", dependencies: ["YcodeSettings"]),
         .testTarget(name: "YcodeMachOTests", dependencies: ["YcodeMachO"]),
         .testTarget(name: "YcodeDarwinABITests", dependencies: ["YcodeDarwinABI"]),
+        .testTarget(name: "YcodeDarwinKernelTests", dependencies: ["YcodeDarwinKernel"]),
     ]
 )

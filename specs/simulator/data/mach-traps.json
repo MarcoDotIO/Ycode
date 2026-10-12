@@ -1,0 +1,2014 @@
+[
+ {
+  "number": 0,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -1,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -2,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -3,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -4,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -5,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -6,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -7,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -8,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -9,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -10,
+  "name": "_kernelrpc_mach_vm_allocate_trap",
+  "user_stub": "_kernelrpc_mach_vm_allocate_trap",
+  "args": [
+   "mach_port_name_t",
+   "user_addr_t",
+   "mach_vm_size_ut",
+   "int"
+  ],
+  "arg_names": [
+   "target",
+   "addr",
+   "size",
+   "flags"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwlw"
+ },
+ {
+  "number": -11,
+  "name": "_kernelrpc_mach_vm_purgable_control_trap",
+  "user_stub": "_kernelrpc_mach_vm_purgable_control_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_vm_offset_t",
+   "vm_purgable_t",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "target",
+   "address",
+   "control",
+   "state"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wlww"
+ },
+ {
+  "number": -12,
+  "name": "_kernelrpc_mach_vm_deallocate_trap",
+  "user_stub": "_kernelrpc_mach_vm_deallocate_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_vm_address_ut",
+   "mach_vm_size_ut"
+  ],
+  "arg_names": [
+   "target",
+   "address",
+   "size"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wll"
+ },
+ {
+  "number": -13,
+  "name": "task_dyld_process_info_notify_get_trap",
+  "user_stub": "task_dyld_process_info_notify_get",
+  "args": [
+   "mach_vm_address_t",
+   "mach_vm_address_t"
+  ],
+  "arg_names": [
+   "names_addr",
+   "names_count_addr"
+  ],
+  "arg_count": 2,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_ll"
+ },
+ {
+  "number": -14,
+  "name": "_kernelrpc_mach_vm_protect_trap",
+  "user_stub": "_kernelrpc_mach_vm_protect_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_vm_address_ut",
+   "mach_vm_size_ut",
+   "boolean_t",
+   "vm_prot_ut"
+  ],
+  "arg_names": [
+   "target",
+   "address",
+   "size",
+   "set_maximum",
+   "new_protection"
+  ],
+  "arg_count": 5,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wllww"
+ },
+ {
+  "number": -15,
+  "name": "_kernelrpc_mach_vm_map_trap",
+  "user_stub": "_kernelrpc_mach_vm_map_trap",
+  "args": [
+   "mach_port_name_t",
+   "user_addr_t",
+   "mach_vm_size_ut",
+   "mach_vm_offset_ut",
+   "int",
+   "vm_prot_ut"
+  ],
+  "arg_names": [
+   "target",
+   "addr",
+   "size",
+   "mask",
+   "flags",
+   "cur_protection"
+  ],
+  "arg_count": 6,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwllww"
+ },
+ {
+  "number": -16,
+  "name": "_kernelrpc_mach_port_allocate_trap",
+  "user_stub": "_kernelrpc_mach_port_allocate_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_right_t",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "target",
+   "right",
+   "name"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_www"
+ },
+ {
+  "number": -17,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -18,
+  "name": "_kernelrpc_mach_port_deallocate_trap",
+  "user_stub": "_kernelrpc_mach_port_deallocate_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t"
+  ],
+  "arg_names": [
+   "target",
+   "name"
+  ],
+  "arg_count": 2,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_ww"
+ },
+ {
+  "number": -19,
+  "name": "_kernelrpc_mach_port_mod_refs_trap",
+  "user_stub": "_kernelrpc_mach_port_mod_refs_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "mach_port_right_t",
+   "mach_port_delta_t"
+  ],
+  "arg_names": [
+   "target",
+   "name",
+   "right",
+   "delta"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwww"
+ },
+ {
+  "number": -20,
+  "name": "_kernelrpc_mach_port_move_member_trap",
+  "user_stub": "_kernelrpc_mach_port_move_member_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "mach_port_name_t"
+  ],
+  "arg_names": [
+   "target",
+   "member",
+   "after"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_www"
+ },
+ {
+  "number": -21,
+  "name": "_kernelrpc_mach_port_insert_right_trap",
+  "user_stub": "_kernelrpc_mach_port_insert_right_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "mach_msg_type_name_t"
+  ],
+  "arg_names": [
+   "target",
+   "name",
+   "poly",
+   "polyPoly"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwww"
+ },
+ {
+  "number": -22,
+  "name": "_kernelrpc_mach_port_insert_member_trap",
+  "user_stub": "_kernelrpc_mach_port_insert_member_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "mach_port_name_t"
+  ],
+  "arg_names": [
+   "target",
+   "name",
+   "pset"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_www"
+ },
+ {
+  "number": -23,
+  "name": "_kernelrpc_mach_port_extract_member_trap",
+  "user_stub": "_kernelrpc_mach_port_extract_member_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "mach_port_name_t"
+  ],
+  "arg_names": [
+   "target",
+   "name",
+   "pset"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_www"
+ },
+ {
+  "number": -24,
+  "name": "_kernelrpc_mach_port_construct_trap",
+  "user_stub": "_kernelrpc_mach_port_construct_trap",
+  "args": [
+   "mach_port_name_t",
+   "user_addr_t",
+   "uint64_t",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "target",
+   "options",
+   "context",
+   "name"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwlw"
+ },
+ {
+  "number": -25,
+  "name": "_kernelrpc_mach_port_destruct_trap",
+  "user_stub": "_kernelrpc_mach_port_destruct_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "mach_port_delta_t",
+   "uint64_t"
+  ],
+  "arg_names": [
+   "target",
+   "name",
+   "srdelta",
+   "guard"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwwl"
+ },
+ {
+  "number": -26,
+  "name": "mach_reply_port",
+  "user_stub": "mach_reply_port",
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "mach_port_name_t",
+  "status": "implemented",
+  "returns_port": true,
+  "munge32": null
+ },
+ {
+  "number": -27,
+  "name": "thread_self_trap",
+  "user_stub": "thread_self_trap",
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "mach_port_name_t",
+  "status": "implemented",
+  "returns_port": true,
+  "munge32": null
+ },
+ {
+  "number": -28,
+  "name": "task_self_trap",
+  "user_stub": "task_self_trap",
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "mach_port_name_t",
+  "status": "implemented",
+  "returns_port": true,
+  "munge32": null
+ },
+ {
+  "number": -29,
+  "name": "host_self_trap",
+  "user_stub": "host_self_trap",
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "mach_port_name_t",
+  "status": "implemented",
+  "returns_port": true,
+  "munge32": null
+ },
+ {
+  "number": -30,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -31,
+  "name": "mach_msg_trap",
+  "user_stub": "mach_msg_trap",
+  "args": [
+   "user_addr_t",
+   "mach_msg_option_t",
+   "mach_msg_size_t",
+   "mach_msg_size_t",
+   "mach_port_name_t",
+   "mach_msg_timeout_t",
+   "mach_msg_priority_t"
+  ],
+  "arg_names": [
+   "msg",
+   "option",
+   "send_size",
+   "rcv_size",
+   "rcv_name",
+   "timeout",
+   "priority"
+  ],
+  "arg_count": 7,
+  "returns": "mach_msg_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwwwwww"
+ },
+ {
+  "number": -32,
+  "name": "mach_msg_overwrite_trap",
+  "user_stub": "mach_msg_overwrite_trap",
+  "args": [
+   "user_addr_t",
+   "mach_msg_option_t",
+   "mach_msg_size_t",
+   "mach_msg_size_t",
+   "mach_port_name_t",
+   "mach_msg_timeout_t",
+   "mach_msg_priority_t",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "msg",
+   "option",
+   "send_size",
+   "rcv_size",
+   "rcv_name",
+   "timeout",
+   "priority",
+   "rcv_msg"
+  ],
+  "arg_count": 8,
+  "returns": "mach_msg_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwwwwwww"
+ },
+ {
+  "number": -33,
+  "name": "semaphore_signal_trap",
+  "user_stub": "semaphore_signal_trap",
+  "args": [
+   "mach_port_name_t"
+  ],
+  "arg_names": [
+   "signal_name"
+  ],
+  "arg_count": 1,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_w"
+ },
+ {
+  "number": -34,
+  "name": "semaphore_signal_all_trap",
+  "user_stub": "semaphore_signal_all_trap",
+  "args": [
+   "mach_port_name_t"
+  ],
+  "arg_names": [
+   "signal_name"
+  ],
+  "arg_count": 1,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_w"
+ },
+ {
+  "number": -35,
+  "name": "semaphore_signal_thread_trap",
+  "user_stub": "semaphore_signal_thread_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t"
+  ],
+  "arg_names": [
+   "signal_name",
+   "thread_name"
+  ],
+  "arg_count": 2,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_ww"
+ },
+ {
+  "number": -36,
+  "name": "semaphore_wait_trap",
+  "user_stub": "semaphore_wait_trap",
+  "args": [
+   "mach_port_name_t"
+  ],
+  "arg_names": [
+   "wait_name"
+  ],
+  "arg_count": 1,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_w"
+ },
+ {
+  "number": -37,
+  "name": "semaphore_wait_signal_trap",
+  "user_stub": "semaphore_wait_signal_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t"
+  ],
+  "arg_names": [
+   "wait_name",
+   "signal_name"
+  ],
+  "arg_count": 2,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_ww"
+ },
+ {
+  "number": -38,
+  "name": "semaphore_timedwait_trap",
+  "user_stub": "semaphore_timedwait_trap",
+  "args": [
+   "mach_port_name_t",
+   "unsigned int",
+   "clock_res_t"
+  ],
+  "arg_names": [
+   "wait_name",
+   "sec",
+   "nsec"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_www"
+ },
+ {
+  "number": -39,
+  "name": "semaphore_timedwait_signal_trap",
+  "user_stub": "semaphore_timedwait_signal_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "unsigned int",
+   "clock_res_t"
+  ],
+  "arg_names": [
+   "wait_name",
+   "signal_name",
+   "sec",
+   "nsec"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwww"
+ },
+ {
+  "number": -40,
+  "name": "_kernelrpc_mach_port_get_attributes_trap",
+  "user_stub": "_kernelrpc_mach_port_get_attributes_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "mach_port_flavor_t",
+   "user_addr_t",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "target",
+   "name",
+   "flavor",
+   "info",
+   "count"
+  ],
+  "arg_count": 5,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwwww"
+ },
+ {
+  "number": -41,
+  "name": "_kernelrpc_mach_port_guard_trap",
+  "user_stub": "_kernelrpc_mach_port_guard_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "uint64_t",
+   "boolean_t"
+  ],
+  "arg_names": [
+   "target",
+   "name",
+   "guard",
+   "strict"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwlw"
+ },
+ {
+  "number": -42,
+  "name": "_kernelrpc_mach_port_unguard_trap",
+  "user_stub": "_kernelrpc_mach_port_unguard_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "uint64_t"
+  ],
+  "arg_names": [
+   "target",
+   "name",
+   "guard"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwl"
+ },
+ {
+  "number": -43,
+  "name": "mach_generate_activity_id",
+  "user_stub": "mach_generate_activity_id",
+  "args": [
+   "mach_port_name_t",
+   "int",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "target",
+   "count",
+   "activity_id"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_www"
+ },
+ {
+  "number": -44,
+  "name": "task_name_for_pid",
+  "user_stub": "task_name_for_pid",
+  "args": [
+   "mach_port_name_t",
+   "int",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "target_tport",
+   "pid",
+   "t"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_www"
+ },
+ {
+  "number": -45,
+  "name": "task_for_pid",
+  "user_stub": "task_for_pid",
+  "args": [
+   "mach_port_name_t",
+   "int",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "target_tport",
+   "pid",
+   "t"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_www"
+ },
+ {
+  "number": -46,
+  "name": "pid_for_task",
+  "user_stub": "pid_for_task",
+  "args": [
+   "mach_port_name_t",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "t",
+   "pid"
+  ],
+  "arg_count": 2,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_ww"
+ },
+ {
+  "number": -47,
+  "name": "mach_msg2_trap",
+  "user_stub": "mach_msg2_trap",
+  "args": [
+   "mach_vm_address_t",
+   "mach_msg_option64_t",
+   "uint64_t",
+   "uint64_t",
+   "uint64_t",
+   "uint64_t",
+   "uint64_t",
+   "uint64_t"
+  ],
+  "arg_names": [
+   "data",
+   "options",
+   "msgh_bits_and_send_size",
+   "msgh_remote_and_local_port",
+   "msgh_voucher_and_id",
+   "desc_count_and_rcv_name",
+   "rcv_size_and_priority",
+   "timeout"
+  ],
+  "arg_count": 8,
+  "returns": "mach_msg_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_llllllll"
+ },
+ {
+  "number": -48,
+  "name": "macx_swapon",
+  "user_stub": "macx_swapon",
+  "args": [
+   "uint64_t",
+   "int",
+   "int",
+   "int"
+  ],
+  "arg_names": [
+   "filename",
+   "flags",
+   "size",
+   "priority"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_lwww"
+ },
+ {
+  "number": -49,
+  "name": "macx_swapoff",
+  "user_stub": "macx_swapoff",
+  "args": [
+   "uint64_t",
+   "int"
+  ],
+  "arg_names": [
+   "filename",
+   "flags"
+  ],
+  "arg_count": 2,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_lw"
+ },
+ {
+  "number": -50,
+  "name": "thread_get_special_reply_port",
+  "user_stub": "thread_get_special_reply_port",
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "mach_port_name_t",
+  "status": "implemented",
+  "returns_port": true,
+  "munge32": null
+ },
+ {
+  "number": -51,
+  "name": "macx_triggers",
+  "user_stub": "macx_triggers",
+  "args": [
+   "int",
+   "int",
+   "int",
+   "mach_port_t"
+  ],
+  "arg_names": [
+   "hi_water",
+   "low_water",
+   "flags",
+   "alert_port"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwww"
+ },
+ {
+  "number": -52,
+  "name": "macx_backing_store_suspend",
+  "user_stub": "macx_backing_store_suspend",
+  "args": [
+   "boolean_t"
+  ],
+  "arg_names": [
+   "suspend"
+  ],
+  "arg_count": 1,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_w"
+ },
+ {
+  "number": -53,
+  "name": "macx_backing_store_recovery",
+  "user_stub": "macx_backing_store_recovery",
+  "args": [
+   "int"
+  ],
+  "arg_names": [
+   "pid"
+  ],
+  "arg_count": 1,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_w"
+ },
+ {
+  "number": -54,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -55,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -56,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -57,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -58,
+  "name": "pfz_exit",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -59,
+  "name": "swtch_pri",
+  "user_stub": "swtch_pri",
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "boolean_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -60,
+  "name": "swtch",
+  "user_stub": "swtch",
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "boolean_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -61,
+  "name": "thread_switch",
+  "user_stub": "syscall_thread_switch",
+  "args": [
+   "mach_port_name_t",
+   "int",
+   "mach_msg_timeout_t"
+  ],
+  "arg_names": [
+   "thread_name",
+   "option",
+   "option_time"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_www"
+ },
+ {
+  "number": -62,
+  "name": "clock_sleep_trap",
+  "user_stub": "clock_sleep_trap",
+  "args": [
+   "mach_port_name_t",
+   "sleep_type_t",
+   "int",
+   "int",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "clock_name",
+   "sleep_type",
+   "sleep_sec",
+   "sleep_nsec",
+   "wakeup_time"
+  ],
+  "arg_count": 5,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwwww"
+ },
+ {
+  "number": -63,
+  "name": "mach_vm_reclaim_update_kernel_accounting_trap",
+  "user_stub": "mach_vm_reclaim_update_kernel_accounting_trap",
+  "args": [
+   "mach_port_name_t",
+   "user_addr_t",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "target_task",
+   "bytes_reclaimed_out",
+   "next_deadline_out"
+  ],
+  "arg_count": 3,
+  "returns": "mach_error_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wll"
+ },
+ {
+  "number": -64,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -65,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -66,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -67,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -68,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -69,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -70,
+  "name": "host_create_mach_voucher_trap",
+  "user_stub": "host_create_mach_voucher_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_voucher_attr_raw_recipe_array_t",
+   "int",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "host",
+   "recipes",
+   "recipes_size",
+   "voucher"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwww"
+ },
+ {
+  "number": -71,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -72,
+  "name": "mach_voucher_extract_attr_recipe_trap",
+  "user_stub": "mach_voucher_extract_attr_recipe_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_voucher_attr_key_t",
+   "mach_voucher_attr_raw_recipe_t",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "voucher_name",
+   "key",
+   "recipe",
+   "recipe_size"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwww"
+ },
+ {
+  "number": -73,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -74,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -75,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -76,
+  "name": "_kernelrpc_mach_port_type_trap",
+  "user_stub": "_kernelrpc_mach_port_type_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_right_t",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "target",
+   "name",
+   "ptype"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwww"
+ },
+ {
+  "number": -77,
+  "name": "_kernelrpc_mach_port_request_notification_trap",
+  "user_stub": "_kernelrpc_mach_port_request_notification_trap",
+  "args": [
+   "mach_port_name_t",
+   "mach_port_name_t",
+   "mach_msg_id_t",
+   "mach_port_mscount_t",
+   "mach_port_name_t",
+   "mach_msg_type_name_t",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "target",
+   "name",
+   "msgid",
+   "sync",
+   "notify",
+   "notifyPoly",
+   "previous"
+  ],
+  "arg_count": 7,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwwwwww"
+ },
+ {
+  "number": -78,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -79,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -80,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -81,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -82,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -83,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -84,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -85,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -86,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -87,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -88,
+  "name": "_exclaves_ctl_trap",
+  "user_stub": "_exclaves_ctl_trap",
+  "args": [
+   "mach_port_name_t",
+   "uint32_t",
+   "uint64_t",
+   "mach_vm_address_t",
+   "mach_vm_size_t",
+   "uint64_t",
+   "uint64_t",
+   "mach_vm_address_t"
+  ],
+  "arg_names": [
+   "name",
+   "operation_and_flags",
+   "identifier",
+   "buffer",
+   "size",
+   "param1",
+   "param2",
+   "status"
+  ],
+  "arg_count": 8,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwllllll"
+ },
+ {
+  "number": -89,
+  "name": "mach_timebase_info_trap",
+  "user_stub": "mach_timebase_info_trap",
+  "args": [
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "info"
+  ],
+  "arg_count": 1,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_w"
+ },
+ {
+  "number": -90,
+  "name": "mach_wait_until_trap",
+  "user_stub": "mach_wait_until",
+  "args": [
+   "uint64_t"
+  ],
+  "arg_names": [
+   "deadline"
+  ],
+  "arg_count": 1,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_l"
+ },
+ {
+  "number": -91,
+  "name": "mk_timer_create_trap",
+  "user_stub": "mk_timer_create",
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "mach_port_name_t",
+  "status": "implemented",
+  "returns_port": true,
+  "munge32": null
+ },
+ {
+  "number": -92,
+  "name": "mk_timer_destroy_trap",
+  "user_stub": "mk_timer_destroy",
+  "args": [
+   "mach_port_name_t"
+  ],
+  "arg_names": [
+   "name"
+  ],
+  "arg_count": 1,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_w"
+ },
+ {
+  "number": -93,
+  "name": "mk_timer_arm_trap",
+  "user_stub": "mk_timer_arm",
+  "args": [
+   "mach_port_name_t",
+   "uint64_t"
+  ],
+  "arg_names": [
+   "name",
+   "expire_time"
+  ],
+  "arg_count": 2,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wl"
+ },
+ {
+  "number": -94,
+  "name": "mk_timer_cancel_trap",
+  "user_stub": "mk_timer_cancel",
+  "args": [
+   "mach_port_name_t",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "name",
+   "result_time"
+  ],
+  "arg_count": 2,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_ww"
+ },
+ {
+  "number": -95,
+  "name": "mk_timer_arm_leeway_trap",
+  "user_stub": "mk_timer_arm_leeway",
+  "args": [
+   "mach_port_name_t",
+   "uint64_t",
+   "uint64_t",
+   "uint64_t"
+  ],
+  "arg_names": [
+   "name",
+   "mk_timer_flags",
+   "expire_time",
+   "mk_leeway"
+  ],
+  "arg_count": 4,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wlll"
+ },
+ {
+  "number": -96,
+  "name": "debug_control_port_for_pid",
+  "user_stub": "debug_control_port_for_pid",
+  "args": [
+   "mach_port_name_t",
+   "int",
+   "user_addr_t"
+  ],
+  "arg_names": [
+   "target_tport",
+   "pid",
+   "t"
+  ],
+  "arg_count": 3,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_www"
+ },
+ {
+  "number": -97,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -98,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -99,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -100,
+  "name": "iokit_user_client_trap",
+  "user_stub": null,
+  "args": [
+   "void *",
+   "uint32_t",
+   "void *",
+   "void *",
+   "void *",
+   "void *",
+   "void *",
+   "void *"
+  ],
+  "arg_names": [
+   "userClientRef",
+   "index",
+   "p1",
+   "p2",
+   "p3",
+   "p4",
+   "p5",
+   "p6"
+  ],
+  "arg_count": 8,
+  "returns": "kern_return_t",
+  "status": "implemented",
+  "returns_port": false,
+  "munge32": "munge_wwwwwwww"
+ },
+ {
+  "number": -101,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -102,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -103,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -104,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -105,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -106,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -107,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -108,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -109,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -110,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -111,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -112,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -113,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -114,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -115,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -116,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -117,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -118,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -119,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -120,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -121,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -122,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -123,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -124,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -125,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -126,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ },
+ {
+  "number": -127,
+  "name": "kern_invalid",
+  "user_stub": null,
+  "args": [],
+  "arg_names": [],
+  "arg_count": 0,
+  "returns": "kern_return_t",
+  "status": "reserved",
+  "returns_port": false,
+  "munge32": null
+ }
+]
