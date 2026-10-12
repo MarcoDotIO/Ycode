@@ -55,7 +55,8 @@ extension DarwinKernel {
                           kqueueWorkloopCtl = 530, disableThreadsignal = 331,
                           sigsuspend = 111, sigsuspendNocancel = 410,
                           getxattr = 234, fgetxattr = 235, setxattr = 236, fsetxattr = 237,
-                          removexattr = 238, fremovexattr = 239, listxattr = 240, flistxattr = 241
+                          removexattr = 238, fremovexattr = 239, listxattr = 240, flistxattr = 241,
+                          gettid = 286
         /// psynch calls that wait (can never be woken on one thread).
         public static let psynchWaits: [Int: String] = [
             297: "psynch_rw_longrdlock", 298: "psynch_rw_yieldwrlock", 300: "psynch_rw_upgrade",
@@ -371,6 +372,12 @@ extension DarwinKernel {
             call = "\(name)(fd=\(int(0)), \(hx(a[1])))"
             _ = try fileSystem.fstat(int(0))
             return try xattrResult(n)
+
+        // gettid (pthread_getugid_np): a thread without an override identity
+        // (every Ycode thread) gets ESRCH (xnu bsd/kern/kern_prot.c).
+        case BSD2.gettid:
+            call = "gettid(uidp=\(hx(a[0])), gidp=\(hx(a[1])))"
+            throw Failure(errno: Errno.ESRCH)
 
         case BSD2.fstatat, BSD2.fstatat64:
             let path = try resolveAtPath(int(0), a[1], mem)

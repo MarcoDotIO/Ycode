@@ -558,6 +558,8 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         }
         p.fileportFile = nil
         p.memoryEntry = nil
+        p.mkTimer?.deadline = nil
+        p.mkTimer = nil
     }
 
     func removeFromAllSets(_ p: IPCPort) {

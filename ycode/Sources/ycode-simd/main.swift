@@ -51,6 +51,13 @@
 // at the end of the run. `--job-path` directories outside DEV and RR are
 // served read-only at their own guest path.
 //
+// Stage 6 (stage6-contract.md §1): `--runtime-paths` puts CoreSimulator's
+// four job directories first in `Paths` (RR/System/Library/LaunchDaemons,
+// RR/System/Library/LaunchAngels, RR/Developer/Library/LaunchDaemons,
+// DEV/data/Library/LaunchDaemons; launchd-sim.md §4.1); `--oneshot-delay S`
+// makes the one-shot jobs start S seconds after load (`StartInterval`,
+// not `RunAtLoad`), e.g. a `launchctl list` near the end of a boot.
+//
 // `--debug-plist-bool KEY=true|false` replaces a top-level boolean of the
 // bootstrap plist (Ycode writes `RequireDomainBinding` false: it has no
 // session bind yet, and with true launchd_sim defers every `system` job).
@@ -86,7 +93,8 @@ let usage = """
                       [--host-libs <dir>] [--keep-going] [--libfunc-return <name>=<value>[,...]] [--repeat N]
                       [--env K=V]... [--host-bootstrap [--debug-bootstrap-discard]] [--exec-args <arg>...]
            ycode-simd --device <dir> --runtime-root <dir> [--udid <UDID>] [--job-path <dir>]... [--env K=V]...
-                      [--oneshot "/guest/program arg..."]... [--runtime-job <label>]... [--debug-plist-bool KEY=true|false]...
+                      [--runtime-paths] [--oneshot "/guest/program arg..."]... [--oneshot-delay S] [--runtime-job <label>]...
+                      [--debug-plist-bool KEY=true|false]...
                       [--trace] [--keep-going] [--timeout-ms N] [--host-libs <dir>] [--debug-bootstrap-discard]
                       [--exec-args <arg>...]
                       [--debug-extra-images N [--debug-extra-exec <macho>] [--debug-extra-arg A]... [--debug-extra-wait]]
@@ -125,6 +133,16 @@ struct Options {
     /// runtime job plists by label, both in DEV/ycode-jobs.
     var oneshots: [[String]] = []
     var runtimeJobs: [String] = []
+    /// Device mode: CoreSimulator's four job directories (launchd-sim.md §4.1).
+    var runtimePaths = false
+    /// Device mode: one-shot jobs start this many seconds after load
+    /// (`StartInterval`) instead of at load.
+    var oneshotDelay: Int?
+    /// Debug: at the end of a device run, report every image's vCPUs
+    /// (running, parked, blocked in which trap), as --trace does.
+    var debugThreadReport = false
+    /// Debug: trace only these pids (as --trace --keep-going would).
+    var tracePIDs: Set<Int32> = []
     /// Debug: replace top-level booleans of the bootstrap plist.
     var plistBoolOverrides: [String: Bool] = [:]
     /// Debug: the logging host bootstrap service drops requests (instead of
@@ -235,6 +253,14 @@ func parseOptions(_ arguments: [String]) -> Options {
             guard let program = argv.first, program.hasPrefix("/") else { die("--oneshot needs \"/guest/program [arg]...\"", status: 64) }
             options.oneshots.append(argv)
         case "--runtime-job": options.runtimeJobs.append(value(for: argument))
+        case "--runtime-paths": options.runtimePaths = true
+        case "--debug-thread-report": options.debugThreadReport = true
+        case "--trace-pid":
+            guard let n = Int32(value(for: argument)) else { die("--trace-pid needs a pid", status: 64) }
+            options.tracePIDs.insert(n)
+        case "--oneshot-delay":
+            guard let n = Int(value(for: argument)), n > 0 else { die("--oneshot-delay needs seconds > 0", status: 64) }
+            options.oneshotDelay = n
         case "--debug-plist-bool":
             let parts = value(for: argument).split(separator: "=", maxSplits: 1).map(String.init)
             guard parts.count == 2, let flag = Bool(parts[1]) else { die("--debug-plist-bool needs KEY=true|false", status: 64) }

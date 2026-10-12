@@ -57,9 +57,10 @@ final class ExecConfiguration: @unchecked Sendable {
         if let devicePath = options.devicePath {
             // Device mode: the root process is RR/sbin/launchd_sim.
             var layout = DeviceLayout(dev: absolutePath(devicePath), runtimeRoot: root, udid: options.udid,
-                                      jobPaths: options.jobPaths.map(absolutePath), oneshots: options.oneshots,
-                                      runtimeJobs: options.runtimeJobs)
+                                      jobPaths: options.jobPaths.map(absolutePath), runtimePaths: options.runtimePaths,
+                                      oneshots: options.oneshots, runtimeJobs: options.runtimeJobs)
             layout.plistBoolOverrides = options.plistBoolOverrides
+            layout.oneshotDelay = options.oneshotDelay
             // The guest's /var, /tmp, and /etc are links into /private: a
             // host path below them (or below /private/...) is unreachable
             // at its own guest path.
@@ -121,6 +122,12 @@ final class ExecConfiguration: @unchecked Sendable {
             // Device mode (stage4c-contract.md §2): DEV, /private/var/tmp (TMP is in it)
             // (and /var/tmp), /tmp and /private/tmp, all writable.
             prefixes.append(DarwinFileSystem.Prefix(guestPath: device.dev, hostPath: device.dev, writable: true))
+            // On macOS a simulator process sees the host's /System, and the
+            // runtime opens some framework bundles at their unrooted install
+            // paths (CoreFoundation's own bundle: CFBundleGetInfoDictionary
+            // dereferences NULL without it; level 3, our runs). Ycode serves
+            // RR/System there, read-only.
+            prefixes.append(DarwinFileSystem.Prefix(guestPath: "/System", hostPath: root + "/System", writable: false))
             // Job directories outside DEV and RR: read-only at their own path.
             for path in device.jobPaths where !(path == device.dev || path.hasPrefix(device.dev + "/") || path == root || path.hasPrefix(root + "/")) {
                 prefixes.append(DarwinFileSystem.Prefix(guestPath: path, hostPath: path, writable: false))
@@ -249,6 +256,39 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     }
     _ = rootKernel
     let started = monotonicMilliseconds()
+    if config.options.debugThreadReport {
+        DarwinKernel.recordKnoteHistory = true
+        system.lock.slowHoldNanoseconds = 20_000_000
+        system.lock.profileHolds = true
+        system.lock.slowHoldReporter = { context, ns in
+            let what = context.map { c in
+                "pid \(c.kernel?.pid ?? -1) thread \(c.threadID) trap \(c.trapInProgress.map { String(Int64(bitPattern: $0.x16)) } ?? "?")"
+            } ?? "a service thread"
+            stderrLine("ycode-simd: monitor: kernel lock held \(ns / 1_000_000) ms by \(what)")
+        }
+        // Every 20 s: vCPUs stuck in one handler call for 20 s or more
+        // (threads parked or waiting in the kernel show here too).
+        let monitor = Thread { [weak launcher] in
+            var lastHeld: UInt64 = 0, lastCount: UInt64 = 0, lastTime = monotonicMilliseconds()
+            while let l = launcher {
+                Thread.sleep(forTimeInterval: 20)
+                let (held, count) = system.lock.withLock { (system.lock.totalHeldNanoseconds, system.lock.acquisitions) }
+                let now = monotonicMilliseconds()
+                stderrLine("ycode-simd: monitor: kernel lock busy \((held - lastHeld) / 10_000 / max(now - lastTime, 1))% "
+                    + "over \(now - lastTime) ms, \(count - lastCount) acquisitions")
+                (lastHeld, lastCount, lastTime) = (held, count, now)
+                let profile = system.lock.withLock { system.lock.holdProfile }
+                let top = profile.sorted { $0.value.ns > $1.value.ns }.prefix(12).map {
+                    "\($0.key == Int64.min ? "service" : String($0.key)): \($0.value.ns / 1_000_000) ms/\($0.value.count)"
+                }
+                stderrLine("ycode-simd: monitor: lock hold by trap (cumulative): " + top.joined(separator: ", "))
+                for line in l.longHandlerReport(ms: 20_000) { stderrLine("ycode-simd: monitor: " + line) }
+                for line in l.longGuestRunReport(ms: 5_000) { stderrLine("ycode-simd: monitor: " + line) }
+                for line in l.rootWorkerStates() { stderrLine("ycode-simd: monitor: root " + line) }
+            }
+        }
+        monitor.start()
+    }
 
     // Debug: independent extra images running next to the root (VMM
     // concurrency and teardown; they bypass the process layer).
@@ -278,12 +318,22 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         // stopped; `--timeout-ms` is the length of the run. Reaching it with
         // launchd_sim alive is a normal end: exit 0, every process stopped.
         result = (0, "device run ended after \(config.timeout) ms (--timeout-ms); launchd_sim (pid \(rootPID)) was still running", false)
-        if config.trace { watchdogReport = launcher.watchdogReport() }
+        if config.trace || config.options.debugThreadReport { watchdogReport = launcher.watchdogReport() }
     } else if result.watchdog {
         watchdogReport = launcher.watchdogReport()
     }
     if !quietSummary || result.status != 0 { stderrLine("ycode-simd: \(result.message)") }
     if let watchdogReport { stderrLine(watchdogReport) }
+    if config.options.debugThreadReport {
+        // Where every thread of every live process waits (before the stop).
+        for p in system.allProcesses {
+            guard let k = p.kernel else { continue }
+            let lines = k.lock.withLock { k.blockedThreadReport() }
+            if lines.isEmpty { continue }
+            stderrLine("ycode-simd: blocked threads of pid \(p.pid) (\((p.executablePath as NSString).lastPathComponent)):")
+            for line in lines { stderrLine("  " + line) }
+        }
+    }
 
     // The root ended: stop every other process (and a root image still
     // stopping), tear down what returns in time. The process layer ends

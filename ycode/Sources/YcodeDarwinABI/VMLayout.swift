@@ -143,6 +143,8 @@ public enum VMLayout {
 
     // MARK: Recommended system register values (§3)
 
+    /// The address bits a data access uses with TBI0 (top byte ignored).
+    public static let addressWithoutTag: UInt64 = 0x00FF_FFFF_FFFF_FFFF
     public static let tcrEL1: UInt64 = AArch64.TCR.recommended
     public static let mairEL1: UInt64 = AArch64.MAIR.recommended
     public static let sctlrEL1: UInt64 = AArch64.SCTLR.recommended
@@ -271,6 +273,7 @@ extension VMLayout {
 public enum AArch64 {
     /// Translation Control Register (EL1).
     public enum TCR {
+        // (see `VMLayout.addressWithoutTag`)
         public static func t0sz(_ v: UInt64) -> UInt64 { (v & 0x3F) << 0 }      // T0SZ, bits [5:0]
         public static let epd0: UInt64 = 1 << 7                                  // EPD0: disable TTBR0 walks
         public static func irgn0(_ v: UInt64) -> UInt64 { (v & 3) << 8 }        // IRGN0, bits [9:8]
@@ -304,6 +307,11 @@ public enum AArch64 {
             | epd1
             | tg1(tg1Granule16K)
             | ips(ips40Bit)
+            // Darwin runs EL0 with the top byte of data addresses ignored
+            // (xnu osfmk/arm64/proc_reg.h, TCR_EL1_BASE has
+            // TCR_TBI0_TOPBYTE_IGNORED); Swift's runtime keeps tag bits in
+            // object pointers it dereferences (stage 6).
+            | tbi0
     }
 
     /// Memory Attribute Indirection Register (EL1): eight 8-bit Attr<n> fields.

@@ -58,7 +58,8 @@ public struct TranslatingGuestMemory: GuestMemoryAccess {
     public func physicalPieces(va: UInt64, count: Int, write: Bool) throws -> [(pa: UInt64, count: Int)] {
         guard count >= 0, UInt64(count) <= UInt64.max - va else { throw GuestMemoryError.badRange(va: va, count: count) }
         var pieces: [(pa: UInt64, count: Int)] = []
-        var cursor = va
+        // TCR_EL1.TBI0: the top byte of a guest data address is ignored.
+        var cursor = va & VMLayout.addressWithoutTag
         var remaining = UInt64(count)
         while remaining > 0 {
             guard let (pa, attributes) = pageTables.translate(cursor) else { throw GuestMemoryError.unmapped(va: cursor) }

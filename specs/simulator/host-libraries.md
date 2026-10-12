@@ -424,3 +424,15 @@ real trap (−15). Library additions: `mach_make_memory_entry(_64)`,
 `mach_{host,task,thread}_special_port_{description,for_id}` label tables
 (the labels and macro names are public interop identifiers from xnu
 `port_descriptions.h`; `launchctl print` shows them).
+
+### 11.2 Private Mach routines added in stage 6
+
+| n | Routine | VMM behavior |
+|---|---|---|
+| 12 | `vm_remap` / `vm_remap_new` within the caller's own task | Share or copy a range (xnu `vm_user.c`); libobjc's trampolines use it |
+| 13 | `task_threads(task, &list, &count)` | Send rights to the task's thread ports (self only) |
+| 14 | `mach_port_get_context(task, name, &context)` | xnu `mach_port.c` |
+| 15 | `mach_port_set_context(task, name, context)` | xnu `mach_port.c` |
+
+Real traps added: mk_timer −91…−95 (xnu `mk_timer.c`). `gettid` (BSD 286)
+returns ESRCH (no per-thread credentials, xnu `kern_prot.c`).

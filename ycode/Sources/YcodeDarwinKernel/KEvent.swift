@@ -236,6 +236,13 @@ final class Knote {
     let syncWaiters = WaitQueue()
     // EVFILT_MACHPORT: the receive right left the space.
     var receiveGone = false
+    /// Diagnostics (`DarwinKernel.recordKnoteHistory`): the last state changes.
+    var history: [String] = []
+    func note(_ text: String) {
+        guard DarwinKernel.recordKnoteHistory else { return }
+        if history.count == 10 { history.removeFirst() }
+        history.append("\(KernelClock.now() / 1_000_000 % 1_000_000): " + text)
+    }
     /// EV_VANISHED was asked for at EV_ADD. As in xnu (`KN_REQVANISH`), the
     /// bit is a request, not part of the knote's flags: ordinary events never
     /// carry it, only the end-of-life event does.
@@ -338,6 +345,8 @@ struct KEventState {
     var objectQueues: [ObjectIdentifier: KQueue] = [:]
     /// Armed timers.
     var timers: [ObjectIdentifier: Knote] = [:]
+    /// Armed mk_timer ports (`MachTimer.swift`).
+    var mkTimers: [ObjectIdentifier: MachTimer] = [:]
     /// Wakes the timer thread when the earliest deadline changes.
     let timerWake = WaitQueue()
     var timerThreadStarted = false
@@ -592,6 +601,7 @@ extension DarwinKernel {
                 kn = new
             }
             if enabled { enable(kn) } else { kn.enabled = false }
+            kn.note("EV_ADD by t\(context.threadID) flags \(hx(UInt64(c.flags))) -> enabled \(kn.enabled) active \(kn.active) suppressed \(kn.suppressed)")
         } else {
             // A change without EV_ADD still modifies an existing knote
             // (EVFILT_USER's NOTE_TRIGGER pokes work this way).
@@ -599,6 +609,7 @@ extension DarwinKernel {
             kn = existing
             if let e = touchFilter(kn, c, mem) { return ChangeResult(errno: e) }
             if c.flags & EV.disable != 0 { kn.enabled = false } else if c.flags & EV.enable != 0 { enable(kn) }
+            kn.note("change by t\(context.threadID) flags \(hx(UInt64(c.flags))) -> enabled \(kn.enabled) active \(kn.active) suppressed \(kn.suppressed)")
         }
         if kn.active && kn.enabled { activated(kn) }
         return ChangeResult()
@@ -686,7 +697,7 @@ extension DarwinKernel {
         }
     }
 
-    private func machPortHasMessage(_ name: UInt32) -> Bool {
+    func machPortHasMessage(_ name: UInt32) -> Bool {
         machIPC?.messageQueued(on: name) ?? false
     }
 
@@ -782,12 +793,13 @@ extension DarwinKernel {
             }
             if let d2 = kn.timerDeadline { next = min(next ?? d2, d2) }
         }
+        if let d = fireDueMachTimers(now: now) { next = min(next ?? d, d) }
         return next
     }
 
     /// The timer service thread: fires timers at their deadlines. It holds
     /// the kernel weakly and stops at `terminate()` or when the kernel goes.
-    private func startTimerThreadIfNeeded() {
+    func startTimerThreadIfNeeded() {
         guard !kevents.timerThreadStarted else { return }
         kevents.timerThreadStarted = true
         let box = TimerThreadBox(kernel: self, lock: lock, wake: kevents.timerWake)
@@ -1112,6 +1124,7 @@ extension DarwinKernel {
             if !kq.isDescriptor {
                 kn.suppressed = true
                 context.worker?.delivered.append(kn)
+                kn.note("delivered to t\(context.threadID)\(context.worker == nil ? " (not a worker!)" : "") flags \(hx(UInt64(e.flags))) enabled \(kn.enabled)")
             }
         }
         return out
@@ -1367,6 +1380,7 @@ extension DarwinKernel {
             kq.waiters.wakeAll()
         }
         kevents.timers.removeAll()
+        kevents.mkTimers.removeAll()
     }
 
     /// `fileSystem.descriptorClosed`: descriptor `fd` closed (by close,

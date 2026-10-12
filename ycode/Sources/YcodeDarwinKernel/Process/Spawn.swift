@@ -455,6 +455,7 @@ extension DarwinKernel {
         let record = DarwinProcess(pid: childPID, ppid: pid, pgid: me.pgid, sid: me.sid, uniqueID: system.makeUniqueID(),
                                    executablePath: guestPath, startTime: DarwinSystem.now())
         record.kernel = child
+        record.startAbsTime = counter()
         record.parentUniqueID = me.uniqueID
         record.originalParentPIDVersion = pidVersion
         record.processType = request.attributes.apptype

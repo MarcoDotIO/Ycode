@@ -304,3 +304,10 @@ int ckvm_watchdog_arm(uint64_t milliseconds) {
 int ckvm_watchdog_fired(void) { return watchdog_fired_flag ? 1 : 0; }
 
 #endif // __linux__ && __aarch64__
+
+/* The calling thread's Linux thread id (diagnostics). */
+#if defined(__linux__) && defined(__aarch64__)
+long ckvm_gettid(void) { return (long)syscall(SYS_gettid); }
+#else
+long ckvm_gettid(void) { return 0; }
+#endif

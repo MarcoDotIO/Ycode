@@ -7,6 +7,7 @@ public enum MachKern {
     public static let invalidAddress: UInt32 = 1
     public static let protectionFailure: UInt32 = 2
     public static let noSpace: UInt32 = 3
+    public static let resourceShortage: UInt32 = 6
     public static let invalidArgument: UInt32 = 4
     public static let failure: UInt32 = 5
     public static let noAccess: UInt32 = 8

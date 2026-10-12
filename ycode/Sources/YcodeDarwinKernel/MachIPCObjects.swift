@@ -72,6 +72,8 @@ final class IPCPort {
     var fileportFile: DarwinOpenFile?
     /// The memory behind a memory-entry port.
     var memoryEntry: MachMemoryEntry?
+    /// The timer of an mk_timer port (`MachTimer.swift`).
+    var mkTimer: MachTimer?
     /// False once the port died.
     var active = true
     /// The space that holds the receive right (nil: in transit, dead, or a
@@ -250,6 +252,8 @@ struct KMessage {
     var aux: [UInt8]?
     /// Kernel-originated (notification or kernel-object reply): kernel trailer.
     var fromKernel = false
+    /// An mk_timer expiry (at most one is queued per timer).
+    var isTimerExpiry = false
     /// The sending task's identity at send time (user messages).
     var sender: MachSenderIdentity?
 

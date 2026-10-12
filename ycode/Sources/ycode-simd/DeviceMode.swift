@@ -20,6 +20,8 @@ struct DeviceLayout {
     let runtimeJobs: [String]
     /// Debug: top-level bootstrap-plist booleans replaced (`--debug-plist-bool K=V`).
     var plistBoolOverrides: [String: Bool] = [:]
+    /// One-shot jobs start this many seconds after load (`--oneshot-delay`).
+    var oneshotDelay: Int?
 
     // Device identity (stage4c-contract.md §2).
     static let deviceName = "Ycode"
@@ -28,8 +30,8 @@ struct DeviceLayout {
     static let legacyAssetSuffix = "iphone"
     static let screen = (width: 1206, height: 2622, scale: 3.0, pitch: 460.0)
 
-    init(dev: String, runtimeRoot: String, udid: String?, jobPaths: [String], oneshots: [[String]] = [],
-         runtimeJobs: [String] = [], bootTime: Int = Int(Date().timeIntervalSince1970)) {
+    init(dev: String, runtimeRoot: String, udid: String?, jobPaths: [String], runtimePaths: Bool = false,
+         oneshots: [[String]] = [], runtimeJobs: [String] = [], bootTime: Int = Int(Date().timeIntervalSince1970)) {
         self.dev = dev
         self.runtimeRoot = runtimeRoot
         self.udid = udid?.uppercased() ?? Self.stableUDID(for: dev)
@@ -38,7 +40,11 @@ struct DeviceLayout {
         // Ycode's own job directory comes after the --job-path ones; with
         // neither, one empty directory (stage4c-contract.md §2).
         let ycodeJobs = oneshots.isEmpty && runtimeJobs.isEmpty ? [] : [dev + "/ycode-jobs"]
-        let paths = jobPaths + ycodeJobs
+        let coreSimulatorPaths = runtimePaths
+            ? ["/System/Library/LaunchDaemons", "/System/Library/LaunchAngels", "/Developer/Library/LaunchDaemons"]
+                .map { runtimeRoot + $0 } + [dev + "/data/Library/LaunchDaemons"]
+            : []
+        let paths = coreSimulatorPaths + jobPaths + ycodeJobs
         self.jobPaths = paths.isEmpty ? [dev + "/ycode-empty-jobs"] : paths
         self.bootTime = bootTime
     }
@@ -89,13 +95,14 @@ struct DeviceLayout {
     /// A job plist (launchd-sim.md §4.3 keys) that runs `argv` once at load,
     /// with stdout and stderr in files under /tmp.
     func oneshotPlist(_ index: Int) -> [String: Any] {
-        [
+        var plist: [String: Any] = [
             "Label": oneshotLabel(index),
             "ProgramArguments": oneshots[index],
-            "RunAtLoad": true,
             "StandardOutPath": oneshotOutputGuestPath(index, err: false),
             "StandardErrorPath": oneshotOutputGuestPath(index, err: true),
         ]
+        if let oneshotDelay { plist["StartInterval"] = oneshotDelay } else { plist["RunAtLoad"] = true }
+        return plist
     }
 
     /// The job directories of the runtime, in CoreSimulator's order (launchd-sim.md §4.1).

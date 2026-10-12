@@ -42,6 +42,10 @@ public final class DarwinProcess: @unchecked Sendable, CustomStringConvertible {
     var hasExeced = true
     /// Start time (`pbi_start_tv*`).
     var startTime: (seconds: Int64, microseconds: Int64)
+    /// mach_absolute_time at start and at exit (0 while running), for
+    /// `proc_pid_rusage` (ri_proc_start_abstime / ri_proc_exit_abstime).
+    var startAbsTime: UInt64 = 0
+    var exitAbsTime: UInt64 = 0
     /// The parent's unique id (`puniqueid`) and pid version at creation.
     var parentUniqueID: UInt64 = 0
     var originalParentPIDVersion: UInt32 = 0
@@ -321,6 +325,7 @@ public final class DarwinSystem: @unchecked Sendable {
         guard !p.exiting, p.state != .zombie, p.pid != Self.initPID else { return }
         p.exiting = true
         if let k = p.kernel {
+            p.exitAbsTime = k.counter()
             // 1. Other threads end; 2. Mach teardown; 3. descriptors.
             k.endImage(outcome)
             k.tearDownKEvents()

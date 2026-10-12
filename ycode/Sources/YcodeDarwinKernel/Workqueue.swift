@@ -489,7 +489,10 @@ extension DarwinKernel {
     }
 
     func releaseDelivered(_ w: WorkerState) {
-        for k in w.delivered { k.suppressed = false }
+        for k in w.delivered {
+            k.suppressed = false
+            k.note("released (servicer returned)")
+        }
         w.delivered.removeAll()
     }
 

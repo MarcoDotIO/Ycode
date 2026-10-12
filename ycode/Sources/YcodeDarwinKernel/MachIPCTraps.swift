@@ -42,6 +42,14 @@ extension MachIPC {
         /// `mach_vm_map` with a memory object: `(task, &addr, size, mask, flags, &block)`,
         /// block = u64 {object, offset, copy, cur, max, inherit}.
         public static let vmMapObject: UInt32 = 0x7963_200B
+        /// `mach_vm_remap(_new)`: `(task, &addr, size, mask, flags, &block)`, block = u64
+        /// {src_task, src_address, copy, &cur, &max, inherit, is_new}.
+        public static let vmRemap: UInt32 = 0x7963_200C
+        /// `task_threads(task, &list, &count)`.
+        public static let taskThreads: UInt32 = 0x7963_200D
+        /// `mach_port_get_context(task, name, &context)` / `mach_port_set_context(task, name, context)`.
+        public static let portGetContext: UInt32 = 0x7963_200E
+        public static let portSetContext: UInt32 = 0x7963_200F
     }
 
     /// `TASK_BOOTSTRAP_PORT`.
@@ -408,13 +416,19 @@ extension MachIPC {
                 messageAddress = vecs[0].data
                 sendSize = Int(vecs[0].sendSize)
                 if count == 2 {
+                    // xnu mach_msg_validate_data_vectors: an empty aux vector
+                    // means no aux data; a non-empty one needs data and at
+                    // least the 8-byte aux header.
                     let auxSize = Int(vecs[1].sendSize)
-                    if auxSize < 8 { return finish(MachMsgReturn.sendAuxTooSmall) }
+                    if auxSize != 0 && vecs[1].data == 0 { return finish(MachMsgReturn.sendInvalidData) }
+                    if auxSize != 0 && auxSize < 8 { return finish(MachMsgReturn.sendAuxTooSmall) }
                     if auxSize > MachIPCLimits.maxAuxSize { return finish(MachMsgReturn.sendAuxTooLarge) }
-                    guard let bytes = try? memory.read(va: vecs[1].data, count: auxSize) else {
-                        return finish(MachMsgReturn.sendInvalidData)
+                    if auxSize > 0 {
+                        guard let bytes = try? memory.read(va: vecs[1].data, count: auxSize) else {
+                            return finish(MachMsgReturn.sendInvalidData)
+                        }
+                        aux = bytes
                     }
-                    aux = bytes
                 }
             }
             let bits = lo(2) & MachMsgBits.user
@@ -625,6 +639,41 @@ extension MachIPC {
                 + "flags=\(hx(u32(4))), block=\(hx(a[5])))"
             let (code, note) = vmMapObject(a, memory: memory)
             return kr(code, note)
+
+        case Routine.vmRemap:
+            call = "mach_vm_remap(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), mask=\(hx(a[3])), "
+                + "flags=\(hx(u32(4))), block=\(hx(a[5])))"
+            let (code, note) = vmRemap(a, memory: memory)
+            return kr(code, note)
+
+        case Routine.taskThreads:
+            call = "task_threads(task=\(hx(u32(0))), list=\(hx(a[1])), count=\(hx(a[2])))"
+            guard let kernel else { return kr(MachKern.failure) }
+            let (code, note) = kernel.taskThreads(a, memory: memory)
+            return kr(code, note)
+
+        case Routine.portGetContext, Routine.portSetContext:
+            // xnu osfmk/ipc/mach_port.c: a receive right in the task's space
+            // (KERN_INVALID_RIGHT for a null/dead name, translate errors as
+            // usual); a strictly guarded port reads as context 0 and cannot be
+            // set (KERN_INVALID_ARGUMENT); a guarded one cannot be set either.
+            let isGet = number == Routine.portGetContext
+            let name = u32(1)
+            call = isGet ? "mach_port_get_context(task=\(hx(u32(0))), name=\(hx(name)), out=\(hx(a[2])))"
+                : "mach_port_set_context(task=\(hx(u32(0))), name=\(hx(name)), context=\(hx(a[2])))"
+            guard isTaskSelf(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
+            guard MachPortName.isValid(name) else { return kr(MachKern.invalidRight) }
+            guard let i = lookup(name) else { return kr(MachKern.invalidName) }
+            guard entries[i].bits & MachPortType.receive != 0, let p = entries[i].port else { return kr(MachKern.invalidRight) }
+            if isGet {
+                let value = p.strict ? 0 : p.context
+                guard (try? memory.write(va: a[2], bytes: le64(value))) != nil else { return kr(MachKern.invalidAddress) }
+                return kr(0, " [\(hx(value))]")
+            }
+            if p.strict && p.guarded { return kr(MachKern.invalidArgument) }
+            if p.guarded { return kr(MachKern.invalidArgument) }
+            p.context = a[2]
+            return kr(0)
 
         case Routine.hostCreateMachVoucher:
             call = "host_create_mach_voucher(host=\(hx(u32(0))), recipes=\(hx(a[1])), size=\(i32(2)), voucher=\(hx(a[3])))"

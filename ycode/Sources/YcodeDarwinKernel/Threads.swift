@@ -33,6 +33,15 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible {
     public internal(set) var isAlive = true
     /// True while the thread sleeps in a `WaitQueue`.
     public internal(set) var blockedInKernel = false
+    /// The trap in progress (diagnostics: the blocked-thread report): x16
+    /// and x0…x7 at entry; nil between traps. Set by the VMM.
+    public var trapInProgress: (x16: UInt64, args: [UInt64])?
+    /// Diagnostics: set from the moment the VMM sees the trap (before it
+    /// takes the kernel lock) until it returns.
+    public var arrivingTrap: UInt64?
+    /// Diagnostics: traps made, and the last 16 (x16, x0, x1, x2), newest last.
+    public var trapCount = 0
+    public var recentTraps: [(UInt64, UInt64, UInt64, UInt64)] = []
     /// The process image (kernel) this thread belongs to (stage 4b). Set
     /// when the kernel makes the thread, or at its first trap.
     public internal(set) weak var kernel: DarwinKernel?

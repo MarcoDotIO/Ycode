@@ -79,11 +79,12 @@ import Testing
     @Test func tcrValue() {
         // T0SZ=17 (0x11) | IRGN0=01<<8 | ORGN0=01<<10 | SH0=11<<12 | TG0=10<<14
         // | T1SZ=17<<16 | EPD1=1<<23 | TG1=01<<30 | IPS=010<<32
+        // | TBI0=1<<37 (stage 6: Darwin ignores the top byte of EL0 data addresses)
         let expected: UInt64 = 0x11 | 0x100 | 0x400 | 0x3000 | 0x8000 | 0x11_0000 | 0x80_0000 | 0x4000_0000 | 0x2_0000_0000
-        #expect(expected == 0x2_4091_B511)
+            | 1 << 37
+        #expect(expected == 0x22_4091_B511)
         #expect(VMLayout.tcrEL1 == expected)
-        // TBI0 (bit 37), A1 (bit 22), EPD0 (bit 7) are clear.
-        #expect(VMLayout.tcrEL1 & (1 << 37) == 0)
+        // A1 (bit 22), EPD0 (bit 7) are clear.
         #expect(VMLayout.tcrEL1 & (1 << 22) == 0)
         #expect(VMLayout.tcrEL1 & (1 << 7) == 0)
     }

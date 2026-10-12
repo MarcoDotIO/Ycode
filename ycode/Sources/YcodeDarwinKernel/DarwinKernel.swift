@@ -1121,6 +1121,9 @@ public final class DarwinKernel {
             return kr(result == .interrupted ? KernReturn.aborted : KernReturn.success)
 
         default:
+            if let v = mkTimerTrap(n, a, &call, mem) {
+                return n == Self.mkTimerCreate ? portResult(UInt32(truncatingIfNeeded: v)) : kr(v)
+            }
             let entry = TrapNames.mach(n)
             frame.x[0] = entry.name == "kern_invalid" || !isPortReturning(n) ? KernReturn.failure : 0
             log("\(prefix) \(call) -> unimplemented")

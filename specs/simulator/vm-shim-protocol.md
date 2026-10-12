@@ -78,7 +78,9 @@ The VMM divides RAM as follows (offsets from `0x4000_0000`; every region is
 - Recommended system register values (the VMM supplies them in boot info):
   - `TCR_EL1`: T0SZ=17, IRGN0=ORGN0=`0b01`, SH0=`0b11`, TG0=`0b10` (16 KiB),
     EPD1=1, TG1=`0b01` (16 KiB, unused), IPS=`0b010` (40-bit). TBI0=0 in
-    stage 2.
+    stage 2; **TBI0=1 from stage 6** (Darwin sets `TCR_TBI0`, xnu
+    `proc_reg.h`; Swift code dereferences tagged pointers), and the VMM
+    strips the top byte of guest addresses it accesses.
   - `SCTLR_EL1`: M, C, I, SA, SA0, UCT, DZE, UCI, nTWI, nTWE, SPAN, EIS, EOS,
     and the architectural RES1 bits set. A (alignment check) = 0, WXN = 0,
     EE = E0E = 0 (little-endian).

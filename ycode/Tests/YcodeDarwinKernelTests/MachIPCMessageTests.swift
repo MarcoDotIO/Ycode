@@ -687,6 +687,10 @@ import YcodeDarwinABI
         #expect(env.kr(-47, [vecs, options, 0x13 | 3 << 32, UInt64(server), 0, 0, 0, 0]) == MachMsgReturn.sendInvalidData)
         env.put(le64(message) + le64(0) + le32(28) + le32(0) + le64(aux) + le64(0) + le32(4) + le32(0), at: vecs)
         #expect(env.kr(-47, [vecs, options, 0x13 | 2 << 32, UInt64(server), 0, 0, 0, 0]) == MachMsgReturn.sendAuxTooSmall)
+        // An empty aux vector is no aux data (xnu): the send succeeds.
+        env.put(le64(message) + le64(0) + le32(28) + le32(0) + le64(0) + le64(0) + le32(0) + le32(0), at: vecs)
+        #expect(env.kr(-47, [vecs, options, 0x13 | 2 << 32, UInt64(server), 0, 0, 0, 0]) == 0)
+        _ = env.receive(server)
         #expect(env.kr(-47, [vecs, ropts, 0, 0, 0, UInt64(server) << 32, 0, 0]) == MachMsgReturn.rcvInvalidArguments)
         #expect(env.kr(-47, [vecs, MachMsgOption.sendMsg | MachMsgOption.sendKobjectCall | MachMsgOption.msgVector,
                              0x13 | 1 << 32, UInt64(server), 0, 0, 0, 0]) == MachMsgReturn.sendInvalidOptions)

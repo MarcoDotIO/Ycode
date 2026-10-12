@@ -105,6 +105,20 @@ import YcodeDarwinABI
         #expect(env.svc(0x7963_0006, [0x103, 99, s, s + 0x40]).1.x[0] == 4)  // unknown flavor
     }
 
+    /// gettid (286): no per-thread identity → ESRCH; port contexts (routines 14, 15).
+    @Test func gettidAndPortContext() throws {
+        let env = try Env()
+        #expect(env.svc(286, [s, s + 4]).1.x[0] == 3)
+        // A receive right: set and get its context.
+        #expect(env.svc(UInt64(bitPattern: -16), [0x103, 1, s]).1.x[0] == 0)
+        let name = UInt64(try env.u32(s))
+        #expect(env.svc(0x7963_200F, [0x103, name, 0x1234]).1.x[0] == 0)
+        #expect(env.svc(0x7963_200E, [0x103, name, s + 8]).1.x[0] == 0)
+        #expect(try env.u64(s + 8) == 0x1234)
+        #expect(env.svc(0x7963_200E, [0x103, 0, s + 8]).1.x[0] == 17)  // MACH_PORT_NULL: KERN_INVALID_RIGHT
+        #expect(env.svc(0x7963_200E, [0x103, 0x7703, s + 8]).1.x[0] == 15)
+    }
+
     @Test func entropy() throws {
         let env = try Env()
         env.kernel.entropy = { n in [UInt8](repeating: 0x5A, count: n) }

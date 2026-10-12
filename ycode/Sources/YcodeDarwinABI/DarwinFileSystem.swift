@@ -778,7 +778,17 @@ public final class DarwinFileSystem {
             if servesDevices && (current == "/dev" || current.hasPrefix("/dev/")) {
                 return try resolveDevice(current)
             }
-            guard let (prefix, _) = lookupPrefix(current) else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+            guard let (prefix, _) = lookupPrefix(current) else {
+                // "/" and every directory above a served prefix exist as
+                // read-only, empty directories of the guest namespace, so
+                // lstat walks (realpath) work; nothing else there is reachable.
+                if isSyntheticAncestor(current) {
+                    let st = DarwinStat(mode: DarwinStat.S_IFDIR | 0o755, nlink: 2, ino: Self.guestLinkInode(current),
+                                        uid: 0, gid: 0, size: 64, blksize: 4096)
+                    return Resolved(guestPath: current, hostPath: "", prefix: Self.devicePrefix, stat: st)
+                }
+                throw DarwinErrnoError(DarwinErrnoCode.ENOENT)
+            }
             let components = current == prefix.guestPath ? []
                 : (prefix.guestPath == "/" ? current.dropFirst() : current.dropFirst(prefix.guestPath.count + 1))
                     .split(separator: "/").map(String.init)
@@ -817,6 +827,21 @@ public final class DarwinFileSystem {
             return Resolved(guestPath: guest, hostPath: host, prefix: prefix, stat: st)
         }
     }
+
+    /// True for "/" and for each directory strictly above a prefix or a
+    /// guest symbolic link (both normalized).
+    private func isSyntheticAncestor(_ path: String) -> Bool {
+        if path == "/" { return true }
+        let below = path + "/"
+        if directoryPrefixPaths == nil {
+            // Single-file prefixes (the host libraries) make no directories
+            // (host-libraries.md §5: other /usr/lib/system paths stay ENOENT).
+            directoryPrefixPaths = prefixes.filter { (try? hostStatCall($0.hostPath, follow: true))?.isDirectory ?? false }
+                .map(\.guestPath)
+        }
+        return directoryPrefixPaths!.contains { $0.hasPrefix(below) } || guestSymlinks.keys.contains { $0.hasPrefix(below) }
+    }
+    private var directoryPrefixPaths: [String]?
 
     /// The canonical guest path: absolute, normalized, with every symbolic
     /// link resolved inside the allowlist. The path must exist.
@@ -934,6 +959,8 @@ public final class DarwinFileSystem {
         // The final component was resolved above; never follow a link the
         // host might find there now.
         hostFlags |= O_NOFOLLOW
+        // A synthetic ancestor directory has no host file behind it.
+        if r.hostPath.isEmpty { throw DarwinErrnoError(DarwinErrnoCode.EACCES) }
         let hostFD = try hostOpen(r.hostPath, hostFlags, mode & 0o7777)
         let file: GuestFile
         do {

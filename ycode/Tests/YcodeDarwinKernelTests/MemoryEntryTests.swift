@@ -96,6 +96,33 @@ import YcodeDarwinABI
         #expect(try map(env, object: ro, size: 0, cur: 1, max: 1).0 == 29)
     }
 
+    /// mach_vm_remap (routine 12): share or copy a range of the caller (libobjc trampolines).
+    @Test func vmRemapSharesOrCopies() throws {
+        let env = try Env()
+        let src = try allocate(env, Self.page)
+        try env.put([7, 8, 9], at: src)
+        func remap(copy: Bool, isNew: Bool = false, cur: UInt32 = 0) throws -> (UInt64, UInt64, UInt32, UInt32) {
+            try env.put(le64(0), at: s + 0x300)
+            try env.put(le32(cur) + le32(0), at: s + 0x500)
+            try env.put(le64(0x103) + le64(src) + le64(copy ? 1 : 0) + le64(s + 0x500) + le64(s + 0x504) + le64(1)
+                        + le64(isNew ? 1 : 0), at: s + 0x400)
+            let kr = env.svc(0x7963_200C, [0x103, s + 0x300, Self.page, 0, 1, s + 0x400]).1.x[0]
+            return (kr, try env.u64(s + 0x300), try env.u32(s + 0x500), try env.u32(s + 0x504))
+        }
+        let (kr, shared, cur, max) = try remap(copy: false)
+        #expect(kr == 0 && shared != src && cur == 3 && max == 7)
+        #expect(try env.space.read(va: shared, count: 3) == [7, 8, 9])
+        try env.put([1], at: shared)
+        #expect(try env.space.read(va: src, count: 1) == [1])
+        let (ckr, copied, _, _) = try remap(copy: true)
+        #expect(ckr == 0)
+        try env.put([2], at: src)
+        #expect(try env.space.read(va: copied, count: 1) == [1])
+        // _new with a read-only request maps read-only.
+        let (nkr, ro, ncur, _) = try remap(copy: false, isNew: true, cur: 1)
+        #expect(nkr == 0 && ncur == 1 && env.space.region(containing: ro)?.protection == .read)
+    }
+
     /// Two address spaces (two processes) see one object's bytes.
     @Test func sharedAcrossAddressSpaces() throws {
         let a = GuestAddressSpace(backing: FakePhysicalBacking())
@@ -110,6 +137,8 @@ import YcodeDarwinABI
         #expect(try b.read(va: vb, count: 3) == [1, 2, 3])
         try b.write(va: vb + 1, bytes: [9])
         #expect(try a.read(va: va + Self.page, count: 3) == [1, 9, 3])
+        // TBI0: a tagged address reaches the same bytes.
+        #expect(try a.read(va: (va + Self.page) | 0xC000_0000_0000_0000, count: 3) == [1, 9, 3])
         // The first page stayed private anonymous memory.
         if case .anonymous = try #require(a.region(containing: va)).backing {} else { Issue.record("first page changed") }
     }
@@ -158,5 +187,67 @@ import YcodeDarwinABI
         #expect(env.svc(267, [s + 0x100]).1.x[0] == 2)
         #expect(shmOpen(s + 0x100, 2) == (true, 2))
         #expect(try env.space.read(va: f2.x[0] + 8, count: 2) == [42, 43])
+    }
+}
+
+/// mk_timer ports (xnu osfmk/kern/mk_timer.c): CoreFoundation's run-loop timers.
+@Suite(.serialized) struct MachTimerTests {
+    static func m(_ n: Int64) -> UInt64 { UInt64(bitPattern: n) }
+
+    /// A non-blocking receive on `name` → (kr, size, id).
+    func receive(_ t: T2Env, _ name: UInt64) -> (UInt64, UInt32, Int32) {
+        let buf = Env.scratch + 0x8000
+        t.put([UInt8](repeating: 0xEE, count: 0x100), at: buf)
+        // MACH_RCV_MSG | MACH_RCV_TIMEOUT, timeout 0.
+        let kr = t.x0(Self.m(-31), [buf, 0x102, 0, 0x100, name, 0, 0])
+        let b = t.read(buf, 0x30)
+        return (kr, b.readLE(UInt32.self, at: 4), b.readLE(Int32.self, at: 20))
+    }
+
+    /// task_threads (routine 13): send rights to every thread, in a new array.
+    @Test func taskThreadsListsTheThreads() throws {
+        let t = try T2Env()
+        let out = Env.scratch + 0xA000
+        #expect(t.x0(0x7963_200D, [0x103, out, out + 8]) == 0)
+        let list = t.read(out, 8).readLE(UInt64.self, at: 0)
+        let count = t.read(out + 8, 4).readLE(UInt32.self, at: 0)
+        #expect(count == 1 && list != 0)
+        let name = t.read(list, 4).readLE(UInt32.self, at: 0)
+        #expect(name == t.main.portName)
+        #expect(t.x0(0x7963_200D, [0x7777, out, out + 8]) == 4)
+    }
+
+    @Test func createArmExpireCancelDestroy() throws {
+        let t = try T2Env()
+        let timer = t.x0(Self.m(-91))
+        #expect(timer != 0 && timer & 3 == 3)
+        // Armed in the past: one 48-byte message at once, id 0, zero payload.
+        #expect(t.x0(Self.m(-93), [timer, 1]) == 0)
+        #expect(t.x0(Self.m(-93), [timer, 1]) == 0)  // still queued: no second one
+        let (kr, size, id) = receive(t, timer)
+        #expect(kr == 0 && size == 48 && id == 0)
+        #expect(t.read(Env.scratch + 0x8000 + 24, 24) == [UInt8](repeating: 0, count: 24))
+        #expect(receive(t, timer).0 == 0x1000_4003)  // MACH_RCV_TIMED_OUT: nothing else
+        // Armed 20 ms ahead: arrives later.
+        let soon = MachTimebase.now() + MachTimebase.frequency / 50
+        #expect(t.x0(Self.m(-95), [timer, 0, soon, 0]) == 0)
+        #expect(t.eventually { receive(t, timer).0 == 0 })
+        // Cancel reports the armed deadline, then 0 when disarmed.
+        let far = MachTimebase.now() + MachTimebase.frequency * 100
+        #expect(t.x0(Self.m(-93), [timer, far]) == 0)
+        #expect(t.x0(Self.m(-94), [timer, Env.scratch + 0x9000]) == 0)
+        #expect(t.read(Env.scratch + 0x9000, 8).readLE(UInt64.self, at: 0) == far)
+        #expect(t.x0(Self.m(-94), [timer, Env.scratch + 0x9000]) == 0)
+        #expect(t.read(Env.scratch + 0x9000, 8).readLE(UInt64.self, at: 0) == 0)
+        // Errors: unknown name, an ordinary port.
+        #expect(t.x0(Self.m(-93), [0x7777_7703, 1]) == 15)
+        let out = Env.scratch + 0x9100
+        #expect(t.x0(Self.m(-16), [0x103, 1, out]) == 0)
+        let plain = UInt64(t.read(out, 4).readLE(UInt32.self, at: 0))
+        #expect(t.x0(Self.m(-93), [plain, 1]) == 4)
+        #expect(t.x0(Self.m(-92), [plain]) == 4)
+        // Destroy: the name goes away.
+        #expect(t.x0(Self.m(-92), [timer]) == 0)
+        #expect(t.x0(Self.m(-93), [timer, 1]) == 15)
     }
 }

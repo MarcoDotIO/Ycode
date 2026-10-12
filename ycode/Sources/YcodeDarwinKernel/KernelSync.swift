@@ -69,6 +69,34 @@ public final class KernelLock: @unchecked Sendable {
     /// thread's own kernel (`ThreadContext.kernel`).
     var blockingObserver: ((_ context: ThreadContext, _ blocking: Bool) -> Void)?
 
+    /// Diagnostics: total time held (ns), acquisitions, and a reporter for
+    /// holds longer than `slowHoldNanoseconds` (context, duration).
+    public private(set) var totalHeldNanoseconds: UInt64 = 0
+    public private(set) var acquisitions: UInt64 = 0
+    public var slowHoldNanoseconds: UInt64 = 0
+    public var slowHoldReporter: ((_ context: ThreadContext?, _ nanoseconds: UInt64) -> Void)?
+    private var holdStart: UInt64 = 0
+    /// Diagnostics (when `profileHolds`): total hold time and count per trap
+    /// number of the holding thread (Int64.min = no guest thread).
+    public var profileHolds = false
+    public private(set) var holdProfile: [Int64: (ns: UInt64, count: UInt64)] = [:]
+
+    private func noteAcquired() {
+        holdStart = KernelClock.now()
+        acquisitions &+= 1
+    }
+
+    private func noteReleasing() {
+        let held = KernelClock.now() &- holdStart
+        totalHeldNanoseconds &+= held
+        if profileHolds {
+            let key = currentContext?.trapInProgress.map { Int64(bitPattern: $0.x16) } ?? Int64.min
+            let old = holdProfile[key] ?? (0, 0)
+            holdProfile[key] = (old.ns &+ held, old.count &+ 1)
+        }
+        if slowHoldNanoseconds > 0, held >= slowHoldNanoseconds, let r = slowHoldReporter { r(currentContext, held) }
+    }
+
     public init() {
         mutex = .allocate(capacity: 1)
         var attr = pthread_mutexattr_t()
@@ -106,7 +134,9 @@ public final class KernelLock: @unchecked Sendable {
         ownerThread = pthread_self()
         depth = 1
         currentContext = context
+        noteAcquired()
         defer {
+            noteReleasing()
             currentContext = nil
             depth = 0
             ownerThread = nil
@@ -156,6 +186,7 @@ public final class KernelLock: @unchecked Sendable {
     public func yield() {
         precondition(isHeldByCurrentThread && depth == 1, "KernelLock.yield needs the lock at depth 1")
         let saved = currentContext
+        noteReleasing()
         ownerThread = nil
         depth = 0
         currentContext = nil
@@ -165,6 +196,7 @@ public final class KernelLock: @unchecked Sendable {
         ownerThread = pthread_self()
         depth = 1
         currentContext = saved
+        noteAcquired()
     }
 
     // MARK: Used by WaitQueue
@@ -177,6 +209,7 @@ public final class KernelLock: @unchecked Sendable {
     fileprivate func sleep(on cond: UnsafeMutablePointer<pthread_cond_t>, deadline: UInt64?) -> Bool {
         precondition(depth == 1, "WaitQueue.wait inside a nested withLock")
         let saved = currentContext
+        noteReleasing()
         ownerThread = nil
         depth = 0
         currentContext = nil
@@ -201,6 +234,7 @@ public final class KernelLock: @unchecked Sendable {
         ownerThread = pthread_self()
         depth = 1
         currentContext = saved
+        noteAcquired()
         return rc != ETIMEDOUT
     }
 }

@@ -309,6 +309,53 @@ final class VMMLauncher: ProcessLauncher, @unchecked Sendable {
     }
 
     /// The watchdog: where every vCPU of every live image is.
+    /// Diagnostics: vCPUs that have been inside one trap handler for `ms`
+    /// or more (kind 0 = SVC, otherwise a fault; ESR; the thread's state).
+    func longHandlerReport(ms: UInt64) -> [String] {
+        let images = lock.withLock { live }
+        var lines: [String] = []
+        for image in images {
+            for w in image.pool.longHandlers(atLeast: ms) {
+                let ctx = w.context as? ThreadContext
+                let since = monotonicMilliseconds() &- w.handlerSince.load(ordering: .relaxed)
+                var text = "\(tag(image.pid))vCPU \(w.index) (host tid \(w.hostTID.load(ordering: .relaxed))) in a handler for \(since) ms: kind \(w.lastTrapKind.load(ordering: .relaxed)) "
+                    + "x16 \(Int64(bitPattern: w.lastTrapX16.load(ordering: .relaxed))) ESR \(hex(w.lastTrapESR.load(ordering: .relaxed))) "
+                    + "ELR \(hex(w.lastTrapELR.load(ordering: .relaxed)))"
+                if let ctx {
+                    text += "; thread \(ctx.threadID) arriving \(ctx.arrivingTrap.map { String(Int64(bitPattern: $0)) } ?? "-") "
+                        + "in kernel \(ctx.trapInProgress.map { String(Int64(bitPattern: $0.x16)) } ?? "-") blocked \(ctx.blockedInKernel)"
+                }
+                lines.append(text)
+            }
+        }
+        return lines
+    }
+
+    /// Diagnostics: vCPUs in guest code with no exit for `ms` (kicked to
+    /// sample; a kicked vCPU that keeps running exits at once, so a vCPU
+    /// listed again with the same sample count is not taking the kick).
+    func longGuestRunReport(ms: UInt64) -> [String] {
+        let images = lock.withLock { live }
+        var lines: [String] = []
+        for image in images {
+            for w in image.pool.longGuestRuns(atLeast: ms) {
+                let ctx = w.context as? ThreadContext
+                lines.append("\(tag(image.pid))vCPU \(w.index) (thread \(ctx.map { String($0.threadID) } ?? "?")) no VM exit for "
+                    + "\(monotonicMilliseconds() &- w.lastExitMs.load(ordering: .relaxed)) ms; sample #\(w.sampleCount.load(ordering: .relaxed)): "
+                    + "pc \(hex(w.samplePC.load(ordering: .relaxed))) = \(image.describeAddress(w.samplePC.load(ordering: .relaxed))) "
+                    + "pstate \(hex(w.samplePSTATE.load(ordering: .relaxed))) ELR_EL1 \(hex(w.sampleELR1.load(ordering: .relaxed))) "
+                    + "ESR_EL1 \(hex(w.sampleESR1.load(ordering: .relaxed)))")
+            }
+        }
+        return lines
+    }
+
+    /// Diagnostics: the root process's vCPUs.
+    func rootWorkerStates() -> [String] {
+        let images = lock.withLock { live }
+        return images.filter { $0.pid == rootPID }.flatMap { $0.pool.workerStates() }
+    }
+
     func watchdogReport() -> String {
         let images = lock.withLock { live }
         return images.map { image in
@@ -370,10 +417,12 @@ final class GuestImageInstance: @unchecked Sendable {
         self.kernel = kernel
         self.pid = kernel.pid
         self.options = config.options
-        self.trace = config.trace
+        // `--trace-pid N`: this process only (unimplemented calls then
+        // behave as with --keep-going).
+        let trace = config.trace || config.options.tracePIDs.contains(kernel.pid)
+        self.trace = trace
         self.fileSystem = kernel.fileSystem
         let execPath = request.executablePath
-        let trace = config.trace
         let verbose = trace || (serial == 1 && !config.quietRuns)
         record = ImageRecord(serial: serial, pid: kernel.pid, executable: execPath)
         let pid = kernel.pid
@@ -601,6 +650,11 @@ final class GuestImageInstance: @unchecked Sendable {
 
     // MARK: Traps
 
+    /// An address attributed to an image (diagnostics; takes the kernel lock).
+    func describeAddress(_ address: UInt64) -> String {
+        kernel.lock.withLock { images.describe(address) }
+    }
+
     func faultReport(_ frame: TrapFrame) -> String {
         kernel.lock.withLock {
             var lines = ["  ELR \(hex(frame.elr)) = \(images.describe(frame.elr))"]
@@ -668,11 +722,11 @@ final class GuestImageInstance: @unchecked Sendable {
         guard va >= 0x1000, va < limit else { return nil }
         var bytes: [UInt8] = []
         var address = va
-        while bytes.count < 256, address < limit {
+        while bytes.count < 1024, address < limit {
             // Page by page, so a string near the end of a mapping still reads.
             // No overflow: address < 2^48, so the page end fits.
             let pageEnd = min((address | (VMLayout.pageSize - 1)) &+ 1, limit)
-            let count = min(Int(pageEnd - address), 256 - bytes.count)
+            let count = min(Int(pageEnd - address), 1024 - bytes.count)
             guard let chunk = try? space.read(va: address, count: count, checkingEL0Access: true) else { break }
             if let nul = chunk.firstIndex(of: 0) {
                 bytes += chunk[..<nul]
@@ -681,8 +735,11 @@ final class GuestImageInstance: @unchecked Sendable {
             bytes += chunk
             address &+= UInt64(count)
         }
-        guard bytes.count >= 2, bytes.allSatisfy({ (0x20..<0x7F).contains($0) || $0 == 0x0A || $0 == 0x09 }) else { return nil }
-        return String(decoding: bytes, as: UTF8.self).replacingOccurrences(of: "\n", with: "\\n")
+        // Printable ASCII, tabs, newlines, and UTF-8 (Swift fatal-error
+        // messages carry curly quotes).
+        guard bytes.count >= 2, bytes.allSatisfy({ (0x20..<0x7F).contains($0) || $0 == 0x0A || $0 == 0x09 || $0 >= 0x80 }),
+              let text = String(validating: bytes, as: UTF8.self) else { return nil }
+        return text.replacingOccurrences(of: "\n", with: "\\n")
     }
 
     private func handleTrap(_ worker: VCPUPool.Worker, _ frame: inout TrapFrame) -> VCPUPool.Disposition {
@@ -690,6 +747,9 @@ final class GuestImageInstance: @unchecked Sendable {
         let context = (worker.context as? ThreadContext) ?? kernel.mainThread
         let threadTag = context.threadID == 1 ? "" : "t\(context.threadID) "
         let verbose = trace || (record.serial == 1 && !launcher.config.quietRuns)
+        // Diagnostics: the trap as it arrives, before any lock.
+        context.arrivingTrap = frame.x[16]
+        defer { context.arrivingTrap = nil }
 
         // Before the trap: attribution, the milestone (host-libraries.md
         // §8.1, printed once: the first trap from a cache libsystem_* image,
@@ -725,7 +785,14 @@ final class GuestImageInstance: @unchecked Sendable {
         // The trap as it arrived (the kernel may rewrite the frame, e.g. for
         // signal delivery): fault reports describe this one.
         let arrivedFrame = frame
+        context.trapInProgress = (frame.x[16], Array(frame.x[0..<8]))
+        if options.debugThreadReport {
+            context.trapCount += 1
+            if context.recentTraps.count == 16 { context.recentTraps.removeFirst() }
+            context.recentTraps.append((frame.x[16], frame.x[0], frame.x[1], frame.x[2]))
+        }
         let outcome = kernel.handle(&frame, context: context, memory: space)
+        context.trapInProgress = nil
         if trace, isSVC, x16 == 368, outcome == .resume, frame.x[16] == 0, frame.x[5] > 0, frame.x[5] < 64, frame.x[3] != 0 {
             // A workqueue thread restarted with events (x3 = list, x5 = count).
             kernel.lock.withLock { dumpKevents(space, list: frame.x[3], count: Int(frame.x[5]), label: "event") }
@@ -783,7 +850,7 @@ final class GuestImageInstance: @unchecked Sendable {
             return end(.terminated, status: status, message: text, worker: worker)
         case let .unimplemented(description):
             kernel.lock.withLock { trapCounts[description, default: 0] += 1 }
-            if trace && !options.keepGoing {
+            if launcher.config.trace && !options.keepGoing {
                 let message = "first unimplemented trap (\(context)): \(description)\n\(frame)\n\(faultReport(frame))"
                 launcher.abortHost(status: DarwinKernel.unimplementedExitStatus, message: launcher.tag(pid) + message)
                 return .terminate(status: DarwinKernel.unimplementedExitStatus, message: message)
@@ -800,7 +867,7 @@ final class GuestImageInstance: @unchecked Sendable {
         case let .unimplementedLibraryFunction(name):
             kernel.lock.withLock { trapCounts["libfunc " + name, default: 0] += 1 }
             say("unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(images.describe(frame.x[30])))")
-            if trace && !options.keepGoing {
+            if launcher.config.trace && !options.keepGoing {
                 let message = "first unimplemented host-library function (\(context)): \(name)\n\(frame)\n\(faultReport(frame))"
                 launcher.abortHost(status: DarwinKernel.unimplementedLibraryFunctionExitStatus, message: launcher.tag(pid) + message)
                 return .terminate(status: DarwinKernel.unimplementedLibraryFunctionExitStatus, message: message)

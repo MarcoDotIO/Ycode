@@ -123,6 +123,22 @@ public final class VCPUPool: @unchecked Sendable {
         public let lastTrapELR = Atomic<UInt64>(0)
         /// True while the host thread is inside the trap handler.
         public let inHandler = Atomic<Bool>(false)
+        /// Diagnostics: when the current handler call began (monotonic ms),
+        /// and the trap frame's kind (svc or a fault) and ESR.
+        public let handlerSince = Atomic<UInt64>(0)
+        public let lastTrapKind = Atomic<UInt64>(0)
+        public let lastTrapESR = Atomic<UInt64>(0)
+        /// Diagnostics: the last VM exit (monotonic ms); a sample of the
+        /// guest state taken at a diagnostic kick (pc, pstate, ELR_EL1, ESR_EL1).
+        public let lastExitMs = Atomic<UInt64>(0)
+        public let sampleRequested = Atomic<Bool>(false)
+        public let samplePC = Atomic<UInt64>(0)
+        public let samplePSTATE = Atomic<UInt64>(0)
+        public let sampleELR1 = Atomic<UInt64>(0)
+        public let sampleESR1 = Atomic<UInt64>(0)
+        public let sampleCount = Atomic<UInt64>(0)
+        /// The host (Linux) thread id of this vCPU's thread.
+        public let hostTID = Atomic<UInt64>(0)
 
         fileprivate unowned let pool: VCPUPool
         fileprivate var pending: VCPUStartState?
@@ -292,6 +308,7 @@ public final class VCPUPool: @unchecked Sendable {
     private enum RunEnd { case parked, ended }
 
     private func threadMain(_ worker: Worker) {
+        worker.hostTID.store(UInt64(ckvm_gettid()), ordering: .relaxed)
         while true {
             lock.lock()
             while worker.pending == nil && !ending.load(ordering: .relaxed) { worker.wakeup.wait(lock) }
@@ -399,7 +416,17 @@ public final class VCPUPool: @unchecked Sendable {
                 return .ended
             }
             let exit = try vcpu.runOnce()
-            if case .interrupted = exit { continue }
+            worker.lastExitMs.store(monotonicMilliseconds(), ordering: .relaxed)
+            if case .interrupted = exit {
+                if worker.sampleRequested.exchange(false, ordering: .relaxed) {
+                    worker.samplePC.store((try? vcpu.get(.pc)) ?? 0, ordering: .relaxed)
+                    worker.samplePSTATE.store((try? vcpu.get(.pstate)) ?? 0, ordering: .relaxed)
+                    worker.sampleELR1.store((try? vcpu.get(.elrEL1)) ?? 0, ordering: .relaxed)
+                    worker.sampleESR1.store((try? vcpu.get(SystemRegister.esrEL1)) ?? 0, ordering: .relaxed)
+                    worker.sampleCount.wrappingAdd(1, ordering: .relaxed)
+                }
+                continue
+            }
             if ending.load(ordering: .acquiring) {
                 // The pool ended while this vCPU ran: drop the exit.
                 acknowledgeStop(worker, exit)
@@ -411,6 +438,9 @@ public final class VCPUPool: @unchecked Sendable {
                 var frame = try TrapFrame(decoding: vm.read(gpa: frameAddress, count: TrapFrame.byteCount))
                 worker.lastTrapX16.store(frame.x[16], ordering: .relaxed)
                 worker.lastTrapELR.store(frame.elr, ordering: .relaxed)
+                worker.lastTrapKind.store(UInt64(frame.kind), ordering: .relaxed)
+                worker.lastTrapESR.store(frame.esr, ordering: .relaxed)
+                worker.handlerSince.store(monotonicMilliseconds(), ordering: .relaxed)
                 worker.inHandler.store(true, ordering: .relaxed)
                 disposition = trapHandler(worker, &frame)
                 worker.inHandler.store(false, ordering: .relaxed)
@@ -442,6 +472,41 @@ public final class VCPUPool: @unchecked Sendable {
     /// running guest code is kicked out of KVM_RUN; threads blocked in the
     /// kernel stop when their trap returns. Safe from any host thread,
     /// with or without the kernel lock; never blocks on guest threads.
+    /// Diagnostics: workers running guest code with no VM exit for at
+    /// least `ms`: each is kicked once to sample its state (read the
+    /// sample* fields on a later call).
+    public func longGuestRuns(atLeast ms: UInt64) -> [Worker] {
+        let now = monotonicMilliseconds()
+        let list = lock.withLock { workers.filter { $0.running } }
+        let stuck = list.filter {
+            !$0.inHandler.load(ordering: .relaxed) && $0.lastExitMs.load(ordering: .relaxed) != 0
+                && now &- $0.lastExitMs.load(ordering: .relaxed) >= ms
+        }
+        for w in stuck {
+            w.sampleRequested.store(true, ordering: .relaxed)
+            _ = ckvm_kick_thread(UInt(w.hostThread), Self.kickSignal)
+        }
+        return stuck
+    }
+
+    /// Diagnostics: every worker's state, one line each.
+    public func workerStates() -> [String] {
+        let now = monotonicMilliseconds()
+        return lock.withLock { workers }.map { w in
+            "vCPU \(w.index) tid \(w.hostTID.load(ordering: .relaxed)) running \(w.running) inHandler \(w.inHandler.load(ordering: .relaxed)) "
+                + "x16 \(Int64(bitPattern: w.lastTrapX16.load(ordering: .relaxed))) handler age \(now &- w.handlerSince.load(ordering: .relaxed)) ms "
+                + "last exit \(now &- w.lastExitMs.load(ordering: .relaxed)) ms ago, context \(w.context.map { "\($0)" } ?? "none")"
+        }
+    }
+
+    /// Diagnostics: workers inside a trap handler for at least `ms`.
+    public func longHandlers(atLeast ms: UInt64) -> [Worker] {
+        let now = monotonicMilliseconds()
+        return lock.withLock { workers }.filter {
+            $0.inHandler.load(ordering: .relaxed) && now &- $0.handlerSince.load(ordering: .relaxed) >= ms
+        }
+    }
+
     public func requestStop(_ message: String = "stopped") {
         endPool(Termination(kind: .stopped, status: 0, message: message, vcpuIndex: nil))
     }

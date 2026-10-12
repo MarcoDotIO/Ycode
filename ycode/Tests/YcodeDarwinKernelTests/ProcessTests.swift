@@ -347,6 +347,11 @@ import YcodeDarwinABI
         _ = env.svc(c, 1, [9])
         #expect(env.bsd(root, 336, [2, UInt64(pid), 21, UInt64(NoteProc.exitStatus), At.out, 4]) == 4)
         #expect(env.u32(root, At.out) == 9 << 8)
+        // proc_pid_rusage (callnum 9, flavor 0): start and exit mach times of the zombie.
+        #expect(env.bsd(root, 336, [9, UInt64(pid), 0, 0, At.out, 0]) == 0)
+        let ru = env.read(root, At.out, 96)
+        let start = ru.readLE(UInt64.self, at: 80), end = ru.readLE(UInt64.self, at: 88)
+        #expect(start != 0 && end >= start)
         // EXITREASONBASICINFO (25) / EXITREASONINFO (24): no reason → ENOENT; too small → ENOMEM.
         #expect(env.bsd(root, 336, [2, UInt64(pid), 25, 0, At.out, 24]) == -2)
         #expect(env.bsd(root, 336, [2, UInt64(pid), 24, 0, At.out, 40]) == -2)

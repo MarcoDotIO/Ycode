@@ -172,6 +172,8 @@ uint64_t ckvm_run_arm_nisv_fault_ipa(const void *run);
 int ckvm_kick_install(int signo);
 /// Sends `signo` to the host thread `thread` (a pthread_t). Returns 0 or -errno.
 int ckvm_kick_thread(unsigned long thread, int signo);
+/// The calling thread's Linux thread id (diagnostics).
+long ckvm_gettid(void);
 
 /// Cleans and invalidates [address, address+size) to the point of coherency
 /// (DC CIVAC on every data-cache line, then DSB SY). Used for guest memory the

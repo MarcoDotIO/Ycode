@@ -49,3 +49,35 @@ levels 1–3 cannot answer are reported, not guessed.
 - Performance: if the boot is too slow to reach steady state in 180 s,
   measure where time goes (trap counts per process, vCPU counts) before
   optimizing.
+
+## 4. Decisions and findings (checkpoint 1, 2026-10-12)
+
+- **Release builds for device runs.** Under the debug build the global
+  kernel lock is 88–95 % busy (address-space operations linear in chunk
+  count; a KVM memslot per shared-cache `mmap` per process). Release cuts
+  it to ~70 % with ~8× throughput. Performance work is split out (§5).
+- **`/System` in device mode** is served from `RR/System`, read-only: the
+  runtime opens some bundles at their unrooted `/System/…` path (level 3);
+  on the Mac that path reaches the host's own copy. Orchestrator decision:
+  keep it (the guest sees its own runtime's bundles).
+- `/` and every directory above a served prefix stat as read-only
+  directories (opening them gives EACCES).
+- TBI0 is on (vm-shim-protocol.md updated); private routines 12–15 are in
+  `host-libraries.md` §11.2; `proc_pid_rusage` carries start/exit times.
+- **configd_sim** asserts without the host's configd service
+  (`launchd-sim.md` §6.3 `com.apple.SystemConfiguration.configd`). This is
+  a missing host service; it is listed, not required, for the exit
+  criterion until a host-side SCDynamicStore is specified (Apple's
+  open-source configd is the level-1 source when that work starts).
+
+## 5. Performance track (separate agent, parallel)
+
+Owner **Q** (new): `Sources/YcodeDarwinABI/AddressSpace.swift`,
+`Sources/YcodeHypervisor/PhysicalBacking.swift` and `KVM.swift`, and new
+files they need. Goals, measured on a full boot with the release build:
+address-space operations O(log n) in the number of mappings; one host
+mapping and memslot of each shared-cache file reused by every VM instead
+of per-process registration; then a design proposal (not code) for taking
+per-process VM operations out of the global kernel lock. The integrator
+does not edit Q's files during this time (route requests through the
+orchestrator).

@@ -53,7 +53,14 @@ extension DarwinKernel {
             guard let p = system.processes[target], p.pid != DarwinSystem.initPID else { throw Failure(errno: Errno.ESRCH) }
             let sizes: [Int32: Int] = [0: 96, 1: 144, 2: 160, 3: 232, 4: 296, 5: 304, 6: 464]
             guard let n = sizes[flavor] else { throw Failure(errno: Errno.EINVAL) }
-            try mem.write(va: buffer, bytes: [UInt8](repeating: 0, count: n))
+            // struct rusage_info_v0 prefix (sys/resource.h): uuid[16], user,
+            // system, pkg_idle_wkups, interrupt_wkups, pageins, wired_size,
+            // resident_size, phys_footprint, then ri_proc_start_abstime @80
+            // and ri_proc_exit_abstime @88 (launchd's run time and throttle).
+            var b = [UInt8](repeating: 0, count: n)
+            b.putLE(p.startAbsTime, at: 80)
+            b.putLE(p.exitAbsTime, at: 88)
+            try mem.write(va: buffer, bytes: b)
             return 0
         default:
             log("note: proc_info call \(callnum) is not supported")

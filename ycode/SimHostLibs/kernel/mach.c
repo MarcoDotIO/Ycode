@@ -896,3 +896,70 @@ YC_EXPORT int task_info(yc_port_t task, int flavor, void *task_info_out, yc_u32 
 {
     return (int)YC_MACH4(0x79630006L, task, (yc_uintptr_t)(unsigned)flavor, task_info_out, task_info_outCnt);
 }
+
+#define YC_PRIV_VM_REMAP 12
+#define YC_PRIV_TASK_THREADS 13
+
+/* kern_return_t mach_vm_remap(vm_map_t target_task, mach_vm_address_t *target_address,
+ *     mach_vm_size_t size, mach_vm_offset_t mask, int flags, vm_map_t src_task,
+ *     mach_vm_address_t src_address, boolean_t copy, vm_prot_t *cur_protection,
+ *     vm_prot_t *max_protection, vm_inherit_t inheritance)
+ * The VMM remaps (shares or copies) the source range: private routine 12. */
+static int yc_vm_remap(yc_port_t target, yc_u64 *address, yc_u64 size, yc_u64 mask, int flags, yc_port_t src_task,
+                       yc_u64 src_address, int copy, int *cur, int *max, int inherit, int is_new)
+{
+    yc_u64 block[7] = {src_task, src_address, (yc_u64)(unsigned)copy, (yc_u64)(yc_uintptr_t)cur,
+                       (yc_u64)(yc_uintptr_t)max, (yc_u64)(unsigned)inherit, (yc_u64)(unsigned)is_new};
+    return (int)yc_mach_trap(YC_PRIV_ROUTINE(YC_PRIV_VM_REMAP), target, (yc_uintptr_t)address, size, mask,
+                             (yc_uintptr_t)(unsigned)flags, (yc_uintptr_t)block, 0);
+}
+
+YC_EXPORT int mach_vm_remap(yc_port_t target, yc_u64 *address, yc_u64 size, yc_u64 mask, int flags,
+                            yc_port_t src_task, yc_u64 src_address, int copy, int *cur, int *max, int inherit)
+{
+    return yc_vm_remap(target, address, size, mask, flags, src_task, src_address, copy, cur, max, inherit, 0);
+}
+
+/* mach_vm_remap_new: cur/max are in-out (requested protections). */
+YC_EXPORT int mach_vm_remap_new(yc_port_t target, yc_u64 *address, yc_u64 size, yc_u64 mask, int flags,
+                                yc_port_t src_task, yc_u64 src_address, int copy, int *cur, int *max, int inherit)
+{
+    return yc_vm_remap(target, address, size, mask, flags, src_task, src_address, copy, cur, max, inherit, 1);
+}
+
+YC_EXPORT int vm_remap(yc_port_t target, yc_uintptr_t *address, yc_uintptr_t size, yc_uintptr_t mask, int flags,
+                       yc_port_t src_task, yc_uintptr_t src_address, int copy, int *cur, int *max, int inherit)
+{
+    return mach_vm_remap(target, (yc_u64 *)address, size, mask, flags, src_task, src_address, copy, cur, max, inherit);
+}
+
+YC_EXPORT int vm_remap_new(yc_port_t target, yc_uintptr_t *address, yc_uintptr_t size, yc_uintptr_t mask, int flags,
+                           yc_port_t src_task, yc_uintptr_t src_address, int copy, int *cur, int *max, int inherit)
+{
+    return mach_vm_remap_new(target, (yc_u64 *)address, size, mask, flags, src_task, src_address, copy, cur, max,
+                             inherit);
+}
+
+/* kern_return_t task_threads(task_inspect_t target_task, thread_act_array_t *act_list,
+ *     mach_msg_type_number_t *act_listCnt)
+ * The VMM allocates the array in the caller (vm_deallocate it) with a send
+ * right per thread: private routine 13. */
+YC_EXPORT int task_threads(yc_port_t task, yc_port_t **act_list, yc_u32 *act_list_count)
+{
+    return (int)YC_MACH3(YC_PRIV_ROUTINE(YC_PRIV_TASK_THREADS), task, act_list, act_list_count);
+}
+
+/* kern_return_t mach_port_get_context(ipc_space_t task, mach_port_name_t name,
+ *     mach_port_context_t *context)
+ * kern_return_t mach_port_set_context(ipc_space_t task, mach_port_name_t name,
+ *     mach_port_context_t context)
+ * MIG routines on the task port, served by the VMM: private routines 14, 15. */
+YC_EXPORT int mach_port_get_context(yc_port_t task, yc_port_t name, yc_u64 *context)
+{
+    return (int)YC_MACH3(YC_PRIV_ROUTINE(14), task, name, context);
+}
+
+YC_EXPORT int mach_port_set_context(yc_port_t task, yc_port_t name, yc_u64 context)
+{
+    return (int)YC_MACH3(YC_PRIV_ROUTINE(15), task, name, context);
+}

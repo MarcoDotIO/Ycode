@@ -147,8 +147,12 @@ private final class Fixture {
         let fs = f.fs
         #expect(try fs.stat("/Runtime", followSymlinks: true).isDirectory)
         #expect(try fs.stat("/Apps/hello", followSymlinks: true).isRegularFile)
+        // "/" (and every directory above a served prefix) is an empty,
+        // read-only directory of the guest namespace: stat works, open does not.
+        #expect(try fs.stat("/", followSymlinks: true).isDirectory)
+        #expect(errno { _ = try fs.open("/", flags: 0, mode: 0) } == DarwinErrnoCode.EACCES)
         // Outside every prefix: ENOENT, even when the host path exists.
-        for p in ["/", "/etc/passwd", f.tree.host("outside/secret"), "/Runtimes", "/Runtime/../outside/secret", ""] {
+        for p in ["/etc/passwd", f.tree.host("outside/secret"), "/Runtimes", "/Runtime/../outside/secret", ""] {
             #expect(errno { _ = try fs.stat(p, followSymlinks: true) } == DarwinErrnoCode.ENOENT, "\(p)")
             #expect(errno { _ = try fs.open(p, flags: 0, mode: 0) } == DarwinErrnoCode.ENOENT, "\(p)")
         }
