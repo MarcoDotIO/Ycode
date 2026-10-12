@@ -1,7 +1,7 @@
 # Spec: stage 3a-ii contract (Ycode's host libraries)
 
-Status: **contract**. §1–§6 are final. §7 and §8 are **pending research**
-(`specs/simulator/host-library-init.md`, being written now).
+Status: **contract, complete.** §7 and §8 build on
+`specs/simulator/host-library-init.md` (level 1).
 
 Inputs:
 
@@ -119,28 +119,123 @@ for host files.
   placeholder 0xbad4007)`, with the ELR attributed to an image.
 - The private trap `0x7963_0F00` is described in §4.
 
-## 7. Initialization interfaces — PENDING
+## 7. Initialization interfaces
 
-This section will specify, from open-source Libsystem, libsyscall,
-libplatform, and libpthread (level 1):
+`host-library-init.md` §1–§2 is normative for call order, arguments, and the
+struct layouts:
 
-- which initializer entry points `libSystem.B`'s initializer calls in these
-  three libraries, and in what order;
-- the exact layouts and versions of the callback/function structures it
-  passes (for example a `_libkernel_functions` /
-  `_libpthread_functions`-style struct);
-- what each init must set up.
+- `_libkernel_functions` v5 (128 B)
+- `_libkernel_string_functions` v1 (136 B)
+- `_libkernel_voucher_functions` v3 (48 B)
+- `_libpthread_functions` v2 (32 B)
+- `ProgramVars` (40 B)
+- the bsdthread registration record (56 B)
 
-## 8. Thread-local storage and errno ABI — PENDING
+Ycode's decisions:
 
-This section will specify:
+1. **Nothing depends on the init functions being called.** It is not
+   confirmed that the iOS 27.1 libSystem calls `__libkernel_init`,
+   `__libplatform_init`, `__pthread_init`, or `__pthread_late_init` directly,
+   because the surface shows 0 importers. So:
+   - every data symbol has its correct **static initial value** at load time
+     (§8.4);
+   - every init function is a **real implementation** that stores what it is
+     given and is safe to skip or to call twice;
+   - every table member is NULL-checked before use.
+2. `__libkernel_init` stores the v5 table and runs Mach init: it sets
+   `mach_task_self_` from trap −28 and refreshes the `vm_*page*` variables
+   from the commpage page-shift fields.
+3. `__libplatform_init` and `__libkernel_platform_init` store the string
+   table and consume `security_config=` / `pfz=` if present.
+4. `__pthread_init` adopts the main thread from the **VMM-built block**
+   (§8.3). It fills slots 2, 3, 4, 7, 8, and 9 from `apple[]`/traps, and calls
+   `bsdthread_register` (BSD 366). The VMM answers that call with
+   `0x4000_001F`.
+5. `host_info(HOST_PRIORITY_INFO)` is answered **inside
+   `libsystem_kernel`** for stage 3a: user priority 31, minimum 0, maximum
+   79. The other Mach routines follow §4 until they are implemented.
 
-- the TSD slot map at `TPIDRRO_EL0` (self, errno, MIG reply port, Mach
-  thread self, QoS, and so on), which other libraries read inline;
-- how `__error()` and `cerror` set errno;
-- the `pthread_t` fields any client reads directly;
-- the stack and thread-start conventions (`thread_start`, `start_wqthread`)
-  registered with `bsdthread_register`.
+## 8. Thread-local storage and errno ABI
+
+`host-library-init.md` §3–§5 is normative. The essentials:
+
+1. **TSD.** `TPIDRRO_EL0` points exactly at slot 0. Slots are a flat array of
+   768 × 8 bytes:
+
+   | Slot | Contents |
+   |---|---|
+   | 0 | self (`pthread_t`) |
+   | 1 | errno pointer |
+   | 2 | MIG reply port |
+   | 3 | Mach thread port (also the `os_unfair_lock` owner) |
+   | 4 | QoS |
+   | 5 | return-to-kernel |
+   | 7 | pointer-munge token |
+   | 8 | special reply port |
+   | 9 | semaphore cache |
+   | 123 | Mach message aux |
+
+   Other reserved ranges are as in the research spec. `__thread` accesses
+   read `TPIDRRO_EL0` inline.
+2. **`pthread_t` = TSD base − 224.** The fields read inline are:
+
+   | Offset from TSD base | Field |
+   |---|---|
+   | −52 | `err_no` |
+   | −48 | `stackaddr` |
+   | −40 | `stackbottom` |
+   | −8 | `thread_id` |
+   | +8 | `__cleanup_stack` |
+
+3. **The main thread is built by the VMM before boot.** This is the host
+   dyld's job on macOS.
+   - A zeroed block of 8 KiB, 16-byte aligned, in an anonymous EL0 RW
+     region.
+   - At +216: `thread_id` = 1.
+   - At +224 (slot 0): the block address.
+   - At +232 (slot 1): block + 172, the address of `err_no`.
+   - At +248 (slot 3): the thread port name `0x203`.
+   - At −48/−40 from the TSD base: `stackaddr` = `user_stack` top and
+     `stackbottom` = top − 8 MiB.
+   - The initial **`TPIDRRO_EL0` = block + 224**, set through boot info.
+4. **Static data values:**
+
+   | Symbol | Value |
+   |---|---|
+   | `vm_page_size` | 16384 |
+   | `vm_page_mask` | 16383 |
+   | `vm_page_shift` | 14 |
+   | `vm_kernel_page_*` | the same |
+   | `mach_task_self_` | `0x103` |
+   | `bootstrap_port` | 0 |
+   | `NDR_record` | bytes `00 00 00 00 01 00 00 00` |
+   | `_os_alloc_once_table` | 1600 bytes, zero |
+   | `__unix_conforming` | 1 |
+
+   Port names agreed with the VMM: task `0x103`, thread `0x203`, host
+   `0x303`. Thread port names have bit 0 set.
+5. **errno.**
+   - `__error()` returns slot 1 if it is non-NULL, otherwise a global
+     `errno` in `libsystem_kernel`. A TSD base of 0 is treated as "no slot".
+   - `cerror` (cancellation is a no-op in 3a) and `cerror_nocancel` store
+     into both locations and return −1 in `x0` and `x1`.
+   - P's `__ycode_set_errno` hook is implemented by K on top of these.
+6. **`apple[]` additions the VMM must supply.** In addition to stage-3 §6:
+   `ptr_munge=` (**non-zero**), `security_config=0x0`, and
+   `th_port=0x203`.
+
+## 8.1 Revised stage-3a milestone
+
+Stage-3 contract §1 item 2 is widened. The milestone fires on the **first
+trap whose ELR lies in any of these**:
+
+- a shared-cache image under `/usr/lib/system/libsystem_*`;
+- the shared-cache `libSystem.B`;
+- one of Ycode's three host libraries.
+
+`dyld_sim` never calls the host libraries itself, so a trap from them means
+the libSystem initialization chain is running. The milestone line names
+the image and offset, and the LR's image too.
 
 ## 9. Ownership
 
