@@ -1,7 +1,8 @@
 /*
- * Ycode stage-2 EL1 shim.
+ * Ycode EL1 shim (stage 2, with the stage-3a additions).
  *
- * Contract: specs/simulator/vm-shim-protocol.md (sections 4 and 5).
+ * Contract: specs/simulator/vm-shim-protocol.md (sections 4 and 5) and
+ * specs/simulator/stage3-contract.md section 7 (resumeFlags, CNTKCTL_EL1).
  * This is original Ycode code. It is written from that contract and from
  * the public Arm Architecture Reference Manual.
  *
@@ -45,7 +46,7 @@
 #define TF_TPIDRRO      288
 #define TF_TPIDR        296
 #define TF_KIND         304
-#define TF_RESERVED     312
+#define TF_RESUME_FLAGS 312     /* stage 3a: bit 0 = flush the TLB on resume */
 
 /* Frame kinds (contract section 5). */
 #define KIND_CLASSIFY   0       /* internal: decide 1 or 2 from ESR_EL1.EC */
@@ -59,6 +60,9 @@
 #define EC_SVC64        0x15
 #define SPSR_EL0T_DAIF  0x3C0
 #define CPACR_FPEN_ALL  (3 << 20)
+/* CNTKCTL_EL1: EL0VCTEN (bit 1) = 1, EL0PCTEN (bit 0) = 0, all else 0. */
+#define CNTKCTL_EL0VCT  (1 << 1)
+#define RESUME_FLUSH_TLB_BIT 0
 
 /* "YCDBOOT1" read as a little-endian u64. */
 #define BOOT_MAGIC_0    0x4359
@@ -101,6 +105,10 @@ _start:
         /* Step 5: FP/SIMD at EL0 and EL1 without traps. */
         mov     x2, #CPACR_FPEN_ALL
         msr     cpacr_el1, x2
+
+        /* Stage 3a: EL0 may read CNTVCT_EL0 (not the physical counter). */
+        mov     x2, #CNTKCTL_EL0VCT
+        msr     cntkctl_el1, x2
 
         /* Step 6: drop stale TLB entries (and stale I-cache lines). */
         tlbi    vmalle1
@@ -265,7 +273,7 @@ trap_common:
         cmp     x4, #EC_SVC64
         csel    x2, x5, x2, eq
 1:
-        stp     x2, xzr, [x0, #TF_KIND]         /* 304 kind, 312 reserved = 0 */
+        stp     x2, xzr, [x0, #TF_KIND]         /* 304 kind, 312 resumeFlags = 0 */
 
         /* Doorbell: make the frame visible, then store its address. */
         mrs     x2, tpidr_el1
@@ -276,6 +284,20 @@ trap_common:
 
         tbnz    x1, #FATAL_BIT, .Lfatal
 
+        /*
+         * Stage 3a: resumeFlags bit 0 = the VMM changed the page tables while
+         * it handled this trap. Flush the EL1&0 TLB (and the I-cache, because
+         * a reused page may now hold new code), then clear the flag.
+         */
+        ldr     x2, [x0, #TF_RESUME_FLAGS]
+        tbz     x2, #RESUME_FLUSH_TLB_BIT, 2f
+        tlbi    vmalle1
+        ic      iallu
+        dsb     ish
+        isb
+        bic     x2, x2, #(1 << RESUME_FLUSH_TLB_BIT)
+        str     x2, [x0, #TF_RESUME_FLAGS]
+2:
         /* Resume: reload everything from the frame (the VMM may have edited it). */
         ldp     x2, x3, [x0, #TF_SP_EL0]
         msr     sp_el0, x2

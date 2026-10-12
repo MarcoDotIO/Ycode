@@ -1,6 +1,7 @@
 # Spec: stage 3a contract (starting `dyld_sim` in the Ycode micro-VM)
 
-Status: **contract for stage 3a** of `docs/SIMULATOR-LINUX.md`. It extends
+Status: **stage 3a built and verified up to the host-library boundary (§12).**
+This is the contract for stage 3a of `docs/SIMULATOR-LINUX.md`. It extends
 `vm-shim-protocol.md` (stage 2). Every stage-3a component follows this
 document exactly. If something needs to change, change it here first.
 
@@ -431,6 +432,68 @@ the binary is platform 7. The artifact is copied to the Thor.
 - The platform call's sub-selector is in **`x3`**: 2 = set the TSD base,
   3 = get it.
 - On error, BSD calls also set `x1 = 0`.
+
+## 12. Results and resolutions (normative, 2026-10-11)
+
+### What a run of `hello` on the Thor did (orchestrator reproduction)
+
+- 245 traps were serviced. `dyld_sim` set itself up, preflighted both cache
+  files (`pread`, `F_ADDFILESIGS_RETURN`, a trial `mmap`), and mapped
+  **all 11 cache mappings with `MAP_FIXED` at their header addresses**.
+  It also mapped its dynamic-region page at `0x2_A919_C000`.
+- It resolved the dependency closure from the cache and reported 39 images
+  through private trap `0x7963_0010`.
+- It then aborted with `Library not loaded:
+  /usr/lib/system/libsystem_platform.dylib`. Exit criterion 1 is met, 3 is
+  met, and **2 is blocked**.
+
+### Root cause: the runtime needs three *host* (macOS) libraries
+
+- `libsystem_sim_{kernel,platform,pthread}_host.dylib` (in the simulator
+  cache) re-export `/usr/lib/system/libsystem_{kernel,platform,pthread}.dylib`.
+- On macOS those are the Mac's own libraries, which come from the Mac's
+  shared cache. The Mac's cache occupies `0x1_8000_0000`, and that is why
+  the simulator cache sits at `0x1_C000_0000`. The "detach" in
+  `dyld-sim-handoff.md` §1.4 therefore does not unmap the host cache.
+- The simulator cache contains only tiny macOS-platform link stubs at those
+  paths, and `dyld_sim` does not accept them.
+- **Ycode must supply its own clean-room implementations of these three
+  libraries.** This is stage 3a-ii, whose contract is in
+  `specs/simulator/host-libraries.md`. Every system call the runtime makes
+  then goes through Ycode's own `libsystem_kernel`.
+
+### Resolutions made during the build
+
+- **Host page** (agent S):
+  - The `ret` stub is at **`+0x0F00`**, and the VMM checks that it is there.
+  - `mmap` failure returns −1 (`MAP_FAILED`). NULL is returned only by
+    `getcwd`, `realpath`, and `opendir`.
+  - Private traps that return a `kern_return_t` or void ignore carry.
+  - Every non-NULL slot has its own stub.
+  - Slots 54, 55, and 66 use the private trace traps.
+  - The TLB flush also executes `ic iallu`.
+  - The 9th-argument slot is 16 bytes below `stackTop`.
+- **Process image** (agent T):
+  - `main_stack=` follows xnu's order: stack top, stack size, allocation
+    base, allocation size. §6's wording was wrong.
+  - Commpage capabilities are the always-on bits plus the CPU count.
+  - `sysctlbyname` (BSD 274) is also implemented.
+  - The Mach-style private traps clear carry.
+  - Empty `kern_invalid` Mach slots are reported as unimplemented.
+- **Memory** (agent M):
+  - Mappings must be 16 KiB-aligned.
+  - Guest user VA is limited to `[4 GiB, 0xF_C000_0000)`.
+  - The commpage and host page are permanent regions.
+  - `PROT_NONE` maps to AP `10`.
+  - The VFS resolves symlinks inside the guest namespace (ELOOP after 32).
+  - stat reports uid 501 and gid 20.
+- **Hypervisor** (agent H):
+  - File slots are private copy-on-write with a **zero tail past EOF**.
+  - `KVM_CAP_NR_MEMSLOTS` = 32767 on the Thor.
+  - `CNTFRQ_EL0` is not exposed through ONE_REG on 6.8-tegra. The host value
+    (1 GHz) is used, so the timebase is 1/1.
+  - A segment's partial last page beyond `filesize` is zeroed.
+  - The milestone is printed to stderr in order with the trace.
 
 ## 11. Component ownership (stage 3a)
 

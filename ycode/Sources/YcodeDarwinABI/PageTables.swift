@@ -99,6 +99,8 @@ public enum PageTableError: Error, Equatable, Sendable, CustomStringConvertible 
     case alreadyMapped(va: UInt64)
     /// The table arena has no room for another table.
     case arenaExhausted(capacity: Int)
+    /// A page of the range is not mapped (`protect`).
+    case notMapped(va: UInt64)
 
     public var description: String {
         switch self {
@@ -109,6 +111,7 @@ public enum PageTableError: Error, Equatable, Sendable, CustomStringConvertible 
         case let .physicalAddressOutOfRange(pa, size): "pa range \(hex(pa))+\(hex(size)) is outside the 40-bit address space"
         case let .alreadyMapped(va): "va \(hex(va)) is already mapped"
         case let .arenaExhausted(capacity): "the page table arena is full (\(capacity) tables)"
+        case let .notMapped(va): "va \(hex(va)) is not mapped"
         }
     }
 }
@@ -123,6 +126,9 @@ public struct PageTableBuilder: Sendable {
 
     /// `tablePages[i]` is the table at `tableArenaGPA + i × 16 KiB`.
     private var tablePages: [[UInt64]]
+    /// Slots of the tables changed since the last `drainDirtyTables()`.
+    /// A new builder's root table counts as dirty.
+    private var dirtySlots: Set<Int> = [0]
 
     /// The arena must be 16 KiB-aligned and hold at least one table.
     public init(tableArenaGPA: UInt64, tableArenaSize: Int) {
@@ -136,6 +142,12 @@ public struct PageTableBuilder: Sendable {
     /// The arena of §2 (`0x4020_0000`, 8 MiB).
     public init() {
         self.init(tableArenaGPA: VMLayout.pageTableArenaGPA, tableArenaSize: Int(VMLayout.pageTableArenaSize))
+    }
+
+    /// The stage-3 arena (`0x4020_0000`, 64 MiB; stage3-contract.md §3).
+    public static func stage3() -> PageTableBuilder {
+        PageTableBuilder(tableArenaGPA: VMLayout.stage3PageTableArenaGPA,
+                         tableArenaSize: Int(VMLayout.stage3PageTableArenaSize))
     }
 
     private static let emptyTable = [UInt64](repeating: 0, count: VMLayout.entriesPerTable)
@@ -210,6 +222,7 @@ public struct PageTableBuilder: Sendable {
             throw PageTableError.alreadyMapped(va: va)
         }
         tablePages[l3][i3] = Self.pageDescriptor(pa: pa, attributes: attributes)
+        dirtySlots.insert(l3)
     }
 
     /// The arena slot of the table that entry `index` of table `table` points
@@ -223,7 +236,103 @@ public struct PageTableBuilder: Sendable {
         let newSlot = tablePages.count
         tablePages.append(Self.emptyTable)
         tablePages[table][index] = Self.tableDescriptor(nextTableGPA: gpa(ofSlot: newSlot))
+        dirtySlots.insert(table)
+        dirtySlots.insert(newSlot)
         return newSlot
+    }
+
+    // MARK: Unmapping and protection changes (stage 3, stage3-contract.md §4)
+
+    /// Checks a VA range given to `unmap` or `protect`.
+    private static func validate(va: UInt64, size: UInt64) throws {
+        guard VMLayout.isPageAligned(va), VMLayout.isPageAligned(size) else {
+            throw PageTableError.unaligned(va: va, pa: 0, size: size)
+        }
+        guard size > 0 else { throw PageTableError.emptyRange(va: va) }
+        let vaLimit: UInt64 = 1 << VMLayout.virtualAddressBits
+        guard va < vaLimit, size <= vaLimit - va else {
+            throw PageTableError.virtualAddressOutOfRange(va: va, size: size)
+        }
+    }
+
+    /// The (L3 slot, index) of the leaf entry for `va`, or nil when no L3
+    /// table covers it. Never allocates.
+    private func leafLocation(of va: UInt64) -> (slot: Int, index: Int)? {
+        var table = 0
+        for level in 1...2 {
+            let d = tablePages[table][Self.index(of: va, level: level)]
+            guard d & AArch64.Descriptor.typeMask == AArch64.Descriptor.validTableOrPage,
+                  let next = slot(ofTableAt: d & AArch64.Descriptor.outputAddressMask) else { return nil }
+            table = next
+        }
+        return (table, Self.index(of: va, level: 3))
+    }
+
+    /// Clears the L3 entries of [va, va+size). Pages that are not mapped are
+    /// skipped; empty tables are kept. Returns how many pages were unmapped.
+    @discardableResult
+    public mutating func unmap(va: UInt64, size: UInt64) throws -> Int {
+        try Self.validate(va: va, size: size)
+        let page = VMLayout.pageSize
+        let l3Span = page * UInt64(VMLayout.entriesPerTable)
+        var cleared = 0
+        var cursor = va
+        let end = va + size
+        while cursor < end {
+            guard let (slot, index) = leafLocation(of: cursor) else {
+                // No L3 table here: skip to the next 32 MiB boundary.
+                let next = (cursor & ~(l3Span - 1)) + l3Span
+                cursor = next
+                continue
+            }
+            if tablePages[slot][index] & AArch64.Descriptor.typeMask != 0 {
+                tablePages[slot][index] = 0
+                dirtySlots.insert(slot)
+                cleared += 1
+            }
+            cursor += page
+        }
+        return cleared
+    }
+
+    /// Rewrites the attributes of every page of [va, va+size), keeping each
+    /// page's output address. Every page must be mapped; otherwise nothing
+    /// changes and `notMapped` names the first hole.
+    public mutating func protect(va: UInt64, size: UInt64, attributes: PageAttributes) throws {
+        try Self.validate(va: va, size: size)
+        let page = VMLayout.pageSize
+        var locations: [(slot: Int, index: Int)] = []
+        locations.reserveCapacity(Int(size / page))
+        var cursor = va
+        while cursor < va + size {
+            guard let loc = leafLocation(of: cursor),
+                  tablePages[loc.slot][loc.index] & AArch64.Descriptor.typeMask == AArch64.Descriptor.validTableOrPage
+            else { throw PageTableError.notMapped(va: cursor) }
+            locations.append(loc)
+            cursor += page
+        }
+        for (slot, index) in locations {
+            let old = tablePages[slot][index]
+            let new = Self.pageDescriptor(pa: old & AArch64.Descriptor.outputAddressMask, attributes: attributes)
+            if new != old {
+                tablePages[slot][index] = new
+                dirtySlots.insert(slot)
+            }
+        }
+    }
+
+    // MARK: Dirty tracking
+
+    /// True when some table changed since the last `drainDirtyTables()`.
+    public var hasDirtyTables: Bool { !dirtySlots.isEmpty }
+
+    /// The tables changed since the last call (a new builder's first call
+    /// returns at least the root), as (gpa, 16 KiB of little-endian
+    /// descriptors) in arena order, and marks them clean.
+    public mutating func drainDirtyTables() -> [(gpa: UInt64, bytes: [UInt8])] {
+        let slots = dirtySlots.sorted()
+        dirtySlots.removeAll()
+        return slots.map { (gpa(ofSlot: $0), bytes(ofSlot: $0)) }
     }
 
     private func gpa(ofSlot slot: Int) -> UInt64 { tableArenaGPA + UInt64(slot) * VMLayout.pageSize }
@@ -239,12 +348,14 @@ public struct PageTableBuilder: Sendable {
     /// Every table page to copy into guest RAM: (gpa, 16 KiB of little-endian
     /// descriptors), in allocation order, starting with the root.
     public var tables: [(gpa: UInt64, bytes: [UInt8])] {
-        tablePages.enumerated().map { slot, entries in
-            var bytes: [UInt8] = []
-            bytes.reserveCapacity(Int(VMLayout.pageSize))
-            for e in entries { appendLE(e, to: &bytes) }
-            return (gpa(ofSlot: slot), bytes)
-        }
+        tablePages.indices.map { (gpa(ofSlot: $0), bytes(ofSlot: $0)) }
+    }
+
+    private func bytes(ofSlot slot: Int) -> [UInt8] {
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(Int(VMLayout.pageSize))
+        for e in tablePages[slot] { appendLE(e, to: &bytes) }
+        return bytes
     }
 
     /// The raw descriptor at `index` of the table at `tableGPA`, if that table exists.

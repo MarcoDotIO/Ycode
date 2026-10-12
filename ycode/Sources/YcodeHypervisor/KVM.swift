@@ -6,7 +6,7 @@
 import CKVM
 
 public enum Hypervisor {
-    /// True when this build contains the KVM backend (Linux hosts).
+    /// True when this build contains the KVM backend (arm64 Linux hosts).
     public static var isAvailable: Bool { ckvm_available() != 0 }
 }
 
@@ -40,8 +40,32 @@ func kvmCheck(_ result: Int32, _ operation: String) throws -> Int32 {
     return result
 }
 
-/// A KVM virtual machine that owns `/dev/kvm`, the VM fd, and one anonymous
-/// RAM region registered as memslot 0.
+/// One KVM memslot: a guest-physical range backed by host memory the VM owns.
+public struct MemorySlot: Sendable, CustomStringConvertible {
+    public enum Kind: Sendable, Equatable { case ram, anonymousPool, file }
+    public var slot: UInt32
+    public var gpa: UInt64
+    public var size: UInt64
+    /// Host address of the backing memory, as an integer (Sendable).
+    public var hostAddress: UInt
+    public var kind: Kind
+    /// For tracing: the file path or the purpose.
+    public var name: String
+
+    public var end: UInt64 { gpa + size }
+    public func contains(gpa a: UInt64, count: Int) -> Bool {
+        guard count >= 0, a >= gpa else { return false }
+        let offset = a - gpa
+        return offset <= size && UInt64(count) <= size - offset
+    }
+    public var description: String {
+        "slot \(slot) gpa 0x\(String(gpa, radix: 16))-0x\(String(end, radix: 16)) \(kind) \(name)"
+    }
+}
+
+/// A KVM virtual machine that owns `/dev/kvm`, the VM fd, one anonymous
+/// RAM region registered as memslot 0, and any further memslots added with
+/// `addMemorySlot`. Guest-physical reads and writes reach every slot.
 public final class VirtualMachine {
     public let kvmFD: Int32
     public let vmFD: Int32
@@ -50,6 +74,11 @@ public final class VirtualMachine {
     /// Host address of guest RAM.
     public let ram: UnsafeMutableRawPointer
     public private(set) var vcpus: [VCPU] = []
+    /// `KVM_CAP_NR_MEMSLOTS`: the number of memslots the VM may register.
+    public let maxMemorySlots: Int
+    /// Every registered slot (slot 0 first), sorted by GPA.
+    public private(set) var memorySlots: [MemorySlot] = []
+    private var nextSlotNumber: UInt32 = 1
 
     public static let defaultRAMGPA: UInt64 = 0x4000_0000
     public static let defaultRAMSize = 512 << 20
@@ -58,10 +87,15 @@ public final class VirtualMachine {
         let kvm = try kvmCheck(ckvm_open(), "open /dev/kvm")
         var vm: Int32 = -1
         var ramPointer: UnsafeMutableRawPointer?
+        var slotLimit = 0
         do {
             let version = try kvmCheck(ckvm_get_api_version(kvm), "KVM_GET_API_VERSION")
             guard version == 12 else { throw KVMError("KVM_GET_API_VERSION", detail: "unexpected API version \(version)") }
             vm = try kvmCheck(ckvm_create_vm(kvm, 0), "KVM_CREATE_VM")
+            // The VM-level check reports the per-VM limit; fall back to the system one.
+            slotLimit = Int(ckvm_check_extension(vm, Int(CKVM_CAP_NR_MEMSLOTS)))
+            if slotLimit <= 0 { slotLimit = Int(ckvm_check_extension(kvm, Int(CKVM_CAP_NR_MEMSLOTS))) }
+            guard slotLimit > 0 else { throw KVMError("KVM_CAP_NR_MEMSLOTS", detail: "the kernel reports no memslots") }
             guard let pointer = ckvm_alloc_anonymous(ramSize) else {
                 throw KVMError("mmap guest RAM", errno: Glibc.errno)
             }
@@ -79,12 +113,17 @@ public final class VirtualMachine {
         self.ramGPA = ramGPA
         self.ramSize = ramSize
         self.ram = ramPointer!
+        self.maxMemorySlots = slotLimit
+        self.memorySlots = [MemorySlot(slot: 0, gpa: ramGPA, size: UInt64(ramSize),
+                                       hostAddress: UInt(bitPattern: ramPointer!), kind: .ram, name: "RAM")]
     }
 
     deinit {
         vcpus.forEach { $0.close() }
         _ = ckvm_close(vmFD)
-        _ = ckvm_free_anonymous(ram, ramSize)
+        for slot in memorySlots {
+            _ = ckvm_free_anonymous(UnsafeMutableRawPointer(bitPattern: slot.hostAddress)!, Int(slot.size))
+        }
         _ = ckvm_close(kvmFD)
     }
 
@@ -95,20 +134,71 @@ public final class VirtualMachine {
         return vcpu
     }
 
+    // MARK: Memslots
+
+    /// Registers `size` bytes of host memory at `host` as a new memslot at
+    /// `gpa`. The VM takes ownership of the host mapping (it is unmapped when
+    /// the VM is destroyed). `gpa`, `size`, and `host` must be aligned to the
+    /// host page size, and the range must not overlap another slot. Throws a
+    /// fatal error when the VM has no memslot left.
+    @discardableResult
+    public func addMemorySlot(gpa: UInt64, size: UInt64, host: UnsafeMutableRawPointer,
+                              kind: MemorySlot.Kind, name: String) throws -> MemorySlot {
+        guard Int(nextSlotNumber) < maxMemorySlots else {
+            throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "memslots exhausted (KVM_CAP_NR_MEMSLOTS = \(maxMemorySlots)) mapping \(name)")
+        }
+        guard size > 0 else { throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "empty slot for \(name)") }
+        if let clash = memorySlots.first(where: { gpa < $0.end && $0.gpa < gpa + size }) {
+            throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "GPA range of \(name) overlaps \(clash)")
+        }
+        let number = nextSlotNumber
+        try kvmCheck(ckvm_set_user_memory_region(vmFD, number, 0, gpa, size, UInt64(UInt(bitPattern: host))),
+                     "KVM_SET_USER_MEMORY_REGION slot \(number) (\(name))")
+        nextSlotNumber += 1
+        let slot = MemorySlot(slot: number, gpa: gpa, size: size, hostAddress: UInt(bitPattern: host), kind: kind, name: name)
+        let index = memorySlots.firstIndex { $0.gpa > gpa } ?? memorySlots.count
+        memorySlots.insert(slot, at: index)
+        return slot
+    }
+
+    /// The number of memslots registered so far, slot 0 included.
+    public var memorySlotCount: Int { memorySlots.count }
+
     // MARK: Guest-physical access
 
-    /// True when [gpa, gpa+count) lies inside RAM.
+    private func slotIndex(containing gpa: UInt64) -> Int? {
+        // Binary search for the last slot whose start is <= gpa.
+        var low = 0, high = memorySlots.count
+        while low < high {
+            let mid = (low + high) / 2
+            if memorySlots[mid].gpa <= gpa { low = mid + 1 } else { high = mid }
+        }
+        guard low > 0, gpa < memorySlots[low - 1].end else { return nil }
+        return low - 1
+    }
+
+    /// True when [gpa, gpa+count) lies inside one memslot.
     public func contains(gpa: UInt64, count: Int) -> Bool {
-        guard count >= 0, gpa >= ramGPA else { return false }
-        let offset = gpa - ramGPA
-        return offset <= UInt64(ramSize) && UInt64(count) <= UInt64(ramSize) - offset
+        guard let index = slotIndex(containing: gpa) else { return false }
+        return memorySlots[index].contains(gpa: gpa, count: count)
+    }
+
+    /// The memslot that holds `gpa`, if any.
+    public func memorySlot(containing gpa: UInt64) -> MemorySlot? {
+        slotIndex(containing: gpa).map { memorySlots[$0] }
+    }
+
+    /// Host address of [gpa, gpa+count), which must lie inside one memslot.
+    public func hostPointer(gpa: UInt64, count: Int) throws -> UnsafeMutableRawPointer {
+        guard let index = slotIndex(containing: gpa), memorySlots[index].contains(gpa: gpa, count: count) else {
+            throw KVMError("guest physical access", detail: "GPA 0x\(String(gpa, radix: 16)) + \(count) is outside every memslot")
+        }
+        let slot = memorySlots[index]
+        return UnsafeMutableRawPointer(bitPattern: slot.hostAddress)! + Int(gpa - slot.gpa)
     }
 
     private func pointer(gpa: UInt64, count: Int) throws -> UnsafeMutableRawPointer {
-        guard contains(gpa: gpa, count: count) else {
-            throw KVMError("guest physical access", detail: "GPA 0x\(String(gpa, radix: 16)) + \(count) is outside RAM")
-        }
-        return ram + Int(gpa - ramGPA)
+        try hostPointer(gpa: gpa, count: count)
     }
 
     public func read(gpa: UInt64, count: Int) throws -> [UInt8] {
@@ -118,7 +208,7 @@ public final class VirtualMachine {
 
     public func write(gpa: UInt64, bytes: [UInt8]) throws {
         let destination = try pointer(gpa: gpa, count: bytes.count)
-        bytes.withUnsafeBytes { destination.copyMemory(from: $0.baseAddress!, byteCount: $0.count) }
+        bytes.withUnsafeBytes { if $0.count > 0 { destination.copyMemory(from: $0.baseAddress!, byteCount: $0.count) } }
     }
 
     public func readU64(gpa: UInt64) throws -> UInt64 {
@@ -212,6 +302,8 @@ public struct SystemRegister: Equatable, Sendable {
     public static let tpidrEL0 = SystemRegister(op0: 3, op1: 3, crn: 13, crm: 0, op2: 2)
     public static let tpidrroEL0 = SystemRegister(op0: 3, op1: 3, crn: 13, crm: 0, op2: 3)
     public static let idAA64MMFR0EL1 = SystemRegister(op0: 3, op1: 0, crn: 0, crm: 7, op2: 0)
+    public static let cntfrqEL0 = SystemRegister(op0: 3, op1: 3, crn: 14, crm: 0, op2: 0)
+    public static let cntkctlEL1 = SystemRegister(op0: 3, op1: 0, crn: 14, crm: 1, op2: 0)
 }
 
 /// One arm64 vCPU with its mapped `struct kvm_run`.
@@ -268,6 +360,22 @@ public final class VCPU {
 
     private func setRaw(_ id: UInt64, _ value: UInt64, _ name: String) throws {
         try kvmCheck(ckvm_set_one_reg_u64(fd, id, value), "KVM_SET_ONE_REG \(name)")
+    }
+
+    // MARK: Generic timer
+
+    /// The guest's virtual counter (`CNTVCT_EL0`), through ONE_REG
+    /// (`KVM_REG_ARM_TIMER_CNT`).
+    public func virtualCounter() throws -> UInt64 { try getRaw(ckvm_reg_timer_cnt(), "KVM_REG_ARM_TIMER_CNT") }
+
+    /// `CNTFRQ_EL0` as the guest sees it. Read through ONE_REG when KVM
+    /// exposes it; otherwise the host's value, which the guest shares (KVM
+    /// does not virtualize the counter frequency).
+    public func counterFrequency() -> (hz: UInt64, source: String) {
+        if let value = try? getRaw(SystemRegister.cntfrqEL0.id, "CNTFRQ_EL0"), value != 0 {
+            return (value, "ONE_REG")
+        }
+        return (ckvm_host_cntfrq(), "host CNTFRQ_EL0")
     }
 
     // MARK: Running

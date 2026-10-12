@@ -85,7 +85,12 @@ vCPU, or vCPUs are multiplexed when the thread count grows.
      measured about 32 µs, which is a baseline to improve later.
    - The work was built by three parallel agents against
      `specs/simulator/vm-shim-protocol.md`.
-3. **Static-image runner.** Map an executable plus the shared cache at
+3. **Static-image runner.** *(3a in progress, 2026-10-11.)*
+   - `dyld_sim` boots in the VM and maps all 11 cache mappings itself.
+   - It stops at the three host libraries (`libsystem_kernel`,
+     `libsystem_platform`, `libsystem_pthread`), which Ycode must now
+     supply (stage 3a-ii, `specs/simulator/host-libraries.md`).
+   - The original stage-3 plan: Map an executable plus the shared cache at
    `0x1C0000000`, apply chained fixups, provide the commpage and the
    initial stack (argc/argv/envp/apple), and start `dyld_sim`. Exit
    criterion: a command-line guest tool reaches `main` and writes to

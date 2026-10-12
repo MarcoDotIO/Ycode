@@ -40,6 +40,29 @@ int ckvm_set_user_memory_region(int vm_fd, uint32_t slot, uint32_t flags,
 void *ckvm_alloc_anonymous(size_t size);
 /// munmap. Returns 0 or -errno.
 int ckvm_free_anonymous(void *address, size_t size);
+/// madvise(MADV_DONTNEED) on part of an anonymous private mapping: the host
+/// pages are dropped and read back as zeros. Returns 0 or -errno.
+int ckvm_discard_anonymous(void *address, size_t size);
+
+/// A private, copy-on-write host mapping of a file, for a file-backed
+/// memslot. Reserves `total_size` bytes of anonymous zero-filled read/write
+/// memory, then maps `file_bytes` bytes of `fd` starting at `offset` over its
+/// start with MAP_PRIVATE | MAP_FIXED and PROT_READ | PROT_WRITE. The file is
+/// never modified. `file_bytes` must not reach past the host page holding the
+/// end of the file (the caller clamps it to the file size); the rest of the
+/// range stays anonymous zeros, so no access can raise SIGBUS. `offset` must
+/// be a multiple of the host page size. Returns NULL on failure (errno set).
+void *ckvm_map_file_private(int fd, uint64_t offset, size_t file_bytes, size_t total_size);
+
+/// The host page size (sysconf(_SC_PAGESIZE)).
+size_t ckvm_host_page_size(void);
+
+/// Capability numbers for ckvm_check_extension.
+enum {
+    CKVM_CAP_NR_VCPUS = 9,
+    CKVM_CAP_NR_MEMSLOTS = 10,
+    CKVM_CAP_ARM_VM_IPA_SIZE = 165,
+};
 
 // ---- vCPU -------------------------------------------------------------------
 
@@ -83,6 +106,17 @@ uint64_t ckvm_reg_elr_el1(void);
 uint64_t ckvm_reg_spsr_el1(void);
 /// A system register by its MRS/MSR encoding.
 uint64_t ckvm_reg_sysreg(unsigned op0, unsigned op1, unsigned crn, unsigned crm, unsigned op2);
+/// The guest's virtual counter (CNTVCT_EL0) as KVM exposes it. The uapi
+/// constant KVM_REG_ARM_TIMER_CNT is used as-is: its encoding is
+/// deliberately not the architectural one.
+uint64_t ckvm_reg_timer_cnt(void);
+/// The guest's virtual timer control register (KVM_REG_ARM_TIMER_CTL).
+uint64_t ckvm_reg_timer_ctl(void);
+
+/// CNTFRQ_EL0 and CNTVCT_EL0 read on the host (both are readable at EL0 on
+/// Linux). Used when KVM does not expose a value through ONE_REG.
+uint64_t ckvm_host_cntfrq(void);
+uint64_t ckvm_host_cntvct(void);
 
 // ---- struct kvm_run accessors ------------------------------------------------
 

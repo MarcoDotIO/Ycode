@@ -69,6 +69,34 @@ void *ckvm_alloc_anonymous(size_t size) {
 
 int ckvm_free_anonymous(void *address, size_t size) { return result_or_errno(munmap(address, size)); }
 
+int ckvm_discard_anonymous(void *address, size_t size) {
+    return result_or_errno(madvise(address, size, MADV_DONTNEED));
+}
+
+void *ckvm_map_file_private(int fd, uint64_t offset, size_t file_bytes, size_t total_size) {
+    if (file_bytes > total_size || total_size == 0) {
+        errno = EINVAL;
+        return NULL;
+    }
+    void *base = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    if (base == MAP_FAILED) return NULL;
+    if (file_bytes > 0) {
+        void *p = mmap(base, file_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED, fd, (off_t)offset);
+        if (p == MAP_FAILED) {
+            int saved = errno;
+            munmap(base, total_size);
+            errno = saved;
+            return NULL;
+        }
+    }
+    return base;
+}
+
+size_t ckvm_host_page_size(void) {
+    long size = sysconf(_SC_PAGESIZE);
+    return size > 0 ? (size_t)size : 4096;
+}
+
 int ckvm_create_vcpu(int vm_fd, unsigned long vcpu_id) {
     return result_or_errno(ioctl(vm_fd, KVM_CREATE_VCPU, vcpu_id));
 }
@@ -129,6 +157,21 @@ uint64_t ckvm_reg_sysreg(unsigned op0, unsigned op1, unsigned crn, unsigned crm,
            (((uint64_t)crn << KVM_REG_ARM64_SYSREG_CRN_SHIFT) & KVM_REG_ARM64_SYSREG_CRN_MASK) |
            (((uint64_t)crm << KVM_REG_ARM64_SYSREG_CRM_SHIFT) & KVM_REG_ARM64_SYSREG_CRM_MASK) |
            (((uint64_t)op2 << KVM_REG_ARM64_SYSREG_OP2_SHIFT) & KVM_REG_ARM64_SYSREG_OP2_MASK);
+}
+
+uint64_t ckvm_reg_timer_cnt(void) { return KVM_REG_ARM_TIMER_CNT; }
+uint64_t ckvm_reg_timer_ctl(void) { return KVM_REG_ARM_TIMER_CTL; }
+
+uint64_t ckvm_host_cntfrq(void) {
+    uint64_t value;
+    __asm__ volatile("mrs %0, cntfrq_el0" : "=r"(value));
+    return value;
+}
+
+uint64_t ckvm_host_cntvct(void) {
+    uint64_t value;
+    __asm__ volatile("isb; mrs %0, cntvct_el0" : "=r"(value) : : "memory");
+    return value;
 }
 
 // ---- struct kvm_run accessors ------------------------------------------------

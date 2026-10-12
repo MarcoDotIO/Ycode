@@ -151,6 +151,121 @@ public enum VMLayout {
     static func isPageAligned(_ v: UInt64) -> Bool { v & (pageSize - 1) == 0 }
 }
 
+// MARK: - Stage 3 (specs/simulator/stage3-contract.md §2, §3, §5)
+
+/// Stage-3 constants. The stage-2 constants above are unchanged and still
+/// describe the stage-2 self-test; a stage-3 VMM uses these instead where
+/// they differ (RAM size, table arena size).
+extension VMLayout {
+    // MARK: Guest physical memory (§3)
+
+    /// Guest RAM (memslot 0) in stage 3: same GPA as stage 2, 1 GiB.
+    public static let stage3RAMSize: UInt64 = 1 << 30
+    /// The stage-1 table arena in stage 3: same GPA as stage 2, 64 MiB.
+    public static let stage3PageTableArenaGPA: UInt64 = pageTableArenaGPA
+    public static let stage3PageTableArenaSize: UInt64 = 64 << 20
+
+    /// The anonymous pool: one memslot, carved at 16 KiB granularity.
+    public static let anonymousPoolGPA: UInt64 = 0x10_0000_0000
+    public static let anonymousPoolSize: UInt64 = 16 << 30
+    /// File mappings get one memslot each, bump-allocated from here upward.
+    public static let fileSlotGPABase: UInt64 = 0x20_0000_0000
+    /// The first memslot number after RAM (slot 0).
+    public static let firstExtraMemslot: UInt32 = 1
+
+    /// The EL1-only identity mappings in stage 3: as `el1Regions`, with the
+    /// page-table region grown to the 64 MiB arena.
+    public static let stage3EL1Regions: [Region] = el1Regions.map { r in
+        guard r.name == "page-tables" else { return r }
+        return Region(name: r.name, va: stage3PageTableArenaGPA, size: stage3PageTableArenaSize, attributes: r.attributes)
+    }
+
+    // MARK: Guest virtual address map (§2)
+
+    /// The lowest VA a guest mapping may use: the end of the 4 GiB
+    /// `__PAGEZERO`. Only the EL1 identity regions live below it.
+    public static let userVAFloor: UInt64 = 0x1_0000_0000
+    /// The iOS-family user VA limit (`MACH_VM_MAX_ADDRESS`). Anywhere
+    /// allocations and guest fixed mappings stay below it; only the VMM's
+    /// permanent mappings (commpage) go above.
+    public static let userVALimit: UInt64 = 0xF_C000_0000
+    /// The main executable is mapped at its preferred vmaddr, which starts here.
+    public static let mainExecutableBaseVA: UInt64 = 0x1_0000_0000
+
+    /// The main stack: `[userStackBase, userStackTop)`, 8 MiB.
+    public static let userStackTop: UInt64 = 0x1_6FE0_0000
+    public static let userStackSize: UInt64 = 8 << 20
+    public static let userStackBase: UInt64 = userStackTop - userStackSize
+
+    /// The shared-region reservation. Only `MAP_FIXED` mappings go here.
+    public static let sharedRegionBase: UInt64 = 0x1_8000_0000
+    public static let sharedRegionSize: UInt64 = 0x1_8000_0000
+    public static let sharedRegionEnd: UInt64 = sharedRegionBase + sharedRegionSize
+
+    /// `dyld_sim` is mapped as one reservation starting here.
+    public static let dyldSimBaseVA: UInt64 = 0x3_0000_0000
+
+    /// Anonymous allocations without a fixed address: first fit at or above this.
+    public static let anonymousVABase: UInt64 = 0x3_2000_0000
+
+    /// The commpage nesting reservation, kept free of every other mapping.
+    public static let commpageReservationBase: UInt64 = 0xF_C000_0000
+    public static let commpageReservationEnd: UInt64 = 0x10_0000_0000
+    /// The read-only commpage (16 KiB, EL0 RO). `commpageVA` is the RW-data page.
+    public static let readOnlyCommpageVA: UInt64 = 0xF_FFFF_4000
+
+    // MARK: Ycode host page (§5)
+
+    /// The host page (`host_stubs.bin`), 64 KiB at `hostPageVA`.
+    public static let hostPageVA: UInt64 = 0x3_1000_0000
+    public static let hostPageSize: UInt64 = 0x1_0000
+
+    /// Code, EL0 RX. `_ycode_launch` is at offset 0.
+    public static let hostPageCodeOffset: UInt64 = 0x0000
+    public static let hostPageCodeSize: UInt64 = 0x4000
+    /// Read-only data, EL0 RO. It starts with the helpers table.
+    public static let hostPageRODataOffset: UInt64 = 0x4000
+    public static let hostPageRODataSize: UInt64 = 0x4000
+    /// Read-write data, EL0 RW.
+    public static let hostPageRWDataOffset: UInt64 = 0x8000
+    public static let hostPageRWDataSize: UInt64 = 0x8000
+
+    /// Helpers table: `version`, then the slot pointers (544 bytes).
+    public static let hostPageHelpersOffset: UInt64 = 0x4000
+    public static let hostPageHelpersSize: UInt64 = 544
+    public static let helpersTableVersion: UInt64 = 18
+    public static let helpersSlotCount = 67
+    /// The errno cell (an `int` in an 8-byte slot).
+    public static let hostPageErrnoOffset: UInt64 = 0x8000
+    /// The `startGlue` cell that `dyld_sim` writes.
+    public static let hostPageStartGlueOffset: UInt64 = 0x8008
+    /// The launch block, 12 × u64.
+    public static let hostPageLaunchBlockOffset: UInt64 = 0x8040
+    public static let hostPageLaunchBlockSize: UInt64 = 96
+    /// `dyld_all_image_infos`.
+    public static let hostPageAllImageInfosOffset: UInt64 = 0x8100
+    public static let hostPageAllImageInfosSize: UInt64 = 368
+    /// `infoArray`, `uuidArray`, and path strings.
+    public static let hostPageImageInfoStorageOffset: UInt64 = 0x8300
+    public static let hostPageImageInfoStorageSize: UInt64 = 0x800
+    /// `sysctlbyname` and scratch space.
+    public static let hostPageScratchOffset: UInt64 = 0x9000
+    public static let hostPageScratchSize: UInt64 = 0x1000
+
+    /// The EL0 entry point (`_ycode_launch`).
+    public static let hostPageEntryVA: UInt64 = hostPageVA + hostPageCodeOffset
+
+    /// The host page's three EL0 regions (code RX, read-only data, read-write data).
+    public static let hostPageRegions: [Region] = [
+        Region(name: "host-code", va: hostPageVA + hostPageCodeOffset, size: hostPageCodeSize,
+               attributes: PageAttributes(access: .el0ReadOnly, el0Execute: true)),
+        Region(name: "host-rodata", va: hostPageVA + hostPageRODataOffset, size: hostPageRODataSize,
+               attributes: PageAttributes(access: .el0ReadOnly)),
+        Region(name: "host-rwdata", va: hostPageVA + hostPageRWDataOffset, size: hostPageRWDataSize,
+               attributes: PageAttributes(access: .el0ReadWrite)),
+    ]
+}
+
 /// Field positions of the AArch64 registers and descriptors the VMM programs,
 /// named as in the Arm Architecture Reference Manual for A-profile.
 public enum AArch64 {

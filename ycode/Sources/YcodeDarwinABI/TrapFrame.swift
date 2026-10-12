@@ -17,7 +17,17 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
         public static let tpidrro = 288
         public static let tpidr = 296
         public static let kind = 304
-        public static let reserved = 312
+        /// `resumeFlags` (stage 3, `stage3-contract.md` §7). Formerly reserved.
+        public static let resumeFlags = 312
+        /// The stage-2 name of the word at +312.
+        public static let reserved = resumeFlags
+    }
+
+    /// Bits of `resumeFlags`.
+    public enum ResumeFlag {
+        /// Bit 0: the shim runs `tlbi vmalle1; dsb ish; isb` before the
+        /// `eret`, then clears the bit.
+        public static let flushTLB: UInt64 = 1 << 0
     }
 
     /// The `kind` field.
@@ -54,6 +64,11 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
     /// Written back to `TPIDR_EL0` on resume.
     public var tpidr: UInt64
     public var kind: UInt64
+    /// Requests from the VMM to the shim for the next resume (+312). The VMM
+    /// sets this before writing the frame back. Decoding always yields 0:
+    /// the shim clears the word on resume, so a value read from a stopped
+    /// vCPU carries no meaning.
+    public var resumeFlags: UInt64 = 0
 
     public init(
         x: [UInt64] = Array(repeating: 0, count: TrapFrame.registerCount),
@@ -71,7 +86,8 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
         self.kind = kind
     }
 
-    /// Decodes the first 320 bytes of `bytes`.
+    /// Decodes the first 320 bytes of `bytes`. `resumeFlags` is not decoded
+    /// (it is 0 in the result).
     public init(decoding bytes: [UInt8]) throws {
         guard bytes.count >= Self.byteCount else {
             throw DarwinABIError.truncated(what: "trap frame", expected: Self.byteCount, actual: bytes.count)
@@ -87,13 +103,13 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
         kind = readLE(bytes, at: Offset.kind)
     }
 
-    /// The 320-byte frame. Missing `x` entries encode as 0, extra ones are
-    /// ignored, and the reserved field is 0.
+    /// The 320-byte frame. Missing `x` entries encode as 0 and extra ones are
+    /// ignored. The word at +312 is `resumeFlags` (0 unless the VMM set it).
     public func encoded() -> [UInt8] {
         var b: [UInt8] = []
         b.reserveCapacity(Self.byteCount)
         for i in 0..<Self.registerCount { appendLE(i < x.count ? x[i] : 0, to: &b) }
-        for v in [spEL0, elr, spsr, esr, far, tpidrro, tpidr, kind, 0] { appendLE(v, to: &b) }
+        for v in [spEL0, elr, spsr, esr, far, tpidrro, tpidr, kind, resumeFlags] { appendLE(v, to: &b) }
         return b
     }
 
@@ -101,6 +117,12 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
     public var carry: Bool {
         get { spsr & AArch64.SPSR.c != 0 }
         set { spsr = newValue ? spsr | AArch64.SPSR.c : spsr & ~AArch64.SPSR.c }
+    }
+
+    /// `resumeFlags` bit 0: flush the TLB before resuming.
+    public var flushTLB: Bool {
+        get { resumeFlags & ResumeFlag.flushTLB != 0 }
+        set { resumeFlags = newValue ? resumeFlags | ResumeFlag.flushTLB : resumeFlags & ~ResumeFlag.flushTLB }
     }
 
     public var trapKind: Kind? { Kind(rawValue: kind) }

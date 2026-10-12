@@ -1,9 +1,39 @@
 // A self-contained check of the KVM plumbing: boots a tiny hand-encoded EL1
 // guest (MMU off) that stores to an unbacked GPA, loads from it, stores the
-// loaded value back, and powers off through PSCI SYSTEM_OFF. Run with
-// `ycode-simd --kvm-smoke`.
+// loaded value back, and powers off through PSCI SYSTEM_OFF. A second test
+// (stage 3) checks extra memslots: the anonymous pool and private file
+// mappings, read and written by a guest, plus the timer ONE_REG reads. Run
+// with `ycode-simd --kvm-smoke`.
 
 #if os(Linux) && arch(arm64)
+import Glibc
+
+/// A few A64 encodings, from the Arm ARM instruction formats.
+enum A64 {
+    static func movz(_ rd: UInt32, _ imm: UInt16, shift: UInt32 = 0) -> UInt32 { 0xD280_0000 | (shift / 16) << 21 | UInt32(imm) << 5 | rd }
+    static func movk(_ rd: UInt32, _ imm: UInt16, shift: UInt32) -> UInt32 { 0xF280_0000 | (shift / 16) << 21 | UInt32(imm) << 5 | rd }
+    /// movz/movk sequence that loads a 64-bit constant.
+    static func mov64(_ rd: UInt32, _ value: UInt64) -> [UInt32] {
+        var words = [movz(rd, UInt16(value & 0xFFFF))]
+        for shift in stride(from: UInt32(16), to: 64, by: 16) where (value >> UInt64(shift)) & 0xFFFF != 0 {
+            words.append(movk(rd, UInt16((value >> UInt64(shift)) & 0xFFFF), shift: shift))
+        }
+        return words
+    }
+    /// ldr Xt, [Xn, #offset] (offset a multiple of 8, < 32 KiB).
+    static func ldr(_ rt: UInt32, _ rn: UInt32, _ offset: UInt32 = 0) -> UInt32 { 0xF940_0000 | (offset / 8) << 10 | rn << 5 | rt }
+    /// str Xt, [Xn, #offset].
+    static func str(_ rt: UInt32, _ rn: UInt32, _ offset: UInt32 = 0) -> UInt32 { 0xF900_0000 | (offset / 8) << 10 | rn << 5 | rt }
+    static let hvc0: UInt32 = 0xD400_0002
+    static let branchSelf: UInt32 = 0x1400_0000
+
+    static func bytes(_ words: [UInt32]) -> [UInt8] {
+        var out: [UInt8] = []
+        for word in words { withUnsafeBytes(of: word.littleEndian) { out.append(contentsOf: $0) } }
+        return out
+    }
+}
+
 public enum KVMSmokeTest {
     /// Runs the test, printing one line per step through `log`. Throws on failure.
     public static func run(log: (String) -> Void) throws {
@@ -79,6 +109,119 @@ public enum KVMSmokeTest {
         log("spin test: \(exit)")
         guard exit == .watchdog else { throw KVMError("smoke", detail: "watchdog did not interrupt a spinning guest") }
         log("KVM smoke test passed (\(exits) exits)")
+        try runMemslots(log: log)
+    }
+
+    /// Stage-3 memslot test: an anonymous pool slot and two private file
+    /// slots of a temporary file, read and written by an EL1 guest (MMU off),
+    /// with every observed value reported through MMIO stores.
+    public static func runMemslots(log: (String) -> Void) throws {
+        let vm = try VirtualMachine(ramSize: 1 << 20)
+        log("memslots: KVM_CAP_NR_MEMSLOTS = \(vm.maxMemorySlots)")
+        let backing = try KVMPhysicalBacking(vm: vm)
+
+        // A 40000-byte file of a known pattern: u64 at byte i*8 = 0x5943_0000_0000_0000 | i.
+        let fileSize = 40_000
+        var content = [UInt8](repeating: 0, count: fileSize)
+        for i in 0..<(fileSize / 8) {
+            withUnsafeBytes(of: (0x5943_0000_0000_0000 | UInt64(i)).littleEndian) { content.replaceSubrange(i * 8..<i * 8 + 8, with: $0) }
+        }
+        let tmpdir = getenv("TMPDIR").map { String(cString: $0) } ?? "/tmp"
+        var template = Array("\(tmpdir)/ycode-memslot-XXXXXX".utf8CString)
+        let fd = template.withUnsafeMutableBufferPointer { mkstemp($0.baseAddress!) }
+        guard fd >= 0 else { throw KVMError("mkstemp", errno: Glibc.errno) }
+        let path = String(decoding: template.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        defer { close(fd); unlink(path) }
+        guard content.withUnsafeBytes({ Glibc.write(fd, $0.baseAddress!, $0.count) }) == fileSize else {
+            throw KVMError("write temp file", errno: Glibc.errno)
+        }
+
+        // Slot A: the whole file (40000 bytes -> 48 KiB slot; the tail past EOF is zero).
+        let fileA = try backing.mapFile(hostFD: fd, fileSize: UInt64(fileSize), offset: 0, size: UInt64(fileSize), name: "memslot-test")
+        // Slot B: from offset 16 KiB, 32 KiB long (ends 7232 bytes past EOF).
+        let fileB = try backing.mapFile(hostFD: fd, fileSize: UInt64(fileSize), offset: 16384, size: 32768, name: "memslot-test")
+        // Anonymous pool: two allocations, a release, and a reuse that must read as zeros.
+        let anon1 = try backing.allocateAnonymous(size: 16384)
+        let anon2 = try backing.allocateAnonymous(size: 3 * 16384)
+        try backing.writePhysical(gpa: anon1, bytes: A64.bytes([0xAAAA_5555, 0x1234_5678]))
+        backing.release(gpa: anon1, size: 16384)
+        let anon3 = try backing.allocateAnonymous(size: 16384)
+        guard anon3 == anon1 else { throw KVMError("smoke", detail: "pool did not reuse the released run") }
+        try backing.writePhysical(gpa: anon2 + 16384, bytes: [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88])
+        log("memslots: file A at 0x\(String(fileA, radix: 16)), file B at 0x\(String(fileB, radix: 16)), pool runs 0x\(String(anon3, radix: 16)) and 0x\(String(anon2, radix: 16)); \(vm.memorySlotCount) slots")
+
+        let doorbell: UInt64 = 0x0900_0000
+        var program: [UInt32] = A64.mov64(1, doorbell)
+        func report(_ base: UInt64, _ offset: UInt32) {
+            program += A64.mov64(4, base)
+            program += [A64.ldr(2, 4, offset), A64.str(2, 1)]
+        }
+        report(fileA, 0)            // file word 0
+        program += A64.mov64(4, fileA + 39_992)   // last word of the file
+        program += [A64.ldr(2, 4), A64.str(2, 1)]
+        program += A64.mov64(4, fileA + 40_000)   // just past EOF, in the host page that holds EOF
+        program += [A64.ldr(2, 4), A64.str(2, 1)]
+        program += A64.mov64(4, fileA + 40_960)   // past EOF, inside the slot
+        program += [A64.ldr(2, 4), A64.str(2, 1)]
+        report(fileB, 0)            // file word 2048
+        report(fileB, 24_576)       // file B: 1 KiB past EOF (slot ends 7232 bytes past EOF)
+        // Copy-on-write: store into file A, read it back.
+        program += A64.mov64(4, fileA)
+        program += A64.mov64(3, 0xC000_0000_0000_BEEF)
+        program += [A64.str(3, 4), A64.ldr(2, 4), A64.str(2, 1)]
+        report(anon3, 0)            // reused pool page: zero
+        report(anon2, 16384)
+        program += A64.mov64(0, 0x8400_0008) + [A64.hvc0, A64.branchSelf]
+        try vm.write(gpa: vm.ramGPA, bytes: A64.bytes(program))
+
+        let expected: [(String, UInt64)] = [
+            ("file word 0", 0x5943_0000_0000_0000),
+            ("last file word", 0x5943_0000_0000_0000 | 4999),
+            ("past EOF, same host page as EOF", 0),
+            ("past EOF, next host page", 0),
+            ("file B word 0 (file word 2048)", 0x5943_0000_0000_0000 | 2048),
+            ("file B past EOF", 0),
+            ("copy-on-write store", 0xC000_0000_0000_BEEF),
+            ("reused pool page", 0),
+            ("pool page written by the VMM", 0x8877_6655_4433_2211),
+        ]
+        let vcpu = try vm.makeVCPU()
+        try vcpu.set(.pc, vm.ramGPA)
+        try vcpu.set(.pstate, VCPU.pstateEL1hMasked)
+        try Watchdog.arm(milliseconds: 5_000)
+        defer { try? Watchdog.arm(milliseconds: 0) }
+        for (name, value) in expected {
+            let exit = try vcpu.run()
+            guard case let .mmio(.write, address, data, 8) = exit, address == doorbell else {
+                throw KVMError("smoke", detail: "\(name): expected an MMIO report, got \(exit)")
+            }
+            guard data == value else {
+                throw KVMError("smoke", detail: "\(name): guest read 0x\(String(data, radix: 16)), expected 0x\(String(value, radix: 16))")
+            }
+            log("memslots: \(name) = 0x\(String(data, radix: 16)) ok")
+        }
+        let last = try vcpu.run()
+        guard case .systemEvent = last else { throw KVMError("smoke", detail: "expected PSCI SYSTEM_OFF, got \(last)") }
+
+        // The file itself must be unchanged.
+        var check = [UInt8](repeating: 0, count: 8)
+        guard pread(fd, &check, 8, 0) == 8, check == Array(content[0..<8]) else {
+            throw KVMError("smoke", detail: "the guest's store reached the host file")
+        }
+        // The VMM sees the guest's private copy.
+        let privateWord = try backing.readPhysical(gpa: fileA, count: 8)
+        guard privateWord == A64.bytes([0x0000_BEEF, 0xC000_0000]) else {
+            throw KVMError("smoke", detail: "VMM read of the copied page: \(privateWord)")
+        }
+        log("memslots: host file unchanged; VMM sees the private copy")
+
+        let (hz, source) = vcpu.counterFrequency()
+        let c1 = try vcpu.virtualCounter()
+        usleep(10_000)
+        let c2 = try vcpu.virtualCounter()
+        log("timer: CNTFRQ = \(hz) Hz (\(source)); virtual counter \(c1) -> \(c2) over 10 ms (\(c2 &- c1) ticks)")
+        guard hz > 0, c2 > c1 else { throw KVMError("smoke", detail: "timer registers") }
+        log("memslot smoke test passed")
     }
 }
 #endif
