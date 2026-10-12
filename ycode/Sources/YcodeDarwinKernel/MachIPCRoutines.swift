@@ -562,18 +562,27 @@ extension MachIPC {
                 p.nsRequest != nil ? 1 : 0, flags]
     }
 
-    /// `mach_port_get_attributes`: the words of the result (their count is the new `*count`).
+    /// `mach_port_get_attributes`: the words of the result (their count is
+    /// the new `*count`). Flavors (xnu `mach_port_get_attributes`): 1
+    /// LIMITS_INFO, 2 RECEIVE_STATUS, 3 DNREQUESTS_SIZE, 7 INFO_EXT, 9
+    /// SERVICE_THROTTLED (no service ports: `KERN_INVALID_CAPABILITY`); any
+    /// other flavor (8 GUARD_INFO included) is `KERN_INVALID_ARGUMENT`.
     func portGetAttributes(_ name: UInt32, flavor: UInt32, count: UInt32) -> (kr: UInt32, words: [UInt32]) {
         let needed: UInt32
         switch flavor {
         case 1, 3, 9: needed = 1
         case 2: needed = 10
         case 7: needed = 17
-        case 8: needed = 2
         default: return (MachKern.invalidArgument, [])
         }
         guard count >= needed else { return (MachKern.failure, []) }
-        if flavor == 1 && !MachPortName.isValid(name) { return (MachKern.success, []) }
+        if !MachPortName.isValid(name) {
+            switch flavor {
+            case 1: return (MachKern.success, [])
+            case 3: return (MachKern.success, [0])
+            default: return (MachKern.invalidRight, [])
+            }
+        }
         let p: IPCPort
         switch receiveRight(name) {
         case let .failure(e): return (e.code, [])
@@ -584,32 +593,41 @@ extension MachIPC {
         case 2: return (MachKern.success, status(p))
         case 3: return (MachKern.success, [UInt32(p.dnRequests.count)])
         case 7: return (MachKern.success, status(p) + [UInt32](repeating: 0, count: 7))
-        case 8: return (MachKern.success, [0, 0])
         default: return (MachKern.invalidCapability, [])
         }
     }
 
+    /// `mach_port_set_attributes` (xnu order: count, value, name, right).
+    /// 1 LIMITS_INFO sets the queue limit; 3 DNREQUESTS_SIZE, 4 TEMPOWNER,
+    /// 5 IMPORTANCE_RECEIVER, and 6 DENAP_RECEIVER are accepted for a receive
+    /// right (no effect in Ycode; 4–6 refuse special reply ports); 9
+    /// SERVICE_THROTTLED needs a service port (`KERN_INVALID_CAPABILITY`);
+    /// any other flavor is `KERN_INVALID_ARGUMENT`.
     func portSetAttributes(_ name: UInt32, flavor: UInt32, info: [UInt32]) -> UInt32 {
         switch flavor {
-        case 1:
+        case 1, 3:
             guard info.count >= 1 else { return MachKern.failure }
-            switch receiveRight(name) {
-            case let .failure(e): return e.code
-            case let .success((_, p)):
-                guard info[0] <= UInt32(MachIPCLimits.qlimitMax) else { return MachKern.invalidValue }
-                p.qlimit = Int(info[0])
-                p.sendWaiters.wakeAll()
-                return MachKern.success
-            }
-        case 3, 4, 5, 6:
-            switch receiveRight(name) {
-            case let .failure(e): return e.code
-            case .success: return MachKern.success
-            }
+            if flavor == 1, info[0] > UInt32(MachIPCLimits.qlimitMax) { return MachKern.invalidValue }
+        case 4, 5, 6, 9: break
+        default: return MachKern.invalidArgument
+        }
+        guard MachPortName.isValid(name) else { return MachKern.invalidRight }
+        let p: IPCPort
+        switch receiveRight(name) {
+        case let .failure(e): return e.code
+        case let .success((_, port)): p = port
+        }
+        switch flavor {
+        case 1:
+            p.qlimit = Int(info[0])
+            p.sendWaiters.wakeAll()
+            return MachKern.success
+        case 4, 5, 6:
+            return p.isKernelObject || p.isSpecialReply ? MachKern.invalidArgument : MachKern.success
         case 9:
             return MachKern.invalidCapability
         default:
-            return MachKern.invalidArgument
+            return MachKern.success
         }
     }
 

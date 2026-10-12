@@ -639,8 +639,12 @@ import YcodeDarwinABI
                 == MachMsgReturn.sendInvalidOptions)
         #expect(msg2(send | MachMsgOption.sendKobjectCall, bits: 0x13, size: 24, remote: server, local: 0, id: 1)
                 == MachMsgReturn.sendInvalidOptions)
-        // Kernel object with MQ_CALL: INVALID_OPTIONS after copyin, pseudo-received.
-        #expect(msg2(send, bits: 0x13, size: 24, remote: 0x103, local: 0, id: 1) == MachMsgReturn.sendInvalidOptions)
+        // Kernel object with MQ_CALL: accepted (simulator processes are exempt
+        // from rule 3 for kernel objects; their mach_msg() uses MQ_CALL here).
+        #expect(msg2(send, bits: 0x13, size: 24, remote: 0x103, local: 0, id: 1) == 0)
+        // Kernel object with DK_CALL: INVALID_OPTIONS after copyin, pseudo-received.
+        let dk = MachMsgOption.sendMsg | MachMsgOption.sendDKCall
+        #expect(msg2(dk, bits: 0x13, size: 24, remote: 0x103, local: 0, id: 1) == MachMsgReturn.sendInvalidOptions)
         #expect(env.urefs(0x103) == 2)  // the COPY_SEND came back as a real right
         #expect(env.r32(data + 8) == 0x103)
         // MQ_CALL to an ordinary port with KOBJECT_CALL: pseudo-received.

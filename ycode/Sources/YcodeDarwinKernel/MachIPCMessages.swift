@@ -333,11 +333,21 @@ extension MachIPC {
             destroyMessage(m)
             return (MachMsgReturn.success, nil, " [destination dead: destroyed]")
         }
+        // mach_msg2 CFI rule 3 (`mach-ipc.md` §2.7). xnu exempts simulator
+        // processes, whose `mach_msg()` reaches kernel objects without
+        // KOBJECT_CALL (they pass SEND_ANY). Every guest of Ycode is a
+        // simulator process and Ycode's library sends `mach_msg()` with
+        // MQ_CALL, so a kernel-object destination accepts KOBJECT_CALL or
+        // MQ_CALL (the send-only-with-reply refusal applies to KOBJECT_CALL);
+        // an ordinary queue still requires MQ_CALL; SEND_ANY passes.
         if msg2 && options & MachMsgOption.sendAny == 0 {
             let ok: Bool
             if p.isKernelObject {
-                ok = options & MachMsgOption.sendKobjectCall != 0
-                    && (options & MachMsgOption.rcvMsg != 0 || m.reply.port == nil)
+                if options & MachMsgOption.sendKobjectCall != 0 {
+                    ok = options & MachMsgOption.rcvMsg != 0 || m.reply.port == nil
+                } else {
+                    ok = options & MachMsgOption.sendMQCall != 0
+                }
             } else {
                 ok = options & MachMsgOption.sendMQCall != 0
             }

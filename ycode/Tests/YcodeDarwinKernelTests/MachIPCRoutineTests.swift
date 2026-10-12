@@ -133,4 +133,55 @@ import YcodeDarwinABI
         // The kevent hook was installed by the kernel.
         #expect(ipc.messageQueuedHandler != nil)
     }
+
+    /// launchd_sim's `mach_port_set_attributes`: MIG 3218 to the task port via
+    /// `mach_msg2` with SEND|RCV|MQ_CALL (options 0x4_0000_0003), and 3217.
+    @Test func portAttributesAsMIGMessages() throws {
+        let env = try IPCEnv()
+        let reply = env.allocate()
+        let p = env.allocate()
+        let data = IPCEnv.sendBuffer
+        func rpc(_ id: Int32, _ args: [UInt32], options: UInt64 = 0x4_0000_0003) -> (UInt32, Received) {
+            let size = 32 + 4 * args.count
+            env.put([UInt8](repeating: 0, count: 24) + machNDRRecord + args.flatMap(le32), at: data)
+            let k = env.kr(-47, [data, options, 0x1513 | UInt64(size) << 32, 0x103 | UInt64(reply) << 32,
+                                 UInt64(UInt32(bitPattern: id)) << 32, UInt64(reply) << 32, 0x100, 0])
+            return (k, Received(env.read(data, 0x100)))
+        }
+        // set LIMITS_INFO (qlimit 9), then get it back.
+        var (k, r) = rpc(3218, [p, 1, 1, 9])
+        #expect(k == 0 && r.id == 3318 && r.size == 36 && r.u32(32) == 0)
+        #expect(env.ipc.portCounters(p)?.qlimit == 9)
+        (k, r) = rpc(3217, [p, 1, 17])
+        #expect(k == 0 && r.id == 3317 && r.u32(32) == 0 && r.u32(36) == 1 && r.u32(40) == 9)
+        // The same with KOBJECT_CALL.
+        (k, r) = rpc(3218, [p, 1, 1, 5], options: 0x2_0000_0003)
+        #expect(k == 0 && r.u32(32) == 0 && env.ipc.portCounters(p)?.qlimit == 5)
+        // Accepted, no effect: DNREQUESTS_SIZE, TEMPOWNER, IMPORTANCE_RECEIVER, DENAP_RECEIVER.
+        for flavor: UInt32 in [3, 4, 5, 6] {
+            (k, r) = rpc(3218, [p, flavor, 1, 0])
+            #expect(k == 0 && r.u32(32) == 0)
+        }
+        (k, r) = rpc(3218, [p, 4, 0])
+        #expect(r.u32(32) == 0)
+        // Errors in xnu order.
+        #expect(rpc(3218, [p, 1, 1, 1025]).1.u32(32) == MachKern.invalidValue)
+        #expect(rpc(3218, [p, 1, 0]).1.u32(32) == MachKern.failure)
+        #expect(rpc(3218, [0, 4, 0]).1.u32(32) == MachKern.invalidRight)
+        #expect(rpc(3218, [0x77703, 4, 0]).1.u32(32) == MachKern.invalidName)
+        #expect(rpc(3218, [0x103, 4, 0]).1.u32(32) == MachKern.invalidRight)
+        #expect(rpc(3218, [p, 9, 1, 1]).1.u32(32) == MachKern.invalidCapability)
+        #expect(rpc(3218, [p, 8, 0]).1.u32(32) == MachKern.invalidArgument)
+        #expect(rpc(3218, [p, 77, 0]).1.u32(32) == MachKern.invalidArgument)
+        // get: RECEIVE_STATUS (10 words), INFO_EXT (17), DNREQUESTS_SIZE, GUARD_INFO refused.
+        (k, r) = rpc(3217, [p, 2, 17])
+        #expect(r.u32(32) == 0 && r.u32(36) == 10 && r.u32(36 + 4 * 4) == 5)  // mps_qlimit
+        (k, r) = rpc(3217, [p, 7, 17])
+        #expect(r.u32(32) == 0 && r.u32(36) == 17)
+        #expect(rpc(3217, [p, 3, 17]).1.u32(40) == 0)
+        #expect(rpc(3217, [p, 8, 17]).1.u32(32) == MachKern.invalidArgument)
+        #expect(rpc(3217, [p, 2, 3]).1.u32(32) == MachKern.failure)
+        #expect(rpc(3217, [0, 2, 17]).1.u32(32) == MachKern.invalidRight)
+        #expect(rpc(3217, [p, 9, 1]).1.u32(32) == MachKern.invalidCapability)
+    }
 }

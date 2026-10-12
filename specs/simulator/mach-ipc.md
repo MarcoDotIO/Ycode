@@ -672,7 +672,12 @@ data that does not fit a receiver without an aux buffer is silently dropped.
    a kernel-object call that is send-only (no `RCV_MSG`) and carries a
    reply port is refused; an ordinary port requires `MQ_CALL`. Mismatch →
    `MACH_SEND_INVALID_OPTIONS` and the header rights are destroyed (this is a
-   post-copyin failure, §2.8 step 7).
+   post-copyin failure, §2.8 step 7). **Simulator exemption** (xnu
+   `osfmk/ipc/ipc_policy.c`, `ipc_validate_kmsg_dest_from_user`): simulator
+   processes may also send `MQ_CALL` to a kernel object, because their
+   `mach_msg()` keeps using it for every destination. Every Ycode guest is a
+   simulator process, so Ycode accepts `MQ_CALL` for kernel objects
+   (`DK_CALL` is still refused). Added 2026-10-12 (stage 4c).
 
 Apple's libraries set `MQ_CALL` for `mach_msg()` and `KOBJECT_CALL` for MIG
 calls to kernel servers (`mach_msg2_internal`, imported directly by a few
