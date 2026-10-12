@@ -608,11 +608,45 @@ final class GuestImageInstance: @unchecked Sendable {
                 lines.append("  FAR \(hex(frame.far)) = \(images.describe(frame.far)); region: \(space.region(containing: frame.far)?.description ?? "unmapped")")
             }
             lines.append("  LR  \(hex(frame.x[30])) = \(images.describe(frame.x[30]))")
+            // A BRK (an abort in guest code): libmalloc leaves its message
+            // in x1, libdispatch and launchd_sim in x0.
+            if frame.syndrome.exceptionClass == .brk {
+                for r in [0, 1] {
+                    if let text = guestCString(frame.x[r]) { lines.append("  x\(r) -> \"\(text)\"") }
+                }
+            }
+            // x16/x17: the last stub call's target (a NULL from a library
+            // function is often what the faulting code then used).
+            for r in [16, 17] where images.attribute(frame.x[r]) != nil {
+                lines.append("  x\(r) \(hex(frame.x[r])) = \(images.describe(frame.x[r]))")
+            }
             if let code = try? space.read(va: frame.elr & ~3, count: 4, checkingEL0Access: false) {
                 lines.append("  instruction word at ELR: \(code.reversed().map { String(format: "%02x", $0) }.joined())")
             }
             return lines.joined(separator: "\n")
         }
+    }
+
+    /// The printable C string at a guest address (EL0-readable memory, at
+    /// most 256 bytes), or nil. Lock held.
+    private func guestCString(_ va: UInt64) -> String? {
+        guard va >= 0x1000 else { return nil }
+        var bytes: [UInt8] = []
+        var address = va
+        while bytes.count < 256 {
+            // Page by page, so a string near the end of a mapping still reads.
+            let pageEnd = (address | (VMLayout.pageSize - 1)) + 1
+            let count = min(Int(pageEnd - address), 256 - bytes.count)
+            guard let chunk = try? space.read(va: address, count: count, checkingEL0Access: true) else { break }
+            if let nul = chunk.firstIndex(of: 0) {
+                bytes += chunk[..<nul]
+                break
+            }
+            bytes += chunk
+            address += UInt64(count)
+        }
+        guard bytes.count >= 2, bytes.allSatisfy({ (0x20..<0x7F).contains($0) || $0 == 0x0A || $0 == 0x09 }) else { return nil }
+        return String(decoding: bytes, as: UTF8.self).replacingOccurrences(of: "\n", with: "\\n")
     }
 
     private func handleTrap(_ worker: VCPUPool.Worker, _ frame: inout TrapFrame) -> VCPUPool.Disposition {

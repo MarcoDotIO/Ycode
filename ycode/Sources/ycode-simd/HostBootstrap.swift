@@ -1,11 +1,23 @@
-// ycode-simd --device: the logging host bootstrap service (stage4c-contract.md
-// §3, §4 row V). A host thread receives on the host bootstrap port (a port
-// of the VMM's host task, agent M's `MachHostTask`) and prints every message:
-// header, ids, descriptors, body bytes, and the sender's audit token. Phase
-// 4c-i replies to nothing: by default the requests (and their reply rights)
-// are kept, so a sender waiting for a reply keeps waiting;
-// `--debug-bootstrap-discard` drops them instead (the sender then gets a
-// send-once notification on its reply port).
+// ycode-simd --device: the host bootstrap server (stage4c-contract.md §3,
+// §8.2 row V; specs/simulator/bootstrap-wire.md §5, §7, §8). A host thread
+// receives on the host bootstrap port (a port of the VMM's host task, agent
+// M's `MachHostTask`), logs every message (header, ids, descriptors, body
+// bytes, the sender's audit token, and the decoded pipe dictionary), and
+// answers:
+//
+// - `launchd_sim`'s startup request: `msgh_id` 708, 24 bytes, not complex
+//   (bootstrap-wire.md §5.1). The host makes a port, keeps a send right to
+//   it (the host end of the control channel), and replies `msgh_id` 808,
+//   complex, 40 bytes, one port descriptor moving the receive right, no NDR
+//   (§5.2).
+// - pipe routines (`0x40000000 | n`, §2): 207 → `{error: 1102}`, 804 →
+//   `{error: 3}` (no host names yet), 206 and 805 → `{port: receive right}`
+//   (a new port), anything else → `{error: 45}`; reply id `0x20000000`.
+// - one-way pipe messages (`0x10000000`) and anything else are logged and
+//   dropped.
+//
+// `--debug-bootstrap-discard` restores the 4c-i behavior: log and drop,
+// answer nothing.
 
 #if os(Linux) && arch(arm64)
 import Foundation
@@ -13,8 +25,13 @@ import Glibc
 import YcodeDarwinABI
 import YcodeDarwinKernel
 import YcodeHypervisor
+import YcodeXPC
 
 final class HostBootstrapLogger: @unchecked Sendable {
+    /// The host-task name of the control channel's send right (708), once given.
+    private(set) var controlChannel: UInt32?
+    /// Names checked in (206/805) and the host-task port each got (statistics).
+    private(set) var checkIns: [(name: String, routine: Int)] = []
     let host: MachHostTask
     let logPath: String
     let discard: Bool
@@ -23,8 +40,6 @@ final class HostBootstrapLogger: @unchecked Sendable {
     private var thread = pthread_t()
     private var started = false
     private var logFile: UnsafeMutablePointer<FILE>?
-    /// Messages kept unanswered (their rights stay in the host task).
-    private(set) var kept: [MachHostReceivedMessage] = []
     private(set) var count = 0
 
     init(host: MachHostTask, logPath: String, discard: Bool) {
@@ -38,7 +53,7 @@ final class HostBootstrapLogger: @unchecked Sendable {
         logFile = fopen(logPath, "w")
         if logFile == nil { stderrLine("ycode-simd: warning: cannot write \(logPath): \(String(cString: strerror(errno)))") }
         emit("host bootstrap service: receiving on host-task port \(hex(UInt64(host.bootstrapPort)))"
-            + (discard ? " (requests are discarded)" : " (requests are kept unanswered)"))
+            + (discard ? " (log only: requests are dropped)" : " (serving 708 and pipe routines)"))
         let box = Unmanaged.passRetained(self).toOpaque()
         let result = pthread_create(&thread, nil, { argument in
             let logger = Unmanaged<HostBootstrapLogger>.fromOpaque(argument!).takeRetainedValue()
@@ -76,8 +91,108 @@ final class HostBootstrapLogger: @unchecked Sendable {
             }
             count += 1
             emit(Self.describe(message, number: count))
-            if discard { host.discard(message) } else { lock.withLock { kept.append(message) } }
+            if discard { host.discard(message) } else { serve(message) }
         }
+    }
+
+    // MARK: Serving
+
+    private func serve(_ m: MachHostReceivedMessage) {
+        let id = UInt32(bitPattern: m.id)
+        do {
+            if m.id == XPCBootstrap.launchdSimServiceRequestID && m.size == 24 && !m.isComplex {
+                try serveServicePortRequest(m)
+            } else if id & 0xF000_0000 == 0x4000_0000 {
+                try servePipeRoutine(m, routine: Int(id & 0x0FFF_FFFF))
+            } else if id & 0xF000_0000 == 0x1000_0000 {
+                emit("  one-way pipe message: dropped")
+                dropRights(of: m, includingReply: true)
+            } else {
+                emit("  unknown request id \(m.id): dropped (no reply)")
+                dropRights(of: m, includingReply: true)
+            }
+        } catch {
+            emit("  reply failed: \(error)")
+            dropRights(of: m, includingReply: true)
+        }
+    }
+
+    /// bootstrap-wire.md §5.2: a new port; the receive right goes to the
+    /// requester, the host keeps a send right (the control channel).
+    private func serveServicePortRequest(_ m: MachHostReceivedMessage) throws {
+        let port = try host.makePort(sendRight: true)
+        do {
+            try host.reply(to: m, id: XPCBootstrap.launchdSimServiceReplyID, descriptors: [.port(name: port, disposition: MachMsgType.moveReceive)], body: [])
+        } catch {
+            try? host.destroyPort(port)
+            throw error
+        }
+        if let old = controlChannel { try? host.deallocate(old) }
+        controlChannel = port
+        emit("  -> 808: service port (receive right) given; host keeps the control-channel send right \(hex(UInt64(port)))")
+    }
+
+    /// bootstrap-wire.md §2, §4.2, §8 item 1 (decoding and replies: `YcodeXPC`).
+    private func servePipeRoutine(_ m: MachHostReceivedMessage, routine: Int) throws {
+        let wire: [XPCWireDescriptor] = m.descriptors.map {
+            switch $0 {
+            case let .port(name, type): return .port(name: name, disposition: type)
+            case let .ool(data, _, _): return .ool(bytes: data)
+            case let .oolPorts(names, type): return .oolPorts(names: names, disposition: type)
+            case let .guardedPort(name, _, type): return .guardedPort(name: name, disposition: type)
+            }
+        }
+        let request: XPCPipeRequest?
+        do {
+            request = try XPCPipeRequest(msghID: m.id, body: m.body, descriptors: wire,
+                                         hasReplyPort: m.replyPort != 0 && m.replyPort != 0xFFFF_FFFF)
+            emit("  \(request!)")
+        } catch {
+            request = nil
+            emit("  pipe routine \(routine): cannot decode the payload: \(error)")
+        }
+        let name = request?.name
+        var reply: XPCPipeMessage
+        var newPort: UInt32?
+        switch routine {
+        case _ where request == nil:
+            reply = XPCPipeReply.error(XPCBootstrapError.unsupported)
+        case Int(XPCBootstrapRoutine.lookUp.rawValue):
+            reply = XPCPipeReply.error(XPCBootstrapError.unknownService)
+        case Int(XPCBootstrapRoutine.serviceLookUp.rawValue):
+            reply = XPCPipeReply.error(XPCBootstrapError.esrch)
+        case Int(XPCBootstrapRoutine.checkIn.rawValue), Int(XPCBootstrapRoutine.listenerCheckIn.rawValue):
+            let port = try host.makePort()
+            newPort = port
+            reply = XPCPipeReply.receiveRight(port)
+        default:
+            reply = XPCPipeReply.error(XPCBootstrapError.unsupported)
+        }
+        let descriptors: [MachHostDescriptor] = reply.descriptors.map {
+            switch $0 {
+            case let .port(name, disposition), let .guardedPort(name, disposition): return .port(name: name, disposition: disposition)
+            case let .ool(bytes): return .ool(data: bytes)
+            case let .oolPorts(names, disposition): return .oolPorts(names: names, disposition: disposition)
+            }
+        }
+        do {
+            try host.reply(to: m, id: reply.msghID, descriptors: descriptors, body: reply.body)
+        } catch {
+            if let newPort { try? host.destroyPort(newPort) }
+            throw error
+        }
+        if newPort != nil { lock.withLock { checkIns.append((name ?? "?", routine)) } }
+        let summary = (try? reply.decodeDictionary()).map { "\($0)" } ?? "\(reply.body.count) bytes"
+        emit("  -> \(hex(UInt64(reply.id))): \(summary)" + (name.map { " (name \"\($0)\")" } ?? ""))
+        // The request's own rights (descriptors) are not kept; the reply right was used.
+        dropRights(of: m, includingReply: false)
+    }
+
+    /// Drops the rights a received message brought.
+    private func dropRights(of m: MachHostReceivedMessage, includingReply: Bool) {
+        var copy = m
+        if !includingReply { copy.replyPort = 0 }
+        host.discard(copy)
     }
 
     /// One line per field group (the first line is the summary).

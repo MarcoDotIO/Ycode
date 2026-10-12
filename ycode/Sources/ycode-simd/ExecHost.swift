@@ -109,10 +109,9 @@ final class ExecConfiguration: @unchecked Sendable {
             prefixes.append(DarwinFileSystem.Prefix(guestPath: execDirectory, hostPath: execDirectory, writable: false))
         }
         if let device {
-            // Device mode (stage4c-contract.md §2): DEV, TMP, /private/var/tmp
+            // Device mode (stage4c-contract.md §2): DEV, /private/var/tmp (TMP is in it)
             // (and /var/tmp), /tmp and /private/tmp, all writable.
             prefixes.append(DarwinFileSystem.Prefix(guestPath: device.dev, hostPath: device.dev, writable: true))
-            prefixes.append(DarwinFileSystem.Prefix(guestPath: device.tmpGuestPath, hostPath: device.tmpHostPath, writable: true))
             // /var/tmp and /tmp reach these through the guest links.
             prefixes.append(DarwinFileSystem.Prefix(guestPath: "/private/var/tmp", hostPath: device.privateVarTmpHostPath, writable: true))
             prefixes.append(DarwinFileSystem.Prefix(guestPath: "/private/tmp", hostPath: device.data + "/tmp", writable: true))
@@ -200,6 +199,9 @@ struct HostStats: CustomStringConvertible {
 /// kept alive for the rest of the host process, never freed under them.
 nonisolated(unsafe) var abandonedLaunchers: [VMMLauncher] = []
 
+/// The holding-tank variable (stage4c-contract.md §8.3; `…_FD_HACK` is not set).
+let holdingTankKey = "XPC_SIMULATOR_HOLDING_TANK_HACK"
+
 /// One run of the root process. Returns the host exit status once the root
 /// process ended and the rest of the system was stopped.
 func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> Int32 {
@@ -223,7 +225,11 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
 
     let rootKernel: DarwinKernel
     do {
-        rootKernel = try system.spawnInitialProcess(config.rootRequest, fileSystem: config.makeRootFileSystem())
+        // Device mode (stage4c-contract.md §8.3): launchd_sim needs the pid of
+        // a child of its own in XPC_SIMULATOR_HOLDING_TANK_HACK; the process
+        // layer makes an already-exited one (bootstrap-wire.md §5.4).
+        rootKernel = try system.spawnInitialProcess(config.rootRequest, fileSystem: config.makeRootFileSystem(),
+                                                    exitedChildEnvironmentKey: config.device != nil ? holdingTankKey : nil)
     } catch {
         let detail = launcher.lastLaunchFailure ?? "\(config.execPath): \(error)"
         die("cannot start the root process: \(detail)", status: (error as? DarwinErrnoError) != nil ? 66 : 1)
@@ -254,7 +260,13 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         if left > 0 { result = (71, "watchdog: \(left) images still running after \(config.timeout) ms", true) }
     }
     var watchdogReport: String?
-    if result.watchdog {
+    if result.watchdog, config.device != nil, launcher.waitStatus(of: rootPID) == nil {
+        // Device mode (stage4c-contract.md §8.1): a device runs until it is
+        // stopped; `--timeout-ms` is the length of the run. Reaching it with
+        // launchd_sim alive is a normal end: exit 0, every process stopped.
+        result = (0, "device run ended after \(config.timeout) ms (--timeout-ms); launchd_sim (pid \(rootPID)) was still running", false)
+        if config.trace { watchdogReport = launcher.watchdogReport() }
+    } else if result.watchdog {
         watchdogReport = launcher.watchdogReport()
     }
     if !quietSummary || result.status != 0 { stderrLine("ycode-simd: \(result.message)") }

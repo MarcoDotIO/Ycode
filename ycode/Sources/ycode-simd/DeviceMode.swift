@@ -44,9 +44,12 @@ struct DeviceLayout {
     var launchdName: String { "com.apple.CoreSimulator.SimDevice.\(udid)" }
     /// TMP, the guest path of launchd_sim's per-device temporary directory.
     var tmpGuestPath: String { "/private/var/tmp/" + launchdName }
-    /// Host directories behind TMP and /private/var/tmp (and /var/tmp).
-    var tmpHostPath: String { dev + "/tmp-host" }
+    /// The host directory behind /private/var/tmp (and /var/tmp). TMP is an
+    /// ordinary directory in it, which launchd_sim creates itself: with TMP
+    /// already present (`mkdir` → EEXIST) it does not open its flat log.
     var privateVarTmpHostPath: String { dev + "/private-var-tmp" }
+    /// The host path of TMP.
+    var tmpHostPath: String { privateVarTmpHostPath + "/" + launchdName }
     /// The host log of the logging bootstrap service.
     var hostBootstrapLogPath: String { dev + "/ycode-host-bootstrap.log" }
     var launchdSimPath: String { runtimeRoot + "/sbin/launchd_sim" }
@@ -196,9 +199,12 @@ struct DeviceLayout {
                      data + "/Library/Application Support/Simulator", logRoot, privateVarTmpHostPath] {
             try dir(path)
         }
-        try dir(tmpHostPath, mode: 0o700)
-        // The mount point of TMP inside /private/var/tmp (listings show it).
-        try dir(privateVarTmpHostPath + "/" + launchdName, mode: 0o700)
+        // A fresh boot: no TMP yet (launchd_sim makes it, mode 0700). A
+        // previous boot's TMP is kept, renamed with its boot's end time.
+        if fm.fileExists(atPath: tmpHostPath) {
+            let stamp = Int((try? fm.attributesOfItem(atPath: tmpHostPath)[.modificationDate] as? Date)??.timeIntervalSince1970 ?? 0)
+            try fm.moveItem(atPath: tmpHostPath, toPath: "\(tmpHostPath).previous-\(stamp)-\(bootTime)")
+        }
         for path in jobPaths where !fm.fileExists(atPath: path) { try dir(path) }
         if !fm.fileExists(atPath: memoryWarningPath) {
             guard fm.createFile(atPath: memoryWarningPath, contents: Data()) else {

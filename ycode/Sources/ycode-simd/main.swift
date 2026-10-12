@@ -45,7 +45,10 @@
 // functions but resumes the guest instead of exiting 72/73.
 //
 // Exit status: the root process's exit status (128 + signal when a signal
-// ended it); 70 for a fatal guest trap; 71 for an
+// ended it). Device mode: `--timeout-ms` (default 120 000) is the length of
+// the run, and reaching it while launchd_sim still runs exits 0 (every guest
+// process is stopped first); launchd_sim exiting earlier gives its status as
+// above. Otherwise: 70 for a fatal guest trap; 71 for an
 // unexpected VM exit or the watchdog; 72 for the first unimplemented trap in
 // --trace mode; 73 for the first unimplemented host-library function in
 // --trace mode; 134 for abort_with_payload; 64 for bad usage; 66 for
