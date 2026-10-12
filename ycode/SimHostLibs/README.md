@@ -39,8 +39,8 @@ Manual.
 . ~/.local/share/swiftly/env.sh        # Linux: Thor (arm64) or the x86-64 workstation
 (cd .. && swift build --product ycode) # the self-check uses Ycode's `ycode macho`
 sh build.sh          # build and self-check the three dylibs
-sh build.sh test     # the same, then the platform host unit tests
-sh build.sh hosttest # only the host unit tests (works on macOS too)
+sh build.sh test     # the same, then the platform and pthread host unit tests
+sh build.sh hosttest # only the host unit tests: platform, then pthread/tests/run.sh (works on macOS too)
 sh build.sh clean
 ```
 

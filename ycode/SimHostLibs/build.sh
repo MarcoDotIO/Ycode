@@ -203,6 +203,11 @@ run_tests() {
     # shellcheck disable=SC2086
     "$HOST_CC" -pthread -o "$t/platform_tests" "$t/test_main.o" $objs || die "linking the host tests failed"
     "$t/platform_tests" || die "platform host tests failed"
+
+    # Agent Q's pthread host tests (output in out/host-tests-pthread/).
+    if [ -f "$here/pthread/tests/run.sh" ]; then
+        HOST_CC="$HOST_CC" sh "$here/pthread/tests/run.sh" || die "pthread host tests failed"
+    fi
 }
 
 case "${1:-all}" in
