@@ -630,12 +630,16 @@ final class GuestImageInstance: @unchecked Sendable {
     /// The printable C string at a guest address (EL0-readable memory, at
     /// most 256 bytes), or nil. Lock held.
     private func guestCString(_ va: UInt64) -> String? {
-        guard va >= 0x1000 else { return nil }
+        // Only EL0 (TTBR0) addresses: below 2^48. Anything else (an errno
+        // in x0, a kernel pointer, a tagged value) is not a string.
+        let limit: UInt64 = 1 << 48
+        guard va >= 0x1000, va < limit else { return nil }
         var bytes: [UInt8] = []
         var address = va
-        while bytes.count < 256 {
+        while bytes.count < 256, address < limit {
             // Page by page, so a string near the end of a mapping still reads.
-            let pageEnd = (address | (VMLayout.pageSize - 1)) + 1
+            // No overflow: address < 2^48, so the page end fits.
+            let pageEnd = min((address | (VMLayout.pageSize - 1)) &+ 1, limit)
             let count = min(Int(pageEnd - address), 256 - bytes.count)
             guard let chunk = try? space.read(va: address, count: count, checkingEL0Access: true) else { break }
             if let nul = chunk.firstIndex(of: 0) {
@@ -643,7 +647,7 @@ final class GuestImageInstance: @unchecked Sendable {
                 break
             }
             bytes += chunk
-            address += UInt64(count)
+            address &+= UInt64(count)
         }
         guard bytes.count >= 2, bytes.allSatisfy({ (0x20..<0x7F).contains($0) || $0 == 0x0A || $0 == 0x09 }) else { return nil }
         return String(decoding: bytes, as: UTF8.self).replacingOccurrences(of: "\n", with: "\\n")
