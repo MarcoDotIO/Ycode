@@ -77,7 +77,14 @@ vCPU, or vCPUs are multiplexed when the thread count grows.
 2. **VM bring-up.** The shim boots in KVM, maps a 16 KB-page EL0 address
    space, and runs a hand-assembled EL0 test that makes `svc #0x80` calls
    and gets results back. Exit criterion: a round trip for `getpid` (BSD
-   20) and `mach_absolute_time` (−3).
+   20) and `mach_absolute_time` (−3). *(Done 2026-10-11.)*
+   - The EL0 self-test passes every check: TPIDRRO_EL0, getpid,
+     mach_absolute_time ×2, ENOSYS with carry, write, a read across the
+     16 KB page split, and exit(0).
+   - One trap round trip (EL0 → shim → KVM exit → Swift dispatcher → back)
+     measured about 32 µs, which is a baseline to improve later.
+   - The work was built by three parallel agents against
+     `specs/simulator/vm-shim-protocol.md`.
 3. **Static-image runner.** Map an executable plus the shared cache at
    `0x1C0000000`, apply chained fixups, provide the commpage and the
    initial stack (argc/argv/envp/apple), and start `dyld_sim`. Exit

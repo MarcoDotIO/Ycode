@@ -1,6 +1,7 @@
 # Spec: Ycode micro-VM, stage 2 contract (VMM ↔ EL1 shim ↔ EL0)
 
-Status: **contract for stage 2** of `docs/SIMULATOR-LINUX.md`. Every component
+Status: **implemented and verified (stage 2 of `docs/SIMULATOR-LINUX.md`).**
+The end-to-end self-test passes on the Thor. Every component
 built in stage 2 follows this document exactly. If something needs to change,
 change it here first.
 
@@ -254,6 +255,50 @@ public struct DarwinTrapDispatcher {
     public mutating func handle(_ frame: inout TrapFrame, memory: GuestMemoryAccess) -> TrapOutcome
 }
 ```
+
+## 9. Resolutions made during stage 2 (normative)
+
+These were settled while building stage 2 and are now part of the contract.
+
+- **The shim's private register.** The shim sets `TPIDR_EL1` to the boot
+  info address and uses it in its vectors to find the frame and the
+  doorbell. EL0 cannot read it. The boot info block must stay mapped and
+  unchanged while the guest runs.
+- **Exceptions taken at EL1** (any synchronous exception or any IRQ, FIQ, or
+  SError while the shim runs), and lower-EL AArch32 entries, ring the
+  doorbell and then spin. The VMM must never resume them.
+- **Resumable kinds.** Lower-EL kinds 2 and 3 may be resumed. The shim
+  restores everything and `eret`s if the VMM runs the vCPU again.
+- **Register values used**, from `YcodeDarwinABI.VMLayout`:
+  - `TCR_EL1 = 0x0000_0002_4091_B511`. T1SZ is set to 17 (not 0) so that
+    the unused TTBR1 field is architecturally valid.
+  - `MAIR_EL1 = 0xFF`.
+  - `SCTLR_EL1 = 0x34D5_D99D`. The ARMv8.0 RES1 bits are set, plus ITD and
+    SED (EL0 is AArch64-only).
+- **`x16` decoding.** Only the low 32 bits are used, read as signed.
+  `0x80000000` (platform) is unimplemented in stage 2 and takes the "other
+  negative" path. `x16 = 0` counts as BSD and returns ENOSYS.
+- **`write` edge cases:**
+  - An unreadable buffer (including EL1-only pages) returns EFAULT (14)
+    with carry set.
+  - A length above `Int32.max` returns EINVAL (22).
+  - A length of 0 returns 0.
+  - The fd is the low 32 bits, read as signed.
+- **Diagnostics.**
+  - After an MMIO exit, the PC that KVM reports still points at the
+    doorbell store. KVM advances it on the next `KVM_RUN`.
+  - A guest *read* of the doorbell is unexpected, and the VMM exits with
+    71.
+- **VMM exit statuses:**
+  - the guest's `exit` status;
+  - 70 for a fatal trap;
+  - 71 for an unexpected KVM exit, the watchdog, or the exit cap;
+  - 64 for usage errors;
+  - 66 for unreadable input;
+  - 1 for a KVM error.
+- **Platforms.** The KVM bindings and the hypervisor are compiled only for
+  arm64 Linux (`__linux__ && __aarch64__`, `os(Linux) && arch(arm64)`). On
+  other platforms `ycode-simd` reports that it is unavailable.
 
 ## Evidence
 
