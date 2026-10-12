@@ -153,3 +153,17 @@ intermittent `searchd` fault (write to `0xbad` in SpotlightIndex);
 `posix_spawn` image loading outside the lock; still-unimplemented calls
 seen in the boot (`thread_get_state`, `kpersona_*`, `posix_madvise`,
 `quotactl`, `memorystatus_control`, `setattrlist`).
+
+### 6.1 Follow-ups after the stage (2026-10-12, integrators I2/I3)
+
+The stage-6 leftovers are implemented (`host-libraries.md` §11.3). A
+180 s release boot: every core job spawned once and alive at the timeout,
+118 jobs with a pid (same as stage 6), unimplemented library-function
+lines 24,811 → 105; only `configd_sim` crashes. The `searchd` 0xbad fault
+was SpotlightIndex's deliberate crash on a missing
+`thread_get_exception_ports` (level 3, fault-report trap ring); fixed.
+searchd now exits 0 after 10–37 s and is relaunched on demand (throttle
+delays, not crashes; cause not investigated). Still unimplemented in the
+boot: `accessx_np` (82), `thread_info` (8), `mach_port_extract_right` (7,
+from `launchd_sim`), `vm_copy` (3), `thread_suspend`/`thread_resume`,
+`task_create_identity_token`.

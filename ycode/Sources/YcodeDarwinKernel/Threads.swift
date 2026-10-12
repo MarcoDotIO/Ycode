@@ -36,10 +36,14 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible {
     /// The trap in progress (diagnostics: the blocked-thread report): x16
     /// and x0…x7 at entry; nil between traps. Set by the VMM.
     public var trapInProgress: (x16: UInt64, args: [UInt64])?
+    /// The user registers at the entry of the trap in progress (nil while
+    /// the thread runs guest code): what thread_get_state reports.
+    public internal(set) var entryFrame: TrapFrame?
     /// Diagnostics: set from the moment the VMM sees the trap (before it
     /// takes the kernel lock) until it returns.
     public var arrivingTrap: UInt64?
-    /// Diagnostics: traps made, and the last 16 (x16, x0, x1, x2), newest last.
+    /// Diagnostics: traps made, and the last 16 (x16, x0 and x1 at entry, x0
+    /// at return with bit 63 set when carry was set), newest last.
     public var trapCount = 0
     public var recentTraps: [(UInt64, UInt64, UInt64, UInt64)] = []
     /// The process image (kernel) this thread belongs to (stage 4b). Set
@@ -409,5 +413,62 @@ extension DarwinKernel {
         frame.x[0] = KernReturn.success
         log("trap mach \(n) thread_switch(thread=\(hx(UInt32(truncatingIfNeeded: frame.x[0]))), option=\(option), time=\(ms)) -> KERN_SUCCESS")
         return .resume
+    }
+}
+
+// MARK: - thread_get_state (stage 6)
+
+extension DarwinKernel {
+    /// thread_get_state for a thread of the caller's task (xnu
+    /// `osfmk/arm64/status.c` machine_thread_get_state, `mach/arm/
+    /// thread_status.h`; level 1). The state is the thread's user registers
+    /// at the entry of its trap in progress: the caller's own thread, or a
+    /// thread blocked in (or entering) the kernel. A thread executing guest
+    /// code on its vCPU cannot be sampled here and gets KERN_FAILURE —
+    /// libobjc then treats it as inside a cache critical section and keeps
+    /// the old caches (objc4 `_collecting_in_critical`; level 1). Flavors:
+    /// ARM_THREAD_STATE64 (6, 68 words), ARM_EXCEPTION_STATE64 (7, 4 words),
+    /// ARM_THREAD_STATE (1, the unified form: {flavor 6, count 68} + state,
+    /// 70 words). Others are KERN_INVALID_ARGUMENT (Ycode keeps no FP, NEON
+    /// or debug registers of other threads).
+    func threadGetState(_ a: [UInt64], ipc: MachIPC, memory: any GuestVirtualMemory) -> (UInt32, String) {
+        let name = UInt32(truncatingIfNeeded: a[0]), flavor = UInt32(truncatingIfNeeded: a[1])
+        guard let (port, object) = ipc.kernelObject(named: name), case .thread = object else {
+            return (MachKern.invalidArgument, " [not a thread of this task]")
+        }
+        guard let thread = threadsByPort.values.first(where: { ipc.kernelObject(named: $0.portName)?.0 === port }),
+              thread.isAlive else {
+            return (MachKern.invalidArgument, " [not a thread of this task]")
+        }
+        guard let capacityBytes = try? memory.read(va: a[3], count: 4) else { return (MachKern.invalidAddress, "") }
+        let capacity = capacityBytes.readLE(UInt32.self, at: 0)
+        let needed: UInt32
+        switch flavor {
+        case 1: needed = 70
+        case 6: needed = 68
+        case 7: needed = 4
+        default: return (MachKern.invalidArgument, " [flavor \(flavor) not kept]")
+        }
+        guard capacity >= needed else { return (MachKern.invalidArgument, " [count \(capacity) < \(needed)]") }
+        guard let f = thread.entryFrame else { return (MachKern.failure, " [thread \(thread.threadID) is running]") }
+        var out: [UInt8] = []
+        switch flavor {
+        case 7:
+            out.appendLE(f.far)
+            out.appendLE(UInt32(truncatingIfNeeded: f.esr))
+            out.appendLE(UInt32(truncatingIfNeeded: f.esr >> 26))  // exception class
+        default:
+            if flavor == 1 { out.appendLE(UInt32(6)); out.appendLE(UInt32(68)) }
+            for r in 0..<29 { out.appendLE(f.x[r]) }
+            out.appendLE(f.x[29])
+            out.appendLE(f.x[30])
+            out.appendLE(f.spEL0)
+            out.appendLE(f.elr)
+            out.appendLE(UInt32(truncatingIfNeeded: f.spsr))
+            out.appendLE(UInt32(0))
+        }
+        guard (try? memory.write(va: a[2], bytes: out)) != nil,
+              (try? memory.write(va: a[3], bytes: le32(needed))) != nil else { return (MachKern.invalidAddress, "") }
+        return (MachKern.success, " [thread \(thread.threadID) pc \(hx(f.elr))]")
     }
 }

@@ -789,13 +789,14 @@ final class GuestImageInstance: @unchecked Sendable {
         // signal delivery): fault reports describe this one.
         let arrivedFrame = frame
         context.trapInProgress = (frame.x[16], Array(frame.x[0..<8]))
-        if options.debugThreadReport {
-            context.trapCount += 1
-            if context.recentTraps.count == 16 { context.recentTraps.removeFirst() }
-            context.recentTraps.append((frame.x[16], frame.x[0], frame.x[1], frame.x[2]))
-        }
+        let entryX0 = frame.x[0], entryX1 = frame.x[1]
         let outcome = kernel.handle(&frame, context: context, memory: space)
         context.trapInProgress = nil
+        // The trap ring (fault reports, the blocked-thread report): every
+        // trap, with its result (bit 63: carry, an errno).
+        context.trapCount += 1
+        if context.recentTraps.count == 16 { context.recentTraps.removeFirst() }
+        context.recentTraps.append((arrivedFrame.x[16], entryX0, entryX1, frame.carry ? (1 << 63) | frame.x[0] : frame.x[0]))
         if trace, isSVC, x16 == 368, outcome == .resume, frame.x[16] == 0, frame.x[5] > 0, frame.x[5] < 64, frame.x[3] != 0 {
             // A workqueue thread restarted with events (x3 = list, x5 = count).
             kernel.lock.withLock { dumpKevents(space, list: frame.x[3], count: Int(frame.x[5]), label: "event") }
@@ -840,6 +841,9 @@ final class GuestImageInstance: @unchecked Sendable {
                     + "\(describeAddress(reportFrame.elr)); LR \(hex(reportFrame.x[30])) = \(describeAddress(reportFrame.x[30]))\n"
             }
             text += "fatal guest condition on \(context), vCPU \(worker.index) (exit \(status)):\n\(message)\n\(faultReport(reportFrame))"
+            if !context.recentTraps.isEmpty {
+                text += "\n  last traps of this thread: " + context.recentTraps.map(DarwinKernel.ringEntry).joined(separator: " ")
+            }
             // abort(): the reason is in the libraries' crash annotations.
             if status == DarwinKernel.abortExitStatus, reportFrame.syndrome.exceptionClass != .brk {
                 let notes = kernel.lock.withLock { crashAnnotations() }

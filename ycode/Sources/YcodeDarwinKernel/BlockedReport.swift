@@ -6,13 +6,19 @@ extension DarwinKernel {
     /// Record each knote's last state changes (set by the VMM for reports).
     nonisolated(unsafe) public static var recordKnoteHistory = false
 
+    /// One trap-ring entry: `x16(x0,x1)->result` (`!errno` when carry was set).
+    public static func ringEntry(_ e: (UInt64, UInt64, UInt64, UInt64)) -> String {
+        let result = e.3 & (1 << 63) != 0 ? "!\(e.3 & 0xFFFF_FFFF)" : hx(e.3)
+        return "\(Int64(bitPattern: e.0))(\(hx(e.1)),\(hx(e.2)))->\(result)"
+    }
+
     /// One line per thread that is inside a trap. Lock held.
     public func blockedThreadReport() -> [String] {
         var lines: [String] = []
         let ipc = machIPC as? MachIPC
         for t in threadsByPort.values.sorted(by: { $0.threadID < $1.threadID }) {
             if t.trapCount > 0 {
-                let recent = t.recentTraps.map { "\(Int64(bitPattern: $0.0))(\(hx($0.1)),\(hx($0.2)),\(hx($0.3)))" }
+                let recent = t.recentTraps.map { Self.ringEntry($0) }
                 lines.append("thread \(t.threadID): \(t.trapCount) traps; last: " + recent.joined(separator: " "))
             }
             guard let (x16, a) = t.trapInProgress else {

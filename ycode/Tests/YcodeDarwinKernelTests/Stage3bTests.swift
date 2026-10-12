@@ -458,7 +458,9 @@ import YcodeDarwinABI
         #expect(String(decoding: b[88...].prefix { $0 != 0 }, as: UTF8.self) == env.root)
         let fd = env.svc(5, [s, 0, 0]).1.x[0]
         #expect(!env.svc(346, [fd, s + 0x2000]).1.carry)
-        #expect(try env.space.read(va: s + 0x2000, count: 2168) == b)
+        // The same answer, except the host's free counts (they move).
+        let b2 = try env.space.read(va: s + 0x2000, count: 2168)
+        #expect(Array(b2[0..<16]) == Array(b[0..<16]) && Array(b2[48...]) == Array(b[48...]))
         try env.putString("/nope", at: s)
         #expect(env.svc(345, [s, s + 0x1000]).1.x[0] == 2)
     }

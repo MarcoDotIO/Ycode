@@ -253,6 +253,9 @@ extension MachIPC {
                 release(r)
             }
             old.exceptions.forEach { release($0.port) }
+            let threadSlots = threadExceptions
+            threadExceptions = [:]
+            threadSlots.values.forEach { $0.forEach { release($0.port) } }
             syncWellKnownNames()
             log("mach inherit task ports from pid \(parent.currentPID)")
         }
@@ -391,6 +394,9 @@ extension MachIPC {
                 release(r)
             }
             old.exceptions.forEach { release($0.port) }
+            let threadSlots = threadExceptions
+            threadExceptions = [:]
+            threadSlots.values.forEach { $0.forEach { release($0.port) } }
             // 4. The task's own kernel ports die: holders elsewhere see dead names.
             for p in [taskPort, taskNamePort, mainThreadPort] + [taskReadPort, taskInspectPort].compactMap({ $0 })
                 + ownedKernelPorts {

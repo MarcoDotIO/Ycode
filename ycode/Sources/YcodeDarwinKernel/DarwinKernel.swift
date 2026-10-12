@@ -452,6 +452,8 @@ public final class DarwinKernel {
         lock.withLock(context: context) {
             if context.kernel == nil { context.kernel = self }
             if let termination { return termination }
+            context.entryFrame = frame
+            defer { context.entryFrame = nil }
             let outcome = handleLocked(&frame, memory: memory)
             switch outcome {
             case .exit, .fatal:
@@ -742,7 +744,27 @@ public final class DarwinKernel {
             return .value(0)
 
         case BSD.madvise:
+            // Also posix_madvise (an alias on Darwin). Advice 0…11 (MADV_NORMAL
+            // … MADV_ZERO, sys/mman.h) is accepted; only MADV_ZERO (11) changes
+            // memory: the range reads as zeros afterwards (xnu VM_BEHAVIOR_ZERO,
+            // level 1). The others are hints or allow lazy discard, so keeping
+            // the pages is correct. Other values are EINVAL (level 3: the
+            // Mac's simulator).
             call = "madvise(addr=\(hx(a[0])), len=\(hx(a[1])), advice=\(int(2)))"
+            guard (0...11).contains(int(2)) else { throw Failure(errno: Errno.EINVAL) }
+            if int(2) == 11, a[1] > 0 {
+                let end = a[0].addingReportingOverflow(a[1])
+                guard !end.overflow else { throw Failure(errno: Errno.EINVAL) }
+                let zeros = [UInt8](repeating: 0, count: Int(min(a[1], 1 << 20)))
+                var at = a[0]
+                while at < end.partialValue {
+                    let n = Int(min(UInt64(zeros.count), end.partialValue - at))
+                    do { try mem.write(va: at, bytes: n == zeros.count ? zeros : Array(zeros[0..<n])) } catch {
+                        throw Failure(errno: Errno.ENOMEM)
+                    }
+                    at += UInt64(n)
+                }
+            }
             return .value(0)
 
         case BSD.fcntl:
@@ -777,6 +799,9 @@ public final class DarwinKernel {
 
         case BSD.getattrlist, 228, 476:
             return .value(try attributeListCall(n, a, &call, mem))
+
+        case 221, 229, 524:  // setattrlist, fsetattrlist, setattrlistat
+            return .value(try setAttributeListCall(n, a, &call, mem))
 
         case BSD.fsgetpath, BSD.getattrlistbulk:
             throw Failure(errno: Errno.ENOTSUP)
@@ -831,6 +856,7 @@ public final class DarwinKernel {
         default:
             if let result = try posixShmCall(n, a, &call, mem) { return result }
             if PosixSemBSD.all.contains(n) { return try posixSemCall(n, a, &call, mem) }
+            if SystemControlBSD.all.contains(n) { return try systemControlCall(n, a, &call, mem) }
             return try extendedBSDCall(n, a, &call, &fallback, mem) ?? .unimplemented
         }
     }

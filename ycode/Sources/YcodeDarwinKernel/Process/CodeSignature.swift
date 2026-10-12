@@ -26,7 +26,14 @@ enum CodeSignature {
 
     /// The embedded-signature SuperBlob of the arm64 image in `hostPath`.
     static func superBlob(ofExecutableAt hostPath: String) -> [UInt8]? {
-        guard let handle = FileHandle(forReadingAtPath: hostPath) else { return nil }
+        signatureParts(ofExecutableAt: hostPath).superBlob
+    }
+
+    /// The SuperBlob and the `__TEXT,__entitlements` section (simulator
+    /// builds carry their entitlements there, as an XML plist;
+    /// app-install-launch.md §4.5) of the arm64 image in `hostPath`.
+    static func signatureParts(ofExecutableAt hostPath: String) -> (superBlob: [UInt8]?, entitlements: [UInt8]?) {
+        guard let handle = FileHandle(forReadingAtPath: hostPath) else { return (nil, nil) }
         defer { try? handle.close() }
         func read(_ offset: UInt64, _ count: Int) -> [UInt8] {
             guard count > 0, (try? handle.seek(toOffset: offset)) != nil else { return [] }
@@ -37,41 +44,62 @@ enum CodeSignature {
         }
         var slice: UInt64 = 0
         let head = read(0, 4096)
-        guard head.count >= 32 else { return nil }
+        guard head.count >= 32 else { return (nil, nil) }
         let fat = be32(head, 0)
         if fat == 0xCAFE_BABE || fat == 0xCAFE_BABF {
             let is64 = fat == 0xCAFE_BABF, entry = is64 ? 32 : 20
             let n = Int(be32(head, 4))
-            guard n > 0, n < 64, head.count >= 8 + n * entry else { return nil }
+            guard n > 0, n < 64, head.count >= 8 + n * entry else { return (nil, nil) }
             var found: UInt64?
             for i in 0..<n where be32(head, 8 + i * entry) == 0x0100_000C {
                 let o = 8 + i * entry
                 found = is64 ? UInt64(be32(head, o + 8)) << 32 | UInt64(be32(head, o + 12)) : UInt64(be32(head, o + 8))
                 break
             }
-            guard let found else { return nil }
+            guard let found else { return (nil, nil) }
             slice = found
         }
         let header = slice == 0 ? head : read(slice, 32)
-        guard header.count >= 32, header.readLE(UInt32.self, at: 0) == 0xFEED_FACF else { return nil }
+        guard header.count >= 32, header.readLE(UInt32.self, at: 0) == 0xFEED_FACF else { return (nil, nil) }
         let ncmds = Int(header.readLE(UInt32.self, at: 16)), sizeofcmds = Int(header.readLE(UInt32.self, at: 20))
-        guard sizeofcmds > 0, sizeofcmds <= 1 << 20 else { return nil }
+        guard sizeofcmds > 0, sizeofcmds <= 1 << 20 else { return (nil, nil) }
         let commands = read(slice + 32, sizeofcmds)
         var at = 0
         var signature: (offset: UInt64, size: Int)?
+        var section: (offset: UInt64, size: Int)?
+        func name(_ o: Int) -> String {
+            String(decoding: commands[o..<(o + 16)].prefix { $0 != 0 }, as: UTF8.self)
+        }
         for _ in 0..<ncmds {
             guard at + 8 <= commands.count else { break }
             let cmd = commands.readLE(UInt32.self, at: at), size = Int(commands.readLE(UInt32.self, at: at + 4))
             if cmd == 0x1D, at + 16 <= commands.count {
                 signature = (UInt64(commands.readLE(UInt32.self, at: at + 8)), Int(commands.readLE(UInt32.self, at: at + 12)))
             }
+            // LC_SEGMENT_64 __TEXT: section_64 records of 80 bytes after the
+            // 72-byte command (sectname, segname, addr, size, offset, …).
+            if cmd == 0x19, at + 72 <= commands.count, name(at + 8) == "__TEXT" {
+                let nsects = Int(commands.readLE(UInt32.self, at: at + 64))
+                for i in 0..<nsects {
+                    let o = at + 72 + 80 * i
+                    guard o + 80 <= commands.count else { break }
+                    if name(o) == "__entitlements" {
+                        section = (UInt64(commands.readLE(UInt32.self, at: o + 48)), Int(commands.readLE(UInt64.self, at: o + 40)))
+                    }
+                }
+            }
             guard size >= 8 else { break }
             at += size
         }
-        guard let signature, signature.size >= 12, signature.size <= 16 << 20 else { return nil }
+        var entitlements: [UInt8]?
+        if let section, section.size > 0, section.size <= 1 << 20 {
+            let bytes = read(slice + section.offset, section.size)
+            if bytes.count == section.size { entitlements = bytes }
+        }
+        guard let signature, signature.size >= 12, signature.size <= 16 << 20 else { return (nil, entitlements) }
         let blob = read(slice + signature.offset, signature.size)
-        guard blob.count == signature.size, be32(blob, 0) == 0xFADE_0CC0 else { return nil }
-        return blob
+        guard blob.count == signature.size, be32(blob, 0) == 0xFADE_0CC0 else { return (nil, entitlements) }
+        return (blob, entitlements)
     }
 
     static func be32(_ b: [UInt8], _ o: Int) -> UInt32 {
@@ -230,7 +258,18 @@ struct CodeSigningInfo {
         cacheLock.lock()
         if let hit = cache[hostPath] { cacheLock.unlock(); return hit }
         cacheLock.unlock()
-        let info = CodeSignature.superBlob(ofExecutableAt: hostPath).flatMap(parse)
+        let parts = CodeSignature.signatureParts(ofExecutableAt: hostPath)
+        var info = parts.superBlob.flatMap(parse)
+        // Simulator builds: the `__TEXT,__entitlements` plist is what the
+        // simulator's libraries serve as the entitlements blob (op 7), with an
+        // 8-byte blob header (app-install-launch.md §4.5; level 3).
+        if let xml = parts.entitlements, info != nil {
+            var blob: [UInt8] = []
+            for v in [UInt32(0xFADE_7171), UInt32(xml.count + 8)] {
+                blob += [UInt8(v >> 24), UInt8(truncatingIfNeeded: v >> 16), UInt8(truncatingIfNeeded: v >> 8), UInt8(truncatingIfNeeded: v)]
+            }
+            info?.entitlements = blob + xml
+        }
         cacheLock.lock()
         cache[hostPath] = info
         cacheLock.unlock()

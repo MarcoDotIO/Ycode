@@ -977,3 +977,53 @@ YC_EXPORT int host_get_io_master(yc_port_t host, yc_port_t *io_master)
 {
     return host_get_io_main(host, io_master);
 }
+
+/* kern_return_t thread_get_state(thread_read_t target_act, thread_state_flavor_t flavor,
+ *     thread_state_t old_state, mach_msg_type_number_t *old_stateCnt)
+ * Private routine 17: the VMM reports a thread of the caller's task. */
+YC_EXPORT int thread_get_state(yc_port_t thread, int flavor, yc_u32 *state, yc_u32 *count)
+{
+    return (int)yc_mach_trap(YC_PRIV_ROUTINE(17), thread, (yc_uintptr_t)(unsigned)flavor, (yc_uintptr_t)state,
+                             (yc_uintptr_t)count, 0, 0, 0);
+}
+
+/* kern_return_t thread_get_exception_ports(thread_t thread, exception_mask_t exception_mask,
+ *     exception_mask_array_t masks, mach_msg_type_number_t *masksCnt, exception_handler_array_t old_handlers,
+ *     exception_behavior_array_t old_behaviors, exception_flavor_array_t old_flavors)
+ * Private routine 18 (xnu osfmk/mach/thread_act.defs; level 1). */
+YC_EXPORT int thread_get_exception_ports(yc_port_t thread, yc_u32 mask, yc_u32 *masks, yc_u32 *count,
+                                         yc_port_t *handlers, yc_u32 *behaviors, yc_u32 *flavors)
+{
+    return (int)yc_mach_trap(YC_PRIV_ROUTINE(18), thread, mask, (yc_uintptr_t)masks, (yc_uintptr_t)count,
+                             (yc_uintptr_t)handlers, (yc_uintptr_t)behaviors, (yc_uintptr_t)flavors);
+}
+
+/* kern_return_t thread_set_exception_ports(thread_t thread, exception_mask_t exception_mask,
+ *     mach_port_t new_port, exception_behavior_t behavior, thread_state_flavor_t new_flavor)
+ * Private routine 19. */
+YC_EXPORT int thread_set_exception_ports(yc_port_t thread, yc_u32 mask, yc_port_t port, int behavior, int flavor)
+{
+    return (int)yc_mach_trap(YC_PRIV_ROUTINE(19), thread, mask, port, (yc_uintptr_t)(unsigned)behavior,
+                             (yc_uintptr_t)(unsigned)flavor, 0, 0);
+}
+
+/* thread_swap_exception_ports: the old ports (as get), then the new ones (as
+ * set). Not atomic against another thread changing the same thread's ports
+ * between the two steps (Ycode delivers no Mach exceptions; ports are only
+ * kept and reported). */
+YC_EXPORT int thread_swap_exception_ports(yc_port_t thread, yc_u32 mask, yc_port_t port, int behavior, int flavor,
+                                          yc_u32 *masks, yc_u32 *count, yc_port_t *handlers, yc_u32 *behaviors,
+                                          yc_u32 *flavors)
+{
+    int kr = thread_get_exception_ports(thread, mask, masks, count, handlers, behaviors, flavors);
+    if (kr != 0)
+        return kr;
+    kr = thread_set_exception_ports(thread, mask, port, behavior, flavor);
+    if (kr != 0) {
+        for (yc_u32 i = 0; i < *count; i++)
+            if (handlers[i] != YC_MACH_PORT_NULL && handlers[i] != YC_MACH_PORT_DEAD)
+                (void)mach_port_deallocate(mach_task_self_, handlers[i]);
+        *count = 0;
+    }
+    return kr;
+}

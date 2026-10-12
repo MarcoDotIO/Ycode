@@ -227,7 +227,10 @@ extension DarwinKernel {
             case 0x800: p.time(st.ctime)                                   // CHGTIME
             case 0x1000: p.time(st.atime)                                  // ACCTIME
             case 0x2000: p.time(.init())                                   // BKUPTIME
-            case 0x4000: p.zeros(32)                                       // FNDRINFO
+            case 0x4000:                                                   // FNDRINFO (setattrlist keeps it)
+                let info = (try? fileSystem.getExtendedAttribute(.path(o.path, followSymlinks: false),
+                                                                 name: Self.finderInfoName)) ?? []
+                if info.count == 32 { p.align(); p.fixed += info } else { p.zeros(32) }
             case 0x8000: p.u32(st.uid)                                     // OWNERID
             case 0x10000: p.u32(st.gid)                                    // GRPID
             case 0x20000: p.u32(UInt32(st.mode))                           // ACCESSMASK
@@ -340,5 +343,133 @@ extension DarwinKernel {
             default: break
             }
         }
+    }
+}
+
+// MARK: - setattrlist
+
+// setattrlist(2), fsetattrlist(2), setattrlistat(2) (`sys/attr.h`, the
+// setattrlist(2) manual page; level 1): the buffer holds the attributes in
+// bit order, packed as getattrlist packs them but without the length word.
+// Settable: ATTR_CMN_SETMASK (0x51C7FF00) and ATTR_FILE_SETMASK (0x20);
+// ATTR_VOL_INFO|ATTR_VOL_NAME (volume renames) are refused (EROFS: Ycode's
+// volumes have fixed names); anything else is EINVAL. Applied: MODTIME and
+// ACCTIME (host times), FNDRINFO (kept as the `com.apple.FinderInfo`
+// extended attribute, as Darwin file systems without native Finder info
+// do), OWNERID/GRPID (chown rules), ACCESSMASK (chmod), DATA_PROTECT_FLAGS
+// (the protection class). SCRIPT, CRTIME, CHGTIME, BKUPTIME, FLAGS,
+// EXTENDED_SECURITY, UUID, GRPUUID and ADDEDTIME are accepted and not kept.
+extension DarwinKernel {
+    static let finderInfoName = "com.apple.FinderInfo"
+
+    func setAttributeListCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        let fs = fileSystem
+        let request: (alist: UInt64, buffer: UInt64, size: UInt64, options: UInt64)
+        let target: DarwinFileSystem.XattrTarget
+        let path: String
+        switch n {
+        case 229:
+            let fd = Int32(truncatingIfNeeded: a[0])
+            request = (a[1], a[2], a[3], a[4])
+            path = try fs.path(for: fd)
+            target = .descriptor(fd)
+            call = "fsetattrlist(fd=\(fd) [\(path)], "
+        case 524:
+            let fd = Int32(truncatingIfNeeded: a[0])
+            request = (a[2], a[3], a[4], a[5])
+            path = try resolveAtPath(fd, a[1], mem)
+            target = .path(path, followSymlinks: request.options & AttrList.noFollow == 0)
+            call = "setattrlistat(\(fd), \"\(path)\", "
+        default:
+            request = (a[1], a[2], a[3], a[4])
+            path = try readPath(a[0], mem)
+            target = .path(path, followSymlinks: request.options & AttrList.noFollow == 0)
+            call = "setattrlist(\"\(path)\", "
+        }
+        let raw = try mem.read(va: request.alist, count: 24)
+        let groups = (0..<5).map { raw.readLE(UInt32.self, at: 4 + 4 * $0) }
+        call += "attrs=[\(groups.map { hx(UInt64($0)) }.joined(separator: ","))], size=\(request.size), "
+            + "options=\(hx(request.options)))"
+        guard raw.readLE(UInt16.self, at: 0) == AttrList.bitmapCount else { throw Failure(errno: Errno.EINVAL) }
+        let (common, volume, dir, file, fork) = (groups[0], groups[1], groups[2], groups[3], groups[4])
+        if volume != 0 {
+            guard volume & ~0x8000_2000 == 0 else { throw Failure(errno: Errno.EINVAL) }
+            throw Failure(errno: 30)  // EROFS
+        }
+        guard common & ~0x51C7_FF00 == 0, dir == 0, file & ~0x20 == 0, fork == 0 else {
+            throw Failure(errno: Errno.EINVAL)
+        }
+        let follow: Bool
+        if case let .path(_, f) = target { follow = f } else { follow = true }
+        let st: DarwinStat
+        switch target {
+        case .descriptor(let fd): st = try fs.fstat(fd)
+        case .path: st = try fs.stat(path, followSymlinks: follow)
+        }
+        let size = Int(min(request.size, 1 << 16))
+        let buffer = size == 0 ? [] : try mem.read(va: request.buffer, count: size)
+        var at = 0
+        func take(_ count: Int) throws -> ArraySlice<UInt8> {
+            at = (at + 3) & ~3
+            guard at + count <= buffer.count else { throw Failure(errno: Errno.EINVAL) }
+            defer { at += count }
+            return buffer[at..<(at + count)]
+        }
+        func time() throws -> DarwinTimespec {
+            let b = Array(try take(16))
+            return DarwinTimespec(sec: b.readLE(Int64.self, at: 0), nsec: b.readLE(Int64.self, at: 8))
+        }
+        func u32() throws -> UInt32 { Array(try take(4)).readLE(UInt32.self, at: 0) }
+        var modification: DarwinTimespec?, access: DarwinTimespec?
+        var finderInfo: [UInt8]?, owner: UInt32?, group: UInt32?, mode: UInt32?, protection: UInt32?
+        for bit in 8..<31 where common & (1 << UInt32(bit)) != 0 {
+            switch UInt32(1) << UInt32(bit) {
+            case 0x100: _ = try u32()                                    // SCRIPT
+            case 0x200, 0x800, 0x2000, 0x10000000: _ = try time()        // CRTIME, CHGTIME, BKUPTIME, ADDEDTIME
+            case 0x400: modification = try time()
+            case 0x1000: access = try time()
+            case 0x4000: finderInfo = Array(try take(32))
+            case 0x8000: owner = try u32()
+            case 0x10000: group = try u32()
+            case 0x20000: mode = try u32()
+            case 0x40000: _ = try u32()                                  // FLAGS (not kept)
+            case 0x400000: _ = try take(8)                               // EXTENDED_SECURITY reference
+            case 0x800000, 0x1000000: _ = try take(16)                   // UUID, GRPUUID
+            case 0x40000000: protection = try u32()                      // DATA_PROTECT_FLAGS
+            default: throw Failure(errno: Errno.EINVAL)
+            }
+        }
+        if file & 0x20 != 0 { _ = try u32() }                            // FILE_DEVTYPE
+        // Apply in the order the checks can fail.
+        if owner != nil || group != nil {
+            switch target {
+            case .descriptor(let fd): try fs.fchown(fd, uid: owner ?? UInt32.max, gid: group ?? UInt32.max)
+            case .path: try fs.chown(path, uid: owner ?? UInt32.max, gid: group ?? UInt32.max, followSymlinks: follow)
+            }
+        }
+        if let mode {
+            switch target {
+            case .descriptor(let fd): try fs.fchmod(fd, mode: UInt16(truncatingIfNeeded: mode))
+            case .path: try fs.chmod(path, mode: UInt16(truncatingIfNeeded: mode), followSymlinks: follow)
+            }
+        }
+        if modification != nil || access != nil {
+            let m = modification ?? st.mtime, ac = access ?? st.atime
+            switch target {
+            case .descriptor(let fd): try fs.setTimes(fd, access: ac, modification: m)
+            case .path: try fs.setTimes(path, access: ac, modification: m, followSymlinks: follow)
+            }
+        }
+        if let finderInfo {
+            if finderInfo.allSatisfy({ $0 == 0 }) {
+                try? fs.removeExtendedAttribute(target, name: Self.finderInfoName)
+            } else {
+                try fs.setExtendedAttribute(target, name: Self.finderInfoName, value: finderInfo, create: false, replace: false)
+            }
+        }
+        if let protection, case .descriptor(let fd) = target, let f = try? fs.file(for: fd) {
+            try setProtectionClass(f, Int32(bitPattern: protection))
+        }
+        return 0
     }
 }

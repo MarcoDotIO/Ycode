@@ -444,3 +444,32 @@ Stage 6 also added (VMM only, no new routine numbers): `vm_purgable_control`
 `F_SETLKWTIMEOUT`, `F_OFD_*`, `flock` 131), `getattrlist` (220, 228, 476),
 data-protection classes and `open_dprotected_np` (216, 218), csops per xnu
 `csops_internal`, and the rename/chmod/chown/utimes/truncate family.
+
+### 11.3 Stage 6 follow-ups (2026-10-12)
+
+| n | Routine | VMM behavior |
+|---|---|---|
+| 17 | `thread_get_state(thread, flavor, state, &count)` | Flavors 1 (unified, 70 words), 6 (68), 7 (4); threads of the caller's task only; the state is the registers at the entry of the thread's current trap. A thread running guest code gives `KERN_FAILURE` (libobjc then keeps its old method caches) |
+| 18 | `thread_get_exception_ports` | xnu `ipc_tt.c`: entries grouped by identical (port, behavior, flavor); none set → 0 entries |
+| 19 | `thread_set_exception_ports` | Stored per thread, released with the thread or task; never delivered |
+
+`thread_swap_exception_ports` is a get followed by a set in the library
+(not atomic). Library additions: `posix_madvise`, `csr_check`,
+`csr_get_active_config`, `kpersona_*`, `mach_error_string` (the
+"(os/kern)" table only).
+
+BSD additions: `setattrlist`/`fsetattrlist`/`setattrlistat` (221/229/524;
+Finder info stored as the xattr `com.apple.FinderInfo`, volume attributes
+EROFS); `madvise` advice 0–11 (11 = `MADV_ZERO` zeroes the range, xnu);
+`statfs` with the host volume's real sizes, `f_fsid` = {dev, 0x1A},
+`MNT_ROOTFS` for `/`, `MNT_DOVOLFS | MNT_JOURNALED`, `f_fssubtype` 1.
+
+**Ycode decisions (not yet backed by a probe):** `memorystatus_control`
+EPERM except commands 18/19/24 → EINVAL (EPERM itself is level 3,
+`app-install-launch.md` §3.3); `quotactl` ENOTSUP; `csrctl` op 0 EPERM, op
+1 config 0; `__persona`: no personas exist (ESRCH; alloc/dealloc EPERM;
+FIND returns 0). A level-3 probe on the Mac's simulator can confirm them.
+
+csops entitlement blobs: for simulator builds the `__TEXT,__entitlements`
+section is served as blob magic `0xFADE7171` (8-byte header + plist), for
+signed images only.

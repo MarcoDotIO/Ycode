@@ -809,7 +809,10 @@ public final class DarwinFileSystem {
                 // read-only, empty directories of the guest namespace, so
                 // lstat walks (realpath) work; nothing else there is reachable.
                 if isSyntheticAncestor(current) {
-                    let st = DarwinStat(mode: DarwinStat.S_IFDIR | 0o755, nlink: 2, ino: Self.guestLinkInode(current),
+                    // The device of the served prefixes' volume (a real
+                    // directory has a nonzero st_dev, matching statfs's f_fsid).
+                    let dev = prefixes.lazy.compactMap { try? hostStatCall($0.hostPath, follow: true).dev }.first ?? 1
+                    let st = DarwinStat(dev: dev, mode: DarwinStat.S_IFDIR | 0o755, nlink: 2, ino: Self.guestLinkInode(current),
                                         uid: 0, gid: 0, size: 64, blksize: 4096)
                     return Resolved(guestPath: current, hostPath: "", prefix: Self.devicePrefix, stat: st)
                 }

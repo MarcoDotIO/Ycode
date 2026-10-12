@@ -52,6 +52,12 @@ extension MachIPC {
         public static let portSetContext: UInt32 = 0x7963_200F
         /// `host_get_io_master(host, &main)` / `host_get_io_main`: the IOKit main port.
         public static let hostGetIOMain: UInt32 = 0x7963_2010
+        /// `thread_get_state(thread, flavor, state, &count)`.
+        public static let threadGetState: UInt32 = 0x7963_2011
+        /// `thread_get_exception_ports(thread, mask, masks, &count, ports, behaviors, flavors)`.
+        public static let threadGetExceptionPorts: UInt32 = 0x7963_2012
+        /// `thread_set_exception_ports(thread, mask, port, behavior, flavor)`.
+        public static let threadSetExceptionPorts: UInt32 = 0x7963_2013
     }
 
     /// `TASK_BOOTSTRAP_PORT`.
@@ -663,6 +669,84 @@ extension MachIPC {
                 return kr(MachKern.invalidAddress)
             }
             return kr(0, " [\(hx(name))]")
+
+        case Routine.threadGetState:
+            call = "thread_get_state(thread=\(hx(u32(0))), flavor=\(u32(1)), state=\(hx(a[2])), count=\(hx(a[3])))"
+            guard let kernel else { return kr(MachKern.failure) }
+            let (code, note) = kernel.threadGetState(a, ipc: self, memory: memory)
+            return kr(code, note)
+
+        case Routine.threadGetExceptionPorts, Routine.threadSetExceptionPorts:
+            // xnu osfmk/kern/ipc_tt.c thread_{get,set}_exception_ports (level
+            // 1): a thread of the caller's task; mask within the valid types;
+            // a set with a valid port needs a valid behavior. Get groups the
+            // types whose (port, behavior, flavor) are equal, in type order,
+            // up to the caller's count; a thread with nothing set reports 0
+            // entries. Ycode delivers no Mach exceptions: the ports are kept
+            // and reported only.
+            let isGet = number == Routine.threadGetExceptionPorts
+            let mask = u32(1)
+            call = isGet
+                ? "thread_get_exception_ports(thread=\(hx(u32(0))), mask=\(hx(mask)), count=\(hx(a[3])))"
+                : "thread_set_exception_ports(thread=\(hx(u32(0))), mask=\(hx(mask)), port=\(hx(u32(2))), behavior=\(hx(u32(3))), flavor=\(u32(4)))"
+            guard let (thread, object) = kernelObject(named: u32(0)), case .thread = object, thread.active else {
+                return kr(MachKern.invalidArgument)
+            }
+            guard mask & ~MachException.validMask == 0 else { return kr(MachKern.invalidArgument) }
+            let key = ObjectIdentifier(thread)
+            if !isGet {
+                let right: CarriedRight
+                switch copyinSendArgument(u32(2)) {
+                case let .failure(e): return kr(e.code)
+                case let .success(r): right = r
+                }
+                if right.port != nil, !MachException.isValidBehavior(u32(3)) {
+                    release(right)
+                    return kr(MachKern.invalidArgument)
+                }
+                var slots = threadExceptions[key] ?? [ExceptionSlot](repeating: ExceptionSlot(), count: MachException.slotCount)
+                for type in 1..<MachException.slotCount where mask & (1 << UInt32(type)) != 0 {
+                    let old = slots[type].port
+                    slots[type] = ExceptionSlot(port: copySend(right), behavior: u32(3), flavor: u32(4))
+                    release(old)
+                }
+                release(right)
+                threadExceptions[key] = slots
+                return kr(MachKern.success)
+            }
+            guard let capacityBytes = try? memory.read(va: a[3], count: 4) else { return kr(MachKern.invalidAddress) }
+            let capacity = Int(capacityBytes.readLE(UInt32.self, at: 0))
+            var entries: [(mask: UInt32, slot: ExceptionSlot)] = []
+            if let slots = threadExceptions[key] {
+                for type in 1..<MachException.slotCount where mask & (1 << UInt32(type)) != 0 {
+                    let s = slots[type]
+                    if let j = entries.firstIndex(where: {
+                        $0.slot.port.port === s.port.port && $0.slot.behavior == s.behavior && $0.slot.flavor == s.flavor
+                    }) {
+                        entries[j].mask |= 1 << UInt32(type)
+                        continue
+                    }
+                    guard entries.count < capacity else { break }
+                    entries.append((1 << UInt32(type), s))
+                }
+            }
+            var masks: [UInt8] = [], names: [UInt8] = [], behaviors: [UInt8] = [], flavors: [UInt8] = []
+            var copied: [UInt32] = []
+            for e in entries {
+                var name: UInt32 = 0
+                if case let .send(p) = e.slot.port, p.active { name = copyoutNewSend(p); copied.append(name) }
+                else if case .dead = e.slot.port { name = MachPortName.dead }
+                masks += le32(e.mask); names += le32(name); behaviors += le32(e.slot.behavior); flavors += le32(e.slot.flavor)
+            }
+            let ok = entries.isEmpty || ((try? memory.write(va: a[2], bytes: masks)) != nil
+                && (try? memory.write(va: a[4], bytes: names)) != nil
+                && (try? memory.write(va: a[5], bytes: behaviors)) != nil
+                && (try? memory.write(va: a[6], bytes: flavors)) != nil)
+            guard ok, write32(a[3], UInt32(entries.count)) else {
+                copied.forEach { _ = portDeallocate($0) }
+                return kr(MachKern.invalidAddress)
+            }
+            return kr(MachKern.success, " [\(entries.count) entries]")
 
         case Routine.taskThreads:
             call = "task_threads(task=\(hx(u32(0))), list=\(hx(a[1])), count=\(hx(a[2])))"

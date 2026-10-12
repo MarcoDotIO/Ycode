@@ -128,3 +128,148 @@ YC_EXPORT int getiopolicy_np(int iotype, int scope)
     }
     return 0;
 }
+
+/* posix_madvise(3): on Darwin an alias of madvise(2) (same advice values,
+ * -1 and errno on failure; level 3, the Mac's simulator). */
+int madvise(void *addr, yc_size_t len, int advice);
+YC_EXPORT int posix_madvise(void *addr, yc_size_t len, int advice)
+{
+    return madvise(addr, len, advice);
+}
+
+/* csr_check / csr_get_active_config: wrappers of csrctl(2) (xnu
+ * libsyscall/wrappers/csr.c: op 0 = check, op 1 = active config; the
+ * argument is a pointer to a u32 and its size). */
+int __csrctl(yc_u32 op, void *buffer, yc_size_t size);
+YC_EXPORT int csr_check(yc_u32 mask)
+{
+    return __csrctl(0, &mask, sizeof(mask));
+}
+
+YC_EXPORT int csr_get_active_config(yc_u32 *config)
+{
+    return __csrctl(1, config, sizeof(*config));
+}
+
+/* kpersona_*: wrappers of __persona(op, flags, info, id, idlen, path)
+ * (xnu libsyscall/wrappers/persona.c, sys/persona.h op numbers 1-9). */
+int __persona(yc_u32 op, yc_u32 flags, void *info, yc_u32 *id, yc_size_t *idlen, char *path);
+
+struct yc_kpersona_info { /* sys/persona.h, packed, 348 bytes */
+    yc_u32 version;
+    yc_u32 id;
+    int type;
+    yc_u32 gid;
+    yc_u32 ngroups;
+    yc_u32 groups[16];
+    yc_u32 gmuid;
+    char name[255 + 1]; /* MAXLOGNAME + 1: the struct is 348 bytes */
+    yc_u32 uid;
+} __attribute__((packed));
+_Static_assert(sizeof(struct yc_kpersona_info) == 348, "struct kpersona_info is 348 bytes");
+
+YC_EXPORT int kpersona_alloc(void *info, yc_u32 *id)
+{
+    yc_size_t idlen = 1;
+    return __persona(1, 0, info, id, &idlen, YC_NULL);
+}
+
+YC_EXPORT int kpersona_palloc(void *info, yc_u32 *id, char *path)
+{
+    yc_size_t idlen = 1;
+    return __persona(2, 0, info, id, &idlen, path);
+}
+
+YC_EXPORT int kpersona_dealloc(yc_u32 id)
+{
+    yc_size_t idlen = 1;
+    return __persona(3, 0, YC_NULL, &id, &idlen, YC_NULL);
+}
+
+YC_EXPORT int kpersona_get(yc_u32 *id)
+{
+    yc_size_t idlen = 1;
+    return __persona(4, 0, YC_NULL, id, &idlen, YC_NULL);
+}
+
+YC_EXPORT int kpersona_info(yc_u32 id, void *info)
+{
+    yc_size_t idlen = 1;
+    return __persona(5, 0, info, &id, &idlen, YC_NULL);
+}
+
+YC_EXPORT int kpersona_pidinfo(int pid, void *info)
+{
+    yc_size_t idlen = 1;
+    yc_u32 id = (yc_u32)pid;
+    return __persona(6, 0, info, &id, &idlen, YC_NULL);
+}
+
+YC_EXPORT int kpersona_getpath(yc_u32 id, char *path)
+{
+    yc_size_t idlen = 1;
+    return __persona(8, 0, YC_NULL, &id, &idlen, path);
+}
+
+static int yc_persona_find(yc_u32 op, const char *name, yc_u32 uid, int type, yc_u32 *id, yc_size_t *idlen)
+{
+    struct yc_kpersona_info k;
+    char *p = (char *)&k;
+    for (yc_size_t i = 0; i < sizeof(k); i++)
+        p[i] = 0;
+    k.version = 1;
+    k.id = uid;
+    k.type = type;
+    if (name != YC_NULL) {
+        yc_size_t i = 0;
+        for (; name[i] != 0 && i < sizeof(k.name) - 1; i++)
+            k.name[i] = name[i];
+    }
+    int ret = __persona(op, 0, &k, id, idlen, YC_NULL);
+    if (ret < 0)
+        return ret;
+    return (int)*idlen;
+}
+
+YC_EXPORT int kpersona_find(const char *name, yc_u32 uid, yc_u32 *id, yc_size_t *idlen)
+{
+    return yc_persona_find(7, name, uid, 0, id, idlen);
+}
+
+YC_EXPORT int kpersona_find_by_type(int persona_type, yc_u32 *id, yc_size_t *idlen)
+{
+    return yc_persona_find(9, YC_NULL, (yc_u32)-1, persona_type, id, idlen);
+}
+
+/* char *mach_error_string(mach_error_t error_value): the (os/kern) strings
+ * of xnu's error table (libsyscall/mach/err_kern.sub, level 1); any other
+ * code is reported as "unknown error code" (Ycode keeps no other tables). */
+static const char *const yc_kern_errors[] = {
+    "(os/kern) successful", "(os/kern) invalid address", "(os/kern) protection failure",
+    "(os/kern) no space available", "(os/kern) invalid argument", "(os/kern) failure",
+    "(os/kern) resource shortage", "(os/kern) not receiver", "(os/kern) no access", "(os/kern) memory failure",
+    "(os/kern) memory error", "(os/kern) already in set", "(os/kern) not in set", "(os/kern) name exists",
+    "(os/kern) aborted", "(os/kern) invalid name", "(os/kern) invalid task", "(os/kern) invalid right",
+    "(os/kern) invalid value", "(os/kern) urefs overflow", "(os/kern) invalid capability",
+    "(os/kern) right exists", "(os/kern) invalid host", "(os/kern) memory present",
+    "(os/kern) memory data moved", "(os/kern) memory restart copy", "(os/kern) invalid processor set",
+    "(os/kern) policy limit", "(os/kern) invalid policy", "(os/kern) invalid object",
+    "(os/kern) already waiting", "(os/kern) default set", "(os/kern) exception protected",
+    "(os/kern) invalid ledger", "(os/kern) invalid memory control", "(os/kern) invalid security",
+    "(os/kern) not depressed", "(os/kern) object terminated", "(os/kern) lock set destroyed",
+    "(os/kern) lock unstable", "(os/kern) lock owned by another", "(os/kern) lock owned by self",
+    "(os/kern) semaphore destroyed", "(os/kern) RPC terminated", "(os/kern) terminate orphan",
+    "(os/kern) let orphan continue", "(os/kern) service not supported", "(os/kern) remote node down",
+    "(os/kern) thread not waiting", "(os/kern) operation timed out", "(os/kern) code signing error",
+    "(os/kern) policy is static", "(os/kern) insufficient input buffer size",
+    "(os/kern) denied by security policy", "(os/kern) missing kernel collection",
+    "(os/kern) invalid kernel collection", "(os/kern) result not found",
+};
+
+YC_EXPORT const char *mach_error_string(int error_value)
+{
+    unsigned code = (unsigned)error_value;
+    if (code < sizeof(yc_kern_errors) / sizeof(yc_kern_errors[0]))
+        return yc_kern_errors[code];
+    return "unknown error code";
+}

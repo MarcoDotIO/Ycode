@@ -513,18 +513,37 @@ extension DarwinKernel {
             .max { $0.guestPath.count < $1.guestPath.count }
         let mountPoint = prefix?.guestPath ?? "/"
         let readOnly = !(prefix?.writable ?? false)
+        // Sizes and free space are the host volume's (as on the Mac, where a
+        // read-only system volume still reports its container's free space;
+        // level 3: a simulator process's statfs of "/"). Fallback: fixed values.
+        var blocks: UInt64 = 1 << 24, free: UInt64 = 1 << 23, files: UInt64 = 1 << 20, ffree: UInt64 = 1 << 19
+        var vfs = statvfs()
+        if statvfs(prefix?.hostPath ?? "/", &vfs) == 0, vfs.f_frsize > 0 {
+            // In 4096-byte blocks (f_bsize), whatever the host's fragment size.
+            let unit = UInt64(vfs.f_frsize)
+            blocks = UInt64(vfs.f_blocks).multipliedReportingOverflow(by: unit).partialValue / 4096
+            free = UInt64(vfs.f_bavail).multipliedReportingOverflow(by: unit).partialValue / 4096
+            files = UInt64(vfs.f_files)
+            ffree = UInt64(vfs.f_ffree)
+        }
         var b = [UInt8](repeating: 0, count: 2168)
         b.putLE(UInt32(4096), at: 0)                // f_bsize
         b.putLE(Int32(1 << 20), at: 4)              // f_iosize
-        b.putLE(UInt64(1 << 24), at: 8)             // f_blocks
-        b.putLE(UInt64(readOnly ? 0 : 1 << 23), at: 16)  // f_bfree
-        b.putLE(UInt64(readOnly ? 0 : 1 << 23), at: 24)  // f_bavail
-        b.putLE(UInt64(1 << 20), at: 32)            // f_files
-        b.putLE(UInt64(1 << 19), at: 40)            // f_ffree
-        b.putLE(dev, at: 48)                        // f_fsid
+        b.putLE(blocks, at: 8)                      // f_blocks
+        b.putLE(free, at: 16)                       // f_bfree
+        b.putLE(free, at: 24)                       // f_bavail
+        b.putLE(files, at: 32)                      // f_files
+        b.putLE(ffree, at: 40)                      // f_ffree
+        // f_fsid {dev, type}, as getattrlist's ATTR_CMN_FSID; the synthetic
+        // "/" (no host file, dev 0) reports the system volume's device.
+        let fsDev = dev != 0 ? dev : (try? fileSystem.stat(prefix?.guestPath ?? "/System", followSymlinks: true).dev) ?? 1
+        b.putLE(fsDev, at: 48)                      // f_fsid.val[0]
+        b.putLE(UInt32(0x1A), at: 52)               // f_fsid.val[1]
         b.putLE(UInt32(0), at: 56)                  // f_owner
         b.putLE(UInt32(0x1A), at: 60)               // f_type
-        b.putLE(UInt32((readOnly ? 0x1 : 0) | 0x1000), at: 64)  // MNT_RDONLY, MNT_LOCAL
+        // MNT_RDONLY, MNT_LOCAL, MNT_ROOTFS for "/", MNT_DOVOLFS, MNT_JOURNALED.
+        b.putLE(UInt32((readOnly ? 0x1 : 0) | 0x1000 | (mountPoint == "/" ? 0x4000 : 0) | 0x8000 | 0x80_0000), at: 64)
+        b.putLE(UInt32(1), at: 68)                  // f_fssubtype (as the Mac's APFS volumes)
         b.put(Array("apfs".utf8), at: 72)           // f_fstypename[16]
         b.put(Array(mountPoint.utf8.prefix(1023)), at: 88)       // f_mntonname[1024]
         b.put(Array("ycode-vfs".utf8), at: 1112)    // f_mntfromname[1024]

@@ -96,6 +96,9 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     var ownedKernelPorts: [IPCPort] = []
     /// Each thread's bound special reply port, by thread id.
     var specialReplyPorts: [UInt64: IPCPort] = [:]
+    /// Thread-level exception ports (thread_set_exception_ports), by the
+    /// thread's kernel port; absent until first set (xnu `exc_actions` NULL).
+    var threadExceptions: [ObjectIdentifier: [ExceptionSlot]] = [:]
 
     /// The well-known names.
     public static let taskName: UInt32 = 0x103
@@ -692,6 +695,9 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     public func threadTerminated(_ context: ThreadContext) {
         lock.withLock {
             let thread = kernelObject(named: context.portName)?.0
+            if let thread, let slots = threadExceptions.removeValue(forKey: ObjectIdentifier(thread)) {
+                slots.forEach { release($0.port) }
+            }
             _ = portDeallocate(context.portName)
             if let thread, thread !== mainThreadPort { portDeath(thread) }
             specialReplyPorts[context.threadID] = nil
