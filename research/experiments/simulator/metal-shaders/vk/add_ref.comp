@@ -1,0 +1,25 @@
+// Ycode R8 reference compute shader (ours, GLSL): the same work as the
+// Metal add_arrays kernel, written against the R8 PoC compute ABI
+// (buffer addresses in push constants, threadgroup size from
+// specialization constants 0..2). Checks the Vulkan toolchain end to end.
+#version 460
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+
+layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer FloatsR { float v[]; };
+layout(buffer_reference, std430, buffer_reference_align = 4) writeonly buffer FloatsW { float v[]; };
+layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer U32 { uint v; };
+
+layout(push_constant) uniform PC {
+    uint64_t addr[4];
+    uvec3 grid;
+} pc;
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    uint count = U32(pc.addr[3]).v;
+    if (gid < count)
+        FloatsW(pc.addr[2]).v[gid] = FloatsR(pc.addr[0]).v[gid] + FloatsR(pc.addr[1]).v[gid];
+}
