@@ -172,3 +172,35 @@ timeout in device mode is acceptable — V documents the convention).
 right after `mach_vm_map(size 0x494000, flags 0x1000001, prot none)` and
 `vm_deallocate` of 1 MiB inside it. P investigates from open-source
 libmalloc/xnu and our own run state only.
+
+### 8.5 Resolutions (4c-i and 4c-ii, 2026-10-12)
+
+- **4c-ii exit criterion met** (orchestrator, fresh tree on the Thor, no
+  debug flags): `ycode-simd --device … --timeout-ms 30000` exits 0;
+  `launchd_sim` sends 708 and gets 808, reaps its holding-tank child, and
+  `TMP/launchd.log` shows `system` created, "launchd logging initialized",
+  "boot-mode committed", and `user/501` created, entering and exiting
+  bootstrap and on-demand mode. It is still running at the timeout
+  (1,988 traps, 5 threads). Tests: 353 Swift tests and the host-library
+  checks pass on the Thor; hello, the 4a and 4b probes, `p_hostboot`, and
+  `p_brk` pass in three rounds.
+- What it took (all level 1 or level 3):
+  - `executable_cdhash`/`executable_boothash` in `apple[]` — xzone malloc
+    aborts without the boothash for launchd-class processes (libmalloc).
+  - `kern.bootargs`, `hw.ephemeral_storage`; the workloop `SYNC_WAIT` rule
+    (last change, not only change).
+  - `mkdir`/`rmdir`; guarded descriptors (`guarded_open_np` family).
+  - Host libraries: `pthread_once` signature, `___gettimeofday` x2,
+    `mach_port_set_attributes` as MIG 3218, `host_get_special_port`, the
+    os_alloc_once slot-21 ASL layout (the live-lock), `os_unfair_lock`
+    EOWNERDEAD crash.
+  - Kernel Mach: the simulator `MQ_CALL` exemption, MIG 3217/3218,
+    send-possible notification semantics (delayed vs. immediate).
+- **Known, accepted for now:** `launchd_sim` asserts `0x11`
+  (`KERN_INVALID_RIGHT`) at `launchd_sim+64312`: it sets `LIMITS_INFO` on
+  its task bootstrap port, of which it holds only a send right; it
+  continues. Whether the Mac gives it a receive right there is open
+  (R's probe can tell). The `system` domain stays in bootstrap mode (as in
+  R's Mac run with the minimal host: "in-progress bootstraps = 1").
+- `p_stdfds` assumes fd 3 is free, which holds in device mode only; it
+  fails under `--exec` (probe issue, to fix).

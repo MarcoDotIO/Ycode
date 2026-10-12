@@ -127,6 +127,14 @@ vCPU, or vCPUs are multiplexed when the thread count grows.
      three rounds); 150 VMs in sequence leak nothing.
    - Contract: `specs/simulator/stage4b-contract.md`; reference:
      `specs/simulator/processes.md`.
+4c. **Booting `launchd_sim`.** *(4c-i and 4c-ii done 2026-10-12.)*
+   - `ycode-simd --device` builds a device directory and bootstrap plist
+     and starts the runtime's `launchd_sim` with a VMM host task serving
+     its bootstrap port (`specs/simulator/bootstrap-wire.md`).
+   - `launchd_sim` creates the `system` and `user/501` domains and keeps
+     running; `TMP/launchd.log` records them.
+   - Next (4c-iii): one-shot jobs through `xpcproxy_sim`, then logd and
+     notifyd. Contract: `specs/simulator/stage4c-contract.md`.
 5. **Mach IPC and bootstrap.** Ports, rights, `mach_msg`, and bootstrap
    lookup, enough to run `launchd_sim` with no daemons.
 6. **launchd_sim plus the core daemons.** `cfprefsd`, `notifyd`,
