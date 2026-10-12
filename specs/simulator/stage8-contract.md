@@ -51,3 +51,77 @@ task, XPC/Mach per R7), a shader translator module (AIR → SPIR-V), a
 Vulkan back end (resources over guest-shared memory, command replay,
 synchronization), and presentation into the IOSurfaces that the headless
 SimFramebuffer presents, captured by `--screenshot`.
+
+## 4. Research results (8a-r done, 2026-10-12)
+
+- `metal-sim-protocol.md` (R7): three sim2host XPC connections per process
+  (`!CPX`); host-owned textures and private buffers, guest-shared buffers;
+  shaders arrive once per function at pipeline creation as single-function
+  AIR metallibs; keyed pipeline descriptors; segmented command buffers
+  (~70 record types); completion events 100 (scheduled) and 101
+  (completed); IOSurface textures by IOSurface.Remote port; **backboardd
+  presents after event 100, so the host must not send 100 until the
+  frame's pixels are in the surface**; the minimal home-screen set (§ "Minimal set").
+- `metal-shaders.md` (R8): metallib/AIR formats; 97 intrinsic families for
+  the home-screen set; translation = LLVM bitcode reader + our own SPIR-V
+  emitter in a separate process, SPIRV-Tools validation, cache by `HASH`;
+  bindless descriptor heap + buffer device addresses; a working PoC on the
+  Thor (compute and render, correct output, ~18 ms per function). The Thor
+  has LLVM 18 dev, SPIRV-Tools, glslang, Vulkan 1.4 (no
+  `storageInputOutput16`, no tile image).
+
+## 5. Implementation phase 8a-i (pinned 2026-10-12)
+
+### 5.1 Exit criterion
+
+On the Thor, release build, `ycode-simd --device D --runtime-paths
+--timeout-ms 240000 --screenshot home.png --screenshot-at 200` (no debug
+flags): backboardd composites through Ycode's Metal host service on the
+Thor's GPU, and `home.png` shows the SpringBoard home screen (wallpaper and
+icons), comparable to a Mac `simctl io screenshot` of the same device type.
+Then the probe app launched with `--launch dev.ycode.probe` shows its UI
+in a second capture.
+
+### 5.2 Modules and owners
+
+| Owner | Module | Contents |
+|---|---|---|
+| **MT** | `Sources/YcodeMetalHost/` (Swift; deps YcodeXPC, YcodeDarwinKernel) + `Tests/YcodeMetalHostTests/` | The host service: names, the three connections and handshake, object creation/release, the keyed pipeline-descriptor decoder, the command-buffer segment/record decoder into a backend-neutral command model, events 100/101 ordering, read-backs and `replaceRegion`. Talks to a `MetalBackend` (§5.3) and an `IOSurfaceResolver`. Unit tests from the spec's layouts. |
+| **VK** | `Sources/CVulkan/` (C; loads `libvulkan.so.1` with `dlopen`, so macOS still builds) + `Sources/YcodeVulkan/` (Swift) + tests | `MetalBackend` on Vulkan 1.3+: device, buffers over guest-shared memory (`VK_EXT_external_memory_host`), host-owned images, IOSurface images over the surface's shared memory, bindless descriptor heap + device addresses (per `metal-shaders.md` §4), pipelines from SPIR-V, command replay, fences/timeline semaphores for events. Runs on the Thor; on other hosts reports "no GPU". |
+| **SH** | `ycode/Translator/` (C++17 against LLVM 18 + SPIRV-Tools; CMake; built on Linux by `Translator/build.sh`) | `ycode-airc`: metallib function → SPIR-V + JSON reflection (stage, entry, bindings/argument table, vertex inputs, varyings by name, workgroup size), per `metal-shaders.md`. Starts from R8's PoC (`research/experiments/simulator/metal-shaders/airc/`, our own code). Coverage target: every function in QuartzCore's metallibs translates and passes `spirv-val` (runtime shaders read at test time, never copied into the repo), then the rest of the home-screen set. A persistent mode (requests over stdin/stdout) and a cache keyed by `HASH`. |
+| **I3** | everything else in `ycode/` | Wiring: register the Metal names (`com.apple.metal.simulator` and the per-client names) via 701 before jobs start, start the service with the Vulkan backend, provide `IOSurfaceResolver` from its IOSurface service and the guest-memory host pointers `YcodeVulkan` imports; frame capture (`--screenshot`). Must not edit MT/VK/SH files; Package.swift entries for the new targets are added by I3 once, then left alone. |
+
+### 5.3 Pinned interface (`YcodeMetalHost`, Swift; MT writes it first)
+
+```
+public protocol MetalBackend: AnyObject {
+    var isAvailable: Bool { get }
+    func limits() -> MetalLimits                         // device op 37
+    func createBuffer(_ ref: UInt32, length: Int, storage: MetalStorage, guestMemory: GuestSharedRegion?) throws
+    func createTexture(_ ref: UInt32, _ desc: MetalTextureDescriptor, iosurface: IOSurfaceBacking?) throws
+    func createSampler(_ ref: UInt32, _ desc: MetalSamplerDescriptor) throws
+    func createDepthStencilState(_ ref: UInt32, _ desc: MetalDepthStencilDescriptor) throws
+    func createFunction(_ ref: UInt32, metallib: [UInt8]) throws        // translation may be lazy
+    func createRenderPipeline(_ ref: UInt32, _ desc: MetalRenderPipelineDescriptor) throws
+    func createComputePipeline(_ ref: UInt32, function: UInt32) throws
+    func replaceRegion(texture: UInt32, _ region: MetalRegion, level: Int, slice: Int, bytes: [UInt8], bytesPerRow: Int) throws
+    func getBytes(texture: UInt32, _ region: MetalRegion, level: Int, slice: Int, into: GuestSharedRegion, bytesPerRow: Int) throws
+    func release(_ ref: UInt32)
+    func submit(_ commandBuffer: MetalCommandBuffer, scheduled: @escaping () -> Void, completed: @escaping (_ status: Int) -> Void)
+}
+```
+
+`GuestSharedRegion` gives a host pointer, length, and a stable identity for
+import; `IOSurfaceBacking` gives the surface's region, width, height,
+bytes per row, and pixel format. `scheduled` must be called only when the
+frame's writes to IOSurface-backed attachments are complete (R7 §7). MT may
+refine names and add cases; changes after VK starts go through the
+orchestrator.
+
+### 5.4 Rules
+
+Clean room as before: levels 1–4, no disassembly, no `.claude/Xcode.app`,
+no `research/dirty/`, no Ghidra; runtime shaders are input data, never
+copied into the repository. Builds: macOS `--scratch-path /tmp/yc-8-<X>`;
+Thor `$YCODE_DATA/work/8-<X>/`; scripts in the session
+scratchpad `agent-<X>/`; SSH keys only; no sudo; no commits.
