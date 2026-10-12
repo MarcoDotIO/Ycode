@@ -29,11 +29,10 @@
  * asks the thread to exit; it then leaves through bsdthread_terminate like
  * any detached thread, giving the kernel back its 560 KiB region.
  *
- * Interface note: the layout of the configuration record that
- * pthread_workqueue_setup receives is not in the specs yet. Ycode reads it
- * as { u32 version; u32 flags; workq_cb; kevent_cb; workloop_cb;
- * u64 queue_serialno_offset; u64 queue_label_offset (version >= 2) }, and
- * also accepts version and flags in the opposite order (flags must be 0).
+ * The configuration record that pthread_workqueue_setup receives
+ * (threads-and-events.md addendum, 48 bytes): u32 flags @0, u32 version @4
+ * (1 or 2), kevent_cb @8, workloop_cb @16, workq_cb @24, u64
+ * queue_serialno_offs @32, u64 queue_label_offs @40 (version 2 only).
  */
 #include "yc_pthread.h"
 
@@ -258,24 +257,17 @@ YC_EXPORT int YC_FN(pthread_workqueue_setup)(const void *config, yc_size_t size)
     if (config == YC_NULL || size < 8)
         return YC_EINVAL;
     const yc_u32 *hdr = config;
-    yc_u32 version, flags;
-    if (hdr[0] >= 1 && hdr[0] <= 2) {
-        version = hdr[0];
-        flags = hdr[1];
-    } else if (hdr[0] == 0 && hdr[1] >= 1 && hdr[1] <= 2) {
-        version = hdr[1];
-        flags = hdr[0];
-    } else {
+    yc_u32 flags = hdr[0], version = hdr[1];
+    if (version < 1 || version > 2)
         return YC_EINVAL;
-    }
-    yc_size_t need = version >= 2 ? 48 : 40;
+    yc_size_t need = version >= 2 ? 48 : 40; /* version 1 ends before label_offs */
     if (size < need)
         return YC_EINVAL;
     if (flags != 0)
         return YC_ENOTSUP;
-    void *const *cbs = (void *const *)((const char *)config + 8);
+    void *const *cbs = (void *const *)((const char *)config + 8); /* kevent, workloop, workq */
     const yc_u64 *offs = (const yc_u64 *)((const char *)config + 32);
-    return register_callbacks(cbs[0], cbs[1], cbs[2], 1, offs[0], version >= 2 ? offs[1] : 0);
+    return register_callbacks(cbs[2], cbs[0], cbs[1], 1, offs[0], version >= 2 ? offs[1] : 0);
 }
 
 YC_EXPORT int YC_FN(_pthread_workqueue_init_with_workloop)(void *queue_func, void *kevent_func, void *workloop_func,

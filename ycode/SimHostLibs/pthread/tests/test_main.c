@@ -24,6 +24,7 @@
 #include <sched.h>
 #include <setjmp.h>
 #include <signal.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1526,18 +1527,42 @@ static void wl_cb(uint64_t *id, void **events, int *nevents)
     __atomic_fetch_add(&wl_calls, 1, __ATOMIC_RELAXED);
 }
 
-struct ywqconfig { uint32_t version, flags; void *workq_cb, *kevent_cb, *workloop_cb;
+/* The exact byte layout (threads-and-events.md addendum): flags @0,
+ * version @4, kevent_cb @8, workloop_cb @16, workq_cb @24,
+ * serialno_offs @32, label_offs @40; 48 bytes. */
+struct ywqconfig { uint32_t flags, version; void *kevent_cb, *workloop_cb, *workq_cb;
                    uint64_t serialno_offs, label_offs; };
+_Static_assert(sizeof(struct ywqconfig) == 48, "pthread_workqueue_config is 48 bytes");
+_Static_assert(offsetof(struct ywqconfig, version) == 4 && offsetof(struct ywqconfig, kevent_cb) == 8 &&
+               offsetof(struct ywqconfig, workloop_cb) == 16 && offsetof(struct ywqconfig, workq_cb) == 24 &&
+               offsetof(struct ywqconfig, serialno_offs) == 32 && offsetof(struct ywqconfig, label_offs) == 40,
+               "pthread_workqueue_config layout");
 
 static void test_workqueue(void)
 {
     CHECK(T(_pthread_workqueue_addthreads)(1, 0x8FF) == 1); /* EPERM before setup */
-    struct ywqconfig cfg = { 2, 0, (void *)wq_cb, (void *)kev_cb, (void *)wl_cb, 0x30, 0x48 };
-    CHECK(T(pthread_workqueue_setup)(&cfg, 40) == 22);  /* too short for version 2 */
-    cfg.flags = 1;
-    CHECK(T(pthread_workqueue_setup)(&cfg, sizeof cfg) == 45);
-    cfg.flags = 0;
-    CHECK(T(pthread_workqueue_setup)(&cfg, sizeof cfg) == 0);
+    /* Built byte by byte, so the test pins the layout, not a C struct. */
+    unsigned char raw[48];
+    memset(raw, 0, sizeof raw);
+    uint32_t w32 = 2;
+    memcpy(raw + 4, &w32, 4);                      /* version @4; flags @0 = 0 */
+    void *fp = (void *)kev_cb;  memcpy(raw + 8, &fp, 8);
+    fp = (void *)wl_cb;         memcpy(raw + 16, &fp, 8);
+    fp = (void *)wq_cb;         memcpy(raw + 24, &fp, 8);
+    uint64_t w64 = 0x30;        memcpy(raw + 32, &w64, 8);
+    w64 = 0x48;                 memcpy(raw + 40, &w64, 8);
+    CHECK(T(pthread_workqueue_setup)(raw, 40) == 22);  /* too short for version 2 */
+    w32 = 3; memcpy(raw + 4, &w32, 4);
+    CHECK(T(pthread_workqueue_setup)(raw, sizeof raw) == 22); /* version 3 */
+    w32 = 0; memcpy(raw + 4, &w32, 4);
+    CHECK(T(pthread_workqueue_setup)(raw, sizeof raw) == 22); /* version 0 */
+    w32 = 2; memcpy(raw + 4, &w32, 4);
+    w32 = 1; memcpy(raw, &w32, 4);
+    CHECK(T(pthread_workqueue_setup)(raw, sizeof raw) == 45); /* flags 1: ENOTSUP */
+    w32 = 0; memcpy(raw, &w32, 4);
+    CHECK(T(pthread_workqueue_setup)(raw, sizeof raw) == 0);
+    struct ywqconfig cfg;
+    memcpy(&cfg, raw, sizeof cfg);
     uint32_t u32; uint64_t u64;
     CHECK(setup_calls == 1 && setup_size == 24);
     memcpy(&u32, setup_record, 4); CHECK(u32 == 2);
