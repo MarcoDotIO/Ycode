@@ -386,3 +386,24 @@ The orchestrator owns `Package.swift`, every spec, and the commits.
 - §2 and §5: `host-library-loading.md` (level 1).
 - §3 and §4: Ycode design. The symbol lists come from
   `host-library-surface.md` (level 4).
+
+## 11. Stage 4c decisions (2026-10-12)
+
+- `pthread_once` ignores the signature word: a zero-filled
+  `pthread_once_t` (as in Libc's static `__sdidinit`) runs its routine
+  once. Mutexes, conditions, and rwlocks still return EINVAL for signature
+  0, as Darwin's libpthread does (level 1: Libc `stdio/FreeBSD/findfp.c`,
+  libpthread `pthread.c`).
+- `___gettimeofday` zeroes `x2` (the `mach_time` out-pointer) before BSD
+  116 (level 1: xnu `libsyscall/custom/__gettimeofday.s`).
+- `host_get_special_port` returns `KERN_INVALID_ARGUMENT` without writing
+  `*port`: guests only hold the unprivileged host port (level 1: xnu
+  `osfmk/kern/host.c`, `host_get_special_port_from_user`).
+- `mach_port_set_attributes` is a MIG client call (id 3218 to the task
+  port, reply 3318), served by the VMM's kernel server; the VMM accepts the
+  simulator's `MQ_CALL` option for it (`mach-ipc.md` §2.7 rule 3).
+- `os_unfair_lock` crashes (`brk #0x7964`, x0 = message, x1 = lock) when
+  the kernel reports `EOWNERDEAD`, as libplatform does, instead of
+  retrying.
+- The simple-ASL context in `os_alloc_once` slot 21: see
+  `host-library-init.md` §1 step 3.

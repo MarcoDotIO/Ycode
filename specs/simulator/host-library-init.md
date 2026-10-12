@@ -108,6 +108,17 @@ host library is a macOS build, so the non-simulator steps apply:
    1. Get the simple-ASL context through `os_alloc_once` with key **21**
       (`LIBSYSTEM_PLATFORM_ASL`). The first use allocates memory (§7.1). The
       context starts as progname = `"unknown"` and fd = −1.
+      **Slot 21 is shared with the simulator's own platform library**
+      (`libsystem_sim_platform`), which uses the simulator layout of the
+      context (level 1, libplatform `src/simple/asl.c`): the host layout
+      is 32 bytes (enabled @0, progname @8, fd @16, @24 unused); the
+      simulator layout is 40 bytes and adds `sim_connect_lock` (an
+      `os_unfair_lock`) at +32, with `sim_log_path` read from the same
+      block. **Ycode (normative):** use the host layout and allocate a
+      **48-byte zeroed** block, so the simulator's fields read as NULL and an
+      unlocked lock. (On the Mac the 32-byte block happens to be followed by
+      a zero word; a smaller block made the lock overlap another slot's data
+      and live-lock `launchd_sim`, stage 4c.)
    2. If `envp` `ASL_DISABLE` = `1`, stop.
    3. Mark logging enabled. If `vars` and `vars->__prognamePtr` are
       non-NULL, progname ← `*vars->__prognamePtr`.
