@@ -87,6 +87,10 @@ Dependencies between the three:
 
 ### 3.1 Toolchain deviations (normative, from agent P)
 
+- **CPU baseline.** The default CPU for the `arm64-apple` triple emits
+  `ldapr` (FEAT_LRCPC). The Thor has it, and the reference hosts are
+  ARMv8.4 or later. Ycode's host libraries require LRCPC.
+
 - **Untagged objects.** Swift 6.4's `ld64.lld` rejects input objects that
   carry a Darwin platform tag.
   - Objects are compiled with the **real Darwin triple**
@@ -296,6 +300,72 @@ milestone: libSystem initializer reached (/usr/lib/system/libsystem_kernel.dylib
    needs it yet.
 5. **Main-thread block placement:** a 16 KiB EL0 RW page at `0x3_1001_0000`,
    directly after the host page. `TPIDRRO_EL0` = `0x3_1001_00E0`.
+
+## 10. Stage 3b: Ycode-private Mach-routine ABI (normative)
+
+On Darwin, MIG routines (`host_get_clock_service`, `semaphore_create`, …)
+are RPC messages to the kernel. Ycode owns both ends, its
+`libsystem_kernel` and its VMM, so instead of emulating MIG messaging it
+uses **private traps**:
+
+- **Encoding:** `x16 = 0x7963_2000 + n`. The arguments are the routine's C
+  arguments in `x0`…`x7`. **`x0` returns a `kern_return_t`, and carry is
+  not used.**
+- **Out-parameters:** the VMM writes them into guest memory.
+- **Failure:** an out-parameter pointer that is unwritable returns
+  `KERN_INVALID_ADDRESS` (1).
+
+| n | Routine | VMM behavior (single vCPU) |
+|---|---|---|
+| 1 | `host_get_clock_service(host, clock_id, clock_serv_t *out)` | clock ids 0 (`SYSTEM_CLOCK`) and 1 (`CALENDAR_CLOCK`) → a new clock port name (kind `clock`, records the id). Others → `KERN_INVALID_ARGUMENT` (4) |
+| 2 | `clock_get_time(clock_serv, mach_timespec_t *out)` | System clock: uptime since VM start. Calendar clock: host wall time. `mach_timespec_t` is `{u32 tv_sec; i32 tv_nsec}` |
+| 3 | `semaphore_create(task, semaphore_t *out, int policy, int value)` | New semaphore port name (kind `semaphore`, count = value). `value < 0` → `KERN_INVALID_ARGUMENT` |
+| 4 | `semaphore_destroy(task, semaphore)` | Remove it. An unknown name → `KERN_INVALID_NAME` (15) |
+| 5 | `task_get_special_port(task, int which, mach_port_t *out)` | `which` = 4 (`TASK_BOOTSTRAP_PORT`) → the bootstrap port name **`0x0503`** (kind `bootstrap`). Any other `which` → `MACH_PORT_NULL`. Both return `KERN_SUCCESS` |
+| 6 | `task_set_special_port(task, int which, mach_port_t port)` | Record it and return `KERN_SUCCESS`. A later get of the same `which` returns the recorded port |
+| 7 | `mach_port_get_attributes`-style fallbacks | Reserved |
+
+**Semaphore traps** (real Mach traps; the VMM implements them on the
+semaphore objects above):
+
+| Trap | Behavior |
+|---|---|
+| −33 `semaphore_signal` | count += 1 |
+| −34 `semaphore_signal_all` | count = max(count, 0) |
+| −35 `semaphore_signal_thread` | Same as signal |
+| −36 `semaphore_wait` | If count > 0, decrement and return `KERN_SUCCESS`; otherwise log `DEADLOCK` and return `KERN_ABORTED` (14) |
+| −37 `semaphore_wait_signal(wait, signal)` | Signal first, then wait |
+| −38 `semaphore_timedwait(sem, sec, nsec)` | If count > 0, decrement; otherwise sleep for the timeout and return `KERN_OPERATION_TIMED_OUT` (49) |
+| −39 `semaphore_timedwait_signal` | Signal first, then timed wait |
+
+Any other name → `KERN_INVALID_NAME`.
+
+**Library side (K):**
+
+- `host_get_clock_service`, `clock_get_time`, `semaphore_create`,
+  `semaphore_destroy`, `task_get_special_port`, and `task_set_special_port`
+  call the private traps above.
+- The semaphore functions call the real traps.
+- `__commpage_gettimeofday` is a real function that returns non-zero ("not
+  available"), so callers take the BSD 116 path without a log line.
+- `proc_pidinfo` is a real libproc wrapper over `__proc_info` (BSD 336).
+  The VMM answers ENOTSUP for now.
+- The `bootstrap_port` variable keeps its static value 0. libxpc sets it
+  through `task_get_special_port`.
+
+**VMM side (H2):**
+
+- The private traps and semaphore traps above.
+- The **bootstrap port** is name `0x0503`. `mach_msg` to it keeps returning
+  `MACH_SEND_INVALID_DEST` until stage 4, which brings launchd and the
+  bootstrap server.
+- Optional, from Q: seed TSD slot 4 = `0x8FF` and slot 7 = the munge token
+  in the main-thread block, so inline readers before `__pthread_init`
+  see sane values.
+
+**Exit criterion (3b):** `ycode-simd --exec hello …` with **no debug flags**
+prints `hello from the iOS simulator runtime on Linux` and exits 0, and the
+`--trace` run shows no unimplemented library function or trap on the path.
 
 ## 9. Ownership
 
