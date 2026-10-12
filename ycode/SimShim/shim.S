@@ -1,10 +1,21 @@
 /*
- * Ycode EL1 shim (stage 2, with the stage-3a additions).
+ * Ycode EL1 shim (stage 2, with the stage-3a and stage-4a additions).
  *
- * Contract: specs/simulator/vm-shim-protocol.md (sections 4 and 5) and
- * specs/simulator/stage3-contract.md section 7 (resumeFlags, CNTKCTL_EL1).
+ * Contract: specs/simulator/vm-shim-protocol.md (sections 4 and 5),
+ * specs/simulator/stage3-contract.md section 7 (resumeFlags, CNTKCTL_EL1),
+ * and specs/simulator/stage4a-contract.md sections 2-4 (one vCPU per
+ * thread, inner-shareable TLB flush).
  * This is original Ycode code. It is written from that contract and from
  * the public Arm Architecture Reference Manual.
+ *
+ * Stage 4a: every vCPU of a VM (the first one and every later one) enters
+ * _start with x0 = its OWN boot info block. All per-vCPU state is reached
+ * through that block: SP_EL1 = its EL1 stack top, TPIDR_EL1 = the block
+ * itself, the frame and doorbell addresses are read from it. The shim
+ * contains no absolute address (only adr and immediates), no global data,
+ * and no shared stack, so any number of vCPUs can run it at once. A later
+ * vCPU starts with its own MMU off, so programming the same
+ * TTBR0/TCR/MAIR/SCTLR again is just the normal boot sequence.
  *
  * The image is loaded at GPA 0x4000_0000 and its entry point is the first
  * byte. The code uses only PC-relative addressing (adr), so it does not
@@ -288,11 +299,14 @@ trap_common:
          * Stage 3a: resumeFlags bit 0 = the VMM changed the page tables while
          * it handled this trap. Flush the EL1&0 TLB (and the I-cache, because
          * a reused page may now hold new code), then clear the flag.
+         * Stage 4a: the address space is shared by every vCPU of the VM, so
+         * both invalidations are the Inner Shareable broadcasts. All vCPUs
+         * of a VM share one VMID, so this reaches every one of them.
          */
         ldr     x2, [x0, #TF_RESUME_FLAGS]
         tbz     x2, #RESUME_FLUSH_TLB_BIT, 2f
-        tlbi    vmalle1
-        ic      iallu
+        tlbi    vmalle1is
+        ic      ialluis
         dsb     ish
         isb
         bic     x2, x2, #(1 << RESUME_FLUSH_TLB_BIT)

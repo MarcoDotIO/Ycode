@@ -1,9 +1,10 @@
 # SimShim: guest code for the Ycode micro-VM
 
-This directory holds the guest-side code of stages 2 and 3a of
+This directory holds the guest-side code of stages 2, 3a, and 4a of
 `docs/SIMULATOR-LINUX.md`. The contracts are
-`specs/simulator/vm-shim-protocol.md` (stage 2) and
-`specs/simulator/stage3-contract.md` (stage 3a, which extends it). All of
+`specs/simulator/vm-shim-protocol.md` (stage 2),
+`specs/simulator/stage3-contract.md` (stage 3a, which extends it), and
+`specs/simulator/stage4a-contract.md` §2–§4 (one vCPU per thread). All of
 this is original Ycode code. It is written from those contracts,
 `specs/simulator/dyld-sim-handoff.md`, and the public Arm Architecture
 Reference Manual.
@@ -123,6 +124,36 @@ sh guest-tests/build.sh       # -> out/guest-tests/hello, checks platform 7
   EL0PCTEN = 0, event stream and EL0 timer access off.
 - Everything else is unchanged. The stage-2 self-test still passes with
   the new shim.
+
+## Stage 4a: one vCPU per thread (stage4a-contract §2–§4)
+
+- **Per-vCPU boot.** Every vCPU of a VM, the first and each later one,
+  enters byte 0 of `shim.bin` with `x0` = its **own** boot info block (the
+  stage-2 §4 layout; in stage 4a the block is at the start of the vCPU's
+  64 KiB slot). There is no separate secondary path: each vCPU runs the
+  same eleven boot steps.
+- **No shared state in the shim.** Every per-vCPU address comes from the
+  boot info block: `SP_EL1` from `+152`, the trap frame from `+56`, the
+  doorbell from `+64`, and `TPIDR_EL1` holds the block itself, so the
+  vectors of each vCPU find that vCPU's frame. The shim has no data
+  section, no literal pool, and no absolute address. The only address it
+  computes is `adr vectors` (PC-relative). The other constants are the
+  boot magic and system-register values. `VBAR_EL1`, `CPACR_EL1`,
+  `CNTKCTL_EL1`, and the translation registers are per-vCPU registers, so
+  each vCPU programs its own.
+- **MMU enable on a later vCPU.** A new vCPU starts with its own MMU off.
+  It writes the same `TTBR0`/`TCR`/`MAIR`/`SCTLR` values as the others,
+  then runs the local `tlbi vmalle1; ic iallu` of step 6. That flush
+  affects only the new vCPU. The vCPUs that are already running are not
+  touched.
+- **Doorbell.** Every vCPU may use the same doorbell address. The MMIO exit
+  arrives on the vCPU that rang it, and `x0` holds that vCPU's frame.
+- **TLB flush on resume** is now `tlbi vmalle1is; ic ialluis; dsb ish; isb`:
+  the Inner Shareable broadcasts, because every vCPU of the VM uses the
+  same page tables and the same VMID. The `ic ialluis` replaces the
+  stage-3 `ic iallu` for the same reason (a recycled page may hold new
+  code that another vCPU runs).
+- Everything else is unchanged. The stage-2 self-test still passes.
 
 ## Stage 3a: the host page (`host_stubs.bin`)
 
