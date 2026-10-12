@@ -125,3 +125,15 @@ no `research/dirty/`, no Ghidra; runtime shaders are input data, never
 copied into the repository. Builds: macOS `--scratch-path /tmp/yc-8-<X>`;
 Thor `$YCODE_DATA/work/8-<X>/`; scripts in the session
 scratchpad `agent-<X>/`; SSH keys only; no sudo; no commits.
+
+## 6. Note from R6 (`headless-rendering.md`, 2026-10-12)
+
+Without any Metal device, backboardd's window server renders on the CPU by
+itself (`CA::OGL::SWContext`, level 3 function names from a stack sample):
+apps and the home-screen chrome draw correctly; the **wallpaper** (poster
+extensions) and some **icons** (CoreImage in iconservicesagent) need Metal
+in their own processes. So the Metal layer's first visible payoff is the
+wallpaper and icons, not the compositor. With a Metal device present,
+backboardd switches to its Metal path, so Ycode's service must then be
+complete enough for backboardd's render records (§4). Denied Metal
+look-ups are frequent (8,469 per boot): Ycode's answer must be cheap.
