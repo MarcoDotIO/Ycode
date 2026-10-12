@@ -204,3 +204,36 @@ libmalloc/xnu and our own run state only.
   R's Mac run with the minimal host: "in-progress bootstraps = 1").
 - `p_stdfds` assumes fd 3 is free, which holds in device mode only; it
   fails under `--exec` (probe issue, to fix).
+
+## 9. Phase 4c-iii: first jobs (pinned 2026-10-12)
+
+### 9.1 Exit criterion
+
+On the Thor, `ycode-simd --device` with no debug flags:
+
+1. A job plist in a `--job-path` directory (Ycode-written, `RunAtLoad`,
+   `ProgramArguments` = `/bin/launchctl print system`, `StandardOutPath`
+   under `/tmp`) is spawned by `launchd_sim` through `xpcproxy_sim`, runs,
+   and its output file holds the printed `system` domain.
+2. With `--job-path` pointing at a directory that holds only the runtime's
+   logd and notifyd plists (Ycode links or copies them into the device
+   directory at run time; nothing from the runtime enters the repository),
+   both daemons start through `xpcproxy_sim` and are still running at the
+   timeout, and `launchd.log` shows no crash or throttle for them.
+
+### 9.2 Model
+
+This phase is trace-driven debugging across every layer, so one agent
+(**I**, integrator) owns all of `ycode/` for its duration; no other agent
+edits `ycode/` meanwhile. Each fix stays small, is covered by a unit test
+or a probe where practical, and is listed in the report with its evidence
+level. Evidence rules are unchanged (levels 1 and 3; reading a runtime
+plist as a file format is level 2; no disassembly).
+
+### 9.3 Also in scope
+
+- `p_stdfds`: make it independent of fd 3 (print the ok line to stdout).
+- The default `--run-dir` is under the host's `/tmp`; on the Thor that is
+  the nearly full system disk. Remove the run directory at exit unless
+  `--keep-run-dir` is given (a directory the run created; never anything
+  else).
