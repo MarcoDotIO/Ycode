@@ -38,6 +38,11 @@ public final class DarwinKernel {
         /// The VMM must not resume it: it parks the thread's vCPU and host
         /// thread in the pool for reuse.
         case threadExit
+        /// The process replaced its image (`execve`, `posix_spawn` with
+        /// `POSIX_SPAWN_SETEXEC`; stage 4b, `stage4b-contract.md` §3). The
+        /// new image already runs in its own VM under the same pid. The VMM
+        /// tears this VM down quietly: this is not a process exit.
+        case imageReplaced
     }
 
     /// The VMM's exit status for an unimplemented trap in trace mode.
@@ -289,7 +294,13 @@ public final class DarwinKernel {
 
     /// The one kernel lock of this VM (`KernelSync.swift`). `handle` holds it
     /// for the whole trap.
-    public let lock = KernelLock()
+    public let lock: KernelLock
+    /// The system this process belongs to (process table, shared Mach state,
+    /// the launcher; stage 4b). Every process of one system shares its lock.
+    public let system: DarwinSystem
+    /// The pid version (audit-token word 7): changes on every exec
+    /// (`processes.md` §2.1).
+    public internal(set) var pidVersion: UInt32 = 0
     /// The in-process Mach IPC (`MachIPC`, attached by `init`). Mach traps
     /// (except the clock, VM, semaphore, and yield traps) and the private
     /// range `0x7963_2000…0x7963_20FF` go to it first.
@@ -306,6 +317,9 @@ public final class DarwinKernel {
     var nextThreadID: UInt64 = 2
     /// What every later trap returns once the process is exiting.
     var termination: Outcome?
+    /// Contract-pinned (stage 4b §3.4): true once this image is ending (exit,
+    /// kill, exec). The VMM reads it without the lock before re-entering a vCPU.
+    public var isTerminating: Bool { termination != nil }
     /// ulock wait queues by address.
     var ulocks: [UInt64: ULockQueue] = [:]
     /// The process workqueue and the kevent engine.
@@ -324,6 +338,7 @@ public final class DarwinKernel {
     public init(
         fileSystem: DarwinFileSystem,
         pid: Int32 = VMLayout.guestPID,
+        system: DarwinSystem? = nil,
         log: @escaping (String) -> Void = { _ in },
         counter: @escaping () -> UInt64 = MachTimebase.now,
         counterFrequency: UInt64 = MachTimebase.frequency,
@@ -331,6 +346,9 @@ public final class DarwinKernel {
     ) {
         self.fileSystem = fileSystem
         self.pid = pid
+        let system = system ?? DarwinSystem()
+        self.system = system
+        self.lock = system.lock
         self.log = log
         self.counter = counter
         self.counterFrequency = counterFrequency
@@ -499,6 +517,8 @@ public final class DarwinKernel {
         case threadExit
         /// Restart the calling thread at a new EL0 state (workqueue upcalls).
         case restart(ThreadStartState)
+        /// Any other outcome, passed through unchanged (stage 4b: exec).
+        case outcome(Outcome)
     }
 
     func errno(of error: Error, default fallback: Int32) -> Int32 {
@@ -539,6 +559,9 @@ public final class DarwinKernel {
         case .threadExit:
             log("\(prefix) \(call) -> thread exit")
             return .threadExit
+        case let .outcome(o):
+            log("\(prefix) \(call) -> \(o)")
+            return o
         case let .restart(start):
             start.apply(to: &frame)
             log("\(prefix) \(call) -> restart at \(hx(start.pc)) x0=\(hx(start.x[0])) x3=\(hx(start.x[3])) "
@@ -560,6 +583,11 @@ public final class DarwinKernel {
         // The `_nocancel` variants behave like their plain calls (no
         // cancellation in Ycode).
         let n = BSD.nocancelAliases[n] ?? n
+        // Stage-4b hooks (`stage4b-contract.md` §2): descriptors (pipes,
+        // sockets, dup) first, then processes (spawn, wait, signals). Each
+        // returns nil for a call it does not own.
+        if let r = try descriptorCall(n, a, &call, &fallback, mem) { return r }
+        if let r = try processCall(n, a, &call, &fallback, mem) { return r }
         func fd(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
 

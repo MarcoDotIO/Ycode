@@ -960,6 +960,9 @@ func runExec(_ options: Options) throws -> Never {
             return .park
         case let .exit(status):
             return .terminate(status: status, message: "guest exited with status \(status)")
+        case .imageReplaced:
+            // Stage 4b (agent V): tear this VM down quietly.
+            return .terminate(status: 0, message: "image replaced")
         case let .fatal(status, message):
             var text = ""
             if DarwinKernel.isCachePatchPlaceholderFault(frame) {

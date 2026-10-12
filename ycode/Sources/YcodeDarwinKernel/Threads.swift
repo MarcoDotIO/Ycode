@@ -104,6 +104,16 @@ public protocol ThreadHost: AnyObject {
     /// then fails `bsdthread_create` with EAGAIN or keeps a workqueue request
     /// pending.
     func startThread(_ start: ThreadStartState, context: ThreadContext) throws -> Int
+
+    /// Stage 4b (`stage4b-contract.md` §3.4): makes every vCPU of this
+    /// process that is running guest code return to the VMM soon, so that it
+    /// sees the process's termination (kill, exit from another thread, exec).
+    /// Called with the kernel lock held; must not call back into the kernel.
+    func stopAllThreads()
+}
+
+extension ThreadHost {
+    public func stopAllThreads() {}
 }
 
 /// What the kernel needs from the in-process Mach IPC (agent I's `MachIPC`
