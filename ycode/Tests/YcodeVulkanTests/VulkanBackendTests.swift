@@ -399,6 +399,46 @@ struct VulkanBackendTests {
         VK.backend.release(t)
     }
 
+    /// Asynchronous pipeline creation plus the persistent VkPipelineCache:
+    /// a pipeline used right after creation waits for its build; the cache
+    /// is written and a second backend loads it.
+    @Test func pipelineCachePersists() throws {
+        let path = NSTemporaryDirectory() + "ycode-vk-cache-\(getpid()).bin"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        var o = VulkanMetalBackend.Options()
+        o.pipelineCachePath = path
+        o.log = { print($0) }
+        for round in 0..<2 {
+            let b = VulkanMetalBackend(translator: VK.translator, options: o)
+            let vf = VK.handle(), ff = VK.handle(), pipe = VK.handle(), t = VK.handle()
+            try b.createFunction(vf, metallib: Array("test:full.vert".utf8))
+            try b.createFunction(ff, metallib: Array("test:color.frag".utf8))
+            var desc = MetalRenderPipelineDescriptor()
+            desc.vertexFunction = vf
+            desc.fragmentFunction = ff
+            var c = MetalColorAttachmentDescriptor(index: 0)
+            c.pixelFormat = MetalPixelFormat.rgba8Unorm
+            desc.colorAttachments = [c]
+            try b.createRenderPipeline(pipe, desc)  // returns before the compile is done
+            try b.createTexture(t, MetalTextureDescriptor(pixelFormat: MetalPixelFormat.rgba8Unorm, width: 8, height: 8, usage: 5),
+                                iosurface: nil)
+            let done = DispatchSemaphore(value: 0)
+            var d = MetalRenderPassDescriptor()
+            d.colorAttachments = [MetalColorAttachment(index: 0, attachment: MetalRenderPassAttachment(
+                texture: t, loadAction: MetalLoadAction.clear, storeAction: MetalStoreAction.store), clearColor: [0, 0, 0, 1])]
+            b.submit(MetalCommandBuffer(process: 1, queue: nil, commandBufferRef: 1, passes: [.render(MetalRenderPass(descriptor: d, commands: [
+                .setRenderPipelineState(pipe),
+                .draw(MetalDraw(primitiveType: MetalPrimitiveType.triangle, vertexStart: 0, vertexCount: 3)),
+            ]))]), scheduled: {}, completed: { _ in done.signal() })
+            #expect(done.wait(timeout: .now() + 30) == .success)
+            #expect(b.stats.draws == 1, "round \(round): the draw waited for its pipeline")
+            b.shutdown()
+            let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
+            print("pipeline cache after round \(round): \(size ?? 0) bytes")
+            #expect((size ?? 0) > 0)
+        }
+    }
+
     @Test func unknownHandlesAndEarlyRelease() throws {
         let b = VK.backend
         let mem = HostPages(16384)

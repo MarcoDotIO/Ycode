@@ -167,10 +167,15 @@ public struct TranslationRequest: Sendable {
     public var linkVertexHash: String?
     /// The function to translate when the metallib has several (tools and tests).
     public var functionName: String?
-    public init(metallib: [UInt8], linkVertexHash: String? = nil, functionName: String? = nil) {
+    /// Requests with the same affinity go to the same translator process
+    /// (a fragment function and the vertex function it links to). Default:
+    /// the metallib's own hash.
+    public var affinity: UInt64?
+    public init(metallib: [UInt8], linkVertexHash: String? = nil, functionName: String? = nil, affinity: UInt64? = nil) {
         self.metallib = metallib
         self.linkVertexHash = linkVertexHash
         self.functionName = functionName
+        self.affinity = affinity
     }
 }
 
@@ -233,7 +238,13 @@ public final class AircProcessTranslator: ShaderTranslator, @unchecked Sendable 
     private var output: FileHandle?
     private var nextID = 1
 
-    public init(executable: URL, arguments: [String] = ["serve"]) {
+    /// `serve`, plus `--cache $YCODE_AIRC_CACHE` when that is set (ycode-airc's on-disk translation cache).
+    public static var defaultArguments: [String] {
+        if let dir = ProcessInfo.processInfo.environment["YCODE_AIRC_CACHE"], !dir.isEmpty { return ["serve", "--cache", dir] }
+        return ["serve"]
+    }
+
+    public init(executable: URL, arguments: [String] = AircProcessTranslator.defaultArguments) {
         self.executable = executable
         self.arguments = arguments
     }
@@ -330,5 +341,22 @@ public final class AircProcessTranslator: ShaderTranslator, @unchecked Sendable 
             (0..<(reply.payload.count / 4)).map { raw.load(fromByteOffset: $0 * 4, as: UInt32.self).littleEndian }
         }
         return TranslatedShader(spirv: spirv, reflection: reflection)
+    }
+}
+
+/// Several `ycode-airc serve` processes, so pipelines translate in
+/// parallel. A request goes to the process its affinity selects (a fragment
+/// function and its vertex function meet in the same process, whose
+/// in-memory hash index links them).
+public final class AircTranslatorPool: ShaderTranslator, @unchecked Sendable {
+    public let processes: [AircProcessTranslator]
+
+    public init(executable: URL, count: Int, arguments: [String] = AircProcessTranslator.defaultArguments) {
+        processes = (0..<max(count, 1)).map { _ in AircProcessTranslator(executable: executable, arguments: arguments) }
+    }
+
+    public func translate(_ request: TranslationRequest) throws -> TranslatedShader {
+        let key = request.affinity ?? fnv1a64(request.metallib)
+        return try processes[Int(key % UInt64(processes.count))].translate(request)
     }
 }

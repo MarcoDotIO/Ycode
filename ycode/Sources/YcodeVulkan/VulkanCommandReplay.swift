@@ -31,6 +31,9 @@ extension VulkanMetalBackend {
             completed(MetalCommandBufferStatus.completed)
             return
         }
+        // Pipelines still translating or compiling are waited for here,
+        // outside the lock (VulkanPipelines.swift).
+        preparePipelines(commandBuffer)
         cond.lock()
         defer { cond.unlock() }
         if deviceLost {
@@ -552,7 +555,7 @@ extension VulkanMetalBackend {
 
         func dispatch(groups: (Int, Int, Int), group: (Int, Int, Int), threads: (Int, Int, Int)?) throws {
             guard let p = pipeline else { statistics.skipped += 1; return }
-            let lengths = (p.shader.reflection.compute?.threadgroupMemory?.slots ?? []).map { tgMemory[$0.index] ?? 0 }
+            let lengths = (p.shader?.reflection.compute?.threadgroupMemory?.slots ?? []).map { tgMemory[$0.index] ?? 0 }
             let key = ComputeVariantKey(x: max(group.0, 1), y: max(group.1, 1), z: max(group.2, 1), threadgroupMemory: lengths)
             guard let vkp = computeVariant(p, key) else { statistics.skipped += 1; return }
             if vkp != bound { fn.vkCmdBindPipeline!(cb, VK_PIPELINE_BIND_POINT_COMPUTE, vkp); bound = vkp }
@@ -594,7 +597,7 @@ extension VulkanMetalBackend {
                              group: (tw, th, td), threads: (n.width, n.height, n.depth))
             case .dispatchThreadgroupsIndirect(let h, let offset, let t):
                 guard let p = pipeline, let h, let buf = buffers[h] else { statistics.skipped += 1; continue }
-                let lengths = (p.shader.reflection.compute?.threadgroupMemory?.slots ?? []).map { tgMemory[$0.index] ?? 0 }
+                let lengths = (p.shader?.reflection.compute?.threadgroupMemory?.slots ?? []).map { tgMemory[$0.index] ?? 0 }
                 guard let vkp = computeVariant(p, ComputeVariantKey(x: max(t.width, 1), y: max(t.height, 1), z: max(t.depth, 1),
                                                                     threadgroupMemory: lengths)) else { continue }
                 if vkp != bound { fn.vkCmdBindPipeline!(cb, VK_PIPELINE_BIND_POINT_COMPUTE, vkp); bound = vkp }

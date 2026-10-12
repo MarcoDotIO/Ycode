@@ -40,6 +40,18 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         /// Size of each transient chunk (argument tables, staging).
         public var transientChunkSize = 4 << 20
         public var log: (@Sendable (String) -> Void)?
+        /// Translate and compile pipelines on worker threads; creation calls
+        /// return at once and submissions wait for the pipelines they use.
+        public var asynchronousPipelines = true
+        /// Worker threads for translation and pipeline compiles.
+        public var compileThreads = 4
+        /// `ycode-airc serve` processes (when no translator is given).
+        public var translatorProcesses = 4
+        /// Where the VkPipelineCache is loaded from and saved to (default:
+        /// $YCODE_VULKAN_PIPELINE_CACHE; nil: not persistent).
+        public var pipelineCachePath: String? = ProcessInfo.processInfo.environment["YCODE_VULKAN_PIPELINE_CACHE"]
+        /// Seconds between saves of a changed pipeline cache.
+        public var pipelineCacheSaveInterval = 15.0
         public init() {}
     }
 
@@ -95,6 +107,11 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
     var completionThread: Thread?
     var statistics = VulkanBackendStatistics()
 
+    // Pipelines (VulkanPipelines.swift).
+    let compileQueue = OperationQueue()
+    var pipelineCacheDirty = false
+    var cacheTimer: DispatchSourceTimer?
+
     struct PendingSubmission {
         var serial: UInt64
         var cb: VkCommandBuffer?
@@ -112,7 +129,11 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
 
     public init(translator: ShaderTranslator? = nil, options: Options = Options()) {
         self.options = options
-        self.translator = translator ?? AircProcessTranslator.locate().map { AircProcessTranslator(executable: $0) }
+        self.translator = translator ?? AircProcessTranslator.locate().map {
+            AircTranslatorPool(executable: $0, count: options.translatorProcesses)
+        }
+        compileQueue.maxConcurrentOperationCount = max(options.compileThreads, 1)
+        compileQueue.name = "ycode-vulkan-pipelines"
         ctx = .allocate(capacity: 1)
         ctx.initialize(to: yvk_context())
         var opts = yvk_context_options(maxSampledImages: options.maxSampledImages, maxSamplers: options.maxSamplers,
@@ -146,10 +167,20 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         thread.name = "ycode-vulkan-completion"
         completionThread = thread
         thread.start()
+        loadPipelineCache()
     }
 
     /// Waits for all work, stops the completion thread and frees the device.
     public func shutdown() {
+        cond.lock()
+        let first = running
+        cond.unlock()
+        guard first else { return }
+        if isAvailable {
+            compileQueue.waitUntilAllOperationsAreFinished()
+            cacheTimer?.cancel()
+            savePipelineCache()
+        }
         cond.lock()
         guard running else { cond.unlock(); return }
         running = false
@@ -584,259 +615,7 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         }
     }
 
-    func translate(_ request: TranslationRequest) throws -> TranslatedShader {
-        let key = TranslationKey(hash: fnv1a64(request.metallib), count: request.metallib.count,
-                                 linked: request.linkVertexHash.map { fnv1a64(Array($0.utf8)) } ?? 0,
-                                 linkedCount: request.linkVertexHash?.count ?? -1)
-        translationLock.lock()
-        if let t = translations[key] { translationLock.unlock(); return t }
-        translationLock.unlock()
-        guard let translator else { throw VulkanBackendError("no shader translator (ycode-airc not found)") }
-        let t = try translator.translate(request)
-        translationLock.lock()
-        translations[key] = t
-        translationLock.unlock()
-        return t
-    }
-
-    public func createRenderPipeline(_ handle: MetalHandle, _ desc: MetalRenderPipelineDescriptor) throws {
-        guard isAvailable else { throw VulkanBackendError("no GPU") }
-        cond.lock()
-        var vf = desc.vertexFunction.flatMap { functions[$0] }
-        var ff = desc.fragmentFunction.flatMap { functions[$0] }
-        cond.unlock()
-        guard vf != nil || ff != nil else { throw VulkanBackendError("render pipeline without known functions") }
-        // The stage comes from the translator's reflection: if the
-        // descriptor's two function fields arrive the other way round
-        // (observed with the 27.1 runtime, see the VK report), swap them.
-        var vs = try vf.map { try translate(TranslationRequest(metallib: $0.metallib)) }
-        if vs?.reflection.stage == .fragment || (vs == nil && ff != nil) {
-            swap(&vf, &ff)
-            vs = try vf.map { try translate(TranslationRequest(metallib: $0.metallib)) }
-            if vs != nil { log("render pipeline \(handle): vertex and fragment functions arrived swapped; using them by stage") }
-        }
-        guard let vf, let vs, vs.reflection.stage == .vertex else {
-            throw VulkanBackendError("render pipeline \(handle) has no vertex function")
-        }
-        let fs = try ff.map { try translate(TranslationRequest(metallib: $0.metallib, linkVertexHash: vs.reflection.hash)) }
-        _ = vf
-
-        cond.lock(); defer { cond.unlock() }
-        var info = yvk_graphics_info()
-        // Vertex input (Location n = attribute n; binding = Metal buffer index).
-        var vertexIndices: [Int] = []
-        if let vd = desc.vertexDescriptor {
-            var attrs: [VkVertexInputAttributeDescription] = []
-            for a in vd.attributes where a.format != 0 {
-                guard let f = metalVertexFormat(a.format) else { throw VulkanBackendError("vertex format \(a.format)") }
-                attrs.append(VkVertexInputAttributeDescription(location: UInt32(a.index), binding: UInt32(a.bufferIndex),
-                                                               format: f, offset: UInt32(a.offset)))
-            }
-            var binds: [yvk_vertex_binding] = []
-            for idx in Set(attrs.map { Int($0.binding) }).sorted() {
-                let l = vd.layouts.first { $0.bufferIndex == idx } ?? MetalVertexDescriptor.Layout(bufferIndex: idx)
-                switch l.stepFunction {
-                case 0: // constant: every vertex reads element 0
-                    binds.append(yvk_vertex_binding(binding: UInt32(idx), stride: 0, inputRate: VK_VERTEX_INPUT_RATE_VERTEX, divisor: 1))
-                case 2:
-                    binds.append(yvk_vertex_binding(binding: UInt32(idx), stride: UInt32(l.stride),
-                                                    inputRate: VK_VERTEX_INPUT_RATE_INSTANCE, divisor: UInt32(max(l.stepRate, 1))))
-                default:
-                    binds.append(yvk_vertex_binding(binding: UInt32(idx), stride: UInt32(l.stride),
-                                                    inputRate: VK_VERTEX_INPUT_RATE_VERTEX, divisor: 1))
-                }
-                vertexIndices.append(idx)
-            }
-            info.attributeCount = UInt32(min(attrs.count, 32))
-            info.bindingCount = UInt32(min(binds.count, 32))
-            withUnsafeMutableBytes(of: &info.attributes) { raw in
-                let p = raw.bindMemory(to: VkVertexInputAttributeDescription.self)
-                for (i, a) in attrs.prefix(32).enumerated() { p[i] = a }
-            }
-            withUnsafeMutableBytes(of: &info.bindings) { raw in
-                let p = raw.bindMemory(to: yvk_vertex_binding.self)
-                for (i, b) in binds.prefix(32).enumerated() { p[i] = b }
-            }
-        }
-        info.samples = VkSampleCountFlagBits(rawValue: UInt32(max(desc.rasterSampleCount, 1)))
-        info.alphaToCoverage = desc.alphaToCoverageEnabled ? 1 : 0
-        info.colorCount = UInt32(YVK_MAX_COLOR_ATTACHMENTS)
-        withUnsafeMutableBytes(of: &info.colorFormats) { rawF in
-            withUnsafeMutableBytes(of: &info.blend) { rawB in
-                let formats = rawF.bindMemory(to: VkFormat.self)
-                let blends = rawB.bindMemory(to: VkPipelineColorBlendAttachmentState.self)
-                for i in 0..<Int(YVK_MAX_COLOR_ATTACHMENTS) {
-                    formats[i] = VK_FORMAT_UNDEFINED
-                    blends[i] = VkPipelineColorBlendAttachmentState()
-                }
-                for c in desc.colorAttachments where c.index >= 0 && c.index < Int(YVK_MAX_COLOR_ATTACHMENTS) && c.pixelFormat != 0 {
-                    guard let f = resolveFormat(c.pixelFormat) else { continue }
-                    formats[c.index] = f.format
-                    blends[c.index] = VkPipelineColorBlendAttachmentState(
-                        blendEnable: c.blendingEnabled ? 1 : 0,
-                        srcColorBlendFactor: vkBlendFactor(c.sourceRGBBlendFactor),
-                        dstColorBlendFactor: vkBlendFactor(c.destinationRGBBlendFactor),
-                        colorBlendOp: vkBlendOp(c.rgbBlendOperation),
-                        srcAlphaBlendFactor: vkBlendFactor(c.sourceAlphaBlendFactor),
-                        dstAlphaBlendFactor: vkBlendFactor(c.destinationAlphaBlendFactor),
-                        alphaBlendOp: vkBlendOp(c.alphaBlendOperation),
-                        colorWriteMask: vkColorWriteMask(c.writeMask))
-                }
-            }
-        }
-        let depthFormat = desc.depthAttachmentPixelFormat != 0 ? (resolveFormat(desc.depthAttachmentPixelFormat).flatMap { $0.isDepth ? $0.format : nil } ?? VK_FORMAT_UNDEFINED) : VK_FORMAT_UNDEFINED
-        let stencilFormat = desc.stencilAttachmentPixelFormat != 0 ? (resolveFormat(desc.stencilAttachmentPixelFormat).flatMap { $0.isStencil ? $0.format : nil } ?? VK_FORMAT_UNDEFINED) : VK_FORMAT_UNDEFINED
-        info.depthFormat = depthFormat
-        info.stencilFormat = stencilFormat
-        let pipeline = VKRenderPipeline(desc: desc, vertex: vs, fragment: fs, info: info, vertexBufferIndices: vertexIndices,
-                                        depthFormat: depthFormat, stencilFormat: stencilFormat)
-        pipeline.vertexStatics = try statics(for: vs.reflection)
-        if let fs { pipeline.fragmentStatics = try statics(for: fs.reflection) }
-        let cls = desc.inputPrimitiveTopology != 0 ? desc.inputPrimitiveTopology : 3
-        guard renderVariant(pipeline, topologyClass: cls) != nil else {
-            throw VulkanBackendError("render pipeline \(desc.label ?? "") failed to compile")
-        }
-        if let old = renderPipelines[handle] { releaseRenderPipeline(old) }
-        renderPipelines[handle] = pipeline
-        statistics.renderPipelines += 1
-    }
-
-    /// The fixed argument-table entries of a function: its constant data
-    /// (copied once into GPU-visible memory) and its constexpr samplers. Under the lock.
-    func statics(for r: ShaderReflection) throws -> StageStatics {
-        var out = StageStatics()
-        if let c = r.constantData {
-            let bytes = c.bytes
-            var b = yvk_buffer()
-            var err = [CChar](repeating: 0, count: 256)
-            guard yvk_buffer_create(ctx, VkDeviceSize(max(bytes.count, 16)), YVK_MEMORY_HOST, nil, &b, &err, err.count) == 0,
-                  let p = b.mapped else { throw VulkanBackendError("constant data: \(cString(err))") }
-            bytes.withUnsafeBytes { if let base = $0.baseAddress { p.copyMemory(from: base, byteCount: bytes.count) } }
-            let a = VKAllocation(buffer: b, base: p, key: nil, owner: nil)
-            a.references = 1
-            out.memory.append(a)
-            out.entries.append((c.tableEntry ?? YcodeMetalABI.constantDataEntry, b.address))
-        }
-        for c in r.constexprSamplers ?? [] {
-            let s = try sampler(for: SamplerKey(c))
-            out.entries.append((c.tableEntry, UInt64(s.heapIndex)))
-        }
-        return out
-    }
-
-    func renderVariant(_ p: VKRenderPipeline, topologyClass cls: UInt32) -> VkPipeline? {
-        if let v = p.variants[cls] { return v }
-        if p.failed.contains(cls) { return nil }
-        var info = p.info
-        info.topology = vkTopology(forClass: cls)
-        let vsConstants: [yvk_spec_constant] = []
-        let fsConstants: [yvk_spec_constant] = []
-        var err = [CChar](repeating: 0, count: 512)
-        let vsEntry = p.vertex.reflection.entryPoint ?? "main"
-        let fsEntry = p.fragment?.reflection.entryPoint ?? "main"
-        let fsCode = p.fragment?.spirv ?? []
-        let result: VkPipeline? = p.vertex.spirv.withUnsafeBufferPointer { vsWords in
-            fsCode.withUnsafeBufferPointer { fsWords in
-                vsEntry.withCString { vsName in
-                    fsEntry.withCString { fsName in
-                        vsConstants.withUnsafeBufferPointer { vsc in
-                            fsConstants.withUnsafeBufferPointer { fsc in
-                                info.vertex = yvk_shader_stage(code: vsWords.baseAddress, wordCount: vsWords.count, entry: vsName,
-                                                               constants: vsc.baseAddress, constantCount: UInt32(vsc.count), flags: 0)
-                                if p.fragment != nil {
-                                    info.fragment = yvk_shader_stage(code: fsWords.baseAddress, wordCount: fsWords.count, entry: fsName,
-                                                                     constants: fsc.baseAddress, constantCount: UInt32(fsc.count), flags: 0)
-                                } else {
-                                    info.fragment = yvk_shader_stage()
-                                }
-                                return yvk_graphics_pipeline_create(ctx, &info, &err, err.count)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        guard let pipe = result else {
-            log("render pipeline (\(p.desc.label ?? "unlabelled"), class \(cls)): \(cString(err))")
-            p.failed.insert(cls)
-            return nil
-        }
-        p.variants[cls] = pipe
-        return pipe
-    }
-
-    public func createComputePipeline(_ handle: MetalHandle, function: MetalHandle) throws -> MetalComputePipelineInfo {
-        guard isAvailable else { throw VulkanBackendError("no GPU") }
-        cond.lock()
-        let f = functions[function]
-        cond.unlock()
-        guard let f else { throw VulkanBackendError("compute pipeline of unknown function \(function)") }
-        let shader = try translate(TranslationRequest(metallib: f.metallib))
-        cond.lock(); defer { cond.unlock() }
-        let pipeline = VKComputePipeline(shader: shader)
-        pipeline.statics = try statics(for: shader.reflection)
-        if let old = computePipelines[handle] { releaseComputePipeline(old) }
-        computePipelines[handle] = pipeline
-        statistics.computePipelines += 1
-        let maxInv = Int(min(ctx.pointee.properties.limits.maxComputeWorkGroupInvocations, 1024))
-        return MetalComputePipelineInfo(maxTotalThreadsPerThreadgroup: UInt16(maxInv),
-                                        threadExecutionWidth: UInt16(max(ctx.pointee.subgroupSize, 1)))
-    }
-
-    func computeVariant(_ p: VKComputePipeline, _ key: ComputeVariantKey) -> VkPipeline? {
-        if let v = p.variants[key] { return v }
-        let r = p.shader.reflection
-        var constants: [yvk_spec_constant] = []
-        let ids = r.compute?.workgroupSizeSpecIds ?? YcodeMetalABI.specWorkgroup
-        let size = (key.x, key.y, key.z)
-        for (i, v) in [size.0, size.1, size.2].enumerated() where i < ids.count {
-            constants.append(yvk_spec_constant(id: ids[i], value: UInt32(v)))
-        }
-        // Threadgroup memory: [[threadgroup(n)]] slots after the static part,
-        // 16-byte aligned, lengths from setThreadgroupMemoryLength (key order = slots order).
-        if let tg = r.compute?.threadgroupMemory, tg.dynamic == true {
-            var offset = tg.slotsBase ?? roundUp(tg.staticBytes ?? 0, 16)
-            for (i, slot) in (tg.slots ?? []).enumerated() {
-                if let id = slot.offsetSpecId { constants.append(yvk_spec_constant(id: id, value: UInt32(offset))) }
-                offset += roundUp(max(i < key.threadgroupMemory.count ? key.threadgroupMemory[i] : 0, 16), 16)
-            }
-            constants.append(yvk_spec_constant(id: tg.sizeSpecId ?? YcodeMetalABI.specThreadgroupBytes, value: UInt32(offset)))
-        }
-        var flags: UInt32 = 0
-        let sg = Int(ctx.pointee.subgroupSize)
-        if ctx.pointee.features.computeFullSubgroups != 0 && sg > 0 && size.0 % sg == 0 {
-            flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT.rawValue
-        }
-        var err = [CChar](repeating: 0, count: 512)
-        let entry = r.entryPoint ?? "main"
-        let pipe: VkPipeline? = p.shader.spirv.withUnsafeBufferPointer { words in
-            entry.withCString { name in
-                constants.withUnsafeBufferPointer { c in
-                    var stage = yvk_shader_stage(code: words.baseAddress, wordCount: words.count, entry: name,
-                                                 constants: c.baseAddress, constantCount: UInt32(c.count), flags: flags)
-                    return yvk_compute_pipeline_create(ctx, &stage, &err, err.count)
-                }
-            }
-        }
-        guard let pipe else {
-            log("compute pipeline \(r.entryPoint ?? ""): \(cString(err))")
-            return nil
-        }
-        p.variants[key] = pipe
-        return pipe
-    }
-
-    func releaseRenderPipeline(_ p: VKRenderPipeline) {
-        for a in p.vertexStatics.memory + p.fragmentStatics.memory { releaseAllocationReference(a) }
-        let list = Array(p.variants.values)
-        deferDestroy { [ctx, fn] in for v in list { fn.vkDestroyPipeline!(ctx.pointee.device, v, nil) } }
-    }
-
-    func releaseComputePipeline(_ p: VKComputePipeline) {
-        for a in p.statics.memory { releaseAllocationReference(a) }
-        let list = Array(p.variants.values)
-        deferDestroy { [ctx, fn] in for v in list { fn.vkDestroyPipeline!(ctx.pointee.device, v, nil) } }
-    }
+    // Translation and pipelines: VulkanPipelines.swift.
 
     // MARK: - Events
 

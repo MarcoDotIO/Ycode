@@ -197,7 +197,7 @@ struct SamplerKey: Hashable {
     }
 }
 
-final class VKFunction {
+final class VKFunction: @unchecked Sendable {
     let metallib: [UInt8]
     init(metallib: [UInt8]) { self.metallib = metallib }
 }
@@ -211,39 +211,43 @@ struct StageStatics {
     var memory: [VKAllocation] = []
 }
 
-final class VKRenderPipeline {
+/// A render pipeline: translated stages plus one Vulkan pipeline per
+/// topology class (point, line, triangle). Built asynchronously: `ready`
+/// is left once translation and the first compile are done (or failed).
+final class VKRenderPipeline: @unchecked Sendable {
     let desc: MetalRenderPipelineDescriptor
-    let vertex: TranslatedShader
-    let fragment: TranslatedShader?
+    let ready = DispatchGroup()
+    var vertex: TranslatedShader?
+    var fragment: TranslatedShader?
+    var info = yvk_graphics_info()
     var vertexStatics = StageStatics()
     var fragmentStatics = StageStatics()
-    var info: yvk_graphics_info
     /// Metal buffer indices bound as Vulkan vertex buffers.
-    let vertexBufferIndices: [Int]
+    var vertexBufferIndices: [Int] = []
     var variants: [UInt32: VkPipeline] = [:]
     var failed: Set<UInt32> = []
-    let depthFormat: VkFormat
-    let stencilFormat: VkFormat
+    var depthFormat = VK_FORMAT_UNDEFINED
+    var stencilFormat = VK_FORMAT_UNDEFINED
+    /// Translation or setup failed: draws with it are skipped.
+    var broken = false
+    /// The guest released it (a late build destroys what it made).
+    var released = false
 
-    init(desc: MetalRenderPipelineDescriptor, vertex: TranslatedShader, fragment: TranslatedShader?,
-         info: yvk_graphics_info, vertexBufferIndices: [Int], depthFormat: VkFormat, stencilFormat: VkFormat) {
-        self.desc = desc
-        self.vertex = vertex
-        self.fragment = fragment
-        self.info = info
-        self.vertexBufferIndices = vertexBufferIndices
-        self.depthFormat = depthFormat
-        self.stencilFormat = stencilFormat
-    }
+    init(desc: MetalRenderPipelineDescriptor) { self.desc = desc }
+    var isBuilt: Bool { vertex != nil && !broken }
 }
 
 /// A compute pipeline: one Vulkan pipeline per threadgroup size and
-/// threadgroup-memory configuration.
-final class VKComputePipeline {
-    let shader: TranslatedShader
+/// threadgroup-memory configuration. Translated asynchronously (`ready`).
+final class VKComputePipeline: @unchecked Sendable {
+    let ready = DispatchGroup()
+    var shader: TranslatedShader?
     var statics = StageStatics()
     var variants: [ComputeVariantKey: VkPipeline] = [:]
-    init(shader: TranslatedShader) { self.shader = shader }
+    var failed: Set<ComputeVariantKey> = []
+    var broken = false
+    var released = false
+    init() {}
 }
 
 struct ComputeVariantKey: Hashable {

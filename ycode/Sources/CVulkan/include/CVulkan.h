@@ -96,6 +96,9 @@ typedef struct YVKDynamicRenderingLocalReadFeatures {
     X(vkCreatePipelineLayout) \
     X(vkDestroyPipelineLayout) \
     X(vkCreateComputePipelines) \
+    X(vkCreatePipelineCache) \
+    X(vkDestroyPipelineCache) \
+    X(vkGetPipelineCacheData) \
     X(vkCreateGraphicsPipelines) \
     X(vkDestroyPipeline) \
     X(vkCreateCommandPool) \
@@ -222,6 +225,8 @@ typedef struct yvk_context {
        constants [0, YVK_PUSH_CONSTANT_SIZE) for all stages. */
     VkPipelineLayout pipelineLayout;
     VkCommandPool commandPool;
+    /* Used by every pipeline creation (internally synchronized). */
+    VkPipelineCache pipelineCache;
 } yvk_context;
 
 #define YVK_PUSH_CONSTANT_SIZE 128u
@@ -237,6 +242,12 @@ typedef struct yvk_context_options {
    or -1 with a message (e.g. "no Vulkan loader", "missing feature X"). */
 int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *err, size_t errlen);
 void yvk_context_destroy(yvk_context *ctx);
+
+/* (Re)creates ctx->pipelineCache from earlier cache data (NULL/0: empty;
+   data from another driver or device is ignored by Vulkan). 0 or -1. */
+int yvk_pipeline_cache_create(yvk_context *ctx, const void *data, size_t size);
+/* The cache's current data: call with data NULL for the size. VkResult. */
+VkResult yvk_pipeline_cache_data(yvk_context *ctx, void *data, size_t *size);
 
 /* Format support for optimal tiling (VkFormatFeatureFlags). */
 VkFormatFeatureFlags yvk_format_features(const yvk_context *ctx, VkFormat format);

@@ -372,6 +372,7 @@ void yvk_context_destroy(yvk_context *ctx) {
     if (ctx->device) {
         g_vk.vkDeviceWaitIdle(ctx->device);
         if (ctx->commandPool) g_vk.vkDestroyCommandPool(ctx->device, ctx->commandPool, NULL);
+        if (ctx->pipelineCache) g_vk.vkDestroyPipelineCache(ctx->device, ctx->pipelineCache, NULL);
         if (ctx->pipelineLayout) g_vk.vkDestroyPipelineLayout(ctx->device, ctx->pipelineLayout, NULL);
         if (ctx->heapPool) g_vk.vkDestroyDescriptorPool(ctx->device, ctx->heapPool, NULL);
         if (ctx->heapLayout) g_vk.vkDestroyDescriptorSetLayout(ctx->device, ctx->heapLayout, NULL);
@@ -379,6 +380,24 @@ void yvk_context_destroy(yvk_context *ctx) {
     }
     if (ctx->instance && g_vk.vkDestroyInstance) g_vk.vkDestroyInstance(ctx->instance, NULL);
     memset(ctx, 0, sizeof *ctx);
+}
+
+int yvk_pipeline_cache_create(yvk_context *ctx, const void *data, size_t size) {
+    if (ctx->pipelineCache) {
+        g_vk.vkDestroyPipelineCache(ctx->device, ctx->pipelineCache, NULL);
+        ctx->pipelineCache = VK_NULL_HANDLE;
+    }
+    VkPipelineCacheCreateInfo ci = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, NULL, 0, data ? size : 0, data};
+    if (g_vk.vkCreatePipelineCache(ctx->device, &ci, NULL, &ctx->pipelineCache) == VK_SUCCESS) return 0;
+    /* Unusable data: start empty. */
+    ci.initialDataSize = 0;
+    ci.pInitialData = NULL;
+    return g_vk.vkCreatePipelineCache(ctx->device, &ci, NULL, &ctx->pipelineCache) == VK_SUCCESS ? 0 : -1;
+}
+
+VkResult yvk_pipeline_cache_data(yvk_context *ctx, void *data, size_t *size) {
+    if (!ctx->pipelineCache) { *size = 0; return VK_SUCCESS; }
+    return g_vk.vkGetPipelineCacheData(ctx->device, ctx->pipelineCache, size, data);
 }
 
 VkFormatFeatureFlags yvk_format_features(const yvk_context *ctx, VkFormat format) {
@@ -625,7 +644,7 @@ VkPipeline yvk_compute_pipeline_create(yvk_context *ctx, const yvk_shader_stage 
     if (make_stage(ctx, stage, VK_SHADER_STAGE_COMPUTE_BIT, &ci.stage, &st, err, errlen) != 0) return VK_NULL_HANDLE;
     ci.layout = ctx->pipelineLayout;
     VkPipeline p = VK_NULL_HANDLE;
-    VkResult r = g_vk.vkCreateComputePipelines(ctx->device, VK_NULL_HANDLE, 1, &ci, NULL, &p);
+    VkResult r = g_vk.vkCreateComputePipelines(ctx->device, ctx->pipelineCache, 1, &ci, NULL, &p);
     g_vk.vkDestroyShaderModule(ctx->device, ci.stage.module, NULL);
     if (r != VK_SUCCESS) {
         fail(err, errlen, "vkCreateComputePipelines failed (%d)", r);
@@ -712,7 +731,7 @@ VkPipeline yvk_graphics_pipeline_create(yvk_context *ctx, const yvk_graphics_inf
     VkGraphicsPipelineCreateInfo gpi = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, &pri, 0, nstages, stages,
                                         &vis, &ias, NULL, &vps, &rs, &ms, &ds, &cbs, &dys, ctx->pipelineLayout};
     VkPipeline p = VK_NULL_HANDLE;
-    VkResult r = g_vk.vkCreateGraphicsPipelines(ctx->device, VK_NULL_HANDLE, 1, &gpi, NULL, &p);
+    VkResult r = g_vk.vkCreateGraphicsPipelines(ctx->device, ctx->pipelineCache, 1, &gpi, NULL, &p);
     for (uint32_t i = 0; i < nstages; i++) g_vk.vkDestroyShaderModule(ctx->device, stages[i].module, NULL);
     if (r != VK_SUCCESS) {
         fail(err, errlen, "vkCreateGraphicsPipelines failed (%d)", r);
