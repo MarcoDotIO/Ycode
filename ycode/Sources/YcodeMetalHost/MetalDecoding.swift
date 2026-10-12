@@ -324,8 +324,10 @@ enum MetalPipelineCodec {
                 guard at < p.count else { throw MetalDecodeError.badPayload("label offset \(at)") }
                 let end = p[at...].firstIndex(of: 0) ?? p.count
                 d.label = String(decoding: p[at..<end], as: UTF8.self)
-            case 1: d.fragmentFunction = v == 0 ? nil : function(UInt32(truncatingIfNeeded: v))
-            case 2: d.vertexFunction = v == 0 ? nil : function(UInt32(truncatingIfNeeded: v))
+            // Key 1 is the vertex function and key 2 the fragment function
+            // (corrected 2026-10-12 from VK's level-3 runs; spec §7.2 note).
+            case 1: d.vertexFunction = v == 0 ? nil : function(UInt32(truncatingIfNeeded: v))
+            case 2: d.fragmentFunction = v == 0 ? nil : function(UInt32(truncatingIfNeeded: v))
             case 3: d.vertexDescriptor = try vertexDescriptor(p, at: Int(v))
             case 4: d.rasterSampleCount = Int(v)
             case 5: d.alphaToCoverageEnabled = v != 0

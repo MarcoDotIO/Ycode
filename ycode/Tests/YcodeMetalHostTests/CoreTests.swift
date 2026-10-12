@@ -106,7 +106,7 @@ import YcodeXPC
         #expect(f.replyData(Build.message(15, fn, [("functionIR", .data(ir))])) == [1, 0, 0, 0, 0, 0, 0, 0])
         #expect(f.replyData(Build.message(15, fn, [("functionIR", .data(ir))])) == [2, 0, 0, 0, 0, 0, 0, 0])
         // Render pipeline (op 14) on connection 2.
-        let payload = MetalKeyedPayloadBuilder.renderPipeline(top: [(1, 2), (2, 1)], label: "quad",
+        let payload = MetalKeyedPayloadBuilder.renderPipeline(top: [(1, 1), (2, 2)], label: "quad",
                                                               colorAttachments: [[(0, 0), (1, 80), (2, 1), (4, 5), (7, 5)]])
         let rp = Build.record(14) { $0.u32(0); $0.u32(UInt32(payload.count)); $0.append(payload) }
         #expect(f.replyData(Build.message(12, rp), on: 2) == [1, 0, 0, 0, 0, 0, 0, 0])

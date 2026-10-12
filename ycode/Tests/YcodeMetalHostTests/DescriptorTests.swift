@@ -74,11 +74,11 @@ import Testing
 
     @Test func handBuiltRenderPipeline() throws {
         // Payload laid out by hand from §7.1: four top-level fields (label,
-        // fragment 2, vertex 1, color array), the label after them, the
+        // vertex 1, fragment 2, color array), the label after them, the
         // array at a 4-aligned offset, its element after the offset table.
         var p = MetalByteWriter()
         p.u8(4)
-        for (k, v) in [(0, 25), (1, 2), (2, 1), (8, 32)] as [(UInt8, UInt32)] { p.u8(k); p.u8(4); p.u32(v) }
+        for (k, v) in [(0, 25), (1, 1), (2, 2), (8, 32)] as [(UInt8, UInt32)] { p.u8(k); p.u8(4); p.u32(v) }
         #expect(p.bytes.count == 25)
         p.append(Array("Over".utf8) + [0])
         p.pad(to: 32)
@@ -108,7 +108,7 @@ import Testing
             vertexAttributes: [[(0, 0), (1, 29), (2, 0), (3, 0)], [(0, 1), (1, 31), (2, 8), (3, 0)]],
             vertexLayouts: [[(0, 0), (3, 16)], [(0, 0), (3, 16)]])
         let d = try MetalPipelineCodec.renderPipeline(payload) { MetalHandle(UInt64($0) + 1000) }
-        #expect(d.label == nil && d.fragmentFunction == MetalHandle(1004) && d.vertexFunction == MetalHandle(1003))
+        #expect(d.label == nil && d.vertexFunction == MetalHandle(1004) && d.fragmentFunction == MetalHandle(1003))
         #expect(d.rasterSampleCount == 4 && d.depthAttachmentPixelFormat == 252 && d.stencilAttachmentPixelFormat == 253)
         #expect(d.inputPrimitiveTopology == 3 && d.unknownKeys == [12: 99])
         #expect(d.colorAttachments.map(\.index) == [0, 2] && d.colorAttachments[1].writeMask == 7
@@ -116,6 +116,16 @@ import Testing
         let vd = try #require(d.vertexDescriptor)
         #expect(vd.attributes.map(\.format) == [29, 31] && vd.attributes[1].offset == 8 && vd.attributes[1].index == 1)
         #expect(vd.layouts.count == 2 && vd.layouts[0].stride == 16 && vd.layouts[0].stepFunction == 1 && vd.layouts[0].stepRate == 1)
+    }
+
+    @Test func keyOneIsVertexKeyTwoIsFragment() throws {
+        // §7.2 as corrected 2026-10-12: key 1 = vertex function, key 2 = fragment function.
+        let functions: [UInt32: MetalHandle] = [5: MetalHandle(500), 9: MetalHandle(900)]
+        let both = try MetalPipelineCodec.renderPipeline(MetalKeyedPayloadBuilder.object([(1, 5), (2, 9)])) { functions[$0] }
+        #expect(both.vertexFunction == MetalHandle(500) && both.fragmentFunction == MetalHandle(900))
+        // A vertex-only pipeline (no fragment function) sends key 1 alone.
+        let vertexOnly = try MetalPipelineCodec.renderPipeline(MetalKeyedPayloadBuilder.object([(1, 5)])) { functions[$0] }
+        #expect(vertexOnly.vertexFunction == MetalHandle(500) && vertexOnly.fragmentFunction == nil)
     }
 
     @Test func computePipelineAndMalformedPayloads() throws {

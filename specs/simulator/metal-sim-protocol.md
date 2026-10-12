@@ -481,8 +481,8 @@ unlabelled descriptor has a single NUL there).
 | Top-level key | Meaning |
 |---|---|
 | 0 | offset of the label string (present when labelled) |
-| 1 | fragment function ref |
-| 2 | vertex function ref |
+| 1 | vertex function ref (corrected 2026-10-12, see the note below) |
+| 2 | fragment function ref (corrected 2026-10-12) |
 | 3 | offset of the vertex descriptor object |
 | 4 | `rasterSampleCount` |
 | 5 | `alphaToCoverageEnabled` |
@@ -499,6 +499,14 @@ unlabelled descriptor has a single NUL there).
 | 3, 4, 5 | `sourceRGBBlendFactor`, `destinationRGBBlendFactor`, `rgbBlendOperation` |
 | 6, 7, 8 | `sourceAlphaBlendFactor`, `destinationAlphaBlendFactor`, `alphaBlendOperation` |
 | 9 | `writeMask` |
+
+**Correction (2026-10-12).** Keys 1 and 2 were first recorded the other
+way round. Stage 8a-i runs on the Thor (level 3: the Ycode host service
+with its Vulkan back end, serving our probe's hello-triangle pipeline and
+a system process's pipelines) showed that key 1 carries the vertex
+function's ref and key 2 the fragment function's ref; with the original
+assignment the translated stages were swapped. The table above has been
+corrected.
 
 Only attachments with a pixel format are listed. **Vertex descriptor**
 object: key 0 offset of the attribute array, key 1 offset of the layout
