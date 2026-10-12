@@ -110,6 +110,7 @@ final class MetalHostCore: @unchecked Sendable {
         init(kind: MetalRefKind, ref: UInt32) { self.kind = kind; self.ref = ref }
     }
 
+    /// Every `var` of a process is read and written only under the core's lock.
     final class Process: @unchecked Sendable {
         let id: MetalProcessID
         var connections: Set<UInt32> = []
@@ -164,8 +165,11 @@ final class MetalHostCore: @unchecked Sendable {
     }
 
     private func tearDown(_ p: Process) {
-        let objects = p.objects.sorted { $0.key > $1.key }
-        p.objects.removeAll()
+        let objects = lock.withLock { () -> [(key: MetalHandle, value: Object)] in
+            let all = p.objects.sorted { $0.key > $1.key }
+            p.objects.removeAll()
+            return all
+        }
         for (h, o) in objects {
             if o.kind != .queue && o.kind != .argumentLayout && o.kind != .argumentEncoder && o.kind != .heap {
                 backend.release(h)
@@ -273,8 +277,6 @@ final class MetalHostCore: @unchecked Sendable {
     private func lookUp(_ kind: MetalRefKind, _ ref: UInt32, _ p: Process) -> MetalHandle? {
         lock.withLock { p.handle(kind, ref) }
     }
-
-    private func object(_ h: MetalHandle, _ p: Process) -> Object? { lock.withLock { p.objects[h] } }
 
     static func refReply(_ ref: UInt32, words: Int = 2) -> XPCDict {
         var w = MetalByteWriter()
@@ -685,7 +687,7 @@ final class MetalHostCore: @unchecked Sendable {
         case 38:
             let ref = try r.u32()
             guard let h = lookUp(.resource, ref, p) else { return Self.u64Reply([0]) }
-            let address = backend.gpuAddress(ofBuffer: h) ?? object(h, p)?.gpuAddress ?? 0
+            let address = backend.gpuAddress(ofBuffer: h) ?? lock.withLock { p.objects[h]?.gpuAddress } ?? 0
             return Self.u64Reply([address])
         case 39:
             let ref = try r.u32()
@@ -694,7 +696,7 @@ final class MetalHostCore: @unchecked Sendable {
         case 41:
             let ref = try r.u32()
             guard let h = lookUp(.event, ref, p) else { return Self.u64Reply([0]) }
-            return Self.u64Reply([backend.eventValue(h) ?? object(h, p)?.eventValue ?? 0])
+            return Self.u64Reply([backend.eventValue(h) ?? lock.withLock { p.objects[h]?.eventValue } ?? 0])
         default:
             return nil
         }
@@ -756,22 +758,28 @@ final class MetalHostCore: @unchecked Sendable {
          "error": .uint64(1), "startTime": .double(start), "endTime": .double(end)]
     }
 
-    /// On `p.events`.
+    /// The process's event port, read under the lock; nil once the process ended.
+    private func eventPort(_ p: Process) -> UInt32? {
+        lock.withLock { p.ended ? nil : p.eventPort }
+    }
+
+    /// On `p.events` (the `InFlight` flags are touched only there).
     private func sendScheduled(_ p: Process, _ cbRef: UInt64, _ f: InFlight) {
-        guard !f.sentScheduled, !f.sentCompleted, !p.ended else { return }
+        guard !f.sentScheduled, !f.sentCompleted, let port = eventPort(p) else { return }
         f.sentScheduled = true
         _ = transport?.sendEvent(event(100, cbRef, status: MetalCommandBufferStatus.scheduled, start: f.start, end: clock()),
-                                 to: p.eventPort)
+                                 to: port)
         lock.withLock { stats.scheduledEvents += 1 }
     }
 
     /// On `p.events`. Sends 100 first when the backend never reported it.
     private func sendCompleted(_ p: Process, _ cbRef: UInt64, _ f: InFlight, status: Int) {
-        guard !f.sentCompleted, !p.ended else { return }
+        guard !f.sentCompleted, eventPort(p) != nil else { return }
         let end = clock()
         if !f.sentScheduled { sendScheduled(p, cbRef, f) }
+        guard let port = eventPort(p) else { return }
         f.sentCompleted = true
-        _ = transport?.sendEvent(event(101, cbRef, status: status, start: f.start, end: end), to: p.eventPort)
+        _ = transport?.sendEvent(event(101, cbRef, status: status, start: f.start, end: end), to: port)
         lock.withLock { stats.completedEvents += 1 }
     }
 

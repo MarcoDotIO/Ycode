@@ -5,7 +5,7 @@ import YcodeXPC
 
 /// The service logic (spec §2–§9) driven with synthetic messages.
 @Suite struct CoreTests {
-    final class Fixture {
+    final class Fixture: @unchecked Sendable {
         let backend: NullBackend
         let memory = FakeMemory()
         let surfaces = FakeSurfaces()
@@ -279,6 +279,33 @@ import YcodeXPC
         p[0].completed(4)
         f.core.drainEvents()
         #expect(f.transport.summary.suffix(1) == [[101, 3, 4]] && f.transport.events.count == 6)
+    }
+
+    @Test func completionsRacingWithProcessEnd() {
+        // Completions arrive on many threads while the process ends: events
+        // read the process state under the lock, and none go out after the end.
+        let f = Fixture(completesImmediately: false)
+        f.connect(eventPort: 0x777)
+        _ = f.send(["messageType": .uint64(7), "maxCommandBufferCount": .uint64(64)], on: 1)
+        for cb in 1...64 as ClosedRange<UInt64> { _ = f.send(Self.submission(cb), on: 0) }
+        let pending = f.backend.pending
+        DispatchQueue.concurrentPerform(iterations: pending.count + 1) { i in
+            if i == pending.count {
+                for c in 0x100...0x102 as ClosedRange<UInt32> { f.core.connectionClosed(c) }
+            } else {
+                pending[i].scheduled()
+                pending[i].completed(4)
+            }
+        }
+        for p in pending { p.completed(4) }  // after the end: nothing more is sent
+        let sent = f.transport.events.count
+        usleep(50_000)
+        #expect(f.transport.events.count == sent && f.transport.events.allSatisfy { $0.port == 0x777 })
+        // Each command buffer that got events got 100 before 101.
+        var seen: [UInt64: [UInt64]] = [:]
+        for e in f.transport.summary { seen[e[1], default: []].append(e[0]) }
+        #expect(seen.values.allSatisfy { $0 == [100, 101] || $0 == [100] })
+        #expect(f.core.statistics.processes == 0)
     }
 
     @Test func processEndReleasesEverything() {
