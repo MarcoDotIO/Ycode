@@ -11,9 +11,8 @@
  * with the sleeper bit set wakes them all, and they compete again.
  *
  * Deadlock detection that POSIX allows: a write lock by the holder of the
- * write lock, or a read lock by the writer, returns EDEADLK; and in a
- * single-threaded process any lock that would have to wait returns
- * EDEADLK (nothing could ever release it).
+ * write lock, or a read lock by the writer, returns EDEADLK. Every other
+ * contended lock sleeps in the kernel.
  *
  * Layout of pthread_rwlock_t (200 bytes; Ycode's own after the
  * signature): +0 sig, +8 state, +12 pshared, +16 writer (pthread_t).
@@ -132,8 +131,6 @@ static int rw_rdlock(struct yc_rwlock *l, yc_bool try)
             return YC_EDEADLK;
         if (try)
             return YC_EBUSY;
-        if (!YC_LOAD(&YC_FN(__is_threaded)))
-            return YC_EDEADLK;
         rw_sleep(l, s);
     }
 }
@@ -157,8 +154,6 @@ static int rw_wrlock(struct yc_rwlock *l, yc_bool try)
             return YC_EDEADLK;
         if (try)
             return YC_EBUSY;
-        if (!YC_LOAD(&YC_FN(__is_threaded)))
-            return YC_EDEADLK;
         rw_sleep(l, s);
     }
 }

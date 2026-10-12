@@ -15,6 +15,8 @@
  */
 #include "yc_pthread.h"
 
+YC_EXPORT yc_pthread_t YC_FN(pthread_from_mach_thread_np)(yc_u32 port);
+
 typedef void (*yc_dtor_t)(void *);
 
 #define KEY_FREE 0
@@ -121,8 +123,8 @@ YC_EXPORT void YC_FN(_pthread_clear_qos_tsd)(yc_u32 thread_port)
         tsd[YC_TSD_QOS] = 0;
         return;
     }
-    yc_pthread_t t = __yc_main_thread();
-    if ((yc_u32)t->tsd[YC_TSD_MACH_THREAD_SELF] == thread_port)
+    yc_pthread_t t = YC_FN(pthread_from_mach_thread_np)(thread_port);
+    if (t != YC_NULL)
         t->tsd[YC_TSD_QOS] = 0;
 }
 

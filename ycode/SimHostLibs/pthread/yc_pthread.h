@@ -3,7 +3,9 @@
  *
  * Clean-room Ycode code, written from specs/simulator/host-libraries.md
  * (sections 7-8), specs/simulator/host-library-init.md (sections 1-7 and
- * 9.4), specs/simulator/host-library-surface.md, and the public POSIX
+ * 9.4), specs/simulator/host-library-surface.md,
+ * specs/simulator/threads-and-events.md (sections 1-2: thread creation and
+ * termination, the join gate, the workqueue upcalls), and the public POSIX
  * threads and Darwin pthread API documentation (man pages, the public
  * <pthread.h>, <pthread/qos.h> and <sys/qos.h> constants).
  *
@@ -148,9 +150,19 @@ _Static_assert(sizeof(struct yc_pthread) == 6368, "pthread_s is 6368 bytes");
 
 /* Ycode flags in yc_pthread.flags. */
 #define YC_TF_DEFAULTS_SET 0x0001 /* default attributes applied */
-#define YC_TF_EXITING 0x0002
+#define YC_TF_EXITING 0x0002      /* pthread_exit has started */
 #define YC_TF_DETACHED 0x0004
 #define YC_TF_MAIN 0x0008
+#define YC_TF_EXITED 0x0010       /* joinable thread is terminating (zombie) */
+#define YC_TF_JOINER 0x0020       /* a pthread_join is in progress */
+#define YC_TF_WORKQ 0x0040        /* a kernel workqueue thread */
+#define YC_TF_CUSTOM_STACK 0x0080 /* the stack belongs to the caller */
+#define YC_TF_ON_LIST 0x0100      /* linked into the thread list */
+#define YC_TF_SUSPENDED 0x0200    /* created with PTHREAD_START_SUSPENDED */
+
+/* yc_pthread.detach_flags bits (bit 0 is registered with the kernel). */
+#define YC_DF_JOINABLE 0x01
+#define YC_DF_CUSTOM_STACK 0x04
 
 typedef struct yc_pthread *yc_pthread_t;
 
@@ -185,6 +197,89 @@ static inline yc_pthread_t __yc_from_tsd(yc_uintptr_t *tsd)
     return (yc_pthread_t)((char *)tsd - YC_PTHREAD_TSD_OFFSET);
 }
 
+/* ---- pthread_attr_t (attr.c; Ycode's layout after the signature) ------ */
+#define YC_ATTR_STACKADDR_SET 0x01
+#define YC_ATTR_SCHED_SET 0x02
+#define YC_ATTR_QOS_SET 0x04
+#define YC_ATTR_CPUPERCENT_SET 0x08
+#define YC_DEFAULT_STACK_SIZE 0x80000ul
+
+struct yc_attr {
+    long sig;
+    yc_size_t stacksize;
+    yc_uintptr_t stackaddr;      /* stack top (Darwin keeps the top) */
+    yc_size_t guardsize;
+    yc_i32 sched_priority;
+    yc_u32 qos;                  /* pthread_priority_t, low 32 bits */
+    yc_u8 detach, inherit, policy, flags;
+    yc_u8 cpupercent;
+    yc_u8 pad[3];
+    yc_u64 refillms;
+    void *workinterval;
+};
+_Static_assert(sizeof(struct yc_attr) == 64, "pthread_attr_t is 64 bytes");
+
+/* ---- kernel thread interfaces (threads-and-events.md sections 1-2) ----- */
+/* bsdthread_create flags (section 1.1). */
+#define YC_PTHREAD_START_CUSTOM 0x01000000u
+#define YC_PTHREAD_START_SETSCHED 0x02000000u
+#define YC_PTHREAD_START_QOSCLASS 0x08000000u
+#define YC_PTHREAD_START_TSD_BASE_SET 0x10000000u
+#define YC_PTHREAD_START_SUSPENDED 0x20000000u
+#define YC_PTHREAD_START_POLICY_SHIFT 16
+#define YC_PTHREAD_START_IMPORTANCE_MASK 0xFFFFu
+#define YC_PTHREAD_START_QOS_MASK 0x00FFFFFFu
+
+/* workq_kernreturn operations (section 2.3). */
+#define YC_WQOPS_THREAD_RETURN 0x004
+#define YC_WQOPS_QUEUE_NEWSPISUPP 0x010
+#define YC_WQOPS_QUEUE_REQTHREADS 0x020
+#define YC_WQOPS_QUEUE_REQTHREADS2 0x030
+#define YC_WQOPS_THREAD_KEVENT_RETURN 0x040
+#define YC_WQOPS_SET_EVENT_MANAGER_PRIORITY 0x080
+#define YC_WQOPS_THREAD_WORKLOOP_RETURN 0x100
+#define YC_WQOPS_SHOULD_NARROW 0x200
+#define YC_WQOPS_SETUP_DISPATCH 0x400
+
+/* start_wqthread upcall flags in x4 (section 2.6). */
+#define YC_WQ_FLAG_THREAD_PRIO_MASK 0x00000FFFu
+#define YC_WQ_FLAG_THREAD_PRIO_QOS 0x00004000u
+#define YC_WQ_FLAG_THREAD_PRIO_SCHED 0x00008000u
+#define YC_WQ_FLAG_THREAD_OVERCOMMIT 0x00010000u
+#define YC_WQ_FLAG_THREAD_REUSE 0x00020000u
+#define YC_WQ_FLAG_THREAD_NEWSPI 0x00040000u
+#define YC_WQ_FLAG_THREAD_KEVENT 0x00080000u
+#define YC_WQ_FLAG_THREAD_EVENT_MANAGER 0x00100000u
+#define YC_WQ_FLAG_THREAD_TSD_BASE_SET 0x00200000u
+#define YC_WQ_FLAG_THREAD_WORKLOOP 0x00400000u
+#define YC_WQ_FLAG_THREAD_OUTSIDEQOS 0x00800000u
+#define YC_WQ_FLAG_THREAD_COOPERATIVE 0x01000000u
+#define YC_WQ_EVENT_MANAGER_QOS 8 /* kernel-internal manager bucket */
+/* Worker memory, from the kernel's allocation base B (section 2.6). */
+#define YC_WQ_GUARD_SIZE YC_PAGE_SIZE
+#define YC_WQ_SELF_OFFSET (540ul * 1024)   /* self = B + 540 KiB */
+#define YC_WQ_ALLOC_SIZE (560ul * 1024)
+
+/* pthread_priority_t flag bits (section 2.4). */
+#define YC_PP_OVERCOMMIT 0x80000000ul
+#define YC_PP_SCHED_PRI 0x20000000ul
+#define YC_PP_COOPERATIVE 0x08000000ul
+#define YC_PP_EVENT_MANAGER 0x02000000ul
+#define YC_PP_NEEDS_UNBIND 0x01000000ul
+#define YC_PP_QOS_MASK 0x00003F00ul
+#define YC_PP_RELPRI_MASK 0x000000FFul
+
+/* bsdthread_ctl (section 1.5). */
+#define YC_BSDTHREAD_CTL_SET_SELF 0x100
+#define YC_SET_SELF_WQ_KEVENT_UNBIND 0x10
+
+/* kqueue_workloop_ctl (section 2.9). */
+#define YC_KQ_WORKLOOP_CREATE 1
+#define YC_KQ_WORKLOOP_DESTROY 2
+#define YC_KQ_WORKLOOP_SCHED_PRI 0x01
+#define YC_KQ_WORKLOOP_SCHED_POL 0x02
+#define YC_KQ_WORKLOOP_CPU_PERCENT 0x04
+
 /* ---- library state (init.c) ------------------------------------------- */
 struct yc_pthread_globals {
     yc_pthread_t main_thread;    /* NULL until adopted */
@@ -204,10 +299,12 @@ struct yc_pthread_globals {
     yc_bool late_init_done;
     yc_bool yield_to_zero;
     void *introspection_hook;
-    void *workq_config;          /* pthread_workqueue_setup record */
-    yc_size_t workq_config_size;
-    void *workq_funcs[3];
-    yc_i32 workq_offset;
+    void *workq_funcs[3];        /* workq_cb, kevent_cb, workloop_cb */
+    yc_u32 workq_lock;           /* serializes the setup calls */
+    yc_bool workq_ready;         /* callbacks registered */
+    yc_u64 workq_serialno_offset;
+    yc_u64 workq_label_offset;
+    yc_u32 coop_pending[7];      /* cooperative requests mapped to constrained */
     yc_bool workq_setkill;
     yc_i32 workq_allowed_signal;
     void *workgroup_functions;
@@ -227,6 +324,12 @@ YC_HIDDEN void __yc_thread_defaults(yc_pthread_t t);
 YC_HIDDEN yc_pthread_t __yc_self_ready(void);
 /* Is t a live thread of this process? */
 YC_HIDDEN yc_bool __yc_thread_valid(yc_pthread_t t);
+/* Thread list (create.c): link/unlink under __yc_pt.list_lock. */
+YC_HIDDEN void __yc_list_add(yc_pthread_t t);
+YC_HIDDEN void __yc_list_remove(yc_pthread_t t);
+/* Terminates the calling thread (create.c): exit value, cleanup handlers,
+ * TSD destructors, the last-thread rule, then __bsdthread_terminate. */
+YC_HIDDEN YC_NORETURN void __yc_thread_exit(yc_pthread_t self, void *value);
 /* Runs the TSD destructors of the calling thread (tsd.c). */
 YC_HIDDEN void __yc_tsd_run_destructors(yc_pthread_t self);
 /* Writes "libsystem_pthread: <msg>\n" to fd 2 and crashes. */
@@ -234,6 +337,8 @@ YC_HIDDEN YC_NORETURN void __yc_fatal(const char *msg);
 
 /* Cross-file exported functions. */
 YC_EXPORT void YC_FN(pthread_testcancel)(void);
+YC_EXPORT int YC_FN(sched_yield)(void);
+YC_EXPORT YC_NORETURN void YC_FN(pthread_exit)(void *value);
 
 /* ---- internal futex-style lock (lowlock.c) ---------------------------- */
 /* Word: 0 unlocked, 1 locked, 2 locked and contended. */
@@ -274,8 +379,18 @@ struct yc_timeval { long tv_sec; yc_i32 tv_usec; };
 int YC_KFN(__gettimeofday)(struct yc_timeval *tv, void *tz, yc_u64 *mach_time);
 YC_NORETURN void YC_KFN(_exit)(int status);
 
-/* Thread entry points registered with the kernel. They are generated
- * stubs until threads exist (they trap with their own name). */
+void *YC_KFN(__bsdthread_create)(void *func, void *arg, void *stack, void *pthread, yc_u32 flags);
+int YC_KFN(__bsdthread_terminate)(void *stackaddr, yc_size_t freesize, yc_u32 port, yc_uintptr_t gate);
+int YC_KFN(__bsdthread_ctl)(yc_uintptr_t cmd, yc_uintptr_t arg1, yc_uintptr_t arg2, yc_uintptr_t arg3);
+int YC_KFN(__workq_kernreturn)(int op, void *item, int arg2, int arg3);
+int YC_KFN(__workq_open)(void);
+int YC_KFN(__kqueue_workloop_ctl)(yc_uintptr_t cmd, yc_u64 options, void *params, yc_size_t size);
+int YC_KFN(mprotect)(void *addr, yc_size_t len, int prot);
+int YC_KFN(swtch_pri)(int pri);
+#define YC_PROT_NONE 0x0
+
+/* Thread entry points registered with the kernel (entry.S in the guest;
+ * the host tests supply placeholders). Never called from C. */
 void YC_KFN(thread_start)(void);
 void YC_KFN(start_wqthread)(void);
 

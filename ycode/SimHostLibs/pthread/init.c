@@ -132,6 +132,9 @@ YC_HIDDEN void __yc_thread_defaults(yc_pthread_t t)
     t->cancel_state = YC_PTHREAD_CANCEL_ENABLE | YC_PTHREAD_CANCEL_DEFERRED;
     if (t->guardsize == 0)
         t->guardsize = YC_PAGE_SIZE;
+    /* The join gate holds the thread port while the thread runs. */
+    if (t->exit_gate == 0)
+        t->exit_gate = (yc_u32)t->tsd[YC_TSD_MACH_THREAD_SELF];
     if (t->stackaddr == 0) {
         /* No stack information at all: approximate from the current SP. */
         yc_uintptr_t sp = (yc_uintptr_t)__builtin_frame_address(0);
@@ -339,14 +342,17 @@ YC_EXPORT int YC_FN(__pthread_init)(const struct yc_libpthread_functions *funcs,
     }
 
     /* 9. Main-thread common init. */
-    __yc_lock(&__yc_pt.list_lock);
-    mt->next = mt->prev = YC_NULL;
-    __yc_pt.thread_count = 1;
-    __yc_unlock(&__yc_pt.list_lock);
+    if (!__yc_pt.init_done) {
+        __yc_lock(&__yc_pt.list_lock);
+        mt->next = mt->prev = YC_NULL;
+        __yc_pt.thread_count = 1;
+        __yc_unlock(&__yc_pt.list_lock);
+    }
     if (port != 0)
         mt->tsd[YC_TSD_MACH_THREAD_SELF] = (yc_u32)port;
     else if (mt->tsd[YC_TSD_MACH_THREAD_SELF] == 0)
         mt->tsd[YC_TSD_MACH_THREAD_SELF] = YC_KFN(mach_thread_self)();
+    mt->exit_gate = (yc_u32)mt->tsd[YC_TSD_MACH_THREAD_SELF];
     if (mt->tsd[YC_TSD_MIG_REPLY] == 0)
         mt->tsd[YC_TSD_MIG_REPLY] = YC_KFN(mach_reply_port)();
     if (!__yc_pt.init_done) {
@@ -446,6 +452,9 @@ YC_EXPORT void YC_FN(_pthread_atfork_child)(void)
     __yc_pt.main_thread = self;
     __yc_pt.thread_count = 1;
     self->next = self->prev = YC_NULL;
+    /* The only thread of the child is its main thread now. */
+    self->flags = (yc_u16)((self->flags & ~(YC_TF_ON_LIST | YC_TF_WORKQ | YC_TF_DETACHED)) | YC_TF_MAIN);
+    self->detach_flags |= YC_DF_JOINABLE;
     YC_STORE(&YC_FN(__is_threaded), 0);
 }
 
@@ -469,8 +478,10 @@ YC_EXPORT void YC_FN(_pthread_fork_child_postinit)(void)
 {
     yc_pthread_t self = __yc_self();
     yc_u32 port = YC_KFN(mach_thread_self)();
-    if (port != 0)
+    if (port != 0) {
         self->tsd[YC_TSD_MACH_THREAD_SELF] = port;
+        self->exit_gate = port;
+    }
     self->tsd[YC_TSD_MIG_REPLY] = 0; /* recreated lazily by mig_get_reply_port */
     yc_u64 id = YC_KFN(__thread_selfid)();
     if (id != 0 && id != ~0ull)

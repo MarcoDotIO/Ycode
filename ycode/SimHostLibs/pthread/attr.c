@@ -14,27 +14,8 @@
  */
 #include "yc_pthread.h"
 
-#define ATTR_STACKADDR_SET 0x01
-#define ATTR_SCHED_SET 0x02
-#define ATTR_QOS_SET 0x04
-#define ATTR_CPUPERCENT_SET 0x08
-
-#define DEFAULT_STACK_SIZE 0x80000ul
-
-struct yc_attr {
-    long sig;
-    yc_size_t stacksize;
-    yc_uintptr_t stackaddr;
-    yc_size_t guardsize;
-    yc_i32 sched_priority;
-    yc_u32 qos;
-    yc_u8 detach, inherit, policy, flags;
-    yc_u8 cpupercent;
-    yc_u8 pad[3];
-    yc_u64 refillms;
-    void *workinterval;
-};
-_Static_assert(sizeof(struct yc_attr) == 64, "pthread_attr_t is 64 bytes");
+/* struct yc_attr and the YC_ATTR_* flags are in yc_pthread.h (create.c
+ * reads them too). */
 
 struct yc_sched_param {
     int sched_priority;
@@ -45,7 +26,7 @@ struct yc_sched_param {
 
 YC_EXPORT int YC_FN(pthread_attr_init)(struct yc_attr *a)
 {
-    a->stacksize = DEFAULT_STACK_SIZE;
+    a->stacksize = YC_DEFAULT_STACK_SIZE;
     a->stackaddr = 0;
     a->guardsize = YC_PAGE_SIZE;
     a->sched_priority = __yc_pt.user_priority;
@@ -107,7 +88,7 @@ YC_EXPORT int YC_FN(pthread_attr_setschedpolicy)(struct yc_attr *a, int policy)
     if (policy != YC_SCHED_OTHER && policy != YC_SCHED_RR && policy != YC_SCHED_FIFO)
         return YC_EINVAL;
     a->policy = (yc_u8)policy;
-    a->flags |= ATTR_SCHED_SET;
+    a->flags |= YC_ATTR_SCHED_SET;
     return 0;
 }
 
@@ -124,7 +105,7 @@ YC_EXPORT int YC_FN(pthread_attr_setschedparam)(struct yc_attr *a, const struct 
     if (p == YC_NULL)
         return YC_EINVAL;
     a->sched_priority = p->sched_priority;
-    a->flags |= ATTR_SCHED_SET;
+    a->flags |= YC_ATTR_SCHED_SET;
     return 0;
 }
 
@@ -180,7 +161,7 @@ YC_EXPORT int YC_FN(pthread_attr_setstackaddr)(struct yc_attr *a, void *addr)
     if (!page_multiple((yc_uintptr_t)addr))
         return YC_EINVAL;
     a->stackaddr = (yc_uintptr_t)addr;
-    a->flags |= ATTR_STACKADDR_SET;
+    a->flags |= YC_ATTR_STACKADDR_SET;
     return 0;
 }
 
@@ -198,7 +179,7 @@ YC_EXPORT int YC_FN(pthread_attr_setstack)(struct yc_attr *a, void *addr, yc_siz
         return YC_EINVAL;
     a->stackaddr = (yc_uintptr_t)addr + size;
     a->stacksize = size;
-    a->flags |= ATTR_STACKADDR_SET;
+    a->flags |= YC_ATTR_STACKADDR_SET;
     return 0;
 }
 
@@ -231,7 +212,7 @@ YC_EXPORT int YC_FN(pthread_attr_set_qos_class_np)(struct yc_attr *a, unsigned q
     if (idx < 0 || relpri > 0 || relpri < YC_QOS_MIN_RELATIVE_PRIORITY)
         return YC_EINVAL;
     a->qos = (yc_u32)__yc_pp_make(idx, relpri, 0);
-    a->flags |= ATTR_QOS_SET;
+    a->flags |= YC_ATTR_QOS_SET;
     return 0;
 }
 
@@ -254,7 +235,7 @@ YC_EXPORT int YC_FN(pthread_attr_setcpupercent_np)(struct yc_attr *a, int percen
         return YC_EINVAL;
     a->cpupercent = (yc_u8)percent;
     a->refillms = refillms;
-    a->flags |= ATTR_CPUPERCENT_SET;
+    a->flags |= YC_ATTR_CPUPERCENT_SET;
     return 0;
 }
 

@@ -12,10 +12,8 @@
  * unchanged (UL_COMPARE_AND_WAIT); signal and broadcast bump the counter
  * and wake one or all sleepers. Spurious wake-ups are allowed by POSIX.
  *
- * Single-threaded processes (stage 3a): an untimed wait can never be
- * satisfied, because nothing else could signal. Instead of sleeping
- * forever, the library prints a diagnostic and crashes. A timed wait
- * sleeps until its deadline and returns ETIMEDOUT.
+ * Every wait blocks in the kernel (threads-and-events.md section 4.1); a
+ * timed wait sleeps until its deadline and returns ETIMEDOUT.
  *
  * Layout of pthread_cond_t (48 bytes; Ycode's own after the signature):
  *   +0 sig ('COND' or the static initializer), +8 sequence, +12 waiters,
@@ -145,8 +143,6 @@ static int cond_wait(struct yc_cond *c, void *m, yc_u64 timeout_ns, yc_bool canc
 {
     if (!cond_valid(c) || m == YC_NULL)
         return YC_EINVAL;
-    if (timeout_ns == 0 && !YC_LOAD(&YC_FN(__is_threaded)))
-        __yc_fatal("pthread_cond_wait would wait forever (no other thread exists)");
     if (cancelable)
         YC_FN(pthread_testcancel)();
     __atomic_fetch_add(&c->waiters, 1, __ATOMIC_SEQ_CST);

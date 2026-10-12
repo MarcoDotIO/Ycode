@@ -6,9 +6,9 @@
  * threads, the Darwin _np function documentation, and
  * host-library-init.md sections 3 and 5.
  *
- * Stage 3a has one thread (pthread_create is not implemented yet), so
- * join, detach, kill and the per-thread queries accept the calling thread
- * and the main thread, and report ESRCH for anything else.
+ * Thread creation, exit, join and detach are in create.c; the per-thread
+ * queries here accept any thread on the library's thread list (the main
+ * thread, pthread_create threads, and workqueue threads).
  */
 #include "yc_pthread.h"
 
@@ -60,13 +60,19 @@ YC_EXPORT int YC_FN(pthread_threadid_np)(pthread_t t, yc_u64 *out)
     else if (!__yc_thread_valid(t))
         return YC_ESRCH;
     yc_u64 id = YC_LOAD(&t->thread_id);
-    if (id == 0) {
-        if (t != __yc_self())
-            return YC_ESRCH;
+    if (id == 0 && t == __yc_self()) {
         id = YC_KFN(__thread_selfid)();
         if (id == 0 || id == ~0ull)
             id = 1;
         YC_STORE(&t->thread_id, id);
+    }
+    /* A new thread records its ID first thing; wait for that (a thread
+     * created suspended has none until it is resumed). */
+    while (id == 0) {
+        if (YC_LOAD(&t->flags) & YC_TF_SUSPENDED)
+            return YC_ESRCH;
+        YC_FN(sched_yield)();
+        id = YC_LOAD(&t->thread_id);
     }
     *out = id;
     return 0;
@@ -182,8 +188,6 @@ YC_EXPORT int YC_FN(pthread_getname_np)(pthread_t t, char *buf, yc_size_t len)
 
 /* ---- cancellation ------------------------------------------------------- */
 
-YC_EXPORT YC_NORETURN void YC_FN(pthread_exit)(void *value);
-
 static void act_on_cancel(yc_pthread_t self)
 {
     if ((self->cancel_state & YC_PTHREAD_CANCEL_ENABLE) && YC_LOAD(&self->canceled) &&
@@ -253,62 +257,7 @@ YC_EXPORT int YC_FN(pthread_self_is_exiting_np)(void)
     return (__yc_self()->flags & YC_TF_EXITING) != 0;
 }
 
-/* ---- exit, join, detach ------------------------------------------------- */
-
-/* The public cleanup record (<pthread.h> __darwin_pthread_handler_rec). */
-struct yc_cleanup_rec {
-    void (*routine)(void *);
-    void *arg;
-    struct yc_cleanup_rec *next;
-};
-
-YC_EXPORT YC_NORETURN void YC_FN(pthread_exit)(void *value)
-{
-    yc_pthread_t self = __yc_self_ready();
-    __atomic_fetch_or(&self->flags, YC_TF_EXITING, __ATOMIC_RELAXED);
-    self->exit_value = value;
-    /* Pop and run the cleanup handlers the client pushed inline. */
-    struct yc_cleanup_rec *rec;
-    while ((rec = (struct yc_cleanup_rec *)self->cleanup_stack) != YC_NULL) {
-        self->cleanup_stack = rec->next;
-        if (rec->routine)
-            rec->routine(rec->arg);
-    }
-    __yc_tsd_run_destructors(self);
-    /* Stage 3a: the only thread is exiting, so the process exits with 0. */
-    if (__yc_pt.exit_fn)
-        __yc_pt.exit_fn(0);
-    YC_KFN(_exit)(0);
-}
-
-YC_EXPORT int YC_FN(pthread_join)(pthread_t t, void **value)
-{
-    (void)value;
-    if (!__yc_thread_valid(t))
-        return YC_ESRCH;
-    if (t == __yc_self())
-        return YC_EDEADLK;
-    /* Another live thread cannot exist before pthread_create does. */
-    return YC_ESRCH;
-}
-
-YC_EXPORT int yc_pthread_join_nocancel(pthread_t t, void **value) YC_NOCANCEL_NAME(pthread_join);
-YC_EXPORT int yc_pthread_join_nocancel(pthread_t t, void **value)
-{
-    return YC_FN(pthread_join)(t, value);
-}
-
-YC_EXPORT int YC_FN(pthread_detach)(pthread_t t)
-{
-    if (!__yc_thread_valid(t))
-        return YC_ESRCH;
-    __yc_thread_defaults(t);
-    if (t->flags & YC_TF_DETACHED)
-        return YC_EINVAL;
-    __atomic_fetch_or(&t->flags, YC_TF_DETACHED, __ATOMIC_RELAXED);
-    t->detach_flags &= (yc_u8)~1u;
-    return 0;
-}
+/* ---- exit, join, detach: create.c ---------------------------------------- */
 
 /* ---- signals ------------------------------------------------------------ */
 
@@ -376,25 +325,27 @@ static yc_bool valid_policy(int policy)
     return policy == YC_SCHED_OTHER || policy == YC_SCHED_RR || policy == YC_SCHED_FIFO;
 }
 
+/* A real yield: swtch_pri (Mach trap -59) gives up the CPU. */
 YC_EXPORT int YC_FN(sched_yield)(void)
 {
-    YC_CPU_YIELD(); /* stage 3a: one thread, nobody to yield to */
+    YC_CPU_YIELD();
+    (void)YC_KFN(swtch_pri)(0);
     return 0;
 }
 
 YC_EXPORT void YC_FN(pthread_yield_np)(void)
 {
-    YC_CPU_YIELD();
+    YC_FN(sched_yield)();
 }
 
 YC_EXPORT void YC_FN(cthread_yield)(void)
 {
-    YC_CPU_YIELD();
+    YC_FN(sched_yield)();
 }
 
 YC_EXPORT void YC_FN(_pthread_yield_to_enqueuer_4dispatch)(void)
 {
-    YC_CPU_YIELD();
+    YC_FN(sched_yield)();
 }
 
 YC_EXPORT int YC_FN(sched_get_priority_min)(int policy)
@@ -572,10 +523,7 @@ YC_EXPORT void YC_FN(pthread_dependency_fulfill_np)(struct yc_dependency *d, voi
 
 YC_EXPORT void *YC_FN(pthread_dependency_wait_np)(struct yc_dependency *d)
 {
-    while (YC_LOAD_ACQ(&d->state) == 0) {
-        if (!YC_LOAD(&YC_FN(__is_threaded)))
-            __yc_fatal("pthread_dependency_wait_np would wait forever (no other thread exists)");
-        __yc_wait32(&d->state, 0, 0);
-    }
+    while (YC_LOAD_ACQ(&d->state) == 0)
+        __yc_wait32(&d->state, 0, 0); /* blocks in the kernel */
     return d->value;
 }

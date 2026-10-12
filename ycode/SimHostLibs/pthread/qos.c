@@ -12,10 +12,10 @@
  * (0xFF = relative priority 0); the top byte holds flags. TSD slot 4 holds
  * the thread's pthread_priority_t.
  *
- * Stage 3a records QoS and properties without telling the kernel: there is
- * one thread and no scheduler to inform. The workqueue setup calls record
- * their configuration and succeed; requests for threads (addthreads,
- * workloops) stay generated stubs, so the VMM logs them by name.
+ * QoS is recorded in TSD slot 4. Ycode's kernel has no QoS scheduler, so
+ * QoS changes and overrides are not sent to it; the one property change the
+ * kernel must see is a workqueue thread unbinding from its kqueue bucket
+ * (threads-and-events.md sections 1.5 and 3.8 K5).
  */
 #include "yc_pthread.h"
 
@@ -211,80 +211,23 @@ YC_EXPORT unsigned YC_FN(_pthread_qos_class_decode)(yc_u64 pp, int *relpri, unsi
     return q;
 }
 
-/* Applies properties to the calling thread. Flag 0x1 = set the QoS from
- * `priority`; voucher, fixed-priority and timeshare requests are accepted
- * and have no effect in stage 3a. */
+/* Applies properties to the calling thread. The flags are the kernel's
+ * SET_SELF flags (threads-and-events.md 1.5): QOS 0x01 sets slot 4 from
+ * `priority`; VOUCHER, FIXEDPRIORITY and TIMESHARE are accepted and have no
+ * effect; WQ_KEVENT_UNBIND 0x10 is passed to the kernel (bsdthread_ctl
+ * SET_SELF), and on success the thread's NEEDS_UNBIND bit is cleared. */
 YC_EXPORT int YC_FN(_pthread_set_properties_self)(unsigned flags, yc_u64 priority, yc_u32 voucher)
 {
-    (void)voucher;
+    yc_uintptr_t *tsd = __yc_tsd();
     if (flags & 0x1)
-        __yc_tsd()[YC_TSD_QOS] = priority & ~YC_PP_FLAGS_MASK;
+        tsd[YC_TSD_QOS] = priority & ~YC_PP_FLAGS_MASK;
+    if (flags & YC_SET_SELF_WQ_KEVENT_UNBIND) {
+        int r = YC_KFN(__bsdthread_ctl)(YC_BSDTHREAD_CTL_SET_SELF, (yc_uintptr_t)priority, voucher,
+                                        YC_SET_SELF_WQ_KEVENT_UNBIND);
+        if (r == 0)
+            tsd[YC_TSD_QOS] &= ~(yc_uintptr_t)YC_PP_NEEDS_UNBIND;
+    }
     return 0;
 }
 
-/* ---- workqueue SPI ------------------------------------------------------ */
-
-/* The Ycode baseline feature mask (host-library-init.md section 6.4),
- * reported if the kernel registration did not happen or failed, because
- * libdispatch treats 0 as fatal. */
-#define YC_WQ_FEATURES_BASELINE 0x4000001F
-
-YC_EXPORT int YC_FN(_pthread_workqueue_supported)(void)
-{
-    yc_i64 f = YC_LOAD(&__yc_pt.features);
-    return f > 0 ? (int)f : YC_WQ_FEATURES_BASELINE;
-}
-
-YC_EXPORT int YC_FN(_pthread_workqueue_should_narrow)(yc_u64 pp)
-{
-    (void)pp;
-    return 0;
-}
-
-YC_EXPORT int YC_FN(_pthread_workqueue_set_event_manager_priority)(yc_u64 pp)
-{
-    (void)pp;
-    return 0;
-}
-
-YC_EXPORT int YC_FN(pthread_workqueue_setup)(void *config, yc_size_t size)
-{
-    if (config == YC_NULL || size < 8)
-        return YC_EINVAL;
-    __yc_pt.workq_config = config;
-    __yc_pt.workq_config_size = size;
-    return 0;
-}
-
-YC_EXPORT int YC_FN(_pthread_workqueue_init)(void *func, int offset, int flags)
-{
-    (void)flags;
-    __yc_pt.workq_funcs[0] = func;
-    __yc_pt.workq_offset = offset;
-    return 0;
-}
-
-YC_EXPORT int YC_FN(_pthread_workqueue_init_with_kevent)(void *queue_func, void *kevent_func, int offset, int flags)
-{
-    __yc_pt.workq_funcs[1] = kevent_func;
-    return YC_FN(_pthread_workqueue_init)(queue_func, offset, flags);
-}
-
-YC_EXPORT int YC_FN(_pthread_workqueue_init_with_workloop)(void *queue_func, void *kevent_func, void *workloop_func,
-                                                           int offset, int flags)
-{
-    __yc_pt.workq_funcs[2] = workloop_func;
-    return YC_FN(_pthread_workqueue_init_with_kevent)(queue_func, kevent_func, offset, flags);
-}
-
-YC_EXPORT int YC_FN(__pthread_workqueue_setkill)(int enable)
-{
-    __yc_pt.workq_setkill = enable != 0;
-    return 0;
-}
-
-YC_EXPORT int YC_FN(_pthread_workqueue_allow_send_signals)(int sig)
-{
-    __yc_pt.workq_allowed_signal = sig;
-    return 0;
-}
+/* The workqueue SPI (setup, thread requests, workloops) is in workq.c. */
