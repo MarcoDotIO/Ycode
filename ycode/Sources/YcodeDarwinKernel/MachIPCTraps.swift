@@ -13,12 +13,13 @@ extension MachIPC {
                           portInsertRight = -21, portInsertMember = -22, portExtractMember = -23,
                           portConstruct = -24, portDestruct = -25, replyPort = -26, threadSelf = -27,
                           taskSelf = -28, hostSelf = -29, machMsg = -31, machMsgOverwrite = -32,
-                          portGetAttributes = -40, portGuard = -41, portUnguard = -42, machMsg2 = -47,
+                          portGetAttributes = -40, portGuard = -41, portUnguard = -42,
+                          taskNameForPid = -44, taskForPid = -45, pidForTask = -46, machMsg2 = -47,
                           threadGetSpecialReplyPort = -50, hostCreateMachVoucher = -70,
                           voucherExtractAttrRecipe = -72, portType = -76, portRequestNotification = -77
 
         public static let all: Set<Int> = [-16, -18, -19, -20, -21, -22, -23, -24, -25, -26, -27, -28, -29,
-                                           -31, -32, -40, -41, -42, -47, -50, -70, -72, -76, -77]
+                                           -31, -32, -40, -41, -42, -44, -45, -46, -47, -50, -70, -72, -76, -77]
     }
 
     /// The Ycode-private Mach routines (`host-libraries.md` §10, contract §7).
@@ -32,6 +33,10 @@ extension MachIPC {
         public static let taskGetSpecialPort: UInt32 = 0x7963_2005
         public static let taskSetSpecialPort: UInt32 = 0x7963_2006
         public static let hostCreateMachVoucher: UInt32 = 0x7963_2007
+        /// `mach_ports_register3(task, p0, p1, p2)` (`processes.md` §3.4).
+        public static let portsRegister3: UInt32 = 0x7963_2008
+        /// `mach_ports_lookup3(task, &p0, &p1, &p2)` (`processes.md` §3.4).
+        public static let portsLookup3: UInt32 = 0x7963_2009
     }
 
     /// `TASK_BOOTSTRAP_PORT`.
@@ -163,6 +168,49 @@ extension MachIPC {
         case Trap.machMsg, Trap.machMsgOverwrite:
             return machMsgTrap(n, &frame, context: context, memory: memory)
 
+        case Trap.taskForPid:
+            // Ycode (`processes.md` §3.5): self only; any other pid fails.
+            let pidArg = i32(1)
+            call = "task_for_pid(target_tport=\(hx(u32(0))), pid=\(pidArg), t=\(hx(a[2])))"
+            var name: UInt32 = 0
+            var result = MachKern.failure
+            if isTaskSelf(u32(0)), pidArg != 0, let target = space(forPID: pidArg), target === self {
+                name = copyoutNewSend(taskPort)
+                result = MachKern.success
+            }
+            if !write32(a[2], name), result == MachKern.success {
+                _ = portDeallocate(name)
+                return kr(MachKern.invalidAddress)
+            }
+            return kr(result, " [\(hx(name))]")
+
+        case Trap.taskNameForPid:
+            let pidArg = i32(1)
+            call = "task_name_for_pid(target_tport=\(hx(u32(0))), pid=\(pidArg), t=\(hx(a[2])))"
+            var name: UInt32 = 0
+            var result = MachKern.failure
+            if isTaskSelf(u32(0)), pidArg > 0, let target = space(forPID: pidArg) {
+                name = copyoutNewSend(target.taskNamePort)
+                result = MachKern.success
+            }
+            if !write32(a[2], name), result == MachKern.success {
+                _ = portDeallocate(name)
+                return kr(MachKern.invalidAddress)
+            }
+            return kr(result, " [\(hx(name))]")
+
+        case Trap.pidForTask:
+            call = "pid_for_task(t=\(hx(u32(0))), pid=\(hx(a[1])))"
+            var pidOut: Int32 = -1
+            var result = MachKern.failure
+            if let (p, object) = kernelObject(named: u32(0)), object.isTaskFlavor, p.active,
+               let task = p.task, !task.isTerminated {
+                pidOut = task.currentPID
+                result = MachKern.success
+            }
+            if !write32(a[1], UInt32(bitPattern: pidOut)) { return kr(MachKern.invalidAddress) }
+            return kr(result, " [pid \(pidOut)]")
+
         case Trap.machMsg2:
             return machMsg2Trap(&frame, context: context, memory: memory)
 
@@ -195,7 +243,7 @@ extension MachIPC {
             let p = newPort()
             p.isSpecialReply = true
             guard let name = newEntry(bits: T.receive | T.send, urefs: 1, port: p) else { return nameResult(0) }
-            p.inSpace = true
+            p.receiver = self
             p.srights = 1
             p.mscount = 1
             specialReplyPorts[context.threadID] = p
@@ -324,7 +372,7 @@ extension MachIPC {
         let options = a[1]
         let timeout = lo(7)
         let vector = options & MachMsgOption.msgVector != 0
-        var call = "mach_msg2(data=\(hx(data)), options=\(hx(options)), bits=\(hx(lo(2))), "
+        let call = "mach_msg2(data=\(hx(data)), options=\(hx(options)), bits=\(hx(lo(2))), "
             + "\(vector ? "send_vecs" : "send_size")=\(hi(2)), remote=\(hx(lo(3))), local=\(hx(hi(3))), "
             + "voucher=\(hx(lo(4))), id=\(Int32(bitPattern: hi(4))), descs=\(lo(5)), rcv_name=\(hx(hi(5))), "
             + "\(vector ? "rcv_vecs" : "rcv_size")=\(lo(6)), timeout=\(timeout))"
@@ -465,6 +513,7 @@ extension MachIPC {
                 return kr(MachKern.noSpace)
             }
             p.semaphore = KernelSemaphore(value: value)
+            own(p)
             guard write32(a[1], name) else {
                 _ = portDeallocate(name)
                 portDeath(p)
@@ -485,17 +534,16 @@ extension MachIPC {
         case Routine.taskGetSpecialPort:
             let which = i32(1)
             call = "task_get_special_port(task=\(hx(u32(0))), which=\(which), out=\(hx(a[2])))"
-            var right: CarriedRight = .null
-            if let held = specialPorts[which] {
-                if case let .send(p) = held {
-                    p.srights += 1
-                    right = .send(p)
-                } else {
-                    right = held
-                }
-            } else if which == Self.taskBootstrapPort {
-                bootstrapPort.srights += 1
-                right = .send(bootstrapPort)
+            let target: MachIPC
+            switch taskControl(named: u32(0)) {
+            case .invalidDest: return kr(MachMsgReturn.sendInvalidDest)
+            case .notTask: return kr(MachKern.invalidArgument)
+            case let .task(t): target = t
+            }
+            let right: CarriedRight
+            switch target.getSpecialPort(which) {
+            case let .failure(e): return kr(e.code)
+            case let .success(r): right = r
             }
             let (name, _) = copyout(right)
             guard write32(a[2], name) else {
@@ -508,16 +556,55 @@ extension MachIPC {
             let which = i32(1)
             let name = u32(2)
             call = "task_set_special_port(task=\(hx(u32(0))), which=\(which), port=\(hx(name)))"
-            var right: CarriedRight = name == MachPortName.dead ? .dead : .null
-            if MachPortName.isValid(name) {
-                switch copyin(name, MachMsgType.copySend, slot: .body, apply: true) {
-                case .failure: return kr(MachMsgReturn.sendInvalidRight)
-                case let .success(r): right = r
+            let target: MachIPC
+            switch taskControl(named: u32(0)) {
+            case .invalidDest: return kr(MachMsgReturn.sendInvalidDest)
+            case .notTask: return kr(MachKern.invalidArgument)
+            case let .task(t): target = t
+            }
+            let right: CarriedRight
+            switch copyinSendArgument(name) {
+            case let .failure(e): return kr(e.code)
+            case let .success(r): right = r
+            }
+            let result = target.setSpecialPort(which, right)
+            if result != MachKern.success { release(right) }
+            return kr(result)
+
+        case Routine.portsRegister3:
+            call = "mach_ports_register3(task=\(hx(u32(0))), \(hx(u32(1))), \(hx(u32(2))), \(hx(u32(3))))"
+            let target: MachIPC
+            switch taskControl(named: u32(0)) {
+            case .invalidDest: return kr(MachMsgReturn.sendInvalidDest)
+            case .notTask: return kr(MachKern.invalidArgument)
+            case let .task(t): target = t
+            }
+            var rights: [CarriedRight] = []
+            for k in 1...3 {
+                switch copyinSendArgument(u32(k)) {
+                case let .failure(e):
+                    rights.forEach(release)
+                    return kr(e.code)
+                case let .success(r): rights.append(r)
                 }
             }
-            if let old = specialPorts.removeValue(forKey: which) { release(old) }
-            specialPorts[which] = right
+            target.setRegisteredPorts(rights)
             return kr(0)
+
+        case Routine.portsLookup3:
+            call = "mach_ports_lookup3(task=\(hx(u32(0))), \(hx(a[1])), \(hx(a[2])), \(hx(a[3])))"
+            let target: MachIPC
+            switch taskControl(named: u32(0)) {
+            case .invalidDest: return kr(MachMsgReturn.sendInvalidDest)
+            case .notTask: return kr(MachKern.invalidArgument)
+            case let .task(t): target = t
+            }
+            let names = target.slots.registered.map { copyout(target.copySend($0)).name }
+            for k in 0..<3 where !write32(a[k + 1], names[k]) {
+                names.forEach { _ = portDeallocate($0) }
+                return kr(MachKern.invalidAddress)
+            }
+            return kr(0, " [\(names.map(hx).joined(separator: ","))]")
 
         case Routine.hostCreateMachVoucher:
             call = "host_create_mach_voucher(host=\(hx(u32(0))), recipes=\(hx(a[1])), size=\(i32(2)), voucher=\(hx(a[3])))"
@@ -530,6 +617,17 @@ extension MachIPC {
             frame.carry = true
             log("\(prefix) \(call) -> unimplemented")
             return .unimplemented(description: "unimplemented private \(hx(number))\n" + frame.description)
+        }
+    }
+
+    /// Copies in a port argument of a private routine as COPY_SEND
+    /// (NULL/DEAD pass through). A bad name or one without a send right is
+    /// `MACH_SEND_INVALID_RIGHT` (the MIG copyin failure).
+    func copyinSendArgument(_ name: UInt32) -> Result<CarriedRight, KernError> {
+        guard MachPortName.isValid(name) else { return .success(name == MachPortName.dead ? .dead : .null) }
+        switch copyin(name, MachMsgType.copySend, slot: .body, apply: true) {
+        case .failure: return .failure(KernError(MachMsgReturn.sendInvalidRight))
+        case let .success(r): return .success(r)
         }
     }
 

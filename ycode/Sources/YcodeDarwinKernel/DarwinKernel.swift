@@ -131,6 +131,8 @@ public final class DarwinKernel {
             396: read, 397: write, 398: open, 399: close, 406: fcntl, 414: pread,
             411: 120, 412: 121, 464: 463, 395: 394, 407: 93, 408: 95, 415: 154, 417: 230,
             542: 540, 543: 541, 413: 133,
+            // Stage 4b (process layer): wait4_nocancel, waitid_nocancel.
+            400: 7, 416: 173,
         ]
     }
 
@@ -328,6 +330,15 @@ public final class DarwinKernel {
     /// The address space of the last trap (for work started outside a trap).
     var lastMemory: (any KernelGuestMemory)?
 
+    // MARK: Stage-4b state (processes)
+
+    /// Threads in `sigsuspend`: a posted signal they do not block wakes them.
+    let signalWaiters = WaitQueue()
+    /// The full value given to `exit` (for `waitid`'s 32-bit status).
+    var exitValue: Int32?
+    /// The signal that ends this process, when one does.
+    var deathSignal: Int32?
+
     /// - Parameters:
     ///   - fileSystem: the guest VFS.
     ///   - pid: what `getpid` returns.
@@ -346,7 +357,7 @@ public final class DarwinKernel {
     ) {
         self.fileSystem = fileSystem
         self.pid = pid
-        let system = system ?? DarwinSystem()
+        let system = system ?? DarwinSystem(implicit: true)
         self.system = system
         self.lock = system.lock
         self.log = log
@@ -355,16 +366,17 @@ public final class DarwinKernel {
         self.wallClock = wallClock
         mainThread = ThreadContext(threadID: 1, portName: WellKnownPort.thread, vcpuIndex: 0, kind: .main)
         threadsByPort[mainThread.portName] = mainThread
-        lock.blockingObserver = { [unowned self] context, blocking in
-            self.threadBlockingChanged(context, blocking: blocking)
-        }
+        mainThread.kernel = self
         machIPC = MachIPC(kernel: self)
         attachIPCHooks()
+        // Every close (close, dup2 over an open fd, exec, exit) drops the
+        // knotes and directory cursor of that descriptor (stage 4b).
+        fileSystem.descriptorClosed = { [weak self] fd in self?.descriptorWasClosed(fd) }
     }
 
     private func attachIPCHooks() {
-        machIPC?.messageQueuedHandler = { [unowned self] name in self.machPortMessageQueued(name) }
-        (machIPC as? MachIPC)?.receiveRightGoneHandler = { [unowned self] name in self.machPortReceiveRightGone(name) }
+        machIPC?.messageQueuedHandler = { [weak self] name in self?.machPortMessageQueued(name) }
+        (machIPC as? MachIPC)?.receiveRightGoneHandler = { [weak self] name in self?.machPortReceiveRightGone(name) }
     }
 
     /// The live thread whose port name is `port`.
@@ -411,10 +423,18 @@ public final class DarwinKernel {
     /// its vCPU); once the process exits, every call returns the exit outcome.
     public func handle(_ frame: inout TrapFrame, context: ThreadContext, memory: any KernelGuestMemory) -> Outcome {
         lock.withLock(context: context) {
+            if context.kernel == nil { context.kernel = self }
             if let termination { return termination }
             let outcome = handleLocked(&frame, memory: memory)
             switch outcome {
             case .exit, .fatal:
+                // Stage 4b: the image of a process in the table runs the
+                // exit sequence (`processes.md` §2.4) and ends for good.
+                if termination == nil, let p = system.record(of: self) {
+                    let (status, high) = waitStatus(for: outcome)
+                    system.exitProcess(p, waitStatus: status, highBits: high, outcome: outcome)
+                    return outcome
+                }
                 // With other threads (or the timer thread) around, the exit
                 // is final: blocked threads wake and every later trap returns
                 // it. A lone thread's process just reports it (the VMM ends).
@@ -428,6 +448,37 @@ public final class DarwinKernel {
                 if let termination, outcome != .threadExit { return termination }
                 return outcome
             }
+        }
+    }
+
+    /// Ends this image (stage 4b): every wait of its threads ends, every
+    /// later trap returns `outcome`, and its running vCPUs are kicked out.
+    /// Other processes sharing the lock are not affected. Lock held.
+    func endImage(_ outcome: Outcome) {
+        if termination == nil { termination = outcome }
+        if system.isImplicit { lock.terminate() } else { lock.terminate(kernel: self) }
+        kevents.timerWake.wakeAll()
+        signalWaiters.wakeAll()
+        threadHost?.stopAllThreads()
+    }
+
+    /// The wait status word (`processes.md` §2.3) and `p_xhighbits` for an
+    /// ending outcome: `exit(v)` → `(v & 0xFF) << 8`; a fatal outcome or a
+    /// signal → the signal number (never a core flag).
+    func waitStatus(for outcome: Outcome) -> (status: Int32, highBits: Int32) {
+        switch outcome {
+        case let .exit(status):
+            let v = exitValue ?? status
+            return ((v & 0xFF) << 8, (v >> 24) & 0xFF)
+        case let .fatal(status, _):
+            if let deathSignal { return (deathSignal, 0) }
+            switch status {
+            case 129...159: return (status - 128, 0)
+            case Self.exceptionExitStatus: return (Signal.sigsegv, 0)
+            default: return (Signal.sigkill, 0)
+            }
+        default:
+            return (Signal.sigkill, 0)
         }
     }
 
@@ -510,6 +561,8 @@ public final class DarwinKernel {
 
     enum BSDResult {
         case value(UInt64)
+        /// Two result registers, x0 and x1, carry clear (stage 4b: `pipe`).
+        case values(UInt64, UInt64)
         case exit(Int32)
         case fatal(Int32, String)
         case unimplemented
@@ -549,6 +602,12 @@ public final class DarwinKernel {
             frame.x[1] = 0
             frame.carry = false
             log("\(prefix) \(call) -> \(hx(v))")
+            return .resume
+        case let .values(v0, v1):
+            frame.x[0] = v0
+            frame.x[1] = v1
+            frame.carry = false
+            log("\(prefix) \(call) -> \(hx(v0)), \(hx(v1))")
             return .resume
         case let .exit(status):
             log("\(prefix) \(call) -> exit \(status)")

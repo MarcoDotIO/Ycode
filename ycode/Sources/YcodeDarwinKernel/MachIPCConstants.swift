@@ -8,6 +8,7 @@ public enum MachKern {
     public static let noSpace: UInt32 = 3
     public static let invalidArgument: UInt32 = 4
     public static let failure: UInt32 = 5
+    public static let noAccess: UInt32 = 8
     public static let alreadyInSet: UInt32 = 11
     public static let notInSet: UInt32 = 12
     public static let nameExists: UInt32 = 13
@@ -87,7 +88,7 @@ public enum MachMsgReturn {
     ]
     static let kernNames: [UInt32: String] = [
         0: "KERN_SUCCESS", 1: "KERN_INVALID_ADDRESS", 3: "KERN_NO_SPACE", 4: "KERN_INVALID_ARGUMENT",
-        5: "KERN_FAILURE", 11: "KERN_ALREADY_IN_SET", 12: "KERN_NOT_IN_SET", 13: "KERN_NAME_EXISTS",
+        5: "KERN_FAILURE", 8: "KERN_NO_ACCESS", 11: "KERN_ALREADY_IN_SET", 12: "KERN_NOT_IN_SET", 13: "KERN_NAME_EXISTS",
         14: "EFAULT/KERN_ABORTED", 15: "KERN_INVALID_NAME", 16: "KERN_INVALID_TASK", 17: "KERN_INVALID_RIGHT",
         18: "KERN_INVALID_VALUE", 20: "KERN_INVALID_CAPABILITY", 21: "KERN_RIGHT_EXISTS",
         49: "KERN_OPERATION_TIMED_OUT", 53: "KERN_DENIED",

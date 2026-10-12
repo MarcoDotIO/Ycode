@@ -236,6 +236,18 @@ int yc_testk_sigprocmask(int how, const uint32_t *set, uint32_t *oset)
     return 0;
 }
 
+static int sigaction_sig;
+static uint64_t sigaction_in[3];
+static int sigaction_had_new;
+int yc_testk___sigaction(int sig, const void *nsa, void *osa)
+{
+    sigaction_sig = sig;
+    sigaction_had_new = nsa != NULL;
+    if (nsa) memcpy(sigaction_in, nsa, 24);
+    if (osa) { uint64_t old[2] = {1, 0x0000000700000005ull}; memcpy(osa, old, 16); }
+    return sig == 9 ? (fake_errno = 22, -1) : 0;
+}
+
 struct alloc_once_slot yc_testk__os_alloc_once_table[100];
 static const unsigned long *kernel_string_table;
 int yc_testk___libkernel_platform_init(const unsigned long *table)
@@ -642,6 +654,22 @@ static void test_simple(void)
     CHECK(T(_simple_getenv)(env, "B") == NULL);
 }
 
+int yc_test___platform_sigaction(int sig, const void *nsv, void *osv);
+void yc_sigtramp(void);
+static void test_sigaction(void)
+{
+    struct { void *handler; uint32_t mask; int flags; } sa = {(void *)1, 0x80000000u, 0x42}, old;
+    memset(&old, 0, sizeof old);
+    CHECK(yc_test___platform_sigaction(20, &sa, &old) == 0);
+    CHECK(sigaction_sig == 20 && sigaction_had_new);
+    CHECK(sigaction_in[0] == 1 && sigaction_in[1] == (uint64_t)(uintptr_t)yc_sigtramp);
+    CHECK(sigaction_in[2] == (0x80000000ull | (0x42ull << 32)));
+    CHECK(old.handler == (void *)1 && old.mask == 5 && old.flags == 7);
+    CHECK(yc_test___platform_sigaction(3, NULL, &old) == 0 && !sigaction_had_new);
+    fake_errno = 0;
+    CHECK(yc_test___platform_sigaction(9, &sa, NULL) == -1 && fake_errno == 22);
+}
+
 static void test_platform_init(void)
 {
     char pfz[] = "pfz=0x1234";
@@ -767,6 +795,7 @@ int main(void)
     test_sync();
     test_simple();
     test_platform_init();
+    test_sigaction();
 #if HAVE_SETJMP
     test_setjmp();
 #else

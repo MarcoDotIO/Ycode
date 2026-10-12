@@ -144,6 +144,7 @@ extension MachIPC {
         m.complex = complex
         m.inline = inline
         m.aux = s.aux
+        m.sender = senderIdentity
 
         // 5. Body rights and memory.
         var oolBytes: UInt64 = 0
@@ -513,8 +514,10 @@ extension MachIPC {
             t += le32(0) + le32(1)
             t += [UInt8](repeating: 0, count: 32)
         } else {
-            t += le32(uid) + le32(gid)
-            for v in [uid, uid, gid, uid, gid, UInt32(bitPattern: pid), 0, 0] { t += le32(v) }
+            // The sender's identity at send time (`processes.md` §4.5).
+            let sender = m.sender ?? senderIdentity
+            t += le32(sender.uid) + le32(sender.gid)
+            for v in sender.auditToken { t += le32(v) }
         }
         t += le64(port.context)
         t += le32(0) + le32(0)
@@ -526,7 +529,7 @@ extension MachIPC {
     func copyoutReceived(_ m: KMessage, from p: IPCPort, options: UInt64, buffer: UInt64,
                          memory: any GuestVirtualMemory) -> (bytes: [UInt8], resource: UInt32, headerFailed: Bool) {
         let (replyName, replyOK) = copyout(m.reply)
-        let local: UInt32 = !p.active ? MachPortName.dead : (p.inSpace ? reverse[ObjectIdentifier(p)] ?? 0 : 0)
+        let local: UInt32 = !p.active ? MachPortName.dead : (p.receiver === self ? reverse[ObjectIdentifier(p)] ?? 0 : 0)
         consumeDestination(m.destination)
         if !replyOK {
             for item in m.items { releaseItem(item) }

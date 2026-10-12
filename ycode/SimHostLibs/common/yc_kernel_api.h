@@ -44,6 +44,8 @@ yc_ssize_t YC_KFN(write)(int fd, const void *buf, yc_size_t len);
 void *YC_KFN(mmap)(void *addr, yc_size_t len, int prot, int flags, int fd, yc_i64 offset);
 int YC_KFN(munmap)(void *addr, yc_size_t len);
 int YC_KFN(sigprocmask)(int how, const yc_u32 *set, yc_u32 *oset);
+/* BSD 46: struct __sigaction in (24 bytes), struct sigaction out (16). */
+int YC_KFN(__sigaction)(int sig, const void *nsa, void *osa);
 yc_u64 YC_KFN(mach_absolute_time)(void);
 struct yc_mach_timebase_info { yc_u32 numer; yc_u32 denom; };
 int YC_KFN(mach_timebase_info)(struct yc_mach_timebase_info *info);

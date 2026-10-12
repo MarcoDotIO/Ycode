@@ -1,6 +1,6 @@
 # Contract: simulator stage 4b — multiple processes
 
-Status: **active (2026-10-12)**. Stage 4b of `docs/SIMULATOR-LINUX.md`.
+Status: **done (2026-10-12)**; the §1 exit criterion is met on the Thor (§10). Stage 4b of `docs/SIMULATOR-LINUX.md`.
 Reference semantics: `specs/simulator/processes.md` (level 1, xnu). This
 document pins the Ycode design, the interfaces between agents, file
 ownership, and the exit criterion. Where this contract and `processes.md`
@@ -364,4 +364,37 @@ Owns: `ycode/SimHostLibs/**`, `ycode/SimShim/guest-tests/stage4b/**`,
 
 ## 10. Resolutions
 
-(Filled in by the orchestrator as the stage proceeds.)
+- **Final verification** (orchestrator, fresh tree on the Thor, debug
+  build, no debug flags, three rounds): the stage-2 self-test, `hello`,
+  the four 4a probes, and all six 4b probes print their `ok` lines and exit
+  0 in every round (36 of 36). `p_rights` 20 of 20 in a stress run.
+  `--repeat 50` of `p_spawn_wait` (150 VMs): host threads 1 → 1, RSS
+  126 → 126 MiB, fds 3 → 3, VMs live 0. Tests: 349 pass on macOS, x86-64
+  Linux, and the Thor; the host-library checks (abi_check, verify, 18,977
+  host-test checks) pass on the Thor.
+- **`p_rights` race (probe fix).** A child that sends a send right to a
+  port whose receive right it holds, then exits at once, can make the right
+  arrive as `MACH_PORT_DEAD` (correct xnu behavior). The probe's child now
+  waits for an acknowledgement before it exits.
+- **Signal handlers in the library.** `__platform_sigaction` is real
+  (24-byte `struct __sigaction` with a library trampoline, `threads-and-
+  events.md` §5.1/§5.3); the kernel still does not deliver to handlers
+  (§2 item 5), it keeps the signal pending.
+- **Socket names** are virtual nodes in a namespace shared by a file system
+  and its child copies (`stat` → `S_IFSOCK`, nothing is created on the
+  host). os_log-style datagrams to `/var/run/syslog`, `/var/run/asl_input`,
+  or `/dev/log` with no binder are logged and succeed.
+- **Spec corrections** (checked against xnu): connect to a non-socket file
+  → ENOTSOCK; SCM_RIGHTS is bounded by the 2048-byte control copy-in
+  (about 254 descriptors). `processes.md` updated.
+- **Private Mach routines** n = 8/9 added to `host-libraries.md` §10; the
+  stage-3b rows n = 5/6 are superseded by `processes.md` §3.2.
+- **VMM debug options:** `--repeat N` (leak check), `--debug-extra-images`
+  and friends (concurrent independent VMs). All processes share the first
+  VM's counter, so `mach_absolute_time` agrees across processes.
+- **Known gaps (later stages):** no handler delivery, no stop signals or
+  WUNTRACED, no `select`/`poll`, no `pid_suspend`/`pid_resume`, no `#!`
+  scripts, `task_for_pid` of another process fails, exception-port
+  routines have no private traps, `task_threads` of another task,
+  PIDINFO 1/2/5/6/24/25, socket-cycle garbage collection, and the stub
+  libproc functions with no spec (cpumon/wakemon/footprint).

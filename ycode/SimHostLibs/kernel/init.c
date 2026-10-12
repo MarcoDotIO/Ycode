@@ -1,8 +1,9 @@
 /*
  * init.c - libsystem_kernel's initialization entry points.
  *
- * Clean-room Ycode code. Contract: host-libraries.md section 7 and
- * host-library-init.md sections 1.3, 1.4, 2 and 9.2:
+ * Clean-room Ycode code. Contract: host-libraries.md section 7,
+ * host-library-init.md sections 1.3, 1.4, 2 and 9.2, and (bootstrap_port)
+ * stage4b-contract.md section 8 / processes.md section 3.3:
  *  - every entry point stores what it is given, NULL-checks every table
  *    member it uses, and is safe to skip or to call twice;
  *  - the exported data already hold correct static values at load time
@@ -46,6 +47,14 @@ YC_EXPORT int mach_init(void)
     if (task != YC_MACH_PORT_NULL)
         mach_task_self_ = task;
     yc_task_reply_port = (yc_port_t)YC_MACH0(YC_TRAP_REPLY_PORT);
+
+    /* bootstrap_port: a send right to the task's bootstrap special port
+     * (processes.md section 3.3: the inherited bootstrap right, which the
+     * VMM installs under name 0x0503, or a spawn port action's override).
+     * It keeps its static value 0 if the call fails. */
+    yc_port_t bootstrap = YC_MACH_PORT_NULL;
+    if (task_get_special_port(mach_task_self_, YC_TASK_BOOTSTRAP_PORT, &bootstrap) == YC_KERN_SUCCESS)
+        bootstrap_port = bootstrap;
 
     set_page_triple(yc_commpage_u8(YC_COMM_KERNEL_PAGE_SHIFT), &vm_kernel_page_shift, &vm_kernel_page_size,
                     &vm_kernel_page_mask);

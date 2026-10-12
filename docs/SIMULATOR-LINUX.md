@@ -115,6 +115,18 @@ vCPU, or vCPUs are multiplexed when the thread count grows.
      `p_dispatch_main` all pass, along with `hello` and the stage-2
      self-test (18 of 18 runs over three rounds).
    - Contract: `specs/simulator/stage4a-contract.md`.
+4b. **Multiple processes.** *(Done 2026-10-12.)*
+   - One host process runs every guest process, one VM per image; all
+     share one kernel lock and one Mach system.
+   - `posix_spawn` (incl. SETEXEC), `execve`, exit/zombies/`wait4`/
+     `waitid`, `kill`, `EVFILT_PROC`/`EVFILT_SIGNAL`, `proc_info`, task
+     special and registered ports with inheritance and spawn port actions,
+     cross-task Mach IPC with sender audit tokens and teardown
+     notifications, pipes, AF_UNIX sockets with `SCM_RIGHTS`, fileports.
+   - On the Thor all six 4b probes plus the 4a set pass (36 of 36 over
+     three rounds); 150 VMs in sequence leak nothing.
+   - Contract: `specs/simulator/stage4b-contract.md`; reference:
+     `specs/simulator/processes.md`.
 5. **Mach IPC and bootstrap.** Ports, rights, `mach_msg`, and bootstrap
    lookup, enough to run `launchd_sim` with no daemons.
 6. **launchd_sim plus the core daemons.** `cfprefsd`, `notifyd`,

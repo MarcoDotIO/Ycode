@@ -1,12 +1,15 @@
 import Foundation
 import YcodeDarwinABI
 
-/// In-process Mach IPC of stage 4a (`specs/simulator/stage4a-contract.md` §6,
-/// `specs/simulator/mach-ipc.md` §1–§5): one task's port name space, ports
-/// and port sets, user references, messages, notifications, and the Mach
-/// traps and Ycode-private Mach-routine traps that use them.
+/// Mach IPC (`specs/simulator/stage4a-contract.md` §6,
+/// `specs/simulator/mach-ipc.md` §1–§5, `processes.md` §3–§4): one task's
+/// port name space and its task state (kernel ports, special, registered,
+/// and exception ports), and the Mach traps and Ycode-private Mach-routine
+/// traps of that task. Ports, port sets, and messages are shared by every
+/// task of one `MachIPCSystem` (stage 4b); a right moves between spaces by
+/// copyin in the sender's space and copyout in the receiver's.
 ///
-/// One instance serves one VM. Every method expects the kernel lock to be
+/// One instance serves one task (one image). Every method expects the kernel lock to be
 /// held, except `handleTrap`, which takes it when the caller does not hold
 /// it, and the small public helpers, which take it re-entrantly. Blocking
 /// sends and receives wait on `WaitQueue`s of that lock.
@@ -26,14 +29,41 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     /// EVFILT_MACHPORT: called (lock held) whenever a message is queued on a
     /// receive right in the space: once with the port's name and once with
     /// the name of each port set that contains it.
-    public var messageQueuedHandler: ((_ name: UInt32) -> Void)?
+    /// Nil once an attached kernel is gone (the hooks belong to it).
+    public var messageQueuedHandler: ((_ name: UInt32) -> Void)? {
+        get { kernelGone ? nil : queuedHook }
+        set { queuedHook = newValue }
+    }
     /// Called (lock held) when a receive right or a port set leaves the space
     /// (moved away or destroyed), with its former name (kevent `EV_EOF`).
-    public var receiveRightGoneHandler: ((_ name: UInt32) -> Void)?
-    /// What the trailer reports for user senders (`mach-ipc.md` §2.6).
+    /// Nil once an attached kernel is gone.
+    public var receiveRightGoneHandler: ((_ name: UInt32) -> Void)? {
+        get { kernelGone ? nil : goneHook }
+        set { goneHook = newValue }
+    }
+    private var queuedHook: ((_ name: UInt32) -> Void)?
+    private var goneHook: ((_ name: UInt32) -> Void)?
+    /// True when this space was made for a kernel (`init(kernel:)`).
+    private var attachedToKernel = false
+    /// True when the kernel this space was made for has been freed: its
+    /// hooks must not run. The space and its ports may outlive the kernel
+    /// (other tasks still name them).
+    var kernelGone: Bool { attachedToKernel && kernel == nil }
+    /// What the trailer reports for this task's messages (`mach-ipc.md` §2.6,
+    /// `processes.md` §4.5) when no kernel is attached; with a kernel, its
+    /// `pid` and `pidVersion` win.
     public var pid: Int32
+    public var pidVersion: UInt32 = 0
     public var uid: UInt32
     public var gid: UInt32
+    /// The state every task of the system shares (ports, host, bootstrap).
+    public let system: MachIPCSystem
+    /// The kernel (image) this space belongs to, if any.
+    public internal(set) weak var kernel: DarwinKernel?
+    /// This space's identity for per-space keys.
+    let spaceID: UInt64
+    /// True once `terminateTask()` ran: the task's kernel ports are dead.
+    public internal(set) var isTerminated = false
     /// The system clock (uptime since VM start) and the calendar clock, for
     /// `clock_get_time`.
     public var systemClock: () -> (seconds: UInt64, nanoseconds: UInt64)
@@ -48,18 +78,22 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     var nextFresh = 1
     /// Port → its send/receive name in the space.
     var reverse: [ObjectIdentifier: UInt32] = [:]
-    var serialCounter: UInt64 = 0
-    var stampCounter: UInt64 = 0
 
     // MARK: Kernel objects
 
     let taskPort: IPCPort
-    let hostPort: IPCPort
-    let bootstrapPort: IPCPort
+    let taskNamePort: IPCPort
+    var taskReadPort: IPCPort?
+    var taskInspectPort: IPCPort?
+    var hostPort: IPCPort { system.hostPort }
+    var bootstrapPort: IPCPort { system.bootstrapPort }
     let mainThreadPort: IPCPort
     var clockPorts: [Int32: IPCPort] = [:]
-    /// `task_set_special_port` values: send rights the kernel holds.
-    var specialPorts: [Int32: CarriedRight] = [:]
+    /// The task's stored ports (`processes.md` §3.2): send rights the kernel holds.
+    var slots = TaskPortSlots()
+    /// Kernel objects this task owns besides its task ports (threads,
+    /// semaphores): they die with the task.
+    var ownedKernelPorts: [IPCPort] = []
     /// Each thread's bound special reply port, by thread id.
     var specialReplyPorts: [UInt64: IPCPort] = [:]
 
@@ -72,17 +106,21 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     // MARK: Init
 
     /// - Parameters:
-    ///   - lock: the VM's kernel lock (`DarwinKernel.lock`).
+    ///   - lock: the system's kernel lock (`DarwinKernel.lock`).
     ///   - log: the trace sink.
     ///   - pid: the task's pid, for trailers.
+    ///   - system: the shared Mach state (nil: a private one-task system).
     public init(lock: KernelLock, log: @escaping (String) -> Void = { _ in },
                 pid: Int32 = VMLayout.guestPID, uid: UInt32 = DarwinFileSystem.guestUID,
-                gid: UInt32 = DarwinFileSystem.guestGID) {
+                gid: UInt32 = DarwinFileSystem.guestGID, system: MachIPCSystem? = nil) {
+        let system = system ?? MachIPCSystem()
+        self.system = system
         self.lock = lock
         self.log = log
         self.pid = pid
         self.uid = uid
         self.gid = gid
+        spaceID = system.nextSpaceID()
         let start = KernelClock.now()
         systemClock = {
             let ns = KernelClock.now() &- start
@@ -93,63 +131,84 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
             let s = t.rounded(.down)
             return (UInt64(max(0, s)), UInt64(max(0, (t - s) * 1e9)))
         }
-        var serial: UInt64 = 0
         func kobject(_ o: MachKernelObject) -> IPCPort {
-            serial += 1
-            let p = IPCPort(serial: serial)
+            let p = IPCPort(serial: system.nextSerial())
             p.kernelObject = o
             return p
         }
         taskPort = kobject(.task)
         mainThreadPort = kobject(.thread(serial: 0))
-        hostPort = kobject(.host)
-        bootstrapPort = kobject(.bootstrap)
-        serialCounter = serial
+        taskNamePort = kobject(.taskName)
+        taskPort.task = self
+        mainThreadPort.task = self
+        taskNamePort.task = self
         // Indices 1, 2, 3, 5 are the well-known names; 4 is the first free slot.
         seed(taskPort, index: 1)
         seed(mainThreadPort, index: 2)
-        seed(hostPort, index: 3)
-        seed(bootstrapPort, index: 5)
+        seed(system.hostPort, index: 3)
+        seed(system.bootstrapPort, index: 5)
         nextFresh = 6
         freeList = [4]
+        // The root task's host and bootstrap slots: the system's objects.
+        system.hostPort.srights += 1
+        slots.host = .send(system.hostPort)
+        system.bootstrapPort.srights += 1
+        slots.bootstrap = .send(system.bootstrapPort)
     }
 
-    /// A `MachIPC` wired to `kernel`: its lock, log, pid, and clocks. Does not
-    /// attach itself (set `kernel.machIPC`).
+    /// A `MachIPC` wired to `kernel`: its lock, log, pid, clocks, and the
+    /// system's shared Mach state. Does not attach itself (set `kernel.machIPC`).
     public convenience init(kernel: DarwinKernel) {
-        self.init(lock: kernel.lock, log: { [unowned kernel] in kernel.log($0) }, pid: kernel.pid)
-        systemClock = { [unowned kernel] in
+        // Weak captures: the kernel may be freed after its process exits
+        // while this space and its ports stay reachable from other tasks.
+        // Without the kernel: no log, a zero system clock, the host calendar.
+        self.init(lock: kernel.lock, log: { [weak kernel] in kernel?.log($0) }, pid: kernel.pid,
+                  system: kernel.system.mach)
+        self.kernel = kernel
+        attachedToKernel = true
+        pidVersion = kernel.pidVersion
+        systemClock = { [weak kernel] in
+            guard let kernel else { return (0, 0) }
             let ticks = kernel.counter() &- kernel.bootCounter
             let f = max(kernel.counterFrequency, 1)
             return (ticks / f, (ticks % f) * 1_000_000_000 / f)
         }
-        calendarClock = { [unowned kernel] in
+        let hostCalendar = calendarClock
+        calendarClock = { [weak kernel] in
+            guard let kernel else { return hostCalendar() }
             let w = kernel.wallClock()
             return (UInt64(max(0, w.seconds)), UInt64(max(0, w.nanoseconds)))
         }
     }
 
-    private func seed(_ p: IPCPort, index: Int) {
+    /// Installs a send right to `p` under the well-known name of `index`
+    /// (generation 0).
+    func seed(_ p: IPCPort, index: Int) {
         while entries.count <= index { entries.append(IPCEntry()) }
+        if let k = freeList.lastIndex(of: index) { freeList.remove(at: k) }
         entries[index].generation = 0
         entries[index].inUse = true
         entries[index].bits = MachPortType.send
         entries[index].urefs = 1
         entries[index].port = p
-        p.srights = 1
+        entries[index].set = nil
+        p.srights += 1
         reverse[ObjectIdentifier(p)] = nameOf(index)
     }
 
     // MARK: Helpers
 
-    func nextSerial() -> UInt64 {
-        serialCounter += 1
-        return serialCounter
-    }
+    func nextSerial() -> UInt64 { system.nextSerial() }
 
-    func nextStamp() -> UInt64 {
-        stampCounter += 1
-        return stampCounter
+    func nextStamp() -> UInt64 { system.nextStamp() }
+
+    /// The per-space key of `name` (dead-name requests).
+    func dn(_ name: UInt32) -> DNKey { DNKey(space: spaceID, name: name) }
+
+    /// The identity this task's messages carry (`processes.md` §4.5).
+    var senderIdentity: MachSenderIdentity {
+        MachSenderIdentity(uid: uid, gid: gid, pid: kernel?.pid ?? pid, pidVersion: kernel?.pidVersion ?? pidVersion,
+                           auditSessionID: system.auditSessionID)
     }
 
     func newPort() -> IPCPort { IPCPort(serial: nextSerial()) }
@@ -193,7 +252,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
             p.sorights -= 1
             urefs = 1
         }
-        if p.deadNameNotified.remove(name) != nil { urefs = pegAdd(urefs, 1) }
+        if p.deadNameNotified.remove(dn(name)) != nil { urefs = pegAdd(urefs, 1) }
         entries[i].bits = MachPortType.deadName
         entries[i].urefs = urefs
         entries[i].port = nil
@@ -260,14 +319,14 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     func freeName(_ i: Int) {
         let name = nameOf(i)
         if let p = entries[i].port {
-            if let so = p.dnRequests.removeValue(forKey: name) {
+            if let so = p.dnRequests.removeValue(forKey: dn(name)) {
                 if p.active {
                     sendNotification(to: so, id: MachNotify.portDeleted, body: machNDRRecord + le32(name))
                 } else {
                     releaseSendOnceQuietly(so)
                 }
             }
-            p.deadNameNotified.remove(name)
+            p.deadNameNotified.remove(dn(name))
             if reverse[ObjectIdentifier(p)] == name { reverse[ObjectIdentifier(p)] = nil }
         }
         let generation = entries[i].generation
@@ -282,7 +341,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         guard let p = entries[i].port else { return }
         let name = nameOf(i)
         entries[i].bits &= ~MachPortType.receive
-        p.inSpace = false
+        p.receiver = nil
         removeFromAllSets(p)
         p.changeStamp = nextStamp()
         p.receiveWaiters.wakeAll()
@@ -334,14 +393,14 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
             p.transitHolder = nil
             if let name = reverse[ObjectIdentifier(p)], let i = slot(of: name) {
                 entries[i].bits |= MachPortType.receive
-                p.inSpace = true
+                p.receiver = self
                 return (name, true)
             }
             guard let name = newEntry(bits: MachPortType.receive, urefs: 0, port: p) else {
                 destroyReceive(p)
                 return (0, false)
             }
-            p.inSpace = true
+            p.receiver = self
             return (name, true)
         }
     }
@@ -363,6 +422,8 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     func releaseSend(_ p: IPCPort) {
         p.srights -= 1
         checkNoSenders(p)
+        // A fileport lives while send rights exist (`processes.md` §4.9).
+        if p.srights <= 0, p.fileportFile != nil { portDeath(p) }
     }
 
     func checkNoSenders(_ p: IPCPort) {
@@ -416,7 +477,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     /// sent in a port-destroyed notification if one is armed (§3.4), else it
     /// dies.
     func destroyReceive(_ p: IPCPort) {
-        p.inSpace = false
+        p.receiver = nil
         if let pd = p.pdRequest {
             p.pdRequest = nil
             if pd.active && pd !== p {
@@ -442,7 +503,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     func portDeath(_ p: IPCPort) {
         guard p.active else { return }
         p.active = false
-        p.inSpace = false
+        p.receiver = nil
         p.transitHolder = nil
         p.changeStamp = nextStamp()
         removeFromAllSets(p)
@@ -454,15 +515,16 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
             p.nsRequest = nil
             destroySendOnce(ns)
         }
-        for (name, so) in p.dnRequests.sorted(by: { $0.key < $1.key }) {
-            p.deadNameNotified.insert(name)
-            sendNotification(to: so, id: MachNotify.deadName, body: machNDRRecord + le32(name))
+        for (key, so) in p.dnRequests.sorted(by: { $0.key < $1.key }) {
+            p.deadNameNotified.insert(key)
+            sendNotification(to: so, id: MachNotify.deadName, body: machNDRRecord + le32(key.name))
         }
         p.dnRequests = [:]
         if let s = p.semaphore {
             p.semaphore = nil
             s.destroy()
         }
+        p.fileportFile = nil
     }
 
     func removeFromAllSets(_ p: IPCPort) {
@@ -518,7 +580,9 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         p.messages.append(m)
         p.receiveWaiters.wakeAll()
         for s in p.sets { s.waiters.wakeAll() }
-        if let handler = messageQueuedHandler, p.inSpace, let name = reverse[ObjectIdentifier(p)] {
+        // The hooks of the space that holds the receive right.
+        if let space = p.receiver, let handler = space.messageQueuedHandler,
+           let name = space.reverse[ObjectIdentifier(p)] {
             handler(name)
             for s in p.sets where s.active { handler(s.name) }
         }
@@ -569,8 +633,17 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
 
     public func allocateThreadPort() -> UInt32 {
         lock.withLock {
-            makeKernelObjectName(.thread(serial: nextSerial()))?.1 ?? 0
+            guard let (p, name) = makeKernelObjectName(.thread(serial: nextSerial())) else { return 0 }
+            own(p)
+            return name
         }
+    }
+
+    /// Records a kernel object of this task (it dies with the task).
+    func own(_ p: IPCPort) {
+        p.task = self
+        if ownedKernelPorts.count >= 64 { ownedKernelPorts.removeAll { !$0.active } }
+        ownedKernelPorts.append(p)
     }
 
     public func deallocate(name: UInt32) {
@@ -623,7 +696,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         lock.withLock {
             guard let i = lookup(name) else { return nil }
             var type = entries[i].bits
-            if let p = entries[i].port, p.dnRequests[name] != nil { type |= MachPortType.dnRequest }
+            if let p = entries[i].port, p.dnRequests[dn(name)] != nil { type |= MachPortType.dnRequest }
             return (type, entries[i].urefs)
         }
     }

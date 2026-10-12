@@ -321,9 +321,11 @@ uses **private traps**:
 | 2 | `clock_get_time(clock_serv, mach_timespec_t *out)` | System clock: uptime since VM start. Calendar clock: host wall time. `mach_timespec_t` is `{u32 tv_sec; i32 tv_nsec}` |
 | 3 | `semaphore_create(task, semaphore_t *out, int policy, int value)` | New semaphore port name (kind `semaphore`, count = value). `value < 0` → `KERN_INVALID_ARGUMENT` |
 | 4 | `semaphore_destroy(task, semaphore)` | Remove it. An unknown name → `KERN_INVALID_NAME` (15) |
-| 5 | `task_get_special_port(task, int which, mach_port_t *out)` | `which` = 4 (`TASK_BOOTSTRAP_PORT`) → the bootstrap port name **`0x0503`** (kind `bootstrap`). Any other `which` → `MACH_PORT_NULL`. Both return `KERN_SUCCESS` |
-| 6 | `task_set_special_port(task, int which, mach_port_t port)` | Record it and return `KERN_SUCCESS`. A later get of the same `which` returns the recorded port |
+| 5 | `task_get_special_port(task, int which, mach_port_t *out)` | Stage 3b: `which` = 4 → the bootstrap port `0x0503`, others → `MACH_PORT_NULL`. **Superseded in stage 4b** by the per-task rules of `processes.md` §3.2 (control/name/read/inspect ports, bootstrap, host, task-access, debug-control, resource-notify; unknown `which` → `KERN_INVALID_ARGUMENT`) |
+| 6 | `task_set_special_port(task, int which, mach_port_t port)` | Stage 3b: record it. **Stage 4b:** `processes.md` §3.2 (1 and 2 → `KERN_NO_ACCESS`, 9 settable once); `task` may name another task's control port |
 | 7 | `mach_port_get_attributes`-style fallbacks | Reserved |
+| 8 | `mach_ports_register3(task, p0, p1, p2)` (stage 4b) | Replaces all three registered-port slots of `task` (`processes.md` §3.4); each port copied in as COPY_SEND. `task` must be a task control port the caller holds: no right or a dead name → `MACH_SEND_INVALID_DEST`, another kind of right → `KERN_INVALID_ARGUMENT`; a bad port → `MACH_SEND_INVALID_RIGHT` |
+| 9 | `mach_ports_lookup3(task, &p0, &p1, &p2)` (stage 4b) | A new send right (copy) for each slot; NULL stays 0, a dead port gives `MACH_PORT_DEAD`. Same `task` rules; an unwritable out-pointer → `KERN_INVALID_ADDRESS`. The library pads/allocates (`mach_ports_register`/`mach_ports_lookup`) |
 
 **Semaphore traps** (real Mach traps; the VMM implements them on the
 semaphore objects above):

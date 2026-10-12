@@ -79,6 +79,9 @@ HANDWRITTEN = {
     "_guarded_open_dprotected_np",
     # commpage fast path
     "_kdebug_trace",
+    # library routine that builds the BSD 244 argument block and returns
+    # the error number as its result (spawn.c, processes.md section 1)
+    "_posix_spawn",
 }
 
 # Rows that stay generated unimplemented stubs: the public function is a
@@ -86,7 +89,6 @@ HANDWRITTEN = {
 # kernel's in a way not covered by a public document, or the exact system
 # call is ambiguous.
 LEAVE_AS_STUB = {
-    "_posix_spawn": "library routine that builds the kernel's argument block",
     "_mach_eventlink_signal": "public kern_return_t API over a call that returns a packed u64",
     "_mach_eventlink_wait_until": "public kern_return_t API over a call that returns a packed u64",
     "_mach_eventlink_signal_wait_until": "public kern_return_t API over a call that returns a packed u64",
@@ -188,6 +190,8 @@ MACH_ROUTINES = {
     "_clock_get_time": ("0x79632002", "mach.c: private trap"),
     "_task_get_special_port": ("0x79632005", "mach.c: private trap"),
     "_task_set_special_port": ("0x79632006", "mach.c: private trap"),
+    "_mach_ports_register": ("0x79632008", "mach.c: private trap, padded to three ports"),
+    "_mach_ports_lookup": ("0x79632009,-10,-12", "mach.c: private trap into a vm_allocate'd array"),
     # messages
     "_mach_msg": ("-47", "machmsg.c: packed mach_msg2, MQ_CALL, interrupt retry"),
     "_mach_msg_overwrite": ("-47,-32", "machmsg.c: -32 only with a separate receive buffer"),

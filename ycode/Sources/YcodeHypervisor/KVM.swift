@@ -43,6 +43,7 @@ public struct KVMError: Error, CustomStringConvertible, Equatable, Sendable {
 
 #if os(Linux) && arch(arm64)
 import Glibc
+import Synchronization
 
 @discardableResult
 func kvmCheck(_ result: Int32, _ operation: String) throws -> Int32 {
@@ -100,6 +101,10 @@ public final class VirtualMachine: @unchecked Sendable {
     private var nextSlotNumber: UInt32 = 1
     /// Guards `slotList`, `nextSlotNumber`, and `vcpuList`.
     private let lock = HostMutex()
+    /// Set by `close()`; read without the lock on the RAM fast path.
+    private let closedFlag = Atomic<Bool>(false)
+    /// True once `close()` released the VM.
+    public var isClosed: Bool { closedFlag.load(ordering: .acquiring) }
 
     public static let defaultRAMGPA: UInt64 = 0x4000_0000
     public static let defaultRAMSize = 512 << 20
@@ -151,13 +156,25 @@ public final class VirtualMachine: @unchecked Sendable {
                                        hostAddress: UInt(bitPattern: ramPointer!), kind: .ram, name: "RAM")]
     }
 
-    deinit {
-        vcpuList.forEach { $0.close() }
-        _ = ckvm_close(vmFD)
-        for slot in slotList {
-            _ = ckvm_free_anonymous(UnsafeMutableRawPointer(bitPattern: slot.hostAddress)!, Int(slot.size))
+    deinit { close() }
+
+    /// Destroys the VM now (stage 4b teardown): closes every vCPU, the VM
+    /// and /dev/kvm fds, and unmaps every memslot's host memory (guest RAM,
+    /// the anonymous pool reservation, file mappings). No vCPU may be
+    /// running. Afterwards every guest-physical access fails (no memslot)
+    /// and `makeVCPU`/`addMemorySlot` throw. Idempotent.
+    public func close() {
+        lock.withLock {
+            guard !closedFlag.exchange(true, ordering: .acquiringAndReleasing) else { return }
+            vcpuList.forEach { $0.close() }
+            vcpuList.removeAll()
+            _ = ckvm_close(vmFD)
+            for slot in slotList {
+                _ = ckvm_free_anonymous(UnsafeMutableRawPointer(bitPattern: slot.hostAddress)!, Int(slot.size))
+            }
+            slotList.removeAll()
+            _ = ckvm_close(kvmFD)
         }
-        _ = ckvm_close(kvmFD)
     }
 
     /// Creates and initializes a vCPU (preferred target, PSCI 0.2). `id`
@@ -165,6 +182,7 @@ public final class VirtualMachine: @unchecked Sendable {
     /// also while other vCPUs of the VM run.
     public func makeVCPU(id: Int? = nil) throws -> VCPU {
         try lock.withLock {
+            guard !isClosed else { throw KVMError("KVM_CREATE_VCPU", errno: EBADF, detail: "the VM is closed") }
             let vcpu = try VCPU(vm: self, id: id ?? vcpuList.count)
             vcpuList.append(vcpu)
             return vcpu
@@ -186,6 +204,7 @@ public final class VirtualMachine: @unchecked Sendable {
 
     private func addMemorySlotLocked(gpa: UInt64, size: UInt64, host: UnsafeMutableRawPointer,
                                      kind: MemorySlot.Kind, name: String) throws -> MemorySlot {
+        guard !isClosed else { throw KVMError("KVM_SET_USER_MEMORY_REGION", errno: EBADF, detail: "the VM is closed") }
         guard Int(nextSlotNumber) < maxMemorySlots else {
             throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "memslots exhausted (KVM_CAP_NR_MEMSLOTS = \(maxMemorySlots)) mapping \(name)")
         }
@@ -211,6 +230,7 @@ public final class VirtualMachine: @unchecked Sendable {
     /// The memslot that holds `gpa` (binary search for the last slot whose
     /// start is <= gpa). RAM (slot 0) is answered without taking the lock.
     public func memorySlot(containing gpa: UInt64) -> MemorySlot? {
+        if isClosed { return nil }
         if gpa >= ramGPA, gpa - ramGPA < UInt64(ramSize) {
             return MemorySlot(slot: 0, gpa: ramGPA, size: UInt64(ramSize), hostAddress: UInt(bitPattern: ram), kind: .ram, name: "RAM")
         }
@@ -405,6 +425,14 @@ public final class VCPU: @unchecked Sendable {
     public func set(_ register: CoreRegister, _ value: UInt64) throws { try setRaw(register.id, value, "\(register)") }
     public func get(_ register: SystemRegister) throws -> UInt64 { try getRaw(register.id, "sysreg") }
     public func set(_ register: SystemRegister, _ value: UInt64) throws { try setRaw(register.id, value, "sysreg") }
+
+    /// Sets the guest's virtual counter (`KVM_REG_ARM_TIMER_CNT`): KVM
+    /// adjusts the counter offset (VM-wide on current kernels), so every
+    /// vCPU of the VM then reads `value` now. Used to give all VMs of one
+    /// simulated system the same `mach_absolute_time` base.
+    public func setVirtualCounter(_ value: UInt64) throws {
+        try setRaw(ckvm_reg_timer_cnt(), value, "KVM_REG_ARM_TIMER_CNT")
+    }
 
     private func getRaw(_ id: UInt64, _ name: String) throws -> UInt64 {
         var value: UInt64 = 0

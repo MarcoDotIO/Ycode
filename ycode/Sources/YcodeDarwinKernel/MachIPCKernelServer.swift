@@ -30,7 +30,15 @@ extension MachIPC {
         var note = " [kernel object \(p.kernelObject?.description ?? "?") id \(m.id)"
         let reply: MIGReply?
         switch p.kernelObject {
-        case .task: reply = machPortServer(&request)
+        case .task:
+            // The routine acts on the space of the task the port stands for
+            // (`processes.md` §4.3); rights in the request and the reply are
+            // carried, so they are space-independent.
+            if let target = p.task, !target.isTerminated {
+                reply = target.machPortServer(&request)
+            } else {
+                reply = .error(MachKern.invalidTask)
+            }
         default: reply = .error(MachKern.migBadID)
         }
         destroyMessage(request)

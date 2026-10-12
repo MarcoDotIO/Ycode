@@ -28,7 +28,7 @@ Manual.
 | `common/extra-exports.txt` | all | Allowed exports that are not table rows (empty) |
 | `common/fallback/{all,kernel}/` | P | Fallback C files that a library's own sources can replace |
 | `common/verify.py`, `common/make_tbd.py` | P | The self-check, and the `.tbd` writer for linking |
-| `kernel/` | K | Hand-written `libsystem_kernel` sources (not present yet) |
+| `kernel/` | K, L | Hand-written `libsystem_kernel` sources; `kernel/tests/` the spawn/libproc host tests |
 | `platform/` | P | Hand-written `libsystem_platform` sources |
 | `platform/tests/` | P | The host unit tests |
 | `pthread/` | Q | Hand-written `libsystem_pthread` sources (not present yet) |
@@ -193,7 +193,7 @@ max(`data-symbols.txt` minimum, the JSON `sizeUpperBound`), rounded up to
 - To export a name that is not in the table, add it to
   `common/extra-exports.txt`.
 
-## What `libsystem_platform` implements (139 of 173 table rows)
+## What `libsystem_platform` implements (140 of 173 table rows)
 
 - **Strings and memory:** all 21 `_platform_*` routines and `__bzero`.
   They follow the C standard and the man-page semantics. `memmove` copies
@@ -242,10 +242,9 @@ max(`data-symbols.txt` minimum, the JSON `sizeUpperBound`), rounded up to
     `mmap`), `_simple_put`/`putline`, `_simple_getenv`, and
     `_simple_asl_log`/`_prog`, which write "prog: msg" to fd 2.
 
-**Still stubs (34):**
+**Still stubs (33):**
 - the ucontext calls `getcontext`, `setcontext`, `swapcontext`,
   `makecontext`, and `_ctx_done`;
-- `__platform_sigaction`;
 - `_os_semaphore_*`;
 - `os_security_config_get*`;
 - the `os_log_simple*` group;
@@ -279,6 +278,33 @@ max(`data-symbols.txt` minimum, the JSON `sizeUpperBound`), rounded up to
   SIG_SETMASK = 3), `mach_absolute_time`, and `mach_timebase_info`.
   pthread currently imports only `__error`.
 
+## Stage 4b: processes in `libsystem_kernel` (agent L)
+
+Contract: `specs/simulator/stage4b-contract.md` section 8, semantics in
+`specs/simulator/processes.md`.
+
+- `kernel/spawn.c`: `posix_spawn` builds the 144-byte descriptor (section
+  1.2) only when there are attributes or file actions, issues BSD 244
+  directly, and returns the error number (errno untouched). The
+  attribute block (248 bytes, defaults of section 1.4), the port-action
+  block (24-byte records) and the file-action block (1040-byte records)
+  are heap blocks from libsystem_c's `malloc` (the `_libkernel_functions`
+  table), or from `mmap` before that table exists. Every
+  `posix_spawnattr_*`/`posix_spawn_file_actions_*` row with importers is
+  implemented, plus the plain getters. `set_use_sanitizers_np` succeeds
+  and stores nothing (open question 6).
+- `kernel/libproc.c`: `proc_listpids`/`listallpids`/`listpgrppids`/
+  `listchildpids`, `proc_pidinfo`, `proc_pidfdinfo`, `proc_name`,
+  `proc_pidpath`, `proc_pidpath_audittoken` (BSD 545 with the
+  pid-version check), `proc_pid_rusage`, the dirty-tracking calls and
+  `proc_terminate` (section 2.11). The CPU/wakeup-monitor, footprint and
+  region calls stay stubs: no spec covers them yet.
+- `kernel/mach.c`: `mach_ports_register`/`mach_ports_lookup` over the
+  private routines n = 8/9 (padding to three; lookup returns a
+  `vm_allocate`d array in the caller's task).
+- `kernel/init.c`: `mach_init` sets `bootstrap_port` from
+  `task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT)`.
+
 ## Host tests
 
 `platform/tests/test_main.c` compiles the platform sources for the host
@@ -294,6 +320,12 @@ covers the unfair, nospin, and recursive locks, the lock-free LIFO, and
 argument handling, the `_simple` formatter, and `__libplatform_init`. On
 arm64 hosts they also check that `setjmp`/`longjmp` restore every
 callee-saved register.
+
+`kernel/tests/run.sh` (run by `build.sh test` and `hosttest`) builds
+`kernel/spawn.c` and `kernel/libproc.c` for the host with fake kernel
+calls and checks the block layouts and defaults, the descriptor
+`posix_spawn` passes, the validation errors, and the libproc result
+conventions. It runs on arm64 hosts only and is skipped elsewhere.
 
 On a macOS host, the cache instructions are skipped, because macOS traps
 EL0 reads of `CTR_EL0`.

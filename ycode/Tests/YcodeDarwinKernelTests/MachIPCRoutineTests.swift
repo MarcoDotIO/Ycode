@@ -60,19 +60,32 @@ import YcodeDarwinABI
         #expect(env.kr(0x7963_2005, [0x103, 4, s]) == 0)
         #expect(env.r32(s) == 0x503)
         #expect(env.urefs(0x503) == 2)
+        // Stage 4b (processes.md §3.2): which = 3 is the task's name port.
         #expect(env.kr(0x7963_2005, [0x103, 3, s]) == 0)
-        #expect(env.r32(s) == 0)
+        let namePort = env.r32(s)
+        #expect(namePort != 0 && env.ipc.kernelObjectKind(of: namePort) == .taskName)
+        #expect(env.kr(0x7963_2005, [0x103, 7, s]) == MachKern.invalidArgument)
         let p = env.allocate()
         #expect(env.insertRight(p, p, MachMsgType.makeSend) == 0)
-        #expect(env.kr(0x7963_2006, [0x103, 9, UInt64(p)]) == 0)
+        #expect(env.kr(0x7963_2006, [0x103, 10, UInt64(p)]) == 0)
         #expect(env.ipc.portCounters(p)?.srights == 2)  // the kernel holds a send right
-        #expect(env.kr(0x7963_2005, [0x103, 9, s]) == 0)
+        #expect(env.kr(0x7963_2005, [0x103, 10, s]) == 0)
         #expect(env.r32(s) == p && env.urefs(p) == 2)
-        #expect(env.kr(0x7963_2006, [0x103, 9, 0x55503]) == MachMsgReturn.sendInvalidRight)
-        #expect(env.kr(0x7963_2006, [0x103, 9, 0]) == 0)
+        #expect(env.kr(0x7963_2006, [0x103, 10, 0x55503]) == MachMsgReturn.sendInvalidRight)
+        #expect(env.kr(0x7963_2006, [0x103, 10, 0]) == 0)
         #expect(env.ipc.portCounters(p)?.srights == 1)
-        #expect(env.kr(0x7963_2005, [0x103, 9, s]) == 0)
+        #expect(env.kr(0x7963_2005, [0x103, 10, s]) == 0)
         #expect(env.r32(s) == 0)
+        // The access port (9) is set once; host and control cannot be set.
+        #expect(env.kr(0x7963_2006, [0x103, 9, UInt64(p)]) == 0)
+        #expect(env.kr(0x7963_2006, [0x103, 9, 0]) == MachKern.noAccess)
+        #expect(env.kr(0x7963_2006, [0x103, 2, UInt64(p)]) == MachKern.noAccess)
+        #expect(env.kr(0x7963_2006, [0x103, 1, UInt64(p)]) == MachKern.noAccess)
+        #expect(env.kr(0x7963_2006, [0x103, 3, UInt64(p)]) == MachKern.invalidArgument)
+        #expect(env.ipc.portCounters(p)?.srights == 2)  // only the access slot holds one
+        // A task argument that is not a task control port.
+        #expect(env.kr(0x7963_2005, [0x303, 4, s]) == MachKern.invalidArgument)
+        #expect(env.kr(0x7963_2005, [0, 4, s]) == MachMsgReturn.sendInvalidDest)
         #expect(env.kr(0x7963_2005, [0x103, 4, 0x10]) == MachKern.invalidAddress)
     }
 

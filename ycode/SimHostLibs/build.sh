@@ -6,7 +6,7 @@
 # Contract: specs/simulator/host-libraries.md sections 2-4.
 #
 #   sh build.sh          build and self-check all three libraries
-#   sh build.sh test     also build and run the platform host unit tests
+#   sh build.sh test     also build and run the platform, pthread and kernel host unit tests
 #   sh build.sh clean    remove out/
 #
 # Linux (the Thor, the x86-64 workstation): . ~/.local/share/swiftly/env.sh first.
@@ -207,6 +207,12 @@ run_tests() {
     # Agent Q's pthread host tests (output in out/host-tests-pthread/).
     if [ -f "$here/pthread/tests/run.sh" ]; then
         HOST_CC="$HOST_CC" sh "$here/pthread/tests/run.sh" || die "pthread host tests failed"
+    fi
+
+    # libsystem_kernel's spawn and libproc library code (arm64 hosts;
+    # output in out/host-tests-kernel/).
+    if [ -f "$here/kernel/tests/run.sh" ]; then
+        HOST_CC="$HOST_CC" sh "$here/kernel/tests/run.sh" || die "kernel host tests failed"
     fi
 }
 

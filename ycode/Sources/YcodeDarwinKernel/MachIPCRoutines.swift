@@ -51,7 +51,7 @@ extension MachIPC {
         // succeeds and the message is destroyed (§1.5).
         if slot == .destination, disposition == MachMsgType.moveSendOnce,
            entries[i].bits & T.sendOnce != 0, let p = entries[i].port, !p.active,
-           !p.deadNameNotified.contains(name) {
+           !p.deadNameNotified.contains(dn(name)) {
             if apply { freeName(i) }
             return .success(.sendOnce(p))
         }
@@ -156,7 +156,7 @@ extension MachIPC {
                 entries[i].urefs = pegAdd(entries[i].urefs, 1)
             case .receive:
                 entries[i].bits |= T.receive
-                p.inSpace = true
+                p.receiver = self
                 p.transitHolder = nil
             default: break
             }
@@ -168,7 +168,7 @@ extension MachIPC {
             case .sendOnce: _ = newEntry(at: i, name: name, bits: T.sendOnce, urefs: 1, port: p)
             case .receive:
                 _ = newEntry(at: i, name: name, bits: T.receive, urefs: 0, port: p)
-                p.inSpace = true
+                p.receiver = self
                 p.transitHolder = nil
             default: break
             }
@@ -195,7 +195,7 @@ extension MachIPC {
         case MachPortRight.receive:
             let p = newPort()
             guard let name = newEntry(bits: T.receive, urefs: 0, port: p) else { return (MachKern.noSpace, 0) }
-            p.inSpace = true
+            p.receiver = self
             return (MachKern.success, name)
         case MachPortRight.portSet:
             let s = IPCPortSet(serial: nextSerial())
@@ -223,7 +223,7 @@ extension MachIPC {
         case MachPortRight.receive:
             let p = newPort()
             _ = newEntry(at: i, name: name, bits: T.receive, urefs: 0, port: p)
-            p.inSpace = true
+            p.receiver = self
         case MachPortRight.portSet:
             _ = newEntry(at: i, name: name, bits: T.portSet, urefs: 0, set: IPCPortSet(serial: nextSerial()))
         default:
@@ -377,7 +377,7 @@ extension MachIPC {
         if name == MachPortName.dead { return (MachKern.success, T.deadName) }
         guard let i = lookup(name) else { return (MachKern.invalidName, 0) }
         var type = entries[i].bits
-        if let p = entries[i].port, p.dnRequests[name] != nil { type |= T.dnRequest }
+        if let p = entries[i].port, p.dnRequests[dn(name)] != nil { type |= T.dnRequest }
         return (MachKern.success, type)
     }
 
@@ -435,7 +435,7 @@ extension MachIPC {
         let insertSend = f & MachPortConstruct.insertSendRight != 0
         guard let name = newEntry(bits: insertSend ? T.receive | T.send : T.receive, urefs: insertSend ? 1 : 0,
                                   port: p) else { return (MachKern.noSpace, 0) }
-        p.inSpace = true
+        p.receiver = self
         if insertSend {
             p.srights = 1
             p.mscount = 1
@@ -659,8 +659,8 @@ extension MachIPC {
             guard entries[i].bits & T.portRights != 0, let p = entries[i].port else {
                 return (MachKern.invalidRight, .null)
             }
-            let previous: CarriedRight = p.dnRequests.removeValue(forKey: name).map { .sendOnce($0) } ?? .null
-            if let so { p.dnRequests[name] = so }
+            let previous: CarriedRight = p.dnRequests.removeValue(forKey: dn(name)).map { .sendOnce($0) } ?? .null
+            if let so { p.dnRequests[dn(name)] = so }
             return (MachKern.success, previous)
 
         case MachNotify.sendPossible:

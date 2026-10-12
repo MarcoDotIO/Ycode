@@ -80,8 +80,10 @@ import YcodeDarwinABI
         #expect(env.svc(0x7963_2005, [0x103, 4, s]).1.x[0] == 0)
         #expect(try env.u32(s) == 0x503)
         #expect((env.kernel.machIPC as? MachIPC)?.entry(0x503) != nil)
+        // Stage 4b (processes.md §3.2): which = 1 is the task's control port.
         #expect(env.svc(0x7963_2005, [0x103, 1, s]).1.x[0] == 0)
-        #expect(try env.u32(s) == 0)  // MACH_PORT_NULL
+        #expect(try env.u32(s) == 0x103)
+        #expect(env.svc(0x7963_2005, [0x103, 7, s]).1.x[0] == 4)  // KERN_INVALID_ARGUMENT
         // (Stage 4a: the special ports hold real send rights in MachIPC.)
         #expect(env.svc(0x7963_2006, [0x103, 9, 0x303]).1.x[0] == 0)
         env.svc(0x7963_2005, [0x103, 9, s])

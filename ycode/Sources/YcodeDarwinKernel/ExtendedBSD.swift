@@ -25,6 +25,9 @@ struct ExtendedBSDState {
     }
 
     var signalMask: UInt32 = 0
+    /// Signals posted while a guest handler was installed (stage 4b: no
+    /// delivery yet, `stage4b-contract.md` §2 item 5).
+    var pendingSignals: UInt32 = 0
     var signalActions: [Int32: SignalAction] = [:]
     var alternateStack: (sp: UInt64, size: UInt64, flags: Int32) = (0, 0, DarwinKernel.SignalConstant.ssDisable)
     var rlimits: [Int32: (cur: UInt64, max: UInt64)] = [
@@ -255,7 +258,14 @@ extension DarwinKernel {
             call = "\(n == BSD2.sigsuspend ? "sigsuspend" : "__sigsuspend_nocancel")(mask=\(hx(mask)))"
             let old = extended.signalMask
             extended.signalMask = mask & ~SignalConstant.unblockable
-            let result = WaitQueue().wait(on: lock, deadline: nil)
+            // Stage 4b: a pending signal the new mask lets through ends the
+            // wait (its handler is not run; the signal is consumed).
+            var result = WaitResult.woken
+            while extended.pendingSignals & ~extended.signalMask == 0 {
+                result = signalWaiters.wait(on: lock, deadline: nil)
+                if result == .interrupted { break }
+            }
+            extended.pendingSignals &= extended.signalMask
             extended.signalMask = old
             call += " [\(result == .interrupted ? "interrupted" : "woken")]"
             throw Failure(errno: Self.EINTR)
@@ -300,16 +310,6 @@ extension DarwinKernel {
             let st = n == BSD2.statfs64 ? try fileSystem.stat(path, followSymlinks: true) : try fileSystem.fstat(int(0))
             try mem.write(va: a[1], bytes: statfs64Bytes(guestPath: path, dev: st.dev))
             return .value(0)
-
-        case BSD2.sendto:
-            // No sockets yet. The text is logged: the simulator's logging
-            // sends its messages this way.
-            call = "sendto(s=\(int(0)), buf=\(hx(a[1])), len=\(a[2]), flags=\(hx(a[3])), to=\(hx(a[4])), tolen=\(int(5)))"
-            if a[2] > 0, let bytes = try? mem.read(va: a[1], count: Int(min(a[2], 2048))) {
-                let text = String(decoding: bytes.map { $0 == 0 || $0 == 10 ? 0x20 : $0 }, as: UTF8.self)
-                log("note: sendto message: \(text.trimmingCharacters(in: .whitespaces))")
-            }
-            throw Failure(errno: Self.ENOTSOCK)
 
         case BSD2.threadSelfid:
             call = "thread_selfid()"
@@ -512,6 +512,10 @@ extension DarwinKernel {
                                                        mask: b.readLE(UInt32.self, at: 16),
                                                        flags: b.readLE(Int32.self, at: 20))
             extended.signalActions[signum] = action
+            // SIG_IGN (or SIG_DFL of a signal ignored by default) discards pending instances.
+            if action.handler == 1 || (action.handler == 0 && Signal.ignoredByDefault.contains(signum)) {
+                extended.pendingSignals &= ~(1 << UInt32(signum - 1))
+            }
             call += " [handler \(hx(action.handler)) flags \(hx(UInt32(bitPattern: action.flags)))]"
         }
         if a[2] != 0 {

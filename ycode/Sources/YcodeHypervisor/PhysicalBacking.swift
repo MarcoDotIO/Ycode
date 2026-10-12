@@ -94,6 +94,9 @@ public final class KVMPhysicalBacking {
     public func release(gpa: UInt64, size: UInt64) {
         let size = Self.roundUp(size, Self.granule)
         guard size > 0, gpa >= poolGPA, gpa + size <= poolGPA + poolSize, gpa % Self.granule == 0 else { return }
+        // After the VM's teardown the pool's host memory is gone (and its
+        // addresses may belong to another mapping): never touch it.
+        guard !vm.isClosed else { return }
         // Ignore a range that overlaps free space (double free): keep the list consistent.
         if freeRanges.contains(where: { gpa < $0.start + $0.size && $0.start < gpa + size }) { return }
         _ = ckvm_discard_anonymous(poolHost + Int(gpa - poolGPA), Int(size))

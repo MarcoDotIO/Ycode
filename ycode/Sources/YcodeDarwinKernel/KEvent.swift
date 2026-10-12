@@ -236,6 +236,18 @@ final class Knote {
     let syncWaiters = WaitQueue()
     // EVFILT_MACHPORT: the receive right left the space.
     var receiveGone = false
+    // EVFILT_PROC (stage 4b): events seen since the last delivery, the
+    // exit status, and whether the process exited.
+    var procFired: UInt32 = 0
+    var procData: Int64 = 0
+    var procExited = false
+    // EVFILT_SIGNAL: postings since the last delivery.
+    var signalCount: Int64 = 0
+    // EVFILT_READ / EVFILT_WRITE: the descriptor object and its observer,
+    // or (no object) a host file or the console, which is always ready.
+    weak var object: (any KernelDescriptorObject)?
+    var observerToken: Int?
+    var hostDescriptor = false
 
     init(_ c: KEventRecord) {
         ident = c.ident
@@ -268,6 +280,8 @@ final class KQueue {
 
     let kind: Kind
     var knotes: [Knote] = []
+    /// The descriptor object of a `kqueue()` queue (stage 4b).
+    weak var object: KQueueObject?
     /// Threads scanning a descriptor kqueue or polling a workloop.
     let waiters = WaitQueue()
     /// A descriptor kqueue's event format, fixed by its first use.
@@ -315,6 +329,8 @@ struct KEventState {
     var workq: KQueue?
     var workloops: [UInt64: KQueue] = [:]
     var descriptorQueues: [Int32: KQueue] = [:]
+    /// Queues made by `kqueue()` (stage 4b), until their last descriptor closes.
+    var objectQueues: [ObjectIdentifier: KQueue] = [:]
     /// Armed timers.
     var timers: [ObjectIdentifier: Knote] = [:]
     /// Wakes the timer thread when the earliest deadline changes.
@@ -379,7 +395,7 @@ extension DarwinKernel {
                 if kevents.workq == nil { kevents.workq = KQueue(kind: .workq) }
                 kq = kevents.workq!
             } else {
-                guard let q = kevents.descriptorQueues[Int32(truncatingIfNeeded: a[0])] else { throw Failure(errno: Errno.EBADF) }
+                guard let q = descriptorKQueue(Int32(truncatingIfNeeded: a[0])) else { throw Failure(errno: Errno.EBADF) }
                 let legacy = n == BSD2.kevent
                 if let l = q.legacyFormat, l != legacy { throw Failure(errno: Errno.EINVAL) }
                 q.legacyFormat = legacy
@@ -611,6 +627,14 @@ extension DarwinKernel {
             }
             kn.active = machPortHasMessage(UInt32(truncatingIfNeeded: c.ident))
             return nil
+        case EVFilter.proc where system.record(of: self) != nil:
+            return attachProcess(kn, c)
+        case EVFilter.signal:
+            guard (1...31).contains(c.ident) else { return Errno.EINVAL }
+            kn.flags |= EV.clear
+            return nil
+        case EVFilter.read, EVFilter.write:
+            return attachDescriptor(kn, c)
         default:
             logFilterOnce(kn.filter, "registered; it never fires in stage 4a")
             return nil
@@ -891,6 +915,10 @@ extension DarwinKernel {
     func drop(_ kn: Knote) {
         kn.dropped = true
         kn.active = false
+        if let token = kn.observerToken {
+            kn.object?.removeReadinessObserver(token)
+            kn.observerToken = nil
+        }
         kevents.timers[ObjectIdentifier(kn)] = nil
         if kn.isSyncKnote, !kn.syncWaiters.isEmpty {
             kn.syncWoken = true
@@ -916,6 +944,9 @@ extension DarwinKernel {
         case EVFilter.timer: return kn.timerFires > 0
         case EVFilter.workloop: return kn.fflags & NoteWorkloop.threadRequest != 0 && kq.owner == nil
         case EVFilter.user: return true
+        case EVFilter.proc: return kn.procFired != 0 || kn.procExited
+        case EVFilter.signal: return kn.signalCount > 0
+        case EVFilter.read, EVFilter.write: return descriptorState(kn).ready
         default: return false
         }
     }
@@ -925,7 +956,10 @@ extension DarwinKernel {
     func reevaluateRequests(_ kq: KQueue, bucket: Int?) {
         switch kq.kind {
         case .descriptor:
-            if kq.knotes.contains(where: { deliverable($0, in: kq) }) { kq.waiters.wakeAll() }
+            if kq.knotes.contains(where: { deliverable($0, in: kq) }) {
+                kq.waiters.wakeAll()
+                kq.object?.notifyObservers()
+            }
         case .workq:
             let buckets = bucket.map { [$0] } ?? Array(Set(kq.knotes.map(\.bucket)))
             var pump = false
@@ -1018,6 +1052,27 @@ extension DarwinKernel {
             case EVFilter.workloop:
                 e.fflags = kn.fflags
                 e.data = 0
+            case EVFilter.proc:
+                e.fflags = kn.procFired
+                e.data = 0
+                kn.procFired = 0
+                if kn.procExited {
+                    if kn.fflags & NoteProc.exitStatus != 0 { e.data = kn.procData }
+                    if kn.fflags & NoteProc.reap == 0 {
+                        e.flags |= EV.eof | EV.oneshot
+                        kn.flags |= EV.oneshot
+                    }
+                    kn.procExited = false
+                }
+            case EVFilter.signal:
+                e.fflags = kn.fflags
+                e.data = kn.signalCount
+                kn.signalCount = 0
+            case EVFilter.read, EVFilter.write:
+                let state = descriptorState(kn)
+                e.fflags = 0
+                e.data = state.data
+                if state.eof { e.flags |= EV.eof }
             default:
                 continue
             }
@@ -1088,8 +1143,7 @@ extension DarwinKernel {
 
     /// `MachIPC`'s hook: a message was queued on `name` (a port or a set).
     func machPortMessageQueued(_ name: UInt32) {
-        var queues: [KQueue] = Array(kevents.workloops.values) + Array(kevents.descriptorQueues.values)
-        if let w = kevents.workq { queues.append(w) }
+        let queues = allKQueues
         for kq in queues {
             for kn in kq.knotes where kn.filter == EVFilter.machport && UInt32(truncatingIfNeeded: kn.ident) == name {
                 kn.active = true
@@ -1100,8 +1154,7 @@ extension DarwinKernel {
 
     /// `MachIPC`'s hook: the receive right or port set `name` left the space.
     func machPortReceiveRightGone(_ name: UInt32) {
-        var queues: [KQueue] = Array(kevents.workloops.values) + Array(kevents.descriptorQueues.values)
-        if let w = kevents.workq { queues.append(w) }
+        let queues = allKQueues
         for kq in queues {
             for kn in kq.knotes where kn.filter == EVFilter.machport && UInt32(truncatingIfNeeded: kn.ident) == name {
                 kn.receiveGone = true
@@ -1167,7 +1220,8 @@ final class TimerThreadBox: @unchecked Sendable {
             while !lock.isTerminated {
                 var next: UInt64?
                 do {
-                    guard let k = kernel else { return }
+                    // Stage 4b: the lock outlives one image; stop with it.
+                    guard let k = kernel, !k.isTerminating else { return }
                     next = k.fireDueTimers()
                     k.pumpWorkqueue(nil)
                 }
@@ -1175,5 +1229,234 @@ final class TimerThreadBox: @unchecked Sendable {
                 _ = wake.wait(on: lock, deadline: min(next ?? cap, cap))
             }
         }
+    }
+}
+
+// MARK: - Stage 4b: kqueue descriptors, EVFILT_PROC, EVFILT_SIGNAL, EVFILT_READ/WRITE
+
+/// `NOTE_*` of EVFILT_PROC (`processes.md` §2.8).
+public enum NoteProc {
+    public static let exit: UInt32 = 0x8000_0000
+    public static let fork: UInt32 = 0x4000_0000
+    public static let exec: UInt32 = 0x2000_0000
+    public static let reap: UInt32 = 0x1000_0000
+    public static let signal: UInt32 = 0x0800_0000
+    public static let exitStatus: UInt32 = 0x0400_0000
+    public static let exitDetail: UInt32 = 0x0200_0000
+    /// NOTE_TRACK, NOTE_TRACKERR, NOTE_CHILD: refused with ENOTSUP.
+    static let tracking: UInt32 = 0x7
+}
+
+/// A `kqueue()` descriptor (stage 4b). It belongs to the process that made
+/// it (kqueues are not inherited and cannot be sent). It is itself readable
+/// (EVFILT_READ on a kqueue fd) while it has deliverable events.
+final class KQueueObject: KernelDescriptorObject {
+    let queue: KQueue
+    weak var kernel: DarwinKernel?
+    private var observers: [Int: () -> Void] = [:]
+    private var nextToken = 1
+
+    init(queue: KQueue, kernel: DarwinKernel) {
+        self.queue = queue
+        self.kernel = kernel
+    }
+
+    /// `fstat` of a kqueue reports mode 0.
+    var fileType: UInt16 { 0 }
+    /// Not inherited, not sendable (`processes.md` §1.11, §4.9).
+    var isConfined: Bool { true }
+
+    func lastReferenceClosed() {
+        kernel?.closeDescriptorKQueue(self)
+        observers.removeAll()
+    }
+
+    func readReadiness() -> (ready: Bool, data: Int64, eof: Bool) {
+        let n = kernel?.deliverableCount(queue) ?? 0
+        return (n > 0, Int64(n), false)
+    }
+
+    func writeReadiness() -> (ready: Bool, data: Int64, eof: Bool) { (false, 0, false) }
+
+    func addReadinessObserver(_ observer: @escaping () -> Void) -> Int {
+        let token = nextToken
+        nextToken += 1
+        observers[token] = observer
+        return token
+    }
+
+    func removeReadinessObserver(_ token: Int) { observers[token] = nil }
+
+    func notifyObservers() {
+        for o in observers.values { o() }
+    }
+}
+
+extension DarwinKernel {
+    /// Every kqueue of this image.
+    var allKQueues: [KQueue] {
+        var queues: [KQueue] = Array(kevents.workloops.values) + Array(kevents.descriptorQueues.values)
+            + Array(kevents.objectQueues.values)
+        if let w = kevents.workq { queues.append(w) }
+        return queues
+    }
+
+    /// The descriptor kqueue behind `fd`: a `kqueue()` object of this
+    /// process, or one installed with `installDescriptorKQueue`.
+    func descriptorKQueue(_ fd: Int32) -> KQueue? {
+        if let object = ((try? fileSystem.object(for: fd)) ?? nil) as? KQueueObject, object.kernel === self {
+            return object.queue
+        }
+        return kevents.descriptorQueues[fd]
+    }
+
+    /// How many knotes of `kq` a scan would deliver now.
+    func deliverableCount(_ kq: KQueue) -> Int {
+        kq.knotes.reduce(0) { $0 + (deliverable($1, in: kq) ? 1 : 0) }
+    }
+
+    /// `kqueue()` (BSD 362): a new descriptor kqueue.
+    func kqueueCall(_ call: inout String) throws -> UInt64 {
+        call = "kqueue()"
+        let kq = KQueue(kind: .descriptor(-1))
+        let object = KQueueObject(queue: kq, kernel: self)
+        kq.object = object
+        let fd = try fileSystem.installObject(object, statusFlags: DarwinOpen.O_RDWR, closeOnExec: false)
+        kevents.objectQueues[ObjectIdentifier(kq)] = kq
+        call += " [kqueue fd \(fd)]"
+        return UInt64(UInt32(bitPattern: fd))
+    }
+
+    /// The last descriptor of a `kqueue()` queue closed: its knotes go.
+    func closeDescriptorKQueue(_ object: KQueueObject) {
+        let kq = object.queue
+        for kn in kq.knotes { drop(kn) }
+        kq.waiters.wakeAll()
+        kevents.objectQueues[ObjectIdentifier(kq)] = nil
+    }
+
+    /// The image ends (exit or exec): every knote is dropped, so that no
+    /// other process keeps calling into this kernel.
+    func tearDownKEvents() {
+        for kq in allKQueues {
+            for kn in kq.knotes {
+                kn.dropped = true
+                kn.active = false
+                if let token = kn.observerToken {
+                    kn.object?.removeReadinessObserver(token)
+                    kn.observerToken = nil
+                }
+                if kn.isSyncKnote { kn.syncWaiters.wakeAll() }
+            }
+            kq.waiters.wakeAll()
+        }
+        kevents.timers.removeAll()
+    }
+
+    /// `fileSystem.descriptorClosed`: descriptor `fd` closed (by close,
+    /// dup2, exec, or exit). Its EVFILT_READ/WRITE/VNODE knotes go, as does
+    /// its directory cursor.
+    func descriptorWasClosed(_ fd: Int32) {
+        lock.withLock {
+            extended.directoryCursors[fd] = nil
+            guard !isTerminating else { return }
+            for kq in allKQueues {
+                for kn in kq.knotes where kn.ident == UInt64(UInt32(bitPattern: fd))
+                    && (kn.filter == EVFilter.read || kn.filter == EVFilter.write || kn.filter == EVFilter.vnode) {
+                    drop(kn)
+                }
+            }
+        }
+    }
+
+    // MARK: EVFILT_PROC
+
+    /// Attaches a process watch (`processes.md` §2.8).
+    func attachProcess(_ kn: Knote, _ c: KEventRecord) -> Int32? {
+        guard c.fflags & NoteProc.tracking == 0 else { return Errno.ENOTSUP }
+        guard c.ident <= UInt64(Int32.max), let target = system.processes[Int32(c.ident)], target.state != .zombie else {
+            return Errno.ESRCH
+        }
+        let both = NoteProc.exit | NoteProc.exitStatus
+        if c.fflags & both == both, target.ppid != pid, !canSignal(target) { return Self.EACCES }
+        kn.flags |= EV.clear
+        kn.data = 0
+        target.watchers.append(ProcessWatch(knote: kn, kernel: self))
+        return nil
+    }
+
+    static let EACCES: Int32 = 13
+
+    /// The system posts an event of a watched process to one of our knotes.
+    func processEventFired(_ kn: Knote, event: UInt32, data: Int64) {
+        guard !kn.dropped else { return }
+        var wanted = kn.fflags & event
+        if event == NoteProc.exit {
+            kn.procExited = true
+            if kn.fflags & NoteProc.exitStatus != 0 {
+                kn.procData = data
+                wanted |= NoteProc.exitStatus
+            }
+        }
+        kn.procFired |= wanted
+        if wanted != 0 || event == NoteProc.exit {
+            kn.active = true
+            activated(kn)
+        }
+    }
+
+    // MARK: EVFILT_SIGNAL
+
+    /// Counts one process-directed posting of `signal` (even when ignored).
+    func countSignalForKEvent(_ signal: Int32) {
+        for kq in allKQueues {
+            for kn in kq.knotes where kn.filter == EVFilter.signal && kn.ident == UInt64(signal) && !kn.dropped {
+                kn.signalCount += 1
+                kn.active = true
+                activated(kn)
+            }
+        }
+    }
+
+    // MARK: EVFILT_READ / EVFILT_WRITE
+
+    private func attachDescriptor(_ kn: Knote, _ c: KEventRecord) -> Int32? {
+        guard c.ident <= UInt64(Int32.max) else { return Errno.EBADF }
+        let fd = Int32(c.ident)
+        let object: DarwinDescriptorObject?
+        do {
+            _ = try fileSystem.closeOnExec(fd)  // EBADF for a closed descriptor
+            object = try fileSystem.object(for: fd)
+        } catch {
+            return errno(of: error, default: Errno.EBADF)
+        }
+        if let o = object as? KernelDescriptorObject {
+            kn.object = o
+            kn.observerToken = o.addReadinessObserver { [weak self, weak kn] in
+                guard let self, let kn, !kn.dropped else { return }
+                kn.active = true
+                self.activated(kn)
+            }
+            kn.active = true
+        } else if object != nil {
+            logFilterOnce(kn.filter, "a descriptor object without readiness never fires")
+        } else {
+            // A host file or the console: always readable and writable.
+            kn.hostDescriptor = true
+            kn.active = true
+        }
+        return nil
+    }
+
+    /// The readiness of a descriptor knote now.
+    func descriptorState(_ kn: Knote) -> (ready: Bool, data: Int64, eof: Bool) {
+        if kn.hostDescriptor {
+            if kn.filter == EVFilter.write { return (true, 65536, false) }
+            let size = (try? fileSystem.fstat(Int32(truncatingIfNeeded: kn.ident)).size) ?? 0
+            return (true, max(0, size), false)
+        }
+        guard let o = kn.object else { return (false, 0, false) }
+        let r = kn.filter == EVFilter.read ? o.readReadiness() : o.writeReadiness()
+        return (r.ready || r.eof, r.data, r.eof)
     }
 }

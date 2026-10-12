@@ -459,6 +459,8 @@ _mach_port_move_member	surface	mach-routine	-20	routine: mach.c
 _mach_port_request_notification	surface	mach-routine	-77	routine: mach.c
 _mach_port_type	surface	mach-routine	-76	routine: mach.c
 _mach_port_unguard	surface	mach-routine	-42	routine: mach.c
+_mach_ports_lookup	surface	other	0x79632009,-10,-12	routine: mach.c: private trap into a vm_allocate'd array
+_mach_ports_register	surface	other	0x79632008	routine: mach.c: private trap, padded to three ports
 _mach_reply_port	table	mach-trap	-26	mach
 _mach_task_self	table	mach-routine	-	routine: mach.c: mach_task_self_
 _mach_thread_self	surface	mach-routine	-27	routine: mach.c
@@ -549,7 +551,7 @@ _pipe	surface	bsd-syscall	-	hand-written
 _pivot_root	table	bsd-syscall	537	cerror_nocancel
 _poll	surface	bsd-syscall	230	cerror
 _poll$NOCANCEL	table	bsd-syscall	417	cerror_nocancel
-_posix_spawn	surface	bsd-syscall	-	stub: library routine that builds the kernel's argument block
+_posix_spawn	surface	bsd-syscall	-	hand-written
 _pread	surface	bsd-syscall	153	cerror
 _pread$NOCANCEL	surface	bsd-syscall	414	cerror_nocancel
 _preadv	surface	bsd-syscall	540	cerror

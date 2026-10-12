@@ -2,11 +2,23 @@
 // §1.3, §2): ports, port sets, name-space entries, rights carried by
 // messages, and kernel messages. Every field is changed only with the kernel
 // lock held.
+//
+// Stage 4b (`processes.md` §4.1): ports, port sets, and messages are shared by
+// every task of a `MachIPCSystem`; names are per space (`MachIPC`). A port
+// records which space holds its receive right.
+
+import YcodeDarwinABI
 
 /// What a kernel-object port stands for (`mach-ipc.md` §1.6). Its receive
 /// right belongs to the kernel.
 public enum MachKernelObject: Equatable, Sendable, CustomStringConvertible {
+    /// A task control port (`TASK_FLAVOR_CONTROL`); the port's `task` is the task.
     case task
+    /// A task name port (`processes.md` §3.1).
+    case taskName
+    /// The reduced-rights task flavors (created lazily).
+    case taskRead
+    case taskInspect
     case thread(serial: UInt64)
     case host
     /// The bootstrap port until `launchd_sim` owns it (`host-libraries.md` §10).
@@ -14,10 +26,24 @@ public enum MachKernelObject: Equatable, Sendable, CustomStringConvertible {
     /// A clock service port (0 system, 1 calendar).
     case clock(id: Int32)
     case semaphore(serial: UInt64)
+    /// A fileport (`processes.md` §4.9): holds an open file description.
+    case fileport(serial: UInt64)
+
+    /// True for every task flavor (control, name, read, inspect).
+    public var isTaskFlavor: Bool {
+        switch self {
+        case .task, .taskName, .taskRead, .taskInspect: true
+        default: false
+        }
+    }
 
     public var description: String {
         switch self {
         case .task: "task"
+        case .taskName: "task-name"
+        case .taskRead: "task-read"
+        case .taskInspect: "task-inspect"
+        case let .fileport(serial): "fileport#\(serial)"
         case let .thread(serial): "thread#\(serial)"
         case .host: "host"
         case .bootstrap: "bootstrap"
@@ -36,10 +62,18 @@ final class IPCPort {
     var semaphore: KernelSemaphore?
     /// Kind *special reply* (`thread_get_special_reply_port`, §4.2).
     var isSpecialReply = false
+    /// For the kernel objects of a task (task flavors, threads, semaphores):
+    /// the owning task's space.
+    weak var task: MachIPC?
+    /// The open file description behind a fileport.
+    var fileportFile: DarwinOpenFile?
     /// False once the port died.
     var active = true
-    /// True while the task's space holds the receive right.
-    var inSpace = false
+    /// The space that holds the receive right (nil: in transit, dead, or a
+    /// kernel object). Messages, wakeups, and kevent hooks go to it.
+    weak var receiver: MachIPC?
+    /// True while some space holds the receive right.
+    var inSpace: Bool { receiver != nil }
     /// While the receive right is in transit: the port whose queue holds the
     /// message that carries it (for the circularity check, §2.8 step 6).
     weak var transitHolder: IPCPort?
@@ -60,11 +94,11 @@ final class IPCPort {
     /// Requests, each holding one send-once right to its notify port.
     var pdRequest: IPCPort?
     var nsRequest: IPCPort?
-    /// Dead-name requests by the watched name in the space.
-    var dnRequests: [UInt32: IPCPort] = [:]
+    /// Dead-name requests by the watched (space, name).
+    var dnRequests: [DNKey: IPCPort] = [:]
     /// Names whose dead-name request fired at death; their lazy conversion
     /// adds the notification's dead-name reference (§1.5).
-    var deadNameNotified: Set<UInt32> = []
+    var deadNameNotified: Set<DNKey> = []
 
     /// Port sets this port is a member of.
     var sets: [IPCPortSet] = []
@@ -83,6 +117,27 @@ final class IPCPort {
     }
 
     var isKernelObject: Bool { kernelObject != nil }
+}
+
+/// A name in one space: the key of a dead-name request.
+struct DNKey: Hashable, Comparable {
+    var space: UInt64
+    var name: UInt32
+
+    static func < (a: DNKey, b: DNKey) -> Bool { (a.name, a.space) < (b.name, b.space) }
+}
+
+/// Who sent a message (`processes.md` §4.5): captured at send time.
+struct MachSenderIdentity: Equatable {
+    var uid: UInt32
+    var gid: UInt32
+    var pid: Int32
+    var pidVersion: UInt32
+    var auditSessionID: UInt32
+
+    /// The eight audit-token words: auid, euid, egid, ruid, rgid, pid, asid,
+    /// pid version.
+    var auditToken: [UInt32] { [uid, uid, gid, uid, gid, UInt32(bitPattern: pid), auditSessionID, pidVersion] }
 }
 
 /// A port set (`mach-ipc.md` §1.1).
@@ -181,6 +236,8 @@ struct KMessage {
     var aux: [UInt8]?
     /// Kernel-originated (notification or kernel-object reply): kernel trailer.
     var fromKernel = false
+    /// The sending task's identity at send time (user messages).
+    var sender: MachSenderIdentity?
 
     /// The received size without trailer (§2.5).
     var size: Int {

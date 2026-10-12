@@ -1,6 +1,7 @@
-// The per-VM vCPU pool of stage 4a: one Darwin thread = one vCPU, each vCPU
-// driven by its own host thread running that vCPU's KVM_RUN loop.
-// Contract: specs/simulator/stage4a-contract.md §2 and §4.
+// The per-VM vCPU pool: one Darwin thread = one vCPU, each vCPU driven by
+// its own host thread running that vCPU's KVM_RUN loop.
+// Contracts: specs/simulator/stage4a-contract.md §2 and §4 (threads),
+// specs/simulator/stage4b-contract.md §3.4 and §7 (stopping, teardown).
 //
 // - vCPUs are created lazily, up to min(KVM_CAP_MAX_VCPUS, 64). KVM cannot
 //   destroy one vCPU, so a vCPU whose guest thread ended is parked with its
@@ -11,11 +12,14 @@
 //   trap that parked it; it is reused by writing the new thread's complete
 //   EL0 state into its frame and resuming, so the shim's ordinary trap return
 //   starts the new thread.
-// - Process end: the first thread that ends the process (exit, a fatal trap,
-//   an unexpected VM exit) records the status and stops; the supervisor (the
-//   thread that calls `waitForTermination`) wakes and returns it. On the
-//   watchdog the supervisor kicks every running vCPU out of KVM_RUN
-//   (immediate_exit plus a signal) to report where each thread was.
+// - The pool ends once: when a thread ends the image (exit, a fatal trap, an
+//   unexpected VM exit: `.terminate`; exec: `.end`), when the owner stops it
+//   (`requestStop`, the kernel's `stopAllThreads`), or when `shouldStop`
+//   says so before a vCPU re-enters the guest. Ending sets `immediate_exit`
+//   on every vCPU and kicks the running ones out of KVM_RUN with a signal;
+//   every host thread then returns from its loop and exits. The last one
+//   calls `onFinished`; the owner then joins the threads (`joinThreads`) and
+//   may destroy the VM. A pool never starts threads again once it has ended.
 
 import YcodeDarwinABI
 
@@ -78,15 +82,27 @@ public final class VCPUPool: @unchecked Sendable {
         case resume
         /// The guest thread ended: keep the vCPU stopped and return it to the pool.
         case park
-        /// End the process with this status (exit, fatal trap, ...).
+        /// End the image with this status (exit, fatal trap, ...): every vCPU stops.
         case terminate(status: Int32, message: String)
+        /// End the image quietly (it was replaced by exec, or it is already
+        /// ending): every vCPU stops; not an error.
+        case end(message: String)
     }
 
-    /// Why the process ended.
+    /// Why the pool ended.
     public struct Termination: Sendable {
+        public enum Kind: Sendable, Equatable {
+            /// A thread ended the image (`.terminate`).
+            case terminated
+            /// A thread ended the image quietly (`.end`).
+            case ended
+            /// The owner stopped the image (`requestStop`, `shouldStop`, `stopAll`).
+            case stopped
+        }
+        public var kind: Kind
         public var status: Int32
         public var message: String
-        /// The vCPU that ended the process, or nil (watchdog).
+        /// The vCPU that ended the image, or nil.
         public var vcpuIndex: Int?
     }
 
@@ -113,6 +129,7 @@ public final class VCPUPool: @unchecked Sendable {
         fileprivate var running = false
         fileprivate var started = false
         fileprivate var hostThread = pthread_t()
+        fileprivate var joined = false
         fileprivate let wakeup = HostCondition()
 
         fileprivate init(index: Int, vcpu: VCPU, pool: VCPUPool) {
@@ -136,6 +153,18 @@ public final class VCPUPool: @unchecked Sendable {
     public var trapHandler: TrapHandler = { _, _ in .terminate(status: 71, message: "no trap handler") }
     /// Called for every exit that is not a doorbell write from the vCPU's own frame.
     public var exitHandler: ExitHandler = { _, exit in .terminate(status: 71, message: "unexpected VM exit: \(exit)") }
+    /// Checked (without any lock) before a vCPU enters the guest; true ends
+    /// the pool (stage 4b: the kernel's `isTerminating`).
+    public var shouldStop: () -> Bool = { false }
+    /// Called when the pool ends and whenever a stronger reason replaces a
+    /// `.stopped` one (a thread's exit status after a kick), with the
+    /// recorded termination. Any host thread; no pool lock is held (the
+    /// kernel lock may be).
+    public var onEnd: (Termination) -> Void = { _ in }
+    /// Called once, on the last host thread of the pool, after the pool ended
+    /// and every other host thread returned. The vCPUs and the VM are no
+    /// longer used by the pool. No lock is held.
+    public var onFinished: () -> Void = {}
     /// Guest-physical ranges (besides the vCPU's own slot) to clean to the
     /// point of coherency before a fresh vCPU starts with its MMU off: the
     /// shim image and the page tables.
@@ -151,11 +180,19 @@ public final class VCPUPool: @unchecked Sendable {
     private var workers: [Worker] = []
     private var idle: [Worker] = []
     private var termination: Termination?
-    private let stopping = Atomic<Bool>(false)
+    /// Set once; read without the lock by the run loops.
+    private let ending = Atomic<Bool>(false)
+    /// `stopAll`: stopped threads record where they were.
+    private var reportStops = false
     private var stopReports: [Int: String] = [:]
     private var activeThreads = 0
+    /// Host threads created and not yet returned.
+    private var liveHostThreads = 0
+    private var finished = false
     /// The most threads alive at once (statistics).
     public private(set) var peakThreads = 0
+    /// Every host thread the pool created (statistics).
+    public private(set) var hostThreadsCreated = 0
 
     public init(vm: VirtualMachine, bootTemplate: BootInfo, limit: Int = VCPUSlots.count, maxExitsPerVCPU: Int = 0) throws {
         self.vm = vm
@@ -169,46 +206,57 @@ public final class VCPUPool: @unchecked Sendable {
     public var vcpuCount: Int { lock.withLock { workers.count } }
     /// The number of created vCPUs with no guest thread.
     public var parkedCount: Int { lock.withLock { idle.count } }
-    /// The termination, once a thread has ended the process.
+    /// The termination, once the pool has ended.
     public var currentTermination: Termination? { lock.withLock { termination } }
+    /// True once the pool has ended (threads may still be returning).
+    public var isEnding: Bool { ending.load(ordering: .acquiring) }
+    /// True once the pool has ended and every host thread returned.
+    public var isFinished: Bool { lock.withLock { finished || (ending.load(ordering: .relaxed) && liveHostThreads == 0) } }
+    /// Host threads that have not returned yet.
+    public var liveHostThreadCount: Int { lock.withLock { liveHostThreads } }
+    /// The total VM exits of every vCPU.
+    public var exitCount: Int { lock.withLock { workers.reduce(0) { $0 + $1.vcpu.exitCount } } }
 
     /// Creates the next vCPU and its host thread without starting a guest
     /// thread on it (it is parked until `start`). Lets the VMM read vCPU
     /// state (the counter, its frequency) before the first thread runs.
     public func createWorker() throws -> Worker {
         try lock.withLock {
+            guard !ending.load(ordering: .relaxed) else { throw KVMError("vCPU pool", detail: "the pool has ended") }
             guard workers.count < capacity else { throw KVMError("vCPU pool", detail: "all \(capacity) vCPUs exist") }
-            let vcpu = try vm.makeVCPU(id: workers.count)
-            let worker = Worker(index: workers.count, vcpu: vcpu, pool: self)
-            workers.append(worker)
-            try spawn(worker)
+            let worker = try makeWorkerLocked()
             idle.insert(worker, at: 0)
             return worker
         }
     }
 
+    private func makeWorkerLocked() throws -> Worker {
+        let vcpu = try vm.makeVCPU(id: workers.count)
+        let worker = Worker(index: workers.count, vcpu: vcpu, pool: self)
+        try spawn(worker)
+        workers.append(worker)
+        return worker
+    }
+
     // MARK: Starting threads
 
     /// Starts a guest thread on a parked vCPU, or on a new vCPU when none is
-    /// parked. Returns nil when the pool is exhausted (EAGAIN for the caller).
-    /// `context` is attached to the worker before the thread runs. Safe to
-    /// call from any host thread, including from inside a trap handler.
+    /// parked. Returns nil when the pool is exhausted or has ended (EAGAIN
+    /// for the caller). `context` is attached to the worker before the
+    /// thread runs. Safe to call from any host thread, including from inside
+    /// a trap handler.
     @discardableResult
     public func start(_ state: VCPUStartState, context: AnyObject?) throws -> Worker? {
         try lock.withLock {
-            if termination != nil || stopping.load(ordering: .relaxed) { return nil }
+            if ending.load(ordering: .relaxed) { return nil }
             let worker: Worker
             if !idle.isEmpty {
                 // Prefer the lowest-numbered idle vCPU (vCPU 0 for the main thread).
                 let i = idle.indices.min { idle[$0].index < idle[$1].index }!
-                let reused = idle.remove(at: i)
-                worker = reused
+                worker = idle.remove(at: i)
             } else {
                 guard workers.count < capacity else { return nil }
-                let vcpu = try vm.makeVCPU(id: workers.count)
-                worker = Worker(index: workers.count, vcpu: vcpu, pool: self)
-                workers.append(worker)
-                try spawn(worker)
+                worker = try makeWorkerLocked()
             }
             worker.context = context
             worker.pending = state
@@ -235,41 +283,61 @@ public final class VCPUPool: @unchecked Sendable {
             Unmanaged<Worker>.fromOpaque(box).release()
             throw KVMError("pthread_create (vCPU \(worker.index))", errno: result)
         }
+        liveHostThreads += 1
+        hostThreadsCreated += 1
     }
 
     // MARK: The host thread of one vCPU
 
-    private func threadMain(_ worker: Worker) -> Never {
+    private enum RunEnd { case parked, ended }
+
+    private func threadMain(_ worker: Worker) {
         while true {
             lock.lock()
-            while worker.pending == nil {
-                if termination != nil || stopping.load(ordering: .relaxed) { break }
-                worker.wakeup.wait(lock)
-            }
-            guard let state = worker.pending, termination == nil, !stopping.load(ordering: .relaxed) else {
+            while worker.pending == nil && !ending.load(ordering: .relaxed) { worker.wakeup.wait(lock) }
+            if ending.load(ordering: .relaxed) {
+                if worker.pending != nil {
+                    // Started but never ran: drop it.
+                    worker.pending = nil
+                    activeThreads -= 1
+                }
                 lock.unlock()
-                blockForever()
+                break
             }
+            let state = worker.pending!
             worker.pending = nil
             worker.running = true
             lock.unlock()
 
+            var end = RunEnd.ended
             do {
                 try begin(worker, state)
-                try runLoop(worker)
+                end = try runLoop(worker)
             } catch {
                 terminate(status: 1, message: "vCPU \(worker.index): \(error)", vcpuIndex: worker.index)
-                blockForever()
             }
 
-            // The guest thread ended: park.
-            lock.withLock {
-                worker.running = false
-                worker.context = nil
-                activeThreads -= 1
+            lock.lock()
+            worker.running = false
+            worker.context = nil
+            activeThreads -= 1
+            if case .parked = end, !ending.load(ordering: .relaxed) {
                 idle.append(worker)
+                lock.unlock()
+                continue
             }
+            lock.unlock()
+            break
         }
+        // The pool has ended: this host thread returns.
+        lock.lock()
+        worker.context = nil
+        liveHostThreads -= 1
+        let last = liveHostThreads == 0
+        if last { finished = true }
+        terminated.broadcast()
+        lock.unlock()
+        if last { onFinished() }
     }
 
     /// Puts the new thread's state into the vCPU.
@@ -314,16 +382,29 @@ public final class VCPUPool: @unchecked Sendable {
         }
     }
 
-    /// Runs the vCPU until its guest thread ends (returns) or the process ends (never returns).
-    private func runLoop(_ worker: Worker) throws {
+    /// Runs the vCPU until its guest thread ends (`.parked`) or the pool ends (`.ended`).
+    private func runLoop(_ worker: Worker) throws -> RunEnd {
         let vcpu = worker.vcpu
         while true {
-            if maxExitsPerVCPU > 0, vcpu.exitCount >= maxExitsPerVCPU {
-                finish(worker, .terminate(status: 71, message: "vCPU \(worker.index) exceeded \(maxExitsPerVCPU) VM exits"))
+            if ending.load(ordering: .acquiring) {
+                acknowledgeStop(worker, .interrupted)
+                return .ended
             }
-            if stopping.load(ordering: .acquiring) { acknowledgeStop(worker, .interrupted) }
+            if shouldStop() {
+                endPool(Termination(kind: .stopped, status: 0, message: "stopped", vcpuIndex: nil))
+                return .ended
+            }
+            if maxExitsPerVCPU > 0, vcpu.exitCount >= maxExitsPerVCPU {
+                terminate(status: 71, message: "vCPU \(worker.index) exceeded \(maxExitsPerVCPU) VM exits", vcpuIndex: worker.index)
+                return .ended
+            }
             let exit = try vcpu.runOnce()
-            if stopping.load(ordering: .acquiring) { acknowledgeStop(worker, exit) }
+            if case .interrupted = exit { continue }
+            if ending.load(ordering: .acquiring) {
+                // The pool ended while this vCPU ran: drop the exit.
+                acknowledgeStop(worker, exit)
+                return .ended
+            }
             let disposition: Disposition
             switch exit {
             case let .mmio(.write, address, frameAddress, 8) where address == VMLayout.doorbellGPA && frameAddress == worker.frameGPA:
@@ -334,45 +415,72 @@ public final class VCPUPool: @unchecked Sendable {
                 disposition = trapHandler(worker, &frame)
                 worker.inHandler.store(false, ordering: .relaxed)
                 if case .resume = disposition { try vm.write(gpa: frameAddress, bytes: frame.encoded()) }
-            case .interrupted:
-                continue
             default:
                 disposition = exitHandler(worker, exit)
             }
             switch disposition {
-            case .resume: continue
-            case .park: return
-            case .terminate: finish(worker, disposition)
+            case .resume:
+                continue
+            case .park:
+                return .parked
+            case let .terminate(status, message):
+                terminate(status: status, message: message, vcpuIndex: worker.index)
+                return .ended
+            case let .end(message):
+                endPool(Termination(kind: .ended, status: 0, message: message, vcpuIndex: worker.index))
+                return .ended
             }
         }
     }
 
-    private func finish(_ worker: Worker, _ disposition: Disposition) -> Never {
-        if case let .terminate(status, message) = disposition {
-            terminate(status: status, message: message, vcpuIndex: worker.index)
-        }
-        blockForever()
-    }
-
-    /// Records the end of the process (the first call wins) and wakes the supervisor.
+    /// Ends the pool with this status (the first end wins) and stops every vCPU.
     public func terminate(status: Int32, message: String, vcpuIndex: Int?) {
-        lock.withLock {
-            if termination == nil { termination = Termination(status: status, message: message, vcpuIndex: vcpuIndex) }
-            terminated.broadcast()
-        }
+        endPool(Termination(kind: .terminated, status: status, message: message, vcpuIndex: vcpuIndex))
     }
 
-    private func blockForever() -> Never {
-        let never = HostCondition()
-        lock.lock()
-        while true { never.wait(lock) }
+    /// Stage 4b (`ThreadHost.stopAllThreads`): ends the pool. Every vCPU
+    /// running guest code is kicked out of KVM_RUN; threads blocked in the
+    /// kernel stop when their trap returns. Safe from any host thread,
+    /// with or without the kernel lock; never blocks on guest threads.
+    public func requestStop(_ message: String = "stopped") {
+        endPool(Termination(kind: .stopped, status: 0, message: message, vcpuIndex: nil))
+    }
+
+    private func endPool(_ reason: Termination) {
+        let recorded: Termination? = lock.withLock {
+            // The first end wins, except that a thread's own end (exit
+            // status, exec) replaces a stop (a kick that raced with it).
+            var changed: Termination?
+            if termination == nil || (termination!.kind == .stopped && reason.kind != .stopped) {
+                termination = reason
+                changed = reason
+            }
+            if ending.exchange(true, ordering: .acquiringAndReleasing) {
+                terminated.broadcast()
+                return changed
+            }
+            // No vCPU enters the guest again: immediate_exit stays set.
+            let me = pthread_self()
+            for worker in workers {
+                worker.vcpu.setImmediateExit(true)
+                worker.wakeup.broadcast()
+                // A thread inside the trap handler stops when it returns to
+                // its run loop (a blocked one when the kernel wakes it).
+                if worker.running, !worker.inHandler.load(ordering: .relaxed), pthread_equal(worker.hostThread, me) == 0 {
+                    _ = ckvm_kick_thread(UInt(worker.hostThread), Self.kickSignal)
+                }
+            }
+            terminated.broadcast()
+            return changed
+        }
+        if let recorded { onEnd(recorded) }
     }
 
     // MARK: Supervisor
 
-    /// Waits until a thread ends the process, or until `timeoutMilliseconds`
-    /// pass. On timeout every running vCPU is kicked out of KVM_RUN and the
-    /// returned termination (status 71) reports where each thread was.
+    /// Waits until the pool ends, or until `timeoutMilliseconds` pass. On
+    /// timeout every running vCPU is kicked out of KVM_RUN and the returned
+    /// termination (status 71) reports where each thread was.
     public func waitForTermination(timeoutMilliseconds: UInt64) -> Termination {
         lock.lock()
         let deadline = monotonicMilliseconds() + timeoutMilliseconds
@@ -387,28 +495,21 @@ public final class VCPUPool: @unchecked Sendable {
         }
         lock.unlock()
         let report = stopAll()
-        return Termination(status: 71, message: "watchdog: guest still running after \(timeoutMilliseconds) ms\n" + report, vcpuIndex: nil)
+        return Termination(kind: .stopped, status: 71,
+                           message: "watchdog: guest still running after \(timeoutMilliseconds) ms\n" + report, vcpuIndex: nil)
     }
 
-    /// Kicks every running vCPU out of the guest and collects one line per vCPU.
-    public func stopAll() -> String {
-        stopping.store(true, ordering: .releasing)
-        let snapshot: [Worker] = lock.withLock { workers }
-        var kicked = 0
-        for worker in snapshot {
-            let running = lock.withLock { worker.running }
-            guard running else { continue }
-            // A thread inside the trap handler stops when it returns to its
-            // run loop (unless it is blocked in the kernel).
-            worker.vcpu.setImmediateExit(true)
-            if !worker.inHandler.load(ordering: .relaxed) {
-                _ = ckvm_kick_thread(UInt(worker.hostThread), Self.kickSignal)
-                kicked += 1
-            }
-        }
+    /// Ends the pool, kicks every running vCPU out of the guest, and
+    /// collects one line per vCPU (where each thread was). Waits at most
+    /// `milliseconds` for the kicked threads.
+    public func stopAll(milliseconds: UInt64 = 1000) -> String {
+        lock.withLock { reportStops = true }
+        endPool(Termination(kind: .stopped, status: 71, message: "stopped by the supervisor", vcpuIndex: nil))
         lock.lock()
-        let deadline = monotonicMilliseconds() + 1000
-        while stopReports.count < kicked, monotonicMilliseconds() < deadline {
+        let snapshot = workers
+        let deadline = monotonicMilliseconds() + milliseconds
+        while monotonicMilliseconds() < deadline,
+              snapshot.contains(where: { $0.running && !$0.inHandler.load(ordering: .relaxed) && stopReports[$0.index] == nil }) {
             terminated.wait(lock, milliseconds: 50)
         }
         var lines: [String] = []
@@ -428,7 +529,9 @@ public final class VCPUPool: @unchecked Sendable {
         return lines.joined(separator: "\n")
     }
 
-    private func acknowledgeStop(_ worker: Worker, _ exit: VCPUExit) -> Never {
+    /// Records where a stopped vCPU was (for `stopAll`).
+    private func acknowledgeStop(_ worker: Worker, _ exit: VCPUExit) {
+        guard lock.withLock({ reportStops }) else { return }
         let vcpu = worker.vcpu
         func h(_ v: UInt64) -> String { "0x" + String(v, radix: 16) }
         func reg(_ r: CoreRegister) -> String { (try? vcpu.get(r)).map(h) ?? "?" }
@@ -444,11 +547,62 @@ public final class VCPUPool: @unchecked Sendable {
             stopReports[worker.index] = line
             terminated.broadcast()
         }
-        blockForever()
+    }
+
+    // MARK: Teardown
+
+    /// Waits until every host thread of the ended pool returned, at most
+    /// `milliseconds` (nil = no limit). Returns true when they all did.
+    @discardableResult
+    public func waitUntilFinished(milliseconds: UInt64?) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let deadline = milliseconds.map { monotonicMilliseconds() + $0 }
+        while !(ending.load(ordering: .relaxed) && liveHostThreads == 0) {
+            if let deadline {
+                let now = monotonicMilliseconds()
+                if now >= deadline { return false }
+                terminated.wait(lock, milliseconds: deadline - now)
+            } else {
+                terminated.wait(lock)
+            }
+        }
+        return true
+    }
+
+    /// Joins every host thread of the pool. Call only once the pool is
+    /// finished (`onFinished`, `waitUntilFinished`), never from one of its
+    /// own threads. Breaks the handler closures' references to the owner.
+    public func joinThreads() {
+        let snapshot: [Worker] = lock.withLock { workers.filter { !$0.joined } }
+        for worker in snapshot {
+            pthread_join(worker.hostThread, nil)
+            lock.withLock { worker.joined = true }
+        }
+        lock.withLock {
+            idle.removeAll()
+            for worker in workers { worker.context = nil }
+        }
+        trapHandler = { _, _ in .terminate(status: 71, message: "pool torn down") }
+        exitHandler = { _, _ in .terminate(status: 71, message: "pool torn down") }
+        shouldStop = { true }
+        onEnd = { _ in }
+        onFinished = {}
+        preBootCleanRanges = { [] }
+        log = { _ in }
+    }
+
+    /// Ends the pool, waits for its host threads, and joins them (an owner
+    /// that gives up on an image it was building).
+    public func shutdown() {
+        requestStop("shut down")
+        waitUntilFinished(milliseconds: nil)
+        joinThreads()
     }
 }
 
-func monotonicMilliseconds() -> UInt64 {
+/// CLOCK_MONOTONIC in milliseconds.
+public func monotonicMilliseconds() -> UInt64 {
     var now = timespec()
     clock_gettime(CLOCK_MONOTONIC, &now)
     return UInt64(now.tv_sec) * 1000 + UInt64(now.tv_nsec) / 1_000_000

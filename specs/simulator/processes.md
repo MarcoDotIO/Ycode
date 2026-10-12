@@ -1210,7 +1210,7 @@ EINVAL. A family other than 0 or `AF_UNIX` → EAFNOSUPPORT.
 |---|---|
 | `bind` (104) | Already bound or fully shut down → EINVAL. Creates a socket file at the path with mode `0777 & ~umask`; an existing file → **EADDRINUSE** (no reuse; callers `unlink` first). Missing directory, permissions → the lookup error. The file stays after close |
 | `listen` (106) | Unbound socket → EINVAL. backlog ≤ 0 or > 128 → 128. Connections are refused once more than `3 × backlog / 2` are pending |
-| `connect` (98) | Path lookup errors (ENOENT, EACCES…); not a socket file → ECONNREFUSED; type mismatch → EPROTOTYPE; STREAM: no listener, or backlog full → **ECONNREFUSED immediately** (Darwin never blocks or returns EAGAIN here); already connected → EISCONN. On success both sides record peer credentials (the connector's on the new server socket, the listener's on the client) |
+| `connect` (98) | Path lookup errors (ENOENT, EACCES…); not a socket file → ENOTSOCK; type mismatch → EPROTOTYPE; STREAM: no listener, or backlog full → **ECONNREFUSED immediately** (Darwin never blocks or returns EAGAIN here); already connected → EISCONN. On success both sides record peer credentials (the connector's on the new server socket, the listener's on the client) |
 | `accept` (30) | Blocks for a pending connection (EAGAIN if non-blocking). The returned address is the peer's bound address or, if unbound, a 16-byte `sockaddr` with `sa_len` 16, family 1, zero data |
 | `getsockname` / `getpeername` | Bound address, or the 16-byte unnamed form |
 | DGRAM `connect` | Sets the default destination; may connect a socket to itself |
@@ -1240,8 +1240,10 @@ Send side (`sendmsg` with `msg_control`):
 2. Each fd must be open (EBADF) and sendable (vnode, socket, pipe, POSIX
    shm; kqueues and other confined files → EINVAL). A guarded fd fails.
 3. The file descriptions are captured at send time (closing the fds after
-   `sendmsg` returns does not affect the message). Up to 512 descriptors
-   per message are accepted.
+   `sendmsg` returns does not affect the message). The control buffer is
+   copied in through a 2048-byte mbuf limit (with the kernel's 8-byte
+   descriptor slots that allows about 254 descriptors), which binds before
+   the separate 512-descriptor cap.
 
 Receive side (first `recvmsg` that takes the data the rights were sent
 with; not with `MSG_PEEK`, which returns the cmsg with zeroed fd slots):

@@ -33,6 +33,9 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible {
     public internal(set) var isAlive = true
     /// True while the thread sleeps in a `WaitQueue`.
     public internal(set) var blockedInKernel = false
+    /// The process image (kernel) this thread belongs to (stage 4b). Set
+    /// when the kernel makes the thread, or at its first trap.
+    public internal(set) weak var kernel: DarwinKernel?
 
     /// The per-thread signal mask (`__pthread_sigmask`).
     var signalMask: UInt32 = 0
@@ -205,6 +208,7 @@ extension DarwinKernel {
         let ctx = ThreadContext(threadID: nextThreadID, portName: allocateThreadPort(), vcpuIndex: -1, kind: kind,
                                 pthreadAddress: pthread)
         nextThreadID += 1
+        ctx.kernel = self
         threadsByPort[ctx.portName] = ctx
         return ctx
     }
@@ -213,6 +217,11 @@ extension DarwinKernel {
     /// returns `.exit(status:)`.
     public func shutdown(status: Int32 = 0) {
         lock.withLock {
+            // Stage 4b: a process in the table exits for good.
+            if termination == nil, let p = system.record(of: self) {
+                system.exitProcess(p, waitStatus: (status & 0xFF) << 8, outcome: .exit(status: status))
+                return
+            }
             if termination == nil { termination = .exit(status: status) }
             lock.terminate()
             kevents.timerWake.wakeAll()

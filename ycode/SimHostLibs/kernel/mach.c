@@ -16,7 +16,8 @@
  *    ports, vouchers): mach-ipc.md sections 1.7, 4.2 and 4.3;
  *  - Ycode-private Mach-routine traps x16 = 0x7963_2000 + n:
  *    host-libraries.md section 10; n = 7 (host_create_mach_voucher):
- *    stage4a-contract.md section 7.
+ *    stage4a-contract.md section 7; n = 8/9 (mach_ports_register3 /
+ *    lookup3): stage4b-contract.md section 3.7, processes.md section 3.4.
  * The message routines (mach_msg, mach_msg2_internal, ...) are in
  * machmsg.c.
  */
@@ -676,6 +677,8 @@ YC_EXPORT void voucher_mach_msg_revert(void *state)
 #define YC_PRIV_TASK_GET_SPECIAL_PORT 5
 #define YC_PRIV_TASK_SET_SPECIAL_PORT 6
 #define YC_PRIV_HOST_CREATE_MACH_VOUCHER 7
+#define YC_PRIV_MACH_PORTS_REGISTER3 8
+#define YC_PRIV_MACH_PORTS_LOOKUP3 9
 
 /* kern_return_t host_get_clock_service(host_t host, clock_id_t clock_id,
  *     clock_serv_t *clock_serv) */
@@ -720,6 +723,55 @@ YC_EXPORT int task_set_special_port(yc_port_t task, int which_port, yc_port_t sp
 {
     return (int)YC_MACH3(YC_PRIV_ROUTINE(YC_PRIV_TASK_SET_SPECIAL_PORT), task, (yc_intptr_t)which_port,
                          special_port);
+}
+
+/* ------------------------------------------------------ registered ports */
+
+/* Three slots per task (TASK_PORT_REGISTER_MAX, processes.md section 3.4).
+ * The private traps take exactly three ports (stage4b-contract.md
+ * section 3.7): n = 8 mach_ports_register3(task, p0, p1, p2) copies each
+ * non-null name in as COPY_SEND; n = 9 mach_ports_lookup3(task, &p0, &p1,
+ * &p2) writes a new send right (or 0 / MACH_PORT_DEAD) per slot. */
+#define YC_TASK_PORT_REGISTER_MAX 3u
+#define YC_VM_FLAGS_ANYWHERE 1
+
+/* kern_return_t mach_ports_register(task_t target_task,
+ *     mach_port_array_t init_port_set, mach_msg_type_number_t count):
+ * count > 3 -> KERN_INVALID_ARGUMENT; the array is padded with NULL. */
+YC_EXPORT int mach_ports_register(yc_port_t task, const yc_port_t *ports, yc_u32 count)
+{
+    yc_port_t p[YC_TASK_PORT_REGISTER_MAX] = {YC_MACH_PORT_NULL, YC_MACH_PORT_NULL, YC_MACH_PORT_NULL};
+    if (count > YC_TASK_PORT_REGISTER_MAX || (count > 0 && ports == YC_NULL))
+        return YC_KERN_INVALID_ARGUMENT;
+    for (yc_u32 i = 0; i < count; i++)
+        p[i] = ports[i];
+    return (int)YC_MACH4(YC_PRIV_ROUTINE(YC_PRIV_MACH_PORTS_REGISTER3), task, p[0], p[1], p[2]);
+}
+
+/* kern_return_t mach_ports_lookup(task_t target_task,
+ *     mach_port_array_t *init_port_set, mach_msg_type_number_t *count):
+ * the three names go into one page-rounded vm_allocate region, which the
+ * caller frees with vm_deallocate; *count = 3. The region is allocated in
+ * the calling task (the only space whose memory the caller can read; it
+ * is the target in every normal use). On failure it is freed again. */
+YC_EXPORT int mach_ports_lookup(yc_port_t task, yc_port_t **ports, yc_u32 *count)
+{
+    if (ports == YC_NULL || count == YC_NULL)
+        return YC_KERN_INVALID_ARGUMENT;
+    yc_uintptr_t size = (YC_TASK_PORT_REGISTER_MAX * sizeof(yc_port_t) + vm_page_size - 1) & ~(vm_page_size - 1);
+    yc_uintptr_t addr = 0;
+    int kr = vm_allocate(mach_task_self_, &addr, size, YC_VM_FLAGS_ANYWHERE);
+    if (kr != YC_KERN_SUCCESS)
+        return kr;
+    yc_port_t *a = (yc_port_t *)addr;
+    kr = (int)YC_MACH4(YC_PRIV_ROUTINE(YC_PRIV_MACH_PORTS_LOOKUP3), task, &a[0], &a[1], &a[2]);
+    if (kr != YC_KERN_SUCCESS) {
+        (void)vm_deallocate(mach_task_self_, addr, size);
+        return kr;
+    }
+    *ports = a;
+    *count = YC_TASK_PORT_REGISTER_MAX;
+    return YC_KERN_SUCCESS;
 }
 
 /* ------------------------------------------------------------- vouchers */

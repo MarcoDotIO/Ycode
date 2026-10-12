@@ -52,12 +52,37 @@ public enum DarwinErrnoCode {
     public static let ENOTEMPTY: Int32 = 66
     public static let ENOSYS: Int32 = 78
     public static let EOVERFLOW: Int32 = 84
+    // Stage 4b: pipes and sockets (`processes.md` conventions paragraph).
+    public static let ESRCH: Int32 = 3
+    public static let ENXIO: Int32 = 6
+    public static let EDOM: Int32 = 33
+    public static let EPIPE: Int32 = 32
+    public static let ENOTSOCK: Int32 = 38
+    public static let EDESTADDRREQ: Int32 = 39
+    public static let EMSGSIZE: Int32 = 40
+    public static let EPROTOTYPE: Int32 = 41
+    public static let ENOPROTOOPT: Int32 = 42
+    public static let EPROTONOSUPPORT: Int32 = 43
+    public static let EAFNOSUPPORT: Int32 = 47
+    public static let EADDRINUSE: Int32 = 48
+    public static let ECONNABORTED: Int32 = 53
+    public static let ECONNRESET: Int32 = 54
+    public static let ENOBUFS: Int32 = 55
+    public static let EISCONN: Int32 = 56
+    public static let ENOTCONN: Int32 = 57
+    public static let ETIMEDOUT: Int32 = 60
+    public static let ECONNREFUSED: Int32 = 61
+    public static let EOPNOTSUPP: Int32 = 102
 
     private static let names: [Int32: String] = [
-        1: "EPERM", 2: "ENOENT", 4: "EINTR", 5: "EIO", 9: "EBADF", 11: "EDEADLK", 12: "ENOMEM", 13: "EACCES",
-        14: "EFAULT", 17: "EEXIST", 19: "ENODEV", 20: "ENOTDIR", 21: "EISDIR", 22: "EINVAL", 24: "EMFILE",
-        25: "ENOTTY", 27: "EFBIG", 28: "ENOSPC", 29: "ESPIPE", 30: "EROFS", 34: "ERANGE", 35: "EAGAIN",
-        45: "ENOTSUP", 62: "ELOOP", 63: "ENAMETOOLONG", 66: "ENOTEMPTY", 78: "ENOSYS", 84: "EOVERFLOW",
+        1: "EPERM", 2: "ENOENT", 3: "ESRCH", 4: "EINTR", 5: "EIO", 6: "ENXIO", 9: "EBADF", 11: "EDEADLK", 12: "ENOMEM",
+        13: "EACCES", 14: "EFAULT", 17: "EEXIST", 19: "ENODEV", 20: "ENOTDIR", 21: "EISDIR", 22: "EINVAL",
+        24: "EMFILE", 25: "ENOTTY", 27: "EFBIG", 28: "ENOSPC", 29: "ESPIPE", 30: "EROFS", 32: "EPIPE", 33: "EDOM",
+        34: "ERANGE", 35: "EAGAIN", 38: "ENOTSOCK", 39: "EDESTADDRREQ", 40: "EMSGSIZE", 41: "EPROTOTYPE",
+        42: "ENOPROTOOPT", 43: "EPROTONOSUPPORT", 45: "ENOTSUP", 47: "EAFNOSUPPORT", 48: "EADDRINUSE",
+        53: "ECONNABORTED", 54: "ECONNRESET", 55: "ENOBUFS", 56: "EISCONN", 57: "ENOTCONN", 60: "ETIMEDOUT",
+        61: "ECONNREFUSED", 62: "ELOOP", 63: "ENAMETOOLONG", 66: "ENOTEMPTY", 78: "ENOSYS", 84: "EOVERFLOW",
+        102: "EOPNOTSUPP",
     ]
 
     /// The symbolic name of a Darwin errno value, if it is one listed here.
@@ -80,6 +105,9 @@ public enum DarwinErrnoCode {
         case Glibc.ENOSYS: return ENOSYS
         case Glibc.EOPNOTSUPP: return ENOTSUP
         case Glibc.EOVERFLOW: return EOVERFLOW
+        case Glibc.ENOTSOCK: return ENOTSOCK
+        case Glibc.EADDRINUSE: return EADDRINUSE
+        case Glibc.ECONNREFUSED: return ECONNREFUSED
         case 1...34: return e
         default: return EIO
         }
@@ -95,6 +123,8 @@ public enum DarwinOpen {
     public static let O_ACCMODE: Int32 = 0x0003
     public static let O_NONBLOCK: Int32 = 0x0004
     public static let O_APPEND: Int32 = 0x0008
+    public static let O_ASYNC: Int32 = 0x0040
+    public static let O_FSYNC: Int32 = 0x0080
     public static let O_NOFOLLOW: Int32 = 0x0100
     public static let O_CREAT: Int32 = 0x0200
     public static let O_TRUNC: Int32 = 0x0400
@@ -348,6 +378,10 @@ private func hostPWrite(_ fd: Int32, _ bytes: [UInt8], offset: UInt64) throws ->
     return done
 }
 
+private func hostUnlink(_ path: String) throws {
+    guard unlink(path) == 0 else { throw DarwinErrnoError(hostErrno()) }
+}
+
 private func hostReadLink(_ path: String) throws -> String {
     var buffer = [CChar](repeating: 0, count: 4097)
     let n = readlink(path, &buffer, 4096)
@@ -402,12 +436,104 @@ public final class GuestFile {
     deinit { hostClose(hostFD) }
 }
 
+// MARK: - Open file descriptions
+
+/// An open file description (stage4b-contract.md §3.5): what the descriptors
+/// made by `dup`, `dup2`, inheritance, SCM_RIGHTS, and fileports share — the
+/// node, the file offset, and the status flags.
+///
+/// Reference counting is Swift's own: every holder (a descriptor-table
+/// entry in any process, a queued SCM_RIGHTS message, a fileport) keeps a
+/// strong reference, and when the last one lets go an object node gets
+/// `lastReferenceClosed()` (`processes.md` §4.9, §5.5). A fileport or a
+/// message therefore holds the description simply by keeping the
+/// `DarwinOpenFile` it got from `openFile(for:)`.
+public final class DarwinOpenFile {
+    public enum Node {
+        /// The console; `stream` (0, 1, 2) is what the console sink is told
+        /// for writes, whatever descriptor number the write used.
+        case console(stream: Int32)
+        case file(GuestFile)
+        case object(any DarwinDescriptorObject)
+    }
+
+    public let node: Node
+    /// The file offset (host files).
+    public var offset: UInt64 = 0
+    /// Darwin open flags: the access mode, O_APPEND, O_NONBLOCK, O_ASYNC,
+    /// O_FSYNC (`F_GETFL`/`F_SETFL`).
+    public var statusFlags: Int32
+    /// `F_SETNOSIGPIPE`: a write that fails with EPIPE raises no SIGPIPE.
+    public var noSigPipe = false
+
+    public init(node: Node, statusFlags: Int32) {
+        self.node = node
+        self.statusFlags = statusFlags
+    }
+
+    /// The object of an object node.
+    public var object: (any DarwinDescriptorObject)? {
+        if case let .object(o) = node { return o }
+        return nil
+    }
+
+    /// The host file of a file node.
+    public var guestFile: GuestFile? {
+        if case let .file(f) = node { return f }
+        return nil
+    }
+
+    public var isReadable: Bool { statusFlags & DarwinOpen.O_ACCMODE != DarwinOpen.O_WRONLY }
+    public var isWritable: Bool {
+        let m = statusFlags & DarwinOpen.O_ACCMODE
+        return m == DarwinOpen.O_WRONLY || m == DarwinOpen.O_RDWR
+    }
+    public var isNonBlocking: Bool { statusFlags & DarwinOpen.O_NONBLOCK != 0 }
+
+    deinit {
+        if case let .object(o) = node { o.lastReferenceClosed() }
+    }
+}
+
+// MARK: - Socket files
+
+/// The socket files `bind` creates (stage4b-contract.md §6 item 3). They are
+/// virtual nodes of the guest namespace, not host files: `stat` reports
+/// `S_IFSOCK`, `open` fails with EOPNOTSUPP, `unlink` removes the name, and
+/// the name outlives the socket (a later `connect` gets ECONNREFUSED). A file
+/// system and all of its child copies share one namespace, so every process
+/// of a device sees the same names. Nothing is created on the host: a run of
+/// the VMM starts with no socket files. Directory listings of the host do not
+/// show them (`socketNames(inDirectory:)` lists them for a caller that wants
+/// to merge them).
+final class SocketNamespace {
+    final class Node {
+        weak var socket: (any DarwinDescriptorObject)?
+        var stat: DarwinStat
+
+        init(socket: any DarwinDescriptorObject, stat: DarwinStat) {
+            self.socket = socket
+            self.stat = stat
+        }
+    }
+
+    var nodes: [String: Node] = [:]
+    /// Inode numbers of socket files, in a range no host file system uses in practice.
+    var nextInode: UInt64 = 0x7963_0000_0000_0001
+}
+
 // MARK: - DarwinFileSystem
 
 /// The guest's view of files (stage3-contract.md §8). Guest paths equal host
 /// paths under the allowed prefixes; everything else is ENOENT. Symbolic
 /// links below a prefix are resolved here, in the guest namespace, so a link
 /// can never lead outside the allowlist.
+///
+/// Stage 4b (stage4b-contract.md §3.5): the descriptor table maps numbers to
+/// shared open file descriptions (`DarwinOpenFile`), so dup'd and inherited
+/// descriptors share offset and flags; descriptors may hold kernel objects
+/// (pipes, sockets, kqueues). Every call must be made with the kernel lock
+/// held (the table is per process, but descriptions are shared).
 public final class DarwinFileSystem {
     /// An allowed directory tree: `guestPath` (normalized, absolute) is served
     /// from `hostPath`. Writes are refused with EROFS unless `writable`.
@@ -435,33 +561,29 @@ public final class DarwinFileSystem {
     public static let maxTransfer = 16 << 20
     /// The path `F_GETPATH` reports for the console descriptors.
     public static let consolePath = "/dev/console"
-
-    private enum Node {
-        case console
-        case file(GuestFile)
-    }
+    /// Darwin `OPEN_MAX`: the largest table `setrlimit(RLIMIT_NOFILE)` may ask for.
+    public static let openMax: Int32 = 10240
 
     private struct Descriptor {
-        var node: Node
-        var offset: UInt64 = 0
-        /// Darwin open flags as given (access mode, O_APPEND, O_NONBLOCK).
-        var statusFlags: Int32
+        var file: DarwinOpenFile
         var closeOnExec: Bool
-        var readable: Bool { statusFlags & DarwinOpen.O_ACCMODE != DarwinOpen.O_WRONLY }
-        var writable: Bool {
-            let m = statusFlags & DarwinOpen.O_ACCMODE
-            return m == DarwinOpen.O_WRONLY || m == DarwinOpen.O_RDWR
-        }
     }
 
     public let prefixes: [Prefix]
     private let console: (Int32, [UInt8]) -> Void
     private var descriptors: [Int32: Descriptor] = [:]
+    private let sockets: SocketNamespace
     /// The highest descriptor number plus one (Darwin's default soft limit).
     public var maxDescriptors: Int32 = 256
+    /// Told the number of every descriptor this table closes (`close`, the
+    /// target of `dup2`, exec, exit), after it is gone. The process layer can
+    /// drop per-descriptor state there (kevent registrations, directory
+    /// cursors).
+    public var descriptorClosed: ((Int32) -> Void)?
 
     private var cwdStorage = "/"
-    /// The current directory (a normalized guest path). Default "/".
+    /// The current directory (a normalized guest path). Default "/". Setting
+    /// it does not check the path; `chdir` does.
     public var cwd: String {
         get { cwdStorage }
         set { cwdStorage = normalize(newValue, cwd: cwdStorage) }
@@ -469,19 +591,25 @@ public final class DarwinFileSystem {
 
     /// `prefixes` guest paths are normalized; fds 0, 1, and 2 are the
     /// console, and output written to them goes to `console(fd, bytes)`.
-    public init(prefixes: [Prefix], console: @escaping (Int32, [UInt8]) -> Void) {
-        self.console = console
+    public convenience init(prefixes: [Prefix], console: @escaping (Int32, [UInt8]) -> Void) {
         var normalized: [Prefix] = []
         for var p in prefixes {
             p.guestPath = Self.normalizeAbsolute(p.guestPath)
             while p.hostPath.count > 1 && p.hostPath.hasSuffix("/") { p.hostPath.removeLast() }
             normalized.append(p)
         }
-        self.prefixes = normalized
+        self.init(normalizedPrefixes: normalized, console: console, sockets: SocketNamespace())
         for fd: Int32 in 0...2 {
-            descriptors[fd] = Descriptor(node: .console, statusFlags: fd == 0 ? DarwinOpen.O_RDONLY : DarwinOpen.O_WRONLY,
+            let flags = fd == 0 ? DarwinOpen.O_RDONLY : DarwinOpen.O_WRONLY
+            descriptors[fd] = Descriptor(file: DarwinOpenFile(node: .console(stream: fd), statusFlags: flags),
                                          closeOnExec: false)
         }
+    }
+
+    private init(normalizedPrefixes: [Prefix], console: @escaping (Int32, [UInt8]) -> Void, sockets: SocketNamespace) {
+        self.prefixes = normalizedPrefixes
+        self.console = console
+        self.sockets = sockets
     }
 
     // MARK: Paths
@@ -567,7 +695,8 @@ public final class DarwinFileSystem {
                 do {
                     st = try hostStatCall(host, follow: false)
                 } catch let e as DarwinErrnoError where e.errno == DarwinErrnoCode.ENOENT {
-                    st = nil
+                    // A socket file is a node of the guest namespace only.
+                    st = sockets.nodes[guest]?.stat
                     continue
                 }
                 if let s = st, s.isSymbolicLink, !isLast || followFinal {
@@ -596,21 +725,36 @@ public final class DarwinFileSystem {
 
     // MARK: Descriptors
 
-    private func descriptor(_ fd: Int32) throws -> Descriptor {
+    private func entry(_ fd: Int32) throws -> Descriptor {
         guard let d = descriptors[fd] else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
         return d
     }
 
-    private func lowestFreeDescriptor() throws -> Int32 {
-        var fd: Int32 = 0
+    private func lowestFreeDescriptor(from minimum: Int32 = 0) throws -> Int32 {
+        var fd = max(0, minimum)
         while descriptors[fd] != nil { fd += 1 }
         guard fd < maxDescriptors else { throw DarwinErrnoError(DarwinErrnoCode.EMFILE) }
         return fd
     }
 
+    /// How many more descriptors the table can take now.
+    public var freeDescriptorCount: Int {
+        max(0, Int(maxDescriptors) - descriptors.keys.filter { $0 < maxDescriptors }.count)
+    }
+
+    /// Removes `fd` (if open) and tells `descriptorClosed`. The description
+    /// is released after the table is consistent again.
+    @discardableResult
+    private func remove(_ fd: Int32) -> Descriptor? {
+        guard let old = descriptors.removeValue(forKey: fd) else { return nil }
+        descriptorClosed?(fd)
+        return old
+    }
+
     /// Opens a guest path with Darwin `flags` and returns the new descriptor
     /// (the lowest free number). Writing, creating, or truncating under a
     /// read-only prefix is EROFS; O_CREAT of an existing file there is fine.
+    /// A socket file cannot be opened (EOPNOTSUPP).
     public func open(_ path: String, flags: Int32, mode: UInt16) throws -> Int32 {
         let accessMode = flags & DarwinOpen.O_ACCMODE
         guard accessMode != DarwinOpen.O_ACCMODE else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
@@ -626,6 +770,7 @@ public final class DarwinFileSystem {
             if exclusive { throw DarwinErrnoError(DarwinErrnoCode.EEXIST) }
             if st.isSymbolicLink { throw DarwinErrnoError(DarwinErrnoCode.ELOOP) }
             if directory && !st.isDirectory { throw DarwinErrnoError(DarwinErrnoCode.ENOTDIR) }
+            if st.fileType == DarwinStat.S_IFSOCK { throw DarwinErrnoError(DarwinErrnoCode.EOPNOTSUPP) }
             if st.isDirectory && (wantsWrite || truncate) { throw DarwinErrnoError(DarwinErrnoCode.EISDIR) }
             if !r.prefix.writable && (wantsWrite || truncate) { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
         } else {
@@ -656,41 +801,44 @@ public final class DarwinFileSystem {
             throw error
         }
         let status = flags & (DarwinOpen.O_ACCMODE | DarwinOpen.O_APPEND | DarwinOpen.O_NONBLOCK)
-        descriptors[fd] = Descriptor(node: .file(file), statusFlags: status,
+        descriptors[fd] = Descriptor(file: DarwinOpenFile(node: .file(file), statusFlags: status),
                                      closeOnExec: flags & DarwinOpen.O_CLOEXEC != 0)
         return fd
     }
 
-    /// Closes a descriptor. The host file stays open while a mapping holds it.
+    /// Closes a descriptor. The description (and a host file, which a mapping
+    /// may also hold) lives on while anything else refers to it.
     public func close(_ fd: Int32) throws {
-        guard descriptors.removeValue(forKey: fd) != nil else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
+        guard remove(fd) != nil else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
     }
 
-    /// Reads at the descriptor's offset and advances it. The console reads
-    /// as end of file. Requests above `maxTransfer` bytes are short.
+    /// Reads at the description's offset and advances it. The console reads
+    /// as end of file. Requests above `maxTransfer` bytes are short. Object
+    /// descriptors are served by the kernel (EOPNOTSUPP here).
     public func read(_ fd: Int32, count: Int) throws -> [UInt8] {
-        var d = try descriptor(fd)
-        guard d.readable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
+        let d = try entry(fd)
+        guard d.file.isReadable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
         guard count >= 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
-        switch d.node {
+        switch d.file.node {
         case .console:
             return []
         case let .file(f):
             if f.isDirectory { throw DarwinErrnoError(DarwinErrnoCode.EISDIR) }
-            let bytes = try hostPRead(f.hostFD, count: min(count, Self.maxTransfer), offset: d.offset)
-            d.offset += UInt64(bytes.count)
-            descriptors[fd] = d
+            let bytes = try hostPRead(f.hostFD, count: min(count, Self.maxTransfer), offset: d.file.offset)
+            d.file.offset += UInt64(bytes.count)
             return bytes
+        case .object:
+            throw DarwinErrnoError(DarwinErrnoCode.EOPNOTSUPP)
         }
     }
 
-    /// Reads at `offset` without moving the descriptor's offset.
+    /// Reads at `offset` without moving the description's offset.
     public func pread(_ fd: Int32, count: Int, offset: UInt64) throws -> [UInt8] {
-        let d = try descriptor(fd)
-        guard d.readable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
+        let d = try entry(fd)
+        guard d.file.isReadable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
         guard count >= 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
-        switch d.node {
-        case .console:
+        switch d.file.node {
+        case .console, .object:
             throw DarwinErrnoError(DarwinErrnoCode.ESPIPE)
         case let .file(f):
             if f.isDirectory { throw DarwinErrnoError(DarwinErrnoCode.EISDIR) }
@@ -698,27 +846,60 @@ public final class DarwinFileSystem {
         }
     }
 
-    /// Writes at the descriptor's offset (at the end with O_APPEND) and
+    /// Writes at the description's offset (at the end with O_APPEND) and
     /// advances it. Console output goes to the console sink.
     public func write(_ fd: Int32, _ bytes: [UInt8]) throws -> Int {
-        var d = try descriptor(fd)
-        switch d.node {
-        case .console:
-            console(fd, bytes)
+        let d = try entry(fd)
+        switch d.file.node {
+        case let .console(stream):
+            console(stream, bytes)
             return bytes.count
         case let .file(f):
-            guard d.writable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
-            if d.statusFlags & DarwinOpen.O_APPEND != 0 {
-                d.offset = UInt64(max(0, try hostFStat(f.hostFD).size))
+            guard d.file.isWritable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
+            if d.file.statusFlags & DarwinOpen.O_APPEND != 0 {
+                d.file.offset = UInt64(max(0, try hostFStat(f.hostFD).size))
             }
-            let n = try hostPWrite(f.hostFD, bytes, offset: d.offset)
-            d.offset += UInt64(n)
-            descriptors[fd] = d
+            let n = try hostPWrite(f.hostFD, bytes, offset: d.file.offset)
+            d.file.offset += UInt64(n)
             return n
+        case .object:
+            throw DarwinErrnoError(DarwinErrnoCode.EOPNOTSUPP)
         }
     }
 
-    /// `stat` (following a final symbolic link) or `lstat`.
+    /// Writes at `offset` without moving the description's offset (`pwrite`).
+    public func pwrite(_ fd: Int32, _ bytes: [UInt8], offset: UInt64) throws -> Int {
+        let d = try entry(fd)
+        guard d.file.isWritable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
+        switch d.file.node {
+        case .console, .object:
+            throw DarwinErrnoError(DarwinErrnoCode.ESPIPE)
+        case let .file(f):
+            return try hostPWrite(f.hostFD, bytes, offset: offset)
+        }
+    }
+
+    /// `lseek`: `whence` 0 (SET), 1 (CUR), 2 (END). The console, pipes, and
+    /// sockets are ESPIPE; a negative result is EINVAL.
+    public func lseek(_ fd: Int32, offset: Int64, whence: Int32) throws -> UInt64 {
+        let d = try entry(fd)
+        guard case let .file(f) = d.file.node else { throw DarwinErrnoError(DarwinErrnoCode.ESPIPE) }
+        let base: Int64
+        switch whence {
+        case 0: base = 0
+        case 1: base = Int64(clamping: d.file.offset)
+        case 2: base = try hostFStat(f.hostFD).size
+        default: throw DarwinErrnoError(DarwinErrnoCode.EINVAL)
+        }
+        let (target, overflow) = base.addingReportingOverflow(offset)
+        guard !overflow else { throw DarwinErrnoError(DarwinErrnoCode.EOVERFLOW) }
+        guard target >= 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        d.file.offset = UInt64(target)
+        return UInt64(target)
+    }
+
+    /// `stat` (following a final symbolic link) or `lstat`. Socket files
+    /// report `S_IFSOCK`.
     public func stat(_ path: String, followSymlinks: Bool) throws -> DarwinStat {
         let r = try resolve(path, followFinal: followSymlinks)
         guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
@@ -727,96 +908,260 @@ public final class DarwinFileSystem {
 
     /// Current stat data of an open descriptor.
     public func fstat(_ fd: Int32) throws -> DarwinStat {
-        switch try descriptor(fd).node {
+        switch try entry(fd).file.node {
         case .console:
             return DarwinStat(mode: DarwinStat.S_IFCHR | 0o620, nlink: 1, uid: Self.guestUID, gid: 4,
                               blksize: 131_072)
         case let .file(f):
             return try hostFStat(f.hostFD)
+        case let .object(o):
+            return o.descriptorStat()
         }
     }
 
-    /// The open file behind a descriptor (for `mmap`). The console is ENODEV.
+    /// The open file behind a descriptor (for `mmap`). The console and
+    /// objects are ENODEV.
     public func file(for fd: Int32) throws -> GuestFile {
-        switch try descriptor(fd).node {
-        case .console: throw DarwinErrnoError(DarwinErrnoCode.ENODEV)
+        switch try entry(fd).file.node {
+        case .console, .object: throw DarwinErrnoError(DarwinErrnoCode.ENODEV)
         case let .file(f): return f
         }
     }
 
-    /// The descriptor's resolved guest path (`F_GETPATH`).
+    /// The descriptor's resolved guest path (`F_GETPATH`). Objects have no
+    /// path (EBADF, as xnu answers F_GETPATH for a non-vnode).
     public func path(for fd: Int32) throws -> String {
-        switch try descriptor(fd).node {
+        switch try entry(fd).file.node {
         case .console: return Self.consolePath
         case let .file(f): return f.guestPath
+        case .object: throw DarwinErrnoError(DarwinErrnoCode.EBADF)
         }
     }
 
     /// Sets or clears FD_CLOEXEC (`F_SETFD`).
     public func setCloseOnExec(_ fd: Int32, _ on: Bool) throws {
-        var d = try descriptor(fd)
+        var d = try entry(fd)
         d.closeOnExec = on
         descriptors[fd] = d
     }
 
     /// FD_CLOEXEC (`F_GETFD`).
-    public func closeOnExec(_ fd: Int32) throws -> Bool { try descriptor(fd).closeOnExec }
+    public func closeOnExec(_ fd: Int32) throws -> Bool { try entry(fd).closeOnExec }
 
     /// The Darwin status flags (`F_GETFL`): access mode, O_APPEND, O_NONBLOCK.
-    public func statusFlags(_ fd: Int32) throws -> Int32 { try descriptor(fd).statusFlags }
+    public func statusFlags(_ fd: Int32) throws -> Int32 { try entry(fd).file.statusFlags }
+
+    /// The flags `F_SETFL` may change (Darwin `FCNTLFLAGS` minus the
+    /// synchronous-I/O bits Ycode ignores): O_APPEND, O_NONBLOCK, O_ASYNC, O_FSYNC.
+    public static let settableStatusFlags = DarwinOpen.O_APPEND | DarwinOpen.O_NONBLOCK | DarwinOpen.O_ASYNC
+        | DarwinOpen.O_FSYNC
+
+    /// `F_SETFL`: replaces the settable flags of the description (shared by
+    /// every dup of it); the access mode is kept.
+    public func setStatusFlags(_ fd: Int32, _ flags: Int32) throws {
+        let file = try entry(fd).file
+        file.statusFlags = (file.statusFlags & ~Self.settableStatusFlags) | (flags & Self.settableStatusFlags)
+    }
 
     /// The open descriptor numbers, ascending.
     public var openDescriptors: [Int32] { descriptors.keys.sorted() }
 }
 
-// MARK: - Stage 4b API (stage4b-contract.md §3.5; stubs, agent F implements)
-
-/// An open file description: what dup'd and inherited descriptors share
-/// (offset, status flags, the node). Contract-pinned name.
-public final class DarwinOpenFile {
-    public init() {}
-}
+// MARK: - Stage 4b API (stage4b-contract.md §3.5)
 
 extension DarwinFileSystem {
+    /// Installs a new description holding `object` at the lowest free number.
     public func installObject(_ object: DarwinDescriptorObject, statusFlags: Int32, closeOnExec: Bool) throws -> Int32 {
-        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+        try install(DarwinOpenFile(node: .object(object), statusFlags: statusFlags), closeOnExec: closeOnExec)
     }
 
-    public func object(for fd: Int32) throws -> DarwinDescriptorObject? { nil }
+    /// The object behind `fd`; nil for host files and the console. EBADF if
+    /// `fd` is not open.
+    public func object(for fd: Int32) throws -> DarwinDescriptorObject? {
+        try entry(fd).file.object
+    }
 
+    /// The open file description behind `fd` (fileports, SCM_RIGHTS). The
+    /// caller keeps it alive simply by holding it.
     public func openFile(for fd: Int32) throws -> DarwinOpenFile {
-        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+        try entry(fd).file
     }
 
+    /// Adds a descriptor for `file`: at the lowest free number, or at `fd`
+    /// (dup2-style: a descriptor already open there is closed first; `fd`
+    /// outside the table is EBADF). Returns the number.
+    @discardableResult
     public func install(_ file: DarwinOpenFile, closeOnExec: Bool, at fd: Int32? = nil) throws -> Int32 {
-        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+        if let fd {
+            guard fd >= 0, fd < maxDescriptors else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
+            let old = descriptors[fd]
+            descriptors[fd] = Descriptor(file: file, closeOnExec: closeOnExec)
+            if old != nil { descriptorClosed?(fd) }
+            return fd
+        }
+        let n = try lowestFreeDescriptor()
+        descriptors[n] = Descriptor(file: file, closeOnExec: closeOnExec)
+        return n
     }
 
+    /// `dup` / `F_DUPFD`: a new descriptor (the lowest free number ≥
+    /// `minimum`) sharing `fd`'s description, close-on-exec clear. EBADF if
+    /// `fd` is not open, EINVAL if `minimum` is outside the table, EMFILE if
+    /// the table is full.
     public func dup(_ fd: Int32, minimum: Int32 = 0) throws -> Int32 {
-        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+        try dup(fd, minimum: minimum, closeOnExec: false)
     }
 
+    /// `F_DUPFD_CLOEXEC` when `closeOnExec`.
+    public func dup(_ fd: Int32, minimum: Int32, closeOnExec: Bool) throws -> Int32 {
+        let d = try entry(fd)
+        guard minimum >= 0, minimum < maxDescriptors else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        let n = try lowestFreeDescriptor(from: minimum)
+        descriptors[n] = Descriptor(file: d.file, closeOnExec: closeOnExec)
+        return n
+    }
+
+    /// `dup2`: `to` shares `from`'s description, close-on-exec clear; a
+    /// descriptor open at `to` is closed first. `from == to` only checks that
+    /// it is open. EBADF for a closed `from` or a `to` outside the table.
     public func dup2(_ from: Int32, _ to: Int32) throws {
-        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+        let d = try entry(from)
+        guard to >= 0, to < maxDescriptors else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
+        if from == to { return }
+        try install(d.file, closeOnExec: false, at: to)
     }
 
+    /// A spawned child's file system (`processes.md` §1.11): the same
+    /// prefixes, console sink, cwd, socket files, and limit; every descriptor
+    /// shares its description and keeps its close-on-exec flag, except
+    /// confined objects (kqueues), which are not inherited.
     public func makeChildCopy() -> DarwinFileSystem {
-        DarwinFileSystem(prefixes: prefixes, console: { _, _ in })
+        let child = DarwinFileSystem(normalizedPrefixes: prefixes, console: console, sockets: sockets)
+        child.cwdStorage = cwdStorage
+        child.maxDescriptors = maxDescriptors
+        for (fd, d) in descriptors where !(d.file.object?.isConfined ?? false) {
+            child.descriptors[fd] = d
+        }
+        return child
     }
 
-    public func closeOnExecDescriptors(keepOnly: Set<Int32>? = nil) {}
+    /// Exec (`processes.md` §1.7 rule 3, §1.11): closes every close-on-exec
+    /// descriptor; with `keepOnly` (POSIX_SPAWN_CLOEXEC_DEFAULT) also every
+    /// descriptor not in the set.
+    public func closeOnExecDescriptors(keepOnly: Set<Int32>? = nil) {
+        let doomed = descriptors.filter { fd, d in d.closeOnExec || !(keepOnly?.contains(fd) ?? true) }.keys.sorted()
+        var released: [Descriptor] = []
+        for fd in doomed { if let d = remove(fd) { released.append(d) } }
+        released.removeAll()
+    }
 
-    public func closeAll() {}
+    /// Process exit: closes every descriptor.
+    public func closeAll() {
+        var released: [Descriptor] = []
+        for fd in descriptors.keys.sorted() { if let d = remove(fd) { released.append(d) } }
+        released.removeAll()
+    }
 
+    /// `chdir`: the path must name a directory (ENOENT, ENOTDIR); symbolic
+    /// links are resolved, so the new cwd is canonical.
     public func chdir(_ path: String) throws {
-        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+        let r = try resolve(path, followFinal: true)
+        guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+        guard st.isDirectory else { throw DarwinErrnoError(DarwinErrnoCode.ENOTDIR) }
+        cwdStorage = r.guestPath
     }
 
+    /// `fchdir`: the descriptor must be an open directory (EBADF, ENOTDIR).
     public func fchdir(_ fd: Int32) throws {
-        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+        guard case let .file(f) = try entry(fd).file.node, f.isDirectory else {
+            throw DarwinErrnoError(DarwinErrnoCode.ENOTDIR)
+        }
+        cwdStorage = f.guestPath
     }
 
+    /// Resolves an executable for spawn/exec: cwd-relative, every symbolic
+    /// link followed. ENOENT if missing, EACCES if it is not a regular file
+    /// (a directory, a socket file).
     public func hostPathForExec(_ path: String) throws -> (guestPath: String, hostPath: String) {
-        throw DarwinErrnoError(DarwinErrnoCode.ENOSYS)
+        let r = try resolve(path, followFinal: true)
+        guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+        guard st.isRegularFile, sockets.nodes[r.guestPath] == nil else {
+            throw DarwinErrnoError(DarwinErrnoCode.EACCES)
+        }
+        return (r.guestPath, r.hostPath)
+    }
+
+    /// `unlink`: removes a socket file's name, or a host file under a
+    /// writable prefix (EROFS otherwise). A directory is EPERM; a missing
+    /// path ENOENT. A final symbolic link is removed, not followed.
+    public func unlink(_ path: String) throws {
+        let r = try resolve(path, followFinal: false)
+        if sockets.nodes.removeValue(forKey: r.guestPath) != nil { return }
+        guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+        if st.isDirectory { throw DarwinErrnoError(DarwinErrnoCode.EPERM) }
+        guard r.prefix.writable else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        try hostUnlink(r.hostPath)
+    }
+
+    // MARK: Socket files
+
+    /// `bind` of an AF_UNIX socket (`processes.md` §5.3): creates the socket
+    /// file at `path` (final symbolic links are not followed) with
+    /// `0777 & ~umask` and returns its canonical guest path. An existing name
+    /// is EADDRINUSE; a missing directory ENOENT; a read-only prefix EROFS.
+    public func bindSocket(_ socket: DarwinDescriptorObject, path: String, umask: UInt16) throws -> String {
+        let r = try resolve(path, followFinal: false)
+        guard r.stat == nil else { throw DarwinErrnoError(DarwinErrnoCode.EADDRINUSE) }
+        guard r.prefix.writable else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        let parentHost = r.hostPath.lastIndex(of: "/").map { String(r.hostPath[..<$0]) } ?? "/"
+        let parent = try? hostStatCall(parentHost.isEmpty ? "/" : parentHost, follow: true)
+        let now = Self.now()
+        let st = DarwinStat(dev: parent?.dev ?? 0, mode: DarwinStat.S_IFSOCK | (0o777 & ~umask), nlink: 1,
+                            ino: sockets.nextInode, uid: Self.guestUID, gid: Self.guestGID, atime: now, mtime: now,
+                            ctime: now, birthtime: now, size: 0, blocks: 0, blksize: 4096)
+        sockets.nextInode += 1
+        sockets.nodes[r.guestPath] = SocketNamespace.Node(socket: socket, stat: st)
+        return r.guestPath
+    }
+
+    /// What a `connect` (or a datagram `sendto`) to `path` reaches.
+    public enum SocketPathTarget {
+        /// A socket file whose socket is still open.
+        case socket(DarwinDescriptorObject)
+        /// A socket file whose socket was closed (ECONNREFUSED), or a socket
+        /// node of the host.
+        case noSocket
+    }
+
+    /// Looks `path` up for `connect` (symbolic links followed). A missing
+    /// path is ENOENT (or the lookup error); a file that is not a socket is
+    /// ENOTSOCK (xnu `unp_connect`).
+    public func socketTarget(_ path: String) throws -> SocketPathTarget {
+        let r = try resolve(path, followFinal: true)
+        if let node = sockets.nodes[r.guestPath] {
+            if let s = node.socket { return .socket(s) }
+            return .noSocket
+        }
+        guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+        guard st.fileType == DarwinStat.S_IFSOCK else { throw DarwinErrnoError(DarwinErrnoCode.ENOTSOCK) }
+        return .noSocket
+    }
+
+    /// The socket files directly inside the directory `guestPath`
+    /// (normalized), with their stat data, by name.
+    public func socketNames(inDirectory guestPath: String) -> [(name: String, stat: DarwinStat)] {
+        let dir = normalize(guestPath, cwd: cwdStorage)
+        let start = dir == "/" ? "/" : dir + "/"
+        return sockets.nodes.compactMap { path, node in
+            guard path.hasPrefix(start) else { return nil }
+            let name = String(path.dropFirst(start.count))
+            return name.contains("/") ? nil : (name, node.stat)
+        }.sorted { $0.name < $1.name }
+    }
+
+    private static func now() -> DarwinTimespec {
+        var ts = timespec()
+        clock_gettime(CLOCK_REALTIME, &ts)
+        return DarwinTimespec(sec: Int64(ts.tv_sec), nsec: Int64(ts.tv_nsec))
     }
 }

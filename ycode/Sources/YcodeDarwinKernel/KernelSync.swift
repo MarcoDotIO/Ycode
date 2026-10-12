@@ -64,7 +64,9 @@ public final class KernelLock: @unchecked Sendable {
     /// Set by `terminate()`: every wait returns `.interrupted` at once.
     public private(set) var isTerminated = false
     /// Told when a guest thread starts and stops blocking in a wait (the
-    /// workqueue's "a blocked worker frees its slot" rule).
+    /// workqueue's "a blocked worker frees its slot" rule). Stage 4b: the
+    /// `DarwinSystem` that owns the lock sets it once and forwards to the
+    /// thread's own kernel (`ThreadContext.kernel`).
     var blockingObserver: ((_ context: ThreadContext, _ blocking: Bool) -> Void)?
 
     public init() {
@@ -120,6 +122,19 @@ public final class KernelLock: @unchecked Sendable {
         isTerminated = true
         for w in waiters.values { w.finish(.interrupted) }
         waiters.removeAll()
+    }
+
+    /// Ends every current and future wait of the guest threads of one
+    /// process image (`kernel`), and of no other (stage 4b: several processes
+    /// share this lock). Waits without a thread context are not touched (the
+    /// image's timer thread watches `DarwinKernel.isTerminating`). Call with
+    /// the lock held, after `kernel.isTerminating` became true.
+    public func terminate(kernel: DarwinKernel) {
+        precondition(isHeldByCurrentThread, "KernelLock.terminate needs the kernel lock")
+        for (key, w) in waiters where w.context?.kernel === kernel {
+            w.finish(.interrupted)
+            waiters[key] = nil
+        }
     }
 
     /// Interrupts the waits of one guest thread (signal delivery). Returns
@@ -261,6 +276,8 @@ public struct WaitQueue: @unchecked Sendable {
         let w = Waiter(context: context, tag: tag)
         w.storage = storage
         if lock.isTerminated { return .interrupted }
+        // A thread of an image that is ending never sleeps again (stage 4b).
+        if let k = context?.kernel, k.isTerminating { return .interrupted }
         storage.waiters.append(w)
         lock.register(w)
         beforeSleeping?()
