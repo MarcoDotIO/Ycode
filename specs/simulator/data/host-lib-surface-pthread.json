@@ -1,0 +1,2534 @@
+[
+ {
+  "name": "_pthread_mutex_lock",
+  "kind": "function",
+  "importers": 295,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/sbin/syslogd",
+   "/usr/libexec/trustd",
+   "/usr/lib/libxo.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutex_unlock",
+  "kind": "function",
+  "importers": 294,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/sbin/syslogd",
+   "/usr/libexec/trustd",
+   "/usr/lib/libxo.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutex_init",
+  "kind": "function",
+  "importers": 195,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/sbin/syslogd",
+   "/usr/libexec/transitd",
+   "/usr/libexec/locationd"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_self",
+  "kind": "function",
+  "importers": 191,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libate.dylib",
+   "/usr/libexec/locationd",
+   "/usr/lib/libRPAC.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_qos_class_self",
+  "kind": "function",
+  "importers": 175,
+  "weakOnly": false,
+  "category": "qos",
+  "examples": [
+   "/usr/lib/libate.dylib",
+   "/usr/libexec/securityd",
+   "/usr/lib/libRPAC.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutex_destroy",
+  "kind": "function",
+  "importers": 165,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/locationd",
+   "/usr/lib/libc++.1.dylib",
+   "/usr/lib/libxml2.2.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_setspecific",
+  "kind": "function",
+  "importers": 140,
+  "weakOnly": false,
+  "category": "tsd",
+  "examples": [
+   "/usr/lib/libRPAC.dylib",
+   "/usr/lib/libc++.1.dylib",
+   "/usr/lib/libobjc.A.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_getspecific",
+  "kind": "function",
+  "importers": 132,
+  "weakOnly": false,
+  "category": "tsd",
+  "examples": [
+   "/usr/libexec/logd",
+   "/usr/lib/libRPAC.dylib",
+   "/usr/lib/libc++.1.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_key_create",
+  "kind": "function",
+  "importers": 120,
+  "weakOnly": false,
+  "category": "tsd",
+  "examples": [
+   "/usr/lib/libRPAC.dylib",
+   "/usr/lib/libc++.1.dylib",
+   "/usr/lib/libxml2.2.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_create",
+  "kind": "function",
+  "importers": 104,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/libexec/transitd",
+   "/usr/libexec/locationd"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_once",
+  "kind": "function",
+  "importers": 88,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/transitd",
+   "/usr/libexec/locationd",
+   "/usr/lib/libxslt.1.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cond_wait",
+  "kind": "function",
+  "importers": 78,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/transitd",
+   "/usr/libexec/installd",
+   "/usr/lib/libc++.1.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_main_np",
+  "kind": "function",
+  "importers": 76,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libRPAC.dylib",
+   "/usr/lib/libxml2.2.dylib",
+   "/usr/lib/libresolv.9.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cond_init",
+  "kind": "function",
+  "importers": 73,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/transitd",
+   "/usr/libexec/locationd",
+   "/usr/lib/libxml2.2.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_init",
+  "kind": "function",
+  "importers": 70,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/libexec/locationd",
+   "/usr/lib/libmecabra.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cond_destroy",
+  "kind": "function",
+  "importers": 69,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/locationd",
+   "/usr/lib/libc++.1.dylib",
+   "/usr/lib/libxml2.2.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_rwlock_unlock",
+  "kind": "function",
+  "importers": 69,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/installd",
+   "/usr/lib/libiconv.2.dylib",
+   "/usr/lib/libmecabra.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_rwlock_wrlock",
+  "kind": "function",
+  "importers": 68,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/installd",
+   "/usr/lib/libiconv.2.dylib",
+   "/usr/lib/libmecabra.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_rwlock_rdlock",
+  "kind": "function",
+  "importers": 67,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/installd",
+   "/usr/lib/libmecabra.dylib",
+   "/usr/lib/libboringssl.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_init",
+  "kind": "function",
+  "importers": 64,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/transitd",
+   "/usr/libexec/locationd",
+   "/usr/lib/libc++.1.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cond_signal",
+  "kind": "function",
+  "importers": 61,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/installd",
+   "/usr/lib/libc++.1.dylib",
+   "/usr/lib/libxml2.2.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_settype",
+  "kind": "function",
+  "importers": 60,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/transitd",
+   "/usr/libexec/locationd",
+   "/usr/lib/libc++.1.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_rwlock_init",
+  "kind": "function",
+  "importers": 60,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/installd",
+   "/usr/lib/libmecabra.dylib",
+   "/usr/lib/libboringssl.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mach_thread_np",
+  "kind": "function",
+  "importers": 57,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libobjc.A.dylib",
+   "/usr/lib/libc++abi.dylib",
+   "/usr/lib/libBacktraceRecording.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cond_broadcast",
+  "kind": "function",
+  "importers": 56,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/transitd",
+   "/usr/libexec/installd",
+   "/usr/lib/libc++.1.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_destroy",
+  "kind": "function",
+  "importers": 55,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/lib/libmecabra.dylib",
+   "/usr/lib/libnfshared.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_join",
+  "kind": "function",
+  "importers": 53,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libc++.1.dylib",
+   "/usr/lib/libmecab.dylib",
+   "/usr/lib/liblzma.5.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_setname_np",
+  "kind": "function",
+  "importers": 53,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/libexec/locationd",
+   "/usr/lib/libobjc.A.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_rwlock_destroy",
+  "kind": "function",
+  "importers": 51,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/installd",
+   "/usr/lib/libmecabra.dylib",
+   "/usr/lib/libboringssl.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_destroy",
+  "kind": "function",
+  "importers": 48,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/locationd",
+   "/usr/lib/libc++.1.dylib",
+   "/usr/lib/libFosl_dynamic.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_setdetachstate",
+  "kind": "function",
+  "importers": 39,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/lib/libmecabra.dylib",
+   "/usr/lib/usd/libusd_ms.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_threadid_np",
+  "kind": "function",
+  "importers": 35,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/bin/symbolscache",
+   "/usr/lib/libRPAC.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_sched_yield",
+  "kind": "function",
+  "importers": 32,
+  "weakOnly": false,
+  "category": "sched-signal",
+  "examples": [
+   "/usr/lib/libmecab.dylib",
+   "/usr/lib/libmecabra.dylib",
+   "/usr/lib/libprotobuf-lite.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutex_trylock",
+  "kind": "function",
+  "importers": 29,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libc++.1.dylib",
+   "/usr/lib/usd/libusd_ms.dylib",
+   "/usr/lib/system/libsystem_c.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_setschedparam",
+  "kind": "function",
+  "importers": 28,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/locationd",
+   "/usr/lib/libnfshared.dylib",
+   "/usr/lib/system/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_setschedpolicy",
+  "kind": "function",
+  "importers": 25,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libnfshared.dylib",
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_equal",
+  "kind": "function",
+  "importers": 25,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libxml2.2.dylib",
+   "/System/Library/Frameworks/OpenAL.framework/OpenAL",
+   "/System/Library/PrivateFrameworks/VFX.framework/VFX"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_setschedparam",
+  "kind": "function",
+  "importers": 24,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/locationd",
+   "/usr/lib/libmecabra.dylib",
+   "/usr/lib/libnfshared.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_getschedparam",
+  "kind": "function",
+  "importers": 23,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libRPAC.dylib",
+   "/usr/libexec/locationd",
+   "/usr/lib/libnfshared.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_getschedparam",
+  "kind": "function",
+  "importers": 22,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libnfshared.dylib",
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cond_timedwait",
+  "kind": "function",
+  "importers": 22,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libc++.1.dylib",
+   "/usr/lib/liblzma.5.dylib",
+   "/usr/lib/libAppleArchive.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_setstacksize",
+  "kind": "function",
+  "importers": 21,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libAppleArchive.dylib",
+   "/usr/lib/libParallelCompression.dylib",
+   "/usr/lib/usd/libusd_ms.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_set_qos_class_self_np",
+  "kind": "function",
+  "importers": 19,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/backboardd",
+   "/System/Library/TextInput/kbd",
+   "/System/Library/PrivateFrameworks/GESS.framework/GESS"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cond_timedwait_relative_np",
+  "kind": "function",
+  "importers": 18,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/Frameworks/OpenAL.framework/OpenAL",
+   "/System/Library/Frameworks/AVFAudio.framework/AVFAudio",
+   "/System/Library/Frameworks/CoreMIDI.framework/CoreMIDI"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_get_qos_class_np",
+  "kind": "function",
+  "importers": 16,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/backboardd",
+   "/usr/lib/libAppleArchive.dylib",
+   "/usr/lib/libParallelCompression.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_getname_np",
+  "kind": "function",
+  "importers": 16,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/xpcproxy_sim",
+   "/usr/lib/libMainThreadChecker.dylib",
+   "/usr/lib/libBacktraceRecording.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_set_qos_class_np",
+  "kind": "function",
+  "importers": 14,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libAppleArchive.dylib",
+   "/usr/lib/libParallelCompression.dylib",
+   "/System/Library/VideoCodecs/H264SW.videocodec"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_exit",
+  "kind": "function",
+  "importers": 14,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib",
+   "/System/Library/PrivateFrameworks/VFX.framework/VFX"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_sigmask",
+  "kind": "function",
+  "importers": 14,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/liblzma.5.dylib",
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/libsystem_c.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_key_init_np",
+  "kind": "function",
+  "importers": 13,
+  "weakOnly": false,
+  "category": "tsd",
+  "examples": [
+   "/usr/lib/libobjc.A.dylib",
+   "/usr/lib/system/libdyld.dylib",
+   "/usr/lib/system/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_setspecific_static",
+  "kind": "function",
+  "importers": 12,
+  "weakOnly": false,
+  "category": "tsd",
+  "examples": [
+   "/usr/lib/system/libxpc.dylib",
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/libsystem_malloc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_detach",
+  "kind": "function",
+  "importers": 12,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libc++.1.dylib",
+   "/usr/lib/libobjc.A.dylib",
+   "/usr/lib/usd/libusd_ms.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_atfork",
+  "kind": "function",
+  "importers": 11,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libBacktraceRecording.dylib",
+   "/usr/lib/usd/libusd_ms.dylib",
+   "/usr/lib/system/libsystem_info.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_dependency_fulfill_np",
+  "kind": "function",
+  "importers": 10,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/locationd",
+   "/usr/libexec/splashboardd",
+   "/System/Library/PrivateFrameworks/IDS.framework/IDS"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_dependency_init_np",
+  "kind": "function",
+  "importers": 10,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/locationd",
+   "/usr/libexec/splashboardd",
+   "/System/Library/PrivateFrameworks/IDS.framework/IDS"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_dependency_wait_np",
+  "kind": "function",
+  "importers": 10,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/locationd",
+   "/usr/libexec/splashboardd",
+   "/System/Library/PrivateFrameworks/IDS.framework/IDS"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_get_stackaddr_np",
+  "kind": "function",
+  "importers": 10,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libate.dylib",
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/libsystem_c.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_kill",
+  "kind": "function",
+  "importers": 10,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libgmalloc.dylib",
+   "/usr/lib/libFosl_dynamic.dylib",
+   "/usr/lib/system/libsystem_c.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_qos_class_main",
+  "kind": "function",
+  "importers": 10,
+  "weakOnly": false,
+  "category": "qos",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_fchdir_np",
+  "kind": "function",
+  "importers": 9,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libarchive.2.dylib",
+   "/usr/lib/system/libsystem_c.dylib",
+   "/System/Library/Frameworks/FileProvider.framework/FileProvider"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_key_delete",
+  "kind": "function",
+  "importers": 9,
+  "weakOnly": false,
+  "category": "tsd",
+  "examples": [
+   "/usr/lib/usd/libusd_ms.dylib",
+   "/System/Library/Frameworks/Metal.framework/Metal",
+   "/System/Library/PrivateFrameworks/CoreRE.framework/CoreRE"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_main_thread_np",
+  "kind": "function",
+  "importers": 9,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/usd/libusd_ms.dylib",
+   "/System/Library/PrivateFrameworks/IDS.framework/IDS",
+   "/System/Library/Frameworks/Foundation.framework/Foundation"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_get_stacksize_np",
+  "kind": "function",
+  "importers": 8,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libate.dylib",
+   "/usr/lib/system/libsystem_c.dylib",
+   "/usr/lib/swift/libswiftCore.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_override_qos_class_end_np",
+  "kind": "function",
+  "importers": 8,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/PrivateFrameworks/VFX.framework/VFX",
+   "/System/Library/PrivateFrameworks/Quagga.framework/Quagga",
+   "/System/Library/Frameworks/Foundation.framework/Foundation"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_override_qos_class_start_np",
+  "kind": "function",
+  "importers": 8,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/PrivateFrameworks/VFX.framework/VFX",
+   "/System/Library/PrivateFrameworks/Quagga.framework/Quagga",
+   "/System/Library/Frameworks/Foundation.framework/Foundation"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_setscope",
+  "kind": "function",
+  "importers": 6,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/Frameworks/Foundation.framework/Foundation",
+   "/System/Library/Frameworks/QuartzCore.framework/QuartzCore",
+   "/System/Library/PrivateFrameworks/WebCore.framework/WebCore"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_qos_max_parallelism",
+  "kind": "function",
+  "importers": 6,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libmecabra.dylib",
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_rwlock_tryrdlock",
+  "kind": "function",
+  "importers": 6,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/PrivateFrameworks/Home.framework/Home",
+   "/System/Library/Frameworks/Foundation.framework/Foundation",
+   "/System/Library/PrivateFrameworks/MLIR_ML.framework/MLIR_ML"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_set_fixedpriority_self",
+  "kind": "function",
+  "importers": 6,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/backboardd",
+   "/System/Library/Frameworks/WebKit.framework/WebKit",
+   "/System/Library/PrivateFrameworks/VFX.framework/VFX"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_getstacksize",
+  "kind": "function",
+  "importers": 5,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/VideoEncoders/AV1SW.videoencoder",
+   "/System/Library/Frameworks/Foundation.framework/Foundation",
+   "/System/Library/Frameworks/QuartzCore.framework/QuartzCore"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_setinheritsched",
+  "kind": "function",
+  "importers": 5,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libnfshared.dylib",
+   "/System/Library/Frameworks/ARKit.framework/ARKit",
+   "/System/Library/PrivateFrameworks/AssistantServices.framework/assistantd"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_rwlock_trywrlock",
+  "kind": "function",
+  "importers": 5,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/Frameworks/CoreVideo.framework/CoreVideo",
+   "/System/Library/Frameworks/Foundation.framework/Foundation",
+   "/System/Library/PrivateFrameworks/MLIR_ML.framework/MLIR_ML"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_yield_np",
+  "kind": "function",
+  "importers": 5,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libAppleArchive.dylib",
+   "/System/Library/Frameworks/CoreData.framework/CoreData",
+   "/System/Library/PrivateFrameworks/SDAPI.framework/SDAPI"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_is_threaded_np",
+  "kind": "function",
+  "importers": 4,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libobjc.A.dylib",
+   "/usr/lib/system/libsystem_trace.dylib",
+   "/System/Library/PrivateFrameworks/Heimdal.framework/Heimdal"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_sched_get_priority_max",
+  "kind": "function",
+  "importers": 4,
+  "weakOnly": false,
+  "category": "sched-signal",
+  "examples": [
+   "/usr/libexec/locationd",
+   "/System/Library/Frameworks/CoreMotion.framework/CoreMotion",
+   "/System/Library/PrivateFrameworks/AVConference.framework/AVConference"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cpu_number_np",
+  "kind": "function",
+  "importers": 3,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/libsystem_malloc.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_from_mach_thread_np",
+  "kind": "function",
+  "importers": 3,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libBacktraceRecording.dylib",
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_introspection_hook_install",
+  "kind": "function",
+  "importers": 3,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/libBacktraceRecording.dylib",
+   "/usr/lib/system/libsystem_sanitizers.dylib",
+   "/System/Library/PrivateFrameworks/HomeKitDaemon.framework/HomeKitDaemon"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_setpolicy_np",
+  "kind": "function",
+  "importers": 3,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/PrivateFrameworks/VFX.framework/VFX",
+   "/System/Library/Frameworks/SceneKit.framework/SceneKit",
+   "/System/Library/PrivateFrameworks/WebCore.framework/Frameworks/libwebrtc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_sched_get_priority_min",
+  "kind": "function",
+  "importers": 3,
+  "weakOnly": false,
+  "category": "sched-signal",
+  "examples": [
+   "/System/Library/PrivateFrameworks/AVConference.framework/AVConference",
+   "/System/Library/PrivateFrameworks/CalendarDatabase.framework/CalendarDatabase",
+   "/System/Library/PrivateFrameworks/WebCore.framework/Frameworks/libwebrtc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "____chkstk_darwin",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "stack-probe",
+  "examples": [
+   "/usr/sbin/iokitsimd",
+   "/usr/lib/system/libcompiler_rt.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_qos_class_decode",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_qos_class_encode",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_qos_override_end_direct",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_qos_override_start_direct",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_set_properties_self",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workloop_create",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workloop_destroy",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_add_cooperativethreads",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_addthreads",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_override_reset",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_override_start_direct",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_override_start_direct_check_owner",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_set_event_manager_priority",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_supported",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_posix_spawnattr_set_qos_class_np",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "spawn-qos",
+  "examples": [
+   "/usr/libexec/xpcproxy_sim",
+   "/System/Library/Frameworks/Foundation.framework/Foundation"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_get_qos_class_np",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_getschedpolicy",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_setcpupercent_np",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cond_signal_thread_np",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/Frameworks/SwiftUICore.framework/SwiftUICore",
+   "/System/Library/PrivateFrameworks/DVTInstrumentsUtilities.framework/DVTInstrumentsUtilities"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_install_workgroup_functions_np",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_setpshared",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/Frameworks/Metal.framework/Metal",
+   "/System/Library/PrivateFrameworks/VFX.framework/VFX"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_rwlockattr_destroy",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/Frameworks/SceneKit.framework/SceneKit",
+   "/System/Library/PrivateFrameworks/SpotlightIndex.framework/SpotlightIndex"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_rwlockattr_init",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/Frameworks/SceneKit.framework/SceneKit",
+   "/System/Library/PrivateFrameworks/SpotlightIndex.framework/SpotlightIndex"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_self_is_exiting_np",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/Frameworks/JavaScriptCore.framework/JavaScriptCore",
+   "/System/Library/PrivateFrameworks/MallocStackLogging.framework/MallocStackLogging"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_setcanceltype",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/PrivateFrameworks/SDAPI.framework/SDAPI",
+   "/System/Library/Frameworks/SystemConfiguration.framework/SystemConfiguration"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_testcancel",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/system/libsystem_c.dylib",
+   "/System/Library/Frameworks/SystemConfiguration.framework/SystemConfiguration"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_time_constraint_max_parallelism",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_workqueue_setup",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/system/libdispatch.dylib",
+   "/usr/lib/system/introspection/libdispatch.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_sigwait",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "sched-signal",
+  "examples": [
+   "/System/Library/PrivateFrameworks/GPUToolsCapture.framework/GPUToolsCapture",
+   "/System/Library/PrivateFrameworks/GPUCompiler.framework/Versions/32023/Libraries/libllvm-lmdb.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "___pthread_workqueue_setkill",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "pthread-private",
+  "examples": [
+   "/usr/lib/system/libsystem_c.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "___unix_conforming",
+  "kind": "data",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "data",
+  "examples": [
+   "/usr/lib/system/libsystem_c.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "section": "__TEXT,__const",
+  "sizeUpperBound": 32
+ },
+ {
+  "name": "__pthread_workqueue_allow_send_signals",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "pthread-spi",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_pthread_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_setstack",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/Frameworks/JavaScriptCore.framework/JavaScriptCore"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_setworkinterval_np",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_pthread_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_condattr_destroy",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/PrivateFrameworks/WebCore.framework/Frameworks/libwebrtc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_condattr_init",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/PrivateFrameworks/WebCore.framework/Frameworks/libwebrtc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_setprotocol",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/PrivateFrameworks/CoreRE.framework/CoreRE"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_set_timeshare_self",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/libexec/backboardd"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_setcancelstate",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/System/Library/PrivateFrameworks/SDAPI.framework/SDAPI"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_stack_frame_decode_np",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [
+   "/usr/lib/system/libsystem_c.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "___is_threaded",
+  "kind": "data",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "data",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "section": "__DATA_DIRTY,__common",
+  "sizeUpperBound": 4
+ },
+ {
+  "name": "___pthread_init",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-private",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "___pthread_late_init",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-private",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_atfork_child",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_atfork_child_handlers",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_atfork_parent",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_atfork_parent_handlers",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_atfork_prepare",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_atfork_prepare_handlers",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_clear_qos_tsd",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "tsd",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_exit_if_canceled",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_fork_child",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_fork_child_postinit",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_fork_parent",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_fork_prepare",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_is_threaded",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_mutex_enable_legacy_mode",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_override_qos_class_end_direct",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_override_qos_class_start_direct",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_qos_class_and_override_decode",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_qos_class_and_override_encode",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_qos_class_encode_workqueue",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_sched_pri_decode",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_sched_pri_encode",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_self",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_set_self",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_start",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_tsd_shared_cache_first",
+  "kind": "data",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "data",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "section": "__TEXT,__const",
+  "sizeUpperBound": 4
+ },
+ {
+  "name": "__pthread_tsd_shared_cache_last",
+  "kind": "data",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "data",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "section": "__TEXT,__const",
+  "sizeUpperBound": 4
+ },
+ {
+  "name": "__pthread_workqueue_asynchronous_override_add",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_asynchronous_override_reset_all_self",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_asynchronous_override_reset_self",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_init",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_init_with_kevent",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_init_with_workloop",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_workqueue_should_narrow",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_wqthread",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__pthread_yield_to_enqueuer_4dispatch",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-spi",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_cthread_yield",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "other",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_posix_spawnattr_get_qos_class_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "spawn-qos",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_getdetachstate",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_getguardsize",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_getinheritsched",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_getscope",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_getstack",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_getstackaddr",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_setguardsize",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_attr_setstackaddr",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cancel",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_chdir_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cond_timedwait$NOCANCEL",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_cond_wait$NOCANCEL",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_condattr_getpshared",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_condattr_setpshared",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_create_from_mach_thread",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_create_suspended_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_create_with_workgroup_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_current_stack_contains_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_getconcurrency",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_introspection_getspecific_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "tsd",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_introspection_setspecific_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "tsd",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_jit_write_freeze_callbacks_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_jit_write_protect_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_jit_write_protect_supported_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_jit_write_with_callback_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_join$NOCANCEL",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_layout_offsets",
+  "kind": "data",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "data",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "section": "__TEXT,__const",
+  "sizeUpperBound": 8
+ },
+ {
+  "name": "_pthread_mutex_getprioceiling",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutex_setprioceiling",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_getpolicy_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_getprioceiling",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_getprotocol",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_getpshared",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_gettype",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_mutexattr_setprioceiling",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_prefer_alternate_amx_self",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_prefer_alternate_cluster_self",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_rwlockattr_getpshared",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_rwlockattr_setpshared",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_set_qos_class_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_setconcurrency",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_workqueue_addthreads_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_workqueue_setdispatch_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_pthread_workqueue_setdispatchoffset_np",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "pthread-api",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_sigwait$NOCANCEL",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "sched-signal",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_start_wqthread",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "thread-entry",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_thread_chkstk_darwin",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "thread-entry",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_thread_start",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "thread-entry",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ }
+]

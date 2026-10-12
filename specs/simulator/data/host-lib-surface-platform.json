@@ -1,0 +1,2013 @@
+[
+ {
+  "name": "__platform_memmove",
+  "kind": "function",
+  "importers": 2806,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/bin/df",
+   "/bin/launchctl",
+   "/sbin/launchd_sim"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_bzero",
+  "kind": "function",
+  "importers": 2171,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/bin/df",
+   "/bin/launchctl",
+   "/sbin/launchd_sim"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_lock_unlock",
+  "kind": "function",
+  "importers": 1399,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/bin/fm",
+   "/usr/libexec/wcd"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_lock_lock",
+  "kind": "function",
+  "importers": 1367,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/bin/fm",
+   "/usr/libexec/wcd"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_strlen",
+  "kind": "function",
+  "importers": 1066,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/bin/df",
+   "/bin/launchctl",
+   "/sbin/launchd_sim"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_memcmp",
+  "kind": "function",
+  "importers": 738,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/usr/sbin/otctl",
+   "/usr/bin/symbols",
+   "/usr/libexec/logd"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_strcmp",
+  "kind": "function",
+  "importers": 598,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/bin/df",
+   "/bin/launchctl",
+   "/sbin/launchd_sim"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "hostExportFlags": "[dynamic-resolver=0x00009118]"
+ },
+ {
+  "name": "__platform_memset",
+  "kind": "function",
+  "importers": 533,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/bin/launchctl",
+   "/sbin/launchd_sim",
+   "/usr/bin/fm"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_strcpy",
+  "kind": "function",
+  "importers": 337,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/bin/fm",
+   "/usr/bin/tidy"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_strncmp",
+  "kind": "function",
+  "importers": 312,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/bin/df",
+   "/bin/launchctl",
+   "/sbin/launchd_sim"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "hostExportFlags": "[dynamic-resolver=0x00009124]"
+ },
+ {
+  "name": "__platform_memchr",
+  "kind": "function",
+  "importers": 279,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/sbin/launchd_sim_trampoline",
+   "/usr/bin/symbols"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_lock_assert_owner",
+  "kind": "function",
+  "importers": 208,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/libexec/wcd",
+   "/usr/libexec/linkd"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_strchr",
+  "kind": "function",
+  "importers": 198,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/bin/df",
+   "/bin/launchctl",
+   "/sbin/launchd_sim"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_strncpy",
+  "kind": "function",
+  "importers": 183,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/usr/bin/log",
+   "/usr/bin/heap",
+   "/usr/bin/atos"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_strlcpy",
+  "kind": "function",
+  "importers": 153,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/bin/df",
+   "/sbin/launchd_sim",
+   "/usr/bin/log"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_memset_pattern16",
+  "kind": "function",
+  "importers": 144,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/usr/libexec/locationd",
+   "/usr/lib/libskit.dylib",
+   "/usr/libexec/coreduetd"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_strstr",
+  "kind": "function",
+  "importers": 136,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/bin/heap",
+   "/usr/bin/atos"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_strnlen",
+  "kind": "function",
+  "importers": 123,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/libexec/logd",
+   "/usr/lib/libutil.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_lock_assert_not_owner",
+  "kind": "function",
+  "importers": 85,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/usr/libexec/backboardd",
+   "/usr/libexec/splashboardd",
+   "/System/Library/Frameworks/Matter.framework/Matter"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_lock_lock_with_options",
+  "kind": "function",
+  "importers": 84,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/libexec/logd",
+   "/usr/libexec/trustd"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_recursive_lock_lock_with_options",
+  "kind": "function",
+  "importers": 83,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/usr/libexec/dasd",
+   "/usr/lib/libobjc.A.dylib",
+   "/usr/lib/libsqlite3.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_recursive_lock_unlock",
+  "kind": "function",
+  "importers": 83,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/usr/libexec/dasd",
+   "/usr/lib/libobjc.A.dylib",
+   "/usr/lib/libsqlite3.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_lock_trylock",
+  "kind": "function",
+  "importers": 68,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/usr/libexec/trustd",
+   "/usr/libexec/securityd",
+   "/usr/lib/libobjc.A.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_strlcat",
+  "kind": "function",
+  "importers": 63,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/sbin/launchd_sim",
+   "/usr/bin/log",
+   "/usr/sbin/notifyd"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_memset_pattern4",
+  "kind": "function",
+  "importers": 37,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/usr/lib/libate.dylib",
+   "/usr/lib/libAppleEXR.dylib",
+   "/usr/lib/system/libsystem_c.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_longjmp",
+  "kind": "function",
+  "importers": 30,
+  "weakOnly": false,
+  "category": "setjmp-longjmp",
+  "examples": [
+   "/usr/lib/libedit.3.dylib",
+   "/System/Library/VideoEncoders/AV1SW.videoencoder",
+   "/System/Library/Frameworks/ImageIO.framework/ImageIO"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_setjmp",
+  "kind": "function",
+  "importers": 30,
+  "weakOnly": false,
+  "category": "setjmp-longjmp",
+  "examples": [
+   "/usr/lib/libedit.3.dylib",
+   "/System/Library/VideoEncoders/AV1SW.videoencoder",
+   "/System/Library/Frameworks/ImageIO.framework/ImageIO"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_memset_pattern8",
+  "kind": "function",
+  "importers": 19,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/usr/lib/libate.dylib",
+   "/usr/lib/libcompression.dylib",
+   "/usr/lib/system/libsystem_c.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_nospin_lock_unlock",
+  "kind": "function",
+  "importers": 12,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/usr/sbin/syslogd",
+   "/usr/lib/system/libcompiler_rt.dylib",
+   "/System/Library/Frameworks/CFNetwork.framework/CFNetwork"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_nospin_lock_lock",
+  "kind": "function",
+  "importers": 11,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/usr/sbin/syslogd",
+   "/usr/lib/system/libcompiler_rt.dylib",
+   "/System/Library/Frameworks/CFNetwork.framework/CFNetwork"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_once",
+  "kind": "function",
+  "importers": 10,
+  "weakOnly": false,
+  "category": "os-once",
+  "examples": [
+   "/usr/lib/system/libsystem_c.dylib",
+   "/usr/lib/system/libcorecrypto.dylib",
+   "/usr/lib/system/libsystem_malloc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_recursive_lock_trylock",
+  "kind": "function",
+  "importers": 10,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/usr/lib/libobjc.A.dylib",
+   "/usr/lib/libsqlite3.dylib",
+   "/usr/lib/system/libdyld.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicDequeue",
+  "kind": "function",
+  "importers": 9,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [
+   "/usr/lib/system/libxpc.dylib",
+   "/System/Library/Frameworks/AVFAudio.framework/AVFAudio",
+   "/System/Library/Frameworks/CoreVideo.framework/CoreVideo"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "hostExportFlags": "[dynamic-resolver=0x0000907C]"
+ },
+ {
+  "name": "_OSAtomicEnqueue",
+  "kind": "function",
+  "importers": 9,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [
+   "/usr/lib/system/libxpc.dylib",
+   "/System/Library/Frameworks/AVFAudio.framework/AVFAudio",
+   "/System/Library/Frameworks/CoreVideo.framework/CoreVideo"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_alloc_once",
+  "kind": "function",
+  "importers": 9,
+  "weakOnly": false,
+  "category": "os-once",
+  "examples": [
+   "/bin/launchctl",
+   "/sbin/launchd_sim",
+   "/usr/libexec/xpcproxy_sim"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_flsl",
+  "kind": "function",
+  "importers": 9,
+  "weakOnly": false,
+  "category": "signal-bitops",
+  "examples": [
+   "/usr/lib/system/libsystem_c.dylib",
+   "/usr/lib/system/libsystem_containermanager.dylib",
+   "/System/Library/Frameworks/Vision.framework/Vision"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_sys_icache_invalidate",
+  "kind": "function",
+  "importers": 6,
+  "weakOnly": false,
+  "category": "cache-control",
+  "examples": [
+   "/System/Library/PrivateFrameworks/XOJIT.framework/XOJIT",
+   "/System/Library/PrivateFrameworks/MLIR_ML.framework/MLIR_ML",
+   "/System/Library/Frameworks/JavaScriptCore.framework/JavaScriptCore"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__longjmp",
+  "kind": "function",
+  "importers": 4,
+  "weakOnly": false,
+  "category": "setjmp-longjmp",
+  "examples": [
+   "/System/Library/Frameworks/OpenGLES.framework/libGLVMPlugin.dylib",
+   "/System/Library/Frameworks/OpenGLES.framework/libGLProgrammability.dylib",
+   "/System/Library/PrivateFrameworks/SpotlightIndex.framework/SpotlightIndex"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_memccpy",
+  "kind": "function",
+  "importers": 4,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/usr/lib/system/libsystem_c.dylib",
+   "/System/Library/PrivateFrameworks/Message.framework/Message",
+   "/System/Library/Frameworks/Vision.framework/libfaceCore.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__setjmp",
+  "kind": "function",
+  "importers": 4,
+  "weakOnly": false,
+  "category": "setjmp-longjmp",
+  "examples": [
+   "/System/Library/Frameworks/OpenGLES.framework/libGLProgrammability.dylib",
+   "/System/Library/PrivateFrameworks/SpotlightIndex.framework/SpotlightIndex",
+   "/System/Library/PrivateFrameworks/FontServices.framework/libType1Scaler.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_flsll",
+  "kind": "function",
+  "importers": 4,
+  "weakOnly": false,
+  "category": "signal-bitops",
+  "examples": [
+   "/System/Library/Frameworks/Network.framework/Network",
+   "/System/Library/PrivateFrameworks/Symbolication.framework/Symbolication",
+   "/System/Library/PrivateFrameworks/CoreServicesInternal.framework/CoreServicesInternal"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicAdd64",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [
+   "/System/Library/PrivateFrameworks/SpotlightIndex.framework/SpotlightIndex",
+   "/System/Library/Frameworks/Accelerate.framework/Frameworks/vImage.framework/vImage"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_fls",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "signal-bitops",
+  "examples": [
+   "/usr/lib/system/libsystem_asl.dylib",
+   "/usr/lib/system/libsystem_containermanager.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_siglongjmp",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "setjmp-longjmp",
+  "examples": [
+   "/System/Library/Frameworks/ImageIO.framework/ImageIO",
+   "/System/Library/PrivateFrameworks/BiomeStreams.framework/BiomeStreams"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_sigsetjmp",
+  "kind": "function",
+  "importers": 2,
+  "weakOnly": false,
+  "category": "setjmp-longjmp",
+  "examples": [
+   "/System/Library/Frameworks/ImageIO.framework/ImageIO",
+   "/System/Library/PrivateFrameworks/BiomeStreams.framework/BiomeStreams"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicCompareAndSwapLong",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [
+   "/usr/lib/system/libsystem_malloc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicDecrement32Barrier",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [
+   "/usr/lib/system/libsystem_malloc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicIncrement32",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [
+   "/System/Library/PrivateFrameworks/SpotlightIndex.framework/SpotlightIndex"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicIncrement32Barrier",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [
+   "/usr/lib/system/libsystem_malloc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicIncrement64",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [
+   "/usr/lib/system/libsystem_malloc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSMemoryBarrier",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [
+   "/usr/lib/system/libsystem_malloc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSSpinLockLock",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [
+   "/System/Library/Frameworks/Foundation.framework/Foundation"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSSpinLockUnlock",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [
+   "/System/Library/Frameworks/Foundation.framework/Foundation"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "___platform_sigaction",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/usr/lib/system/libsystem_c.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_nospin_lock_trylock",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__platform_memcmp_zero_aligned8",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "string-memory",
+  "examples": [
+   "/usr/lib/system/libsystem_malloc.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_asl_log",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_asl_log_prog",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_asl_msg_new",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_asl_msg_set",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_asl_send",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_dprintf",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_esappend",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_esprintf",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_getenv",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_put",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_putline",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_salloc",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_sappend",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_sfree",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_sprintf",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_sresize",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_string",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_vdprintf",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_vesprintf",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_vsprintf",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "simple-printf-asl",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_script_config_storage",
+  "kind": "data",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "data",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true,
+  "section": "__DATA,__script_config",
+  "sizeUpperBound": 16384
+ },
+ {
+  "name": "_os_security_config_get",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "os-misc",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_security_config_get_for_proc",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "os-misc",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_security_config_get_for_task",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "os-misc",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_sync_wait_on_address",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "os-sync",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_sync_wait_on_address_with_deadline",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "os-sync",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_sync_wait_on_address_with_timeout",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "os-sync",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_sync_wake_by_address_all",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "os-sync",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_sync_wake_by_address_any",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "os-sync",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_lock_lock_with_flags",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": true,
+  "category": "os-lock",
+  "examples": [
+   "/usr/lib/system/libsystem_sim_platform_host.dylib"
+  ],
+  "inLinkStub": false,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_recursive_lock_tryunlock4objc",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/usr/lib/libobjc.A.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_recursive_lock_unlock_forked_child",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [
+   "/usr/lib/system/libdyld.dylib"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_sys_dcache_flush",
+  "kind": "function",
+  "importers": 1,
+  "weakOnly": false,
+  "category": "cache-control",
+  "examples": [
+   "/System/Library/Frameworks/IOSurface.framework/IOSurface"
+  ],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicAdd32",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicAdd32Barrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicAdd64Barrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicAnd32",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicAnd32Barrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicAnd32Orig",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicAnd32OrigBarrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicCompareAndSwap32",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicCompareAndSwap32Barrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicCompareAndSwap64",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicCompareAndSwap64Barrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicCompareAndSwapInt",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicCompareAndSwapIntBarrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicCompareAndSwapLongBarrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicCompareAndSwapPtr",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicCompareAndSwapPtrBarrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicDecrement32",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicDecrement64",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicDecrement64Barrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicFifoDequeue",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicFifoEnqueue",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicIncrement64Barrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicOr32",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicOr32Barrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicOr32Orig",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicOr32OrigBarrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicTestAndClear",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicTestAndClearBarrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicTestAndSet",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicTestAndSetBarrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicXor32",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicXor32Barrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicXor32Orig",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSAtomicXor32OrigBarrier",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_OSSpinLockTry",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__OSSpinLockLockSlow",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "___bzero",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "other",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "___libplatform_init",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "other",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "___os_log_simple_offset",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "___os_once_reset",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-once",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__ctx_done",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "other",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_lock_type_eliding",
+  "kind": "data",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "data",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "section": "__DATA_CONST,__const",
+  "sizeUpperBound": 32
+ },
+ {
+  "name": "__os_lock_type_handoff",
+  "kind": "data",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "data",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "section": "__DATA_CONST,__const",
+  "sizeUpperBound": 32
+ },
+ {
+  "name": "__os_lock_type_nospin",
+  "kind": "data",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "data",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "section": "__DATA_CONST,__const",
+  "sizeUpperBound": 32
+ },
+ {
+  "name": "__os_lock_type_spin",
+  "kind": "data",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "data",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "section": "__DATA_CONST,__const",
+  "sizeUpperBound": 32
+ },
+ {
+  "name": "__os_lock_type_transactional",
+  "kind": "data",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "data",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "section": "__DATA_CONST,__const",
+  "sizeUpperBound": 32
+ },
+ {
+  "name": "__os_lock_type_unfair",
+  "kind": "data",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "data",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true,
+  "section": "__DATA_CONST,__const",
+  "sizeUpperBound": 32
+ },
+ {
+  "name": "__os_log_simple",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_log_simple_parse",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_log_simple_parse_identifiers",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_log_simple_parse_message",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_log_simple_parse_subsystem",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_log_simple_parse_timestamp",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_log_simple_parse_type",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_log_simple_reinit_4launchd",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_log_simple_send",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_log_simple_shim",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_semaphore_create",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-sync",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_semaphore_dispose",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-sync",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_semaphore_signal",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-sync",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__os_semaphore_wait",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-sync",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__simple_asl_get_fd",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "simple-printf-asl",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__spin_lock",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__spin_lock_try",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "__spin_unlock",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_ffs",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "signal-bitops",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_ffsl",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "signal-bitops",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_ffsll",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "signal-bitops",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_getcontext",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "ucontext",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_makecontext",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "ucontext",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_lock_lock",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_lock_trylock",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_lock_unlock",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_log_simple_now",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_log_simple_type_from_asl",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-misc",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_lock_lock_no_tsd",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_lock_unlock_no_tsd",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_os_unfair_recursive_lock_owned",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "os-lock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_setcontext",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "ucontext",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_spin_lock",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_spin_lock_try",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_spin_unlock",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "atomics-spinlock",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_swapcontext",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "ucontext",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ },
+ {
+  "name": "_sys_cache_control",
+  "kind": "function",
+  "importers": 0,
+  "weakOnly": false,
+  "category": "cache-control",
+  "examples": [],
+  "inLinkStub": true,
+  "inHostMac": true
+ }
+]
