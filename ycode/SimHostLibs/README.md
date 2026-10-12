@@ -55,25 +55,41 @@ copy `specs/simulator/data/` to the same relative place or set `SPEC_DATA`.
 ### Compile and link commands
 
 ```
-clang -target arm64-apple-none-macho -std=c11 -nostdlib -ffreestanding -fno-builtin
+clang -target arm64-apple-ios27.0-simulator -std=c11 -nostdlib -ffreestanding -fno-builtin
       -fno-stack-protector -fno-exceptions -fPIC -O2 -fvisibility=hidden -fno-common
       -fno-strict-aliasing -mno-outline-atomics -Wall -Wextra -Werror -Icommon [-I<lib>] -c ...
+python3 -I common/strip_platform.py <object>     # after every compile
 ld64.lld -arch arm64 -platform_version ios-simulator 27.0 27.1 -dylib
       -install_name /usr/lib/system/libsystem_<lib>.dylib -current_version 1.0.0
       -compatibility_version 1.0.0 -fixup_chains -no_adhoc_codesign -o out/libsystem_<lib>.dylib
       <objects> [out/libsystem_kernel.tbd] [out/libsystem_platform.tbd]
 ```
 
-There are two differences from the flags in the contract (§3), and they are
-deliberate. The Swift 6.4 `ld64.lld` has a downstream check that rejects
-every Mach-O input that has a Darwin platform load command. The error is
-"This version of lld does not support linking for platform …". Because of
-this:
+The Swift 6.4 `ld64.lld` has a downstream check that rejects every Mach-O
+input that has a Darwin platform load command. The error is "This version
+of lld does not support linking for platform …". Because of this:
 
-1. Objects are compiled for `arm64-apple-none-macho`, which writes no
-   `LC_BUILD_VERSION`. The linker writes the dylib's `LC_BUILD_VERSION`
-   from `-platform_version`, so the output is still iOS Simulator 27.0/27.1.
-2. The other libraries are linked through generated `.tbd` stubs
+1. Objects are compiled with the real Darwin triple, then
+   `common/strip_platform.py` cuts the `LC_BUILD_VERSION` out of each
+   object. The tag is only metadata in an object file. The linker writes
+   the dylib's own `LC_BUILD_VERSION` from `-platform_version`.
+2. **Never compile for `arm64-apple-none-macho`.** That triple uses generic
+   AAPCS64, not Apple's arm64 convention (DarwinPCS). Under DarwinPCS,
+   variadic arguments go on the stack and stack arguments are packed at
+   their natural size. Code compiled the other way miscompiles variadic
+   calls and calls with more than 8 arguments.
+   `-Xclang -target-abi -Xclang darwinpcs` fixes only some of this.
+3. Every build first runs `common/abi_check.py`. It compiles
+   `common/abi_check/{callee,caller}.c` with the library flags, strips the
+   objects, links them, and disassembles the result. It requires all of
+   the following:
+   - the variadic callee does not spill argument registers;
+   - the variadic caller puts its anonymous arguments on the stack;
+   - a 10-argument call puts its `char` at `[sp]` and its `short` at
+     `[sp, #2]`, on both the caller and the callee side.
+
+   A regression fails the build.
+4. The other libraries are linked through generated `.tbd` stubs
    (`common/make_tbd.py`), not through the dylibs. The result is the same:
    an `LC_LOAD_DYLIB` of the exact install name, and two-level binds.
 

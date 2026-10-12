@@ -88,9 +88,20 @@ Dependencies between the three:
 ### 3.1 Toolchain deviations (normative, from agent P)
 
 - **Untagged objects.** Swift 6.4's `ld64.lld` rejects input objects that
-  carry a Darwin platform tag. Objects are therefore compiled for
-  `-target arm64-apple-none-macho`, and the linker writes `LC_BUILD_VERSION`
-  (iOS Simulator 27.0/27.1) from `-platform_version`.
+  carry a Darwin platform tag.
+  - Objects are compiled with the **real Darwin triple**
+    `arm64-apple-ios27.0-simulator`, so they get Apple's calling convention
+    (DarwinPCS).
+  - `common/strip_platform.py` then removes the object's `LC_BUILD_VERSION`.
+  - The linker writes the dylib's `LC_BUILD_VERSION` (iOS Simulator
+    27.0/27.1) from `-platform_version`.
+  - **Never use `arm64-apple-none-macho`.** It produces generic AAPCS64,
+    which breaks variadic functions and functions with more than 8
+    arguments when Darwin code calls them. `-target-abi darwinpcs` does not
+    fix it on this toolchain.
+  - Every build starts with `common/abi_check.py`. It compiles, links, and
+    disassembles variadic and 10-argument probes, and fails unless both
+    the caller and the callee follow DarwinPCS.
 - **`.tbd` link stubs.** Platform and pthread link against generated `.tbd`
   stubs of the libraries below them, not the dylibs. The result has the
   same `LC_LOAD_DYLIB` commands and two-level binds.

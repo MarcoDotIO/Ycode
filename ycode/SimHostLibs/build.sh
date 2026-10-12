@@ -41,12 +41,17 @@ say() {
     echo "build.sh: $*"
 }
 
-# Objects are compiled for the platform-less triple arm64-apple-none-macho:
-# the Swift 6.4 toolchain's ld64.lld refuses any input object that carries a
-# Darwin platform load command ("This version of lld does not support
-# linking for platform ..."). The linker writes the dylib's LC_BUILD_VERSION
-# from -platform_version, so the output is identical in what matters.
-TARGET=arm64-apple-none-macho
+# Objects are compiled for the real Darwin triple, so that clang uses Apple's
+# arm64 calling convention (DarwinPCS: variadic arguments on the stack,
+# stack arguments packed at natural size and alignment). The Swift 6.4
+# toolchain's ld64.lld rejects every input that carries a Darwin platform
+# tag ("This version of lld does not support linking for platform ..."), so
+# each object's LC_BUILD_VERSION is removed after compiling
+# (common/strip_platform.py); the linker writes the dylib's own
+# LC_BUILD_VERSION from -platform_version. Do NOT use arm64-apple-none-macho:
+# it compiles generic AAPCS64, which is not ABI-compatible with Apple code.
+# common/abi_check.py proves the convention on every build.
+TARGET=arm64-apple-ios27.0-simulator
 CFLAGS="-target $TARGET -std=c11 -nostdlib -ffreestanding -fno-builtin -fno-stack-protector
  -fno-exceptions -fPIC -O2 -fvisibility=hidden -fno-common -fno-strict-aliasing
  -mno-outline-atomics -Wall -Wextra -Werror -I$common"
@@ -76,6 +81,14 @@ compile() {
     *.S) "$CLANG" $ASFLAGS "$@" -c -o "$c_obj" "$c_src" || die "assembling $c_src failed" ;;
     *.c) "$CLANG" $CFLAGS "$@" -c -o "$c_obj" "$c_src" || die "compiling $c_src failed" ;;
     esac
+    "$PYTHON" -I "$common/strip_platform.py" "$c_obj" || die "stripping the platform tag of $c_obj failed"
+}
+
+# Fails the build unless the compile pipeline produces DarwinPCS code.
+abi_check() {
+    # shellcheck disable=SC2086
+    "$PYTHON" -I "$common/abi_check.py" --clang "$CLANG" --ld "$LD64" --objdump "$OBJDUMP" \
+        --python "$PYTHON" --out "$out/abi-check" -- $CFLAGS || die "the ABI check failed (see above)"
 }
 
 # Global symbols an object defines (hidden ones included).
@@ -155,6 +168,7 @@ build_lib() {
 build_all() {
     check_tools
     mkdir -p "$out"
+    abi_check
     build_lib kernel
     # Dependencies are linked through .tbd stubs (see common/make_tbd.py).
     build_lib platform "$out/libsystem_kernel.tbd"
