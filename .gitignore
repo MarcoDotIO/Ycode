@@ -17,3 +17,4 @@ ycode/.swiftpm/
 # Per-agent SwiftPM scratch paths
 ycode/.build*/
 ycode/SimShim/out/
+ycode/SimHostLibs/out/
