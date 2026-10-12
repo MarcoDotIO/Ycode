@@ -3,45 +3,25 @@ import Testing
 import YcodeDarwinABI
 @testable import YcodeDarwinKernel
 
+/// Port traps reach the kernel's `MachIPC` (stage4a-contract.md §6, §8);
+/// the port semantics are tested in the MachIPC*Tests suites.
 @Suite struct PortTests {
     @Test func wellKnownAndDynamicNames() throws {
         let env = try Env()
+        let ipc = try #require(env.kernel.machIPC as? MachIPC)
         #expect(env.svc(UInt64(bitPattern: -28)).1.x[0] == 0x103)
         #expect(env.svc(UInt64(bitPattern: -27)).1.x[0] == 0x203)
         #expect(env.svc(UInt64(bitPattern: -29)).1.x[0] == 0x303)
-        #expect(env.svc(UInt64(bitPattern: -26)).1.x[0] == 0x1003)  // mach_reply_port
+        let reply = UInt32(env.svc(UInt64(bitPattern: -26)).1.x[0])  // mach_reply_port
+        #expect(reply & 3 == 3 && ipc.entry(reply) != nil)
 
         let slot = Env.scratch + 0x10
         let (_, a) = env.svc(UInt64(bitPattern: -16), [0x103, 1, slot])  // MACH_PORT_RIGHT_RECEIVE
-        #expect(try a.x[0] == 0 && env.u32(slot) == 0x1103)
-        let (_, c) = env.svc(UInt64(bitPattern: -24), [0x103, Env.scratch + 0x40, 0, slot])
-        #expect(try c.x[0] == 0 && env.u32(slot) == 0x1203)
-
-        #expect(env.svc(UInt64(bitPattern: -21), [0x103, 0x1103, 0x1103, 20]).1.x[0] == 0)
-        #expect(env.svc(UInt64(bitPattern: -21), [0x103, 0x9903, 0x9903, 20]).1.x[0] == 15)
-        #expect(env.svc(UInt64(bitPattern: -18), [0x103, 0x203]).1.x[0] == 0)
+        #expect(a.x[0] == 0)
+        let name = try env.u32(slot)
+        #expect(name & 3 == 3 && ipc.receiveTarget(of: name) == .port)
         #expect(env.svc(UInt64(bitPattern: -18), [0x103, 0x9903]).1.x[0] == 15)
-        #expect(env.svc(UInt64(bitPattern: -25), [0x103, 0x1203, 0, 0]).1.x[0] == 0)
-        #expect(env.svc(UInt64(bitPattern: -25), [0x103, 0x1203, 0, 0]).1.x[0] == 15)
-        #expect(!env.kernel.ports.contains(0x1203) && env.kernel.ports.contains(0x1103))
-
-        // mach_msg logs the header and fails with MACH_SEND_INVALID_DEST.
-        var header: [UInt8] = []
-        for v: UInt32 in [0x1513, 24, 0x1103, 0x1003, 0, 77] { header += (0..<4).map { UInt8(truncatingIfNeeded: v >> (8 * $0)) } }
-        try env.put(header, at: Env.scratch + 0x80)
-        let (_, m) = env.svc(UInt64(bitPattern: -31), [Env.scratch + 0x80, 3, 24, 0, 0, 0, 0])
-        #expect(m.x[0] == 0x1000_0003)
-        #expect(env.sink.lines.last?.contains("remote=0x1103 local=0x1003 voucher=0x0 id=77") == true)
-    }
-
-    @Test func table() {
-        var t = MachPortTable()
-        #expect(t.kind(of: 0x103) == .task)
-        #expect(t.allocate(.reply) == 0x1003)
-        #expect(t.allocate(.constructed) == 0x1103)
-        let first = t.remove(0x1003), second = t.remove(0x1003), wellKnown = t.remove(0x103)
-        #expect(first && !second)
-        #expect(wellKnown && t.contains(0x103))
+        #expect(env.sink.lines.contains { $0.contains("-16") || $0.contains("mach_port_allocate") })
     }
 }
 

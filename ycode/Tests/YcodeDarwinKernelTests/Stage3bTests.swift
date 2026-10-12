@@ -50,12 +50,12 @@ import YcodeDarwinABI
         // Same value with a timeout: ETIMEDOUT.
         let (_, b) = env.svc(515, [1, s, 7, 1000])
         #expect(b.carry && b.x[0] == 60)
-        let (_, b2) = env.svc(544, [2, s, 7, 5_000_000, 0])
+        let (_, b2) = env.svc(544, [1, s, 7, 5_000_000, 0])
         #expect(b2.carry && b2.x[0] == 60)
-        // No timeout: a deadlock on one thread, logged loudly.
+        // Stage 4a: an unfair-lock word that names no thread is EOWNERDEAD
+        // (a wait with no timeout really blocks now; see ThreadSyncTests).
         let (_, c) = env.svc(515, [2, s, 7, 0])
-        #expect(c.carry && c.x[0] == 11)
-        #expect(env.sink.lines.contains { $0.hasPrefix("DEADLOCK: __ulock_wait on") })
+        #expect(c.carry && c.x[0] == 105)
         // ULF_NO_ERRNO: −errno with carry clear.
         let (_, d) = env.svc(515, [0x0100_0001, s, 7, 1])
         #expect(!d.carry && d.x[0] == UInt64(bitPattern: -60))
@@ -132,11 +132,12 @@ import YcodeDarwinABI
         #expect(try env.u32(s) == 0 && env.u32(s + 4) == 0xFFFF_FFFF)
         #expect(!env.svc(170, [100, 0, s, 4, 0]).1.carry)
         #expect(env.svc(169, [42, 0, s, 4]).1.x[0] == 3)  // ESRCH
-        // proc_info: ENOTSUP; kevent family: ENOSYS, but not "unimplemented".
+        // proc_info: ENOTSUP; kevent family (stage 4a): fd 3 is no kqueue
+        // (EBADF); kevent_id without KEVENT_FLAG_WORKLOOP is EINVAL.
         #expect(env.svc(336, [2, 100, 13, 0, s, 64]).1.x[0] == 45)
         for n: UInt64 in [363, 369, 374, 375] {
             let (o, f) = env.svc(n, [3, 0, 0, 0, 0, 0])
-            #expect(o == .resume && f.carry && f.x[0] == 78)
+            #expect(o == .resume && f.carry && f.x[0] == (n == 375 ? 22 : 9))
         }
         #expect(env.svc(372).1.x[0] == 1)  // thread_selfid = the block's thread_id
         #expect(env.svc(39).1.x[0] == 1)
@@ -265,16 +266,13 @@ import YcodeDarwinABI
         #expect(env.svc(m(-15), [0x103, s, 0x4000, 0, 0, 3]).1.x[0] == 3)
         #expect(env.svc(m(-19), [0x103, 0x203, 0, 1]).1.x[0] == 0)
         #expect(env.svc(m(-19), [0x103, 0x9999, 0, 1]).1.x[0] == 15)
-        #expect(env.svc(m(-41), [0x103, 0x103, 7, 0]).1.x[0] == 0)
-        #expect(env.svc(m(-42), [0x103, 0x103, 7]).1.x[0] == 0)
         #expect(env.svc(m(-46), [0x103, s]).1.x[0] == 0)
         #expect(try env.u32(s) == 100)
         let reply = env.svc(m(-50)).1.x[0]
-        #expect(reply != 0 && env.kernel.ports.kind(of: UInt32(reply)) == .reply)
+        #expect(reply != 0 && (env.kernel.machIPC as? MachIPC)?.entry(UInt32(reply)) != nil)
         #expect(env.svc(m(-76), [0x103, 0x203, s]).1.x[0] == 0)
         #expect(try env.u32(s) == 1 << 16)
-        #expect(env.svc(m(-76), [0x103, reply, s]).1.x[0] == 0)
-        #expect(try env.u32(s) == 1 << 17)
+        // (Guard, port-type, and notification details: MachIPC*Tests.)
         try env.put(leBytes(0xFFFF_FFFF), at: s)
         #expect(env.svc(m(-77), [0x103, reply, 70, 0, 0, 21, s]).1.x[0] == 0)
         #expect(try env.u32(s) == 0)
@@ -296,9 +294,11 @@ import YcodeDarwinABI
         #expect(env.svc(37, [100, 15, 1]).0 == .resume)
         guard case let .fatal(status, message) = env.svc(328, [0x203, 6]).0 else { Issue.record("fatal"); return }
         #expect(status == 134 && message.contains("SIGABRT"))
-        // __semwait_signal: timed → ETIMEDOUT; untimed → EDEADLK.
+        // __semwait_signal: timed → ETIMEDOUT; on a semaphore with a permit → 0.
         #expect(env.svc(423, [0, 0, 1, 1, 0, 10_000_000]).1.x[0] == 60)
-        #expect(env.svc(334, [0, 0, 0, 0, 0, 0]).1.x[0] == 11)
+        env.svc(0x7963_2003, [0x103, s, 0, 1])
+        let sem = try env.u32(s)
+        #expect(env.svc(334, [UInt64(sem), 0, 0, 0, 0, 0]).1.x[0] == 0)
     }
     @Test func psynchWorkqStatfs() throws {
         let env = try Env()
@@ -307,7 +307,7 @@ import YcodeDarwinABI
         let (_, d) = env.svc(302, [s, 0, 0, 0, 0])
         #expect(!d.carry && d.x[0] == 0)
         #expect(env.svc(304, [s]).1.x[0] == 0 && env.svc(303, [s]).1.x[0] == 0)
-        #expect(env.svc(367).1.x[0] == 45 && env.svc(368, [1]).1.x[0] == 45)
+        #expect(env.svc(367).1.x[0] == 22 && env.svc(368, [1]).1.x[0] == 22)  // not registered
         let path = try env.makeFile("fs", [1, 2])
         try env.putString(path, at: s)
         let (_, f) = env.svc(345, [s, s + 0x1000])

@@ -66,7 +66,7 @@ import YcodeDarwinABI
         try env.put(r, at: rec)
         let (o, f) = env.svc(366, [0x2_0000_1000, 0x2_0000_2000, 16384, rec, 56, 160])
         #expect(o == .resume)
-        #expect(!f.carry && f.x[0] == 0x4000_001F)
+        #expect(!f.carry && f.x[0] == 0x4000_00DF)
         #expect(f.x[0] & 0x4000_001E == 0x4000_001E)
         let back = try env.space.read(va: rec, count: 56)
         #expect(u64(back, 0) == 56)
@@ -92,7 +92,7 @@ import YcodeDarwinABI
         #expect(env.kernel.threadRegistration == nil)
         // No record: still succeeds.
         let (_, f) = env.svc(366, [1, 2, 16384, 0, 0, 0])
-        #expect(!f.carry && f.x[0] == 0x4000_001F)
+        #expect(!f.carry && f.x[0] == 0x4000_00DF)
     }
 
     @Test func cachePatchPlaceholderFault() throws {

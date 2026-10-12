@@ -47,7 +47,9 @@ extension DarwinKernel {
                           fstatat64 = 470, getentropy = 500, ulockWait = 515, ulockWake = 516,
                           terminateWithPayload = 520, osFaultWithPayload = 529, ulockWait2 = 544,
                           kill = 37, pthreadKill = 328, semwaitSignal = 334, semwaitSignalNocancel = 423,
-                          statfs64 = 345, fstatfs64 = 346, workqOpen = 367, workqKernreturn = 368, sendto = 133
+                          statfs64 = 345, fstatfs64 = 346, workqOpen = 367, workqKernreturn = 368, sendto = 133,
+                          bsdthreadCreate = 360, bsdthreadTerminate = 361, bsdthreadCtl = 478,
+                          kqueueWorkloopCtl = 530, disableThreadsignal = 331
         /// psynch calls that wait (can never be woken on one thread).
         public static let psynchWaits: [Int: String] = [
             297: "psynch_rw_longrdlock", 298: "psynch_rw_yieldwrlock", 300: "psynch_rw_upgrade",
@@ -211,34 +213,47 @@ extension DarwinKernel {
             return .value(try getdirentries64(a, &call, mem))
 
         case BSD2.kevent, BSD2.kevent64, BSD2.keventQos, BSD2.keventId:
-            let names = [BSD2.kevent: "kevent", BSD2.kevent64: "kevent64", BSD2.keventQos: "kevent_qos",
-                         BSD2.keventId: "kevent_id"]
-            call = "\(names[n]!)(\(hx(a[0])), changelist=\(hx(a[1])), nchanges=\(int(2)), eventlist=\(hx(a[3])), "
-                + "nevents=\(int(4)), …)"
-            log("note: \(names[n]!) is not implemented yet (ENOSYS)")
-            throw Failure(errno: Errno.ENOSYS)
+            return .value(try keventCall(n, a, &call, mem))
+
+        case BSD2.kqueueWorkloopCtl:
+            return .value(try kqueueWorkloopCtl(a, &call, mem))
+
+        case BSD2.bsdthreadCreate:
+            return try bsdthreadCreate(a, &call, mem)
+        case BSD2.bsdthreadTerminate:
+            return try bsdthreadTerminate(a, &call, mem)
+        case BSD2.bsdthreadCtl:
+            return .value(try bsdthreadCtl(a, &call, mem))
 
         case BSD2.kill, BSD2.pthreadKill:
             let isKill = n == BSD2.kill
             let sig = int(1)
-            call = isKill ? "kill(pid=\(int(0)), sig=\(sig), posix=\(int(2)))" : "__pthread_kill(thread=\(hx(UInt32(truncatingIfNeeded: a[0]))), sig=\(sig))"
+            let target = UInt32(truncatingIfNeeded: a[0])
+            call = isKill ? "kill(pid=\(int(0)), sig=\(sig), posix=\(int(2)))" : "__pthread_kill(thread=\(hx(target)), sig=\(sig))"
             if isKill {
                 guard int(0) == pid || int(0) == 0 || int(0) == -1 || int(0) == -pid else { throw Failure(errno: Errno.ESRCH) }
             } else {
-                guard UInt32(truncatingIfNeeded: a[0]) == WellKnownPort.thread else { throw Failure(errno: Errno.ESRCH) }
+                guard let thread = threadsByPort[target] else { throw Failure(errno: Errno.ESRCH) }
+                guard (0...31).contains(sig) else { throw Failure(errno: Errno.EINVAL) }
+                if sig == 0 { return .value(0) }
+                if thread !== current {
+                    log("note: __pthread_kill(\(sig)) to \(thread): no cross-thread signal delivery in stage 4a; dropped")
+                    call += " [dropped]"
+                    return .value(0)
+                }
             }
             guard (0...31).contains(sig) else { throw Failure(errno: Errno.EINVAL) }
             if sig == 0 { return .value(0) }
             return signalSelf(sig, &call)
 
+        case BSD2.disableThreadsignal:
+            call = "__disable_threadsignal(\(int(0)))"
+            return .value(0)
+
         case BSD2.semwaitSignal, BSD2.semwaitSignalNocancel:
             call = "__semwait_signal(cond=\(hx(UInt32(truncatingIfNeeded: a[0]))), mutex=\(hx(UInt32(truncatingIfNeeded: a[1]))), "
                 + "timeout=\(int(2)), relative=\(int(3)), sec=\(Int64(bitPattern: a[4])), nsec=\(int(5)))"
-            // One thread: nobody can signal the semaphore, so a timed wait
-            // (nanosleep's path) times out at once and an untimed one deadlocks.
-            if int(2) != 0 { throw Failure(errno: Self.ETIMEDOUT) }
-            log("DEADLOCK: __semwait_signal without a timeout on one thread")
-            throw Failure(errno: Self.EDEADLK)
+            return .value(try semwaitSignal(a, &call))
 
         case let n where BSD2.psynchWaits[n] != nil:
             let name = BSD2.psynchWaits[n]!
@@ -251,11 +266,13 @@ extension DarwinKernel {
             call += " [no waiters on one thread]"
             return .value(0)
 
-        case BSD2.workqOpen, BSD2.workqKernreturn:
-            call = n == BSD2.workqOpen ? "workq_open()"
-                : "workq_kernreturn(options=\(hx(UInt32(truncatingIfNeeded: a[0]))), item=\(hx(a[1])), affinity=\(int(2)), prio=\(int(3)))"
-            log("note: workqueue threads are not implemented (ENOTSUP)")
-            throw Failure(errno: Errno.ENOTSUP)
+        case BSD2.workqOpen:
+            call = "workq_open()"
+            guard threadRegistration != nil else { throw Failure(errno: Errno.EINVAL) }
+            workqueue.isOpen = true
+            return .value(0)
+        case BSD2.workqKernreturn:
+            return try workqKernreturn(a, &call, mem)
 
         case BSD2.statfs64, BSD2.fstatfs64:
             let path: String
@@ -282,7 +299,7 @@ extension DarwinKernel {
 
         case BSD2.threadSelfid:
             call = "thread_selfid()"
-            return .value(1)
+            return .value(current.threadID)
 
         case BSD2.getppid:
             call = "getppid()"
@@ -334,6 +351,47 @@ extension DarwinKernel {
 
         default:
             return nil
+        }
+    }
+
+    // MARK: __semwait_signal
+
+    /// Signals `mutex` (when non-zero), then waits on the semaphore `cond`
+    /// (or just sleeps when `cond` is 0) until signalled, the timeout, or an
+    /// interruption.
+    private func semwaitSignal(_ a: [UInt64], _ call: inout String) throws -> UInt64 {
+        let cond = UInt32(truncatingIfNeeded: a[0]), mutex = UInt32(truncatingIfNeeded: a[1])
+        var deadline: UInt64?
+        if Int32(truncatingIfNeeded: a[2]) != 0 {
+            let sec = Int64(bitPattern: a[4]), nsec = Int64(Int32(truncatingIfNeeded: a[5]))
+            guard sec >= 0, (0..<1_000_000_000).contains(nsec) else { throw Failure(errno: Errno.EINVAL) }
+            var ns = sec.multipliedReportingOverflow(by: 1_000_000_000).overflow ? Int64.max : sec * 1_000_000_000 + nsec
+            if Int32(truncatingIfNeeded: a[3]) == 0 {
+                // Absolute: calendar time.
+                let w = wallClock()
+                ns -= w.seconds * 1_000_000_000 + w.nanoseconds
+            }
+            deadline = KernelClock.deadline(afterNanoseconds: UInt64(max(0, ns)))
+        }
+        if mutex != 0 {
+            guard let m = semaphore(named: mutex) else { throw Failure(errno: Errno.EINVAL) }
+            m.signal()
+        }
+        let result: WaitResult
+        if cond != 0 {
+            guard let c = semaphore(named: cond) else { throw Failure(errno: Errno.EINVAL) }
+            switch c.wait(lock: lock, deadline: deadline) {
+            case KernReturn.success: return 0
+            case KernReturn.operationTimedOut: result = .timedOut
+            default: result = .interrupted
+            }
+        } else {
+            result = WaitQueue().wait(on: lock, deadline: deadline)
+        }
+        switch result {
+        case .timedOut: throw Failure(errno: Self.ETIMEDOUT)
+        case .interrupted: throw Failure(errno: Self.EINTR)
+        case .woken: return 0
         }
     }
 
@@ -421,51 +479,6 @@ extension DarwinKernel {
             offset += n
         }
         return UInt64(data.count)
-    }
-
-    // MARK: __ulock_*
-
-    /// One thread: a wait whose value still matches can never be woken.
-    private func ulockWait(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
-        let operation = UInt32(truncatingIfNeeded: a[0])
-        let op = operation & ULock.opMask
-        let noErrno = operation & ULock.noErrno != 0
-        let timeout = a[3]
-        call = "\(n == BSD2.ulockWait2 ? "__ulock_wait2" : "__ulock_wait")(op=\(hx(operation)), addr=\(hx(a[1])), "
-            + "value=\(hx(a[2])), timeout=\(n == BSD2.ulockWait2 ? "\(timeout) ns" : "\(timeout) us"))"
-        func failure(_ e: Int32) throws -> UInt64 {
-            if noErrno { return UInt64(bitPattern: Int64(-e)) }
-            throw Failure(errno: e)
-        }
-        guard a[1] != 0, (1...6).contains(op) else { return try failure(Errno.EINVAL) }
-        let wide = op == ULock.compareAndWait64 || op == ULock.compareAndWait64Shared
-        let current: UInt64
-        do {
-            current = wide ? try readU64(a[1], mem) : UInt64(try mem.read(va: a[1], count: 4).readLE(UInt32.self, at: 0))
-        } catch {
-            return try failure(Errno.EFAULT)
-        }
-        let expected = wide ? a[2] : a[2] & 0xFFFF_FFFF
-        if current != expected {
-            call += " [value changed: \(hx(current))]"
-            return 0
-        }
-        if timeout != 0 {
-            call += " [single thread: timed out]"
-            return try failure(Self.ETIMEDOUT)
-        }
-        log("DEADLOCK: __ulock_wait on \(hx(a[1])) (value \(hx(current))) with no timeout; the guest has one thread, "
-            + "so nothing can ever wake it")
-        call += " [deadlock]"
-        return try failure(Self.EDEADLK)
-    }
-
-    private func ulockWake(_ a: [UInt64], _ call: inout String) throws -> UInt64 {
-        let operation = UInt32(truncatingIfNeeded: a[0])
-        call = "__ulock_wake(op=\(hx(operation)), addr=\(hx(a[1])), wake_value=\(hx(a[2])))"
-        let e = Errno.ENOENT  // nobody ever waits
-        if operation & ULock.noErrno != 0 { return UInt64(bitPattern: Int64(-e)) }
-        throw Failure(errno: e)
     }
 
     // MARK: sigaction
