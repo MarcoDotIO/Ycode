@@ -29,6 +29,7 @@ public struct MetalHostStatistics: Sendable {
     public var backendErrors = 0
     public var processes = 0
     public var liveObjects = 0
+    public init() {}
 }
 
 final class MetalHostCore: @unchecked Sendable {

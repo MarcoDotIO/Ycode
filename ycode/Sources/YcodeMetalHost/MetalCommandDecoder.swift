@@ -26,6 +26,13 @@ public struct MetalSegmentHeader: Equatable, Sendable {
     public var continuesPrevious: Bool
     public var continuesInNext: Bool
     public static let size = 8
+
+    public init(used: Int, kind: UInt8, continuesPrevious: Bool = false, continuesInNext: Bool = false) {
+        self.used = used
+        self.kind = kind
+        self.continuesPrevious = continuesPrevious
+        self.continuesInNext = continuesInNext
+    }
 }
 
 public struct MetalCommandDecoder {

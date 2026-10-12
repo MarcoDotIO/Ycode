@@ -101,6 +101,12 @@ public struct MetalColorAttachment: Equatable, Sendable {
     /// r, g, b, a.
     public var clearColor: [Double]
 
+    public init(index: Int, attachment: MetalRenderPassAttachment, clearColor: [Double] = [0, 0, 0, 1]) {
+        self.index = index
+        self.attachment = attachment
+        self.clearColor = clearColor
+    }
+
     public var texture: MetalHandle? { attachment.texture }
     public var resolveTexture: MetalHandle? { attachment.resolveTexture }
 }
@@ -117,6 +123,19 @@ public struct MetalRenderPassDescriptor: Equatable, Sendable {
     public var renderTargetWidth: Int = 0
     public var renderTargetHeight: Int = 0
     public init() {}
+
+    public init(colorAttachments: [MetalColorAttachment], depth: MetalRenderPassAttachment? = nil, clearDepth: Double = 1,
+                stencil: MetalRenderPassAttachment? = nil, clearStencil: UInt32 = 0,
+                visibilityResultBuffer: MetalHandle? = nil, renderTargetWidth: Int = 0, renderTargetHeight: Int = 0) {
+        self.colorAttachments = colorAttachments
+        self.depth = depth
+        self.clearDepth = clearDepth
+        self.stencil = stencil
+        self.clearStencil = clearStencil
+        self.visibilityResultBuffer = visibilityResultBuffer
+        self.renderTargetWidth = renderTargetWidth
+        self.renderTargetHeight = renderTargetHeight
+    }
 
     /// Width and height from the first attachment when the descriptor gives none.
     public var hasAttachments: Bool { !colorAttachments.isEmpty || depth != nil || stencil != nil }
