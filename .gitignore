@@ -14,3 +14,6 @@ ycode/.swiftpm/
 *.ipsw
 *.im4p
 *.img4
+# Per-agent SwiftPM scratch paths
+ycode/.build*/
+ycode/SimShim/out/
