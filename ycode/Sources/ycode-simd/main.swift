@@ -2,7 +2,7 @@
 //
 //   ycode-simd --exec <macho> --runtime-root <dir> [--run-dir <dir>] [--trace]
 //              [--timeout-ms N] [--max-exits N] [--shim <shim.bin>]
-//              [--host-stubs <host_stubs.bin>]
+//              [--host-stubs <host_stubs.bin>] [--host-libs <dir>]
 //   ycode-simd --shim <shim.bin> --el0 <el0.bin> [--trace] [--timeout-ms N] [--max-exits N]
 //   ycode-simd --kvm-smoke
 //
@@ -16,8 +16,15 @@
 // commpage), boots it at the host page's `_ycode_launch`, and serves traps
 // with the YcodeDarwinKernel dispatcher.
 //
+// Stage 3a-ii (specs/simulator/host-libraries.md): Ycode's three host
+// libraries (`--host-libs`, default `SimHostLibs/out` next to the package)
+// appear in the guest as `/usr/lib/system/libsystem_{kernel,platform,pthread}.dylib`,
+// and the VMM builds the main thread's pthread/TSD block before boot
+// (TPIDRRO_EL0 = block + 224).
+//
 // Exit status: the guest's exit status; 70 for a fatal guest trap; 71 for an
 // unexpected VM exit or the watchdog; 72 for the first unimplemented trap in
+// --trace mode; 73 for the first unimplemented host-library function in
 // --trace mode; 134 for abort_with_payload; 64 for bad usage; 66 for
 // unreadable input; 1 for host (KVM) failures.
 
@@ -33,6 +40,7 @@ import YcodeMachO
 let usage = """
     usage: ycode-simd --exec <macho> --runtime-root <dir> [--run-dir <dir>] [--trace]
                       [--timeout-ms N] [--max-exits N] [--shim <shim.bin>] [--host-stubs <host_stubs.bin>]
+                      [--host-libs <dir>]
            ycode-simd --shim <shim.bin> --el0 <el0.bin> [--trace] [--timeout-ms N] [--max-exits N]
            ycode-simd --kvm-smoke
     """
@@ -44,6 +52,7 @@ struct Options {
     var runtimeRoot: String?
     var runDir: String?
     var hostStubsPath: String?
+    var hostLibsPath: String?
     var trace = false
     var kvmSmoke = false
     var timeoutMilliseconds: UInt64?
@@ -90,6 +99,7 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--runtime-root": options.runtimeRoot = value(for: argument)
         case "--run-dir": options.runDir = value(for: argument)
         case "--host-stubs": options.hostStubsPath = value(for: argument)
+        case "--host-libs": options.hostLibsPath = value(for: argument)
         case "--trace": options.trace = true
         case "--kvm-smoke": options.kvmSmoke = true
         case "--timeout-ms":
@@ -281,6 +291,28 @@ func locateSimShimFile(_ name: String, explicit: String?) -> String {
     die("cannot find SimShim/out/\(name) (tried \(candidates.joined(separator: ", "))); pass it explicitly", status: 66)
 }
 
+/// Finds Ycode's host-library directory: the explicit path, then
+/// `SimHostLibs/out` in the current directory, then next to the package that
+/// holds this executable. Nil when none exists.
+func locateHostLibraryDirectory(explicit: String?) -> (path: String?, tried: [String]) {
+    if let explicit { return (absolutePath(explicit), [explicit]) }
+    var candidates = ["SimHostLibs/out"]
+    if let dir = executableDirectory() {
+        candidates.append("\(dir)/../../SimHostLibs/out")
+        candidates.append("\(dir)/../../../SimHostLibs/out")
+        candidates.append("\(dir)/../../../../SimHostLibs/out")
+    }
+    var isDirectory: ObjCBool = false
+    for c in candidates where FileManager.default.fileExists(atPath: c, isDirectory: &isDirectory) && isDirectory.boolValue {
+        return (absolutePath(c), candidates)
+    }
+    return (nil, candidates)
+}
+
+/// The three host libraries (`host-libraries.md` §1), as guest paths.
+let hostLibraryNames = ["kernel", "platform", "pthread"]
+func hostLibraryGuestPath(_ name: String) -> String { "/usr/lib/system/libsystem_\(name).dylib" }
+
 func absolutePath(_ path: String) -> String {
     if path.hasPrefix("/") { return (path as NSString).standardizingPath }
     let cwd = FileManager.default.currentDirectoryPath
@@ -320,6 +352,12 @@ struct GuestImage {
 /// delta it observes in dyld_sim's mmap calls).
 final class ImageMap {
     var fixed: [GuestImage] = []
+    /// Ycode's host libraries are mapped by dyld_sim through `mmap` of their
+    /// VFS files; they are found through the address space's file-backed
+    /// regions with these guest paths.
+    var space: GuestAddressSpace?
+    var hostLibraryPaths: Set<String> = []
+    static let hostLibrarySuffix = " [ycode]"
     let cachePath: String
     private var cache: SharedCache?
     private var cacheLoadFailed = false
@@ -355,10 +393,25 @@ final class ImageMap {
         cacheImages = images.sorted { $0.start < $1.start }
     }
 
+    /// An address in one of Ycode's host libraries. The base is the
+    /// containing mapping's VA minus its file offset, which is the mach
+    /// header for `__TEXT` (where ELR and LR point).
+    private func hostLibrary(_ address: UInt64) -> (image: GuestImage, offset: UInt64)? {
+        guard !hostLibraryPaths.isEmpty, let space, let file = space.file(at: address),
+              hostLibraryPaths.contains(file.guestPath),
+              let region = space.region(containing: address), case let .file(_, fileOffset, _) = region.backing else {
+            return nil
+        }
+        let base = region.va &- fileOffset
+        return (GuestImage(name: file.guestPath + Self.hostLibrarySuffix, start: region.va, end: region.end, base: base),
+                address &- base)
+    }
+
     func attribute(_ address: UInt64) -> (image: GuestImage, offset: UInt64)? {
         if let image = fixed.first(where: { address >= $0.start && address < $0.end }) {
             return (image, address - image.base)
         }
+        if let hit = hostLibrary(address) { return hit }
         guard address >= VMLayout.sharedRegionBase, address < VMLayout.sharedRegionEnd else { return nil }
         loadCacheImages()
         let header = address &- cacheDelta
@@ -618,9 +671,19 @@ func runExec(_ options: Options) throws -> Never {
         stderrLine("ycode-simd: argument block at \(hex(arguments.stackPointer)) (argc \(arguments.argc)); \(vm.memorySlotCount) memslots")
     }
 
-    // Boot info and vCPU (§6 initial state).
+    // The main thread's pthread/TSD block (host-libraries.md §8.3): the VMM
+    // plays the host dyld, so TSD, errno, and TLV reads work from the first
+    // instruction.
+    let threadBlock = MainThreadBlock(address: Stage3Layout.mainThreadPage, threadID: 1, threadPort: WellKnownPort.thread,
+                                      stackTop: VMLayout.userStackTop, stackSize: VMLayout.userStackSize)
+    _ = try space.mapAnonymous(at: Stage3Layout.mainThreadPage, size: Stage3Layout.mainThreadPageSize,
+                               protection: .readWrite, hint: nil)
+    try builder.poke(threadBlock.address, threadBlock.bytes)
+    stderrLine("ycode-simd: main-thread block at \(hex(threadBlock.address)); TPIDRRO_EL0 = \(hex(threadBlock.tsdBase))")
+
+    // Boot info and vCPU (§6 initial state, with host-libraries.md §8.3's TPIDRRO_EL0).
     let bootInfo = BootInfo(ttbr0EL1: space.pageTables.rootGPA, el0EntryPC: VMLayout.hostPageEntryVA,
-                            el0InitialSP: arguments.stackPointer, tpidrroEL0: 0, tpidrEL0: 0,
+                            el0InitialSP: arguments.stackPointer, tpidrroEL0: threadBlock.tsdBase, tpidrEL0: 0,
                             el0Registers: [UInt64](repeating: 0, count: 8))
     try vm.write(gpa: VMLayout.bootInfoGPA, bytes: bootInfo.encoded())
     let vcpu = try vm.makeVCPU()
@@ -636,6 +699,25 @@ func runExec(_ options: Options) throws -> Never {
     if !execDirectory.hasPrefix(root + "/") {
         prefixes.append(DarwinFileSystem.Prefix(guestPath: execDirectory, hostPath: execDirectory, writable: false))
     }
+    // Ycode's host libraries (host-libraries.md §5): three read-only
+    // single-file prefixes; every other /usr/lib/system path stays ENOENT.
+    var hostLibraryPaths: Set<String> = []
+    let (hostLibDir, hostLibTried) = locateHostLibraryDirectory(explicit: options.hostLibsPath)
+    if let hostLibDir {
+        for name in hostLibraryNames {
+            let file = "\(hostLibDir)/libsystem_\(name).dylib"
+            let guest = hostLibraryGuestPath(name)
+            if access(file, R_OK) == 0 {
+                prefixes.append(DarwinFileSystem.Prefix(guestPath: guest, hostPath: file, writable: false))
+                hostLibraryPaths.insert(guest)
+                stderrLine("ycode-simd: host library \(guest) -> \(file)")
+            } else {
+                stderrLine("ycode-simd: warning: host library \(file) is missing; \(guest) will be ENOENT")
+            }
+        }
+    } else {
+        stderrLine("ycode-simd: warning: no host-library directory (tried \(hostLibTried.joined(separator: ", "))); pass --host-libs")
+    }
     prefixes.append(DarwinFileSystem.Prefix(guestPath: "/tmp", hostPath: runDir + "/tmp", writable: true))
     let fileSystem = DarwinFileSystem(prefixes: prefixes, console: { fd, bytes in writeFD(fd == 2 ? 2 : 1, bytes) })
 
@@ -646,6 +728,7 @@ func runExec(_ options: Options) throws -> Never {
         counter: { (try? vcpu.virtualCounter()) ?? 0 },
         counterFrequency: frequency)
     kernel.allImageInfosAddress = HostPageLayout.allImageInfos
+    kernel.mainStackTop = VMLayout.userStackTop
 
     // Image attribution and the milestone.
     let images = ImageMap(cachePath: cachePath)
@@ -653,7 +736,11 @@ func runExec(_ options: Options) throws -> Never {
         main.image,
         sim.image,
         GuestImage(name: "ycode host page", start: hostBase, end: hostBase + VMLayout.hostPageSize, base: hostBase),
+        GuestImage(name: "ycode main-thread block", start: Stage3Layout.mainThreadPage,
+                   end: Stage3Layout.mainThreadPage + Stage3Layout.mainThreadPageSize, base: threadBlock.address),
     ]
+    images.space = space
+    images.hostLibraryPaths = hostLibraryPaths
     var milestoneReached = false
     var tracker = CacheMappingTracker()
     var trapCount = 0
@@ -694,12 +781,15 @@ func runExec(_ options: Options) throws -> Never {
             var frame = try TrapFrame(decoding: vm.read(gpa: frameAddress, count: TrapFrame.byteCount))
             trapCount += 1
 
-            // Attribute the trap; the milestone (§1 item 2) prints once.
+            // Attribute the trap; the milestone (host-libraries.md §8.1)
+            // prints once: the first trap from a cache libsystem_* image,
+            // the cache libSystem.B, or one of Ycode's host libraries.
             let attribution = images.attribute(frame.elr)
             if !milestoneReached, let (image, offset) = attribution,
                image.name.hasPrefix("/usr/lib/system/libsystem_") || image.name == "/usr/lib/libSystem.B.dylib" {
                 milestoneReached = true
-                stderrLine("milestone: libSystem initializer reached (\(image.name) + \(hex(offset)))")
+                stderrLine("milestone: libSystem initializer reached (\(image.name) + \(hex(offset)); "
+                    + "LR \(hex(frame.x[30])) = \(images.describe(frame.x[30])))")
             }
             if trace {
                 let place = attribution.map { "\($0.image.name.split(separator: "/").last.map(String.init) ?? $0.image.name)+\(hex($0.offset))" } ?? hex(frame.elr)
@@ -739,6 +829,10 @@ func runExec(_ options: Options) throws -> Never {
                 stderrLine("ycode-simd: guest exited with status \(status); \(summary())")
                 Glibc.exit(status)
             case let .fatal(status, message):
+                if DarwinKernel.isCachePatchPlaceholderFault(frame) {
+                    stderrLine("ycode-simd: \(DarwinKernel.cachePatchPlaceholderMessage): ELR \(hex(frame.elr)) = "
+                        + "\(images.describe(frame.elr)); LR \(hex(frame.x[30])) = \(images.describe(frame.x[30]))")
+                }
                 stderrLine("ycode-simd: fatal guest condition (exit \(status)):\n\(message)\n\(faultReport(frame))")
                 stderrLine("ycode-simd: \(summary())")
                 Glibc.exit(status)
@@ -748,6 +842,15 @@ func runExec(_ options: Options) throws -> Never {
                     stderrLine("ycode-simd: first unimplemented trap: \(description)\n\(frame)\n\(faultReport(frame))")
                     stderrLine("ycode-simd: \(summary())")
                     Glibc.exit(DarwinKernel.unimplementedExitStatus)
+                }
+                try vm.write(gpa: frameAddress, bytes: frame.encoded())
+            case let .unimplementedLibraryFunction(name):
+                trapCounts["libfunc " + name, default: 0] += 1
+                stderrLine("ycode-simd: unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(images.describe(frame.x[30])))")
+                if trace {
+                    stderrLine("ycode-simd: first unimplemented host-library function: \(name)\n\(frame)\n\(faultReport(frame))")
+                    stderrLine("ycode-simd: \(summary())")
+                    Glibc.exit(DarwinKernel.unimplementedLibraryFunctionExitStatus)
                 }
                 try vm.write(gpa: frameAddress, bytes: frame.encoded())
             }

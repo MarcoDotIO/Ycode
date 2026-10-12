@@ -85,7 +85,9 @@ vCPU, or vCPUs are multiplexed when the thread count grows.
      measured about 32 µs, which is a baseline to improve later.
    - The work was built by three parallel agents against
      `specs/simulator/vm-shim-protocol.md`.
-3. **Static-image runner.** *(3a in progress, 2026-10-11.)*
+3. **Static-image runner.** *(3a done, 2026-10-11. libSystem's initializer
+   is running on Linux and calls Ycode's `libsystem_kernel`. 3b, getting
+   `hello` to `main`, is in progress.)*
    - `dyld_sim` boots in the VM and maps all 11 cache mappings itself.
    - It stops at the three host libraries (`libsystem_kernel`,
      `libsystem_platform`, `libsystem_pthread`), which Ycode must now

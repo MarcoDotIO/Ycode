@@ -252,6 +252,40 @@ trap whose ELR lies in any of these**:
 the libSystem initialization chain is running. The milestone line names
 the image and offset, and the LR's image too.
 
+## 8.2 Stage 3a result and decisions (2026-10-11)
+
+**Milestone reached on the Thor**, reproduced by the orchestrator:
+
+```
+milestone: libSystem initializer reached (/usr/lib/system/libsystem_kernel.dylib [ycode] + 0x7e8; LR 0x25a9f20b0 = /usr/lib/libSystem.B.dylib + 0x10b0)
+```
+
+- 280 traps.
+- All 11 cache mappings were made at their header addresses.
+- The three Ycode libraries were loaded from the VFS (stat, open, fstat,
+  `F_CHECK_LV`, mmap).
+- **libSystem.B calls the host `__libkernel_init` directly.** This settles
+  `host-library-init.md` open question 1.
+
+**Order of the first library functions hit** (stubs returning): `__libkernel_init`,
+`__sysctl`, `pthread_mutex_lock`, `writev$NOCANCEL`, `pthread_mutex_unlock`,
+`mmap`. libc's locks run before any `__pthread_init`.
+
+**Decisions:**
+
+1. **`bsdthread_register` write-back:** `mutex_default_policy` = 0,
+   `main_qos` = `0x8FF`, `stack_addr_hint` = the main stack top rounded down
+   to a page.
+2. **Milestone line:** it may carry the `; LR … = …` suffix. The prefix
+   stays fixed.
+3. **Build order on a fresh checkout:** first `swift build`, then
+   `sh SimShim/build.sh`, then `sh SimHostLibs/build.sh`. The last of these
+   uses `.build/debug/ycode` and `../../specs/simulator/data`.
+4. **`pfz=`** is not supplied. There is no commpage text page, so nothing
+   needs it yet.
+5. **Main-thread block placement:** a 16 KiB EL0 RW page at `0x3_1001_0000`,
+   directly after the host page. `TPIDRRO_EL0` = `0x3_1001_00E0`.
+
 ## 9. Ownership
 
 | Owner | Scope |

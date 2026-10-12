@@ -54,7 +54,13 @@ import Testing
             "ptr_munge=0x4444444444444444",
             "main_stack=0x16fe00000,0x800000,0x16f600000,0x800000",
             "th_port=0x203",
+            "security_config=0x0",
         ])
+        #expect(a.ptrMunge != 0)
+        // A zero random value never becomes a zero munge token.
+        var zero = CountingRNG(state: 0xBBBB_BBBB_BBBB_BBBC)  // the 4th value is 0
+        let z = AppleStrings(executablePath: "/x", using: &zero)
+        #expect(z.ptrMunge != 0 && z.strings[3] == "ptr_munge=0x" + String(z.ptrMunge, radix: 16))
         var small = CountingRNG(state: 0xFFFF_FFFF_FFFF_EEEE)  // first value: 0x1111111111110fff → guard has leading zeros
         let b = AppleStrings(executablePath: "p", using: &small)
         #expect(b.strings[1] == "stack_guard=0x" + String(repeating: "0", count: 16 - String(b.stackGuard, radix: 16).count)

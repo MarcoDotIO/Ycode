@@ -29,10 +29,17 @@ public final class DarwinKernel {
         /// result (ENOSYS with carry for BSD, `KERN_FAILURE` or a null port
         /// for Mach), so the VMM may resume; in `--trace` mode it exits 72.
         case unimplemented(description: String)
+        /// One of Ycode's host libraries called a function it does not
+        /// implement yet (private trap `0x7963_0F00`, `host-libraries.md` §4).
+        /// The frame is unchanged: the library stub fails in its own way
+        /// after the trap, so the VMM may resume; in `--trace` mode it exits 73.
+        case unimplementedLibraryFunction(name: String)
     }
 
     /// The VMM's exit status for an unimplemented trap in trace mode.
     public static let unimplementedExitStatus: Int32 = 72
+    /// The VMM's exit status for an unimplemented host-library function in trace mode.
+    public static let unimplementedLibraryFunctionExitStatus: Int32 = 73
     public static let abortExitStatus: Int32 = 134
     public static let exceptionExitStatus: Int32 = 70
 
@@ -95,8 +102,8 @@ public final class DarwinKernel {
                           geteuid = 25, getegid = 43, getgid = 47, ioctl = 54, munmap = 73, mprotect = 74,
                           madvise = 75, fcntl = 92, gettimeofday = 116, pread = 153, mmap = 197, sysctl = 202,
                           getattrlist = 220, sysctlbyname = 274, issetugid = 327, stat64 = 338, fstat64 = 339,
-                          lstat64 = 340, getfsstat64 = 347, fsgetpath = 427, getattrlistbulk = 461,
-                          abortWithPayload = 521
+                          lstat64 = 340, getfsstat64 = 347, bsdthreadRegister = 366, fsgetpath = 427,
+                          getattrlistbulk = 461, abortWithPayload = 521
     }
 
     /// Mach trap numbers handled here (negative x16).
@@ -123,7 +130,51 @@ public final class DarwinKernel {
         public static let notifyImageListChanges: UInt32 = 0x7963_0010
         public static let notifyMainCalled: UInt32 = 0x7963_0011
         public static let notifyBeforeInitializers: UInt32 = 0x7963_0012
+        /// A host-library stub for a function Ycode does not implement yet;
+        /// `x0` = the NUL-terminated symbol name (`host-libraries.md` §4).
+        public static let unimplementedLibraryFunction: UInt32 = 0x7963_0F00
     }
+
+    /// The address that the shared-cache builder patches into a missing
+    /// export's uses (`host-libraries.md` §6).
+    public static let cachePatchPlaceholder: UInt64 = 0xbad4007
+
+    /// True for a guest fault (kind 2) whose FAR or ELR lies within 16 bytes
+    /// of `cachePatchPlaceholder`: a call through an export that one of the
+    /// host libraries does not provide.
+    public static func isCachePatchPlaceholderFault(_ frame: TrapFrame) -> Bool {
+        guard frame.trapKind == .el0Synchronous else { return false }
+        func near(_ a: UInt64) -> Bool {
+            let d = a > cachePatchPlaceholder ? a - cachePatchPlaceholder : cachePatchPlaceholder - a
+            return d <= 16
+        }
+        return near(frame.far) || near(frame.elr)
+    }
+
+    public static let cachePatchPlaceholderMessage = "missing host-library export (cache patch placeholder 0xbad4007)"
+
+    // MARK: Thread registration
+
+    /// What `bsdthread_register` (BSD 366) recorded (`host-library-init.md` §6.1).
+    public struct ThreadRegistration: Equatable, Sendable {
+        public var threadStart: UInt64
+        public var startWorkqueueThread: UInt64
+        public var pthreadSize: UInt32
+        public var dispatchQueueOffset: UInt64
+        public var tsdOffset: UInt32
+        public var returnToKernelOffset: UInt32
+        public var machThreadSelfOffset: UInt32
+        public var joinableOffsetBits: UInt32
+        public var quantumExpiryOffset: UInt32
+    }
+
+    /// The feature mask `bsdthread_register` returns (`host-libraries.md` §7.4).
+    public static let bsdthreadFeatures: UInt64 = 0x4000_001F
+    /// `main_qos` written back to the registration record: LEGACY QoS as a
+    /// priority (`host-library-init.md` §5.3).
+    public static let mainThreadQoS: UInt64 = 0x8FF
+    /// The size of the registration record Ycode knows.
+    static let registrationRecordSize = 56
 
     public static let platformCall: UInt32 = 0x8000_0000
 
@@ -172,6 +223,10 @@ public final class DarwinKernel {
     /// What `TASK_DYLD_INFO` reports.
     public var allImageInfosAddress: UInt64 = HostPageLayout.allImageInfos
     public var allImageInfosSize: UInt64 = UInt64(DyldAllImageInfos.byteCount)
+    /// The main stack's top, for `bsdthread_register`'s stack hint.
+    public var mainStackTop: UInt64 = Stage3Layout.userStack
+    /// Set by the first successful `bsdthread_register`.
+    public private(set) var threadRegistration: ThreadRegistration?
 
     /// - Parameters:
     ///   - fileSystem: the guest VFS.
@@ -217,6 +272,10 @@ public final class DarwinKernel {
     public func handle(_ frame: inout TrapFrame, memory: any KernelGuestMemory) -> Outcome {
         guard frame.trapKind == .svc else {
             log("trap \(frame.trapKind?.description ?? "kind \(frame.kind)") fatal")
+            if Self.isCachePatchPlaceholderFault(frame) {
+                return .fatal(status: Self.exceptionExitStatus,
+                              message: Self.cachePatchPlaceholderMessage + "\n" + frame.description)
+            }
             return .fatal(status: Self.exceptionExitStatus, message: frame.description)
         }
         if frame.x.count < TrapFrame.registerCount {
@@ -453,6 +512,9 @@ public final class DarwinKernel {
             call = "getfsstat64(buf=\(hx(a[0])), bufsize=\(int(1)), flags=\(int(2)))"
             return .value(0)
 
+        case BSD.bsdthreadRegister:
+            return .value(try bsdthreadRegister(a, &call, mem))
+
         case BSD.abortWithPayload:
             let reason = a[4] == 0 ? "" : ((try? readString(a[4], length: 4096, mem)) ?? "<unreadable>")
             call = "abort_with_payload(namespace=\(UInt32(truncatingIfNeeded: a[0])), code=\(hx(a[1])), "
@@ -504,6 +566,52 @@ public final class DarwinKernel {
             va = try mem.mapFile(file, offset: pos - pageOffset, at: at, size: size, protection: prot, hint: hint)
         }
         return va + pageOffset
+    }
+
+    // MARK: bsdthread_register
+
+    /// BSD 366 (`host-library-init.md` §6.1): records the entry points and
+    /// offsets, writes back the record's out fields, and returns the feature
+    /// mask of `host-libraries.md` §7.4.
+    private func bsdthreadRegister(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        let size = UInt32(truncatingIfNeeded: a[2])
+        let recordSize = UInt32(truncatingIfNeeded: a[4])
+        call = "bsdthread_register(threadstart=\(hx(a[0])), wqthread=\(hx(a[1])), pthsize=\(hx(size)), "
+            + "data=\(hx(a[3])), datasize=\(recordSize), offset=\(hx(a[5])))"
+        guard size <= 64 << 10 else { throw Failure(errno: Errno.EINVAL) }
+        guard threadRegistration == nil else { throw Failure(errno: Errno.EINVAL) }
+        var registration = ThreadRegistration(
+            threadStart: a[0], startWorkqueueThread: a[1], pthreadSize: size, dispatchQueueOffset: a[5],
+            tsdOffset: 0, returnToKernelOffset: 0, machThreadSelfOffset: 0, joinableOffsetBits: 0,
+            quantumExpiryOffset: 0)
+        if a[3] != 0 {
+            guard recordSize >= 8 else { throw Failure(errno: Errno.EINVAL) }
+            let count = min(Int(recordSize), Self.registrationRecordSize)
+            var record = try mem.read(va: a[3], count: count)
+            guard record.readLE(UInt64.self, at: 0) == UInt64(recordSize) else { throw Failure(errno: Errno.EINVAL) }
+            record += [UInt8](repeating: 0, count: Self.registrationRecordSize - count)
+            registration.dispatchQueueOffset = record.readLE(UInt64.self, at: 8)
+            // An offset that does not fit in the pthread_t is turned off.
+            func offset(_ at: Int) -> UInt32 {
+                let v = record.readLE(UInt32.self, at: at)
+                let tsd = record.readLE(UInt32.self, at: 24)
+                return Int64(v) < Int64(size) - 8 - Int64(tsd) ? v : 0
+            }
+            registration.tsdOffset = record.readLE(UInt32.self, at: 24)
+            registration.returnToKernelOffset = offset(28)
+            registration.machThreadSelfOffset = offset(32)
+            registration.joinableOffsetBits = record.readLE(UInt32.self, at: 48)
+            registration.quantumExpiryOffset = offset(52)
+            // Out fields: version, main_qos, stack_addr_hint, mutex_default_policy.
+            record.putLE(UInt64(Self.registrationRecordSize), at: 0)
+            record.putLE(Self.mainThreadQoS, at: 16)
+            record.putLE(mainStackTop & ~Self.pageMask, at: 36)
+            record.putLE(UInt32(0), at: 44)
+            try mem.write(va: a[3], bytes: Array(record[0..<count]))
+            call += " [tsd_offset=\(registration.tsdOffset) dispatch_queue_offset=\(registration.dispatchQueueOffset)]"
+        }
+        threadRegistration = registration
+        return Self.bsdthreadFeatures
     }
 
     // MARK: fcntl
@@ -908,6 +1016,11 @@ public final class DarwinKernel {
         case Private.notifyBeforeInitializers:
             call = "notifyMonitorOfDyldBeforeInitializers()"
             return ok(0)
+
+        case Private.unimplementedLibraryFunction:
+            let name = (try? readString(a[0], length: 256, mem)) ?? "<unreadable name at \(hx(a[0]))>"
+            log("\(prefix) unimplemented libfunc \(name)")
+            return .unimplementedLibraryFunction(name: name)
 
         default:
             frame.x[0] = UInt64(Errno.ENOSYS)

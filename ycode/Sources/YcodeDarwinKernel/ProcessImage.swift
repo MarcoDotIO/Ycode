@@ -20,6 +20,10 @@ public enum Stage3Layout {
     public static let anonymousBase: UInt64 = 0x3_2000_0000
     public static let commpageRO: UInt64 = 0xF_FFFF_4000
     public static let commpageRW: UInt64 = 0xF_FFFF_C000
+    /// The main-thread block's page (`host-libraries.md` §8.3): one 16 KiB
+    /// EL0 RW page right after the Ycode host page.
+    public static let mainThreadPage: UInt64 = 0x3_1001_0000
+    public static let mainThreadPageSize: UInt64 = 0x4000
     /// Guest RAM size reported in the commpage.
     public static let memorySize: UInt64 = 1 << 30
 }
@@ -137,7 +141,10 @@ public struct KernelArgumentBlock: Equatable, Sendable {
 // MARK: - apple[] strings
 
 /// The `apple[]` strings Ycode provides, in the kernel's order
-/// (`stage3-contract.md` §6, formats from `darwin-process-start.md` §1.4).
+/// (`stage3-contract.md` §6, formats from `darwin-process-start.md` §1.4):
+/// `executable_path`, `stack_guard`, `malloc_entropy`, `ptr_munge`
+/// (non-zero), `main_stack`, `th_port`, `security_config`
+/// (`host-libraries.md` §8.6).
 public struct AppleStrings: Equatable, Sendable {
     public var stackGuard: UInt64
     public var mallocEntropy: (UInt64, UInt64)
@@ -156,18 +163,22 @@ public struct AppleStrings: Equatable, Sendable {
     ///     allocation size (the kernel's order; the default is the §2 stack
     ///     with no separate guard).
     ///   - threadPort: the main thread's port name (`th_port=`).
+    ///   - securityConfig: `security_config=` (always present, `0x0` in Ycode).
     ///   - rng: the source of the three random keys.
     public init<R: RandomNumberGenerator>(
         executablePath: String,
         mainStack: (top: UInt64, size: UInt64, allocBase: UInt64, allocSize: UInt64) =
             (Stage3Layout.userStack, Stage3Layout.stackSize, Stage3Layout.stackBase, Stage3Layout.stackSize),
         threadPort: UInt32 = WellKnownPort.thread,
+        securityConfig: UInt32 = 0,
         using rng: inout R
     ) {
         // Bits 8–15 cleared so the guard contains a NUL byte.
         stackGuard = rng.next() & ~UInt64(0xFF00)
         mallocEntropy = (rng.next(), rng.next())
-        ptrMunge = rng.next()
+        // The munge token must be non-zero (host-libraries.md §8.6).
+        let munge = rng.next()
+        ptrMunge = munge != 0 ? munge : 0x5943_4F44_455F_4D55
         strings = [
             "executable_path=" + executablePath,
             "stack_guard=" + hxPadded(stackGuard, digits: 16),
@@ -176,6 +187,7 @@ public struct AppleStrings: Equatable, Sendable {
             "main_stack=" + [mainStack.top, mainStack.size, mainStack.allocBase, mainStack.allocSize].map { hx($0) }
                 .joined(separator: ","),
             "th_port=" + hx(threadPort),
+            "security_config=" + hx(securityConfig),
         ]
     }
 
@@ -183,6 +195,51 @@ public struct AppleStrings: Equatable, Sendable {
     public init(executablePath: String) {
         var rng = SystemRandomNumberGenerator()
         self.init(executablePath: executablePath, using: &rng)
+    }
+}
+
+// MARK: - Main-thread block
+
+/// The main thread's `pthread_t` + TSD block that the VMM builds before boot,
+/// standing in for the host dyld (`host-libraries.md` §8.3,
+/// `host-library-init.md` §5.1 and §9.1 A). `TPIDRRO_EL0` = `tsdBase`.
+public struct MainThreadBlock: Equatable, Sendable {
+    /// The block size (≥ `sizeof(struct pthread_s)` = 6368).
+    public static let byteCount = 8192
+    /// Byte offsets from the block start.
+    public enum Offset {
+        public static let errNo = 172
+        public static let stackAddr = 176
+        public static let stackBottom = 184
+        public static let threadID = 216
+        /// TSD slot 0; `TPIDRRO_EL0` points here.
+        public static let tsd = 224
+        public static func slot(_ k: Int) -> Int { tsd + 8 * k }
+    }
+
+    /// The block's guest address (16-byte aligned).
+    public var address: UInt64
+    public var bytes: [UInt8]
+    /// The initial `TPIDRRO_EL0`: block + 224.
+    public var tsdBase: UInt64 { address + UInt64(Offset.tsd) }
+
+    /// - Parameters:
+    ///   - address: where the block lives (16-byte aligned, EL0 RW).
+    ///   - threadID: `thread_id` (+216).
+    ///   - threadPort: slot 3, the Mach thread port name.
+    ///   - stackTop, stackSize: `stackaddr` (+176) = top, `stackbottom` (+184) = top − size.
+    public init(address: UInt64, threadID: UInt64 = 1, threadPort: UInt32 = WellKnownPort.thread,
+                stackTop: UInt64 = Stage3Layout.userStack, stackSize: UInt64 = Stage3Layout.stackSize) {
+        precondition(address & 0xF == 0, "the main-thread block must be 16-byte aligned")
+        self.address = address
+        var b = [UInt8](repeating: 0, count: Self.byteCount)
+        b.putLE(stackTop, at: Offset.stackAddr)
+        b.putLE(stackTop - stackSize, at: Offset.stackBottom)
+        b.putLE(threadID, at: Offset.threadID)
+        b.putLE(address, at: Offset.slot(0))
+        b.putLE(address + UInt64(Offset.errNo), at: Offset.slot(1))
+        b.putLE(UInt64(threadPort), at: Offset.slot(3))
+        bytes = b
     }
 }
 
