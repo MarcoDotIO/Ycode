@@ -132,6 +132,7 @@ public enum DarwinOpen {
     public static let O_EXCL: Int32 = 0x0800
     public static let O_DIRECTORY: Int32 = 0x0010_0000
     public static let O_CLOEXEC: Int32 = 0x0100_0000
+    public static let O_CLOFORK: Int32 = 0x0800_0000
 }
 
 // MARK: - struct stat
@@ -476,6 +477,12 @@ public final class DarwinOpenFile {
     public var statusFlags: Int32
     /// `F_SETNOSIGPIPE`: a write that fails with EPIPE raises no SIGPIPE.
     public var noSigPipe = false
+    /// Run when the last reference goes (the kernel's OFD and flock locks
+    /// are released there), keyed by who registered them.
+    public var lastCloseHandlers: [String: () -> Void] = [:]
+    /// `F_SETCONFINED`: the description may not leave its process (a
+    /// spawned child does not inherit it; xnu FG_CONFINED). Never cleared.
+    public var confinedToProcess = false
 
     public init(node: Node, statusFlags: Int32) {
         self.node = node
@@ -502,6 +509,7 @@ public final class DarwinOpenFile {
     public var isNonBlocking: Bool { statusFlags & DarwinOpen.O_NONBLOCK != 0 }
 
     deinit {
+        for handler in lastCloseHandlers.values { handler() }
         if case let .object(o) = node { o.lastReferenceClosed() }
     }
 }
@@ -528,7 +536,15 @@ final class SocketNamespace {
         }
     }
 
-    var nodes: [String: Node] = [:]
+    /// The names. Writers hold the kernel lock; path resolution may read
+    /// without it (stage 6: file-system I/O outside the global lock), so the
+    /// table has its own leaf lock.
+    var nodes: [String: Node] {
+        get { nodesLock.withLock { storage } }
+        set { nodesLock.withLock { storage = newValue } }
+    }
+    private var storage: [String: Node] = [:]
+    private let nodesLock = NSLockLike()
     /// Inode numbers of socket files, in a range no host file system uses in practice.
     var nextInode: UInt64 = 0x7963_0000_0000_0001
 }
@@ -578,6 +594,9 @@ public final class DarwinFileSystem {
     private struct Descriptor {
         var file: DarwinOpenFile
         var closeOnExec: Bool
+        /// FD_CLOFORK (O_CLOFORK, F_SETFD bit 2). Ycode has no fork; it only
+        /// gates F_SETCONFINED (xnu kern_descrip.c).
+        var closeOnFork = false
         /// A guarded descriptor (`guarded_open_np` & co., xnu `kern_guarded.c`).
         var guardState: DescriptorGuard? = nil
     }
@@ -621,10 +640,17 @@ public final class DarwinFileSystem {
     /// Told the number of every descriptor this table closes (`close`, the
     /// target of `dup2`, exec, exit), after it is gone. The process layer can
     /// drop per-descriptor state there (kevent registrations, directory
-    /// cursors).
-    public var descriptorClosed: ((Int32) -> Void)?
+    /// cursors, POSIX record locks); it gets the closed description too.
+    public var descriptorClosed: ((Int32, DarwinOpenFile) -> Void)?
 
-    private var cwdStorage = "/"
+    /// Written under the kernel lock; read by path resolution, which may run
+    /// without it (stage 6), hence the leaf lock.
+    private var cwdStorage: String {
+        get { cwdLock.withLock { cwdValue } }
+        set { cwdLock.withLock { cwdValue = newValue } }
+    }
+    private var cwdValue = "/"
+    private let cwdLock = NSLockLike()
     /// The current directory (a normalized guest path). Default "/". Setting
     /// it does not check the path; `chdir` does.
     public var cwd: String {
@@ -875,7 +901,7 @@ public final class DarwinFileSystem {
     @discardableResult
     private func remove(_ fd: Int32) -> Descriptor? {
         guard let old = descriptors.removeValue(forKey: fd) else { return nil }
-        descriptorClosed?(fd)
+        descriptorClosed?(fd, old.file)
         return old
     }
 
@@ -887,7 +913,31 @@ public final class DarwinFileSystem {
     public func open(_ path: String, flags: Int32, mode: UInt16) throws -> Int32 {
         let (file, closeOnExec) = try makeOpenFile(path, flags: flags, mode: mode)
         let fd = try lowestFreeDescriptor()
-        descriptors[fd] = Descriptor(file: file, closeOnExec: closeOnExec)
+        descriptors[fd] = Descriptor(file: file, closeOnExec: closeOnExec,
+                                     closeOnFork: flags & DarwinOpen.O_CLOFORK != 0)
+        return fd
+    }
+
+    /// An opened file not yet in the table (`prepareOpen`, then `install`).
+    public struct PreparedOpen {
+        let file: DarwinOpenFile
+        let closeOnExec: Bool
+        let closeOnFork: Bool
+    }
+
+    /// `open` in two steps (stage 6, `stage6-contract.md` §5.1): the path
+    /// resolution and host open touch no descriptor table, so the kernel may
+    /// run this step without its lock, then `install` the result with it.
+    public func prepareOpen(_ path: String, flags: Int32, mode: UInt16) throws -> PreparedOpen {
+        let (file, closeOnExec) = try makeOpenFile(path, flags: flags, mode: mode)
+        return PreparedOpen(file: file, closeOnExec: closeOnExec, closeOnFork: flags & DarwinOpen.O_CLOFORK != 0)
+    }
+
+    /// Puts a prepared open at the lowest free descriptor.
+    public func install(_ prepared: PreparedOpen) throws -> Int32 {
+        let fd = try lowestFreeDescriptor()
+        descriptors[fd] = Descriptor(file: prepared.file, closeOnExec: prepared.closeOnExec,
+                                     closeOnFork: prepared.closeOnFork)
         return fd
     }
 
@@ -1146,6 +1196,30 @@ public final class DarwinFileSystem {
     /// FD_CLOEXEC (`F_GETFD`).
     public func closeOnExec(_ fd: Int32) throws -> Bool { try entry(fd).closeOnExec }
 
+    /// FD_CLOFORK (`F_GETFD` bit 2).
+    public func closeOnFork(_ fd: Int32) throws -> Bool { try entry(fd).closeOnFork }
+
+    /// Sets or clears FD_CLOFORK (`F_SETFD` bit 2).
+    public func setCloseOnFork(_ fd: Int32, _ on: Bool) throws {
+        _ = try entry(fd)
+        descriptors[fd]?.closeOnFork = on
+    }
+
+    /// `F_SETCONFINED` (xnu kern_descrip.c, level 1): `on == false` is EPERM
+    /// (confinement is permanent); an already confined description succeeds;
+    /// a description another descriptor shares is EAGAIN (Ycode sees only
+    /// this table's references); a descriptor without FD_CLOFORK is EBADF.
+    public func setConfined(_ fd: Int32, _ on: Bool) throws {
+        let d = try entry(fd)
+        guard on else { throw DarwinErrnoError(DarwinErrnoCode.EPERM) }
+        if d.file.confinedToProcess { return }
+        guard descriptors.values.filter({ $0.file === d.file }).count == 1 else {
+            throw DarwinErrnoError(DarwinErrnoCode.EAGAIN)
+        }
+        guard d.closeOnFork else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
+        d.file.confinedToProcess = true
+    }
+
     /// The Darwin status flags (`F_GETFL`): access mode, O_APPEND, O_NONBLOCK.
     public func statusFlags(_ fd: Int32) throws -> Int32 { try entry(fd).file.statusFlags }
 
@@ -1195,7 +1269,7 @@ extension DarwinFileSystem {
             if descriptors[fd] != nil { try checkGuard(fd, DarwinGuard.close, flavor: DarwinGuard.exceptionClose) }
             let old = descriptors[fd]
             descriptors[fd] = Descriptor(file: file, closeOnExec: closeOnExec)
-            if old != nil { descriptorClosed?(fd) }
+            if let old { descriptorClosed?(fd, old.file) }
             return fd
         }
         let n = try lowestFreeDescriptor()
@@ -1236,13 +1310,16 @@ extension DarwinFileSystem {
     /// prefixes, console sink, cwd, socket files, and limit; every descriptor
     /// shares its description and keeps its close-on-exec flag, except
     /// confined objects (kqueues), which are not inherited.
-    public func makeChildCopy() -> DarwinFileSystem {
+    /// `newProcess` (posix_spawn, not an exec in place): confined
+    /// descriptions (`F_SETCONFINED`) stay behind (xnu fdt_fork).
+    public func makeChildCopy(newProcess: Bool = true) -> DarwinFileSystem {
         let child = DarwinFileSystem(normalizedPrefixes: prefixes, console: console, sockets: sockets)
         child.cwdStorage = cwdStorage
         child.maxDescriptors = maxDescriptors
         child.servesDevices = servesDevices
         child.guestSymlinks = guestSymlinks
-        for (fd, d) in descriptors where !(d.file.object?.isConfined ?? false) {
+        for (fd, d) in descriptors where !(d.file.object?.isConfined ?? false)
+            && !(newProcess && d.file.confinedToProcess) {
             child.descriptors[fd] = d
         }
         return child
@@ -1606,5 +1683,309 @@ extension DarwinFileSystem {
             descriptors[fd]?.guardState = DescriptorGuard(value: new, flags: newFlags)
             descriptors[fd]?.closeOnExec = true
         }
+    }
+}
+
+// MARK: - Renames, modes, owners, times (stage 6)
+
+extension DarwinFileSystem {
+    /// `renameatx_np` flags (sys/stdio.h).
+    public static let renameSwap: UInt32 = 0x2, renameExclusive: UInt32 = 0x4
+
+    /// rename / renameat / renameatx_np: both names on writable prefixes
+    /// (EROFS), the source must exist (ENOENT), RENAME_EXCL refuses an
+    /// existing target (EEXIST), RENAME_SWAP exchanges two existing names.
+    /// Other rules (a directory over a file, a non-empty target directory,
+    /// across file systems → EXDEV) are the host's, which match POSIX.
+    /// Socket files move with their name.
+    public func rename(_ from: String, to: String, flags: UInt32 = 0) throws {
+        guard flags & ~(Self.renameSwap | Self.renameExclusive) == 0,
+              flags != Self.renameSwap | Self.renameExclusive else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        let a = try resolve(from, followFinal: false), b = try resolve(to, followFinal: false)
+        if a.device != nil || b.device != nil { throw DarwinErrnoError(18) }  // EXDEV
+        if let node = sockets.nodes[a.guestPath] {
+            if flags & Self.renameExclusive != 0, b.stat != nil || sockets.nodes[b.guestPath] != nil {
+                throw DarwinErrnoError(DarwinErrnoCode.EEXIST)
+            }
+            sockets.nodes[a.guestPath] = nil
+            sockets.nodes[b.guestPath] = node
+            return
+        }
+        guard a.stat != nil else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+        guard a.prefix.writable, b.prefix.writable, !a.hostPath.isEmpty, !b.hostPath.isEmpty else {
+            throw DarwinErrnoError(DarwinErrnoCode.EROFS)
+        }
+        if flags & Self.renameExclusive != 0, b.stat != nil { throw DarwinErrnoError(DarwinErrnoCode.EEXIST) }
+        if flags & Self.renameSwap != 0 {
+            guard b.stat != nil else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+            let temporary = a.hostPath + ".ycode-swap-\(UInt32.random(in: 0...UInt32.max))"
+            try hostRename(a.hostPath, temporary)
+            do { try hostRename(b.hostPath, a.hostPath) } catch { try? hostRename(temporary, a.hostPath); throw error }
+            try hostRename(temporary, b.hostPath)
+            return
+        }
+        try hostRename(a.hostPath, b.hostPath)
+    }
+
+    /// chmod / lchmod / fchmodat: the permission bits of a host file.
+    public func chmod(_ path: String, mode: UInt16, followSymlinks: Bool) throws {
+        let r = try resolve(path, followFinal: followSymlinks)
+        guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+        guard r.prefix.writable, !r.hostPath.isEmpty else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        if st.isSymbolicLink { return }  // the host keeps link modes fixed; Darwin's lchmod is accepted
+        guard hostChmod(r.hostPath, mode & 0o7777) == 0 else { throw DarwinErrnoError(hostErrno()) }
+    }
+
+    /// fchmod.
+    public func fchmod(_ fd: Int32, mode: UInt16) throws {
+        guard case let .file(f) = try entry(fd).file.node else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        guard writable(guestPath: f.guestPath) else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        guard hostFchmod(f.hostFD, mode & 0o7777) == 0 else { throw DarwinErrnoError(hostErrno()) }
+    }
+
+    /// chown / lchown / fchownat / fchown. Every guest file belongs to the
+    /// guest user, which may not give it away: the owner stays (uid −1 or
+    /// the current owner) and the group may become −1, the current group,
+    /// or the guest's group; anything else is EPERM. Nothing changes on the
+    /// host.
+    public func chown(_ path: String, uid: UInt32, gid: UInt32, followSymlinks: Bool) throws {
+        let r = try resolve(path, followFinal: followSymlinks)
+        guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+        try checkOwnerChange(st, uid: uid, gid: gid)
+        guard r.prefix.writable else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+    }
+
+    public func fchown(_ fd: Int32, uid: UInt32, gid: UInt32) throws {
+        let st = try fstat(fd)
+        try checkOwnerChange(st, uid: uid, gid: gid)
+    }
+
+    private func checkOwnerChange(_ st: DarwinStat, uid: UInt32, gid: UInt32) throws {
+        let keep = UInt32.max
+        guard uid == keep || uid == st.uid else { throw DarwinErrnoError(DarwinErrnoCode.EPERM) }
+        guard gid == keep || gid == st.gid || gid == Self.guestGID else { throw DarwinErrnoError(DarwinErrnoCode.EPERM) }
+    }
+
+    /// utimes / lutimes / futimes / setattrlist times: access and
+    /// modification times (nil = now).
+    public func setTimes(_ path: String, access: DarwinTimespec?, modification: DarwinTimespec?, followSymlinks: Bool) throws {
+        let r = try resolve(path, followFinal: followSymlinks)
+        guard r.stat != nil else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+        guard r.prefix.writable, !r.hostPath.isEmpty else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        guard hostSetTimes(path: r.hostPath, fd: nil, access, modification, follow: followSymlinks) == 0 else {
+            throw DarwinErrnoError(hostErrno())
+        }
+    }
+
+    public func setTimes(_ fd: Int32, access: DarwinTimespec?, modification: DarwinTimespec?) throws {
+        guard case let .file(f) = try entry(fd).file.node else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        guard writable(guestPath: f.guestPath) else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        guard hostSetTimes(path: nil, fd: f.hostFD, access, modification, follow: true) == 0 else {
+            throw DarwinErrnoError(hostErrno())
+        }
+    }
+
+    /// truncate(2) by path.
+    public func truncate(_ path: String, length: Int64) throws {
+        guard length >= 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        let r = try resolve(path, followFinal: true)
+        guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+        if st.isDirectory { throw DarwinErrnoError(DarwinErrnoCode.EISDIR) }
+        guard r.prefix.writable, !r.hostPath.isEmpty else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        guard hostTruncate(r.hostPath, length) == 0 else { throw DarwinErrnoError(hostErrno()) }
+    }
+
+    /// True when `guestPath` lies under a writable prefix.
+    func writable(guestPath: String) -> Bool { lookupPrefix(guestPath)?.prefix.writable ?? false }
+}
+
+private func hostRename(_ from: String, _ to: String) throws {
+    guard rename(from, to) == 0 else { throw DarwinErrnoError(hostErrno()) }
+}
+
+private func hostChmod(_ path: String, _ mode: UInt16) -> Int32 { chmod(path, mode_t(mode)) }
+private func hostFchmod(_ fd: Int32, _ mode: UInt16) -> Int32 { fchmod(fd, mode_t(mode)) }
+private func hostTruncate(_ path: String, _ length: Int64) -> Int32 { truncate(path, off_t(length)) }
+
+private func hostSetTimes(path: String?, fd: Int32?, _ access: DarwinTimespec?, _ modification: DarwinTimespec?,
+                          follow: Bool) -> Int32 {
+    func spec(_ t: DarwinTimespec?) -> timespec {
+        #if canImport(Darwin)
+        let now = -1  // UTIME_NOW
+        #else
+        let now = (1 << 30) - 1  // UTIME_NOW (Linux)
+        #endif
+        guard let t else { return timespec(tv_sec: 0, tv_nsec: now) }
+        return timespec(tv_sec: Int(t.sec), tv_nsec: Int(t.nsec))
+    }
+    var times = [spec(access), spec(modification)]
+    if let fd { return futimens(fd, &times) }
+    #if canImport(Darwin)
+    let cwd: Int32 = -2, noFollow: Int32 = 0x20
+    #else
+    let cwd: Int32 = -100, noFollow: Int32 = 0x100
+    #endif
+    return utimensat(cwd, path!, &times, follow ? 0 : noFollow)
+}
+
+
+// MARK: - Extended attributes (stage 6)
+
+#if !canImport(Darwin)
+/// glibc's xattr functions (sys/xattr.h is not part of Swift's Glibc
+/// module): looked up once with dlsym.
+private enum LinuxXattr {
+    typealias Get = @convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>, UnsafeMutableRawPointer?, Int) -> Int
+    typealias FGet = @convention(c) (Int32, UnsafePointer<CChar>, UnsafeMutableRawPointer?, Int) -> Int
+    typealias Set = @convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>, UnsafeRawPointer?, Int, Int32) -> Int32
+    typealias FSet = @convention(c) (Int32, UnsafePointer<CChar>, UnsafeRawPointer?, Int, Int32) -> Int32
+    typealias Remove = @convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>) -> Int32
+    typealias FRemove = @convention(c) (Int32, UnsafePointer<CChar>) -> Int32
+    typealias List = @convention(c) (UnsafePointer<CChar>, UnsafeMutablePointer<CChar>?, Int) -> Int
+    typealias FList = @convention(c) (Int32, UnsafeMutablePointer<CChar>?, Int) -> Int
+
+    static func symbol<T>(_ name: String, _: T.Type) -> T {
+        guard let p = dlsym(UnsafeMutableRawPointer(bitPattern: 0), name) else { fatalError("libc lacks \(name)") }
+        return unsafeBitCast(p, to: T.self)
+    }
+    static let lget = symbol("lgetxattr", Get.self), fget = symbol("fgetxattr", FGet.self)
+    static let lset = symbol("lsetxattr", Set.self), fset = symbol("fsetxattr", FSet.self)
+    static let lremove = symbol("lremovexattr", Remove.self), fremove = symbol("fremovexattr", FRemove.self)
+    static let llist = symbol("llistxattr", List.self), flist = symbol("flistxattr", FList.self)
+}
+#endif
+
+/// Extended attributes, kept as host extended attributes named
+/// `user.ycode.<name>` (Linux `user` namespace; on a macOS host the same
+/// name), so they persist with the device's files. Darwin semantics
+/// (sys/xattr.h, getxattr(2)/setxattr(2)): a missing attribute is ENOATTR
+/// (93), XATTR_CREATE on an existing one EEXIST, XATTR_REPLACE on a missing
+/// one ENOATTR, names of 1…127 bytes, read-only prefixes EROFS.
+extension DarwinFileSystem {
+    public enum XattrTarget {
+        case path(String, followSymlinks: Bool)
+        case descriptor(Int32)
+    }
+
+    static let xattrPrefix = "user.ycode."
+    static let ENOATTR: Int32 = 93
+
+    /// The host file behind a target: its path or descriptor, and whether it may be written.
+    private func xattrHost(_ t: XattrTarget) throws -> (path: String?, fd: Int32?, writable: Bool) {
+        switch t {
+        case let .path(path, follow):
+            let r = try resolve(path, followFinal: follow)
+            guard r.stat != nil else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+            return (r.hostPath.isEmpty ? nil : r.hostPath, nil, r.prefix.writable && !r.hostPath.isEmpty)
+        case let .descriptor(fd):
+            let d = try entry(fd)
+            guard case let .file(f) = d.file.node else { return (nil, nil, false) }
+            return (nil, f.hostFD, writable(guestPath: f.guestPath))
+        }
+    }
+
+    private static func checkName(_ name: String) throws {
+        guard !name.isEmpty else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        guard name.utf8.count <= 127 else { throw DarwinErrnoError(DarwinErrnoCode.ENAMETOOLONG) }
+    }
+
+    private static func xattrErrno() -> Int32 {
+        #if canImport(Darwin)
+        return errno == 93 ? ENOATTR : DarwinErrnoCode.fromHost(errno)
+        #else
+        return errno == 61 ? ENOATTR : (errno == 95 ? DarwinErrnoCode.ENOTSUP : DarwinErrnoCode.fromHost(errno))
+        #endif
+    }
+
+    public func getExtendedAttribute(_ t: XattrTarget, name: String) throws -> [UInt8] {
+        try Self.checkName(name)
+        let host = try xattrHost(t)
+        guard host.path != nil || host.fd != nil else { throw DarwinErrnoError(Self.ENOATTR) }
+        let key = Self.xattrPrefix + name
+        func call(_ buffer: UnsafeMutableRawPointer?, _ size: Int) -> Int {
+            #if canImport(Darwin)
+            if let fd = host.fd { return fgetxattr(fd, key, buffer, size, 0, 0) }
+            return getxattr(host.path!, key, buffer, size, 0, XATTR_NOFOLLOW)
+            #else
+            if let fd = host.fd { return LinuxXattr.fget(fd, key, buffer, size) }
+            return LinuxXattr.lget(host.path!, key, buffer, size)
+            #endif
+        }
+        for _ in 0..<4 {
+            let size = call(nil, 0)
+            guard size >= 0 else { throw DarwinErrnoError(Self.xattrErrno()) }
+            var bytes = [UInt8](repeating: 0, count: size)
+            let n = bytes.withUnsafeMutableBytes { call($0.baseAddress, size) }
+            if n >= 0 { return Array(bytes.prefix(n)) }
+            guard errno == ERANGE else { throw DarwinErrnoError(Self.xattrErrno()) }
+        }
+        throw DarwinErrnoError(DarwinErrnoCode.EIO)
+    }
+
+    /// `create`: XATTR_CREATE; `replace`: XATTR_REPLACE.
+    public func setExtendedAttribute(_ t: XattrTarget, name: String, value: [UInt8], create: Bool, replace: Bool) throws {
+        try Self.checkName(name)
+        let host = try xattrHost(t)
+        guard host.writable, host.path != nil || host.fd != nil else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        let key = Self.xattrPrefix + name
+        let r: Int32 = value.withUnsafeBytes { v in
+            #if canImport(Darwin)
+            let flags: Int32 = (create ? XATTR_CREATE : 0) | (replace ? XATTR_REPLACE : 0)
+            if let fd = host.fd { return fsetxattr(fd, key, v.baseAddress, v.count, 0, flags) }
+            return setxattr(host.path!, key, v.baseAddress, v.count, 0, flags | XATTR_NOFOLLOW)
+            #else
+            let flags: Int32 = (create ? 1 : 0) | (replace ? 2 : 0)  // XATTR_CREATE, XATTR_REPLACE (Linux)
+            if let fd = host.fd { return LinuxXattr.fset(fd, key, v.baseAddress, v.count, flags) }
+            return LinuxXattr.lset(host.path!, key, v.baseAddress, v.count, flags)
+            #endif
+        }
+        guard r == 0 else { throw DarwinErrnoError(Self.xattrErrno()) }
+    }
+
+    public func removeExtendedAttribute(_ t: XattrTarget, name: String) throws {
+        try Self.checkName(name)
+        let host = try xattrHost(t)
+        guard host.path != nil || host.fd != nil else { throw DarwinErrnoError(Self.ENOATTR) }
+        guard host.writable else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        let key = Self.xattrPrefix + name
+        #if canImport(Darwin)
+        let r = host.fd.map { fremovexattr($0, key, 0) } ?? removexattr(host.path!, key, XATTR_NOFOLLOW)
+        #else
+        let r = host.fd.map { LinuxXattr.fremove($0, key) } ?? LinuxXattr.lremove(host.path!, key)
+        #endif
+        guard r == 0 else { throw DarwinErrnoError(Self.xattrErrno()) }
+    }
+
+    /// The guest's attribute names, in host order.
+    public func listExtendedAttributes(_ t: XattrTarget) throws -> [String] {
+        let host = try xattrHost(t)
+        guard host.path != nil || host.fd != nil else { return [] }
+        func call(_ buffer: UnsafeMutablePointer<CChar>?, _ size: Int) -> Int {
+            #if canImport(Darwin)
+            if let fd = host.fd { return flistxattr(fd, buffer, size, 0) }
+            return listxattr(host.path!, buffer, size, XATTR_NOFOLLOW)
+            #else
+            if let fd = host.fd { return LinuxXattr.flist(fd, buffer, size) }
+            return LinuxXattr.llist(host.path!, buffer, size)
+            #endif
+        }
+        for _ in 0..<4 {
+            let size = call(nil, 0)
+            guard size >= 0 else {
+                if errno == ENOTSUP || errno == EPERM { return [] }
+                throw DarwinErrnoError(Self.xattrErrno())
+            }
+            if size == 0 { return [] }
+            var buffer = [CChar](repeating: 0, count: size)
+            let n = buffer.withUnsafeMutableBufferPointer { call($0.baseAddress, size) }
+            if n < 0 {
+                guard errno == ERANGE else { throw DarwinErrnoError(Self.xattrErrno()) }
+                continue
+            }
+            let bytes = buffer.prefix(n).map { UInt8(bitPattern: $0) }
+            return bytes.split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
+                .filter { $0.hasPrefix(Self.xattrPrefix) }.map { String($0.dropFirst(Self.xattrPrefix.count)) }
+        }
+        throw DarwinErrnoError(DarwinErrnoCode.EIO)
     }
 }

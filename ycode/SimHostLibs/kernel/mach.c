@@ -963,3 +963,17 @@ YC_EXPORT int mach_port_set_context(yc_port_t task, yc_port_t name, yc_u64 conte
 {
     return (int)YC_MACH3(YC_PRIV_ROUTINE(15), task, name, context);
 }
+
+/* kern_return_t host_get_io_master(host_t host, io_main_t *io_master)
+ * kern_return_t host_get_io_main(host_t host, io_main_t *io_main)
+ * The IOKit main port; Ycode's VMM serves a minimal IOKit registry on it
+ * (private routine 16). */
+YC_EXPORT int host_get_io_main(yc_port_t host, yc_port_t *io_main)
+{
+    return (int)YC_MACH3(YC_PRIV_ROUTINE(16), host, io_main, 0);
+}
+
+YC_EXPORT int host_get_io_master(yc_port_t host, yc_port_t *io_master)
+{
+    return host_get_io_main(host, io_master);
+}

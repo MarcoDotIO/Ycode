@@ -71,8 +71,8 @@ import YcodeDarwinABI
     }
 
     /// Extended attributes (stage 4c-iii: launchd_sim asks for one on each job
-    /// plist): none exist; get/remove → ENOATTR, list → 0, set → ENOTSUP;
-    /// a missing file or a bad descriptor fails first.
+    /// plist): none exist; get → ENOATTR, list → 0, set/remove on a read-only
+    /// prefix → EROFS; a missing file or a bad descriptor fails first.
     @Test func extendedAttributes() throws {
         let env = try Env()
         let path = try env.makeFile("job.plist", Array("x".utf8))
@@ -87,8 +87,96 @@ import YcodeDarwinABI
         let (_, list) = env.svc(241, [fd, s + 0x400, 64, 0])  // flistxattr
         #expect(!list.carry && list.x[0] == 0)
         #expect(!env.svc(240, [s + 0x100, 0, 0, 0]).1.carry)  // listxattr
-        #expect(env.svc(237, [fd, s + 0x200, s, 1, 0, 0]).1.x[0] == 45)  // fsetxattr: ENOTSUP
-        #expect(env.svc(239, [fd, s + 0x200, 0]).1.x[0] == 93)  // fremovexattr
+        #expect(env.svc(237, [fd, s + 0x200, s, 1, 0, 0]).1.x[0] == 30)  // fsetxattr: read-only prefix, EROFS
+        #expect(env.svc(239, [fd, s + 0x200, 0]).1.x[0] == 30)  // fremovexattr
+    }
+
+    /// getattrlist / fgetattrlist (sys/attr.h formats): a u32 length, the
+    /// returned set, fixed attributes 4-byte aligned, then variable data
+    /// through attrreference_t (offset from the reference, length with NUL).
+    @Test func attributeLists() throws {
+        let env = try Env()
+        let path = try env.makeFile("job.plist", Array("hello".utf8))
+        try env.putString(path, at: s + 0x100)
+        func alist(_ groups: [UInt32]) -> [UInt8] {
+            var b: [UInt8] = [5, 0, 0, 0]
+            for g in groups { b.appendLE(g) }
+            return b
+        }
+        func u32(_ b: [UInt8], _ o: Int) -> UInt32 { b.readLE(UInt32.self, at: o) }
+        func string(_ b: [UInt8], reference o: Int) -> String {
+            let start = o + Int(Int32(bitPattern: u32(b, o)))
+            let length = Int(u32(b, o + 4))
+            return String(decoding: b[start..<(start + length - 1)], as: UTF8.self)
+        }
+        // RETURNED_ATTRS | NAME | OBJTYPE | FULLPATH, file TOTALSIZE, extended NOFIRMLINKPATH.
+        try env.space.write(va: s + 0x200, bytes: alist([0x8800_0009, 0, 0, 0x2, 0x20]))
+        let (_, r) = env.svc(220, [s + 0x100, s + 0x200, s + 0x400, 2048, 0x20])
+        #expect(!r.carry)
+        let b = try env.space.read(va: s + 0x400, count: 2048)
+        let length = Int(u32(b, 0))
+        #expect(length > 60 && length % 4 == 0)
+        #expect(u32(b, 4) == 0x8800_0009 && u32(b, 16) == 0x2 && u32(b, 20) == 0x20)  // returned set
+        #expect(string(b, reference: 24) == "job.plist")
+        #expect(u32(b, 32) == 1)                                                      // VREG
+        #expect(string(b, reference: 36) == path)
+        #expect(b.readLE(Int64.self, at: 44) == 5)                                    // TOTALSIZE
+        #expect(string(b, reference: 52) == path)                                     // NOFIRMLINKPATH
+        // A directory skips file attributes; ENTRYCOUNT etc. come from the dir group.
+        try env.putString(env.root, at: s + 0x180)
+        try env.space.write(va: s + 0x200, bytes: alist([0x8000_0008, 0, 0x1, 0x2, 0]))
+        let (_, d) = env.svc(220, [s + 0x180, s + 0x200, s + 0x400, 2048, 0])
+        #expect(!d.carry)
+        let db = try env.space.read(va: s + 0x400, count: 40)
+        #expect(u32(db, 0) == 32 && u32(db, 12) == 0x1 && u32(db, 16) == 0 && u32(db, 24) == 2)  // VDIR
+        // fgetattrlist on a descriptor; volume capabilities need ATTR_VOL_INFO.
+        let fd = env.svc(5, [s + 0x100, 0, 0]).1.x[0]
+        try env.space.write(va: s + 0x200, bytes: alist([0x1, 0, 0, 0, 0]))
+        let (_, f) = env.svc(228, [fd, s + 0x200, s + 0x400, 2048, 0])
+        #expect(!f.carry)
+        #expect(string(try env.space.read(va: s + 0x400, count: 64), reference: 4) == "job.plist")
+        try env.space.write(va: s + 0x200, bytes: alist([0, 0x0002_0000, 0, 0, 0]))
+        #expect(env.svc(220, [s + 0x180, s + 0x200, s + 0x400, 2048, 0]).1.x[0] == 22)  // EINVAL
+        try env.space.write(va: s + 0x200, bytes: alist([0, 0x8002_0000, 0, 0, 0]))
+        #expect(!env.svc(220, [s + 0x180, s + 0x200, s + 0x400, 2048, 0]).1.carry)
+        #expect(u32(try env.space.read(va: s + 0x400, count: 8), 0) == 36)
+        // A short buffer truncates; FSOPT_REPORT_FULLSIZE reports the full size.
+        try env.space.write(va: s + 0x200, bytes: alist([0x0800_0000, 0, 0, 0, 0]))
+        #expect(!env.svc(220, [s + 0x100, s + 0x200, s + 0x400, 8, 0x4]).1.carry)
+        #expect(Int(u32(try env.space.read(va: s + 0x400, count: 4), 0)) == 12 + ((path.utf8.count + 4) & ~3))
+        try env.putString(path + ".missing", at: s + 0x300)
+        #expect(env.svc(220, [s + 0x300, s + 0x200, s + 0x400, 2048, 0]).1.x[0] == 2)
+    }
+
+    /// fcntl hints and data-protection calls on a volume without content
+    /// protection; open_dprotected_np opens like open.
+    @Test func fcntlHintsAndProtectedOpen() throws {
+        let env = try Env()
+        let path = try env.makeFile("db", Array("x".utf8))
+        try env.putString(path, at: s + 0x100)
+        let fd = env.svc(5, [s + 0x100, 0, 0]).1.x[0]
+        for cmd: UInt64 in [48, 51, 85, 45] { #expect(!env.svc(92, [fd, cmd, 1]).1.carry) }
+        #expect(env.svc(92, [77, 48, 1]).1.x[0] == 9)            // EBADF
+        #expect(env.svc(92, [fd, 63, 0]).1.x[0] == 3)            // F_GETPROTECTIONCLASS: default C
+        #expect(!env.svc(92, [fd, 64, 2]).1.carry)               // F_SETPROTECTIONCLASS B
+        #expect(env.svc(92, [fd, 63, 0]).1.x[0] == 2)
+        #expect(!env.svc(92, [fd, 64, 4]).1.carry)               // D is kept as C
+        #expect(env.svc(92, [fd, 63, 0]).1.x[0] == 3)
+        #expect(env.svc(92, [fd, 64, 9]).1.x[0] == 22)
+        #expect(env.svc(92, [fd, 77, 0]).1.x[0] == 5)            // F_GETPROTECTIONLEVEL
+        var store = [UInt8](repeating: 0, count: 32)
+        store.putLE(Int32(3), at: 4)                               // F_PEOFPOSMODE
+        store.putLE(Int64(4096), at: 16)
+        try env.space.write(va: s + 0x200, bytes: store)
+        #expect(env.svc(92, [fd, 42, s + 0x200]).1.x[0] == 9)     // F_PREALLOCATE needs FWRITE
+        let (_, o) = env.svc(216, [s + 0x100, 0, UInt64(UInt32(bitPattern: -1)), 0, 0])
+        #expect(!o.carry)
+        #expect(env.svc(3, [o.x[0], s + 0x300, 8]).1.x[0] == 1)
+        #expect(!env.svc(216, [s + 0x100, 0, 3, 1, 0]).1.carry)      // raw encrypted, read-only
+        #expect(env.svc(216, [s + 0x100, 0, 3, 2, 0]).1.x[0] == 1)   // raw unencrypted: EPERM
+        #expect(env.svc(216, [s + 0x100, 0, 3, 4, 0]).1.x[0] == 22)  // O_DP_AUTHENTICATE
+        try env.putString(path + ".missing", at: s + 0x180)
+        #expect(env.svc(216, [s + 0x180, 0, 3, 0, 0]).1.x[0] == 2)
     }
 
     /// task_info(TASK_AUDIT_TOKEN) of the caller's own task (libxpc reads it at start).
@@ -160,7 +248,10 @@ import YcodeDarwinABI
         #expect(!env.svc(194, [3, s]).1.carry)
         #expect(try env.u64(s) == 8 << 20)
         env.svc(194, [0x1008, s])  // RLIMIT_NOFILE | _RLIMIT_POSIX_FLAG
-        #expect(try env.u64(s) == 256 && env.u64(s + 8) == 256)
+        #expect(try env.u64(s) == 256 && env.u64(s + 8) == DarwinKernel.RLimit.infinity)
+        try env.put(leBytes(20000) + leBytes(DarwinKernel.RLimit.infinity), at: s)
+        #expect(!env.svc(195, [8, s]).1.carry)                // above OPEN_MAX: the table stays at 10240
+        #expect(env.kernel.fileSystem.maxDescriptors == 10240)
         env.svc(194, [0, s])
         #expect(try env.u64(s) == DarwinKernel.RLimit.infinity)
         try env.put(leBytes(128) + leBytes(256), at: s)
@@ -179,7 +270,7 @@ import YcodeDarwinABI
         let (_, c) = env.svc(169, [0, 0, s, 4])
         #expect(!c.carry && c.x[0] == 0)
         #expect(try env.u32(s) == 0 && env.u32(s + 4) == 0xFFFF_FFFF)
-        #expect(!env.svc(170, [100, 0, s, 4, 0]).1.carry)
+        #expect(env.svc(170, [100, 0, s, 4, 0]).1.x[0] == 22)  // no audit token: EINVAL (xnu)
         #expect(env.svc(169, [42, 0, s, 4]).1.x[0] == 3)  // ESRCH
         // proc_info: ENOTSUP; kevent family (stage 4a): fd 3 is no kqueue
         // (EBADF); kevent_id without KEVENT_FLAG_WORKLOOP is EINVAL.

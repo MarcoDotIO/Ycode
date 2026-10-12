@@ -90,7 +90,7 @@ extension MachIPC {
             guard end > start else { return (MachKern.invalidArgument, "") }
             // Every page must allow what the entry asks for.
             var cursor = start
-            for r in memory.regions where r.end > start && r.va < end {
+            for r in memory.regions(overlapping: start..<end) {
                 guard r.va <= cursor else { return (MachKern.invalidArgument, "") }
                 guard r.protection.isSuperset(of: protection) else { return (MachKern.protectionFailure, "") }
                 cursor = max(cursor, r.end)
@@ -168,7 +168,7 @@ extension MachIPC {
         } else {
             guard requested & (Self.page - 1) == 0 else { return (MachKern.invalidArgument, "") }
             if flags & Self.vmFlagsOverwrite == 0,
-               memory.regions.contains(where: { $0.va < requested &+ size && requested < $0.end }) {
+               !memory.regions(overlapping: requested..<Swift.max(requested, requested &+ size)).isEmpty {
                 return (MachKern.noSpace, "")
             }
             at = requested
@@ -225,7 +225,7 @@ extension MachIPC {
         // The source: fully mapped; its protection is the lowest of its pages'.
         var cursor = start
         var protection: VMProtection = .all
-        for r in memory.regions where r.end > start && r.va < end {
+        for r in memory.regions(overlapping: start..<end) {
             guard r.va <= cursor else { return (MachKern.invalidAddress, "") }
             protection.formIntersection(r.protection)
             cursor = max(cursor, r.end)
@@ -255,7 +255,7 @@ extension MachIPC {
         } else {
             guard requested & (page - 1) == 0 else { return (MachKern.invalidArgument, "") }
             if flags & Self.vmFlagsOverwrite == 0,
-               memory.regions.contains(where: { $0.va < requested &+ size && requested < $0.end }) {
+               !memory.regions(overlapping: requested..<Swift.max(requested, requested &+ size)).isEmpty {
                 return (MachKern.noSpace, "")
             }
             at = requested

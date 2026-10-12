@@ -347,6 +347,17 @@ import YcodeDarwinABI
         _ = env.svc(c, 1, [9])
         #expect(env.bsd(root, 336, [2, UInt64(pid), 21, UInt64(NoteProc.exitStatus), At.out, 4]) == 4)
         #expect(env.u32(root, At.out) == 9 << 8)
+        // sysctl kern.proc.pid.<pid>: a 648-byte kinfo_proc; an unknown pid gives 0 bytes.
+        env.put(root, le32(1) + le32(14) + le32(1) + le32(UInt32(bitPattern: pid)), at: At.out + 0x800)
+        env.put(root, le64(648), at: At.out + 0x900)
+        #expect(env.bsd(root, 202, [At.out + 0x800, 4, At.out, At.out + 0x900, 0, 0]) == 0)
+        let kp = env.read(root, At.out, 648)
+        #expect(kp.readLE(Int32.self, at: 40) == pid && kp.readLE(Int32.self, at: 560) == 100)
+        #expect(String(decoding: kp[243..<248], as: UTF8.self) == "probe")
+        env.put(root, le32(1) + le32(14) + le32(1) + le32(4242), at: At.out + 0x800)
+        env.put(root, le64(648), at: At.out + 0x900)
+        #expect(env.bsd(root, 202, [At.out + 0x800, 4, At.out, At.out + 0x900, 0, 0]) == 0)
+        #expect(env.read(root, At.out + 0x900, 8).readLE(UInt64.self, at: 0) == 0)
         // proc_pid_rusage (callnum 9, flavor 0): start and exit mach times of the zombie.
         #expect(env.bsd(root, 336, [9, UInt64(pid), 0, 0, At.out, 0]) == 0)
         let ru = env.read(root, At.out, 96)

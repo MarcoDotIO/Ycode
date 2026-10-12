@@ -436,3 +436,11 @@ real trap (−15). Library additions: `mach_make_memory_entry(_64)`,
 
 Real traps added: mk_timer −91…−95 (xnu `mk_timer.c`). `gettid` (BSD 286)
 returns ESRCH (no per-thread credentials, xnu `kern_prot.c`).
+| 16 | `host_get_io_main(host, &port)` / `host_get_io_master` | Returns a send right to the VMM's minimal IOKit main port (`iokit-minimal.md`) |
+
+Stage 6 also added (VMM only, no new routine numbers): `vm_purgable_control`
+(trap −11; states kept, never purged), POSIX named semaphores (BSD
+268–273, 420), advisory locks (`F_GETLK`/`F_SETLK`/`F_SETLKW`/
+`F_SETLKWTIMEOUT`, `F_OFD_*`, `flock` 131), `getattrlist` (220, 228, 476),
+data-protection classes and `open_dprotected_np` (216, 218), csops per xnu
+`csops_internal`, and the rename/chmod/chown/utimes/truncate family.

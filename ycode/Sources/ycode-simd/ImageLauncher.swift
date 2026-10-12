@@ -51,6 +51,8 @@ final class ImageRecord: @unchecked Sendable {
     var end: VCPUPool.Termination?
     /// The VMM's summary of the image, fixed at teardown.
     var finalSummary: String?
+    /// Unimplemented traps and host-library functions the image hit (counts).
+    var finalUnimplemented: String?
     var tornDown = false
     /// The live image until teardown.
     var image: GuestImageInstance?
@@ -368,6 +370,7 @@ final class VMMLauncher: ProcessLauncher, @unchecked Sendable {
         guard !image.record.tornDown else { return }
         image.pool.joinThreads()
         image.record.finalSummary = image.summary(locked: true)
+        image.record.finalUnimplemented = image.unimplementedSummary()
         image.destroy()
         lock.withLock {
             image.record.tornDown = true
@@ -420,6 +423,7 @@ final class GuestImageInstance: @unchecked Sendable {
         // `--trace-pid N`: this process only (unimplemented calls then
         // behave as with --keep-going).
         let trace = config.trace || config.options.tracePIDs.contains(kernel.pid)
+            || config.options.traceNames.contains((request.executablePath as NSString).lastPathComponent)
         self.trace = trace
         self.fileSystem = kernel.fileSystem
         let execPath = request.executablePath
@@ -605,11 +609,10 @@ final class GuestImageInstance: @unchecked Sendable {
             if let host = kernel.threadHost as? PoolThreadHost, host.pool === pool { kernel.threadHost = nil }
             // Drop the address space's file references (their host fds)
             // even if a kernel object keeps the space itself alive.
-            for region in space.regions where !region.permanent {
-                try? space.unmap(va: region.va, size: region.size)
-            }
-            vm.close()
+            space.discardAll()
         }
+        // KVM teardown (2–70 ms) needs no kernel state: outside the lock.
+        vm.close()
         VMCounters.shared.vmDestroyed()
     }
 
@@ -834,7 +837,7 @@ final class GuestImageInstance: @unchecked Sendable {
             var text = ""
             if DarwinKernel.isCachePatchPlaceholderFault(reportFrame) {
                 text += "\(DarwinKernel.cachePatchPlaceholderMessage): ELR \(hex(reportFrame.elr)) = "
-                    + "\(images.describe(reportFrame.elr)); LR \(hex(reportFrame.x[30])) = \(images.describe(reportFrame.x[30]))\n"
+                    + "\(describeAddress(reportFrame.elr)); LR \(hex(reportFrame.x[30])) = \(describeAddress(reportFrame.x[30]))\n"
             }
             text += "fatal guest condition on \(context), vCPU \(worker.index) (exit \(status)):\n\(message)\n\(faultReport(reportFrame))"
             // abort(): the reason is in the libraries' crash annotations.
@@ -849,7 +852,8 @@ final class GuestImageInstance: @unchecked Sendable {
             }
             return end(.terminated, status: status, message: text, worker: worker)
         case let .unimplemented(description):
-            kernel.lock.withLock { trapCounts[description, default: 0] += 1 }
+            // Counted by call (the text up to its argument list).
+            kernel.lock.withLock { trapCounts[String(description.prefix { $0 != "(" }), default: 0] += 1 }
             if launcher.config.trace && !options.keepGoing {
                 let message = "first unimplemented trap (\(context)): \(description)\n\(frame)\n\(faultReport(frame))"
                 launcher.abortHost(status: DarwinKernel.unimplementedExitStatus, message: launcher.tag(pid) + message)
@@ -859,14 +863,14 @@ final class GuestImageInstance: @unchecked Sendable {
         case let .unimplementedLibraryFunction(name) where options.libfuncReturns[name] != nil:
             // Debug aid: finish the call here (x0 = value, return to the caller).
             let value = options.libfuncReturns[name]!
-            say("unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(images.describe(frame.x[30]))) "
+            say("unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(describeAddress(frame.x[30]))) "
                 + "[--libfunc-return: x0 = \(hex(value))]")
             frame.x[0] = value
             frame.elr = frame.x[30]
             return .resume
         case let .unimplementedLibraryFunction(name):
             kernel.lock.withLock { trapCounts["libfunc " + name, default: 0] += 1 }
-            say("unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(images.describe(frame.x[30])))")
+            say("unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(describeAddress(frame.x[30])))")
             if launcher.config.trace && !options.keepGoing {
                 let message = "first unimplemented host-library function (\(context)): \(name)\n\(frame)\n\(faultReport(frame))"
                 launcher.abortHost(status: DarwinKernel.unimplementedLibraryFunctionExitStatus, message: launcher.tag(pid) + message)

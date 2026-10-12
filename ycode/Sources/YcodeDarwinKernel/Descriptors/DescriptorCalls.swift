@@ -40,11 +40,12 @@ enum DescriptorBSD {
                pread = 153, pwrite = 154, lseek = 199, pthreadChdir = 348, pthreadFchdir = 349, unlinkat = 472,
                readlink = 58, readlinkat = 473, mkdir = 136, rmdir = 137, mkdirat = 475,
                guardedOpen = 441, guardedClose = 442, guardedKqueue = 443, changeFdguard = 444,
-               guardedOpenDprotected = 484, guardedWrite = 485, guardedPwrite = 486, guardedWritev = 487
+               guardedOpenDprotected = 484, guardedWrite = 485, guardedPwrite = 486, guardedWritev = 487,
+               flock = 131, fsync = 95, fdatasync = 187
     /// `_nocancel` forms → the plain call (those `DarwinKernel.BSD.nocancelAliases` may not list).
     static let nocancel: [Int: Int] = [
         396: read, 397: write, 401: recvmsg, 402: sendmsg, 403: recvfrom, 404: accept, 409: connect,
-        411: readv, 412: writev, 413: sendto, 414: pread, 415: pwrite, 406: fcntl,
+        411: readv, 412: writev, 413: sendto, 414: pread, 415: pwrite, 406: fcntl, 408: fsync,
     ]
 }
 
@@ -100,7 +101,16 @@ extension DarwinKernel {
             return .value(UInt64(UInt32(bitPattern: int(1))))
 
         case DescriptorBSD.fcntl:
-            return try descriptorFcntl(a, &call)
+            return try descriptorFcntl(a, &call, mem)
+
+        case DescriptorBSD.flock:
+            return .value(try flockCall(int(0), int(1), &call))
+
+        case let m where MetadataBSD.all.contains(m):
+            return try metadataCall(m, a, &call, mem)
+
+        case DescriptorBSD.fsync, DescriptorBSD.fdatasync:
+            return .value(try syncCall(n, int(0), &call))
 
         case DescriptorBSD.ioctl:
             return try descriptorIoctl(a, &call, mem)
@@ -287,11 +297,13 @@ extension DarwinKernel {
     // MARK: fcntl / ioctl
 
     /// The fcntl commands this layer owns; nil for the rest.
-    private func descriptorFcntl(_ a: [UInt64], _ call: inout String) throws -> BSDResult? {
+    private func descriptorFcntl(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult? {
         let fd = Int32(truncatingIfNeeded: a[0])
         let cmd = Int32(truncatingIfNeeded: a[1])
         let arg = Int32(truncatingIfNeeded: a[2])
         switch cmd {
+        case let c where FileLockControl.commands.contains(c):
+            return .value(try fileLockFcntl(fd, cmd, a[2], &call, mem))
         case DescriptorControl.dupfd, DescriptorControl.dupfdCloexec:
             let cloexec = cmd == DescriptorControl.dupfdCloexec
             call = "fcntl(fd=\(fd), \(cloexec ? "F_DUPFD_CLOEXEC" : "F_DUPFD"), arg=\(arg))"
@@ -389,13 +401,12 @@ extension DarwinKernel {
             call = "\(n == DescriptorBSD.guardedOpen ? "guarded_open_np" : "guarded_open_dprotected_np")(\"\(path)\", "
                 + "guard=\(hx(a[1])), guardflags=\(hx(u32(2))), flags=\(openFlagsText(flags)), mode=0o\(String(mode & 0o7777, radix: 8)))"
             guard flags & DarwinOpen.O_CLOEXEC != 0, DarwinGuard.isValid(u32(2)) else { throw fail(Code.EINVAL) }
-            if n == DescriptorBSD.guardedOpenDprotected {
-                // O_DP_GETRAWENCRYPTED / O_DP_GETRAWUNENCRYPTED may not be written.
-                if int(5) & 0x3 != 0 && flags & (DarwinOpen.O_WRONLY | DarwinOpen.O_RDWR) != 0 { throw fail(Code.EINVAL) }
-            }
+            if n == DescriptorBSD.guardedOpenDprotected { try checkDataProtectionOpen(flags: flags, dpflags: int(5)) }
+            let created = n == DescriptorBSD.guardedOpenDprotected && (try? fileSystem.stat(path, followSymlinks: true)) == nil
             let value = try readU64(a[1], mem)
             let fd = try fileSystem.openGuarded(path, flags: flags, mode: mode & ~extended.umask, guard: value,
                                                 guardFlags: u32(2))
+            if created { noteCreatedWithClass(fd, int(4)) }
             call += " [fd \(fd)]"
             return .value(UInt64(fd))
 

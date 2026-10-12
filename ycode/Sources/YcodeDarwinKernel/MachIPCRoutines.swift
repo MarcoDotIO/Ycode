@@ -58,8 +58,12 @@ extension MachIPC {
         convertIfDead(i)
         let e = entries[i]
         if let p = e.port, p.isSpecialReply, e.bits & T.portRights != 0 {
-            let allowed = (disposition == MachMsgType.makeSendOnce && (slot == .reply || slot == .destination))
-                || (disposition == MachMsgType.moveSendOnce && slot == .destination)
+            // xnu ipc_right_copyin_check_reply: a reply port takes either
+            // send-once disposition. MOVE_SEND_ONCE in the reply slot is how
+            // libdispatch resends a message that MACH_SEND_TIMED_OUT
+            // pseudo-received (its reply became a send-once name).
+            let allowed = (disposition == MachMsgType.makeSendOnce || disposition == MachMsgType.moveSendOnce)
+                && (slot == .reply || slot == .destination)
             if !allowed { return .failure(.noRight) }
         }
         switch disposition {

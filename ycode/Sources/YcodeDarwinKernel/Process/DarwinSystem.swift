@@ -133,6 +133,10 @@ public final class DarwinSystem: @unchecked Sendable {
     var processes: [Int32: DarwinProcess] = [:]
     /// POSIX shared memory names (shm_open), system-wide.
     var posixShmSegments: [String: PosixShmSegment] = [:]
+    /// POSIX named semaphores (`PosixSem.swift`).
+    var posixSemaphoreStorage: [String: PosixSemaphore] = [:]
+    /// Advisory file locks and data-protection classes (`fileLocks`).
+    var fileLockStorage: FileLockTable?
     /// The last pid handed out (`processes.md` §2.1, `stage4b-contract.md` §2 item 7).
     var lastPID: Int32 = VMLayout.guestPID
     var nextPIDVersion: UInt32 = 0x100
@@ -264,6 +268,7 @@ public final class DarwinSystem: @unchecked Sendable {
             record.kernel = kernel
             record.pidVersion = makePIDVersion()
             kernel.pidVersion = record.pidVersion
+            kernel.executableHostPath = request.hostExecutablePath
             processes[pid] = record
             processes[Self.initPID]?.children.append(pid)
             var zombie: DarwinProcess?
@@ -331,6 +336,7 @@ public final class DarwinSystem: @unchecked Sendable {
             k.tearDownKEvents()
             (k.machIPC as? MachIPC)?.terminateTask()
             k.fileSystem.closeAll()
+            fileLocks.release(owner: .process(p.pid))
             k.log("note: process \(p.pid) exited, wait status \(hx(UInt32(bitPattern: waitStatus)))")
         }
         p.image = nil

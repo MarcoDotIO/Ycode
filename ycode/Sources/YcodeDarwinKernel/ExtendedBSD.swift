@@ -32,7 +32,10 @@ struct ExtendedBSDState {
     var alternateStack: (sp: UInt64, size: UInt64, flags: Int32) = (0, 0, DarwinKernel.SignalConstant.ssDisable)
     var rlimits: [Int32: (cur: UInt64, max: UInt64)] = [
         DarwinKernel.RLimit.stack: (8 << 20, 64 << 20),
-        DarwinKernel.RLimit.nofile: (256, 256),
+        // As a simulator process sees on the Mac (level 3): soft 256, hard
+        // unlimited; NPROC 6000/9000.
+        DarwinKernel.RLimit.nofile: (256, DarwinKernel.RLimit.infinity),
+        DarwinKernel.RLimit.nproc: (6000, 9000),
         DarwinKernel.RLimit.core: (0, DarwinKernel.RLimit.infinity),
     ]
     var umask: UInt16 = 0o022
@@ -56,7 +59,7 @@ extension DarwinKernel {
                           sigsuspend = 111, sigsuspendNocancel = 410,
                           getxattr = 234, fgetxattr = 235, setxattr = 236, fsetxattr = 237,
                           removexattr = 238, fremovexattr = 239, listxattr = 240, flistxattr = 241,
-                          gettid = 286
+                          gettid = 286, openDprotectedNp = 216, openatDprotectedNp = 218
         /// psynch calls that wait (can never be woken on one thread).
         public static let psynchWaits: [Int: String] = [
             297: "psynch_rw_longrdlock", 298: "psynch_rw_yieldwrlock", 300: "psynch_rw_upgrade",
@@ -119,12 +122,59 @@ extension DarwinKernel {
     // MARK: Dispatch
 
     /// Handles the stage-3b calls; nil = not handled here.
-    /// The result of an extended-attribute call on an existing file.
-    private func xattrResult(_ n: Int) throws -> BSDResult {
+    private func extendedAttributeCall(_ n: Int, _ a: [UInt64], _ call: inout String,
+                                       _ mem: any KernelGuestMemory) throws -> UInt64 {
+        func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
+        let byDescriptor = [BSD2.fgetxattr, BSD2.fsetxattr, BSD2.fremovexattr, BSD2.flistxattr].contains(n)
+        let options: Int32
         switch n {
-        case BSD2.listxattr, BSD2.flistxattr: return .value(0)
-        case BSD2.setxattr, BSD2.fsetxattr: throw Failure(errno: Errno.ENOTSUP)
-        default: throw Failure(errno: Self.ENOATTR)
+        case BSD2.getxattr, BSD2.fgetxattr, BSD2.setxattr, BSD2.fsetxattr: options = int(5)
+        case BSD2.removexattr, BSD2.fremovexattr: options = int(2)
+        default: options = int(3)
+        }
+        let target: DarwinFileSystem.XattrTarget
+        let subject: String
+        if byDescriptor {
+            target = .descriptor(int(0))
+            subject = "fd \(int(0))"
+        } else {
+            let path = try readPath(a[0], mem)
+            target = .path(path, followSymlinks: options & 0x1 == 0)
+            subject = "\"\(path)\""
+        }
+        let fs = fileSystem
+        switch n {
+        case BSD2.listxattr, BSD2.flistxattr:
+            call = "\(byDescriptor ? "flistxattr" : "listxattr")(\(subject), buf=\(hx(a[1])), size=\(a[2]))"
+            let names = try fs.listExtendedAttributes(target)
+            let bytes: [UInt8] = names.flatMap { name -> [UInt8] in Array(name.utf8) + [0] }
+            if a[1] == 0 { return UInt64(bytes.count) }
+            guard UInt64(bytes.count) <= a[2] else { throw Failure(errno: Errno.ERANGE) }
+            if !bytes.isEmpty { try mem.write(va: a[1], bytes: bytes) }
+            return UInt64(bytes.count)
+        default:
+            let name = try readString(a[1], length: 256, mem)
+            switch n {
+            case BSD2.getxattr, BSD2.fgetxattr:
+                call = "\(byDescriptor ? "fgetxattr" : "getxattr")(\(subject), \"\(name)\", size=\(a[3]))"
+                guard a[4] == 0 else { throw Failure(errno: Errno.EINVAL) }
+                let value = try fs.getExtendedAttribute(target, name: name)
+                if a[2] == 0 { return UInt64(value.count) }
+                guard UInt64(value.count) <= a[3] else { throw Failure(errno: Errno.ERANGE) }
+                if !value.isEmpty { try mem.write(va: a[2], bytes: value) }
+                return UInt64(value.count)
+            case BSD2.setxattr, BSD2.fsetxattr:
+                call = "\(byDescriptor ? "fsetxattr" : "setxattr")(\(subject), \"\(name)\", size=\(a[3]), options=\(hx(UInt32(bitPattern: options))))"
+                guard a[4] == 0, a[3] <= 1 << 26 else { throw Failure(errno: Errno.EINVAL) }
+                let value: [UInt8] = a[3] == 0 ? [] : try mem.read(va: a[2], count: Int(a[3]))
+                try fs.setExtendedAttribute(target, name: name, value: value, create: options & 0x2 != 0,
+                                            replace: options & 0x4 != 0)
+                return 0
+            default:
+                call = "\(byDescriptor ? "fremovexattr" : "removexattr")(\(subject), \"\(name)\")"
+                try fs.removeExtendedAttribute(target, name: name)
+                return 0
+            }
         }
     }
 
@@ -214,12 +264,7 @@ extension DarwinKernel {
 
         case BSD2.csops, BSD2.csopsAudittoken:
             call = "\(n == BSD2.csops ? "csops" : "csops_audittoken")(pid=\(int(0)), ops=\(int(1)), addr=\(hx(a[2])), size=\(a[3]))"
-            guard int(0) == 0 || int(0) == pid else { throw Failure(errno: Errno.ESRCH) }
-            // Status and every other query: no code-signing flags, zero data.
-            if a[2] != 0, a[3] > 0 {
-                try mem.write(va: a[2], bytes: [UInt8](repeating: 0, count: Int(min(a[3], 4096))))
-            }
-            return .value(0)
+            return .value(try csopsCall(n == BSD2.csopsAudittoken, a, &call, mem))
 
         case BSD2.procInfo:
             call = "proc_info(callnum=\(int(0)), pid=\(int(1)), flavor=\(int(2)), arg=\(hx(a[3])), buffer=\(hx(a[4])), "
@@ -350,28 +395,17 @@ extension DarwinKernel {
             let mode = isAt ? int(2) : int(1)
             call = isAt ? "faccessat(\(int(0)), \"\(path)\", mode=\(mode), flag=\(hx(a[3])))" : "access(\"\(path)\", mode=\(mode))"
             let follow = !isAt || int(3) & Self.atSymlinkNofollow == 0
-            _ = try fileSystem.stat(path, followSymlinks: follow)
+            _ = try statUnlocked(path, followSymlinks: follow)
             return .value(0)
 
-        // Extended attributes (xnu bsd/vfs/vfs_syscalls.c, sys/xattr.h): Ycode's
-        // files carry none. The file must exist (path calls; XATTR_NOFOLLOW
-        // = 0x1 in `options`) or the descriptor be open; then get and remove
-        // report ENOATTR, list an empty list (0 bytes), set ENOTSUP (a file
-        // system without extended-attribute support).
-        case BSD2.getxattr, BSD2.setxattr, BSD2.removexattr, BSD2.listxattr:
-            let path = try readPath(a[0], mem)
-            let options = n == BSD2.getxattr || n == BSD2.setxattr ? int(5) : (n == BSD2.removexattr ? int(2) : int(3))
-            let name = [BSD2.getxattr: "getxattr", BSD2.setxattr: "setxattr", BSD2.removexattr: "removexattr",
-                        BSD2.listxattr: "listxattr"][n]!
-            call = "\(name)(\"\(path)\", \(hx(a[1])), options=\(hx(UInt64(UInt32(bitPattern: options)))))"
-            _ = try fileSystem.stat(path, followSymlinks: options & 0x1 == 0)
-            return try xattrResult(n)
-        case BSD2.fgetxattr, BSD2.fsetxattr, BSD2.fremovexattr, BSD2.flistxattr:
-            let name = [BSD2.fgetxattr: "fgetxattr", BSD2.fsetxattr: "fsetxattr", BSD2.fremovexattr: "fremovexattr",
-                        BSD2.flistxattr: "flistxattr"][n]!
-            call = "\(name)(fd=\(int(0)), \(hx(a[1])))"
-            _ = try fileSystem.fstat(int(0))
-            return try xattrResult(n)
+        // Extended attributes (sys/xattr.h, getxattr(2), setxattr(2),
+        // listxattr(2), removexattr(2)): kept as host extended attributes
+        // (`DarwinFileSystem` "Extended attributes"). options: XATTR_NOFOLLOW
+        // 0x1, XATTR_CREATE 0x2, XATTR_REPLACE 0x4; `position` (resource
+        // forks) must be 0.
+        case BSD2.getxattr, BSD2.fgetxattr, BSD2.setxattr, BSD2.fsetxattr,
+             BSD2.removexattr, BSD2.fremovexattr, BSD2.listxattr, BSD2.flistxattr:
+            return .value(try extendedAttributeCall(n, a, &call, mem))
 
         // gettid (pthread_getugid_np): a thread without an override identity
         // (every Ycode thread) gets ESRCH (xnu bsd/kern/kern_prot.c).
@@ -382,14 +416,33 @@ extension DarwinKernel {
         case BSD2.fstatat, BSD2.fstatat64:
             let path = try resolveAtPath(int(0), a[1], mem)
             call = "fstatat64(\(int(0)), \"\(path)\", buf=\(hx(a[2])), flag=\(hx(a[3])))"
-            let st = try fileSystem.stat(path, followSymlinks: int(3) & Self.atSymlinkNofollow == 0)
+            let st = try statUnlocked(path, followSymlinks: int(3) & Self.atSymlinkNofollow == 0)
             try mem.write(va: a[2], bytes: st.encodedStat64())
             return .value(0)
 
         case BSD2.openat:
             let path = try resolveAtPath(int(0), a[1], mem)
             call = "openat(\(int(0)), \"\(path)\", flags=\(openFlagsText(int(2))), mode=0o\(String(a[3] & 0o7777, radix: 8)))"
-            let newFD = try fileSystem.open(path, flags: int(2), mode: UInt16(truncatingIfNeeded: a[3]))
+            let newFD = try openUnlocked(path, flags: int(2), mode: UInt16(truncatingIfNeeded: a[3]))
+            extended.directoryCursors[newFD] = nil
+            return .value(UInt64(UInt32(bitPattern: newFD)))
+
+        // open_dprotected_np / openat_dprotected_np (sys/fcntl.h): an open
+        // that also names a data-protection class, which a newly created
+        // file gets (FileLocks.swift); the dpflags as on the simulator's
+        // host volume (checkDataProtectionOpen).
+        case BSD2.openDprotectedNp, BSD2.openatDprotectedNp:
+            let at = n == BSD2.openatDprotectedNp
+            let path = try resolveAtPath(at ? int(0) : Self.atFDCWD, at ? a[1] : a[0], mem)
+            let base = at ? 2 : 1
+            let flags = int(base), dpclass = int(base + 1), dpflags = int(base + 2)
+            call = "\(at ? "openat_dprotected_np(\(int(0)), " : "open_dprotected_np(")\"\(path)\", "
+                + "flags=\(openFlagsText(flags)), class=\(dpclass), dpflags=\(hx(UInt64(UInt32(bitPattern: dpflags)))), "
+                + "mode=0o\(String(a[base + 3] & 0o7777, radix: 8)))"
+            try checkDataProtectionOpen(flags: flags, dpflags: dpflags)
+            let created = (try? fileSystem.stat(path, followSymlinks: true)) == nil
+            let newFD = try fileSystem.open(path, flags: flags, mode: UInt16(truncatingIfNeeded: a[base + 3]))
+            if created { noteCreatedWithClass(newFD, dpclass) }
             extended.directoryCursors[newFD] = nil
             return .value(UInt64(UInt32(bitPattern: newFD)))
 
@@ -629,13 +682,22 @@ extension DarwinKernel {
         return UInt64(out.count)
     }
 
+    /// The entries of an open directory. The descriptor is read with the
+    /// kernel lock; the host listing and the per-entry stats run without it
+    /// (stage6-contract.md §5.1).
     private func listDirectory(fd: Int32, file: GuestFile) throws -> [(name: String, ino: UInt64, type: UInt8)] {
+        let selfStat = try fileSystem.fstat(fd)
+        let fileSystem = self.fileSystem
+        return try lock.unlocked { try Self.listDirectory(file: file, selfStat: selfStat, fileSystem: fileSystem) }
+    }
+
+    private static func listDirectory(file: GuestFile, selfStat: DarwinStat,
+                                      fileSystem: DarwinFileSystem) throws -> [(name: String, ino: UInt64, type: UInt8)] {
         let dir = file.guestPath
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: file.hostPath) else {
             throw Failure(errno: Errno.EIO)
         }
         var entries: [(name: String, ino: UInt64, type: UInt8)] = []
-        let selfStat = try fileSystem.fstat(fd)
         entries.append((".", selfStat.ino, 4))
         let parent = (dir as NSString).deletingLastPathComponent
         let parentIno = (try? fileSystem.stat(parent.isEmpty ? "/" : parent, followSymlinks: true).ino) ?? selfStat.ino

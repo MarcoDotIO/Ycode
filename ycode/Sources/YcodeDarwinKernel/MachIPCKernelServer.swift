@@ -44,6 +44,8 @@ extension MachIPC {
             } else {
                 reply = .error(MachKern.invalidTask)
             }
+        case .ioMain, .ioObject:
+            reply = ioKitServer(&request, port: p)
         default: reply = .error(MachKern.migBadID)
         }
         destroyMessage(request)

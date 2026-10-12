@@ -108,3 +108,48 @@ orchestrator).
   self-targeted VM traps under L1 only.
 - VM teardown: `discardAll()` under the lock, `vm.close()` outside it
   (KVM teardown takes 2–70 ms).
+
+## 6. Resolution (stage 6 done, 2026-10-12)
+
+**Exit criterion met** (orchestrator, fresh tree on the Thor, release
+build, `--runtime-paths`, 180 s, no debug flags): `launchd_sim` stays up;
+the core set — logd, notifyd, cfprefsd (user), containermanagerd (system and
+user), deviceconfigurationd, UserEventAgent-System, mobileassetd, lsd,
+runningboardd — each spawns once and is alive at the timeout; the only
+crash/throttle lines are `configd_sim` (missing host service, §4). 119
+user-domain jobs have a pid in `launchctl list`, including SpringBoard and
+backboardd (headless). The 54-check verify suite passes; 448 Swift tests
+pass on macOS, the Thor, and x86-64.
+
+Decisions (Ycode, recorded here):
+
+- **Sandbox:** `__mac_syscall` returns ENOPOLICY except the Sandbox check
+  call (2), which returns 0 ("allowed"): every simulator daemon on the Mac
+  observes `sandbox_check` = 0 (level 3). With it, CFPreferences uses
+  cfprefsd instead of direct file access.
+- **Data protection:** classes are stored per file (file default 3,
+  directory default 0, new files inherit the directory class, class 4
+  stored as 3, files refuse 6 and 7 with EPERM, `F_GETPROTECTIONLEVEL` 5);
+  `open_dprotected_np` dpflags 1 read-only, 2 EPERM, 4 EINVAL (level 3:
+  our probe on the Mac's simulator).
+- **csops:** xnu `csops_internal` rules (level 1); status words as observed
+  on the Mac's simulator: platform binaries `0x26004201`, other signed
+  images `0x22000201` plus linker-signed (level 3).
+- **Durability:** `fsync`/`fdatasync` are no-ops on files (ENOTSUP on other
+  descriptors); the host's page cache is trusted.
+- **Extended attributes** persist as host xattrs named `user.ycode.<name>`.
+- **chown** cannot change the owner; group may be −1, the current group, or
+  20. **chflags** is accepted and not stored.
+- **rlimits:** NOFILE (256, unlimited), NPROC (6000, 9000) (level 3).
+- **IOKit:** the minimal registry of `iokit-minimal.md`.
+- **Locking:** the global lock is released around host file-system I/O for
+  `stat`-family, `access`, `open`/`openat`, and directory listings
+  (`KernelLock.unlocked`); §5.1 step one is done. Lock busy 58 → 51 % at
+  90 s.
+- `--repeat` leak verdict: threads, fds, VMs flat; RSS may grow ≤ 8 MiB.
+
+Open after stage 6: a host-side SCDynamicStore for `configd_sim`; the
+intermittent `searchd` fault (write to `0xbad` in SpotlightIndex);
+`posix_spawn` image loading outside the lock; still-unimplemented calls
+seen in the boot (`thread_get_state`, `kpersona_*`, `posix_madvise`,
+`quotactl`, `memorystatus_control`, `setattrlist`).

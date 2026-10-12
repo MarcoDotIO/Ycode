@@ -30,6 +30,10 @@ public enum MachKernelObject: Equatable, Sendable, CustomStringConvertible {
     case fileport(serial: UInt64)
     /// A memory entry (named entry, xnu `IKOT_NAMED_ENTRY`): shared memory.
     case memoryEntry(serial: UInt64)
+    /// The IOKit main port (`IOKitRegistry.swift`).
+    case ioMain
+    /// An IOKit object: a registry entry, an iterator, a notification.
+    case ioObject(serial: UInt64)
 
     /// True for every task flavor (control, name, read, inspect).
     public var isTaskFlavor: Bool {
@@ -52,6 +56,8 @@ public enum MachKernelObject: Equatable, Sendable, CustomStringConvertible {
         case .bootstrap: "bootstrap"
         case let .clock(id): "clock(\(id))"
         case let .semaphore(serial): "semaphore#\(serial)"
+        case .ioMain: "iokit-main"
+        case let .ioObject(serial): "iokit-object#\(serial)"
         }
     }
 }

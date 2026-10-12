@@ -133,12 +133,14 @@ public final class DarwinKernel {
             542: 540, 543: 541, 413: 133,
             // Stage 4b (process layer): wait4_nocancel, waitid_nocancel.
             400: 7, 416: 173,
+            // Stage 6: sem_wait_nocancel.
+            420: 271,
         ]
     }
 
     /// Mach trap numbers handled here (negative x16).
     public enum Mach {
-        public static let machAbsoluteTime = -3, machContinuousTime = -4, vmAllocate = -10, vmDeallocate = -12,
+        public static let machAbsoluteTime = -3, machContinuousTime = -4, vmAllocate = -10, vmPurgableControl = -11, vmDeallocate = -12,
                           vmProtect = -14, portAllocate = -16, portDeallocate = -18, portInsertRight = -21,
                           portConstruct = -24, portDestruct = -25, replyPort = -26, threadSelf = -27,
                           taskSelf = -28, hostSelf = -29, machMsg = -31, threadSwitch = -61, timebaseInfo = -89,
@@ -246,6 +248,15 @@ public final class DarwinKernel {
         public static let getpath: Int32 = 50
         public static let addFileSigsReturn: Int32 = 97
         public static let checkLV: Int32 = 98
+        public static let preallocate: Int32 = 42
+        public static let getProtectionClass: Int32 = 63, setProtectionClass: Int32 = 64
+        public static let getProtectionLevel: Int32 = 77
+        public static let getpathNoFirmlink: Int32 = 102
+        public static let setConfined: Int32 = 95, getConfined: Int32 = 96
+        /// F_RDADVISE 44, F_RDAHEAD 45, F_NOCACHE 48, F_FULLFSYNC 51,
+        /// F_GLOBAL_NOCACHE 55, F_NODIRECT 62, F_SINGLE_WRITER 76,
+        /// F_BARRIERFSYNC 85, F_SPECULATIVE_READ 101 (sys/fcntl.h).
+        public static let hints: Set<Int32> = [44, 45, 48, 51, 55, 62, 76, 85, 101]
     }
 
     public static let pageSize: UInt64 = 0x4000
@@ -304,6 +315,8 @@ public final class DarwinKernel {
     /// The pid version (audit-token word 7): changes on every exec
     /// (`processes.md` §2.1).
     public internal(set) var pidVersion: UInt32 = 0
+    /// The host path of this image's executable (csops reads its signature).
+    var executableHostPath: String?
     /// The in-process Mach IPC (`MachIPC`, attached by `init`). Mach traps
     /// (except the clock, VM, semaphore, and yield traps) and the private
     /// range `0x7963_2000…0x7963_20FF` go to it first.
@@ -329,6 +342,8 @@ public final class DarwinKernel {
     public var isTerminating: Bool { termination != nil }
     /// ulock wait queues by address.
     var ulocks: [UInt64: ULockQueue] = [:]
+    /// `vm_purgable_control` states by page address (Ycode never purges).
+    var purgeableStates: [UInt64: Int32] = [:]
     /// The process workqueue and the kevent engine.
     var workqueue = WorkqueueState()
     var kevents = KEventState()
@@ -379,7 +394,11 @@ public final class DarwinKernel {
         attachIPCHooks()
         // Every close (close, dup2 over an open fd, exec, exit) drops the
         // knotes and directory cursor of that descriptor (stage 4b).
-        fileSystem.descriptorClosed = { [weak self] fd in self?.descriptorWasClosed(fd) }
+        // Stage 6: and the process's POSIX record locks on that file.
+        fileSystem.descriptorClosed = { [weak self] fd, file in
+            self?.descriptorWasClosed(fd)
+            self?.lock.withLock { self?.releasePOSIXLocksOnClose(file) }
+        }
     }
 
     private func attachIPCHooks() {
@@ -682,7 +701,7 @@ public final class DarwinKernel {
         case BSD.open:
             let path = try readPath(a[0], mem)
             call = "open(\"\(path)\", flags=\(openFlagsText(int(1))), mode=0o\(String(a[2] & 0o7777, radix: 8)))"
-            let newFD = try fs.open(path, flags: int(1), mode: UInt16(truncatingIfNeeded: a[2]))
+            let newFD = try openUnlocked(path, flags: int(1), mode: UInt16(truncatingIfNeeded: a[2]))
             return .value(UInt64(UInt32(bitPattern: newFD)))
 
         case BSD.close:
@@ -756,7 +775,10 @@ public final class DarwinKernel {
             return .value(try sysctlRead(sysctl.lookup(name: name), name: name,
                                          old: a[2], oldlenp: a[3], new: a[4], newlen: a[5], mem))
 
-        case BSD.getattrlist, BSD.fsgetpath, BSD.getattrlistbulk:
+        case BSD.getattrlist, 228, 476:
+            return .value(try attributeListCall(n, a, &call, mem))
+
+        case BSD.fsgetpath, BSD.getattrlistbulk:
             throw Failure(errno: Errno.ENOTSUP)
 
         case BSD.issetugid:
@@ -766,13 +788,30 @@ public final class DarwinKernel {
         case BSD.stat64, BSD.lstat64:
             let path = try readPath(a[0], mem)
             call = "\(n == BSD.stat64 ? "stat64" : "lstat64")(\"\(path)\", buf=\(hx(a[1])))"
-            let st = try fs.stat(path, followSymlinks: n == BSD.stat64)
+            let st = try statUnlocked(path, followSymlinks: n == BSD.stat64)
             try mem.write(va: a[1], bytes: st.encodedStat64())
             return .value(0)
 
         case BSD.fstat64:
             call = "fstat64(fd=\(fd(0)), buf=\(hx(a[1])))"
             try mem.write(va: a[1], bytes: fs.fstat(fd(0)).encodedStat64())
+            return .value(0)
+
+        case 341, 342, 343:
+            // stat64_extended / lstat64_extended / fstat64_extended: stat64
+            // plus the file's ACL (filesec); Ycode files carry none, so the
+            // size out-parameter is 0 (xnu vfs_syscalls.c stat2/fstat1).
+            let st: DarwinStat
+            if n == 343 {
+                call = "fstat64_extended(fd=\(fd(0)), buf=\(hx(a[1])), xsec=\(hx(a[2])), xsize=\(hx(a[3])))"
+                st = try fs.fstat(fd(0))
+            } else {
+                let path = try readPath(a[0], mem)
+                call = "\(n == 341 ? "stat64_extended" : "lstat64_extended")(\"\(path)\", buf=\(hx(a[1])))"
+                st = try statUnlocked(path, followSymlinks: n == 341)
+            }
+            try mem.write(va: a[1], bytes: st.encodedStat64())
+            if a[3] != 0 { try mem.write(va: a[3], bytes: [UInt8](repeating: 0, count: 8)) }
             return .value(0)
 
         case BSD.getfsstat64:
@@ -791,6 +830,7 @@ public final class DarwinKernel {
 
         default:
             if let result = try posixShmCall(n, a, &call, mem) { return result }
+            if PosixSemBSD.all.contains(n) { return try posixSemCall(n, a, &call, mem) }
             return try extendedBSDCall(n, a, &call, &fallback, mem) ?? .unimplemented
         }
     }
@@ -885,6 +925,23 @@ public final class DarwinKernel {
         return Self.bsdthreadFeatures
     }
 
+    // MARK: Host file-system I/O without the kernel lock (stage6-contract.md §5.1)
+
+    /// `stat` of a guest path with the kernel lock released for the host I/O.
+    func statUnlocked(_ path: String, followSymlinks: Bool) throws -> DarwinStat {
+        let fs = fileSystem
+        return try lock.unlocked { try fs.stat(path, followSymlinks: followSymlinks) }
+    }
+
+    /// `open`: resolve and open the host file without the kernel lock, then
+    /// install the descriptor with it (EINTR if the image ended meanwhile).
+    func openUnlocked(_ path: String, flags: Int32, mode: UInt16) throws -> Int32 {
+        let fs = fileSystem
+        let prepared = try lock.unlocked { try fs.prepareOpen(path, flags: flags, mode: mode) }
+        guard !isTerminating else { throw Failure(errno: 4) }
+        return try fs.install(prepared)
+    }
+
     // MARK: fcntl
 
     private func fcntl(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
@@ -893,6 +950,9 @@ public final class DarwinKernel {
         let cmd = Int32(truncatingIfNeeded: a[1])
         let arg = a[2]
         let names: [Int32: String] = [1: "F_GETFD", 2: "F_SETFD", 3: "F_GETFL", 50: "F_GETPATH",
+                                      42: "F_PREALLOCATE", 44: "F_RDADVISE", 45: "F_RDAHEAD", 48: "F_NOCACHE",
+                                      51: "F_FULLFSYNC", 63: "F_GETPROTECTIONCLASS", 64: "F_SETPROTECTIONCLASS", 77: "F_GETPROTECTIONLEVEL",
+                                      85: "F_BARRIERFSYNC", 102: "F_GETPATH_NOFIRMLINK", 95: "F_SETCONFINED", 96: "F_GETCONFINED",
                                       97: "F_ADDFILESIGS_RETURN", 98: "F_CHECK_LV"]
         call = "fcntl(fd=\(fd), \(names[cmd] ?? "cmd \(cmd)"), arg=\(hx(arg)))"
         switch cmd {
@@ -913,11 +973,49 @@ public final class DarwinKernel {
             return 0
         case Fcntl.checkLV:
             return 0
+        case Fcntl.getpathNoFirmlink:
+            let path = try fs.path(for: fd)
+            let bytes = cString(path)
+            guard bytes.count <= DarwinFileSystem.maxPathLength else { throw Failure(errno: Errno.ENAMETOOLONG) }
+            try mem.write(va: arg, bytes: bytes)
+            call += " [\(path)]"
+            return 0
+        case let c where Fcntl.hints.contains(c):
+            // Caching and ordering hints (F_NOCACHE, F_FULLFSYNC, F_BARRIERFSYNC,
+            // F_RDAHEAD, ...): accepted on any open descriptor; Ycode's
+            // writes reach the host file before the call returns.
+            _ = try fs.openFile(for: fd)
+            return 0
+        case Fcntl.getProtectionClass, Fcntl.setProtectionClass, Fcntl.getProtectionLevel:
+            // Data-protection classes as the simulator's host volume keeps
+            // them (FileLocks.swift; level 3).
+            return try protectionFcntl(fd, cmd, arg, &call)
+        case Fcntl.preallocate:
+            // fstore_t: fst_flags u32 @0, fst_posmode i32 @4, fst_offset @8,
+            // fst_length @16, fst_bytesalloc @24 (sys/fcntl.h). xnu
+            // (kern_descrip.c) needs a descriptor open for writing (EBADF),
+            // F_PEOFPOSMODE 3 or F_VOLPOSMODE 4, and a length > 0 (EINVAL).
+            _ = try fs.openFile(for: fd)
+            guard try fs.statusFlags(fd) & 0x3 != 0 else { throw Failure(errno: Errno.EBADF) }
+            let store = try mem.read(va: arg, count: 32)
+            let posmode = store.readLE(Int32.self, at: 4), length = store.readLE(Int64.self, at: 16)
+            guard posmode == 3 || posmode == 4, length > 0 else { throw Failure(errno: Errno.EINVAL) }
+            var allocated: [UInt8] = []
+            allocated.appendLE(store.readLE(Int64.self, at: 16))
+            try mem.write(va: arg + 24, bytes: allocated)
+            return 0
         case Fcntl.setfd:
             try fs.setCloseOnExec(fd, arg & 1 != 0)
+            try fs.setCloseOnFork(fd, arg & 2 != 0)
             return 0
         case Fcntl.getfd:
-            return try fs.closeOnExec(fd) ? 1 : 0
+            return (try fs.closeOnExec(fd) ? 1 : 0) | (try fs.closeOnFork(fd) ? 2 : 0)
+        case Fcntl.setConfined:
+            // F_SETCONFINED / F_GETCONFINED (xnu bsd/sys/fcntl.h, kern_descrip.c).
+            try fs.setConfined(fd, arg != 0)
+            return 0
+        case Fcntl.getConfined:
+            return try fs.openFile(for: fd).confinedToProcess ? 1 : 0
         case Fcntl.getfl:
             return UInt64(UInt32(bitPattern: try fs.statusFlags(fd)))
         default:
@@ -949,6 +1047,13 @@ public final class DarwinKernel {
             var oid: [UInt8] = []
             for v in entry.mib { oid.appendLE(v) }
             return try copyOut(oid, old: a[2], oldlenp: a[3], mem)
+        }
+        if mib.count == 4, mib[0] == 1, mib[1] == 14, mib[2] == 1 {
+            // kern.proc.pid.<pid>: one struct kinfo_proc; an unknown pid
+            // returns no data and no error (xnu sysctl_prochandle).
+            call += " [kern.proc.pid.\(mib[3])]"
+            if a[4] != 0 && a[5] != 0 { throw Failure(errno: Errno.EPERM) }
+            return try copyOut(kinfoProc(mib[3]) ?? [], old: a[2], oldlenp: a[3], mem)
         }
         let entry = sysctl.lookup(mib: mib)
         if let entry { call += " [\(entry.name)]" }
@@ -1035,6 +1140,34 @@ public final class DarwinKernel {
             }
             guard (try? writeU64(a[1], va, mem)) != nil else { return kr(KernReturn.invalidAddress) }
             return kr(KernReturn.success, " [addr=\(hx(va))]")
+
+        case Mach.vmPurgableControl:
+            // xnu osfmk/mach/vm_purgable.h: control 0 SET_STATE (in: new
+            // state, out: old), 1 GET_STATE, 2 PURGE_ALL. Ycode memory is
+            // never purged, so a volatile region keeps its contents and
+            // reports VOLATILE, never EMPTY (2).
+            let control = Int32(truncatingIfNeeded: a[2])
+            call = "vm_purgable_control(target=\(hx(port(0))), addr=\(hx(a[1])), control=\(control), state=\(hx(a[3])))"
+            let page = a[1] & ~Self.pageMask
+            switch control {
+            case 0, 1:
+                guard let raw = try? mem.read(va: a[3], count: 4) else { return kr(KernReturn.invalidAddress) }
+                let old = purgeableStates[page] ?? 0
+                if control == 0 {
+                    let requested = raw.readLE(Int32.self, at: 0)
+                    let state = requested & 0x3
+                    guard state != 2 else { return kr(KernReturn.invalidArgument) }  // EMPTY may not be set
+                    purgeableStates[page] = state == 0 ? nil : state
+                }
+                var out: [UInt8] = []
+                out.appendLE(old)
+                guard (try? mem.write(va: a[3], bytes: out)) != nil else { return kr(KernReturn.invalidAddress) }
+                return kr(KernReturn.success, " [old state \(old)]")
+            case 2:
+                return kr(KernReturn.success)
+            default:
+                return kr(KernReturn.invalidArgument)
+            }
 
         case Mach.vmDeallocate:
             call = "vm_deallocate(target=\(hx(port(0))), addr=\(hx(a[1])), size=\(hx(a[2])))"
@@ -1134,7 +1267,7 @@ public final class DarwinKernel {
     private func isPortReturning(_ n: Int) -> Bool { [-26, -27, -28, -29, -50, -91].contains(n) }
 
     private func overlapsMapping(_ va: UInt64, _ size: UInt64, _ mem: any KernelGuestMemory) -> Bool {
-        mem.regions.contains { r in r.va < va + size && va < r.va + r.size }
+        !mem.regions(overlapping: va..<max(va, va &+ size)).isEmpty
     }
 
     // MARK: Private traps

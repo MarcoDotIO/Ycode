@@ -1056,7 +1056,10 @@ the legacy traps) for priority-inheritance linkage.
 What Ycode needs:
 
 - Treat it as an ordinary port of kind *special reply* (copyin restricted to
-  send-once dispositions, §4.1).
+  send-once dispositions, §4.1). A reply **to** a special reply port may be
+  sent with `MOVE_SEND_ONCE` as well as `MAKE_SEND_ONCE` (xnu
+  `ipc_right_copyin_check_reply`); libdispatch resends pseudo-received
+  messages this way after `MACH_SEND_TIMED_OUT` (added in stage 6).
 - `MACH_RCV_SYNC_WAIT` linkage may be ignored, with one check that xnu
   performs: if the receive names a port that is **not** the calling
   thread's bound special reply port, or the sync destination name is not

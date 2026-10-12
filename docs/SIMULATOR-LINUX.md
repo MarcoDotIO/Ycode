@@ -138,7 +138,9 @@ vCPU, or vCPUs are multiplexed when the thread count grows.
      Contract: `specs/simulator/stage4c-contract.md`.
 5. **Mach IPC and bootstrap.** Ports, rights, `mach_msg`, and bootstrap
    lookup, enough to run `launchd_sim` with no daemons.
-6. **launchd_sim plus the core daemons.** `cfprefsd`, `notifyd`,
+6. **launchd_sim plus the core daemons.** *(Done 2026-10-12: the full
+   job set boots headless on the Thor; the core daemons stay up; only
+   `configd_sim` waits for a host service. `specs/simulator/stage6-contract.md`.)* `cfprefsd`, `notifyd`,
    `logd`-equivalents. A headless boot.
 7. **UIKit app, headless.** The probe app (`research/experiments/simulator/ProbeApp`)
    prints its report.

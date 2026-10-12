@@ -61,7 +61,7 @@ import YcodeDarwinABI
         #expect(env.svc(327).1.x[0] == 0)
         let (_, ioctl) = env.svc(54, [1, 0x4004_7400, 0])
         #expect(ioctl.carry && ioctl.x[0] == 25)
-        for n: UInt64 in [220, 427, 461] {
+        for n: UInt64 in [427, 461] {  // fsgetpath, getattrlistbulk
             let (_, g) = env.svc(n)
             #expect(g.carry && g.x[0] == 45)
         }

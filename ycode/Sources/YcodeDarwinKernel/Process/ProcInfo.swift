@@ -171,6 +171,36 @@ extension DarwinKernel {
         return UInt64(bytes.count)
     }
 
+    /// `struct kinfo_proc` (648 bytes) for sysctl KERN_PROC_PID. Offsets from
+    /// the public <sys/sysctl.h> and <sys/proc.h> (arm64): extern_proc
+    /// p_starttime @0, p_flag @32 (P_LP64 0x4 | P_EXEC 0x4000), p_stat @36,
+    /// p_pid @40, p_oppid @44, p_priority @240, p_comm[17] @243, p_xstat @280;
+    /// eproc p_ruid/svuid/rgid/svgid @392…404, cr_uid @420, cr_ngroups @424,
+    /// cr_groups @428, e_ppid @560, e_pgid @564, e_tdev @572 (NODEV −1),
+    /// e_tpgid @576.
+    func kinfoProc(_ pid: Int32) -> [UInt8]? {
+        guard pid > 0, let p = system.processes[pid] else { return nil }
+        var b = [UInt8](repeating: 0, count: 648)
+        b.putLE(UInt64(bitPattern: p.startTime.seconds), at: 0)
+        b.putLE(Int32(truncatingIfNeeded: p.startTime.microseconds), at: 8)
+        b.putLE(UInt32(0x4 | 0x4000), at: 32)
+        b[36] = UInt8(truncatingIfNeeded: statusCode(p))
+        b.putLE(p.pid, at: 40)
+        b.putLE(p.ppid, at: 44)
+        b[240] = 31
+        b.put(Array(p.comm.utf8.prefix(16)), at: 243)
+        if p.isZombie { b.putLE(UInt16(truncatingIfNeeded: p.status), at: 280) }
+        let uid = DarwinFileSystem.guestUID, gid = DarwinFileSystem.guestGID
+        for (i, v) in [uid, uid, gid, gid].enumerated() { b.putLE(v, at: 392 + 4 * i) }
+        b.putLE(uid, at: 420)
+        b.putLE(Int16(1), at: 424)
+        b.putLE(gid, at: 428)
+        b.putLE(p.ppid, at: 560)
+        b.putLE(p.pgid, at: 564)
+        b.putLE(Int32(-1), at: 572)
+        return b
+    }
+
     private func statusCode(_ p: DarwinProcess) -> UInt32 {
         switch p.state {
         case .running: 2

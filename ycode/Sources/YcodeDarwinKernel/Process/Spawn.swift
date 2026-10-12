@@ -409,7 +409,7 @@ extension DarwinKernel {
     /// process table changes. On failure everything made is released.
     private func buildImage(_ request: SpawnRequest, pid newPID: Int32, isExec: Bool)
         throws -> (kernel: DarwinKernel, guestPath: String, hostPath: String) {
-        let fs = fileSystem.makeChildCopy()
+        let fs = fileSystem.makeChildCopy(newProcess: !isExec)
         let guestPath: String, hostPath: String
         let marked: Set<Int32>
         do {
@@ -422,6 +422,7 @@ extension DarwinKernel {
         }
         let k = DarwinKernel(fileSystem: fs, pid: newPID, system: system, log: log, counter: counter,
                              counterFrequency: counterFrequency, wallClock: wallClock)
+        k.executableHostPath = hostPath
         inheritProcessState(into: k, attributes: request.attributes, isExec: isExec)
         if let mine = machIPC as? MachIPC, let theirs = k.machIPC as? MachIPC {
             theirs.inheritTaskPorts(from: mine)

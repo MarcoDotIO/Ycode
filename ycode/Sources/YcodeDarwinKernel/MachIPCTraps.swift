@@ -50,6 +50,8 @@ extension MachIPC {
         /// `mach_port_get_context(task, name, &context)` / `mach_port_set_context(task, name, context)`.
         public static let portGetContext: UInt32 = 0x7963_200E
         public static let portSetContext: UInt32 = 0x7963_200F
+        /// `host_get_io_master(host, &main)` / `host_get_io_main`: the IOKit main port.
+        public static let hostGetIOMain: UInt32 = 0x7963_2010
     }
 
     /// `TASK_BOOTSTRAP_PORT`.
@@ -443,6 +445,12 @@ extension MachIPC {
             }
             let request = MachSendRequest(bits: bits, size: sendSize, remote: lo(3), local: hi(3), voucher: lo(4),
                                           id: Int32(bitPattern: hi(4)), descriptorCount: lo(5), body: body, aux: aux)
+            if Self.traceMessageStrings {
+                // Diagnostics: the printable runs of the body and aux data
+                // (os_log payloads, XPC keys and strings).
+                let runs = Self.printableRuns(body + (aux ?? []))
+                if !runs.isEmpty { note += " [strings: " + runs.joined(separator: " | ") + "]" }
+            }
             let (code, pseudo, sendNote) = send(request, options: options, timeout: timeout, msg2: true, memory: memory)
             note += sendNote
             if code != 0 {
@@ -646,6 +654,16 @@ extension MachIPC {
             let (code, note) = vmRemap(a, memory: memory)
             return kr(code, note)
 
+        case Routine.hostGetIOMain:
+            call = "host_get_io_main(host=\(hx(u32(0))), out=\(hx(a[1])))"
+            guard let (_, object) = kernelObject(named: u32(0)), object == .host else { return kr(MachKern.invalidArgument) }
+            let name = copyoutNewSend(system.ioKitMainPort())
+            guard write32(a[1], name) else {
+                _ = portDeallocate(name)
+                return kr(MachKern.invalidAddress)
+            }
+            return kr(0, " [\(hx(name))]")
+
         case Routine.taskThreads:
             call = "task_threads(task=\(hx(u32(0))), list=\(hx(a[1])), count=\(hx(a[2])))"
             guard let kernel else { return kr(MachKern.failure) }
@@ -715,5 +733,26 @@ extension MachIPC {
             return KeventMachReceive(returnCode: result.code, size: result.size, auxiliarySize: result.auxSize,
                                      data: result.code == MachMsgReturn.rcvTooLarge ? UInt64(result.identity) : 0)
         }
+    }
+}
+
+extension MachIPC {
+    /// Diagnostics: annotate traced mach_msg2 sends with the printable text
+    /// of their payload (set by the VMM with a trace option).
+    nonisolated(unsafe) public static var traceMessageStrings = false
+
+    /// Runs of at least 6 printable ASCII bytes, at most 12 runs.
+    static func printableRuns(_ bytes: [UInt8]) -> [String] {
+        var runs: [String] = []
+        var current: [UInt8] = []
+        func flush() {
+            if current.count >= 6 && runs.count < 12 { runs.append(String(decoding: current, as: UTF8.self)) }
+            current.removeAll()
+        }
+        for b in bytes {
+            if (0x20..<0x7F).contains(b) { current.append(b) } else { flush() }
+        }
+        flush()
+        return runs
     }
 }

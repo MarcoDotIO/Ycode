@@ -143,6 +143,8 @@ struct Options {
     var debugThreadReport = false
     /// Debug: trace only these pids (as --trace --keep-going would).
     var tracePIDs: Set<Int32> = []
+    /// Debug: trace every image of these executables (file name).
+    var traceNames: Set<String> = []
     /// Debug: replace top-level booleans of the bootstrap plist.
     var plistBoolOverrides: [String: Bool] = [:]
     /// Debug: the logging host bootstrap service drops requests (instead of
@@ -255,6 +257,7 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--runtime-job": options.runtimeJobs.append(value(for: argument))
         case "--runtime-paths": options.runtimePaths = true
         case "--debug-thread-report": options.debugThreadReport = true
+        case "--trace-name": options.traceNames.insert(value(for: argument))
         case "--trace-pid":
             guard let n = Int32(value(for: argument)) else { die("--trace-pid needs a pid", status: 64) }
             options.tracePIDs.insert(n)

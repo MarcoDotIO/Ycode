@@ -226,6 +226,9 @@ let holdingTankKey = "XPC_SIMULATOR_HOLDING_TANK_HACK"
 /// process ended and the rest of the system was stopped.
 func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> Int32 {
     let system = DarwinSystem()
+    if config.trace || !config.options.tracePIDs.isEmpty || !config.options.traceNames.isEmpty {
+        MachIPC.traceMessageStrings = true
+    }
     let launcher = VMMLauncher(config: config)
     system.launcher = launcher
     system.processExited = { [weak launcher] pid, status in launcher?.processExited(pid: pid, status: status) }
@@ -363,6 +366,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
             if let summary = record.finalSummary ?? record.image?.summary(locked: false) {
                 line += "; " + summary.split(separator: ";").first.map(String.init)!
             }
+            if let missing = record.finalUnimplemented { line += "; unimplemented: " + missing }
             stderrLine(line)
         }
     }
@@ -442,6 +446,12 @@ func runExec(_ options: Options) throws -> Never {
         + "after run 1 -> after run \(count): host threads \(afterFirst.threads) -> \(after.threads), "
         + "RSS \(afterFirst.rssKiB / 1024) -> \(after.rssKiB / 1024) MiB, fds \(afterFirst.fds) -> \(after.fds); "
         + "VMs live \(vms.created - vms.destroyed)")
+    // The verdict: no thread, fd, or VM growth; RSS may take one step of up
+    // to 8 MiB after run 1 (the shared read-only file window warming up).
+    let leakFree = after.threads == afterFirst.threads && after.fds == afterFirst.fds && vms.created == vms.destroyed
+        && after.rssKiB - afterFirst.rssKiB <= 8 * 1024
+    stderrLine("ycode-simd: repeat leak check: \(leakFree ? "ok" : "FAILED") "
+        + "(threads, fds and VMs flat; RSS growth \((after.rssKiB - afterFirst.rssKiB) / 1024) MiB of 8 allowed)")
     removeRunDirectory(config)
     exit(firstFailure ?? 0)
 }

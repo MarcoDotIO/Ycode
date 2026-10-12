@@ -714,8 +714,13 @@ import YcodeDarwinABI
                                      localDisposition: MachMsgType.makeSendOnce).bytes) == 0)
         let (_, raw) = env.receive(server)
         let so = Received(raw).remote
-        // A send-once right to it may only be used as a destination.
-        #expect(env.send(TestMessage(remote: so, remoteDisposition: MachMsgType.moveSendOnce, id: 9).bytes) == 0)
+        // A send-once right to it may also be moved as a reply (libdispatch's
+        // resend of a pseudo-received message; xnu ipc_right_copyin_check_reply).
+        #expect(env.send(TestMessage(remote: server, remoteDisposition: MachMsgType.copySend, local: so,
+                                     localDisposition: MachMsgType.moveSendOnce).bytes) == 0)
+        let (_, raw2) = env.receive(server)
+        let so2 = Received(raw2).remote
+        #expect(env.send(TestMessage(remote: so2, remoteDisposition: MachMsgType.moveSendOnce, id: 9).bytes) == 0)
         // MACH_RCV_SYNC_WAIT: only on the thread's bound special reply port, with a valid destination.
         let sync = rcv | MachMsgOption.rcvSyncWait
         env.put([UInt8](repeating: 0, count: 64), at: IPCEnv.receiveBuffer)

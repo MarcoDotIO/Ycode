@@ -199,6 +199,29 @@ public final class KernelLock: @unchecked Sendable {
         noteAcquired()
     }
 
+    /// Runs `body` with the lock released (stage 6, `stage6-contract.md`
+    /// §5.1, first step: host file-system I/O outside the global lock) and
+    /// takes it again before returning. `body` must touch no state the lock
+    /// protects. At nesting depth > 1 (a caller that cannot give the lock
+    /// up) `body` runs with the lock held.
+    public func unlocked<T>(_ body: () throws -> T) rethrows -> T {
+        guard isHeldByCurrentThread, depth == 1 else { return try body() }
+        let saved = currentContext
+        noteReleasing()
+        ownerThread = nil
+        depth = 0
+        currentContext = nil
+        pthread_mutex_unlock(mutex)
+        defer {
+            pthread_mutex_lock(mutex)
+            ownerThread = pthread_self()
+            depth = 1
+            currentContext = saved
+            noteAcquired()
+        }
+        return try body()
+    }
+
     // MARK: Used by WaitQueue
 
     fileprivate func register(_ w: WaitQueue.Waiter) { waiters[ObjectIdentifier(w)] = w }

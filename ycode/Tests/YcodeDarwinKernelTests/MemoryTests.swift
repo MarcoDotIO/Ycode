@@ -151,7 +151,8 @@ import YcodeDarwinABI
         #expect(!env.svc(92, [fd, 2, 1]).1.carry)  // F_SETFD FD_CLOEXEC
         #expect(env.svc(92, [fd, 1, 0]).1.x[0] == 1)
         #expect(env.svc(92, [fd, 3, 0]).1.x[0] == 0)  // F_GETFL: O_RDONLY
-        let (_, other) = env.svc(92, [fd, 42, 0])
+        #expect(env.svc(92, [fd, 42, 0]).1.x[0] == 9)  // F_PREALLOCATE on a read-only fd: EBADF
+        let (_, other) = env.svc(92, [fd, 9999, 0])
         #expect(other.carry && other.x[0] == 22)
 
         // read / pread.

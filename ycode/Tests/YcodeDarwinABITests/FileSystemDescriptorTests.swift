@@ -117,7 +117,7 @@ private final class DescriptorFixture {
         c2.closeOnExecDescriptors(keepOnly: [1, b])
         #expect(c2.openDescriptors == [1, b])
         var closed: [Int32] = []
-        c2.descriptorClosed = { closed.append($0) }
+        c2.descriptorClosed = { fd, _ in closed.append(fd) }
         c2.closeAll()
         #expect(c2.openDescriptors.isEmpty && closed == [1, b])
     }

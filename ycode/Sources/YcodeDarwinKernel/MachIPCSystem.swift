@@ -20,6 +20,10 @@ public final class MachIPCSystem: @unchecked Sendable {
     /// The VMM's bootstrap object (`host-libraries.md` §10): sends to it fail
     /// with `MACH_SEND_INVALID_DEST`.
     let bootstrapPort: IPCPort
+    /// The IOKit main port and objects (`IOKitRegistry.swift`).
+    var ioMain: IPCPort?
+    var ioObjects: [UInt64: IOKitObject] = [:]
+    var ioRegistryPaths: [String: IPCPort] = [:]
     /// The audit session id every guest process reports (`processes.md` §4.5:
     /// one fixed session per simulator instance).
     public var auditSessionID: UInt32 = 0

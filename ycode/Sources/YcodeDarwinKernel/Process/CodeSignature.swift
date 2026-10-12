@@ -20,6 +20,12 @@ enum CodeSignature {
     /// The 20-byte CDHash of the arm64 image in `hostPath`, or nil (no
     /// signature, or only hash types Ycode does not compute).
     static func cdHash(ofExecutableAt hostPath: String) -> [UInt8]? {
+        guard let blob = superBlob(ofExecutableAt: hostPath) else { return nil }
+        return cdHash(superBlob: blob)
+    }
+
+    /// The embedded-signature SuperBlob of the arm64 image in `hostPath`.
+    static func superBlob(ofExecutableAt hostPath: String) -> [UInt8]? {
         guard let handle = FileHandle(forReadingAtPath: hostPath) else { return nil }
         defer { try? handle.close() }
         func read(_ offset: UInt64, _ count: Int) -> [UInt8] {
@@ -65,6 +71,15 @@ enum CodeSignature {
         guard let signature, signature.size >= 12, signature.size <= 16 << 20 else { return nil }
         let blob = read(slice + signature.offset, signature.size)
         guard blob.count == signature.size, be32(blob, 0) == 0xFADE_0CC0 else { return nil }
+        return blob
+    }
+
+    static func be32(_ b: [UInt8], _ o: Int) -> UInt32 {
+        UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3])
+    }
+
+    /// The CDHash of a SuperBlob (see the file comment).
+    static func cdHash(superBlob blob: [UInt8]) -> [UInt8]? {
         let count = Int(be32(blob, 8))
         guard count < 64, 12 + count * 8 <= blob.count else { return nil }
         // The strongest hash type Ycode can compute: SHA-256 (2) and
@@ -183,5 +198,164 @@ enum SHA1Digest {
             for (i, v) in [a, b, c, d, e].enumerated() { h[i] = h[i] &+ v }
         }
         return h.flatMap { v in (0..<4).map { UInt8(truncatingIfNeeded: v >> (24 - 8 * UInt32($0))) } }
+    }
+}
+
+/// What `csops` reports about an image (stage 6). Parsed from the embedded
+/// signature (xnu `osfmk/kern/cs_blobs.h`, public: CodeDirectory `flags`
+/// @12, `identOffset` @20, `platform` @38, `teamOffset` @48 from version
+/// 0x20200; entitlements slot 5 (magic 0xFADE7171, XML) and slot 7 (magic
+/// 0xFADE7172, DER)). The status words are those the simulator's processes
+/// show on the Mac (level 3, our own csops probe): a platform binary
+/// 0x26004201 (CS_SIGNED | CS_PLATFORM_BINARY | CS_DYLD_PLATFORM |
+/// CS_ENTITLEMENTS_VALIDATED | CS_KILL | CS_VALID), another signed image
+/// 0x22000201 plus CS_LINKER_SIGNED when the CodeDirectory says so;
+/// validation category 1 (platform) or 10 (another signed image).
+struct CodeSigningInfo {
+    var status: UInt32
+    var identity: String?
+    var teamID: String?
+    var cdHash: [UInt8]
+    var entitlements: [UInt8]?
+    var derEntitlements: [UInt8]?
+    var validationCategory: UInt32
+    var signature: [UInt8]
+
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: CodeSigningInfo?] = [:]
+
+    /// The image's signing information (cached per host path), or nil when
+    /// it has no usable signature.
+    static func of(hostPath: String) -> CodeSigningInfo? {
+        cacheLock.lock()
+        if let hit = cache[hostPath] { cacheLock.unlock(); return hit }
+        cacheLock.unlock()
+        let info = CodeSignature.superBlob(ofExecutableAt: hostPath).flatMap(parse)
+        cacheLock.lock()
+        cache[hostPath] = info
+        cacheLock.unlock()
+        return info
+    }
+
+    static func parse(_ blob: [UInt8]) -> CodeSigningInfo? {
+        let be32 = CodeSignature.be32
+        guard let cd = CodeSignature.cdHash(superBlob: blob) else { return nil }
+        let count = Int(be32(blob, 8))
+        var slots: [UInt32: ArraySlice<UInt8>] = [:]
+        for i in 0..<count {
+            let type = be32(blob, 12 + i * 8), offset = Int(be32(blob, 16 + i * 8))
+            guard offset + 8 <= blob.count else { continue }
+            let length = Int(be32(blob, offset + 4))
+            guard length >= 8, offset + length <= blob.count else { continue }
+            slots[type] = blob[offset..<(offset + length)]
+        }
+        guard let dirSlice = slots[0], be32(Array(dirSlice), 0) == 0xFADE_0C02 else { return nil }
+        let dir = Array(dirSlice)
+        func string(at offset: Int) -> String? {
+            guard offset > 0, offset < dir.count else { return nil }
+            let bytes = dir[offset...].prefix { $0 != 0 }
+            return bytes.isEmpty ? nil : String(decoding: bytes, as: UTF8.self)
+        }
+        let version = be32(dir, 8), flags = be32(dir, 12)
+        let platform = dir.count > 38 ? dir[38] : 0
+        let team = version >= 0x20200 && dir.count >= 52 ? string(at: Int(be32(dir, 48))) : nil
+        let status: UInt32 = platform != 0 ? 0x2600_4201 : 0x2200_0201 | (flags & 0x2_0000)
+        let xml = slots[5].flatMap { be32(Array($0), 0) == 0xFADE_7171 ? Array($0) : nil }
+        let der = slots[7].flatMap { be32(Array($0), 0) == 0xFADE_7172 ? Array($0) : nil }
+        return CodeSigningInfo(status: status, identity: string(at: Int(be32(dir, 20))), teamID: team, cdHash: cd,
+                               entitlements: xml, derEntitlements: der,
+                               validationCategory: platform != 0 ? 1 : 10, signature: blob)
+    }
+}
+
+extension DarwinKernel {
+    /// csops (169) / csops_audittoken (170), after xnu `bsd/kern/kern_proc.c`
+    /// csops_internal (level 1): pid 0 is the caller; another pid must exist
+    /// (ESRCH) and, with an audit token, match its pid (word 5) and
+    /// pidversion (word 7) (ESRCH); STATUS, CDHASH, PIDOFFSET, the
+    /// entitlement blobs, BLOB, IDENTITY, TEAMID, and VALIDATION_CATEGORY
+    /// may target any process, the others only the caller (EPERM).
+    func csopsCall(_ withToken: Bool, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        let requested = Int32(truncatingIfNeeded: a[0]), ops = UInt32(truncatingIfNeeded: a[1])
+        let addr = a[2], size = a[3]
+        let targetPID = requested == 0 ? pid : requested
+        let target: DarwinKernel
+        if targetPID == pid {
+            target = self
+        } else {
+            guard let other = system.processes[targetPID]?.kernel else { throw Failure(errno: Errno.ESRCH) }
+            target = other
+        }
+        if withToken {
+            guard a[4] != 0 else { throw Failure(errno: Errno.EINVAL) }
+            let token = try mem.read(va: a[4], count: 32)
+            guard token.readLE(Int32.self, at: 20) == targetPID, token.readLE(UInt32.self, at: 28) == target.pidVersion else {
+                throw Failure(errno: Errno.ESRCH)
+            }
+        }
+        let anyone: Set<UInt32> = [0, 5, 6, 7, 10, 11, 14, 15, 16, 17]
+        guard targetPID == pid || anyone.contains(ops) else { throw Failure(errno: Errno.EPERM) }
+        let info = target.executableHostPath.flatMap(CodeSigningInfo.of)
+        let valid = (info?.status ?? 0) & 0x1 != 0
+        call += " [\(info?.identity ?? "unsigned")]"
+        func be32(_ v: UInt32) -> [UInt8] { [UInt8(v >> 24), UInt8(truncatingIfNeeded: v >> 16), UInt8(truncatingIfNeeded: v >> 8), UInt8(truncatingIfNeeded: v)] }
+        /// xnu csops_copy_token: a missing blob is an 8-byte zero header; a
+        /// short buffer gets the blob's length in a header and ERANGE.
+        func copyBlob(_ blob: [UInt8]?) throws -> UInt64 {
+            guard size >= 8 else { throw Failure(errno: Errno.ERANGE) }
+            guard let blob else { try mem.write(va: addr, bytes: [UInt8](repeating: 0, count: 8)); return 0 }
+            if size < UInt64(blob.count) {
+                try mem.write(va: addr, bytes: Array(blob.prefix(4)) + be32(UInt32(blob.count)))
+                throw Failure(errno: Errno.ERANGE)
+            }
+            try mem.write(va: addr, bytes: blob)
+            return 0
+        }
+        switch ops {
+        case 0:  // CS_OPS_STATUS
+            if addr != 0 {
+                var b: [UInt8] = []
+                b.appendLE(info?.status ?? 0)
+                try mem.write(va: addr, bytes: Array(b.prefix(Int(min(size, 4)))))
+            }
+            return 0
+        case 1, 2, 3, 8, 12:  // MARKINVALID, MARKHARD, MARKKILL, MARKRESTRICT, CLEARINSTALLER
+            if ops == 2 && !valid { throw Failure(errno: Errno.EINVAL) }
+            return 0
+        case 5:  // CS_OPS_CDHASH
+            guard let info, size == 20 else { throw Failure(errno: Errno.EINVAL) }
+            try mem.write(va: addr, bytes: info.cdHash)
+            return 0
+        case 6:  // CS_OPS_PIDOFFSET
+            try mem.write(va: addr, bytes: [UInt8](repeating: 0, count: 8))
+            return 0
+        case 7, 10, 16:  // ENTITLEMENTS_BLOB, BLOB, DER_ENTITLEMENTS_BLOB
+            guard valid, let info else { throw Failure(errno: Errno.EINVAL) }
+            return try copyBlob(ops == 7 ? info.entitlements : ops == 10 ? info.signature : info.derEntitlements)
+        case 11, 14:  // CS_OPS_IDENTITY, CS_OPS_TEAMID
+            guard size >= 8 else { throw Failure(errno: Errno.ERANGE) }
+            guard valid, let info else { throw Failure(errno: Errno.EINVAL) }
+            guard let text = ops == 11 ? info.identity : info.teamID else { throw Failure(errno: Errno.ENOENT) }
+            let bytes = Array(text.utf8) + [0]
+            // A buffer short of the whole string gets the header and ERANGE
+            // (also exactly 8 bytes; level 3, the Mac's simulator).
+            try mem.write(va: addr, bytes: [0, 0, 0, 0] + be32(UInt32(bytes.count + 8)))
+            guard size >= UInt64(bytes.count + 8) else { throw Failure(errno: Errno.ERANGE) }
+            try mem.write(va: addr + 8, bytes: bytes)
+            return 0
+        case 9:  // CS_OPS_SET_STATUS
+            guard size >= 4 else { throw Failure(errno: Errno.ERANGE) }
+            guard valid else { throw Failure(errno: Errno.EINVAL) }
+            return 0
+        case 13, 15:  // CLEARPLATFORM, CLEAR_LV: not on this platform
+            throw Failure(errno: targetPID == pid ? Errno.ENOTSUP : Errno.EPERM)
+        case 17:  // CS_OPS_VALIDATION_CATEGORY
+            var b: [UInt8] = []
+            b.appendLE(info?.validationCategory ?? 0)
+            try mem.write(va: addr, bytes: b)
+            return 0
+        default:
+            throw Failure(errno: Errno.EINVAL)
+        }
     }
 }
