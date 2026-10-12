@@ -92,6 +92,10 @@ public struct SysctlTable: Sendable {
         Entry(name: "hw.nperflevels", mib: [6, 1010], value: .integer(1, size: 4)),
         Entry(name: "hw.memsize_usable", mib: [6, 1011], value: .integer(Int64(Stage3Layout.memorySize), size: 8)),
         Entry(name: "vm.pagesize", mib: [2, 1000], value: .integer(16384, size: 4)),
+        // Stage 4c: launchd_sim reads the boot arguments (none in Ycode) and
+        // libsystem reads whether storage is ephemeral (it is not).
+        Entry(name: "kern.bootargs", mib: [1, 1005], value: .string("")),
+        Entry(name: "hw.ephemeral_storage", mib: [6, 1012], value: .integer(0, size: 4)),
     ])
 
     /// `struct timeval` of the host's boot time, approximated as the VMM's start.

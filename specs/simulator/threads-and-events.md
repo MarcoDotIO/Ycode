@@ -804,7 +804,9 @@ Rules:
    `END_OWNERSHIP`.
 5. **Sync wait.** Adding a `SYNC_WAIT` knote that has not been woken
    **blocks the calling thread inside `kevent_id`**. Requirements: it is the
-   only change, `ERROR_EVENTS` and `WORKLOOP` are set, and there is room for
+   **last** change of the call (earlier changes, such as a thread-request
+   change, are applied first; corrected 2026-10-12 from xnu
+   `kevent_internal`), `ERROR_EVENTS` and `WORKLOOP` are set, and there is room for
    one output event (otherwise the change fails with `ENOTSUP`). The wait
    ends when another thread modifies the same knote with `SYNC_WAKE`, or
    deletes it (deleting an un-woken waiter wakes it), or on a signal

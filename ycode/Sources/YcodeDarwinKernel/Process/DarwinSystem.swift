@@ -131,6 +131,10 @@ public final class DarwinSystem: @unchecked Sendable {
     var lastPID: Int32 = VMLayout.guestPID
     var nextPIDVersion: UInt32 = 0x100
     var nextUniqueID: UInt64 = 1
+    /// This boot's salt and session UUID (`executable_boothash=`,
+    /// `darwin-process-start.md` §1.4 row 10).
+    public var bootSalt: UInt32 = UInt32.random(in: 0...UInt32.max)
+    public var bootSessionUUID: String = UUID().uuidString
     /// The pseudo-init's pid.
     public static let initPID: Int32 = 1
     /// `PID_MAX`: pids wrap from here to 100.
@@ -234,8 +238,18 @@ public final class DarwinSystem: @unchecked Sendable {
     /// Contract-pinned (§3.2): makes the root process (pid 100, ppid 1, the
     /// leader of its own session and group, `processes.md` §2.10), its
     /// kernel, and launches it through `launcher`.
-    public func spawnInitialProcess(_ request: ProcessImageRequest, fileSystem: DarwinFileSystem) throws -> DarwinKernel {
-        try lock.withLock {
+    ///
+    /// With `exitedChildEnvironmentKey` (`stage4c-contract.md` §8.3), the
+    /// root also gets a child that already exited with status 0 and was not
+    /// reaped (a zombie with no image), and `KEY=<that child's pid>` is
+    /// appended to the root's environment. The root reaps it with
+    /// `wait4`/`waitpid` as usual (launchd_sim's
+    /// `XPC_SIMULATOR_HOLDING_TANK_HACK`, `bootstrap-wire.md` §5.4).
+    public func spawnInitialProcess(_ request: ProcessImageRequest, fileSystem: DarwinFileSystem,
+                                    exitedChildEnvironmentKey: String? = nil) throws -> DarwinKernel {
+        var request = request
+        request.apple += kernelAppleStrings(for: request)
+        return try lock.withLock {
             guard let launcher else { throw DarwinErrnoError(DarwinErrnoCode.ENOSYS) }
             let pid = numberInUse(VMLayout.guestPID) ? try allocatePID() : VMLayout.guestPID
             let kernel = DarwinKernel(fileSystem: fileSystem, pid: pid, system: self)
@@ -246,9 +260,24 @@ public final class DarwinSystem: @unchecked Sendable {
             kernel.pidVersion = record.pidVersion
             processes[pid] = record
             processes[Self.initPID]?.children.append(pid)
+            var zombie: DarwinProcess?
+            if let key = exitedChildEnvironmentKey {
+                let childPID = try allocatePID()
+                let child = DarwinProcess(pid: childPID, ppid: pid, pgid: pid, sid: pid, uniqueID: makeUniqueID(),
+                                          executablePath: request.executablePath, startTime: Self.now())
+                child.state = .zombie
+                child.status = 0
+                child.parentUniqueID = record.uniqueID
+                child.pidVersion = makePIDVersion()
+                processes[childPID] = child
+                record.children.append(childPID)
+                request.envp.append("\(key)=\(childPID)")
+                zombie = child
+            }
             do {
                 record.image = try launcher.launch(request, kernel: kernel)
             } catch {
+                if let zombie { processes[zombie.pid] = nil }
                 processes[pid] = nil
                 processes[Self.initPID]?.children.removeAll { $0 == pid }
                 (kernel.machIPC as? MachIPC)?.terminateTask()
@@ -257,6 +286,15 @@ public final class DarwinSystem: @unchecked Sendable {
             if request.startSuspended { record.state = .stopped }
             return kernel
         }
+    }
+
+    /// The `apple[]` strings the kernel adds for an image: the code-signing
+    /// hashes when the executable is signed (and the request does not
+    /// already carry them).
+    func kernelAppleStrings(for request: ProcessImageRequest) -> [String] {
+        guard !request.apple.contains(where: { $0.hasPrefix("executable_boothash=") }) else { return [] }
+        return CodeSignature.appleStrings(hostPath: request.hostExecutablePath, bootSalt: bootSalt,
+                                          bootSessionUUID: bootSessionUUID)
     }
 
     // MARK: Exit and reaping

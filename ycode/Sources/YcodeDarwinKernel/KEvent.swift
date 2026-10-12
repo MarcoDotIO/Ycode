@@ -490,11 +490,14 @@ extension DarwinKernel {
     /// the call with that errno (returned).
     func applyChanges(_ changes: [KEventRecord], to kq: KQueue, outputCapacity: Int, output: inout [KEventRecord],
                       context: ThreadContext, flags: UInt32, _ mem: any KernelGuestMemory) -> Int32? {
-        for change in changes {
+        for (index, change) in changes.enumerated() {
             var c = change
             c.flags &= ~EV.sysFlags
-            var result = applyChange(c, to: kq, context: context, flags: flags, changeCount: changes.count,
-                                     outputCapacity: outputCapacity, mem)
+            // xnu (`kevent_internal`): a waiting change must be the last one
+            // and have room for its output, so pass the changes left
+            // (including this one) and the room left.
+            var result = applyChange(c, to: kq, context: context, flags: flags, changeCount: changes.count - index,
+                                     outputCapacity: outputCapacity - output.count, mem)
             if let waiter = result.wait {
                 // EVFILT_WORKLOOP sync wait: block until woken or deleted.
                 let r = waiter.syncWaiters.wait(on: lock, deadline: nil)

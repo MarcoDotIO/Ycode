@@ -397,9 +397,11 @@ extension DarwinKernel {
     private func makeRequest(_ request: SpawnRequest, guestPath: String, hostPath: String) -> ProcessImageRequest {
         var apple: [String] = []
         if request.attributes.flags & SpawnFlag.nanoAllocator != 0 { apple.append("MallocNanoZone=1") }
-        return ProcessImageRequest(executablePath: guestPath, hostExecutablePath: hostPath, argv: request.argv,
-                                   envp: request.envp, apple: apple,
-                                   startSuspended: request.attributes.flags & SpawnFlag.startSuspended != 0)
+        var image = ProcessImageRequest(executablePath: guestPath, hostExecutablePath: hostPath, argv: request.argv,
+                                        envp: request.envp, apple: apple,
+                                        startSuspended: request.attributes.flags & SpawnFlag.startSuspended != 0)
+        image.apple += system.kernelAppleStrings(for: image)
+        return image
     }
 
     /// Steps 2–7 shared by spawn and exec: the descriptor table, the

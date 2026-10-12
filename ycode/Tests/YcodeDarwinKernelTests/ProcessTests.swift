@@ -397,6 +397,48 @@ import YcodeDarwinABI
         #expect(env.kevent64(root, kq: kq, changes: [], nevents: 4).0 == -9)
     }
 
+    @Test func rootWithAnExitedChild() throws {
+        // `spawnInitialProcess(…, exitedChildEnvironmentKey:)` (stage4c-contract.md §8.3).
+        let system = DarwinSystem()
+        let launcher = FakeLauncher()
+        system.launcher = launcher
+        let fs = DarwinFileSystem(prefixes: [], console: { _, _ in })
+        let root = try system.spawnInitialProcess(
+            ProcessImageRequest(executablePath: "/sbin/launchd_sim", hostExecutablePath: "/nonexistent",
+                                argv: ["launchd_sim"], envp: ["A=1"]),
+            fileSystem: fs, exitedChildEnvironmentKey: "XPC_SIMULATOR_HOLDING_TANK_HACK")
+        defer { system.terminateAllProcesses() }
+        #expect(root.pid == 100)
+        #expect(launcher.launches.count == 1)
+        #expect(launcher.launches[0].request.envp == ["A=1", "XPC_SIMULATOR_HOLDING_TANK_HACK=101"])
+        let child = try #require(system.process(pid: 101))
+        #expect(child.isZombie && child.ppid == 100 && child.pgid == 100)
+        #expect(system.kernel(forPID: 101) == nil)
+        // The root reaps it: wait4(101, &status, WNOHANG) → 101, status 0.
+        let space = GuestAddressSpace(backing: FakePhysicalBacking())
+        let scratch: UInt64 = 0x1_0000_0000
+        _ = try space.mapAnonymous(at: scratch, size: 0x4000, protection: .readWrite, hint: nil)
+        try system.lock.withLock { try space.write(va: scratch, bytes: [0xEE, 0xEE, 0xEE, 0xEE]) }
+        var f = TrapFrame()
+        f.kind = TrapFrame.Kind.svc.rawValue
+        f.x[16] = 7
+        f.x[0] = 101
+        f.x[1] = scratch
+        f.x[2] = 1
+        #expect(root.handle(&f, memory: space) == .resume)
+        #expect(!f.carry && f.x[0] == 101)
+        #expect(try system.lock.withLock { try space.read(va: scratch, count: 4) } == [0, 0, 0, 0])
+        #expect(system.process(pid: 101) == nil)
+        // Without the key: no child.
+        let other = DarwinSystem()
+        other.launcher = launcher
+        _ = try other.spawnInitialProcess(
+            ProcessImageRequest(executablePath: "/x", hostExecutablePath: "/nonexistent", argv: [], envp: []),
+            fileSystem: DarwinFileSystem(prefixes: [], console: { _, _ in }))
+        defer { other.terminateAllProcesses() }
+        #expect(other.allProcesses.map(\.pid) == [100])
+    }
+
     @Test func oneProcessMachineIsUnchanged() throws {
         // A kernel made without a system keeps the stage-4a answers.
         let env = try Env()
