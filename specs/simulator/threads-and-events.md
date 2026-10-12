@@ -814,7 +814,9 @@ Rules:
    the owner or the servicer.
 6. Modifying a sync knote: `EV_ENABLE` without `EV_DELETE` → `EINVAL`;
    the existing knote must be a sync knote (`EINVAL`). Setting `SYNC_WAKE`
-   twice → `EALREADY`.
+   on a knote that is already woken **succeeds** (corrected 2026-10-12
+   from xnu `filt_wlupdate`: `EALREADY` belongs only to a second
+   thread-request attach, not to a repeated wake).
 
 libdispatch's patterns (for testing): thread request = `EV_ADD|EV_ENABLE`,
 `THREAD_REQUEST | IGNORE_ESTALE | UPDATE_QOS` (± `DISCOVER_OWNER`), debounce

@@ -236,6 +236,10 @@ final class Knote {
     let syncWaiters = WaitQueue()
     // EVFILT_MACHPORT: the receive right left the space.
     var receiveGone = false
+    /// EV_VANISHED was asked for at EV_ADD. As in xnu (`KN_REQVANISH`), the
+    /// bit is a request, not part of the knote's flags: ordinary events never
+    /// carry it, only the end-of-life event does.
+    var requestsVanish = false
     // EVFILT_PROC (stage 4b): events seen since the last delivery, the
     // exit status, and whether the process exited.
     var procFired: UInt32 = 0
@@ -252,7 +256,8 @@ final class Knote {
     init(_ c: KEventRecord) {
         ident = c.ident
         filter = c.filter
-        flags = c.flags & ~EV.actionBits
+        flags = c.flags & ~(EV.actionBits | EV.vanished)
+        requestsVanish = c.flags & EV.vanished != 0
         fflags = c.fflags
         data = c.data
         udata = c.udata
@@ -415,6 +420,10 @@ extension DarwinKernel {
                 kq = wl
             }
             if nevents > 0 && !errorEvents && kq.servicer !== ctx {
+                log("note: kevent_id on workloop \(hx(id)) by thread \(ctx.threadID), which does not service it "
+                    + "(servicer: \(kq.servicer.map { "thread \($0.threadID)" } ?? "none"); thread bound to "
+                    + "\(ctx.worker?.boundQueue.map { $0.kind == .workloop ? "workloop \(hx($0.workloopID))" : "the workqueue kqueue" } ?? "nothing")"
+                    + "\(ctx.worker?.boundQueue === kq ? ", the same object" : ", another object")): EXDEV")
                 maybeFreeWorkloop(kq)
                 throw Failure(errno: Self.EXDEV)
             }
@@ -567,7 +576,7 @@ extension DarwinKernel {
                 if let e = touchFilter(existing, c, mem) { return ChangeResult(errno: e) }
                 existing.udata = c.udata
                 existing.qos = c.qos
-                existing.flags = (existing.flags & (EV.clear | EV.oneshot)) | (c.flags & ~EV.actionBits)
+                existing.flags = (existing.flags & (EV.clear | EV.oneshot)) | (c.flags & ~(EV.actionBits | EV.vanished))
                 if filter == EVFilter.timer {
                     existing.flags |= EV.clear
                     if existing.fflags & NoteTimer.absolute != 0 { existing.flags |= EV.oneshot }
@@ -879,8 +888,10 @@ extension DarwinKernel {
             if let existing {
                 guard existing.isSyncKnote else { result.errno = Errno.EINVAL; return result }
                 if c.flags & EV.enable != 0 { result.errno = Errno.EINVAL; return result }
+                // xnu filt_wlupdate (FILT_WLTOUCH): SYNC_WAKE on a knote that
+                // is already woken just succeeds (only a second thread-request
+                // attach is EALREADY); libdispatch can wake twice in a race.
                 if cmd & NoteWorkloop.syncWake != 0 {
-                    if existing.syncWoken { result.errno = Self.EALREADY; return result }
                     existing.syncWoken = true
                     existing.syncWaiters.wakeAll()
                 }
@@ -1005,6 +1016,7 @@ extension DarwinKernel {
         guard kq.kind == .workloop, kq.knotes.isEmpty, kq.servicer == nil, !kq.createReference, !kq.requested,
               kq.waiters.isEmpty, kevents.workloops[kq.workloopID] === kq else { return }
         kevents.workloops[kq.workloopID] = nil
+        log("note: workloop \(hx(kq.workloopID)) freed")
     }
 
     /// Takes up to `max` deliverable events from `kq` (one bucket of the
@@ -1041,7 +1053,7 @@ extension DarwinKernel {
             case EVFilter.machport:
                 if kn.receiveGone {
                     // The source vanished: EV_VANISHED when asked for, else EV_EOF.
-                    if kn.flags & EV.vanished != 0 {
+                    if kn.requestsVanish {
                         e.flags = (kn.flags & ~EV.actionBits) | EV.vanished | EV.dispatch2 | EV.oneshot
                     } else {
                         e.flags |= EV.eof | EV.oneshot
@@ -1160,6 +1172,7 @@ extension DarwinKernel {
         let queues = allKQueues
         for kq in queues {
             for kn in kq.knotes where kn.filter == EVFilter.machport && UInt32(truncatingIfNeeded: kn.ident) == name {
+                log("note: receive right or port set \(hx(UInt64(name))) left the space; its knote vanishes")
                 kn.receiveGone = true
                 kn.active = true
                 activated(kn)

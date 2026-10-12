@@ -53,7 +53,9 @@ extension DarwinKernel {
                           statfs64 = 345, fstatfs64 = 346, workqOpen = 367, workqKernreturn = 368, sendto = 133,
                           bsdthreadCreate = 360, bsdthreadTerminate = 361, bsdthreadCtl = 478,
                           kqueueWorkloopCtl = 530, disableThreadsignal = 331,
-                          sigsuspend = 111, sigsuspendNocancel = 410
+                          sigsuspend = 111, sigsuspendNocancel = 410,
+                          getxattr = 234, fgetxattr = 235, setxattr = 236, fsetxattr = 237,
+                          removexattr = 238, fremovexattr = 239, listxattr = 240, flistxattr = 241
         /// psynch calls that wait (can never be woken on one thread).
         public static let psynchWaits: [Int: String] = [
             297: "psynch_rw_longrdlock", 298: "psynch_rw_yieldwrlock", 300: "psynch_rw_upgrade",
@@ -98,6 +100,8 @@ extension DarwinKernel {
     public static let atFDCWD: Int32 = -2
     static let atSymlinkNofollow: Int32 = 0x20
     static let ETIMEDOUT: Int32 = 60
+    /// `ENOATTR` (sys/errno.h): the extended attribute does not exist.
+    static let ENOATTR: Int32 = 93
     static let ENOTSOCK: Int32 = 38
     static let EDEADLK: Int32 = 11
 
@@ -114,6 +118,15 @@ extension DarwinKernel {
     // MARK: Dispatch
 
     /// Handles the stage-3b calls; nil = not handled here.
+    /// The result of an extended-attribute call on an existing file.
+    private func xattrResult(_ n: Int) throws -> BSDResult {
+        switch n {
+        case BSD2.listxattr, BSD2.flistxattr: return .value(0)
+        case BSD2.setxattr, BSD2.fsetxattr: throw Failure(errno: Errno.ENOTSUP)
+        default: throw Failure(errno: Self.ENOATTR)
+        }
+    }
+
     func extendedBSDCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ fallback: inout Int32,
                          _ mem: any KernelGuestMemory) throws -> BSDResult? {
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
@@ -338,6 +351,26 @@ extension DarwinKernel {
             let follow = !isAt || int(3) & Self.atSymlinkNofollow == 0
             _ = try fileSystem.stat(path, followSymlinks: follow)
             return .value(0)
+
+        // Extended attributes (xnu bsd/vfs/vfs_syscalls.c, sys/xattr.h): Ycode's
+        // files carry none. The file must exist (path calls; XATTR_NOFOLLOW
+        // = 0x1 in `options`) or the descriptor be open; then get and remove
+        // report ENOATTR, list an empty list (0 bytes), set ENOTSUP (a file
+        // system without extended-attribute support).
+        case BSD2.getxattr, BSD2.setxattr, BSD2.removexattr, BSD2.listxattr:
+            let path = try readPath(a[0], mem)
+            let options = n == BSD2.getxattr || n == BSD2.setxattr ? int(5) : (n == BSD2.removexattr ? int(2) : int(3))
+            let name = [BSD2.getxattr: "getxattr", BSD2.setxattr: "setxattr", BSD2.removexattr: "removexattr",
+                        BSD2.listxattr: "listxattr"][n]!
+            call = "\(name)(\"\(path)\", \(hx(a[1])), options=\(hx(UInt64(UInt32(bitPattern: options)))))"
+            _ = try fileSystem.stat(path, followSymlinks: options & 0x1 == 0)
+            return try xattrResult(n)
+        case BSD2.fgetxattr, BSD2.fsetxattr, BSD2.fremovexattr, BSD2.flistxattr:
+            let name = [BSD2.fgetxattr: "fgetxattr", BSD2.fsetxattr: "fsetxattr", BSD2.fremovexattr: "fremovexattr",
+                        BSD2.flistxattr: "flistxattr"][n]!
+            call = "\(name)(fd=\(int(0)), \(hx(a[1])))"
+            _ = try fileSystem.fstat(int(0))
+            return try xattrResult(n)
 
         case BSD2.fstatat, BSD2.fstatat64:
             let path = try resolveAtPath(int(0), a[1], mem)

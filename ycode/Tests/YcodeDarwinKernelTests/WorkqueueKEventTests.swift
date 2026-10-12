@@ -191,6 +191,34 @@ import YcodeDarwinABI
         _ = parked()
     }
 
+    /// A bucket handed to an idle worker is bound to it at once: an
+    /// activation before that worker runs must not start a second one
+    /// (stage 4c-iii: two launchd_sim threads serviced one workloop, and the
+    /// first to return left the other unbound → EXDEV).
+    @Test func assignedBucketIsBoundBeforeTheWorkerRuns() throws {
+        let t = try T2Env()
+        open(t)
+        t.svc(368, [0x20, 0, 1, UInt64(Self.legacy)])
+        let ctx = t.host.starts[0].context
+        let parked = workerReturn(t, ctx)
+        #expect(t.eventually { t.kernel.idleWorkqueueThreads.contains { $0 === ctx } })
+        registerWorkq(t, [KEventRecord(ident: 1, filter: -10, flags: 0x21, qos: Self.legacy)])
+        // Holding the (re-entrant) kernel lock keeps the woken worker from
+        // running its upcall while the event fires twice.
+        t.kernel.lock.withLock {
+            registerWorkq(t, [KEventRecord(ident: 1, filter: -10, fflags: 0x0100_0000, qos: Self.legacy)])
+            // Handed to the idle worker (no new thread), and bound to it.
+            #expect(t.host.starts.count == 1)
+            #expect(t.kernel.kevents.workq!.buckets[4]?.boundWorker === ctx)
+            // Triggered again: still one thread, no second request.
+            registerWorkq(t, [KEventRecord(ident: 1, filter: -10, fflags: 0x0100_0000, qos: Self.legacy)])
+            #expect(t.host.starts.count == 1)
+            #expect(t.kernel.kevents.workq!.buckets[4]?.requested != true)
+        }
+        let (o, f) = try #require(parked())
+        #expect(o == .resume && f.x[4] & Self.kevent != 0 && f.x[5] >= 1)
+    }
+
     @Test func timerFiresIntoAKeventUpcall() throws {
         let t = try T2Env()
         open(t)
@@ -339,9 +367,9 @@ import YcodeDarwinABI
         #expect(f.x[0] == 0)
         #expect(wait() == 0)
         #expect(t.kernel.lock.withLock { t.kernel.kevents.workloops[id]?.owner === a })
-        // Waking twice: EALREADY.
+        // Waking twice succeeds (xnu filt_wlupdate: no EALREADY for SYNC_WAKE).
         let twice = workloopCall(t, id, [KEventRecord(ident: a.threadID, filter: -17, flags: 0x9, fflags: 0x8, qos: 0x8FF)])
-        #expect(twice.x[0] == 1 && events(t, at: Env.scratch + 0x5000, count: 1)[0].data == 37)
+        #expect(twice.x[0] == 0)
         // Sync end from a: delete + end ownership.
         put(t, [KEventRecord(ident: a.threadID, filter: -17, flags: 0x6, fflags: 0x8 | 0x20, qos: 0x8FF)], at: wc)
         let (_, end) = t.svc(375, [id, wc, 1, wo, 1, 0, 0, Self.wlFlag | Self.errorEvents], context: a)
@@ -437,5 +465,40 @@ import YcodeDarwinABI
         // Mixing kevent and kevent64 on one kqueue: EINVAL.
         #expect(t.svc(363, [9, c, 0, o, 0, 0]).1.x[0] == 22)
         #expect(t.svc(363, [10, c, 0, o, 0, 0]).1.x[0] == 9)
+    }
+
+    /// EV_VANISHED at EV_ADD is a request (xnu `KN_REQVANISH`): ordinary
+    /// EVFILT_MACHPORT events do not carry it (libdispatch crashes on an
+    /// EV_VANISHED message event); only the end-of-life event does.
+    @Test func machPortVanishIsARequestNotAFlag() throws {
+        let t = try T2Env()
+        let out = Env.scratch + 0x5000, c = Env.scratch + 0x2000, o = Env.scratch + 0x3000, msg = Env.scratch + 0x4000
+        func allocate() -> UInt64 {
+            #expect(t.x0(UInt64(bitPattern: -16), [0x103, 1, out]) == 0)
+            return UInt64(t.read(out, 4).readLE(UInt32.self, at: 0))
+        }
+        let a = allocate(), b = allocate()
+        let kq = t.x0(362)
+        // EV_ADD | EV_DISPATCH | EV_UDATA_SPECIFIC | EV_VANISHED, fflags 0 (no receive).
+        put(t, [KEventRecord(ident: a, filter: -8, flags: 0x381, udata: 0xA),
+                KEventRecord(ident: b, filter: -8, flags: 0x381, udata: 0xB)], at: c)
+        #expect(t.x0(374, [kq, c, 2, o, 0, 0, 0, Self.immediate | Self.errorEvents]) == 0)
+        // A message on a: the event has no EV_VANISHED.
+        #expect(t.x0(UInt64(bitPattern: -21), [0x103, a, a, 20]) == 0)  // MAKE_SEND
+        var header = [UInt8](repeating: 0, count: 24)
+        header.putLE(UInt32(19), at: 0)  // COPY_SEND
+        header.putLE(UInt32(24), at: 4)
+        header.putLE(UInt32(a), at: 8)
+        header.putLE(UInt32(0x42), at: 20)
+        t.put(header, at: msg)
+        #expect(t.x0(UInt64(bitPattern: -31), [msg, 1, 24, 0, 0, 0, 0]) == 0)
+        #expect(t.x0(374, [kq, c, 0, o, 4, 0, 0, Self.immediate]) == 1)
+        let e = events(t, at: o, count: 1)[0]
+        #expect(e.ident == a && e.udata == 0xA && e.flags & 0x200 == 0 && e.flags & 0x8000 == 0)
+        // b's receive right is destroyed: its event is EV_VANISHED.
+        #expect(t.x0(UInt64(bitPattern: -19), [0x103, b, 1, 0xFFFF_FFFF]) == 0)
+        #expect(t.x0(374, [kq, c, 0, o, 4, 0, 0, Self.immediate]) == 1)
+        let v = events(t, at: o, count: 1)[0]
+        #expect(v.ident == b && v.udata == 0xB && v.flags & 0x200 != 0)
     }
 }

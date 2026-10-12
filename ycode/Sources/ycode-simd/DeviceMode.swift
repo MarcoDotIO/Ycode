@@ -14,6 +14,12 @@ struct DeviceLayout {
     let udid: String
     let jobPaths: [String]
     let bootTime: Int
+    /// Ycode-written one-shot jobs (`--oneshot`): argv of each, in order.
+    let oneshots: [[String]]
+    /// Runtime job plists copied into DEV/ycode-jobs (`--runtime-job <label>`).
+    let runtimeJobs: [String]
+    /// Debug: top-level bootstrap-plist booleans replaced (`--debug-plist-bool K=V`).
+    var plistBoolOverrides: [String: Bool] = [:]
 
     // Device identity (stage4c-contract.md §2).
     static let deviceName = "Ycode"
@@ -22,11 +28,18 @@ struct DeviceLayout {
     static let legacyAssetSuffix = "iphone"
     static let screen = (width: 1206, height: 2622, scale: 3.0, pitch: 460.0)
 
-    init(dev: String, runtimeRoot: String, udid: String?, jobPaths: [String], bootTime: Int = Int(Date().timeIntervalSince1970)) {
+    init(dev: String, runtimeRoot: String, udid: String?, jobPaths: [String], oneshots: [[String]] = [],
+         runtimeJobs: [String] = [], bootTime: Int = Int(Date().timeIntervalSince1970)) {
         self.dev = dev
         self.runtimeRoot = runtimeRoot
         self.udid = udid?.uppercased() ?? Self.stableUDID(for: dev)
-        self.jobPaths = jobPaths.isEmpty ? [dev + "/ycode-empty-jobs"] : jobPaths
+        self.oneshots = oneshots
+        self.runtimeJobs = runtimeJobs
+        // Ycode's own job directory comes after the --job-path ones; with
+        // neither, one empty directory (stage4c-contract.md §2).
+        let ycodeJobs = oneshots.isEmpty && runtimeJobs.isEmpty ? [] : [dev + "/ycode-jobs"]
+        let paths = jobPaths + ycodeJobs
+        self.jobPaths = paths.isEmpty ? [dev + "/ycode-empty-jobs"] : paths
         self.bootTime = bootTime
     }
 
@@ -53,6 +66,50 @@ struct DeviceLayout {
     /// The host log of the logging bootstrap service.
     var hostBootstrapLogPath: String { dev + "/ycode-host-bootstrap.log" }
     var launchdSimPath: String { runtimeRoot + "/sbin/launchd_sim" }
+    /// The job directory Ycode fills for `--oneshot` and `--runtime-job`.
+    var ycodeJobsPath: String { dev + "/ycode-jobs" }
+
+    // MARK: Ycode-written jobs (stage4c-contract.md §9.1)
+
+    /// The label of one-shot job `index` (0-based): `com.ycode.oneshot.<n>.<program name>`.
+    func oneshotLabel(_ index: Int) -> String {
+        "com.ycode.oneshot.\(index + 1).\((oneshots[index].first.map { ($0 as NSString).lastPathComponent }) ?? "job")"
+    }
+
+    /// The guest path of one-shot job `index`'s stdout (`err` false) or stderr.
+    func oneshotOutputGuestPath(_ index: Int, err: Bool) -> String {
+        "/tmp/ycode-oneshot-\(index + 1).\(err ? "err" : "out")"
+    }
+
+    /// The host path behind it (guest /tmp is DEV/data/tmp).
+    func oneshotOutputHostPath(_ index: Int, err: Bool) -> String {
+        data + "/tmp/ycode-oneshot-\(index + 1).\(err ? "err" : "out")"
+    }
+
+    /// A job plist (launchd-sim.md §4.3 keys) that runs `argv` once at load,
+    /// with stdout and stderr in files under /tmp.
+    func oneshotPlist(_ index: Int) -> [String: Any] {
+        [
+            "Label": oneshotLabel(index),
+            "ProgramArguments": oneshots[index],
+            "RunAtLoad": true,
+            "StandardOutPath": oneshotOutputGuestPath(index, err: false),
+            "StandardErrorPath": oneshotOutputGuestPath(index, err: true),
+        ]
+    }
+
+    /// The job directories of the runtime, in CoreSimulator's order (launchd-sim.md §4.1).
+    var runtimeJobDirectories: [String] {
+        ["/System/Library/LaunchDaemons", "/System/Library/LaunchAngels", "/Developer/Library/LaunchDaemons"].map { runtimeRoot + $0 }
+    }
+
+    /// The runtime plist whose file name is `<label>.plist` (or `label` as
+    /// given if it ends in `.plist`), from the first runtime job directory
+    /// that has it.
+    func runtimeJobPlist(_ label: String) -> String? {
+        let file = label.hasSuffix(".plist") ? label : label + ".plist"
+        return runtimeJobDirectories.map { $0 + "/" + file }.first { FileManager.default.fileExists(atPath: $0) }
+    }
 
     /// A UDID derived from the device path: stable across runs, upper case
     /// with dashes (two FNV-1a hashes; version 8 "custom" UUID layout).
@@ -164,7 +221,7 @@ struct DeviceLayout {
 
     /// launchd-sim.md §3, every key, Ycode's values.
     var bootstrapPlist: [String: Any] {
-        [
+        var plist: [String: Any] = [
             "Bootstrap": [
                 "SimulatorRuntimeRoot": runtimeRoot,
                 "Paths": jobPaths,
@@ -179,10 +236,17 @@ struct DeviceLayout {
             "ExtensionWatchdog": 0,
             "LogServiceLifecycle": true,
             "LogToFlatFile": true,
-            "RequireDomainBinding": true,
+            // CoreSimulator writes true and then binds the session over the
+            // control channel (launchd-sim.md §6.1 `startsession`). Ycode has
+            // no bind yet, and with true launchd_sim defers the spawn of every
+            // `system` job (xpcproxy_sim never gets its answer; level 3, our
+            // runs), so Ycode writes false (stage4c-contract.md §9).
+            "RequireDomainBinding": false,
             "SIGTERMTimeout": 3,
             "UseGuardMalloc": false,
         ]
+        for (key, value) in plistBoolOverrides { plist[key] = value }
+        return plist
     }
 
     // MARK: Preparing the directory
@@ -205,7 +269,23 @@ struct DeviceLayout {
             let stamp = Int((try? fm.attributesOfItem(atPath: tmpHostPath)[.modificationDate] as? Date)??.timeIntervalSince1970 ?? 0)
             try fm.moveItem(atPath: tmpHostPath, toPath: "\(tmpHostPath).previous-\(stamp)-\(bootTime)")
         }
+        // Ycode's job directory is rebuilt on every boot.
+        if fm.fileExists(atPath: ycodeJobsPath) { try fm.removeItem(atPath: ycodeJobsPath) }
         for path in jobPaths where !fm.fileExists(atPath: path) { try dir(path) }
+        for index in oneshots.indices {
+            try writeXML(oneshotPlist(index), to: ycodeJobsPath + "/" + oneshotLabel(index) + ".plist")
+            for err in [false, true] where fm.fileExists(atPath: oneshotOutputHostPath(index, err: err)) {
+                try fm.removeItem(atPath: oneshotOutputHostPath(index, err: err))
+            }
+        }
+        // Copies, never links: the runtime's files stay where they are and
+        // nothing from the runtime enters the repository.
+        for label in runtimeJobs {
+            guard let source = runtimeJobPlist(label) else {
+                throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: runtimeRoot + "/…/" + label + ".plist"])
+            }
+            try fm.copyItem(atPath: source, toPath: ycodeJobsPath + "/" + (source as NSString).lastPathComponent)
+        }
         if !fm.fileExists(atPath: memoryWarningPath) {
             guard fm.createFile(atPath: memoryWarningPath, contents: Data()) else {
                 throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: memoryWarningPath])

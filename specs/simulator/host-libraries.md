@@ -407,3 +407,20 @@ The orchestrator owns `Package.swift`, every spec, and the commits.
   retrying.
 - The simple-ASL context in `os_alloc_once` slot 21: see
   `host-library-init.md` §1 step 3.
+
+### 11.1 Private Mach routines added in stage 4c-iii
+
+| n | Routine | VMM behavior |
+|---|---|---|
+| 10 | `mach_make_memory_entry_64(task, &size, offset, permission, &handle, parent)` | Named entries (`MAP_MEM_NAMED_CREATE`, `MAP_MEM_VM_COPY`, `MAP_MEM_VM_SHARE`, sub-entries of a parent, `MAP_MEM_ONLY`) as xnu `vm_memory_entry.c`; the entry object dies with its last send right |
+| 11 | `mach_vm_map` with a memory object `(task, &addr, size, mask, flags, &{object, offset, copy, cur, max, inherit})` | Maps the entry's shared host memory (shared across VMs as KVM memslots) or a copy |
+
+Private trap `0x7963_0006` (`task_info`) also serves flavor 15
+(`TASK_AUDIT_TOKEN`). `mach_vm_map`/`vm_map` without an object keep the
+real trap (−15). Library additions: `mach_make_memory_entry(_64)`,
+`task_info`, `host_set_atm_diagnostic_flag` (`KERN_NO_ACCESS`),
+`host_request_notification` (accepted, never fires),
+`setiopolicy_np`/`getiopolicy_np`, and the
+`mach_{host,task,thread}_special_port_{description,for_id}` label tables
+(the labels and macro names are public interop identifiers from xnu
+`port_descriptions.h`; `launchctl print` shows them).

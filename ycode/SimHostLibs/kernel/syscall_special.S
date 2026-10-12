@@ -253,37 +253,4 @@ __thread_set_tsd_base:
     svc #0x80
     ret
 
-// ---------------------------------------------------------------------------
-// Mach VM mapping through Mach trap -15 (_kernelrpc_mach_vm_map_trap:
-// target, &address, size, mask, flags, cur_protection). The trap covers
-// anonymous memory only, so a request with a memory object, an offset or a
-// copy flag is reported as unimplemented.
-//
-// kern_return_t mach_vm_map(vm_map_t target, mach_vm_address_t *address,
-//     mach_vm_size_t size, mach_vm_offset_t mask, int flags,
-//     mem_entry_name_port_t object, memory_object_offset_t offset,
-//     boolean_t copy, vm_prot_t cur, vm_prot_t max, vm_inherit_t inherit)
-// x0-x7 = target ... copy; cur, max, inherit are packed 4-byte stack
-// arguments at [sp], [sp+4], [sp+8]. vm_map has the same layout on LP64.
-    .globl _mach_vm_map
-    .globl _vm_map
-    .p2align 2
-_mach_vm_map:
-_vm_map:
-    cbnz w5, 1f                // object
-    cbnz x6, 1f                // offset
-    ldr w5, [sp]               // cur_protection
-    mov x16, #-15
-    svc #0x80
-    ret
-1:  adrp x0, Lsp_name_vm_map@PAGE
-    add x0, x0, Lsp_name_vm_map@PAGEOFF
-    movz x16, #0x0F00
-    movk x16, #0x7963, lsl #16
-    svc #0x80
-    mov w0, #46                // KERN_NOT_SUPPORTED
-    ret
-
-    .section __TEXT,__cstring,cstring_literals
-Lsp_name_vm_map:
-    .asciz "mach_vm_map (memory object)"
+// mach_vm_map / vm_map: C, in mach.c (memory objects go to a private routine).

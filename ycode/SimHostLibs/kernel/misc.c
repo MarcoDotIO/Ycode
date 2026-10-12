@@ -101,3 +101,30 @@ YC_EXPORT int __commpage_gettimeofday(void *tp)
     (void)tp;
     return 1;
 }
+
+/* int setiopolicy_np(int iotype, int scope, int policy);
+ * int getiopolicy_np(int iotype, int scope);
+ * Public API (setiopolicy_np(3)): scope is IOPOL_SCOPE_PROCESS (0),
+ * IOPOL_SCOPE_THREAD (1), or IOPOL_SCOPE_DARWIN_BG (2); anything else is
+ * EINVAL. Ycode has no I/O scheduling classes: a set is accepted and a get
+ * reports IOPOL_DEFAULT (0). */
+YC_HIDDEN void __ycode_set_errno(int value);
+
+YC_EXPORT int setiopolicy_np(int iotype, int scope, int policy)
+{
+    (void)policy;
+    if (iotype < 0 || scope < 0 || scope > 2) {
+        __ycode_set_errno(22);
+        return -1;
+    }
+    return 0;
+}
+
+YC_EXPORT int getiopolicy_np(int iotype, int scope)
+{
+    if (iotype < 0 || scope < 0 || scope > 2) {
+        __ycode_set_errno(22);
+        return -1;
+    }
+    return 0;
+}

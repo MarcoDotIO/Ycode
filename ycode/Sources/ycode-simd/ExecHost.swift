@@ -25,6 +25,10 @@ final class ExecConfiguration: @unchecked Sendable {
     let shim: [UInt8]
     let stubs: [UInt8]
     let runDir: String
+    /// The default `--exec` run directory, when this run created it: removed
+    /// at exit unless `--keep-run-dir` (stage4c-contract.md §9.3). An explicit
+    /// `--run-dir` and the device directory are never removed.
+    let runDirToRemove: String?
     let prefixes: [DarwinFileSystem.Prefix]
     let hostLibraryPaths: Set<String>
     let cacheIndex: SharedCacheIndex
@@ -52,8 +56,10 @@ final class ExecConfiguration: @unchecked Sendable {
         self.root = root
         if let devicePath = options.devicePath {
             // Device mode: the root process is RR/sbin/launchd_sim.
-            let layout = DeviceLayout(dev: absolutePath(devicePath), runtimeRoot: root, udid: options.udid,
-                                      jobPaths: options.jobPaths.map(absolutePath))
+            var layout = DeviceLayout(dev: absolutePath(devicePath), runtimeRoot: root, udid: options.udid,
+                                      jobPaths: options.jobPaths.map(absolutePath), oneshots: options.oneshots,
+                                      runtimeJobs: options.runtimeJobs)
+            layout.plistBoolOverrides = options.plistBoolOverrides
             // The guest's /var, /tmp, and /etc are links into /private: a
             // host path below them (or below /private/...) is unreachable
             // at its own guest path.
@@ -98,7 +104,10 @@ final class ExecConfiguration: @unchecked Sendable {
         // The per-run directory: guest /tmp lives in <run dir>/tmp (in
         // device mode, DEV/data/tmp).
         runDir = device.map { $0.data } ?? absolutePath(options.runDir ?? (NSTemporaryDirectory() + "/ycode-simd-\(getpid())"))
+        let usesDefaultRunDir = device == nil && options.runDir == nil
+        let runDirExisted = FileManager.default.fileExists(atPath: runDir)
         try FileManager.default.createDirectory(atPath: runDir + "/tmp", withIntermediateDirectories: true)
+        runDirToRemove = usesDefaultRunDir && !runDirExisted && !options.keepRunDir ? runDir : nil
 
         // The guest VFS (stage3-contract.md §8): the runtime root, read-only;
         // the --exec program's directory at the same guest path, read-only
@@ -112,6 +121,10 @@ final class ExecConfiguration: @unchecked Sendable {
             // Device mode (stage4c-contract.md §2): DEV, /private/var/tmp (TMP is in it)
             // (and /var/tmp), /tmp and /private/tmp, all writable.
             prefixes.append(DarwinFileSystem.Prefix(guestPath: device.dev, hostPath: device.dev, writable: true))
+            // Job directories outside DEV and RR: read-only at their own path.
+            for path in device.jobPaths where !(path == device.dev || path.hasPrefix(device.dev + "/") || path == root || path.hasPrefix(root + "/")) {
+                prefixes.append(DarwinFileSystem.Prefix(guestPath: path, hostPath: path, writable: false))
+            }
             // /var/tmp and /tmp reach these through the guest links.
             prefixes.append(DarwinFileSystem.Prefix(guestPath: "/private/var/tmp", hostPath: device.privateVarTmpHostPath, writable: true))
             prefixes.append(DarwinFileSystem.Prefix(guestPath: "/private/tmp", hostPath: device.data + "/tmp", writable: true))
@@ -322,16 +335,41 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         let log = device.tmpHostPath + "/launchd.log"
         let size = (try? FileManager.default.attributesOfItem(atPath: log)[.size] as? Int) ?? nil
         stderrLine("ycode-simd: TMP/launchd.log (\(log)): " + (size.map { "\($0) bytes" } ?? "absent"))
+        for index in device.oneshots.indices {
+            for err in [false, true] {
+                let path = device.oneshotOutputHostPath(index, err: err)
+                guard let data = FileManager.default.contents(atPath: path) else {
+                    stderrLine("ycode-simd: \(device.oneshotLabel(index)) \(err ? "stderr" : "stdout"): no file \(path)")
+                    continue
+                }
+                stderrLine("ycode-simd: \(device.oneshotLabel(index)) \(err ? "stderr" : "stdout") (\(path), \(data.count) bytes)"
+                    + (data.isEmpty ? "" : ":\n" + String(decoding: data, as: UTF8.self)))
+            }
+        }
     }
     if stillAlive > 0 { abandonedLaunchers.append(launcher) }
     extraKernels.removeAll()
     return result.status
 }
 
+/// Removes the run directory this run created (stage4c-contract.md §9.3).
+func removeRunDirectory(_ config: ExecConfiguration) {
+    guard let path = config.runDirToRemove else { return }
+    do {
+        try FileManager.default.removeItem(atPath: path)
+    } catch {
+        stderrLine("ycode-simd: warning: cannot remove the run directory \(path): \(error)")
+    }
+}
+
 func runExec(_ options: Options) throws -> Never {
     let config = try ExecConfiguration(options)
     let count = options.repeatCount
-    guard count > 1 else { exit(runRootProcess(config)) }
+    guard count > 1 else {
+        let status = runRootProcess(config)
+        removeRunDirectory(config)
+        exit(status)
+    }
 
     // --repeat: the leak check.
     var firstFailure: Int32?
@@ -354,6 +392,7 @@ func runExec(_ options: Options) throws -> Never {
         + "after run 1 -> after run \(count): host threads \(afterFirst.threads) -> \(after.threads), "
         + "RSS \(afterFirst.rssKiB / 1024) -> \(after.rssKiB / 1024) MiB, fds \(afterFirst.fds) -> \(after.fds); "
         + "VMs live \(vms.created - vms.destroyed)")
+    removeRunDirectory(config)
     exit(firstFailure ?? 0)
 }
 #endif

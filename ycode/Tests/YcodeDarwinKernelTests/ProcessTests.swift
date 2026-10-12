@@ -347,6 +347,10 @@ import YcodeDarwinABI
         _ = env.svc(c, 1, [9])
         #expect(env.bsd(root, 336, [2, UInt64(pid), 21, UInt64(NoteProc.exitStatus), At.out, 4]) == 4)
         #expect(env.u32(root, At.out) == 9 << 8)
+        // EXITREASONBASICINFO (25) / EXITREASONINFO (24): no reason → ENOENT; too small → ENOMEM.
+        #expect(env.bsd(root, 336, [2, UInt64(pid), 25, 0, At.out, 24]) == -2)
+        #expect(env.bsd(root, 336, [2, UInt64(pid), 24, 0, At.out, 40]) == -2)
+        #expect(env.bsd(root, 336, [2, UInt64(pid), 25, 0, At.out, 16]) == -12)
         // DIRTYCONTROL and TERMINATE.
         let pid2 = env.spawn(from: root).pid
         let c2 = try #require(env.kernel(pid2))

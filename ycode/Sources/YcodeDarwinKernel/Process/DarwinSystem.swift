@@ -127,6 +127,8 @@ public final class DarwinSystem: @unchecked Sendable {
     /// The process table: live processes and zombies by pid. Pid 1 is the
     /// pseudo-init (`processes.md` §2.1): it has no image and reaps orphans.
     var processes: [Int32: DarwinProcess] = [:]
+    /// POSIX shared memory names (shm_open), system-wide.
+    var posixShmSegments: [String: PosixShmSegment] = [:]
     /// The last pid handed out (`processes.md` §2.1, `stage4b-contract.md` §2 item 7).
     var lastPID: Int32 = VMLayout.guestPID
     var nextPIDVersion: UInt32 = 0x100

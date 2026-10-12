@@ -497,9 +497,18 @@ GPU).
 4. What `RequireDomainBinding`, `AbortOnUnknownIPC`, and the
    "bind session" step require of the host. Hypothesis: `launchd_sim`
    refuses guest requests until the host binds the session; test under
-   Ycode by omitting the bind.
-5. The send right in slot 0 of `mach_ports_lookup` in every guest process
-   (§4.4): identity unknown.
+   Ycode by omitting the bind. **Partly answered (level 3, stage 4c-iii):**
+   with `RequireDomainBinding = true` and no bind, `launchd_sim` defers the
+   spawn of `system`-domain jobs indefinitely (`user/<uid>` jobs are not
+   affected). Ycode writes `false` until the bind is specified.
+5. ~~The send right in slot 0 of `mach_ports_lookup`~~ **Answered
+   (level 3, Ycode runs, stage 4c-iii):** `launchd_sim` registers its
+   service port (the receive right it got from the host's 708 reply) in
+   registered-port slot 0 and sets its own bootstrap special port to NULL,
+   so slot 0 in every child is a send right to `launchd_sim`'s service
+   port. `xpcproxy_sim` sends pipe routine 700 (`0x400002BC`) there
+   (special reply port, `MACH_RCV_SYNC_WAIT`, one combined `mach_msg2`),
+   then `posix_spawn`s the job with `SETEXEC`.
 6. Which of the §7.1 kernel calls are on the boot-critical path.
 7. How `HostSpecialPort` MachServices are honored without a real host port
    table.

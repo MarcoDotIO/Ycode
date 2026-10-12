@@ -679,6 +679,52 @@ YC_EXPORT void voucher_mach_msg_revert(void *state)
 #define YC_PRIV_HOST_CREATE_MACH_VOUCHER 7
 #define YC_PRIV_MACH_PORTS_REGISTER3 8
 #define YC_PRIV_MACH_PORTS_LOOKUP3 9
+#define YC_PRIV_MAKE_MEMORY_ENTRY 10
+#define YC_PRIV_VM_MAP_OBJECT 11
+
+/* kern_return_t mach_make_memory_entry_64(vm_map_t target_task,
+ *     memory_object_size_t *size, memory_object_offset_t offset,
+ *     vm_prot_t permission, mach_port_t *object_handle,
+ *     mem_entry_name_port_t parent_entry)
+ * The VMM makes the entry (shared memory) and writes *size and *object_handle. */
+YC_EXPORT int mach_make_memory_entry_64(yc_port_t task, yc_u64 *size, yc_u64 offset, int permission,
+                                        yc_port_t *object_handle, yc_port_t parent_entry)
+{
+    return (int)yc_mach_trap(YC_PRIV_ROUTINE(YC_PRIV_MAKE_MEMORY_ENTRY), task, (yc_uintptr_t)size, offset,
+                             (yc_uintptr_t)(unsigned)permission, (yc_uintptr_t)object_handle, parent_entry, 0);
+}
+
+/* mach_make_memory_entry: vm_size_t and vm_offset_t are 64-bit on LP64. */
+YC_EXPORT int mach_make_memory_entry(yc_port_t task, yc_uintptr_t *size, yc_uintptr_t offset, int permission,
+                                     yc_port_t *object_handle, yc_port_t parent_entry)
+{
+    return mach_make_memory_entry_64(task, (yc_u64 *)size, offset, permission, object_handle, parent_entry);
+}
+
+/* kern_return_t mach_vm_map(vm_map_t target, mach_vm_address_t *address,
+ *     mach_vm_size_t size, mach_vm_offset_t mask, int flags,
+ *     mem_entry_name_port_t object, memory_object_offset_t offset,
+ *     boolean_t copy, vm_prot_t cur, vm_prot_t max, vm_inherit_t inherit)
+ * Anonymous memory (no object, no offset) is Mach trap -15
+ * (target, &address, size, mask, flags, cur); a memory object goes to the
+ * private routine with the rest in a block. vm_map has the same layout on LP64. */
+YC_EXPORT int mach_vm_map(yc_port_t target, yc_u64 *address, yc_u64 size, yc_u64 mask, int flags, yc_port_t object,
+                          yc_u64 offset, int copy, int cur, int max, int inherit)
+{
+    if (object == 0 && offset == 0)
+        return (int)yc_mach_trap(-15, target, (yc_uintptr_t)address, size, mask, (yc_uintptr_t)(unsigned)flags,
+                                 (yc_uintptr_t)(unsigned)cur, 0);
+    yc_u64 block[6] = {object, offset, (yc_u64)(unsigned)copy, (yc_u64)(unsigned)cur, (yc_u64)(unsigned)max,
+                       (yc_u64)(unsigned)inherit};
+    return (int)yc_mach_trap(YC_PRIV_ROUTINE(YC_PRIV_VM_MAP_OBJECT), target, (yc_uintptr_t)address, size, mask,
+                             (yc_uintptr_t)(unsigned)flags, (yc_uintptr_t)block, 0);
+}
+
+YC_EXPORT int vm_map(yc_port_t target, yc_uintptr_t *address, yc_uintptr_t size, yc_uintptr_t mask, int flags,
+                     yc_port_t object, yc_uintptr_t offset, int copy, int cur, int max, int inherit)
+{
+    return mach_vm_map(target, (yc_u64 *)address, size, mask, flags, object, offset, copy, cur, max, inherit);
+}
 
 /* kern_return_t host_get_clock_service(host_t host, clock_id_t clock_id,
  *     clock_serv_t *clock_serv) */
@@ -839,4 +885,14 @@ YC_EXPORT int mach_voucher_attr_command(yc_port_t voucher, yc_u32 key, yc_u32 co
     (void)out_content;
     (void)out_size;
     return YC_MACH_SEND_INVALID_DEST;
+}
+
+/* kern_return_t task_info(task_name_t target_task, task_flavor_t flavor,
+ *     task_info_t task_info_out, mach_msg_type_number_t *task_info_outCnt)
+ * The VMM's private task_info trap (0x7963_0006): TASK_DYLD_INFO (17) and
+ * TASK_AUDIT_TOKEN (15) of the caller's own task; other flavors
+ * KERN_INVALID_ARGUMENT. libxpc reads its own audit token at start. */
+YC_EXPORT int task_info(yc_port_t task, int flavor, void *task_info_out, yc_u32 *task_info_outCnt)
+{
+    return (int)YC_MACH4(0x79630006L, task, (yc_uintptr_t)(unsigned)flavor, task_info_out, task_info_outCnt);
 }

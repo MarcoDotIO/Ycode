@@ -237,3 +237,32 @@ plist as a file format is level 2; no disassembly).
   the nearly full system disk. Remove the run directory at exit unless
   `--keep-run-dir` is given (a directory the run created; never anything
   else).
+
+### 9.4 Resolution (4c-iii done, 2026-10-12)
+
+- **Exit criterion met** (orchestrator, fresh tree on the Thor, no debug
+  flags, three rounds, 54 of 54 checks): `--oneshot "/bin/launchctl print
+  system"` runs through `xpcproxy_sim` (pid 102, exec-replaced) and its
+  output holds the `system` domain; with `--runtime-job com.apple.logd
+  --runtime-job com.apple.notifyd`, both daemons are spawned ("Successfully
+  spawned logd[102] because speculative", notifyd "because ipc (mach)")
+  and are alive at the timeout with no crash or throttle in `launchd.log`.
+  Every earlier probe passes; 424 Swift tests and the host-library checks
+  pass on macOS, the Thor, and x86-64.
+- Fixes (integrator I, levels 1–3): `RequireDomainBinding = false` in
+  Ycode's bootstrap plist (no session bind yet); kevent `EV_VANISHED` as a
+  request flag; `MACH_RCV_SYNC_WAIT` on combined `mach_msg2`; workqueue
+  binding at hand-out (two workers on one workloop → EXDEV); repeated
+  `SYNC_WAKE` succeeds (`threads-and-events.md` corrected); Mach memory
+  entries and cross-VM shared memory (private routines 10/11); POSIX shm
+  (`shm_open`, `ftruncate`, shared `mmap`); `kern.bootsessionuuid`;
+  `task_info(TASK_AUDIT_TOKEN)`; exit-reason `proc_info` flavors;
+  `fgetxattr` family; host-library port-description tables and small Mach
+  routines; device-mode options `--oneshot`, `--runtime-job`,
+  `--keep-run-dir`, `--debug-plist-bool`; fault reports with
+  `__crash_info` annotations.
+- Facts recorded: `launchd-sim.md` §9 Q4 (partly) and Q5;
+  `host-libraries.md` §11.1.
+- Open: the control-channel session bind (`startsession`), the `0x11`
+  assertion at `launchd_sim+64312`, `proc_pid_rusage` times (launchd's
+  "ran for 0ms" and throttle logic), `host_get_io_master` (no IOKit).

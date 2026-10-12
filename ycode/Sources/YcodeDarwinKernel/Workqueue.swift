@@ -51,6 +51,15 @@ enum WorkRequest {
     /// A workloop with active knotes.
     case workloop(KQueue)
 
+    /// For trace notes: the workloop or bucket served.
+    var traceTarget: String {
+        switch self {
+        case .plain: ""
+        case let .bucket(b): ", bucket \(b)"
+        case let .workloop(wl): ", workloop \(hx(wl.workloopID))"
+        }
+    }
+
     var qos: Int {
         switch self {
         case let .plain(q, _): q
@@ -308,6 +317,15 @@ extension DarwinKernel {
                 w.assignment = request
                 w.phase = .running
                 setWorkerQoS(w, for: request)
+                // The bucket or workloop is this worker's from now on, not
+                // only once it runs its upcall: until then a new activation
+                // must not request (and bind) a second thread (xnu binds the
+                // thread request to the thread when it is selected).
+                switch request {
+                case let .bucket(b): if let kq = kevents.workq { bindWorker(worker, to: kq, bucket: b) }
+                case let .workloop(wl): bindWorker(worker, to: wl, bucket: nil)
+                case .plain: break
+                }
                 w.park.wake(count: 1)
                 continue
             }
@@ -446,6 +464,9 @@ extension DarwinKernel {
         guard let w = ctx.worker else { return }
         w.boundQueue = kq
         w.boundBucket = bucket
+        if bucket == nil, let other = kq.servicer, other !== ctx {
+            log("note: workloop \(hx(kq.workloopID)) bound to thread \(ctx.threadID) while thread \(other.threadID) services it")
+        }
         if let bucket { kq.buckets[bucket, default: .init()].boundWorker = ctx } else { kq.servicer = ctx }
     }
 
@@ -526,7 +547,7 @@ extension DarwinKernel {
             if let request = takeWorkRequest() {
                 setWorkerQoS(w, for: request)
                 if let start = upcall(for: request, worker: ctx, mem) {
-                    call += " [next: qos \(request.qos)]"
+                    call += " [next: qos \(request.qos)\(request.traceTarget)]"
                     return .restart(start)
                 }
                 continue
@@ -541,7 +562,7 @@ extension DarwinKernel {
                 w.assignment = nil
                 w.phase = .running
                 if let start = upcall(for: request, worker: ctx, mem) {
-                    call += " [parked, then qos \(request.qos)]"
+                    call += " [parked, then qos \(request.qos)\(request.traceTarget)]"
                     return .restart(start)
                 }
                 continue

@@ -5,6 +5,7 @@
 //              [--host-stubs <host_stubs.bin>] [--host-libs <dir>] [--repeat N]
 //              [--env K=V]... [--exec-args <arg>...]
 //   ycode-simd --device <dir> --runtime-root <dir> [--udid <UDID>] [--job-path <dir>]...
+//              [--oneshot "/guest/program arg..."]... [--runtime-job <label>]...
 //              [--env K=V]... [--trace] [--keep-going] [--timeout-ms N] [--exec-args <arg>...]
 //   ycode-simd --shim <shim.bin> --el0 <el0.bin> [--trace] [--timeout-ms N] [--max-exits N]
 //   ycode-simd --kvm-smoke
@@ -41,6 +42,22 @@
 // `--exec-args` takes every remaining argument as more argv for the root
 // program; `--env K=V` adds or replaces an environment variable.
 //
+// Stage 4c-iii (stage4c-contract.md §9): `--oneshot "/bin/launchctl print
+// system"` writes a RunAtLoad job plist (stdout/stderr in
+// /tmp/ycode-oneshot-<n>.{out,err}, i.e. DEV/data/tmp) into DEV/ycode-jobs;
+// `--runtime-job <label>` copies RR's `<label>.plist` (LaunchDaemons,
+// LaunchAngels, Developer LaunchDaemons) there. DEV/ycode-jobs is rebuilt on
+// every boot and appended to the job paths. The one-shot outputs are printed
+// at the end of the run. `--job-path` directories outside DEV and RR are
+// served read-only at their own guest path.
+//
+// `--debug-plist-bool KEY=true|false` replaces a top-level boolean of the
+// bootstrap plist (Ycode writes `RequireDomainBinding` false: it has no
+// session bind yet, and with true launchd_sim defers every `system` job).
+//
+// The default `--exec` run directory (under the host's temporary directory)
+// is removed at exit unless `--keep-run-dir`; an explicit `--run-dir` is kept.
+//
 // `--keep-going` (with --trace) logs unimplemented traps and library
 // functions but resumes the guest instead of exiting 72/73.
 //
@@ -64,11 +81,12 @@ import YcodeDarwinKernel
 import YcodeMachO
 
 let usage = """
-    usage: ycode-simd --exec <macho> --runtime-root <dir> [--run-dir <dir>] [--trace]
+    usage: ycode-simd --exec <macho> --runtime-root <dir> [--run-dir <dir> | --keep-run-dir] [--trace]
                       [--timeout-ms N] [--max-exits N] [--shim <shim.bin>] [--host-stubs <host_stubs.bin>]
                       [--host-libs <dir>] [--keep-going] [--libfunc-return <name>=<value>[,...]] [--repeat N]
                       [--env K=V]... [--host-bootstrap [--debug-bootstrap-discard]] [--exec-args <arg>...]
            ycode-simd --device <dir> --runtime-root <dir> [--udid <UDID>] [--job-path <dir>]... [--env K=V]...
+                      [--oneshot "/guest/program arg..."]... [--runtime-job <label>]... [--debug-plist-bool KEY=true|false]...
                       [--trace] [--keep-going] [--timeout-ms N] [--host-libs <dir>] [--debug-bootstrap-discard]
                       [--exec-args <arg>...]
                       [--debug-extra-images N [--debug-extra-exec <macho>] [--debug-extra-arg A]... [--debug-extra-wait]]
@@ -83,6 +101,8 @@ struct Options {
     var execPath: String?
     var runtimeRoot: String?
     var runDir: String?
+    /// Keep the default run directory at exit (it is removed otherwise).
+    var keepRunDir = false
     var hostStubsPath: String?
     var hostLibsPath: String?
     var trace = false
@@ -101,6 +121,12 @@ struct Options {
     var devicePath: String?
     var udid: String?
     var jobPaths: [String] = []
+    /// Device mode: Ycode-written RunAtLoad jobs (argv split on spaces) and
+    /// runtime job plists by label, both in DEV/ycode-jobs.
+    var oneshots: [[String]] = []
+    var runtimeJobs: [String] = []
+    /// Debug: replace top-level booleans of the bootstrap plist.
+    var plistBoolOverrides: [String: Bool] = [:]
     /// Debug: the logging host bootstrap service drops requests (instead of
     /// keeping them unanswered).
     var debugBootstrapDiscard = false
@@ -164,6 +190,7 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--exec": options.execPath = value(for: argument)
         case "--runtime-root": options.runtimeRoot = value(for: argument)
         case "--run-dir": options.runDir = value(for: argument)
+        case "--keep-run-dir": options.keepRunDir = true
         case "--host-stubs": options.hostStubsPath = value(for: argument)
         case "--host-libs": options.hostLibsPath = value(for: argument)
         case "--trace": options.trace = true
@@ -203,6 +230,15 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--debug-bootstrap-discard": options.debugBootstrapDiscard = true
         case "--host-bootstrap": options.hostBootstrap = true
         case "--job-path": options.jobPaths.append(value(for: argument))
+        case "--oneshot":
+            let argv = value(for: argument).split(separator: " ").map(String.init)
+            guard let program = argv.first, program.hasPrefix("/") else { die("--oneshot needs \"/guest/program [arg]...\"", status: 64) }
+            options.oneshots.append(argv)
+        case "--runtime-job": options.runtimeJobs.append(value(for: argument))
+        case "--debug-plist-bool":
+            let parts = value(for: argument).split(separator: "=", maxSplits: 1).map(String.init)
+            guard parts.count == 2, let flag = Bool(parts[1]) else { die("--debug-plist-bool needs KEY=true|false", status: 64) }
+            options.plistBoolOverrides[parts[0]] = flag
         case "--env":
             let pair = value(for: argument)
             guard let eq = pair.firstIndex(of: "="), eq != pair.startIndex else { die("--env needs K=V", status: 64) }

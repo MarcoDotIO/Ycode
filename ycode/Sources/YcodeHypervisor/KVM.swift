@@ -53,7 +53,9 @@ func kvmCheck(_ result: Int32, _ operation: String) throws -> Int32 {
 
 /// One KVM memslot: a guest-physical range backed by host memory the VM owns.
 public struct MemorySlot: Sendable, CustomStringConvertible {
-    public enum Kind: Sendable, Equatable { case ram, anonymousPool, file }
+    /// `shared`: the host memory of a `SharedMemoryObject`, owned by the
+    /// object (never unmapped by the VM).
+    public enum Kind: Sendable, Equatable { case ram, anonymousPool, file, shared }
     public var slot: UInt32
     public var gpa: UInt64
     public var size: UInt64
@@ -169,7 +171,7 @@ public final class VirtualMachine: @unchecked Sendable {
             vcpuList.forEach { $0.close() }
             vcpuList.removeAll()
             _ = ckvm_close(vmFD)
-            for slot in slotList {
+            for slot in slotList where slot.kind != .shared {
                 _ = ckvm_free_anonymous(UnsafeMutableRawPointer(bitPattern: slot.hostAddress)!, Int(slot.size))
             }
             slotList.removeAll()

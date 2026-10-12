@@ -453,7 +453,8 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         p.srights -= 1
         checkNoSenders(p)
         // A fileport lives while send rights exist (`processes.md` §4.9).
-        if p.srights <= 0, p.fileportFile != nil { portDeath(p) }
+        // So does a memory entry (xnu: no-senders destroys the named entry).
+        if p.srights <= 0, p.fileportFile != nil || p.memoryEntry != nil { portDeath(p) }
     }
 
     func checkNoSenders(_ p: IPCPort) {
@@ -556,6 +557,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
             s.destroy()
         }
         p.fileportFile = nil
+        p.memoryEntry = nil
     }
 
     func removeFromAllSets(_ p: IPCPort) {

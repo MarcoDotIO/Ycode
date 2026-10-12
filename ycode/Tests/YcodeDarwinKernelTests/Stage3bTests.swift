@@ -70,6 +70,41 @@ import YcodeDarwinABI
         #expect(!e2.carry && e2.x[0] == UInt64(bitPattern: -2))
     }
 
+    /// Extended attributes (stage 4c-iii: launchd_sim asks for one on each job
+    /// plist): none exist; get/remove → ENOATTR, list → 0, set → ENOTSUP;
+    /// a missing file or a bad descriptor fails first.
+    @Test func extendedAttributes() throws {
+        let env = try Env()
+        let path = try env.makeFile("job.plist", Array("x".utf8))
+        try env.putString(path, at: s + 0x100)
+        try env.putString("com.apple.quarantine", at: s + 0x200)
+        try env.putString(path + ".missing", at: s + 0x300)
+        let fd = env.svc(5, [s + 0x100, 0, 0]).1.x[0]
+        #expect(env.svc(235, [fd, s + 0x200, 0, 0, 0, 0]).1.x[0] == 93)  // fgetxattr
+        #expect(env.svc(234, [s + 0x100, s + 0x200, 0, 0, 0, 0]).1.x[0] == 93)  // getxattr
+        #expect(env.svc(234, [s + 0x300, s + 0x200, 0, 0, 0, 0]).1.x[0] == 2)  // ENOENT
+        #expect(env.svc(235, [77, s + 0x200, 0, 0, 0, 0]).1.x[0] == 9)  // EBADF
+        let (_, list) = env.svc(241, [fd, s + 0x400, 64, 0])  // flistxattr
+        #expect(!list.carry && list.x[0] == 0)
+        #expect(!env.svc(240, [s + 0x100, 0, 0, 0]).1.carry)  // listxattr
+        #expect(env.svc(237, [fd, s + 0x200, s, 1, 0, 0]).1.x[0] == 45)  // fsetxattr: ENOTSUP
+        #expect(env.svc(239, [fd, s + 0x200, 0]).1.x[0] == 93)  // fremovexattr
+    }
+
+    /// task_info(TASK_AUDIT_TOKEN) of the caller's own task (libxpc reads it at start).
+    @Test func taskInfoAuditToken() throws {
+        let env = try Env()
+        try env.put(le32(8), at: s + 0x40)
+        let (_, f) = env.svc(0x7963_0006, [0x103, 15, s, s + 0x40])
+        #expect(f.x[0] == 0)
+        let words = try env.space.read(va: s, count: 32)
+        let count = try env.u32(s + 0x40)
+        #expect(u32(words, 4) == 501 && u32(words, 20) == 100 && count == 8)
+        try env.put(le32(4), at: s + 0x40)
+        #expect(env.svc(0x7963_0006, [0x103, 15, s, s + 0x40]).1.x[0] == 4)  // count too small
+        #expect(env.svc(0x7963_0006, [0x103, 99, s, s + 0x40]).1.x[0] == 4)  // unknown flavor
+    }
+
     @Test func entropy() throws {
         let env = try Env()
         env.kernel.entropy = { n in [UInt8](repeating: 0x5A, count: n) }

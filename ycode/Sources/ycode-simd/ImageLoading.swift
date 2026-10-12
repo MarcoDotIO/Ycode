@@ -104,6 +104,7 @@ final class SharedCacheIndex: @unchecked Sendable {
     private var cache: SharedCache?
     private var loadFailed = false
     private var images: [GuestImage]?
+    private var crashInfo: [(image: String, address: UInt64, size: UInt64)]?
     private var mappingList: [(file: String, mapping: SharedCache.Mapping)]?
     private var firstMapping: SharedCache.Mapping??
 
@@ -137,6 +138,27 @@ final class SharedCacheIndex: @unchecked Sendable {
             let first = sharedCacheLocked()?.mainFile.mappings.first
             firstMapping = .some(first)
             return first
+        }
+    }
+
+    /// Every cache image's `__crash_info` section (any `__DATA*` segment) at
+    /// its header address: the CrashReporter annotations a library fills
+    /// before it traps (Libc `CrashReporterClient.h`, level 1).
+    func crashInfoSections() -> [(image: String, address: UInt64, size: UInt64)] {
+        lock.withLock {
+            if let crashInfo { return crashInfo }
+            guard let cache = sharedCacheLocked() else { return [] }
+            var list: [(image: String, address: UInt64, size: UInt64)] = []
+            for image in cache.images {
+                guard let macho = try? cache.machO(for: image) else { continue }
+                for segment in macho.segments where segment.name.hasPrefix("__DATA") {
+                    for section in segment.sections where section.name == "__crash_info" {
+                        list.append((image.path, section.address, section.size))
+                    }
+                }
+            }
+            crashInfo = list
+            return list
         }
     }
 

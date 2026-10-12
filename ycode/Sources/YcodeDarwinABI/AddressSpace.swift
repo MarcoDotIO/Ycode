@@ -50,6 +50,10 @@ public protocol PhysicalBacking: AnyObject {
     func release(gpa: UInt64, size: UInt64)
     func readPhysical(gpa: UInt64, count: Int) throws -> [UInt8]
     func writePhysical(gpa: UInt64, bytes: [UInt8]) throws
+    /// The GPA at which all of `object` is visible in this guest physical
+    /// space (registered on first use, the same GPA afterwards). The backing
+    /// keeps the object alive while it is registered.
+    func mapShared(_ object: SharedMemoryObject) throws -> UInt64
 }
 
 // MARK: - Regions
@@ -59,6 +63,8 @@ public struct GuestRegion: Equatable, Hashable, Sendable, CustomStringConvertibl
     public enum Backing: Equatable, Hashable, Sendable {
         case anonymous(gpa: UInt64)
         case file(path: String, offset: UInt64, gpa: UInt64)
+        /// Part of a shared memory object (a Mach memory entry's memory).
+        case shared(serial: UInt64, offset: UInt64, gpa: UInt64)
     }
 
     public var va: UInt64
@@ -74,7 +80,7 @@ public struct GuestRegion: Equatable, Hashable, Sendable, CustomStringConvertibl
     /// The GPA backing `va`.
     public var gpa: UInt64 {
         switch backing {
-        case let .anonymous(gpa), let .file(_, _, gpa): gpa
+        case let .anonymous(gpa), let .file(_, _, gpa), let .shared(_, _, gpa): gpa
         }
     }
 
@@ -82,6 +88,7 @@ public struct GuestRegion: Equatable, Hashable, Sendable, CustomStringConvertibl
         switch backing {
         case let .anonymous(gpa): "anonymous gpa \(hex(gpa))"
         case let .file(path, offset, gpa): "\(path) @\(hex(offset)) gpa \(hex(gpa))"
+        case let .shared(serial, offset, gpa): "shared object #\(serial) @\(hex(offset)) gpa \(hex(gpa))"
         }
     }
 
@@ -106,6 +113,17 @@ public protocol GuestVirtualMemory: GuestMemoryAccess, AnyObject {
     func unmap(va: UInt64, size: UInt64) throws
     /// Changes the protection of [va, va+size), which must be fully mapped.
     func protect(va: UInt64, size: UInt64, protection: VMProtection) throws
+    /// Maps `object` bytes [offset, offset+size) (16 KiB-aligned offset)
+    /// shared: writes through any mapping are seen through every other one,
+    /// in any address space. Placement as `mapAnonymous`.
+    func mapShared(_ object: SharedMemoryObject, offset: UInt64, at: UInt64?, size: UInt64, protection: VMProtection,
+                   hint: UInt64?) throws -> UInt64
+    /// Makes [va, va+size) (16 KiB-aligned, every page mapped, none
+    /// permanent) shared memory and returns the object and the offset of
+    /// `va` in it. A range inside one shared mapping is returned as it is;
+    /// otherwise its current contents move into a new object, which then
+    /// backs the range (same protections).
+    func share(va: UInt64, size: UInt64) throws -> (object: SharedMemoryObject, offset: UInt64)
     /// The mappings, ascending by VA.
     var regions: [GuestRegion] { get }
     /// Bumps on every page-table change.
@@ -142,7 +160,9 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         var protection: VMProtection
         var gpa: UInt64
         var file: GuestFile?
+        /// The offset in `file` or in `shared`.
         var fileOffset: UInt64
+        var shared: SharedMemoryObject?
         var permanent: Bool
         var end: UInt64 { va + size }
 
@@ -188,9 +208,15 @@ public final class GuestAddressSpace: GuestVirtualMemory {
 
     public var regions: [GuestRegion] {
         chunks.map { c in
-            GuestRegion(va: c.va, size: c.size, protection: c.protection,
-                        backing: c.file.map { .file(path: $0.guestPath, offset: c.fileOffset, gpa: c.gpa) } ?? .anonymous(gpa: c.gpa),
-                        permanent: c.permanent)
+            let backing: GuestRegion.Backing
+            if let object = c.shared {
+                backing = .shared(serial: object.serial, offset: c.fileOffset, gpa: c.gpa)
+            } else if let file = c.file {
+                backing = .file(path: file.guestPath, offset: c.fileOffset, gpa: c.gpa)
+            } else {
+                backing = .anonymous(gpa: c.gpa)
+            }
+            return GuestRegion(va: c.va, size: c.size, protection: c.protection, backing: backing, permanent: c.permanent)
         }
     }
 
@@ -207,6 +233,58 @@ public final class GuestAddressSpace: GuestVirtualMemory {
 
     public func mapFile(_ file: GuestFile, offset: UInt64, at: UInt64?, size: UInt64, protection: VMProtection, hint: UInt64?) throws -> UInt64 {
         try map(file: file, offset: offset, at: at, size: size, protection: protection, hint: hint, permanent: false)
+    }
+
+    public func mapShared(_ object: SharedMemoryObject, offset: UInt64, at: UInt64?, size: UInt64, protection: VMProtection,
+                          hint: UInt64?) throws -> UInt64 {
+        let rounded = (size + Self.pageMask) & ~Self.pageMask
+        guard size > 0, offset & Self.pageMask == 0, offset <= object.size, rounded <= object.size - offset else {
+            throw DarwinErrnoError(DarwinErrnoCode.EINVAL)
+        }
+        return try map(file: nil, shared: object, offset: offset, at: at, size: size, protection: protection, hint: hint,
+                       permanent: false)
+    }
+
+    public func share(va: UInt64, size: UInt64) throws -> (object: SharedMemoryObject, offset: UInt64) {
+        let (lo, hi) = try checkedRange(va: va, size: size, permanent: false)
+        let affected = chunks.filter { $0.va < hi && lo < $0.end }
+        var cursor = lo
+        for c in affected {
+            guard c.va <= cursor else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
+            cursor = max(cursor, c.end)
+        }
+        guard cursor >= hi else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
+        guard !affected.contains(where: \.permanent) else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        // Already one shared mapping: the same object.
+        if affected.count == 1, let object = affected[0].shared {
+            return (object, affected[0].fileOffset + (lo - affected[0].va))
+        }
+        let object = try SharedMemoryObject(size: hi - lo)
+        let gpa: UInt64
+        do { gpa = try backing.mapShared(object) } catch { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
+        // Move the contents, then point every page at the object.
+        var pt = pageTables
+        var moved: [Chunk] = []
+        for c in affected.map({ $0.slice(lo, hi) }) {
+            let bytes = try backing.readPhysical(gpa: c.gpa, count: Int(c.size))
+            object.write(offset: c.va - lo, bytes: bytes)
+            var n = c
+            n.gpa = gpa + (c.va - lo)
+            n.file = nil
+            n.shared = object
+            n.fileOffset = c.va - lo
+            moved.append(n)
+        }
+        try unmapPages(of: affected, lo: lo, hi: hi, in: &pt)
+        do {
+            for c in moved { try pt.map(va: c.va, pa: c.gpa, size: c.size, attributes: c.protection.el0PageAttributes) }
+        } catch {
+            throw mapPageTableError(error)
+        }
+        releaseAnonymous(affected, lo: lo, hi: hi)
+        chunks = (carve(chunks, lo: lo, hi: hi) + moved).sorted { $0.va < $1.va }
+        try commit(pt)
+        return (object, 0)
     }
 
     /// A VMM-owned anonymous mapping at a fixed VA (commpage, host page):
@@ -330,8 +408,8 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         return (va, va + rounded)
     }
 
-    private func map(file: GuestFile?, offset: UInt64, at: UInt64?, size: UInt64, protection: VMProtection,
-                     hint: UInt64?, permanent: Bool) throws -> UInt64 {
+    private func map(file: GuestFile?, shared: SharedMemoryObject? = nil, offset: UInt64, at: UInt64?, size: UInt64,
+                     protection: VMProtection, hint: UInt64?, permanent: Bool) throws -> UInt64 {
         guard size > 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         guard offset & Self.pageMask == 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         guard size <= UInt64.max - Self.pageMask else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
@@ -350,7 +428,9 @@ public final class GuestAddressSpace: GuestVirtualMemory {
 
         let gpa: UInt64
         do {
-            if let file {
+            if let shared {
+                gpa = try backing.mapShared(shared) + offset
+            } else if let file {
                 gpa = try backing.mapFile(file, offset: offset, size: rounded)
             } else {
                 gpa = try backing.allocateAnonymous(size: rounded)
@@ -366,13 +446,13 @@ public final class GuestAddressSpace: GuestVirtualMemory {
             try unmapPages(of: replaced, lo: lo, hi: hi, in: &pt)
             try pt.map(va: lo, pa: gpa, size: rounded, attributes: protection.el0PageAttributes)
         } catch {
-            if file == nil { backing.release(gpa: gpa, size: rounded) }
+            if file == nil && shared == nil { backing.release(gpa: gpa, size: rounded) }
             throw mapPageTableError(error)
         }
         releaseAnonymous(replaced, lo: lo, hi: hi)
         var updated = carve(chunks, lo: lo, hi: hi)
         updated.append(Chunk(va: lo, size: rounded, protection: protection, gpa: gpa, file: file,
-                             fileOffset: offset, permanent: permanent))
+                             fileOffset: offset, shared: shared, permanent: permanent))
         chunks = updated.sorted { $0.va < $1.va }
         try commit(pt)
         return lo
@@ -412,7 +492,7 @@ public final class GuestAddressSpace: GuestVirtualMemory {
     }
 
     private func releaseAnonymous(_ affected: [Chunk], lo: UInt64, hi: UInt64) {
-        for c in affected where c.file == nil {
+        for c in affected where c.file == nil && c.shared == nil {
             let s = c.slice(lo, hi)
             backing.release(gpa: s.gpa, size: s.size)
         }
@@ -480,6 +560,8 @@ public final class FakePhysicalBacking: PhysicalBacking {
     private var free: [Range<UInt64>]
     private var nextFileSlotGPA: UInt64
     public private(set) var fileSlots: [FileSlot] = []
+    /// Shared objects visible in this space: GPA ranges served by the object's memory.
+    private var sharedSlots: [(gpa: UInt64, object: SharedMemoryObject)] = []
     /// Every `writePhysical` call, in order (for checking table writes).
     public var writeLog: [(gpa: UInt64, count: Int)] = []
 
@@ -530,6 +612,18 @@ public final class FakePhysicalBacking: PhysicalBacking {
         return gpa
     }
 
+    public func mapShared(_ object: SharedMemoryObject) throws -> UInt64 {
+        if let slot = sharedSlots.first(where: { $0.object === object }) { return slot.gpa }
+        let gpa = nextFileSlotGPA
+        nextFileSlotGPA += object.size
+        sharedSlots.append((gpa, object))
+        return gpa
+    }
+
+    private func sharedSlot(_ gpa: UInt64) -> (gpa: UInt64, object: SharedMemoryObject)? {
+        sharedSlots.first { gpa >= $0.gpa && gpa - $0.gpa < $0.object.size }
+    }
+
     public func release(gpa: UInt64, size: UInt64) {
         guard size > 0 else { return }
         var p = gpa
@@ -567,7 +661,9 @@ public final class FakePhysicalBacking: PhysicalBacking {
             let base = cursor & ~(VMLayout.pageSize - 1)
             let inPage = Int(cursor - base)
             let n = min(remaining, Int(VMLayout.pageSize) - inPage)
-            if let page = pages[base] { out += page[inPage..<(inPage + n)] } else { out += repeatElement(0, count: n) }
+            if let slot = sharedSlot(cursor) {
+                out += slot.object.read(offset: cursor - slot.gpa, count: n)
+            } else if let page = pages[base] { out += page[inPage..<(inPage + n)] } else { out += repeatElement(0, count: n) }
             cursor += UInt64(n)
             remaining -= n
         }
@@ -582,6 +678,12 @@ public final class FakePhysicalBacking: PhysicalBacking {
             let base = cursor & ~(VMLayout.pageSize - 1)
             let inPage = Int(cursor - base)
             let n = min(bytes.count - offset, Int(VMLayout.pageSize) - inPage)
+            if let slot = sharedSlot(cursor) {
+                slot.object.write(offset: cursor - slot.gpa, bytes: Array(bytes[offset..<(offset + n)]))
+                cursor += UInt64(n)
+                offset += n
+                continue
+            }
             var page = pages[base] ?? [UInt8](repeating: 0, count: Int(VMLayout.pageSize))
             page.replaceSubrange(inPage..<(inPage + n), with: bytes[offset..<(offset + n)])
             pages[base] = page

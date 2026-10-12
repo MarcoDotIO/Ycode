@@ -15,7 +15,8 @@ extension DarwinKernel {
     enum ProcInfoFlavor {
         static let tbsdInfo: Int32 = 3, taskInfo: Int32 = 4, pathInfo: Int32 = 11, shortBSDInfo: Int32 = 13,
                    uniqueIdentifierInfo: Int32 = 17, bsdInfoWithUniqueID: Int32 = 18, archInfo: Int32 = 19,
-                   noteExit: Int32 = 21, platformInfo: Int32 = 30
+                   noteExit: Int32 = 21, exitReasonInfo: Int32 = 24, exitReasonBasicInfo: Int32 = 25,
+                   platformInfo: Int32 = 30
     }
 
     /// Dirty-tracking bits as `PROC_DIRTYCONTROL_GET` reports them.
@@ -143,6 +144,13 @@ extension DarwinKernel {
             let status = UInt32(arg) & NoteProc.exitStatus != 0 && p.isZombie ? UInt32(bitPattern: p.status) & 0xF_FFFF : 0
             b.appendLE(status)
             bytes = b
+        case ProcInfoFlavor.exitReasonInfo, ProcInfoFlavor.exitReasonBasicInfo:
+            // xnu proc_pidexitreasoninfo (bsd/kern/proc_info.c): the parent
+            // only (EACCES); a process without an exit reason (Ycode records
+            // none: exit(), signals) is ENOENT. Sizes 40 / 24 (ENOMEM).
+            guard Int(size) >= (flavor == ProcInfoFlavor.exitReasonInfo ? 40 : 24) else { throw Failure(errno: Errno.ENOMEM) }
+            guard p.ppid == pid else { throw Failure(errno: Self.EACCES) }
+            throw Failure(errno: Errno.ENOENT)
         case ProcInfoFlavor.platformInfo:
             try need(4, zombieOK: true)
             var b: [UInt8] = []

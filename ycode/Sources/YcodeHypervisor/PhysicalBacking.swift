@@ -40,6 +40,9 @@ public final class KVMPhysicalBacking {
     public private(set) var anonymousBytesInUse: UInt64 = 0
     /// Number of file mappings made (for tracing).
     public private(set) var fileMappingCount = 0
+    /// Shared memory objects registered in this VM (kept alive while the
+    /// VM may touch them; their slots are never unmapped by the VM).
+    private var sharedSlots: [ObjectIdentifier: (object: SharedMemoryObject, gpa: UInt64)] = [:]
 
     public init(vm: VirtualMachine,
                 poolGPA: UInt64 = KVMPhysicalBacking.defaultPoolGPA,
@@ -143,6 +146,23 @@ public final class KVMPhysicalBacking {
         }
         nextFileGPA = gpa + total
         fileMappingCount += 1
+        return gpa
+    }
+
+    // MARK: Shared memory
+
+    /// Registers `object` as a memslot (once per VM) in the file window and
+    /// returns its GPA.
+    public func mapShared(_ object: SharedMemoryObject) throws -> UInt64 {
+        if let slot = sharedSlots[ObjectIdentifier(object)] { return slot.gpa }
+        let gpa = Self.roundUp(nextFileGPA, Self.granule)
+        guard gpa + object.size <= physicalLimit else {
+            throw KVMError("shared memslot", errno: ENOMEM, detail: "guest physical space exhausted")
+        }
+        try vm.addMemorySlot(gpa: gpa, size: object.size, host: object.host, kind: .shared,
+                             name: "shared object #\(object.serial)")
+        nextFileGPA = gpa + object.size
+        sharedSlots[ObjectIdentifier(object)] = (object, gpa)
         return gpa
     }
 

@@ -152,3 +152,29 @@ YC_EXPORT int host_get_special_port(yc_port_t host_priv, int node, int which, yc
     (void)port;
     return YC_KERN_INVALID_ARGUMENT;
 }
+
+/* kern_return_t host_set_atm_diagnostic_flag(host_t host, uint32_t diagnostic_flag)
+ * xnu (osfmk/kern/host.c): KERN_INVALID_ARGUMENT for a null host, else
+ * KERN_NO_ACCESS without the private entitlement, which no simulator
+ * process has (logd calls it at start and continues). */
+YC_EXPORT int host_set_atm_diagnostic_flag(yc_port_t host, yc_u32 diagnostic_flag)
+{
+    (void)diagnostic_flag;
+    return host == 0 ? YC_KERN_INVALID_ARGUMENT : 8 /* KERN_NO_ACCESS */;
+}
+
+/* kern_return_t host_request_notification(host_t host, host_flavor_t notify_type,
+ *     mach_port_t notify_port)
+ * xnu (osfmk/kern/host_notify.c): KERN_INVALID_ARGUMENT for a null host or a
+ * type above HOST_NOTIFY_TYPE_MAX (1: CALENDAR_CHANGE 0, CALENDAR_SET 1),
+ * KERN_INVALID_CAPABILITY for a null or dead port. Ycode's calendar is
+ * never set, so a registration is accepted and never fires (libdispatch
+ * registers its notify port at start). */
+YC_EXPORT int host_request_notification(yc_port_t host, int notify_type, yc_port_t notify_port)
+{
+    if (host == 0 || notify_type < 0 || notify_type > 1)
+        return YC_KERN_INVALID_ARGUMENT;
+    if (notify_port == 0 || notify_port == 0xFFFFFFFFu)
+        return 20; /* KERN_INVALID_CAPABILITY */
+    return 0;
+}

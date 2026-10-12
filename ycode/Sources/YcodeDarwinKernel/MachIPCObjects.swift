@@ -28,6 +28,8 @@ public enum MachKernelObject: Equatable, Sendable, CustomStringConvertible {
     case semaphore(serial: UInt64)
     /// A fileport (`processes.md` §4.9): holds an open file description.
     case fileport(serial: UInt64)
+    /// A memory entry (named entry, xnu `IKOT_NAMED_ENTRY`): shared memory.
+    case memoryEntry(serial: UInt64)
 
     /// True for every task flavor (control, name, read, inspect).
     public var isTaskFlavor: Bool {
@@ -44,6 +46,7 @@ public enum MachKernelObject: Equatable, Sendable, CustomStringConvertible {
         case .taskRead: "task-read"
         case .taskInspect: "task-inspect"
         case let .fileport(serial): "fileport#\(serial)"
+        case let .memoryEntry(serial): "memory-entry#\(serial)"
         case let .thread(serial): "thread#\(serial)"
         case .host: "host"
         case .bootstrap: "bootstrap"
@@ -67,6 +70,8 @@ final class IPCPort {
     weak var task: MachIPC?
     /// The open file description behind a fileport.
     var fileportFile: DarwinOpenFile?
+    /// The memory behind a memory-entry port.
+    var memoryEntry: MachMemoryEntry?
     /// False once the port died.
     var active = true
     /// The space that holds the receive right (nil: in transit, dead, or a

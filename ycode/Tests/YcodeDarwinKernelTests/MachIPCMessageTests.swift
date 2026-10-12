@@ -726,6 +726,28 @@ import YcodeDarwinABI
                 == MachMsgReturn.rcvInvalidNotify)
     }
 
+    /// xnu `mach_msg2_trap`: with MACH_RCV_SYNC_WAIT the link target is the
+    /// header's remote port, also on a combined send and receive (libxpc's
+    /// pipe routine through a special reply port, as xpcproxy_sim does).
+    @Test func msg2CombinedSendReceiveWithSyncWait() throws {
+        let env = try IPCEnv()
+        let (server, _) = ports(env)
+        let srp = UInt32(env.trap(-50))
+        let msg = IPCEnv.receiveBuffer
+        env.put([UInt8](repeating: 0, count: 64), at: msg)
+        let options = MachMsgOption.sendMsg | MachMsgOption.sendMQCall | rcv | MachMsgOption.rcvSyncWait
+        let bits = UInt64(MachMsgType.copySend) | UInt64(MachMsgType.makeSendOnce) << 8
+        // Sent (the server holds the request), then the receive on the special
+        // reply port waits for the reply and times out: no INVALID_NOTIFY.
+        #expect(env.kr(-47, [msg, options, bits | 24 << 32, UInt64(server) | UInt64(srp) << 32, 0x55 << 32,
+                             UInt64(srp) << 32, 64, 10]) == MachMsgReturn.rcvTimedOut)
+        let (code, raw) = env.receive(server)
+        #expect(code == 0 && Received(raw).id == 0x55)
+        // A null remote port is still refused for a receive-only sync wait.
+        #expect(env.kr(-47, [msg, rcv | MachMsgOption.rcvSyncWait, 0, 0, 0, UInt64(srp) << 32, 64, 10])
+                == MachMsgReturn.rcvInvalidNotify)
+    }
+
     @Test func sendToDeadDestinations() throws {
         let env = try IPCEnv()
         let p = env.allocate()

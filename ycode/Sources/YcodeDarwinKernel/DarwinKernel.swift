@@ -257,6 +257,7 @@ public final class DarwinKernel {
     /// `TASK_DYLD_INFO` and its count in `natural_t` units.
     static let taskDyldInfo: UInt64 = 17
     static let taskDyldInfoCount: UInt32 = 5
+    static let taskAuditToken: UInt64 = 15
 
     // MARK: State
 
@@ -319,6 +320,10 @@ public final class DarwinKernel {
     var nextThreadID: UInt64 = 2
     /// What every later trap returns once the process is exiting.
     var termination: Outcome?
+    /// The first non-SVC trap (fault, BRK) that ended the image, as it
+    /// arrived: the VMM's fault report describes it even when another thread
+    /// of the process returns the fatal outcome. Lock held.
+    public private(set) var faultFrame: TrapFrame?
     /// Contract-pinned (stage 4b §3.4): true once this image is ending (exit,
     /// kill, exec). The VMM reads it without the lock before re-entering a vCPU.
     public var isTerminating: Bool { termination != nil }
@@ -360,6 +365,9 @@ public final class DarwinKernel {
         let system = system ?? DarwinSystem(implicit: true)
         self.system = system
         self.lock = system.lock
+        // kern.bootsessionuuid: this boot's session UUID (libsystem_trace's
+        // logd aborts without it; xnu bsd/kern/kern_sysctl.c, a string).
+        sysctl.entries.append(.init(name: "kern.bootsessionuuid", mib: [1, 1006], value: .string(system.bootSessionUUID)))
         self.log = log
         self.counter = counter
         self.counterFrequency = counterFrequency
@@ -485,6 +493,7 @@ public final class DarwinKernel {
     private func handleLocked(_ frame: inout TrapFrame, memory: any KernelGuestMemory) -> Outcome {
         guard frame.trapKind == .svc else {
             log("trap \(frame.trapKind?.description ?? "kind \(frame.kind)") fatal")
+            if faultFrame == nil { faultFrame = frame }
             if Self.isCachePatchPlaceholderFault(frame) {
                 return .fatal(status: Self.exceptionExitStatus,
                               message: Self.cachePatchPlaceholderMessage + "\n" + frame.description)
@@ -781,6 +790,7 @@ public final class DarwinKernel {
             return .fatal(Self.abortExitStatus, message)
 
         default:
+            if let result = try posixShmCall(n, a, &call, mem) { return result }
             return try extendedBSDCall(n, a, &call, &fallback, mem) ?? .unimplemented
         }
     }
@@ -816,6 +826,9 @@ public final class DarwinKernel {
         let va: UInt64
         if anonymous {
             va = try mem.mapAnonymous(at: at, size: size, protection: prot, hint: hint)
+        } else if let open = try? fileSystem.openFile(for: fd), let shm = open.object as? PosixShmDescriptor {
+            guard pageOffset == 0 else { throw Failure(errno: Errno.EINVAL) }
+            va = try mapPosixShm(shm, file: open, flags: flags, prot: prot, offset: pos, size: size, at: at, hint: hint, mem)
         } else {
             let file = try fileSystem.file(for: fd)
             if flags & MapFlag.shared != 0 && flags & MapFlag.private == 0 {
@@ -1214,6 +1227,22 @@ public final class DarwinKernel {
 
         case Private.taskInfo:
             call = "task_info(task=\(hx(a[0])), flavor=\(a[1] & 0xFFFF_FFFF), info=\(hx(a[2])), count=\(hx(a[3])))"
+            if a[1] & 0xFFFF_FFFF == Self.taskAuditToken {
+                // TASK_AUDIT_TOKEN (15, 8 words; osfmk/mach/task_info.h): the
+                // caller's own token, as its messages carry it.
+                guard UInt32(truncatingIfNeeded: a[0]) == WellKnownPort.task else {
+                    return kr(KernReturn.invalidArgument, " [not the caller's task]")
+                }
+                do {
+                    let count = try mem.read(va: a[3], count: 4).readLE(UInt32.self, at: 0)
+                    guard count >= 8 else { return kr(KernReturn.invalidArgument) }
+                    try mem.write(va: a[2], bytes: descriptorAuditToken)
+                    try writeU32(a[3], 8, mem)
+                } catch {
+                    return kr(KernReturn.invalidAddress)
+                }
+                return kr(KernReturn.success, " [TASK_AUDIT_TOKEN]")
+            }
             guard a[1] & 0xFFFF_FFFF == Self.taskDyldInfo else {
                 return kr(KernReturn.invalidArgument, " [flavor not supported]")
             }

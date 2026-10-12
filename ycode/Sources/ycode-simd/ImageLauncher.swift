@@ -614,6 +614,13 @@ final class GuestImageInstance: @unchecked Sendable {
                 for r in [0, 1] {
                     if let text = guestCString(frame.x[r]) { lines.append("  x\(r) -> \"\(text)\"") }
                 }
+                lines += crashAnnotations()
+            } else if frame.trapKind != .svc {
+                // Any other fault: the registers that point at text (format
+                // strings, names) say what the code was working on.
+                for r in 0..<29 where frame.x[r] >= 0x1_0000 {
+                    if let text = guestCString(frame.x[r]) { lines.append("  x\(r) -> \"\(text)\"") }
+                }
             }
             // x16/x17: the last stub call's target (a NULL from a library
             // function is often what the faulting code then used).
@@ -625,6 +632,31 @@ final class GuestImageInstance: @unchecked Sendable {
             }
             return lines.joined(separator: "\n")
         }
+    }
+
+    /// The CrashReporter annotations that cache libraries filled in
+    /// (`struct crashreporter_annotations_t` in each `__crash_info` section:
+    /// u64 version, then the pointers message, signature_string, backtrace,
+    /// message2, then thread, dialog_mode, abort_cause; Libc
+    /// `CrashReporterClient.h`, level 1). Lock held.
+    private func crashAnnotations() -> [String] {
+        var lines: [String] = []
+        for info in launcher.config.cacheIndex.crashInfoSections() where info.size >= 40 {
+            let va = info.address &+ images.cacheDelta
+            guard let raw = try? space.read(va: va, count: Int(min(info.size, 64)), checkingEL0Access: false) else { continue }
+            func word(_ i: Int) -> UInt64 {
+                guard (i + 1) * 8 <= raw.count else { return 0 }
+                return (0..<8).reduce(UInt64(0)) { $0 | UInt64(raw[i * 8 + $1]) << (8 * UInt64($1)) }
+            }
+            let name = (info.image as NSString).lastPathComponent
+            for (index, field) in [(1, "message"), (2, "signature"), (4, "message2")] {
+                let pointer = word(index)
+                guard pointer != 0 else { continue }
+                lines.append("  crash annotation \(name) \(field): " + (guestCString(pointer).map { "\"\($0)\"" } ?? hex(pointer)))
+            }
+            if word(7) != 0 { lines.append("  crash annotation \(name) abort_cause: \(hex(word(7)))") }
+        }
+        return lines
     }
 
     /// The printable C string at a guest address (EL0-readable memory, at
@@ -690,6 +722,9 @@ final class GuestImageInstance: @unchecked Sendable {
                          offset: frame.x[5], path: try? fileSystem.path(for: fd))
         }
 
+        // The trap as it arrived (the kernel may rewrite the frame, e.g. for
+        // signal delivery): fault reports describe this one.
+        let arrivedFrame = frame
         let outcome = kernel.handle(&frame, context: context, memory: space)
         if trace, isSVC, x16 == 368, outcome == .resume, frame.x[16] == 0, frame.x[5] > 0, frame.x[5] < 64, frame.x[3] != 0 {
             // A workqueue thread restarted with events (x3 = list, x5 = count).
@@ -727,12 +762,19 @@ final class GuestImageInstance: @unchecked Sendable {
             if trace { say("image \(record.serial) replaced by exec") }
             return end(.ended, status: 0, message: "replaced by exec", worker: worker)
         case let .fatal(status, message):
+            // The faulting thread's frame (another thread may report the end).
+            let reportFrame = kernel.lock.withLock { kernel.faultFrame } ?? arrivedFrame
             var text = ""
-            if DarwinKernel.isCachePatchPlaceholderFault(frame) {
-                text += "\(DarwinKernel.cachePatchPlaceholderMessage): ELR \(hex(frame.elr)) = "
-                    + "\(images.describe(frame.elr)); LR \(hex(frame.x[30])) = \(images.describe(frame.x[30]))\n"
+            if DarwinKernel.isCachePatchPlaceholderFault(reportFrame) {
+                text += "\(DarwinKernel.cachePatchPlaceholderMessage): ELR \(hex(reportFrame.elr)) = "
+                    + "\(images.describe(reportFrame.elr)); LR \(hex(reportFrame.x[30])) = \(images.describe(reportFrame.x[30]))\n"
             }
-            text += "fatal guest condition on \(context), vCPU \(worker.index) (exit \(status)):\n\(message)\n\(faultReport(frame))"
+            text += "fatal guest condition on \(context), vCPU \(worker.index) (exit \(status)):\n\(message)\n\(faultReport(reportFrame))"
+            // abort(): the reason is in the libraries' crash annotations.
+            if status == DarwinKernel.abortExitStatus, reportFrame.syndrome.exceptionClass != .brk {
+                let notes = kernel.lock.withLock { crashAnnotations() }
+                if !notes.isEmpty { text += "\n" + notes.joined(separator: "\n") }
+            }
             // A child's fault or abort is worth a line; a default-action
             // signal (128 + n, e.g. kill) is ordinary process life.
             if pid != rootPID, trace || status == DarwinKernel.exceptionExitStatus || status == DarwinKernel.abortExitStatus {

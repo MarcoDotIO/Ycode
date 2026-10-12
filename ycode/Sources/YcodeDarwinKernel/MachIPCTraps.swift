@@ -37,6 +37,11 @@ extension MachIPC {
         public static let portsRegister3: UInt32 = 0x7963_2008
         /// `mach_ports_lookup3(task, &p0, &p1, &p2)` (`processes.md` §3.4).
         public static let portsLookup3: UInt32 = 0x7963_2009
+        /// `mach_make_memory_entry_64(task, &size, offset, permission, &handle, parent)`.
+        public static let makeMemoryEntry: UInt32 = 0x7963_200A
+        /// `mach_vm_map` with a memory object: `(task, &addr, size, mask, flags, &block)`,
+        /// block = u64 {object, offset, copy, cur, max, inherit}.
+        public static let vmMapObject: UInt32 = 0x7963_200B
     }
 
     /// `TASK_BOOTSTRAP_PORT`.
@@ -439,7 +444,10 @@ extension MachIPC {
         }
         if options & MachMsgOption.rcvMsg != 0 {
             var r = MachReceiveRequest(name: hi(5), options: options, buffer: data, size: UInt64(lo(6)), timeout: timeout)
-            if options & MachMsgOption.sendMsg == 0 { r.syncDestination = lo(3) }
+            // xnu mach_msg2_trap: the sync-wait link target is always the
+            // header's msgh_remote_port name, also on a combined send and
+            // receive (libxpc's pipe routines with a special reply port).
+            r.syncDestination = lo(3)
             if vector {
                 let count = Int(lo(6))
                 guard count == 1 || count == 2 else { return finish(MachMsgReturn.rcvInvalidArguments) }
@@ -605,6 +613,18 @@ extension MachIPC {
                 return kr(MachKern.invalidAddress)
             }
             return kr(0, " [\(names.map(hx).joined(separator: ","))]")
+
+        case Routine.makeMemoryEntry:
+            call = "mach_make_memory_entry_64(task=\(hx(u32(0))), size=\(hx(a[1])), offset=\(hx(a[2])), "
+                + "permission=\(hx(u32(3))), handle=\(hx(a[4])), parent=\(hx(u32(5))))"
+            let (code, note) = makeMemoryEntry(a, memory: memory)
+            return kr(code, note)
+
+        case Routine.vmMapObject:
+            call = "mach_vm_map(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), mask=\(hx(a[3])), "
+                + "flags=\(hx(u32(4))), block=\(hx(a[5])))"
+            let (code, note) = vmMapObject(a, memory: memory)
+            return kr(code, note)
 
         case Routine.hostCreateMachVoucher:
             call = "host_create_mach_voucher(host=\(hx(u32(0))), recipes=\(hx(a[1])), size=\(i32(2)), voucher=\(hx(a[3])))"
