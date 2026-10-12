@@ -117,7 +117,7 @@ import YcodeDarwinABI
         #expect(try !f.carry && env.string(old + 0x40) == "27.1")
 
         // Unknown MIB: ENOENT; a write: EPERM.
-        try putMIB([1, 65])
+        try putMIB([1, 999])
         (_, f) = env.svc(202, [mib, 2, old, lenp, 0, 0])
         #expect(f.carry && f.x[0] == 2)
         try putMIB([6, 7])

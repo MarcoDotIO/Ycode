@@ -22,6 +22,9 @@
 // and the VMM builds the main thread's pthread/TSD block before boot
 // (TPIDRRO_EL0 = block + 224).
 //
+// `--keep-going` (with --trace) logs unimplemented traps and library
+// functions but resumes the guest instead of exiting 72/73.
+//
 // Exit status: the guest's exit status; 70 for a fatal guest trap; 71 for an
 // unexpected VM exit or the watchdog; 72 for the first unimplemented trap in
 // --trace mode; 73 for the first unimplemented host-library function in
@@ -40,7 +43,7 @@ import YcodeMachO
 let usage = """
     usage: ycode-simd --exec <macho> --runtime-root <dir> [--run-dir <dir>] [--trace]
                       [--timeout-ms N] [--max-exits N] [--shim <shim.bin>] [--host-stubs <host_stubs.bin>]
-                      [--host-libs <dir>]
+                      [--host-libs <dir>] [--keep-going] [--libfunc-return <name>=<value>[,...]]
            ycode-simd --shim <shim.bin> --el0 <el0.bin> [--trace] [--timeout-ms N] [--max-exits N]
            ycode-simd --kvm-smoke
     """
@@ -54,6 +57,11 @@ struct Options {
     var hostStubsPath: String?
     var hostLibsPath: String?
     var trace = false
+    /// With --trace: log unimplemented traps and library functions, but resume.
+    var keepGoing = false
+    /// Debug aid: unimplemented host-library functions whose call the VMM
+    /// completes itself (x0 = value, return to LR), to look past them.
+    var libfuncReturns: [String: UInt64] = [:]
     var kvmSmoke = false
     var timeoutMilliseconds: UInt64?
     var maxExits: Int?
@@ -101,6 +109,18 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--host-stubs": options.hostStubsPath = value(for: argument)
         case "--host-libs": options.hostLibsPath = value(for: argument)
         case "--trace": options.trace = true
+        case "--keep-going": options.keepGoing = true
+        case "--libfunc-return":
+            for item in value(for: argument).split(separator: ",") {
+                let parts = item.split(separator: "=", maxSplits: 1).map(String.init)
+                guard parts.count == 2 else { die("--libfunc-return needs name=value", status: 64) }
+                let text = parts[1].hasPrefix("0x") ? String(parts[1].dropFirst(2)) : parts[1]
+                guard let v = parts[1].hasPrefix("-") ? Int64(parts[1]).map({ UInt64(bitPattern: $0) })
+                        : UInt64(text, radix: parts[1].hasPrefix("0x") ? 16 : 10) else {
+                    die("--libfunc-return: bad value '\(parts[1])'", status: 64)
+                }
+                options.libfuncReturns[parts[0]] = v
+            }
         case "--kvm-smoke": options.kvmSmoke = true
         case "--timeout-ms":
             guard let n = UInt64(value(for: argument)), n > 0 else { die("--timeout-ms needs a positive integer", status: 64) }
@@ -838,16 +858,24 @@ func runExec(_ options: Options) throws -> Never {
                 Glibc.exit(status)
             case let .unimplemented(description):
                 trapCounts[description, default: 0] += 1
-                if trace {
+                if trace && !options.keepGoing {
                     stderrLine("ycode-simd: first unimplemented trap: \(description)\n\(frame)\n\(faultReport(frame))")
                     stderrLine("ycode-simd: \(summary())")
                     Glibc.exit(DarwinKernel.unimplementedExitStatus)
                 }
                 try vm.write(gpa: frameAddress, bytes: frame.encoded())
+            case let .unimplementedLibraryFunction(name) where options.libfuncReturns[name] != nil:
+                // Debug aid: finish the call here (x0 = value, return to the caller).
+                let value = options.libfuncReturns[name]!
+                stderrLine("ycode-simd: unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(images.describe(frame.x[30]))) "
+                    + "[--libfunc-return: x0 = \(hex(value))]")
+                frame.x[0] = value
+                frame.elr = frame.x[30]
+                try vm.write(gpa: frameAddress, bytes: frame.encoded())
             case let .unimplementedLibraryFunction(name):
                 trapCounts["libfunc " + name, default: 0] += 1
                 stderrLine("ycode-simd: unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(images.describe(frame.x[30])))")
-                if trace {
+                if trace && !options.keepGoing {
                     stderrLine("ycode-simd: first unimplemented host-library function: \(name)\n\(frame)\n\(faultReport(frame))")
                     stderrLine("ycode-simd: \(summary())")
                     Glibc.exit(DarwinKernel.unimplementedLibraryFunctionExitStatus)

@@ -49,6 +49,9 @@ public final class DarwinKernel {
     public enum Errno {
         public static let EPERM: Int32 = 1
         public static let ENOENT: Int32 = 2
+        public static let ESRCH: Int32 = 3
+        public static let EIO: Int32 = 5
+        public static let ENOTDIR: Int32 = 20
         public static let EBADF: Int32 = 9
         public static let ENOMEM: Int32 = 12
         public static let EFAULT: Int32 = 14
@@ -60,9 +63,10 @@ public final class DarwinKernel {
         public static let ENOSYS: Int32 = 78
 
         static let names: [Int32: String] = [
-            1: "EPERM", 2: "ENOENT", 4: "EINTR", 5: "EIO", 9: "EBADF", 12: "ENOMEM", 13: "EACCES", 14: "EFAULT",
+            1: "EPERM", 2: "ENOENT", 3: "ESRCH", 4: "EINTR", 5: "EIO", 9: "EBADF", 12: "ENOMEM", 13: "EACCES", 14: "EFAULT",
             17: "EEXIST", 19: "ENODEV", 20: "ENOTDIR", 21: "EISDIR", 22: "EINVAL", 24: "EMFILE", 25: "ENOTTY",
-            28: "ENOSPC", 29: "ESPIPE", 30: "EROFS", 34: "ERANGE", 35: "EAGAIN", 45: "ENOTSUP", 62: "ELOOP",
+            11: "EDEADLK", 38: "ENOTSOCK", 28: "ENOSPC", 29: "ESPIPE", 30: "EROFS", 34: "ERANGE", 35: "EAGAIN", 45: "ENOTSUP",
+            60: "ETIMEDOUT", 62: "ELOOP",
             63: "ENAMETOOLONG", 66: "ENOTEMPTY", 78: "ENOSYS", 84: "EOVERFLOW",
         ]
 
@@ -104,6 +108,13 @@ public final class DarwinKernel {
                           getattrlist = 220, sysctlbyname = 274, issetugid = 327, stat64 = 338, fstat64 = 339,
                           lstat64 = 340, getfsstat64 = 347, bsdthreadRegister = 366, fsgetpath = 427,
                           getattrlistbulk = 461, abortWithPayload = 521
+
+        /// `_nocancel` call → the plain call it behaves like.
+        public static let nocancelAliases: [Int: Int] = [
+            396: read, 397: write, 398: open, 399: close, 406: fcntl, 414: pread,
+            411: 120, 412: 121, 464: 463, 395: 394, 407: 93, 408: 95, 415: 154, 417: 230,
+            542: 540, 543: 541, 413: 133,
+        ]
     }
 
     /// Mach trap numbers handled here (negative x16).
@@ -111,7 +122,10 @@ public final class DarwinKernel {
         public static let machAbsoluteTime = -3, machContinuousTime = -4, vmAllocate = -10, vmDeallocate = -12,
                           vmProtect = -14, portAllocate = -16, portDeallocate = -18, portInsertRight = -21,
                           portConstruct = -24, portDestruct = -25, replyPort = -26, threadSelf = -27,
-                          taskSelf = -28, hostSelf = -29, machMsg = -31, threadSwitch = -61, timebaseInfo = -89
+                          taskSelf = -28, hostSelf = -29, machMsg = -31, threadSwitch = -61, timebaseInfo = -89,
+                          vmMap = -15, portModRefs = -19, portGuard = -41, portUnguard = -42,
+                          generateActivityID = -43, pidForTask = -46, threadGetSpecialReplyPort = -50,
+                          portType = -76, portRequestNotification = -77, waitUntil = -90
     }
 
     /// Ycode-private trap numbers (`x16`, stage3-contract.md §5).
@@ -227,6 +241,12 @@ public final class DarwinKernel {
     public var mainStackTop: UInt64 = Stage3Layout.userStack
     /// Set by the first successful `bsdthread_register`.
     public private(set) var threadRegistration: ThreadRegistration?
+    /// The last `mach_generate_activity_id` value.
+    var nextActivityID: UInt64 = 0
+    /// Bookkeeping for the stage-3b BSD calls (signals, rlimits, directory cursors).
+    var extended = ExtendedBSDState()
+    /// Random bytes for `getentropy` (default: the host's /dev/urandom).
+    public var entropy: (Int) -> [UInt8] = DarwinKernel.hostEntropy
 
     /// - Parameters:
     ///   - fileSystem: the guest VFS.
@@ -335,14 +355,14 @@ public final class DarwinKernel {
     /// A BSD failure carrying a Darwin errno.
     struct Failure: Error { var errno: Int32 }
 
-    private enum BSDResult {
+    enum BSDResult {
         case value(UInt64)
         case exit(Int32)
         case fatal(Int32, String)
         case unimplemented
     }
 
-    private func errno(of error: Error, default fallback: Int32) -> Int32 {
+    func errno(of error: Error, default fallback: Int32) -> Int32 {
         if let f = error as? Failure { return f.errno }
         if let d = error as? DarwinErrnoError { return d.errno }
         if error is GuestMemoryError { return Errno.EFAULT }
@@ -390,6 +410,9 @@ public final class DarwinKernel {
     private func bsdCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ fallback: inout Int32,
                          _ mem: any KernelGuestMemory) throws -> BSDResult {
         let fs = fileSystem
+        // The `_nocancel` variants behave like their plain calls (no
+        // cancellation in Ycode).
+        let n = BSD.nocancelAliases[n] ?? n
         func fd(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
 
@@ -422,6 +445,7 @@ public final class DarwinKernel {
         case BSD.close:
             call = "close(\(fd(0)))"
             try fs.close(fd(0))
+            extended.directoryCursors[fd(0)] = nil
             return .value(0)
 
         case BSD.getpid:
@@ -523,7 +547,7 @@ public final class DarwinKernel {
             return .fatal(Self.abortExitStatus, message)
 
         default:
-            return .unimplemented
+            return try extendedBSDCall(n, a, &call, &fallback, mem) ?? .unimplemented
         }
     }
 
@@ -851,6 +875,91 @@ public final class DarwinKernel {
             b.appendLE(tb.denom)
             guard (try? mem.write(va: a[0], bytes: b)) != nil else { return kr(KernReturn.invalidAddress) }
             return kr(KernReturn.success, " [\(tb.numer)/\(tb.denom)]")
+
+        case Mach.vmMap:
+            // target, *addr, size, mask, flags, cur_protection.
+            call = "mach_vm_map(target=\(hx(port(0))), addr=\(hx(a[1])), size=\(hx(a[2])), mask=\(hx(a[3])), "
+                + "flags=\(hx(a[4])), prot=\(protText(a[5])))"
+            guard let requested = try? readU64(a[1], mem) else { return kr(KernReturn.invalidAddress) }
+            guard a[2] != 0 else { return kr(KernReturn.invalidArgument) }
+            let size = roundUp(a[2], to: Self.pageSize)
+            let alignment = max(a[3] | Self.pageMask, Self.pageMask) &+ 1
+            let prot = protection(a[5] & 7)
+            let va: UInt64
+            do {
+                if a[4] & Self.vmFlagsAnywhere != 0 {
+                    let hint = requested == 0 ? nil : requested & ~Self.pageMask
+                    if alignment <= Self.pageSize {
+                        va = try mem.mapAnonymous(at: nil, size: size, protection: prot, hint: hint)
+                    } else {
+                        // Over-allocate, then trim to the requested alignment.
+                        let span = size + alignment
+                        let raw = try mem.mapAnonymous(at: nil, size: span, protection: prot, hint: hint)
+                        let aligned = roundUp(raw, to: alignment)
+                        if aligned > raw { try mem.unmap(va: raw, size: aligned - raw) }
+                        if raw + span > aligned + size { try mem.unmap(va: aligned + size, size: raw + span - aligned - size) }
+                        va = aligned
+                    }
+                } else {
+                    guard requested & Self.pageMask == 0 else { return kr(KernReturn.invalidArgument) }
+                    if a[4] & Self.vmFlagsOverwrite == 0, overlapsMapping(requested, size, mem) {
+                        return kr(KernReturn.noSpace)
+                    }
+                    va = try mem.mapAnonymous(at: requested, size: size, protection: prot, hint: nil)
+                }
+            } catch {
+                return kr(KernReturn.noSpace)
+            }
+            guard (try? writeU64(a[1], va, mem)) != nil else { return kr(KernReturn.invalidAddress) }
+            return kr(KernReturn.success, " [addr=\(hx(va))]")
+
+        case Mach.portModRefs:
+            call = "mach_port_mod_refs(target=\(hx(port(0))), name=\(hx(port(1))), right=\(port(2)), "
+                + "delta=\(Int32(truncatingIfNeeded: a[3])))"
+            guard port(1) == 0 || ports.contains(port(1)) else { return kr(KernReturn.invalidName) }
+            return kr(KernReturn.success)
+
+        case Mach.portGuard, Mach.portUnguard:
+            call = "\(n == Mach.portGuard ? "mach_port_guard" : "mach_port_unguard")(target=\(hx(port(0))), "
+                + "name=\(hx(port(1))), guard=\(hx(a[2])))"
+            return kr(ports.contains(port(1)) ? KernReturn.success : KernReturn.invalidName)
+
+        case Mach.generateActivityID:
+            call = "mach_generate_activity_id(target=\(hx(port(0))), count=\(port(1)), id=\(hx(a[2])))"
+            nextActivityID &+= UInt64(max(port(1), 1))
+            guard (try? writeU64(a[2], nextActivityID, mem)) != nil else { return kr(KernReturn.invalidAddress) }
+            return kr(KernReturn.success, " [\(hx(nextActivityID))]")
+
+        case Mach.pidForTask:
+            call = "pid_for_task(task=\(hx(port(0))), pid=\(hx(a[1])))"
+            guard port(0) == WellKnownPort.task else { return kr(KernReturn.failure) }
+            guard (try? writeU32(a[1], UInt32(bitPattern: pid), mem)) != nil else { return kr(KernReturn.invalidAddress) }
+            return kr(KernReturn.success)
+
+        case Mach.threadGetSpecialReplyPort:
+            call = "thread_get_special_reply_port()"
+            return portResult(ports.allocate(.reply))
+
+        case Mach.portType:
+            call = "mach_port_type(target=\(hx(port(0))), name=\(hx(port(1))), ptype=\(hx(a[2])))"
+            guard let kind = ports.kind(of: port(1)) else { return kr(KernReturn.invalidName) }
+            let type: UInt32 = switch kind {
+            case .task, .thread, .host: 1 << 16          // MACH_PORT_TYPE_SEND
+            default: 1 << 17                              // MACH_PORT_TYPE_RECEIVE
+            }
+            guard (try? writeU32(a[2], type, mem)) != nil else { return kr(KernReturn.invalidAddress) }
+            return kr(KernReturn.success, " [\(hx(type))]")
+
+        case Mach.portRequestNotification:
+            call = "mach_port_request_notification(target=\(hx(port(0))), name=\(hx(port(1))), msgid=\(port(2)), "
+                + "sync=\(port(3)), notify=\(hx(port(4))), poly=\(port(5)), previous=\(hx(a[6])))"
+            guard ports.contains(port(1)) else { return kr(KernReturn.invalidName) }
+            if a[6] != 0 { guard (try? writeU32(a[6], 0, mem)) != nil else { return kr(KernReturn.invalidAddress) } }
+            return kr(KernReturn.success, " [no notifications are ever sent]")
+
+        case Mach.waitUntil:
+            call = "mach_wait_until(deadline=\(hx(a[0])))"
+            return kr(KernReturn.success, " [not slept]")
 
         default:
             let entry = TrapNames.mach(n)
