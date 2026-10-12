@@ -272,3 +272,30 @@ The orchestrator owns `Package.swift`, the specs, and the commits.
 - `launchd-sim.md` (levels 3–4).
 - The execution model is Ycode design, using the KVM facts in
   `threads-and-events.md` §6.
+
+
+## 9. Resolutions during integration (normative, 2026-10-12)
+
+- **Page-table arena moved.** The stage-3 arena (`0x4020_0000` + 64 MiB)
+  overlapped the 4a vCPU-slot region at `0x4100_0000`. In `--exec` mode
+  the arena is now **GPA `0x4200_0000`, 64 MiB**. The stage-2 self-test
+  mode keeps its own layout. `stage3-contract.md` §3 is superseded on
+  this point.
+- **Cache coherency for fresh vCPUs.**
+  - The Thor's KVM uses FEAT_S2FWB ("Stage-2 Force Write-Back"), so guest
+    accesses with the MMU off are cacheable.
+  - The VMM still cleans to the point of coherency (`dc civac`, then
+    `dsb`) before a fresh vCPU's first run: its boot info, its frame, the
+    shim image, and the page tables. This covers hosts without FWB.
+- **Thread-start SPSR.** A thread started on a reused vCPU gets SPSR
+  `0x3C0` (DAIF masked), like the boot path. With no interrupts in 4a,
+  this is equivalent to the 0 that the threads spec gives.
+- **vCPU limits.** The Thor's KVM reports max 512 and recommended 14. The
+  pool caps at 64.
+- **`--max-exits`** applies per vCPU.
+- **Results** (clean tree, no debug flags, on the Thor):
+  - the stage-2 self-test, `hello`, `p_threads` (`counter=200000`), and
+    `p_machmsg` (port descriptor and 40,000-byte OOL) all pass;
+  - `p_dispatch` and `p_dispatch_main` were blocked by two gaps, which
+    are now fixed: `mach_get_times` in libsystem_kernel, and `sigsuspend`
+    (BSD 111/410) in the VMM.

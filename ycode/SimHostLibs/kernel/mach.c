@@ -71,6 +71,37 @@ YC_EXPORT yc_u64 mach_boottime_usec(void)
     return yc_commpage_u64(YC_COMM_BOOTTIME_USEC);
 }
 
+/* kern_return_t mach_get_times(uint64_t *absolute_time,
+ *     uint64_t *continuous_time, struct timespec *tp)
+ * absolute = trap -3, continuous = trap -4, tp = the wall clock from BSD
+ * 116 (__gettimeofday, which fills a struct timeval) converted to a
+ * struct timespec. Every pointer may be NULL. */
+struct yc_timeval {
+    yc_i64 tv_sec;
+    yc_i32 tv_usec;
+};
+struct yc_timespec {
+    yc_i64 tv_sec;
+    yc_i64 tv_nsec;
+};
+int __gettimeofday(struct yc_timeval *tp, void *tzp, yc_u64 *mach_time);
+
+YC_EXPORT int mach_get_times(yc_u64 *absolute_time, yc_u64 *continuous_time, struct yc_timespec *tp)
+{
+    if (tp != YC_NULL) {
+        struct yc_timeval tv = {0, 0};
+        if (__gettimeofday(&tv, YC_NULL, YC_NULL) != 0)
+            return YC_KERN_FAILURE;
+        tp->tv_sec = tv.tv_sec;
+        tp->tv_nsec = (yc_i64)tv.tv_usec * 1000;
+    }
+    if (absolute_time != YC_NULL)
+        *absolute_time = mach_absolute_time();
+    if (continuous_time != YC_NULL)
+        *continuous_time = mach_continuous_time();
+    return YC_KERN_SUCCESS;
+}
+
 /* --------------------------------------------------------- self ports */
 
 YC_EXPORT yc_port_t mach_task_self(void)

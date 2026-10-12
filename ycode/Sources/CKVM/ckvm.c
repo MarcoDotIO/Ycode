@@ -14,6 +14,9 @@ int ckvm_available(void) { return 0; }
 #else
 
 #include <errno.h>
+#include <pthread.h>
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stddef.h>
@@ -218,6 +221,45 @@ uint64_t ckvm_run_system_event_data(const void *run, uint32_t index) {
 
 uint64_t ckvm_run_arm_nisv_esr_iss(const void *run) { return RUN(run)->arm_nisv.esr_iss; }
 uint64_t ckvm_run_arm_nisv_fault_ipa(const void *run) { return RUN(run)->arm_nisv.fault_ipa; }
+
+// ---- Kicking a vCPU thread and cache maintenance ------------------------------
+
+static void kick_handler(int signo) { (void)signo; }
+
+int ckvm_kick_install(int signo) {
+    struct sigaction action;
+    memset(&action, 0, sizeof action);
+    action.sa_handler = kick_handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0; // no SA_RESTART: KVM_RUN must return -EINTR
+    return result_or_errno(sigaction(signo, &action, NULL));
+}
+
+int ckvm_kick_thread(unsigned long thread, int signo) {
+    int result = pthread_kill((pthread_t)thread, signo);
+    return result == 0 ? 0 : -result;
+}
+
+void ckvm_clean_dcache_range(const void *address, size_t size) {
+    if (size == 0) return;
+    uint64_t ctr;
+    __asm__ volatile("mrs %0, ctr_el0" : "=r"(ctr));
+    uintptr_t line = (uintptr_t)4 << ((ctr >> 16) & 0xF); // DminLine: log2 of words
+    uintptr_t start = (uintptr_t)address & ~(line - 1);
+    uintptr_t end = (uintptr_t)address + size;
+    for (uintptr_t p = start; p < end; p += line) {
+        __asm__ volatile("dc civac, %0" : : "r"(p) : "memory");
+    }
+    __asm__ volatile("dsb sy" : : : "memory");
+}
+
+uint64_t ckvm_host_id_aa64mmfr2(void) {
+    unsigned long hwcap = getauxval(AT_HWCAP);
+    if (!(hwcap & HWCAP_CPUID)) return 0;
+    uint64_t value;
+    __asm__ volatile("mrs %0, ID_AA64MMFR2_EL1" : "=r"(value));
+    return value;
+}
 
 // ---- Watchdog ---------------------------------------------------------------
 

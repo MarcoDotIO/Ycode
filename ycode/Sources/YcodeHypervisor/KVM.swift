@@ -10,6 +10,16 @@ public enum Hypervisor {
     public static var isAvailable: Bool { ckvm_available() != 0 }
 }
 
+#if os(Linux) && arch(arm64)
+extension Hypervisor {
+    /// The host's virtual counter (`CNTVCT_EL0`, read at EL0). A guest's
+    /// `CNTVCT_EL0` differs from it by a constant (`VCPU.counterOffset()`).
+    public static func hostCounter() -> UInt64 { ckvm_host_cntvct() }
+    /// ID_AA64MMFR2_EL1 as Linux exposes it to user space (0 when hidden).
+    public static func hostIDAA64MMFR2() -> UInt64 { ckvm_host_id_aa64mmfr2() }
+}
+#endif
+
 /// A failed KVM or host operation.
 public struct KVMError: Error, CustomStringConvertible, Equatable, Sendable {
     public var operation: String
@@ -66,19 +76,30 @@ public struct MemorySlot: Sendable, CustomStringConvertible {
 /// A KVM virtual machine that owns `/dev/kvm`, the VM fd, one anonymous
 /// RAM region registered as memslot 0, and any further memslots added with
 /// `addMemorySlot`. Guest-physical reads and writes reach every slot.
-public final class VirtualMachine {
+public final class VirtualMachine: @unchecked Sendable {
     public let kvmFD: Int32
     public let vmFD: Int32
     public let ramGPA: UInt64
     public let ramSize: Int
     /// Host address of guest RAM.
     public let ram: UnsafeMutableRawPointer
-    public private(set) var vcpus: [VCPU] = []
+    /// Every vCPU created so far (index = vCPU id). Read under `lock`.
+    public var vcpus: [VCPU] { lock.withLock { vcpuList } }
+    private var vcpuList: [VCPU] = []
     /// `KVM_CAP_NR_MEMSLOTS`: the number of memslots the VM may register.
     public let maxMemorySlots: Int
-    /// Every registered slot (slot 0 first), sorted by GPA.
-    public private(set) var memorySlots: [MemorySlot] = []
+    /// `KVM_CAP_MAX_VCPUS` (the hard limit) and `KVM_CAP_NR_VCPUS` (the
+    /// recommended limit), from the VM fd (falling back to /dev/kvm).
+    public let maxVCPUs: Int
+    public let recommendedVCPUs: Int
+    /// Every registered slot (slot 0 first), sorted by GPA. Many host threads
+    /// (one per vCPU) read it while a trap may add a slot, so it is guarded by
+    /// `lock` and readers get a snapshot.
+    public var memorySlots: [MemorySlot] { lock.withLock { slotList } }
+    private var slotList: [MemorySlot] = []
     private var nextSlotNumber: UInt32 = 1
+    /// Guards `slotList`, `nextSlotNumber`, and `vcpuList`.
+    private let lock = HostMutex()
 
     public static let defaultRAMGPA: UInt64 = 0x4000_0000
     public static let defaultRAMSize = 512 << 20
@@ -88,6 +109,7 @@ public final class VirtualMachine {
         var vm: Int32 = -1
         var ramPointer: UnsafeMutableRawPointer?
         var slotLimit = 0
+        var vcpuLimits = (max: 0, recommended: 0)
         do {
             let version = try kvmCheck(ckvm_get_api_version(kvm), "KVM_GET_API_VERSION")
             guard version == 12 else { throw KVMError("KVM_GET_API_VERSION", detail: "unexpected API version \(version)") }
@@ -96,6 +118,15 @@ public final class VirtualMachine {
             slotLimit = Int(ckvm_check_extension(vm, Int(CKVM_CAP_NR_MEMSLOTS)))
             if slotLimit <= 0 { slotLimit = Int(ckvm_check_extension(kvm, Int(CKVM_CAP_NR_MEMSLOTS))) }
             guard slotLimit > 0 else { throw KVMError("KVM_CAP_NR_MEMSLOTS", detail: "the kernel reports no memslots") }
+            func capability(_ cap: Int) -> Int {
+                let v = Int(ckvm_check_extension(vm, cap))
+                return v > 0 ? v : max(0, Int(ckvm_check_extension(kvm, cap)))
+            }
+            // KVM_CAP_NR_VCPUS absent means 4; KVM_CAP_MAX_VCPUS absent means NR_VCPUS (KVM API docs).
+            let recommended = capability(Int(CKVM_CAP_NR_VCPUS))
+            vcpuLimits.recommended = recommended > 0 ? recommended : 4
+            let hard = capability(Int(CKVM_CAP_MAX_VCPUS))
+            vcpuLimits.max = hard > 0 ? hard : vcpuLimits.recommended
             guard let pointer = ckvm_alloc_anonymous(ramSize) else {
                 throw KVMError("mmap guest RAM", errno: Glibc.errno)
             }
@@ -114,24 +145,30 @@ public final class VirtualMachine {
         self.ramSize = ramSize
         self.ram = ramPointer!
         self.maxMemorySlots = slotLimit
-        self.memorySlots = [MemorySlot(slot: 0, gpa: ramGPA, size: UInt64(ramSize),
+        self.maxVCPUs = vcpuLimits.max
+        self.recommendedVCPUs = vcpuLimits.recommended
+        self.slotList = [MemorySlot(slot: 0, gpa: ramGPA, size: UInt64(ramSize),
                                        hostAddress: UInt(bitPattern: ramPointer!), kind: .ram, name: "RAM")]
     }
 
     deinit {
-        vcpus.forEach { $0.close() }
+        vcpuList.forEach { $0.close() }
         _ = ckvm_close(vmFD)
-        for slot in memorySlots {
+        for slot in slotList {
             _ = ckvm_free_anonymous(UnsafeMutableRawPointer(bitPattern: slot.hostAddress)!, Int(slot.size))
         }
         _ = ckvm_close(kvmFD)
     }
 
-    /// Creates and initializes a vCPU (preferred target, PSCI 0.2).
-    public func makeVCPU(id: Int = 0) throws -> VCPU {
-        let vcpu = try VCPU(vm: self, id: id)
-        vcpus.append(vcpu)
-        return vcpu
+    /// Creates and initializes a vCPU (preferred target, PSCI 0.2). `id`
+    /// defaults to the next free vCPU id. Safe to call from any host thread,
+    /// also while other vCPUs of the VM run.
+    public func makeVCPU(id: Int? = nil) throws -> VCPU {
+        try lock.withLock {
+            let vcpu = try VCPU(vm: self, id: id ?? vcpuList.count)
+            vcpuList.append(vcpu)
+            return vcpu
+        }
     }
 
     // MARK: Memslots
@@ -144,11 +181,16 @@ public final class VirtualMachine {
     @discardableResult
     public func addMemorySlot(gpa: UInt64, size: UInt64, host: UnsafeMutableRawPointer,
                               kind: MemorySlot.Kind, name: String) throws -> MemorySlot {
+        try lock.withLock { try addMemorySlotLocked(gpa: gpa, size: size, host: host, kind: kind, name: name) }
+    }
+
+    private func addMemorySlotLocked(gpa: UInt64, size: UInt64, host: UnsafeMutableRawPointer,
+                                     kind: MemorySlot.Kind, name: String) throws -> MemorySlot {
         guard Int(nextSlotNumber) < maxMemorySlots else {
             throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "memslots exhausted (KVM_CAP_NR_MEMSLOTS = \(maxMemorySlots)) mapping \(name)")
         }
         guard size > 0 else { throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "empty slot for \(name)") }
-        if let clash = memorySlots.first(where: { gpa < $0.end && $0.gpa < gpa + size }) {
+        if let clash = slotList.first(where: { gpa < $0.end && $0.gpa < gpa + size }) {
             throw KVMError("KVM_SET_USER_MEMORY_REGION", detail: "GPA range of \(name) overlaps \(clash)")
         }
         let number = nextSlotNumber
@@ -156,45 +198,52 @@ public final class VirtualMachine {
                      "KVM_SET_USER_MEMORY_REGION slot \(number) (\(name))")
         nextSlotNumber += 1
         let slot = MemorySlot(slot: number, gpa: gpa, size: size, hostAddress: UInt(bitPattern: host), kind: kind, name: name)
-        let index = memorySlots.firstIndex { $0.gpa > gpa } ?? memorySlots.count
-        memorySlots.insert(slot, at: index)
+        let index = slotList.firstIndex { $0.gpa > gpa } ?? slotList.count
+        slotList.insert(slot, at: index)
         return slot
     }
 
     /// The number of memslots registered so far, slot 0 included.
-    public var memorySlotCount: Int { memorySlots.count }
+    public var memorySlotCount: Int { lock.withLock { slotList.count } }
 
     // MARK: Guest-physical access
 
-    private func slotIndex(containing gpa: UInt64) -> Int? {
-        // Binary search for the last slot whose start is <= gpa.
-        var low = 0, high = memorySlots.count
-        while low < high {
-            let mid = (low + high) / 2
-            if memorySlots[mid].gpa <= gpa { low = mid + 1 } else { high = mid }
+    /// The memslot that holds `gpa` (binary search for the last slot whose
+    /// start is <= gpa). RAM (slot 0) is answered without taking the lock.
+    public func memorySlot(containing gpa: UInt64) -> MemorySlot? {
+        if gpa >= ramGPA, gpa - ramGPA < UInt64(ramSize) {
+            return MemorySlot(slot: 0, gpa: ramGPA, size: UInt64(ramSize), hostAddress: UInt(bitPattern: ram), kind: .ram, name: "RAM")
         }
-        guard low > 0, gpa < memorySlots[low - 1].end else { return nil }
-        return low - 1
+        return lock.withLock {
+            var low = 0, high = slotList.count
+            while low < high {
+                let mid = (low + high) / 2
+                if slotList[mid].gpa <= gpa { low = mid + 1 } else { high = mid }
+            }
+            guard low > 0, gpa < slotList[low - 1].end else { return nil }
+            return slotList[low - 1]
+        }
     }
 
     /// True when [gpa, gpa+count) lies inside one memslot.
     public func contains(gpa: UInt64, count: Int) -> Bool {
-        guard let index = slotIndex(containing: gpa) else { return false }
-        return memorySlots[index].contains(gpa: gpa, count: count)
-    }
-
-    /// The memslot that holds `gpa`, if any.
-    public func memorySlot(containing gpa: UInt64) -> MemorySlot? {
-        slotIndex(containing: gpa).map { memorySlots[$0] }
+        memorySlot(containing: gpa)?.contains(gpa: gpa, count: count) ?? false
     }
 
     /// Host address of [gpa, gpa+count), which must lie inside one memslot.
     public func hostPointer(gpa: UInt64, count: Int) throws -> UnsafeMutableRawPointer {
-        guard let index = slotIndex(containing: gpa), memorySlots[index].contains(gpa: gpa, count: count) else {
+        guard let slot = memorySlot(containing: gpa), slot.contains(gpa: gpa, count: count) else {
             throw KVMError("guest physical access", detail: "GPA 0x\(String(gpa, radix: 16)) + \(count) is outside every memslot")
         }
-        let slot = memorySlots[index]
         return UnsafeMutableRawPointer(bitPattern: slot.hostAddress)! + Int(gpa - slot.gpa)
+    }
+
+    /// Cleans and invalidates [gpa, gpa+count) to the point of coherency, so
+    /// a vCPU that reads it with its MMU off (non-cacheable) sees what the VMM
+    /// wrote through its cacheable host mapping.
+    public func cleanDataCache(gpa: UInt64, count: Int) throws {
+        let pointer = try hostPointer(gpa: gpa, count: count)
+        ckvm_clean_dcache_range(pointer, count)
     }
 
     private func pointer(gpa: UInt64, count: Int) throws -> UnsafeMutableRawPointer {
@@ -245,6 +294,9 @@ public enum VCPUExit: Equatable, Sendable, CustomStringConvertible {
     case armNISV(esrISS: UInt64, faultIPA: UInt64)
     /// The run was interrupted by the watchdog timer.
     case watchdog
+    /// `runOnce()` only: KVM_RUN returned -EINTR (a kick signal or
+    /// `immediate_exit`).
+    case interrupted
     case other(reason: UInt32)
 
     public var description: String {
@@ -259,6 +311,7 @@ public enum VCPUExit: Equatable, Sendable, CustomStringConvertible {
         case let .failEntry(reason, cpu): return "fail entry reason \(hex(reason)) cpu \(cpu)"
         case let .armNISV(iss, ipa): return "data abort without syndrome: ESR ISS \(hex(iss)) IPA \(hex(ipa))"
         case .watchdog: return "watchdog timeout"
+        case .interrupted: return "interrupted"
         case let .other(reason): return "exit reason \(reason)"
         }
     }
@@ -304,10 +357,11 @@ public struct SystemRegister: Equatable, Sendable {
     public static let idAA64MMFR0EL1 = SystemRegister(op0: 3, op1: 0, crn: 0, crm: 7, op2: 0)
     public static let cntfrqEL0 = SystemRegister(op0: 3, op1: 3, crn: 14, crm: 0, op2: 0)
     public static let cntkctlEL1 = SystemRegister(op0: 3, op1: 0, crn: 14, crm: 1, op2: 0)
+    public static let idAA64MMFR2EL1 = SystemRegister(op0: 3, op1: 0, crn: 0, crm: 7, op2: 2)
 }
 
 /// One arm64 vCPU with its mapped `struct kvm_run`.
-public final class VCPU {
+public final class VCPU: @unchecked Sendable {
     public let fd: Int32
     public let id: Int
     private let runArea: UnsafeMutableRawPointer
@@ -368,6 +422,16 @@ public final class VCPU {
     /// (`KVM_REG_ARM_TIMER_CNT`).
     public func virtualCounter() throws -> UInt64 { try getRaw(ckvm_reg_timer_cnt(), "KVM_REG_ARM_TIMER_CNT") }
 
+    /// host counter − guest counter, sampled now: the guest's `CNTVCT_EL0`
+    /// equals `Hypervisor.hostCounter() &- offset` from any host thread,
+    /// without an ioctl on a vCPU that may be running.
+    public func counterOffset() throws -> UInt64 {
+        let before = ckvm_host_cntvct()
+        let guest = try virtualCounter()
+        let after = ckvm_host_cntvct()
+        return (before &+ (after &- before) / 2) &- guest
+    }
+
     /// `CNTFRQ_EL0` as the guest sees it. Read through ONE_REG when KVM
     /// exposes it; otherwise the host's value, which the guest shares (KVM
     /// does not virtualize the counter frequency).
@@ -393,6 +457,24 @@ public final class VCPU {
             return decodeExit()
         }
     }
+
+    /// Runs the vCPU until it exits to user space or a signal interrupts the
+    /// run (`.interrupted`). Pooled vCPUs use this: a kick (signal plus
+    /// `immediate_exit`) must bring the host thread back.
+    public func runOnce() throws -> VCPUExit {
+        while true {
+            let result = ckvm_run(fd)
+            if result == -EINTR { return .interrupted }
+            if result == -EAGAIN { continue }
+            try kvmCheck(result, "KVM_RUN")
+            exitCount += 1
+            return decodeExit()
+        }
+    }
+
+    /// Sets or clears `kvm_run.immediate_exit`: while set, KVM_RUN returns
+    /// -EINTR without entering the guest. Any host thread may set it.
+    public func setImmediateExit(_ on: Bool) { ckvm_run_set_immediate_exit(runArea, on ? 1 : 0) }
 
     /// Supplies the value for a pending MMIO read (little-endian, `length` bytes).
     public func completeMMIORead(_ value: UInt64, length: Int) {

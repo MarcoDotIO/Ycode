@@ -124,6 +124,7 @@ MACH_ROUTINES = {
     "_mach_absolute_time": ("-3", "mach.c"),
     "_mach_continuous_time": ("-4", "mach.c"),
     "_mach_timebase_info": ("-89", "mach.c: cached"),
+    "_mach_get_times": ("-3,-4,116", "mach.c: wall clock from __gettimeofday as a timespec"),
     "_mach_task_self": ("-", "mach.c: mach_task_self_"),
     "_mach_host_self": ("-29", "mach.c"),
     "_host_self": ("-29", "mach.c: as mach_host_self"),

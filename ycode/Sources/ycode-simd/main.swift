@@ -45,6 +45,7 @@ let usage = """
                       [--timeout-ms N] [--max-exits N] [--shim <shim.bin>] [--host-stubs <host_stubs.bin>]
                       [--host-libs <dir>] [--keep-going] [--libfunc-return <name>=<value>[,...]]
            ycode-simd --shim <shim.bin> --el0 <el0.bin> [--trace] [--timeout-ms N] [--max-exits N]
+                      [--vcpus N [--rounds R]]
            ycode-simd --kvm-smoke
     """
 
@@ -63,6 +64,9 @@ struct Options {
     /// completes itself (x0 = value, return to LR), to look past them.
     var libfuncReturns: [String: UInt64] = [:]
     var kvmSmoke = false
+    /// Stage-2 multi-vCPU check: run the self-test on N vCPUs at once, R rounds.
+    var vcpus: Int?
+    var rounds = 2
     var timeoutMilliseconds: UInt64?
     var maxExits: Int?
 }
@@ -122,6 +126,12 @@ func parseOptions(_ arguments: [String]) -> Options {
                 options.libfuncReturns[parts[0]] = v
             }
         case "--kvm-smoke": options.kvmSmoke = true
+        case "--vcpus":
+            guard let n = Int(value(for: argument)), n > 0, n <= VCPUSlots.count else { die("--vcpus needs 1...\(VCPUSlots.count)", status: 64) }
+            options.vcpus = n
+        case "--rounds":
+            guard let n = Int(value(for: argument)), n > 0 else { die("--rounds needs a positive integer", status: 64) }
+            options.rounds = n
         case "--timeout-ms":
             guard let n = UInt64(value(for: argument)), n > 0 else { die("--timeout-ms needs a positive integer", status: 64) }
             options.timeoutMilliseconds = n
@@ -197,7 +207,11 @@ func runStage2(_ options: Options) throws -> Never {
     // consecutive pages of the EL0 pool.
     var tables = PageTableBuilder(tableArenaGPA: VMLayout.pageTableArenaGPA, tableArenaSize: Int(VMLayout.pageTableArenaSize))
     for region in VMLayout.el1Regions { try tables.mapIdentity(region) }
-    var nextPoolGPA = VMLayout.el0PoolGPA
+    // With --vcpus the vCPU slots (stage4a-contract.md §4) take the start of
+    // the stage-2 EL0 pool; the EL0 pages follow them.
+    let multi = options.vcpus != nil
+    if multi { try tables.mapIdentity(VCPUSlots.region) }
+    var nextPoolGPA = multi ? VCPUSlots.baseGPA + VCPUSlots.regionSize : VMLayout.el0PoolGPA
     for region in VMLayout.selfTestRegions(imageSize: UInt64(el0Image.count)) {
         guard nextPoolGPA + region.size <= VMLayout.el0PoolGPA + VMLayout.el0PoolSize else {
             die("EL0 pool exhausted mapping \(region.name)", status: 66)
@@ -229,6 +243,10 @@ func runStage2(_ options: Options) throws -> Never {
     try vm.write(gpa: VMLayout.bootInfoGPA, bytes: bootInfo.encoded())
     if options.trace {
         stderrLine("ycode-simd: \(tables.tables.count) table pages, root \(hex(tables.rootGPA)); shim \(shim.count) bytes; EL0 image \(el0Image.count) bytes")
+    }
+
+    if let count = options.vcpus {
+        try runStage2Pool(options, vm: vm, tables: tables, shimSize: shim.count, count: count, timeout: timeout, maxExits: maxExits)
     }
 
     // vCPU reset state.
@@ -279,6 +297,63 @@ func runStage2(_ options: Options) throws -> Never {
             die("unexpected VM exit: \(exit)", status: 71)
         }
     }
+}
+
+/// `--vcpus N`: the self-test runs on N vCPUs at once (one host thread
+/// each), `--rounds` times. A thread's `exit(0)` parks its vCPU; later
+/// rounds reuse the parked vCPUs. Exercises the stage-4a pool: lazy vCPU
+/// creation while others run, per-vCPU slots, concurrent traps, and reuse.
+func runStage2Pool(_ options: Options, vm: VirtualMachine, tables: PageTableBuilder, shimSize: Int,
+                   count: Int, timeout: UInt64, maxExits: Int) throws -> Never {
+    let pool = try VCPUPool(vm: vm, bootTemplate: BootInfo(ttbr0EL1: tables.rootGPA, el0EntryPC: 0), maxExitsPerVCPU: maxExits)
+    stderrLine("ycode-simd: KVM_CAP_MAX_VCPUS \(vm.maxVCPUs), KVM_CAP_NR_VCPUS \(vm.recommendedVCPUs); pool capacity \(pool.capacity)")
+    guard count <= pool.capacity else { die("--vcpus \(count) exceeds the pool capacity \(pool.capacity)", status: 64) }
+    pool.preBootCleanRanges = { [(VMLayout.shimGPA, shimSize), (tables.rootGPA, tables.tables.count * Int(VMLayout.pageSize))] }
+    if options.trace { pool.log = { stderrLine("ycode-simd: " + $0) } }
+    let memory = TranslatedGuestMemory(vm: vm, pageTables: tables)
+    let lock = HostMutex()
+    var finished = 0
+    var dispatcher = DarwinTrapDispatcher(
+        pid: VMLayout.guestPID,
+        stdout: { text in writeFD(1, text) },
+        stderr: { text in writeFD(2, text) },
+        log: { line in if options.trace { stderrLine("[trap] " + line) } })
+    pool.trapHandler = { worker, frame in
+        let outcome = lock.withLock { dispatcher.handle(&frame, memory: memory) }
+        switch outcome {
+        case .resume:
+            return .resume
+        case let .exit(status) where status == 0:
+            lock.withLock { finished += 1 }
+            return .park
+        case let .exit(status):
+            return .terminate(status: status, message: "vCPU \(worker.index): self-test exited with status \(status)")
+        case let .fatal(message):
+            return .terminate(status: VMLayout.fatalExitStatus, message: "vCPU \(worker.index): fatal guest trap:\n\(message)")
+        }
+    }
+    let state = VCPUStartState(pc: VMLayout.selfTestImageVA, sp: VMLayout.el0StackTop,
+                                 registers: [initialTPIDRRO, UInt64(VMLayout.guestPID)], tpidrro: initialTPIDRRO)
+    var started = Date()
+    for round in 1...options.rounds {
+        for _ in 0..<count {
+            guard try pool.start(state, context: nil) != nil else { die("round \(round): the vCPU pool is exhausted", status: 71) }
+        }
+        // Wait until every thread of the round exited and parked its vCPU.
+        while true {
+            if let end = pool.currentTermination { die(end.message, status: end.status) }
+            if lock.withLock({ finished }) == round * count && pool.parkedCount == count { break }
+            if Date().timeIntervalSince(started) * 1000 > Double(timeout) {
+                let report = pool.stopAll()
+                die("watchdog: round \(round) still running after \(timeout) ms\n\(report)", status: 71)
+            }
+            usleep(500)
+        }
+        stderrLine("ycode-simd: round \(round): \(count) threads exited 0 on \(pool.vcpuCount) vCPUs")
+        started = Date()
+    }
+    stderrLine("ycode-simd: multi-vCPU self-test ok (\(count) vCPUs x \(options.rounds) rounds)")
+    exit(0)
 }
 
 // MARK: - Stage 3a: helpers
@@ -467,6 +542,18 @@ struct CacheMappingTracker {
 
 // MARK: - Stage 3a: the process image
 
+/// Stage 4a: the vCPU slots (`VCPUSlots`, GPA 0x4100_0000, 4 MiB) lie inside
+/// the stage-3 table arena (0x4020_0000 + 64 MiB), so the arena moves to
+/// 0x4200_0000 (64 MiB, up to 0x4600_0000, inside the 1 GiB of RAM).
+let stage4TableArenaGPA: UInt64 = 0x4200_0000
+
+/// The EL1 identity regions of an --exec VM: the stage-3 ones with the table
+/// arena moved, plus the vCPU slots.
+let stage4EL1Regions: [VMLayout.Region] = VMLayout.stage3EL1Regions.map { r in
+    guard r.name == "page-tables" else { return r }
+    return VMLayout.Region(name: r.name, va: stage4TableArenaGPA, size: VMLayout.stage3PageTableArenaSize, attributes: r.attributes)
+} + [VCPUSlots.region]
+
 /// A loaded Mach-O image (main executable or dyld_sim).
 struct LoadedImage {
     var image: GuestImage
@@ -494,8 +581,8 @@ final class ProcessBuilder {
         backing = try KVMPhysicalBacking(vm: vm, poolGPA: VMLayout.anonymousPoolGPA, poolSize: VMLayout.anonymousPoolSize,
                                          fileWindowGPA: VMLayout.fileSlotGPABase,
                                          physicalAddressBits: VMLayout.physicalAddressBits)
-        var tables = PageTableBuilder.stage3()
-        for region in VMLayout.stage3EL1Regions { try tables.mapIdentity(region) }
+        var tables = PageTableBuilder(tableArenaGPA: stage4TableArenaGPA, tableArenaSize: Int(VMLayout.stage3PageTableArenaSize))
+        for region in stage4EL1Regions { try tables.mapIdentity(region) }
         space = GuestAddressSpace(backing: backing, pageTables: tables)
         try space.flushPageTables()
     }
@@ -702,17 +789,22 @@ func runExec(_ options: Options) throws -> Never {
     try builder.poke(threadBlock.address, threadBlock.bytes)
     stderrLine("ycode-simd: main-thread block at \(hex(threadBlock.address)); TPIDRRO_EL0 = \(hex(threadBlock.tsdBase))")
 
-    // Boot info and vCPU (§6 initial state, with host-libraries.md §8.3's TPIDRRO_EL0).
-    let bootInfo = BootInfo(ttbr0EL1: space.pageTables.rootGPA, el0EntryPC: VMLayout.hostPageEntryVA,
-                            el0InitialSP: arguments.stackPointer, tpidrroEL0: threadBlock.tsdBase, tpidrEL0: 0,
-                            el0Registers: [UInt64](repeating: 0, count: 8))
-    try vm.write(gpa: VMLayout.bootInfoGPA, bytes: bootInfo.encoded())
-    let vcpu = try vm.makeVCPU()
-    try vcpu.set(.pc, VMLayout.shimEntryGPA)
-    try vcpu.set(.pstate, VMLayout.el1BootPSTATE)
-    try vcpu.set(.x(0), VMLayout.bootInfoGPA)
-    let (frequency, frequencySource) = vcpu.counterFrequency()
-    stderrLine("ycode-simd: CNTFRQ_EL0 = \(frequency) Hz (\(frequencySource))")
+    // Boot info template, the vCPU pool, and vCPU 0 (stage4a-contract.md §2, §4).
+    // vCPU 0 is created before anything runs so the VMM can read the guest
+    // counter and its frequency through it.
+    let pool = try VCPUPool(vm: vm, bootTemplate: BootInfo(ttbr0EL1: space.pageTables.rootGPA, el0EntryPC: 0),
+                            maxExitsPerVCPU: maxExits)
+    if trace { pool.log = { stderrLine("ycode-simd: " + $0) } }
+    let vcpu0 = try pool.createWorker().vcpu
+    let (frequency, frequencySource) = vcpu0.counterFrequency()
+    let counterOffset = try vcpu0.counterOffset()
+    let guestMMFR2 = (try? vcpu0.get(SystemRegister.idAA64MMFR2EL1)) ?? 0
+    stderrLine("ycode-simd: CNTFRQ_EL0 = \(frequency) Hz (\(frequencySource)); KVM_CAP_MAX_VCPUS \(vm.maxVCPUs), "
+        + "KVM_CAP_NR_VCPUS \(vm.recommendedVCPUs); vCPU pool capacity \(pool.capacity)")
+    if trace {
+        stderrLine("ycode-simd: ID_AA64MMFR2_EL1.FWB host \((Hypervisor.hostIDAA64MMFR2() >> 40) & 0xF) guest \((guestMMFR2 >> 40) & 0xF)"
+            + " (boot info and frames are also cleaned to PoC before a vCPU's first run)")
+    }
 
     // Kernel personality and VFS (§8).
     let execDirectory = (execPath as NSString).deletingLastPathComponent
@@ -742,17 +834,28 @@ func runExec(_ options: Options) throws -> Never {
     prefixes.append(DarwinFileSystem.Prefix(guestPath: "/tmp", hostPath: runDir + "/tmp", writable: true))
     let fileSystem = DarwinFileSystem(prefixes: prefixes, console: { fd, bytes in writeFD(fd == 2 ? 2 : 1, bytes) })
 
-    var trapPrefix = ""
+    // Each vCPU host thread logs with the prefix of the trap it is handling.
+    let trapPrefix = PerThreadString()
     let kernel = DarwinKernel(
         fileSystem: fileSystem,
-        log: { line in if trace { stderrLine(trapPrefix + line) } },
-        counter: { (try? vcpu.virtualCounter()) ?? 0 },
+        log: { line in if trace { stderrLine(trapPrefix.value + line) } },
+        // The guest's CNTVCT_EL0 from any host thread (no ioctl on a running vCPU).
+        counter: { Hypervisor.hostCounter() &- counterOffset },
         counterFrequency: frequency)
     kernel.allImageInfosAddress = HostPageLayout.allImageInfos
     kernel.mainStackTop = VMLayout.userStackTop
-    kernel.bootCounter = (try? vcpu.virtualCounter()) ?? 0
+    kernel.bootCounter = Hypervisor.hostCounter() &- counterOffset
+    kernel.threadHost = PoolThreadHost(pool: pool)
+    // In-process Mach IPC (stage4a-contract.md §6): DarwinKernel.init attaches it.
+    // Before a fresh vCPU's first run (MMU off, non-cacheable reads): the
+    // shim image and the tables in use, read under the kernel lock.
+    pool.preBootCleanRanges = {
+        kernel.lock.withLock { [(VMLayout.shimGPA, shim.count),
+                                (stage4TableArenaGPA, space.pageTables.tableCount * Int(VMLayout.pageSize))] }
+    }
 
-    // Image attribution and the milestone.
+    // Image attribution and the milestone. All of this bookkeeping, like the
+    // address space it reads, is guarded by the kernel lock.
     let images = ImageMap(cachePath: cachePath)
     images.fixed = [
         main.image,
@@ -768,45 +871,45 @@ func runExec(_ options: Options) throws -> Never {
     var trapCount = 0
     var trapCounts: [String: Int] = [:]
 
-    func summary() -> String {
-        let expected = tracker.expected.count
-        let exact = tracker.seen.filter { tracker.expected[$0.key].mapping.address == $0.value }.count
-        return "\(trapCount) traps, \(vcpu.exitCount) VM exits; shared-cache mappings mapped: \(tracker.seen.count)/\(expected)"
-            + " (\(exact) at the header address); milestone \(milestoneReached ? "reached" : "not reached")"
+    func summary(locked: Bool = true) -> String {
+        guard locked else { return "\(trapCount) traps, \(pool.vcpuCount) vCPUs (peak \(pool.peakThreads) threads)" }
+        return kernel.lock.withLock {
+            let expected = tracker.expected.count
+            let exact = tracker.seen.filter { tracker.expected[$0.key].mapping.address == $0.value }.count
+            let exits = vm.vcpus.reduce(0) { $0 + $1.exitCount }
+            return "\(trapCount) traps, \(exits) VM exits, \(pool.vcpuCount) vCPUs (peak \(pool.peakThreads) threads); "
+                + "shared-cache mappings mapped: \(tracker.seen.count)/\(expected)"
+                + " (\(exact) at the header address); milestone \(milestoneReached ? "reached" : "not reached")"
+        }
     }
 
     func faultReport(_ frame: TrapFrame) -> String {
-        var lines = ["  ELR \(hex(frame.elr)) = \(images.describe(frame.elr))"]
-        if frame.trapKind != .svc {
-            lines.append("  FAR \(hex(frame.far)) = \(images.describe(frame.far)); region: \(space.region(containing: frame.far)?.description ?? "unmapped")")
+        kernel.lock.withLock {
+            var lines = ["  ELR \(hex(frame.elr)) = \(images.describe(frame.elr))"]
+            if frame.trapKind != .svc {
+                lines.append("  FAR \(hex(frame.far)) = \(images.describe(frame.far)); region: \(space.region(containing: frame.far)?.description ?? "unmapped")")
+            }
+            lines.append("  LR  \(hex(frame.x[30])) = \(images.describe(frame.x[30]))")
+            if let code = try? space.read(va: frame.elr & ~3, count: 4, checkingEL0Access: false) {
+                lines.append("  instruction word at ELR: \(code.reversed().map { String(format: "%02x", $0) }.joined())")
+            }
+            return lines.joined(separator: "\n")
         }
-        lines.append("  LR  \(hex(frame.x[30])) = \(images.describe(frame.x[30]))")
-        if let code = try? space.read(va: frame.elr & ~3, count: 4, checkingEL0Access: false) {
-            lines.append("  instruction word at ELR: \(code.reversed().map { String(format: "%02x", $0) }.joined())")
-        }
-        return lines.joined(separator: "\n")
     }
 
-    try Watchdog.arm(milliseconds: timeout)
-    while true {
-        guard vcpu.exitCount < maxExits else {
-            dumpVCPU(vcpu)
-            die("guest exceeded \(maxExits) VM exits (\(summary()))", status: 71)
-        }
-        let exit: VCPUExit = Watchdog.fired ? .watchdog : try vcpu.run()
-        switch exit {
-        case let .mmio(.write, address, frameAddress, 8) where address == VMLayout.doorbellGPA:
-            guard frameAddress == VMLayout.trapFrameGPA else {
-                dumpVCPU(vcpu)
-                die("doorbell carried frame address \(hex(frameAddress)), expected \(hex(VMLayout.trapFrameGPA))", status: 71)
-            }
-            var frame = try TrapFrame(decoding: vm.read(gpa: frameAddress, count: TrapFrame.byteCount))
-            trapCount += 1
+    pool.trapHandler = { worker, frame in
+        let context = (worker.context as? ThreadContext) ?? kernel.mainThread
+        let threadTag = context.threadID == 1 ? "" : "t\(context.threadID) "
 
-            // Attribute the trap; the milestone (host-libraries.md §8.1)
-            // prints once: the first trap from a cache libsystem_* image,
-            // the cache libSystem.B, or one of Ycode's host libraries.
-            let attribution = images.attribute(frame.elr)
+        // Before the trap: attribution, the milestone (host-libraries.md
+        // §8.1, printed once: the first trap from a cache libsystem_* image,
+        // the cache libSystem.B, or one of Ycode's host libraries), and
+        // dyld_sim's mmap of the shared cache (§1 item 1).
+        let isSVC = frame.trapKind == .svc
+        let x16 = UInt32(truncatingIfNeeded: frame.x[16])
+        let pending: CacheMappingTracker.Pending? = kernel.lock.withLock(context: context) {
+            trapCount += 1
+            let attribution = (trace || !milestoneReached) ? images.attribute(frame.elr) : nil
             if !milestoneReached, let (image, offset) = attribution,
                image.name.hasPrefix("/usr/lib/system/libsystem_") || image.name == "/usr/lib/libSystem.B.dylib" {
                 milestoneReached = true
@@ -815,23 +918,27 @@ func runExec(_ options: Options) throws -> Never {
             }
             if trace {
                 let place = attribution.map { "\($0.image.name.split(separator: "/").last.map(String.init) ?? $0.image.name)+\(hex($0.offset))" } ?? hex(frame.elr)
-                trapPrefix = "[\(trapCount)] \(place): "
+                trapPrefix.value = "[\(trapCount)] \(threadTag)\(place): "
             }
-
-            // dyld_sim's mmap of the shared cache (§1 item 1).
-            let isSVC = frame.trapKind == .svc
-            let x16 = UInt32(truncatingIfNeeded: frame.x[16])
-            tracker.pending = nil
-            if isSVC, x16 == 197 {
-                let fd = Int32(truncatingIfNeeded: frame.x[4])
-                tracker.pending = .init(address: frame.x[0], size: frame.x[1], flags: frame.x[3], fd: fd,
-                                        offset: frame.x[5], path: try? fileSystem.path(for: fd))
+            if trace, isSVC, x16 == 374 || x16 == 375 {
+                // kevent_qos / kevent_id: show each change.
+                dumpKevents(space, list: frame.x[1], count: Int(frame.x[2]), label: "change")
             }
+            guard isSVC, x16 == 197 else { return nil }
+            let fd = Int32(truncatingIfNeeded: frame.x[4])
+            return .init(address: frame.x[0], size: frame.x[1], flags: frame.x[3], fd: fd,
+                         offset: frame.x[5], path: try? fileSystem.path(for: fd))
+        }
 
-            let outcome = kernel.handle(&frame, memory: space)
+        let outcome = kernel.handle(&frame, context: context, memory: space)
+        if trace, isSVC, x16 == 368, outcome == .resume, frame.x[16] == 0, frame.x[5] > 0, frame.x[5] < 64, frame.x[3] != 0 {
+            // A workqueue thread restarted with events (x3 = list, x5 = count).
+            kernel.lock.withLock { dumpKevents(space, list: frame.x[3], count: Int(frame.x[5]), label: "event") }
+        }
 
-            if let p = tracker.pending, let path = p.path, !frame.carry, frame.x[0] == p.address,
-               p.flags & 0x10 != 0, (path as NSString).lastPathComponent.hasPrefix("dyld_sim_shared_cache_") {
+        if let p = pending, let path = p.path, !frame.carry, frame.x[0] == p.address,
+           p.flags & 0x10 != 0, (path as NSString).lastPathComponent.hasPrefix("dyld_sim_shared_cache_") {
+            kernel.lock.withLock(context: context) {
                 if tracker.expected.isEmpty { tracker.expected = images.cacheMappings() }
                 let name = (path as NSString).lastPathComponent
                 if let index = tracker.expected.firstIndex(where: {
@@ -843,54 +950,121 @@ func runExec(_ options: Options) throws -> Never {
                     stderrLine("ycode-simd: shared-cache mapping \(index + 1)/\(tracker.expected.count) \(name) @\(hex(p.offset)) size \(hex(p.size)) mapped at \(hex(p.address)) (header address \(hex(header))\(p.address == header ? ", exact" : ""))")
                 }
             }
-
-            switch outcome {
-            case .resume:
-                try vm.write(gpa: frameAddress, bytes: frame.encoded())
-            case let .exit(status):
-                stderrLine("ycode-simd: guest exited with status \(status); \(summary())")
-                Glibc.exit(status)
-            case let .fatal(status, message):
-                if DarwinKernel.isCachePatchPlaceholderFault(frame) {
-                    stderrLine("ycode-simd: \(DarwinKernel.cachePatchPlaceholderMessage): ELR \(hex(frame.elr)) = "
-                        + "\(images.describe(frame.elr)); LR \(hex(frame.x[30])) = \(images.describe(frame.x[30]))")
-                }
-                stderrLine("ycode-simd: fatal guest condition (exit \(status)):\n\(message)\n\(faultReport(frame))")
-                stderrLine("ycode-simd: \(summary())")
-                Glibc.exit(status)
-            case let .unimplemented(description):
-                trapCounts[description, default: 0] += 1
-                if trace && !options.keepGoing {
-                    stderrLine("ycode-simd: first unimplemented trap: \(description)\n\(frame)\n\(faultReport(frame))")
-                    stderrLine("ycode-simd: \(summary())")
-                    Glibc.exit(DarwinKernel.unimplementedExitStatus)
-                }
-                try vm.write(gpa: frameAddress, bytes: frame.encoded())
-            case let .unimplementedLibraryFunction(name) where options.libfuncReturns[name] != nil:
-                // Debug aid: finish the call here (x0 = value, return to the caller).
-                let value = options.libfuncReturns[name]!
-                stderrLine("ycode-simd: unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(images.describe(frame.x[30]))) "
-                    + "[--libfunc-return: x0 = \(hex(value))]")
-                frame.x[0] = value
-                frame.elr = frame.x[30]
-                try vm.write(gpa: frameAddress, bytes: frame.encoded())
-            case let .unimplementedLibraryFunction(name):
-                trapCounts["libfunc " + name, default: 0] += 1
-                stderrLine("ycode-simd: unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(images.describe(frame.x[30])))")
-                if trace && !options.keepGoing {
-                    stderrLine("ycode-simd: first unimplemented host-library function: \(name)\n\(frame)\n\(faultReport(frame))")
-                    stderrLine("ycode-simd: \(summary())")
-                    Glibc.exit(DarwinKernel.unimplementedLibraryFunctionExitStatus)
-                }
-                try vm.write(gpa: frameAddress, bytes: frame.encoded())
-            }
-        case .watchdog:
-            dumpVCPU(vcpu)
-            die("watchdog: guest still running after \(timeout) ms (\(summary()))", status: 71)
-        default:
-            dumpVCPU(vcpu)
-            die("unexpected VM exit: \(exit) (\(summary()))", status: 71)
         }
+
+        switch outcome {
+        case .resume:
+            return .resume
+        case .threadExit:
+            if trace { stderrLine("ycode-simd: \(context) ended; vCPU \(worker.index) parked") }
+            return .park
+        case let .exit(status):
+            return .terminate(status: status, message: "guest exited with status \(status)")
+        case let .fatal(status, message):
+            var text = ""
+            if DarwinKernel.isCachePatchPlaceholderFault(frame) {
+                text += "\(DarwinKernel.cachePatchPlaceholderMessage): ELR \(hex(frame.elr)) = "
+                    + "\(images.describe(frame.elr)); LR \(hex(frame.x[30])) = \(images.describe(frame.x[30]))\n"
+            }
+            text += "fatal guest condition on \(context), vCPU \(worker.index) (exit \(status)):\n\(message)\n\(faultReport(frame))"
+            return .terminate(status: status, message: text)
+        case let .unimplemented(description):
+            kernel.lock.withLock { trapCounts[description, default: 0] += 1 }
+            if trace && !options.keepGoing {
+                return .terminate(status: DarwinKernel.unimplementedExitStatus,
+                                  message: "first unimplemented trap (\(context)): \(description)\n\(frame)\n\(faultReport(frame))")
+            }
+            return .resume
+        case let .unimplementedLibraryFunction(name) where options.libfuncReturns[name] != nil:
+            // Debug aid: finish the call here (x0 = value, return to the caller).
+            let value = options.libfuncReturns[name]!
+            stderrLine("ycode-simd: unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(images.describe(frame.x[30]))) "
+                + "[--libfunc-return: x0 = \(hex(value))]")
+            frame.x[0] = value
+            frame.elr = frame.x[30]
+            return .resume
+        case let .unimplementedLibraryFunction(name):
+            kernel.lock.withLock { trapCounts["libfunc " + name, default: 0] += 1 }
+            stderrLine("ycode-simd: unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(images.describe(frame.x[30])))")
+            if trace && !options.keepGoing {
+                return .terminate(status: DarwinKernel.unimplementedLibraryFunctionExitStatus,
+                                  message: "first unimplemented host-library function (\(context)): \(name)\n\(frame)\n\(faultReport(frame))")
+            }
+            return .resume
+        }
+    }
+    pool.exitHandler = { worker, exit in
+        dumpVCPU(worker.vcpu)
+        return .terminate(status: 71, message: "unexpected VM exit on vCPU \(worker.index): \(exit)")
+    }
+
+    // The main thread on vCPU 0 (§6 initial state, with host-libraries.md
+    // §8.3's TPIDRRO_EL0), then wait for the process to end.
+    let mainState = VCPUStartState(pc: VMLayout.hostPageEntryVA, sp: arguments.stackPointer, tpidrro: threadBlock.tsdBase)
+    guard let mainWorker = try pool.start(mainState, context: kernel.mainThread) else { die("vCPU 0 is unavailable", status: 1) }
+    kernel.mainThread.vcpuIndex = mainWorker.index
+    let end = pool.waitForTermination(timeoutMilliseconds: timeout)
+    stderrLine("ycode-simd: \(end.message)")
+    // After the watchdog a thread may still hold the kernel lock: do not wait for it.
+    stderrLine("ycode-simd: \(summary(locked: end.vcpuIndex != nil))")
+    if !trapCounts.isEmpty && trace && end.vcpuIndex != nil {
+        stderrLine("ycode-simd: unimplemented: " + trapCounts.sorted { $0.key < $1.key }.map { "\($0.key) x\($0.value)" }.joined(separator: ", "))
+    }
+    exit(end.status)
+}
+
+/// Trace aid: prints kevent_qos_s records (72 bytes each) from guest memory.
+func dumpKevents(_ space: GuestAddressSpace, list: UInt64, count: Int, label: String) {
+    for i in 0..<min(count, 8) {
+        guard let b = try? space.read(va: list + UInt64(i * 72), count: 72, checkingEL0Access: false) else { break }
+        func u(_ o: Int, _ n: Int) -> UInt64 { (0..<n).reduce(0) { $0 | UInt64(b[o + $1]) << (8 * UInt64($1)) } }
+        let filter = Int16(truncatingIfNeeded: u(8, 2))
+        stderrLine("  \(label)[\(i)] ident \(hex(u(0, 8))) filter \(filter) flags \(hex(u(10, 2))) qos \(hex(u(12, 4))) "
+            + "udata \(hex(u(16, 8))) fflags \(hex(u(24, 4))) xflags \(hex(u(28, 4))) data \(Int64(bitPattern: u(32, 8))) "
+            + "ext \(hex(u(40, 8))) \(hex(u(48, 8))) \(hex(u(56, 8))) \(hex(u(64, 8)))")
+    }
+}
+
+/// The kernel's `ThreadHost`: new Darwin threads go to the vCPU pool.
+final class PoolThreadHost: ThreadHost {
+    struct Exhausted: Error, CustomStringConvertible {
+        var capacity: Int
+        var description: String { "the vCPU pool is exhausted (\(capacity) vCPUs)" }
+    }
+    let pool: VCPUPool
+    init(pool: VCPUPool) { self.pool = pool }
+
+    func startThread(_ start: ThreadStartState, context: ThreadContext) throws -> Int {
+        let state = VCPUStartState(pc: start.pc, sp: start.sp, registers: start.x, tpidrro: start.tpidrro, tpidr: start.tpidr)
+        guard let worker = try pool.start(state, context: context) else { throw Exhausted(capacity: pool.capacity) }
+        context.vcpuIndex = worker.index
+        return worker.index
+    }
+}
+
+/// A string with one value per host thread (pthread TSD).
+final class PerThreadString: @unchecked Sendable {
+    private final class Box { var value = "" }
+    private var key = pthread_key_t()
+
+    init() {
+        pthread_key_create(&key) { pointer in
+            if let pointer { Unmanaged<AnyObject>.fromOpaque(pointer).release() }
+        }
+    }
+
+    private var box: Box {
+        if let pointer = pthread_getspecific(key) {
+            return Unmanaged<Box>.fromOpaque(pointer).takeUnretainedValue()
+        }
+        let box = Box()
+        pthread_setspecific(key, Unmanaged.passRetained(box).toOpaque())
+        return box
+    }
+
+    var value: String {
+        get { box.value }
+        set { box.value = newValue }
     }
 }
 

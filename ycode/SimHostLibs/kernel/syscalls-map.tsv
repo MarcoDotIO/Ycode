@@ -431,6 +431,7 @@ _mach_eventlink_signal	surface	bsd-syscall	-	stub: public kern_return_t API over
 _mach_eventlink_signal_wait_until	surface	bsd-syscall	-	stub: public kern_return_t API over a call that returns a packed u64
 _mach_eventlink_wait_until	surface	bsd-syscall	-	stub: public kern_return_t API over a call that returns a packed u64
 _mach_generate_activity_id	surface	mach-trap	-43	mach
+_mach_get_times	surface	mach-routine	-3,-4,116	routine: mach.c: wall clock from __gettimeofday as a timespec
 _mach_host_self	surface	mach-routine	-29	routine: mach.c
 _mach_msg	surface	mach-routine	-47	routine: machmsg.c: packed mach_msg2, MQ_CALL, interrupt retry
 _mach_msg2_internal	surface	mach-routine	-47	routine: machmsg.c: packed words passed through, library-only bits stripped, interrupt retry

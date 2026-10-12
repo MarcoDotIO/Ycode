@@ -62,6 +62,8 @@ enum {
     CKVM_CAP_NR_VCPUS = 9,
     CKVM_CAP_NR_MEMSLOTS = 10,
     CKVM_CAP_ARM_VM_IPA_SIZE = 165,
+    CKVM_CAP_MAX_VCPUS = 66,
+    CKVM_CAP_IMMEDIATE_EXIT = 136,
 };
 
 // ---- vCPU -------------------------------------------------------------------
@@ -162,6 +164,24 @@ uint64_t ckvm_run_system_event_data(const void *run, uint32_t index);
 /// KVM_EXIT_ARM_NISV: ESR_EL2 bits and the faulting IPA.
 uint64_t ckvm_run_arm_nisv_esr_iss(const void *run);
 uint64_t ckvm_run_arm_nisv_fault_ipa(const void *run);
+
+// ---- Kicking a vCPU thread and cache maintenance ------------------------------
+
+/// Installs an empty handler for `signo` without SA_RESTART, so a KVM_RUN on
+/// a thread that receives the signal returns -EINTR. Returns 0 or -errno.
+int ckvm_kick_install(int signo);
+/// Sends `signo` to the host thread `thread` (a pthread_t). Returns 0 or -errno.
+int ckvm_kick_thread(unsigned long thread, int signo);
+
+/// Cleans and invalidates [address, address+size) to the point of coherency
+/// (DC CIVAC on every data-cache line, then DSB SY). Used for guest memory the
+/// VMM wrote through its cacheable mapping and that a vCPU reads with its MMU
+/// off (non-cacheable): the boot-info block, the trap frame, the shim image.
+void ckvm_clean_dcache_range(const void *address, size_t size);
+
+/// ID_AA64MMFR2_EL1 as Linux exposes it to user space (MRS emulation; fields
+/// the kernel hides read as 0), or 0 when HWCAP_CPUID is absent.
+uint64_t ckvm_host_id_aa64mmfr2(void);
 
 // ---- Watchdog ---------------------------------------------------------------
 
