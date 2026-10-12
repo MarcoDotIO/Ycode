@@ -3,6 +3,7 @@ import YcodeProject
 import YcodeWorkspace
 import YcodeSettings
 import YcodePlist
+import YcodeMachO
 
 /// Command-line front end. The GUI will share these libraries.
 func usage() -> Never {
@@ -11,6 +12,8 @@ func usage() -> Never {
            ycode schemes <path.xcodeproj|.xcworkspace>
            ycode settings <path.xcodeproj> [-target T] [-configuration C] [-defaults file.json]
                           [--assigned-only] [--json] [NAME=value]...
+           ycode macho <file>
+           ycode dsc <dyld_shared_cache> [--images N] [--image <install-path>]
            ycode roundtrip [--print] <path.xcodeproj|.xcscheme|contents.xcworkspacedata>...
 
     """.utf8))
@@ -148,6 +151,56 @@ func settings(_ rest: [String]) throws {
     for d in resolved.diagnostics { FileHandle.standardError.write(Data("warning: \(d)\n".utf8)) }
 }
 
+func describeMachO(_ image: MachOImage, indent: String = "") {
+    let type = image.fileType.map { "\($0)" } ?? hex(image.fileTypeRaw)
+    print("\(indent)\(image.isArm64 ? "arm64" : hex(image.cpuType)) \(type)\(image.isEncrypted ? "  [ENCRYPTED]" : "")")
+    if let b = image.buildVersion {
+        print("\(indent)platform \(b.platform.map { "\($0)" } ?? "\(b.platformRaw)")  minos \(b.minOS)  sdk \(b.sdk)")
+    }
+    if let u = image.uuid { print("\(indent)uuid \(u.uuidString)") }
+    if let n = image.installName { print("\(indent)install name \(n)") }
+    if let d = image.dylinker { print("\(indent)dylinker \(d)") }
+    if let e = image.entryOffset { print("\(indent)entry __TEXT+\(hex(e))") }
+    for seg in image.segments {
+        print("\(indent)segment \(seg.name.padding(toLength: 16, withPad: " ", startingAt: 0)) vm \(hex(seg.vmAddress)) +\(hex(seg.vmSize))  \(seg.initialProtection)/\(seg.maxProtection)  \(seg.sections.count) sections")
+    }
+    for d in image.dylibs { print("\(indent)links \(d.path)\(d.kind == .normal ? "" : " (\(d.kind.rawValue))")") }
+    for r in image.rpaths { print("\(indent)rpath \(r)") }
+    print("\(indent)code signature: \(image.codeSignature != nil ? "yes" : "no")  chained fixups: \(image.chainedFixups != nil ? "yes" : "no")")
+}
+
+func machoCommand(_ path: String) throws {
+    let file = try MachOFile(contentsOf: URL(fileURLWithPath: path))
+    if file.slices.count > 1 { print("universal: \(file.slices.map(\.name).joined(separator: ", "))") }
+    for slice in file.slices {
+        if file.slices.count > 1 { print("slice \(slice.name)") }
+        describeMachO(try MachOImage(file.reader, at: slice.offset))
+    }
+}
+
+func dscCommand(_ rest: [String]) throws {
+    guard let path = rest.first(where: { !$0.hasPrefix("--") && !(Int($0) != nil) }) else { usage() }
+    let limit = rest.firstIndex(of: "--images").flatMap { rest.indices.contains($0 + 1) ? Int(rest[$0 + 1]) : nil } ?? 10
+    let wanted = rest.firstIndex(of: "--image").flatMap { rest.indices.contains($0 + 1) ? rest[$0 + 1] : nil }
+    let cache = try SharedCache(contentsOf: URL(fileURLWithPath: path))
+    print("arch \(cache.architecture)  platform \(cache.platform.map { "\($0)" } ?? "\(cache.platformRaw)")  simulator \(cache.isSimulator)  format \(cache.formatVersion)  os \(cache.osVersion.map { "\($0)" } ?? "?")")
+    print("shared region \(hex(cache.sharedRegionStart)) +\(hex(cache.sharedRegionSize))")
+    for f in cache.files {
+        print("file \(f.url.lastPathComponent)  uuid \(f.uuid.uuidString)")
+        for m in f.mappings {
+            print("    map \(hex(m.address)) +\(hex(m.size)) @file \(hex(m.fileOffset))  \(m.initialProtection)/\(m.maxProtection)  flags \(hex(m.flags))")
+        }
+    }
+    print("\(cache.images.count) images")
+    if let wanted {
+        guard let img = cache.image(path: wanted) else { throw MachOError("no image \(wanted) in cache") }
+        print("image \(img.path) at \(hex(img.address))")
+        describeMachO(try cache.machO(for: img), indent: "    ")
+        return
+    }
+    for img in cache.images.prefix(limit) { print("    \(hex(img.address))  \(img.path)") }
+}
+
 var args = Array(CommandLine.arguments.dropFirst())
 guard let command = args.first else { usage() }
 args.removeFirst()
@@ -166,6 +219,17 @@ case "schemes":
     }
 case "settings":
     do { try settings(args) } catch {
+        FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
+        exit(1)
+    }
+case "macho":
+    guard args.count == 1 else { usage() }
+    do { try machoCommand(args[0]) } catch {
+        FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
+        exit(1)
+    }
+case "dsc":
+    do { try dscCommand(args) } catch {
         FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
         exit(1)
     }

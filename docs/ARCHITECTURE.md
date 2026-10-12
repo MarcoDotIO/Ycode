@@ -70,7 +70,7 @@ still the frame that holds everything together.
     YcodeDebug        DAP client to lldb-dap
     YcodeDevices      simctl/devicectl wrappers
     YcodeUI           AppKit shell: workspace window, navigators, editor
-    YcodeFirmware     IPSW/IMG4/kernelcache/device tree toolkit           (simulator track)
+    YcodeMachO        Mach-O + dyld shared cache reader (read-only)       [simulator track, stage 1]
     ycode             CLI (describe / schemes / settings / roundtrip / build / test)
     Ycode.app         GUI (macOS); Linux front end TBD
 

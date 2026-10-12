@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "YcodeProject", targets: ["YcodeProject"]),
         .library(name: "YcodeWorkspace", targets: ["YcodeWorkspace"]),
         .library(name: "YcodeSettings", targets: ["YcodeSettings"]),
+        .library(name: "YcodeMachO", targets: ["YcodeMachO"]),
         .executable(name: "ycode", targets: ["ycode"]),
     ],
     targets: [
@@ -16,10 +17,12 @@ let package = Package(
         .target(name: "YcodeProject", dependencies: ["YcodePlist"]),
         .target(name: "YcodeWorkspace", dependencies: ["YcodeProject"]),
         .target(name: "YcodeSettings", dependencies: ["YcodeProject"]),
-        .executableTarget(name: "ycode", dependencies: ["YcodePlist", "YcodeProject", "YcodeWorkspace", "YcodeSettings"]),
+        .target(name: "YcodeMachO"),
+        .executableTarget(name: "ycode", dependencies: ["YcodePlist", "YcodeProject", "YcodeWorkspace", "YcodeSettings", "YcodeMachO"]),
         .testTarget(name: "YcodePlistTests", dependencies: ["YcodePlist"]),
         .testTarget(name: "YcodeProjectTests", dependencies: ["YcodeProject"], resources: [.copy("Fixtures")]),
         .testTarget(name: "YcodeWorkspaceTests", dependencies: ["YcodeWorkspace"], resources: [.copy("Fixtures")]),
         .testTarget(name: "YcodeSettingsTests", dependencies: ["YcodeSettings"]),
+        .testTarget(name: "YcodeMachOTests", dependencies: ["YcodeMachO"]),
     ]
 )

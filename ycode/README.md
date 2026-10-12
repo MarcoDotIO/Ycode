@@ -8,10 +8,14 @@ swift test
 .build/debug/ycode describe path/to/App.xcodeproj
 .build/debug/ycode roundtrip path/to/App.xcodeproj    # also .xcscheme / contents.xcworkspacedata
 .build/debug/ycode schemes path/to/App.xcworkspace
+.build/debug/ycode macho path/to/binary
+.build/debug/ycode dsc path/to/dyld_sim_shared_cache_arm64 [--images N] [--image /usr/lib/libobjc.A.dylib]
 .build/debug/ycode settings path/to/App.xcodeproj -target App -configuration Debug [--assigned-only] [--json] [NAME=value]
 ```
 
-Supported platforms: macOS and Linux (x86-64, tested with Swift 6.4).
+Supported platforms: macOS and Linux (x86-64 and arm64, tested with Swift 6.4).
+Set `YCODE_SIM_RUNTIME_ROOT` to a simulator `RuntimeRoot` to run the runtime
+tests on Linux.
 
 ## Corpus tests
 
