@@ -1,0 +1,36 @@
+# GPU tests. Both runners (mtl-oracle.m on the Mac's Metal device, from
+# source; airc-gpu.c on the Thor's Vulkan device, with ycode-airc's SPIR-V)
+# set up the inputs by test name (see setup() in each) and write the same
+# output bytes; run-gpu-tests.sh compares them.
+#
+# compute: name library function grid_x grid_y grid_z tg_x tg_y tg_z out_bytes compare
+# render:  name library vertex_fn fragment_fn width height 0 0 0 0 compare
+# draw_fconst specializes fs_fconst with kUseTint = true, kMode = 2.
+# compare: exact (bytes equal), approx (32-bit floats within 1e-3 relative),
+#          image (RGBA8 within 2/255 per channel, at most 0.5% of pixels off)
+compute add_arrays       compute_basic add_arrays       1000 1 1  64 1 1  4000   exact
+compute add_strided      compute_basic add_strided      777 1 1   64 1 1  400012 exact
+compute t_int            compute_basic t_int            1024 1 1  64 1 1  32768  exact
+compute t_math           compute_basic t_math           512 1 1   64 1 1  16384  approx
+compute t_convert        compute_basic t_convert        1024 1 1  64 1 1  16384  exact
+compute t_control        compute_basic t_control        512 1 1   64 1 1  8192   exact
+compute t_private        compute_basic t_private        1024 1 1  64 1 1  8192   exact
+compute t_vector         compute_basic t_vector         256 1 1   64 1 1  4096   approx
+compute t_struct         compute_basic t_struct         64 1 1    32 1 1  1024   exact
+compute call_visible     compute_basic call_visible     256 1 1   64 1 1  1024   exact
+compute t_tg_static      compute_group t_tg_static      256 1 1   64 1 1  2048   exact
+compute t_tg_dynamic     compute_group t_tg_dynamic     256 1 1   64 1 1  1024   approx
+compute t_simd           compute_group t_simd           256 1 1   64 1 1  4096   exact
+compute t_atomic         compute_group t_atomic         256 1 1   64 1 1  1024   exact
+compute t_device_barrier compute_group t_device_barrier 256 1 1   64 1 1  1024   exact
+compute t_tex_rw         textures      t_tex_rw         16 16 1   8 8 1   0      exact
+compute t_tex_sample     textures      t_tex_sample     256 1 1   64 1 1  4096   approx
+compute t_tex_uint       textures      t_tex_uint       256 1 1   64 1 1  1024   exact
+compute t_tex_3d         textures      t_tex_3d         64 1 1    64 1 1  1024   approx
+compute t_argbuf         textures      t_argbuf         256 1 1   64 1 1  1024   approx
+compute t_imageblock     imageblocks   t_imageblock     16 16 1   8 8 1   2048   exact
+compute t_imageblock_slice imageblocks t_imageblock_slice 16 16 1 8 8 1   0      exact
+compute t_pack           textures      t_pack           256 1 1   64 1 1  1024   exact
+render  draw             render        draw_vs draw_fs          64 64 0 0 0 0 image
+render  draw_swapped     render        draw_vs draw_fs_swapped  64 64 0 0 0 0 image
+render  draw_fconst      render        draw_vs fs_fconst        64 64 0 0 0 0 image

@@ -1,0 +1,2 @@
+# build.sh output (default ./build); compiled shaders and test outputs never live here.
+build/

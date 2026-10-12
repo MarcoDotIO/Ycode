@@ -184,3 +184,23 @@ triangle with Metal inside a Ycode device on the Thor, through
 - **Done when** the PNG shows the triangle with correct colors and
   orientation (compared with the same probe run under CoreSimulator on the
   Mac), and the orchestrator sends it to the owner.
+
+## 9. SH done, first round (2026-10-12): `ycode-airc`
+
+`ycode/Translator/` (C++17, LLVM 18, SPIRV-Tools; built on Linux). CLI:
+`version | list | decls | translate | serve | corpus`; `serve` speaks
+little-endian frames (u32 length, u32 JSON-header length, JSON header,
+payload) with requests `translate | ping | version | shutdown`, runs each
+translation in a forked child (a crash or timeout becomes an `internal`
+error), and caches by SHA-256 of the module plus options. The binding ABI
+(push constants, the 192-entry argument table, bindless set 0, input
+attachments in set 1, specialization-constant ids) is Ycode's own design
+and lives in `Translator/src/abi.h` (version 1); the reflection JSON schema
+is documented at the top of `Translator/src/translate.cpp` and in SH's
+report. Coverage: QuartzCore 226/228 (2 kernels call `discard_fragment`),
+MTLSimDriver 12/12, IconRendering 14/14, RenderBox 68/109, CoreMaterial3D
+81/191 (external `cm3d_*` calls), the whole runtime 80 %; our own corpus
+26/26 GPU tests match the Metal oracle. Driver quirks handled: signed
+remainder, f32→f16→f32 folding. **Next for VK:** QuartzCore's uber-shaders
+take ~6 s to create as Vulkan pipelines cold — asynchronous pipeline
+creation and a persistent pipeline cache are required.
