@@ -13,6 +13,7 @@ func usage() -> Never {
            ycode settings <path.xcodeproj> [-target T] [-configuration C] [-defaults file.json]
                           [--assigned-only] [--json] [NAME=value]...
            ycode macho <file>
+           ycode deps <executable> --root <RuntimeRoot> [--tree]
            ycode dsc <dyld_shared_cache> [--images N] [--image <install-path>]
            ycode roundtrip [--print] <path.xcodeproj|.xcscheme|contents.xcworkspacedata>...
 
@@ -201,6 +202,28 @@ func dscCommand(_ rest: [String]) throws {
     for img in cache.images.prefix(limit) { print("    \(hex(img.address))  \(img.path)") }
 }
 
+func depsCommand(_ rest: [String]) throws {
+    guard let ri = rest.firstIndex(of: "--root"), rest.indices.contains(ri + 1),
+          let exe = rest.first(where: { !$0.hasPrefix("--") && $0 != rest[ri + 1] }) else { usage() }
+    let root = rest[ri + 1].hasSuffix("/") ? String(rest[ri + 1].dropLast()) : rest[ri + 1]
+    let cachePath = root + "/System/Library/Caches/com.apple.dyld/dyld_sim_shared_cache_arm64"
+    let cache = FileManager.default.fileExists(atPath: cachePath) ? try SharedCache(contentsOf: URL(fileURLWithPath: cachePath)) : nil
+    var closure = DependencyClosure(root: root, cache: cache)
+    try closure.resolve(executable: exe)
+    let images = closure.order.dropFirst().compactMap { closure.nodes[$0] }
+    let fromCache = images.filter { if case .sharedCache = $0.source { true } else { false } }.count
+    print("\(images.count) images (\(fromCache) from the shared cache, \(images.count - fromCache) from files)")
+    let fatal = closure.missing.filter(\.isFatal), weak = closure.missing.filter { !$0.isFatal }
+    print("missing: \(fatal.count) required, \(weak.count) weak")
+    for m in fatal { print("  REQUIRED \(m.path)  (needed by \(m.requiredBy))") }
+    for m in weak.prefix(10) { print("  weak     \(m.path)  (needed by \(m.requiredBy))") }
+    let platforms = Dictionary(grouping: images, by: { $0.image.buildVersion?.platform.map { "\($0)" } ?? "none" }).mapValues(\.count)
+    print("platforms: \(platforms.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " "))")
+    if rest.contains("--tree") {
+        for key in closure.order { if let n = closure.nodes[key] { print("\(n.installPath)  [\(n.source)]  -> \(n.dependencies.count)") } }
+    }
+}
+
 var args = Array(CommandLine.arguments.dropFirst())
 guard let command = args.first else { usage() }
 args.removeFirst()
@@ -225,6 +248,11 @@ case "settings":
 case "macho":
     guard args.count == 1 else { usage() }
     do { try machoCommand(args[0]) } catch {
+        FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
+        exit(1)
+    }
+case "deps":
+    do { try depsCommand(args) } catch {
         FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
         exit(1)
     }

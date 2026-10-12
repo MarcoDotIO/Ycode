@@ -184,3 +184,25 @@ private struct Builder {
         #expect(cache.images.allSatisfy { cache.locate($0.address) != nil })
     }
 }
+
+@Suite struct DependencyClosureTests {
+    @Test(.enabled(if: SimulatorRuntimeTests.root != nil, "no simulator runtime available"))
+    func launchdSimClosureIsCompleteFromTheCache() throws {
+        let root = SimulatorRuntimeTests.root!
+        let cache = try SharedCache(contentsOf: URL(fileURLWithPath: root + "/System/Library/Caches/com.apple.dyld/dyld_sim_shared_cache_arm64"))
+        var closure = DependencyClosure(root: root, cache: cache)
+        try closure.resolve(executable: root + "/sbin/launchd_sim")
+        #expect(closure.order.count > 40)
+        #expect(closure.missing.filter(\.isFatal).isEmpty)
+        #expect(closure.nodes["/usr/lib/system/libsystem_kernel.dylib"] != nil)
+        #expect(closure.nodes["/usr/lib/libobjc.A.dylib"] != nil)
+    }
+
+    @Test func expandsRunpathPrefixes() {
+        let c = DependencyClosure(root: "/R", cache: nil)
+        #expect(c.candidates("@rpath/A.framework/A", loaderDir: "/L", exeDir: "/E", rpaths: ["/x", "/y"]) == ["/x/A.framework/A", "/y/A.framework/A"])
+        #expect(c.candidates("@loader_path/../B.dylib", loaderDir: "/L/sub", exeDir: "/E", rpaths: []) == ["/L/sub/../B.dylib"])
+        #expect(c.candidates("@executable_path/Frameworks/C", loaderDir: "/L", exeDir: "/E", rpaths: []) == ["/E/Frameworks/C"])
+        #expect(c.candidates("/usr/lib/libz.dylib", loaderDir: "/L", exeDir: "/E", rpaths: []) == ["/usr/lib/libz.dylib"])
+    }
+}

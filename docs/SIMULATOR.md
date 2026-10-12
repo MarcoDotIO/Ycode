@@ -98,6 +98,10 @@ Findings about formats and hardware behavior go into `specs/`.
 
 ## 5. Option B work plan (current)
 
+> The detailed design is in `docs/SIMULATOR-LINUX.md`: a KVM micro-VM with a
+> Ycode EL1 shim, chosen after confirming on the Thor that KVM is usable and
+> that 16 KB guest pages are supported.
+
 The observations show that the simulator is host processes rerooted by dyld
 onto the runtime tree. There is no VM. Running it on Linux therefore needs:
 
