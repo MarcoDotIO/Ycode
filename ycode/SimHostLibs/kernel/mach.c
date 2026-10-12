@@ -13,9 +13,8 @@
  *    such as MACH_SEND_MSG, MACH_RCV_MSG, MACH_SEND_INTERRUPT(ED),
  *    MACH_RCV_INTERRUPT(ED), MACH_PORT_RIGHT_RECEIVE, the mach_msg_header_t
  *    layout and mach_timespec_t.
- * No function here has more than eight register arguments: the objects use
- * the platform-neutral AAPCS64, which agrees with Apple's arm64 convention
- * only for register arguments (see mach_vm_map in syscall_special.S).
+ *  - Ycode-private Mach-routine traps x16 = 0x7963_2000 + n:
+ *    host-libraries.md section 10.
  */
 #include "yc_kernel.h"
 
@@ -524,4 +523,62 @@ YC_EXPORT void voucher_mach_msg_revert(void *state)
     const struct yc_libkernel_voucher_functions *v = yc_libkernel_voucher_fns;
     if (v != YC_NULL && v->voucher_mach_msg_revert != YC_NULL)
         v->voucher_mach_msg_revert(state);
+}
+
+/* ------------------------------------- Ycode-private Mach routines (§10) */
+
+/* MIG routines that Ycode's VMM answers directly: x16 = 0x7963_2000 + n,
+ * the C arguments in x0-x3, a kern_return_t back in x0, no carry. The VMM
+ * writes the out-parameters. */
+#define YC_PRIV_ROUTINE(n) ((long)(0x79632000u + (n)))
+#define YC_PRIV_HOST_GET_CLOCK_SERVICE 1
+#define YC_PRIV_CLOCK_GET_TIME 2
+#define YC_PRIV_SEMAPHORE_CREATE 3
+#define YC_PRIV_SEMAPHORE_DESTROY 4
+#define YC_PRIV_TASK_GET_SPECIAL_PORT 5
+#define YC_PRIV_TASK_SET_SPECIAL_PORT 6
+
+/* kern_return_t host_get_clock_service(host_t host, clock_id_t clock_id,
+ *     clock_serv_t *clock_serv) */
+YC_EXPORT int host_get_clock_service(yc_port_t host, int clock_id, yc_port_t *clock_serv)
+{
+    return (int)YC_MACH3(YC_PRIV_ROUTINE(YC_PRIV_HOST_GET_CLOCK_SERVICE), host, (yc_intptr_t)clock_id,
+                         clock_serv);
+}
+
+/* kern_return_t clock_get_time(clock_serv_t clock_serv,
+ *     mach_timespec_t *cur_time) */
+YC_EXPORT int clock_get_time(yc_port_t clock_serv, yc_mach_timespec_t *cur_time)
+{
+    return (int)YC_MACH2(YC_PRIV_ROUTINE(YC_PRIV_CLOCK_GET_TIME), clock_serv, cur_time);
+}
+
+/* kern_return_t semaphore_create(task_t task, semaphore_t *semaphore,
+ *     int policy, int value) */
+YC_EXPORT int semaphore_create(yc_port_t task, yc_port_t *semaphore, int policy, int value)
+{
+    return (int)YC_MACH4(YC_PRIV_ROUTINE(YC_PRIV_SEMAPHORE_CREATE), task, semaphore, (yc_intptr_t)policy,
+                         (yc_intptr_t)value);
+}
+
+/* kern_return_t semaphore_destroy(task_t task, semaphore_t semaphore) */
+YC_EXPORT int semaphore_destroy(yc_port_t task, yc_port_t semaphore)
+{
+    return (int)YC_MACH2(YC_PRIV_ROUTINE(YC_PRIV_SEMAPHORE_DESTROY), task, semaphore);
+}
+
+/* kern_return_t task_get_special_port(task_t task, int which_port,
+ *     mach_port_t *special_port) */
+YC_EXPORT int task_get_special_port(yc_port_t task, int which_port, yc_port_t *special_port)
+{
+    return (int)YC_MACH3(YC_PRIV_ROUTINE(YC_PRIV_TASK_GET_SPECIAL_PORT), task, (yc_intptr_t)which_port,
+                         special_port);
+}
+
+/* kern_return_t task_set_special_port(task_t task, int which_port,
+ *     mach_port_t special_port) */
+YC_EXPORT int task_set_special_port(yc_port_t task, int which_port, yc_port_t special_port)
+{
+    return (int)YC_MACH3(YC_PRIV_ROUTINE(YC_PRIV_TASK_SET_SPECIAL_PORT), task, (yc_intptr_t)which_port,
+                         special_port);
 }

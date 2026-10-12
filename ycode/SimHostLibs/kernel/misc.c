@@ -23,6 +23,7 @@ int __kdebug_trace(yc_u32 debugid, yc_u64 arg1, yc_u64 arg2, yc_u64 arg3, yc_u64
 int clonefileat(int src_dirfd, const char *src, int dst_dirfd, const char *dst, yc_u32 flags);
 int renameatx_np(int fromfd, const char *from, int tofd, const char *to, yc_u32 flags);
 yc_u64 __memorystatus_available_memory(void);
+int __proc_info(int callnum, int pid, yc_u32 flavor, yc_u64 arg, void *buffer, int buffersize);
 
 YC_EXPORT YC_NORETURN void abort_with_reason(yc_u32 reason_namespace, yc_u64 reason_code, const char *reason_string,
                                              yc_u64 reason_flags)
@@ -90,4 +91,26 @@ YC_EXPORT yc_size_t os_proc_available_memory(void)
 {
     yc_u64 v = __memorystatus_available_memory();
     return v == ~(yc_u64)0 ? 0 : (yc_size_t)v;
+}
+
+/* int __commpage_gettimeofday(struct timeval *tp): Ycode keeps no
+ * gettimeofday data in the commpage, so this always reports "not
+ * available" (non-zero) and callers fall back to BSD 116
+ * (host-libraries.md section 10). */
+YC_EXPORT int __commpage_gettimeofday(void *tp)
+{
+    (void)tp;
+    return 1;
+}
+
+/* int proc_pidinfo(int pid, int flavor, uint64_t arg, void *buffer,
+ *     int buffersize): BSD 336 __proc_info with call number
+ * PROC_INFO_CALL_PIDINFO (2, <sys/proc_info.h>). Returns the byte count
+ * the kernel reports, or 0 with errno set on failure. */
+#define YC_PROC_INFO_CALL_PIDINFO 2
+
+YC_EXPORT int proc_pidinfo(int pid, int flavor, yc_u64 arg, void *buffer, int buffersize)
+{
+    int r = __proc_info(YC_PROC_INFO_CALL_PIDINFO, pid, (yc_u32)flavor, arg, buffer, buffersize);
+    return r < 0 ? 0 : r;
 }
