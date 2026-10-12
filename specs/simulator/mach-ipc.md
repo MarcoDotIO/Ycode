@@ -1357,3 +1357,35 @@ behavior, layouts, and constants.
   simulator imports).
 - §1.4 "Ycode's choice", §6, and the recommendations marked as such are
   Ycode design decisions, not observations.
+
+
+## Addendum (orchestrator, 2026-10-12): facts used by the kernel library
+
+The stage-4a kernel-library agent took these from Apple's public xnu
+headers (level 1, APSL open source; interop facts only):
+
+- **`mach_msg2_internal` arguments** (library-side, before packing into the
+  §2.7 registers): `(data, options64, msgh_bits_and_send_size,
+  msgh_remote_and_local_port, msgh_voucher_and_id,
+  desc_count_and_rcv_name, rcv_size_and_priority, timeout)`. These are the
+  same 8 words the trap receives in x0–x7.
+- **`mach_msg_priority_t`** (32-bit):
+
+  | Bits | Field |
+  |---|---|
+  | 8–15 | relative priority |
+  | 16–19 | QoS class |
+  | 20–23 | override QoS |
+  | 0–7 | zero (reserved) |
+
+- **`thread_destruct_special_reply_port` rights selector:**
+
+  | Value | Meaning |
+  |---|---|
+  | 0 | all rights |
+  | 1 | receive only |
+  | 2 | send only |
+
+- **Library-only option bits** `MACH_SEND_INTERRUPT` (0x40) and
+  `MACH_RCV_INTERRUPT` (0x400) are stripped before the trap. The library
+  retries itself on `MACH_SEND_INTERRUPTED` and `MACH_RCV_INTERRUPTED`.
