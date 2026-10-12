@@ -24,6 +24,27 @@ public final class MachIPCSystem: @unchecked Sendable {
     /// one fixed session per simulator instance).
     public var auditSessionID: UInt32 = 0
 
+    /// The host task (stage4c-contract.md §3), once `makeHostTask(lock:)` ran.
+    public internal(set) var hostTask: MachHostTask?
+    /// The host bootstrap port: a real port whose receive right is in the
+    /// host task (its name there). Nil until the host task exists.
+    public var hostBootstrapPort: UInt32? { hostTask?.bootstrapPort }
+    /// The port object behind `hostBootstrapPort`.
+    var hostBootstrapObject: IPCPort?
+    /// Device mode: when true (and the host task exists), every task created
+    /// afterwards starts with a send right to the host bootstrap port as its
+    /// bootstrap special port, named `0x503` (instead of the bootstrap kernel
+    /// object, whose sends fail with `MACH_SEND_INVALID_DEST`). Children
+    /// inherit their parent's slot as before. Set it before
+    /// `spawnInitialProcess`. Default false (`--exec` mode, stage 4a/4b).
+    public var hostBootstrapIsDefault = false
+
+    /// What a new task's bootstrap slot holds.
+    var defaultBootstrapPort: IPCPort {
+        if hostBootstrapIsDefault, let p = hostBootstrapObject, p.active { return p }
+        return bootstrapPort
+    }
+
     public init() {
         hostPort = IPCPort(serial: 1)
         hostPort.kernelObject = .host

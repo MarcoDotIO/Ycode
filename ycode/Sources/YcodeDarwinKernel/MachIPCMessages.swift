@@ -389,13 +389,27 @@ extension MachIPC {
                 return MachReceiveResult(code: MachMsgReturn.rcvInvalidNotify)
             }
         }
-        let stamp = port?.changeStamp ?? set!.changeStamp
         let trailer = MachMsgOption.trailerSize(r.options)
         let deadline: UInt64? = r.options & MachMsgOption.rcvTimeout != 0
             ? KernelClock.deadline(afterNanoseconds: UInt64(r.timeout) * 1_000_000) : nil
+        switch awaitMessage(name: r.name, slot: i, port: port, set: set, deadline: deadline, mayBlock: r.mayBlock) {
+        case let .failure(e): return MachReceiveResult(code: e.code)
+        case let .success(source): return take(from: source, request: r, trailer: trailer, memory: memory)
+        }
+    }
+
+    /// Waits until the receive right `port` or the port set `set` (the
+    /// entry of `name` at `slot`) has a message, and returns the port to take
+    /// it from. Fails with `MACH_RCV_TIMED_OUT` (deadline passed, or
+    /// `mayBlock` false), `MACH_RCV_PORT_CHANGED` (the right moved, died, or
+    /// changed sets while waiting), or `MACH_RCV_INTERRUPTED`. Lock held at
+    /// depth 1 when it may block.
+    func awaitMessage(name: UInt32, slot i: Int, port: IPCPort?, set: IPCPortSet?, deadline: UInt64?,
+                      mayBlock: Bool) -> Result<IPCPort, KernError> {
+        let stamp = port?.changeStamp ?? set!.changeStamp
 
         func stillValid() -> Bool {
-            guard slot(of: r.name) == i else { return false }
+            guard slot(of: name) == i else { return false }
             if let port {
                 return entries[i].port === port && entries[i].bits & T.receive != 0 && port.active
                     && port.changeStamp == stamp
@@ -405,10 +419,10 @@ extension MachIPC {
 
         while true {
             if let source = port.flatMap({ $0.messages.isEmpty ? nil : $0 }) ?? set.flatMap(readyMember) {
-                return take(from: source, request: r, trailer: trailer, memory: memory)
+                return .success(source)
             }
-            if !r.mayBlock { return MachReceiveResult(code: MachMsgReturn.rcvTimedOut) }
-            if let deadline, KernelClock.now() >= deadline { return MachReceiveResult(code: MachMsgReturn.rcvTimedOut) }
+            if !mayBlock { return .failure(KernError(MachMsgReturn.rcvTimedOut)) }
+            if let deadline, KernelClock.now() >= deadline { return .failure(KernError(MachMsgReturn.rcvTimedOut)) }
             let result: WaitResult
             if let port {
                 port.waitingReceivers += 1
@@ -419,8 +433,8 @@ extension MachIPC {
                 result = set!.waiters.wait(on: lock, deadline: deadline)
                 set!.waitingReceivers -= 1
             }
-            guard stillValid() else { return MachReceiveResult(code: MachMsgReturn.rcvPortChanged) }
-            if result == .interrupted { return MachReceiveResult(code: MachMsgReturn.rcvInterrupted) }
+            guard stillValid() else { return .failure(KernError(MachMsgReturn.rcvPortChanged)) }
+            if result == .interrupted { return .failure(KernError(MachMsgReturn.rcvInterrupted)) }
         }
     }
 

@@ -37,7 +37,8 @@ enum DescriptorBSD {
                recvfrom = 29, accept = 30, getpeername = 31, getsockname = 32, dup = 41, pipe = 42, ioctl = 54,
                dup2 = 90, fcntl = 92, socket = 97, connect = 98, bind = 104, setsockopt = 105, listen = 106,
                getsockopt = 118, readv = 120, writev = 121, sendto = 133, shutdown = 134, socketpair = 135,
-               pread = 153, pwrite = 154, lseek = 199, pthreadChdir = 348, pthreadFchdir = 349, unlinkat = 472
+               pread = 153, pwrite = 154, lseek = 199, pthreadChdir = 348, pthreadFchdir = 349, unlinkat = 472,
+               readlink = 58, readlinkat = 473
     /// `_nocancel` forms → the plain call (those `DarwinKernel.BSD.nocancelAliases` may not list).
     static let nocancel: [Int: Int] = [
         396: read, 397: write, 401: recvmsg, 402: sendmsg, 403: recvfrom, 404: accept, 409: connect,
@@ -109,6 +110,19 @@ extension DarwinKernel {
             try fileSystem.unlink(path)
             return .value(0)
 
+        case DescriptorBSD.readlink, DescriptorBSD.readlinkat:
+            let isAt = n == DescriptorBSD.readlinkat
+            let path = isAt ? try resolveAtPath(int(0), a[1], mem) : try readPath(a[0], mem)
+            let (buffer, size) = isAt ? (a[2], a[3]) : (a[1], a[2])
+            call = isAt ? "readlinkat(\(int(0)), \"\(path)\", buf=\(hx(buffer)), bufsize=\(size))"
+                : "readlink(\"\(path)\", buf=\(hx(buffer)), bufsize=\(size))"
+            let target = Array(try fileSystem.readlink(path).utf8)
+            // No NUL; silently truncated to the buffer (POSIX).
+            let n = min(target.count, Int(min(size, UInt64(Int32.max))))
+            if n > 0 { try mem.write(va: buffer, bytes: Array(target.prefix(n))) }
+            call += " [\(String(decoding: target, as: UTF8.self))]"
+            return .value(UInt64(n))
+
         case DescriptorBSD.chdir, DescriptorBSD.pthreadChdir:
             let path = try readPath(a[0], mem)
             call = "\(n == DescriptorBSD.chdir ? "chdir" : "__pthread_chdir")(\"\(path)\")"
@@ -147,7 +161,9 @@ extension DarwinKernel {
     /// host files, the console, and closed descriptors (bsdCall's paths).
     private func objectIO(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult? {
         let fd = Int32(truncatingIfNeeded: a[0])
-        guard let file = try? fileSystem.openFile(for: fd), let object = file.object else { return nil }
+        // Device nodes are served by the file system itself (bsdCall's paths).
+        guard let file = try? fileSystem.openFile(for: fd), let object = file.object,
+              !(object is DarwinDevice) else { return nil }
         switch n {
         case DescriptorBSD.pread:
             call = "pread(fd=\(fd), buf=\(hx(a[1])), len=\(hx(a[2])), off=\(hx(a[3])))"
@@ -306,4 +322,15 @@ extension DarwinKernel {
         default: break
         }
     }
+}
+
+/// Device nodes are always ready (`/dev/null` reads at end of file at once).
+extension DarwinDevice: KernelDescriptorObject {
+    public func readReadiness() -> (ready: Bool, data: Int64, eof: Bool) {
+        kind == .null ? (true, 0, true) : (true, 65536, false)
+    }
+
+    public func writeReadiness() -> (ready: Bool, data: Int64, eof: Bool) { (true, 65536, false) }
+    public func addReadinessObserver(_ observer: @escaping () -> Void) -> Int { 0 }
+    public func removeReadinessObserver(_ token: Int) {}
 }

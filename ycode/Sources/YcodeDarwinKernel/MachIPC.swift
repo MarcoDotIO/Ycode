@@ -146,14 +146,15 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         seed(taskPort, index: 1)
         seed(mainThreadPort, index: 2)
         seed(system.hostPort, index: 3)
-        seed(system.bootstrapPort, index: 5)
+        let bootstrap = system.defaultBootstrapPort
+        seed(bootstrap, index: 5)
         nextFresh = 6
         freeList = [4]
         // The root task's host and bootstrap slots: the system's objects.
         system.hostPort.srights += 1
         slots.host = .send(system.hostPort)
-        system.bootstrapPort.srights += 1
-        slots.bootstrap = .send(system.bootstrapPort)
+        bootstrap.srights += 1
+        slots.bootstrap = .send(bootstrap)
     }
 
     /// A `MachIPC` wired to `kernel`: its lock, log, pid, clocks, and the

@@ -3,6 +3,9 @@
 //   ycode-simd --exec <macho> --runtime-root <dir> [--run-dir <dir>] [--trace]
 //              [--timeout-ms N] [--max-exits N] [--shim <shim.bin>]
 //              [--host-stubs <host_stubs.bin>] [--host-libs <dir>] [--repeat N]
+//              [--env K=V]... [--exec-args <arg>...]
+//   ycode-simd --device <dir> --runtime-root <dir> [--udid <UDID>] [--job-path <dir>]...
+//              [--env K=V]... [--trace] [--keep-going] [--timeout-ms N] [--exec-args <arg>...]
 //   ycode-simd --shim <shim.bin> --el0 <el0.bin> [--trace] [--timeout-ms N] [--max-exits N]
 //   ycode-simd --kvm-smoke
 //
@@ -30,6 +33,14 @@
 // times in sequence in one host process and reports host threads, RSS, and
 // open fds, to prove that VM teardown leaks nothing.
 //
+// Stage 4c (specs/simulator/stage4c-contract.md §2, §3; `DeviceMode.swift`):
+// `--device` boots a simulated device: Ycode writes the device directory and
+// the bootstrap plist, starts the runtime's `launchd_sim` as the root
+// process with the host bootstrap port (a port of the VMM's host task) as
+// its bootstrap special port, and logs every message sent to that port.
+// `--exec-args` takes every remaining argument as more argv for the root
+// program; `--env K=V` adds or replaces an environment variable.
+//
 // `--keep-going` (with --trace) logs unimplemented traps and library
 // functions but resumes the guest instead of exiting 72/73.
 //
@@ -53,6 +64,10 @@ let usage = """
     usage: ycode-simd --exec <macho> --runtime-root <dir> [--run-dir <dir>] [--trace]
                       [--timeout-ms N] [--max-exits N] [--shim <shim.bin>] [--host-stubs <host_stubs.bin>]
                       [--host-libs <dir>] [--keep-going] [--libfunc-return <name>=<value>[,...]] [--repeat N]
+                      [--env K=V]... [--host-bootstrap [--debug-bootstrap-discard]] [--exec-args <arg>...]
+           ycode-simd --device <dir> --runtime-root <dir> [--udid <UDID>] [--job-path <dir>]... [--env K=V]...
+                      [--trace] [--keep-going] [--timeout-ms N] [--host-libs <dir>] [--debug-bootstrap-discard]
+                      [--exec-args <arg>...]
                       [--debug-extra-images N [--debug-extra-exec <macho>] [--debug-extra-arg A]... [--debug-extra-wait]]
            ycode-simd --shim <shim.bin> --el0 <el0.bin> [--trace] [--timeout-ms N] [--max-exits N]
                       [--vcpus N [--rounds R]]
@@ -79,6 +94,20 @@ struct Options {
     var rounds = 2
     var timeoutMilliseconds: UInt64?
     var maxExits: Int?
+    /// Stage 4c device mode: the device directory, its UDID, job directories.
+    var devicePath: String?
+    var udid: String?
+    var jobPaths: [String] = []
+    /// Debug: the logging host bootstrap service drops requests (instead of
+    /// keeping them unanswered).
+    var debugBootstrapDiscard = false
+    /// --exec mode: use the host bootstrap port and its logging service as
+    /// in device mode (the log goes to <run dir>/ycode-host-bootstrap.log).
+    var hostBootstrap = false
+    /// More argv for the root program (after argv[0], or after the plist path).
+    var execArguments: [String] = []
+    /// Environment additions/overrides for the root program ("K=V").
+    var environment: [String] = []
     /// Debug: run the --exec root process this many times in sequence.
     var repeatCount = 1
     /// Debug (VMM concurrency): also launch this many independent images
@@ -166,6 +195,17 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--debug-extra-exec": options.debugExtraExec = value(for: argument)
         case "--debug-extra-wait": options.debugExtraWait = true
         case "--debug-extra-arg": options.debugExtraArguments.append(value(for: argument))
+        case "--device": options.devicePath = value(for: argument)
+        case "--udid": options.udid = value(for: argument)
+        case "--debug-bootstrap-discard": options.debugBootstrapDiscard = true
+        case "--host-bootstrap": options.hostBootstrap = true
+        case "--job-path": options.jobPaths.append(value(for: argument))
+        case "--env":
+            let pair = value(for: argument)
+            guard let eq = pair.firstIndex(of: "="), eq != pair.startIndex else { die("--env needs K=V", status: 64) }
+            options.environment.append(pair)
+        case "--exec-args":
+            while let rest = iterator.next() { options.execArguments.append(rest) }
         case "--max-exits":
             guard let n = Int(value(for: argument)), n > 0 else { die("--max-exits needs a positive integer", status: 64) }
             options.maxExits = n
@@ -393,7 +433,7 @@ do {
         try KVMSmokeTest.run { print($0) }
         exit(0)
     }
-    if options.execPath != nil {
+    if options.execPath != nil || options.devicePath != nil {
         try runExec(options)
     }
     try runStage2(options)

@@ -575,6 +575,32 @@ public final class DarwinFileSystem {
     private let sockets: SocketNamespace
     /// The highest descriptor number plus one (Darwin's default soft limit).
     public var maxDescriptors: Int32 = 256
+    /// Serve the device nodes under `/dev` (stage4c-contract.md §4, agent F):
+    /// `null`, `zero`, `random`, `urandom`, `console`, `tty`. `/dev` itself is
+    /// a read-only directory listing them; it takes precedence over any
+    /// prefix. Default: on.
+    public var servesDevices = true
+    /// Symbolic links of the guest namespace, by normalized absolute path →
+    /// target (as `readlink` returns it; a relative target is relative to the
+    /// link's directory). They take precedence over prefixes and are
+    /// followed by every lookup. Default: none (`--exec` mode). Device mode
+    /// sets `DarwinFileSystem.darwinRootSymlinks`.
+    public var guestSymlinks: [String: String] = [:] {
+        didSet {
+            var normalized: [String: String] = [:]
+            for (k, v) in guestSymlinks { normalized[Self.normalizeAbsolute(k)] = v }
+            if normalized != guestSymlinks { guestSymlinks = normalized }
+        }
+    }
+    /// The root links of a Darwin system: `/var`, `/tmp`, `/etc` → `private/…`.
+    public static let darwinRootSymlinks = ["/var": "private/var", "/tmp": "private/tmp", "/etc": "private/etc"]
+
+    /// A stable inode number for a guest symbolic link.
+    fileprivate static func guestLinkInode(_ path: String) -> UInt64 {
+        var h: UInt64 = 0xcbf2_9ce4_8422_2325
+        for b in path.utf8 { h = (h ^ UInt64(b)) &* 0x100_0000_01b3 }
+        return 0x7965_0000_0000_0000 | (h & 0xFFFF_FFFF)
+    }
     /// Told the number of every descriptor this table closes (`close`, the
     /// target of `dup2`, exec, exit), after it is gone. The process layer can
     /// drop per-descriptor state there (kevent registrations, directory
@@ -662,6 +688,47 @@ public final class DarwinFileSystem {
         var prefix: Prefix
         /// The `lstat` of the final component, or nil if it does not exist.
         var stat: DarwinStat?
+        /// The final component is a device node (`/dev/…`; `hostPath` is empty).
+        var device: DarwinDevice.Kind? = nil
+        /// The final component is a guest-namespace symbolic link with this
+        /// target (not followed; `hostPath` is empty).
+        var guestLink: String? = nil
+    }
+
+    /// The read-only pseudo prefix of `/dev` and of guest symbolic links.
+    private static let devicePrefix = Prefix(guestPath: "/dev", hostPath: "/dev", writable: false)
+
+    /// The first guest symbolic link on `path` (normalized): the link's
+    /// path, its target, and the rest of `path` after it.
+    private func firstGuestLink(in path: String) -> (link: String, target: String, rest: String)? {
+        guard !guestSymlinks.isEmpty else { return nil }
+        let parts = path.split(separator: "/")
+        var current = ""
+        for (i, part) in parts.enumerated() {
+            current += "/" + part
+            if let target = guestSymlinks[current] {
+                return (current, target, parts[(i + 1)...].joined(separator: "/"))
+            }
+        }
+        return nil
+    }
+
+    /// Resolves a normalized path at or below `/dev`.
+    private func resolveDevice(_ path: String) throws -> Resolved {
+        if path == "/dev" {
+            var st = try hostStatCall("/dev", follow: true)
+            st.mode = DarwinStat.S_IFDIR | 0o555
+            st.uid = 0
+            st.gid = 0
+            return Resolved(guestPath: "/dev", hostPath: "/dev", prefix: Self.devicePrefix, stat: st)
+        }
+        let parts = path.dropFirst(5).split(separator: "/")
+        let name = parts.first.map(String.init) ?? ""
+        let kind = DarwinDevice.Kind(rawValue: name)
+        if parts.count > 1 { throw DarwinErrnoError(kind == nil ? DarwinErrnoCode.ENOENT : DarwinErrnoCode.ENOTDIR) }
+        guard name.utf8.count <= Self.maxNameLength else { throw DarwinErrnoError(DarwinErrnoCode.ENAMETOOLONG) }
+        return Resolved(guestPath: "/dev/" + name, hostPath: "", prefix: Self.devicePrefix,
+                        stat: kind.map { DarwinDevice.stat(of: $0) }, device: kind)
     }
 
     /// Resolves a guest path: normalizes it, checks the allowlist, and
@@ -675,6 +742,25 @@ public final class DarwinFileSystem {
         var linksFollowed = 0
 
         restart: while true {
+            // Guest-namespace symbolic links (`guestSymlinks`) come first.
+            if let (link, target, rest) = firstGuestLink(in: current) {
+                if rest.isEmpty && !followFinal {
+                    let st = DarwinStat(mode: DarwinStat.S_IFLNK | 0o755, nlink: 1, ino: Self.guestLinkInode(link),
+                                        uid: 0, gid: 0, size: Int64(target.utf8.count), blksize: 4096)
+                    return Resolved(guestPath: link, hostPath: "", prefix: Self.devicePrefix, stat: st, guestLink: target)
+                }
+                linksFollowed += 1
+                guard linksFollowed <= Self.maxSymlinks else { throw DarwinErrnoError(DarwinErrnoCode.ELOOP) }
+                let parent = String(link[..<link.lastIndex(of: "/")!])
+                var next = target.hasPrefix("/") ? target : (parent.isEmpty ? "/" : parent) + "/" + target
+                if !rest.isEmpty { next += "/" + rest }
+                current = Self.normalizeAbsolute(next)
+                continue restart
+            }
+            // Device nodes.
+            if servesDevices && (current == "/dev" || current.hasPrefix("/dev/")) {
+                return try resolveDevice(current)
+            }
             guard let (prefix, _) = lookupPrefix(current) else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
             let components = current == prefix.guestPath ? []
                 : (prefix.guestPath == "/" ? current.dropFirst() : current.dropFirst(prefix.guestPath.count + 1))
@@ -754,8 +840,38 @@ public final class DarwinFileSystem {
     /// Opens a guest path with Darwin `flags` and returns the new descriptor
     /// (the lowest free number). Writing, creating, or truncating under a
     /// read-only prefix is EROFS; O_CREAT of an existing file there is fine.
-    /// A socket file cannot be opened (EOPNOTSUPP).
+    /// A socket file cannot be opened (EOPNOTSUPP). Device nodes open as
+    /// devices (`/dev/tty`: ENXIO, no controlling terminal).
     public func open(_ path: String, flags: Int32, mode: UInt16) throws -> Int32 {
+        let (file, closeOnExec) = try makeOpenFile(path, flags: flags, mode: mode)
+        let fd = try lowestFreeDescriptor()
+        descriptors[fd] = Descriptor(file: file, closeOnExec: closeOnExec)
+        return fd
+    }
+
+    /// Opens a guest path as `open` does and places it at descriptor `fd`
+    /// (a descriptor already open there is closed first, as `dup2`). For the
+    /// VMM's process start: e.g. `open("/dev/null", flags: O_RDONLY, mode: 0, at: 0)`.
+    /// `fd` outside the table is EBADF. Returns `fd`.
+    @discardableResult
+    public func open(_ path: String, flags: Int32, mode: UInt16, at fd: Int32) throws -> Int32 {
+        guard fd >= 0, fd < maxDescriptors else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
+        let (file, closeOnExec) = try makeOpenFile(path, flags: flags, mode: mode)
+        return try install(file, closeOnExec: closeOnExec, at: fd)
+    }
+
+    /// Device mode's standard descriptors (stage4c-contract.md §2): fd 0 =
+    /// `/dev/null` read-only, fd 1 = `/dev/null` write-only, fd 2 left as it
+    /// is (the console), fd 3 = `/dev/console` write-only. None is
+    /// close-on-exec.
+    public func installDeviceModeStandardDescriptors() throws {
+        try open("/dev/null", flags: DarwinOpen.O_RDONLY, mode: 0, at: 0)
+        try open("/dev/null", flags: DarwinOpen.O_WRONLY, mode: 0, at: 1)
+        try open("/dev/console", flags: DarwinOpen.O_WRONLY, mode: 0, at: 3)
+    }
+
+    /// The description `open` makes, and its close-on-exec flag.
+    private func makeOpenFile(_ path: String, flags: Int32, mode: UInt16) throws -> (DarwinOpenFile, Bool) {
         let accessMode = flags & DarwinOpen.O_ACCMODE
         guard accessMode != DarwinOpen.O_ACCMODE else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         let wantsWrite = accessMode != DarwinOpen.O_RDONLY
@@ -766,6 +882,17 @@ public final class DarwinFileSystem {
         let follow = flags & DarwinOpen.O_NOFOLLOW == 0 && !exclusive
 
         let r = try resolve(path, followFinal: follow)
+        let status = flags & (DarwinOpen.O_ACCMODE | DarwinOpen.O_APPEND | DarwinOpen.O_NONBLOCK)
+        let closeOnExec = flags & DarwinOpen.O_CLOEXEC != 0
+        if let kind = r.device {
+            if exclusive { throw DarwinErrnoError(DarwinErrnoCode.EEXIST) }
+            if directory { throw DarwinErrnoError(DarwinErrnoCode.ENOTDIR) }
+            switch kind {
+            case .tty: throw DarwinErrnoError(DarwinErrnoCode.ENXIO)
+            case .console: return (DarwinOpenFile(node: .console(stream: 1), statusFlags: status), closeOnExec)
+            default: return (DarwinOpenFile(node: .object(DarwinDevice(kind)), statusFlags: status), closeOnExec)
+            }
+        }
         if let st = r.stat {
             if exclusive { throw DarwinErrnoError(DarwinErrnoCode.EEXIST) }
             if st.isSymbolicLink { throw DarwinErrnoError(DarwinErrnoCode.ELOOP) }
@@ -778,8 +905,6 @@ public final class DarwinFileSystem {
             guard r.prefix.writable else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
             guard !directory else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
         }
-        let fd = try lowestFreeDescriptor()
-
         var hostFlags: Int32 = O_CLOEXEC
         switch accessMode {
         case DarwinOpen.O_WRONLY: hostFlags |= O_WRONLY
@@ -800,10 +925,7 @@ public final class DarwinFileSystem {
             hostClose(hostFD)
             throw error
         }
-        let status = flags & (DarwinOpen.O_ACCMODE | DarwinOpen.O_APPEND | DarwinOpen.O_NONBLOCK)
-        descriptors[fd] = Descriptor(file: DarwinOpenFile(node: .file(file), statusFlags: status),
-                                     closeOnExec: flags & DarwinOpen.O_CLOEXEC != 0)
-        return fd
+        return (DarwinOpenFile(node: .file(file), statusFlags: status), closeOnExec)
     }
 
     /// Closes a descriptor. The description (and a host file, which a mapping
@@ -827,8 +949,9 @@ public final class DarwinFileSystem {
             let bytes = try hostPRead(f.hostFD, count: min(count, Self.maxTransfer), offset: d.file.offset)
             d.file.offset += UInt64(bytes.count)
             return bytes
-        case .object:
-            throw DarwinErrnoError(DarwinErrnoCode.EOPNOTSUPP)
+        case let .object(o):
+            guard let device = o as? DarwinDevice else { throw DarwinErrnoError(DarwinErrnoCode.EOPNOTSUPP) }
+            return device.read(count: min(count, Self.maxTransfer))
         }
     }
 
@@ -838,6 +961,8 @@ public final class DarwinFileSystem {
         guard d.file.isReadable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
         guard count >= 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         switch d.file.node {
+        case let .object(o as DarwinDevice):
+            return o.read(count: min(count, Self.maxTransfer))
         case .console, .object:
             throw DarwinErrnoError(DarwinErrnoCode.ESPIPE)
         case let .file(f):
@@ -862,8 +987,10 @@ public final class DarwinFileSystem {
             let n = try hostPWrite(f.hostFD, bytes, offset: d.file.offset)
             d.file.offset += UInt64(n)
             return n
-        case .object:
-            throw DarwinErrnoError(DarwinErrnoCode.EOPNOTSUPP)
+        case let .object(o):
+            guard let device = o as? DarwinDevice else { throw DarwinErrnoError(DarwinErrnoCode.EOPNOTSUPP) }
+            guard d.file.isWritable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
+            return device.write(bytes)
         }
     }
 
@@ -872,6 +999,8 @@ public final class DarwinFileSystem {
         let d = try entry(fd)
         guard d.file.isWritable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
         switch d.file.node {
+        case let .object(o as DarwinDevice):
+            return o.write(bytes)
         case .console, .object:
             throw DarwinErrnoError(DarwinErrnoCode.ESPIPE)
         case let .file(f):
@@ -883,12 +1012,17 @@ public final class DarwinFileSystem {
     /// sockets are ESPIPE; a negative result is EINVAL.
     public func lseek(_ fd: Int32, offset: Int64, whence: Int32) throws -> UInt64 {
         let d = try entry(fd)
-        guard case let .file(f) = d.file.node else { throw DarwinErrnoError(DarwinErrnoCode.ESPIPE) }
+        let f: GuestFile?
+        switch d.file.node {
+        case let .file(file): f = file
+        case .object(is DarwinDevice): f = nil  // character devices seek freely (size 0)
+        default: throw DarwinErrnoError(DarwinErrnoCode.ESPIPE)
+        }
         let base: Int64
         switch whence {
         case 0: base = 0
         case 1: base = Int64(clamping: d.file.offset)
-        case 2: base = try hostFStat(f.hostFD).size
+        case 2: base = try f.map { try hostFStat($0.hostFD).size } ?? 0
         default: throw DarwinErrnoError(DarwinErrnoCode.EINVAL)
         }
         let (target, overflow) = base.addingReportingOverflow(offset)
@@ -934,6 +1068,7 @@ public final class DarwinFileSystem {
         switch try entry(fd).file.node {
         case .console: return Self.consolePath
         case let .file(f): return f.guestPath
+        case let .object(o as DarwinDevice): return o.path
         case .object: throw DarwinErrnoError(DarwinErrnoCode.EBADF)
         }
     }
@@ -1039,6 +1174,8 @@ extension DarwinFileSystem {
         let child = DarwinFileSystem(normalizedPrefixes: prefixes, console: console, sockets: sockets)
         child.cwdStorage = cwdStorage
         child.maxDescriptors = maxDescriptors
+        child.servesDevices = servesDevices
+        child.guestSymlinks = guestSymlinks
         for (fd, d) in descriptors where !(d.file.object?.isConfined ?? false) {
             child.descriptors[fd] = d
         }
@@ -1103,6 +1240,16 @@ extension DarwinFileSystem {
         try hostUnlink(r.hostPath)
     }
 
+    /// `readlink`: the target of a symbolic link (a guest-namespace link or
+    /// a host link below a prefix), as stored. Not a link: EINVAL.
+    public func readlink(_ path: String) throws -> String {
+        let r = try resolve(path, followFinal: false)
+        if let target = r.guestLink { return target }
+        guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
+        guard st.isSymbolicLink else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
+        return try hostReadLink(r.hostPath)
+    }
+
     // MARK: Socket files
 
     /// `bind` of an AF_UNIX socket (`processes.md` §5.3): creates the socket
@@ -1163,5 +1310,91 @@ extension DarwinFileSystem {
         var ts = timespec()
         clock_gettime(CLOCK_REALTIME, &ts)
         return DarwinTimespec(sec: Int64(ts.tv_sec), nsec: Int64(ts.tv_nsec))
+    }
+}
+
+// MARK: - Device nodes
+
+/// A character device under `/dev` (stage4c-contract.md §4, agent F): the
+/// descriptor object behind an open `/dev/null`, `/dev/zero`,
+/// `/dev/random`, or `/dev/urandom`. (`/dev/console` opens as the console
+/// node; `/dev/tty` cannot be opened: ENXIO, no controlling terminal.)
+/// Reads and writes never block.
+public final class DarwinDevice: DarwinDescriptorObject {
+    public enum Kind: String, CaseIterable, Sendable {
+        case null, zero, random, urandom, console, tty
+    }
+
+    public let kind: Kind
+
+    public init(_ kind: Kind) { self.kind = kind }
+
+    /// The guest path (`F_GETPATH`).
+    public var path: String { "/dev/" + kind.rawValue }
+
+    public var fileType: UInt16 { DarwinStat.S_IFCHR }
+
+    public func lastReferenceClosed() {}
+
+    public func descriptorStat() -> DarwinStat { Self.stat(of: kind) }
+
+    /// Random bytes for `/dev/random` and `/dev/urandom` (default: the
+    /// host's generator, `SystemRandomNumberGenerator`).
+    nonisolated(unsafe) public static var entropy: (Int) -> [UInt8] = { count in
+        var rng = SystemRandomNumberGenerator()
+        var out = [UInt8]()
+        out.reserveCapacity(count)
+        while out.count < count {
+            var v = rng.next()
+            for _ in 0..<8 where out.count < count {
+                out.append(UInt8(truncatingIfNeeded: v))
+                v >>= 8
+            }
+        }
+        return out
+    }
+
+    /// `null`: end of file; `zero`: zeros; `random`/`urandom`: entropy.
+    public func read(count: Int) -> [UInt8] {
+        guard count > 0 else { return [] }
+        switch kind {
+        case .zero: return [UInt8](repeating: 0, count: count)
+        case .random, .urandom: return Self.entropy(count)
+        default: return []
+        }
+    }
+
+    /// Every device takes all bytes and discards them.
+    public func write(_ bytes: [UInt8]) -> Int { bytes.count }
+
+    /// The device file system's `st_dev`.
+    public static let deviceFileSystemID: UInt32 = 0x0300_0000 | 0x7963
+    /// When the nodes appear to have been made.
+    private static let created: DarwinTimespec = {
+        var ts = timespec()
+        clock_gettime(CLOCK_REALTIME, &ts)
+        return DarwinTimespec(sec: Int64(ts.tv_sec), nsec: 0)
+    }()
+
+    /// `stat` of a device node: `S_IFCHR`, Darwin's device numbers
+    /// (`makedev(major, minor)` = major << 24 | minor): null 3/2, zero 3/3,
+    /// random 14/0, urandom 14/1, console 0/0, tty 2/0; mode 0666 owned by
+    /// root, except the console (0600, the guest user).
+    public static func stat(of kind: Kind) -> DarwinStat {
+        let index = UInt64(Kind.allCases.firstIndex(of: kind)!)
+        let rdev: UInt32
+        switch kind {
+        case .null: rdev = 0x0300_0002
+        case .zero: rdev = 0x0300_0003
+        case .random: rdev = 0x0E00_0000
+        case .urandom: rdev = 0x0E00_0001
+        case .console: rdev = 0
+        case .tty: rdev = 0x0200_0000
+        }
+        let console = kind == .console
+        return DarwinStat(dev: deviceFileSystemID, mode: DarwinStat.S_IFCHR | (console ? 0o600 : 0o666), nlink: 1,
+                          ino: 300 + index, uid: console ? DarwinFileSystem.guestUID : 0, gid: 0, rdev: rdev,
+                          atime: created, mtime: created, ctime: created, birthtime: created, size: 0, blocks: 0,
+                          blksize: 131_072)
     }
 }

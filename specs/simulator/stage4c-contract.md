@@ -103,7 +103,30 @@ write a `// CONTRACT-REQUEST:` and the orchestrator routes it.
 
 ## 6. Interfaces published by agents
 
-(Filled in from the agents' reports.)
+### 6.1 Host task (agent M, `Sources/YcodeDarwinKernel/Host/MachHostTask.swift`)
+
+A Mach port space with no VM and no BSD process, in the system's
+`MachIPCSystem`. Every method may be called from any host thread that
+holds no kernel lock (it takes `system.lock` itself).
+
+| API | Meaning |
+|---|---|
+| `DarwinSystem.hostTask`, `MachIPCSystem.makeHostTask(lock:log:)` | The one host task (made on first use); its first port is the host bootstrap port |
+| `MachIPCSystem.hostBootstrapPort`, `MachHostTask.bootstrapPort` | Host-task name of the host bootstrap receive right |
+| `MachIPCSystem.hostBootstrapIsDefault = true` | Device mode, set before `spawnInitialProcess`: every later task starts with a send right to the host bootstrap port as its bootstrap special port, name `0x503`. Default false (`--exec`): the old kernel object (sends fail with `MACH_SEND_INVALID_DEST`) |
+| `setSpecialPort(of:which:to:)`, `give(_:disposition:to:)` | Put a host right into a task (special port before it runs; any right as a message would) |
+| `receive(on:timeout:)` | Receive on a right or port set; ns timeout, nil = forever, 0 = poll; errors `.timedOut`, `.portChanged`, `.interrupted`, `.invalidName` |
+| `MachHostReceivedMessage` | Header fields, `descriptors` (`.port`, `.ool`, `.oolPorts`, `.guardedPort`, names in the host task), `body`, `seqno`, `context`, `sender: MachAuditToken?` (pid, pidVersion, euid…), `isFromKernel`, `wireImage` |
+| `send(_:timeout:)`, `reply(to:id:descriptors:body:)`, `discard(_:)` | Ordinary Mach sends (dispositions 16–21, OOL, OOL ports; body a multiple of 4); trailer identity `pid`/`uid`/`gid` (default 0) |
+| `makePort`, `makePortSet`, `addMember`, `removeMember`, `insertRight`, `destroyPort`, `deallocate`, `modRefs`, `rights(of:)`, `requestNotification` | Port routines on the host space |
+| `shutdown()` | Destroys the host space as at task exit (guests see dead names) |
+
+### 6.2 Device nodes and device-mode descriptors (agent F, `DarwinFileSystem`)
+
+- `servesDevices` (default **true**, all modes): `/dev/{null,zero,random,urandom,console,tty}` as character devices; `/dev` is a read-only listable directory; `/dev/tty` opens with ENXIO.
+- `guestSymlinks` (default empty): device mode sets `DarwinFileSystem.darwinRootSymlinks` (`/var`, `/tmp`, `/etc` → `private/…`) and serves its writable prefixes at `/private/…`. A host directory under the host's `/tmp`, `/var`, or `/etc` is then unreachable by its own guest path: DEV must live elsewhere.
+- `installDeviceModeStandardDescriptors()`: fd 0 `/dev/null` read-only, fd 1 `/dev/null` write-only, fd 2 the console, fd 3 `/dev/console` write-only.
+- `open(_:flags:mode:at:)` (open at a given fd), `readlink` (BSD 58/473).
 
 ## 7. Rules for every agent
 

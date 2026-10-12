@@ -32,19 +32,55 @@ final class ExecConfiguration: @unchecked Sendable {
     let timeout: UInt64
     /// --repeat runs after the first: no per-image startup lines.
     var quietRuns = false
+    /// Device mode (stage 4c): the device layout.
+    let device: DeviceLayout?
+    /// The root program's argv and environment.
+    let rootArguments: [String]
+    let rootEnvironment: [String]
 
     init(_ options: Options) throws {
-        guard let execArgument = options.execPath, let rootArgument = options.runtimeRoot else {
-            die("--exec needs --runtime-root\n\(usage)", status: 64)
+        guard let rootArgument = options.runtimeRoot, options.execPath != nil || options.devicePath != nil else {
+            die("--exec and --device need --runtime-root\n\(usage)", status: 64)
         }
+        if options.execPath != nil && options.devicePath != nil { die("--exec and --device exclude each other", status: 64) }
         self.options = options
         trace = options.trace
         timeout = options.timeoutMilliseconds ?? 120_000
         maxExits = options.maxExits ?? 50_000_000
-        execPath = absolutePath(execArgument)
         var root = absolutePath(rootArgument)
         while root.count > 1 && root.hasSuffix("/") { root.removeLast() }
         self.root = root
+        if let devicePath = options.devicePath {
+            // Device mode: the root process is RR/sbin/launchd_sim.
+            let layout = DeviceLayout(dev: absolutePath(devicePath), runtimeRoot: root, udid: options.udid,
+                                      jobPaths: options.jobPaths.map(absolutePath))
+            // The guest's /var, /tmp, and /etc are links into /private: a
+            // host path below them (or below /private/...) is unreachable
+            // at its own guest path.
+            for (what, path) in [("device directory", layout.dev), ("runtime root", root)] + layout.jobPaths.map({ ("job path", $0) }) {
+                for shadowed in ["/tmp", "/var", "/etc", "/private/tmp", "/private/var", "/private/etc"]
+                    where path == shadowed || path.hasPrefix(shadowed + "/") {
+                    die("the \(what) \(path) is under \(shadowed), which the guest sees as its own; put it elsewhere", status: 64)
+                }
+            }
+            do { try layout.prepare() } catch { die("cannot prepare the device directory \(layout.dev): \(error)", status: 66) }
+            device = layout
+            execPath = layout.launchdSimPath
+            rootArguments = ["launchd_sim", layout.plistPath] + options.execArguments
+            rootEnvironment = layout.launchdEnvironment(overrides: options.environment)
+            stderrLine("ycode-simd: device \(layout.dev), UDID \(layout.udid); bootstrap plist \(layout.plistPath); TMP \(layout.tmpGuestPath) -> \(layout.tmpHostPath)")
+        } else {
+            device = nil
+            execPath = absolutePath(options.execPath!)
+            rootArguments = [execPath] + options.execArguments
+            var env = SimulatorEnvironment.make(runtimeRoot: root)
+            for pair in options.environment {
+                let key = pair.prefix { $0 != "=" }
+                env.removeAll { $0.hasPrefix(key + "=") }
+                env.append(pair)
+            }
+            rootEnvironment = env
+        }
         dyldSimPath = root + "/usr/lib/dyld_sim"
         cacheIndex = SharedCacheIndex(cachePath: root + "/System/Library/Caches/com.apple.dyld/dyld_sim_shared_cache_arm64")
         for path in [execPath, dyldSimPath] where access(path, R_OK) != 0 {
@@ -59,8 +95,9 @@ final class ExecConfiguration: @unchecked Sendable {
         let retWord = stubs.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: Int(hostPageRetStubOffset), as: UInt32.self)) }
         guard retWord == a64Ret else { die("host_stubs.bin has no `ret` at +\(hex(hostPageRetStubOffset))", status: 66) }
 
-        // The per-run directory: guest /tmp lives in <run dir>/tmp.
-        runDir = absolutePath(options.runDir ?? (NSTemporaryDirectory() + "/ycode-simd-\(getpid())"))
+        // The per-run directory: guest /tmp lives in <run dir>/tmp (in
+        // device mode, DEV/data/tmp).
+        runDir = device.map { $0.data } ?? absolutePath(options.runDir ?? (NSTemporaryDirectory() + "/ycode-simd-\(getpid())"))
         try FileManager.default.createDirectory(atPath: runDir + "/tmp", withIntermediateDirectories: true)
 
         // The guest VFS (stage3-contract.md §8): the runtime root, read-only;
@@ -70,6 +107,15 @@ final class ExecConfiguration: @unchecked Sendable {
         var prefixes = [DarwinFileSystem.Prefix(guestPath: root, hostPath: root, writable: false)]
         if !execDirectory.hasPrefix(root + "/") {
             prefixes.append(DarwinFileSystem.Prefix(guestPath: execDirectory, hostPath: execDirectory, writable: false))
+        }
+        if let device {
+            // Device mode (stage4c-contract.md §2): DEV, TMP, /private/var/tmp
+            // (and /var/tmp), /tmp and /private/tmp, all writable.
+            prefixes.append(DarwinFileSystem.Prefix(guestPath: device.dev, hostPath: device.dev, writable: true))
+            prefixes.append(DarwinFileSystem.Prefix(guestPath: device.tmpGuestPath, hostPath: device.tmpHostPath, writable: true))
+            // /var/tmp and /tmp reach these through the guest links.
+            prefixes.append(DarwinFileSystem.Prefix(guestPath: "/private/var/tmp", hostPath: device.privateVarTmpHostPath, writable: true))
+            prefixes.append(DarwinFileSystem.Prefix(guestPath: "/private/tmp", hostPath: device.data + "/tmp", writable: true))
         }
         // Ycode's host libraries (host-libraries.md §5): three read-only
         // single-file prefixes; every other /usr/lib/system path stays ENOENT.
@@ -90,20 +136,36 @@ final class ExecConfiguration: @unchecked Sendable {
         } else {
             stderrLine("ycode-simd: warning: no host-library directory (tried \(hostLibTried.joined(separator: ", "))); pass --host-libs")
         }
-        prefixes.append(DarwinFileSystem.Prefix(guestPath: "/tmp", hostPath: runDir + "/tmp", writable: true))
+        if device == nil {
+            prefixes.append(DarwinFileSystem.Prefix(guestPath: "/tmp", hostPath: runDir + "/tmp", writable: true))
+        }
         self.prefixes = prefixes
         self.hostLibraryPaths = hostLibraryPaths
     }
 
     /// The root process's VFS: fresh descriptor table, console on fds 0–2.
+    /// Device mode (launchd-sim.md §2.3): fds 0 and 1 are /dev/null, 2 the
+    /// console, 3 /dev/console write-only; the cwd is /.
     func makeRootFileSystem() -> DarwinFileSystem {
-        DarwinFileSystem(prefixes: prefixes, console: { fd, bytes in writeFD(fd == 2 ? 2 : 1, bytes) })
+        let fs = DarwinFileSystem(prefixes: prefixes, console: { fd, bytes in writeFD(fd == 2 ? 2 : 1, bytes) })
+        if device != nil {
+            fs.guestSymlinks = DarwinFileSystem.darwinRootSymlinks
+            do {
+                try fs.installDeviceModeStandardDescriptors()
+            } catch {
+                stderrLine("ycode-simd: warning: cannot set up fds 0, 1, 3 from /dev (\(error)); fds 0-2 stay the console")
+            }
+            fs.cwd = "/"
+        }
+        return fs
     }
 
-    /// The root process's spawn request (argv `[path]`, the simulator environment).
+    /// The root process's spawn request. `--exec`: argv `[path]` plus
+    /// `--exec-args`, the simulator environment plus `--env`. Device mode:
+    /// RR/sbin/launchd_sim, argv `["launchd_sim", plist]`.
     var rootRequest: ProcessImageRequest {
-        ProcessImageRequest(executablePath: execPath, hostExecutablePath: execPath, argv: [execPath],
-                            envp: SimulatorEnvironment.make(runtimeRoot: root))
+        ProcessImageRequest(executablePath: execPath, hostExecutablePath: execPath, argv: rootArguments,
+                            envp: rootEnvironment)
     }
 }
 
@@ -145,6 +207,19 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     let launcher = VMMLauncher(config: config)
     system.launcher = launcher
     system.processExited = { [weak launcher] pid, status in launcher?.processExited(pid: pid, status: status) }
+
+    // Device mode (stage4c-contract.md §3): every task starts with a send
+    // right to the host bootstrap port as its bootstrap special port; the
+    // logging service receives on it.
+    var bootstrapLogger: HostBootstrapLogger?
+    if config.device != nil || config.options.hostBootstrap {
+        system.mach.hostBootstrapIsDefault = true
+        let logPath = config.device?.hostBootstrapLogPath ?? config.runDir + "/ycode-host-bootstrap.log"
+        let logger = HostBootstrapLogger(host: system.hostTask, logPath: logPath,
+                                         discard: config.options.debugBootstrapDiscard)
+        do { try logger.start() } catch { die("cannot start the host bootstrap service: \(error)", status: 1) }
+        bootstrapLogger = logger
+    }
 
     let rootKernel: DarwinKernel
     do {
@@ -226,6 +301,15 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     }
     if !quietSummary {
         stderrLine("ycode-simd: host: \(HostStats.current())" + (stillAlive > 0 ? "; \(stillAlive) images not torn down" : ""))
+    }
+    if let bootstrapLogger {
+        bootstrapLogger.stop()
+        if stillAlive == 0 { system.hostTask.shutdown() }
+    }
+    if let device = config.device, !quietSummary {
+        let log = device.tmpHostPath + "/launchd.log"
+        let size = (try? FileManager.default.attributesOfItem(atPath: log)[.size] as? Int) ?? nil
+        stderrLine("ycode-simd: TMP/launchd.log (\(log)): " + (size.map { "\($0) bytes" } ?? "absent"))
     }
     if stillAlive > 0 { abandonedLaunchers.append(launcher) }
     extraKernels.removeAll()
