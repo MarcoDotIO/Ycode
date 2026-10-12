@@ -1,4 +1,15 @@
-# Ycode Simulator: running iOS apps from an IPSW on x86-64 Linux
+# Ycode Simulator: running iOS apps on Linux
+
+> **Update 2026-10-11, direction changed.** The owner's IPSW (iPhone 15 Pro,
+> 27.2 beta 3, 24B5099f) stores the iOS system volume and a second large
+> image as Apple Encrypted Archives (`.aea`). Ycode does not decrypt
+> firmware, so option A below cannot produce a bootable iOS. The track now
+> follows **option B**: run Xcode's simulator runtime on a Darwin
+> compatibility layer. Dynamic observation of the real Simulator is in
+> `research/notes/simulator-observations.md`. Owner decisions recorded:
+> - The SDK-license risk of building on Linux is accepted.
+> - No decryption.
+> - Relaxing code signing in the guest is acceptable.
 
 Goal (from the project owner): with an `.ipsw` for a device on a Linux x86-64
 machine, Ycode can boot it and run the app under development.
@@ -35,7 +46,7 @@ Simulator. That is the honest scope of the request.
 | Prior art | alephsecurity qemu-t8030 (iPhone 11 / iOS 14 to a shell), ChefKiss Inferno, Corellium (commercial) | Darling (macOS userland on Linux) | OpenSwiftUI, Tokamak, UIKit-cross-platform |
 | Size | Very large, open-ended research | Very large | Large, and does not meet the goal |
 
-**Recommendation:** use A. It is the only option that meets "IPSW on Linux".
+**Original recommendation (superseded, see update above):** use A. It is the only option that meets "IPSW on Linux".
 Run it as a staged research track beside the IDE. Each stage produces
 something useful on its own:
 
@@ -84,3 +95,29 @@ The same protocol applies. Ycode's emulator and toolkit are original code.
 QEMU (GPL-2.0) is a separate component that we would extend, with its
 license respected. IPSW contents are inputs and are never committed.
 Findings about formats and hardware behavior go into `specs/`.
+
+## 5. Option B work plan (current)
+
+The observations show that the simulator is host processes rerooted by dyld
+onto the runtime tree. There is no VM. Running it on Linux therefore needs:
+
+1. **A loader:** Mach-O, plus the `dyld_sim` shared cache.
+   (`DYLD_ROOT_PATH`, `DYLD_SHARED_CACHE_DIR`)
+2. **A Darwin ABI layer:** BSD syscalls, Mach traps, Mach ports and
+   messages, kqueue, and a launchd bootstrap for `launchd_sim`. Darling is
+   prior art.
+3. **Host services:** render server, Metal (→ Vulkan), audio, stream,
+   syslog, and test-manager sockets.
+4. **CPU:** every runtime is arm64-only. **arm64 Linux needs no
+   translation.** x86-64 Linux needs user-mode arm64 → x86-64 translation.
+
+Suggested order:
+
+- **First target, arm64 Linux:** a headless boot of `launchd_sim` and a
+  command-line guest binary, then `cfprefsd` and the XPC bootstrap.
+- **Then UIKit:** a headless UIKit app with logging over the syslog socket.
+- **Then display and input.**
+- **Last, x86-64:** add translation once the stack works on arm64.
+
+The runtime itself still comes from the owner's Xcode installation. It is
+used as input, never redistributed.
