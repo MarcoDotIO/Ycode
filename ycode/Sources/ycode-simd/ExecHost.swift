@@ -61,6 +61,13 @@ final class ExecConfiguration: @unchecked Sendable {
                                       oneshots: options.oneshots, runtimeJobs: options.runtimeJobs)
             layout.plistBoolOverrides = options.plistBoolOverrides
             layout.oneshotDelay = options.oneshotDelay
+            layout.installApp = options.installApp.map(absolutePath)
+            layout.launchBundleID = options.launchBundleID
+            layout.appArguments = options.appArguments
+            layout.appEnvironment = options.appEnvironment
+            layout.guestTools = options.guestTools.map(absolutePath)
+                ?? options.shimPath.map { ((absolutePath($0) as NSString).deletingLastPathComponent as NSString)
+                    .appendingPathComponent("guest-tests/stage7") }
             // The guest's /var, /tmp, and /etc are links into /private: a
             // host path below them (or below /private/...) is unreachable
             // at its own guest path.
@@ -237,11 +244,32 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     // right to the host bootstrap port as its bootstrap special port; the
     // logging service receives on it.
     var bootstrapLogger: HostBootstrapLogger?
+    var session: DeviceSession?
     if config.device != nil || config.options.hostBootstrap {
         system.mach.hostBootstrapIsDefault = true
         let logPath = config.device?.hostBootstrapLogPath ?? config.runDir + "/ycode-host-bootstrap.log"
         let logger = HostBootstrapLogger(host: system.hostTask, logPath: logPath,
                                          discard: config.options.debugBootstrapDiscard)
+        if config.device != nil {
+            // The host's messages carry the identity of launchd_sim's parent
+            // (pid 1 in Ycode's process table) and the guest user, as on the
+            // Mac, where the host is launchd_sim's parent process running as
+            // the user. launchd_sim refuses control requests (700, 704:
+            // EPERM) from euid 0, and crashed handling a 704 from pid 0, a
+            // pid with no process (level 3, our runs).
+            system.hostTask.pid = DarwinSystem.initPID
+            system.hostTask.uid = DarwinFileSystem.guestUID
+            system.hostTask.gid = DarwinFileSystem.guestGID
+        }
+        if let identity = config.options.debugHostIdentity {
+            (system.hostTask.pid, system.hostTask.uid, system.hostTask.gid) = identity
+        }
+        if let device = config.device, !config.options.debugBootstrapDiscard {
+            // The control session (launch-sim-control.md §5.2).
+            let s = DeviceSession(layout: device, host: system.hostTask, makeFileSystem: { config.makeRootFileSystem() })
+            logger.onControlChannel = { [weak s] channel in s?.channelArrived(channel) }
+            session = s
+        }
         do { try logger.start() } catch { die("cannot start the host bootstrap service: \(error)", status: 1) }
         bootstrapLogger = logger
     }
@@ -321,7 +349,24 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         // stopped; `--timeout-ms` is the length of the run. Reaching it with
         // launchd_sim alive is a normal end: exit 0, every process stopped.
         result = (0, "device run ended after \(config.timeout) ms (--timeout-ms); launchd_sim (pid \(rootPID)) was still running", false)
-        if config.trace || config.options.debugThreadReport { watchdogReport = launcher.watchdogReport() }
+        if let session, session.isBound, !config.options.debugNoSessionEnd {
+            // The clean end: destroy the session port; launchd_sim shuts the
+            // guest down and exits 0 (launch-sim-control.md §3.1). (The
+            // watchdog report stops every vCPU, so it comes only if this
+            // fails; --debug-no-session-end keeps the guest as it was.)
+            session.end()
+            let shutdown = launcher.superviseRoot(timeoutMilliseconds: 15_000)
+            if shutdown.watchdog {
+                result.message += "; the session was ended, but launchd_sim did not exit within 15 s"
+                if config.trace || config.options.debugThreadReport { watchdogReport = launcher.watchdogReport() }
+            } else {
+                result = (shutdown.status,
+                          "device run ended after \(config.timeout) ms (--timeout-ms); session ended, launchd_sim (pid \(rootPID)) "
+                            + "shut down: \(shutdown.message)", false)
+            }
+        } else if config.trace || config.options.debugThreadReport {
+            watchdogReport = launcher.watchdogReport()
+        }
     } else if result.watchdog {
         watchdogReport = launcher.watchdogReport()
     }
@@ -384,6 +429,18 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     if let bootstrapLogger {
         bootstrapLogger.stop()
         if stillAlive == 0 { system.hostTask.shutdown() }
+    }
+    if let session, !quietSummary {
+        for line in session.resultLines { stderrLine("ycode-simd: one-shot " + line) }
+    }
+    if let device = config.device, device.launchBundleID != nil, !quietSummary {
+        for path in [device.appStdoutHostPath, device.appStderrHostPath] {
+            guard let data = FileManager.default.contents(atPath: path) else {
+                stderrLine("ycode-simd: app output: no file \(path)")
+                continue
+            }
+            stderrLine("ycode-simd: app output (\(path), \(data.count) bytes)" + (data.isEmpty ? "" : ":\n" + String(decoding: data, as: UTF8.self)))
+        }
     }
     if let device = config.device, !quietSummary {
         let log = device.tmpHostPath + "/launchd.log"

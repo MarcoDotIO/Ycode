@@ -41,6 +41,9 @@ final class HostBootstrapLogger: @unchecked Sendable {
     private var started = false
     private var logFile: UnsafeMutablePointer<FILE>?
     private(set) var count = 0
+    /// Called (on the service thread) with the control channel's host-task
+    /// name right after the 808 reply.
+    var onControlChannel: ((UInt32) -> Void)?
 
     init(host: MachHostTask, logPath: String, discard: Bool) {
         self.host = host
@@ -130,6 +133,7 @@ final class HostBootstrapLogger: @unchecked Sendable {
         if let old = controlChannel { try? host.deallocate(old) }
         controlChannel = port
         emit("  -> 808: service port (receive right) given; host keeps the control-channel send right \(hex(UInt64(port)))")
+        onControlChannel?(port)
     }
 
     /// bootstrap-wire.md §2, §4.2, §8 item 1 (decoding and replies: `YcodeXPC`).

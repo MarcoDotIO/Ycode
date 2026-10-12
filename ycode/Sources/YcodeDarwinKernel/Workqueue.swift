@@ -308,6 +308,16 @@ extension DarwinKernel {
         }
     }
 
+    /// A vCPU of this process became free (the VMM, kernel lock not held):
+    /// requests that waited for one may start now.
+    public func retryPendingWorkqueue() {
+        lock.withLock {
+            guard termination == nil, !workqueue.plainPending.isEmpty || !workqueue.pendingWorkloops.isEmpty
+                || (kevents.workq?.buckets.values.contains { $0.requested && $0.boundWorker == nil } ?? false) else { return }
+            pumpWorkqueue(nil)
+        }
+    }
+
     /// Hands admissible requests to idle workers, then to new workers, until
     /// none is left or no thread can be started.
     func pumpWorkqueue(_ mem: (any KernelGuestMemory)?) {
@@ -350,6 +360,19 @@ extension DarwinKernel {
     /// Creates a worker for `request`. Returns false when it could not start
     /// (the request is put back).
     private func startNewWorker(for request: WorkRequest, _ mem: any KernelGuestMemory) -> Bool {
+        // Check for a vCPU before the upcall: the upcall delivers kevents
+        // (an EV_DISPATCH knote is disabled, a Mach message is received into
+        // the new thread's stack), which cannot be undone if the thread then
+        // never runs. The request stays pending; a vCPU that becomes free
+        // pumps the queue again (`retryPendingWorkqueue`).
+        guard threadHost?.canStartThread ?? false else {
+            returnWorkRequest(request)
+            if !workqueue.startFailureLogged {
+                workqueue.startFailureLogged = true
+                log("note: workqueue: no free vCPU for a new worker; request pending")
+            }
+            return false
+        }
         let base: UInt64
         do {
             base = try mem.mapAnonymous(at: nil, size: WorkerState.allocationSize, protection: [.read, .write],

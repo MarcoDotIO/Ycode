@@ -178,3 +178,82 @@ YC_EXPORT int host_request_notification(yc_port_t host, int notify_type, yc_port
         return 20; /* KERN_INVALID_CAPABILITY */
     return 0;
 }
+
+/* kern_return_t mach_port_extract_right(ipc_space_t task,
+ *     mach_port_name_t name, mach_msg_type_name_t msgt_name,
+ *     mach_port_poly_t *poly, mach_msg_type_name_t *polyPoly)
+ * MIG 3215 on the task port (xnu osfmk/mach/mach_port.defs; level 1):
+ * request NDR, name, msgt_name (40 bytes). Success is a complex reply with
+ * one port descriptor (40 bytes): the right, received into the caller's
+ * space, and its received type (PORT_RECEIVE, PORT_SEND, PORT_SEND_ONCE).
+ * Failure is a mig_reply_error_t (36 bytes). The VMM's task-port server
+ * (MachIPCKernelServer) copies the right in from the target task's space. */
+#define YC_MACH_PORT_EXTRACT_RIGHT_ID 3215
+
+YC_EXPORT int mach_port_extract_right(yc_port_t task, yc_port_t name, yc_u32 msgt_name, yc_port_t *poly,
+                                      yc_u32 *poly_poly)
+{
+    union {
+        struct {
+            struct yc_mig_header h;
+            yc_u8 ndr[8];
+            yc_port_t name;
+            yc_u32 msgt_name;
+        } req;
+        struct {
+            struct yc_mig_header h;
+            yc_u32 count;
+            yc_port_t port;
+            yc_u32 pad1;
+            yc_u16 pad2;
+            yc_u8 disposition;
+            yc_u8 type;
+            yc_u8 trailer[68];
+        } ok;
+        struct yc_mig_reply err;
+    } m;
+    _Static_assert(__builtin_offsetof(__typeof__(m.ok), trailer) == 40, "port reply is 40 bytes");
+    for (int i = 0; i < 8; i++)
+        m.req.ndr[i] = yc_ndr[i];
+    m.req.name = name;
+    m.req.msgt_name = msgt_name;
+    struct yc_mig_header *h = &m.req.h;
+    yc_port_t reply_port = mig_get_reply_port();
+    h->bits = YC_MACH_MSG_TYPE_COPY_SEND | (YC_MACH_MSG_TYPE_MAKE_SEND_ONCE << 8);
+    h->size = 40;
+    h->remote = task;
+    h->local = reply_port;
+    h->voucher = YC_MACH_PORT_NULL;
+    h->id = YC_MACH_PORT_EXTRACT_RIGHT_ID;
+    int kr = mach_msg(h, YC_MACH_SEND_MSG | YC_MACH_RCV_MSG, 40, (yc_u32)sizeof m, reply_port, 0, YC_MACH_PORT_NULL);
+    if (kr != YC_KERN_SUCCESS) {
+        if (kr != YC_MACH_SEND_INVALID_DATA && kr != YC_MACH_SEND_INVALID_DEST && kr != YC_MACH_SEND_INVALID_HEADER)
+            mig_dealloc_reply_port(reply_port);
+        return kr;
+    }
+    if (m.ok.h.id != YC_MACH_PORT_EXTRACT_RIGHT_ID + 100) {
+        int err = (m.ok.h.id == YC_MACH_NOTIFY_SEND_ONCE) ? YC_MIG_SERVER_DIED : YC_MIG_REPLY_MISMATCH;
+        mach_msg_destroy(&m);
+        return err;
+    }
+    if (!(m.ok.h.bits & YC_MACH_MSGH_BITS_COMPLEX)) {
+        if (m.err.h.size == 36 && m.err.ret_code != YC_KERN_SUCCESS)
+            return m.err.ret_code;
+        mach_msg_destroy(&m);
+        return YC_MIG_TYPE_ERROR;
+    }
+    if (m.ok.h.size != 40 || m.ok.count != 1 || m.ok.type != 0) {
+        mach_msg_destroy(&m);
+        return YC_MIG_TYPE_ERROR;
+    }
+    *poly = m.ok.port;
+    *poly_poly = m.ok.disposition;
+    return YC_KERN_SUCCESS;
+}
+
+/* The MIG-routine name of the same call. */
+YC_EXPORT int _kernelrpc_mach_port_extract_right(yc_port_t task, yc_port_t name, yc_u32 msgt_name, yc_port_t *poly,
+                                                 yc_u32 *poly_poly)
+{
+    return mach_port_extract_right(task, name, msgt_name, poly, poly_poly);
+}

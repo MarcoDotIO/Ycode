@@ -526,3 +526,15 @@ stage-4c fake device of `bootstrap-wire.md` A.3, UDID
 or three test job plists using `RootedSimulatorPath`). `launchd_sim`
 created `TMP = /private/var/tmp/com.apple.CoreSimulator.SimDevice.5C0DE000-0000-4000-8000-000000000003`
 and wrote `launchd.log` there.
+
+## Addendum: Ycode's client, observed requirements (2026-10-12, level 3, our runs on the Thor)
+
+- `launchd_sim` accepts control requests only from a sender whose audit
+  token says euid 501 (the guest user); euid 0 gets EPERM. Ycode's host task
+  sends as pid 1 (`launchd_sim`'s parent in Ycode's process table), uid 501,
+  gid 20: a 704 spawn from sender pid 0 crashed `launchd_sim` (NULL
+  dereference in libdispatch). On the Mac the host is also its parent.
+- A full boot with `RequireDomainBinding = true` and a 700 bind right after
+  the 808 hand-off works; destroying the session port makes `launchd_sim`
+  log "shutting down" and exit 0 within about 15 s.
+- `xpcproxy_sim` needs `getdtablesize` (BSD 89) to set up fileport stdio.

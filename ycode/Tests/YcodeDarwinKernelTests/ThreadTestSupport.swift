@@ -17,6 +17,12 @@ final class FakeThreadHost: ThreadHost, @unchecked Sendable {
         return startsStorage
     }
 
+    var canStartThread: Bool {
+        mutex.lock()
+        defer { mutex.unlock() }
+        return startsStorage.count < limit
+    }
+
     func startThread(_ start: ThreadStartState, context: ThreadContext) throws -> Int {
         mutex.lock()
         defer { mutex.unlock() }

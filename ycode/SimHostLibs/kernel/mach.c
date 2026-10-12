@@ -1027,3 +1027,53 @@ YC_EXPORT int thread_swap_exception_ports(yc_port_t thread, yc_u32 mask, yc_port
     }
     return kr;
 }
+
+/* kern_return_t mach_vm_read(vm_map_read_t target_task, mach_vm_address_t address,
+ *     mach_vm_size_t size, vm_offset_t *data, mach_msg_type_number_t *dataCnt)
+ * Private routine 20: a copy in new memory of the caller (xnu vm_user.c;
+ * level 1). Only the caller's own task. vm_read is the same call. */
+YC_EXPORT int mach_vm_read(yc_port_t task, yc_u64 address, yc_u64 size, yc_uintptr_t *data, yc_u32 *count)
+{
+    return (int)yc_mach_trap(YC_PRIV_ROUTINE(20), task, (yc_uintptr_t)address, (yc_uintptr_t)size,
+                             (yc_uintptr_t)data, (yc_uintptr_t)count, 0, 0);
+}
+
+YC_EXPORT int vm_read(yc_port_t task, yc_uintptr_t address, yc_size_t size, yc_uintptr_t *data, yc_u32 *count)
+{
+    return mach_vm_read(task, address, size, data, count);
+}
+
+/* mach_vm_copy(target, source, size, dest) and mach_vm_read_overwrite(target,
+ * address, size, data, &outsize): the VMM's private copy trap (0x7963_0004)
+ * within the caller's own task; another task is KERN_INVALID_ARGUMENT. */
+#define YC_PRIV_VM_COPY 0x79630004L
+
+YC_EXPORT int mach_vm_copy(yc_port_t task, yc_u64 source, yc_u64 size, yc_u64 dest)
+{
+    if (task != mach_task_self_)
+        return YC_KERN_INVALID_ARGUMENT;
+    return (int)YC_MACH4(YC_PRIV_VM_COPY, task, (yc_uintptr_t)source, (yc_uintptr_t)size, (yc_uintptr_t)dest);
+}
+
+YC_EXPORT int vm_copy(yc_port_t task, yc_uintptr_t source, yc_size_t size, yc_uintptr_t dest)
+{
+    return mach_vm_copy(task, source, size, dest);
+}
+
+YC_EXPORT int mach_vm_read_overwrite(yc_port_t task, yc_u64 address, yc_u64 size, yc_u64 data, yc_u64 *outsize)
+{
+    int kr = mach_vm_copy(task, address, size, data);
+    if (kr == 0 && outsize != YC_NULL)
+        *outsize = size;
+    return kr;
+}
+
+YC_EXPORT int vm_read_overwrite(yc_port_t task, yc_uintptr_t address, yc_size_t size, yc_uintptr_t data,
+                                yc_size_t *outsize)
+{
+    yc_u64 out = 0;
+    int kr = mach_vm_read_overwrite(task, address, size, data, &out);
+    if (kr == 0 && outsize != YC_NULL)
+        *outsize = (yc_size_t)out;
+    return kr;
+}

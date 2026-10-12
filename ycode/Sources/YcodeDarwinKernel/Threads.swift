@@ -108,6 +108,10 @@ public struct ThreadStartState: Equatable, Sendable {
     }
 }
 
+extension ThreadHost {
+    public var canStartThread: Bool { true }
+}
+
 /// Implemented by the hypervisor (agent V): the vCPU pool.
 public protocol ThreadHost: AnyObject {
     /// Starts a vCPU (a parked one from the pool when there is one) running
@@ -120,6 +124,11 @@ public protocol ThreadHost: AnyObject {
     /// then fails `bsdthread_create` with EAGAIN or keeps a workqueue request
     /// pending.
     func startThread(_ start: ThreadStartState, context: ThreadContext) throws -> Int
+
+    /// True when `startThread` would find a vCPU now. Called with the kernel
+    /// lock held; every start of this process's threads also holds it, so
+    /// the answer stays true until the next start.
+    var canStartThread: Bool { get }
 
     /// Stage 4b (`stage4b-contract.md` §3.4): makes every vCPU of this
     /// process that is running guest code return to the VMM soon, so that it

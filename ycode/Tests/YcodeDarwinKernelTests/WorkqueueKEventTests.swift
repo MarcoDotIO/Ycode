@@ -191,6 +191,28 @@ import YcodeDarwinABI
         _ = parked()
     }
 
+    /// No free vCPU: the event is not delivered to a thread that cannot run
+    /// (an EV_DISPATCH knote would stay disabled forever); the request waits
+    /// and starts when a vCPU becomes free (launchd_sim stalled at its
+    /// 64-vCPU limit in stage 7 runs).
+    @Test func noFreeVCPUKeepsTheEventForLater() throws {
+        let t = try T2Env()
+        open(t)
+        t.host.limit = 0
+        let mgr: UInt32 = 0x0200_0000
+        // EV_ADD | EV_CLEAR | EV_DISPATCH, then NOTE_TRIGGER.
+        registerWorkq(t, [KEventRecord(ident: 1, filter: -10, flags: 0x1 | 0x20 | 0x80, qos: mgr)])
+        registerWorkq(t, [KEventRecord(ident: 1, filter: -10, fflags: 0x0100_0000, qos: mgr)])
+        #expect(t.host.starts.isEmpty)
+        t.host.limit = Int.max
+        t.kernel.retryPendingWorkqueue()
+        let s = try #require(t.host.starts.first)
+        #expect(s.state.x[5] == 1)
+        let e = events(t, at: s.state.x[3], count: 1)[0]
+        #expect(e.ident == 1 && e.filter == -10)
+        t.kernel.shutdown()
+    }
+
     /// A bucket handed to an idle worker is bound to it at once: an
     /// activation before that worker runs must not start a second one
     /// (stage 4c-iii: two launchd_sim threads serviced one workloop, and the

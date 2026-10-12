@@ -14,14 +14,22 @@ struct DeviceLayout {
     let udid: String
     let jobPaths: [String]
     let bootTime: Int
-    /// Ycode-written one-shot jobs (`--oneshot`): argv of each, in order.
+    /// One-shot programs (`--oneshot`), run through the control channel: argv of each, in order.
     let oneshots: [[String]]
     /// Runtime job plists copied into DEV/ycode-jobs (`--runtime-job <label>`).
     let runtimeJobs: [String]
     /// Debug: top-level bootstrap-plist booleans replaced (`--debug-plist-bool K=V`).
     var plistBoolOverrides: [String: Bool] = [:]
-    /// One-shot jobs start this many seconds after load (`--oneshot-delay`).
+    /// One-shots start this many seconds after the bind (`--oneshot-delay`).
     var oneshotDelay: Int?
+    /// Stage 7 (stage7-contract.md §3.2 item 3): the host `.app` to install
+    /// (`--install-app`), the bundle id to launch (`--launch`), its extra
+    /// arguments and environment, and the directory holding `ylaunch`.
+    var installApp: String?
+    var launchBundleID: String?
+    var appArguments: [String] = []
+    var appEnvironment: [String] = []
+    var guestTools: String?
 
     // Device identity (stage4c-contract.md §2).
     static let deviceName = "Ycode"
@@ -39,7 +47,7 @@ struct DeviceLayout {
         self.runtimeJobs = runtimeJobs
         // Ycode's own job directory comes after the --job-path ones; with
         // neither, one empty directory (stage4c-contract.md §2).
-        let ycodeJobs = oneshots.isEmpty && runtimeJobs.isEmpty ? [] : [dev + "/ycode-jobs"]
+        let ycodeJobs = runtimeJobs.isEmpty ? [] : [dev + "/ycode-jobs"]
         let coreSimulatorPaths = runtimePaths
             ? ["/System/Library/LaunchDaemons", "/System/Library/LaunchAngels", "/Developer/Library/LaunchDaemons"]
                 .map { runtimeRoot + $0 } + [dev + "/data/Library/LaunchDaemons"]
@@ -72,12 +80,28 @@ struct DeviceLayout {
     /// The host log of the logging bootstrap service.
     var hostBootstrapLogPath: String { dev + "/ycode-host-bootstrap.log" }
     var launchdSimPath: String { runtimeRoot + "/sbin/launchd_sim" }
-    /// The job directory Ycode fills for `--oneshot` and `--runtime-job`.
+    /// The job directory Ycode fills for `--runtime-job`.
     var ycodeJobsPath: String { dev + "/ycode-jobs" }
 
-    // MARK: Ycode-written jobs (stage4c-contract.md §9.1)
+    // MARK: Apps (stage7-contract.md §3.2 items 2, 3)
 
-    /// The label of one-shot job `index` (0-based): `com.ycode.oneshot.<n>.<program name>`.
+    /// Where `--install-app` copies the bundle (a guest-readable DEV path).
+    var appsDirectory: String { data + "/tmp/ycode-apps" }
+    /// The staged copy of the `--install-app` bundle, if any.
+    var stagedAppGuestPath: String? {
+        installApp.map { appsDirectory + "/" + (($0 as NSString).standardizingPath as NSString).lastPathComponent }
+    }
+    /// The staged `ylaunch` (DEV/data/tmp/ycode-tools/ylaunch) when an app is installed or launched.
+    var ylaunchPath: String? { installApp != nil || launchBundleID != nil ? data + "/tmp/ycode-tools/ylaunch" : nil }
+    /// The launched app's stdio (guest paths; DEV/data/tmp on the host, app-install-launch.md §3.4).
+    static let appStdoutGuestPath = "/tmp/ycode-app.out"
+    static let appStderrGuestPath = "/tmp/ycode-app.err"
+    var appStdoutHostPath: String { data + Self.appStdoutGuestPath }
+    var appStderrHostPath: String { data + Self.appStderrGuestPath }
+
+    // MARK: One-shots (stage7-contract.md §3.2)
+
+    /// The display name of one-shot `index` (0-based): `com.ycode.oneshot.<n>.<program name>`.
     func oneshotLabel(_ index: Int) -> String {
         "com.ycode.oneshot.\(index + 1).\((oneshots[index].first.map { ($0 as NSString).lastPathComponent }) ?? "job")"
     }
@@ -92,22 +116,13 @@ struct DeviceLayout {
         data + "/tmp/ycode-oneshot-\(index + 1).\(err ? "err" : "out")"
     }
 
-    /// A job plist (launchd-sim.md §4.3 keys) that runs `argv` once at load,
-    /// with stdout and stderr in files under /tmp.
-    func oneshotPlist(_ index: Int) -> [String: Any] {
-        var plist: [String: Any] = [
-            "Label": oneshotLabel(index),
-            "ProgramArguments": oneshots[index],
-            "StandardOutPath": oneshotOutputGuestPath(index, err: false),
-            "StandardErrorPath": oneshotOutputGuestPath(index, err: true),
-        ]
-        if let oneshotDelay { plist["StartInterval"] = oneshotDelay } else { plist["RunAtLoad"] = true }
-        // A program already named by its host path (in DEV or RR) is used as
-        // is; any other path is under RR (launchd-sim.md §4.3).
-        if let program = oneshots[index].first, program.hasPrefix(dev + "/") || program.hasPrefix(runtimeRoot + "/") {
-            plist["RootedSimulatorPath"] = true
-        }
-        return plist
+    /// The host path of one-shot `index`'s program: a path inside DEV or RR
+    /// is used as is (704 takes host paths, launch-sim-control.md §3.6); any
+    /// other absolute path names a file under RR.
+    func oneshotProgram(_ index: Int) -> String {
+        let program = oneshots[index].first ?? "/"
+        if program.hasPrefix(dev + "/") || program.hasPrefix(runtimeRoot + "/") { return program }
+        return runtimeRoot + program
     }
 
     /// The job directories of the runtime, in CoreSimulator's order (launchd-sim.md §4.1).
@@ -248,12 +263,10 @@ struct DeviceLayout {
             "ExtensionWatchdog": 0,
             "LogServiceLifecycle": true,
             "LogToFlatFile": true,
-            // CoreSimulator writes true and then binds the session over the
-            // control channel (launchd-sim.md §6.1 `startsession`). Ycode has
-            // no bind yet, and with true launchd_sim defers the spawn of every
-            // `system` job (xpcproxy_sim never gets its answer; level 3, our
-            // runs), so Ycode writes false (stage4c-contract.md §9).
-            "RequireDomainBinding": false,
+            // As CoreSimulator: the host binds the session over the control
+            // channel (700) right after the 808 reply; until then `system`
+            // jobs are held (launch-sim-control.md §3.1, §7 item 3).
+            "RequireDomainBinding": true,
             "SIGTERMTimeout": 3,
             "UseGuardMalloc": false,
         ]
@@ -285,10 +298,26 @@ struct DeviceLayout {
         if fm.fileExists(atPath: ycodeJobsPath) { try fm.removeItem(atPath: ycodeJobsPath) }
         for path in jobPaths where !fm.fileExists(atPath: path) { try dir(path) }
         for index in oneshots.indices {
-            try writeXML(oneshotPlist(index), to: ycodeJobsPath + "/" + oneshotLabel(index) + ".plist")
             for err in [false, true] where fm.fileExists(atPath: oneshotOutputHostPath(index, err: err)) {
                 try fm.removeItem(atPath: oneshotOutputHostPath(index, err: err))
             }
+        }
+        // Stage 7: the app bundle and ylaunch, copied where the guest can
+        // read them; the app's previous stdio files are removed.
+        if let installApp {
+            try dir(appsDirectory)
+            let target = stagedAppGuestPath!
+            if fm.fileExists(atPath: target) { try fm.removeItem(atPath: target) }
+            try fm.copyItem(atPath: installApp, toPath: target)
+        }
+        if let ylaunchPath {
+            guard let tools = guestTools, fm.fileExists(atPath: tools + "/ylaunch") else {
+                throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: (guestTools ?? "?") + "/ylaunch"])
+            }
+            try dir((ylaunchPath as NSString).deletingLastPathComponent)
+            if fm.fileExists(atPath: ylaunchPath) { try fm.removeItem(atPath: ylaunchPath) }
+            try fm.copyItem(atPath: tools + "/ylaunch", toPath: ylaunchPath)
+            for path in [appStdoutHostPath, appStderrHostPath] where fm.fileExists(atPath: path) { try fm.removeItem(atPath: path) }
         }
         // Copies, never links: the runtime's files stay where they are and
         // nothing from the runtime enters the repository.

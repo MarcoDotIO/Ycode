@@ -211,6 +211,21 @@ public final class MachHostTask: @unchecked Sendable {
         }
     }
 
+    /// A fileport (`processes.md` §4.9) holding `file`, with one send right
+    /// named in the host task (as `fileport_makeport` gives a process).
+    /// The port lives while send rights to it exist. Returns its name.
+    public func makeFileport(_ file: DarwinOpenFile) throws -> UInt32 {
+        try lock.withLock {
+            let p = ipc.newPort()
+            p.kernelObject = .fileport(serial: p.serial)
+            p.fileportFile = file
+            p.srights = 1
+            let (name, ok) = ipc.copyout(.send(p))
+            guard ok else { throw MachHostError(MachKern.noSpace) }
+            return name
+        }
+    }
+
     /// A new port set. Returns its name.
     public func makePortSet() throws -> UInt32 {
         try lock.withLock {

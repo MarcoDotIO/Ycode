@@ -55,11 +55,26 @@ import YcodeDarwinABI
         #expect(env.svc(set, [task, 0x2, task, 1, 6]).1.x[0] == 4)             // not a thread
     }
 
+    @Test func vmReadCopiesIntoNewMemory() throws {
+        let env = try Env()
+        let task = UInt64(WellKnownPort.task)
+        try env.put([9, 8, 7, 6, 5], at: s + 0x123)
+        #expect(env.svc(0x7963_2014, [task, s + 0x123, 5, s + 0x800, s + 0x808]).1.x[0] == 0)
+        let data = try env.u64(s + 0x800)
+        #expect(data & 0x3FFF == (s + 0x123) & 0x3FFF && data != s + 0x123)
+        #expect(try env.space.read(va: data, count: 5) == [9, 8, 7, 6, 5])
+        #expect(try env.u32(s + 0x808) == 5)
+        // Unmapped source; another task's port.
+        #expect(env.svc(0x7963_2014, [task, 0x10, 5, s + 0x800, s + 0x808]).1.x[0] == 1)
+        #expect(env.svc(0x7963_2014, [UInt64(WellKnownPort.thread), s, 5, s + 0x800, s + 0x808]).1.x[0] == 4)
+    }
+
     @Test func controlsAnsweredAsOnTheMac() throws {
         let env = try Env()
         #expect(env.svc(440, [1, 100, 0, 0, 0]).1.x[0] == 1)        // memorystatus_control: EPERM
         #expect(env.svc(440, [18, 100, 0, 0, 0]).1.x[0] == 22)      // freezer: EINVAL
         #expect(env.svc(165, [s, 0x300, 501, 0]).1.x[0] == 45)      // quotactl: ENOTSUP
+        #expect(env.svc(89, []).1.x[0] == 256)                      // getdtablesize: soft NOFILE
         try env.put(le32(0x10), at: s)
         #expect(env.svc(483, [0, s, 4]).1.x[0] == 1)                // csr_check: EPERM
         try env.put(le32(0xFFFF), at: s)

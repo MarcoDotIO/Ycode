@@ -517,6 +517,9 @@ final class GuestImageInstance: @unchecked Sendable {
                     + " (boot info and frames are also cleaned to PoC before a vCPU's first run)")
             }
             self.pool = pool
+            // A thread ended and its vCPU is free: workqueue requests that
+            // waited for a vCPU may start now.
+            pool.onParked = { [weak kernel = self.kernel] in kernel?.retryPendingWorkqueue() }
 
             // Image attribution.
             let images = ImageMap(cache: config.cacheIndex)
@@ -926,6 +929,8 @@ final class PoolThreadHost: ThreadHost {
     /// Weak: a kernel that outlives its image never keeps the pool alive.
     weak var pool: VCPUPool?
     init(pool: VCPUPool) { self.pool = pool }
+
+    var canStartThread: Bool { pool?.hasRoom ?? false }
 
     func startThread(_ start: ThreadStartState, context: ThreadContext) throws -> Int {
         guard let pool else { throw Exhausted(capacity: 0) }

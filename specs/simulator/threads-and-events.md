@@ -1475,3 +1475,12 @@ Commands are CREATE (1) and DESTROY (2). It is 36 bytes, packed:
 - The workqueue thread flags `WQ_FLAG_THREAD_TSD_BASE_SET` (0x0020_0000),
   `_WORKLOOP` (0x0040_0000), `_OUTSIDEQOS` (0x0080_0000), and
   `_COOPERATIVE` (0x0100_0000).
+
+## Addendum: Ycode workqueue rule (stage 7, 2026-10-12)
+
+A workqueue upcall delivers kevents (disabling `EV_DISPATCH` knotes and
+receiving Mach messages into the new thread's stack), so the VMM must
+**not run an upcall unless a vCPU is free for it**; otherwise the request
+stays pending, and a vCPU becoming free (a thread ending) pumps pending
+requests again. Delivering first and failing to start the thread lost
+events and stalled `launchd_sim`'s bootstrap port for good (level 3).

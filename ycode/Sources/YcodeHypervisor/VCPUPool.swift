@@ -284,6 +284,19 @@ public final class VCPUPool: @unchecked Sendable {
         }
     }
 
+    /// True when `start` would find a vCPU now (an idle one, or room for a new one).
+    public var hasRoom: Bool {
+        lock.withLock { !ending.load(ordering: .relaxed) && (!idle.isEmpty || workers.count < capacity) }
+    }
+
+    /// Called on a vCPU's host thread (no lock held) each time a thread ends
+    /// and its vCPU returns to the idle list.
+    public var onParked: (() -> Void)? {
+        get { lock.withLock { parkedHandler } }
+        set { lock.withLock { parkedHandler = newValue } }
+    }
+    private var parkedHandler: (() -> Void)?
+
     private func spawn(_ worker: Worker) throws {
         var attributes = pthread_attr_t()
         pthread_attr_init(&attributes)
@@ -340,7 +353,9 @@ public final class VCPUPool: @unchecked Sendable {
             activeThreads -= 1
             if case .parked = end, !ending.load(ordering: .relaxed) {
                 idle.append(worker)
+                let parked = parkedHandler
                 lock.unlock()
+                parked?()
                 continue
             }
             lock.unlock()

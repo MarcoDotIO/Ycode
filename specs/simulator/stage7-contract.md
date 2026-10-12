@@ -155,3 +155,23 @@ Mac: a throwaway `launchd_sim` under our harness registers our own port
 under the name via the control channel's 701 and forwards to the real
 host service, recording both directions), 4 (symbol and class names). No
 disassembly.
+
+## 7. Progress (checkpoint 3, 2026-10-12)
+
+- 7-i item 1 done: host control client (`LaunchSimControl.swift`,
+  `DeviceSession.swift`): bind, `RequireDomainBinding = true`, real
+  one-shots through 704/705 with fileport stdio, session teardown → clean
+  `launchd_sim` exit 0. Full boot unchanged (118 jobs with a pid).
+- 7-i items 2–3 done: `ylaunch` (`ycode/SimShim/guest-tests/stage7/`) and
+  `--install-app`, `--launch`, `--app-arg`, `--app-env`, `--guest-tools`.
+- The intermittent `launchd_sim` stall was a workqueue bug (events
+  delivered before a vCPU was secured); fixed (`threads-and-events.md`
+  addendum).
+- **Blocker for install:** installd and installcoordinationd issue sandbox
+  extensions (`__mac_syscall("Sandbox", 7, …)`); Ycode answers ENOPOLICY
+  and the install fails ("Could not provide access to staging
+  directory"). Next: specify sandbox extension issue/consume/release from
+  levels 3 (our probe on the Mac calling the public-by-name
+  `sandbox_extension_*` functions; our own Ycode runs) and implement a
+  permissive answer. **Blocker for launch:** display services
+  (SimFramebuffer §4–§5, IOSurface §6).

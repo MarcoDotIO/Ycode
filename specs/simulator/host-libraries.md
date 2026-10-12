@@ -473,3 +473,13 @@ FIND returns 0). A level-3 probe on the Mac's simulator can confirm them.
 csops entitlement blobs: for simulator builds the `__TEXT,__entitlements`
 section is served as blob magic `0xFADE7171` (8-byte header + plist), for
 signed images only.
+
+### 11.4 Stage 7 additions
+
+- Private routine **20** `mach_vm_read(task, addr, size, &data, &count)`:
+  copies into new memory keeping the in-page offset; caller's own task
+  only (xnu `vm_user.c`). `vm_copy`/`mach_vm_copy` and
+  `vm_read_overwrite` use the existing private copy routine.
+- `mach_port_extract_right` is a MIG client call (3215 on the task port),
+  not a private routine.
+- `getdtablesize` (BSD 89) returns the soft `RLIMIT_NOFILE`.

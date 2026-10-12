@@ -185,6 +185,14 @@ extension DarwinKernel {
         case BSD2.readv, BSD2.writev:
             return .value(try vectoredIO(write: n == BSD2.writev, a, &call, mem))
 
+        case 89:
+            // getdtablesize(): the descriptor-table size, i.e. the soft
+            // RLIMIT_NOFILE as the file system enforces it (xnu
+            // bsd/kern/kern_descrip.c getdtablesize; level 1). xpcproxy_sim
+            // sizes its stdio setup with it.
+            call = "getdtablesize()"
+            return .value(UInt64(fileSystem.maxDescriptors))
+
         case BSD2.ulockWait, BSD2.ulockWait2:
             return .value(try ulockWait(n, a, &call, mem))
         case BSD2.ulockWake:

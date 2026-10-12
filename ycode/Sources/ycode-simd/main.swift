@@ -42,21 +42,41 @@
 // `--exec-args` takes every remaining argument as more argv for the root
 // program; `--env K=V` adds or replaces an environment variable.
 //
-// Stage 4c-iii (stage4c-contract.md §9): `--oneshot "/bin/launchctl print
-// system"` writes a RunAtLoad job plist (stdout/stderr in
-// /tmp/ycode-oneshot-<n>.{out,err}, i.e. DEV/data/tmp) into DEV/ycode-jobs;
-// `--runtime-job <label>` copies RR's `<label>.plist` (LaunchDaemons,
-// LaunchAngels, Developer LaunchDaemons) there. DEV/ycode-jobs is rebuilt on
-// every boot and appended to the job paths. The one-shot outputs are printed
-// at the end of the run. `--job-path` directories outside DEV and RR are
-// served read-only at their own guest path.
+// Stage 4c-iii (stage4c-contract.md §9), stage 7 (stage7-contract.md §3.2):
+// `--oneshot "/bin/launchctl print system"` runs the program once as a
+// one-shot of launchd_sim's control channel (704 spawn, 705 waitpid;
+// launch-sim-control.md §3.6), with stdout/stderr as fileports of
+// DEV/data/tmp/ycode-oneshot-<n>.{out,err}. A program path inside DEV or RR
+// is used as is; any other absolute path is under RR. The outputs and exit
+// statuses are printed at the end of the run. `--runtime-job <label>` copies
+// RR's `<label>.plist` (LaunchDaemons, LaunchAngels, Developer LaunchDaemons)
+// into DEV/ycode-jobs, which is rebuilt on every boot and appended to the job
+// paths. `--job-path` directories outside DEV and RR are served read-only at
+// their own guest path.
+//
+// The control channel: right after the 708 → 808 exchange the host binds the
+// session (700) with a port it keeps; the bootstrap plist says
+// `RequireDomainBinding = true`. At the end of a device run the host destroys
+// the session port and launchd_sim shuts the guest down and exits 0
+// (launch-sim-control.md §3.1); `--debug-no-session-end` keeps the old end
+// (every process is killed at --timeout-ms).
+//
+// Stage 7 (stage7-contract.md §3.2 item 3; app-install-launch.md §4.6):
+// `--install-app <host .app>` copies the bundle into DEV/data/tmp/ycode-apps
+// and installs it with the guest helper `ylaunch install` (InstallCoordination)
+// run as a one-shot; `--launch <bundle id>` then opens it with `ylaunch open`
+// (FrontBoardServices, debug options) with stdout/stderr in
+// /tmp/ycode-app.{out,err} (DEV/data/tmp), plus `--app-arg`/`--app-env`.
+// Both outputs are printed at the end. `ylaunch` is taken from
+// `--guest-tools <dir>` (default: <shim dir>/guest-tests/stage7, as built by
+// SimShim/guest-tests/build-stage7.sh) and copied to DEV/data/tmp/ycode-tools.
 //
 // Stage 6 (stage6-contract.md §1): `--runtime-paths` puts CoreSimulator's
 // four job directories first in `Paths` (RR/System/Library/LaunchDaemons,
 // RR/System/Library/LaunchAngels, RR/Developer/Library/LaunchDaemons,
 // DEV/data/Library/LaunchDaemons; launchd-sim.md §4.1); `--oneshot-delay S`
-// makes the one-shot jobs start S seconds after load (`StartInterval`,
-// not `RunAtLoad`), e.g. a `launchctl list` near the end of a boot.
+// makes the one-shots start S seconds after the bind, e.g. a `launchctl
+// list` near the end of a boot.
 //
 // `--debug-plist-bool KEY=true|false` replaces a top-level boolean of the
 // bootstrap plist (Ycode writes `RequireDomainBinding` false: it has no
@@ -94,7 +114,9 @@ let usage = """
                       [--env K=V]... [--host-bootstrap [--debug-bootstrap-discard]] [--exec-args <arg>...]
            ycode-simd --device <dir> --runtime-root <dir> [--udid <UDID>] [--job-path <dir>]... [--env K=V]...
                       [--runtime-paths] [--oneshot "/guest/program arg..."]... [--oneshot-delay S] [--runtime-job <label>]...
-                      [--debug-plist-bool KEY=true|false]...
+                      [--install-app <host .app>] [--launch <bundle id> [--app-arg A]... [--app-env K=V]...]
+                      [--guest-tools <dir with ylaunch>]
+                      [--debug-plist-bool KEY=true|false]... [--debug-no-session-end]
                       [--trace] [--keep-going] [--timeout-ms N] [--host-libs <dir>] [--debug-bootstrap-discard]
                       [--exec-args <arg>...]
                       [--debug-extra-images N [--debug-extra-exec <macho>] [--debug-extra-arg A]... [--debug-extra-wait]]
@@ -129,15 +151,26 @@ struct Options {
     var devicePath: String?
     var udid: String?
     var jobPaths: [String] = []
-    /// Device mode: Ycode-written RunAtLoad jobs (argv split on spaces) and
-    /// runtime job plists by label, both in DEV/ycode-jobs.
+    /// Device mode: one-shot programs (argv split on spaces, run through the
+    /// control channel) and runtime job plists by label (in DEV/ycode-jobs).
     var oneshots: [[String]] = []
     var runtimeJobs: [String] = []
     /// Device mode: CoreSimulator's four job directories (launchd-sim.md §4.1).
     var runtimePaths = false
-    /// Device mode: one-shot jobs start this many seconds after load
-    /// (`StartInterval`) instead of at load.
+    /// Device mode: one-shots start this many seconds after the bind.
     var oneshotDelay: Int?
+    /// Debug: at the end of a device run, kill every process instead of
+    /// ending the control session (launchd_sim's clean shutdown).
+    var debugNoSessionEnd = false
+    /// Stage 7: install a host `.app`, launch a bundle id, with these
+    /// arguments and environment; `ylaunch` comes from `guestTools`.
+    var installApp: String?
+    var launchBundleID: String?
+    var appArguments: [String] = []
+    var appEnvironment: [String] = []
+    var guestTools: String?
+    /// Debug: the identity (pid, uid, gid) the host task's messages carry.
+    var debugHostIdentity: (pid: Int32, uid: UInt32, gid: UInt32)?
     /// Debug: at the end of a device run, report every image's vCPUs
     /// (running, parked, blocked in which trap), as --trace does.
     var debugThreadReport = false
@@ -257,6 +290,19 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--runtime-job": options.runtimeJobs.append(value(for: argument))
         case "--runtime-paths": options.runtimePaths = true
         case "--debug-thread-report": options.debugThreadReport = true
+        case "--debug-no-session-end": options.debugNoSessionEnd = true
+        case "--install-app": options.installApp = value(for: argument)
+        case "--launch": options.launchBundleID = value(for: argument)
+        case "--app-arg": options.appArguments.append(value(for: argument))
+        case "--app-env":
+            let pair = value(for: argument)
+            guard let eq = pair.firstIndex(of: "="), eq != pair.startIndex else { die("--app-env needs K=V", status: 64) }
+            options.appEnvironment.append(pair)
+        case "--guest-tools": options.guestTools = value(for: argument)
+        case "--debug-host-identity":
+            let parts = value(for: argument).split(separator: ":").compactMap { Int64($0) }
+            guard parts.count == 3 else { die("--debug-host-identity needs PID:UID:GID", status: 64) }
+            options.debugHostIdentity = (Int32(parts[0]), UInt32(parts[1]), UInt32(parts[2]))
         case "--trace-name": options.traceNames.insert(value(for: argument))
         case "--trace-pid":
             guard let n = Int32(value(for: argument)) else { die("--trace-pid needs a pid", status: 64) }

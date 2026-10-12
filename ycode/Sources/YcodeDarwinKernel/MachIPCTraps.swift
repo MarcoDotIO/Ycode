@@ -58,6 +58,8 @@ extension MachIPC {
         public static let threadGetExceptionPorts: UInt32 = 0x7963_2012
         /// `thread_set_exception_ports(thread, mask, port, behavior, flavor)`.
         public static let threadSetExceptionPorts: UInt32 = 0x7963_2013
+        /// `mach_vm_read(task, addr, size, &data, &count)` within the caller's task.
+        public static let vmRead: UInt32 = 0x7963_2014
     }
 
     /// `TASK_BOOTSTRAP_PORT`.
@@ -747,6 +749,38 @@ extension MachIPC {
                 return kr(MachKern.invalidAddress)
             }
             return kr(MachKern.success, " [\(entries.count) entries]")
+
+        case Routine.vmRead:
+            // xnu osfmk/vm/vm_user.c mach_vm_read (level 1): a copy of
+            // [addr, addr+size) in new memory of the caller; the returned
+            // address keeps the source's offset within its page (the copy
+            // is of whole pages), count = size. Unmapped source:
+            // KERN_INVALID_ADDRESS. Ycode reads only the caller's own task.
+            call = "mach_vm_read(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), data=\(hx(a[3])), count=\(hx(a[4])))"
+            guard isTaskSelf(u32(0)) else { return kr(MachKern.invalidArgument, " [only the caller's task]") }
+            let page = VMLayout.pageSize
+            guard a[2] > 0, a[2] <= UInt64(UInt32.max), a[1] <= UInt64.max - a[2] else {
+                return kr(a[2] == 0 ? MachKern.success : MachKern.invalidArgument)
+            }
+            let start = a[1] & ~(page - 1), end = (a[1] + a[2] + page - 1) & ~(page - 1)
+            var cursor = start
+            for r in memory.regions(overlapping: start..<end) {
+                guard r.va <= cursor, r.protection.contains(.read) else { return kr(MachKern.invalidAddress) }
+                cursor = max(cursor, r.end)
+            }
+            guard cursor >= end, let bytes = try? memory.read(va: start, count: Int(end - start)) else {
+                return kr(MachKern.invalidAddress)
+            }
+            guard let va = try? memory.mapAnonymous(at: nil, size: end - start, protection: .readWrite, hint: nil) else {
+                return kr(MachKern.resourceShortage)
+            }
+            guard (try? memory.write(va: va, bytes: bytes)) != nil,
+                  (try? memory.write(va: a[3], bytes: le64(va + (a[1] - start)))) != nil,
+                  write32(a[4], UInt32(a[2])) else {
+                try? memory.unmap(va: va, size: end - start)
+                return kr(MachKern.invalidAddress)
+            }
+            return kr(MachKern.success, " [\(hx(va + (a[1] - start)))]")
 
         case Routine.taskThreads:
             call = "task_threads(task=\(hx(u32(0))), list=\(hx(a[1])), count=\(hx(a[2])))"
