@@ -1,0 +1,969 @@
+// VulkanMetalBackend: the Metal host service's GPU back end on Vulkan
+// (stage8-contract.md §5.2–§5.3, owner VK). Written from
+// specs/simulator/metal-sim-protocol.md, specs/simulator/metal-shaders.md
+// §4–§5, the Vulkan specification and public Metal documentation.
+//
+// Model:
+// - One Vulkan device and queue; one timeline semaphore numbers every
+//   queue submission ("serial"). A completion thread waits for serials in
+//   order, recycles their memory, destroys released objects whose last use
+//   is done, and calls the Metal completion handlers.
+// - Every image lives in VK_IMAGE_LAYOUT_GENERAL. Passes are separated by
+//   full memory barriers (Metal tracks hazards for the guest; we do not
+//   analyse them), command buffers start with one and end with a barrier to
+//   host reads.
+// - Shared buffers are the guest's pages, imported with
+//   VK_EXT_external_memory_host (4096-aligned containing range, cached per
+//   backing object). Private buffers are device memory.
+// - Textures are host-owned images. IOSurface textures also link to the
+//   surface's memory: a command buffer that reads one copies the surface in
+//   first, one that writes it copies it back before completion, so the
+//   pixels are in surface memory before `scheduled` is called.
+// - Shaders: translated by a ShaderTranslator (ycode-airc), bound per the
+//   Ycode Metal ABI (ShaderTranslation.swift).
+
+import CVulkan
+import Foundation
+import YcodeMetalHost
+
+public struct VulkanBackendError: Error, CustomStringConvertible, Sendable {
+    public var description: String
+    public init(_ d: String) { description = d }
+}
+
+public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
+    public struct Options: Sendable {
+        public var maxSampledImages: UInt32 = 0
+        public var maxSamplers: UInt32 = 0
+        public var maxStorageImages: UInt32 = 0
+        public var validation = false
+        /// Size of each transient chunk (argument tables, staging).
+        public var transientChunkSize = 4 << 20
+        public var log: (@Sendable (String) -> Void)?
+        public init() {}
+    }
+
+    public let isAvailable: Bool
+    /// Why there is no device (nil when available).
+    public let unavailableReason: String?
+    public let deviceName: String
+    public let options: Options
+
+    let ctx: UnsafeMutablePointer<yvk_context>
+    let fn: yvk_dispatch
+    let translator: ShaderTranslator?
+    /// The lock for every table below (and the completion condition).
+    let cond = NSCondition()
+
+    // Objects.
+    var buffers: [MetalHandle: VKBuffer] = [:]
+    var textures: [MetalHandle: VKTexture] = [:]
+    var samplers: [MetalHandle: VKSampler] = [:]
+    var samplerCache: [SamplerKey: VKSampler] = [:]
+    var depthStencilStates: [MetalHandle: MetalDepthStencilDescriptor] = [:]
+    var functions: [MetalHandle: VKFunction] = [:]
+    var renderPipelines: [MetalHandle: VKRenderPipeline] = [:]
+    var computePipelines: [MetalHandle: VKComputePipeline] = [:]
+    var events: [MetalHandle: VKEvent] = [:]
+    var imports: [AllocationKey: VKAllocation] = [:]
+    var imageReferences: [ObjectIdentifier: Int] = [:]
+    var formatCache: [UInt32: VulkanPixelFormat?] = [:]
+    var textureIndices: IndexAllocator
+    var samplerIndices: IndexAllocator
+    var dummyImage: VKImage?
+    var dummyView: VkImageView?
+    var defaultSampler: VkSampler?
+    /// 64 KiB of zeros that unknown buffer handles point at.
+    var dummyBuffer = yvk_buffer()
+    var dummyBufferAddress: UInt64 { dummyBuffer.address }
+
+    // Translation cache (own lock: translation runs outside `cond`).
+    let translationLock = NSLock()
+    var translations: [TranslationKey: TranslatedShader] = [:]
+
+    // Submission.
+    var timeline: VkSemaphore?
+    var lastSubmitted: UInt64 = 0
+    var completedSerial: UInt64 = 0
+    var setup: Recording?
+    var freeCommandBuffers: [VkCommandBuffer] = []
+    var freeChunks: [TransientChunk] = []
+    var pending: [PendingSubmission] = []
+    var graveyard: [(serial: UInt64, action: () -> Void)] = []
+    var deviceLost = false
+    var running = true
+    var completionThread: Thread?
+    var statistics = VulkanBackendStatistics()
+
+    struct PendingSubmission {
+        var serial: UInt64
+        var cb: VkCommandBuffer?
+        var chunks: [TransientChunk]
+        var status: Int
+        var scheduled: (@Sendable () -> Void)?
+        var completed: (@Sendable (Int) -> Void)?
+        /// Runs on the completion thread after the GPU finished (always called).
+        var after: ((_ ok: Bool) -> Void)?
+    }
+
+    struct TranslationKey: Hashable {
+        var hash: UInt64, count: Int, linked: UInt64, linkedCount: Int
+    }
+
+    public init(translator: ShaderTranslator? = nil, options: Options = Options()) {
+        self.options = options
+        self.translator = translator ?? AircProcessTranslator.locate().map { AircProcessTranslator(executable: $0) }
+        ctx = .allocate(capacity: 1)
+        ctx.initialize(to: yvk_context())
+        var opts = yvk_context_options(maxSampledImages: options.maxSampledImages, maxSamplers: options.maxSamplers,
+                                       maxStorageImages: options.maxStorageImages, validation: options.validation ? 1 : 0)
+        var err = [CChar](repeating: 0, count: 512)
+        let r = yvk_context_create(ctx, &opts, &err, err.count)
+        fn = yvk_fns().pointee
+        if r != 0 {
+            isAvailable = false
+            unavailableReason = cString(err)
+            deviceName = ""
+            textureIndices = IndexAllocator(capacity: 0)
+            samplerIndices = IndexAllocator(capacity: 0)
+            return
+        }
+        deviceName = withUnsafeBytes(of: ctx.pointee.properties.deviceName) { raw in
+            String(cString: raw.bindMemory(to: CChar.self).baseAddress!)
+        }
+        textureIndices = IndexAllocator(capacity: min(ctx.pointee.heapSampledImages, max(ctx.pointee.heapStorageImages, 1) << 8))
+        samplerIndices = IndexAllocator(capacity: ctx.pointee.heapSamplers)
+        timeline = yvk_timeline_create(ctx, 0)
+        isAvailable = timeline != nil
+        unavailableReason = timeline == nil ? "timeline semaphore creation failed" : nil
+        guard isAvailable else { return }
+        do {
+            try createDummies()
+        } catch {
+            log("dummy resources: \(error)")
+        }
+        let thread = Thread { [unowned self] in self.completionLoop() }
+        thread.name = "ycode-vulkan-completion"
+        completionThread = thread
+        thread.start()
+    }
+
+    /// Waits for all work, stops the completion thread and frees the device.
+    public func shutdown() {
+        cond.lock()
+        guard running else { cond.unlock(); return }
+        running = false
+        cond.broadcast()
+        cond.unlock()
+        if isAvailable {
+            while true {
+                cond.lock()
+                let done = completionThread == nil
+                cond.unlock()
+                if done { break }
+                usleep(1000)
+            }
+            _ = fn.vkDeviceWaitIdle!(ctx.pointee.device)
+            destroyEverything()
+        }
+        yvk_context_destroy(ctx)
+    }
+
+    deinit {
+        shutdown()
+        ctx.deallocate()
+    }
+
+    /// YCODE_VULKAN_SKIP_DRAWS=1 (debugging): record no draws.
+    var skipDraws: Bool { ProcessInfo.processInfo.environment["YCODE_VULKAN_SKIP_DRAWS"] != nil }
+
+    /// YCODE_VULKAN_LOG=1: log object creation details.
+    var verbose: Bool { ProcessInfo.processInfo.environment["YCODE_VULKAN_LOG"] != nil }
+
+    func log(_ message: String) {
+        options.log?("[vulkan] " + message)
+    }
+
+    var device: VkDevice? { ctx.pointee.device }
+
+    // MARK: - MetalBackend: device
+
+    public func limits() -> MetalLimits {
+        guard isAvailable else { return MetalLimits() }
+        let l = ctx.pointee.properties.limits
+        let maxInv = UInt64(min(l.maxComputeWorkGroupInvocations, 1024))
+        return MetalLimits(maxThreadsPerThreadgroup: (min(UInt64(l.maxComputeWorkGroupSize.0), maxInv),
+                                                      min(UInt64(l.maxComputeWorkGroupSize.1), maxInv),
+                                                      min(UInt64(l.maxComputeWorkGroupSize.2), maxInv)),
+                           maxThreadgroupMemoryLength: UInt64(min(l.maxComputeSharedMemorySize, 32768)))
+    }
+
+    /// The Vulkan device's subgroup size (Metal's thread execution width).
+    public var subgroupSize: Int { Int(ctx.pointee.subgroupSize) }
+
+    /// The Vulkan pixel format a Metal pixel format gets on this device, nil
+    /// when unsupported.
+    public func vulkanFormat(forMetal metal: UInt32) -> VulkanPixelFormat? {
+        cond.lock(); defer { cond.unlock() }
+        return resolveFormat(metal)
+    }
+
+    func resolveFormat(_ metal: UInt32) -> VulkanPixelFormat? {
+        if let cached = formatCache[metal] { return cached }
+        var result: VulkanPixelFormat?
+        if var f = metalPixelFormatTable(metal) {
+            let usable = { (f: VulkanPixelFormat) -> Bool in
+                let feats = yvk_format_features(self.ctx, f.format)
+                if f.isDepth || f.isStencil { return feats & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT.rawValue != 0 }
+                return feats & (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT.rawValue | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT.rawValue) != 0
+            }
+            if metal == 1 && (!(ctx.pointee.features.formatA8 != 0) || !usable(f)) {
+                // A8 stored as R8; views read alpha from red.
+                f.format = VK_FORMAT_R8_UNORM
+                f.swizzle = VkComponentMapping(r: VK_COMPONENT_SWIZZLE_ZERO, g: VK_COMPONENT_SWIZZLE_ZERO,
+                                               b: VK_COMPONENT_SWIZZLE_ZERO, a: VK_COMPONENT_SWIZZLE_R)
+                f.approximate = true
+            }
+            if !usable(f) && f.isStencil {
+                let combined = VK_IMAGE_ASPECT_DEPTH_BIT.rawValue | VK_IMAGE_ASPECT_STENCIL_BIT.rawValue
+                for alt in [VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT] where alt != f.format {
+                    var g = f
+                    g.format = alt
+                    g.aspect = combined
+                    if metal == 253 || metal == 261 || metal == 262 { g.viewAspect = VK_IMAGE_ASPECT_STENCIL_BIT.rawValue }
+                    if usable(g) { f = g; break }
+                }
+            }
+            if usable(f) { result = f }
+        }
+        formatCache[metal] = result
+        return result
+    }
+
+    // MARK: - Buffers
+
+    public func createBuffer(_ handle: MetalHandle, length: Int, storage: MetalStorageMode, guestMemory: GuestSharedRegion?) throws {
+        guard isAvailable else { throw VulkanBackendError("no GPU") }
+        cond.lock(); defer { cond.unlock() }
+        let allocation: VKAllocation
+        let offset: Int
+        if let g = guestMemory {
+            (allocation, offset) = try importRegion(g)
+        } else {
+            var b = yvk_buffer()
+            var err = [CChar](repeating: 0, count: 256)
+            let kind = storage == .private || storage == .memoryless ? YVK_MEMORY_DEVICE : YVK_MEMORY_HOST
+            guard yvk_buffer_create(ctx, VkDeviceSize(max(length, 4)), kind, nil, &b, &err, err.count) == 0 else {
+                throw VulkanBackendError(cString(err))
+            }
+            allocation = VKAllocation(buffer: b, base: b.mapped, key: nil, owner: nil)
+            offset = 0
+        }
+        allocation.references += 1
+        if let old = buffers[handle] { releaseBuffer(old) }
+        buffers[handle] = VKBuffer(allocation: allocation, offset: offset, length: length, storage: storage)
+        statistics.buffers += 1
+    }
+
+    /// Imports guest memory (cached by backing object). Returns the
+    /// allocation and the region's offset in it.
+    func importRegion(_ g: GuestSharedRegion) throws -> (VKAllocation, Int) {
+        let align = UInt(ctx.pointee.hostPointerAlignment)
+        func range(_ p: UnsafeMutableRawPointer, _ n: Int) -> (UInt, Int) {
+            let start = UInt(bitPattern: p) & ~(align - 1)
+            let end = (UInt(bitPattern: p) + UInt(max(n, 1)) + align - 1) & ~(align - 1)
+            return (start, Int(end - start))
+        }
+        let regionStart = UInt(bitPattern: g.pointer)
+        // Prefer one import of the whole backing object.
+        var candidates: [(UInt, Int)] = [range(g.objectPointer, g.objectLength)]
+        let tight = range(g.pointer, g.length)
+        if tight != candidates[0] { candidates.append(tight) }
+        var lastError = ""
+        for (start, length) in candidates where regionStart >= start && regionStart + UInt(g.length) <= start + UInt(length) {
+            let key = AllocationKey(objectID: g.objectID, start: start, length: length)
+            if let a = imports[key] { return (a, Int(regionStart - start)) }
+            // A cached import of the object that contains this region also serves.
+            if let a = imports.first(where: { $0.key.objectID == g.objectID && $0.key.start <= regionStart &&
+                                               regionStart + UInt(g.length) <= $0.key.start + UInt($0.key.length) })?.value {
+                return (a, Int(regionStart - a.key!.start))
+            }
+            var b = yvk_buffer()
+            var err = [CChar](repeating: 0, count: 256)
+            let ptr = UnsafeMutableRawPointer(bitPattern: start)
+            if yvk_buffer_create(ctx, VkDeviceSize(length), YVK_MEMORY_IMPORT_HOST, ptr, &b, &err, err.count) == 0 {
+                let a = VKAllocation(buffer: b, base: ptr, key: key, owner: g.owner)
+                imports[key] = a
+                statistics.imports += 1
+                return (a, Int(regionStart - start))
+            }
+            lastError = cString(err)
+        }
+        throw VulkanBackendError("import of guest memory \(g.pointer) (+\(g.length)) failed: \(lastError)")
+    }
+
+    func releaseAllocationReference(_ a: VKAllocation) {
+        a.references -= 1
+        guard a.references <= 0 else { return }
+        if let key = a.key { imports[key] = nil }
+        deferDestroy { [ctx] in yvk_buffer_destroy(ctx, &a.buffer) }
+    }
+
+    func releaseBuffer(_ b: VKBuffer) {
+        releaseAllocationReference(b.allocation)
+    }
+
+    public func gpuAddress(ofBuffer handle: MetalHandle) -> UInt64? {
+        cond.lock(); defer { cond.unlock() }
+        return buffers[handle]?.address
+    }
+
+    // MARK: - Textures
+
+    public func createTexture(_ handle: MetalHandle, _ desc: MetalTextureDescriptor, iosurface: IOSurfaceBacking?) throws {
+        guard isAvailable else { throw VulkanBackendError("no GPU") }
+        cond.lock(); defer { cond.unlock() }
+        guard let fmt = resolveFormat(desc.pixelFormat) else {
+            throw VulkanBackendError("pixel format \(desc.pixelFormat) is not supported")
+        }
+        let type = desc.textureType
+        let isCube = type == MetalTextureType.typeCube || type == MetalTextureType.typeCubeArray
+        let is3D = type == MetalTextureType.type3D
+        let is1D = type == MetalTextureType.type1D || type == MetalTextureType.type1DArray
+        let isArray = type == MetalTextureType.type1DArray || type == MetalTextureType.type2DArray ||
+            type == MetalTextureType.typeCubeArray || type == MetalTextureType.type2DMultisampleArray
+        let layers = (isArray ? max(desc.arrayLength, 1) : 1) * (isCube ? 6 : 1)
+        let samples = max(desc.sampleCount, 1)
+        let width = max(desc.width, 1), height = is1D ? 1 : max(desc.height, 1), depth = is3D ? max(desc.depth, 1) : 1
+        let levels = max(desc.mipmapLevelCount, 1)
+
+        let feats = yvk_format_features(ctx, fmt.format)
+        var usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT.rawValue | VK_IMAGE_USAGE_TRANSFER_DST_BIT.rawValue
+        if feats & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT.rawValue != 0 { usage |= VK_IMAGE_USAGE_SAMPLED_BIT.rawValue }
+        if fmt.isColor && feats & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT.rawValue != 0 && !fmt.isCompressed {
+            usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT.rawValue
+        }
+        if !fmt.isColor && feats & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT.rawValue != 0 {
+            usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT.rawValue
+        }
+        let wantsStorage = desc.usage & MetalTextureUsage.shaderWrite != 0 || desc.usage == 0
+        if wantsStorage && samples == 1 && feats & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT.rawValue != 0 {
+            usage |= VK_IMAGE_USAGE_STORAGE_BIT.rawValue
+        }
+        var flags: UInt32 = 0
+        if isCube { flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT.rawValue }
+        if is3D { flags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT.rawValue }
+        if fmt.isColor && !fmt.isCompressed { flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT.rawValue }
+        var info = yvk_image_info(type: is3D ? VK_IMAGE_TYPE_3D : (is1D ? VK_IMAGE_TYPE_1D : VK_IMAGE_TYPE_2D),
+                                  format: fmt.format, width: UInt32(width), height: UInt32(height), depth: UInt32(depth),
+                                  mipLevels: UInt32(levels), arrayLayers: UInt32(layers),
+                                  samples: VkSampleCountFlagBits(rawValue: UInt32(samples)), usage: usage, flags: flags)
+        var img = yvk_image()
+        var err = [CChar](repeating: 0, count: 256)
+        guard yvk_image_create(ctx, &info, &img, &err, err.count) == 0 else { throw VulkanBackendError(cString(err)) }
+        let image = VKImage(image: img, format: fmt, metalFormat: desc.pixelFormat, imageType: info.type, width: width,
+                            height: height, depth: depth, levels: levels, layers: layers, samples: samples, usage: usage)
+        if let s = iosurface {
+            do {
+                let (alloc, offset) = try importRegion(s.region)
+                alloc.references += 1
+                image.surface = SurfaceLink(allocation: alloc, offset: offset + s.planeOffset, bytesPerRow: s.bytesPerRow,
+                                            width: min(s.width, width), height: min(s.height, height), surfaceID: s.surfaceID,
+                                            limit: max(0, s.region.length - s.planeOffset))
+                if verbose {
+                    log("texture \(handle): IOSurface \(s.surfaceID) \(s.width)x\(s.height) pitch \(s.bytesPerRow) bpe \(s.bytesPerElement) " +
+                        "format \(String(s.pixelFormat, radix: 16)) bytes \(s.region.length); Metal format \(desc.pixelFormat) \(width)x\(height)")
+                }
+            } catch {
+                yvk_image_destroy(ctx, &image.image)
+                throw error
+            }
+        }
+        try initializeImage(image)
+        let tex = VKTexture(image: image, format: fmt, metalFormat: desc.pixelFormat, textureType: type, baseLevel: 0,
+                            levelCount: levels, baseLayer: 0, layerCount: layers, swizzle: fmt.swizzle, metalUsage: desc.usage)
+        imageReferences[ObjectIdentifier(image)] = 1
+        makeShaderViews(tex)
+        if let old = textures[handle] { releaseTexture(old) }
+        textures[handle] = tex
+        statistics.textures += 1
+    }
+
+    public func createTextureView(_ handle: MetalHandle, parent: MetalHandle, _ desc: MetalTextureViewDescriptor) throws {
+        guard isAvailable else { throw VulkanBackendError("no GPU") }
+        cond.lock(); defer { cond.unlock() }
+        guard let p = textures[parent] else { throw VulkanBackendError("texture view of unknown texture \(parent)") }
+        guard let fmt = resolveFormat(desc.pixelFormat == 0 ? p.metalFormat : desc.pixelFormat) else {
+            throw VulkanBackendError("pixel format \(desc.pixelFormat) is not supported")
+        }
+        let levels = desc.levels ?? 0..<p.levelCount
+        let slices = desc.slices ?? 0..<p.layerCount
+        let type = desc.textureType ?? p.textureType
+        // Metal view slices are 2D slices (cube faces count one each).
+        var outer = identitySwizzle
+        if let s = desc.swizzle, s.count == 4 {
+            outer = VkComponentMapping(r: vkSwizzle(s[0]), g: vkSwizzle(s[1]), b: vkSwizzle(s[2]), a: vkSwizzle(s[3]))
+        }
+        let tex = VKTexture(image: p.image, format: fmt, metalFormat: desc.pixelFormat == 0 ? p.metalFormat : desc.pixelFormat,
+                            textureType: type, baseLevel: p.baseLevel + levels.lowerBound, levelCount: max(levels.count, 1),
+                            baseLayer: p.baseLayer + slices.lowerBound, layerCount: max(slices.count, 1),
+                            swizzle: composeSwizzle(outer, over: fmt.swizzle), metalUsage: p.metalUsage)
+        imageReferences[ObjectIdentifier(p.image), default: 0] += 1
+        makeShaderViews(tex)
+        if let old = textures[handle] { releaseTexture(old) }
+        textures[handle] = tex
+    }
+
+    /// Moves a new image to GENERAL (recorded into the setup command buffer).
+    func initializeImage(_ image: VKImage) throws {
+        let rec = try setupRecording()
+        yvk_cmd_image_layout(rec.cb, image.vkImage, image.format.aspect, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL)
+        rec.empty = false
+        image.initialized = true
+    }
+
+    func viewType(for tex: VKTexture) -> VkImageViewType {
+        switch tex.textureType {
+        case MetalTextureType.type1D: return tex.layerCount > 1 ? VK_IMAGE_VIEW_TYPE_1D_ARRAY : VK_IMAGE_VIEW_TYPE_1D
+        case MetalTextureType.type1DArray: return VK_IMAGE_VIEW_TYPE_1D_ARRAY
+        case MetalTextureType.type2DArray, MetalTextureType.type2DMultisampleArray: return VK_IMAGE_VIEW_TYPE_2D_ARRAY
+        case MetalTextureType.typeCube: return VK_IMAGE_VIEW_TYPE_CUBE
+        case MetalTextureType.typeCubeArray: return VK_IMAGE_VIEW_TYPE_CUBE_ARRAY
+        case MetalTextureType.type3D: return VK_IMAGE_VIEW_TYPE_3D
+        default: return VK_IMAGE_VIEW_TYPE_2D
+        }
+    }
+
+    /// Creates the sampled and storage views of a texture and gives it a heap index.
+    func makeShaderViews(_ tex: VKTexture) {
+        let image = tex.image
+        guard tex.textureType != MetalTextureType.typeTextureBuffer else { return }
+        var err = [CChar](repeating: 0, count: 256)
+        if image.usage & VK_IMAGE_USAGE_SAMPLED_BIT.rawValue != 0,
+           yvk_format_features(ctx, tex.format.format) & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT.rawValue != 0 {
+            var vi = yvk_view_info(image: image.vkImage, viewType: viewType(for: tex), format: tex.format.format,
+                                   aspect: tex.format.viewAspect, baseLevel: UInt32(tex.baseLevel),
+                                   levelCount: UInt32(tex.levelCount), baseLayer: UInt32(tex.baseLayer),
+                                   layerCount: UInt32(tex.layerCount), components: tex.swizzle,
+                                   usage: VK_IMAGE_USAGE_SAMPLED_BIT.rawValue)
+            tex.shaderView = yvk_view_create(ctx, &vi, &err, err.count)
+            if tex.shaderView == nil { log("sampled view: \(cString(err))") }
+        }
+        if image.usage & VK_IMAGE_USAGE_STORAGE_BIT.rawValue != 0, tex.swizzle == identitySwizzle,
+           yvk_format_features(ctx, tex.format.format) & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT.rawValue != 0 {
+            var vi = yvk_view_info(image: image.vkImage, viewType: viewType(for: tex), format: tex.format.format,
+                                   aspect: tex.format.viewAspect, baseLevel: UInt32(tex.baseLevel),
+                                   levelCount: UInt32(tex.levelCount), baseLayer: UInt32(tex.baseLayer),
+                                   layerCount: UInt32(tex.layerCount), components: identitySwizzle,
+                                   usage: VK_IMAGE_USAGE_STORAGE_BIT.rawValue)
+            tex.storageView = yvk_view_create(ctx, &vi, &err, err.count)
+        }
+        guard tex.shaderView != nil || tex.storageView != nil, let index = textureIndices.allocate() else { return }
+        tex.heapIndex = index
+        if let v = tex.shaderView { yvk_heap_write_sampled(ctx, index, v) }
+        if let v = tex.storageView { yvk_heap_write_storage(ctx, index, v) }
+    }
+
+    /// A single-level, single-layer view for rendering into or copying.
+    func attachmentView(_ tex: VKTexture, level: Int, slice: Int) -> VkImageView? {
+        let key = level << 20 | slice
+        if let v = tex.attachmentViews[key] { return v }
+        let image = tex.image
+        let attachmentUsage = tex.format.isColor ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT.rawValue
+            : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT.rawValue
+        guard image.usage & attachmentUsage != 0 else { return nil }
+        var vi = yvk_view_info(image: image.vkImage, viewType: VK_IMAGE_VIEW_TYPE_2D, format: tex.format.format,
+                               aspect: tex.format.aspect, baseLevel: UInt32(tex.baseLevel + level), levelCount: 1,
+                               baseLayer: UInt32(image.imageType == VK_IMAGE_TYPE_3D ? slice : tex.baseLayer + slice),
+                               layerCount: 1, components: identitySwizzle, usage: attachmentUsage)
+        var err = [CChar](repeating: 0, count: 256)
+        let v = yvk_view_create(ctx, &vi, &err, err.count)
+        if v == nil { log("attachment view: \(cString(err))") }
+        tex.attachmentViews[key] = v
+        return v
+    }
+
+    func releaseTexture(_ tex: VKTexture) {
+        let views = [tex.shaderView, tex.storageView].compactMap { $0 } + Array(tex.attachmentViews.values.compactMap { $0 })
+        let index = tex.heapIndex
+        let image = tex.image
+        let id = ObjectIdentifier(image)
+        imageReferences[id, default: 1] -= 1
+        let destroyImage = imageReferences[id]! <= 0
+        if destroyImage {
+            imageReferences[id] = nil
+            if let s = image.surface { releaseAllocationReference(s.allocation) }
+        }
+        deferDestroy { [ctx, fn, weak self] in
+            for v in views { fn.vkDestroyImageView!(ctx.pointee.device, v, nil) }
+            if index != 0 { self?.textureIndices.release(index) }
+            if destroyImage { yvk_image_destroy(ctx, &image.image) }
+        }
+    }
+
+    // MARK: - Samplers and depth-stencil states
+
+    public func createSampler(_ handle: MetalHandle, _ desc: MetalSamplerDescriptor) throws {
+        guard isAvailable else { throw VulkanBackendError("no GPU") }
+        cond.lock(); defer { cond.unlock() }
+        samplers[handle] = try sampler(for: SamplerKey(desc))
+    }
+
+    func sampler(for key: SamplerKey) throws -> VKSampler {
+        if let s = samplerCache[key] { return s }
+        guard let index = samplerIndices.allocate() else { throw VulkanBackendError("sampler heap is full") }
+        var info = samplerInfo(key)
+        var err = [CChar](repeating: 0, count: 256)
+        guard let s = yvk_sampler_create(ctx, &info, &err, err.count) else {
+            samplerIndices.release(index)
+            throw VulkanBackendError(cString(err))
+        }
+        yvk_heap_write_sampler(ctx, index, s)
+        let v = VKSampler(sampler: s, heapIndex: index, key: key)
+        samplerCache[key] = v
+        statistics.samplers += 1
+        return v
+    }
+
+    func samplerInfo(_ k: SamplerKey) -> yvk_sampler_info {
+        let mirror = ctx.pointee.features.samplerMirrorClampToEdge != 0
+        var i = yvk_sampler_info()
+        i.magFilter = k.magFilter == 1 ? VK_FILTER_LINEAR : VK_FILTER_NEAREST
+        i.minFilter = k.minFilter == 1 ? VK_FILTER_LINEAR : VK_FILTER_NEAREST
+        i.mipmapMode = k.mipFilter == 2 ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST
+        i.addressU = vkAddressMode(k.s, mirrorClampSupported: mirror)
+        i.addressV = vkAddressMode(k.t, mirrorClampSupported: mirror)
+        i.addressW = vkAddressMode(k.r, mirrorClampSupported: mirror)
+        i.minLod = max(k.lodMin, 0)
+        i.maxLod = min(k.lodMax, 1000)
+        if k.mipFilter == 0 {
+            // Not mipmapped: level 0 only (the Vulkan spec's recommended emulation).
+            i.minLod = 0
+            i.maxLod = 0.25
+        }
+        i.borderColor = [k.s, k.t, k.r].contains(5) ? vkBorderColor(k.border) : VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
+        i.compareEnable = k.compare != 0 ? 1 : 0
+        i.compareOp = vkCompare(k.compare)
+        i.maxAnisotropy = Float(max(k.anisotropy, 1))
+        i.anisotropyEnable = k.anisotropy > 1 ? 1 : 0
+        if !k.normalized {
+            i.unnormalizedCoordinates = 1
+            i.minFilter = i.magFilter
+            i.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST
+            i.minLod = 0
+            i.maxLod = 0
+            i.anisotropyEnable = 0
+            i.compareEnable = 0
+            for p in [\yvk_sampler_info.addressU, \yvk_sampler_info.addressV, \yvk_sampler_info.addressW]
+            where i[keyPath: p] != VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER {
+                i[keyPath: p] = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
+            }
+        }
+        return i
+    }
+
+    public func gpuResourceID(ofSampler handle: MetalHandle) -> UInt64? {
+        cond.lock(); defer { cond.unlock() }
+        return samplers[handle].map { UInt64($0.heapIndex) }
+    }
+
+    public func createDepthStencilState(_ handle: MetalHandle, _ desc: MetalDepthStencilDescriptor) throws {
+        cond.lock(); defer { cond.unlock() }
+        depthStencilStates[handle] = desc
+    }
+
+    // MARK: - Functions and pipelines
+
+    public func createFunction(_ handle: MetalHandle, metallib: [UInt8]) throws {
+        cond.lock(); defer { cond.unlock() }
+        functions[handle] = VKFunction(metallib: metallib)
+        // Debugging: YCODE_VULKAN_DUMP_FUNCTIONS=<dir> saves each function as sent.
+        if let dir = ProcessInfo.processInfo.environment["YCODE_VULKAN_DUMP_FUNCTIONS"] {
+            let path = "\(dir)/function-\(handle.raw)-\(String(fnv1a64(metallib), radix: 16)).metallib"
+            FileManager.default.createFile(atPath: path, contents: Data(metallib))
+        }
+    }
+
+    func translate(_ request: TranslationRequest) throws -> TranslatedShader {
+        let key = TranslationKey(hash: fnv1a64(request.metallib), count: request.metallib.count,
+                                 linked: request.linkVertexHash.map { fnv1a64(Array($0.utf8)) } ?? 0,
+                                 linkedCount: request.linkVertexHash?.count ?? -1)
+        translationLock.lock()
+        if let t = translations[key] { translationLock.unlock(); return t }
+        translationLock.unlock()
+        guard let translator else { throw VulkanBackendError("no shader translator (ycode-airc not found)") }
+        let t = try translator.translate(request)
+        translationLock.lock()
+        translations[key] = t
+        translationLock.unlock()
+        return t
+    }
+
+    public func createRenderPipeline(_ handle: MetalHandle, _ desc: MetalRenderPipelineDescriptor) throws {
+        guard isAvailable else { throw VulkanBackendError("no GPU") }
+        cond.lock()
+        var vf = desc.vertexFunction.flatMap { functions[$0] }
+        var ff = desc.fragmentFunction.flatMap { functions[$0] }
+        cond.unlock()
+        guard vf != nil || ff != nil else { throw VulkanBackendError("render pipeline without known functions") }
+        // The stage comes from the translator's reflection: if the
+        // descriptor's two function fields arrive the other way round
+        // (observed with the 27.1 runtime, see the VK report), swap them.
+        var vs = try vf.map { try translate(TranslationRequest(metallib: $0.metallib)) }
+        if vs?.reflection.stage == .fragment || (vs == nil && ff != nil) {
+            swap(&vf, &ff)
+            vs = try vf.map { try translate(TranslationRequest(metallib: $0.metallib)) }
+            if vs != nil { log("render pipeline \(handle): vertex and fragment functions arrived swapped; using them by stage") }
+        }
+        guard let vf, let vs, vs.reflection.stage == .vertex else {
+            throw VulkanBackendError("render pipeline \(handle) has no vertex function")
+        }
+        let fs = try ff.map { try translate(TranslationRequest(metallib: $0.metallib, linkVertexHash: vs.reflection.hash)) }
+        _ = vf
+
+        cond.lock(); defer { cond.unlock() }
+        var info = yvk_graphics_info()
+        // Vertex input (Location n = attribute n; binding = Metal buffer index).
+        var vertexIndices: [Int] = []
+        if let vd = desc.vertexDescriptor {
+            var attrs: [VkVertexInputAttributeDescription] = []
+            for a in vd.attributes where a.format != 0 {
+                guard let f = metalVertexFormat(a.format) else { throw VulkanBackendError("vertex format \(a.format)") }
+                attrs.append(VkVertexInputAttributeDescription(location: UInt32(a.index), binding: UInt32(a.bufferIndex),
+                                                               format: f, offset: UInt32(a.offset)))
+            }
+            var binds: [yvk_vertex_binding] = []
+            for idx in Set(attrs.map { Int($0.binding) }).sorted() {
+                let l = vd.layouts.first { $0.bufferIndex == idx } ?? MetalVertexDescriptor.Layout(bufferIndex: idx)
+                switch l.stepFunction {
+                case 0: // constant: every vertex reads element 0
+                    binds.append(yvk_vertex_binding(binding: UInt32(idx), stride: 0, inputRate: VK_VERTEX_INPUT_RATE_VERTEX, divisor: 1))
+                case 2:
+                    binds.append(yvk_vertex_binding(binding: UInt32(idx), stride: UInt32(l.stride),
+                                                    inputRate: VK_VERTEX_INPUT_RATE_INSTANCE, divisor: UInt32(max(l.stepRate, 1))))
+                default:
+                    binds.append(yvk_vertex_binding(binding: UInt32(idx), stride: UInt32(l.stride),
+                                                    inputRate: VK_VERTEX_INPUT_RATE_VERTEX, divisor: 1))
+                }
+                vertexIndices.append(idx)
+            }
+            info.attributeCount = UInt32(min(attrs.count, 32))
+            info.bindingCount = UInt32(min(binds.count, 32))
+            withUnsafeMutableBytes(of: &info.attributes) { raw in
+                let p = raw.bindMemory(to: VkVertexInputAttributeDescription.self)
+                for (i, a) in attrs.prefix(32).enumerated() { p[i] = a }
+            }
+            withUnsafeMutableBytes(of: &info.bindings) { raw in
+                let p = raw.bindMemory(to: yvk_vertex_binding.self)
+                for (i, b) in binds.prefix(32).enumerated() { p[i] = b }
+            }
+        }
+        info.samples = VkSampleCountFlagBits(rawValue: UInt32(max(desc.rasterSampleCount, 1)))
+        info.alphaToCoverage = desc.alphaToCoverageEnabled ? 1 : 0
+        info.colorCount = UInt32(YVK_MAX_COLOR_ATTACHMENTS)
+        withUnsafeMutableBytes(of: &info.colorFormats) { rawF in
+            withUnsafeMutableBytes(of: &info.blend) { rawB in
+                let formats = rawF.bindMemory(to: VkFormat.self)
+                let blends = rawB.bindMemory(to: VkPipelineColorBlendAttachmentState.self)
+                for i in 0..<Int(YVK_MAX_COLOR_ATTACHMENTS) {
+                    formats[i] = VK_FORMAT_UNDEFINED
+                    blends[i] = VkPipelineColorBlendAttachmentState()
+                }
+                for c in desc.colorAttachments where c.index >= 0 && c.index < Int(YVK_MAX_COLOR_ATTACHMENTS) && c.pixelFormat != 0 {
+                    guard let f = resolveFormat(c.pixelFormat) else { continue }
+                    formats[c.index] = f.format
+                    blends[c.index] = VkPipelineColorBlendAttachmentState(
+                        blendEnable: c.blendingEnabled ? 1 : 0,
+                        srcColorBlendFactor: vkBlendFactor(c.sourceRGBBlendFactor),
+                        dstColorBlendFactor: vkBlendFactor(c.destinationRGBBlendFactor),
+                        colorBlendOp: vkBlendOp(c.rgbBlendOperation),
+                        srcAlphaBlendFactor: vkBlendFactor(c.sourceAlphaBlendFactor),
+                        dstAlphaBlendFactor: vkBlendFactor(c.destinationAlphaBlendFactor),
+                        alphaBlendOp: vkBlendOp(c.alphaBlendOperation),
+                        colorWriteMask: vkColorWriteMask(c.writeMask))
+                }
+            }
+        }
+        let depthFormat = desc.depthAttachmentPixelFormat != 0 ? (resolveFormat(desc.depthAttachmentPixelFormat).flatMap { $0.isDepth ? $0.format : nil } ?? VK_FORMAT_UNDEFINED) : VK_FORMAT_UNDEFINED
+        let stencilFormat = desc.stencilAttachmentPixelFormat != 0 ? (resolveFormat(desc.stencilAttachmentPixelFormat).flatMap { $0.isStencil ? $0.format : nil } ?? VK_FORMAT_UNDEFINED) : VK_FORMAT_UNDEFINED
+        info.depthFormat = depthFormat
+        info.stencilFormat = stencilFormat
+        let pipeline = VKRenderPipeline(desc: desc, vertex: vs, fragment: fs, info: info, vertexBufferIndices: vertexIndices,
+                                        depthFormat: depthFormat, stencilFormat: stencilFormat)
+        pipeline.vertexStatics = try statics(for: vs.reflection)
+        if let fs { pipeline.fragmentStatics = try statics(for: fs.reflection) }
+        let cls = desc.inputPrimitiveTopology != 0 ? desc.inputPrimitiveTopology : 3
+        guard renderVariant(pipeline, topologyClass: cls) != nil else {
+            throw VulkanBackendError("render pipeline \(desc.label ?? "") failed to compile")
+        }
+        if let old = renderPipelines[handle] { releaseRenderPipeline(old) }
+        renderPipelines[handle] = pipeline
+        statistics.renderPipelines += 1
+    }
+
+    /// The fixed argument-table entries of a function: its constant data
+    /// (copied once into GPU-visible memory) and its constexpr samplers. Under the lock.
+    func statics(for r: ShaderReflection) throws -> StageStatics {
+        var out = StageStatics()
+        if let c = r.constantData {
+            let bytes = c.bytes
+            var b = yvk_buffer()
+            var err = [CChar](repeating: 0, count: 256)
+            guard yvk_buffer_create(ctx, VkDeviceSize(max(bytes.count, 16)), YVK_MEMORY_HOST, nil, &b, &err, err.count) == 0,
+                  let p = b.mapped else { throw VulkanBackendError("constant data: \(cString(err))") }
+            bytes.withUnsafeBytes { if let base = $0.baseAddress { p.copyMemory(from: base, byteCount: bytes.count) } }
+            let a = VKAllocation(buffer: b, base: p, key: nil, owner: nil)
+            a.references = 1
+            out.memory.append(a)
+            out.entries.append((c.tableEntry ?? YcodeMetalABI.constantDataEntry, b.address))
+        }
+        for c in r.constexprSamplers ?? [] {
+            let s = try sampler(for: SamplerKey(c))
+            out.entries.append((c.tableEntry, UInt64(s.heapIndex)))
+        }
+        return out
+    }
+
+    func renderVariant(_ p: VKRenderPipeline, topologyClass cls: UInt32) -> VkPipeline? {
+        if let v = p.variants[cls] { return v }
+        if p.failed.contains(cls) { return nil }
+        var info = p.info
+        info.topology = vkTopology(forClass: cls)
+        let vsConstants: [yvk_spec_constant] = []
+        let fsConstants: [yvk_spec_constant] = []
+        var err = [CChar](repeating: 0, count: 512)
+        let vsEntry = p.vertex.reflection.entryPoint ?? "main"
+        let fsEntry = p.fragment?.reflection.entryPoint ?? "main"
+        let fsCode = p.fragment?.spirv ?? []
+        let result: VkPipeline? = p.vertex.spirv.withUnsafeBufferPointer { vsWords in
+            fsCode.withUnsafeBufferPointer { fsWords in
+                vsEntry.withCString { vsName in
+                    fsEntry.withCString { fsName in
+                        vsConstants.withUnsafeBufferPointer { vsc in
+                            fsConstants.withUnsafeBufferPointer { fsc in
+                                info.vertex = yvk_shader_stage(code: vsWords.baseAddress, wordCount: vsWords.count, entry: vsName,
+                                                               constants: vsc.baseAddress, constantCount: UInt32(vsc.count), flags: 0)
+                                if p.fragment != nil {
+                                    info.fragment = yvk_shader_stage(code: fsWords.baseAddress, wordCount: fsWords.count, entry: fsName,
+                                                                     constants: fsc.baseAddress, constantCount: UInt32(fsc.count), flags: 0)
+                                } else {
+                                    info.fragment = yvk_shader_stage()
+                                }
+                                return yvk_graphics_pipeline_create(ctx, &info, &err, err.count)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        guard let pipe = result else {
+            log("render pipeline (\(p.desc.label ?? "unlabelled"), class \(cls)): \(cString(err))")
+            p.failed.insert(cls)
+            return nil
+        }
+        p.variants[cls] = pipe
+        return pipe
+    }
+
+    public func createComputePipeline(_ handle: MetalHandle, function: MetalHandle) throws -> MetalComputePipelineInfo {
+        guard isAvailable else { throw VulkanBackendError("no GPU") }
+        cond.lock()
+        let f = functions[function]
+        cond.unlock()
+        guard let f else { throw VulkanBackendError("compute pipeline of unknown function \(function)") }
+        let shader = try translate(TranslationRequest(metallib: f.metallib))
+        cond.lock(); defer { cond.unlock() }
+        let pipeline = VKComputePipeline(shader: shader)
+        pipeline.statics = try statics(for: shader.reflection)
+        if let old = computePipelines[handle] { releaseComputePipeline(old) }
+        computePipelines[handle] = pipeline
+        statistics.computePipelines += 1
+        let maxInv = Int(min(ctx.pointee.properties.limits.maxComputeWorkGroupInvocations, 1024))
+        return MetalComputePipelineInfo(maxTotalThreadsPerThreadgroup: UInt16(maxInv),
+                                        threadExecutionWidth: UInt16(max(ctx.pointee.subgroupSize, 1)))
+    }
+
+    func computeVariant(_ p: VKComputePipeline, _ key: ComputeVariantKey) -> VkPipeline? {
+        if let v = p.variants[key] { return v }
+        let r = p.shader.reflection
+        var constants: [yvk_spec_constant] = []
+        let ids = r.compute?.workgroupSizeSpecIds ?? YcodeMetalABI.specWorkgroup
+        let size = (key.x, key.y, key.z)
+        for (i, v) in [size.0, size.1, size.2].enumerated() where i < ids.count {
+            constants.append(yvk_spec_constant(id: ids[i], value: UInt32(v)))
+        }
+        // Threadgroup memory: [[threadgroup(n)]] slots after the static part,
+        // 16-byte aligned, lengths from setThreadgroupMemoryLength (key order = slots order).
+        if let tg = r.compute?.threadgroupMemory, tg.dynamic == true {
+            var offset = tg.slotsBase ?? roundUp(tg.staticBytes ?? 0, 16)
+            for (i, slot) in (tg.slots ?? []).enumerated() {
+                if let id = slot.offsetSpecId { constants.append(yvk_spec_constant(id: id, value: UInt32(offset))) }
+                offset += roundUp(max(i < key.threadgroupMemory.count ? key.threadgroupMemory[i] : 0, 16), 16)
+            }
+            constants.append(yvk_spec_constant(id: tg.sizeSpecId ?? YcodeMetalABI.specThreadgroupBytes, value: UInt32(offset)))
+        }
+        var flags: UInt32 = 0
+        let sg = Int(ctx.pointee.subgroupSize)
+        if ctx.pointee.features.computeFullSubgroups != 0 && sg > 0 && size.0 % sg == 0 {
+            flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT.rawValue
+        }
+        var err = [CChar](repeating: 0, count: 512)
+        let entry = r.entryPoint ?? "main"
+        let pipe: VkPipeline? = p.shader.spirv.withUnsafeBufferPointer { words in
+            entry.withCString { name in
+                constants.withUnsafeBufferPointer { c in
+                    var stage = yvk_shader_stage(code: words.baseAddress, wordCount: words.count, entry: name,
+                                                 constants: c.baseAddress, constantCount: UInt32(c.count), flags: flags)
+                    return yvk_compute_pipeline_create(ctx, &stage, &err, err.count)
+                }
+            }
+        }
+        guard let pipe else {
+            log("compute pipeline \(r.entryPoint ?? ""): \(cString(err))")
+            return nil
+        }
+        p.variants[key] = pipe
+        return pipe
+    }
+
+    func releaseRenderPipeline(_ p: VKRenderPipeline) {
+        for a in p.vertexStatics.memory + p.fragmentStatics.memory { releaseAllocationReference(a) }
+        let list = Array(p.variants.values)
+        deferDestroy { [ctx, fn] in for v in list { fn.vkDestroyPipeline!(ctx.pointee.device, v, nil) } }
+    }
+
+    func releaseComputePipeline(_ p: VKComputePipeline) {
+        for a in p.statics.memory { releaseAllocationReference(a) }
+        let list = Array(p.variants.values)
+        deferDestroy { [ctx, fn] in for v in list { fn.vkDestroyPipeline!(ctx.pointee.device, v, nil) } }
+    }
+
+    // MARK: - Events
+
+    public func createEvent(_ handle: MetalHandle) throws {
+        guard isAvailable else { return }
+        cond.lock(); defer { cond.unlock() }
+        events[handle] = VKEvent(semaphore: yvk_timeline_create(ctx, 0))
+    }
+
+    public func signalEvent(_ handle: MetalHandle, value: UInt64) {
+        cond.lock(); defer { cond.unlock() }
+        guard let e = events[handle], let s = e.semaphore else { return }
+        if value > yvk_timeline_value(ctx, s) && value > e.highest {
+            _ = yvk_timeline_signal(ctx, s, value)
+            e.highest = value
+        }
+    }
+
+    public func eventValue(_ handle: MetalHandle) -> UInt64? {
+        cond.lock(); defer { cond.unlock() }
+        guard let e = events[handle], let s = e.semaphore else { return nil }
+        return yvk_timeline_value(ctx, s)
+    }
+
+    // MARK: - Release
+
+    public func release(_ handle: MetalHandle) {
+        cond.lock(); defer { cond.unlock() }
+        if let b = buffers.removeValue(forKey: handle) { releaseBuffer(b); return }
+        if let t = textures.removeValue(forKey: handle) { releaseTexture(t); return }
+        if samplers.removeValue(forKey: handle) != nil { return }  // samplers stay cached (deduplicated)
+        if depthStencilStates.removeValue(forKey: handle) != nil { return }
+        if functions.removeValue(forKey: handle) != nil { return }
+        if let p = renderPipelines.removeValue(forKey: handle) { releaseRenderPipeline(p); return }
+        if let p = computePipelines.removeValue(forKey: handle) { releaseComputePipeline(p); return }
+        if let e = events.removeValue(forKey: handle), let s = e.semaphore {
+            deferDestroy { [ctx, fn] in fn.vkDestroySemaphore!(ctx.pointee.device, s, nil) }
+        }
+    }
+
+    /// Runs `action` once all work submitted so far (including pending
+    /// setup work) has completed.
+    func deferDestroy(_ action: @escaping () -> Void) {
+        let serial = (setup?.empty == false) ? lastSubmitted + 1 : lastSubmitted
+        if serial <= completedSerial {
+            action()
+        } else {
+            graveyard.append((serial, action))
+        }
+    }
+
+    // MARK: - Dummy resources
+
+    func createDummies() throws {
+        cond.lock(); defer { cond.unlock() }
+        var info = yvk_image_info(type: VK_IMAGE_TYPE_2D, format: VK_FORMAT_R8G8B8A8_UNORM, width: 1, height: 1, depth: 1,
+                                  mipLevels: 1, arrayLayers: 1, samples: VK_SAMPLE_COUNT_1_BIT,
+                                  usage: VK_IMAGE_USAGE_SAMPLED_BIT.rawValue | VK_IMAGE_USAGE_STORAGE_BIT.rawValue |
+                                      VK_IMAGE_USAGE_TRANSFER_DST_BIT.rawValue, flags: 0)
+        var img = yvk_image()
+        var err = [CChar](repeating: 0, count: 256)
+        guard yvk_image_create(ctx, &info, &img, &err, err.count) == 0 else { throw VulkanBackendError(cString(err)) }
+        let image = VKImage(image: img, format: metalPixelFormatTable(70)!, metalFormat: 70, imageType: VK_IMAGE_TYPE_2D,
+                            width: 1, height: 1, depth: 1, levels: 1, layers: 1, samples: 1, usage: info.usage)
+        try initializeImage(image)
+        let rec = try setupRecording()
+        var clear = VkClearColorValue(float32: (0, 0, 0, 0))
+        var range = VkImageSubresourceRange(aspectMask: VK_IMAGE_ASPECT_COLOR_BIT.rawValue, baseMipLevel: 0, levelCount: 1,
+                                            baseArrayLayer: 0, layerCount: 1)
+        fn.vkCmdClearColorImage!(rec.cb, image.vkImage, VK_IMAGE_LAYOUT_GENERAL, &clear, 1, &range)
+        dummyImage = image
+        var vi = yvk_view_info(image: image.vkImage, viewType: VK_IMAGE_VIEW_TYPE_2D, format: VK_FORMAT_R8G8B8A8_UNORM,
+                               aspect: VK_IMAGE_ASPECT_COLOR_BIT.rawValue, baseLevel: 0, levelCount: 1, baseLayer: 0,
+                               layerCount: 1, components: identitySwizzle, usage: 0)
+        dummyView = yvk_view_create(ctx, &vi, &err, err.count)
+        if let v = dummyView {
+            yvk_heap_write_sampled(ctx, 0, v)
+            yvk_heap_write_storage(ctx, 0, v)
+        }
+        if yvk_buffer_create(ctx, 65536, YVK_MEMORY_HOST, nil, &dummyBuffer, &err, err.count) == 0, let p = dummyBuffer.mapped {
+            p.initializeMemory(as: UInt8.self, repeating: 0, count: 65536)
+        }
+        var si = samplerInfo(SamplerKey(MetalSamplerDescriptor()))
+        defaultSampler = yvk_sampler_create(ctx, &si, &err, err.count)
+        if let s = defaultSampler { yvk_heap_write_sampler(ctx, 0, s) }
+    }
+
+    func destroyEverything() {
+        cond.lock(); defer { cond.unlock() }
+        for b in buffers.values { releaseBuffer(b) }
+        buffers.removeAll()
+        for t in textures.values { releaseTexture(t) }
+        textures.removeAll()
+        for p in renderPipelines.values { releaseRenderPipeline(p) }
+        renderPipelines.removeAll()
+        for p in computePipelines.values { releaseComputePipeline(p) }
+        computePipelines.removeAll()
+        for e in events.values { if let s = e.semaphore { fn.vkDestroySemaphore!(device, s, nil) } }
+        events.removeAll()
+        for g in graveyard { g.action() }
+        graveyard.removeAll()
+        for s in samplerCache.values { if let v = s.sampler { fn.vkDestroySampler!(device, v, nil) } }
+        samplerCache.removeAll()
+        if let s = defaultSampler { fn.vkDestroySampler!(device, s, nil) }
+        if let v = dummyView { fn.vkDestroyImageView!(device, v, nil) }
+        if let d = dummyImage { yvk_image_destroy(ctx, &d.image) }
+        yvk_buffer_destroy(ctx, &dummyBuffer)
+        for c in freeChunks { yvk_buffer_destroy(ctx, &c.buffer) }
+        freeChunks.removeAll()
+        if let s = setup { for c in s.chunks { yvk_buffer_destroy(ctx, &c.buffer) } }
+        setup = nil
+        if let t = timeline { fn.vkDestroySemaphore!(device, t, nil) }
+        timeline = nil
+    }
+}
+
+/// Counters for logs and tests.
+public struct VulkanBackendStatistics: Sendable {
+    public var buffers = 0, textures = 0, samplers = 0, imports = 0
+    public var renderPipelines = 0, computePipelines = 0
+    public var submissions = 0, draws = 0, dispatches = 0, blits = 0, skipped = 0
+    public var surfaceUploads = 0, surfaceDownloads = 0
+}
+
+extension VulkanMetalBackend {
+    public var stats: VulkanBackendStatistics {
+        cond.lock(); defer { cond.unlock() }
+        return statistics
+    }
+}
