@@ -200,7 +200,10 @@ typedef struct yvk_features {
              vertexAttributeInstanceRateDivisor, vertexAttributeInstanceRateZeroDivisor,
              fragmentShaderPixelInterlock, workgroupMemoryExplicitLayout, formatA8,
              dynamicRenderingLocalRead, fragmentShaderBarycentric, shaderDemoteToHelperInvocation,
-             externalMemoryFd;
+             externalMemoryFd,
+             /* VK_EXT_graphics_pipeline_library with fast linking and
+                independent interpolation decorations. */
+             graphicsPipelineLibrary;
 } yvk_features;
 
 typedef struct yvk_context {
@@ -377,6 +380,19 @@ typedef struct yvk_graphics_info {
     VkPipelineColorBlendAttachmentState blend[YVK_MAX_COLOR_ATTACHMENTS];
     VkFormat depthFormat, stencilFormat;
 } yvk_graphics_info;
+
+/* Graphics pipeline libraries (VK_EXT_graphics_pipeline_library). Each
+   part uses the shared pipeline layout and the dynamic state list of
+   yvk_graphics_pipeline_create; yvk_library_link fast-links four parts
+   (vertex input, pre-rasterization, fragment shader, fragment output). */
+VkPipeline yvk_library_vertex_input(yvk_context *ctx, const yvk_graphics_info *info, char *err, size_t errlen);
+VkPipeline yvk_library_pre_raster(yvk_context *ctx, const yvk_shader_stage *vertex, int rasterizerDiscard,
+                                  char *err, size_t errlen);
+VkPipeline yvk_library_fragment_shader(yvk_context *ctx, const yvk_shader_stage *fragment, VkSampleCountFlagBits samples,
+                                       char *err, size_t errlen);
+VkPipeline yvk_library_fragment_output(yvk_context *ctx, const yvk_graphics_info *info, char *err, size_t errlen);
+VkPipeline yvk_library_link(yvk_context *ctx, const VkPipeline *libraries, uint32_t count, int optimize,
+                            char *err, size_t errlen);
 
 /* Dynamic state: viewport, scissor, cull mode, front face, primitive
    topology, depth bias (+enable), blend constants, stencil reference /

@@ -351,8 +351,21 @@ public final class AircProcessTranslator: ShaderTranslator, @unchecked Sendable 
 public final class AircTranslatorPool: ShaderTranslator, @unchecked Sendable {
     public let processes: [AircProcessTranslator]
 
-    public init(executable: URL, count: Int, arguments: [String] = AircProcessTranslator.defaultArguments) {
-        processes = (0..<max(count, 1)).map { _ in AircProcessTranslator(executable: executable, arguments: arguments) }
+    /// `dumpDirectory` (default: $YCODE_AIRC_DUMP_DIR): each process saves
+    /// its requests and results (`serve --dump-dir`) in its own subdirectory
+    /// p0, p1, … (ycode-airc numbers files per process). The dumps hold guest
+    /// shader bytes: keep them on the machine that ran the guest.
+    public init(executable: URL, count: Int, arguments: [String] = AircProcessTranslator.defaultArguments,
+                dumpDirectory: String? = ProcessInfo.processInfo.environment["YCODE_AIRC_DUMP_DIR"]) {
+        processes = (0..<max(count, 1)).map { i in
+            var args = arguments
+            if let dir = dumpDirectory, !dir.isEmpty {
+                let sub = URL(fileURLWithPath: dir).appendingPathComponent("p\(i)").path
+                try? FileManager.default.createDirectory(atPath: sub, withIntermediateDirectories: true)
+                args += ["--dump-dir", sub]
+            }
+            return AircProcessTranslator(executable: executable, arguments: args)
+        }
     }
 
     public func translate(_ request: TranslationRequest) throws -> TranslatedShader {

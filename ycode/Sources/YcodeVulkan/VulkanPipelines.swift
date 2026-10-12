@@ -242,7 +242,16 @@ extension VulkanMetalBackend {
     /// Compiles one topology class of a built pipeline. Needs no lock: it
     /// reads fields that do not change after setup.
     func compileRenderVariant(_ p: VKRenderPipeline, topologyClass cls: UInt32) -> VkPipeline? {
+        let start = DispatchTime.now().uptimeNanoseconds
+        let result = compileRenderVariantTimed(p, topologyClass: cls)
+        let ms = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
+        if verbose { log("compile render \(p.desc.label ?? "unlabelled") class \(cls): \(String(format: "%.1f", ms)) ms") }
+        return result
+    }
+
+    func compileRenderVariantTimed(_ p: VKRenderPipeline, topologyClass cls: UInt32) -> VkPipeline? {
         guard let vertex = p.vertex else { return nil }
+        if usesPipelineLibraries { return linkRenderVariant(p, vertex: vertex, topologyClass: cls) }
         var info = p.info
         info.topology = vkTopology(forClass: cls)
         var err = [CChar](repeating: 0, count: 512)

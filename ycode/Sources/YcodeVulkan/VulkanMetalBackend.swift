@@ -109,6 +109,7 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
 
     // Pipelines (VulkanPipelines.swift).
     let compileQueue = OperationQueue()
+    let libraries = PipelineLibraryCache()
     var pipelineCacheDirty = false
     var cacheTimer: DispatchSourceTimer?
 
@@ -180,6 +181,7 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
             compileQueue.waitUntilAllOperationsAreFinished()
             cacheTimer?.cancel()
             savePipelineCache()
+            if verbose && usesPipelineLibraries { log("pipeline libraries: \(pipelineLibraryStatistics.summary)") }
         }
         cond.lock()
         guard running else { cond.unlock(); return }
@@ -717,6 +719,7 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         events.removeAll()
         for g in graveyard { g.action() }
         graveyard.removeAll()
+        for p in libraries.all() { fn.vkDestroyPipeline!(device, p, nil) }
         for s in samplerCache.values { if let v = s.sampler { fn.vkDestroySampler!(device, v, nil) } }
         samplerCache.removeAll()
         if let s = defaultSampler { fn.vkDestroySampler!(device, s, nil) }

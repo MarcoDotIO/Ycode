@@ -164,6 +164,13 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
     int extMaint5 = WANT(VK_KHR_MAINTENANCE_5_EXTENSION_NAME);
     int extBary = WANT(VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME);
     int extLocalRead = WANT("VK_KHR_dynamic_rendering_local_read");
+    int extGPL = has_extension(exts, next, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME) &&
+                 has_extension(exts, next, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME);
+    if (extGPL && getenv("YCODE_VULKAN_NO_PIPELINE_LIBRARY")) extGPL = 0;
+    if (extGPL) {
+        enable[nenable++] = VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME;
+        enable[nenable++] = VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME;
+    }
     (void)WANT(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
     (void)WANT(VK_EXT_DEPTH_CLIP_ENABLE_EXTENSION_NAME);
     (void)WANT(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
@@ -172,6 +179,8 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
 
     /* Query features. */
     YVKDynamicRenderingLocalReadFeatures lr = {YVK_STRUCTURE_TYPE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES};
+    VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT gpl = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GRAPHICS_PIPELINE_LIBRARY_FEATURES_EXT};
     VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR bary = {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_KHR};
     VkPhysicalDeviceMaintenance5FeaturesKHR m5 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_5_FEATURES_KHR};
@@ -198,6 +207,7 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
     CHAIN(extMaint5, m5)
     CHAIN(extBary, bary)
     CHAIN(extLocalRead, lr)
+    CHAIN(extGPL, gpl)
 #undef CHAIN
     g_vk.vkGetPhysicalDeviceFeatures2(ctx->physical, &f2);
 
@@ -281,14 +291,18 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
     f13.pipelineCreationCacheControl = f13.pipelineCreationCacheControl;
 
     /* Properties: host pointer alignment, subgroup size, descriptor limits. */
+    VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT gplp = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GRAPHICS_PIPELINE_LIBRARY_PROPERTIES_EXT};
     VkPhysicalDeviceExternalMemoryHostPropertiesEXT hostp = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT};
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT, extGPL ? &gplp : NULL};
     VkPhysicalDeviceVulkan12Properties p12 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES, &hostp};
     VkPhysicalDeviceVulkan11Properties p11 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES, &p12};
     VkPhysicalDeviceProperties2 p2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &p11};
     g_vk.vkGetPhysicalDeviceProperties2(ctx->physical, &p2);
     ctx->hostPointerAlignment = hostp.minImportedHostPointerAlignment ? hostp.minImportedHostPointerAlignment : 4096;
     ctx->subgroupSize = p11.subgroupSize;
+    F->graphicsPipelineLibrary = extGPL && gpl.graphicsPipelineLibrary && gplp.graphicsPipelineLibraryFastLinking &&
+                                 gplp.graphicsPipelineLibraryIndependentInterpolationDecoration;
 
     float prio = 1.0f;
     VkDeviceQueueCreateInfo qci = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, NULL, 0, ctx->queueFamily, 1, &prio};
@@ -653,6 +667,31 @@ VkPipeline yvk_compute_pipeline_create(yvk_context *ctx, const yvk_shader_stage 
     return p;
 }
 
+/* The dynamic state every graphics pipeline (and library part) declares. */
+static uint32_t dynamic_states(const yvk_context *ctx, VkDynamicState *dyn) {
+    uint32_t ndyn = 0;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_VIEWPORT;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_SCISSOR;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_CULL_MODE;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_FRONT_FACE;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_BIAS;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_BLEND_CONSTANTS;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_STENCIL_REFERENCE;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_STENCIL_WRITE_MASK;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_STENCIL_OP;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE;
+    dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_COMPARE_OP;
+    if (ctx->features.extendedDynamicState3PolygonMode) dyn[ndyn++] = VK_DYNAMIC_STATE_POLYGON_MODE_EXT;
+    if (ctx->features.extendedDynamicState3DepthClamp) dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_CLAMP_ENABLE_EXT;
+    return ndyn;
+}
+
 VkPipeline yvk_graphics_pipeline_create(yvk_context *ctx, const yvk_graphics_info *g, char *err, size_t errlen) {
     VkPipelineShaderStageCreateInfo stages[2];
     stage_storage st[2];
@@ -705,26 +744,7 @@ VkPipeline yvk_graphics_pipeline_create(yvk_context *ctx, const yvk_graphics_inf
     VkPipelineColorBlendStateCreateInfo cbs = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, NULL, 0,
                                                VK_FALSE, VK_LOGIC_OP_COPY, g->colorCount, g->blend};
     VkDynamicState dyn[24];
-    uint32_t ndyn = 0;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_VIEWPORT;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_SCISSOR;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_CULL_MODE;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_FRONT_FACE;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_BIAS;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_BLEND_CONSTANTS;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_STENCIL_REFERENCE;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_STENCIL_WRITE_MASK;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_STENCIL_OP;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE;
-    dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_COMPARE_OP;
-    if (ctx->features.extendedDynamicState3PolygonMode) dyn[ndyn++] = VK_DYNAMIC_STATE_POLYGON_MODE_EXT;
-    if (ctx->features.extendedDynamicState3DepthClamp) dyn[ndyn++] = VK_DYNAMIC_STATE_DEPTH_CLAMP_ENABLE_EXT;
+    uint32_t ndyn = dynamic_states(ctx, dyn);
     VkPipelineDynamicStateCreateInfo dys = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, NULL, 0, ndyn, dyn};
     VkPipelineRenderingCreateInfo pri = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO, NULL, 0, g->colorCount,
                                          g->colorFormats, g->depthFormat, g->stencilFormat};
@@ -735,6 +755,143 @@ VkPipeline yvk_graphics_pipeline_create(yvk_context *ctx, const yvk_graphics_inf
     for (uint32_t i = 0; i < nstages; i++) g_vk.vkDestroyShaderModule(ctx->device, stages[i].module, NULL);
     if (r != VK_SUCCESS) {
         fail(err, errlen, "vkCreateGraphicsPipelines failed (%d)", r);
+        return VK_NULL_HANDLE;
+    }
+    return p;
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Graphics pipeline libraries                                         */
+/* ------------------------------------------------------------------ */
+
+typedef struct library_state {
+    VkGraphicsPipelineLibraryCreateInfoEXT kind;
+    VkPipelineRenderingCreateInfo rendering;
+    VkDynamicState dyn[24];
+    VkPipelineDynamicStateCreateInfo dynamic;
+    VkGraphicsPipelineCreateInfo create;
+} library_state;
+
+static void library_begin(yvk_context *ctx, library_state *L, VkGraphicsPipelineLibraryFlagsEXT flags) {
+    memset(L, 0, sizeof *L);
+    L->kind = (VkGraphicsPipelineLibraryCreateInfoEXT){VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT, NULL, flags};
+    L->rendering = (VkPipelineRenderingCreateInfo){VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO, &L->kind};
+    L->dynamic = (VkPipelineDynamicStateCreateInfo){VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, NULL, 0,
+                                                     dynamic_states(ctx, L->dyn), L->dyn};
+    L->create = (VkGraphicsPipelineCreateInfo){VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, &L->rendering,
+                                               VK_PIPELINE_CREATE_LIBRARY_BIT_KHR |
+                                                   VK_PIPELINE_CREATE_RETAIN_LINK_TIME_OPTIMIZATION_INFO_BIT_EXT};
+    L->create.pDynamicState = &L->dynamic;
+    L->create.layout = ctx->pipelineLayout;
+}
+
+static VkPipeline library_create(yvk_context *ctx, library_state *L, const char *what, char *err, size_t errlen) {
+    VkPipeline p = VK_NULL_HANDLE;
+    VkResult r = g_vk.vkCreateGraphicsPipelines(ctx->device, ctx->pipelineCache, 1, &L->create, NULL, &p);
+    if (r != VK_SUCCESS) {
+        fail(err, errlen, "%s library failed (%d)", what, r);
+        return VK_NULL_HANDLE;
+    }
+    return p;
+}
+
+VkPipeline yvk_library_vertex_input(yvk_context *ctx, const yvk_graphics_info *g, char *err, size_t errlen) {
+    library_state L;
+    library_begin(ctx, &L, VK_GRAPHICS_PIPELINE_LIBRARY_VERTEX_INPUT_INTERFACE_BIT_EXT);
+    VkVertexInputBindingDescription vb[YVK_MAX_VERTEX_BINDINGS];
+    VkVertexInputBindingDivisorDescriptionEXT dv[YVK_MAX_VERTEX_BINDINGS];
+    uint32_t ndiv = 0;
+    for (uint32_t i = 0; i < g->bindingCount && i < YVK_MAX_VERTEX_BINDINGS; i++) {
+        vb[i] = (VkVertexInputBindingDescription){g->bindings[i].binding, g->bindings[i].stride, g->bindings[i].inputRate};
+        if (g->bindings[i].inputRate == VK_VERTEX_INPUT_RATE_INSTANCE && g->bindings[i].divisor != 1) {
+            int ok = g->bindings[i].divisor == 0 ? ctx->features.vertexAttributeInstanceRateZeroDivisor
+                                                 : ctx->features.vertexAttributeInstanceRateDivisor;
+            if (ok) dv[ndiv++] = (VkVertexInputBindingDivisorDescriptionEXT){g->bindings[i].binding, g->bindings[i].divisor};
+        }
+    }
+    VkPipelineVertexInputDivisorStateCreateInfoEXT divs = {
+        VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_EXT, NULL, ndiv, dv};
+    VkPipelineVertexInputStateCreateInfo vis = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+                                                ndiv ? &divs : NULL, 0, g->bindingCount, vb, g->attributeCount, g->attributes};
+    VkPipelineInputAssemblyStateCreateInfo ias = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, NULL, 0,
+                                                  g->topology, VK_FALSE};
+    L.create.pVertexInputState = &vis;
+    L.create.pInputAssemblyState = &ias;
+    return library_create(ctx, &L, "vertex input", err, errlen);
+}
+
+VkPipeline yvk_library_pre_raster(yvk_context *ctx, const yvk_shader_stage *vertex, int rasterizerDiscard,
+                                  char *err, size_t errlen) {
+    library_state L;
+    library_begin(ctx, &L, VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT);
+    VkPipelineShaderStageCreateInfo stage;
+    stage_storage st;
+    if (make_stage(ctx, vertex, VK_SHADER_STAGE_VERTEX_BIT, &stage, &st, err, errlen) != 0) return VK_NULL_HANDLE;
+    VkPipelineViewportStateCreateInfo vps = {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, NULL, 0, 1, NULL, 1, NULL};
+    VkPipelineRasterizationStateCreateInfo rs = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    rs.rasterizerDiscardEnable = rasterizerDiscard ? VK_TRUE : VK_FALSE;
+    rs.polygonMode = VK_POLYGON_MODE_FILL;
+    rs.cullMode = VK_CULL_MODE_NONE;
+    rs.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rs.lineWidth = 1.0f;
+    L.create.stageCount = 1;
+    L.create.pStages = &stage;
+    L.create.pViewportState = &vps;
+    L.create.pRasterizationState = &rs;
+    VkPipeline p = library_create(ctx, &L, "pre-rasterization", err, errlen);
+    g_vk.vkDestroyShaderModule(ctx->device, stage.module, NULL);
+    return p;
+}
+
+VkPipeline yvk_library_fragment_shader(yvk_context *ctx, const yvk_shader_stage *fragment, VkSampleCountFlagBits samples,
+                                       char *err, size_t errlen) {
+    library_state L;
+    library_begin(ctx, &L, VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT);
+    VkPipelineShaderStageCreateInfo stage;
+    stage_storage st;
+    if (make_stage(ctx, fragment, VK_SHADER_STAGE_FRAGMENT_BIT, &stage, &st, err, errlen) != 0) return VK_NULL_HANDLE;
+    VkPipelineMultisampleStateCreateInfo ms = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    ms.rasterizationSamples = samples ? samples : VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineDepthStencilStateCreateInfo ds = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    ds.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+    ds.maxDepthBounds = 1.0f;
+    L.create.stageCount = 1;
+    L.create.pStages = &stage;
+    L.create.pMultisampleState = &ms;
+    L.create.pDepthStencilState = &ds;
+    VkPipeline p = library_create(ctx, &L, "fragment shader", err, errlen);
+    g_vk.vkDestroyShaderModule(ctx->device, stage.module, NULL);
+    return p;
+}
+
+VkPipeline yvk_library_fragment_output(yvk_context *ctx, const yvk_graphics_info *g, char *err, size_t errlen) {
+    library_state L;
+    library_begin(ctx, &L, VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT);
+    L.rendering.colorAttachmentCount = g->colorCount;
+    L.rendering.pColorAttachmentFormats = g->colorFormats;
+    L.rendering.depthAttachmentFormat = g->depthFormat;
+    L.rendering.stencilAttachmentFormat = g->stencilFormat;
+    VkPipelineMultisampleStateCreateInfo ms = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    ms.rasterizationSamples = g->samples ? g->samples : VK_SAMPLE_COUNT_1_BIT;
+    ms.alphaToCoverageEnable = g->alphaToCoverage;
+    VkPipelineColorBlendStateCreateInfo cbs = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, NULL, 0,
+                                               VK_FALSE, VK_LOGIC_OP_COPY, g->colorCount, g->blend};
+    L.create.pMultisampleState = &ms;
+    L.create.pColorBlendState = &cbs;
+    return library_create(ctx, &L, "fragment output", err, errlen);
+}
+
+VkPipeline yvk_library_link(yvk_context *ctx, const VkPipeline *libraries, uint32_t count, int optimize,
+                            char *err, size_t errlen) {
+    VkPipelineLibraryCreateInfoKHR li = {VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR, NULL, count, libraries};
+    VkGraphicsPipelineCreateInfo ci = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, &li,
+                                       optimize ? VK_PIPELINE_CREATE_LINK_TIME_OPTIMIZATION_BIT_EXT : 0};
+    ci.layout = ctx->pipelineLayout;
+    VkPipeline p = VK_NULL_HANDLE;
+    VkResult r = g_vk.vkCreateGraphicsPipelines(ctx->device, ctx->pipelineCache, 1, &ci, NULL, &p);
+    if (r != VK_SUCCESS) {
+        fail(err, errlen, "library link failed (%d)", r);
         return VK_NULL_HANDLE;
     }
     return p;
