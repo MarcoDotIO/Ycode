@@ -12,6 +12,11 @@
 // (Swift runtime included) off SVE. Measured with qtest/fpcheck on the
 // Thor (kernel 6.8.12-tegra): 4038 lost glibc copies in 30 s on 48 vCPU
 // threads whose guest never touched FP; 0 when the guest used FP.
+// Upstream Linux fixed this in commit fbc7e61195e2 ("KVM: arm64:
+// Unconditionally save+flush host FPSIMD/SVE/SME state"), backported to the
+// 5.15, 6.1, 6.6, 6.12 and 6.13 stable series but not to 6.8. The EL1 shim's
+// FP touch (resumeFlags bit 1, VCPUPool.shimFPTouch) is the second
+// mitigation: it also covers SVE in code other than memcpy/memmove.
 //
 // `YCODE_LIBC_MEMCPY=1` uses libc's versions again (A/B diagnostics).
 #if defined(__linux__) && !defined(_GNU_SOURCE)

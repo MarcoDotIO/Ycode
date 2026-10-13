@@ -241,6 +241,18 @@ between the assembly and the Swift side:
   it is set, the shim runs `tlbi vmalle1; dsb ish; isb` before the restore
   path's `eret`, then clears the flag. The VMM sets it whenever
   `GuestAddressSpace.generation` changed while a trap was handled.
+  **Bit 1** (added 2026-10-12): "touch FP/SIMD before resuming" — the shim
+  executes one FP/SIMD-class instruction (an `FPCR` read into a register it
+  then reloads, so no guest state changes) on the resume path, and the boot
+  path does the same once after enabling `CPACR_EL1.FPEN`. Purpose: a host
+  KVM bug in Linux kernels without upstream commit fbc7e61195e2 ("KVM:
+  arm64: Unconditionally save+flush host FPSIMD/SVE/SME state") loses the
+  host thread's SVE predicate state after a `KVM_RUN` in which the guest did
+  not use FP/SIMD; forcing an FP access each run takes the kernel's correct
+  path. The VMM sets it on every resume (`YCODE_SHIM_FP_TOUCH`, default on).
+  Measured cost ≈ 0.2 µs per `KVM_RUN`. Ycode also exports AdvSIMD-only
+  `memcpy`/`memmove` from `ycode-simd` (`CKVM/hostcopy.c`) so glibc's SVE
+  variants are never used on vCPU threads (`YCODE_LIBC_MEMCPY=1` disables).
 - **EL0 counter access.** At boot the shim sets `CNTKCTL_EL1` with
   EL0VCTEN = 1 and EL0PCTEN = 0, so EL0 can read `CNTVCT_EL0`.
 - **Unchanged:** everything else from stage 2.

@@ -192,6 +192,18 @@ public final class VCPUPool: @unchecked Sendable {
     public static let kickSignal = SIGUSR2
     /// Diagnostics (`YCODE_DEBUG_NO_KICK=1`): never signal a vCPU thread;
     /// `immediate_exit` alone ends its next KVM_RUN.
+    /// `resumeFlags` bit 1: the shim reads FPCR before it resumes the guest,
+    /// so each run that returns from a trap uses FP/SIMD once and the host
+    /// kernel switches FP/SIMD state to the vCPU. On Linux KVM hosts without
+    /// upstream commit fbc7e61195e2 ("KVM: arm64: Unconditionally save+flush
+    /// host FPSIMD/SVE/SME state"), a run in which the guest never touches
+    /// FP leaves the VMM thread able to use SVE while the kernel tracks its
+    /// state as FPSIMD-only, and its SVE predicates are lost at the next
+    /// context switch (lost writes in glibc's SVE memcpy). On by default;
+    /// `YCODE_SHIM_FP_TOUCH=0` turns it off. See also Sources/CKVM/hostcopy.c.
+    static let resumeFPTouch: UInt64 = 1 << 1
+    static let shimFPTouch = getenv("YCODE_SHIM_FP_TOUCH").map { String(cString: $0) != "0" } ?? true
+
     /// `YCODE_KICK_ONLY_IN_RUN=1`: the kick signal is blocked on vCPU
     /// threads except inside KVM_RUN (see `ckvm_kick_mask_outside_run`).
     static let kickOnlyInRun = getenv("YCODE_KICK_ONLY_IN_RUN").map { String(cString: $0) == "1" } ?? false
@@ -424,6 +436,7 @@ public final class VCPUPool: @unchecked Sendable {
             frame.tpidrro = state.tpidrro
             frame.tpidr = state.tpidr
             frame.flushTLB = true
+            if Self.shimFPTouch { frame.resumeFlags |= Self.resumeFPTouch }
             try vm.write(gpa: worker.frameGPA, bytes: frame.encoded())
             log("vCPU \(worker.index): thread #\(worker.threadCount), \(state)")
         }
@@ -474,7 +487,10 @@ public final class VCPUPool: @unchecked Sendable {
                 worker.inHandler.store(true, ordering: .relaxed)
                 disposition = trapHandler(worker, &frame)
                 worker.inHandler.store(false, ordering: .relaxed)
-                if case .resume = disposition { try vm.write(gpa: frameAddress, bytes: frame.encoded()) }
+                if case .resume = disposition {
+                    if Self.shimFPTouch { frame.resumeFlags |= Self.resumeFPTouch }
+                    try vm.write(gpa: frameAddress, bytes: frame.encoded())
+                }
             default:
                 disposition = exitHandler(worker, exit)
             }

@@ -74,6 +74,7 @@
 /* CNTKCTL_EL1: EL0VCTEN (bit 1) = 1, EL0PCTEN (bit 0) = 0, all else 0. */
 #define CNTKCTL_EL0VCT  (1 << 1)
 #define RESUME_FLUSH_TLB_BIT 0
+#define RESUME_FP_TOUCH_BIT  1
 
 /* "YCDBOOT1" read as a little-endian u64. */
 #define BOOT_MAGIC_0    0x4359
@@ -116,6 +117,8 @@ _start:
         /* Step 5: FP/SIMD at EL0 and EL1 without traps. */
         mov     x2, #CPACR_FPEN_ALL
         msr     cpacr_el1, x2
+        isb
+        mrs     x2, fpcr                        /* FP access in the first run too (see resumeFlags bit 1) */
 
         /* Stage 3a: EL0 may read CNTVCT_EL0 (not the physical counter). */
         mov     x2, #CNTKCTL_EL0VCT
@@ -304,6 +307,18 @@ trap_common:
          * of a VM share one VMID, so this reaches every one of them.
          */
         ldr     x2, [x0, #TF_RESUME_FLAGS]
+        /*
+         * resumeFlags bit 1 = touch FP/SIMD in this run. Reading FPCR is an
+         * FP/SIMD access that changes no guest state; it makes the host
+         * hypervisor switch the FP/SIMD registers to this vCPU during the
+         * run, which on some Linux KVM hosts is what keeps the VMM thread's
+         * own SVE state intact when the run returns (see
+         * Sources/CKVM/hostcopy.c). The shim leaves the bit set; the next
+         * trap entry clears the whole word as before.
+         */
+        tbz     x2, #RESUME_FP_TOUCH_BIT, 3f
+        mrs     x3, fpcr
+3:
         tbz     x2, #RESUME_FLUSH_TLB_BIT, 2f
         tlbi    vmalle1is
         ic      ialluis
