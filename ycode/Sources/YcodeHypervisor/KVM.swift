@@ -4,6 +4,7 @@
 // Contract: specs/simulator/vm-shim-protocol.md.
 
 import CKVM
+import YcodeDarwinABI
 
 public enum Hypervisor {
     /// True when this build contains the KVM backend (arm64 Linux hosts).
@@ -50,6 +51,16 @@ import Synchronization
 /// inaccessible pages instead of being unmapped, so a stale access faults
 /// at once instead of landing in whatever the host maps there next.
 let quarantineHostMemory = getenv("YCODE_DEBUG_QUARANTINE").map { String(cString: $0) == "1" } ?? false
+
+/// Diagnostics: hardware write watchpoints (see `ckvm_hwwatch_arm`).
+public enum HardwareWatchpoint {
+    public static func arm(_ slot: Int, _ address: UInt64) -> Int32 { ckvm_hwwatch_arm_slot(Int32(slot), address) }
+    public static func disarm(_ slot: Int) { ckvm_hwwatch_disarm_slot(Int32(slot)) }
+    /// Starts the lost-write checker threads (`ckvm_memcheck_start`).
+    public static func startMemoryCheck(threads: Int) { _ = ckvm_memcheck_start(Int32(threads)) }
+    /// Gives the map reader/writer check (`YCODE_DEBUG_RW_GUARD`) its call chains.
+    public static func installFrameCapture() { DebugAccessGuard.captureFrames = ckvm_capture_frames }
+}
 
 /// Unmaps [address, address+size) (or quarantines it, see above).
 func releaseHostMemory(_ address: UnsafeMutableRawPointer, _ size: Int) {

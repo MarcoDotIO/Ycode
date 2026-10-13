@@ -693,17 +693,30 @@ public final class DarwinFileSystem {
         return Self.normalizeAbsolute(cwd + "/" + guestPath)
     }
 
+    /// Works on the UTF-8 bytes ("/" is one byte in UTF-8 and never part of
+    /// another character), so it needs no String comparisons.
     private static func normalizeAbsolute(_ path: String) -> String {
-        var parts: [Substring] = []
-        for c in path.split(separator: "/", omittingEmptySubsequences: true) {
-            if c == "." { continue }
-            if c == ".." {
+        let bytes = Array(path.utf8)
+        var parts: [ArraySlice<UInt8>] = []
+        var start = 0
+        func component(_ c: ArraySlice<UInt8>) {
+            if c.isEmpty || (c.count == 1 && c.first == 0x2E) { return }
+            if c.count == 2 && c.first == 0x2E && c.last == 0x2E {
                 if !parts.isEmpty { parts.removeLast() }
-                continue
+                return
             }
             parts.append(c)
         }
-        return "/" + parts.joined(separator: "/")
+        for (i, b) in bytes.enumerated() where b == 0x2F {
+            component(bytes[start..<i])
+            start = i + 1
+        }
+        component(bytes[start...])
+        var out: [UInt8] = []
+        out.reserveCapacity(bytes.count + 1)
+        if parts.isEmpty { out.append(0x2F) }
+        for p in parts { out.append(0x2F); out += p }
+        return String(decoding: out, as: UTF8.self)
     }
 
     /// The prefix that serves a normalized guest path (the longest match) and
@@ -748,13 +761,19 @@ public final class DarwinFileSystem {
     /// path, its target, and the rest of `path` after it.
     private func firstGuestLink(in path: String) -> (link: String, target: String, rest: String)? {
         guard !guestSymlinks.isEmpty else { return nil }
-        let parts = path.split(separator: "/")
-        var current = ""
-        for (i, part) in parts.enumerated() {
-            current += "/" + part
-            if let target = guestSymlinks[current] {
-                return (current, target, parts[(i + 1)...].joined(separator: "/"))
+        // Each prefix of `path` (normalized: "/" + components) that ends at a
+        // component boundary, shortest first; on UTF-8 bytes.
+        let bytes = Array(path.utf8)
+        var end = 1
+        while end <= bytes.count {
+            if end == bytes.count || bytes[end] == 0x2F {
+                let link = String(decoding: bytes[..<end], as: UTF8.self)
+                if link != "/", let target = guestSymlinks[link] {
+                    let rest = end + 1 < bytes.count ? String(decoding: bytes[(end + 1)...], as: UTF8.self) : ""
+                    return (link, target, rest)
+                }
             }
+            end += 1
         }
         return nil
     }
@@ -2011,5 +2030,50 @@ extension DarwinFileSystem {
                 .filter { $0.hasPrefix(Self.xattrPrefix) }.map { String($0.dropFirst(Self.xattrPrefix.count)) }
         }
         throw DarwinErrnoError(DarwinErrnoCode.EIO)
+    }
+}
+
+// MARK: - Path components (no Foundation)
+
+/// `NSString` path helpers without Foundation: the kernel calls these on
+/// many host threads at once (some without the kernel lock), so it keeps to
+/// plain Swift strings.
+public enum GuestPath {
+    /// The last component ("/a/b/" → "b", "/" → "/", "" → "").
+    public static func lastComponent(_ path: String) -> String {
+        var s = Substring(path)
+        while s.count > 1, s.hasSuffix("/") { s.removeLast() }
+        if s == "/" { return "/" }
+        if let slash = s.lastIndex(of: "/") { return String(s[s.index(after: slash)...]) }
+        return String(s)
+    }
+
+    /// The path without its last component ("/a/b" → "/a", "/a" → "/",
+    /// "a" → "", "/" → "/").
+    public static func deletingLastComponent(_ path: String) -> String {
+        var s = Substring(path)
+        while s.count > 1, s.hasSuffix("/") { s.removeLast() }
+        guard let slash = s.lastIndex(of: "/") else { return "" }
+        if slash == s.startIndex { return "/" }
+        var parent = s[..<slash]
+        while parent.count > 1, parent.hasSuffix("/") { parent.removeLast() }
+        return String(parent)
+    }
+
+    /// The names in a host directory (without "." and ".."), unsorted; nil
+    /// when it cannot be read.
+    public static func hostDirectoryNames(_ hostPath: String) -> [String]? {
+        guard let dir = opendir(hostPath) else { return nil }
+        defer { closedir(dir) }
+        var names: [String] = []
+        while let entry = readdir(dir) {
+            let name = withUnsafeBytes(of: entry.pointee.d_name) { raw -> String in
+                let bytes = raw.bindMemory(to: UInt8.self)
+                let n = bytes.firstIndex(of: 0) ?? bytes.count
+                return String(decoding: bytes[..<n], as: UTF8.self)
+            }
+            if name != "." && name != ".." { names.append(name) }
+        }
+        return names
     }
 }

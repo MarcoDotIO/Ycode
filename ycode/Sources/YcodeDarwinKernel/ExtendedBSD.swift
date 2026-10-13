@@ -761,12 +761,12 @@ extension DarwinKernel {
     private static func listDirectory(file: GuestFile, selfStat: DarwinStat,
                                       fileSystem: DarwinFileSystem) throws -> [(name: String, ino: UInt64, type: UInt8)] {
         let dir = file.guestPath
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: file.hostPath) else {
+        guard let names = GuestPath.hostDirectoryNames(file.hostPath) else {
             throw Failure(errno: Errno.EIO)
         }
         var entries: [(name: String, ino: UInt64, type: UInt8)] = []
         entries.append((".", selfStat.ino, 4))
-        let parent = (dir as NSString).deletingLastPathComponent
+        let parent = GuestPath.deletingLastComponent(dir)
         let parentIno = (try? fileSystem.stat(parent.isEmpty ? "/" : parent, followSymlinks: true).ino) ?? selfStat.ino
         entries.append(("..", parentIno, 4))
         for name in names.sorted() {

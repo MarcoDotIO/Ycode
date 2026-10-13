@@ -190,6 +190,12 @@ public final class VCPUPool: @unchecked Sendable {
 
     /// The signal that kicks a vCPU host thread out of KVM_RUN.
     public static let kickSignal = SIGUSR2
+    /// Diagnostics (`YCODE_DEBUG_NO_KICK=1`): never signal a vCPU thread;
+    /// `immediate_exit` alone ends its next KVM_RUN.
+    /// `YCODE_KICK_ONLY_IN_RUN=1`: the kick signal is blocked on vCPU
+    /// threads except inside KVM_RUN (see `ckvm_kick_mask_outside_run`).
+    static let kickOnlyInRun = getenv("YCODE_KICK_ONLY_IN_RUN").map { String(cString: $0) == "1" } ?? false
+    static let debugNoKick = getenv("YCODE_DEBUG_NO_KICK").map { String(cString: $0) == "1" } ?? false
 
     private let lock = HostMutex()
     private let terminated = HostCondition()
@@ -297,11 +303,16 @@ public final class VCPUPool: @unchecked Sendable {
     }
     private var parkedHandler: (() -> Void)?
 
+    /// Diagnostics: `YCODE_DEBUG_STACK_GUARD_MB=N` puts an N MiB guard below
+    /// each vCPU thread's stack (default: one page).
+    static let debugStackGuardMB = getenv("YCODE_DEBUG_STACK_GUARD_MB").flatMap { Int(String(cString: $0)) }.flatMap { $0 > 0 ? $0 : nil }
+
     private func spawn(_ worker: Worker) throws {
         var attributes = pthread_attr_t()
         pthread_attr_init(&attributes)
         defer { pthread_attr_destroy(&attributes) }
         pthread_attr_setstacksize(&attributes, 16 << 20)
+        if let mb = Self.debugStackGuardMB { pthread_attr_setguardsize(&attributes, mb << 20) }
         let box = Unmanaged.passRetained(worker).toOpaque()
         let result = pthread_create(&worker.hostThread, &attributes, { argument in
             let worker = Unmanaged<VCPUPool.Worker>.fromOpaque(argument!).takeRetainedValue()
@@ -322,6 +333,10 @@ public final class VCPUPool: @unchecked Sendable {
 
     private func threadMain(_ worker: Worker) {
         worker.hostTID.store(UInt64(ckvm_gettid()), ordering: .relaxed)
+        if Self.kickOnlyInRun {
+            let r = ckvm_kick_mask_outside_run(worker.vcpu.fd, Self.kickSignal)
+            if r != 0 { var t = "ycode-simd: KVM_SET_SIGNAL_MASK failed (\(r))\n"; _ = t.withUTF8 { write(2, $0.baseAddress, $0.count) } }
+        }
         while true {
             lock.lock()
             while worker.pending == nil && !ending.load(ordering: .relaxed) { worker.wakeup.wait(lock) }
@@ -546,7 +561,8 @@ public final class VCPUPool: @unchecked Sendable {
                 worker.wakeup.broadcast()
                 // A thread inside the trap handler stops when it returns to
                 // its run loop (a blocked one when the kernel wakes it).
-                if worker.running, !worker.inHandler.load(ordering: .relaxed), pthread_equal(worker.hostThread, me) == 0 {
+                if worker.running, !worker.inHandler.load(ordering: .relaxed), pthread_equal(worker.hostThread, me) == 0,
+                   !Self.debugNoKick {
                     _ = ckvm_kick_thread(UInt(worker.hostThread), Self.kickSignal)
                 }
             }

@@ -41,6 +41,11 @@ final class VMCounters: @unchecked Sendable {
 /// thread runs one vCPU of one image, so one key serves every image).
 let trapPrefix = PerThreadString()
 
+/// Diagnostics: `YCODE_DEBUG_NO_VM_CLOSE=1` keeps every ended image's VM open.
+nonisolated(unsafe) var keptVMsForDebugging: [VirtualMachine]? =
+    getenv("YCODE_DEBUG_NO_VM_CLOSE").map { String(cString: $0) == "1" } ?? false ? [] : nil
+let keptVMsLock = NSLock()
+
 /// What the summary keeps about one image after its VM is gone.
 final class ImageRecord: @unchecked Sendable {
     /// 1 for the first image of the run, then in launch order.
@@ -615,7 +620,8 @@ final class GuestImageInstance: @unchecked Sendable {
             space.discardAll()
         }
         // KVM teardown (2–70 ms) needs no kernel state: outside the lock.
-        vm.close()
+        // Diagnostics (`YCODE_DEBUG_NO_VM_CLOSE=1`): keep the VM (leaks it).
+        if keptVMsForDebugging == nil { vm.close() } else { keptVMsLock.withLock { keptVMsForDebugging!.append(vm) } }
         VMCounters.shared.vmDestroyed()
     }
 
@@ -763,7 +769,8 @@ final class GuestImageInstance: @unchecked Sendable {
         // dyld_sim's mmap of the shared cache (§1 item 1).
         let isSVC = frame.trapKind == .svc
         let x16 = UInt32(truncatingIfNeeded: frame.x[16])
-        let pending: CacheMappingTracker.Pending? = kernel.lock.withLock(context: context) {
+        var pendingResult: CacheMappingTracker.Pending?
+        kernel.lock.withLock(context: context) { () -> Void in
             trapCount += 1
             let attribution = (trace || !milestoneReached) ? images.attribute(frame.elr) : nil
             if !milestoneReached, let (image, offset) = attribution,
@@ -782,11 +789,12 @@ final class GuestImageInstance: @unchecked Sendable {
                 // kevent_qos / kevent_id: show each change.
                 dumpKevents(space, list: frame.x[1], count: Int(frame.x[2]), label: "change")
             }
-            guard isSVC, x16 == 197 else { return nil }
+            guard isSVC, x16 == 197 else { return }
             let fd = Int32(truncatingIfNeeded: frame.x[4])
-            return .init(address: frame.x[0], size: frame.x[1], flags: frame.x[3], fd: fd,
-                         offset: frame.x[5], path: try? fileSystem.path(for: fd))
+            pendingResult = .init(address: frame.x[0], size: frame.x[1], flags: frame.x[3], fd: fd,
+                                  offset: frame.x[5], path: try? fileSystem.path(for: fd))
         }
+        let pending = pendingResult
 
         // The trap as it arrived (the kernel may rewrite the frame, e.g. for
         // signal delivery): fault reports describe this one.

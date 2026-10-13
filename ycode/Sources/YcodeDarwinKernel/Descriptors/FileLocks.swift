@@ -347,14 +347,14 @@ extension DarwinKernel {
     func protectionClass(of file: GuestFile) -> Int32 {
         let table = system.fileLocks
         if let c = table.protectionClasses[FileIdentity(file.stat)] { return c }
-        var path = (file.guestPath as NSString).deletingLastPathComponent
+        var path = GuestPath.deletingLastComponent(file.guestPath)
         while !path.isEmpty {
             if let st = try? fileSystem.stat(path, followSymlinks: true),
                let c = table.protectionClasses[FileIdentity(st)] {
                 return file.isDirectory || c != 0 ? c : FileLockControl.defaultFileClass
             }
             if path == "/" { break }
-            path = (path as NSString).deletingLastPathComponent
+            path = GuestPath.deletingLastComponent(path)
         }
         return file.isDirectory ? 0 : FileLockControl.defaultFileClass
     }

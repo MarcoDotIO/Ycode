@@ -94,6 +94,11 @@ int ckvm_set_one_reg_u64(int vcpu_fd, uint64_t reg_id, uint64_t value);
 /// KVM_RUN. Returns 0 when the vCPU exited to user space (inspect the run
 /// area), or -errno (-EINTR when a signal interrupted the run).
 int ckvm_run(int vcpu_fd);
+/// Diagnostics (`YCODE_DEBUG_RUNCHECK=1`, read at load): `ckvm_run` checks
+/// SP, x29, x30, x18, NZCV and the caller's stack frames across KVM_RUN and
+/// aborts on a change. `ckvm_debug_run_checks` counts the checked calls.
+extern int ckvm_debug_run_check;
+unsigned long ckvm_debug_run_checks(void);
 
 // ---- Register IDs -------------------------------------------------------------
 
@@ -174,6 +179,13 @@ int ckvm_kick_install(int signo);
 int ckvm_kick_thread(unsigned long thread, int signo);
 /// The calling thread's Linux thread id (diagnostics).
 long ckvm_gettid(void);
+/// Blocks `signo` on the calling thread, and has KVM unblock it only while
+/// this thread is inside KVM_RUN on `vcpu_fd` (KVM_SET_SIGNAL_MASK): a kick
+/// is then delivered only in KVM_RUN, never in the middle of host code.
+int ckvm_kick_mask_outside_run(int vcpu_fd, int signo);
+/// Diagnostics: up to `count` return addresses of the caller (frame-pointer
+/// walk); returns how many.
+int ckvm_capture_frames(uintptr_t *out, int count);
 
 /// Cleans and invalidates [address, address+size) to the point of coherency
 /// (DC CIVAC on every data-cache line, then DSB SY). Used for guest memory the
@@ -193,6 +205,22 @@ uint64_t ckvm_host_id_aa64mmfr2(void);
 int ckvm_watchdog_arm(uint64_t milliseconds);
 /// 1 once the watchdog timer has fired.
 int ckvm_watchdog_fired(void);
+
+// ---- Diagnostics: hardware write watchpoints --------------------------------
+
+/// Watches the 8 bytes at `address` (8-byte aligned) for writes in every
+/// current thread of this process (and threads they create later): a write
+/// raises SIGTRAP in the writing thread. Replaces any earlier watch. Returns
+/// the number of threads watched, or -errno.
+int ckvm_hwwatch_arm(uint64_t address);
+/// Removes the watch.
+void ckvm_hwwatch_disarm(void);
+/// The same for one of 4 independent watches (`slot` 0...3).
+int ckvm_hwwatch_arm_slot(int slot, uint64_t address);
+/// Diagnostics: `threads` threads that write and verify a stack and a heap
+/// buffer forever, reporting any word that does not read back (stderr).
+int ckvm_memcheck_start(int threads);
+void ckvm_hwwatch_disarm_slot(int slot);
 
 #endif // __linux__ && __aarch64__
 

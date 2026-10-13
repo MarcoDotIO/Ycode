@@ -56,7 +56,7 @@ extension DarwinKernel {
         mutating func time(_ t: DarwinTimespec) { i64(t.sec); i64(t.nsec) }
         mutating func reference(_ string: String?) {
             align()
-            let data = string.map { Array($0.utf8) + [0] } ?? []
+            let data: [UInt8] = string.map { Array($0.utf8) + [0] } ?? []
             variable.append((fixed.count, data))
             fixed += [UInt8](repeating: 0, count: 8)
         }

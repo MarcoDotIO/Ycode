@@ -79,7 +79,7 @@ public final class DarwinProcess: @unchecked Sendable, CustomStringConvertible {
         self.executablePath = executablePath
         self.startTime = startTime
         state = .running
-        let last = (executablePath as NSString).lastPathComponent
+        let last = GuestPath.lastComponent(executablePath)
         comm = String(decoding: Array(last.utf8.prefix(15)), as: UTF8.self)
         name = String(decoding: Array(last.utf8.prefix(31)), as: UTF8.self)
     }
@@ -92,7 +92,7 @@ public final class DarwinProcess: @unchecked Sendable, CustomStringConvertible {
 
     func setImagePath(_ path: String) {
         executablePath = path
-        let last = (path as NSString).lastPathComponent
+        let last = GuestPath.lastComponent(path)
         comm = String(decoding: Array(last.utf8.prefix(15)), as: UTF8.self)
         name = String(decoding: Array(last.utf8.prefix(31)), as: UTF8.self)
     }

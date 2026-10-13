@@ -129,6 +129,7 @@ let usage = """
                       [--guest-tools <dir with ylaunch>] [--framebuffer-library <SimFramebuffer binary> | none]
                       [--screenshot <path.png> [--screenshot-at S]...] [--skip-first-boot-migration]
                       [--metal-translator <ycode-airc>] (default: $YCODE_AIRC, next to ycode-simd, $PATH)
+                      [--gpu-cache-dir <dir>] (Vulkan pipeline cache and ycode-airc translation cache)
                       [--debug-plist-bool KEY=true|false]... [--debug-no-session-end]
                       [--trace] [--keep-going] [--timeout-ms N] [--host-libs <dir>] [--debug-bootstrap-discard]
                       [--exec-args <arg>...]
@@ -186,6 +187,9 @@ struct Options {
     /// The shader translator (`ycode-airc`) for the Metal back end; nil:
     /// $YCODE_AIRC, next to this executable, or on $PATH.
     var metalTranslator: String?
+    /// Persistent GPU caches: <dir>/vulkan-pipelines.bin
+    /// ($YCODE_VULKAN_PIPELINE_CACHE) and <dir>/airc ($YCODE_AIRC_CACHE).
+    var gpuCacheDirectory: String?
     /// Debug: offer no host services (IOSurface) to the guest.
     var debugNoHostServices = false
     /// Stage 7: install a host `.app`, launch a bundle id, with these
@@ -322,6 +326,7 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--debug-no-host-services": options.debugNoHostServices = true
         case "--debug-no-metal": options.debugNoMetal = true
         case "--metal-translator": options.metalTranslator = value(for: argument)
+        case "--gpu-cache-dir": options.gpuCacheDirectory = value(for: argument)
         case "--screenshot": options.screenshotPath = value(for: argument)
         case "--skip-first-boot-migration": options.skipFirstBootMigration = true
         case "--screenshot-at":
@@ -579,6 +584,32 @@ func runStage2Pool(_ options: Options, vm: VirtualMachine, tables: PageTableBuil
 }
 
 let options = parseOptions(CommandLine.arguments)
+if let n = getenv("YCODE_DEBUG_MEMCHECK").flatMap({ Int(String(cString: $0)) }), n > 0 {
+    HardwareWatchpoint.startMemoryCheck(threads: n)
+    stderrLine("ycode-simd: debug: \(n) lost-write checker threads")
+}
+if DebugAccessGuard.enabled {
+    HardwareWatchpoint.installFrameCapture()
+    stderrLine("ycode-simd: debug: reader/writer check on interval maps")
+}
+if getenv("YCODE_DEBUG_HWWATCH").map({ String(cString: $0) == "1" }) ?? false {
+    // Diagnostics: hardware write watchpoints on the backings' allocator maps.
+    DebugHardwareWatch.arm = { HardwareWatchpoint.arm($0, $1) }
+    DebugHardwareWatch.disarm = { HardwareWatchpoint.disarm($0) }
+    stderrLine("ycode-simd: debug: hardware write watch on allocator map elements")
+}
+if let dir = options.gpuCacheDirectory {
+    // Before any other thread starts: the Metal back end and ycode-airc read
+    // these variables.
+    let absolute = dir.hasPrefix("/") ? dir : FileManager.default.currentDirectoryPath + "/" + dir
+    do {
+        try FileManager.default.createDirectory(atPath: absolute + "/airc", withIntermediateDirectories: true)
+    } catch {
+        die("--gpu-cache-dir: cannot create \(absolute): \(error)", status: 66)
+    }
+    setenv("YCODE_VULKAN_PIPELINE_CACHE", absolute + "/vulkan-pipelines.bin", 1)
+    setenv("YCODE_AIRC_CACHE", absolute + "/airc", 1)
+}
 do {
     if options.kvmSmoke {
         try KVMSmokeTest.run { print($0) }

@@ -97,7 +97,7 @@ public final class KVMPhysicalBacking {
         let limit = UInt64(1) << physicalAddressBits
         var window: UInt64?
         var arena: SharedFileArena?
-        if sharedReadOnlyFiles, vm.supportsReadOnlyMemory, let a = SharedFileArena.shared,
+        if sharedReadOnlyFiles, !Self.debugNoArena, vm.supportsReadOnlyMemory, let a = SharedFileArena.shared,
            readOnlyFileWindowGPA % Self.granule == 0, readOnlyFileWindowGPA > fileWindowGPA,
            readOnlyFileWindowGPA < limit, a.size <= limit - readOnlyFileWindowGPA,
            (try? vm.addMemorySlot(gpa: readOnlyFileWindowGPA, size: a.size, host: a.base, kind: .readOnlyFiles,
@@ -112,12 +112,20 @@ public final class KVMPhysicalBacking {
         self.physicalLimit = limit
         self.poolHost = host
         self.pool = RangeAllocator(base: poolGPA, size: poolSize)
-        self.stale = RangeAllocator(base: poolGPA, size: poolSize)
+        self.stale = RangeAllocator(base: poolGPA, size: poolSize, hardwareWatch: DebugHardwareWatch.arm != nil)
         self.nextFileGPA = fileWindowGPA
         self.readOnlyFileWindowGPA = window
         self.arena = arena
         self.fileWindowLimit = window ?? limit
     }
+
+    /// Diagnostics: `YCODE_DEBUG_NO_FILE_ARENA=1` (no shared read-only file
+    /// window), `YCODE_DEBUG_NO_STALE=1` (released pool pages are dropped at
+    /// once, never zero-filled on reuse), `YCODE_DEBUG_NO_FILE_COPY=1`
+    /// (small file mappings get their own memslot instead of a pool copy).
+    static let debugNoArena = getenv("YCODE_DEBUG_NO_FILE_ARENA").map { String(cString: $0) == "1" } ?? false
+    static let debugNoStale = getenv("YCODE_DEBUG_NO_STALE").map { String(cString: $0) == "1" } ?? false
+    static let debugNoFileCopy = getenv("YCODE_DEBUG_NO_FILE_COPY").map { String(cString: $0) == "1" } ?? false
 
     static func roundUp(_ value: UInt64, _ alignment: UInt64) -> UInt64 { (value + alignment - 1) & ~(alignment - 1) }
 
@@ -160,7 +168,7 @@ public final class KVMPhysicalBacking {
         // Ignore a range that is not entirely allocated (double free): keep the allocator consistent.
         guard pool.isAllocated(gpa, size) else { return }
         pool.free(gpa, size)
-        if size <= Self.discardLimit {
+        if size <= Self.discardLimit && !Self.debugNoStale {
             stale.mark(gpa, size)
             if stale.bytesInUse > Self.staleLimit {
                 for r in stale.takeAll() {
@@ -189,7 +197,7 @@ public final class KVMPhysicalBacking {
         }
         let available = offset < fileSize ? fileSize - offset : 0
         let fileBytes = Int(min(min(size, available), total))
-        if total <= Self.copyLimit {
+        if total <= Self.copyLimit && !Self.debugNoFileCopy {
             // A copy in pool memory: no memslot (and released with the mapping).
             let gpa = try allocateAnonymous(size: total)
             let destination = poolHost + Int(gpa - poolGPA)

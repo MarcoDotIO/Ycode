@@ -208,13 +208,16 @@ public final class KernelLock: @unchecked Sendable {
         noteAcquired()
     }
 
+    /// Diagnostics (`YCODE_DEBUG_NO_UNLOCK=1`): `unlocked` keeps the lock.
+    static let neverUnlock = getenv("YCODE_DEBUG_NO_UNLOCK").map { String(cString: $0) == "1" } ?? false
+
     /// Runs `body` with the lock released (stage 6, `stage6-contract.md`
     /// §5.1, first step: host file-system I/O outside the global lock) and
     /// takes it again before returning. `body` must touch no state the lock
     /// protects. At nesting depth > 1 (a caller that cannot give the lock
     /// up) `body` runs with the lock held.
     public func unlocked<T>(_ body: () throws -> T) rethrows -> T {
-        guard isHeldByCurrentThread, depth == 1 else { return try body() }
+        guard isHeldByCurrentThread, depth == 1, !Self.neverUnlock else { return try body() }
         let saved = currentContext
         noteReleasing()
         owner.store(0, ordering: .relaxed)
