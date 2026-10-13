@@ -106,6 +106,8 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
     var running = true
     var completionThread: Thread?
     var statistics = VulkanBackendStatistics()
+    /// Diagnostics: skipped commands by the replay source line that skipped them.
+    var skipLines: [Int: Int] = [:]
 
     // Pipelines (VulkanPipelines.swift).
     let compileQueue = OperationQueue()
@@ -747,5 +749,34 @@ extension VulkanMetalBackend {
     public var stats: VulkanBackendStatistics {
         cond.lock(); defer { cond.unlock() }
         return statistics
+    }
+}
+
+extension VulkanMetalBackend {
+    /// Diagnostics (`YCODE_METAL_STATS`): counters, queue depth, pipelines
+    /// still building or broken.
+    public func diagnosticSummary() -> String? {
+        guard isAvailable else { return nil }
+        cond.lock()
+        let s = statistics
+        let queued = pending.count
+        let serials = "\(completedSerial)/\(lastSubmitted)"
+        let brokenRender = renderPipelines.values.filter { $0.broken || !$0.failed.isEmpty }.count
+        let brokenCompute = computePipelines.values.filter { $0.broken || !$0.failed.isEmpty }.count
+        let lost = deviceLost
+        let skips = skipLines.sorted { $0.key < $1.key }.map { "L\($0.key)×\($0.value)" }.joined(separator: " ")
+        cond.unlock()
+        return "serials \(serials), \(queued) pending, compile queue \(compileQueue.operationCount), "
+            + "\(s.renderPipelines) render / \(s.computePipelines) compute pipelines (broken \(brokenRender) / \(brokenCompute)), "
+            + "\(s.submissions) submissions, \(s.draws) draws, \(s.dispatches) dispatches, \(s.blits) blits, \(s.skipped) skipped, "
+            + "surface up/down \(s.surfaceUploads)/\(s.surfaceDownloads), \(s.textures) textures, \(s.buffers) buffers, \(s.imports) imports"
+            + (skips.isEmpty ? "" : " (skips by replay line: \(skips))")
+            + (lost ? ", DEVICE LOST" : "")
+    }
+
+    /// Counts a skipped command (under the lock).
+    func noteSkip(_ line: Int = #line) {
+        statistics.skipped += 1
+        skipLines[line, default: 0] += 1
     }
 }

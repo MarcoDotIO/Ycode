@@ -123,6 +123,14 @@ final class MetalHostCore: @unchecked Sendable {
         /// ended: `finishCreate` releases them.
         var orphans: [MetalHandle: Object] = [:]
         var ended = false
+        /// The guest pid of the first hand-shake's sender (diagnostics; 0 = unknown).
+        var guestPID: Int32 = 0
+        /// Diagnostics: submissions, events sent, the last submission (host seconds).
+        var submitted = 0
+        var scheduledSent = 0
+        var completedSent = 0
+        var errorsCompleted = 0
+        var lastSubmit: Double = 0
         let events: DispatchQueue
         init(id: MetalProcessID) {
             self.id = id
@@ -138,6 +146,20 @@ final class MetalHostCore: @unchecked Sendable {
             s.processes = processes.count
             s.liveObjects = processes.values.reduce(0) { $0 + $1.objects.count }
             return s
+        }
+    }
+
+    /// Diagnostics: one line per live client process (guest pid, objects,
+    /// submissions, events sent, submissions still waiting for event 101).
+    func processSummary() -> [String] {
+        lock.withLock {
+            let now = clock()
+            return processes.values.sorted { $0.id < $1.id }.map { p in
+                let idle = p.lastSubmit == 0 ? "never" : String(format: "%.1f s ago", now - p.lastSubmit)
+                return "process \(p.id) (guest pid \(p.guestPID)): \(p.objects.count) objects, \(p.submitted) submitted, "
+                    + "\(p.scheduledSent) scheduled, \(p.completedSent) completed (\(p.errorsCompleted) with errors), "
+                    + "\(p.submitted - p.completedSent) outstanding; last submission \(idle)"
+            }
         }
     }
 
@@ -187,7 +209,7 @@ final class MetalHostCore: @unchecked Sendable {
             if Self.isBackendObject(o.kind) { backend.release(h) }
             for r in o.rights { transport?.dropRight(r) }
         }
-        log("metal: process \(p.id) ended; released \(objects.count) objects")
+        log("metal: process \(p.id) (guest pid \(p.guestPID)) ended; released \(objects.count) objects")
     }
 
     /// Called after every backend create call (successful or not, or
@@ -229,10 +251,10 @@ final class MetalHostCore: @unchecked Sendable {
         log("metal: backend \(what) failed: \(error)")
     }
 
-    func handle(_ d: XPCDict, connection: UInt32) -> Outcome {
+    func handle(_ d: XPCDict, connection: UInt32, senderPID: Int32 = 0) -> Outcome {
         let mt = d["messageType"]?.integerValue ?? .max
         lock.withLock { stats.messages[mt, default: 0] += 1 }
-        if mt == 0 { return handshake(d, connection: connection) }
+        if mt == 0 { return handshake(d, connection: connection, senderPID: senderPID) }
         guard let process = lock.withLock({ () -> Process? in
             guard let c = connections[connection], let pid = c.process else { return nil }
             return processes[pid]
@@ -259,7 +281,7 @@ final class MetalHostCore: @unchecked Sendable {
 
     // MARK: Hand-shake (§2.3)
 
-    private func handshake(_ d: XPCDict, connection: UInt32) -> Outcome {
+    private func handshake(_ d: XPCDict, connection: UInt32, senderPID: Int32) -> Outcome {
         let type = d["connectionType"]?.integerValue ?? 0
         let requested = d["processRef"]?.integerValue ?? 0
         let pid: MetalProcessID = lock.withLock {
@@ -278,6 +300,7 @@ final class MetalHostCore: @unchecked Sendable {
                 if type == 0 { p.eventPort = c.clientPort }
             }
             p.connections.insert(connection)
+            if p.guestPID == 0 { p.guestPID = senderPID }
             return p.id
         }
         if requested != 0 && requested != pid { log("metal: hand-shake named unknown process \(requested); new process \(pid)") }
@@ -775,6 +798,8 @@ final class MetalHostCore: @unchecked Sendable {
         var newUnknown: [UInt32] = []
         lock.withLock {
             stats.submissions += 1
+            p.submitted += 1
+            p.lastSubmit = clock()
             for (op, n) in unknownOps {
                 stats.unknownRecords[op, default: 0] += n
                 if loggedUnknown.insert("record \(op)").inserted { newUnknown.append(op) }
@@ -810,7 +835,7 @@ final class MetalHostCore: @unchecked Sendable {
         f.sentScheduled = true
         _ = transport?.sendEvent(event(100, cbRef, status: MetalCommandBufferStatus.scheduled, start: f.start, end: clock()),
                                  to: port)
-        lock.withLock { stats.scheduledEvents += 1 }
+        lock.withLock { stats.scheduledEvents += 1; p.scheduledSent += 1 }
     }
 
     /// On `p.events`. Sends 100 first when the backend never reported it.
@@ -821,7 +846,11 @@ final class MetalHostCore: @unchecked Sendable {
         guard let port = eventPort(p) else { return }
         f.sentCompleted = true
         _ = transport?.sendEvent(event(101, cbRef, status: status, start: f.start, end: end), to: port)
-        lock.withLock { stats.completedEvents += 1 }
+        lock.withLock {
+            stats.completedEvents += 1
+            p.completedSent += 1
+            if status != MetalCommandBufferStatus.completed { p.errorsCompleted += 1 }
+        }
     }
 
     /// Waits until every event queued so far for every process is sent (tests).

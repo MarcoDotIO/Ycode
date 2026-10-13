@@ -253,6 +253,8 @@ public protocol MetalBackend: AnyObject {
     func gpuAddress(ofBuffer handle: MetalHandle) -> UInt64?
     /// Sampler `gpuResourceID` (op 39); nil: the service answers the handle.
     func gpuResourceID(ofSampler handle: MetalHandle) -> UInt64?
+    /// Diagnostics: a one-line summary of the backend's state (nil: none).
+    func diagnosticSummary() -> String?
 }
 
 public extension MetalBackend {
@@ -262,6 +264,8 @@ public extension MetalBackend {
     func eventValue(_ handle: MetalHandle) -> UInt64? { nil }
     func gpuAddress(ofBuffer handle: MetalHandle) -> UInt64? { nil }
     func gpuResourceID(ofSampler handle: MetalHandle) -> UInt64? { nil }
+    /// Diagnostics: a one-line summary of the backend's state (nil: none).
+    func diagnosticSummary() -> String? { nil }
 }
 
 // CONTRACT-REQUEST (I3): IOSurfaceHostService keeps its Method-14 ports

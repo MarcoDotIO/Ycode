@@ -204,3 +204,23 @@ MTLSimDriver 12/12, IconRendering 14/14, RenderBox 68/109, CoreMaterial3D
 remainder, f32→f16→f32 folding. **Next for VK:** QuartzCore's uber-shaders
 take ~6 s to create as Vulkan pipelines cold — asynchronous pipeline
 creation and a persistent pipeline cache are required.
+
+## 10. Checkpoint (agent G, 2026-10-13): backboardd composites through Metal
+
+On the Thor (patched kernel, release, `--gpu-cache-dir`), backboardd takes
+its Metal path. It wraps the three LCD IOSurfaces and composites through
+`YcodeMetalHost` → `YcodeVulkan`. Over 11,197 command buffers in 325 s there
+were 0 translation failures, unknown records, refusals, backend errors or
+Vulkan errors. The boot UI needs only 3–4 Core Animation pipelines. The
+worst one takes 5.4 s to compile cold and 4.3 ms with the persistent cache.
+Captures match the CPU path pixel for pixel (logo: 0 of 3,162,132 pixels
+differ). A Core Animation probe of ours,
+`research/experiments/simulator/metal-ca/p_ca_render.m` (public
+`CARenderer` into an `MTLTexture`; 16 features: gradients, shadows, masks,
+text, perspective, replicator…), matches a real iOS 27.1 simulator within 3
+levels in 15 of 16 cells. The 16th is nearest-filter texel ties, where the
+two GPUs round differently. `YCODE_METAL_STATS=<s>` prints per-client and
+backend statistics. The home screen is still gated by SpringBoard (I4).
+Next for G: backdrop blur, filters and materials; RenderBox,
+CoreMaterial3D and CoreImage coverage for posters and icons; the per-frame
+full-surface copy cost.

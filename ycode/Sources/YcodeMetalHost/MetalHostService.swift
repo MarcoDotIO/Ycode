@@ -74,8 +74,29 @@ public final class MetalHostService: @unchecked Sendable {
 
     public func stop() { lock.withLock { stopping = true } }
 
+    /// Diagnostics: `YCODE_METAL_STATS=<seconds>` logs a summary of every
+    /// client process and of the backend at that interval.
+    static let statsInterval: Double = ProcessInfo.processInfo.environment["YCODE_METAL_STATS"].flatMap(Double.init) ?? 0
+
+    /// The diagnostic summary lines (`YCODE_METAL_STATS`).
+    public func summaryLines() -> [String] {
+        let s = core.statistics
+        var lines = ["metal: summary: \(s.processes) processes, \(s.liveObjects) objects, \(s.submissions) submissions, "
+            + "\(s.scheduledEvents) scheduled, \(s.completedEvents) completed, \(s.backendErrors) backend errors"
+            + (s.unknownRecords.isEmpty ? "" : ", unknown records \(s.unknownRecords.sorted { $0.key < $1.key })")
+            + (s.refused.isEmpty ? "" : ", refused \(s.refused.sorted { $0.key < $1.key })")]
+        lines += core.processSummary().map { "metal:   " + $0 }
+        if let b = backend.diagnosticSummary() { lines.append("metal:   backend: " + b) }
+        return lines
+    }
+
     private func run() {
+        var nextSummary = Self.statsInterval > 0 ? ProcessInfo.processInfo.systemUptime + Self.statsInterval : .infinity
         while !lock.withLock({ stopping }) {
+            if ProcessInfo.processInfo.systemUptime >= nextSummary {
+                nextSummary += Self.statsInterval
+                for line in summaryLines() { log(line) }
+            }
             let m: MachHostReceivedMessage
             do {
                 m = try host.receive(on: portSet, timeout: 200_000_000)
@@ -151,7 +172,7 @@ public final class MetalHostService: @unchecked Sendable {
             guard case let .dictionary(d) = try XPCWire.decode(body: m.body, descriptors: wire) else {
                 throw XPCWireError.rootNotDictionary
             }
-            outcome = core.handle(d, connection: m.localPort)
+            outcome = core.handle(d, connection: m.localPort, senderPID: m.sender?.pid ?? 0)
         } catch {
             log("metal: undecodable request: \(error)")
         }

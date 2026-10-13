@@ -164,7 +164,7 @@ extension VulkanMetalBackend {
                 for c in cmds {
                     switch c {
                     case .wait(let h, let value):
-                        guard let h, let e = events[h], let sem = e.semaphore else { statistics.skipped += 1; continue }
+                        guard let h, let e = events[h], let sem = e.semaphore else { noteSkip(); continue }
                         // The rest of the command buffer waits for the event.
                         let next = try newRecording()
                         next.waitSemaphore = sem
@@ -174,7 +174,7 @@ extension VulkanMetalBackend {
                         rec = next
                         barrier(rec.cb)
                     case .signal(let h, let value):
-                        guard let h, let e = events[h], let sem = e.semaphore else { statistics.skipped += 1; continue }
+                        guard let h, let e = events[h], let sem = e.semaphore else { noteSkip(); continue }
                         guard value > e.highest else { continue }
                         e.highest = value
                         let next = try newRecording()
@@ -183,11 +183,11 @@ extension VulkanMetalBackend {
                         rec = next
                         barrier(rec.cb)
                     case .unknown:
-                        statistics.skipped += 1
+                        noteSkip()
                     }
                 }
             case .unknown:
-                statistics.skipped += 1
+                noteSkip()
             }
         }
 
@@ -293,7 +293,7 @@ extension VulkanMetalBackend {
     func replayRender(_ pass: MetalRenderPass, _ rec: Recording) throws {
         guard let d = pass.descriptor, d.hasAttachments else {
             // A pass without attachments (or without a begin record): nothing to render into.
-            statistics.skipped += 1
+            noteSkip()
             return
         }
         let cb = rec.cb
@@ -347,12 +347,12 @@ extension VulkanMetalBackend {
             hasStencil = true
         }
         guard colorCount > 0 || hasDepth || hasStencil else {
-            statistics.skipped += 1
+            noteSkip()
             return
         }
         if width <= 0 || height <= 0, let s = sizeFromTexture { (width, height) = s }
         if let s = sizeFromTexture { width = min(width, s.0); height = min(height, s.1) }
-        guard width > 0, height > 0 else { statistics.skipped += 1; return }
+        guard width > 0, height > 0 else { noteSkip(); return }
         info.width = UInt32(width)
         info.height = UInt32(height)
         info.layerCount = 1
@@ -392,9 +392,9 @@ extension VulkanMetalBackend {
         }
 
         func prepareDraw(_ primitive: UInt32, indexed: Bool) throws -> Bool {
-            if skipDraws { statistics.skipped += 1; return false }
+            if skipDraws { noteSkip(); return false }
             guard let p = pipeline, let vkp = renderVariant(p, topologyClass: topologyClass(ofPrimitive: primitive)) else {
-                statistics.skipped += 1
+                noteSkip()
                 return false
             }
             if vkp != bound {
@@ -403,7 +403,7 @@ extension VulkanMetalBackend {
             }
             for idx in p.vertexBufferIndices {
                 guard idx < vs.buffers.count, let h = vs.buffers[idx].0, let b = buffers[h] else {
-                    statistics.skipped += 1
+                    noteSkip()
                     return false
                 }
                 let off = b.offset + vs.buffers[idx].1
@@ -488,7 +488,7 @@ extension VulkanMetalBackend {
                 fn.vkCmdDraw!(cb, UInt32(dr.vertexCount), UInt32(dr.instanceCount), UInt32(dr.vertexStart), UInt32(dr.baseInstance))
             case .drawIndexed(let dr):
                 guard dr.indexCount > 0, dr.instanceCount > 0, let ih = dr.indexBuffer, let ib = buffers[ih] else {
-                    statistics.skipped += 1
+                    noteSkip()
                     continue
                 }
                 guard try prepareDraw(dr.primitiveType, indexed: true) else { continue }
@@ -509,7 +509,7 @@ extension VulkanMetalBackend {
             case .memoryBarrier, .useResources:
                 break
             case .unknown:
-                statistics.skipped += 1
+                noteSkip()
             }
         }
         fn.vkCmdEndRendering!(cb)
@@ -554,10 +554,10 @@ extension VulkanMetalBackend {
         var tgMemory: [Int: Int] = [:]
 
         func dispatch(groups: (Int, Int, Int), group: (Int, Int, Int), threads: (Int, Int, Int)?) throws {
-            guard let p = pipeline else { statistics.skipped += 1; return }
+            guard let p = pipeline else { noteSkip(); return }
             let lengths = (p.shader?.reflection.compute?.threadgroupMemory?.slots ?? []).map { tgMemory[$0.index] ?? 0 }
             let key = ComputeVariantKey(x: max(group.0, 1), y: max(group.1, 1), z: max(group.2, 1), threadgroupMemory: lengths)
-            guard let vkp = computeVariant(p, key) else { statistics.skipped += 1; return }
+            guard let vkp = computeVariant(p, key) else { noteSkip(); return }
             if vkp != bound { fn.vkCmdBindPipeline!(cb, VK_PIPELINE_BIND_POINT_COMPUTE, vkp); bound = vkp }
             let t = threads ?? (groups.0 * group.0, groups.1 * group.1, groups.2 * group.2)
             let table = try writeTable(b, p.statics, rec)
@@ -586,7 +586,7 @@ extension VulkanMetalBackend {
             case .setThreadgroupMemoryLength(let length, let index):
                 tgMemory[index] = length
             case .setStageInRegion:
-                statistics.skipped += 1
+                noteSkip()
             case .dispatchThreadgroups(let g, let t):
                 guard g.width > 0, g.height > 0, g.depth > 0 else { continue }
                 try dispatch(groups: (g.width, g.height, g.depth), group: (t.width, t.height, t.depth), threads: nil)
@@ -596,7 +596,7 @@ extension VulkanMetalBackend {
                 try dispatch(groups: ((n.width + tw - 1) / tw, (n.height + th - 1) / th, (n.depth + td - 1) / td),
                              group: (tw, th, td), threads: (n.width, n.height, n.depth))
             case .dispatchThreadgroupsIndirect(let h, let offset, let t):
-                guard let p = pipeline, let h, let buf = buffers[h] else { statistics.skipped += 1; continue }
+                guard let p = pipeline, let h, let buf = buffers[h] else { noteSkip(); continue }
                 let lengths = (p.shader?.reflection.compute?.threadgroupMemory?.slots ?? []).map { tgMemory[$0.index] ?? 0 }
                 guard let vkp = computeVariant(p, ComputeVariantKey(x: max(t.width, 1), y: max(t.height, 1), z: max(t.depth, 1),
                                                                     threadgroupMemory: lengths)) else { continue }
@@ -610,7 +610,7 @@ extension VulkanMetalBackend {
             case .memoryBarrier, .memoryBarrierResources, .useResources:
                 break  // every dispatch is followed by a full barrier
             case .unknown:
-                statistics.skipped += 1
+                noteSkip()
             }
         }
     }
@@ -623,28 +623,28 @@ extension VulkanMetalBackend {
             if i > 0 { barrier(cb) }
             switch command {
             case .copyBufferToBuffer(let s, let so, let d, let dO, let size):
-                guard let s, let src = buffers[s], let d, let dst = buffers[d], size > 0 else { statistics.skipped += 1; continue }
+                guard let s, let src = buffers[s], let d, let dst = buffers[d], size > 0 else { noteSkip(); continue }
                 var region = VkBufferCopy(srcOffset: VkDeviceSize(src.offset + so), dstOffset: VkDeviceSize(dst.offset + dO),
                                           size: VkDeviceSize(size))
                 fn.vkCmdCopyBuffer!(cb, src.vkBuffer, dst.vkBuffer, 1, &region)
             case .copyBufferToTexture(let s, let so, let bpr, let bpi, let size, let d, let slice, let level, let origin, let options):
-                guard let s, let src = buffers[s], let d, let tex = textures[d] else { statistics.skipped += 1; continue }
+                guard let s, let src = buffers[s], let d, let tex = textures[d] else { noteSkip(); continue }
                 var region = copyRegion(tex, level: level, slice: slice, origin: (origin.width, origin.height, origin.depth),
                                         size: (size.width, size.height, size.depth), bufferOffset: src.offset + so,
                                         bytesPerRow: bpr, bytesPerImage: bpi, options: options)
                 fn.vkCmdCopyBufferToImage!(cb, src.vkBuffer, tex.image.vkImage, VK_IMAGE_LAYOUT_GENERAL, 1, &region)
             case .copyTextureToBuffer(let s, let slice, let level, let origin, let size, let d, let dO, let bpr, let bpi, let options):
-                guard let s, let tex = textures[s], let d, let dst = buffers[d] else { statistics.skipped += 1; continue }
+                guard let s, let tex = textures[s], let d, let dst = buffers[d] else { noteSkip(); continue }
                 var region = copyRegion(tex, level: level, slice: slice, origin: (origin.width, origin.height, origin.depth),
                                         size: (size.width, size.height, size.depth), bufferOffset: dst.offset + dO,
                                         bytesPerRow: bpr, bytesPerImage: bpi, options: options)
                 fn.vkCmdCopyImageToBuffer!(cb, tex.image.vkImage, VK_IMAGE_LAYOUT_GENERAL, dst.vkBuffer, 1, &region)
             case .copyTextureToTexture(let s, let ss, let sl, let so, let size, let d, let ds, let dl, let dO):
-                guard let s, let src = textures[s], let d, let dst = textures[d] else { statistics.skipped += 1; continue }
+                guard let s, let src = textures[s], let d, let dst = textures[d] else { noteSkip(); continue }
                 copyImage(cb, src, level: sl, slice: ss, origin: (so.width, so.height, so.depth), dst, level: dl, slice: ds,
                           origin: (dO.width, dO.height, dO.depth), size: (size.width, size.height, size.depth))
             case .copyTextureSlices(let s, let ss, let sl, let d, let ds, let dl, let sliceCount, let levelCount):
-                guard let s, let src = textures[s], let d, let dst = textures[d] else { statistics.skipped += 1; continue }
+                guard let s, let src = textures[s], let d, let dst = textures[d] else { noteSkip(); continue }
                 for l in 0..<max(levelCount, 1) {
                     let (w, h, dd) = src.levelSize(sl + l)
                     for k in 0..<max(sliceCount, 1) {
@@ -653,7 +653,7 @@ extension VulkanMetalBackend {
                     }
                 }
             case .fillBuffer(let h, let location, let length, let value):
-                guard let h, let b = buffers[h], length > 0 else { statistics.skipped += 1; continue }
+                guard let h, let b = buffers[h], length > 0 else { noteSkip(); continue }
                 let byte = UInt8(truncatingIfNeeded: value)
                 let start = b.offset + location
                 if start % 4 == 0 && length % 4 == 0 {
@@ -666,12 +666,12 @@ extension VulkanMetalBackend {
                     fn.vkCmdCopyBuffer!(cb, staging.vkBuffer, b.vkBuffer, 1, &region)
                 }
             case .generateMipmaps(let h):
-                guard let h, let tex = textures[h] else { statistics.skipped += 1; continue }
+                guard let h, let tex = textures[h] else { noteSkip(); continue }
                 generateMipmaps(cb, tex)
             case .optimizeContentsForGPUAccess, .updateFence, .waitForFence:
                 continue
             case .unknown:
-                statistics.skipped += 1
+                noteSkip()
                 continue
             }
             statistics.blits += 1
