@@ -1057,7 +1057,14 @@ void Translator::prologue() {
                 }
             } else if (k == "air.front_facing") {
                 r = E.op("OpLoad", E.tBool(), {builtin("FrontFacing", E.tBool())});
-                if (!T->isIntegerTy(1)) fail("unsupported-type", "front_facing of type " + printType(T));
+                // A `bool` argument may arrive widened (i8: RenderBox's
+                // path_interior fragments): 1 or 0 of that width.
+                if (T->isIntegerTy() && !T->isIntegerTy(1)) {
+                    std::string it = type(T);
+                    r = E.op("OpSelect", it, {r, E.constant(it, "1"), E.null(it)});
+                } else if (!T->isIntegerTy(1)) {
+                    fail("unsupported-type", "front_facing of type " + printType(T));
+                }
             } else if (k == "air.point_coord") {
                 r = E.op("OpLoad", E.tVec(E.tFloat(32), 2), {builtin("PointCoord", E.tVec(E.tFloat(32), 2))});
                 if (T->getScalarType()->isHalfTy()) r = E.op("OpFConvert", type(T), {r});

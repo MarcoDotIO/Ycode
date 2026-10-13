@@ -126,7 +126,16 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         var after: ((_ ok: Bool) -> Void)?
         /// When it was queued (monotonic ns; diagnostics).
         var queuedAt: UInt64 = DispatchTime.now().uptimeNanoseconds
+        /// What it is (diagnostics): the client process and command buffer.
+        var label: String = ""
     }
+
+    // Held work (VulkanEventWaits.swift).
+    var held: [HeldKey: [HeldItem]] = [:]
+    var heldSince: [HeldKey: UInt64] = [:]
+    var heldReported: [HeldKey: UInt64] = [:]
+    var heldGraveyard: [() -> Void] = []
+    var heldThread: Thread?
 
     struct TranslationKey: Hashable {
         var hash: UInt64, count: Int, linked: UInt64, linkedCount: Int
@@ -195,7 +204,7 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         if isAvailable {
             while true {
                 cond.lock()
-                let done = completionThread == nil
+                let done = completionThread == nil && heldThread == nil
                 cond.unlock()
                 if done { break }
                 usleep(1000)
@@ -665,6 +674,11 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
     /// Runs `action` once all work submitted so far (including pending
     /// setup work) has completed.
     func deferDestroy(_ action: @escaping () -> Void) {
+        // Held work may still use the object: after it is submitted.
+        if !held.isEmpty {
+            heldGraveyard.append(action)
+            return
+        }
         let serial = (setup?.empty == false) ? lastSubmitted + 1 : lastSubmitted
         if serial <= completedSerial {
             action()

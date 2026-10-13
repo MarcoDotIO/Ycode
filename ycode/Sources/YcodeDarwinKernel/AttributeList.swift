@@ -200,7 +200,7 @@ extension DarwinKernel {
             .filter { canonical == $0.guestPath || canonical.hasPrefix($0.guestPath == "/" ? "/" : $0.guestPath + "/") }
             .max { $0.guestPath.count < $1.guestPath.count }
         return AttrObject(path: canonical, stat: st, parentID: parentID,
-                          mountPoint: prefix?.guestPath ?? "/", writable: prefix?.writable ?? false)
+                          mountPoint: prefix?.volumeMountPoint ?? "/", writable: prefix?.writable ?? false)
     }
 
     private static func objectType(_ st: DarwinStat) -> UInt32 {
@@ -323,7 +323,12 @@ extension DarwinKernel {
             switch UInt32(1) << UInt32(bit) {
             case 0x1: p.u32(valid ? UInt32(st.nlink) : 0)                 // LINKCOUNT
             case 0x2:                                                      // ENTRYCOUNT (without . and ..)
-                p.u32(valid ? UInt32(max(0, Int(st.nlink) - 2)) : 0)
+                // Counted, not derived from the link count (which counts only
+                // subdirectories on the host): MobileInstallation's helper
+                // copies a bundle directory's contents only when the count is
+                // nonzero, and a placeholder bundle holds only files.
+                let count = valid ? (fileSystem.directoryEntryCount(o.path) ?? max(0, Int(st.nlink) - 2)) : 0
+                p.u32(UInt32(clamping: count))
             case 0x4: p.u32(valid && o.path == o.mountPoint ? 1 : 0)       // MOUNTSTATUS (DIR_MNTSTATUS_MNTPOINT)
             case 0x8: p.i64(valid ? st.blocks * 512 : 0)                   // ALLOCSIZE
             case 0x10: p.u32(valid ? UInt32(bitPattern: st.blksize) : 0)   // IOBLOCKSIZE

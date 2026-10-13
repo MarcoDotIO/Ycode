@@ -576,13 +576,21 @@ public final class DarwinFileSystem {
         /// The `st_dev` the guest sees for everything below the prefix (one
         /// guest volume per prefix, as `statfs` reports it); nil: the host's.
         public var device: UInt32?
+        /// The guest mount point of the volume the prefix belongs to, when it
+        /// is not the prefix itself (a prefix that is part of "/"'s volume);
+        /// nil: the prefix is a volume of its own, mounted at `guestPath`.
+        public var mountPoint: String?
 
-        public init(guestPath: String, hostPath: String, writable: Bool, device: UInt32? = nil) {
+        public init(guestPath: String, hostPath: String, writable: Bool, device: UInt32? = nil, mountPoint: String? = nil) {
             self.guestPath = guestPath
             self.hostPath = hostPath
             self.writable = writable
             self.device = device
+            self.mountPoint = mountPoint
         }
+
+        /// Where the prefix's volume is mounted in the guest.
+        public var volumeMountPoint: String { mountPoint ?? guestPath }
     }
 
     /// The `st_dev` of "/" and of the other synthetic directories above the
@@ -1421,6 +1429,16 @@ extension DarwinFileSystem {
             throw DarwinErrnoError(DarwinErrnoCode.ENOTDIR)
         }
         cwdStorage = f.guestPath
+    }
+
+    /// The number of entries of a directory, "." and ".." excluded
+    /// (getattrlist `ATTR_DIR_ENTRYCOUNT`); nil when the path is not a host
+    /// directory that can be listed (a synthetic directory above the
+    /// prefixes). A host directory's link count is no substitute: Linux file
+    /// systems count only its subdirectories.
+    public func directoryEntryCount(_ path: String) -> Int? {
+        guard let r = try? resolve(path, followFinal: true), r.stat?.isDirectory == true, !r.hostPath.isEmpty else { return nil }
+        return GuestPath.hostDirectoryNames(r.hostPath)?.count
     }
 
     /// Resolves an executable for spawn/exec: cwd-relative, every symbolic

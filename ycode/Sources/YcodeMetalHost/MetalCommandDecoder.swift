@@ -281,15 +281,45 @@ public struct MetalCommandDecoder {
         return count == 1 ? index : nil
     }
 
+    /// Diagnostics: draws larger than `largeDraw` vertices × instances are
+    /// reported here with their record (op and body), once per op and size.
+    nonisolated(unsafe) public static var anomalyLog: ((String) -> Void)?
+    public static let largeDraw = 1 << 26
+
+    /// Reports a draw record whose size is beyond any plausible draw.
+    func checked(_ rec: MetalRecord, _ command: MetalRenderCommand) -> MetalRenderCommand {
+        let work: Int
+        switch command {
+        case .draw(let d): work = d.vertexCount.multipliedReportingOverflow(by: d.instanceCount).partialValue
+        case .drawIndexed(let d): work = d.indexCount.multipliedReportingOverflow(by: d.instanceCount).partialValue
+        default: return command
+        }
+        if work > Self.largeDraw || work < 0, let log = Self.anomalyLog {
+            log("metal: render record op \(rec.op) draws \(work) vertices: body " + rec.body.map { String(format: "%02x", $0) }.joined())
+        }
+        return command
+    }
+
     func renderCommandThrowing(_ rec: MetalRecord) throws -> MetalRenderCommand? {
         var r = ByteReader(rec.body)
         switch rec.op {
         case 0:
             let t = try r.u32()
-            return .draw(MetalDraw(primitiveType: t, vertexStart: try r.int64(), vertexCount: try r.int64()))
+            return checked(rec, .draw(MetalDraw(primitiveType: t, vertexStart: try r.int64(), vertexCount: try r.int64())))
         case 1:
             let t = try r.u32()
             return .draw(MetalDraw(primitiveType: t, vertexStart: try r.int16(), vertexCount: try r.int16()))
+        case 2:
+            // Long instanced form (values ≥ 65 536; agent H's capture, metal-sim-protocol.md §8.3).
+            let s = try r.int64(), n = try r.int64(), i = try r.int64(), t = try r.u32()
+            return checked(rec, .draw(MetalDraw(primitiveType: t, vertexStart: s, vertexCount: n, instanceCount: i)))
+        case 4:
+            let s = try r.int64(), n = try r.int64(), i = try r.int64(), b = try r.int64(), t = try r.u32()
+            return checked(rec, .draw(MetalDraw(primitiveType: t, vertexStart: s, vertexCount: n, instanceCount: i, baseInstance: b)))
+        case 8:
+            let t = try r.u16(), it = try r.u16(), ib = try r.u32(), n = try r.int64(), off = try r.int64(), i = try r.int64()
+            return checked(rec, .drawIndexed(MetalIndexedDraw(primitiveType: UInt32(t), indexType: UInt32(it), indexBuffer: ref(.resource, ib),
+                                                              indexBufferOffset: off, indexCount: n, instanceCount: i)))
         case 3:
             let s = try r.int16(), n = try r.int16(), i = try r.int16(), t = try r.u16()
             return .draw(MetalDraw(primitiveType: UInt32(t), vertexStart: s, vertexCount: n, instanceCount: i))
@@ -298,16 +328,28 @@ public struct MetalCommandDecoder {
             return .draw(MetalDraw(primitiveType: t, vertexStart: s, vertexCount: n, instanceCount: i, baseInstance: b))
         case 6:
             let t = try r.u16(), it = try r.u16(), ib = try r.u32(), n = try r.int64(), off = try r.int64()
-            return .drawIndexed(MetalIndexedDraw(primitiveType: UInt32(t), indexType: UInt32(it), indexBuffer: ref(.resource, ib),
-                                                 indexBufferOffset: off, indexCount: n))
+            return checked(rec, .drawIndexed(MetalIndexedDraw(primitiveType: UInt32(t), indexType: UInt32(it), indexBuffer: ref(.resource, ib),
+                                                              indexBufferOffset: off, indexCount: n)))
         case 7, 9:
+            // Op 9 ends with u16 instance count and i16 base vertex (an
+            // instance count of 0x12345 takes long form 8; RenderBox sends
+            // base vertices 0x200, 0x300 here; metal-sim-protocol.md §8.3).
             let t = try r.u16(), it = try r.u16(), ib = try r.u32(), n = try r.int16(), off = try r.int16()
-            let instances = rec.op == 9 ? try r.int32() : 1
-            return .drawIndexed(MetalIndexedDraw(primitiveType: UInt32(t), indexType: UInt32(it), indexBuffer: ref(.resource, ib),
-                                                 indexBufferOffset: off, indexCount: n, instanceCount: instances))
+            let instances = rec.op == 9 ? try r.int16() : 1
+            let baseVertex = rec.op == 9 ? Int(Int16(bitPattern: try r.u16())) : 0
+            return checked(rec, .drawIndexed(MetalIndexedDraw(primitiveType: UInt32(t), indexType: UInt32(it), indexBuffer: ref(.resource, ib),
+                                                              indexBufferOffset: off, indexCount: n, instanceCount: instances,
+                                                              baseVertex: baseVertex)))
+        case 28:
+            // Long form of `…instanceCount:baseVertex:baseInstance:` (agent H's capture).
+            let t = try r.u16(), it = try r.u16(), ib = try r.u32(), off = try r.int64(), n = try r.int64(), i = try r.int64()
+            let bv = Int(Int64(bitPattern: try r.u64())), bi = try r.int64()
+            return checked(rec, .drawIndexed(MetalIndexedDraw(primitiveType: UInt32(t), indexType: UInt32(it), indexBuffer: ref(.resource, ib),
+                                                              indexBufferOffset: off, indexCount: n, instanceCount: i,
+                                                              baseVertex: bv, baseInstance: bi)))
         case 29:
             let t = try r.u16(), it = try r.u16(), ib = try r.u32()
-            let off = try r.int16(), n = try r.int16(), i = try r.int16(), bv = try r.int16(), bi = try r.int32()
+            let off = try r.int16(), n = try r.int16(), i = try r.int16(), bv = Int(Int16(bitPattern: try r.u16())), bi = try r.int32()
             return .drawIndexed(MetalIndexedDraw(primitiveType: UInt32(t), indexType: UInt32(it), indexBuffer: ref(.resource, ib),
                                                  indexBufferOffset: off, indexCount: n, instanceCount: i, baseVertex: bv,
                                                  baseInstance: bi))

@@ -61,6 +61,12 @@ extension VulkanMetalBackend {
         guard r == VK_SUCCESS else {
             throw VulkanBackendError("vkEndCommandBuffer failed (\(r.rawValue))")
         }
+        return try submitPreparedRecording(rec, entry: entry)
+    }
+
+    /// Submits an ended recording; queues its completion entry. Under the lock.
+    @discardableResult
+    func submitPreparedRecording(_ rec: Recording, entry: PendingSubmission?) throws -> UInt64 {
         let serial = lastSubmitted + 1
         let sr = yvk_submit(ctx, rec.cb, timeline, serial, rec.waitSemaphore, rec.waitValue)
         guard sr == VK_SUCCESS else {
@@ -70,11 +76,15 @@ extension VulkanMetalBackend {
         lastSubmitted = serial
         statistics.submissions += 1
         var e = entry ?? PendingSubmission(serial: serial, cb: nil, chunks: [], status: MetalCommandBufferStatus.completed)
+        if rec.draws > 0 || rec.indirectDraws > 0 {
+            e.label += (e.label.isEmpty ? "" : "; ") + "\(rec.draws) draws (largest \(rec.largestDraw)), \(rec.indirectDraws) indirect"
+        }
+        if !rec.shaders.isEmpty { e.label += (e.label.isEmpty ? "" : "; ") + "shaders " + rec.shaders.joined(separator: ", ") }
         e.serial = serial
         e.cb = rec.cb
         e.chunks = rec.chunks
         pending.append(e)
-        cond.signal()
+        cond.broadcast()
         return serial
     }
 
@@ -84,7 +94,7 @@ extension VulkanMetalBackend {
                            after: ((Bool) -> Void)? = nil) {
         pending.append(PendingSubmission(serial: lastSubmitted, cb: nil, chunks: [], status: status, scheduled: scheduled,
                                          completed: completed, after: after))
-        cond.signal()
+        cond.broadcast()
     }
 
     func recycle(_ c: TransientChunk) {
@@ -123,6 +133,12 @@ extension VulkanMetalBackend {
         return TransientSlice(chunk: chunk, offset: 0, length: size)
     }
 
+    /// A translated function's name and hash prefix (diagnostics).
+    func shaderName(_ t: TranslatedShader?) -> String {
+        guard let t else { return "-" }
+        return "\(t.reflection.entryPoint ?? "?")#\(t.reflection.hash.map { String($0.prefix(8)) } ?? "?")"
+    }
+
     func barrier(_ cb: VkCommandBuffer?) {
         yvk_cmd_memory_barrier(cb, allCommands, memoryWrite, allCommands, memoryReadWrite)
     }
@@ -151,7 +167,12 @@ extension VulkanMetalBackend {
                     if r == VK_SUCCESS { break }
                     if r == VK_TIMEOUT {
                         waited += 1
-                        if waited % 10 == 0 { log("serial \(serial) still running after \(waited) s") }
+                        if waited % 10 == 0 {
+                            cond.lock()
+                            let label = pending.first?.label ?? ""
+                            cond.unlock()
+                            log("serial \(serial) still running after \(waited) s\(label.isEmpty ? "" : " (\(label))")")
+                        }
                         continue
                     }
                     log("waiting for serial \(serial) failed (\(r.rawValue)): device lost")

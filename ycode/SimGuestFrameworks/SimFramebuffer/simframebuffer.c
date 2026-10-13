@@ -257,8 +257,8 @@ static void make_display(void *unused) {
     classes();
     struct SFBDisplay *d = create(displayTypeID, sizeof(struct SFBDisplay));
     if (!d) return;
-    d->width = env_number("SIMULATOR_MAINSCREEN_WIDTH", 1206);
-    d->height = env_number("SIMULATOR_MAINSCREEN_HEIGHT", 2622);
+    d->width = env_number("SIMULATOR_MAINSCREEN_WIDTH", 1398);
+    d->height = env_number("SIMULATOR_MAINSCREEN_HEIGHT", 2034);
     d->scale = env_number("SIMULATOR_MAINSCREEN_SCALE", 3);
     d->pitch = env_number("SIMULATOR_MAINSCREEN_PITCH", 460);
     d->name = make_string("LCD");

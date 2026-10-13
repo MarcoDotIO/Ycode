@@ -10,7 +10,7 @@
 // __TEXT,__entitlements by build-stage7.sh; the simulator reads entitlements
 // from that section, not from the code signature (§4.5).
 //
-//   ylaunch install <path.app>     IXAppInstallCoordinator
+//   ylaunch install <path.app>     IXAppInstallCoordinator (waits YLAUNCH_INSTALL_SECONDS, default 300)
 //                                  +installApplication:consumeSource:options:completion:
 //                                  with MIInstallOptions {PackageType = Developer} (§4.1)
 //   ylaunch uninstall <bundle id>  IXAppInstallCoordinator +uninstallAppWithBundleID:error: (§4.2)
@@ -86,8 +86,13 @@ static int install(NSString *path) {
     };
     ((void (*)(id, SEL, id, BOOL, id, id))objc_msgSend)(ix, sel_registerName(selName),
                                                         [NSURL fileURLWithPath:path], NO, options, completion);
-    if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_SEC))) {
-        say(@"error install: no completion within 300 s");
+    // YLAUNCH_INSTALL_SECONDS (default 300): an install on a slow host
+    // (the Thor under Ycode) takes several minutes.
+    const char *installText = getenv("YLAUNCH_INSTALL_SECONDS");
+    long installSeconds = installText ? atol(installText) : 300;
+    if (installSeconds <= 0) installSeconds = 300;
+    if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, (int64_t)installSeconds * (int64_t)NSEC_PER_SEC))) {
+        say(@"error install: no completion within %ld s", installSeconds);
         return 3;
     }
     return status;

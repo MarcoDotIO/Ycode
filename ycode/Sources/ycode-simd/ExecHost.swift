@@ -190,10 +190,24 @@ final class ExecConfiguration: @unchecked Sendable {
             // belongs to the runtime root's volume. Foundation finds a file's
             // volume by matching its fsid in getfsstat; LaunchServices
             // registers nothing without it (specs/simulator/first-boot.md §3).
+            //
+            // Since 2026-10-13 only the runtime root is a volume of its own
+            // (on the Mac it is a mounted disk image). DEV, /System, the
+            // temporary directories and job directories are part of "/"'s
+            // volume, as on the Mac, where a simulator process sees the
+            // host's /System/Library, /private/var, /private/tmp and the
+            // device directory on one device (level 3, `stat`; installcoordinationd
+            // refuses an app to install whose path is on another volume than
+            // its staging location; home-screen.md §6).
             for i in prefixes.indices {
                 let isDirectory = (try? FileManager.default.attributesOfItem(atPath: prefixes[i].hostPath)[.type]
                     as? FileAttributeType) == .typeDirectory
-                prefixes[i].device = isDirectory ? Self.firstPrefixDevice + UInt32(i) : Self.firstPrefixDevice
+                if !isDirectory || prefixes[i].guestPath == root {
+                    prefixes[i].device = Self.firstPrefixDevice
+                } else {
+                    prefixes[i].device = Self.rootDevice
+                    prefixes[i].mountPoint = "/"
+                }
             }
         }
         self.prefixes = prefixes
@@ -326,6 +340,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                         .map { AircProcessTranslator(executable: URL(fileURLWithPath: $0)) }
                     let backend = VulkanMetalBackend(translator: translator, options: backendOptions)
                     if backend.isAvailable {
+                        MetalCommandDecoder.anomalyLog = { stderrLine("ycode-simd: " + $0) }
                         do {
                             let metal = try MetalHostService(host: system.hostTask, backend: backend,
                                                              memory: HostMemoryEntryResolver(host: system.hostTask),

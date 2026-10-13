@@ -51,6 +51,9 @@ public final class DarwinKernel {
     public static let unimplementedLibraryFunctionExitStatus: Int32 = 73
     public static let abortExitStatus: Int32 = 134
     public static let exceptionExitStatus: Int32 = 70
+    /// Diagnostics: `YCODE_DEBUG_PRIVATE_SHARED_FILES=1` maps MAP_SHARED
+    /// files private, as Ycode did before shared file views.
+    static let debugPrivateSharedFiles = getenv("YCODE_DEBUG_PRIVATE_SHARED_FILES").map { String(cString: $0) == "1" } ?? false
 
     // MARK: Constants
 
@@ -908,10 +911,21 @@ public final class DarwinKernel {
             va = try mapPosixShm(shm, file: open, flags: flags, prot: prot, offset: pos, size: size, at: at, hint: hint, mem)
         } else {
             let file = try fileSystem.file(for: fd)
-            if flags & MapFlag.shared != 0 && flags & MapFlag.private == 0 {
-                trace("note: MAP_SHARED file mapping of \(file.guestPath) is mapped private")
+            let shared = flags & MapFlag.shared != 0 && flags & MapFlag.private == 0
+            // MAP_SHARED of a file open for writing: a view of the host
+            // file's pages, so writes reach the file and every other view
+            // (IconServices' store is written through one mapping and read
+            // through another; chronod's mapped-file allocator; SQLite's
+            // shared-memory index). Otherwise a private view.
+            if shared, !Self.debugPrivateSharedFiles,
+               let object = SharedMemoryObject(hostFile: file.hostFD, offset: pos - pageOffset, size: size,
+                                               fileSize: file.size) {
+                call += " [shared file view]"
+                va = try mem.mapShared(object, offset: 0, at: at, size: size, protection: prot, hint: hint)
+            } else {
+                if shared { trace("note: MAP_SHARED file mapping of \(file.guestPath) is mapped private") }
+                va = try mem.mapFile(file, offset: pos - pageOffset, at: at, size: size, protection: prot, hint: hint)
             }
-            va = try mem.mapFile(file, offset: pos - pageOffset, at: at, size: size, protection: prot, hint: hint)
         }
         return va + pageOffset
     }

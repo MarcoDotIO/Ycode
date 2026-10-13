@@ -136,7 +136,11 @@ Two Ycode gaps caused the failures (level 3, Ycode traces of `fsprobe`):
    `getattrlistbulk` does pack it (a zero word) and returns the bit, even
    without an error (our probe `gabulk`).
 
-**Ycode's model (normative for Ycode).** In device mode every directory
+**Superseded 2026-10-13** (`home-screen.md` §6 item 1): only the runtime
+root is a volume of its own; the other directory prefixes belong to "/"'s
+volume. The earlier model, kept for the record:
+
+**Ycode's model (normative for Ycode until 2026-10-13).** In device mode every directory
 prefix of the guest file system is a volume: its root is the mount point
 (`statfs`, getattrlist `ATTR_VOL_MOUNTPOINT`), and everything below it has
 the volume's device as `st_dev` and `f_fsid.val[0]` (`ATTR_CMN_DEVID`,

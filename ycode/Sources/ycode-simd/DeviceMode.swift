@@ -43,7 +43,9 @@ struct DeviceLayout {
     static let modelIdentifier = "iPhone19,4"
     static let productClass = "V68"
     static let legacyAssetSuffix = "iphone"
-    static let screen = (width: 1206, height: 2622, scale: 3.0, pitch: 460.0)
+    /// The main display of model iPhone19,4 as CoreSimulator gives it to the
+    /// runtime (SIMULATOR_MAINSCREEN_*, level 3; device-capabilities.md).
+    static let screen = (width: 1398, height: 2034, scale: 3.0, pitch: 460.0)
 
     init(dev: String, runtimeRoot: String, udid: String?, jobPaths: [String], runtimePaths: Bool = false,
          oneshots: [[String]] = [], runtimeJobs: [String] = [], bootTime: Int = Int(Date().timeIntervalSince1970)) {
@@ -72,6 +74,8 @@ struct DeviceLayout {
     var audioPlistPath: String { varRun + "/com.apple.coresimulator.audio.plist" }
     var audioSettingsPath: String { varRun + "/simulatoraudio/audiosettings.plist" }
     var memoryWarningPath: String { varRun + "/memory_warning_simulation" }
+    /// Ycode's device-capabilities plist (device-capabilities.md), rewritten on every boot.
+    var capabilitiesPath: String { dev + "/ycode-capabilities.plist" }
     var extendedDisplayPath: String { data + "/Library/Application Support/Simulator/extended_display.plist" }
     var logRoot: String { dev + "/Logs" }
     /// The device launchd name (launchd-sim.md, terms).
@@ -219,7 +223,7 @@ struct DeviceLayout {
             "SIMULATOR_MAINSCREEN_HEIGHT": String(Self.screen.height),
             "SIMULATOR_MAINSCREEN_SCALE": decimal(Self.screen.scale),
             "SIMULATOR_MAINSCREEN_PITCH": decimal(Self.screen.pitch),
-            "SIMULATOR_CAPABILITIES": "",
+            "SIMULATOR_CAPABILITIES": capabilitiesPath,
             "SIMULATOR_RUNTIME_VERSION": version,
             "SIMULATOR_RUNTIME_BUILD_VERSION": build,
             "SIMULATOR_ARCHS": "arm64",
@@ -365,6 +369,8 @@ struct DeviceLayout {
             "useHostDefaultOutputDevice": true,
         ]
         try writeXML(audio, to: audioPlistPath)
+        try writeXML(DeviceCapabilities.plist(width: Self.screen.width, height: Self.screen.height, scale: Self.screen.scale,
+                                              pitch: Self.screen.pitch, model: Self.modelIdentifier), to: capabilitiesPath)
         try writeXML(bootstrapPlist, to: plistPath)
     }
 

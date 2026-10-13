@@ -224,3 +224,24 @@ backend statistics. The home screen is still gated by SpringBoard (I4).
 Next for G: backdrop blur, filters and materials; RenderBox,
 CoreMaterial3D and CoreImage coverage for posters and icons; the per-frame
 full-surface copy cost.
+
+## 11. Checkpoint (integrator H, 2026-10-13): real icons through Metal
+
+The home screen shows the real Settings and Safari icons, drawn by
+iconservicesagent (IconRendering → RenderBox → Metal) through
+`YcodeMetalHost` → `YcodeVulkan` on the Thor's GPU
+(`9-H/runs/p1a/shots/home-540s.png`). What it took (`home-screen.md` §2,
+§4): coherent `MAP_SHARED` file mappings (iconservicesagent's icon store;
+its "status 70" crash loop), a device-capabilities plist for MobileGestalt
+(`device-capabilities.md`; the display is now 1398 × 2034, the iPhone19,4
+geometry), the draw records 2, 4, 8, 28 and op 9's packed instance count
+and base vertex (`metal-sim-protocol.md` §8.3; misread, they made the GPU
+run one draw for minutes until the driver reported Xid 109 and every
+client's Metal was lost), a guard that skips draws of more than 2^26
+vertices × instances, and event waits held on the host per Metal queue
+instead of a Vulkan semaphore wait on the one shared queue. Icons appear
+4–9 minutes into a boot: RenderBox compiles its shaders at run time in the
+guest's MTLCompilerService. The wallpaper is still black: PosterBoard's
+ExtensionKit query finds no poster extensions because every LaunchServices
+record of this device lacks its platform and extension point
+(`home-screen.md` §3.2, open).

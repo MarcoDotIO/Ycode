@@ -22,6 +22,16 @@ private func errnoOf(_ body: () throws -> Void) -> Int32? {
         return (tree, fs)
     }
 
+    /// ATTR_DIR_ENTRYCOUNT counts files as well as subdirectories.
+    @Test func directoryEntryCount() throws {
+        let (tree, fs) = try fixture()
+        try tree.writeFile("ro/second", [2])
+        #expect(fs.directoryEntryCount("/R") == 3)       // file, second, sub
+        #expect(fs.directoryEntryCount("/R/sub") == 0)
+        #expect(fs.directoryEntryCount("/R/file") == nil)
+        #expect(fs.directoryEntryCount("/R/missing") == nil)
+    }
+
     @Test func mkdirSemantics() throws {
         let (tree, fs) = try fixture()
         try fs.mkdir("/tmp/state", mode: 0o777, umask: 0o022)

@@ -240,8 +240,9 @@ extension DarwinKernel {
             // (EINVAL), MS_ASYNC (1) and MS_SYNC (0x10) not both, no bits
             // beyond MS_ASYNC|MS_INVALIDATE|MS_KILLPAGES|MS_DEACTIVATE|MS_SYNC
             // (0x1f) (EINVAL), every page of the range mapped (ENOMEM).
-            // Ycode maps files private (shared file writes are not written
-            // back), so there is nothing to flush: a valid call returns 0.
+            // Shared file mappings are views of the host file's page cache
+            // and private ones are never written back, so there is nothing
+            // to flush: a valid call returns 0.
             // chronod's mapped-file allocator asserts that it does
             // (first-boot.md §6).
             let flags = int(2)
@@ -299,6 +300,67 @@ extension DarwinKernel {
             // sizes its stdio setup with it.
             call = "getdtablesize()"
             return .value(UInt64(fileSystem.maxDescriptors))
+
+        case 191, 192:
+            // pathconf(path, name) / fpathconf(fd, name) (pathconf(2), names
+            // from sys/unistd.h `_PC_*`; level 1). The object must exist
+            // (ENOENT/EBADF); an unknown name is EINVAL. Values: the limits
+            // of sys/syslimits.h and what a case-sensitive, case-preserving
+            // volume with 64-bit sizes reports (the host's file systems are
+            // case-sensitive). Many daemons ask for `_PC_CASE_SENSITIVE` and
+            // `_PC_NAME_MAX` on their containers.
+            let name = int(1)
+            if n == 191 {
+                let path = try readPath(a[0], mem)
+                call = "pathconf(\"\(path)\", name=\(name))"
+                _ = try statUnlocked(path, followSymlinks: true)
+            } else {
+                call = "fpathconf(fd=\(int(0)), name=\(name))"
+                _ = try fileSystem.fstat(int(0))
+            }
+            let values: [Int32: Int64] = [
+                1: 32767,  // _PC_LINK_MAX
+                2: 1024,  // _PC_MAX_CANON
+                3: 1024,  // _PC_MAX_INPUT
+                4: 255,  // _PC_NAME_MAX
+                5: 1024,  // _PC_PATH_MAX
+                6: 512,  // _PC_PIPE_BUF
+                7: 200112,  // _PC_CHOWN_RESTRICTED
+                8: 200112,  // _PC_NO_TRUNC
+                9: 0xFF,  // _PC_VDISABLE
+                10: 255,  // _PC_NAME_CHARS_MAX
+                11: 1,  // _PC_CASE_SENSITIVE
+                12: 1,  // _PC_CASE_PRESERVING
+                13: 0,  // _PC_EXTENDED_SECURITY_NP
+                14: 0,  // _PC_AUTH_OPAQUE_NP
+                15: 1,  // _PC_2_SYMLINKS
+                16: 4096,  // _PC_ALLOC_SIZE_MIN
+                18: 64,  // _PC_FILESIZEBITS
+                24: 1024,  // _PC_SYMLINK_MAX
+                26: 64,  // _PC_XATTR_SIZE_BITS
+                27: 0,  // _PC_MIN_HOLE_SIZE (holes not reported)
+            ]
+            guard let value = values[name] else { throw Failure(errno: Errno.EINVAL) }
+            call += " [\(value)]"
+            return .value(UInt64(bitPattern: value))
+
+        case 186:
+            // thread_selfcounts(kind, buf, size): the calling thread's CPU
+            // counters (instructions, cycles; xnu syscalls.master, level 1).
+            // Ycode keeps none and answers ENOTSUP, as a kernel built
+            // without the counters does.
+            call = "thread_selfcounts(kind=\(int(0)), buf=\(hx(a[1])), size=\(a[2]))"
+            throw Failure(errno: 45)  // ENOTSUP
+
+        case 96:
+            // setpriority(which, who, prio) (setpriority(2), sys/resource.h:
+            // PRIO_PROCESS 0, PRIO_PGRP 1, PRIO_USER 2, PRIO_DARWIN_THREAD 3,
+            // PRIO_DARWIN_PROCESS 4, PRIO_DARWIN_GPU 5, PRIO_DARWIN_ROLE 6;
+            // level 1). Ycode has no scheduler priorities: a known `which`
+            // succeeds and changes nothing; others are EINVAL.
+            call = "setpriority(which=\(int(0)), who=\(a[1]), prio=\(int(2)))"
+            guard (0...6).contains(int(0)) else { throw Failure(errno: Errno.EINVAL) }
+            return .value(0)
 
         case BSD2.ulockWait, BSD2.ulockWait2:
             return .value(try ulockWait(n, a, &call, mem))
@@ -626,7 +688,7 @@ extension DarwinKernel {
         let prefix = fileSystem.prefixes
             .filter { guestPath == $0.guestPath || guestPath.hasPrefix($0.guestPath == "/" ? "/" : $0.guestPath + "/") }
             .max { $0.guestPath.count < $1.guestPath.count }
-        let mountPoint = prefix?.guestPath ?? "/"
+        let mountPoint = prefix?.volumeMountPoint ?? "/"
         let readOnly = !(prefix?.writable ?? false)
         // Sizes and free space are the host volume's, also for read-only
         // volumes (an APFS system volume reports its container's free space).
@@ -680,7 +742,8 @@ extension DarwinKernel {
                             _ mem: any KernelGuestMemory) throws -> UInt64 {
         var mounts: [(path: String, dev: UInt32)] = []
         if let root = try? fileSystem.stat("/", followSymlinks: true) { mounts.append(("/", root.dev)) }
-        for prefix in fileSystem.prefixes where prefix.guestPath != "/" {
+        // Prefixes that are part of another volume ("/") are not listed.
+        for prefix in fileSystem.prefixes where prefix.guestPath != "/" && prefix.mountPoint == nil {
             guard let st = try? fileSystem.stat(prefix.guestPath, followSymlinks: true), st.isDirectory,
                   !mounts.contains(where: { $0.path == prefix.guestPath }) else { continue }
             mounts.append((prefix.guestPath, st.dev))

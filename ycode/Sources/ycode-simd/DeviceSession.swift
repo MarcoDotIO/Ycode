@@ -110,7 +110,7 @@ final class DeviceSession: @unchecked Sendable {
     /// Runs `path` (a host path the guest can reach) as a one-shot with
     /// stdout and stderr in the host files `out` and `err`; waits for it.
     /// Returns the pid and wait status, or throws.
-    private func runGuestProgram(_ c: LaunchSimControl, name: String, path: String, argv: [String],
+    private func runGuestProgram(_ c: LaunchSimControl, name: String, path: String, argv: [String], environment: [String] = [],
                                  out: String, err: String, started: ((Int32) -> Void)? = nil) throws -> (pid: Int32, status: Int32) {
         let fs = makeFileSystem()
         var ports: [UInt32] = []
@@ -120,7 +120,7 @@ final class DeviceSession: @unchecked Sendable {
             ports.forEach { try? host.deallocate($0) }
             throw error
         }
-        let attributes = LaunchSimSpawnAttributes(path: path, argv: argv, workingDirectory: "/")
+        let attributes = LaunchSimSpawnAttributes(path: path, argv: argv, environment: environment, workingDirectory: "/")
         let pid: Int32
         do {
             pid = try c.spawn(attributes, stdin: 0, stdout: ports[0], stderr: ports[1])
@@ -157,7 +157,13 @@ final class DeviceSession: @unchecked Sendable {
     private func ylaunch(_ c: LaunchSimControl, step: String, _ arguments: [String]) throws -> (status: Int32, output: String) {
         guard let tool = layout.ylaunchPath else { throw LaunchSimControlError(operation: "ylaunch: not staged", code: 2) }
         let out = layout.data + "/tmp/ycode-ylaunch-\(step).out", err = layout.data + "/tmp/ycode-ylaunch-\(step).err"
-        let r = try runGuestProgram(c, name: "ylaunch \(step)", path: tool, argv: ["ylaunch"] + arguments, out: out, err: err)
+        // The open request is retried until SpringBoard serves it; on Ycode a
+        // second boot reaches the home screen after about 3.5 minutes and an
+        // install takes about 7, so the helper retries an open for up to 10
+        // minutes and waits up to 20 for an install (app-install-launch.md
+        // §6 item 3).
+        let r = try runGuestProgram(c, name: "ylaunch \(step)", path: tool, argv: ["ylaunch"] + arguments,
+                                    environment: ["YLAUNCH_RETRY_SECONDS=600", "YLAUNCH_INSTALL_SECONDS=1200"], out: out, err: err)
         let text = (FileManager.default.contents(atPath: out)).map { String(decoding: $0, as: UTF8.self) } ?? ""
         for line in text.split(separator: "\n") { emit("app: " + line) }
         if let e = FileManager.default.contents(atPath: err), !e.isEmpty {

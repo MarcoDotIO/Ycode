@@ -38,6 +38,48 @@ public final class SharedMemoryObject: @unchecked Sendable {
         guard let p, p != MAP_FAILED else { throw DarwinErrnoError(DarwinErrnoCode.ENOMEM) }
         self.size = rounded
         self.host = p
+        isFileView = false
+        serial = Self.counterLock.withLock {
+            Self.counter += 1
+            return Self.counter
+        }
+    }
+
+    /// True for a view of a host file (`init(hostFile:…)`).
+    public let isFileView: Bool
+
+    /// A shared view of a host file (MAP_SHARED file mappings): bytes
+    /// [offset, offset+size) of the open host file `fd` (16 KiB-aligned
+    /// offset), mapped shared and writable from the host's page cache. Every
+    /// view of the same file — in any VM of this host process — and the
+    /// host's own `read`/`write` on the file see the same bytes, as a Darwin
+    /// shared file mapping does (mmap(2), level 1). Host pages wholly past
+    /// the end of the file are private zero pages (Darwin would fault on
+    /// them; zeros are the lenient answer). Nil when `fd` is not open for
+    /// reading and writing, or the host refuses the mapping; the caller then
+    /// maps the file private.
+    public init?(hostFile fd: Int32, offset: UInt64, size: UInt64, fileSize: UInt64) {
+        let page = VMLayout.pageSize
+        let rounded = (max(size, 1) + page - 1) & ~(page - 1)
+        guard offset & (page - 1) == 0, rounded <= 1 << 36, fileSize > offset else { return nil }
+        guard fcntl(fd, F_GETFL) & O_ACCMODE == O_RDWR else { return nil }
+        let hostPage = UInt64(max(sysconf(Int32(_SC_PAGESIZE)), 4096))
+        let fileBytes = min((fileSize - offset + hostPage - 1) & ~(hostPage - 1), rounded)
+        guard let reservation = mmap(nil, Int(rounded), PROT_READ | PROT_WRITE, MAP_PRIVATE | Self.anonymous, -1, 0),
+              reservation != MAP_FAILED else { return nil }
+        #if canImport(Darwin)
+        let fileOffset = off_t(offset)
+        #else
+        let fileOffset = __off_t(offset)
+        #endif
+        guard let p = mmap(reservation, Int(fileBytes), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, fileOffset),
+              p == reservation else {
+            munmap(reservation, Int(rounded))
+            return nil
+        }
+        self.size = rounded
+        self.host = p
+        isFileView = true
         serial = Self.counterLock.withLock {
             Self.counter += 1
             return Self.counter

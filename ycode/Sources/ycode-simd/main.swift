@@ -261,6 +261,30 @@ func die(_ message: String, status: Int32) -> Never {
 
 func hex(_ value: UInt64) -> String { "0x" + String(value, radix: 16) }
 
+/// `--oneshot` words: split at spaces, except inside single or double
+/// quotes (the quotes are removed), so a `log stream --predicate '…'`
+/// one-shot can carry a predicate with spaces.
+func splitCommandLine(_ line: String) -> [String] {
+    var words: [String] = [], word = "", quote: Character?, inWord = false
+    for c in line {
+        if let q = quote {
+            if c == q { quote = nil } else { word.append(c) }
+        } else if c == "'" || c == "\"" {
+            quote = c
+            inWord = true
+        } else if c == " " {
+            if inWord { words.append(word) }
+            word = ""
+            inWord = false
+        } else {
+            word.append(c)
+            inWord = true
+        }
+    }
+    if inWord { words.append(word) }
+    return words
+}
+
 func parseOptions(_ arguments: [String]) -> Options {
     var options = Options()
     var iterator = arguments.dropFirst().makeIterator()
@@ -316,7 +340,7 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--host-bootstrap": options.hostBootstrap = true
         case "--job-path": options.jobPaths.append(value(for: argument))
         case "--oneshot":
-            let argv = value(for: argument).split(separator: " ").map(String.init)
+            let argv = splitCommandLine(value(for: argument))
             guard let program = argv.first, program.hasPrefix("/") else { die("--oneshot needs \"/guest/program [arg]...\"", status: 64) }
             options.oneshots.append(argv)
         case "--runtime-job": options.runtimeJobs.append(value(for: argument))

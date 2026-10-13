@@ -41,15 +41,19 @@ extension VulkanMetalBackend {
             return
         }
         var rec: Recording?
+        let key = HeldKey(process: commandBuffer.process, queue: commandBuffer.queue)
+        let sink = SubmitSink(key: key, holding: held[key] != nil)
+        defer { hold(sink) }
         do {
             try flushSetup()
             rec = try newRecording()
-            try replay(commandBuffer, rec: &rec!)
-            let entry = PendingSubmission(serial: 0, cb: nil, chunks: [], status: MetalCommandBufferStatus.completed,
+            try replay(commandBuffer, rec: &rec!, sink: sink)
+            var entry = PendingSubmission(serial: 0, cb: nil, chunks: [], status: MetalCommandBufferStatus.completed,
                                           scheduled: scheduled, completed: completed)
+            entry.label = "process \(commandBuffer.process) command buffer \(commandBuffer.commandBufferRef)"
             let r = rec!
             rec = nil
-            try submitRecording(r, entry: entry)
+            try sinkSubmit(sink, r, entry: entry)
         } catch {
             log("command buffer \(commandBuffer.commandBufferRef) of process \(commandBuffer.process): \(error)")
             if let r = rec {
@@ -142,7 +146,7 @@ extension VulkanMetalBackend {
 
     // MARK: - Replay
 
-    func replay(_ mcb: MetalCommandBuffer, rec: inout Recording) throws {
+    func replay(_ mcb: MetalCommandBuffer, rec: inout Recording, sink: SubmitSink) throws {
         barrier(rec.cb)
         let (reads, writes) = surfaceUsage(mcb)
         for image in reads {
@@ -165,12 +169,15 @@ extension VulkanMetalBackend {
                     switch c {
                     case .wait(let h, let value):
                         guard let h, let e = events[h], let sem = e.semaphore else { noteSkip(); continue }
-                        // The rest of the command buffer waits for the event.
+                        // The rest of the command buffer runs once the event
+                        // reaches the value: held on the host when it has
+                        // not yet (VulkanEventWaits.swift).
+                        // A value already reached (and nothing held) needs nothing.
+                        guard sink.holding || yvk_timeline_value(ctx, sem) < value else { continue }
                         let next = try newRecording()
-                        next.waitSemaphore = sem
-                        next.waitValue = value
                         yvk_cmd_memory_barrier(rec.cb, allCommands, memoryWrite, allCommands, memoryReadWrite)
-                        try submitRecording(rec, entry: nil)
+                        try sinkSubmit(sink, rec, entry: nil)
+                        _ = sinkWait(sink, sem, value: value)
                         rec = next
                         barrier(rec.cb)
                     case .signal(let h, let value):
@@ -178,8 +185,8 @@ extension VulkanMetalBackend {
                         guard value > e.highest else { continue }
                         e.highest = value
                         let next = try newRecording()
-                        try submitRecording(rec, entry: nil)
-                        _ = yvk_submit(ctx, nil, sem, value, nil, 0)
+                        try sinkSubmit(sink, rec, entry: nil)
+                        sinkSignal(sink, sem, value: value)
                         rec = next
                         barrier(rec.cb)
                     case .unknown:
@@ -432,6 +439,9 @@ extension VulkanMetalBackend {
             switch command {
             case .setRenderPipelineState(let h):
                 pipeline = h.flatMap { renderPipelines[$0] }
+                if let p = pipeline {
+                    rec.noteShaders("\(shaderName(p.vertex))+\(shaderName(p.fragment))")
+                }
             case .setDepthStencilState(let h):
                 applyDepthStencil(h.flatMap { depthStencilStates[$0] }, cb: cb, hasDepth: hasDepth, hasStencil: hasStencil)
             case .setBuffer(let s, let index, let buffer, let offset):
@@ -484,20 +494,25 @@ extension VulkanMetalBackend {
             case .setColorStoreAction:
                 break  // store actions are fixed when the pass begins (Store)
             case .draw(let dr):
-                guard dr.vertexCount > 0, dr.instanceCount > 0, try prepareDraw(dr.primitiveType, indexed: false) else { continue }
+                guard dr.vertexCount > 0, dr.instanceCount > 0, saneDraw(dr.vertexCount, dr.instanceCount),
+                      try prepareDraw(dr.primitiveType, indexed: false) else { continue }
+                rec.noteDraw(dr.vertexCount * dr.instanceCount)
                 fn.vkCmdDraw!(cb, UInt32(dr.vertexCount), UInt32(dr.instanceCount), UInt32(dr.vertexStart), UInt32(dr.baseInstance))
             case .drawIndexed(let dr):
-                guard dr.indexCount > 0, dr.instanceCount > 0, let ih = dr.indexBuffer, let ib = buffers[ih] else {
+                guard dr.indexCount > 0, dr.instanceCount > 0, saneDraw(dr.indexCount, dr.instanceCount),
+                      let ih = dr.indexBuffer, let ib = buffers[ih] else {
                     noteSkip()
                     continue
                 }
                 guard try prepareDraw(dr.primitiveType, indexed: true) else { continue }
                 fn.vkCmdBindIndexBuffer!(cb, ib.vkBuffer, VkDeviceSize(ib.offset + dr.indexBufferOffset),
                                          dr.indexType == MetalIndexType.uint32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16)
+                rec.noteDraw(dr.indexCount * dr.instanceCount)
                 fn.vkCmdDrawIndexed!(cb, UInt32(dr.indexCount), UInt32(dr.instanceCount), 0, Int32(dr.baseVertex),
                                      UInt32(dr.baseInstance))
             case .drawIndirect(let primitive, let ih, let off):
                 guard let ih, let b = buffers[ih], try prepareDraw(primitive, indexed: false) else { continue }
+                rec.indirectDraws += 1
                 fn.vkCmdDrawIndirect!(cb, b.vkBuffer, VkDeviceSize(b.offset + off), 1, 16)
             case .drawIndexedIndirect(let primitive, let indexType, let ixh, let ixOff, let ih, let off):
                 guard let ixh, let ix = buffers[ixh], let ih, let b = buffers[ih], try prepareDraw(primitive, indexed: true) else {
@@ -505,6 +520,7 @@ extension VulkanMetalBackend {
                 }
                 fn.vkCmdBindIndexBuffer!(cb, ix.vkBuffer, VkDeviceSize(ix.offset + ixOff),
                                          indexType == MetalIndexType.uint32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16)
+                rec.indirectDraws += 1
                 fn.vkCmdDrawIndexedIndirect!(cb, b.vkBuffer, VkDeviceSize(b.offset + off), 1, 20)
             case .memoryBarrier, .useResources:
                 break
@@ -514,6 +530,18 @@ extension VulkanMetalBackend {
         }
         fn.vkCmdEndRendering!(cb)
         _ = colorCount
+    }
+
+    /// A draw of more than `MetalCommandDecoder.largeDraw` vertices ×
+    /// instances is skipped: such counts come only from records Ycode decodes
+    /// wrongly, and the GPU would run the draw for minutes (on the Thor the
+    /// driver then reports a context-switch timeout and every later
+    /// submission is lost).
+    func saneDraw(_ count: Int, _ instances: Int) -> Bool {
+        let (work, overflow) = count.multipliedReportingOverflow(by: instances)
+        guard overflow || work > MetalCommandDecoder.largeDraw else { return true }
+        noteSkip()
+        return false
     }
 
     /// Metal winding → Vulkan front face. With the negative viewport height
@@ -571,6 +599,7 @@ extension VulkanMetalBackend {
             switch command {
             case .setComputePipelineState(let h):
                 pipeline = h.flatMap { computePipelines[$0] }
+                if let p = pipeline { rec.noteShaders(shaderName(p.shader)) }
             case .setBuffer(let index, let buffer, let offset):
                 guard index >= 0 && index < YcodeMetalABI.bufferSlots else { continue }
                 b.buffers[index] = (buffer, offset)

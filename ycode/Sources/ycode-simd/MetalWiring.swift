@@ -13,10 +13,22 @@ import YcodeMetalHost
 final class HostMemoryEntryResolver: MetalGuestMemoryResolver {
     let host: MachHostTask
     init(host: MachHostTask) { self.host = host }
+    private let lock = NSLock()
+    private var reported: Set<UInt64> = []
+
+    /// Diagnostics: a Metal buffer over a guest MAP_SHARED file mapping (the
+    /// GPU then reads and writes the host file's pages).
+    private func noteFileView(_ object: SharedMemoryObject) {
+        let first = lock.withLock { reported.insert(object.serial).inserted }
+        if first {
+            FileHandle.standardError.write(Data("ycode-simd: metal: memory entry over a shared file view (object #\(object.serial), \(object.size) bytes)\n".utf8))
+        }
+    }
 
     func region(forMemoryEntry name: UInt32) -> GuestSharedRegion? {
         guard let (object, offset, size) = host.memoryEntry(name), offset <= object.size else { return nil }
         let length = Int(min(size, object.size - offset))
+        if object.isFileView { noteFileView(object) }
         return GuestSharedRegion(pointer: object.host + Int(offset), length: length, objectID: object.serial, offset: Int(offset),
                                  objectPointer: object.host, objectLength: Int(object.size), owner: object)
     }

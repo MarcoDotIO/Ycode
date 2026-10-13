@@ -38,6 +38,43 @@ import Testing
         ]
     }
 
+    /// The long instanced draw forms (ops 2, 4, 8; layouts from agent H's
+    /// capture of our own mtlvary program, metal-sim-protocol.md §8.3) and the
+    /// anomaly report for implausible draws.
+    @Test func longInstancedDraws() throws {
+        let records = [
+            Build.record(2) { $0.u64(0); $0.u64(4); $0.u64(0x12345); $0.u32(3) },
+            Build.record(4) { $0.u64(0x12345); $0.u64(4); $0.u64(2); $0.u64(0x23456); $0.u32(4) },
+            Build.record(8) { $0.u16(3); $0.u16(0); $0.u32(6); $0.u64(4); $0.u64(0x10); $0.u64(0x12345) },
+            // RenderBox's form: u16 instance count 0x19, base vertex 0x200.
+            Build.record(9) { $0.u16(1); $0.u16(0); $0.u32(6); $0.u16(0x40); $0.u16(0); $0.u32(0x0200_0019) },
+            Build.record(28) { $0.u16(4); $0.u16(0); $0.u32(6); $0.u64(0); $0.u64(4); $0.u64(3); $0.u64(0x10000); $0.u64(0) },
+            Build.record(29) { $0.u16(4); $0.u16(0); $0.u32(6); $0.u16(0); $0.u16(4); $0.u16(3); $0.u16(0xFFFE); $0.u32(0) },
+            Build.record(0) { $0.u32(3); $0.u64(0); $0.u64(0x0C00_0004) },
+        ]
+        var reports: [String] = []
+        MetalCommandDecoder.anomalyLog = { reports.append($0) }
+        defer { MetalCommandDecoder.anomalyLog = nil }
+        let (cb, unknown) = decode([Build.segment(kind: 0, records)])
+        #expect(unknown.isEmpty)
+        guard case let .render(pass)? = cb.passes.first else { Issue.record("no pass"); return }
+        let r = Self.h
+        #expect(pass.commands == [
+            .draw(MetalDraw(primitiveType: 3, vertexStart: 0, vertexCount: 4, instanceCount: 0x12345)),
+            .draw(MetalDraw(primitiveType: 4, vertexStart: 0x12345, vertexCount: 4, instanceCount: 2, baseInstance: 0x23456)),
+            .drawIndexed(MetalIndexedDraw(primitiveType: 3, indexType: 0, indexBuffer: r(.resource, 6), indexBufferOffset: 0x10,
+                                          indexCount: 4, instanceCount: 0x12345)),
+            .drawIndexed(MetalIndexedDraw(primitiveType: 1, indexType: 0, indexBuffer: r(.resource, 6), indexBufferOffset: 0,
+                                          indexCount: 0x40, instanceCount: 0x19, baseVertex: 0x200)),
+            .drawIndexed(MetalIndexedDraw(primitiveType: 4, indexType: 0, indexBuffer: r(.resource, 6), indexBufferOffset: 0,
+                                          indexCount: 4, instanceCount: 3, baseVertex: 0x10000)),
+            .drawIndexed(MetalIndexedDraw(primitiveType: 4, indexType: 0, indexBuffer: r(.resource, 6), indexBufferOffset: 0,
+                                          indexCount: 4, instanceCount: 3, baseVertex: -2)),
+            .draw(MetalDraw(primitiveType: 3, vertexStart: 0, vertexCount: 0x0C00_0004)),
+        ])
+        #expect(reports.count == 1 && reports[0].contains("op 0"))
+    }
+
     @Test func renderEncoderAsBackboarddUsesIt() throws {
         let (cb, unknown) = decode([Build.segment(kind: 0, backboarddRecords())])
         #expect(unknown.isEmpty && cb.diagnostics.isEmpty && cb.passes.count == 1 && cb.commandBufferRef == 7)

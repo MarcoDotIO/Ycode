@@ -314,6 +314,21 @@ final class Recording {
     /// A semaphore wait this command buffer's submission must carry (event waits).
     var waitSemaphore: VkSemaphore?
     var waitValue: UInt64 = 0
+    /// The shaders this recording uses (diagnostics: a GPU hang names them).
+    var shaders: [String] = []
+
+    /// Draw statistics (diagnostics): draws, the largest vertex×instance
+    /// count of one draw, indirect draws.
+    var draws = 0, largestDraw = 0, indirectDraws = 0
+
+    func noteDraw(_ work: Int) {
+        draws += 1
+        largestDraw = max(largestDraw, work)
+    }
+
+    func noteShaders(_ names: String) {
+        if shaders.count < 16 && !shaders.contains(names) { shaders.append(names) }
+    }
 
     init(cb: VkCommandBuffer?) { self.cb = cb }
 }

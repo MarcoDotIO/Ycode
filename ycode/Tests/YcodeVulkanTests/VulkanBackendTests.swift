@@ -465,6 +465,53 @@ struct VulkanBackendTests {
         b.waitIdle()
         withExtendedLifetime(mem) {}
     }
+
+    /// Event waits are held on the host per Metal queue (VulkanEventWaits.swift):
+    /// a command buffer waiting for an event that a later command buffer of
+    /// another queue signals completes (one shared Vulkan queue must not
+    /// deadlock), the same queue's next command buffer runs after it, and a
+    /// CPU signal releases a wait.
+    @Test func eventWaitsAcrossQueues() throws {
+        let b = VK.backend
+        let event = VK.handle(), cpuEvent = VK.handle()
+        try b.createEvent(event)
+        try b.createEvent(cpuEvent)
+        let t1 = try VK.texture(MetalPixelFormat.rgba8Unorm, 16, 16)
+        let t2 = try VK.texture(MetalPixelFormat.rgba8Unorm, 16, 16)
+        let t3 = try VK.texture(MetalPixelFormat.rgba8Unorm, 16, 16)
+        let queueA = VK.handle(), queueB = VK.handle(), queueC = VK.handle()
+        let order = NSLock()
+        nonisolated(unsafe) var finished: [String] = []
+        let done = DispatchSemaphore(value: 0)
+        func submit(_ name: String, _ queue: MetalHandle, _ passes: [MetalPass]) {
+            let cb = MetalCommandBuffer(process: 7, queue: queue, commandBufferRef: VK.nextID(), passes: passes)
+            b.submit(cb, scheduled: {}, completed: { s in
+                #expect(s == 4, "\(name)")
+                order.lock(); finished.append(name); order.unlock()
+                done.signal()
+            })
+        }
+        // A1 waits for the event; A2 (same queue) must run after it; B signals it.
+        submit("A1", queueA, [.event([.wait(event, value: 1)]), VK.colorPass(t1, clear: [1, 0, 0, 1])])
+        submit("A2", queueA, [VK.colorPass(t1, load: MetalLoadAction.load, clear: [0, 0, 0, 1])])
+        submit("B", queueB, [VK.colorPass(t2, clear: [0, 1, 0, 1]), .event([.signal(event, value: 1)])])
+        // C waits for a CPU signal.
+        submit("C", queueC, [.event([.wait(cpuEvent, value: 5)]), VK.colorPass(t3, clear: [0, 0, 1, 1])])
+        for _ in 0..<3 { #expect(done.wait(timeout: .now() + 10) == .success) }
+        order.lock()
+        #expect(!finished.contains("C"))
+        #expect(finished.firstIndex(of: "A1").map { a1 in finished.firstIndex(of: "A2").map { a1 < $0 } ?? false } ?? false,
+                "\(finished)")
+        order.unlock()
+        b.signalEvent(cpuEvent, value: 5)
+        #expect(done.wait(timeout: .now() + 10) == .success)
+        #expect(try VK.read(t1, 16, 16)[0..<4] == [255, 0, 0, 255])
+        #expect(try VK.read(t3, 16, 16)[0..<4] == [0, 0, 255, 255])
+        // A wait for a value already reached costs nothing.
+        #expect(VK.run([.event([.wait(event, value: 1)]), VK.colorPass(t2, clear: [1, 1, 1, 1])]).status == 4)
+        for h in [event, cpuEvent, t1, t2, t3] { b.release(h) }
+        b.waitIdle()
+    }
 }
 
 @Suite struct VulkanBackendHostTests {

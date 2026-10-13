@@ -190,3 +190,24 @@ getattrlist without `ATTR_CMN_ERROR`; a file mapped after it was written;
 `$YCODE_DATA/work/7-I4/shots/HOME-SCREEN-*.png`.
 Not needed on this path: a host SCDynamicStore for configd_sim (it still
 crashes; nothing on the way to the home screen waited for it).
+
+## 9. Progress (integrator H, 2026-10-13): install reaches the placeholder
+
+`--install-app` now gets the probe app to SpringBoard's home screen as an
+installing placeholder ("Waiting…", `9-H/runs/p6a/shots/home-960s.png`)
+after three fixes (`home-screen.md` §6): one guest volume for everything
+but the runtime root (installcoordinationd's transfer-path volume check),
+counted `ATTR_DIR_ENTRYCOUNT` (MobileInstallation's helper copied an empty
+placeholder bundle), and work intervals in Ycode's `libsystem_kernel`
+(SpringBoard aborted with "Failed to create work interval"). `ylaunch`
+takes `YLAUNCH_INSTALL_SECONDS`; Ycode passes 1200. The install does not
+leave the "Waiting" state within 18 minutes; the launch is not reached.
+
+First milestone of §3.1 reached (2026-10-13): the probe app's executable,
+run as a one-shot on a booted Ycode device (`--oneshot
+"DEV/data/tmp/ycode-apps/YcodeProbe.app/YcodeProbe"`, delay 230 s), prints
+its complete `== YCODE-PROBE BEGIN … END` report from
+`application(_:didFinishLaunchingWithOptions:)` (`9-H/runs/p9a`,
+`devs/p9/data/tmp/ycode-oneshot-1.err`): UIKit's display-services and
+render-server start-up works under Ycode. The installed-and-launched exit
+is still open (install stays "Waiting").

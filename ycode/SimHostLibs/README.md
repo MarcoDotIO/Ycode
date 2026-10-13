@@ -143,7 +143,7 @@ and then fails according to its convention:
 
 | Convention | After the trap | Default for |
 |---|---|---|
-| `errno` | `errno = ENOSYS (78)` through `__ycode_stub_enosys`, then return −1 | BSD syscalls and private wrappers, libproc, work_interval, kpersona, fs_snapshot, os_channel, other kernel names, `sched_*`, ucontext |
+| `errno` | `errno = ENOSYS (78)` through `__ycode_stub_enosys`, then return −1 | BSD syscalls and private wrappers, libproc, the work_interval names not in `kernel/workinterval.c`, kpersona, fs_snapshot, os_channel, other kernel names, `sched_*`, ucontext |
 | `kern` | return `KERN_NOT_SUPPORTED` (46) | Mach routines and Mach traps |
 | `zero` | return 0, NULL, `MACH_PORT_NULL`, or false | Mach traps that return a port or a `boolean_t`, `qos_class_*`, value or pointer getters (in the overrides) |
 | `void` | return | void functions (in the overrides) |

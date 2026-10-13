@@ -560,12 +560,16 @@ Payload: one field, key 0 = function ref. Reply in §4.2.
 | 26 | begin render pass | 584-byte render pass descriptor (§8.6) |
 | 0 | `drawPrimitives` (values ≥ 65 536) | u32 primitive type, u64 vertex start, u64 vertex count |
 | 1 | `drawPrimitives` (short) | u32 primitive type, u16 vertex start, u16 vertex count |
+| 2 | `…instanceCount:` (values ≥ 65 536) | u64 vertex start, u64 vertex count, u64 instance count, u32 primitive type |
 | 3 | `…instanceCount:` (short) | u16 start, u16 count, u16 instance count, u16 primitive type |
+| 4 | `…instanceCount:baseInstance:` (values ≥ 65 536) | u64 vertex start, u64 vertex count, u64 instance count, u64 base instance, u32 primitive type |
 | 5 | `…instanceCount:baseInstance:` (short) | u16 start, u16 count, u16 instance count, u16 base instance, u32 primitive type |
 | 6 | `drawIndexedPrimitives` (values ≥ 65 536) | u16 primitive type, u16 index type, u32 index buffer ref, u64 index count, u64 index buffer offset |
 | 7 | `drawIndexedPrimitives` (short) | u16 primitive type, u16 index type, u32 index buffer ref, u16 index count, u16 index buffer offset |
-| 9 | `…instanceCount:` (short) | as op 7, then u32 instance count |
-| 29 | `…instanceCount:baseVertex:baseInstance:` (short) | u16 type, u16 index type, u32 index buffer ref, u16 index buffer offset, u16 index count, u16 instance count, u16 base vertex, u32 base instance |
+| 8 | `drawIndexedPrimitives:…instanceCount:` (values ≥ 65 536) | u16 primitive type, u16 index type, u32 index buffer ref, u64 index count, u64 index buffer offset, u64 instance count |
+| 9 | `…instanceCount:` (short) | as op 7, then u16 instance count, i16 base vertex (corrected 2026-10-13, agent H: the earlier reading "u32 instance count" held only while the base vertex was 0) |
+| 28 | `…instanceCount:baseVertex:baseInstance:` (values ≥ 65 536) | u16 type, u16 index type, u32 index buffer ref, u64 index buffer offset, u64 index count, u64 instance count, i64 base vertex, u64 base instance |
+| 29 | `…instanceCount:baseVertex:baseInstance:` (short) | u16 type, u16 index type, u32 index buffer ref, u16 index buffer offset, u16 index count, u16 instance count, i16 base vertex (−2 is `0xFFFE`), u32 base instance |
 | 16 | `drawPrimitives:indirectBuffer:` | u64 indirect offset, u32 indirect buffer ref, u32 primitive type |
 | 17 | `drawIndexedPrimitives:…indirectBuffer:` | u16 type, u16 index type, u32 index buffer ref, u32 indirect buffer ref, u64 index buffer offset, u64 indirect offset |
 | 23 | `memoryBarrierWithScope:afterStages:beforeStages:` | u16 scope, u8 after stages, u8 before stages |
@@ -594,7 +598,16 @@ Payload: one field, key 0 = function ref. Reply in §4.2.
 Primitive type and index type are the `MTLPrimitiveType` and
 `MTLIndexType` values. The short forms were used whenever every value fit
 in 16 bits (6000 consecutive draws with starts up to 5999 all used op 1).
-Long forms of the instanced draws (probably ops 2, 4, 8) were not seen.
+The long forms of the instanced draws are ops 2, 4 and 8 (agent H,
+2026-10-13: our `mtlvary render` with instance counts, starts and base
+instances of 0x12345 and 0x23456, recorded with `mslog` on this Mac's
+simulator; level 3). The same capture confirms op 29's field order: u16
+index buffer offset before u16 index count, then u16 instance count, u16
+base vertex, u32 base instance. An instance count of 0x12345 with a
+16-bit index count and offset takes long form 8, so op 9's instance count
+is 16 bits; RenderBox (iconservicesagent) sends op 9 records whose last
+word is `0x02000019` (25 instances, base vertex 0x200), the same packing as
+op 29's fourth word. Base vertex 0x10000 takes long form 28.
 Bindings are state: a record changes one slot until the end of the
 encoder.
 
