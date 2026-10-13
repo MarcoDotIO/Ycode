@@ -286,6 +286,14 @@ uint64_t ckvm_run_mmio_phys_addr(const void *run) { return RUN(run)->mmio.phys_a
 uint32_t ckvm_run_mmio_len(const void *run) { return RUN(run)->mmio.len; }
 uint8_t ckvm_run_mmio_is_write(const void *run) { return RUN(run)->mmio.is_write; }
 
+// The 8 data bytes of an MMIO exit as one little-endian word, read with a
+// single load (no memcpy call): the doorbell's frame address must arrive
+// intact even where the C library's copy routines are unreliable (see
+// hostcopy.c and docs/postmortem-kvm-sve.md).
+uint64_t ckvm_run_mmio_data_u64(const void *run) {
+    return __atomic_load_n((const uint64_t *)(const void *)RUN(run)->mmio.data, __ATOMIC_RELAXED);
+}
+
 void ckvm_run_mmio_get_data(const void *run, uint8_t *out, uint32_t len) {
     if (len > sizeof RUN(run)->mmio.data) len = sizeof RUN(run)->mmio.data;
     memcpy(out, RUN(run)->mmio.data, len);

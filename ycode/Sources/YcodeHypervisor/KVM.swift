@@ -598,10 +598,8 @@ public final class VCPU: @unchecked Sendable {
         switch Int(reason) {
         case Int(CKVM_EXIT_MMIO):
             let length = Int(ckvm_run_mmio_len(runArea))
-            var bytes = [UInt8](repeating: 0, count: 8)
-            ckvm_run_mmio_get_data(runArea, &bytes, 8)
-            var data: UInt64 = 0
-            for i in 0..<min(length, 8) { data |= UInt64(bytes[i]) << (8 * UInt64(i)) }
+            let word = UInt64(littleEndian: ckvm_run_mmio_data_u64(runArea))
+            let data = length >= 8 ? word : word & ((UInt64(1) << (8 * UInt64(max(length, 0)))) - 1)
             let direction: VCPUExit.MMIODirection = ckvm_run_mmio_is_write(runArea) != 0 ? .write : .read
             return .mmio(direction, address: ckvm_run_mmio_phys_addr(runArea), data: direction == .write ? data : 0, length: length)
         case Int(CKVM_EXIT_HLT):

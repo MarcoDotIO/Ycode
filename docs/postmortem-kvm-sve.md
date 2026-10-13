@@ -195,6 +195,35 @@ The owner installed a kernel with the upstream fix series on 2026-10-12
 (`uname -v`: "#1 SMP PREEMPT Mon Oct 12 22:00:00 EDT 2026"). The kernel fix
 alone removes the crash.
 
+### Second symptom: exit-71 "doorbell zero" kills
+
+A separate failure killed guest processes (datamigrator and others) with
+status 71 and the message `unexpected VM exit on vCPU N: mmio write
+0x9000000 len 8 data 0x0`. 0x9000000 is the doorbell: the shim stores the
+address of its trap frame there, and the VMM accepts the exit only when the
+data equals that vCPU's frame address.
+
+In every case the vCPU state showed a normal trap: PC at the shim's
+doorbell store, ESR an SVC from user mode. The guest had written the
+correct address. The VMM read the 8 data bytes out of the shared `kvm_run`
+area with `memcpy` (variable length, so a call into glibc's SVE copy) into a
+zero-filled buffer, immediately after `KVM_RUN` returned: the most exposed
+point of all. When the copy stored nothing, the VMM saw 0. All 180 reports
+in the logs have data exactly 0, never another wrong address, which is what
+a lost copy produces and a wrong frame address would not. The shim cannot
+produce 0 there either: it saves the guest registers through the frame
+pointer before it rings the doorbell, so a zero frame pointer would fault
+first.
+
+| Period | Device-run logs | With doorbell-zero kills |
+|---|---|---|
+| 2026-10-12 12:00 to 21:30 (old kernel, no mitigation) | 357 | 94 |
+| after 21:30 (mitigations, then the patched kernel; 46 runs on the patched kernel) | 70 | 0 |
+
+The VMM now reads the MMIO data with one 64-bit load
+(`ckvm_run_mmio_data_u64`), so this path no longer depends on the C
+library at all.
+
 ## 9. Lessons
 
 - **Measure rates, not single runs.** At 40% to 95% failure, one passing run

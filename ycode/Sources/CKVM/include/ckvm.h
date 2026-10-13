@@ -151,6 +151,8 @@ uint64_t ckvm_run_mmio_phys_addr(const void *run);
 uint32_t ckvm_run_mmio_len(const void *run);
 uint8_t ckvm_run_mmio_is_write(const void *run);
 /// Copies min(len, 8) bytes of the MMIO data buffer into `out`.
+/// The 8 MMIO data bytes as one little-endian word (a single load).
+uint64_t ckvm_run_mmio_data_u64(const void *run);
 void ckvm_run_mmio_get_data(const void *run, uint8_t *out, uint32_t len);
 /// Fills the MMIO data buffer (for completing a guest read on the next KVM_RUN).
 void ckvm_run_mmio_set_data(void *run, const uint8_t *data, uint32_t len);
