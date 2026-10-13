@@ -14,6 +14,8 @@
  * modes, conic gradients, rasterization, nine-part stretching, image masks.
  * Those filter and backdrop classes are not public API; the probe finds
  * them by name at run time (level 4) and skips a cell when one is missing.
+ * SCENE "clip" renders rounded, nested, perspective and shape-mask clips
+ * under rotations (the stencil and coverage paths of the renderer).
  * Prints one line per step and "ca ok" at the end, or "ca FAIL: ...".
  * Public APIs only: QuartzCore (CARenderer, CALayer and subclasses),
  * CoreGraphics, CoreText, Metal.
@@ -315,14 +317,79 @@ static CALayer *build_fx_tree(CGImageRef image, CGFloat scale) {
     return root;
 }
 
+/* ---- The "clip" scene: clipping under transforms (stencil and coverage paths) ---- */
+
+static CALayer *clipped_image(CGRect frame, CGImageRef image, CGFloat radius) {
+    CALayer *clip = [CALayer layer];
+    clip.frame = frame;
+    clip.cornerRadius = radius;
+    clip.masksToBounds = YES;
+    clip.allowsEdgeAntialiasing = YES;
+    CALayer *l = [CALayer layer];
+    l.frame = CGRectMake(-20, -20, frame.size.width + 40, frame.size.height + 40);
+    l.contents = (__bridge id)image;
+    l.magnificationFilter = kCAFilterLinear;
+    [clip addSublayer:l];
+    return clip;
+}
+
+static CALayer *build_clip_tree(CGImageRef image, CGFloat scale) {
+    (void)scale;
+    CALayer *root = [CALayer layer];
+    root.frame = CGRectMake(0, 0, CELL_W * COLS, CELL_H * ROWS);
+    root.backgroundColor = rgb(1, 1, 1, 1);
+    CGRect inner = CGRectMake(25, 50, 100, 100);
+    for (int i = 0; i < COLS * ROWS; i++) {
+        CALayer *c = cell(root, i);
+        CGFloat angle = (i % 4) * M_PI / 12;          /* 0, 15, 30, 45 degrees */
+        int kind = i / 4;
+        CALayer *l;
+        switch (kind) {
+        case 0:  /* rounded clip of an image, rotated */
+            l = clipped_image(inner, image, 24);
+            l.affineTransform = CGAffineTransformMakeRotation(angle);
+            break;
+        case 1: {  /* nested clips: a rounded clip inside a rotated rounded clip */
+            l = [CALayer layer]; l.frame = inner; l.cornerRadius = 30; l.masksToBounds = YES; l.backgroundColor = rgb(0.2, 0.2, 0.3, 1);
+            l.allowsEdgeAntialiasing = YES;
+            CALayer *in = clipped_image(CGRectMake(30, -10, 90, 90), image, 45);
+            in.affineTransform = CGAffineTransformMakeRotation(-angle);
+            [l addSublayer:in];
+            l.affineTransform = CGAffineTransformMakeRotation(angle);
+            break;
+        }
+        case 2: {  /* perspective-transformed clip with a border */
+            l = clipped_image(inner, image, 16);
+            l.borderWidth = 4; l.borderColor = rgb(0, 0, 0, 1);
+            CATransform3D t = CATransform3DIdentity; t.m34 = -1.0 / 250;
+            t = CATransform3DRotate(t, angle + 0.2, 1, 1, 0);
+            l.transform = t;
+            break;
+        }
+        default: {  /* a clip mask from a shape layer, rotated, with a shadow on a sibling */
+            CALayer *shadow = [CALayer layer]; shadow.frame = CGRectInset(inner, 15, 15); shadow.backgroundColor = rgb(0.9, 0.9, 0.2, 1);
+            shadow.shadowOpacity = 0.7; shadow.shadowRadius = 5; shadow.affineTransform = CGAffineTransformMakeRotation(-angle);
+            [c addSublayer:shadow];
+            l = [CALayer layer]; l.frame = inner; l.contents = (__bridge id)image;
+            CAShapeLayer *m = [CAShapeLayer layer]; m.frame = l.bounds; m.path = star_path(CGRectMake(0, 0, 100, 100));
+            m.fillColor = rgb(0, 0, 0, 1); l.mask = m;
+            l.affineTransform = CGAffineTransformMakeRotation(angle);
+            break;
+        }
+        }
+        [c addSublayer:l];
+    }
+    return root;
+}
+
 int main(int argc, char **argv) {
     @autoreleasepool {
         const char *outPath = argc > 1 ? argv[1] : "/tmp/p_ca_render.png";
         CGFloat scale = argc > 2 ? atof(argv[2]) : 1;
         if (scale < 1) scale = 1;
         const char *scene = argc > 3 ? argv[3] : "basic";
-        BOOL fx = strcmp(scene, "fx") == 0;
-        printf("p_ca_render: scene %s, scale %g\n", fx ? "fx" : "basic", scale);
+        BOOL fx = strcmp(scene, "fx") == 0, clip = strcmp(scene, "clip") == 0;
+        printf("p_ca_render: scene %s, scale %g\n", fx ? "fx" : clip ? "clip" : "basic", scale);
         int w = (int)(CELL_W * COLS * scale), h = (int)(CELL_H * ROWS * scale);
         step("start");
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
@@ -339,7 +406,7 @@ int main(int argc, char **argv) {
         CGImageRef image = make_image();
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
-        CALayer *root = fx ? build_fx_tree(image, scale) : build_tree(image, scale);
+        CALayer *root = fx ? build_fx_tree(image, scale) : clip ? build_clip_tree(image, scale) : build_tree(image, scale);
         if (scale != 1) root.transform = CATransform3DMakeScale(scale, scale, 1);
         root.anchorPoint = CGPointZero;
         root.position = CGPointZero;

@@ -167,7 +167,14 @@ extension VulkanMetalBackend {
                 ready.append(pending.removeFirst())
             }
             completedSerial = max(completedSerial, serial)
+            let now = DispatchTime.now().uptimeNanoseconds
             for e in ready {
+                if e.completed != nil {
+                    let l = now &- e.queuedAt
+                    statistics.completedCommandBuffers += 1
+                    statistics.latencyTotalNs &+= l
+                    statistics.latencyMaxNs = max(statistics.latencyMaxNs, l)
+                }
                 e.after?(ok)
                 if let cb = e.cb { freeCommandBuffers.append(cb) }
                 for c in e.chunks { recycle(c) }

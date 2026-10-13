@@ -246,6 +246,16 @@ final class MetalHostCore: @unchecked Sendable {
         if first { log("metal: refused \(key): \(why) (further ones counted, not logged)") }
     }
 
+    /// Logs each pipeline-descriptor key the decoder does not model, once
+    /// per kind and key (with the first value seen).
+    private func noteUnknownKeys(_ kind: String, _ keys: [UInt8: UInt64]) {
+        guard !keys.isEmpty else { return }
+        let fresh: [(UInt8, UInt64)] = lock.withLock {
+            keys.sorted { $0.key < $1.key }.filter { loggedUnknown.insert("\(kind) key \($0.key)").inserted }
+        }
+        for (k, v) in fresh { log("metal: \(kind) descriptor key \(k) is not modelled (first value \(v)); ignored") }
+    }
+
     private func backendFailed(_ what: String, _ error: Error) {
         lock.withLock { stats.backendErrors += 1 }
         log("metal: backend \(what) failed: \(error)")
@@ -637,7 +647,9 @@ final class MetalHostCore: @unchecked Sendable {
             finishCreate(h, p)
             return Self.refReply(ref)
         case 11:
-            let fref = try MetalPipelineCodec.computeFunctionRef(try MetalPipelineCodec.payload(rec.body))
+            let computePayload = try MetalPipelineCodec.payload(rec.body)
+            let fref = try MetalPipelineCodec.computeFunctionRef(computePayload)
+            noteUnknownKeys("compute pipeline", MetalPipelineCodec.computeUnknownKeys(computePayload))
             let (h, ref) = add(.computePipeline, p)
             var info = MetalComputePipelineInfo()
             if let f = lookUp(.function, fref, p) {
@@ -660,6 +672,7 @@ final class MetalHostCore: @unchecked Sendable {
             let desc = try lock.withLock {
                 try MetalPipelineCodec.renderPipeline(payload) { p.handle(.function, $0) }
             }
+            noteUnknownKeys("render pipeline", desc.unknownKeys)
             let (h, ref) = add(.renderPipeline, p)
             do { try backend.createRenderPipeline(h, desc) } catch { backendFailed("createRenderPipeline \(h)", error) }
             finishCreate(h, p)

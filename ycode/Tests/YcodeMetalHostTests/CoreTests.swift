@@ -258,6 +258,31 @@ import YcodeXPC
         #expect(f.core.statistics.submissions == 2 && f.core.statistics.completedEvents == 2)
     }
 
+    /// Diagnostics: the hand-shake sender's guest pid, the per-process
+    /// summary, and one log line per unmodelled pipeline key.
+    @Test func diagnosticsSummaryAndUnknownPipelineKeys() {
+        let f = Fixture()
+        for type in 0..<3 as Range<UInt32> {
+            f.core.connectionOpened(0x100 + type, clientPort: 0x200 + type)
+            _ = f.core.handle(["messageType": .uint64(0), "connectionType": .uint64(UInt64(type)), "processRef": .uint64(type == 0 ? 0 : 1)],
+                              connection: 0x100 + type, senderPID: 124)
+        }
+        _ = f.send(["messageType": .uint64(7), "maxCommandBufferCount": .uint64(64)], on: 1)
+        _ = f.send(Self.submission(1), on: 0)
+        f.core.drainEvents()
+        let lines = f.core.processSummary()
+        #expect(lines.count == 1)
+        #expect(lines.first?.contains("guest pid 124") == true && lines.first?.contains("1 submitted") == true
+                && lines.first?.contains("1 completed") == true && lines.first?.contains("0 outstanding") == true)
+        // A render pipeline with keys 6 and 7 (not modelled) logs each key once.
+        let payload = MetalKeyedPayloadBuilder.renderPipeline(top: [(1, 1), (6, 3), (7, 9)])
+        let rp = Build.record(14) { $0.u32(0); $0.u32(UInt32(payload.count)); $0.append(payload) }
+        _ = f.replyData(Build.message(12, rp), on: 2)
+        _ = f.replyData(Build.message(12, rp), on: 2)
+        let notes = f.logLock.withLock { f.logs.filter { $0.contains("descriptor key") } }
+        #expect(notes.count == 2 && notes[0].contains("key 6") && notes[1].contains("key 7"))
+    }
+
     @Test func eventOrderWhenTheBackendReportsLateOrNever() {
         let f = Fixture(completesImmediately: false)
         f.connect()

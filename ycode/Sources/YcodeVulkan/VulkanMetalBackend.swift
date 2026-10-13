@@ -124,6 +124,8 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         var completed: (@Sendable (Int) -> Void)?
         /// Runs on the completion thread after the GPU finished (always called).
         var after: ((_ ok: Bool) -> Void)?
+        /// When it was queued (monotonic ns; diagnostics).
+        var queuedAt: UInt64 = DispatchTime.now().uptimeNanoseconds
     }
 
     struct TranslationKey: Hashable {
@@ -743,6 +745,10 @@ public struct VulkanBackendStatistics: Sendable {
     public var renderPipelines = 0, computePipelines = 0
     public var submissions = 0, draws = 0, dispatches = 0, blits = 0, skipped = 0
     public var surfaceUploads = 0, surfaceDownloads = 0
+    /// Metal command buffers completed, and their queue-to-completion
+    /// latency (total and largest, ns).
+    public var completedCommandBuffers = 0
+    public var latencyTotalNs: UInt64 = 0, latencyMaxNs: UInt64 = 0
 }
 
 extension VulkanMetalBackend {
@@ -770,6 +776,9 @@ extension VulkanMetalBackend {
             + "\(s.renderPipelines) render / \(s.computePipelines) compute pipelines (broken \(brokenRender) / \(brokenCompute)), "
             + "\(s.submissions) submissions, \(s.draws) draws, \(s.dispatches) dispatches, \(s.blits) blits, \(s.skipped) skipped, "
             + "surface up/down \(s.surfaceUploads)/\(s.surfaceDownloads), \(s.textures) textures, \(s.buffers) buffers, \(s.imports) imports"
+            + (s.completedCommandBuffers == 0 ? "" : String(format: ", latency avg %.2f ms max %.1f ms",
+                                                              Double(s.latencyTotalNs) / Double(s.completedCommandBuffers) / 1e6,
+                                                              Double(s.latencyMaxNs) / 1e6))
             + (skips.isEmpty ? "" : " (skips by replay line: \(skips))")
             + (lost ? ", DEVICE LOST" : "")
     }

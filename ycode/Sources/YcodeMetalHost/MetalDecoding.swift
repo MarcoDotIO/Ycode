@@ -382,6 +382,14 @@ enum MetalPipelineCodec {
     }
 
     /// Op 11 (spec §7.3): key 0 = function ref.
+    /// The top-level keys of a compute payload other than key 0 (diagnostics).
+    static func computeUnknownKeys(_ p: [UInt8]) -> [UInt8: UInt64] {
+        guard let o = try? KeyedObject.parse(p, at: 0) else { return [:] }
+        var out: [UInt8: UInt64] = [:]
+        for (k, v) in o.fields where k != 0 { out[k] = v }
+        return out
+    }
+
     static func computeFunctionRef(_ p: [UInt8]) throws -> UInt32 {
         let o = try KeyedObject.parse(p, at: 0)
         guard let f = o[0] else { throw MetalDecodeError.badPayload("compute pipeline without a function") }
