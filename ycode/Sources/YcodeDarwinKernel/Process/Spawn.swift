@@ -448,7 +448,7 @@ extension DarwinKernel {
     /// Ordinary spawn (`processes.md` §1.10): returns the child's pid.
     func spawnChild(_ me: DarwinProcess, _ request: SpawnRequest) throws -> Int32 {
         guard let launcher = system.launcher else {
-            log("note: posix_spawn: no process launcher; ENOSYS")
+            trace("note: posix_spawn: no process launcher; ENOSYS")
             throw Failure(errno: Errno.ENOSYS)
         }
         let childPID = try system.allocatePID()
@@ -483,7 +483,7 @@ extension DarwinKernel {
         if request.attributes.flags & SpawnFlag.startSuspended != 0 { record.state = .stopped }
         // Step 12: NOTE_FORK to the parent's watchers.
         system.postProcessEvent(me, NoteProc.fork)
-        log("note: spawned pid \(childPID) \(guestPath)")
+        trace("note: spawned pid \(childPID) \(guestPath)")
         return childPID
     }
 
@@ -491,7 +491,7 @@ extension DarwinKernel {
     /// process continues as a new image under the same pid.
     func execImage(_ me: DarwinProcess, _ request: SpawnRequest, _ call: inout String) throws -> BSDResult {
         guard let launcher = system.launcher else {
-            log("note: exec: no process launcher; ENOSYS")
+            trace("note: exec: no process launcher; ENOSYS")
             throw Failure(errno: Errno.ENOSYS)
         }
         let (next, guestPath, hostPath) = try buildImage(request, pid: pid, isExec: true)
@@ -524,7 +524,7 @@ extension DarwinKernel {
             }
             if request.attributes.flags & SpawnFlag.setSID != 0 { try next.setsid(me) }
         } catch {
-            log("note: exec: SETPGROUP/SETSID failed after the commit point; SIGKILL")
+            trace("note: exec: SETPGROUP/SETSID failed after the commit point; SIGKILL")
             next.terminateBySignal(Signal.sigkill)
         }
         system.postProcessEvent(me, NoteProc.exec)

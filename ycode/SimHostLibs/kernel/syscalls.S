@@ -2335,13 +2335,6 @@ Lyc_cerror_nocancel:
     svc #0x80
     b.cs Lyc_cerror_nocancel
     ret
-    .globl "_getpid"
-    .p2align 2
-"_getpid":
-    mov x16, #20
-    svc #0x80
-    b.cs Lyc_cerror_nocancel
-    ret
     .globl "_getppid"
     .p2align 2
 "_getppid":

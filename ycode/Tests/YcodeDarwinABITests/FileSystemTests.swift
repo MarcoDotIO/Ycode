@@ -77,6 +77,17 @@ private final class Fixture {
 
 /// stage3-contract.md §8 VFS and §8.1 API.
 @Suite struct FileSystemTests {
+    /// A file created empty, written, then mapped: the open file reports its
+    /// current size (a mapping must not read zeros; first-boot.md §6).
+    @Test func openFileSizeFollowsWrites() throws {
+        let f = try Fixture()
+        let fd = try f.fs.open("/tmp/grown", flags: DarwinOpen.O_RDWR | DarwinOpen.O_CREAT | DarwinOpen.O_EXCL, mode: 0o600)
+        #expect(try f.fs.file(for: fd).size == 0)
+        _ = try f.fs.write(fd, [UInt8](repeating: 9, count: 20_000))
+        #expect(try f.fs.file(for: fd).size == 20_000)
+        #expect(try f.fs.file(for: fd).stat.size == 0)  // the stat data stays the open-time copy
+    }
+
     @Test func flagAndErrnoValues() {
         #expect(DarwinOpen.O_RDONLY == 0 && DarwinOpen.O_WRONLY == 1 && DarwinOpen.O_RDWR == 2)
         #expect(DarwinOpen.O_CREAT == 0x200 && DarwinOpen.O_TRUNC == 0x400 && DarwinOpen.O_EXCL == 0x800)

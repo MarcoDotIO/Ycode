@@ -344,7 +344,7 @@ extension DarwinKernel {
                 returnWorkRequest(request)
                 if !workqueue.startFailureLogged {
                     workqueue.startFailureLogged = true
-                    log("note: workqueue request pending: \(threadHost == nil ? "no thread host" : "512 workers exist")")
+                    trace("note: workqueue request pending: \(threadHost == nil ? "no thread host" : "512 workers exist")")
                 }
                 return
             }
@@ -369,7 +369,7 @@ extension DarwinKernel {
             returnWorkRequest(request)
             if !workqueue.startFailureLogged {
                 workqueue.startFailureLogged = true
-                log("note: workqueue: no free vCPU for a new worker; request pending")
+                trace("note: workqueue: no free vCPU for a new worker; request pending")
             }
             return false
         }
@@ -380,7 +380,7 @@ extension DarwinKernel {
             try mem.protect(va: base, size: Self.pageSize, protection: [])
         } catch {
             returnWorkRequest(request)
-            log("note: workqueue: no memory for a new worker (\(error))")
+            trace("note: workqueue: no memory for a new worker (\(error))")
             return false
         }
         let w = WorkerState(base: base)
@@ -397,7 +397,7 @@ extension DarwinKernel {
             ctx.vcpuIndex = try threadHost!.startThread(start, context: ctx)
             w.firstRun = false
             workqueue.startFailureLogged = false
-            log("note: workqueue: started \(ctx) for qos \(request.qos)")
+            trace("note: workqueue: started \(ctx) for qos \(request.qos)")
             return true
         } catch {
             unbindWorker(ctx, release: true)
@@ -405,7 +405,7 @@ extension DarwinKernel {
             discardUnstartedWorker(ctx, mem)
             if !workqueue.startFailureLogged {
                 workqueue.startFailureLogged = true
-                log("note: workqueue: cannot start a worker (\(error)); request pending")
+                trace("note: workqueue: cannot start a worker (\(error)); request pending")
             }
             return false
         }
@@ -488,7 +488,7 @@ extension DarwinKernel {
         w.boundQueue = kq
         w.boundBucket = bucket
         if bucket == nil, let other = kq.servicer, other !== ctx {
-            log("note: workloop \(hx(kq.workloopID)) bound to thread \(ctx.threadID) while thread \(other.threadID) services it")
+            trace("note: workloop \(hx(kq.workloopID)) bound to thread \(ctx.threadID) while thread \(other.threadID) services it")
         }
         if let bucket { kq.buckets[bucket, default: .init()].boundWorker = ctx } else { kq.servicer = ctx }
     }

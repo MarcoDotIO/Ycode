@@ -277,6 +277,14 @@ public final class DarwinKernel {
     public var pid: Int32
     /// Receives one line (without a newline) per trap.
     public var log: (String) -> Void
+    /// Whether trap descriptions are built and passed to `log` at all. Off,
+    /// no trace text is formatted (most of a cheap trap's time under the
+    /// kernel lock went into building strings nobody printed; agent I4).
+    public var tracing = true
+    /// `log(line)` when tracing; `line` is not evaluated otherwise.
+    @inline(__always) func trace(_ line: @autoclosure () -> String) {
+        if tracing { log(line()) }
+    }
     /// The guest's `CNTVCT_EL0` (mach_absolute_time ticks).
     public var counter: () -> UInt64
     /// `CNTFRQ_EL0` in Hz.
@@ -513,7 +521,7 @@ public final class DarwinKernel {
 
     private func handleLocked(_ frame: inout TrapFrame, memory: any KernelGuestMemory) -> Outcome {
         guard frame.trapKind == .svc else {
-            log("trap \(frame.trapKind?.description ?? "kind \(frame.kind)") fatal")
+            trace("trap \(frame.trapKind?.description ?? "kind \(frame.kind)") fatal")
             if faultFrame == nil { faultFrame = frame }
             if Self.isCachePatchPlaceholderFault(frame) {
                 return .fatal(status: Self.exceptionExitStatus,
@@ -574,12 +582,12 @@ public final class DarwinKernel {
             let base = frame.x[0]
             // A base above the user VA limit stores 0.
             frame.tpidrro = base < (1 << VMLayout.virtualAddressBits) ? base : 0
-            log("trap platform set_tsd_base(\(hx(base))) -> tpidrro=\(hx(frame.tpidrro))")
+            trace("trap platform set_tsd_base(\(hx(base))) -> tpidrro=\(hx(frame.tpidrro))")
         case 3:
             frame.x[0] = frame.tpidrro
-            log("trap platform get_tsd_base() -> \(hx(frame.tpidrro))")
+            trace("trap platform get_tsd_base() -> \(hx(frame.tpidrro))")
         default:
-            log("trap platform selector \(selector) -> no-op")
+            trace("trap platform selector \(selector) -> no-op")
         }
         return .resume
     }
@@ -613,7 +621,7 @@ public final class DarwinKernel {
 
     private func handleBSD(_ n: Int, _ a: [UInt64], prefix: String, _ frame: inout TrapFrame,
                            _ mem: any KernelGuestMemory) -> Outcome {
-        var call = TrapNames.describe(TrapNames.bsd(n), a)
+        var call = tracing ? TrapNames.describe(TrapNames.bsd(n), a) : ""
         var fallback = Errno.EINVAL
         let result: BSDResult
         do {
@@ -623,7 +631,7 @@ public final class DarwinKernel {
             frame.x[0] = UInt64(UInt32(bitPattern: e))
             frame.x[1] = 0
             frame.carry = true
-            log("\(prefix) \(call) -> error \(e) (\(Errno.name(e)))")
+            trace("\(prefix) \(call) -> error \(e) (\(Errno.name(e)))")
             return .resume
         }
         switch result {
@@ -631,29 +639,29 @@ public final class DarwinKernel {
             frame.x[0] = v
             frame.x[1] = 0
             frame.carry = false
-            log("\(prefix) \(call) -> \(hx(v))")
+            trace("\(prefix) \(call) -> \(hx(v))")
             return .resume
         case let .values(v0, v1):
             frame.x[0] = v0
             frame.x[1] = v1
             frame.carry = false
-            log("\(prefix) \(call) -> \(hx(v0)), \(hx(v1))")
+            trace("\(prefix) \(call) -> \(hx(v0)), \(hx(v1))")
             return .resume
         case let .exit(status):
-            log("\(prefix) \(call) -> exit \(status)")
+            trace("\(prefix) \(call) -> exit \(status)")
             return .exit(status: status)
         case let .fatal(status, message):
-            log("\(prefix) \(call) -> fatal \(status)")
+            trace("\(prefix) \(call) -> fatal \(status)")
             return .fatal(status: status, message: message)
         case .threadExit:
-            log("\(prefix) \(call) -> thread exit")
+            trace("\(prefix) \(call) -> thread exit")
             return .threadExit
         case let .outcome(o):
-            log("\(prefix) \(call) -> \(o)")
+            trace("\(prefix) \(call) -> \(o)")
             return o
         case let .restart(start):
             start.apply(to: &frame)
-            log("\(prefix) \(call) -> restart at \(hx(start.pc)) x0=\(hx(start.x[0])) x3=\(hx(start.x[3])) "
+            trace("\(prefix) \(call) -> restart at \(hx(start.pc)) x0=\(hx(start.x[0])) x3=\(hx(start.x[3])) "
                 + "x4=\(hx(start.x[4])) x5=\(hx(start.x[5])) sp=\(hx(start.sp))")
             return .resume
         case .unimplemented:
@@ -661,7 +669,7 @@ public final class DarwinKernel {
             frame.x[1] = 0
             frame.carry = true
             let text = "unimplemented bsd \(n) \(call)"
-            log("\(prefix) \(call) -> unimplemented")
+            trace("\(prefix) \(call) -> unimplemented")
             return .unimplemented(description: text + "\n" + frame.description)
         }
     }
@@ -844,7 +852,7 @@ public final class DarwinKernel {
 
         case BSD.getfsstat64:
             call = "getfsstat64(buf=\(hx(a[0])), bufsize=\(int(1)), flags=\(int(2)))"
-            return .value(0)
+            return .value(try fileSystemStatList(buffer: a[0], size: a[1], &call, mem))
 
         case BSD.bsdthreadRegister:
             return .value(try bsdthreadRegister(a, &call, mem))
@@ -901,7 +909,7 @@ public final class DarwinKernel {
         } else {
             let file = try fileSystem.file(for: fd)
             if flags & MapFlag.shared != 0 && flags & MapFlag.private == 0 {
-                log("note: MAP_SHARED file mapping of \(file.guestPath) is mapped private")
+                trace("note: MAP_SHARED file mapping of \(file.guestPath) is mapped private")
             }
             va = try mem.mapFile(file, offset: pos - pageOffset, at: at, size: size, protection: prot, hint: hint)
         }
@@ -1070,7 +1078,7 @@ public final class DarwinKernel {
             let name = String(decoding: nameBytes, as: UTF8.self)
             call += " [name2oid \"\(name)\"]"
             guard let entry = sysctl.lookup(name: name) else {
-                log("note: sysctl name \"\(name)\" is not known")
+                trace("note: sysctl name \"\(name)\" is not known")
                 throw Failure(errno: Errno.ENOENT)
             }
             var oid: [UInt8] = []
@@ -1093,7 +1101,7 @@ public final class DarwinKernel {
     private func sysctlRead(_ entry: SysctlTable.Entry?, name: String, old: UInt64, oldlenp: UInt64,
                             new: UInt64, newlen: UInt64, _ mem: any KernelGuestMemory) throws -> UInt64 {
         guard let entry else {
-            log("note: sysctl \"\(name)\" is not known")
+            trace("note: sysctl \"\(name)\" is not known")
             throw Failure(errno: Errno.ENOENT)
         }
         if case let .error(e) = entry.value { throw Failure(errno: e) }
@@ -1122,17 +1130,17 @@ public final class DarwinKernel {
 
     private func handleMach(_ n: Int, _ frame: inout TrapFrame, _ mem: any KernelGuestMemory) -> Outcome {
         let a = Array(frame.x[0..<8])
-        var call = TrapNames.describe(TrapNames.mach(n), a)
+        var call = tracing ? TrapNames.describe(TrapNames.mach(n), a) : ""
         let prefix = "trap mach \(n)"
         func port(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i]) }
         func kr(_ value: UInt64, _ extra: String = "") -> Outcome {
             frame.x[0] = value
-            log("\(prefix) \(call) -> \(KernReturn.name(value))\(extra)")
+            trace("\(prefix) \(call) -> \(KernReturn.name(value))\(extra)")
             return .resume
         }
         func portResult(_ name: UInt32) -> Outcome {
             frame.x[0] = UInt64(name)
-            log("\(prefix) \(call) -> \(hx(name))")
+            trace("\(prefix) \(call) -> \(hx(name))")
             return .resume
         }
 
@@ -1140,7 +1148,7 @@ public final class DarwinKernel {
         case Mach.machAbsoluteTime, Mach.machContinuousTime:
             let t = counter()
             frame.x[0] = t
-            log("\(prefix) \(n == Mach.machAbsoluteTime ? "mach_absolute_time" : "mach_continuous_time")() -> \(hx(t))")
+            trace("\(prefix) \(n == Mach.machAbsoluteTime ? "mach_absolute_time" : "mach_continuous_time")() -> \(hx(t))")
             return .resume
 
         case Mach.vmAllocate:
@@ -1288,7 +1296,7 @@ public final class DarwinKernel {
             }
             let entry = TrapNames.mach(n)
             frame.x[0] = entry.name == "kern_invalid" || !isPortReturning(n) ? KernReturn.failure : 0
-            log("\(prefix) \(call) -> unimplemented")
+            trace("\(prefix) \(call) -> unimplemented")
             return .unimplemented(description: "unimplemented mach \(n) \(call)\n" + frame.description)
         }
     }
@@ -1310,7 +1318,7 @@ public final class DarwinKernel {
             frame.x[0] = v
             frame.x[1] = 0
             frame.carry = false
-            log("\(prefix) \(call) -> \(hx(v))\(extra)")
+            trace("\(prefix) \(call) -> \(hx(v))\(extra)")
             return .resume
         }
         func fail(_ error: Error) -> Outcome {
@@ -1318,14 +1326,14 @@ public final class DarwinKernel {
             frame.x[0] = UInt64(UInt32(bitPattern: e))
             frame.x[1] = 0
             frame.carry = true
-            log("\(prefix) \(call) -> error \(e) (\(Errno.name(e)))")
+            trace("\(prefix) \(call) -> error \(e) (\(Errno.name(e)))")
             return .resume
         }
         // Mach-style result.
         func kr(_ value: UInt64, _ extra: String = "") -> Outcome {
             frame.x[0] = value
             frame.carry = false
-            log("\(prefix) \(call) -> \(KernReturn.name(value))\(extra)")
+            trace("\(prefix) \(call) -> \(KernReturn.name(value))\(extra)")
             return .resume
         }
 
@@ -1486,14 +1494,14 @@ public final class DarwinKernel {
 
         case Private.unimplementedLibraryFunction:
             let name = (try? readString(a[0], length: 256, mem)) ?? "<unreadable name at \(hx(a[0]))>"
-            log("\(prefix) unimplemented libfunc \(name)")
+            trace("\(prefix) unimplemented libfunc \(name)")
             return .unimplementedLibraryFunction(name: name)
 
         default:
             frame.x[0] = UInt64(Errno.ENOSYS)
             frame.x[1] = 0
             frame.carry = true
-            log("\(prefix) \(call) -> unimplemented")
+            trace("\(prefix) \(call) -> unimplemented")
             return .unimplemented(description: "unimplemented private \(hx(number))\n" + frame.description)
         }
     }

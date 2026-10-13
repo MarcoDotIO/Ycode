@@ -63,7 +63,7 @@ extension DarwinKernel {
             try mem.write(va: buffer, bytes: b)
             return 0
         default:
-            log("note: proc_info call \(callnum) is not supported")
+            trace("note: proc_info call \(callnum) is not supported")
             throw Failure(errno: Errno.EINVAL)
         }
     }
@@ -164,7 +164,7 @@ extension DarwinKernel {
             b.appendLE(UInt32(7))  // PLATFORM_IOSSIMULATOR
             bytes = b
         default:
-            log("note: proc_info PIDINFO flavor \(flavor) is not supported")
+            trace("note: proc_info PIDINFO flavor \(flavor) is not supported")
             throw Failure(errno: Errno.EINVAL)
         }
         try mem.write(va: buffer, bytes: bytes)

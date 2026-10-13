@@ -190,6 +190,74 @@ extension DarwinKernel {
         case BSD2.readv, BSD2.writev:
             return .value(try vectoredIO(write: n == BSD2.writev, a, &call, mem))
 
+        case 284:
+            // access_extended(entries, size, results, uid) (xnu bsd/kern/
+            // vfs_syscalls.c and sys/unistd.h `struct accessx_descriptor`
+            // {u32 ad_name_offset; i32 ad_flags; i32 ad_pad[2]}; level 1):
+            // `size` bytes of descriptors followed by NUL-terminated names;
+            // the first descriptor's name offset marks the end of the
+            // descriptor array; an offset of 0 reuses the previous name.
+            // At most 16 KiB (ENOMEM); smaller than one descriptor plus a
+            // name, or a name offset outside the buffer: EINVAL. One int per
+            // descriptor goes to `results`: 0 or an errno. Ycode checks as
+            // `access` does (the object must exist; permissions are not
+            // modeled).
+            let size = Int(min(a[1], 1 << 20))
+            call = "access_extended(entries=\(hx(a[0])), size=\(size), results=\(hx(a[2])), uid=\(int(3)))"
+            guard size <= 16 * 1024 else { throw Failure(errno: Errno.ENOMEM) }
+            guard size >= 16 + 2 else { throw Failure(errno: Errno.EINVAL) }
+            var buffer = try mem.read(va: a[0], count: size)
+            buffer.append(0)
+            let first = Int(buffer.readLE(UInt32.self, at: 0))
+            let count = first / 16
+            guard count >= 1, count <= 100, first <= size else { throw Failure(errno: Errno.EINVAL) }
+            var results: [UInt8] = []
+            var name: String?
+            for i in 0..<count {
+                let offset = Int(buffer.readLE(UInt32.self, at: i * 16))
+                guard offset < size else { throw Failure(errno: Errno.EINVAL) }
+                if offset != 0 || name == nil {
+                    guard offset >= first else { throw Failure(errno: Errno.EINVAL) }
+                    let bytes = buffer[offset...].prefix { $0 != 0 }
+                    name = String(decoding: bytes, as: UTF8.self)
+                }
+                var result: Int32 = 0
+                do {
+                    guard let path = name, !path.isEmpty else { throw Failure(errno: Errno.ENOENT) }
+                    _ = try statUnlocked(path, followSymlinks: true)
+                } catch {
+                    result = errno(of: error, default: Errno.ENOENT)
+                }
+                results.appendLE(result)
+            }
+            try mem.write(va: a[2], bytes: results)
+            call += " [\(count) entries]"
+            return .value(0)
+
+        case 65, 405:
+            // msync / msync_nocancel(addr, len, flags) (the msync(2) manual
+            // page, xnu bsd/kern/kern_mman.c; level 1): addr page-aligned
+            // (EINVAL), MS_ASYNC (1) and MS_SYNC (0x10) not both, no bits
+            // beyond MS_ASYNC|MS_INVALIDATE|MS_KILLPAGES|MS_DEACTIVATE|MS_SYNC
+            // (0x1f) (EINVAL), every page of the range mapped (ENOMEM).
+            // Ycode maps files private (shared file writes are not written
+            // back), so there is nothing to flush: a valid call returns 0.
+            // chronod's mapped-file allocator asserts that it does
+            // (first-boot.md §6).
+            let flags = int(2)
+            call = "msync(addr=\(hx(a[0])), len=\(hx(a[1])), flags=\(hx(UInt64(UInt32(bitPattern: flags)))))"
+            guard a[0] & (VMLayout.pageSize - 1) == 0, flags & ~0x1F == 0, flags & 0x11 != 0x11 else {
+                throw Failure(errno: Errno.EINVAL)
+            }
+            let end = a[0].addingReportingOverflow(a[1])
+            guard !end.overflow else { throw Failure(errno: Errno.ENOMEM) }
+            var va = a[0]
+            while va < end.partialValue {
+                guard let region = mem.region(containing: va) else { throw Failure(errno: Errno.ENOMEM) }
+                va = region.end
+            }
+            return .value(0)
+
         case 322:
             // iopolicysys(cmd, struct _iopol_param_t *) (xnu bsd/kern/
             // kern_resource.c, sys/resource.h; level 1): cmd 0 sets, 1 gets
@@ -316,7 +384,7 @@ extension DarwinKernel {
         case BSD2.procInfo:
             call = "proc_info(callnum=\(int(0)), pid=\(int(1)), flavor=\(int(2)), arg=\(hx(a[3])), buffer=\(hx(a[4])), "
                 + "buffersize=\(int(5)))"
-            log("note: proc_info call \(int(0)) flavor \(int(2)) is not supported")
+            trace("note: proc_info call \(int(0)) flavor \(int(2)) is not supported")
             throw Failure(errno: Errno.ENOTSUP)
 
         case BSD2.getdirentries64:
@@ -347,7 +415,7 @@ extension DarwinKernel {
                 guard (0...31).contains(sig) else { throw Failure(errno: Errno.EINVAL) }
                 if sig == 0 { return .value(0) }
                 if thread !== current {
-                    log("note: __pthread_kill(\(sig)) to \(thread): no cross-thread signal delivery in stage 4a; dropped")
+                    trace("note: __pthread_kill(\(sig)) to \(thread): no cross-thread signal delivery in stage 4a; dropped")
                     call += " [dropped]"
                     return .value(0)
                 }
@@ -388,7 +456,7 @@ extension DarwinKernel {
         case let n where BSD2.psynchWaits[n] != nil:
             let name = BSD2.psynchWaits[n]!
             call = "\(name)(\(hx(a[0])), \(hx(a[1])), \(hx(a[2])), \(hx(a[3])), \(hx(a[4])))"
-            log("DEADLOCK?: \(name) on \(hx(a[0])) would block the only thread; returning ENOTSUP")
+            trace("DEADLOCK?: \(name) on \(hx(a[0])) would block the only thread; returning ENOTSUP")
             throw Failure(errno: Errno.ENOTSUP)
 
         case let n where BSD2.psynchWakes[n] != nil:
@@ -598,6 +666,39 @@ extension DarwinKernel {
         return b
     }
 
+    // MARK: getfsstat64
+
+    /// `getfsstat64` (347; xnu vfs_syscalls.c, the getfsstat(2) manual page;
+    /// level 1): one `struct statfs` (64-bit inode form) per mounted volume.
+    /// Ycode's volumes are "/" (the synthetic root) and every directory
+    /// prefix, each with the `statfs64Bytes` of its root. A null buffer asks
+    /// for the count; otherwise as many entries as fit are written and their
+    /// number returned. Foundation finds the volume of a file (its
+    /// NSURLVolumeURLKey, read-only and local flags) by matching the file's
+    /// fsid here (level 3: our probe `lsd-seed/fsprobe.m`).
+    func fileSystemStatList(buffer: UInt64, size: UInt64, _ call: inout String,
+                            _ mem: any KernelGuestMemory) throws -> UInt64 {
+        var mounts: [(path: String, dev: UInt32)] = []
+        if let root = try? fileSystem.stat("/", followSymlinks: true) { mounts.append(("/", root.dev)) }
+        for prefix in fileSystem.prefixes where prefix.guestPath != "/" {
+            guard let st = try? fileSystem.stat(prefix.guestPath, followSymlinks: true), st.isDirectory,
+                  !mounts.contains(where: { $0.path == prefix.guestPath }) else { continue }
+            mounts.append((prefix.guestPath, st.dev))
+        }
+        let entrySize = 2168
+        guard buffer != 0 else {
+            call += " [\(mounts.count) volumes]"
+            return UInt64(mounts.count)
+        }
+        let count = min(mounts.count, Int(min(size, 1 << 24)) / entrySize)
+        var out: [UInt8] = []
+        out.reserveCapacity(count * entrySize)
+        for m in mounts.prefix(count) { out += statfs64Bytes(guestPath: m.path, dev: m.dev) }
+        if !out.isEmpty { try mem.write(va: buffer, bytes: out) }
+        call += " [\(mounts.prefix(count).map(\.path).joined(separator: ", "))]"
+        return UInt64(count)
+    }
+
     // MARK: Signals to the process itself
 
     /// No delivery yet: an ignored signal is dropped, a default action ends
@@ -619,7 +720,7 @@ extension DarwinKernel {
             call += " [\(name): default action, the guest terminates]"
             return .fatal(128 + sig, "guest terminated by \(name) (no signal delivery yet; default action)")
         }
-        log("note: \(name) has a handler at \(hx(handler)); signal delivery is not implemented, dropped")
+        trace("note: \(name) has a handler at \(hx(handler)); signal delivery is not implemented, dropped")
         call += " [\(name) caught by \(hx(handler)); dropped]"
         return .value(0)
     }

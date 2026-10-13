@@ -544,6 +544,8 @@ final class GuestImageInstance: @unchecked Sendable {
             kernel.log = { [weak launcher] line in
                 if trace { stderrLine((launcher?.tag(pid) ?? "") + trapPrefix.value + line) }
             }
+            // Without a trace the kernel formats no trap text at all.
+            kernel.tracing = trace
             kernel.counter = { Hypervisor.hostCounter() &- offset }
             kernel.counterFrequency = frequency
             kernel.bootCounter = clock.bootCounter

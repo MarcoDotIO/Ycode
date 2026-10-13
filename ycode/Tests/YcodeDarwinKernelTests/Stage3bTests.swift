@@ -155,6 +155,77 @@ import YcodeDarwinABI
         #expect(env.svc(220, [s + 0x300, s + 0x200, s + 0x400, 2048, 0]).1.x[0] == 2)
     }
 
+    /// access_extended: one result per descriptor (0 or an errno); a zero
+    /// name offset reuses the previous name.
+    @Test func accessExtended() throws {
+        let env = try Env()
+        let path = try env.makeFile("present", [1])
+        let names = Array(path.utf8) + [0] + Array((env.root + "/absent").utf8) + [0]
+        var table: [UInt8] = []
+        for offset: UInt32 in [48, 0, UInt32(48 + path.utf8.count + 1)] {
+            table += Array(leBytes(UInt64(offset)).prefix(4)) + Array(leBytes(2).prefix(4)) + [UInt8](repeating: 0, count: 8)
+        }
+        try env.space.write(va: s, bytes: table + names)
+        let (_, r) = env.svc(284, [s, UInt64(table.count + names.count), s + 0x800, 501])
+        #expect(!r.carry)
+        let out = try env.space.read(va: s + 0x800, count: 12)
+        #expect(out.readLE(Int32.self, at: 0) == 0 && out.readLE(Int32.self, at: 4) == 0 && out.readLE(Int32.self, at: 8) == 2)
+        #expect(env.svc(284, [s, 4, s + 0x800, 501]).1.x[0] == 22)
+    }
+
+    /// msync: 0 on a mapped range; EINVAL for an unaligned address or
+    /// MS_ASYNC|MS_SYNC; ENOMEM for an unmapped page.
+    @Test func msyncChecks() throws {
+        let env = try Env()
+        #expect(!env.svc(65, [s, 0x4000, 0x10]).1.carry)
+        #expect(!env.svc(405, [s, 0x8000, 0x1]).1.carry)
+        #expect(env.svc(65, [s + 8, 0x10, 0x10]).1.x[0] == 22)
+        #expect(env.svc(65, [s, 0x4000, 0x11]).1.x[0] == 22)
+        #expect(env.svc(65, [s, Env.scratchSize + 0x4000, 0x10]).1.x[0] == 12)
+    }
+
+    /// getattrlist ignores ATTR_CMN_ERROR (a getattrlistbulk attribute): not
+    /// packed and not in the returned set (level 3: the Mac's simulator).
+    @Test func attributeListWithoutErrorField() throws {
+        let env = try Env()
+        try env.putString(env.root, at: s + 0x100)
+        // RETURNED_ATTRS | ERROR | OBJTYPE.
+        try env.space.write(va: s + 0x200, bytes: [5, 0, 0, 0] + Array(leBytes(0xA000_0008).prefix(4)) + [UInt8](repeating: 0, count: 16))
+        let (_, r) = env.svc(220, [s + 0x100, s + 0x200, s + 0x400, 256, 0])
+        #expect(!r.carry)
+        let b = try env.space.read(va: s + 0x400, count: 32)
+        #expect(b.readLE(UInt32.self, at: 0) == 28)
+        #expect(b.readLE(UInt32.self, at: 4) == 0x8000_0008)
+        #expect(b.readLE(UInt32.self, at: 24) == 2)  // VDIR right after the returned set
+    }
+
+    /// Guest volumes: a prefix with its own device reports it as st_dev and
+    /// f_fsid, and getfsstat64 lists "/" and the prefix (count with a null
+    /// buffer, entries otherwise), so a file's fsid finds its volume.
+    @Test func volumesAndGetfsstat() throws {
+        let env = try Env(device: 0x0100_0011, rootDevice: 0x0100_0010)
+        let path = try env.makeFile("f", [1, 2, 3])
+        #expect(try env.kernel.fileSystem.stat(path, followSymlinks: true).dev == 0x0100_0011)
+        #expect(try env.kernel.fileSystem.stat("/", followSymlinks: true).dev == 0x0100_0010)
+        try env.putString(path, at: s + 0x100)
+        let fd = env.svc(5, [s + 0x100, 0, 0]).1.x[0]
+        #expect(try env.kernel.fileSystem.fstat(Int32(fd)).dev == 0x0100_0011)
+        let (_, count) = env.svc(347, [0, 0, 2])
+        #expect(!count.carry && count.x[0] == 2)
+        let (_, list) = env.svc(347, [s + 0x1000, 2168 * 2, 2])
+        #expect(!list.carry && list.x[0] == 2)
+        let b = try env.space.read(va: s + 0x1000, count: 2168 * 2)
+        func mountedOn(_ i: Int) -> String {
+            let name = b[(i * 2168 + 88)..<(i * 2168 + 88 + 1024)]
+            return String(decoding: name.prefix { $0 != 0 }, as: UTF8.self)
+        }
+        #expect(mountedOn(0) == "/" && b.readLE(UInt32.self, at: 48) == 0x0100_0010)
+        #expect(mountedOn(1) == env.root && b.readLE(UInt32.self, at: 2168 + 48) == 0x0100_0011)
+        #expect(b.readLE(UInt32.self, at: 2168 + 64) & 0x1 == 1)  // MNT_RDONLY: a read-only prefix
+        let (_, one) = env.svc(347, [s + 0x1000, 2168, 2])
+        #expect(one.x[0] == 1)
+    }
+
     /// fcntl hints and data-protection calls on a volume without content
     /// protection; open_dprotected_np opens like open.
     @Test func fcntlHintsAndProtectedOpen() throws {

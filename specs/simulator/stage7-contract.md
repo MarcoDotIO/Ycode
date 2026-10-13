@@ -175,3 +175,18 @@ disassembly.
   `sandbox_extension_*` functions; our own Ycode runs) and implement a
   permissive answer. **Blocker for launch:** display services
   (SimFramebuffer §4–§5, IOSurface §6).
+
+## 8. Progress (integrator I4, 2026-10-13): SpringBoard home screen
+
+The home screen renders (CPU path, no Metal) on the Thor: first boot of a
+new device 10 min 29 s to SpringBoard's home screen window, second boot of
+the same device 3 min 29 s (migration not repeated, LaunchServices store
+reused). Mechanisms and fixes: `first-boot.md` (data migration and the
+LaunchServices seeding chain; guest volumes and `getfsstat64`;
+getattrlist without `ATTR_CMN_ERROR`; a file mapped after it was written;
+`msync`; Sandbox call 12 for cfprefsd; `accessx_np`; one clock).
+`--skip-first-boot-migration` is no longer needed to reach the home screen;
+`first-boot.md` §4 says what it skips. Screenshots:
+`$YCODE_DATA/work/7-I4/shots/HOME-SCREEN-*.png`.
+Not needed on this path: a host SCDynamicStore for configd_sim (it still
+crashes; nothing on the way to the home screen waited for it).

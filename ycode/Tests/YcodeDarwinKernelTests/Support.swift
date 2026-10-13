@@ -20,15 +20,19 @@ struct Env {
     let sink: Sink
     let root: String
 
-    init(counter: @escaping () -> UInt64 = { 0x1234 }, frequency: UInt64 = 24_000_000) throws {
+    /// `device`: the root prefix's guest volume device (nil: the host's);
+    /// `rootDevice`: the synthetic "/" device.
+    init(counter: @escaping () -> UInt64 = { 0x1234 }, frequency: UInt64 = 24_000_000,
+         device: UInt32? = nil, rootDevice: UInt32? = nil) throws {
         let sink = Sink()
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath()
         let dir = tmp.appendingPathComponent("ycode-kernel-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         root = dir.path
         let fs = DarwinFileSystem(
-            prefixes: [.init(guestPath: root, hostPath: root, writable: false)],
+            prefixes: [.init(guestPath: root, hostPath: root, writable: false, device: device)],
             console: { fd, bytes in sink.console[fd, default: []] += bytes })
+        fs.rootDevice = rootDevice
         kernel = DarwinKernel(fileSystem: fs, pid: 100, log: { sink.lines.append($0) }, counter: counter,
                               counterFrequency: frequency, wallClock: { (1_700_000_000, 250_000_000) })
         space = GuestAddressSpace(backing: FakePhysicalBacking())

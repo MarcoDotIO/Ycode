@@ -343,7 +343,7 @@ extension DarwinKernel {
     func logDatagramText(_ bytes: [UInt8]) {
         guard !bytes.isEmpty else { return }
         let text = String(decoding: bytes.prefix(2048).map { $0 == 0 || $0 == 10 ? 0x20 : $0 }, as: UTF8.self)
-        log("note: sendto message: \(text.trimmingCharacters(in: .whitespaces))")
+        trace("note: sendto message: \(text.trimmingCharacters(in: .whitespaces))")
     }
 
     /// The socket bound at `path`, nil when the socket file has no open

@@ -25,6 +25,14 @@
 
 /* ---------------------------------------------------------------- time */
 
+/* Traps -3/-4: the kernel's mach time, which every deadline the kernel
+ * keeps is measured in. Reading CNTVCT_EL0 in place (as Darwin's own
+ * library does with a commpage offset) is not used: under KVM each vCPU of
+ * a guest process has its own counter offset (measured: up to 0.11 s apart
+ * between the vCPUs of one process; agent I4, research/experiments/
+ * simulator/lsd-seed/clockprobe.c), so a thread's counter matches neither
+ * the kernel's nor another thread's until the VMM aligns every vCPU's
+ * virtual counter. */
 YC_EXPORT yc_u64 mach_absolute_time(void)
 {
     return YC_MACH0(YC_TRAP_ABSOLUTE_TIME);

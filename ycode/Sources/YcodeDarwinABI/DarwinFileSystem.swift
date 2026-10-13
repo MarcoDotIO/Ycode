@@ -411,8 +411,14 @@ public final class GuestFile {
     /// The host path the guest path maps to.
     public let hostPath: String
     public let hostFD: Int32
-    /// The size when the file was opened.
-    public let size: UInt64
+    /// The file's current size (the size when it was opened if the host
+    /// cannot say). A file mapping reads the bytes the file has when it is
+    /// mapped: a file written after it was opened and then mapped (lsd's
+    /// LaunchServices store: create, write, mmap; first-boot.md §6) must not
+    /// map as zeros.
+    public var size: UInt64 {
+        (try? hostFStat(hostFD)).map { UInt64(max(0, $0.size)) } ?? UInt64(max(0, stat.size))
+    }
     /// The stat data when the file was opened.
     public let stat: DarwinStat
 
@@ -422,7 +428,6 @@ public final class GuestFile {
         self.hostPath = hostPath
         self.hostFD = hostFD
         self.stat = stat
-        self.size = UInt64(max(0, stat.size))
     }
 
     /// Opens a host file read-only, outside any allowlist (for the VMM's own
@@ -568,13 +573,21 @@ public final class DarwinFileSystem {
         public var guestPath: String
         public var hostPath: String
         public var writable: Bool
+        /// The `st_dev` the guest sees for everything below the prefix (one
+        /// guest volume per prefix, as `statfs` reports it); nil: the host's.
+        public var device: UInt32?
 
-        public init(guestPath: String, hostPath: String, writable: Bool) {
+        public init(guestPath: String, hostPath: String, writable: Bool, device: UInt32? = nil) {
             self.guestPath = guestPath
             self.hostPath = hostPath
             self.writable = writable
+            self.device = device
         }
     }
+
+    /// The `st_dev` of "/" and of the other synthetic directories above the
+    /// prefixes; nil: the host device of the first prefix.
+    public var rootDevice: UInt32?
 
     /// The uid and gid the guest runs as (`getuid` / `getgid`).
     public static let guestUID: UInt32 = 501
@@ -833,7 +846,8 @@ public final class DarwinFileSystem {
                 if isSyntheticAncestor(current) {
                     // The device of the served prefixes' volume (a real
                     // directory has a nonzero st_dev, matching statfs's f_fsid).
-                    let dev = prefixes.lazy.compactMap { try? hostStatCall($0.hostPath, follow: true).dev }.first ?? 1
+                    let dev = rootDevice
+                        ?? prefixes.lazy.compactMap { try? hostStatCall($0.hostPath, follow: true).dev }.first ?? 1
                     let st = DarwinStat(dev: dev, mode: DarwinStat.S_IFDIR | 0o755, nlink: 2, ino: Self.guestLinkInode(current),
                                         uid: 0, gid: 0, size: 64, blksize: 4096)
                     return Resolved(guestPath: current, hostPath: "", prefix: Self.devicePrefix, stat: st)
@@ -875,6 +889,7 @@ public final class DarwinFileSystem {
                     continue restart
                 }
             }
+            if let device = prefix.device, st != nil { st!.dev = device }
             return Resolved(guestPath: guest, hostPath: host, prefix: prefix, stat: st)
         }
     }
@@ -1056,7 +1071,9 @@ public final class DarwinFileSystem {
         let hostFD = try hostOpen(r.hostPath, hostFlags, mode & 0o7777)
         let file: GuestFile
         do {
-            file = GuestFile(guestPath: r.guestPath, hostPath: r.hostPath, hostFD: hostFD, stat: try hostFStat(hostFD))
+            var st = try hostFStat(hostFD)
+            if let device = r.prefix.device { st.dev = device }
+            file = GuestFile(guestPath: r.guestPath, hostPath: r.hostPath, hostFD: hostFD, stat: st)
         } catch {
             hostClose(hostFD)
             throw error
@@ -1197,7 +1214,10 @@ public final class DarwinFileSystem {
             return DarwinStat(mode: DarwinStat.S_IFCHR | 0o620, nlink: 1, uid: Self.guestUID, gid: 4,
                               blksize: 131_072)
         case let .file(f):
-            return try hostFStat(f.hostFD)
+            // The device stays the one the file was opened on (its prefix's).
+            var st = try hostFStat(f.hostFD)
+            st.dev = f.stat.dev
+            return st
         case let .object(o):
             return o.descriptorStat()
         }
@@ -1361,6 +1381,7 @@ extension DarwinFileSystem {
         child.maxDescriptors = maxDescriptors
         child.servesDevices = servesDevices
         child.guestSymlinks = guestSymlinks
+        child.rootDevice = rootDevice
         for (fd, d) in descriptors where !(d.file.object?.isConfined ?? false)
             && !(newProcess && d.file.confinedToProcess) {
             child.descriptors[fd] = d

@@ -375,7 +375,7 @@ _getitimer	table	bsd-syscall	86	cerror_nocancel
 _getpeername	surface	bsd-syscall	31	cerror_nocancel
 _getpgid	surface	bsd-syscall	151	cerror_nocancel
 _getpgrp	surface	bsd-syscall	81	cerror_nocancel
-_getpid	surface	bsd-syscall	20	cerror_nocancel
+_getpid	surface	bsd-syscall	-	hand-written
 _getppid	surface	bsd-syscall	39	cerror_nocancel
 _getpriority	surface	bsd-syscall	100	cerror_nocancel
 _getrlimit	surface	bsd-syscall	194	cerror_nocancel

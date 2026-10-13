@@ -483,3 +483,12 @@ signed images only.
 - `mach_port_extract_right` is a MIG client call (3215 on the task port),
   not a private routine.
 - `getdtablesize` (BSD 89) returns the soft `RLIMIT_NOFILE`.
+- `getpid` is answered from a library variable after the first BSD 20, as
+  xnu's open-source libsyscall caches the pid; a `__fork` child clears it.
+  (Daemons call it thousands of times per boot.)
+- `accessx_np(entries, size, results, uid)` is BSD 284 (`access_extended`),
+  same arguments (xnu `sys/unistd.h`, `vfs_syscalls.c`; level 1).
+- `mach_absolute_time`/`mach_continuous_time` stay the traps −3/−4 and
+  `__commpage_gettimeofday` stays "not available": reading `CNTVCT_EL0` in
+  place needs every vCPU's virtual counter aligned to the kernel's mach time
+  first (`first-boot.md` §6 item 4).

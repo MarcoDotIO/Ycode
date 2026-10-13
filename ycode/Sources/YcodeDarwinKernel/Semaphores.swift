@@ -78,7 +78,7 @@ extension DarwinKernel {
         var call = ""
         func kr(_ value: UInt64, _ extra: String = "") -> Outcome {
             frame.x[0] = value
-            log("trap mach \(n) \(call) -> \(KernReturn.name(value))\(extra)")
+            trace("trap mach \(n) \(call) -> \(KernReturn.name(value))\(extra)")
             return .resume
         }
         func timeout(_ sec: UInt64, _ nsec: UInt64) -> UInt64 {

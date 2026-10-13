@@ -80,6 +80,8 @@ HANDWRITTEN = {
     "_guarded_open_dprotected_np",
     # commpage fast path
     "_kdebug_trace",
+    # cached in the library, as xnu's libsyscall caches it (misc.c)
+    "_getpid",
     # library routine that builds the BSD 244 argument block and returns
     # the error number as its result (spawn.c, processes.md section 1)
     "_posix_spawn",

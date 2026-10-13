@@ -20,6 +20,12 @@ import YcodeVulkan
 /// What every image of a run shares: the runtime, the shim, the host stubs,
 /// the host libraries, and the root's VFS layout.
 final class ExecConfiguration: @unchecked Sendable {
+    /// Device mode's guest volume devices (st_dev = f_fsid.val[0]): "/" and
+    /// the synthetic directories above the prefixes, then one per prefix in
+    /// order (an APFS-style major 1; the Mac's simulator volumes read
+    /// 0x01000xxx, level 3).
+    static let rootDevice: UInt32 = 0x0100_0010
+    static let firstPrefixDevice: UInt32 = 0x0100_0011
     let options: Options
     let trace: Bool
     let execPath: String
@@ -177,6 +183,18 @@ final class ExecConfiguration: @unchecked Sendable {
         }
         if device == nil {
             prefixes.append(DarwinFileSystem.Prefix(guestPath: "/tmp", hostPath: runDir + "/tmp", writable: true))
+        } else {
+            // Device mode: each directory prefix is a volume of its own, with
+            // its own st_dev = f_fsid (statfs and getfsstat list it, its root
+            // is the mount point); a single-file prefix (a host library)
+            // belongs to the runtime root's volume. Foundation finds a file's
+            // volume by matching its fsid in getfsstat; LaunchServices
+            // registers nothing without it (specs/simulator/first-boot.md §3).
+            for i in prefixes.indices {
+                let isDirectory = (try? FileManager.default.attributesOfItem(atPath: prefixes[i].hostPath)[.type]
+                    as? FileAttributeType) == .typeDirectory
+                prefixes[i].device = isDirectory ? Self.firstPrefixDevice + UInt32(i) : Self.firstPrefixDevice
+            }
         }
         self.prefixes = prefixes
         self.hostLibraryPaths = hostLibraryPaths
@@ -188,6 +206,7 @@ final class ExecConfiguration: @unchecked Sendable {
     func makeRootFileSystem() -> DarwinFileSystem {
         let fs = DarwinFileSystem(prefixes: prefixes, console: { fd, bytes in writeFD(fd == 2 ? 2 : 1, bytes) })
         if device != nil {
+            fs.rootDevice = Self.rootDevice
             fs.guestSymlinks = DarwinFileSystem.darwinRootSymlinks
             do {
                 try fs.installDeviceModeStandardDescriptors()

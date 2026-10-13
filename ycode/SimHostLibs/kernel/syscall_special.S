@@ -58,6 +58,9 @@ ___fork:
     BSD 2
     b.cs Lsp_cerror_nocancel
     cbz w1, 1f
+    // The child: forget the parent's cached pid (getpid, misc.c).
+    adrp x9, _yc_cached_pid@PAGE
+    str wzr, [x9, _yc_cached_pid@PAGEOFF]
     mov w0, #0
 1:  ret
 

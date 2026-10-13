@@ -92,10 +92,42 @@ YC_EXPORT yc_size_t os_proc_available_memory(void)
     return v == ~(yc_u64)0 ? 0 : (yc_size_t)v;
 }
 
+/* pid_t getpid(void): BSD 20 once, then the cached value, as xnu's own
+ * libsyscall keeps the pid in a library variable (level 1, the open-source
+ * libsyscall). A fork child clears it (___fork, syscall_special.S); exec
+ * and spawn start a new image with a new library. Daemons ask often:
+ * 16 000 calls in one lsd boot (agent I4, our traces). */
+int __getpid(void);
+__attribute__((visibility("hidden"))) int yc_cached_pid;
+
+YC_EXPORT int getpid(void)
+{
+    int pid = __atomic_load_n(&yc_cached_pid, __ATOMIC_RELAXED);
+    if (pid <= 0) {
+        pid = __getpid();
+        if (pid > 0)
+            __atomic_store_n(&yc_cached_pid, pid, __ATOMIC_RELAXED);
+    }
+    return pid;
+}
+
+/* int accessx_np(const struct accessx_descriptor *entries, size_t size,
+ *     int *results, uid_t uid): BSD 284 (access_extended), which takes the
+ * same four arguments (sys/unistd.h and xnu bsd/kern/vfs_syscalls.c,
+ * access_extended; level 1). Foundation's file checks call it
+ * (CoreServicesInternal imports it). */
+int __access_extended(const void *entries, yc_size_t size, int *results, yc_u32 uid);
+
+YC_EXPORT int accessx_np(const void *entries, yc_size_t size, int *results, yc_u32 uid)
+{
+    return __access_extended(entries, size, results, uid);
+}
+
 /* int __commpage_gettimeofday(struct timeval *tp): Ycode keeps no
  * gettimeofday data in the commpage, so this always reports "not
  * available" (non-zero) and callers fall back to BSD 116
- * (host-libraries.md section 10). */
+ * (host-libraries.md section 10). A library wall clock from the counter
+ * waits for aligned vCPU counters (mach.c, mach_absolute_time). */
 YC_EXPORT int __commpage_gettimeofday(void *tp)
 {
     (void)tp;

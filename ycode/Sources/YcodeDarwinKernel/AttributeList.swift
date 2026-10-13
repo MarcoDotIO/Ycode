@@ -27,6 +27,7 @@ extension DarwinKernel {
         static let cmnExtValid: UInt32 = 0x0000_1FFC
         static let volInfo: UInt32 = 0x8000_0000
         static let returnedAttrs: UInt32 = 0x8000_0000
+        static let cmnError: UInt32 = 0x2000_0000
         // fsobj_type_t (sys/vnode.h enum vtype)
         static let vreg: UInt32 = 1, vdir: UInt32 = 2, vblk: UInt32 = 3, vchr: UInt32 = 4, vlnk: UInt32 = 5,
                     vsock: UInt32 = 6, vfifo: UInt32 = 7
@@ -114,9 +115,14 @@ extension DarwinKernel {
         }
         let raw = try mem.read(va: request.alist, count: 24)
         let groups = (0..<5).map { raw.readLE(UInt32.self, at: 4 + 4 * $0) }
-        let (common, volume, dir, file, fork) = (groups[0], groups[1], groups[2], groups[3], groups[4])
+        let (requestedCommon, volume, dir, file, fork) = (groups[0], groups[1], groups[2], groups[3], groups[4])
         call += "attrs=[\(groups.map { hx(UInt64($0)) }.joined(separator: ","))], size=\(request.size), "
             + "options=\(hx(request.options)))"
+        // ATTR_CMN_ERROR belongs to getattrlistbulk: getattrlist accepts the
+        // bit but neither packs the field nor lists it in the returned set
+        // (level 3: our probe `lsd-seed/gadump.c` on the Mac's simulator;
+        // Foundation's directory listing reads the reply that way).
+        let common = requestedCommon & ~AttrList.cmnError
         let options = request.options
         let extended = options & AttrList.cmnExtended != 0
         guard raw.readLE(UInt16.self, at: 0) == AttrList.bitmapCount,

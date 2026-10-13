@@ -180,13 +180,13 @@ extension DarwinKernel {
             return
         }
         if handler == 1 {
-            log("note: \(name) posted to pid \(pid): ignored")
+            trace("note: \(name) posted to pid \(pid): ignored")
             return
         }
         if handler == 0 {
             if Signal.ignoredByDefault.contains(signal) { return }
             if Signal.stopping.contains(signal) {
-                log("note: \(name) posted to pid \(pid): stopping a process is not modeled; ignored")
+                trace("note: \(name) posted to pid \(pid): stopping a process is not modeled; ignored")
                 return
             }
             terminateBySignal(signal)
@@ -194,7 +194,7 @@ extension DarwinKernel {
         }
         // A guest handler: no delivery yet; the signal stays pending.
         extended.pendingSignals |= 1 << UInt32(signal - 1)
-        log("note: \(name) posted to pid \(pid): handler at \(hx(handler)) not run (no signal delivery); pending")
+        trace("note: \(name) posted to pid \(pid): handler at \(hx(handler)) not run (no signal delivery); pending")
         signalWaiters.wakeAll()
     }
 

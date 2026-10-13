@@ -175,7 +175,7 @@ import YcodeDarwinABI
         try env.putString(env.root + "/missing", at: Env.scratch + 0x400)
         let (_, missing) = env.svc(5, [Env.scratch + 0x400, 0, 0])
         #expect(missing.carry && missing.x[0] == 2)
-        #expect(env.svc(347, [0, 0, 0]).1.x[0] == 0)  // getfsstat64
+        #expect(env.svc(347, [0, 0, 0]).1.x[0] == 2)  // getfsstat64: "/" and the root prefix
 
         // realpath / getcwd (private).
         let out = Env.scratch + 0x4000

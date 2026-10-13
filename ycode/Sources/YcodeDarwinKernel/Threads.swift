@@ -306,14 +306,14 @@ extension DarwinKernel {
         }
         guard let host = threadHost else {
             undo()
-            log("note: bsdthread_create: no thread host; EAGAIN")
+            trace("note: bsdthread_create: no thread host; EAGAIN")
             throw Failure(errno: Self.EAGAIN)
         }
         do {
             ctx.vcpuIndex = try host.startThread(start, context: ctx)
         } catch {
             undo()
-            log("note: bsdthread_create: cannot start a vCPU (\(error)); EAGAIN")
+            trace("note: bsdthread_create: cannot start a vCPU (\(error)); EAGAIN")
             throw Failure(errno: Self.EAGAIN)
         }
         call += " [\(ctx)]"
@@ -407,7 +407,7 @@ extension DarwinKernel {
         if n == Mach.swtchPri || n == Mach.swtch {
             lock.yield()
             frame.x[0] = 0
-            log("trap mach \(n) \(n == Mach.swtch ? "swtch" : "swtch_pri")(\(Int32(truncatingIfNeeded: frame.x[0]))) -> 0 [yield]")
+            trace("trap mach \(n) \(n == Mach.swtch ? "swtch" : "swtch_pri")(\(Int32(truncatingIfNeeded: frame.x[0]))) -> 0 [yield]")
             return .resume
         }
         guard n == Mach.threadSwitch else { return nil }
@@ -420,7 +420,7 @@ extension DarwinKernel {
             lock.yield()
         }
         frame.x[0] = KernReturn.success
-        log("trap mach \(n) thread_switch(thread=\(hx(UInt32(truncatingIfNeeded: frame.x[0]))), option=\(option), time=\(ms)) -> KERN_SUCCESS")
+        trace("trap mach \(n) thread_switch(thread=\(hx(UInt32(truncatingIfNeeded: frame.x[0]))), option=\(option), time=\(ms)) -> KERN_SUCCESS")
         return .resume
     }
 }

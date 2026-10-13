@@ -429,7 +429,7 @@ extension DarwinKernel {
                 kq = wl
             }
             if nevents > 0 && !errorEvents && kq.servicer !== ctx {
-                log("note: kevent_id on workloop \(hx(id)) by thread \(ctx.threadID), which does not service it "
+                trace("note: kevent_id on workloop \(hx(id)) by thread \(ctx.threadID), which does not service it "
                     + "(servicer: \(kq.servicer.map { "thread \($0.threadID)" } ?? "none"); thread bound to "
                     + "\(ctx.worker?.boundQueue.map { $0.kind == .workloop ? "workloop \(hx($0.workloopID))" : "the workqueue kqueue" } ?? "nothing")"
                     + "\(ctx.worker?.boundQueue === kq ? ", the same object" : ", another object")): EXDEV")
@@ -545,7 +545,7 @@ extension DarwinKernel {
     }
 
     private func logFilterOnce(_ filter: Int16, _ text: String) {
-        if kevents.loggedFilters.insert(filter).inserted { log("note: \(EVFilter.names[filter] ?? "filter \(filter)"): \(text)") }
+        if kevents.loggedFilters.insert(filter).inserted { trace("note: \(EVFilter.names[filter] ?? "filter \(filter)"): \(text)") }
     }
 
     func applyChange(_ c: KEventRecord, to kq: KQueue, context: ThreadContext, flags: UInt32, changeCount: Int,
@@ -1028,7 +1028,7 @@ extension DarwinKernel {
         guard kq.kind == .workloop, kq.knotes.isEmpty, kq.servicer == nil, !kq.createReference, !kq.requested,
               kq.waiters.isEmpty, kevents.workloops[kq.workloopID] === kq else { return }
         kevents.workloops[kq.workloopID] = nil
-        log("note: workloop \(hx(kq.workloopID)) freed")
+        trace("note: workloop \(hx(kq.workloopID)) freed")
     }
 
     /// Takes up to `max` deliverable events from `kq` (one bucket of the
@@ -1185,7 +1185,7 @@ extension DarwinKernel {
         let queues = allKQueues
         for kq in queues {
             for kn in kq.knotes where kn.filter == EVFilter.machport && UInt32(truncatingIfNeeded: kn.ident) == name {
-                log("note: receive right or port set \(hx(UInt64(name))) left the space; its knote vanishes")
+                trace("note: receive right or port set \(hx(UInt64(name))) left the space; its knote vanishes")
                 kn.receiveGone = true
                 kn.active = true
                 activated(kn)

@@ -152,7 +152,7 @@ extension DarwinKernel {
             call = "__mac_syscall(\"\(policy)\", \(int(1)), \(hx(a[2])))"
             // Diagnostics: the argument block's first words and the strings
             // its pointer-like words reach.
-            if let raw = try? mem.read(va: a[2], count: 64) {
+            if tracing, let raw = try? mem.read(va: a[2], count: 64) {
                 let words = (0..<8).map { raw.readLE(UInt64.self, at: 8 * $0) }
                 call += " [arg " + words.map { hx($0) }.joined(separator: " ")
                 for (i, w) in words.enumerated() where w > 0x1_0000_0000 && w < 0x10_0000_0000 {
@@ -170,6 +170,14 @@ extension DarwinKernel {
             // the Sandbox policy's check call (2) allows everything. Its other
             // calls, and every other policy, find no policy (xnu ENOPOLICY).
             if policy == "Sandbox", int(1) == 2 { return .value(0) }
+            // The Sandbox call 12 that cfprefsd makes on a preferences file it
+            // has just created (argument block: the descriptor, flags 0x102,
+            // the path) before writing it: allowed as well. Without it
+            // cfprefsd deletes the file and every preference write fails
+            // ("Couldn't write values … Path not accessible"; first-boot.md
+            // §6). On the Mac's simulator the same writes succeed (level 3,
+            // our probe lsd-seed/prefprobe.m).
+            if policy == "Sandbox", int(1) == 12 { return .value(0) }
             // Sandbox extensions (issue, consume, release): permissive answers
             // (sandbox-extensions.md; level 3).
             if policy == "Sandbox", let value = try sandboxExtensionCall(int(1), arg: a[2], mem) { return .value(value) }
