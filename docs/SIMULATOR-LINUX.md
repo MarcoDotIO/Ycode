@@ -1,8 +1,8 @@
 # Design: running the iOS simulator runtime on arm64 Linux
 
 Status: **design, agreed direction (option B in `docs/SIMULATOR.md`)**.
-First host: the Thor (Neoverse V3-class, Ubuntu 24.04, KVM available to
-`<user>`).
+First host: the Thor (Neoverse V3-class, Ubuntu 24.04, KVM available to the
+build user).
 
 ## 1. What has to be provided
 
@@ -36,7 +36,7 @@ Three facts make a plain Linux process a poor fit:
 A **KVM micro-VM** removes all three. The probe
 `research/experiments/linux-host/kvm_probe.py` confirmed on the Thor that:
 
-- `/dev/kvm` is usable by `<user>` (through an ACL);
+- `/dev/kvm` is usable by the build user (through an ACL);
 - the **16 KB translation granule** is supported in a guest;
 - the guest has 48-bit VA and 48-bit PA, and AArch64 only at EL0;
 - pointer authentication is not exposed to the guest by default. That is

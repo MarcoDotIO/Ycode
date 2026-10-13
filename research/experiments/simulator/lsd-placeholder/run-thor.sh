@@ -5,6 +5,7 @@
 #   DEV=name -> 9-J/devs/<name> (created from PRISTINE if missing, kept);
 #   default -> a copy of PRISTINE (default 9-J/dev-pristine) in the run directory.
 # LOGPRED: predicate for a `log stream` one-shot (NOLOG=1: none). @DEV@ in args = device dir.
+: "${YCODE_DATA:?set YCODE_DATA to the data directory on the arm64 Linux machine}"
 W=$YCODE_DATA/work/9-J
 Y=${YTREE:-$W/ycode}
 R=$YCODE_DATA/runtimes/iOS-27.1-24A94401/RuntimeRoot

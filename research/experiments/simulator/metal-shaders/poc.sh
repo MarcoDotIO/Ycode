@@ -2,14 +2,16 @@
 # poc.sh: reproduce the R8 proof of concept (AIR in a metallib -> SPIR-V ->
 # the Thor's GPU). Usage: poc.sh SCRATCH_DIR [THOR_DIR]
 #   SCRATCH_DIR  local output directory (outside the repository)
-#   THOR_DIR     default $YCODE_DATA/work/8-R8
+#   THOR_DIR     default $YCODE_DATA/work/8-R8 (YCODE_DATA: data directory on the
+#                arm64 Linux machine; THOR: its user@host)
 # Needs the public Metal toolchain on the Mac
 # (xcodebuild -downloadComponent MetalToolchain) and an SSH key for the Thor.
 # Only our own shaders (shaders/*.metal) are compiled and translated.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=$1
-THOR=<user>@<arm64-linux-host>
+: "${THOR:?set THOR to user@host of the arm64 Linux machine}"
+: "${YCODE_DATA:?set YCODE_DATA to the data directory on that machine}"
 TD=${2:-$YCODE_DATA/work/8-R8}
 mkdir -p "$OUT"
 for n in poc draw; do

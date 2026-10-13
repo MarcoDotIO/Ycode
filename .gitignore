@@ -1,8 +1,7 @@
 .DS_Store
-# Third-party tooling and Apple's binaries are never committed.
-.claude/Xcode.app/
-.claude/ghidra_12.1.4_PUBLIC/
-.claude/ghidra-mcp/
+# Third-party tooling, Apple's binaries, agent worktrees and local settings
+# under .claude/ are never committed.
+.claude/
 # Dirty-room scratch (decompiler output, disassembly) stays local only.
 research/dirty/
 ycode/.build/

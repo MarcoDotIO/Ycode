@@ -97,18 +97,19 @@ released.
 
 - macOS (arm64): the reference Xcode, black-box probes, and the main
   development machine.
-- Linux test workstation: `<user>@<x86-64-linux-host>`, Ubuntu 26.04 x86-64,
-  Swift 6.4 through swiftly (`. ~/.local/share/swiftly/env.sh`). Log in with
-  an SSH key only. Never automate password login. Sync with
+- Linux test workstation (x86-64): Ubuntu 26.04, Swift 6.4 through swiftly
+  (`. ~/.local/share/swiftly/env.sh`). Log in with an SSH key only. Never
+  automate password login. Sync with
   `rsync -az --delete --exclude .build ycode/ <user>@<x86-64-linux-host>:Ycode/ycode/`,
   then run `swift build && swift test` there.
-- Thor (arm64 Linux), the Simulator-track host: `<user>@<arm64-linux-host>`
-  (NVIDIA Thor, Ubuntu 24.04 aarch64, 4 KB pages, 14 cores, 122 GB RAM).
-  Swift 6.4 through swiftly. Log in with an SSH key only. Checkout:
-  `~/Ycode/ycode`. Large data goes on the USB drive
-  `$YCODE_DATA`, never on the nearly full system disk. The
-  machine is shared, so touch only `<user>`'s files. The other USB drives
-  (`<other-drive>`, `Development`) are not ours.
+- The Simulator-track host ("the Thor", arm64 Linux): an NVIDIA Jetson Thor,
+  Ubuntu 24.04 aarch64, 4 KB pages, 14 cores, 122 GB RAM, KVM and Vulkan.
+  Swift 6.4 through swiftly. Log in with an SSH key only. Large data
+  (runtime copies, devices, run output) goes on a separate data volume,
+  referred to as `$YCODE_DATA` in specs and scripts, never on the system
+  disk. If the machine is shared, touch only your own files.
+- Machine-specific hostnames, users and paths stay out of the repository
+  (keep them in your local, untracked notes).
 
 ## Working conventions
 

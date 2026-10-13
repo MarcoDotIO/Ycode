@@ -357,8 +357,7 @@ Owns: `ycode/SimHostLibs/**`, `ycode/SimShim/guest-tests/stage4b/**`,
   `$YCODE_DATA/runtimes/iOS-27.1-24A94401/RuntimeRoot`.
 - SSH with keys only (`<user>@<arm64-linux-host>`,
   `<user>@<x86-64-linux-host>`). Never read `.env`, never use a password, never
-  sudo. The Thor is shared: touch only your own work directory and
-  <user>'s files; leave the other USB drives alone.
+  sudo. The Thor is shared: touch only your own work directory.
 - Do not commit. Report: files changed, what works (with commands and
   output you actually ran), what does not, contract requests.
 
