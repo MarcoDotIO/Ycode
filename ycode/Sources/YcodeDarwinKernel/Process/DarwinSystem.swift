@@ -137,6 +137,8 @@ public final class DarwinSystem: @unchecked Sendable {
     var posixSemaphoreStorage: [String: PosixSemaphore] = [:]
     /// Advisory file locks and data-protection classes (`fileLocks`).
     var fileLockStorage: FileLockTable?
+    /// Object id → path, for fsgetpath and openbyid_np (internally locked).
+    let objectPaths = ObjectPathIndex()
     /// The last pid handed out (`processes.md` §2.1, `stage4b-contract.md` §2 item 7).
     var lastPID: Int32 = VMLayout.guestPID
     var nextPIDVersion: UInt32 = 0x100

@@ -144,4 +144,24 @@ import YcodeDarwinABI
         #expect(env.bsd(root, 169, [0, 0, buf, 4]) == 0 && env.u32(root, buf) == 0)
         #expect(env.bsd(root, 169, [0, 11, buf, 64]) == -22)
     }
+
+    /// An image whose CodeDirectory has platform 0 is "another signed image"
+    /// (0x22000201, category 10) unless it lies below a platform code root
+    /// (the runtime root): then it is a platform binary, as the Mac reports
+    /// for the simulator runtime's executables.
+    @Test func platformCodeRoots() throws {
+        let env = try ProcEnv()
+        let root = env.rootKernel!
+        let exe = env.root + "/runtime-daemon"
+        try Data(Self.signedMachO(identifier: "com.example.rtd", platform: 0, entitlements: "<plist/>"))
+            .write(to: URL(fileURLWithPath: exe))
+        let (_, _, child) = env.spawn(from: root, path: exe)
+        let buf = At.out
+        DarwinKernel.setPlatformCodeRoots([])
+        #expect(env.bsd(root, 169, [UInt64(child), 0, buf, 4]) == 0 && env.u32(root, buf) == 0x2200_0201)
+        DarwinKernel.setPlatformCodeRoots([env.root])
+        defer { DarwinKernel.setPlatformCodeRoots([]) }
+        #expect(env.bsd(root, 169, [UInt64(child), 0, buf, 4]) == 0 && env.u32(root, buf) == 0x2600_4201)
+        #expect(env.bsd(root, 169, [UInt64(child), 17, buf, 4]) == 0 && env.u32(root, buf) == 1)
+    }
 }

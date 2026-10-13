@@ -345,18 +345,28 @@ extension DarwinKernel {
     /// nearest ancestor directory's (a new file of a class-0 directory gets
     /// class C, 3), as on the simulator's host volume (level 3).
     func protectionClass(of file: GuestFile) -> Int32 {
+        protectionClass(stat: file.stat, path: file.guestPath)
+    }
+
+    /// The class of the object at `path` (`stat` is its stat data), as
+    /// `protectionClass(of:)`. Everything on a read-only volume (the runtime
+    /// root) is class C, as on the Mac's mounted runtime image (level 3:
+    /// getattrlist ATTR_CMN_DATA_PROTECT_FLAGS and NSURLFileProtectionKey of
+    /// RR/Applications/… are 3 for files and directories).
+    func protectionClass(stat: DarwinStat, path: String) -> Int32 {
         let table = system.fileLocks
-        if let c = table.protectionClasses[FileIdentity(file.stat)] { return c }
-        var path = GuestPath.deletingLastComponent(file.guestPath)
-        while !path.isEmpty {
-            if let st = try? fileSystem.stat(path, followSymlinks: true),
+        if let c = table.protectionClasses[FileIdentity(stat)] { return c }
+        if !fileSystem.writable(guestPath: path) { return FileLockControl.defaultFileClass }
+        var parent = GuestPath.deletingLastComponent(path)
+        while !parent.isEmpty {
+            if let st = try? fileSystem.stat(parent, followSymlinks: true),
                let c = table.protectionClasses[FileIdentity(st)] {
-                return file.isDirectory || c != 0 ? c : FileLockControl.defaultFileClass
+                return stat.isDirectory || c != 0 ? c : FileLockControl.defaultFileClass
             }
-            if path == "/" { break }
-            path = GuestPath.deletingLastComponent(path)
+            if parent == "/" { break }
+            parent = GuestPath.deletingLastComponent(parent)
         }
-        return file.isDirectory ? 0 : FileLockControl.defaultFileClass
+        return stat.isDirectory ? 0 : FileLockControl.defaultFileClass
     }
 
     /// F_SETPROTECTIONCLASS as observed on the simulator's host volume

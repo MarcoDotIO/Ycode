@@ -1,6 +1,7 @@
 # Spec: the home screen — icons, wallpaper, app set (stage 8/9 findings)
 
-Status: **reference** (integrator H, 2026-10-13). It explains how the iOS
+Status: **reference** (integrator H, 2026-10-13; §3.2–§3.6 and §6 updated by
+integrator J, 2026-10-13). It explains how the iOS
 27.1 simulator runtime (24A94401) produces the home screen's icons and
 wallpaper, what each step needs from the host, and what Ycode changed to
 supply it. Facts come from black-box runs on this Mac (a throwaway iPhone
@@ -80,34 +81,174 @@ Safari icons, rendered through Ycode's Metal host service on the GPU
    (`extension<com.apple.MercuryPoster…>`, "Creating and launching job",
    `_ManagedBy` `com.apple.runningboard`) and renders its poster with Metal.
 
-### 3.2 Where Ycode stops (open)
+### 3.2 What Ycode lacked: every app registered as a placeholder
 
-PosterBoard logs "Rejecting updateExtensions; no extensions received": the
-query returns nothing, so no poster exists and the wallpaper stays black.
-Our probe `exprobe` (`research/experiments/simulator/extension-discovery/`)
-shows why, on the same runtime, Mac against Ycode:
+Before 2026-10-13 PosterBoard logged "Rejecting updateExtensions; no
+extensions received": the query returned nothing, so no poster existed and
+the wallpaper stayed black. Our probe `exprobe`
+(`research/experiments/simulator/extension-discovery/`) showed why, on the
+same runtime, Mac against Ycode:
 
-| Query | Mac | Ycode |
+| Query | Mac | Ycode before | Ycode after §3.3 |
+|---|---|---|---|
+| `LSApplicationExtensionRecord` enumeration | 456 records | 456 records | 456 |
+| `-extensionPointRecord` of `com.apple.MercuryPoster` | `com.apple.posterkit.provider` | nil | `com.apple.posterkit.provider` |
+| `-platform`, `-SDKVersion` of app and extension records | 7, "27.1" | 0, nil | 7, "27.1" |
+| `LSApplicationRecord -_rawBundleFlags` (Settings) | `0x101002` | `0x1202` | `0x101002` |
+| `initWithBundleIdentifier:` of an extension | record | error −10814 | record |
+
+lsd logged, for every one of the 162 system apps during seeding,
+"Placeholder detected - Flagging bundle <id> incomplete" (Mac: none; Ycode
+now: none).
+
+### 3.3 Cause: no file identifiers without VOL_CAP_FMT_PATH_FROM_ID
+
+Our probes and interposer for this section and §3.4, §7 are in
+`research/experiments/simulator/lsd-placeholder/` (`build.sh`).
+
+**How lsd registers a system app at first boot** (level 3: lsd's own log with
+the LaunchServices and MobileInstallation subsystems at debug level, through
+`DEV/data/Library/Preferences/Logging/Subsystems/<subsystem>.plist` with
+`DEFAULT-OPTIONS` `Level` `Enable`/`Persist` = `Debug`, the os_log(5) format;
+and the system calls of lsd, Ycode's `--trace-name lsd` against our own
+interposer on the Mac):
+
+1. MobileInstallation's scanner, running inside lsd ("InstalledContentLibrary"),
+   enumerates `RR/Applications` (getattrlistbulk), reads each bundle's
+   Info.plist, checks the `com.apple.installd.placeholder` extended attribute
+   (absent), reads the executable's Mach-O header and its entitlements section,
+   and builds one record per app (class `ICLAppRecord`; `IsPlaceholder = 0`).
+   The records are identical on the Mac and under Ycode (our probe `icprobe`,
+   which runs the scanner by class and selector name and prints each record).
+2. LaunchServices then registers the record ("registering app bundle",
+   "Building bundle record for app"). It makes a *file node* for the bundle and
+   for its executable (a cached set of `getattrlist` attributes: common
+   `0xd61f9e0d`, directory `0x5`, file `0x1`, extended `0x350`, options
+   `0x25`). On the Mac it then asks the executable's Finder info, **opens the
+   executable and reads its first 8 KiB** (`F_NOCACHE`, `read`, `pread`): the
+   Mach-O header with the platform, SDK and UUIDs. Under Ycode it skipped that
+   read.
+3. An app record without executable information is, for LaunchServices, an
+   app that is still being installed: "Placeholder detected - Flagging bundle
+   incomplete"; the record has platform 0, no SDK version; its extensions get
+   no extension point; ExtensionKit's queries (PosterBoard's
+   `com.apple.posterkit.provider`) find nothing.
+
+**Why it skipped the read.** The file node's *file identifier*
+(`-[FSNode getFileIdentifier:error:]`, class and selector names read at run
+time) failed under Ycode with −10813 (data unavailable) while
+`NSURLFileIdentifierKey` worked. Our probe `fsnprobe` made the same call on
+the Mac and under Ycode; `volcaps` read `ATTR_VOL_CAPABILITIES`: the Mac's
+runtime volume reports format capabilities `0x029b6edf`, Ycode reported
+`0x00020f47`. One of the missing bits is `VOL_CAP_FMT_PATH_FROM_ID`
+(`0x4000`, sys/attr.h: the volume can return a path for an object id,
+fsgetpath(2)). With our interposer clearing only that bit in the Mac's
+getattrlist replies, the Mac's `getFileIdentifier:` fails the same way, and a
+reseed of the Mac's LaunchServices database (lsd restarted with the
+interposer through `launchctl setenv DYLD_INSERT_LIBRARIES`, database files
+removed) logs exactly 162 "Placeholder detected" lines. A file identifier is
+only useful to LaunchServices if it can later find the file by it; without
+one it does not record the executable.
+
+**Ycode's answer.** Every Ycode volume reports `VOL_CAP_FMT_PATH_FROM_ID`,
+and the calls that use it work (`ObjectPaths.swift`):
+
+| Call | Ycode |
+|---|---|
+| `fsgetpath` (427), `fsgetpath_ext` (217) | `(fsid.val[0], object id)` → the guest path, NUL-terminated; returns the length with the NUL; ENOSPC if the buffer is short; ENOENT for an unknown id; EINVAL for an unknown volume. Object id 2 is the volume's root (as on APFS); other ids are inode numbers (ATTR_CMN_FILEID, `st_ino`) |
+| `openbyid_np` (479) | opens that path with the given flags |
+
+Ycode remembers the path of every object getattrlist reports and, for an id
+it has not seen, walks the volume's directories (at most once per volume
+every 30 s). After the change a fresh device's seeding logs no placeholder,
+records have platform 7 and SDK 27.1, and `com.apple.MercuryPoster` has its
+extension point (run `9-J/runs/f3`, probe run `x1`).
+
+**Also matched to the Mac on the way (level 3, not needed for the fix; a
+reseed with only these still had 162 placeholders):**
+
+| Attribute or call | Mac (runtime volume) | Ycode now |
 |---|---|---|
-| `LSApplicationExtensionRecord` enumeration | 456 records | 456 records |
-| `-extensionPointRecord` of `com.apple.MercuryPoster` | `com.apple.posterkit.provider` | nil |
-| `-platform`, `-SDKVersion` of every app and extension record | 7, "27.1" | 0, nil |
-| `LSApplicationRecord -_rawBundleFlags` (Settings) | `0x101002` | `0x1202` |
-| `initWithBundleIdentifier:` of an extension | record | error −10814 from the lookup "with platform info" |
-| extension point records | 279 | 279 |
+| `st_uid`/`st_gid` of runtime-root files | 0 / 80 (root:admin) | the same (the host's /System prefix: 0 / 0) |
+| `access(W_OK)` on a read-only volume; `X_OK` without x bits | EROFS; EACCES | the same (before: always 0) |
+| ATTR_CMN_GEN_COUNT | nonzero (1 for never-modified files) | nonzero, derived from the change time |
+| ATTR_CMN_ADDEDTIME | the creation time | the birth time (else the change time) |
+| ATTR_CMN_DATA_PROTECT_FLAGS | 3 on the runtime volume | 3 on read-only volumes; the protection class elsewhere |
+| ATTR_DIR_LINKCOUNT | 1 | 1 (before: the host's link count) |
+| ATTR_CMNEXT_CLONEID | the file id | the file id (before: 0) |
+| ATTR_CMNEXT_EXT_FLAGS | `EF_NO_XATTRS` (2) when the object has no extended attributes | the same |
+| ATTR_CMN_FNDRINFO | 32 bytes are packed, but the bit is in the returned set only when the object has Finder info | still always returned (kept; our interposer showed lsd does not depend on it) |
 
-lsd logs, for every one of the 162 system apps during seeding, "Placeholder
-detected - Flagging bundle <id> incomplete"; the Mac logs this for none.
-Ruled out by experiment (level 3): reading the executables (our probe's
-`mmap` of the file with and without `MAP_RESILIENT_CODESIGN`,
-`macho_for_each_slice`, `dyld_get_image_versions` all report platform 7, SDK
-27.1 under Ycode); the entitlements (767 of them read for Settings, as on
-the Mac); the placeholder extended attribute (absent, ENOATTR, as on the
-Mac); the bundle contents (same 1039 files); installd's built-in content
-rebuild (same log lines as the Mac); a fresh seeding with today's kernel
-(same result). The cause is still open; the next step is to compare lsd's
-registration of one app in a Mac seeding and a Ycode seeding with more of
-lsd's log categories, or with our own interposer on the Mac.
+### 3.4 After discovery: who may launch a poster
+
+With the extensions registered, PosterBoard finds the poster providers,
+launches them through runningboardd (MercuryPoster, EmojiPoster and others
+start, log "Scene did connect" and capture snapshots), and SpringBoard asks
+for its own instance of the lock-screen poster (`extension<com.apple.MercuryPoster[config:…]>`,
+hosted in SpringBoard's poster scene). That request failed, about 250 times
+per boot: "Bootstrapping failed … RBSRequestErrorDomain 5 … originator
+doesn't have entitlement com.apple.runningboard.primitiveattribute AND
+originator doesn't have entitlement com.apple.runningboard.assertions.frontboard";
+SpringBoard logged "snapshot failure reason 'Poster scene is not ready: no
+content'". The same refusal stopped `--launch`: FrontBoard's open request
+for the probe app ended in `FBSOpenApplicationServiceErrorDomain` 5.
+
+**Mechanism (level 3, `--trace-name runningboardd` and `launchd_sim`, the
+Mac's runningboardd log, our probes `ljprobe` and `csprobe`).** SpringBoard
+has both entitlements (its `__TEXT,__entitlements` section). runningboardd
+honors an entitlement only for processes whose launchd job it knows: for
+each new client it asks launchd_sim for the job of the pid (AppServerSupport,
+class `OSLaunchdJob`, `+copyJobWithPid:`, `-getCurrentJobInfo`). On the Mac
+it then logs "Resolved pid N to [osservice<com.apple.backboardd>:N]"; under
+Ycode launchd_sim answered "Requestor lacks required entitlement" (error
+144), runningboardd logged "Launchd didn't have information for pid",
+named every daemon `anon<backboardd>`, `anon<SpringBoard>`, … and "Process
+anon<SpringBoard> does not have permission to have entitlement
+com.apple.runningboard.primitiveattribute". runningboardd carries the right
+launchd entitlements (`com.apple.private.xpc.launchd.job-manager` =
+`com.apple.runningboard`, `…launchd.app-server`), and launchd_sim reads them
+from the executable as on the Mac. What differed is the code-signing status
+(`csops` `CS_OPS_STATUS`) of the runtime's executables:
+
+| Process | Mac (`csprobe`) | Ycode before |
+|---|---|---|
+| runningboardd, SpringBoard, backboardd, launchd_sim | `0x26004201` (CS_SIGNED, CS_PLATFORM_BINARY, CS_DYLD_PLATFORM, CS_ENTITLEMENTS_VALIDATED, CS_KILL, CS_VALID) | `0x22000201` (no CS_PLATFORM_BINARY, no CS_ENTITLEMENTS_VALIDATED) |
+| a probe of ours (linker-signed) | `0x22020201` | `0x22020201` |
+
+The runtime's executables carry a CodeDirectory `platform` byte of 0, yet
+the Mac reports them as platform binaries (the runtime image's code is
+trusted as the system's). Ycode derived the status from the `platform`
+byte alone. **Ycode now reports `0x26004201` and validation category 1 for
+every signed executable below the runtime root** (`CodeSigningInfo`,
+`DarwinKernel.setPlatformCodeRoots`, set by `ycode-simd` in device mode).
+With that one change runningboardd resolves `osservice<…>` identities,
+SpringBoard's launch requests go through, and the probe app launches
+(§6).
+
+### 3.5 Region queries for render buffers
+
+Poster extensions (EmojiPoster) logged "[com.apple.coreanimation:Render]
+failed to query region 0x… (1440000 bytes)" thousands of times: QuartzCore
+asks `mach_vm_region` about the buffers it renders into, and Ycode's
+`libsystem_kernel` did not have it. It is now Ycode-private Mach routine 21
+(`0x7963_2015`; `mach_vm_region` and `vm_region_64`, the caller's own task;
+mach/vm_region.h, level 1): the first mapping at or above the address,
+adjacent pieces of the same kind and protection merged, in the flavors
+`VM_REGION_BASIC_INFO_64` (9), `VM_REGION_BASIC_INFO` (10),
+`VM_REGION_TOP_INFO` (12) and `VM_REGION_EXTENDED_INFO` (13); share mode
+`SM_PRIVATE` for anonymous memory, `SM_COW` for private file mappings,
+`SM_SHARED` for shared memory; KERN_INVALID_ADDRESS past the last mapping,
+KERN_INVALID_ARGUMENT for a short count or another flavor.
+
+### 3.6 Result
+
+With §3.3–§3.5 a device whose LaunchServices database was seeded by the
+fixed kernel shows the default wallpaper (the Mercury poster, rendered by
+`MercuryPosterExtension` through Metal) behind the Settings and Safari
+icons: `9-J/runs/w4/shots/home-480s.png` … `home-960s.png` (second boot;
+the wallpaper is there by 480 s). A device seeded before 2026-10-13 keeps
+its placeholder records; it needs a fresh seeding (a new device, or its
+LaunchServices database files in `DEV/data/var/db/lsd/` removed).
 
 ## 4. Metal event waits on the host
 
@@ -173,6 +314,43 @@ An install takes minutes on the Thor (placeholder after about 2.5 minutes);
 completion and retries the open request for up to `YLAUNCH_RETRY_SECONDS`
 (600).
 
+**Stage-7 exit reached (2026-10-13, integrator J).** Before §3.3 the install
+never left SpringBoard's "Waiting…" state: LaunchServices registered the
+installed app, too, as an incomplete placeholder. Before §3.4 the open
+request failed ("process was not provided", FBSOpenApplicationServiceErrorDomain
+5) because runningboardd refused SpringBoard's launch request. With both,
+`ycode-simd --install-app YcodeProbe.app --launch dev.ycode.probe` installs
+the app through InstallCoordination ("ylaunch: installed dev.ycode.probe"),
+launches it through FrontBoardServices with debug stdio options ("ylaunch:
+launched dev.ycode.probe pid 463"; its environment has
+`XPC_SERVICE_NAME=UIKitApplication:dev.ycode.probe[…][rb-legacy]`, as on
+the Mac), the app's scene comes to the front (teal screen), and the VMM
+prints the `== YCODE-PROBE BEGIN … END` report from the app's stderr file
+(run `9-J/runs/w3`). The guest helper is
+`ycode/SimShim/guest-tests/stage7/ylaunch.m` (built by
+`build-stage7.sh`), not the research version in
+`research/experiments/simulator/app-launch/`, whose `install` subcommand
+uses the refused LaunchServices interface.
+
+## 7. Guest `log stream` one-shots that stop (open)
+
+A `log stream` one-shot stops printing after a few minutes when it is
+busy; quiet streams (narrow predicates, a few thousand lines) run to the
+end of the run (`9-J/runs/w3`, `a2`: 24 and 28 minutes). Observed (level 3,
+`--trace-name log`, `--trace-name notifyd`, `--debug-thread-report
+--debug-no-session-end`):
+
+| Run | Stream | Stops after | What the `log` process does at the end |
+|---|---|---|---|
+| `9-J/runs/w1`, `w2` | posters and SpringBoard (≈40 000–50 000 lines) | 9 min 41 s | (not traced) |
+| `t3`, `t4` | everything | 5.5 min, 2.4 min (traced) | the message thread waits on a lock (`__ulock_wait2`) held by another thread that waits for notifyd's reply to request 1023 (notify MIG); notifyd is idle with nothing queued on its ports |
+| `t6` | everything | 1.8 min | the message thread is busy in user code (it calls only `mach_absolute_time` and `madvise`) with 6 messages from logd queued on its port, delivered knote suppressed; it never writes again |
+
+The process stays alive until the session ends. The cause is not known;
+the next step is to trace the `log` process and logd together with the
+thread report and look at what the message thread loops on. Until then: use
+narrow predicates (`LOGPRED` in the run scripts) for long runs.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -190,6 +368,18 @@ completion and retries the open request for up to `YLAUNCH_RETRY_SECONDS`
 | Install gaps (§6): volume check, entry count, work intervals | 3 | Ycode `--trace-name` traces of installcoordinationd, installd, the helper service; guest logs; SpringBoard crash report |
 | Mac volumes (§6 item 1) | 3 | `stat -f %d` on this Mac |
 | Work-interval API names and signatures | 1 | xnu libsyscall (Apple open source) |
+
+| lsd's registration steps, the executable read on the Mac (§3.3) | 3 | debug-level logging preferences (os_log(5) format) on a throwaway Mac device and under Ycode; Ycode `--trace-name lsd`; our interposer `lstrace` (os_log output) loaded into the Mac simulator's lsd with `launchctl setenv DYLD_INSERT_LIBRARIES` and a reseed |
+| MobileInstallation's records identical (§3.3) | 3, 4 | our probes `miprobe`, `icprobe` (class and selector names read at run time; a minimal entitlements section of our own) |
+| File node identifier, volume capabilities (§3.3) | 3, 4 | our probes `fsnprobe`, `volcaps`, `urlprobe`; `FSNode` selector names read at run time |
+| PATH_FROM_ID causes the placeholders (§3.3) | 3 | `lstrace` clearing that capability bit in the Mac's lsd: 162 placeholders; clearing nothing: 0 |
+| VOL_CAP_FMT_*, fsgetpath, openbyid_np semantics | 1 | sys/attr.h, fsgetpath(2), sys/fsgetpath.h |
+| Attributes matched on the way (§3.3 table) | 3 | `urlprobe`, `fndr`, `ids` on the Mac (host and simulator) and under Ycode |
+| RunningBoard identities, launchd's answer, code-signing status (§3.4) | 3, 4 | Ycode `--trace-name runningboardd`, `--trace-name launchd_sim`; the Mac's runningboardd log; our probes `ljprobe` (AppServerSupport `OSLaunchdJob`, names read at run time) and `csprobe` (csops) on the Mac and under Ycode |
+| `csops` status bits | 1 | xnu `osfmk/kern/cs_blobs.h` |
+| mach_vm_region flavors and layouts (§3.5) | 1 | mach/vm_region.h, mach/vm_statistics.h |
+| Wallpaper, install and launch results (§3.6, §6) | 3 | runs `9-J/runs/w3`, `w4` |
+| Log-stream stops (§7) | 3 | runs `9-J/runs/t3`, `t4`, `t6` (traces, thread and vCPU reports) |
 
 Level 5 was not used; `.claude/Xcode.app`, `research/dirty/` and Ghidra were
 not opened.

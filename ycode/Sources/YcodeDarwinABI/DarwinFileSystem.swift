@@ -580,13 +580,23 @@ public final class DarwinFileSystem {
         /// is not the prefix itself (a prefix that is part of "/"'s volume);
         /// nil: the prefix is a volume of its own, mounted at `guestPath`.
         public var mountPoint: String?
+        /// The owner the guest sees for everything below the prefix; nil: the
+        /// host owner (the host user appears as the guest user). On the Mac
+        /// the runtime root's files belong to root:admin (0:80) and the
+        /// host's /System to root:wheel (level 3, `stat` in a simulator
+        /// process).
+        public var ownerUID: UInt32?
+        public var ownerGID: UInt32?
 
-        public init(guestPath: String, hostPath: String, writable: Bool, device: UInt32? = nil, mountPoint: String? = nil) {
+        public init(guestPath: String, hostPath: String, writable: Bool, device: UInt32? = nil, mountPoint: String? = nil,
+                    ownerUID: UInt32? = nil, ownerGID: UInt32? = nil) {
             self.guestPath = guestPath
             self.hostPath = hostPath
             self.writable = writable
             self.device = device
             self.mountPoint = mountPoint
+            self.ownerUID = ownerUID
+            self.ownerGID = ownerGID
         }
 
         /// Where the prefix's volume is mounted in the guest.
@@ -898,6 +908,10 @@ public final class DarwinFileSystem {
                 }
             }
             if let device = prefix.device, st != nil { st!.dev = device }
+            if st != nil {
+                if let uid = prefix.ownerUID { st!.uid = uid }
+                if let gid = prefix.ownerGID { st!.gid = gid }
+            }
             return Resolved(guestPath: guest, hostPath: host, prefix: prefix, stat: st)
         }
     }
@@ -1225,6 +1239,10 @@ public final class DarwinFileSystem {
             // The device stays the one the file was opened on (its prefix's).
             var st = try hostFStat(f.hostFD)
             st.dev = f.stat.dev
+            if let prefix = lookupPrefix(f.guestPath)?.prefix {
+                if let uid = prefix.ownerUID { st.uid = uid }
+                if let gid = prefix.ownerGID { st.gid = gid }
+            }
             return st
         case let .object(o):
             return o.descriptorStat()
@@ -1878,7 +1896,7 @@ extension DarwinFileSystem {
     }
 
     /// True when `guestPath` lies under a writable prefix.
-    func writable(guestPath: String) -> Bool { lookupPrefix(guestPath)?.prefix.writable ?? false }
+    public func writable(guestPath: String) -> Bool { lookupPrefix(guestPath)?.prefix.writable ?? false }
 }
 
 private func hostRename(_ from: String, _ to: String) throws {

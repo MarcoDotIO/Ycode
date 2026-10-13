@@ -200,7 +200,10 @@ Found with Ycode runs on the Thor (level 3) after §3 was fixed:
    window no longer served the mapping. Ycode now reports a file's current
    size to the mapping code. With that, all 162 apps register, seeding
    completes ("posting LSNotificationDatabaseSeedingComplete") and the store
-   is saved (7.1 MB) in about 15 minutes on the Thor.
+   is saved (7.1 MB) in about 15 minutes on the Thor. (Until 2026-10-13
+   every app was registered as an incomplete placeholder, without platform
+   or SDK; the volumes lacked `VOL_CAP_FMT_PATH_FROM_ID`;
+   `home-screen.md` §3.3.)
 2. **`msync` was missing.** chronod's mapped-file allocator calls `msync`
    and asserts that it returns 0 ("Assertion failed: (rc == 0), function
    sync, file AFBMappedFileAllocator.mm"); chronod crashed in a loop.

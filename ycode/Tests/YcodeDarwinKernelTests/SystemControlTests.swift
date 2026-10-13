@@ -69,6 +69,31 @@ import YcodeDarwinABI
         #expect(env.svc(0x7963_2014, [UInt64(WellKnownPort.thread), s, 5, s + 0x800, s + 0x808]).1.x[0] == 4)
     }
 
+    /// mach_vm_region (private routine 0x7963_2015): the region holding the
+    /// scratch page, in the basic (64-bit) and extended flavors; a short
+    /// count and an unknown flavor are KERN_INVALID_ARGUMENT; nothing at or
+    /// above the address is KERN_INVALID_ADDRESS.
+    @Test func vmRegionDescribesMappings() throws {
+        let env = try Env()
+        let task = UInt64(WellKnownPort.task)
+        let call: UInt64 = 0x7963_2015
+        try env.space.write(va: s, bytes: le64(s + 0x10))
+        try env.space.write(va: s + 0x10, bytes: le32(9))
+        #expect(env.svc(call, [task, s, s + 0x8, 9, s + 0x100, s + 0x10, s + 0x18]).1.x[0] == 0)
+        #expect(try env.u64(s) == Env.scratch && env.u64(s + 0x8) >= Env.scratchSize)
+        #expect(try env.u32(s + 0x100) == 3 && env.u32(s + 0x10) == 9)                 // VM_PROT_READ|WRITE
+        try env.space.write(va: s, bytes: le64(s))
+        try env.space.write(va: s + 0x10, bytes: le32(9))
+        #expect(env.svc(call, [task, s, s + 0x8, 13, s + 0x100, s + 0x10, 0]).1.x[0] == 0)
+        #expect(try env.space.read(va: s + 0x100 + 31, count: 1) == [2])               // SM_PRIVATE
+        try env.space.write(va: s + 0x10, bytes: le32(4))
+        #expect(env.svc(call, [task, s, s + 0x8, 9, s + 0x100, s + 0x10, 0]).1.x[0] == 4)
+        try env.space.write(va: s + 0x10, bytes: le32(20))
+        #expect(env.svc(call, [task, s, s + 0x8, 99, s + 0x100, s + 0x10, 0]).1.x[0] == 4)
+        try env.space.write(va: s, bytes: le64(0x7FFF_0000_0000))
+        #expect(env.svc(call, [task, s, s + 0x8, 9, s + 0x100, s + 0x10, 0]).1.x[0] == 1)
+    }
+
     @Test func controlsAnsweredAsOnTheMac() throws {
         let env = try Env()
         #expect(env.svc(440, [1, 100, 0, 0, 0]).1.x[0] == 1)        // memorystatus_control: EPERM

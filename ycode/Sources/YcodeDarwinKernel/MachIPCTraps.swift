@@ -60,6 +60,8 @@ extension MachIPC {
         public static let threadSetExceptionPorts: UInt32 = 0x7963_2013
         /// `mach_vm_read(task, addr, size, &data, &count)` within the caller's task.
         public static let vmRead: UInt32 = 0x7963_2014
+        /// `mach_vm_region(task, &addr, &size, flavor, info, &count, &object_name)` within the caller's task.
+        public static let vmRegion: UInt32 = 0x7963_2015
     }
 
     /// `TASK_BOOTSTRAP_PORT`.
@@ -782,6 +784,25 @@ extension MachIPC {
             }
             return kr(MachKern.success, " [\(hx(va + (a[1] - start)))]")
 
+        case Routine.vmRegion:
+            call = "mach_vm_region(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), flavor=\(u32(3)), "
+                + "info=\(hx(a[4])), count=\(hx(a[5])), object=\(hx(a[6])))"
+            guard isTaskSelf(u32(0)) else { return kr(MachKern.invalidArgument, " [only the caller's task]") }
+            guard let addressBytes = try? memory.read(va: a[1], count: 8),
+                  let countBytes = try? memory.read(va: a[5], count: 4) else { return kr(MachKern.invalidArgument) }
+            let start = addressBytes.readLE(UInt64.self, at: 0)
+            let capacity = countBytes.readLE(UInt32.self, at: 0)
+            guard let (info, needed, note) = Self.regionInfo(memory, from: start, flavor: u32(3)) else {
+                return kr(MachKern.invalidAddress, " [no mapping at or above \(hx(start))]")
+            }
+            guard let info else { return kr(MachKern.invalidArgument, " [flavor \(u32(3))]") }
+            guard capacity >= needed else { return kr(MachKern.invalidArgument, " [count \(capacity) < \(needed)]") }
+            guard (try? memory.write(va: a[1], bytes: le64(note.va))) != nil,
+                  (try? memory.write(va: a[2], bytes: le64(note.size))) != nil,
+                  (try? memory.write(va: a[4], bytes: info)) != nil, write32(a[5], needed),
+                  a[6] == 0 || write32(a[6], 0) else { return kr(MachKern.invalidAddress) }
+            return kr(MachKern.success, " [\(hx(note.va))+\(hx(note.size)) \(note.text)]")
+
         case Routine.taskThreads:
             call = "task_threads(task=\(hx(u32(0))), list=\(hx(a[1])), count=\(hx(a[2])))"
             guard let kernel else { return kr(MachKern.failure) }
@@ -872,5 +893,55 @@ extension MachIPC {
         }
         flush()
         return runs
+    }
+}
+
+extension MachIPC {
+    /// The `mach_vm_region` answer for the first mapping at or above `from`
+    /// (mach/vm_region.h, level 1): consecutive pieces of one kind and
+    /// protection count as one region. nil: no mapping there; info nil: an
+    /// unknown flavor. Returns the info words, their count, and the region.
+    static func regionInfo(_ memory: any GuestVirtualMemory, from: UInt64, flavor: UInt32)
+        -> (info: [UInt8]?, count: UInt32, region: (va: UInt64, size: UInt64, text: String))? {
+        let pieces = memory.regions(overlapping: from..<UInt64.max)
+        guard var first = pieces.first else { return nil }
+        func kind(_ r: GuestRegion) -> Int {
+            switch r.backing { case .anonymous: 0; case .file: 1; case .shared: 2 }
+        }
+        for r in pieces.dropFirst() {
+            guard r.va == first.end, r.protection == first.protection, kind(r) == kind(first) else { break }
+            first.size += r.size
+        }
+        let page = VMLayout.pageSize
+        let pages = UInt32(clamping: first.size / page)
+        let prot = first.protection.rawValue
+        let maxProt = VMProtection.all.rawValue
+        let shared: UInt32 = kind(first) == 2 ? 1 : 0
+        let offset: UInt64 = { if case let .file(_, o, _) = first.backing { return o }; if case let .shared(_, o, _) = first.backing { return o }; return 0 }()
+        // share_mode: SM_COW 1 (private file), SM_PRIVATE 2 (anonymous), SM_SHARED 4.
+        let shareMode: UInt8 = kind(first) == 2 ? 4 : (kind(first) == 1 ? 1 : 2)
+        let text = "\(first.protection) \(["anonymous", "file", "shared"][kind(first)])"
+        var b: [UInt8] = []
+        switch flavor {
+        case 9:   // VM_REGION_BASIC_INFO_64: prot, max, inheritance, shared, reserved, offset (u64), behavior, wired (u16)
+            b = le32(prot) + le32(maxProt) + le32(shared == 1 ? 0 : 1) + le32(shared) + le32(0) + le64(offset)
+                + le32(0) + [0, 0, 0, 0]
+            return (b, 9, (first.va, first.size, text))
+        case 10:  // VM_REGION_BASIC_INFO: the same with a 32-bit offset
+            b = le32(prot) + le32(maxProt) + le32(shared == 1 ? 0 : 1) + le32(shared) + le32(0)
+                + le32(UInt32(truncatingIfNeeded: offset)) + le32(0) + [0, 0, 0, 0]
+            return (b, 8, (first.va, first.size, text))
+        case 12:  // VM_REGION_TOP_INFO: obj_id, ref_count, private/shared pages resident, share_mode
+            b = le32(UInt32(truncatingIfNeeded: first.gpa >> 14)) + le32(1) + le32(shared == 1 ? 0 : pages)
+                + le32(shared == 1 ? pages : 0) + [shareMode, 0, 0, 0]
+            return (b, 5, (first.va, first.size, text))
+        case 13:  // VM_REGION_EXTENDED_INFO: prot, user_tag, resident, shared_now_private, swapped, dirtied, ref_count,
+                  // shadow_depth (u16), external_pager (u8), share_mode (u8), reusable
+            b = le32(prot) + le32(0) + le32(pages) + le32(0) + le32(0) + le32(kind(first) == 1 ? 0 : pages) + le32(1)
+                + [0, 0, kind(first) == 1 ? 1 : 0, shareMode] + le32(0)
+            return (b, 9, (first.va, first.size, text))
+        default:
+            return (nil, 0, (first.va, first.size, text))
+        }
     }
 }

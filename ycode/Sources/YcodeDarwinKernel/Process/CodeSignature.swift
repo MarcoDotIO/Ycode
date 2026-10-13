@@ -251,6 +251,24 @@ struct CodeSigningInfo {
 
     private static let cacheLock = NSLock()
     nonisolated(unsafe) private static var cache: [String: CodeSigningInfo?] = [:]
+    nonisolated(unsafe) private static var platformRoots: [String] = []
+
+    /// Host directories whose executables are platform binaries. On the Mac
+    /// every executable of the simulator runtime reports 0x26004201 although
+    /// its CodeDirectory's `platform` byte is 0 (level 3: our `csprobe` of
+    /// runningboardd, SpringBoard, backboardd and launchd_sim; the runtime
+    /// image's code is trusted as the system's). With the status of an
+    /// ordinary Apple-signed image (0x22000201) launchd_sim did not honor
+    /// runningboardd's launchd entitlements (`com.apple.private.xpc.launchd.*`):
+    /// runningboardd could not learn which job a process belongs to, named
+    /// every daemon `anon<…>` and refused SpringBoard's launch requests
+    /// (level 3; home-screen.md §3.4).
+    static func setPlatformRoots(_ roots: [String]) {
+        cacheLock.lock()
+        platformRoots = roots.map { $0.hasSuffix("/") ? $0 : $0 + "/" }
+        cache.removeAll()
+        cacheLock.unlock()
+    }
 
     /// The image's signing information (cached per host path), or nil when
     /// it has no usable signature.
@@ -260,6 +278,13 @@ struct CodeSigningInfo {
         cacheLock.unlock()
         let parts = CodeSignature.signatureParts(ofExecutableAt: hostPath)
         var info = parts.superBlob.flatMap(parse)
+        cacheLock.lock()
+        let trusted = platformRoots.contains { hostPath.hasPrefix($0) }
+        cacheLock.unlock()
+        if trusted, info != nil {
+            info?.status = 0x2600_4201
+            info?.validationCategory = 1
+        }
         // Simulator builds: the `__TEXT,__entitlements` plist is what the
         // simulator's libraries serve as the entitlements blob (op 7), with an
         // 8-byte blob header (app-install-launch.md §4.5; level 3).
@@ -308,6 +333,12 @@ struct CodeSigningInfo {
 }
 
 extension DarwinKernel {
+    /// Executables below these host directories report the platform-binary
+    /// code-signing status (`CodeSigningInfo.setPlatformRoots`).
+    public static func setPlatformCodeRoots(_ roots: [String]) {
+        CodeSigningInfo.setPlatformRoots(roots)
+    }
+
     /// csops (169) / csops_audittoken (170), after xnu `bsd/kern/kern_proc.c`
     /// csops_internal (level 1): pid 0 is the caller; another pid must exist
     /// (ESRCH) and, with an audit token, match its pid (word 5) and

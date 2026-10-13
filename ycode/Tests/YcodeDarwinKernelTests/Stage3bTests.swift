@@ -163,7 +163,7 @@ import YcodeDarwinABI
         let names = Array(path.utf8) + [0] + Array((env.root + "/absent").utf8) + [0]
         var table: [UInt8] = []
         for offset: UInt32 in [48, 0, UInt32(48 + path.utf8.count + 1)] {
-            table += Array(leBytes(UInt64(offset)).prefix(4)) + Array(leBytes(2).prefix(4)) + [UInt8](repeating: 0, count: 8)
+            table += Array(leBytes(UInt64(offset)).prefix(4)) + Array(leBytes(4).prefix(4)) + [UInt8](repeating: 0, count: 8)
         }
         try env.space.write(va: s, bytes: table + names)
         let (_, r) = env.svc(284, [s, UInt64(table.count + names.count), s + 0x800, 501])
@@ -171,6 +171,84 @@ import YcodeDarwinABI
         let out = try env.space.read(va: s + 0x800, count: 12)
         #expect(out.readLE(Int32.self, at: 0) == 0 && out.readLE(Int32.self, at: 4) == 0 && out.readLE(Int32.self, at: 8) == 2)
         #expect(env.svc(284, [s, 4, s + 0x800, 501]).1.x[0] == 22)
+    }
+
+    /// access(2): EROFS for write access on a read-only volume; EACCES when
+    /// the mode bits deny it (execute on a file without x bits); the owner a
+    /// prefix declares replaces the host owner.
+    @Test func accessModes() throws {
+        let env = try Env()
+        let data = try env.makeFile("data", [1])
+        let tool = try env.makeFile("tool", [1])
+        chmod(data, 0o644)
+        chmod(tool, 0o755)
+        try env.putString(data, at: s + 0x100)
+        try env.putString(tool, at: s + 0x300)
+        #expect(!env.svc(33, [s + 0x100, 4]).1.carry)                 // R_OK
+        #expect(env.svc(33, [s + 0x100, 2]).1.x[0] == 30)             // W_OK: EROFS
+        #expect(env.svc(33, [s + 0x100, 1]).1.x[0] == 13)             // X_OK: EACCES
+        #expect(!env.svc(33, [s + 0x300, 5]).1.carry)                 // R_OK|X_OK
+        #expect(!env.svc(33, [s + 0x100, 0]).1.carry)                 // F_OK
+    }
+
+    /// Attributes LaunchServices' file nodes read (the Mac's answers on the
+    /// runtime image, level 3): a nonzero generation count, the added time,
+    /// class C, a directory link count of 1, the clone id = file id, and
+    /// EF_NO_XATTRS.
+    @Test func attributeListFileNodeFields() throws {
+        let env = try Env()
+        let path = try env.makeFile("node", [1, 2, 3])
+        try env.putString(path, at: s + 0x100)
+        // GEN_COUNT | ADDEDTIME | DATA_PROTECT_FLAGS; extended CLONEID | EXT_FLAGS.
+        try env.space.write(va: s + 0x200, bytes: [5, 0, 0, 0] + Array(leBytes(0x5008_0000).prefix(4))
+                                + [UInt8](repeating: 0, count: 12) + Array(leBytes(0x300).prefix(4)))
+        let (_, r) = env.svc(220, [s + 0x100, s + 0x200, s + 0x400, 256, 0x20])
+        #expect(!r.carry)
+        let b = try env.space.read(va: s + 0x400, count: 64)
+        #expect(b.readLE(UInt32.self, at: 0) == 44)
+        #expect(b.readLE(UInt32.self, at: 4) != 0)                      // GEN_COUNT
+        #expect(b.readLE(Int64.self, at: 8) > 0)                        // ADDEDTIME seconds
+        #expect(b.readLE(UInt32.self, at: 24) == 3)                     // class C
+        var st = stat()
+        _ = lstat(path, &st)
+        #expect(b.readLE(UInt64.self, at: 28) == UInt64(st.st_ino))     // CLONEID
+        #expect(b.readLE(UInt64.self, at: 36) == 2)                     // EF_NO_XATTRS
+        // ATTR_DIR_LINKCOUNT of a directory: 1.
+        try env.putString(env.root, at: s + 0x100)
+        try env.space.write(va: s + 0x200, bytes: [5, 0, 0, 0] + [UInt8](repeating: 0, count: 8) + Array(leBytes(1).prefix(4))
+                                + [UInt8](repeating: 0, count: 8))
+        #expect(!env.svc(220, [s + 0x100, s + 0x200, s + 0x400, 256, 0]).1.carry)
+        #expect(try env.space.read(va: s + 0x400, count: 8).readLE(UInt32.self, at: 4) == 1)
+    }
+
+    /// fsgetpath (427): the guest path of an object id on a volume (found
+    /// by walking the volume when no getattrlist reported it); the length
+    /// counts the NUL; ENOSPC for a short buffer; ENOENT for an unknown id;
+    /// openbyid_np (479) opens it. The capability is advertised.
+    @Test func pathFromObjectID() throws {
+        let env = try Env(device: 0x0100_0042)
+        let sub = env.root + "/dir"
+        try FileManager.default.createDirectory(atPath: sub, withIntermediateDirectories: true)
+        let path = try env.makeFile("dir/leaf", [7])
+        var st = stat()
+        _ = lstat(path, &st)
+        try env.space.write(va: s, bytes: Array(leBytes(0x0100_0042).prefix(4)) + Array(leBytes(0x1A).prefix(4)))
+        let (_, r) = env.svc(427, [s + 0x100, 1024, s, UInt64(st.st_ino)])
+        #expect(!r.carry)
+        let got = String(decoding: try env.space.read(va: s + 0x100, count: max(1, Int(r.x[0])) - 1), as: UTF8.self)
+        #expect(Int(r.x[0]) == path.utf8.count + 1, "\(got) vs \(path)")
+        #expect(String(decoding: try env.space.read(va: s + 0x100, count: path.utf8.count), as: UTF8.self) == path)
+        #expect(env.svc(427, [s + 0x100, 4, s, UInt64(st.st_ino)]).1.x[0] == 28)     // ENOSPC
+        #expect(env.svc(427, [s + 0x100, 1024, s, 0x7FFF_FFF0]).1.x[0] == 2)         // ENOENT
+        let (_, root) = env.svc(427, [s + 0x100, 1024, s, 2])                         // the volume root
+        #expect(!root.carry && Int(root.x[0]) == env.root.utf8.count + 1)
+        let (_, o) = env.svc(479, [s, UInt64(st.st_ino), 0])
+        #expect(!o.carry)
+        // ATTR_VOL_CAPABILITIES: VOL_CAP_FMT_PATH_FROM_ID.
+        try env.putString(path, at: s + 0x300)
+        try env.space.write(va: s + 0x200, bytes: [5, 0, 0, 0, 0, 0, 0, 0] + Array(leBytes(0x8002_0000).prefix(4)) + [UInt8](repeating: 0, count: 12))
+        #expect(!env.svc(220, [s + 0x300, s + 0x200, s + 0x400, 256, 0]).1.carry)
+        #expect(try env.space.read(va: s + 0x400, count: 8).readLE(UInt32.self, at: 4) & 0x4000 != 0)
     }
 
     /// msync: 0 on a mapped range; EINVAL for an unaligned address or

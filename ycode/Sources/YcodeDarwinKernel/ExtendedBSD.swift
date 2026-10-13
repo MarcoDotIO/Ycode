@@ -224,7 +224,14 @@ extension DarwinKernel {
                 var result: Int32 = 0
                 do {
                     guard let path = name, !path.isEmpty else { throw Failure(errno: Errno.ENOENT) }
-                    _ = try statUnlocked(path, followSymlinks: true)
+                    let st = try statUnlocked(path, followSymlinks: true)
+                    // ad_flags: _READ_OK 1<<9, _WRITE_OK 1<<10, _EXECUTE_OK 1<<11
+                    // (sys/unistd.h), or the plain R_OK/W_OK/X_OK bits.
+                    let flags = Int32(bitPattern: buffer.readLE(UInt32.self, at: i * 16 + 4))
+                    if let denied = accessDenied(st, path: path, read: flags & (4 | 1 << 9) != 0,
+                                                 write: flags & (2 | 1 << 10) != 0, execute: flags & (1 | 1 << 11) != 0) {
+                        throw Failure(errno: denied)
+                    }
                 } catch {
                     result = errno(of: error, default: Errno.ENOENT)
                 }
@@ -572,7 +579,10 @@ extension DarwinKernel {
             let mode = isAt ? int(2) : int(1)
             call = isAt ? "faccessat(\(int(0)), \"\(path)\", mode=\(mode), flag=\(hx(a[3])))" : "access(\"\(path)\", mode=\(mode))"
             let follow = !isAt || int(3) & Self.atSymlinkNofollow == 0
-            _ = try statUnlocked(path, followSymlinks: follow)
+            let st = try statUnlocked(path, followSymlinks: follow)
+            if let denied = accessDenied(st, path: path, read: mode & 4 != 0, write: mode & 2 != 0, execute: mode & 1 != 0) {
+                throw Failure(errno: denied)
+            }
             return .value(0)
 
         // Extended attributes (sys/xattr.h, getxattr(2), setxattr(2),
@@ -948,5 +958,23 @@ extension DarwinKernel {
             entries.append((name, st.ino, type))
         }
         return entries
+    }
+}
+
+extension DarwinKernel {
+    /// The errno `access(2)` reports (the access(2) manual page; level 1):
+    /// EROFS for write access on a read-only volume, EACCES when the mode
+    /// bits deny the access to the guest user (uid 501; groups staff 20,
+    /// everyone 12, admin 80, as the Mac's user who runs the simulator);
+    /// nil when allowed. Execute access needs an x bit (search, for a
+    /// directory).
+    func accessDenied(_ st: DarwinStat, path: String, read: Bool, write: Bool, execute: Bool) -> Int32? {
+        if write && !fileSystem.writable(guestPath: path) && st.fileType != DarwinStat.S_IFCHR { return 30 }  // EROFS
+        let bits: UInt16
+        if st.uid == DarwinFileSystem.guestUID { bits = (st.mode >> 6) & 7 }
+        else if [DarwinFileSystem.guestGID, 12, 80].contains(st.gid) { bits = (st.mode >> 3) & 7 }
+        else { bits = st.mode & 7 }
+        if (read && bits & 4 == 0) || (write && bits & 2 == 0) || (execute && bits & 1 == 0) { return 13 }  // EACCES
+        return nil
     }
 }

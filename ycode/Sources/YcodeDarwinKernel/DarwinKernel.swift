@@ -817,8 +817,11 @@ public final class DarwinKernel {
         case BSD.getattrlistbulk:
             return .value(try attributeListBulkCall(a, &call, mem))
 
-        case BSD.fsgetpath:
-            throw Failure(errno: Errno.ENOTSUP)
+        case BSD.fsgetpath, 217:  // fsgetpath, fsgetpath_ext
+            return .value(try fsGetPathCall(n, a, &call, mem))
+
+        case 479:  // openbyid_np
+            return .value(try openByIDCall(a, &call, mem))
 
         case BSD.issetugid:
             call = "issetugid()"

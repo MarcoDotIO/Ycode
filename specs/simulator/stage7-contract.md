@@ -211,3 +211,19 @@ its complete `== YCODE-PROBE BEGIN … END` report from
 `devs/p9/data/tmp/ycode-oneshot-1.err`): UIKit's display-services and
 render-server start-up works under Ycode. The installed-and-launched exit
 is still open (install stays "Waiting").
+
+## 10. Progress (integrator J, 2026-10-13): exit criterion met
+
+§3.1 is met on the Thor (run `9-J/runs/w3`): the probe app is installed
+through InstallCoordination, launched through FrontBoardServices with debug
+stdio options, its scene comes to the front, and the VMM prints its
+`== YCODE-PROBE BEGIN … END` report. Two host gaps stood in the way
+(`home-screen.md` §3.3, §3.4): Ycode's volumes did not report
+`VOL_CAP_FMT_PATH_FROM_ID`, so LaunchServices registered every app,
+including the installed one, as an incomplete placeholder (the install
+stayed "Waiting…"); and the runtime's executables did not report the
+platform-binary code-signing status, so launchd_sim did not answer
+runningboardd's job queries and runningboardd refused SpringBoard's launch
+requests. Ycode now implements `fsgetpath`, `fsgetpath_ext`, `openbyid_np`
+and `mach_vm_region` as well.
+

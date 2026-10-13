@@ -145,6 +145,12 @@ final class ExecConfiguration: @unchecked Sendable {
             prefixes.append(DarwinFileSystem.Prefix(guestPath: execDirectory, hostPath: execDirectory, writable: false))
         }
         if let device {
+            // The runtime root's files belong to root:admin, as on the Mac's
+            // mounted runtime image (level 3), and its executables are
+            // platform binaries (csops status; home-screen.md §3.4).
+            prefixes[0].ownerUID = 0
+            prefixes[0].ownerGID = 80
+            DarwinKernel.setPlatformCodeRoots([root])
             // Device mode (stage4c-contract.md §2): DEV, /private/var/tmp (TMP is in it)
             // (and /var/tmp), /tmp and /private/tmp, all writable.
             prefixes.append(DarwinFileSystem.Prefix(guestPath: device.dev, hostPath: device.dev, writable: true))
@@ -153,7 +159,8 @@ final class ExecConfiguration: @unchecked Sendable {
             // paths (CoreFoundation's own bundle: CFBundleGetInfoDictionary
             // dereferences NULL without it; level 3, our runs). Ycode serves
             // RR/System there, read-only.
-            prefixes.append(DarwinFileSystem.Prefix(guestPath: "/System", hostPath: root + "/System", writable: false))
+            prefixes.append(DarwinFileSystem.Prefix(guestPath: "/System", hostPath: root + "/System", writable: false,
+                                                    ownerUID: 0, ownerGID: 0))
             // Job directories outside DEV and RR: read-only at their own path.
             for path in device.jobPaths where !(path == device.dev || path.hasPrefix(device.dev + "/") || path == root || path.hasPrefix(root + "/")) {
                 prefixes.append(DarwinFileSystem.Prefix(guestPath: path, hostPath: path, writable: false))
@@ -171,7 +178,8 @@ final class ExecConfiguration: @unchecked Sendable {
                 let file = "\(hostLibDir)/libsystem_\(name).dylib"
                 let guest = hostLibraryGuestPath(name)
                 if access(file, R_OK) == 0 {
-                    prefixes.append(DarwinFileSystem.Prefix(guestPath: guest, hostPath: file, writable: false))
+                    prefixes.append(DarwinFileSystem.Prefix(guestPath: guest, hostPath: file, writable: false,
+                                                            ownerUID: device == nil ? nil : 0, ownerGID: device == nil ? nil : 80))
                     hostLibraryPaths.insert(guest)
                     stderrLine("ycode-simd: host library \(guest) -> \(file)")
                 } else {

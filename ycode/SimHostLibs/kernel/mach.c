@@ -1051,6 +1051,31 @@ YC_EXPORT int vm_read(yc_port_t task, yc_uintptr_t address, yc_size_t size, yc_u
     return mach_vm_read(task, address, size, data, count);
 }
 
+/* kern_return_t mach_vm_region(vm_map_read_t target_task, mach_vm_address_t *address,
+ *     mach_vm_size_t *size, vm_region_flavor_t flavor, vm_region_info_t info,
+ *     mach_msg_type_number_t *infoCnt, mach_port_t *object_name)
+ * Private routine 21 (mach/vm_region.h, the xnu vm_user.c interface; level 1):
+ * the first mapping at or above *address, within the caller's own task, in
+ * flavor VM_REGION_BASIC_INFO_64 (9), VM_REGION_BASIC_INFO (10),
+ * VM_REGION_EXTENDED_INFO (13) or VM_REGION_TOP_INFO (12). vm_region_64 takes the
+ * same arguments on LP64. QuartzCore asks it of the
+ * buffers it renders into ("failed to query region" without it). */
+#define YC_PRIV_VM_REGION 21
+
+YC_EXPORT int mach_vm_region(yc_port_t task, yc_u64 *address, yc_u64 *size, int flavor, int *info, yc_u32 *count,
+                             yc_port_t *object_name)
+{
+    return (int)yc_mach_trap(YC_PRIV_ROUTINE(YC_PRIV_VM_REGION), task, (yc_uintptr_t)address, (yc_uintptr_t)size,
+                             (yc_uintptr_t)(unsigned)flavor, (yc_uintptr_t)info, (yc_uintptr_t)count,
+                             (yc_uintptr_t)object_name);
+}
+
+YC_EXPORT int vm_region_64(yc_port_t task, yc_uintptr_t *address, yc_size_t *size, int flavor, int *info, yc_u32 *count,
+                           yc_port_t *object_name)
+{
+    return mach_vm_region(task, (yc_u64 *)address, (yc_u64 *)size, flavor, info, count, object_name);
+}
+
 /* mach_vm_copy(target, source, size, dest) and mach_vm_read_overwrite(target,
  * address, size, data, &outsize): the VMM's private copy trap (0x7963_0004)
  * within the caller's own task; another task is KERN_INVALID_ARGUMENT. */

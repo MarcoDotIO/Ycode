@@ -35,8 +35,11 @@ extension DarwinKernel {
         static let volumeSignature: UInt32 = 0x4244
         /// VOL_CAP_FMT_*: persistent object ids, symbolic links, hard links,
         /// sparse files, case sensitive, case preserving, fast statfs,
-        /// 2 TB file size, 64-bit object ids.
-        static let formatCaps: UInt32 = 0x1 | 0x2 | 0x4 | 0x40 | 0x100 | 0x200 | 0x400 | 0x800 | 0x20000
+        /// 2 TB file size, path from id (fsgetpath, ObjectPaths.swift),
+        /// 64-bit object ids. PATH_FROM_ID matters: LaunchServices reads an
+        /// app's executable only when its file node has a file identifier,
+        /// which needs this capability (home-screen.md §3.3).
+        static let formatCaps: UInt32 = 0x1 | 0x2 | 0x4 | 0x40 | 0x100 | 0x200 | 0x400 | 0x800 | 0x4000 | 0x20000
         /// VOL_CAP_INT_*: attrlist, advisory locks, flock, extended attributes.
         static let interfaceCaps: UInt32 = 0x2 | 0x100 | 0x200 | 0x4000
         static let formatValid: UInt32 = 0x07FF_FFFF
@@ -199,6 +202,7 @@ extension DarwinKernel {
         let prefix = fs.prefixes
             .filter { canonical == $0.guestPath || canonical.hasPrefix($0.guestPath == "/" ? "/" : $0.guestPath + "/") }
             .max { $0.guestPath.count < $1.guestPath.count }
+        noteObjectPath(dev: st.dev, ino: st.ino, path: canonical)
         return AttrObject(path: canonical, stat: st, parentID: parentID,
                           mountPoint: prefix?.volumeMountPoint ?? "/", writable: prefix?.writable ?? false)
     }
@@ -214,6 +218,21 @@ extension DarwinKernel {
         case DarwinStat.S_IFIFO: return AttrList.vfifo
         default: return 0
         }
+    }
+
+    /// ATTR_CMN_GEN_COUNT: nonzero, and different after the object changes
+    /// (APFS starts at 1 and counts modifications; level 3, the Mac's
+    /// getattrlist). Ycode derives it from the change time in tenths of a
+    /// second since 2020-09-13, which changes with every modification.
+    static func generationCount(_ st: DarwinStat) -> UInt32 {
+        let tenths = (st.ctime.sec - 1_600_000_000) &* 10 &+ st.ctime.nsec / 100_000_000
+        return UInt32(truncatingIfNeeded: max(1, tenths))
+    }
+
+    /// ATTR_CMN_ADDEDTIME: when the object was added to its directory; the
+    /// Mac reports the creation time for objects never moved (level 3).
+    static func addedTime(_ st: DarwinStat) -> DarwinTimespec {
+        st.birthtime.sec != 0 || st.birthtime.nsec != 0 ? st.birthtime : st.ctime
     }
 
     private static func lastComponent(_ path: String) -> String {
@@ -248,7 +267,8 @@ extension DarwinKernel {
             case 0x10000: p.u32(st.gid)                                    // GRPID
             case 0x20000: p.u32(UInt32(st.mode))                           // ACCESSMASK
             case 0x40000: p.u32(st.flags)                                  // FLAGS
-            case 0x80000, 0x100000: p.u32(0)                               // GEN_COUNT, DOCUMENT_ID
+            case 0x80000: p.u32(Self.generationCount(st))                  // GEN_COUNT
+            case 0x100000: p.u32(0)                                        // DOCUMENT_ID
             case 0x200000:                                                 // USERACCESS (R/W/X_OK)
                 var access = UInt32(st.mode >> 6) & 7
                 if !o.writable { access &= ~2 }
@@ -258,8 +278,9 @@ extension DarwinKernel {
             case 0x2000000: p.u64(st.ino)                                  // FILEID
             case 0x4000000: p.u64(o.parentID)                              // PARENTID
             case 0x8000000: p.reference(o.path)                            // FULLPATH
-            case 0x10000000: p.time(.init())                               // ADDEDTIME
-            case 0x40000000: p.u32(0)                                      // DATA_PROTECT_FLAGS
+            case 0x10000000: p.time(Self.addedTime(st))                    // ADDEDTIME
+            case 0x40000000:                                               // DATA_PROTECT_FLAGS
+                p.u32(UInt32(bitPattern: protectionClass(stat: st, path: o.path)))
             default: break
             }
         }
@@ -321,7 +342,7 @@ extension DarwinKernel {
         let st = o.stat
         for bit in 0..<6 where bits & (1 << UInt32(bit)) != 0 {
             switch UInt32(1) << UInt32(bit) {
-            case 0x1: p.u32(valid ? UInt32(st.nlink) : 0)                 // LINKCOUNT
+            case 0x1: p.u32(valid ? 1 : 0)                                 // LINKCOUNT (1, as APFS reports for directories)
             case 0x2:                                                      // ENTRYCOUNT (without . and ..)
                 // Counted, not derived from the link count (which counts only
                 // subdirectories on the host): MobileInstallation's helper
@@ -369,7 +390,11 @@ extension DarwinKernel {
             case 0x20: p.reference(o.path)                                 // NOFIRMLINKPATH
             case 0x40: p.u32(st.dev)                                       // REALDEVID
             case 0x80: p.u32(st.dev); p.u32(0x1A)                          // REALFSID
-            case 0x100, 0x200, 0x400, 0x800: p.u64(0)                      // CLONEID, EXT_FLAGS, RECURSIVE_GENCOUNT, ATTRIBUTION_TAG
+            case 0x100: p.u64(st.ino)                                      // CLONEID (the file id when not a clone)
+            case 0x200:                                                    // EXT_FLAGS: EF_NO_XATTRS (2) when none
+                let names = (try? fileSystem.listExtendedAttributes(.path(o.path, followSymlinks: false))) ?? []
+                p.u64(names.isEmpty ? 2 : 0)
+            case 0x400, 0x800: p.u64(0)                                    // RECURSIVE_GENCOUNT, ATTRIBUTION_TAG
             case 0x1000: p.u32(1)                                          // CLONE_REFCNT
             default: break
             }
@@ -525,6 +550,7 @@ extension DarwinKernel {
         let raw = try mem.read(va: a[1], count: 24)
         let groups = (0..<5).map { raw.readLE(UInt32.self, at: 4 + 4 * $0) }
         let (common, volume, dir, file, fork) = (groups[0], groups[1], groups[2], groups[3], groups[4])
+        call += " attrs=[\(groups.map { hx(UInt64($0)) }.joined(separator: ","))]"
         guard raw.readLE(UInt16.self, at: 0) == AttrList.bitmapCount, common & AttrList.returnedAttrs != 0, volume == 0,
               dir & ~AttrList.dirValid == 0, file & ~AttrList.fileValid == 0, fork & ~AttrList.cmnExtValid == 0
         else { throw Failure(errno: Errno.EINVAL) }
