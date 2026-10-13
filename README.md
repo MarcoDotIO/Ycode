@@ -132,5 +132,9 @@ sponsored by Apple Inc. Apple, Xcode, iOS, macOS, Metal and other Apple
 product names are trademarks of Apple Inc. They are used here only to
 describe what Ycode interoperates with.
 
-The vendored Vulkan headers in `ycode/Sources/CVulkan/vulkan/` are
-© The Khronos Group Inc., licensed under Apache-2.0, as stated in each file.
+## License
+
+Ycode is released under the [MIT License](LICENSE). The vendored Vulkan
+headers in `ycode/Sources/CVulkan/vulkan/` are © The Khronos Group Inc.,
+licensed under Apache-2.0, as stated in each file. By contributing, you agree
+that your contributions are licensed under the MIT License.
