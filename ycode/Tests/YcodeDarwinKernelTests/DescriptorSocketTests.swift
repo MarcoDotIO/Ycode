@@ -64,7 +64,7 @@ extension DEnv {
     }
 
     func setsockopt(_ fd: Int32, _ level: UInt32, _ name: UInt32, _ value: Int32) -> Result {
-        put(Array(withUnsafeBytes(of: value.littleEndian) { $0 }), at: optVA)
+        put(withUnsafeBytes(of: value.littleEndian) { Array($0) }, at: optVA)
         return call(105, [UInt64(fd), UInt64(level), UInt64(name), optVA, 4])
     }
 
@@ -412,5 +412,28 @@ extension DEnv {
         let start = Date()
         #expect(e.read(a).0.errno == 35)
         #expect(Date().timeIntervalSince(start) >= 0.04)
+    }
+
+    /// The host end of /private/var/run/.sim_diagnosticd_socket
+    /// (HostStreamSockets.swift, launchd-sim.md §8.1): a connect succeeds
+    /// with no guest listener, writes are consumed, nothing comes back.
+    @Test func hostDiagnosticdSocketAcceptsAndDiscards() throws {
+        let e = try DEnv()
+        let saved = HostStreamSockets.diagnosticdEnabled
+        defer { HostStreamSockets.diagnosticdEnabled = saved }
+        // Off (the default): nobody serves the path.
+        HostStreamSockets.diagnosticdEnabled = false
+        #expect(e.connect(e.socket(), HostStreamSockets.diagnosticdPath).errno == 2)  // ENOENT
+        HostStreamSockets.diagnosticdEnabled = true
+        let before = HostStreamSockets.bytesReceived
+        let fd = e.socket()
+        #expect(e.connect(fd, HostStreamSockets.diagnosticdPath).value == 0)
+        for _ in 0..<10 { #expect(e.write(fd, String(repeating: "x", count: 4000)).value == 4000) }
+        #expect(HostStreamSockets.bytesReceived - before == 40000)
+        // Nothing to read: non-blocking read is EAGAIN.
+        #expect(e.call(92, [UInt64(fd), 4, 4]).value == 0)  // F_SETFL O_NONBLOCK
+        #expect(e.read(fd).0.errno == 35)
+        // Other unbound paths still fail.
+        #expect(e.connect(e.socket(), "/private/var/run/.no_such_socket").errno != nil)
     }
 }

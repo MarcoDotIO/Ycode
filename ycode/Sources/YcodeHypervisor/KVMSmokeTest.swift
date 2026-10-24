@@ -110,6 +110,37 @@ public enum KVMSmokeTest {
         guard exit == .watchdog else { throw KVMError("smoke", detail: "watchdog did not interrupt a spinning guest") }
         log("KVM smoke test passed (\(exits) exits)")
         try runMemslots(log: log)
+        try runVCPUBatch(log: log)
+    }
+
+    /// Batched vCPU creation (`VirtualMachine.creationBatch`): the first
+    /// `makeVCPU` creates the next ids too; asking for one of them hands it
+    /// out without an ioctl; batches stay below `vcpuIDLimit`; `close`
+    /// closes unused ones.
+    public static func runVCPUBatch(log: (String) -> Void) throws {
+        let batch = VirtualMachine.creationBatch
+        let vm = try VirtualMachine(ramSize: 1 << 20)
+        vm.vcpuIDLimit = 1 + batch + 1
+        _ = try vm.makeVCPU(id: 0)
+        for id in 1...max(1, batch) where batch > 0 {
+            let began = monotonicNanoseconds()
+            let vcpu = try vm.makeVCPU(id: id)
+            let micros = (monotonicNanoseconds() &- began) / 1000
+            guard vcpu.id == id, micros < 2000 else {
+                throw KVMError("smoke", detail: "batched vCPU \(id): id \(vcpu.id), \(micros) us (a spare should be immediate)")
+            }
+        }
+        // The last id below the limit: a new batch that cannot go beyond it.
+        let last = try vm.makeVCPU(id: batch + 1)
+        guard last.id == batch + 1, vm.vcpus.count == batch + 2 else {
+            throw KVMError("smoke", detail: "vCPU batch: \(vm.vcpus.count) vCPUs, expected \(batch + 2)")
+        }
+        // The default id is the next free one.
+        vm.vcpuIDLimit = Int.max
+        let next = try vm.makeVCPU()
+        guard next.id == batch + 2 else { throw KVMError("smoke", detail: "vCPU batch: default id \(next.id)") }
+        vm.close()
+        log("vCPU batch test passed (batch \(batch))")
     }
 
     /// Stage-3 memslot test: an anonymous pool slot and two private file

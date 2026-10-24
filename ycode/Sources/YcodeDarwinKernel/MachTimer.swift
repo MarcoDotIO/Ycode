@@ -71,23 +71,29 @@ extension DarwinKernel {
     static let mkTimerCreate = -91, mkTimerDestroy = -92, mkTimerArm = -93, mkTimerCancel = -94, mkTimerArmLeeway = -95
 
     /// The mk_timer traps; nil for other numbers. Lock held.
-    func mkTimerTrap(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) -> UInt64? {
+    func mkTimerTrap(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) -> UInt64? {
+        guard n <= Self.mkTimerCreate, n >= Self.mkTimerArmLeeway else { return nil }
+        // Timer registry: event lock; the timer's port: port lock.
+        return withEvents { withPorts { mkTimerTrapLocked(n, a, &call, mem) } }
+    }
+
+    private func mkTimerTrapLocked(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) -> UInt64? {
         guard let ipc = machIPC as? MachIPC else { return nil }
         let name = UInt32(truncatingIfNeeded: a[0])
         switch n {
         case Self.mkTimerCreate:
-            call = "mk_timer_create()"
+            call.set("mk_timer_create()")
             return UInt64(ipc.mkTimerCreate())
         case Self.mkTimerDestroy:
-            call = "mk_timer_destroy(\(hx(name)))"
+            call.set("mk_timer_destroy(\(hx(name)))")
             switch ipc.mkTimer(named: name) {
             case let .failure(e): return UInt64(e.code)
             case .success: return UInt64(ipc.portDestroy(name))
             }
         case Self.mkTimerArm, Self.mkTimerArmLeeway:
             let ticks = n == Self.mkTimerArm ? a[1] : a[2]
-            call = n == Self.mkTimerArm ? "mk_timer_arm(\(hx(name)), \(hx(ticks)))"
-                : "mk_timer_arm_leeway(\(hx(name)), flags=\(hx(a[1])), \(hx(ticks)), leeway=\(hx(a[3])))"
+            call.set(n == Self.mkTimerArm ? "mk_timer_arm(\(hx(name)), \(hx(ticks)))"
+                : "mk_timer_arm_leeway(\(hx(name)), flags=\(hx(a[1])), \(hx(ticks)), leeway=\(hx(a[3])))")
             switch ipc.mkTimer(named: name) {
             case let .failure(e): return UInt64(e.code)
             case let .success(t):
@@ -103,7 +109,7 @@ extension DarwinKernel {
                 return 0
             }
         case Self.mkTimerCancel:
-            call = "mk_timer_cancel(\(hx(name)), \(hx(a[1])))"
+            call.set("mk_timer_cancel(\(hx(name)), \(hx(a[1])))")
             switch ipc.mkTimer(named: name) {
             case let .failure(e): return UInt64(e.code)
             case let .success(t):
@@ -121,6 +127,10 @@ extension DarwinKernel {
     /// Fires the due mk timers (from `fireDueTimers`). Returns the earliest
     /// remaining deadline.
     func fireDueMachTimers(now: UInt64) -> UInt64? {
+        withPorts { fireDueMachTimersLocked(now: now) }
+    }
+
+    private func fireDueMachTimersLocked(now: UInt64) -> UInt64? {
         var next: UInt64?
         for (key, t) in kevents.mkTimers {
             guard let p = t.port, p.active, let d = t.deadline else {
@@ -128,6 +138,7 @@ extension DarwinKernel {
                 continue
             }
             if d <= now {
+                if let hook = KernelTrace.timerFired { hook(pid, now &- d, 0) }
                 t.deadline = nil
                 kevents.mkTimers[key] = nil
                 (machIPC as? MachIPC)?.mkTimerExpire(t)

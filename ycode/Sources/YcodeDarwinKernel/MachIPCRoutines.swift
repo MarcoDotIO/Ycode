@@ -244,7 +244,7 @@ extension MachIPC {
         let e = entries[i]
         if let s = e.set {
             freeName(i)
-            receiveRightGoneHandler?(name)
+            hookReceiveGone(self, name)
             destroySet(s)
             return MachKern.success
         }
@@ -272,7 +272,7 @@ extension MachIPC {
         let e = entries[i]
         if let s = e.set {
             freeName(i)
-            receiveRightGoneHandler?(name)
+            hookReceiveGone(self, name)
             destroySet(s)
             return MachKern.success
         }
@@ -320,7 +320,7 @@ extension MachIPC {
             if delta == 0 { return MachKern.success }
             guard delta == -1 else { return MachKern.invalidValue }
             freeName(i)
-            receiveRightGoneHandler?(name)
+            hookReceiveGone(self, name)
             destroySet(s)
             return MachKern.success
 
@@ -451,6 +451,15 @@ extension MachIPC {
             p.strict = f & MachPortConstruct.strict != 0
         }
         if f & MachPortConstruct.immovableReceive != 0 { p.immovable = true }
+        // Importance (scheduling-policy.md §2.3, §4.3).
+        if f & MachPortConstruct.tempOwner != 0 {
+            p.tempOwner = true
+            kernel?.system.schedStats.tempOwnerPorts += 1
+        }
+        if f & (MachPortConstruct.importanceReceiver | MachPortConstruct.denapReceiver | MachPortConstruct.tempOwner) != 0 {
+            p.importanceDonation = true
+            kernel?.system.schedStats.donationPorts += 1
+        }
         return (MachKern.success, name)
     }
 
@@ -604,7 +613,8 @@ extension MachIPC {
     /// `mach_port_set_attributes` (xnu order: count, value, name, right).
     /// 1 LIMITS_INFO sets the queue limit; 3 DNREQUESTS_SIZE, 4 TEMPOWNER,
     /// 5 IMPORTANCE_RECEIVER, and 6 DENAP_RECEIVER are accepted for a receive
-    /// right (no effect in Ycode; 4–6 refuse special reply ports); 9
+    /// right (they set the port's importance flags, scheduling-policy.md
+    /// §4.3; 4–6 refuse special reply ports); 9
     /// SERVICE_THROTTLED needs a service port (`KERN_INVALID_CAPABILITY`);
     /// any other flavor is `KERN_INVALID_ARGUMENT`.
     func portSetAttributes(_ name: UInt32, flavor: UInt32, info: [UInt32]) -> UInt32 {
@@ -627,7 +637,16 @@ extension MachIPC {
             p.sendWaiters.wakeAll()
             return MachKern.success
         case 4, 5, 6:
-            return p.isKernelObject || p.isSpecialReply ? MachKern.invalidArgument : MachKern.success
+            if p.isKernelObject || p.isSpecialReply { return MachKern.invalidArgument }
+            // TEMPOWNER; IMPORTANCE_RECEIVER and DENAP_RECEIVER (scheduling-policy.md §4.3).
+            // TEMPOWNER also makes the port accept importance (xnu mach_port.c).
+            if flavor == 4 {
+                if !p.tempOwner { kernel?.system.schedStats.tempOwnerPorts += 1 }
+                p.tempOwner = true
+            }
+            if !p.importanceDonation { kernel?.system.schedStats.donationPorts += 1 }
+            p.importanceDonation = true
+            return MachKern.success
         case 9:
             return MachKern.invalidCapability
         default:
@@ -785,7 +804,7 @@ extension MachIPC {
         s.members.append(p)
         if !p.messages.isEmpty {
             s.waiters.wakeAll()
-            messageQueuedHandler?(s.name)
+            hookQueued(self, s.name)
         }
     }
 }

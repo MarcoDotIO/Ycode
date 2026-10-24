@@ -40,6 +40,16 @@ public final class NullBackend: MetalBackend, @unchecked Sendable {
     /// The value `getBytes` fills the guest region with.
     public var readBackFill: UInt8 = 0
     public var limitsValue = MetalLimits.macOSHost
+    /// Called by `shutdown()` (ordering tests).
+    public var onShutdown: (@Sendable () -> Void)?
+    private var _shutdownCount = 0
+    /// How many times `shutdown()` was called.
+    public var shutdownCount: Int { lock.withLock { _shutdownCount } }
+
+    public func shutdown() {
+        lock.withLock { _shutdownCount += 1 }
+        onShutdown?()
+    }
 
     public init(completesImmediately: Bool = true) { self.completesImmediately = completesImmediately }
 

@@ -167,13 +167,26 @@ public final class MachHostTask: @unchecked Sendable {
     public let bootstrapPort: UInt32
 
     init(lock: KernelLock, system: MachIPCSystem, log: @escaping (String) -> Void) {
-        self.lock = lock
+        // The lock split: the host task's state is Mach state (the port lock).
+        self.lock = system.portLock ?? lock
         self.system = system
         ipc = MachIPC(lock: lock, log: log, pid: 0, uid: 0, gid: 0, system: system)
         let (kr, name) = ipc.portAllocate(right: MachPortRight.receive)
         precondition(kr == 0)
         bootstrapPort = name
         system.hostBootstrapObject = ipc.entries[Int(name >> 8)].port
+    }
+
+    /// Diagnostics (snapshot restore, snapshot.md §9): the state of the port
+    /// that a host-task name denotes.
+    public func debugPortState(_ name: UInt32) -> String {
+        lock.withLock {
+            let i = Int(name >> 8)
+            guard i < ipc.entries.count, ipc.entries[i].inUse, let p = ipc.entries[i].port else { return "no port" }
+            return "active \(p.active), receiver pid \(p.receiver?.pid ?? -1), \(p.messages.count) queued, "
+                + "\(p.waitingReceivers) receivers waiting, sets \(p.sets.map { "\($0.name):\($0.waitingReceivers)w" }), "
+                + "srights \(p.srights), seqno \(p.seqno)"
+        }
     }
 
     // MARK: Identity
@@ -336,12 +349,29 @@ public final class MachHostTask: @unchecked Sendable {
     /// Throws `MachHostError` (`.timedOut`, `.portChanged` when the port is
     /// destroyed or moved while waiting, `.interrupted`, `.invalidName`).
     public func receive(on name: UInt32, timeout: UInt64? = nil) throws -> MachHostReceivedMessage {
-        let result = lock.withLock { ipc.hostReceive(name, timeout: timeout) }
-        switch result {
-        case let .success(m): return m
-        case let .failure(e): throw MachHostError(e.code)
-        }
+        try receive(on: name, timeout: timeout, tracked: false)
     }
+
+    /// `receive`, and with `tracked` the message counts as *in hand* from
+    /// the moment it leaves the queue (under the kernel lock) until the
+    /// service calls `finishedMessage()`. A snapshot (snapshot.md §3.1 step
+    /// 3) waits until no host service holds a message in hand, so no
+    /// request is captured half served.
+    public func receive(on name: UInt32, timeout: UInt64?, tracked: Bool) throws -> MachHostReceivedMessage {
+        let result = lock.withLock { () -> Result<MachHostReceivedMessage, MachHostError> in
+            let r = ipc.hostReceive(name, timeout: timeout)
+            if tracked, case .success = r { inHand += 1 }
+            return r.mapError { MachHostError($0.code) }
+        }
+        return try result.get()
+    }
+
+    /// Ends one `tracked` message (see `receive(on:timeout:tracked:)`).
+    public func finishedMessage() { lock.withLock { inHand = max(0, inHand - 1) } }
+
+    /// Snapshots: tracked messages received and not finished. Kernel lock held.
+    public var messagesInHandLocked: Int { inHand }
+    private var inHand = 0
 
     /// Replies to `request` on its reply right (MOVE_SEND_ONCE or MOVE_SEND
     /// as received). `id` defaults to the request id + 100 (MIG). Throws

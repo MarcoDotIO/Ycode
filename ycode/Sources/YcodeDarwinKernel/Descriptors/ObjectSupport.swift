@@ -132,7 +132,7 @@ struct ByteQueue {
 /// Inode numbers for pipes and sockets (`fstat` `st_ino`): unique per object
 /// while the VMM runs.
 enum DescriptorInodes {
-    private static let mutex = NSLock()
+    private static let mutex = RecursiveMutex(name: "descriptor inodes")
     nonisolated(unsafe) private static var next: UInt64 = 0x7964_0000_0000_0001
 
     static func make() -> UInt64 {

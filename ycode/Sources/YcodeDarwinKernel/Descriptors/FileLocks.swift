@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import YcodeDarwinABI
 
 // Advisory file locks and data-protection classes (stage 6).
@@ -63,8 +64,14 @@ final class FileLockTable {
     /// POSIX owners blocked in F_SETLKW: pid → the owner they wait for
     /// (xnu's deadlock detection follows this chain).
     var blockedOn: [Int32: Owner] = [:]
-    /// Data-protection classes set on files and directories.
-    var protectionClasses: [FileIdentity: Int32] = [:]
+    /// Data-protection classes set on files and directories. Written under
+    /// L0; read also without it (getattrlist's fast path,
+    /// `bsd-locking.md` §4.4), hence its own leaf lock.
+    var protectionClasses: [FileIdentity: Int32] {
+        get { classStorage.withLock { $0 } }
+        set { classStorage.withLock { $0 = newValue } }
+    }
+    private let classStorage = Mutex<[FileIdentity: Int32]>([:])
 
     func state(_ id: FileIdentity) -> FileState {
         if let s = files[id] { return s }
@@ -141,12 +148,15 @@ final class FileLockTable {
 }
 
 extension DarwinSystem {
-    /// The device-wide lock and protection-class table (made on first use).
+    /// The device-wide lock and protection-class table (made on first use;
+    /// the creation has its own lock, as a fast path may be first).
     var fileLocks: FileLockTable {
-        if let t = fileLockStorage { return t }
-        let t = FileLockTable()
-        fileLockStorage = t
-        return t
+        fileLockCreation.withLock { _ in
+            if let t = fileLockStorage { return t }
+            let t = FileLockTable()
+            fileLockStorage = t
+            return t
+        }
     }
 }
 
@@ -190,9 +200,14 @@ extension DarwinKernel {
     /// forms. `arg` points at a `struct flock` (l_start @0, l_len @8,
     /// l_pid @16, l_type @20 (short), l_whence @22 (short); 24 bytes), or a
     /// `struct flocktimeout` (the flock, then a timespec @24).
-    func fileLockFcntl(_ fd: Int32, _ cmd: Int32, _ arg: UInt64, _ call: inout String,
+    func fileLockFcntl(_ fd: Int32, _ cmd: Int32, _ arg: UInt64, _ call: inout CallText,
                        _ mem: any KernelGuestMemory) throws -> UInt64 {
-        call = "fcntl(fd=\(fd), \(FileLockControl.names[cmd] ?? "cmd \(cmd)"), arg=\(hx(arg)))"
+        call.set("fcntl(fd=\(fd), \(FileLockControl.names[cmd] ?? "cmd \(cmd)"), arg=\(hx(arg)))")
+        // Before the descriptor is looked up (bsd-locking.md §4.2).
+        if cmd < FileLockControl.ofdSetlk, cmd != FileLockControl.getlk {
+            let pid = self.pid
+            system.posixLockUsers.withLock { _ = $0.insert(pid) }
+        }
         let (open, file) = try lockableFile(fd)
         let raw = try mem.read(va: arg, count: 24)
         let lStart = raw.readLE(Int64.self, at: 0), lLen = raw.readLE(Int64.self, at: 8)
@@ -278,7 +293,7 @@ extension DarwinKernel {
     /// ETIMEDOUT at `deadline`, EINTR when interrupted.
     private func acquire(_ table: FileLockTable, _ id: FileIdentity, owner: FileLockTable.Owner, kind: FileLockTable.Kind,
                          exclusive: Bool?, start: Int64, end: Int64, wait: Bool, deadline: UInt64?,
-                         call: inout String) throws {
+                         call: inout CallText) throws {
         if let exclusive {
             while let b = table.blocker(id, owner: owner, exclusive: exclusive, start: start, end: end) {
                 guard wait else { throw fail(Code.EAGAIN) }
@@ -301,8 +316,8 @@ extension DarwinKernel {
     }
 
     /// flock(2) (BSD 131): a whole-file lock owned by the open description.
-    func flockCall(_ fd: Int32, _ operation: Int32, _ call: inout String) throws -> UInt64 {
-        call = "flock(\(fd), \(hx(UInt32(bitPattern: operation))))"
+    func flockCall(_ fd: Int32, _ operation: Int32, _ call: inout CallText) throws -> UInt64 {
+        call.set("flock(\(fd), \(hx(UInt32(bitPattern: operation))))")
         // xnu fp_getfvp: not a vnode → ENOTSUP.
         let (open, file) = try lockableFile(fd, notFile: Code.ENOTSUP)
         let owner = FileLockTable.Owner.description(ObjectIdentifier(open))
@@ -388,7 +403,7 @@ extension DarwinKernel {
 
     /// fcntl F_GETPROTECTIONCLASS (63), F_SETPROTECTIONCLASS (64),
     /// F_GETPROTECTIONLEVEL (77). Not a file → EBADF.
-    func protectionFcntl(_ fd: Int32, _ cmd: Int32, _ arg: UInt64, _ call: inout String) throws -> UInt64 {
+    func protectionFcntl(_ fd: Int32, _ cmd: Int32, _ arg: UInt64, _ call: inout CallText) throws -> UInt64 {
         let (_, file) = try lockableFile(fd)
         switch cmd {
         case 63:
@@ -430,8 +445,8 @@ extension DarwinKernel {
     /// writes reach the host file before the call returns; durability
     /// against a host crash is not promised); another descriptor is ENOTSUP
     /// (xnu fp_getfvp), a closed one EBADF.
-    func syncCall(_ n: Int, _ fd: Int32, _ call: inout String) throws -> UInt64 {
-        call = "\(n == 95 ? "fsync" : "fdatasync")(\(fd))"
+    func syncCall(_ n: Int, _ fd: Int32, _ call: inout CallText) throws -> UInt64 {
+        call.set("\(n == 95 ? "fsync" : "fdatasync")(\(fd))")
         _ = try lockableFile(fd, notFile: Code.ENOTSUP)
         return 0
     }

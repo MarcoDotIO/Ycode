@@ -1,6 +1,7 @@
 /*
  * mig.c - Mach routines of libsystem_kernel that are MIG RPCs with no trap:
- * mach_port_set_attributes (to the task port) and host_get_special_port.
+ * mach_port_get_refs, mach_port_set_mscount, mach_port_set_attributes and
+ * mach_port_extract_right (to the task port), and host_get_special_port.
  *
  * Clean-room Ycode code. Facts used:
  *  - mach-ipc.md section 5 (MIG wire conventions: request/reply IDs, the
@@ -91,6 +92,112 @@ static int mig_simple_rpc(void *msg, yc_u32 send_size, yc_u32 rcv_size, yc_port_
         return YC_MIG_TYPE_ERROR;
     }
     return r->ret_code;
+}
+
+/* One RPC whose success reply carries one 32-bit out argument after the
+ * RetCode (40 bytes); a failure is a mig_reply_error_t (36 bytes) with a
+ * non-zero RetCode (mach-ipc.md section 5.1). */
+static int mig_out32_rpc(void *msg, yc_u32 send_size, yc_u32 rcv_size, yc_port_t server, int id, yc_u32 *out)
+{
+    struct yc_mig_header *h = msg;
+    yc_port_t reply_port = mig_get_reply_port();
+    h->bits = YC_MACH_MSG_TYPE_COPY_SEND | (YC_MACH_MSG_TYPE_MAKE_SEND_ONCE << 8);
+    h->size = send_size;
+    h->remote = server;
+    h->local = reply_port;
+    h->voucher = YC_MACH_PORT_NULL;
+    h->id = id;
+    int kr = mach_msg(h, YC_MACH_SEND_MSG | YC_MACH_RCV_MSG, send_size, rcv_size, reply_port, 0,
+                      YC_MACH_PORT_NULL);
+    if (kr != YC_KERN_SUCCESS) {
+        if (kr != YC_MACH_SEND_INVALID_DATA && kr != YC_MACH_SEND_INVALID_DEST && kr != YC_MACH_SEND_INVALID_HEADER)
+            mig_dealloc_reply_port(reply_port);
+        return kr;
+    }
+    const struct yc_mig_reply *r = msg;
+    if (r->h.id != id + 100) {
+        int err = (r->h.id == YC_MACH_NOTIFY_SEND_ONCE) ? YC_MIG_SERVER_DIED : YC_MIG_REPLY_MISMATCH;
+        mach_msg_destroy(msg);
+        return err;
+    }
+    if (r->h.bits & YC_MACH_MSGH_BITS_COMPLEX) {
+        mach_msg_destroy(msg);
+        return YC_MIG_TYPE_ERROR;
+    }
+    if (r->h.size == 36 && r->ret_code != YC_KERN_SUCCESS)
+        return r->ret_code;
+    if (r->h.size != 40 || r->ret_code != YC_KERN_SUCCESS)
+        return YC_MIG_TYPE_ERROR;
+    const yc_u8 *b = (const yc_u8 *)msg + 36;
+    *out = (yc_u32)b[0] | ((yc_u32)b[1] << 8) | ((yc_u32)b[2] << 16) | ((yc_u32)b[3] << 24);
+    return YC_KERN_SUCCESS;
+}
+
+/* kern_return_t mach_port_get_refs(ipc_space_t task, mach_port_name_t name,
+ *     mach_port_right_t right, mach_port_urefs_t *refs)
+ * MIG 3207 on the task port (xnu osfmk/mach/mach_port.defs; level 1):
+ * request NDR, name, right (40 bytes); reply RetCode and refs (40 bytes).
+ * The VMM's task-port server answers it (MachIPCKernelServer). WebKit's
+ * JavaScriptCore checks a send right's count with it at start and stops
+ * the process when the call fails (app-launch.md section 3.1). */
+#define YC_MACH_PORT_GET_REFS_ID 3207
+
+YC_EXPORT int mach_port_get_refs(yc_port_t task, yc_port_t name, yc_u32 right, yc_u32 *refs)
+{
+    union {
+        struct {
+            struct yc_mig_header h;
+            yc_u8 ndr[8];
+            yc_port_t name;
+            yc_u32 right;
+        } req;
+        struct yc_mig_reply reply;
+    } m;
+    for (int i = 0; i < 8; i++)
+        m.req.ndr[i] = yc_ndr[i];
+    m.req.name = name;
+    m.req.right = right;
+    yc_u32 value = 0;
+    int kr = mig_out32_rpc(&m, 40, (yc_u32)sizeof m, task, YC_MACH_PORT_GET_REFS_ID, &value);
+    if (kr == YC_KERN_SUCCESS)
+        *refs = value;
+    return kr;
+}
+
+/* The MIG-routine name of the same call. */
+YC_EXPORT int _kernelrpc_mach_port_get_refs(yc_port_t task, yc_port_t name, yc_u32 right, yc_u32 *refs)
+{
+    return mach_port_get_refs(task, name, right, refs);
+}
+
+/* kern_return_t mach_port_set_mscount(ipc_space_t task, mach_port_name_t name,
+ *     mach_port_mscount_t mscount)
+ * MIG 3210 on the task port: request NDR, name, mscount (40 bytes); a
+ * simple reply. Served by the VMM's task-port server. */
+#define YC_MACH_PORT_SET_MSCOUNT_ID 3210
+
+YC_EXPORT int mach_port_set_mscount(yc_port_t task, yc_port_t name, yc_u32 mscount)
+{
+    union {
+        struct {
+            struct yc_mig_header h;
+            yc_u8 ndr[8];
+            yc_port_t name;
+            yc_u32 mscount;
+        } req;
+        struct yc_mig_reply reply;
+    } m;
+    for (int i = 0; i < 8; i++)
+        m.req.ndr[i] = yc_ndr[i];
+    m.req.name = name;
+    m.req.mscount = mscount;
+    return mig_simple_rpc(&m, 40, (yc_u32)sizeof m, task, YC_MACH_PORT_SET_MSCOUNT_ID);
+}
+
+/* The MIG-routine name of the same call. */
+YC_EXPORT int _kernelrpc_mach_port_set_mscount(yc_port_t task, yc_port_t name, yc_u32 mscount)
+{
+    return mach_port_set_mscount(task, name, mscount);
 }
 
 /* kern_return_t mach_port_set_attributes(ipc_space_t task,

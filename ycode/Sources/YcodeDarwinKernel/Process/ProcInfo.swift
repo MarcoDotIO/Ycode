@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import YcodeDarwinABI
 
 // `proc_info` (BSD 336) for stage 4b: `specs/simulator/processes.md` §2.11
@@ -27,11 +28,11 @@ extension DarwinKernel {
 
     static let EOVERFLOW: Int32 = 84
 
-    func procInfo(_ me: DarwinProcess, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    func procInfo(_ me: DarwinProcess, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let callnum = Int32(truncatingIfNeeded: a[0]), target = Int32(truncatingIfNeeded: a[1])
         let flavor = Int32(truncatingIfNeeded: a[2]), arg = a[3], buffer = a[4]
         let size = Int32(truncatingIfNeeded: a[5])
-        call = "proc_info(callnum=\(callnum), pid=\(target), flavor=\(flavor), arg=\(hx(arg)), buffer=\(hx(buffer)), buffersize=\(size))"
+        call.set("proc_info(callnum=\(callnum), pid=\(target), flavor=\(flavor), arg=\(hx(arg)), buffer=\(hx(buffer)), buffersize=\(size))")
         switch callnum {
         case ProcInfoCall.listPIDs:
             return try listPIDs(type: target, typeInfo: flavor, buffer: buffer, size: size, mem)
@@ -58,6 +59,7 @@ extension DarwinKernel {
             // resident_size, phys_footprint, then ri_proc_start_abstime @80
             // and ri_proc_exit_abstime @88 (launchd's run time and throttle).
             var b = [UInt8](repeating: 0, count: n)
+            b.put(p.executableUUID, at: 0)
             b.putLE(p.startAbsTime, at: 80)
             b.putLE(p.exitAbsTime, at: 88)
             try mem.write(va: buffer, bytes: b)
@@ -243,6 +245,7 @@ extension DarwinKernel {
     /// `struct proc_uniqidentifierinfo` (56 bytes).
     private func uniqueIdentifierInfo(_ p: DarwinProcess) -> [UInt8] {
         var b = [UInt8](repeating: 0, count: 56)
+        b.put(p.executableUUID, at: 0)
         b.putLE(p.uniqueID, at: 16)
         b.putLE(p.parentUniqueID, at: 24)
         b.putLE(p.pidVersion, at: 32)
@@ -257,26 +260,70 @@ extension DarwinKernel {
         case 1:
             guard p.state != .zombie else { throw Failure(errno: Errno.ESRCH) }
             guard p.pid == pid || p.ppid == pid else { throw Failure(errno: Errno.EPERM) }
-            var state = p.dirtyState & DirtyState.isDirty
-            if arg & 0x1 != 0 { state |= DirtyState.tracked }
-            if arg & 0x2 != 0 { state |= DirtyState.allowIdleExit }
-            if arg & 0x8 != 0 { state |= DirtyState.launchInProgress }
-            p.dirtyState = state
-            return 0
-        case 2:
+        case 2, 4:
             guard p.state != .zombie else { throw Failure(errno: Errno.ESRCH) }
             guard canSignal(p) else { throw Failure(errno: Errno.EPERM) }
-            if arg != 0 { p.dirtyState |= DirtyState.isDirty } else { p.dirtyState &= ~DirtyState.isDirty }
-            return 0
         case 3:
-            return UInt64(p.dirtyState)
-        case 4:
-            guard p.state != .zombie else { throw Failure(errno: Errno.ESRCH) }
-            guard canSignal(p) else { throw Failure(errno: Errno.EPERM) }
-            if arg & 0x8 != 0 { p.dirtyState &= ~DirtyState.launchInProgress }
-            return 0
+            break
         default:
             throw Failure(errno: Errno.EINVAL)
         }
+        return p.dirty.control(flavor: flavor, arg: arg)
+    }
+
+    /// Diagnostics: DIRTYCONTROL calls served without L0.
+    public static let dirtyControlFast = Atomic<UInt64>(0)
+    /// On by default; `YCODE_DIRTY_FAST=0` keeps every `proc_info` call on L0.
+    nonisolated(unsafe) public static var dirtyControlFastEnabled = getenv("YCODE_DIRTY_FAST").map { String(cString: $0) != "0" } ?? true
+
+    /// `proc_info` (336) without L0: DIRTYCONTROL on the caller's own
+    /// process (a running image's process is neither a zombie nor pseudo-init,
+    /// and may always signal itself, so the locked path's checks pass). Nil
+    /// for any other call or target: the locked path.
+    func procInfoFast(_ a: [UInt64], _ call: inout CallText) -> UInt64? {
+        let callnum = Int32(truncatingIfNeeded: a[0]), target = Int32(truncatingIfNeeded: a[1])
+        let flavor = Int32(truncatingIfNeeded: a[2])
+        guard Self.dirtyControlFastEnabled, callnum == ProcInfoCall.dirtyControl, (1...4).contains(flavor), target == pid,
+              target != DarwinSystem.initPID, let dirty = processDirtyLink.withLock({ $0 }) else { return nil }
+        call.set("proc_info(callnum=\(callnum), pid=\(target), flavor=\(flavor), arg=\(hx(a[3])), buffer=\(hx(a[4])), buffersize=\(Int32(truncatingIfNeeded: a[5])))")
+        Self.dirtyControlFast.wrappingAdd(1, ordering: .relaxed)
+        return dirty.control(flavor: flavor, arg: UInt32(truncatingIfNeeded: a[3]))
+    }
+}
+
+/// A process's dirty-tracking bits (`proc_info` DIRTYCONTROL): one atomic
+/// word, changed by the locked path (L0) and by the process's own calls on
+/// the fast path, so each change is one atomic operation.
+final class ProcessDirtyState: Sendable {
+    let bits = Atomic<UInt32>(0)
+
+    /// The change of one DIRTYCONTROL call whose checks passed: 1 TRACK,
+    /// 2 SET, 3 GET (the bits), 4 CLEAR; 0 for the others.
+    func control(flavor: Int32, arg: UInt32) -> UInt64 {
+        typealias D = DarwinKernel.DirtyState
+        switch flavor {
+        case 1:
+            var add: UInt32 = 0
+            if arg & 0x1 != 0 { add |= D.tracked }
+            if arg & 0x2 != 0 { add |= D.allowIdleExit }
+            if arg & 0x8 != 0 { add |= D.launchInProgress }
+            var old = bits.load(ordering: .relaxed)
+            while true {
+                let (done, seen) = bits.compareExchange(expected: old, desired: (old & D.isDirty) | add,
+                                                        ordering: .acquiringAndReleasing)
+                if done { break }
+                old = seen
+            }
+        case 2:
+            if arg != 0 { bits.bitwiseOr(D.isDirty, ordering: .acquiringAndReleasing) }
+            else { bits.bitwiseAnd(~D.isDirty, ordering: .acquiringAndReleasing) }
+        case 3:
+            return UInt64(bits.load(ordering: .acquiring))
+        case 4:
+            if arg & 0x8 != 0 { bits.bitwiseAnd(~D.launchInProgress, ordering: .acquiringAndReleasing) }
+        default:
+            break
+        }
+        return 0
     }
 }

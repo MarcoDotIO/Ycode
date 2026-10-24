@@ -21,6 +21,9 @@ struct SpawnAttributes: Equatable {
     var subcpuprefs: [UInt32] = [UInt32.max, UInt32.max, UInt32.max, UInt32.max]
     var pcontrol: UInt32 = 0
     var apptype: UInt32 = 0
+    /// `psa_qos_clamp` and `psa_darwin_role` (`processes.md` §1.6).
+    var qosClamp: UInt64 = 0
+    var darwinRole: UInt32 = 0
 
     static let blockSize = 192
 
@@ -34,6 +37,8 @@ struct SpawnAttributes: Equatable {
         binprefs = (0..<4).map { b.readLE(UInt32.self, at: 16 + 4 * $0) }
         pcontrol = b.readLE(UInt32.self, at: 32)
         apptype = b.readLE(UInt32.self, at: 36)
+        qosClamp = b.readLE(UInt64.self, at: 80)
+        darwinRole = b.readLE(UInt32.self, at: 88)
         subcpuprefs = (0..<4).map { b.readLE(UInt32.self, at: 112 + 4 * $0) }
     }
 }
@@ -118,9 +123,9 @@ extension DarwinKernel {
 
     // MARK: posix_spawn (244)
 
-    func posixSpawn(_ me: DarwinProcess, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult {
+    func posixSpawn(_ me: DarwinProcess, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         let path = try readPath(a[1], mem)
-        call = "posix_spawn(pid=\(hx(a[0])), \"\(path)\", adesc=\(hx(a[2])), argv=\(hx(a[3])), envp=\(hx(a[4])))"
+        call.set("posix_spawn(pid=\(hx(a[0])), \"\(path)\", adesc=\(hx(a[2])), argv=\(hx(a[3])), envp=\(hx(a[4])))")
         var request = SpawnRequest(path: path, argv: [], envp: [])
         if a[2] != 0 {
             let d = try mem.read(va: a[2], count: 144)
@@ -189,9 +194,9 @@ extension DarwinKernel {
 
     // MARK: execve (59) / __mac_execve (380)
 
-    func execve(_ me: DarwinProcess, _ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult {
+    func execve(_ me: DarwinProcess, _ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         let path = try readPath(a[0], mem)
-        call = "\(n == ProcBSD.execve ? "execve" : "__mac_execve")(\"\(path)\", argv=\(hx(a[1])), envp=\(hx(a[2])))"
+        call.set("\(n == ProcBSD.execve ? "execve" : "__mac_execve")(\"\(path)\", argv=\(hx(a[1])), envp=\(hx(a[2])))")
         var budget = Self.argumentSpaceLimit - (path.utf8.count + 1)
         var request = SpawnRequest(path: path, argv: try readStringArray(a[1], budget: &budget, mem),
                                    envp: try readStringArray(a[2], budget: &budget, mem))
@@ -251,7 +256,7 @@ extension DarwinKernel {
                 marked.insert(action.fd)
             case .fileportDup2:
                 guard let ipc = machIPC as? MachIPC,
-                      let file = ipc.fileportFile(named: UInt32(bitPattern: action.fd)) else {
+                      let file = withPorts({ ipc.fileportFile(named: UInt32(bitPattern: action.fd)) }) else {
                     throw Failure(errno: Errno.EINVAL)
                 }
                 guard action.newfd >= 0, action.newfd < fs.maxDescriptors else { throw Failure(errno: Errno.EBADF) }
@@ -425,9 +430,9 @@ extension DarwinKernel {
         k.executableHostPath = hostPath
         inheritProcessState(into: k, attributes: request.attributes, isExec: isExec)
         if let mine = machIPC as? MachIPC, let theirs = k.machIPC as? MachIPC {
-            theirs.inheritTaskPorts(from: mine)
+            withPorts { theirs.inheritTaskPorts(from: mine) }
             do {
-                try theirs.applySpawnPortActions(request.portActions, from: mine)
+                try withPorts { try theirs.applySpawnPortActions(request.portActions, from: mine) }
             } catch {
                 k.discardUnlaunchedImage()
                 throw error
@@ -441,8 +446,30 @@ extension DarwinKernel {
     /// A kernel that never ran: release its ports and descriptors.
     func discardUnlaunchedImage() {
         termination = .imageReplaced
-        (machIPC as? MachIPC)?.terminateTask()
+        withPorts { (machIPC as? MachIPC)?.terminateTask() }
         fileSystem.closeAll()
+    }
+
+    /// On by default; `YCODE_SPAWN_UNLOCKED_BUILD=0` builds new images with
+    /// the kernel lock held, as before (`bsd-locking.md` §7).
+    nonisolated(unsafe) public static var unlockedImageBuild =
+        getenv("YCODE_SPAWN_UNLOCKED_BUILD").map { String(cString: $0) != "0" } ?? true
+
+    /// Builds the new image's VM (`ProcessLauncher.prepare`) with the
+    /// kernel lock released (`bsd-locking.md` §7): `kernel` is not yet
+    /// visible to any other thread. nil when the launcher has no two-step
+    /// form, the switch is off, or the caller cannot give the lock up.
+    /// When this image ended meanwhile the prepared image is discarded and
+    /// the call fails with EINTR. Kernel lock held on entry and return.
+    private func prepareUnlocked(_ launcher: any ProcessLauncher, _ request: ProcessImageRequest,
+                                 kernel: DarwinKernel) throws -> (any PreparedImage)? {
+        guard Self.unlockedImageBuild, lock.isHeldByCurrentThread else { return nil }
+        let prepared = try lock.unlocked { try launcher.prepare(request, kernel: kernel) }
+        if let prepared, isTerminating {
+            launcher.discard(prepared)
+            throw Failure(errno: 4)
+        }
+        return prepared
     }
 
     /// Ordinary spawn (`processes.md` §1.10): returns the child's pid.
@@ -453,6 +480,14 @@ extension DarwinKernel {
         }
         let childPID = try system.allocatePID()
         let (child, guestPath, hostPath) = try buildImage(request, pid: childPID, isExec: false)
+        // The image's VM, loaded executables and stack, built without L0.
+        var prepared: (any PreparedImage)?
+        do {
+            prepared = try prepareUnlocked(launcher, makeRequest(request, guestPath: guestPath, hostPath: hostPath), kernel: child)
+        } catch {
+            child.discardUnlaunchedImage()
+            throw error
+        }
         let record = DarwinProcess(pid: childPID, ppid: pid, pgid: me.pgid, sid: me.sid, uniqueID: system.makeUniqueID(),
                                    executablePath: guestPath, startTime: DarwinSystem.now())
         record.kernel = child
@@ -466,19 +501,70 @@ extension DarwinKernel {
         system.processes[childPID] = record
         me.children.append(childPID)
         func undo() {
+            if let p = prepared {
+                launcher.discard(p)
+                prepared = nil
+            }
             system.reap(record)
             child.discardUnlaunchedImage()
         }
+        // Scheduling policy (`scheduling-policy.md` §4.1, §4.2): the type,
+        // clamp and role, the watch ports, and the start hold.
+        child.applySpawnPolicy(request.attributes, record: record, isExec: false)
+        var boostSenders: [Int32] = []
+        // Messages already queued on the watch ports: a client sent to the
+        // job and is waiting for it (an on-demand start, §4.2).
+        var queuedAtSpawn = 0
+        if let ipc = child.machIPC as? MachIPC { withPorts {
+            queuedAtSpawn = ipc.pendingWatchPorts.reduce(0) { $0 + ($1.active ? $1.messages.count : 0) }
+            if SchedPolicy.importanceEnabled {
+                ipc.bindImportanceWatchPorts(ipc.pendingWatchPorts, to: record)
+                if SchedPolicy.holdTrace, record.importanceBoosts > 0 {
+                    boostSenders = ipc.pendingWatchPorts.flatMap { $0.messages.all.filter(\.importance).compactMap { $0.sender?.pid } }
+                }
+            }
+            ipc.pendingWatchPorts = []
+        } }
+        let suspended = request.attributes.flags & SpawnFlag.startSuspended != 0
+        let holdable = SchedPolicy.holdEnabled && !suspended && record.importanceBoosts == 0
+            && (record.typeCode == ProcessTypeCode.daemonAdaptive || record.typeCode == ProcessTypeCode.daemonBackground)
+        // An on-demand start is not held, with or without importance on the
+        // client's message (scheduling-policy.md §4.2, "demand").
+        let demand = holdable && SchedPolicy.holdSkipsDemand && queuedAtSpawn > 0
+        let hold = holdable && !demand
         do {
             // Step 9 (as the child itself): SETPGROUP, then SETSID.
             if request.attributes.flags & SpawnFlag.setPGroup != 0 {
                 try setpgid(caller: record, pid: 0, pgid: request.attributes.pgroup)
             }
             if request.attributes.flags & SpawnFlag.setSID != 0 { try setsid(record) }
-            record.image = try launcher.launch(makeRequest(request, guestPath: guestPath, hostPath: hostPath), kernel: child)
+            var image = makeRequest(request, guestPath: guestPath, hostPath: hostPath)
+            if hold { image.startSuspended = true }
+            if let p = prepared {
+                prepared = nil  // activate disposes of it on failure
+                record.image = try launcher.activate(p, startSuspended: image.startSuspended)
+            } else {
+                record.image = try launcher.launch(image, kernel: child)
+            }
         } catch {
             undo()
             throw error
+        }
+        let label = request.argv.count > 1 && GuestPath.lastComponent(guestPath).hasPrefix("xpcproxy")
+            ? request.argv[1] : GuestPath.lastComponent(guestPath)
+        if hold {
+            system.startHold(record, label: label)
+        } else if demand {
+            system.schedStats.demandStarts += 1
+            system.holdLog?("pid \(childPID) \(label): not held (\(ProcessTypeCode.name(record.processType)), on demand: "
+                + "\(queuedAtSpawn) messages queued at spawn)")
+        } else if SchedPolicy.holdTrace, record.isImportanceReceiver || record.typeCode == ProcessTypeCode.daemonBackground {
+            system.holdLog?("pid \(childPID) \(label): not held (\(ProcessTypeCode.name(record.processType)), "
+                + "\(record.importanceBoosts) boosts at spawn from pids \(boostSenders))")
+        }
+        if SchedPolicy.importanceEnabled || SchedPolicy.qosEnabled {
+            trace("note: sched: pid \(childPID) type \(ProcessTypeCode.name(record.processType)) clamp \(record.qosClamp) "
+                + "role \(record.darwinRole) boosts \(record.importanceBoosts)\(hold ? " held" : "")")
         }
         if request.attributes.flags & SpawnFlag.startSuspended != 0 { record.state = .stopped }
         // Step 12: NOTE_FORK to the parent's watchers.
@@ -489,7 +575,7 @@ extension DarwinKernel {
 
     /// SETEXEC spawn and execve (`processes.md` §1.3, §1.11, §4.7): the
     /// process continues as a new image under the same pid.
-    func execImage(_ me: DarwinProcess, _ request: SpawnRequest, _ call: inout String) throws -> BSDResult {
+    func execImage(_ me: DarwinProcess, _ request: SpawnRequest, _ call: inout CallText) throws -> BSDResult {
         guard let launcher = system.launcher else {
             trace("note: exec: no process launcher; ENOSYS")
             throw Failure(errno: Errno.ENOSYS)
@@ -498,7 +584,15 @@ extension DarwinKernel {
         next.pidVersion = system.makePIDVersion()
         let image: any LaunchedImage
         do {
-            image = try launcher.launch(makeRequest(request, guestPath: guestPath, hostPath: hostPath), kernel: next)
+            let imageRequest = makeRequest(request, guestPath: guestPath, hostPath: hostPath)
+            // The VM is built without L0 (the new image is not visible yet);
+            // EINTR when this image ended meanwhile (another thread's exec,
+            // exit or a fatal signal).
+            if let prepared = try prepareUnlocked(launcher, imageRequest, kernel: next) {
+                image = try launcher.activate(prepared, startSuspended: imageRequest.startSuspended)
+            } else {
+                image = try launcher.launch(imageRequest, kernel: next)
+            }
         } catch {
             next.discardUnlaunchedImage()
             throw error
@@ -509,14 +603,18 @@ extension DarwinKernel {
         me.pidVersion = next.pidVersion
         me.setImagePath(guestPath)
         me.hasExeced = true
-        me.processType = request.attributes.apptype
+        next.applySpawnPolicy(request.attributes, record: me, isExec: true)
+        if let ipc = next.machIPC as? MachIPC { withPorts {
+            if SchedPolicy.importanceEnabled { ipc.bindImportanceWatchPorts(ipc.pendingWatchPorts, to: me) }
+            ipc.pendingWatchPorts = []
+        } }
         if request.attributes.flags & SpawnFlag.startSuspended != 0 { me.state = .stopped }
         // The old image ends quietly: its other threads stop, its port
         // space dies (§4.6), its descriptor table goes (the new one shares
         // the descriptions it kept).
         endImage(.imageReplaced)
         tearDownKEvents()
-        (machIPC as? MachIPC)?.terminateTask()
+        withPorts { (machIPC as? MachIPC)?.terminateTask() }
         fileSystem.closeAll()
         do {
             if request.attributes.flags & SpawnFlag.setPGroup != 0 {

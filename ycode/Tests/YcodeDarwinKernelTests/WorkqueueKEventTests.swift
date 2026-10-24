@@ -60,7 +60,9 @@ import YcodeDarwinABI
         open(t)
         #expect(t.x0(367) == 0)  // idempotent
         #expect(t.x0(368, [0x10, 0, 0x58, 1]) == 0)  // NEWSPISUPP
-        #expect(t.x0(368, [0x30, 0, 1, UInt64(Self.legacy)]) == 45)  // REQTHREADS2
+        #expect(t.x0(368, [0x30, 0, 2, UInt64(Self.legacy)]) == 45)  // REQTHREADS2: one thread per call
+        #expect(t.x0(368, [0x30, 0, 1, 0x8000_0000 | UInt64(Self.legacy)]) == 22)  // REQTHREADS2 + overcommit
+        #expect(t.x0(368, [0x30, 0, 1, 0xFF]) == 22)  // REQTHREADS2 without QoS
         #expect(t.x0(368, [0x20, 0, 0, UInt64(Self.legacy)]) == 22)  // count 0
         #expect(t.x0(368, [0x20, 0, 1, 0xFF]) == 22)  // no QoS
         #expect(t.x0(368, [0x80, 0, UInt64(Self.legacy), 0]) == 0)  // SET_EVENT_MANAGER_PRIORITY
@@ -68,7 +70,7 @@ import YcodeDarwinABI
         #expect(t.x0(368, [0x4, 0, 0, 0]) == 22)  // THREAD_RETURN from a non-worker
         #expect(t.x0(368, [0x999, 0, 0, 0]) == 22)
         // bsdthread_ctl.
-        #expect(t.x0(478, [0x800, 4, 0, 0]) == 8)
+        #expect(t.x0(478, [0x800, 4, 0, 0]) == UInt64(GuestCPUs.count))  // QOS_MAX_PARALLELISM
         #expect(t.x0(478, [0x100, UInt64(Self.legacy), 0, 0x10]) == 22)  // KEVENT_UNBIND from a non-worker
         #expect(t.x0(478, [0x100, UInt64(Self.legacy), 0, 0x01]) == 0)
         #expect(t.x0(478, [0x10, 0, 0, 0]) == 45)
@@ -102,24 +104,66 @@ import YcodeDarwinABI
     @Test func admissionRuleAndBlockedWorkerFreesASlot() throws {
         let t = try T2Env()
         open(t)
-        #expect(t.x0(368, [0x20, 0, 20, UInt64(Self.legacy)]) == 0)
-        #expect(t.host.starts.count == 8)  // parallelism 8 per QoS
+        let p = GuestCPUs.count
+        #expect(t.x0(368, [0x20, 0, UInt64(p + 12), UInt64(Self.legacy)]) == 0)
+        #expect(t.host.starts.count == p)  // parallelism: N (the guest CPU count) per QoS
         #expect(t.x0(368, [0x20, 0, 3, 0x8000_0000 | UInt64(Self.legacy)]) == 0)
-        #expect(t.host.starts.count == 11)  // overcommit: always
-        #expect(t.host.starts[10].state.x[4] & Self.overcommit != 0)
+        #expect(t.host.starts.count == p + 3)  // overcommit: always
+        #expect(t.host.starts[p + 2].state.x[4] & Self.overcommit != 0)
         #expect(t.x0(368, [0x20, 0, 2, 0x4FF]) == 0)
-        #expect(t.host.starts.count == 13)  // another QoS bucket
+        let q = min(2, p)  // another QoS bucket: its own N
+        #expect(t.host.starts.count == p + 3 + q)
         // A constrained worker blocks in the kernel: another one starts.
         let blocker = t.host.starts[0].context
         let w = Env.scratch + 0x800
         t.put32(0, at: w)
         let wait = t.spawn { t.x0(515, [0x0100_0001, w, 0, 0], context: blocker) }
-        #expect(t.eventually { t.host.starts.count == 14 })
-        #expect(t.host.starts[13].state.x[4] & 0xFFF == 4)
+        #expect(t.eventually { t.host.starts.count == p + 4 + q })
+        #expect(t.host.starts[p + 3 + q].state.x[4] & 0xFFF == 4)
         // SHOULD_NARROW from a constrained worker: "no".
-        #expect(t.x0(368, [0x200, 0, UInt64(Self.legacy), 0], context: t.host.starts[1].context) == 0)
+        #expect(t.x0(368, [0x200, 0, UInt64(Self.legacy), 0], context: t.host.starts[p + 3 + q].context) == 0)
         t.svc(516, [0x0100_0101, w, 0])
         #expect(wait() == 0)
+    }
+
+    /// §2.5 rule 5: the cooperative pool is one thread per guest CPU (N),
+    /// plus one per QoS that has none; a blocked cooperative worker still
+    /// counts; its return takes the next cooperative request.
+    @Test func cooperativeRequestsShareThePool() throws {
+        let t = try T2Env()
+        open(t)
+        let coop: UInt64 = 0x0100_0000
+        let n = GuestCPUs.count
+        for _ in 0..<n { #expect(t.x0(368, [0x30, 0, 1, UInt64(Self.legacy)]) == 0) }
+        #expect(t.host.starts.count == n)
+        #expect(t.host.starts[0].state.x[4] == Self.newSPI | Self.prioQoS | 4 | coop | Self.tsdSet)
+        let first = t.host.starts[0].context
+        // More at the same QoS wait, even while a worker blocks.
+        #expect(t.x0(368, [0x30, 0, 1, UInt64(Self.legacy)]) == 0)
+        #expect(t.x0(368, [0x30, 0, 1, UInt64(Self.legacy)]) == 0)
+        #expect(t.host.starts.count == n)
+        let w = Env.scratch + 0x800
+        t.put32(0, at: w)
+        let wait = t.spawn { t.x0(515, [0x0100_0001, w, 0, 0], context: first) }
+        #expect(t.eventually { t.kernel.lock.withLock { first.blockedInKernel } })
+        #expect(!t.eventually(0.2) { t.host.starts.count > n })
+        t.svc(516, [0x0100_0101, w, 0])
+        #expect(wait() == 0)
+        // The return takes the next cooperative request (REUSE, cooperative).
+        let (o, f) = t.svc(368, [4, 0, 0, 0], context: first)
+        #expect(o == .resume && f.x[4] == Self.newSPI | Self.prioQoS | 4 | coop | Self.reuse)
+        #expect(t.host.starts.count == n)
+        t.kernel.lock.withLock {
+            #expect(t.kernel.workqueue.plainPending[.init(qos: 4, overcommit: false, cooperative: true)] == 1)
+        }
+        // Another QoS gets its one thread although the pool is full.
+        #expect(t.x0(368, [0x30, 0, 1, 0x4FF]) == 0)
+        #expect(t.host.starts.count == n + 1 && t.host.starts[n].state.x[4] & 0xFFF == 3)
+        // Constrained requests are not limited by the cooperative pool.
+        #expect(t.x0(368, [0x20, 0, 1, UInt64(Self.legacy)]) == 0)
+        #expect(t.host.starts.count == n + 2 && t.host.starts[n + 1].state.x[4] & coop == 0)
+        // SHOULD_NARROW is for constrained workers only.
+        #expect(t.x0(368, [0x200, 0, UInt64(Self.legacy), 0], context: first) == 22)
     }
 
     @Test func returnTakesTheNextRequestParksAndIsReused() throws {

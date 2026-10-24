@@ -98,7 +98,7 @@ final class ProcEnv: @unchecked Sendable {
         f.kind = TrapFrame.Kind.svc.rawValue
         f.x[16] = x16
         for (i, v) in args.enumerated() { f.x[i] = v }
-        let o = kernel.handle(&f, context: context ?? kernel.mainThread, memory: space(kernel))
+        let o = kernel.handleTrying(&f, context: context ?? kernel.mainThread, memory: space(kernel))
         return (o, f)
     }
 
@@ -139,7 +139,8 @@ final class ProcEnv: @unchecked Sendable {
     /// Calls `posix_spawn` in `kernel`. Returns (errno or 0, child pid).
     @discardableResult
     func spawn(from kernel: DarwinKernel, path: String? = nil, argv: [String] = ["probe", "child"],
-               flags: UInt16? = nil, pgroup: Int32 = 0, sigmask: UInt32 = 0, fileActions: [SpawnFileAction] = [])
+               flags: UInt16? = nil, pgroup: Int32 = 0, sigmask: UInt32 = 0, fileActions: [SpawnFileAction] = [],
+               apptype: UInt32 = 0)
         -> (outcome: DarwinKernel.Outcome, errno: Int32, pid: Int32) {
         putString(kernel, path ?? exe, at: At.path)
         var cursor = At.argvStrings
@@ -158,6 +159,7 @@ final class ProcEnv: @unchecked Sendable {
             attr.putLE(flags, at: 0)
             attr.putLE(sigmask, at: 8)
             attr.putLE(pgroup, at: 12)
+            attr.putLE(apptype, at: 36)
             for i in 0..<4 { attr.putLE(UInt32.max, at: 112 + 4 * i) }
             put(kernel, attr, at: At.attr)
             desc.putLE(UInt64(248), at: 0)

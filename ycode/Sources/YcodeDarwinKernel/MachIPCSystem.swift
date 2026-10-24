@@ -12,6 +12,10 @@ import YcodeDarwinABI
 /// special port until stage 4c gives it a server). Every field is used with
 /// the system's kernel lock held.
 public final class MachIPCSystem: @unchecked Sendable {
+    /// The port lock G of the lock split (`mach-ipc-locking.md` §4): every
+    /// space of this system uses it instead of the kernel lock. Nil without
+    /// the split.
+    public internal(set) var portLock: KernelLock?
     var serialCounter: UInt64 = 0
     var stampCounter: UInt64 = 0
     var spaceCounter: UInt64 = 0

@@ -138,6 +138,10 @@ public struct IOSurfaceBacking: @unchecked Sendable {
     /// The plane the texture uses, and its byte offset in `region`.
     public var plane: Int
     public var planeOffset: Int
+    /// The surface's seed (raised by every lock for writing) and whether a
+    /// lock is held now; nil when unknown. Lets the GPU back end skip
+    /// copying in a surface nothing wrote since (diagnostics-free; optional).
+    public var syncState: (@Sendable () -> (seed: UInt32, locked: Bool)?)?
 
     public init(surfaceID: UInt32, region: GuestSharedRegion, width: Int, height: Int, bytesPerRow: Int,
                 bytesPerElement: Int, pixelFormat: UInt32, plane: Int = 0, planeOffset: Int = 0) {
@@ -255,6 +259,19 @@ public protocol MetalBackend: AnyObject {
     func gpuResourceID(ofSampler handle: MetalHandle) -> UInt64?
     /// Diagnostics: a one-line summary of the backend's state (nil: none).
     func diagnosticSummary() -> String?
+    /// Snapshots (snapshot.md §8 option 2): finish every queued GPU
+    /// operation (uploads included) and wait until the device is idle.
+    func snapshotSettle()
+    /// Snapshots: the bytes of a buffer the backend owns (not guest memory),
+    /// read once the device is idle; nil when it cannot be read.
+    func bufferContents(_ handle: MetalHandle) -> [UInt8]?
+    /// Restores: writes a buffer's bytes back (true on success).
+    func setBufferContents(_ handle: MetalHandle, _ bytes: [UInt8]) -> Bool
+    /// Ends the backend before the host process exits: no thread of the
+    /// backend may still be inside the GPU driver when exit() runs the
+    /// driver's own teardown (`stage8-contract.md` §12).
+    /// Called once no request can arrive any more; idempotent.
+    func shutdown()
 }
 
 public extension MetalBackend {
@@ -266,6 +283,10 @@ public extension MetalBackend {
     func gpuResourceID(ofSampler handle: MetalHandle) -> UInt64? { nil }
     /// Diagnostics: a one-line summary of the backend's state (nil: none).
     func diagnosticSummary() -> String? { nil }
+    func snapshotSettle() {}
+    func bufferContents(_ handle: MetalHandle) -> [UInt8]? { nil }
+    func setBufferContents(_ handle: MetalHandle, _ bytes: [UInt8]) -> Bool { false }
+    func shutdown() {}
 }
 
 // CONTRACT-REQUEST (I3): IOSurfaceHostService keeps its Method-14 ports

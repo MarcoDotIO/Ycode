@@ -245,4 +245,15 @@ public final class LaunchSimControl: @unchecked Sendable {
     }
 
     public var isBound: Bool { lock.withLock { sessionPort != nil } }
+
+    /// The session port's name in the host task (nil: not bound).
+    public var boundSessionPort: UInt32? { lock.withLock { sessionPort } }
+
+    /// Snapshot restore (snapshot.md §9): the session was bound before the
+    /// snapshot and the host task's space holds its receive right under the
+    /// recorded name again; this control uses it without a new 700.
+    public func adoptSession(_ port: UInt32) {
+        lock.withLock { sessionPort = port }
+        log("control: session port 0x\(String(port, radix: 16)) adopted from the snapshot")
+    }
 }

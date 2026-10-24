@@ -100,6 +100,43 @@ the style when it loads a file (`PBXProj.FormatStyle.detect`) and uses that
 style when it saves, so that untouched projects produce no diff. New projects
 use the current style.
 
+## Project format (Compatibility)
+
+The Project Document inspector's Compatibility pop-up sets the file's
+top-level `objectVersion` and one attribute of the `PBXProject` object.
+Choices, newest first:
+
+| Compatibility choice | `objectVersion` | Attribute written on `PBXProject` |
+|---|---|---|
+| Xcode 16.0 | 77 | `preferredProjectObjectVersion = 77` (`compatibilityVersion` removed) |
+| Xcode 15.3 | 63 | `compatibilityVersion = "Xcode 15.3"` |
+| Xcode 15.0 | 60 | `compatibilityVersion = "Xcode 15.0"` |
+| Xcode 14.0 | 56 | `compatibilityVersion = "Xcode 14.0"` |
+| Xcode 13.0 | 55 | `compatibilityVersion = "Xcode 13.0"` |
+| Xcode 12.0 | 54 | `compatibilityVersion = "Xcode 12.0"` |
+| Xcode 11.4 | 53 | `compatibilityVersion = "Xcode 11.4"` |
+| Xcode 11.0 | 52 | `compatibilityVersion = "Xcode 11.0"` |
+| Xcode 10.0 | 51 | `compatibilityVersion = "Xcode 10.0"` |
+| Xcode 9.3 | 50 | `compatibilityVersion = "Xcode 9.3"` |
+| Xcode 8.0 | 48 | `compatibilityVersion = "Xcode 8.0"` |
+| Xcode 6.3 | 47 | `compatibilityVersion = "Xcode 6.3"` |
+| Xcode 3.2 | 46 | `compatibilityVersion = "Xcode 3.2"` |
+| Xcode 3.1 | 45 | `compatibilityVersion = "Xcode 3.1"` |
+
+Rules:
+
+- For the choices that write `compatibilityVersion`,
+  `preferredProjectObjectVersion` is removed. The two attributes are never
+  both present.
+- Reading: if `compatibilityVersion` names a known choice, that choice is
+  shown, even when `objectVersion` is higher (the corpus has
+  `objectVersion = 54` with `"Xcode 10.0"`). Otherwise
+  `preferredProjectObjectVersion`, then `objectVersion`, is mapped to the
+  newest choice whose objectVersion is not greater than it.
+- `objectVersion` values above 77 (for example 100 or 110) can occur with
+  `preferredProjectObjectVersion = 77`; they map to "Xcode 16.0".
+- Other keys are not changed.
+
 ## Files edited by other tools
 
 Generators and hand edits can produce files that are not in canonical order:
@@ -123,3 +160,16 @@ does on its next save.
 - The writer-generation split: level 2 (files with the same objectVersion
   but different comment styles).
 - No binary analysis was used.
+- Compatibility table: level 1 and level 2.
+  - Public open source: CocoaPods Xcodeproj (MIT),
+    `lib/xcodeproj/constants.rb`, `COMPATIBILITY_VERSION_BY_OBJECT_VERSION`
+    gives the same objectVersion for every choice in the table (it also lists
+    70, 71 and 100 for newer releases, which are not pop-up choices here).
+  - Corpus (level 2, 40 real projects on the local disk, outside temp and
+    build directories), counts of `objectVersion` / `compatibilityVersion` /
+    `preferredProjectObjectVersion`: 77 / none / 77: 21; 110 / none / 77: 1;
+    56 / "Xcode 14.0": 1; 55 / "Xcode 13.0": 1; 54 / "Xcode 10.0": 2;
+    46 / "Xcode 3.2": 8; 45 / "Xcode 3.1": 6. A wider scan that included
+    temporary test outputs also had 63 / "Xcode 15.3": 2, 60 / "Xcode 15.0": 3,
+    50 / "Xcode 9.3": 3. No file at objectVersion 77 or higher had a
+    `compatibilityVersion` written by Xcode, and no file had both attributes.

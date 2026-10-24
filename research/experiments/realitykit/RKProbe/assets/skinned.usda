@@ -1,0 +1,55 @@
+#usda 1.0
+(
+    defaultPrim = "Root"
+    metersPerUnit = 1
+    upAxis = "Y"
+    startTimeCode = 0
+    endTimeCode = 24
+    timeCodesPerSecond = 24
+)
+
+def SkelRoot "Root"
+{
+    def Skeleton "Skel" (
+        prepend apiSchemas = ["SkelBindingAPI"]
+    )
+    {
+        uniform token[] joints = ["base", "base/tip"]
+        uniform matrix4d[] bindTransforms = [((1,0,0,0),(0,1,0,0),(0,0,1,0),(0,0,0,1)), ((1,0,0,0),(0,1,0,0),(0,0,1,0),(0,0.1,0,1))]
+        uniform matrix4d[] restTransforms = [((1,0,0,0),(0,1,0,0),(0,0,1,0),(0,0,0,1)), ((1,0,0,0),(0,1,0,0),(0,0,1,0),(0,0.1,0,1))]
+        rel skel:animationSource = </Root/Skel/Bend>
+
+        def SkelAnimation "Bend"
+        {
+            uniform token[] joints = ["base", "base/tip"]
+            float3[] translations = [(0, 0, 0), (0, 0.1, 0)]
+            half3[] scales = [(1, 1, 1), (1, 1, 1)]
+            quatf[] rotations.timeSamples = {
+                0: [(1, 0, 0, 0), (1, 0, 0, 0)],
+                12: [(1, 0, 0, 0), (0.9239, 0, 0, 0.3827)],
+                24: [(1, 0, 0, 0), (1, 0, 0, 0)],
+            }
+        }
+    }
+
+    def Mesh "Bar" (
+        prepend apiSchemas = ["SkelBindingAPI"]
+    )
+    {
+        float3[] extent = [(-0.02, 0, -0.02), (0.02, 0.2, 0.02)]
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7, 4,5,9,8, 5,6,10,9, 6,7,11,10, 7,4,8,11, 3,2,1,0, 8,9,10,11]
+        point3f[] points = [(-0.02,0,0.02),(0.02,0,0.02),(0.02,0,-0.02),(-0.02,0,-0.02),(-0.02,0.1,0.02),(0.02,0.1,0.02),(0.02,0.1,-0.02),(-0.02,0.1,-0.02),(-0.02,0.2,0.02),(0.02,0.2,0.02),(0.02,0.2,-0.02),(-0.02,0.2,-0.02)]
+        int[] primvars:skel:jointIndices = [0,0,0,0,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1] (
+            elementSize = 2
+            interpolation = "vertex"
+        )
+        float[] primvars:skel:jointWeights = [1,0,1,0,1,0,1,0,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,1,0,1,0,1,0,1,0] (
+            elementSize = 2
+            interpolation = "vertex"
+        )
+        matrix4d primvars:skel:geomBindTransform = ((1,0,0,0),(0,1,0,0),(0,0,1,0),(0,0,0,1))
+        rel skel:skeleton = </Root/Skel>
+        uniform token subdivisionScheme = "none"
+    }
+}

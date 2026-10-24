@@ -7,7 +7,9 @@
 >   notice.
 > - **The simulator.** The iOS simulator boots on Linux, but it is slow,
 >   headless (no live display or input yet) and crash-prone.
-> - **The IDE.** There is no IDE user interface yet.
+> - **The IDE.** A macOS IDE (`Ycode.app`) exists and covers many Xcode
+>   workflows, but it is incomplete, rough in places, and tested mostly
+>   through automated offscreen tests rather than daily use.
 >
 > Expect breakage. Read the [status](#status) section before you try anything.
 
@@ -32,7 +34,12 @@ system calls and Mach traps, and Metal rendering is translated to Vulkan.
 | Workspaces and schemes (`.xcworkspace`, `.xcscheme`) | Reads and writes. Byte-identical round trips on our corpus. |
 | Build-setting resolution (xcconfig, defaults, conditions) | Matches `xcodebuild -showBuildSettings` on our corpus: 8,788 of 8,788 settings across 27 projects. |
 | Mach-O and dyld shared-cache reading | Basic support (`ycode macho`, `ycode dsc`). |
-| Building, editing, debugging, IDE user interface | **Not started.** The plan is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). |
+| Building (`YcodeBuild`, `ycodebuild`) | **Experimental.** A PIF generator drives swift-build for projects, workspaces and packages; `ycodebuild` is an `xcodebuild`-compatible command line (build, test, archive, export, settings queries) checked against the reference tool on our corpus. Swift package dependencies resolve through git and SwiftPM. |
+| IDE shell (`YcodeUI`, `Ycode.app`, macOS) | **Experimental.** Workspace window with nine navigators, editor tabs and splits, assistant/counterparts, inspectors, Open Quickly, the scheme editor, the project editor (build settings with levels, phases, signing and capabilities, package dependencies), templates, a Library, Settings panes with themes and key bindings. |
+| Editors | **Experimental.** TextKit 2 source editor (incremental highlighting, folding, find/replace, placeholders, minimap); property-list, asset-catalog and String Catalog editors; Interface Builder documents (outline, canvas, inspectors, byte-minimal editing of frames, attributes, objects and constraints); SwiftUI previews rendered offscreen for packages and project targets. |
+| Language features (`YcodeLanguage`) | **Experimental.** sourcekit-lsp: completion, Quick Help, jump to definition, live issues with fix-its, rename, references, call hierarchy, code actions. |
+| Debugging (`YcodeDebug`) | **Experimental.** lldb-dap: breakpoints (conditions, actions, symbolic, exception), stepping, variables with editing and watch expressions, watchpoints, console input, threads by queue, attach, disassembly. |
+| Testing, source control, distribution | **Experimental.** Test navigator and results; git status, commit and comparison; Organizer archives with Copy App export; read-only Devices and Simulators lists. |
 | iOS simulator on arm64 Linux | **Extremely experimental.** See below. |
 
 ### The iOS simulator on Linux: what works and what doesn't
@@ -80,6 +87,8 @@ Design and progress: [docs/SIMULATOR.md](docs/SIMULATOR.md) and
 |---|---|
 | `ycode/` | The Swift package: the implementation (clean room). |
 | `ycode/Sources/Ycode{Plist,Project,Workspace,Settings,MachO}` | Project model, file formats, build settings, Mach-O. |
+| `ycode/Sources/Ycode{Build,Language,Debug,UI,App}` | IDE: build engines and PIF, LSP client, DAP client, the AppKit IDE, the app. |
+| `ycode/Sources/{YcodeXcodebuild,ycodebuild-cli}`, `ycode/Tools/ycode-swb` | `ycodebuild`, the xcodebuild-compatible tool, and the swift-build helper. |
 | `ycode/Sources/Ycode{DarwinABI,DarwinKernel,Hypervisor,XPC,HostServices}` | Simulator: Darwin kernel personality, KVM, XPC, host services. |
 | `ycode/Sources/Ycode{MetalHost,Vulkan}`, `ycode/Translator/` | Simulator: the Metal host service, the Vulkan back end, the AIR → SPIR-V translator. |
 | `ycode/SimShim/`, `ycode/SimHostLibs/`, `ycode/SimGuestFrameworks/` | Simulator: the guest EL1 shim, our replacement host libraries, our headless framebuffer framework. |

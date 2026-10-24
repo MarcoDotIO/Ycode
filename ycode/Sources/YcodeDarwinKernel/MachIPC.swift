@@ -26,6 +26,15 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     public let lock: KernelLock
     /// Receives one line per trap.
     public var log: (String) -> Void
+    /// Whether trace lines are built. A space attached to a kernel follows the
+    /// kernel's `tracing`; one without a kernel always traces (as before).
+    var tracesCalls: Bool {
+        (kernel.map { traceTextWanted($0.tracing) } ?? true) && !lock.callerIsFast
+    }
+    /// One trace line, built only when `tracesCalls`.
+    @inline(__always) func trace(_ line: @autoclosure () -> String) {
+        if tracesCalls { log(line()) }
+    }
     /// EVFILT_MACHPORT: called (lock held) whenever a message is queued on a
     /// receive right in the space: once with the port's name and once with
     /// the name of each port set that contains it.
@@ -62,6 +71,9 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     public internal(set) weak var kernel: DarwinKernel?
     /// This space's identity for per-space keys.
     let spaceID: UInt64
+    /// The ports of a spawn's IMP_WATCHPORTS actions, until the process
+    /// layer binds them to the new process (`scheduling-policy.md` §4.2).
+    var pendingWatchPorts: [IPCPort] = []
     /// True once `terminateTask()` ran: the task's kernel ports are dead.
     public internal(set) var isTerminated = false
     /// The system clock (uptime since VM start) and the calendar clock, for
@@ -118,7 +130,8 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
                 gid: UInt32 = DarwinFileSystem.guestGID, system: MachIPCSystem? = nil) {
         let system = system ?? MachIPCSystem()
         self.system = system
-        self.lock = lock
+        // The lock split: every space of the system is guarded by its port lock.
+        self.lock = system.portLock ?? lock
         self.log = log
         self.pid = pid
         self.uid = uid
@@ -222,7 +235,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     /// request when the queue is full.
     func armSendPossible(_ p: IPCPort, name: UInt32) {
         guard p.active, !p.isKernelObject, p.spRequests[dn(name)] == false,
-              p.messages.count >= p.qlimit else { return }
+              p.occupiedSlots >= p.qlimit else { return }
         p.spRequests[dn(name)] = true
     }
 
@@ -381,7 +394,39 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         if entries[i].bits & MachPortType.send == 0 {
             freeName(i)
         }
-        receiveRightGoneHandler?(name)
+        hookReceiveGone(self, name)
+    }
+
+    /// Runs `space`'s EVFILT_MACHPORT hook for `name` (a message was queued,
+    /// or the receive right or set left): at once under L0; on a fast path
+    /// (`mach-ipc-locking.md` §4.5) once this thread holds no lock, under the
+    /// receiving image's event lock.
+    @inline(__always) func hookQueued(_ space: MachIPC, _ name: UInt32) {
+        guard let handler = space.messageQueuedHandler else { return }
+        runHook(space, handler, name)
+    }
+
+    @inline(__always) func hookReceiveGone(_ space: MachIPC, _ name: UInt32) {
+        guard let handler = space.receiveRightGoneHandler else { return }
+        runHook(space, handler, name)
+    }
+
+    private func runHook(_ space: MachIPC, _ handler: @escaping (UInt32) -> Void, _ name: UInt32) {
+        // The hook is the receiving image's event-lock state; this thread
+        // holds the port lock, which comes after it in the order.
+        if let events = space.kernel?.eventLock {
+            lock.deferIfFast(.fineLock(events)) { handler(name) }
+        } else {
+            handler(name)
+        }
+    }
+
+    /// Releases a dying port's payload (a semaphore wakes L0 waiters; a
+    /// fileport's file or a memory entry may close host objects): under L0
+    /// at once, or, on a fast path, once this thread holds no lock.
+    func releasePayload(_ release: @escaping () -> Void) {
+        guard let l0 = lock.root else { release(); return }
+        lock.deferIfFast(.kernelLock(l0), release)
     }
 
     // MARK: Rights
@@ -542,6 +587,11 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         p.changeStamp = nextStamp()
         removeFromAllSets(p)
         let queued = p.messages.removeAll()
+        if p.importanceCount > 0 {
+            p.creditedProcess?.changeImportance(-p.importanceCount)
+            p.importanceCount = 0
+            p.creditedProcess = nil
+        }
         for m in queued { destroyMessage(m) }
         p.receiveWaiters.wakeAll()
         p.sendWaiters.wakeAll()
@@ -557,10 +607,16 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         p.spRequests = [:]
         if let s = p.semaphore {
             p.semaphore = nil
-            s.destroy()
+            releasePayload { s.destroy() }
         }
-        p.fileportFile = nil
-        p.memoryEntry = nil
+        if p.fileportFile != nil || p.memoryEntry != nil {
+            // The last references go where the payload is released.
+            var payload: (DarwinOpenFile?, MachMemoryEntry?) = (p.fileportFile, p.memoryEntry)
+            p.fileportFile = nil
+            p.memoryEntry = nil
+            releasePayload { payload = (nil, nil) }
+            _ = payload
+        }
         p.mkTimer?.deadline = nil
         p.mkTimer = nil
     }
@@ -613,27 +669,44 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
 
     /// Appends a message to a live port's queue and wakes its receivers.
     func enqueue(_ m: KMessage, on p: IPCPort) {
+        if MachTrafficStats.enabled { MachTrafficStats.count(from: self, to: p, id: m.id, inline: m.inline) }
         for r in m.receiveRights { r.transitHolder = p }
         if p.messages.isEmpty { p.readyStamp = nextStamp() }
         p.messages.append(m)
+        if m.importance { importanceQueued(on: p) }
         p.receiveWaiters.wakeAll()
         for s in p.sets { s.waiters.wakeAll() }
         // The hooks of the space that holds the receive right.
-        if let space = p.receiver, let handler = space.messageQueuedHandler,
+        if let space = p.receiver, space.messageQueuedHandler != nil,
            let name = space.reverse[ObjectIdentifier(p)] {
-            handler(name)
-            for s in p.sets where s.active { handler(s.name) }
+            hookQueued(space, name)
+            for s in p.sets where s.active { hookQueued(space, s.name) }
         }
     }
+
+    /// `YCODE_PORT_SLOT_HANDOFF` (default on; `=0` off): a dequeue from a
+    /// full queue wakes one blocked sender and gives it the freed slot
+    /// (`mach-ipc.md` §2.9) instead of waking every blocked sender.
+    nonisolated(unsafe) static var slotHandoff = getenv("YCODE_PORT_SLOT_HANDOFF").map { String(cString: $0) != "0" } ?? true
 
     /// Takes the first message of `p` (the caller checked there is one).
     func dequeue(_ p: IPCPort) -> (KMessage, seqno: UInt32) {
         let m = p.messages.popFirst()!
+        if m.importance { importanceDequeued(from: p) }
         let seqno = p.seqno
         p.seqno &+= 1
         if !p.messages.isEmpty { p.readyStamp = nextStamp() }
         for r in m.receiveRights { r.transitHolder = nil }
-        p.sendWaiters.wakeAll()
+        if Self.slotHandoff {
+            // The freed slot goes to the oldest blocked sender, which is
+            // woken for it alone (xnu: a dequeue wakes one full-queue
+            // waiter and hands it the slot). Waking every blocked sender
+            // made all but one of them take the lock again and go back to
+            // sleep, once per message received (boot-profile.md §8).
+            if p.occupiedSlots < p.qlimit, p.sendWaiters.wake(count: 1) == 1 { p.grantedSlots += 1 }
+        } else {
+            p.sendWaiters.wakeAll()
+        }
         fireSendPossible(p)
         return (m, seqno)
     }
@@ -776,4 +849,47 @@ func le32(_ v: UInt32) -> [UInt8] {
 
 func le64(_ v: UInt64) -> [UInt8] {
     (0..<8).map { UInt8(truncatingIfNeeded: v >> (8 * UInt64($0))) }
+}
+
+/// Diagnostics (`YCODE_DEBUG_MACH_STATS=1`): queued Mach messages by sending
+/// process, receiving process, and message id. Every `reportEvery` messages
+/// the busiest pairs are printed. Called from `enqueue` with the kernel lock
+/// held (one lock for the whole system), which also guards the table.
+enum MachTrafficStats {
+    static let enabled = getenv("YCODE_DEBUG_MACH_STATS").map { String(cString: $0) == "1" } ?? false
+    static let reportEvery: UInt64 = 100_000
+    nonisolated(unsafe) static var total: UInt64 = 0
+    nonisolated(unsafe) static var pairs: [String: UInt64] = [:]
+
+    static func name(_ space: MachIPC?) -> String {
+        guard let space else { return "none" }
+        guard let k = space.kernel else { return space.kernelGone ? "gone" : "host" }
+        return k.processRecord?.comm ?? "pid \(k.pid)"
+    }
+
+    /// `YCODE_DEBUG_MACH_DUMP=<receiver comm>`: the printable strings of the
+    /// first 12 messages queued for that process.
+    static let dumpReceiver = getenv("YCODE_DEBUG_MACH_DUMP").map { String(cString: $0) }
+    nonisolated(unsafe) static var dumped = 0
+
+    static func count(from sender: MachIPC, to p: IPCPort, id: Int32, inline: [UInt8] = []) {
+        total += 1
+        let receiver = name(p.receiver)
+        let key = "\(name(sender)) -> \(receiver) id \(id)"
+        pairs[key, default: 0] += 1
+        if let d = dumpReceiver, d == receiver, dumped < 12 {
+            dumped += 1
+            var strings: [String] = []
+            var run: [UInt8] = []
+            for b in inline + [0] {
+                if b >= 0x20 && b < 0x7F { run.append(b); continue }
+                if run.count >= 3 { strings.append(String(decoding: run, as: UTF8.self)) }
+                run = []
+            }
+            FileHandle.standardError.write(Data("ycode-mach-dump: \(key), \(inline.count) bytes: \(strings.joined(separator: " | "))\n".utf8))
+        }
+        guard total % reportEvery == 0 else { return }
+        let top = pairs.sorted { $0.value > $1.value }.prefix(20).map { "\($0.key): \($0.value)" }.joined(separator: "; ")
+        FileHandle.standardError.write(Data("ycode-mach-stats: \(total) messages; top: \(top)\n".utf8))
+    }
 }

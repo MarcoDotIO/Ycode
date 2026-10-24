@@ -333,7 +333,11 @@ YC_EXPORT int YC_FN(_pthread_workqueue_addthreads)(int numthreads, yc_u64 priori
 /* Cooperative requests (REQTHREADS2, one thread per call). A kernel without
  * the cooperative pool refuses them; Ycode then asks for a constrained
  * worker at that QoS and marks the next plain worker of that QoS
- * cooperative, so the cooperative root queue is still drained. */
+ * cooperative, so the cooperative root queue is still drained. Once the
+ * kernel has refused with ENOTSUP or ENOSYS (it has no cooperative pool;
+ * that never changes while the process runs), later requests skip the
+ * REQTHREADS2 trap and go straight to the fallback (host-libraries.md
+ * section 11.6). */
 YC_EXPORT int YC_FN(_pthread_workqueue_add_cooperativethreads)(int numthreads, yc_u64 priority)
 {
     if (!YC_LOAD_ACQ(&__yc_pt.workq_ready))
@@ -346,9 +350,16 @@ YC_EXPORT int YC_FN(_pthread_workqueue_add_cooperativethreads)(int numthreads, y
             break;
         }
     for (int i = 0; i < numthreads; i++) {
-        if (YC_KFN(__workq_kernreturn)(YC_WQOPS_QUEUE_REQTHREADS2, YC_NULL, 1, pp) == 0)
-            continue;
-        int e = errno_or(YC_EINVAL);
+        int e;
+        if (qos != 0 && YC_LOAD(&__yc_pt.coop_refused)) {
+            e = YC_ENOTSUP;
+        } else {
+            if (YC_KFN(__workq_kernreturn)(YC_WQOPS_QUEUE_REQTHREADS2, YC_NULL, 1, pp) == 0)
+                continue;
+            e = errno_or(YC_EINVAL);
+            if (e == YC_ENOTSUP || e == YC_ENOSYS)
+                YC_STORE(&__yc_pt.coop_refused, 1);
+        }
         if ((e != YC_ENOTSUP && e != YC_EINVAL && e != YC_ENOSYS) || qos == 0)
             return e;
         __atomic_fetch_add(&__yc_pt.coop_pending[qos], 1, __ATOMIC_RELEASE);

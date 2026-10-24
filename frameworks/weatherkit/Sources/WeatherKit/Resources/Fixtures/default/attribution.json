@@ -1,0 +1,9 @@
+{
+ "storage": {
+  "combinedMarkDarkURL": "https://fixtures.invalid/weatherkit/combined-mark-dark.png",
+  "combinedMarkLightURL": "https://fixtures.invalid/weatherkit/combined-mark-light.png",
+  "legalPageURL": "https://fixtures.invalid/weatherkit/legal-attribution.html",
+  "serviceName": "Fixture data",
+  "squareMarkURL": "https://fixtures.invalid/weatherkit/square-mark.png"
+ }
+}

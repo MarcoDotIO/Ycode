@@ -44,14 +44,19 @@ final class IOSurfacePortResolver: IOSurfaceResolver {
         let object = s.memory
         let region = GuestSharedRegion(pointer: object.host, length: Int(min(UInt64(s.allocationSize), object.size)),
                                        objectID: object.serial, owner: object)
+        var backing: IOSurfaceBacking
         if plane > 0 || !s.planes.isEmpty {
             guard plane < s.planes.count else { return nil }
             let p = s.planes[plane]
-            return IOSurfaceBacking(surfaceID: s.id, region: region, width: p.width, height: p.height, bytesPerRow: p.bytesPerRow,
-                                    bytesPerElement: s.bytesPerElement, pixelFormat: s.pixelFormat, plane: plane,
-                                    planeOffset: p.offset)
+            backing = IOSurfaceBacking(surfaceID: s.id, region: region, width: p.width, height: p.height, bytesPerRow: p.bytesPerRow,
+                                       bytesPerElement: s.bytesPerElement, pixelFormat: s.pixelFormat, plane: plane,
+                                       planeOffset: p.offset)
+        } else {
+            backing = IOSurfaceBacking(surfaceID: s.id, region: region, width: s.width, height: s.height, bytesPerRow: s.bytesPerRow,
+                                       bytesPerElement: s.bytesPerElement, pixelFormat: s.pixelFormat)
         }
-        return IOSurfaceBacking(surfaceID: s.id, region: region, width: s.width, height: s.height, bytesPerRow: s.bytesPerRow,
-                                bytesPerElement: s.bytesPerElement, pixelFormat: s.pixelFormat)
+        let id = s.id
+        backing.syncState = { [weak service] in service?.lockState(id: id) }
+        return backing
     }
 }

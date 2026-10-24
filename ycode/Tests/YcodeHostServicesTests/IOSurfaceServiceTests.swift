@@ -28,6 +28,34 @@ import YcodeXPC
         #expect(layout(0, 10, 4) == nil)
     }
 
+    /// CPU access waits for pending GPU writes (the Metal back end's
+    /// `waitForSurfaceWrites`): guest locks without kIOSurfaceLockAvoidSync,
+    /// and host reads (display server, screenshots); never under the lock.
+    @Test func cpuAccessWaitsForGPUWrites() throws {
+        let s = try service()
+        let conn: UInt32 = 0x1235
+        s.addTestConnection(conn)
+        final class Calls: @unchecked Sendable { let lock = NSLock(); var ids: [UInt32] = [] }
+        let calls = Calls()
+        s.gpuWriteWait = { [unowned s] id in
+            _ = s.lockState(id: id)  // the service's lock is free here
+            calls.lock.withLock { calls.ids.append(id) }
+        }
+        let p = props([("IOSurfaceWidth", .number(64, bits: 64)), ("IOSurfaceHeight", .number(32, bits: 64)),
+                       ("IOSurfaceBytesPerElement", .number(4, bits: 64))])
+        let r = reply(s.perform(["Method": .uint64(2), "PropertiesDictionary": p], connection: conn).0)
+        guard case let .data(state)? = r["SurfaceState"] else { Issue.record("no state"); return }
+        let id = u32(state, 1), sid: XPCObject = .uint64(UInt64(id))
+        _ = s.perform(["Method": .uint64(4), "SurfaceID": sid, "Options": .uint64(0)], connection: conn)  // waits
+        _ = s.perform(["Method": .uint64(4), "SurfaceID": sid, "Options": .uint64(1)], connection: conn)  // read-only: waits
+        _ = s.perform(["Method": .uint64(4), "SurfaceID": sid, "Options": .uint64(2)], connection: conn)  // avoid sync: no wait
+        _ = s.perform(["Method": .uint64(5), "SurfaceID": sid], connection: conn)                          // unlock: no wait
+        #expect(calls.lock.withLock { calls.ids } == [id, id])
+        _ = s.surface(id: id)
+        _ = s.snapshot(surfaceID: id)
+        #expect(calls.lock.withLock { calls.ids } == [id, id, id, id])
+    }
+
     @Test func createLookUpLockValuesPorts() throws {
         let s = try service()
         let conn: UInt32 = 0x1234

@@ -44,12 +44,24 @@ exactly these two icons into `DEV/data/Library/SpringBoard/IconState.plist`.
    minutes (Safari's icon about 5 minutes after the start of a second
    boot). The Mac does the same work in about 20 ms per shader.
 4. The finished image is written into the store and sent to SpringBoard.
+5. **Every boot renders the icons again**, on the Mac too: at its start
+   iconservicesagent logs "While initializing cache, one or more
+   preconditions have been met to delete previous cache" and "Resetting
+   icon cache" (Mac reboot of a throwaway device and every Ycode boot,
+   level 3), and the Metal shader cache inside the store goes with it
+   ("fopen failed for data file", "Invalidating cache"). So the render
+   time of item 3 is paid on every cold boot. On the Thor the first
+   shader compile also waited for the start of `MTLCompilerService`, which
+   Ycode's start hold kept back for 22–34 s; since 2026-10-19 that start
+   is not held (`scheduling-policy.md` §4.2 "on demand", §7.3) and the
+   icons come with the wallpaper, 60–75 s after the start. A warm start
+   (`snapshot.md` §12) restores them drawn.
 
 ### 2.2 What the host must provide
 
 | Need | Symptom without it (Ycode, before 2026-10-13) | Ycode's answer |
 |---|---|---|
-| **Coherent `MAP_SHARED` file mappings.** iconservicesagent grows its store by creating a new file (`open` O_RDWR\|O_CREAT\|O_TRUNC, `lseek` to the new size − 1, `write` 1 byte), mapping it shared at a temporary address, copying the old store into it, mapping the same file again at the store's fixed address (`MAP_FIXED`) and unmapping the temporary view. The second view must see the first view's writes. | Ycode mapped files private: the fixed view read zeros, the table capacity read 0, and iconservicesagent faulted (SIGSEGV) reading `table[hash % 0]` — the "status 70" crash loop. | A `MAP_SHARED` mapping of a file open for reading and writing is a view of the host file's page cache (host `mmap` `MAP_SHARED`, registered as a KVM memory slot), so every view in every guest process and the host's own `read`/`write` see the same bytes (mmap(2), level 1). Pages wholly past the end of the file are private zeros. Read-only descriptors keep the old private or shared read-only views. `YCODE_DEBUG_PRIVATE_SHARED_FILES=1` restores the old behavior. chronod's mapped-file allocator and SQLite's `-shm` index use the same kind of mapping. |
+| **Coherent `MAP_SHARED` file mappings.** iconservicesagent grows its store by creating a new file (`open` O_RDWR\|O_CREAT\|O_TRUNC, `lseek` to the new size − 1, `write` 1 byte), mapping it shared at a temporary address, copying the old store into it, mapping the same file again at the store's fixed address (`MAP_FIXED`) and unmapping the temporary view. The second view must see the first view's writes. | Ycode mapped files private: the fixed view read zeros, the table capacity read 0, and iconservicesagent faulted (SIGSEGV) reading `table[hash % 0]` — the "status 70" crash loop. | A `MAP_SHARED` mapping of a file open for reading and writing is a view of the host file's page cache (host `mmap` `MAP_SHARED`, registered as a KVM memory slot), so every view in every guest process and the host's own `read`/`write` see the same bytes (mmap(2), level 1). Pages wholly past the end of the file are zeros until the file grows over them, and read-only `PROT_READ` views of files under writable prefixes are views too (since 2026-10-17, `service-fidelity.md` §10; before, pages past the end at map time stayed private for good and read-only descriptors got private copies). `YCODE_DEBUG_PRIVATE_SHARED_FILES=1` restores the old behavior. chronod's mapped-file allocator and SQLite's `-shm` index use the same kind of mapping. |
 | **MobileGestalt answers** (`SIMULATOR_CAPABILITIES`) | CoreUI: "couldn't get 'kMGArtworkDeviceIdiom' from MGCopyAnswer" | `device-capabilities.md` |
 | **Correct draw records.** RenderBox draws with `drawIndexedPrimitives` records whose last word packs a 16-bit instance count and a 16-bit base vertex (op 9), and uses the long forms 2, 4, 8, 28. | Op 9 read as a 32-bit instance count gave draws of 2^27–2^31 instances; the Thor's GPU ran one for minutes, the driver logged Xid 109 "CTX SWITCH TIMEOUT", and every later Metal submission of every process was lost (device lost). | The records as `metal-sim-protocol.md` §8.3 now lists them; draws of more than 2^26 vertices × instances are reported and skipped (they can only come from a misread record). |
 | **Event waits that do not block other queues** | (latent) a command buffer that waits for an `MTLEvent` signaled by a later command buffer of another queue would block the one shared Vulkan queue forever | §4 |
@@ -357,6 +369,7 @@ narrow predicates (`LOGPRED` in the run scripts) for long runs.
 |---|---|---|
 | Default app set (§1) | 2, 3 | Mac `IconState.plist`, screenshot |
 | Icon chain, compile timings (§2.1) | 3 | guest `log stream` (iconservicesagent, MTLCompilerService) on the Thor; Mac `log show` |
+| The icon cache is reset at every boot, Mac and Ycode; the MTLCompilerService hold (§2.1 item 5) | 3 | Mac `log show` after `simctl shutdown`/`boot` of a throwaway device; Ycode `log stream` one-shots and `sched:` lines (runs i2, a1–a3, 2026-10-19) |
 | Store growth sequence and fault (§2.2) | 3 | VMM fault report and trap ring of iconservicesagent |
 | `mmap` shared semantics | 1 | mmap(2) |
 | Draw record layouts (§2.2) | 3 | our `mtlvary` under `mslog` on the Mac; RenderBox's record bodies logged by Ycode |

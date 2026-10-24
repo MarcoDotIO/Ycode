@@ -1,0 +1,171 @@
+{
+ "days": [
+  {
+   "date": "2026-01-08T00:00:00Z",
+   "precipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 1
+   },
+   "snowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 10
+   }
+  },
+  {
+   "date": "2026-01-09T00:00:00Z",
+   "precipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 0
+   },
+   "snowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 0
+   }
+  },
+  {
+   "date": "2026-01-10T00:00:00Z",
+   "precipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2
+   },
+   "snowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 10
+   }
+  },
+  {
+   "date": "2026-01-11T00:00:00Z",
+   "precipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 1
+   },
+   "snowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 0
+   }
+  },
+  {
+   "date": "2026-01-12T00:00:00Z",
+   "precipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 0
+   },
+   "snowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 10
+   }
+  },
+  {
+   "date": "2026-01-13T00:00:00Z",
+   "precipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2
+   },
+   "snowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 0
+   }
+  },
+  {
+   "date": "2026-01-14T00:00:00Z",
+   "precipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 1
+   },
+   "snowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 10
+   }
+  }
+ ],
+ "metadata": {
+  "date": "2026-01-15T12:00:00Z",
+  "expirationDate": "2026-01-16T12:00:00Z",
+  "latitude": 41.5,
+  "longitude": -81.5
+ }
+}

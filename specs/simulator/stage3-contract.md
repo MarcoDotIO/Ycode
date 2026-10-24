@@ -219,7 +219,9 @@ between the assembly and the Swift side:
   - Page-shift fields (0x025 user, 0x037 kernel): **14**.
   - Number of CPUs: **1**. Physical and logical CPU counts: 1.
   - **User timebase mode (0x090) = 1** (`CNTVCT_EL0`). The timebase offset
-    is 0.
+    is 0. Superseded 2026-10-17: 0 (no user timebase) with the 24 MHz guest
+    timebase (`darwin-process-start.md` §5, "Guest timebase"); 1 only with
+    `YCODE_GUEST_TIMEBASE=host`.
   - Continuous-time and approximate-time fields: 0 (unsupported). The
     gettimeofday block's tick = 0, so the guest falls back to BSD 116.
   - Memory size: 1 GiB.
@@ -227,6 +229,9 @@ between the assembly and the Swift side:
 - **Timebase.** `mach_absolute_time` ticks are the guest's `CNTVCT_EL0`.
   The VMM reads `CNTFRQ_EL0` (and the counter, for trap −3/−4) through KVM
   ONE_REG. `mach_timebase_info` (trap −89) returns 10⁹/`CNTFRQ`, reduced.
+  Superseded 2026-10-17: traps −3/−4 return the counter scaled to 24 MHz and
+  trap −89 returns 125/3, unless `YCODE_GUEST_TIMEBASE=host`
+  (`darwin-process-start.md` §5, "Guest timebase").
   The stage-2 24 MHz constants stay as the default for the portable
   dispatcher's tests only.
 - **Initial vCPU state.**
@@ -342,8 +347,8 @@ Port names are managed in a name table:
 | `hw.optional.arm.caps` | 0 (8 bytes) |
 | `kern.grade_cputype` | ENOENT |
 | `hw.pagesize` | 16384 |
-| `hw.ncpu` | 1 |
-| `hw.activecpu` | 1 |
+| `hw.ncpu` | N (1 until 2026-10-17; `darwin-process-start.md`, guest CPU count) |
+| `hw.activecpu` | N |
 | `kern.osproductversion` | `"27.1"` |
 | anything else | ENOENT, logged |
 

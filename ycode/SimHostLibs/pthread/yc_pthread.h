@@ -305,6 +305,7 @@ struct yc_pthread_globals {
     yc_u64 workq_serialno_offset;
     yc_u64 workq_label_offset;
     yc_u32 coop_pending[7];      /* cooperative requests mapped to constrained */
+    yc_bool coop_refused;        /* the kernel has no cooperative pool (REQTHREADS2 refused) */
     yc_bool workq_setkill;
     yc_i32 workq_allowed_signal;
     void *workgroup_functions;

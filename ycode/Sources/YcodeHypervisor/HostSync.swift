@@ -7,6 +7,7 @@ import Glibc
 #elseif canImport(Darwin)
 import Darwin
 #endif
+import YcodeDarwinABI
 
 /// A non-recursive pthread mutex.
 public final class HostMutex: @unchecked Sendable {
@@ -16,6 +17,12 @@ public final class HostMutex: @unchecked Sendable {
         mutex = .allocate(capacity: 1)
         mutex.initialize(to: pthread_mutex_t())
         pthread_mutex_init(mutex, nil)
+    }
+
+    /// A mutex named in profiles (`DebugLockNames`).
+    public convenience init(name: String) {
+        self.init()
+        DebugLockNames.register?(UnsafeMutableRawPointer(mutex), name)
     }
 
     deinit {

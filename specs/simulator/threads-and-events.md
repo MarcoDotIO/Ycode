@@ -186,6 +186,11 @@ TIMESHARE `0x08`, WQ_KEVENT_UNBIND `0x10`, QOS_OVERRIDE `0x40`.
 - `VOUCHER` adopts the voucher name. For Ycode: accept and record.
 - The call returns an error if any requested part failed.
 
+Ycode: with `YCODE_SCHED_QOS=1` the QoS of SET_SELF, the overrides
+(0x40, 0x80, 0x200, 0x400) and `PTHREAD_START_QOSCLASS` feed the thread's
+scheduling class (`scheduling-policy.md` §4.4). Without the switch they are
+accepted and have no effect.
+
 ---
 
 ## 2. Workqueues (Q2)
@@ -322,6 +327,31 @@ performance, not correctness, **except** that libdispatch relies on rule 3's
 "a blocked worker frees a slot" to avoid deadlock when work items block.
 Any Ycode policy must start another constrained worker when every
 admitted constrained worker is blocked and requests are pending.
+
+Ycode's cooperative pool (rule 5; speed work 2026-10-17): `QUEUE_REQTHREADS2`
+queues one cooperative request at its QoS. It is admitted while fewer
+cooperative workers are running than the guest has CPUs (N, the guest CPU
+count of `darwin-process-start.md`), or while no cooperative worker runs at its QoS (each QoS gets one
+thread, so a lower QoS cannot starve a higher one). A cooperative worker
+counts until it returns, **blocked or not**: the cooperative pool does not
+grow when its threads block (unlike rule 3). The thread starts with
+`COOPERATIVE` in `x4` (§2.6), is not constrained (`SHOULD_NARROW` is
+`EINVAL`), and its `THREAD_RETURN` takes the next admissible request, as
+for any worker. Before this, Ycode refused the op with `ENOTSUP`, and
+`libsystem_pthread` turned every cooperative request into a constrained
+one (up to 8 threads per QoS; `host-libraries.md` §11.6). Swift-concurrency
+daemons then ran their request–return cycle on several threads at once,
+more than 1000 times a second each.
+
+The pool alone did not stop that cycle (measured 2026-10-17, full boots,
+700 s): suggestd, parsecd and axassetsd made 4.2 / 2.3 / 1.6 M traps
+without the pool and 5.3–6.4 / 3.7–6.2 / 2.5–5.2 M with it, at N = 1 or
+N = 14. The cycle's cause was the guest timebase, not the workqueue: Swift
+Concurrency converts task deadlines to mach ticks at a fixed 24 MHz, so on
+a 1 GHz guest counter every `Task.sleep` fired at once and sleeping tasks
+spun through the cooperative queue (`darwin-process-start.md` §5, "Guest
+timebase"). With the 24 MHz guest timebase the three daemons and homed make
+0.01–0.07 M traps each per boot.
 
 ### 2.6 Worker stack and the `start_wqthread` entry state
 
@@ -883,7 +913,14 @@ threads.
   worker if its return finds events, §2.7 step 3).
 - **K5. Unbinding.** `bsdthread_ctl(SET_SELF, WQ_KEVENT_UNBIND)` releases a
   non-manager worker from its bucket early. If the bucket still has active
-  knotes, it issues a new request.
+  knotes, it issues a new request. The knotes delivered to that worker stay
+  suppressed until its `THREAD_KEVENT_RETURN` (K4); when they are released
+  then, a knote that became active meanwhile (a Mach message arrived while it
+  was suppressed) makes its bucket issue a new request at that moment, since
+  no bound worker will scan the bucket again. (Ycode missed this request
+  until 2026-10-19: the reply then sat in the queue until the next message
+  to the same bucket, found by agent SP-SNAP as the stall of an app install
+  after a snapshot restore, `snapshot.md` §10.5.)
 - **K6.** A user thread cannot read events from the workqueue kqueue
   directly (§3.1). Registering changes on it is allowed from any thread.
 
@@ -1364,7 +1401,9 @@ with `dispatch_sync` from two threads (sync wait/wake); one with
    `0x030`) for Swift-concurrency root queues. Whether the runtime's
    libdispatch checks `COOPERATIVE_WORKQ` (`0x100`) before using them is not
    visible in the open source. If not, Ycode's `libsystem_pthread` can map
-   cooperative requests onto constrained ones.
+   cooperative requests onto constrained ones. Resolved for Ycode: the runtime's libraries
+   request cooperative threads whatever the mask says (Ycode traces), and
+   the kernel now runs the cooperative pool of §2.5 (rule 5 note).
 4. **`EVFILT_MEMORYSTATUS`.** libdispatch registers a memory-pressure source
    at initialization. Whether an `EV_ERROR` reply is tolerated there, or must
    be accepted silently, should be checked by trace.
@@ -1397,6 +1436,7 @@ with `dispatch_sync` from two threads (sync wait/wake); one with
 | KVM facts (§6, facts 1–7) | Linux `Documentation/virt/kvm/api.rst` (sections on ioctl classes, `KVM_CREATE_VCPU` limits, `kvm_run.immediate_exit`, `KVM_SET_ONE_REG`), `Documentation/virt/kvm/devices/arm-vgic-v3.rst` (`CTRL_INIT` after all vCPUs) | 1 |
 | Arm facts (§6, facts 8–9) | Arm Architecture Reference Manual for A-profile (exclusives, broadcast TLB maintenance) | 1 |
 | Shim facts (§6, facts 10–11) | `specs/simulator/vm-shim-protocol.md` §5, §9 | Ycode design |
+| Cooperative pool trap counts and the timebase cause (§2.5 note) | Ycode boots on the Thor (SX harness, `IA2/si2`, `IA2/x`, `IA2/tb`, exit summaries); swift `DispatchGlobalExecutor.cpp` (`platform_time`) | 3; 1 |
 
 Source tags (fetched with the GitHub API on 2026-10-11, kept outside the
 repository):

@@ -1,0 +1,23 @@
+RKP mode=rv-square
+RKP metal.name=Apple iOS simulator GPU
+RKP metal.families=apple1,apple2,common1
+RKP metal.argumentBuffersTier=0
+RKP metal.raytracing=false
+RKP metal.maxThreadsPerThreadgroup=512
+RKP metal.readWriteTextureTier=0
+RKP metal.sampleCount4=true
+RKP metal.maxBufferLength=268435456
+RKP os=27.1
+RKP rv.make=0.000
+RKP rv.firstUpdateAt=0.069
+RKP rv.screenPoints=466.0x678.0
+RKP rv.centerRay=origin (0.0000,0.0000,2.0000) dir (0.2788,-0.8027,-0.5272)
+RKP rv.project(0.0000,0.0000,0.0000)=Optional((150.0, 100.0))
+RKP rv.project(0.1000,0.0000,0.0000)=Optional((157.8484296798706, 100.0))
+RKP rv.project(0.0000,0.1000,0.0000)=Optional((150.0, 92.1515703201294))
+RKP rv.anchors=plane anchored false world anchored true root anchored true rootScene true
+RKP rv.updates=374
+RKP rv.updatesPerSecond=59.8
+RKP rv.deltaTime=mean 0.01680 min 0.01597 max 0.04633 first 0.0370,0.0463,0.0171,0.0162
+RKP framecounter.done=1
+dev.ycode.rkprobe: <pid>

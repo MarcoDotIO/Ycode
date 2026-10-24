@@ -79,17 +79,20 @@ import Testing
         let p = c.rwPage()
         #expect(p.count == 16384)
         #expect(String(decoding: p[0..<15], as: UTF8.self) == "commpage 64-bit" && p[15] == 0)
-        let caps: UInt64 = 0x80 | 0x400 | 0x1000 | 0x2000 | 0x8000 | (1 << 16) | 0x20
+        let n = UInt64(GuestCPUs.count)
+        let caps: UInt64 = 0x80 | 0x400 | 0x1000 | 0x2000 | (n == 1 ? 0x8000 : 0) | (n << 16) | 0x20
         #expect(u64(p, 0x010) == caps)
         #expect(u16(p, 0x01E) == 3)
         #expect(u32(p, 0x020) == UInt32(caps))
-        #expect(p[0x022] == 1)  // NCPUS, byte 2 of 0x020
+        #expect(UInt64(p[0x022]) == n)  // NCPUS, byte 2 of 0x020
         #expect(p[0x024] == 14 && p[0x025] == 14 && p[0x037] == 14)
         #expect(u16(p, 0x026) == 64)
-        #expect(p[0x02F] == 1 && p[0x034] == 1 && p[0x035] == 1 && p[0x036] == 1)
+        #expect(p[0x02F] == 1 && UInt64(p[0x034]) == n && UInt64(p[0x035]) == n && UInt64(p[0x036]) == n)
+        #expect(p[0x200..<(0x200 + Int(n))].allSatisfy { $0 == 0 })  // cpu_to_cluster: cluster 0
         #expect(u64(p, 0x038) == 1 << 30)
         #expect(u32(p, 0x080) == 0 && u32(p, 0x084) == 0 && u64(p, 0x088) == 0)
-        #expect(p[0x090] == 1 && p[0x091] == 0)
+        // USER_TIMEBASE: 0 with the 24 MHz guest timebase (traps only), 1 with the host counter.
+        #expect(p[0x090] == (GuestTimebase.usesHostCounter ? 1 : 0) && p[0x091] == 0)
         #expect(u64(p, 0x098) == 0 && u64(p, 0x0A8) == 0 && u64(p, 0x0C0) == 0 && p[0x0C8] == 0)
         #expect((0..<5).allSatisfy { u64(p, 0x120 + 8 * $0) == 0 })  // gettimeofday tick = 0
         #expect(u64(p, 0x148) == 0xFFFF_FFFF_FFFF_FFFC)
@@ -150,5 +153,30 @@ import Testing
         #expect(TrapNames.mach(-31).name == "mach_msg_trap")
         #expect(TrapNames.mach(-3).name == "mach_absolute_time")
         #expect(TrapNames.mach(-200).name == "kern_invalid")
+    }
+
+    /// Guest timebase: host counter ticks scaled to 24 MHz (125/3 ns per tick).
+    @Test func guestTimebaseScale() {
+        #expect(GuestTimebase.appleFrequency == 24_000_000)
+        // 1 GHz -> 24 MHz: 3/125.
+        #expect(GuestTimebase.scale(1_000_000_000, from: 1_000_000_000, to: 24_000_000) == 24_000_000)
+        #expect(GuestTimebase.scale(125, from: 1_000_000_000, to: 24_000_000) == 3)
+        #expect(GuestTimebase.scale(124, from: 1_000_000_000, to: 24_000_000) == 2)
+        // 31.25 MHz -> 24 MHz; same frequency is the identity.
+        #expect(GuestTimebase.scale(31_250_000, from: 31_250_000, to: 24_000_000) == 24_000_000)
+        #expect(GuestTimebase.scale(12345, from: 24_000_000, to: 24_000_000) == 12345)
+        // Large counters (days of uptime at 1 GHz) do not overflow; monotonic.
+        let day: UInt64 = 86_400_000_000_000
+        #expect(GuestTimebase.scale(4 * day, from: 1_000_000_000, to: 24_000_000) == 4 * 86_400 * 24_000_000)
+        var last: UInt64 = 0
+        for t in stride(from: UInt64(4 * day), to: 4 * day + 1000, by: 7) {
+            let v = GuestTimebase.scale(t, from: 1_000_000_000, to: 24_000_000)
+            #expect(v >= last)
+            last = v
+        }
+        // Scaling up: 24 MHz -> 1 GHz.
+        #expect(GuestTimebase.scale(24_000_000, from: 24_000_000, to: 1_000_000_000) == 1_000_000_000)
+        // The guest frequency: 24 MHz unless YCODE_GUEST_TIMEBASE=host.
+        #expect(GuestTimebase.frequency(hostFrequency: 1_000_000_000) == (GuestTimebase.usesHostCounter ? 1_000_000_000 : 24_000_000))
     }
 }

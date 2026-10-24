@@ -15,7 +15,7 @@ extension DarwinKernel {
     /// `threads-and-events.md` §5.1).
     public enum Signal {
         public static let sighup: Int32 = 1, sigint: Int32 = 2, sigquit: Int32 = 3, sigill: Int32 = 4,
-                          sigtrap: Int32 = 5, sigabrt: Int32 = 6, sigkill: Int32 = 9, sigbus: Int32 = 10,
+                          sigtrap: Int32 = 5, sigabrt: Int32 = 6, sigfpe: Int32 = 8, sigkill: Int32 = 9, sigbus: Int32 = 10,
                           sigsegv: Int32 = 11, sigpipe: Int32 = 13, sigalrm: Int32 = 14, sigterm: Int32 = 15,
                           sigurg: Int32 = 16, sigstop: Int32 = 17, sigtstp: Int32 = 18, sigcont: Int32 = 19,
                           sigchld: Int32 = 20, sigttin: Int32 = 21, sigttou: Int32 = 22, sigio: Int32 = 23,
@@ -64,18 +64,18 @@ extension DarwinKernel {
     var processRecord: DarwinProcess? { system.record(of: self) }
 
     /// BSD calls the process layer owns. nil = not mine.
-    func processCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ fallback: inout Int32,
+    func processCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ fallback: inout Int32,
                      _ mem: any KernelGuestMemory) throws -> BSDResult? {
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         switch n {
         case ProcBSD.kqueue:
-            return .value(try kqueueCall(&call))
+            return .value(try withEvents { try kqueueCall(&call) })
         case ProcBSD.fileportMakeport, ProcBSD.fileportMakefd:
             // Forwarded to the Mach layer (`stage4b-contract.md` §3.7).
             guard let ipc = machIPC as? MachIPC else { return nil }
-            call = n == ProcBSD.fileportMakeport ? "fileport_makeport(fd=\(int(0)), portnamep=\(hx(a[1])))"
-                : "fileport_makefd(port=\(hx(UInt32(truncatingIfNeeded: a[0]))))"
-            guard let v = try ipc.fileportCall(n, a, fileSystem: fileSystem, memory: mem) else { return nil }
+            call.set(n == ProcBSD.fileportMakeport ? "fileport_makeport(fd=\(int(0)), portnamep=\(hx(a[1])))"
+                : "fileport_makefd(port=\(hx(UInt32(truncatingIfNeeded: a[0]))))")
+            guard let v = try withPorts({ try ipc.fileportCall(n, a, fileSystem: fileSystem, memory: mem) }) else { return nil }
             return .value(v)
         default:
             break
@@ -83,7 +83,7 @@ extension DarwinKernel {
         guard let me = processRecord else { return nil }
         switch n {
         case ProcBSD.exit:
-            call = "exit(\(int(0)))"
+            call.set("exit(\(int(0)))")
             exitValue = int(0)
             return .exit(int(0) & 0xFF)
 
@@ -99,28 +99,28 @@ extension DarwinKernel {
         case ProcBSD.terminateWithPayload:
             return .value(try terminateWithPayload(me, a, &call, mem))
         case ProcBSD.sigpending:
-            call = "sigpending(osv=\(hx(a[0])))"
+            call.set("sigpending(osv=\(hx(a[0])))")
             if a[0] != 0 { try writeU32(a[0], extended.pendingSignals, mem) }
             return .value(0)
 
         case ProcBSD.getppid:
-            call = "getppid()"
+            call.set("getppid()")
             return .value(UInt64(UInt32(bitPattern: me.ppid)))
         case ProcBSD.getpgrp:
-            call = "getpgrp()"
+            call.set("getpgrp()")
             return .value(UInt64(UInt32(bitPattern: me.pgid)))
         case ProcBSD.getpgid, ProcBSD.getsid:
             let isPgid = n == ProcBSD.getpgid
-            call = "\(isPgid ? "getpgid" : "getsid")(\(int(0)))"
+            call.set("\(isPgid ? "getpgid" : "getsid")(\(int(0)))")
             let target = int(0) == 0 ? me : system.processes[int(0)]
             guard let target, target.pid != DarwinSystem.initPID || int(0) == 1 else { throw Failure(errno: Errno.ESRCH) }
             return .value(UInt64(UInt32(bitPattern: isPgid ? target.pgid : target.sid)))
         case ProcBSD.setsid:
-            call = "setsid()"
+            call.set("setsid()")
             try setsid(me)
             return .value(UInt64(UInt32(bitPattern: me.pid)))
         case ProcBSD.setpgid:
-            call = "setpgid(\(int(0)), \(int(1)))"
+            call.set("setpgid(\(int(0)), \(int(1)))")
             try setpgid(caller: me, pid: int(0), pgid: int(1))
             return .value(0)
 
@@ -136,16 +136,16 @@ extension DarwinKernel {
             // flag 0x1 compares the pid version, 0x2 the unique id; a
             // mismatch is ESRCH (`processes.md` §2.11).
             let target = int(1), flags = UInt32(truncatingIfNeeded: a[3]), ext = a[4]
-            call = "proc_info_extended_id(callnum=\(int(0)), pid=\(target), flavor=\(int(2)), flags=\(hx(flags)), "
-                + "ext_id=\(hx(ext)))"
+            call.set("proc_info_extended_id(callnum=\(int(0)), pid=\(target), flavor=\(int(2)), flags=\(hx(flags)), "
+                + "ext_id=\(hx(ext)))")
             if flags & 0x3 != 0 {
                 guard let p = system.processes[target] else { throw Failure(errno: Errno.ESRCH) }
                 if flags & 0x1 != 0, UInt64(p.pidVersion) != ext & 0xFFFF_FFFF { throw Failure(errno: Errno.ESRCH) }
                 if flags & 0x2 != 0, p.uniqueID != ext { throw Failure(errno: Errno.ESRCH) }
             }
-            var inner = ""
+            var inner = CallText(call.enabled)
             let r = try procInfo(me, [a[0], a[1], a[2], a[5], a[6], a[7]], &inner, mem)
-            call += " " + inner
+            call += " " + inner.description
             return .value(r)
 
         default:
@@ -228,10 +228,10 @@ extension DarwinKernel {
     }
 
     /// `kill` (37).
-    private func kill(_ me: DarwinProcess, _ a: [UInt64], _ call: inout String) throws -> UInt64 {
+    private func kill(_ me: DarwinProcess, _ a: [UInt64], _ call: inout CallText) throws -> UInt64 {
         let target = Int32(truncatingIfNeeded: a[0]), sig = Int32(truncatingIfNeeded: a[1])
         let posix = Int32(truncatingIfNeeded: a[2])
-        call = "kill(pid=\(target), sig=\(sig), posix=\(posix))"
+        call.set("kill(pid=\(target), sig=\(sig), posix=\(posix))")
         guard (0...31).contains(sig) else { throw Failure(errno: Errno.EINVAL) }
         if target > 0 {
             guard let p = system.processes[target] else { throw Failure(errno: Errno.ESRCH) }
@@ -272,9 +272,9 @@ extension DarwinKernel {
     }
 
     /// `__pthread_kill` (328): a thread-directed signal of this process.
-    private func pthreadKill(_ a: [UInt64], _ call: inout String) throws -> UInt64 {
+    private func pthreadKill(_ a: [UInt64], _ call: inout CallText) throws -> UInt64 {
         let port = UInt32(truncatingIfNeeded: a[0]), sig = Int32(truncatingIfNeeded: a[1])
-        call = "__pthread_kill(thread=\(hx(port)), sig=\(sig))"
+        call.set("__pthread_kill(thread=\(hx(port)), sig=\(sig))")
         guard let thread = threadsByPort[port] else { throw Failure(errno: Errno.ESRCH) }
         guard (0...31).contains(sig) else { throw Failure(errno: Errno.EINVAL) }
         if sig == 0 { return 0 }
@@ -284,11 +284,11 @@ extension DarwinKernel {
     }
 
     /// `terminate_with_payload` (520): SIGKILL with an exit reason.
-    private func terminateWithPayload(_ me: DarwinProcess, _ a: [UInt64], _ call: inout String,
+    private func terminateWithPayload(_ me: DarwinProcess, _ a: [UInt64], _ call: inout CallText,
                                       _ mem: any KernelGuestMemory) throws -> UInt64 {
         let target = Int32(truncatingIfNeeded: a[0])
         let reason = a[5] == 0 ? "" : ((try? readString(a[5], length: 4096, mem)) ?? "<unreadable>")
-        call = "terminate_with_payload(pid=\(target), namespace=\(Int32(truncatingIfNeeded: a[1])), code=\(hx(a[2])))"
+        call.set("terminate_with_payload(pid=\(target), namespace=\(Int32(truncatingIfNeeded: a[1])), code=\(hx(a[2])))")
         guard target > 0 else { throw Failure(errno: Errno.EINVAL) }
         guard let p = system.processes[target], p.state != .zombie, let k = p.kernel else { throw Failure(errno: Errno.ESRCH) }
         guard canSignal(p) else { throw Failure(errno: Errno.EPERM) }
@@ -308,10 +308,10 @@ extension DarwinKernel {
     }
 
     /// `wait4` (7, 400): `processes.md` §2.6.
-    private func wait4(_ me: DarwinProcess, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    private func wait4(_ me: DarwinProcess, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         var selector = Int32(truncatingIfNeeded: a[0])
         let options = Int32(truncatingIfNeeded: a[2])
-        call = "wait4(pid=\(selector), status=\(hx(a[1])), options=\(hx(UInt32(bitPattern: options))), rusage=\(hx(a[3])))"
+        call.set("wait4(pid=\(selector), status=\(hx(a[1])), options=\(hx(UInt32(bitPattern: options))), rusage=\(hx(a[3])))")
         guard selector != Int32.min else { throw Failure(errno: Errno.EINVAL) }
         if selector == 0 { selector = -me.pgid }
         let wanted = selector
@@ -344,10 +344,10 @@ extension DarwinKernel {
     }
 
     /// `waitid` (173, 416): `processes.md` §2.7.
-    private func waitid(_ me: DarwinProcess, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    private func waitid(_ me: DarwinProcess, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let idtype = Int32(truncatingIfNeeded: a[0]), id = Int32(truncatingIfNeeded: a[1])
         let infop = a[2], options = Int32(truncatingIfNeeded: a[3])
-        call = "waitid(idtype=\(idtype), id=\(id), infop=\(hx(infop)), options=\(hx(UInt32(bitPattern: options))))"
+        call.set("waitid(idtype=\(idtype), id=\(id), infop=\(hx(infop)), options=\(hx(UInt32(bitPattern: options))))")
         let valid = WaitOption.noHang | WaitOption.exited | WaitOption.stopped | WaitOption.continued | WaitOption.noWait
         guard options != 0, options & ~valid == 0 else { throw Failure(errno: Errno.EINVAL) }
         let match: (DarwinProcess) -> Bool

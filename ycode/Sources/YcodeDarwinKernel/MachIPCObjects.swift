@@ -131,8 +131,27 @@ final class IPCPort {
     var changeStamp: UInt64 = 0
     /// Receivers blocked directly on this port.
     var waitingReceivers = 0
+    /// Importance (`scheduling-policy.md` §4.3): queued messages that carry
+    /// importance, the job this port was given to as a watch port at spawn,
+    /// and the process those messages currently boost.
+    var importanceCount = 0
+    /// The port accepts importance (`MPO_IMPORTANCE_RECEIVER`,
+    /// `MPO_DENAP_RECEIVER`, or the matching attributes), and is a temporary
+    /// owner (`MPO_TEMPOWNER`, attribute 4: launchd's service ports).
+    var importanceDonation = false
+    var tempOwner = false
+    weak var watchProcess: DarwinProcess?
+    weak var creditedProcess: DarwinProcess?
     let receiveWaiters = WaitQueue()
     let sendWaiters = WaitQueue()
+    /// Queue slots given to blocked senders that were woken for them and
+    /// have not queued yet (`mach-ipc.md` §2.9: `msgcount` counts them).
+    var grantedSlots = 0
+    /// Messages queued plus slots granted: what `qlimit` limits.
+    var occupiedSlots: Int { messages.count + grantedSlots }
+    /// SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §4.2): the
+    /// messages of senders blocked on this full queue, oldest first.
+    var snapshotPendingSends: [(context: ObjectIdentifier, message: KMessage)] = []
 
     init(serial: UInt64) {
         self.serial = serial
@@ -262,6 +281,10 @@ struct KMessage {
     var isTimerExpiry = false
     /// The sending task's identity at send time (user messages).
     var sender: MachSenderIdentity?
+    /// Scheduling (`scheduling-policy.md` §4.3, §4.6): the message carries
+    /// importance; the class of a synchronous sender waiting for the reply (−1 none).
+    var importance = false
+    var pushClass: Int8 = -1
 
     /// The received size without trailer (§2.5).
     var size: Int {

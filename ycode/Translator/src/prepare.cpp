@@ -4,7 +4,10 @@
 #include "error.h"
 
 #include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
@@ -25,8 +28,10 @@
 #include "llvm/Transforms/Scalar/SimplifyCFG.h"
 #include "llvm/Transforms/Scalar/StructurizeCFG.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/FixIrreducible.h"
 #include "llvm/Transforms/Utils/Local.h"
+#include "llvm/Transforms/Utils/LoopUtils.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/LowerMemIntrinsics.h"
 #include "llvm/Transforms/Utils/LowerSwitch.h"
@@ -364,6 +369,156 @@ static std::vector<Function *> chooseOutOfLine(Module &M, Function &F) {
     return keep;
 }
 
+// ---------------------------------------------------------------------------
+// Helpers entered under divergent control flow (stage8-contract.md §13.3).
+//
+// The Thor's driver compiles a DontInline function as a real call. When the
+// lanes of one subgroup take different paths and two groups of them are
+// inside out-of-line functions at the same time, the subgroup can stop for
+// good: measured with the guest driver's `astc` kernel, two threads of one
+// subgroup decoding blocks of different kinds never finish, the same two
+// threads in different subgroups finish at once, and the kernel with its
+// two helpers inlined (or without DontInline) finishes. So a helper stays
+// out of line only when every call to it runs in uniform control flow: all
+// the subgroup's remaining lanes call it together.
+//
+// The analysis is conservative (anything not shown uniform is divergent):
+//  - values: the entry function's non-pointer arguments (thread positions,
+//    stage inputs) and every argument of a helper are divergent; loads from
+//    private or threadgroup memory, atomics and calls that read memory or
+//    depend on the lane are divergent; anything computed from a divergent
+//    value is divergent;
+//  - control: a conditional branch or switch on a divergent value makes
+//    every block reachable from it before its immediate post-dominator
+//    divergent (this covers the bodies of loops with a divergent exit), and
+//    phis in those blocks or at that post-dominator are divergent;
+//  - the grid guard's branch (`airc.grid_oob`) does not count: lanes outside
+//    the grid return at once and never call anything.
+namespace {
+struct Divergence {
+    std::set<const Value *> values;
+    std::set<const BasicBlock *> blocks;  // executed under divergent control
+
+    static bool laneDependentCall(const CallBase *C) {
+        const Function *G = C->getCalledFunction();
+        if (!G) return true;
+        StringRef n = G->getName();
+        if (n == "airc.grid_oob") return false;
+        if (!G->isDeclaration()) return true;  // helpers kept out of line
+        if (!C->doesNotAccessMemory()) return true;
+        if (!(n.starts_with("llvm.") || n.starts_with("air."))) return true;
+        for (const char *k : {"simd", "quad", "thread", "get_", "lane", "random", "dfd", "fwidth", "interpolat", "sample", "read", "atomic"})
+            if (n.contains(k)) return true;
+        return false;
+    }
+
+    Divergence(Function &G, bool isEntry) {
+        for (Argument &A : G.args())
+            if (!isEntry || !A.getType()->isPointerTy()) values.insert(&A);
+        PostDominatorTree PDT(G);
+        for (bool changed = true; changed;) {
+            changed = false;
+            for (BasicBlock &B : G)
+                for (Instruction &I : B) {
+                    if (values.count(&I)) continue;
+                    bool d = false;
+                    if (isa<PHINode>(&I)) d = blocks.count(&B) || joins.count(&B);
+                    else if (auto *L = dyn_cast<LoadInst>(&I)) {
+                        unsigned as = L->getPointerAddressSpace();
+                        d = L->isVolatile() || L->isAtomic() || as == 0 || as == 3 || as == 4;
+                    } else if (auto *C = dyn_cast<CallBase>(&I)) d = laneDependentCall(C);
+                    else if (isa<AtomicRMWInst>(&I) || isa<AtomicCmpXchgInst>(&I)) d = true;
+                    for (Value *Op : I.operands())
+                        if (values.count(Op)) d = true;
+                    if (d) {
+                        values.insert(&I);
+                        changed = true;
+                    }
+                }
+            for (BasicBlock &B : G) {
+                Instruction *T = B.getTerminator();
+                Value *cond = nullptr;
+                if (auto *Br = dyn_cast<BranchInst>(T)) cond = Br->isConditional() ? Br->getCondition() : nullptr;
+                else if (auto *SW = dyn_cast<SwitchInst>(T)) cond = SW->getCondition();
+                if (!cond || !values.count(cond) || divergentBranches.count(&B)) continue;
+                divergentBranches.insert(&B);
+                changed = true;
+                auto *N = PDT.getNode(&B);
+                BasicBlock *stop = (N && N->getIDom()) ? N->getIDom()->getBlock() : nullptr;
+                if (stop) joins.insert(stop);
+                std::vector<BasicBlock *> work(succ_begin(&B), succ_end(&B));
+                while (!work.empty()) {
+                    BasicBlock *X = work.back();
+                    work.pop_back();
+                    if (X == stop || !blocks.insert(X).second) continue;
+                    for (BasicBlock *S : successors(X)) work.push_back(S);
+                }
+            }
+        }
+    }
+
+private:
+    std::set<const BasicBlock *> divergentBranches, joins;  // joins: post-dominators of divergent branches
+};
+}  // namespace
+
+// Inlines every helper of `keep` that some function of `all` calls under
+// divergent control flow (see above), until no such call is left; the
+// callers are cleaned up again after inlining. Returns the helpers still
+// out of line.
+static std::vector<Function *> inlineDivergentHelpers(Function &F, std::vector<Function *> keep, FunctionAnalysisManager &FAM,
+                                                      const std::function<void(Function &)> &cleanup) {
+    for (bool changed = true; changed && !keep.empty();) {
+        changed = false;
+        std::set<Function *> keepSet(keep.begin(), keep.end()), divergent;
+        std::vector<Function *> all{&F};
+        all.insert(all.end(), keep.begin(), keep.end());
+        for (Function *G : all) {
+            Divergence D(*G, G == &F);
+            for (BasicBlock &B : *G)
+                for (Instruction &I : B)
+                    if (auto *C = dyn_cast<CallInst>(&I))
+                        if (Function *H = C->getCalledFunction())
+                            if (keepSet.count(H) && D.blocks.count(&B)) divergent.insert(H);
+        }
+        if (divergent.empty()) break;
+        std::vector<Function *> left;
+        for (Function *H : keep)
+            if (!divergent.count(H)) left.push_back(H);
+        keep = left;
+        // Inline every call to these helpers in the functions that remain,
+        // again after each round: an inlined body may call another of them.
+        std::set<Function *> touched;
+        std::vector<Function *> callers{&F};
+        callers.insert(callers.end(), keep.begin(), keep.end());
+        for (bool more = true; more;) {
+            more = false;
+            for (Function *G : callers) {
+                std::vector<CallInst *> sites;
+                for (BasicBlock &B : *G)
+                    for (Instruction &I : B)
+                        if (auto *C = dyn_cast<CallInst>(&I))
+                            if (divergent.count(C->getCalledFunction())) sites.push_back(C);
+                for (CallInst *C : sites) {
+                    InlineFunctionInfo IFI;
+                    if (!InlineFunction(*C, IFI).isSuccess()) fail("internal", "could not inline helper " + C->getCalledFunction()->getName().str());
+                    touched.insert(G);
+                    more = true;
+                }
+            }
+        }
+        for (Function *G : touched) {
+            FAM.invalidate(*G, PreservedAnalyses::none());
+            lowerConstantExprs(*G);
+            removeUnreachableBlocks(*G);
+            cleanup(*G);
+        }
+        if (getenv("AIRC_STATS")) fprintf(stderr, "airc-helpers: %zu inlined (called under divergent control), %zu kept\n", divergent.size(), keep.size());
+        changed = true;
+    }
+    return keep;
+}
+
 // The per-function pipeline after inlining: scalar replacement, clean-up,
 // memory intrinsics, then the CFG normalizations for structured control
 // flow.
@@ -403,13 +558,66 @@ static size_t condBranches(Function &F) {
     return n;
 }
 
-static void structureFunction(Function &F, FunctionAnalysisManager &FAM) {
+// Loop guard (stage8-contract.md §13.3): every loop header first calls
+// the marker `airc.loop_budget`, which the emitter lowers to "count one
+// more loop iteration of this invocation and say whether the count is now
+// over the limit"; when it is, the header leaves the loop through one of
+// its exit blocks. The count is per invocation and shared by every loop
+// of every function, so after it runs out each loop ends at its next
+// header and the invocation finishes along an acyclic path: a kernel whose
+// loop would never end (for example a trip count that skips past its
+// bound) costs at most the limit instead of stalling the GPU queue.
+// Values the exit block's phis would take from inside the loop are zero
+// on the guard edge (the results of a stopped invocation are not
+// meaningful anyway). Runs after FixIrreducible, so every cycle has a
+// loop header, and in LCSSA form, so no value defined in the loop is used
+// past an exit except through such a phi. Loops whose trip count scalar
+// evolution bounds by a constant (the usual `for (i = 0; i < 4; i++)`)
+// end by themselves and get no guard, so they keep their known trip count.
+static void insertLoopGuards(Function &F, FunctionAnalysisManager &FAM) {
+    DominatorTree DT(F);
+    LoopInfo LI(DT);
+    if (LI.empty()) return;
+    for (Loop *L : LI) formLCSSARecursively(*L, DT, &LI, nullptr);
+    std::vector<std::pair<BasicBlock *, BasicBlock *>> guards;  // header, exit
+    {
+        TargetLibraryInfoImpl TLII(Triple(F.getParent()->getTargetTriple()));
+        TargetLibraryInfo TLI(TLII, &F);
+        AssumptionCache AC(F);
+        ScalarEvolution SE(F, TLI, AC, DT, LI);
+        for (Loop *L : LI.getLoopsInPreorder()) {
+            SmallVector<BasicBlock *, 4> exits;
+            L->getUniqueExitBlocks(exits);
+            if (exits.empty()) continue;  // no way out at all: nothing to branch to
+            if (SE.getSmallConstantMaxTripCount(L) != 0) continue;  // bounded
+            guards.push_back({L->getHeader(), exits[0]});
+        }
+    }
+    FunctionCallee budget = F.getParent()->getOrInsertFunction("airc.loop_budget", Type::getInt1Ty(F.getContext()));
+    for (auto &g : guards) {
+        BasicBlock *H = g.first, *X = g.second;
+        BasicBlock *body = H->splitBasicBlock(H->getFirstNonPHI(), H->getName() + ".guarded");
+        H->getTerminator()->eraseFromParent();
+        IRBuilder<> B(H);
+        Value *over = B.CreateCall(budget);
+        B.CreateCondBr(over, X, body);
+        for (PHINode &P : X->phis()) P.addIncoming(Constant::getNullValue(P.getType()), H);
+    }
+    FAM.invalidate(F, PreservedAnalyses::none());
+}
+
+static void structureFunction(Function &F, FunctionAnalysisManager &FAM, bool loopGuard) {
     FAM.invalidate(F, PreservedAnalyses::none());
     {
         FunctionPassManager FPM;
         FPM.addPass(LowerSwitchPass());
         FPM.addPass(UnifyFunctionExitNodesPass());
         FPM.addPass(FixIrreduciblePass());
+        FPM.run(F, FAM);
+    }
+    if (loopGuard) insertLoopGuards(F, FAM);
+    {
+        FunctionPassManager FPM;
         FPM.addPass(UnifyLoopExitsPass());
         FPM.addPass(LoopSimplifyPass());
         if (!getenv("AIRC_NO_STRUCTURIZE")) FPM.addPass(StructurizeCFGPass());
@@ -423,7 +631,7 @@ static void structureFunction(Function &F, FunctionAnalysisManager &FAM) {
 }
 
 bool prepareFunction(Module &M, Function &F, bool gridGuard, const std::function<void(Function &)> &afterInline,
-                     std::vector<Function *> *helpers) {
+                     std::vector<Function *> *helpers, bool loopGuard) {
     // 1. Inline every defined function into F, except helpers kept out of line.
     std::vector<Function *> keep = chooseOutOfLine(M, F);
     std::set<Function *> keepSet(keep.begin(), keep.end());
@@ -484,11 +692,18 @@ bool prepareFunction(Module &M, Function &F, bool gridGuard, const std::function
     }
     if (gridGuard) insertGridGuard(F);
 
-    // 3. Per-function clean-up and structuring.
+    // 3. Per-function clean-up and structuring. Helpers called under
+    // divergent control flow are inlined after the clean-up (which leaves
+    // the SSA form the divergence analysis needs).
     for (Function *G : all) cleanupFunction(*G, FAM);
+    if (!keep.empty() && !getenv("AIRC_OUTLINE_DIVERGENT")) {
+        keep = inlineDivergentHelpers(F, keep, FAM, [&](Function &G) { cleanupFunction(G, FAM); });
+        all.assign(1, &F);
+        all.insert(all.end(), keep.begin(), keep.end());
+    }
     for (Function *G : all) {
         size_t before = G->size();
-        structureFunction(*G, FAM);
+        structureFunction(*G, FAM, loopGuard);
         if (getenv("AIRC_STATS")) fprintf(stderr, "airc-structure: %zu -> %zu blocks, %zu conditional branches\n", before, G->size(), condBranches(*G));
     }
     if (helpers) *helpers = keep;

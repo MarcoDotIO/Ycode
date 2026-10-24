@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+# ycode-gpu-trace: summarizes the GPU frame trace (YCODE_METAL_TRACE=<file>,
+# stage8-contract.md §14.1; with YCODE_METAL_TRACE_SEGMENTS=1 also the GPU
+# time of each segment: IOSurface copy-ins, every pass, copy-outs, §15).
+# Python 3 standard library; run with `python3 -I`.
+#
+# usage: ycode-gpu-trace <trace.txt> [--pid P] [--from S --to S] [--windows]
+#   --pid P       only command buffers of Metal client P (the trace's first column)
+#   --from/--to   host CLOCK_MONOTONIC seconds (recv_ns) to keep
+#   --windows     split the trace where no command buffer arrives for 2 s and
+#                 summarize each part separately
+# Prints per client: command buffers, GPU time (gpu_end - gpu_begin),
+# queue latency (submitted -> completion seen), handler delay, bytes copied;
+# and, with segments, the GPU time per segment kind (the time from the
+# previous segment's end, so it includes the barrier before it).
+import re
+import sys
+from collections import defaultdict
+
+
+def pct(values, p):
+    if not values:
+        return 0.0
+    v = sorted(values)
+    k = min(len(v) - 1, max(0, int(round(p / 100.0 * (len(v) - 1)))))
+    return v[k]
+
+
+def kind_of(label):
+    # R1398x2034/12/L -> R1398x2034/L ; keep size and load action, drop the draw count
+    m = re.match(r"R([0-9?]+x[0-9?]+(?:s\d+)?)/(\d+)/([LCD-])(/res)?$", label)
+    if m:
+        return "R%s/%s%s" % (m.group(1), m.group(3), m.group(4) or "")
+    m = re.match(r"([CB])(\d+)$", label)
+    if m:
+        return m.group(1)
+    return label
+
+
+def parse(path):
+    rows = []
+    with open(path, errors="replace") as f:
+        for line in f:
+            if line.startswith("#"):
+                continue
+            p = line.split()
+            if len(p) < 20:
+                continue
+            try:
+                r = {
+                    "pid": int(p[0]), "recv": int(p[2]), "submitted": int(p[6]) if p[6] != "-" else None,
+                    "gb": int(p[7]) if p[7] != "-" else None, "ge": int(p[8]) if p[8] != "-" else None,
+                    "done": int(p[9]), "handlers": int(p[10]), "draws": int(p[11]), "dispatches": int(p[12]),
+                    "blits": int(p[13]), "passes": int(p[14]), "bin": int(p[15]), "bout": int(p[16]),
+                    "held": p[17] == "1", "segs": [],
+                }
+            except ValueError:
+                continue
+            if len(p) > 20 and "=" in p[20]:
+                for item in p[20].split(","):
+                    if "=" in item:
+                        k, v = item.rsplit("=", 1)
+                        try:
+                            r["segs"].append((k, int(v)))
+                        except ValueError:
+                            pass
+            rows.append(r)
+    return rows
+
+
+def summarize(rows, title):
+    print("== %s: %d command buffers" % (title, len(rows)))
+    if not rows:
+        return
+    t0 = min(r["recv"] for r in rows if r["recv"] > 0) if any(r["recv"] > 0 for r in rows) else 0
+    t1 = max(r["done"] for r in rows)
+    span = max((t1 - t0) / 1e9, 1e-9)
+    by = defaultdict(list)
+    for r in rows:
+        by[r["pid"]].append(r)
+    print("  span %.1f s" % span)
+    print("  %6s %6s %8s %8s %8s %8s %8s %8s %8s %8s %8s %8s %9s" % ("client", "cbs", "rec p50", "gpu p50", "gpu p90", "gpu max",
+                                                                   "lat p50", "lat p90", "lat max", "hnd p50", "e2e p50", "gpu ms/s",
+                                                                   "MB in/out"))
+    for pid, rs in sorted(by.items(), key=lambda kv: -len(kv[1])):
+        gpu = [(r["ge"] - r["gb"]) / 1e6 for r in rs if r["gb"] is not None and r["ge"] is not None and r["ge"] >= r["gb"]]
+        lat = [(r["done"] - r["submitted"]) / 1e6 for r in rs if r["submitted"]]
+        hnd = [(r["handlers"] - r["done"]) / 1e6 for r in rs]
+        rec = [(r["submitted"] - r["recv"]) / 1e6 for r in rs if r["submitted"] and r["recv"] > 0]
+        e2e = [(r["handlers"] - r["recv"]) / 1e6 for r in rs if r["recv"] > 0]
+        mb_in = sum(r["bin"] for r in rs) / 1e6
+        mb_out = sum(r["bout"] for r in rs) / 1e6
+        print("  %6d %6d %8.2f %8.2f %8.2f %8.2f %8.2f %8.2f %8.2f %8.2f %8.2f %8.1f %4.0f/%-4.0f" % (
+            pid, len(rs), pct(rec, 50), pct(gpu, 50), pct(gpu, 90), max(gpu) if gpu else 0, pct(lat, 50), pct(lat, 90),
+            max(lat) if lat else 0, pct(hnd, 50), pct(e2e, 50), sum(gpu) / span, mb_in, mb_out))
+    seg = defaultdict(list)
+    per_cb = defaultdict(list)
+    for r in rows:
+        if not r["segs"] or r["gb"] is None:
+            continue
+        prev = 0
+        for label, t in r["segs"]:
+            d = max(0, t - prev) / 1e6
+            seg[(r["pid"], kind_of(label))].append(d)
+            prev = t
+        if r["ge"] is not None:
+            tail = max(0, (r["ge"] - r["gb"]) - prev) / 1e6
+            seg[(r["pid"], "(end)")].append(tail)
+        per_cb[r["pid"]].append(r)
+    if seg:
+        print("  GPU time per segment (ms; from the previous segment's end):")
+        print("  %6s %-28s %6s %8s %8s %8s %9s" % ("client", "segment", "n", "mean", "p90", "max", "ms per cb"))
+        for (pid, k), v in sorted(seg.items(), key=lambda kv: (-len(per_cb[kv[0][0]]), -sum(kv[1]))):
+            n_cb = max(len(per_cb[pid]), 1)
+            print("  %6d %-28s %6d %8.3f %8.3f %8.3f %9.3f" % (pid, k[:28], len(v), sum(v) / len(v), pct(v, 90), max(v), sum(v) / n_cb))
+
+
+def main(argv):
+    if len(argv) < 2:
+        print(__doc__ or "usage: ycode-gpu-trace <trace.txt> [--pid P] [--from S --to S] [--windows]")
+        return 64
+    path = argv[1]
+    pid = None
+    lo = hi = None
+    windows = False
+    i = 2
+    while i < len(argv):
+        a = argv[i]
+        if a == "--pid":
+            pid = int(argv[i + 1]); i += 2
+        elif a == "--from":
+            lo = float(argv[i + 1]); i += 2
+        elif a == "--to":
+            hi = float(argv[i + 1]); i += 2
+        elif a == "--windows":
+            windows = True; i += 1
+        else:
+            print("unknown option %s" % a); return 64
+    rows = parse(path)
+    if pid is not None:
+        rows = [r for r in rows if r["pid"] == pid]
+    if lo is not None:
+        rows = [r for r in rows if r["recv"] / 1e9 >= lo]
+    if hi is not None:
+        rows = [r for r in rows if r["recv"] / 1e9 <= hi]
+    rows.sort(key=lambda r: r["recv"])
+    if not windows:
+        summarize(rows, path)
+        return 0
+    part = []
+    n = 0
+    last = None
+    for r in rows:
+        if last is not None and r["recv"] - last > 2e9 and part:
+            n += 1
+            summarize(part, "part %d (%.1f-%.1f s)" % (n, part[0]["recv"] / 1e9, part[-1]["recv"] / 1e9))
+            part = []
+        part.append(r)
+        last = r["recv"]
+    if part:
+        n += 1
+        summarize(part, "part %d (%.1f-%.1f s)" % (n, part[0]["recv"] / 1e9, part[-1]["recv"] / 1e9))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

@@ -47,4 +47,27 @@ public protocol ProcessLauncher: AnyObject {
     /// new main thread's first trap simply waits for the lock.
     /// Throws `DarwinErrnoError` (ENOENT, EACCES, ENOEXEC, EBADARCH, ENOMEM).
     func launch(_ request: ProcessImageRequest, kernel: DarwinKernel) throws -> any LaunchedImage
+
+    /// The optional two-step form (`bsd-locking.md` §7): `prepare` builds
+    /// the image as `launch` does but registers and starts nothing; the
+    /// process layer calls it **without** the kernel lock, while `kernel`
+    /// is not yet visible to any other thread. nil: not supported (use
+    /// `launch`). Throws as `launch`.
+    func prepare(_ request: ProcessImageRequest, kernel: DarwinKernel) throws -> (any PreparedImage)?
+    /// Registers a prepared image and starts its main thread (unless
+    /// `startSuspended`). Kernel lock held.
+    func activate(_ prepared: any PreparedImage, startSuspended: Bool) throws -> any LaunchedImage
+    /// Destroys a prepared image that will not run. Kernel lock held.
+    func discard(_ prepared: any PreparedImage)
+}
+
+/// A built image not yet registered or started (`ProcessLauncher.prepare`).
+public protocol PreparedImage: AnyObject {}
+
+extension ProcessLauncher {
+    public func prepare(_ request: ProcessImageRequest, kernel: DarwinKernel) throws -> (any PreparedImage)? { nil }
+    public func activate(_ prepared: any PreparedImage, startSuspended: Bool) throws -> any LaunchedImage {
+        preconditionFailure("activate without prepare")
+    }
+    public func discard(_ prepared: any PreparedImage) {}
 }

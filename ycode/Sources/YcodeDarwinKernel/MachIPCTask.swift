@@ -325,6 +325,9 @@ extension MachIPC {
                     _ = setExceptionPorts(mask: a.mask, r, behavior: a.behavior, flavor: a.flavor)
                 case .registered:
                     registeredRights.append(r)
+                case .importanceWatch:
+                    if let p = r.port { pendingWatchPorts.append(p) }
+                    release(r)
                 default:
                     release(r)
                 }

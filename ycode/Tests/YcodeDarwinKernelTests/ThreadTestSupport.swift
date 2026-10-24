@@ -81,7 +81,7 @@ final class T2Env: @unchecked Sendable {
         f.kind = TrapFrame.Kind.svc.rawValue
         f.x[16] = x16
         for (i, v) in args.enumerated() { f.x[i] = v }
-        let o = kernel.handle(&f, context: context ?? main, memory: space)
+        let o = kernel.handleTrying(&f, context: context ?? main, memory: space)
         return (o, f)
     }
 

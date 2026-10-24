@@ -145,6 +145,7 @@ extension MachIPC {
         m.inline = inline
         m.aux = s.aux
         m.sender = senderIdentity
+        if SchedPolicy.importanceEnabled || SchedPolicy.qosEnabled { annotateForScheduling(&m, options: options) }
         if options & MachMsgOption.sendNotify != 0, case let .send(p) = m.destination {
             armSendPossible(p, name: s.remote)
         }
@@ -373,7 +374,22 @@ extension MachIPC {
                 return (MachMsgReturn.success, nil, "")
             }
             if let deadline, KernelClock.now() >= deadline { return (MachMsgReturn.sendTimedOut, m, "") }
-            if p.sendWaiters.wait(on: lock, deadline: deadline) == .interrupted {
+            // SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §4.2): the
+            // message a blocked sender holds, so a snapshot can queue it.
+            let waiter = lock.currentContext.map(ObjectIdentifier.init)
+            if let waiter { p.snapshotPendingSends.append((waiter, m)) }
+            let result = p.sendWaiters.wait(on: lock, deadline: deadline)
+            if let waiter { p.snapshotPendingSends.removeAll { $0.context == waiter } }
+            if result == .woken, p.grantedSlots > 0 {
+                // Woken for a freed slot (`dequeue`): it is this sender's.
+                p.grantedSlots -= 1
+                if p.active {
+                    enqueue(m, on: p)
+                    return (MachMsgReturn.success, nil, "")
+                }
+                continue
+            }
+            if result == .interrupted {
                 return (MachMsgReturn.sendInterrupted, m, "")
             }
         }
@@ -383,7 +399,7 @@ extension MachIPC {
     /// a waiting receiver that would take the message at once.
     func canEnqueue(_ m: KMessage, on p: IPCPort) -> Bool {
         if case .sendOnce = m.destination { return true }
-        if p.messages.count < p.qlimit { return true }
+        if p.occupiedSlots < p.qlimit { return true }
         let idle = p.waitingReceivers + p.sets.reduce(0) { $0 + $1.waitingReceivers }
         return idle > p.messages.count
     }
@@ -403,11 +419,13 @@ extension MachIPC {
             }
         }
         let trailer = MachMsgOption.trailerSize(r.options)
+        // A new receive ends the servicing episode of the last one (scheduling-policy.md §4.3).
+        if let context, context.carriedImportance != nil || context.ipcPushClass >= 0 { kernel?.endServicing(context) }
         let deadline: UInt64? = r.options & MachMsgOption.rcvTimeout != 0
             ? KernelClock.deadline(afterNanoseconds: UInt64(r.timeout) * 1_000_000) : nil
         switch awaitMessage(name: r.name, slot: i, port: port, set: set, deadline: deadline, mayBlock: r.mayBlock) {
         case let .failure(e): return MachReceiveResult(code: e.code)
-        case let .success(source): return take(from: source, request: r, trailer: trailer, memory: memory)
+        case let .success(source): return take(from: source, request: r, trailer: trailer, memory: memory, context: context)
         }
     }
 
@@ -458,7 +476,7 @@ extension MachIPC {
 
     /// Takes the first message of `source` into the receive buffer.
     func take(from source: IPCPort, request r: MachReceiveRequest, trailer: Int,
-              memory: any GuestVirtualMemory) -> MachReceiveResult {
+              memory: any GuestVirtualMemory, context: ThreadContext? = nil) -> MachReceiveResult {
         let first = source.messages.first!
         let size = first.size
         let sourceName = reverse[ObjectIdentifier(source)] ?? 0
@@ -487,6 +505,7 @@ extension MachIPC {
                                      note: " [too large: \(size)+\(trailer), destroyed]")
         }
         let (m, seqno) = dequeue(source)
+        if m.importance || m.pushClass >= 0 { receivedForScheduling(m, by: context) }
         let out = copyoutReceived(m, from: source, options: r.options, buffer: r.buffer, memory: memory)
         if out.headerFailed {
             let header = bareHeader(m, local: sourceName, rightsAlreadyHandled: true)
@@ -494,8 +513,9 @@ extension MachIPC {
             try? memory.write(va: r.buffer, bytes: Array(bytes.prefix(Int(min(r.size, UInt64(bytes.count))))))
             return MachReceiveResult(code: MachMsgReturn.rcvHeaderError | MachMsgReturn.ipcSpace)
         }
-        let bytes = out.bytes + makeTrailer(m, seqno: seqno, port: source, size: trailer)
-        do { try memory.write(va: r.buffer, bytes: bytes) } catch {
+        var bytes = out.bytes
+        appendTrailer(m, seqno: seqno, port: source, size: trailer, to: &bytes)
+        guard writeReceived(memory, r.buffer, bytes) else {
             return MachReceiveResult(code: MachMsgReturn.rcvInvalidData)
         }
         var auxSize: UInt64 = 0
@@ -506,7 +526,7 @@ extension MachIPC {
         }
         let code = out.resource == 0 ? MachMsgReturn.success : MachMsgReturn.rcvBodyError | out.resource
         return MachReceiveResult(code: code, size: UInt64(out.bytes.count + trailer), auxSize: auxSize,
-                                 note: " [id \(m.id) size \(out.bytes.count) seqno \(seqno) from \(hx(sourceName))]")
+                                 note: tracesCalls ? " [id \(m.id) size \(out.bytes.count) seqno \(seqno) from \(hx(sourceName))]" : "")
     }
 
     /// The header written for a too-large message received without
@@ -534,21 +554,31 @@ extension MachIPC {
     /// The trailer (§2.6), cut to `size` bytes.
     func makeTrailer(_ m: KMessage, seqno: UInt32, port: IPCPort, size: Int) -> [UInt8] {
         var t: [UInt8] = []
-        t += le32(0)
-        t += le32(UInt32(size))
-        t += le32(seqno)
+        appendTrailer(m, seqno: seqno, port: port, size: size, to: &t)
+        return t
+    }
+
+    /// Appends the trailer (§2.6), cut to `size` bytes, to `t`.
+    func appendTrailer(_ m: KMessage, seqno: UInt32, port: IPCPort, size: Int, to t: inout [UInt8]) {
+        let base = t.count
+        t.reserveCapacity(base + 68)
+        t.appendLE(UInt32(0))
+        t.appendLE(UInt32(size))
+        t.appendLE(seqno)
         if m.fromKernel {
-            t += le32(0) + le32(1)
-            t += [UInt8](repeating: 0, count: 32)
+            t.appendLE(UInt32(0))
+            t.appendLE(UInt32(1))
+            t.append(contentsOf: repeatElement(0, count: 32))
         } else {
             // The sender's identity at send time (`processes.md` §4.5).
             let sender = m.sender ?? senderIdentity
-            t += le32(sender.uid) + le32(sender.gid)
-            for v in sender.auditToken { t += le32(v) }
+            t.appendLE(sender.uid)
+            t.appendLE(sender.gid)
+            for v in sender.auditToken { t.appendLE(v) }
         }
-        t += le64(port.context)
-        t += le32(0) + le32(0)
-        return Array(t.prefix(size))
+        t.appendLE(port.context)
+        t.appendLE(UInt64(0))
+        t.removeLast(t.count - base - min(size, t.count - base))
     }
 
     /// Copies a received message out into the space (§2.5): the header
@@ -564,15 +594,16 @@ extension MachIPC {
         }
         let bits = (m.complex ? MachMsgBits.complex : 0) | MachMsgBits.make(remote: m.replyType, local: m.destinationType)
         var out: [UInt8] = []
-        out += le32(bits)
-        out += le32(UInt32(m.size))
-        out += le32(replyName)
-        out += le32(local)
-        out += le32(m.voucherRaw)
-        out += le32(UInt32(bitPattern: m.id))
+        out.reserveCapacity(m.size + 68)
+        out.appendLE(bits)
+        out.appendLE(UInt32(m.size))
+        out.appendLE(replyName)
+        out.appendLE(local)
+        out.appendLE(m.voucherRaw)
+        out.appendLE(UInt32(bitPattern: m.id))
         var resource: UInt32 = 0
         if m.complex {
-            out += le32(UInt32(m.items.count))
+            out.appendLE(UInt32(m.items.count))
             for item in m.items {
                 out += copyoutItem(item, options: options, buffer: buffer, memory: memory, resource: &resource)
             }

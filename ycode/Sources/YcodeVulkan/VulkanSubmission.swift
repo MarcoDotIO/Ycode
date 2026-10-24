@@ -21,15 +21,19 @@ extension VulkanMetalBackend {
 
     /// A command buffer in the recording state (recycled when possible). Under the lock.
     func newRecording() throws -> Recording {
-        if let cb = freeCommandBuffers.popLast() {
-            if yvk_command_buffer_restart(ctx, cb) == 0 { return Recording(cb: cb) }
-            yvk_command_buffer_free(ctx, cb)
+        let rec: Recording
+        if let cb = freeCommandBuffers.popLast(), yvk_command_buffer_restart(ctx, cb) == 0 {
+            rec = Recording(cb: cb)
+        } else {
+            var err = [CChar](repeating: 0, count: 256)
+            guard let cb = yvk_command_buffer_begin(ctx, &err, err.count) else {
+                throw VulkanBackendError(cString(err))
+            }
+            rec = Recording(cb: cb)
         }
-        var err = [CChar](repeating: 0, count: 256)
-        guard let cb = yvk_command_buffer_begin(ctx, &err, err.count) else {
-            throw VulkanBackendError(cString(err))
-        }
-        return Recording(cb: cb)
+        rec.checkpointID = nextCheckpointID
+        nextCheckpointID &+= 1
+        return rec
     }
 
     /// The setup command buffer (image initialisation, uploads), submitted
@@ -70,22 +74,64 @@ extension VulkanMetalBackend {
         let serial = lastSubmitted + 1
         let sr = yvk_submit(ctx, rec.cb, timeline, serial, rec.waitSemaphore, rec.waitValue)
         guard sr == VK_SUCCESS else {
-            if sr == VK_ERROR_DEVICE_LOST { deviceLost = true }
+            if sr == VK_ERROR_DEVICE_LOST {
+                deviceLost = true
+                reportDeviceLoss("vkQueueSubmit2 of " + (entry?.label ?? "a recording"))
+            }
             throw VulkanBackendError("vkQueueSubmit2 failed (\(sr.rawValue))")
         }
         lastSubmitted = serial
         statistics.submissions += 1
+        for id in rec.writtenSurfaces { surfaceWriteSerials[id] = serial }
+        // Held work's copy-outs were recorded (and their generation raised)
+        // before images recorded since then copied the surface in; those
+        // copies ran before this write, so they no longer match the surface.
+        if rec.deferred { for k in rec.writtenSurfaceKeys { surfaceGenerations[k, default: 0] &+= 1 } }
         var e = entry ?? PendingSubmission(serial: serial, cb: nil, chunks: [], status: MetalCommandBufferStatus.completed)
-        if rec.draws > 0 || rec.indirectDraws > 0 {
+        if options.earlyScheduled, let scheduled = e.scheduled {
+            // On the queue, after every earlier submission: Metal's
+            // "scheduled". Called once the lock is released (flushEarlyScheduled).
+            earlyScheduledQueue.append(scheduled)
+            e.scheduled = nil
+            statistics.earlyScheduled += 1
+        }
+        if !options.recordFast && (rec.draws > 0 || rec.indirectDraws > 0) {
             e.label += (e.label.isEmpty ? "" : "; ") + "\(rec.draws) draws (largest \(rec.largestDraw)), \(rec.indirectDraws) indirect"
         }
         if !rec.shaders.isEmpty { e.label += (e.label.isEmpty ? "" : "; ") + "shaders " + rec.shaders.joined(separator: ", ") }
+        if !rec.dispatchNotes.isEmpty { e.label += "; " + rec.dispatchNotes.joined(separator: "; ") }
         e.serial = serial
         e.cb = rec.cb
         e.chunks = rec.chunks
         pending.append(e)
         cond.broadcast()
         return serial
+    }
+
+    /// Calls the `scheduled` handlers queued at submission, in order. Not
+    /// under the lock; the submitting thread and the completion thread both
+    /// call it (the completion thread before any completion handler).
+    func flushEarlyScheduled() {
+        cond.lock()
+        // A list another thread took and is still running counts too: the
+        // completion thread must not run a completion handler before the
+        // scheduled handler of the same command buffer has run.
+        let any = !earlyScheduledQueue.isEmpty || scheduledFlushRunning
+        cond.unlock()
+        guard any else { return }
+        // One flusher at a time keeps the order; taken before the backend
+        // lock (a handler may take that lock).
+        flushingScheduled.lock()
+        cond.lock()
+        let list = earlyScheduledQueue
+        earlyScheduledQueue.removeAll()
+        scheduledFlushRunning = !list.isEmpty
+        cond.unlock()
+        for f in list { f() }
+        if !list.isEmpty {
+            cond.lock(); scheduledFlushRunning = false; cond.unlock()
+        }
+        flushingScheduled.unlock()
     }
 
     /// Queues a completion that needs no GPU work of its own (it completes
@@ -148,8 +194,15 @@ extension VulkanMetalBackend {
     func completionLoop() {
         while true {
             cond.lock()
-            while pending.isEmpty && running { cond.wait() }
-            if pending.isEmpty && !running {
+            // At shutdown the held-work thread queues error completions for
+            // what it still holds, so this thread ends after it.
+            while pending.isEmpty && earlyScheduledQueue.isEmpty && (running || heldThread != nil) { cond.wait() }
+            if !earlyScheduledQueue.isEmpty {
+                cond.unlock()
+                flushEarlyScheduled()
+                continue
+            }
+            if pending.isEmpty && !running && heldThread == nil {
                 completionThread = nil
                 cond.unlock()
                 return
@@ -162,20 +215,60 @@ extension VulkanMetalBackend {
             var ok = !lost
             if serial > 0 && !lost {
                 var waited = 0
+                var slices = 0
+                var reported = false
+                let waitStart = DispatchTime.now().uptimeNanoseconds
+                let slice = options.completionPollNs
                 while true {
-                    let r = yvk_timeline_wait(ctx, sem, serial, 1_000_000_000)
+                    // Waits in short slices and reads the counter after each:
+                    // on the Thor a blocking wait sometimes returned hundreds
+                    // of milliseconds after the GPU had signaled the value
+                    // (stage8-contract.md §14), which delays the guest's
+                    // completion handlers and so its next frame.
+                    var r = yvk_timeline_wait(ctx, sem, serial, slice)
+                    if r == VK_TIMEOUT && yvk_timeline_value(ctx, sem) >= serial {
+                        r = VK_SUCCESS
+                        cond.lock(); statistics.lateWakeups += 1; cond.unlock()
+                    }
                     if r == VK_SUCCESS { break }
                     if r == VK_TIMEOUT {
+                        if !reported, options.hangReportSeconds > 0 {
+                            let ran = Double(DispatchTime.now().uptimeNanoseconds &- waitStart) / 1e9
+                            if ran >= options.hangReportSeconds {
+                                reported = true
+                                cond.lock(); reportRunningSubmission(serial: serial, seconds: ran); cond.unlock()
+                            }
+                        }
+                        slices += 1
+                        if UInt64(slices) * slice < 1_000_000_000 { continue }
+                        slices = 0
                         waited += 1
+                        cond.lock()
+                        let label = pending.first?.label ?? ""
+                        // Shutting down (stage8-contract.md §12): stop waiting
+                        // at the deadline; the unfinished work is abandoned.
+                        let giveUp = !running && DispatchTime.now().uptimeNanoseconds >= shutdownDeadline
+                        if giveUp { abandonedAtShutdown = true }
+                        cond.unlock()
+                        if giveUp {
+                            log("shutdown: serial \(serial) still running after \(waited) s; abandoned"
+                                + (label.isEmpty ? "" : " (\(label))"))
+                            ok = false
+                            break
+                        }
                         if waited % 10 == 0 {
-                            cond.lock()
-                            let label = pending.first?.label ?? ""
-                            cond.unlock()
                             log("serial \(serial) still running after \(waited) s\(label.isEmpty ? "" : " (\(label))")")
                         }
-                        continue
+                        // A killed context does not always make the wait fail; the counter query says so.
+                        var value: UInt64 = 0
+                        if yvk_timeline_query(ctx, sem, &value) == VK_ERROR_DEVICE_LOST {
+                            r = VK_ERROR_DEVICE_LOST
+                        } else {
+                            continue
+                        }
                     }
                     log("waiting for serial \(serial) failed (\(r.rawValue)): device lost")
+                    if r == VK_ERROR_DEVICE_LOST { cond.lock(); reportDeviceLoss("waiting for serial \(serial)"); cond.unlock() }
                     ok = false
                     break
                 }
@@ -183,35 +276,112 @@ extension VulkanMetalBackend {
 
             cond.lock()
             if !ok { deviceLost = true }
+            // Abandoned at shutdown, the GPU may still use this work's
+            // memory and objects: complete it as failed, but free nothing.
+            let abandoning = abandonedAtShutdown
             var ready: [PendingSubmission] = []
             while let first = pending.first, first.serial <= serial || !ok {
                 ready.append(pending.removeFirst())
             }
-            completedSerial = max(completedSerial, serial)
+            if !abandoning { completedSerial = max(completedSerial, serial) }
             let now = DispatchTime.now().uptimeNanoseconds
+            var traced: [(FrameTraceInfo, (UInt64, UInt64)?, [UInt64]?)] = []
+            if let ft = frameTrace {
+                for e in ready {
+                    guard let t = e.trace else { continue }
+                    if ok {
+                        let segs = ft.segmentResults(device, fn, slot: t.slot, count: t.segments.count)
+                        traced.append((t, ft.results(device, fn, slot: t.slot), segs))
+                    } else {
+                        ft.release(t.slot)
+                        traced.append((t, nil, nil))
+                    }
+                }
+            }
             for e in ready {
                 if e.completed != nil {
                     let l = now &- e.queuedAt
                     statistics.completedCommandBuffers += 1
                     statistics.latencyTotalNs &+= l
                     statistics.latencyMaxNs = max(statistics.latencyMaxNs, l)
+                    let bucket = VulkanBackendStatistics.latencyBucketLimitsNs.firstIndex { l < $0 }
+                        ?? VulkanBackendStatistics.latencyBucketLimitsNs.count
+                    statistics.latencyBuckets[bucket] += 1
                 }
                 e.after?(ok)
+                if abandoning { continue }
                 if let cb = e.cb { freeCommandBuffers.append(cb) }
                 for c in e.chunks { recycle(c) }
             }
-            var keep: [(serial: UInt64, action: () -> Void)] = []
-            let due = graveyard.filter { $0.serial <= completedSerial }
-            for g in graveyard where g.serial > completedSerial { keep.append(g) }
-            graveyard = keep
-            for g in due { g.action() }
+            if !abandoning {
+                var keep: [(serial: UInt64, action: () -> Void)] = []
+                let due = graveyard.filter { $0.serial <= completedSerial }
+                for g in graveyard where g.serial > completedSerial { keep.append(g) }
+                graveyard = keep
+                for g in due { g.action() }
+            }
             cond.unlock()
 
+            flushEarlyScheduled()
             for e in ready {
                 e.scheduled?()
                 e.completed?(ok ? e.status : MetalCommandBufferStatus.error)
             }
+            if !traced.isEmpty, let ft = frameTrace {
+                let handlers = DispatchTime.now().uptimeNanoseconds
+                ft.write(traced.map { ft.line($0.0, gpu: $0.1, segments: $0.2, done: now, handlers: handlers) })
+            }
         }
+    }
+
+    /// Waits (at most `timeout` seconds) until the GPU work submitted so far
+    /// that writes the IOSurface `surfaceID` is complete; true when it is
+    /// (or there is none). Any thread; never under the IOSurface service's lock.
+    @discardableResult
+    public func waitForSurfaceWrites(_ surfaceID: UInt32, timeout: Double = 0.5) -> Bool {
+        guard isAvailable else { return true }
+        cond.lock()
+        let serial = surfaceWriteSerials[surfaceID] ?? 0
+        let sem = timeline
+        let lost = deviceLost
+        let stuckAt = surfaceWaitStuckAt
+        cond.unlock()
+        guard serial > 0, !lost, let sem else { return true }
+        let now = yvk_timeline_value(ctx, sem)
+        guard now < serial else { return true }
+        // A GPU that made no progress since an earlier wait timed out (a
+        // submission that never completes, app-launch.md §3.7) gets only a
+        // short look (5 ms): every lock and display read would otherwise
+        // cost the whole timeout. Full waits resume once the counter moves.
+        let limit = stuckAt == now ? min(timeout, 0.005) : timeout
+        let start = DispatchTime.now().uptimeNanoseconds
+        let limitNs = UInt64(max(limit, 0) * 1e9)
+        var r: VkResult
+        if options.surfaceWaitPollNs == 0 {
+            r = yvk_timeline_wait(ctx, sem, serial, limitNs)
+        } else {
+            // In slices, reading the counter after each (a blocking wait often
+            // wakes late on the Thor).
+            while true {
+                let waited = DispatchTime.now().uptimeNanoseconds &- start
+                r = yvk_timeline_wait(ctx, sem, serial, min(options.surfaceWaitPollNs, limitNs &- min(waited, limitNs)))
+                if r == VK_TIMEOUT && yvk_timeline_value(ctx, sem) >= serial { r = VK_SUCCESS }
+                if r != VK_TIMEOUT || DispatchTime.now().uptimeNanoseconds &- start >= limitNs { break }
+            }
+        }
+        cond.lock()
+        statistics.surfaceWriteWaits.add(DispatchTime.now().uptimeNanoseconds &- start)
+        if r == VK_TIMEOUT {
+            let after = yvk_timeline_value(ctx, sem)
+            if after < serial && surfaceWaitStuckAt != after {
+                surfaceWaitStuckAt = after
+                statistics.surfaceWriteWaitTimeouts += 1
+            }
+        } else {
+            surfaceWaitStuckAt = nil
+        }
+        cond.unlock()
+        return r == VK_SUCCESS
     }
 
     /// Blocks until all work submitted so far is complete.
@@ -279,6 +449,7 @@ extension VulkanMetalBackend {
         guard bytes.count >= min(need, bytes.count), !bytes.isEmpty else { return }
         if let s = tex.image.surface, level == 0, slice == 0, let base = s.allocation.base {
             // IOSurface texture: the surface memory is the texture's content.
+            surfaceChanged(s)
             let bpb = tex.format.bytesPerBlock
             let x0 = region.x * bpb
             let rowBytes = min(region.width * bpb, max(0, s.bytesPerRow - x0))

@@ -75,7 +75,7 @@ extension DarwinKernel {
         guard (Mach.semaphoreTimedwaitSignal...Mach.semaphoreSignal).contains(n) else { return nil }
         let a = Array(frame.x[0..<8])
         func port(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i]) }
-        var call = ""
+        var call = CallText(tracing, "")
         func kr(_ value: UInt64, _ extra: String = "") -> Outcome {
             frame.x[0] = value
             trace("trap mach \(n) \(call) -> \(KernReturn.name(value))\(extra)")
@@ -89,7 +89,7 @@ extension DarwinKernel {
 
         switch n {
         case Mach.semaphoreSignal, Mach.semaphoreSignalAll:
-            call = "\(n == Mach.semaphoreSignal ? "semaphore_signal" : "semaphore_signal_all")(\(hx(port(0))))"
+            call.set("\(n == Mach.semaphoreSignal ? "semaphore_signal" : "semaphore_signal_all")(\(hx(port(0))))")
             guard let s = semaphore(named: port(0)) else { return kr(KernReturn.invalidName) }
             if s.isDestroyed { return kr(KernReturn.terminated) }
             let waiting = s.waiterCount
@@ -97,7 +97,7 @@ extension DarwinKernel {
             return kr(KernReturn.success, " [count \(s.count), woke \(n == Mach.semaphoreSignal ? min(waiting, 1) : waiting)]")
 
         case Mach.semaphoreSignalThread:
-            call = "semaphore_signal_thread(\(hx(port(0))), thread=\(hx(port(1))))"
+            call.set("semaphore_signal_thread(\(hx(port(0))), thread=\(hx(port(1))))")
             guard let s = semaphore(named: port(0)) else { return kr(KernReturn.invalidName) }
             if s.isDestroyed { return kr(KernReturn.terminated) }
             if port(1) == 0 {
@@ -108,18 +108,18 @@ extension DarwinKernel {
 
         case Mach.semaphoreWait, Mach.semaphoreTimedwait:
             let timed = n == Mach.semaphoreTimedwait
-            call = timed
+            call.set(timed
                 ? "semaphore_timedwait(\(hx(port(0))), sec=\(UInt32(truncatingIfNeeded: a[1])), nsec=\(Int32(truncatingIfNeeded: a[2])))"
-                : "semaphore_wait(\(hx(port(0))))"
+                : "semaphore_wait(\(hx(port(0))))")
             guard let s = semaphore(named: port(0)) else { return kr(KernReturn.invalidName) }
             let r = s.wait(lock: lock, deadline: timed ? timeout(a[1], a[2]) : nil)
             return kr(r, " [count \(s.count)]")
 
         case Mach.semaphoreWaitSignal, Mach.semaphoreTimedwaitSignal:
             let timed = n == Mach.semaphoreTimedwaitSignal
-            call = timed
+            call.set(timed
                 ? "semaphore_timedwait_signal(wait=\(hx(port(0))), signal=\(hx(port(1))), sec=\(UInt32(truncatingIfNeeded: a[2])), nsec=\(Int32(truncatingIfNeeded: a[3])))"
-                : "semaphore_wait_signal(wait=\(hx(port(0))), signal=\(hx(port(1))))"
+                : "semaphore_wait_signal(wait=\(hx(port(0))), signal=\(hx(port(1))))")
             guard let w = semaphore(named: port(0)), let s = semaphore(named: port(1)) else {
                 return kr(KernReturn.invalidName)
             }

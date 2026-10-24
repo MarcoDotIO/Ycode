@@ -4,9 +4,20 @@
  * specification and our own R8 harness (research/experiments/simulator/
  * metal-shaders/vk). See CVulkan.h.
  */
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
 #include "CVulkan.h"
 
 #include <dlfcn.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <signal.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -164,6 +175,8 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
     int extMaint5 = WANT(VK_KHR_MAINTENANCE_5_EXTENSION_NAME);
     int extBary = WANT(VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME);
     int extLocalRead = WANT("VK_KHR_dynamic_rendering_local_read");
+    const char *cp = getenv("YCODE_GPU_CHECKPOINTS");
+    int extCheckpoints = (!cp || strcmp(cp, "0") != 0) ? WANT(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME) : 0;
     int extGPL = has_extension(exts, next, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME) &&
                  has_extension(exts, next, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME);
     if (extGPL && getenv("YCODE_VULKAN_NO_PIPELINE_LIBRARY")) extGPL = 0;
@@ -269,6 +282,7 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
     F->dynamicRenderingLocalRead = extLocalRead && lr.dynamicRenderingLocalRead;
     F->fragmentShaderBarycentric = extBary && bary.fragmentShaderBarycentric;
     F->shaderDemoteToHelperInvocation = f13.shaderDemoteToHelperInvocation;
+    F->diagnosticCheckpoints = extCheckpoints;
 
     const char *missing = NULL;
     if (!F->bufferDeviceAddress) missing = "bufferDeviceAddress";
@@ -324,6 +338,15 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
     }
     if (!F->extendedDynamicState3PolygonMode) g_vk.vkCmdSetPolygonModeEXT = NULL;
     if (!F->extendedDynamicState3DepthClamp) g_vk.vkCmdSetDepthClampEnableEXT = NULL;
+    /* The "2" query needs VK_KHR_synchronization2 enabled as an extension on
+       some drivers (the Thor's resolves only the first); either serves. */
+    if (!F->diagnosticCheckpoints || !g_vk.vkCmdSetCheckpointNV ||
+        (!g_vk.vkGetQueueCheckpointData2NV && !g_vk.vkGetQueueCheckpointDataNV)) {
+        F->diagnosticCheckpoints = 0;
+        g_vk.vkCmdSetCheckpointNV = NULL;
+        g_vk.vkGetQueueCheckpointDataNV = NULL;
+        g_vk.vkGetQueueCheckpointData2NV = NULL;
+    }
     g_vk.vkGetDeviceQueue(ctx->device, ctx->queueFamily, 0, &ctx->queue);
 
     /* Bindless heap. */
@@ -984,6 +1007,48 @@ VkResult yvk_submit(yvk_context *ctx, VkCommandBuffer cb, VkSemaphore signal, ui
     return g_vk.vkQueueSubmit2(ctx->queue, 1, &si, VK_NULL_HANDLE);
 }
 
+void yvk_cmd_checkpoint(VkCommandBuffer cb, uint64_t marker) {
+    if (g_vk.vkCmdSetCheckpointNV) g_vk.vkCmdSetCheckpointNV(cb, (const void *)(uintptr_t)marker);
+}
+
+uint32_t yvk_queue_checkpoints(yvk_context *ctx, uint64_t *markers, uint64_t *stages, uint32_t max) {
+    if (!ctx->queue) return 0;
+    if (!g_vk.vkGetQueueCheckpointData2NV) {
+        if (!g_vk.vkGetQueueCheckpointDataNV) return 0;
+        uint32_t n = 0;
+        g_vk.vkGetQueueCheckpointDataNV(ctx->queue, &n, NULL);
+        if (n == 0) return 0;
+        VkCheckpointDataNV *d = calloc(n, sizeof *d);
+        if (!d) return 0;
+        for (uint32_t i = 0; i < n; i++) d[i].sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV;
+        g_vk.vkGetQueueCheckpointDataNV(ctx->queue, &n, d);
+        uint32_t k = 0;
+        for (uint32_t i = 0; i < n && k < max; i++, k++) {
+            markers[k] = (uint64_t)(uintptr_t)d[i].pCheckpointMarker;
+            /* VkPipelineStageFlagBits: top (0x1) and bottom (0x2000) of pipe map to the 2 values. */
+            stages[k] = d[i].stage == VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT
+                      : d[i].stage == VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT ? VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
+                      : (uint64_t)d[i].stage;
+        }
+        free(d);
+        return k;
+    }
+    uint32_t n = 0;
+    g_vk.vkGetQueueCheckpointData2NV(ctx->queue, &n, NULL);
+    if (n == 0) return 0;
+    VkCheckpointData2NV *d = calloc(n, sizeof *d);
+    if (!d) return 0;
+    for (uint32_t i = 0; i < n; i++) d[i].sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_2_NV;
+    g_vk.vkGetQueueCheckpointData2NV(ctx->queue, &n, d);
+    uint32_t k = 0;
+    for (uint32_t i = 0; i < n && k < max; i++, k++) {
+        markers[k] = (uint64_t)(uintptr_t)d[i].pCheckpointMarker;
+        stages[k] = (uint64_t)d[i].stage;
+    }
+    free(d);
+    return k;
+}
+
 VkSemaphore yvk_timeline_create(yvk_context *ctx, uint64_t initial) {
     VkSemaphoreTypeCreateInfo ti = {VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO, NULL, VK_SEMAPHORE_TYPE_TIMELINE,
                                     initial};
@@ -1004,7 +1069,105 @@ uint64_t yvk_timeline_value(yvk_context *ctx, VkSemaphore semaphore) {
     return v;
 }
 
+VkResult yvk_timeline_query(yvk_context *ctx, VkSemaphore semaphore, uint64_t *value) {
+    *value = 0;
+    return g_vk.vkGetSemaphoreCounterValue(ctx->device, semaphore, value);
+}
+
 VkResult yvk_timeline_signal(yvk_context *ctx, VkSemaphore semaphore, uint64_t value) {
     VkSemaphoreSignalInfo si = {VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO, NULL, semaphore, value};
     return g_vk.vkSignalSemaphore(ctx->device, &si);
+}
+
+/* ------------------------------------------------------------------ */
+/* Helper processes                                                    */
+
+extern char **environ;
+
+int yvk_spawn_piped(const char *path, char *const argv[], int *pid, int *toChild, int *fromChild) {
+    int in[2], out[2];
+#if defined(__linux__)
+    if (pipe2(in, O_CLOEXEC) != 0) return errno;
+    if (pipe2(out, O_CLOEXEC) != 0) { int e = errno; close(in[0]); close(in[1]); return e; }
+#else
+    if (pipe(in) != 0) return errno;
+    if (pipe(out) != 0) { int e = errno; close(in[0]); close(in[1]); return e; }
+    fcntl(in[0], F_SETFD, FD_CLOEXEC); fcntl(in[1], F_SETFD, FD_CLOEXEC);
+    fcntl(out[0], F_SETFD, FD_CLOEXEC); fcntl(out[1], F_SETFD, FD_CLOEXEC);
+#endif
+    posix_spawn_file_actions_t fa;
+    posix_spawnattr_t attr;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawnattr_init(&attr);
+    posix_spawn_file_actions_adddup2(&fa, in[0], 0);
+    posix_spawn_file_actions_adddup2(&fa, out[1], 1);
+#if defined(__linux__)
+    posix_spawn_file_actions_addclosefrom_np(&fa, 3);
+#elif defined(__APPLE__)
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_CLOEXEC_DEFAULT);
+    posix_spawn_file_actions_addinherit_np(&fa, 2);
+#endif
+    pid_t child = 0;
+    int r = posix_spawn(&child, path, &fa, &attr, argv, environ);
+    posix_spawn_file_actions_destroy(&fa);
+    posix_spawnattr_destroy(&attr);
+    close(in[0]);
+    close(out[1]);
+    if (r != 0) { close(in[1]); close(out[0]); return r; }
+    *pid = (int)child;
+    *toChild = in[1];
+    *fromChild = out[0];
+    return 0;
+}
+
+int yvk_write_all(int fd, const void *bytes, size_t length) {
+    sigset_t block, old;
+    sigemptyset(&block);
+    sigaddset(&block, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &block, &old);
+    const char *p = bytes;
+    int result = 0;
+    while (length > 0) {
+        ssize_t n = write(fd, p, length);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            result = errno;
+            break;
+        }
+        p += n;
+        length -= (size_t)n;
+    }
+    if (result == EPIPE && !sigismember(&old, SIGPIPE)) {
+        /* Consume the SIGPIPE this thread raised before unblocking. */
+#if defined(__linux__)
+        struct timespec zero = {0, 0};
+        while (sigtimedwait(&block, NULL, &zero) == SIGPIPE) {}
+#else
+        sigset_t pending;
+        if (sigpending(&pending) == 0 && sigismember(&pending, SIGPIPE)) { int sig; sigwait(&block, &sig); }
+#endif
+    }
+    pthread_sigmask(SIG_SETMASK, &old, NULL);
+    return result;
+}
+
+int yvk_read_exactly(int fd, void *bytes, size_t length) {
+    char *p = bytes;
+    while (length > 0) {
+        ssize_t n = read(fd, p, length);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return errno;
+        }
+        if (n == 0) return -1;
+        p += n;
+        length -= (size_t)n;
+    }
+    return 0;
+}
+
+void yvk_end_child(int pid) {
+    if (pid <= 0) return;
+    kill((pid_t)pid, SIGKILL);
+    while (waitpid((pid_t)pid, NULL, 0) < 0 && errno == EINTR) {}
 }

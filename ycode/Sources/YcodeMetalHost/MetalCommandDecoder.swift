@@ -157,6 +157,15 @@ public struct MetalCommandDecoder {
         unknownOps[op, default: 0] += 1
     }
 
+    /// Appends to the open encoder's list. The payload is taken out of
+    /// `open` (which is cleared first) so that the list has one owner and
+    /// grows in place: copying it out while `open` still referred to it made
+    /// every append copy the whole list (quadratic in the commands of a pass;
+    /// stage8-contract.md §15).
+    /// `YCODE_METAL_RECORD_FAST=0`: keep the old reference during the
+    /// append (the copying behaviour, for A/B measurements only).
+    static let copyingAppend = ProcessInfo.processInfo.environment["YCODE_METAL_RECORD_FAST"] == "0"
+
     mutating func apply(_ rec: MetalRecord, kind: UInt8, to open: inout Open?) {
         switch kind {
         case MetalEncoderKind.render:
@@ -179,20 +188,27 @@ public struct MetalCommandDecoder {
             }
             if open == nil { open = start(kind: kind, first: nil) }
             guard case var .render(p) = open else { return }
+            let held = Self.copyingAppend ? open : nil
+            open = nil
             let c = renderCommand(rec)
             if case .unknown = c { noteUnknown(rec.op) }
             p.commands.append(c)
+            withExtendedLifetime(held) {}
             open = .render(p)
         case MetalEncoderKind.compute:
             if open == nil { open = .compute([]) }
             guard case var .compute(cs) = open else { return }
+            let held = Self.copyingAppend ? open : nil
+            open = nil
             let c = computeCommand(rec)
             if case .unknown = c { noteUnknown(rec.op) }
             cs.append(c)
+            withExtendedLifetime(held) {}
             open = .compute(cs)
         case MetalEncoderKind.blit:
             if open == nil { open = .blit([]) }
             guard case var .blit(cs) = open else { return }
+            open = nil
             let c = blitCommand(rec)
             if case .unknown = c { noteUnknown(rec.op) }
             cs.append(c)
@@ -200,6 +216,7 @@ public struct MetalCommandDecoder {
         case MetalEncoderKind.event:
             if open == nil { open = .event([]) }
             guard case var .event(cs) = open else { return }
+            open = nil
             let c = eventCommand(rec)
             if case .unknown = c { noteUnknown(rec.op) }
             cs.append(c)
@@ -207,6 +224,7 @@ public struct MetalCommandDecoder {
         default:
             if open == nil { open = .unknown(kind, []) }
             guard case .unknown(let k, var rs) = open else { return }
+            open = nil
             noteUnknown(rec.op)
             rs.append(MetalUnknownRecord(op: rec.op, body: rec.body))
             open = .unknown(k, rs)

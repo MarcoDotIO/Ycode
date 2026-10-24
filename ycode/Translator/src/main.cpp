@@ -9,10 +9,10 @@
 //   ycode-airc decls IN.metallib...   (declared air.* functions and signatures, counted per module)
 //   ycode-airc translate IN.metallib|IN.bc [-f NAME] [-o OUT.spv] [-r OUT.json] [-S OUT.spvasm]
 //              [--opt] [--link-vertex VS.metallib[:NAME]] [--link LIB.metallib]...
-//              [--constant INDEX=VALUE]... [--cache DIR]
+//              [--constant INDEX=VALUE]... [--cache DIR] [--loop-limit N]
 //   ycode-airc serve [--cache DIR] [--timeout SECONDS] [--no-isolate] [--dump-dir DIR]
 //   ycode-airc replay DIR [--changed-only]
-//   ycode-airc corpus [--json REPORT.json] [--quiet] [--timeout SECONDS] [--opt] [--library LIB.metallib]... PATH...
+//   ycode-airc corpus [--json REPORT.json] [--quiet] [--timeout SECONDS] [--opt] [--loop-limit N] [--library LIB.metallib]... PATH...
 //
 // Exit status: 0 success, 1 translation error (a JSON error document is
 // printed on stdout by `translate`), 2 usage or I/O error.
@@ -25,7 +25,8 @@
 //              "varyings": {MATCH: LOCATION}?, "constants": {INDEX: VALUE}?,
 //              "linked": [SIZE...]? (the payload ends with linked metallibs
 //              of these sizes: visible functions the function calls),
-//              "optimize": BOOL?, "assembly": BOOL?}; payload = the metallib
+//              "optimize": BOOL?, "assembly": BOOL?, "loop_limit": N?};
+//              payload = the metallib
 //              (functionIR)
 //   --dump-dir DIR saves every translate request as NNNNNN.request.json
 //   (header), NNNNNN.payload (payload as received) and NNNNNN.result.json
@@ -123,6 +124,7 @@ struct Request {
     bool haveVaryings = false;
     bool optimize = false;
     bool assembly = false;
+    uint32_t loopLimit = 0;                // loop guard (0: none)
     std::map<unsigned, double> constants;  // function constant values by index
     std::vector<std::string> linked;       // metallibs of linked (visible) functions
 };
@@ -146,6 +148,28 @@ static bool isBitcode(const std::string &d) {
                              ((uint8_t)d[0] == 0xDE && (uint8_t)d[1] == 0xC0 && (uint8_t)d[2] == 0x17 && (uint8_t)d[3] == 0x0B));
 }
 
+// The identity of this translator build, part of every cache key: the
+// version string plus the size and modification time of the running
+// executable, so that a rebuilt translator never reads translations an
+// earlier build made (the version string alone does not change between
+// builds). Computed once.
+static const std::string &buildIdentity() {
+    static const std::string id = [] {
+        std::string s = kTranslatorVersion;
+        struct stat st;
+        if (stat("/proc/self/exe", &st) == 0) {
+#if defined(__APPLE__)
+            long long ns = (long long)st.st_mtimespec.tv_sec * 1000000000LL + st.st_mtimespec.tv_nsec;
+#else
+            long long ns = (long long)st.st_mtim.tv_sec * 1000000000LL + st.st_mtim.tv_nsec;
+#endif
+            s += "|exe " + std::to_string((long long)st.st_size) + " " + std::to_string(ns);
+        }
+        return s;
+    }();
+    return id;
+}
+
 static Job planRequest(Cache &cache, const std::string &metallib, const Request &rq) {
     Job j;
     if (isBitcode(metallib)) {
@@ -165,6 +189,7 @@ static Job planRequest(Cache &cache, const std::string &metallib, const Request 
     }
     TranslateOptions &opts = j.opts;
     opts.optimize = rq.optimize;
+    opts.loopLimit = rq.loopLimit;
     opts.wantAssembly = rq.assembly;
     opts.functionConstantValues = rq.constants;
     if (!rq.linkVertex.empty()) {
@@ -181,7 +206,8 @@ static Job planRequest(Cache &cache, const std::string &metallib, const Request 
     }
     // The key uses the SHA-256 computed from the module bytes (equal to
     // HASH for well-formed input) so that altered modules never hit.
-    std::string keyText = std::string(kTranslatorVersion) + "|" + j.computed + "|" + j.name + "|" + (opts.optimize ? "O" : "-");
+    std::string keyText = buildIdentity() + "|" + j.computed + "|" + j.name + "|" + (opts.optimize ? "O" : "-");
+    if (opts.loopLimit) keyText += "|loop" + std::to_string(opts.loopLimit);
     if (!rq.linked.empty()) {
         // Linked functions: calls to <name>.MTL_VISIBLE_FN_REF (and other
         // external functions) resolve to functions of these metallibs.
@@ -343,6 +369,7 @@ static int cmdTranslate(int argc, char **argv) {
         else if (a == "-r") reflect = next();
         else if (a == "-S") asmPath = next();
         else if (a == "--opt") rq.optimize = true;
+        else if (a == "--loop-limit") rq.loopLimit = (uint32_t)std::stoul(next());
         else if (a == "--cache") cacheDir = next();
         else if (a == "--link-vertex") linkVS = next();
         else if (a == "--link") {
@@ -430,6 +457,7 @@ static bool parseRequest(const Json &req, std::string &payload, Request &rq) {
     rq.linkVertex = req.getString("link_vertex");
     rq.optimize = req.getBool("optimize");
     rq.assembly = req.getBool("assembly");
+    rq.loopLimit = (uint32_t)req.getNumber("loop_limit");
     if (const Json *ls = req.get("linked")) {
         // Payload = the main metallib, then the linked metallibs of these sizes.
         size_t tail = 0;
@@ -602,6 +630,7 @@ static int cmdCorpus(int argc, char **argv) {
     std::vector<std::string> paths, files;
     std::string report;
     bool quiet = false, optimize = false;
+    uint32_t loopLimit = 0;
     int timeout = 120;
     std::vector<Metallib> libraries;  // --library: extra metallibs that define linked functions
     for (int i = 0; i < argc; i++) {
@@ -612,6 +641,7 @@ static int cmdCorpus(int argc, char **argv) {
         } else if (!strcmp(argv[i], "--json") && i + 1 < argc) report = argv[++i];
         else if (!strcmp(argv[i], "--quiet")) quiet = true;
         else if (!strcmp(argv[i], "--opt")) optimize = true;
+        else if (!strcmp(argv[i], "--loop-limit") && i + 1 < argc) loopLimit = (uint32_t)strtoul(argv[++i], nullptr, 10);
         else if (!strcmp(argv[i], "--timeout") && i + 1 < argc) timeout = atoi(argv[++i]);
         else paths.push_back(argv[i]);
     }
@@ -649,6 +679,7 @@ static int cmdCorpus(int argc, char **argv) {
                     TranslateOptions o;
                     o.wrapVisible = true;
                     o.optimize = optimize;
+                    o.loopLimit = loopLimit;
                     // Link visible functions of the same library on demand.
                     o.resolveVisible = [&](const std::string &name, std::string &module) {
                         if (const MetallibFunction *g = lib.find(name)) {

@@ -7,8 +7,13 @@ import Foundation
 
 /// The device directory and everything derived from it.
 struct DeviceLayout {
-    /// DEV: the device directory (guest path = host path).
+    /// DEV: the device directory (its host path).
     let dev: String
+    /// The guest path of DEV: the path its data was first booted at, kept by
+    /// copies and moves (DeviceRelocation.swift; app-launch.md §3.3). The
+    /// VMM serves it from DEV. Equal to `dev` for a device booted where it
+    /// was made.
+    var guestDev: String
     /// RR: the runtime root (guest path = host path).
     let runtimeRoot: String
     let udid: String
@@ -28,28 +33,42 @@ struct DeviceLayout {
     var installApp: String?
     var launchBundleID: String?
     var appArguments: [String] = []
+    /// A URL the launched app is asked to open (`--app-url`; app-launch.md §2).
+    var appURL: String?
     var appEnvironment: [String] = []
     var guestTools: String?
     /// Ycode's headless SimFramebuffer library (host path of the binary;
     /// SimGuestFrameworks/build.sh), copied into DEV and named by
     /// SIMULATOR_FRAMEBUFFER_FRAMEWORK. Nil: the variable is empty.
     var framebufferLibrary: String?
+    /// Ycode's HID bundle directory (SimGuestFrameworks/build.sh; hid-input.md
+    /// §2), copied into DEV and named by SIMULATOR_HID_SYSTEM_MANAGER. Nil:
+    /// the variable is empty (no input).
+    var hidBundle: String?
     /// Record the first-boot data migration as done for this runtime build
     /// before the boot (`--skip-first-boot-migration`).
     var skipFirstBootMigration = false
+    /// The lean boot profile (lean-boot.md; `YCODE_LEAN_BOOT`). Nil: off.
+    var lean: LeanBootProfile? = LeanBootProfile.fromProcessEnvironment
+    /// A golden device directory (lean-boot.md §5; `YCODE_DEVICE_TEMPLATE`):
+    /// when DEV has no `data` yet, the template's `data` is copied in first.
+    var templatePath: String? = ProcessInfo.processInfo.environment["YCODE_DEVICE_TEMPLATE"].flatMap { $0.isEmpty ? nil : $0 }
+    /// A snapshot restore (`YCODE_RESTORE_DIR`, snapshot.md §7): DEV holds
+    /// the snapshot's state and the restored processes have its files open,
+    /// so `prepare` only stages the app and ylaunch; TMP, the job directory,
+    /// the plists and the framebuffer state file stay.
+    var restoring = false
+    /// The device type (`--device-type`; ipad.md §4): the identity variables
+    /// and the capabilities plist come from its record (DeviceTypes.swift).
+    var deviceType: DeviceType = .default
 
-    // Device identity (stage4c-contract.md §2).
+    // Device identity (stage4c-contract.md §2; the rest is the device type's).
     static let deviceName = "Ycode"
-    static let modelIdentifier = "iPhone19,4"
-    static let productClass = "V68"
-    static let legacyAssetSuffix = "iphone"
-    /// The main display of model iPhone19,4 as CoreSimulator gives it to the
-    /// runtime (SIMULATOR_MAINSCREEN_*, level 3; device-capabilities.md).
-    static let screen = (width: 1398, height: 2034, scale: 3.0, pitch: 460.0)
 
     init(dev: String, runtimeRoot: String, udid: String?, jobPaths: [String], runtimePaths: Bool = false,
          oneshots: [[String]] = [], runtimeJobs: [String] = [], bootTime: Int = Int(Date().timeIntervalSince1970)) {
         self.dev = dev
+        self.guestDev = dev
         self.runtimeRoot = runtimeRoot
         self.udid = udid?.uppercased() ?? Self.stableUDID(for: dev)
         self.oneshots = oneshots
@@ -69,6 +88,15 @@ struct DeviceLayout {
     // MARK: Paths
 
     var data: String { dev + "/data" }
+    /// The guest path of a host path in DEV (others are returned as they are).
+    func guestPath(_ hostPath: String) -> String {
+        if guestDev == dev { return hostPath }
+        if hostPath == dev { return guestDev }
+        if hostPath.hasPrefix(dev + "/") { return guestDev + hostPath.dropFirst(dev.count) }
+        return hostPath
+    }
+    /// DEV/data as the guest sees it (HOME).
+    var guestData: String { guestPath(data) }
     var varRun: String { data + "/var/run" }
     var plistPath: String { varRun + "/launchd_bootstrap.plist" }
     var audioPlistPath: String { varRun + "/com.apple.coresimulator.audio.plist" }
@@ -77,14 +105,30 @@ struct DeviceLayout {
     /// Ycode's device-capabilities plist (device-capabilities.md), rewritten on every boot.
     var capabilitiesPath: String { dev + "/ycode-capabilities.plist" }
     var extendedDisplayPath: String { data + "/Library/Application Support/Simulator/extended_display.plist" }
+    /// The device type this DEV was first booted as (ipad.md §4.3 R2): one
+    /// line, the type's id. A DEV that was booted (it has a bootstrap plist)
+    /// and has no record is an iPhone Duo (every device made before device
+    /// types existed).
+    var deviceTypePath: String { dev + "/ycode-device-type" }
+    /// The device's global preferences (ipad.md §10 Q8): a new device starts
+    /// with a US English region before its first boot.
+    var globalPreferencesPath: String { data + "/Library/Preferences/.GlobalPreferences.plist" }
+    /// What a new device's global preferences hold before the first boot.
+    static var firstBootGlobalPreferences: [String: Any] { ["AppleLanguages": ["en-US"], "AppleLocale": "en_US"] }
     var logRoot: String { dev + "/Logs" }
     /// The device launchd name (launchd-sim.md, terms).
     var launchdName: String { "com.apple.CoreSimulator.SimDevice.\(udid)" }
     /// TMP, the guest path of launchd_sim's per-device temporary directory.
     var tmpGuestPath: String { "/private/var/tmp/" + launchdName }
+    /// launchd_sim's per-label enable/disable overrides (launchd-sim.md §4.2;
+    /// the file `launchctl disable` writes).
+    var disabledOverridesHostPath: String { tmpHostPath + "/disabled.plist" }
     /// The host directory behind /private/var/tmp (and /var/tmp). TMP is an
-    /// ordinary directory in it, which launchd_sim creates itself: with TMP
-    /// already present (`mkdir` → EEXIST) it does not open its flat log.
+    /// ordinary directory in it, which launchd_sim creates itself. An earlier
+    /// note said that with TMP already present launchd_sim does not open its
+    /// flat log; on 2026-10-17 it did (the lean profile makes TMP first, and
+    /// `launchd.log` was written; on the Mac TMP persists across boots and
+    /// the log is rotated, lean-boot.md §3.1).
     var privateVarTmpHostPath: String { dev + "/private-var-tmp" }
     /// The host path of TMP.
     var tmpHostPath: String { privateVarTmpHostPath + "/" + launchdName }
@@ -94,8 +138,23 @@ struct DeviceLayout {
     /// The job directory Ycode fills for `--runtime-job`.
     var ycodeJobsPath: String { dev + "/ycode-jobs" }
 
-    /// The headless framebuffer library's frame record (guest path = host path).
-    var framebufferStatePath: String { data + "/tmp/ycode-framebuffer.state" }
+    /// Where the HID bundle is copied, and its log (YCODE_SIMHID_LOG).
+    var hidGuestPath: String? { hidBundle.map { _ in dev + "/ycode-frameworks/SimHID.framework" } }
+    var hidLogPath: String { data + "/tmp/ycode-simhid.log" }
+
+    /// The headless framebuffer library's frame record: host path (the
+    /// display server, screenshots) and guest path, in the memory directory
+    /// (DeviceMemoryFiles.swift).
+    var framebufferStatePath: String { memoryFile("ycode-framebuffer.state").host }
+    var framebufferStateGuestPath: String { memoryFile("ycode-framebuffer.state").guest }
+    /// Frame and input timing (display-stream.md §10), on only when the
+    /// host sets YCODE_DISPLAY_TIMING=1: the framebuffer library's swap log,
+    /// the HID bundle's event log (guest paths), and the display server's
+    /// trace (host path), all in the memory directory.
+    static let displayTiming: Bool = ProcessInfo.processInfo.environment["YCODE_DISPLAY_TIMING"] == "1"
+    var framebufferTimingPath: String { memoryFile("ycode-framebuffer.timing").guest }
+    var hidTimingPath: String { memoryFile("ycode-simhid.timing").guest }
+    var displayTracePath: String { memoryFile("ycode-display.trace").host }
 
     /// Where the framebuffer library is copied (a guest-readable DEV path).
     var framebufferGuestPath: String? {
@@ -135,12 +194,14 @@ struct DeviceLayout {
         data + "/tmp/ycode-oneshot-\(index + 1).\(err ? "err" : "out")"
     }
 
-    /// The host path of one-shot `index`'s program: a path inside DEV or RR
-    /// is used as is (704 takes host paths, launch-sim-control.md §3.6); any
-    /// other absolute path names a file under RR.
+    /// The path of one-shot `index`'s program as 704 takes it (the path in
+    /// the simulator's file system, launch-sim-control.md §3.6): a path
+    /// inside DEV (its guest path) or RR; any other absolute path names a
+    /// file under RR.
     func oneshotProgram(_ index: Int) -> String {
         let program = oneshots[index].first ?? "/"
-        if program.hasPrefix(dev + "/") || program.hasPrefix(runtimeRoot + "/") { return program }
+        if program.hasPrefix(dev + "/") { return guestPath(program) }
+        if program.hasPrefix(guestDev + "/") || program.hasPrefix(runtimeRoot + "/") { return program }
         return runtimeRoot + program
     }
 
@@ -191,9 +252,9 @@ struct DeviceLayout {
     /// `Bootstrap.ChildDefaults` (launchd-sim.md §3).
     var childDefaults: [String: String] {
         [
-            "CFFIXED_USER_HOME": data,
-            "HOME": data,
-            "TMPDIR": data + "/tmp/",
+            "CFFIXED_USER_HOME": guestData,
+            "HOME": guestData,
+            "TMPDIR": guestData + "/tmp/",
             "DYLD_FALLBACK_FRAMEWORK_PATH": runtimeRoot + "/System/Library/Frameworks",
             "DYLD_FALLBACK_LIBRARY_PATH": runtimeRoot + "/usr/lib",
         ]
@@ -204,45 +265,55 @@ struct DeviceLayout {
         let rr = runtimeRoot
         let (version, build) = runtimeVersion()
         func decimal(_ v: Double) -> String { String(format: "%f", v) }
-        return [
+        var env = [
             "DYLD_ROOT_PATH": rr,
             "IPHONE_SIMULATOR_ROOT": rr,
             "SIMULATOR_ROOT": rr,
             "DYLD_SHARED_CACHE_DIR": rr + "/System/Library/Caches/com.apple.dyld",
             "PATH": "\(rr)/usr/bin:\(rr)/bin:\(rr)/usr/sbin:\(rr)/sbin:\(rr)/usr/local/bin",
-            "IPHONE_SHARED_RESOURCES_DIRECTORY": data,
-            "SIMULATOR_SHARED_RESOURCES_DIRECTORY": data,
+            "IPHONE_SHARED_RESOURCES_DIRECTORY": guestData,
+            "SIMULATOR_SHARED_RESOURCES_DIRECTORY": guestData,
             "XPC_SIMULATOR_LAUNCHD_NAME": launchdName,
             "LS_ENABLE_BUNDLE_LOCALIZATION_CACHING": "1",
             "SIMULATOR_UDID": udid,
             "SIMULATOR_DEVICE_NAME": Self.deviceName,
-            "SIMULATOR_MODEL_IDENTIFIER": Self.modelIdentifier,
-            "SIMULATOR_PRODUCT_CLASS": Self.productClass,
-            "SIMULATOR_LEGACY_ASSET_SUFFIX": Self.legacyAssetSuffix,
-            "SIMULATOR_MAINSCREEN_WIDTH": String(Self.screen.width),
-            "SIMULATOR_MAINSCREEN_HEIGHT": String(Self.screen.height),
-            "SIMULATOR_MAINSCREEN_SCALE": decimal(Self.screen.scale),
-            "SIMULATOR_MAINSCREEN_PITCH": decimal(Self.screen.pitch),
-            "SIMULATOR_CAPABILITIES": capabilitiesPath,
+            "SIMULATOR_MODEL_IDENTIFIER": deviceType.modelIdentifier,
+            "SIMULATOR_PRODUCT_CLASS": deviceType.productClass,
+            "SIMULATOR_LEGACY_ASSET_SUFFIX": deviceType.legacyAssetSuffix,
+            "SIMULATOR_MAINSCREEN_WIDTH": String(deviceType.screen.width),
+            "SIMULATOR_MAINSCREEN_HEIGHT": String(deviceType.screen.height),
+            "SIMULATOR_MAINSCREEN_SCALE": decimal(deviceType.screen.scale),
+            "SIMULATOR_MAINSCREEN_PITCH": decimal(deviceType.screen.pitch),
+            "SIMULATOR_CAPABILITIES": guestPath(capabilitiesPath),
             "SIMULATOR_RUNTIME_VERSION": version,
             "SIMULATOR_RUNTIME_BUILD_VERSION": build,
             "SIMULATOR_ARCHS": "arm64",
-            "SIMULATOR_VERSION_INFO": "Ycode - Device: \(Self.deviceName) (\(udid)) - Runtime: iOS \(version) (\(build)) - DeviceType: \(Self.modelIdentifier)",
+            "SIMULATOR_VERSION_INFO": "Ycode - Device: \(Self.deviceName) (\(udid)) - Runtime: iOS \(version) (\(build)) - DeviceType: \(deviceType.modelIdentifier)",
             "SIMULATOR_BOOT_TIME": String(bootTime),
-            "SIMULATOR_HOST_HOME": dev,
-            "SIMULATOR_LOG_ROOT": logRoot,
+            "SIMULATOR_HOST_HOME": guestDev,
+            "SIMULATOR_LOG_ROOT": guestPath(logRoot),
             // The binary's path (simframebuffer.md §2): Ycode's headless library.
-            "SIMULATOR_FRAMEBUFFER_FRAMEWORK": framebufferGuestPath ?? "",
+            "SIMULATOR_FRAMEBUFFER_FRAMEWORK": framebufferGuestPath.map(guestPath) ?? "",
             // Ycode's headless library writes its frame record here (the
             // presented IOSurface; screenshots).
-            "YCODE_FRAMEBUFFER_STATE": framebufferStatePath,
-            "SIMULATOR_HID_SYSTEM_MANAGER": "",
-            "SIMULATOR_AUDIO_DEVICES_PLIST_PATH": audioPlistPath,
-            "SIMULATOR_AUDIO_SETTINGS_PATH": audioSettingsPath,
-            "SIMULATOR_MEMORY_WARNINGS": memoryWarningPath,
-            "SIMULATOR_EXTENDED_DISPLAY_PROPERTIES": extendedDisplayPath,
-            "IPHONE_TVOUT_EXTENDED_PROPERTIES": extendedDisplayPath,
+            "YCODE_FRAMEBUFFER_STATE": framebufferStateGuestPath,
+            "YCODE_FRAMEBUFFER_TIMING": Self.displayTiming ? framebufferTimingPath : "",
+            "YCODE_SIMHID_TIMING": Self.displayTiming && hidGuestPath != nil ? hidTimingPath : "",
+            // Diagnostic only (simframebuffer.c): delayed swap completions.
+            "YCODE_FRAMEBUFFER_COMPLETION": ProcessInfo.processInfo.environment["YCODE_FRAMEBUFFER_COMPLETION"] ?? "",
+            "SIMULATOR_HID_SYSTEM_MANAGER": hidGuestPath.map(guestPath) ?? "",
+            "YCODE_SIMHID_LOG": hidGuestPath == nil ? "" : guestPath(hidLogPath),
+            "SIMULATOR_AUDIO_DEVICES_PLIST_PATH": guestPath(audioPlistPath),
+            "SIMULATOR_AUDIO_SETTINGS_PATH": guestPath(audioSettingsPath),
+            "SIMULATOR_MEMORY_WARNINGS": guestPath(memoryWarningPath),
         ]
+        // The iPhone's environment names the extended-display plist; an
+        // iPad's does not (ipad.md §4.1).
+        if deviceType.extendedDisplayProperties {
+            env["SIMULATOR_EXTENDED_DISPLAY_PROPERTIES"] = guestPath(extendedDisplayPath)
+            env["IPHONE_TVOUT_EXTENDED_PROPERTIES"] = guestPath(extendedDisplayPath)
+        }
+        return env
     }
 
     /// `Bootstrap.Self` = Child ∪ ChildDefaults.
@@ -274,7 +345,7 @@ struct DeviceLayout {
         var plist: [String: Any] = [
             "Bootstrap": [
                 "SimulatorRuntimeRoot": runtimeRoot,
-                "Paths": jobPaths,
+                "Paths": jobPaths.map(guestPath),
                 "Self": selfEnvironment,
                 "Child": child,
                 "ChildDefaults": childDefaults,
@@ -307,9 +378,38 @@ struct DeviceLayout {
             try fm.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
             try fm.setAttributes([.posixPermissions: mode], ofItemAtPath: path)
         }
+        try checkDeviceType()
+        // A device that never booted (no type record, no bootstrap plist).
+        let isNewDevice = Self.recordedDeviceType(in: dev) == nil
+        if restoring {
+            // The framebuffer state file stays: backboardd's framebuffer
+            // library keeps it open and rewrites it on every swap. Removed
+            // here, the restore would hand backboardd an unlinked stand-in,
+            // and the display server (which reads the path) would never see
+            // a frame of the restored device. Its record names a surface the
+            // IOSurface service restores, so the last frame shows at once.
+            // (It is in the memory directory, refilled from the snapshot's copy.)
+            try prepareMemoryDirectory()
+            try stageApp(dir)
+            return
+        }
+        if let templatePath, !fm.fileExists(atPath: data) {
+            try checkTemplate(templatePath)
+            try cloneData(from: templatePath)
+        }
+        // A copied or moved device: no paths of the device it came from (app-launch.md §4).
+        try handleRelocation()
         for path in [dev, data, data + "/tmp", varRun, varRun + "/simulatoraudio", data + "/Library/LaunchDaemons",
                      data + "/Library/Application Support/Simulator", logRoot, privateVarTmpHostPath] {
             try dir(path)
+        }
+        try prepareMemoryDirectory()
+        // A new device starts with a US English region (ipad.md §10 Q8),
+        // unless its data already has global preferences (a golden-device
+        // copy, files put in before the first boot).
+        if isNewDevice && !fm.fileExists(atPath: globalPreferencesPath) {
+            try dir((globalPreferencesPath as NSString).deletingLastPathComponent)
+            try writeXML(Self.firstBootGlobalPreferences, to: globalPreferencesPath)
         }
         // A fresh boot: no TMP yet (launchd_sim makes it, mode 0700). A
         // previous boot's TMP is kept, renamed with its boot's end time.
@@ -317,6 +417,15 @@ struct DeviceLayout {
             let stamp = Int((try? fm.attributesOfItem(atPath: tmpHostPath)[.modificationDate] as? Date)??.timeIntervalSince1970 ?? 0)
             try fm.moveItem(atPath: tmpHostPath, toPath: "\(tmpHostPath).previous-\(stamp)-\(bootTime)")
         }
+        // Lean boot: TMP made here (mode 0700, as launchd_sim makes it) with
+        // the disabled overrides in it (lean-boot.md §3.1).
+        if let lean, !lean.disabledLabels.isEmpty {
+            try dir(tmpHostPath, mode: 0o700)
+            let plist = lean.disabledOverrides().mapValues { $0 as Any }
+            try writeXML(plist, to: disabledOverridesHostPath)
+        }
+        try applyLoggingPreferences(lean?.loggingOff == true)
+        if let lean { FileHandle.standardError.write(Data(("ycode-simd: " + lean.summary + "\n").utf8)) }
         // Ycode's job directory is rebuilt on every boot.
         if fm.fileExists(atPath: ycodeJobsPath) { try fm.removeItem(atPath: ycodeJobsPath) }
         for path in jobPaths where !fm.fileExists(atPath: path) { try dir(path) }
@@ -325,10 +434,29 @@ struct DeviceLayout {
                 try fm.removeItem(atPath: oneshotOutputHostPath(index, err: err))
             }
         }
-        // Stage 7: the app bundle and ylaunch, copied where the guest can
-        // read them; the app's previous stdio files are removed.
+        try stageApp(dir)
+        // The frame record and timing files: prepareMemoryDirectory emptied their directory.
+        if skipFirstBootMigration { try recordMigrationDone() }
+        if let framebufferLibrary, let target = framebufferGuestPath {
+            try dir((target as NSString).deletingLastPathComponent)
+            if fm.fileExists(atPath: target) { try fm.removeItem(atPath: target) }
+            try fm.copyItem(atPath: framebufferLibrary, toPath: target)
+        }
+        if let hidBundle, let target = hidGuestPath {
+            try dir((target as NSString).deletingLastPathComponent)
+            if fm.fileExists(atPath: target) { try fm.removeItem(atPath: target) }
+            try fm.copyItem(atPath: hidBundle, toPath: target)
+            if fm.fileExists(atPath: hidLogPath) { try fm.removeItem(atPath: hidLogPath) }
+        }
+        try prepareJobsAndPlists()
+    }
+
+    /// Stage 7: the app bundle and ylaunch, copied where the guest can read
+    /// them; the app's previous stdio files are removed.
+    private func stageApp(_ dir: (String, Int) throws -> Void) throws {
+        let fm = FileManager.default
         if let installApp {
-            try dir(appsDirectory)
+            try dir(appsDirectory, 0o755)
             let target = stagedAppGuestPath!
             if fm.fileExists(atPath: target) { try fm.removeItem(atPath: target) }
             try fm.copyItem(atPath: installApp, toPath: target)
@@ -337,18 +465,15 @@ struct DeviceLayout {
             guard let tools = guestTools, fm.fileExists(atPath: tools + "/ylaunch") else {
                 throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: (guestTools ?? "?") + "/ylaunch"])
             }
-            try dir((ylaunchPath as NSString).deletingLastPathComponent)
+            try dir((ylaunchPath as NSString).deletingLastPathComponent, 0o755)
             if fm.fileExists(atPath: ylaunchPath) { try fm.removeItem(atPath: ylaunchPath) }
             try fm.copyItem(atPath: tools + "/ylaunch", toPath: ylaunchPath)
             for path in [appStdoutHostPath, appStderrHostPath] where fm.fileExists(atPath: path) { try fm.removeItem(atPath: path) }
         }
-        if fm.fileExists(atPath: framebufferStatePath) { try fm.removeItem(atPath: framebufferStatePath) }
-        if skipFirstBootMigration { try recordMigrationDone() }
-        if let framebufferLibrary, let target = framebufferGuestPath {
-            try dir((target as NSString).deletingLastPathComponent)
-            if fm.fileExists(atPath: target) { try fm.removeItem(atPath: target) }
-            try fm.copyItem(atPath: framebufferLibrary, toPath: target)
-        }
+    }
+
+    private func prepareJobsAndPlists() throws {
+        let fm = FileManager.default
         // Copies, never links: the runtime's files stay where they are and
         // nothing from the runtime enters the repository.
         for label in runtimeJobs {
@@ -369,9 +494,55 @@ struct DeviceLayout {
             "useHostDefaultOutputDevice": true,
         ]
         try writeXML(audio, to: audioPlistPath)
-        try writeXML(DeviceCapabilities.plist(width: Self.screen.width, height: Self.screen.height, scale: Self.screen.scale,
-                                              pitch: Self.screen.pitch, model: Self.modelIdentifier), to: capabilitiesPath)
+        try writeXML(DeviceCapabilities.plist(for: deviceType), to: capabilitiesPath)
         try writeXML(bootstrapPlist, to: plistPath)
+        if recordedDeviceType() == nil { try Data((deviceType.id + "\n").utf8).write(to: URL(fileURLWithPath: deviceTypePath)) }
+    }
+
+    // MARK: Device type (ipad.md §4.3 R2)
+
+    /// The type recorded in a device directory: its `ycode-device-type`, or
+    /// the default type for a directory that was booted (its bootstrap plist
+    /// exists) but has no record (made before device types existed); nil
+    /// for a directory that never booted (files put into `data` before the
+    /// first boot do not count).
+    static func recordedDeviceType(in dev: String) -> String? {
+        let fm = FileManager.default
+        if let data = fm.contents(atPath: dev + "/ycode-device-type") {
+            let id = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !id.isEmpty { return id }
+        }
+        return fm.fileExists(atPath: dev + "/data/var/run/launchd_bootstrap.plist") ? DeviceType.default.id : nil
+    }
+
+    func recordedDeviceType() -> String? {
+        guard FileManager.default.fileExists(atPath: deviceTypePath) else { return nil }
+        return Self.recordedDeviceType(in: dev)
+    }
+
+    /// A device keeps its type: its LaunchServices store, home-screen layout
+    /// and migrated data are per idiom. Booting it as another type is refused.
+    func checkDeviceType() throws {
+        if let recorded = Self.recordedDeviceType(in: dev), recorded != deviceType.id {
+            throw DeviceTypeMismatch(what: "the device \(dev)", recorded: recorded, requested: deviceType.id)
+        }
+    }
+
+    /// A golden device (lean-boot.md §5) is per (runtime build, device
+    /// type): a template of another type is refused; one first-booted on
+    /// another runtime build is used, with a warning (the boot migrates it).
+    func checkTemplate(_ template: String) throws {
+        let recorded = Self.recordedDeviceType(in: template) ?? DeviceType.default.id
+        if recorded != deviceType.id {
+            throw DeviceTypeMismatch(what: "the golden device \(template)", recorded: recorded, requested: deviceType.id)
+        }
+        let migration = template + "/data/Library/Preferences/com.apple.migration.plist"
+        let build = runtimeVersion().build
+        if let data = FileManager.default.contents(atPath: migration),
+           let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+           let last = plist["LastSystemVersion"] as? String, !build.isEmpty, last != build {
+            FileHandle.standardError.write(Data("ycode-simd: warning: the golden device \(template) was booted on runtime build \(last), not \(build); this boot migrates it\n".utf8))
+        }
     }
 
     /// The data-migration preferences (`DEV/data/Library/Preferences/
@@ -394,8 +565,82 @@ struct DeviceLayout {
                                                 "SyntheticDidUpgrade": false] as [String: Any]], to: path)
     }
 
+    /// The guest's per-subsystem logging preferences.
+    var loggingSubsystemsPath: String { data + "/Library/Preferences/Logging/Subsystems" }
+    /// The subsystem files the lean profile wrote, one name per line (so that
+    /// a later boot without it removes them again).
+    var leanLoggingRecordPath: String { dev + "/ycode-lean-logging.txt" }
+
+    /// Lean logging (lean-boot.md §4.3): with `on`, writes a level-off
+    /// preference for each subsystem of the list that has none yet and
+    /// records it; without, removes the recorded files that still hold
+    /// exactly that preference. A preference someone else wrote is never
+    /// touched.
+    func applyLoggingPreferences(_ on: Bool) throws {
+        let fm = FileManager.default
+        let offData = try PropertyListSerialization.data(fromPropertyList: LeanBootProfile.levelOffPreference, format: .xml, options: 0)
+        var recorded = (fm.contents(atPath: leanLoggingRecordPath)).map {
+            String(decoding: $0, as: UTF8.self).split(separator: "\n").map(String.init)
+        } ?? []
+        if on {
+            try fm.createDirectory(atPath: loggingSubsystemsPath, withIntermediateDirectories: true)
+            for subsystem in LeanBootProfile.loggingOffSubsystems where !recorded.contains(subsystem) {
+                let path = loggingSubsystemsPath + "/" + subsystem + ".plist"
+                guard !fm.fileExists(atPath: path) else { continue }
+                try offData.write(to: URL(fileURLWithPath: path))
+                recorded.append(subsystem)
+            }
+        } else {
+            for subsystem in recorded {
+                let path = loggingSubsystemsPath + "/" + subsystem + ".plist"
+                if fm.contents(atPath: path) == offData { try fm.removeItem(atPath: path) }
+            }
+            recorded = []
+        }
+        if recorded.isEmpty {
+            if fm.fileExists(atPath: leanLoggingRecordPath) { try fm.removeItem(atPath: leanLoggingRecordPath) }
+        } else {
+            try Data((recorded.joined(separator: "\n") + "\n").utf8).write(to: URL(fileURLWithPath: leanLoggingRecordPath))
+        }
+    }
+
+    /// Copies the golden device's `data` directory into DEV (lean-boot.md
+    /// §5): every file, with modes and times (`cp -a`, a reflink where the
+    /// file system has them). The copy gets this DEV's UDID at boot, as
+    /// `simctl clone` gives the clone a new identity over the same data.
+    func cloneData(from template: String) throws {
+        let source = template + "/data"
+        guard FileManager.default.fileExists(atPath: source) else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: source])
+        }
+        try FileManager.default.createDirectory(atPath: dev, withIntermediateDirectories: true)
+        #if os(Linux)
+        let cp = Process()
+        cp.executableURL = URL(fileURLWithPath: "/bin/cp")
+        cp.arguments = ["-a", "--reflink=auto", source, data]
+        try cp.run()
+        cp.waitUntilExit()
+        guard cp.terminationStatus == 0 else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: data])
+        }
+        #else
+        try FileManager.default.copyItem(atPath: source, toPath: data)
+        #endif
+        FileHandle.standardError.write(Data("ycode-simd: device data cloned from \(template)\n".utf8))
+    }
+
     private func writeXML(_ plist: [String: Any], to path: String) throws {
         let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
         try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+    }
+}
+
+/// A device directory (or golden device) of one type booted as another.
+struct DeviceTypeMismatch: Error, CustomStringConvertible {
+    let what: String
+    let recorded: String
+    let requested: String
+    var description: String {
+        "\(what) has the device type \(recorded); it cannot boot as \(requested) (use another device directory, or --device-type \(recorded))"
     }
 }

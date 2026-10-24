@@ -334,6 +334,10 @@ Settings succeeded. Items marked *(tested)* were also varied on purpose.
    `backboardd`, SpringBoard, and Settings start; QuartzCore kept submitting.
    Whether surfaces are then never recycled over a long run is open, so
    completing every swap is the recommended behavior.)*
+   Ycode's library completes every swap at once, asynchronously; under
+   Ycode the render server does not wait for a frame's completion before
+   starting the next one (`display-stream.md` §10.2, level 3), and its
+   per-swap timing can be logged (`YCODE_DISPLAY_TIMING=1`, §10.1 there).
 8. **Handlers** are stored and never called. Setters that only change state
    (backlight, orientation, brightness, mode, canvas size) return true.
    `CreateDisplay`, `UpdateDisplay`, `RemoveDisplay`, `AcquireSurfaceFence`
@@ -464,6 +468,7 @@ names of `launchd-sim.md` §6.3, denied by our interposer in every process):
 | Requirements and the deny/refuse experiments (§7) | 3 | boots with `sfbheadless.c` (and its `SFBH_NO_CALLBACK`, `SFBH_NO_SWAPCHAIN` switches), `dlsymtrace.c` deny lists, `backboardd` log lines, crash reports, `simctl launch` |
 | CF object model, ownership convention | 1 | CF open source `CFRuntime.h`; CF Create/Copy/Get naming rule |
 | HID loading and not-needed result (§8) | 3 | `backboardd` log lines; boot with a nonexistent HID path; `hidprobe.m` |
+| Under Ycode, swaps are not held back by completions; SwapBegin's target equals the call time (§7 item 7) | 3 | Ycode runs on the Thor with the library's swap timing log (`display-stream.md` §10.2) |
 
 No disassembly or decompilation was used (level 5 not used); no Xcode
 binary, `research/dirty/`, or Ghidra project was opened. Crash reports and

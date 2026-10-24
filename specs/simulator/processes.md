@@ -257,13 +257,17 @@ a fat file.
 0x300 daemon standard, 0x400 daemon interactive, 0x500 daemon background,
 0x600 daemon adaptive, 0x700 driver (needs entitlement
 `com.apple.private.spawn-driver`, else EPERM). Other values are accepted
-and ignored. Ycode: record per process (it only affects scheduling and
-`pbi_flags` darwin-bg bits).
+and ignored. Ycode: record per process. The scheduling policy uses it:
+darwin-bg, importance, the start hold, the main thread's QoS
+(`scheduling-policy.md`). An exec keeps the type unless its attributes name
+one.
 
 **QoS clamp** (`set_qos_clamp_np` rejects ≥ 4 with EINVAL): 0 none,
 1 utility, 2 background, 3 maintenance. **Darwin role**
 (`set_darwin_role_np`): 0 none, 1 UI focal, 2 UI, 3 non-UI, 4 UI non-focal,
-5 TAL launch, 6 darwin-BG, 7 user-init. Ycode: record, no effect.
+5 TAL launch, 6 darwin-BG, 7 user-init. Ycode: recorded. With the
+scheduling policy, a clamp caps thread QoS; a background or maintenance
+clamp, or role 6, makes the process darwin-bg (`scheduling-policy.md` §4.4).
 
 **Jetsam** (`setjetsam_ext` sets `psa_jetsam_flags |= 0x8000` "set"):
 0x01 use effective priority, 0x02 hi-water background (legacy), 0x04
@@ -336,7 +340,7 @@ Block: `{i32 pspa_alloc @0, i32 pspa_count @4, actions @8}`; each action is
 | 0 | SPECIAL | `setspecialport_np(port, which)` | `task_set_special_port(child, which, port)` (§3.2). Failure (e.g. `which` = 1 or 2 → `KERN_NO_ACCESS`) → spawn EINVAL | — |
 | 1 | EXCEPTION | `setexceptionports_np(mask, port, behavior, flavor)` | `task_set_exception_ports(child, mask, port, behavior, flavor)`, applied late (step 10 of §1.10). Failure → EINVAL | 14 per spawn |
 | 2 | AU_SESSION | `setauditsessionport_np(port)` | Child joins that audit session | — |
-| 3 | IMP_WATCHPORTS | `set_importancewatch_port_np(count, ports)` (count ≤ 128) | Importance boost bookkeeping. Ycode: accept, drop | 128 |
+| 3 | IMP_WATCHPORTS | `set_importancewatch_port_np(count, ports)` (count ≤ 128) | Importance boost bookkeeping. Ycode: the rights are dropped. With the scheduling policy, each port is bound to an Adaptive child, and the importance already queued boosts it (`scheduling-policy.md` §4.3) | 128 |
 | 4 | REGISTERED_PORTS | `set_registered_ports_np(ports, count)` (count ≤ 3, else EINVAL) | `mach_ports_register(child, …)` with the ports **in action order**; missing slots become NULL (§3.4) | 3 |
 | 5 | PTRAUTH_TASK_PORT | `set_ptrauth_task_port_np(port)` | Development kernels only; else the right is just released | 1 |
 | other | | | EINVAL | |
@@ -526,6 +530,30 @@ Fatal signals produced by the VMM for guest faults (SIGSEGV, SIGBUS,
 SIGILL, SIGTRAP, SIGABRT from `abort`, SIGKILL from `terminate_with_payload`)
 use the "killed by signal" form. **Ycode:** never set `WCOREFLAG` (no
 cores).
+
+#### 2.3.1 Which signal a fatal hardware exception gives
+
+A guest thread that takes a synchronous exception the VMM does not resolve
+ends the process "killed by signal". The arm64 Darwin kernel turns the
+exception into a Mach exception, and `ux_exception` turns that into the
+signal (with no handler run, Ycode uses the default action, which ends the
+process). launchd reports it as "exited due to SIG…" and counts it as a
+crash.
+
+| ESR_EL1.EC (exception class) | Mach exception | Signal |
+|---|---|---|
+| 0x3C BRK; 0x30/0x31 breakpoint; 0x32/0x33 software step; 0x34/0x35 watchpoint | `EXC_BREAKPOINT` | SIGTRAP (5) |
+| 0x00 unknown (undefined instruction); 0x0E illegal execution state | `EXC_BAD_INSTRUCTION` | SIGILL (4) |
+| 0x2C floating-point trap | `EXC_ARITHMETIC` | SIGFPE (8) |
+| 0x20/0x21/0x24/0x25 abort with DFSC/IFSC translation (0x04–0x07), access flag (0x08–0x0B) or address size (0x00–0x03) | `EXC_BAD_ACCESS`, `KERN_INVALID_ADDRESS` | SIGSEGV (11) |
+| same, permission fault (0x0C–0x0F) | `EXC_BAD_ACCESS`, `KERN_PROTECTION_FAILURE` | SIGBUS (10) |
+| same, alignment fault (0x21); 0x22 PC alignment; 0x26 SP alignment | `EXC_BAD_ACCESS` (alignment code) | SIGBUS (10) |
+| anything else | — | SIGSEGV (11) (**Ycode** default) |
+
+A Swift runtime trap (`fatalError`, a failed precondition, an overflow) and
+`__builtin_trap` are BRK, so they end with SIGTRAP, as on a Mac
+("EXC_BREAKPOINT (SIGTRAP)" in crash reports). Before 2026-10-17 Ycode
+reported SIGSEGV for every exception (`service-fidelity.md` §3).
 
 ### 2.4 Exit sequence (normative order)
 
@@ -1438,6 +1466,8 @@ level 5 was not used.
 | getppid, getpgrp, getpgid, getsid, setsid, setpgid, audit-token assembly | 1 | `bsd/kern/kern_prot.c` |
 | proc_info calls, flavors, sizes, zombie and permission rules, bsdinfo fields, listpids, pathinfo, dirtycontrol, terminate, rusage, noteexit | 1 | `bsd/kern/proc_info.c`, `bsd/sys/proc_info.h`, `bsd/sys/proc_info_private.h`, `bsd/sys/proc.h`, `libsyscall/wrappers/libproc/libproc.c` |
 | task_for_pid, task_name_for_pid, pid_for_task | 1 | `bsd/kern/kern_proc.c` |
+| Exception class → Mach exception → signal (§2.3.1) | 1 | xnu `main` fetched 2026-10-17: `osfmk/arm64/sleh.c` (synchronous exception dispatch by EC and fault status), `bsd/uxkern/ux_exception.c` (`ux_exception`), `osfmk/mach/exception_types.h`, `osfmk/mach/arm/exception.h` |
+| `p_uuid` / `ri_uuid` / `LOCAL_PEERUUID` = the main executable's LC_UUID | 1 | xnu `main` fetched 2026-10-17: `bsd/kern/proc_info.c` (`proc_piduniqidentifierinfo`), `bsd/kern/kern_resource.c` (rusage info), `bsd/kern/uipc_usrreq.c` (`LOCAL_PEERUUID`); 3 for its effect on logd (`service-fidelity.md` §2) |
 | Task IPC init/inheritance, enable/disable/terminate, special port get/set, registered ports, control-port defaults for simulated tasks | 1 | `osfmk/kern/ipc_tt.c` (`ipc_task_init`, `ipc_task_enable`, `ipc_task_disable`, `ipc_task_terminate`, `ipc_task_reset`, `task_get_special_port_internal`, `task_set_special_port*`, `_kernelrpc_mach_ports_register3`, `_kernelrpc_mach_ports_lookup3`), `osfmk/kern/task.c` (`task_set_ctrl_port_default`, `task_create_internal`, termination order), `osfmk/mach/task_special_ports.h`, `libsyscall/mach/task.c` |
 | COPY_SEND semantics of spawn/fileport port copy-in | 1 | `osfmk/kern/ipc_kobject.c` (`ipc_typed_port_copyin_send`) |
 | Space termination order, per-entry teardown (no-senders, port-deleted on cancelled requests) | 1 | `osfmk/ipc/ipc_space.c` (`ipc_space_terminate`), `osfmk/ipc/ipc_right.c` (`ipc_right_terminate`) |

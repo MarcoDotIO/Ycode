@@ -24,6 +24,7 @@
 //     of a Metal vertex buffer index is that index.
 //   Clip space: the back end flips y with a negative viewport height.
 
+import CVulkan
 import Foundation
 
 public enum YcodeMetalABI {
@@ -72,6 +73,10 @@ public struct ShaderReflection: Codable, Sendable, Equatable {
     public var constantData: ConstantData?
     public var compute: Compute?
     public var vertexInputs: [VertexInput]?
+    /// Metal built-in inputs the function reads (`thread_position_in_grid`, …).
+    public var builtins: [String]?
+    /// Features it uses (`barrier`, `derivatives`, `discard`, …).
+    public var uses: [String]?
 
     public struct ABIInfo: Codable, Sendable, Equatable {
         public var version: Int?
@@ -225,17 +230,22 @@ public final class PrebuiltShaderTranslator: ShaderTranslator, @unchecked Sendab
 /// The client of `ycode-airc serve`: one long-lived child process, binary
 /// frames over stdin/stdout (ycode/Translator/src/main.cpp):
 ///   frame    u32 length L, then u32 header length H, H bytes of JSON, L − 4 − H payload bytes
-///   request  {"id", "op": "translate", "link_vertex": HASH?}; payload = the metallib
+///   request  {"id", "op": "translate", "link_vertex": HASH?, "loop_limit": N?}; payload = the metallib
 ///   response {"id", "status": "ok", "reflection": {...}}; payload = SPIR-V words,
 ///            or {"status": "error", "error": {"code", "detail"}}
 /// A translator that died is restarted at the next request.
 public final class AircProcessTranslator: ShaderTranslator, @unchecked Sendable {
     public let executable: URL
     public let arguments: [String]
+    /// The loop guard every translation asks for (0: none): an invocation
+    /// may pass loop headers at most this many times in all, then each of
+    /// its loops ends (stage8-contract.md §13.3).
+    public let loopLimit: UInt32
     private let lock = NSLock()
-    private var process: Process?
-    private var input: FileHandle?
-    private var output: FileHandle?
+    /// The child (pid 0: not running) and our ends of its stdin and stdout.
+    private var pid: Int32 = 0
+    private var toChild: Int32 = -1
+    private var fromChild: Int32 = -1
     private var nextID = 1
 
     /// `serve`, plus `--cache $YCODE_AIRC_CACHE` when that is set (ycode-airc's on-disk translation cache).
@@ -244,9 +254,21 @@ public final class AircProcessTranslator: ShaderTranslator, @unchecked Sendable 
         return ["serve"]
     }
 
-    public init(executable: URL, arguments: [String] = AircProcessTranslator.defaultArguments) {
+    /// The default loop limit: $YCODE_GPU_LOOP_LIMIT when set (0 turns the
+    /// guard off), else 2^20 loop-header passes per invocation. No Metal
+    /// shader the simulator ran comes near it; an invocation stuck in a
+    /// loop stops after about a million iterations instead of holding the
+    /// GPU queue for minutes.
+    public static var defaultLoopLimit: UInt32 {
+        if let v = ProcessInfo.processInfo.environment["YCODE_GPU_LOOP_LIMIT"], let n = UInt32(v) { return n }
+        return 1 << 20
+    }
+
+    public init(executable: URL, arguments: [String] = AircProcessTranslator.defaultArguments,
+                loopLimit: UInt32 = AircProcessTranslator.defaultLoopLimit) {
         self.executable = executable
         self.arguments = arguments
+        self.loopLimit = loopLimit
     }
 
     /// Finds `ycode-airc`: $YCODE_AIRC, next to the running executable, or on $PATH.
@@ -264,50 +286,63 @@ public final class AircProcessTranslator: ShaderTranslator, @unchecked Sendable 
     }
 
     deinit {
-        process?.terminate()
+        stop()
     }
 
-    private func start() throws {
-        let p = Process()
-        p.executableURL = executable
-        p.arguments = arguments
-        let inPipe = Pipe(), outPipe = Pipe()
-        p.standardInput = inPipe
-        p.standardOutput = outPipe
-        p.standardError = FileHandle.standardError
-        try p.run()
-        process = p
-        input = inPipe.fileHandleForWriting
-        output = outPipe.fileHandleForReading
+    /// Starts the child now (normally it starts at the first request), so
+    /// that the first pipeline does not wait for the translator to load.
+    public func prestart() {
+        lock.lock(); defer { lock.unlock() }
+        if pid == 0 { try? start() }
     }
+
+    /// Starts the child with posix_spawn (CVulkan), not Foundation's
+    /// Process: Process.run scans /proc/self/fd in the parent, and with
+    /// several translators starting at once while the VMM opens and closes
+    /// descriptors, that scan crashed the host once (stage8-contract.md §13).
+    private func start() throws {
+        let argv = [executable.path] + arguments
+        var cargs: [UnsafeMutablePointer<CChar>?] = argv.map { strdup($0) }
+        cargs.append(nil)
+        defer { for a in cargs { free(a) } }
+        var child: Int32 = 0, input: Int32 = -1, output: Int32 = -1
+        let r = Self.spawnLock.withLock { yvk_spawn_piped(executable.path, &cargs, &child, &input, &output) }
+        guard r == 0 else { throw ShaderTranslationError("ycode-airc: cannot start \(executable.path): errno \(r)") }
+        pid = child
+        toChild = input
+        fromChild = output
+    }
+
+    /// One spawn at a time in this process.
+    private static let spawnLock = NSLock()
 
     private func stop() {
-        process?.terminate()
-        process = nil
-        input = nil
-        output = nil
+        if toChild >= 0 { close(toChild) }
+        if fromChild >= 0 { close(fromChild) }
+        toChild = -1
+        fromChild = -1
+        if pid > 0 { yvk_end_child(pid) }
+        pid = 0
     }
 
     private func readExactly(_ n: Int) throws -> [UInt8] {
-        guard let out = output else { throw ShaderTranslationError("ycode-airc is not running") }
-        var data = [UInt8]()
-        data.reserveCapacity(n)
-        while data.count < n {
-            let chunk = out.readData(ofLength: n - data.count)
-            if chunk.isEmpty { throw ShaderTranslationError("ycode-airc closed its output") }
-            data.append(contentsOf: chunk)
-        }
+        guard fromChild >= 0 else { throw ShaderTranslationError("ycode-airc is not running") }
+        var data = [UInt8](repeating: 0, count: n)
+        let r = data.withUnsafeMutableBytes { yvk_read_exactly(fromChild, $0.baseAddress, n) }
+        if r == -1 { throw ShaderTranslationError("ycode-airc closed its output") }
+        if r != 0 { throw ShaderTranslationError("ycode-airc: read failed: errno \(r)") }
         return data
     }
 
     public func translate(_ request: TranslationRequest) throws -> TranslatedShader {
         lock.lock(); defer { lock.unlock() }
-        if process == nil || process?.isRunning == false { try start() }
+        if pid == 0 { try start() }
         let id = nextID
         nextID += 1
         var header: [String: Any] = ["id": id, "op": "translate"]
         if let h = request.linkVertexHash { header["link_vertex"] = h }
         if let f = request.functionName { header["function"] = f }
+        if loopLimit != 0 { header["loop_limit"] = Int(loopLimit) }
         let headerBytes = [UInt8](try JSONSerialization.data(withJSONObject: header))
         var frame = [UInt8]()
         func u32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { frame.append(contentsOf: $0) } }
@@ -317,7 +352,8 @@ public final class AircProcessTranslator: ShaderTranslator, @unchecked Sendable 
         frame.append(contentsOf: request.metallib)
         let reply: (json: [UInt8], payload: [UInt8])
         do {
-            try input?.write(contentsOf: Data(frame))
+            let w = frame.withUnsafeBytes { yvk_write_all(toChild, $0.baseAddress, $0.count) }
+            if w != 0 { throw ShaderTranslationError("ycode-airc: write failed: errno \(w)") }
             let lengths = try readExactly(8)
             let total = lengths.withUnsafeBytes { Int($0.load(as: UInt32.self).littleEndian) }
             let hl = lengths.withUnsafeBytes { Int($0.load(fromByteOffset: 4, as: UInt32.self).littleEndian) }
@@ -356,7 +392,8 @@ public final class AircTranslatorPool: ShaderTranslator, @unchecked Sendable {
     /// p0, p1, … (ycode-airc numbers files per process). The dumps hold guest
     /// shader bytes: keep them on the machine that ran the guest.
     public init(executable: URL, count: Int, arguments: [String] = AircProcessTranslator.defaultArguments,
-                dumpDirectory: String? = ProcessInfo.processInfo.environment["YCODE_AIRC_DUMP_DIR"]) {
+                dumpDirectory: String? = ProcessInfo.processInfo.environment["YCODE_AIRC_DUMP_DIR"],
+                loopLimit: UInt32 = AircProcessTranslator.defaultLoopLimit) {
         processes = (0..<max(count, 1)).map { i in
             var args = arguments
             if let dir = dumpDirectory, !dir.isEmpty {
@@ -364,8 +401,14 @@ public final class AircTranslatorPool: ShaderTranslator, @unchecked Sendable {
                 try? FileManager.default.createDirectory(atPath: sub, withIntermediateDirectories: true)
                 args += ["--dump-dir", sub]
             }
-            return AircProcessTranslator(executable: executable, arguments: args)
+            return AircProcessTranslator(executable: executable, arguments: args, loopLimit: loopLimit)
         }
+    }
+
+    /// Starts every process now, one after another, on a background thread.
+    public func prestart() {
+        let ps = processes
+        Thread.detachNewThread { for p in ps { p.prestart() } }
     }
 
     public func translate(_ request: TranslationRequest) throws -> TranslatedShader {

@@ -22,7 +22,9 @@ This contract pins 4c-i; 4c-ii/iii are added as §8+ when 4c-i reports.
   boots a device instead of running `--exec`. The root process (pid 100) is
   `launchd_sim`.
 - **Paths.** Guest paths equal host paths (as before), so RR's guest path is
-  its host path. DEV is `<hostdir>` (created if absent). Ycode creates
+  its host path. DEV is `<hostdir>` (created if absent); its guest path is
+  the host path, except for a copied or moved device, which keeps the guest
+  path its data was first booted at (`app-launch.md` §3.3). Ycode creates
   `DEV/data/{tmp,var/run/simulatoraudio,Library/LaunchDaemons,Library/Application Support/Simulator}`,
   `DEV/data/var/run/memory_warning_simulation` (empty), the audio plist
   (`launchd-sim.md` §3), and `DEV/tmp-host/` and `DEV/private-var-tmp/`

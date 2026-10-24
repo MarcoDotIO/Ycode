@@ -155,7 +155,7 @@ public final class IOSurfaceHostService: @unchecked Sendable {
         while !lock.withLock({ stopping }) {
             let m: MachHostReceivedMessage
             do {
-                m = try host.receive(on: portSet, timeout: 200_000_000)
+                m = try host.receive(on: portSet, timeout: 200_000_000, tracked: true)
             } catch let e as MachHostError where e == .timedOut || e == .interrupted {
                 continue
             } catch {
@@ -163,6 +163,7 @@ public final class IOSurfaceHostService: @unchecked Sendable {
                 return
             }
             handle(m)
+            host.finishedMessage()
         }
     }
 
@@ -291,6 +292,7 @@ public final class IOSurfaceHostService: @unchecked Sendable {
     func perform(_ d: XPCDict, connection: UInt32) -> ([(String, XPCObject)], (() -> Void)?) {
         let method = d["Method"]?.uint64Value ?? .max
         let surfaceID = d["SurfaceID"].flatMap { $0.uint64Value }.map { UInt32(truncatingIfNeeded: $0) }
+        if method == 4, let id = surfaceID, (d["Options"]?.uint64Value ?? 0) & 2 == 0 { gpuWriteWait?(id) }
         return lock.withLock {
             func fail(_ e: UInt32) -> ([(String, XPCObject)], (() -> Void)?) { ([("ErrorCode", Self.code(e))], nil) }
             func withState(_ s: Surface, _ extra: [(String, XPCObject)] = []) -> ([(String, XPCObject)], (() -> Void)?) {
@@ -509,8 +511,27 @@ public final class IOSurfaceHostService: @unchecked Sendable {
         lock.withLock { surfacePorts[port].flatMap { surfaces[$0] }.map(info) }
     }
 
-    /// The surface with `id`, or nil.
-    public func surface(id: UInt32) -> IOSurfaceInfo? { lock.withLock { surfaces[id].map(info) } }
+    /// The surface with `id`, or nil. Its pixels are complete: GPU work that
+    /// writes the surface and was reported scheduled is waited for first
+    /// (`gpuWriteWait`), so host readers (the display server, screenshots)
+    /// never see a frame the GPU is still drawing.
+    public func surface(id: UInt32) -> IOSurfaceInfo? {
+        gpuWriteWait?(id)
+        return lock.withLock { surfaces[id].map(info) }
+    }
+
+    /// Waits until GPU work that writes the surface is complete (set by the
+    /// Metal host's wiring; never called under this service's lock). Used
+    /// by `surface(id:)` and by guest locks without kIOSurfaceLockAvoidSync,
+    /// as IOSurfaceLock synchronizes with pending GPU access.
+    public var gpuWriteWait: (@Sendable (UInt32) -> Void)?
+
+    /// The surface's seed (raised by every lock for writing) and whether any
+    /// lock is held, or nil when there is no such surface. The GPU back end
+    /// skips copying in a surface whose seed did not change.
+    public func lockState(id: UInt32) -> (seed: UInt32, locked: Bool)? {
+        lock.withLock { surfaces[id].map { ($0.seed, $0.lockCount > 0) } }
+    }
 
     private func info(_ s: Surface) -> IOSurfaceInfo {
         let planes = s.planes.map { p -> (offset: Int, width: Int, height: Int, bytesPerRow: Int) in
@@ -524,7 +545,8 @@ public final class IOSurfaceHostService: @unchecked Sendable {
 
     /// A copy of a surface's pixels and layout, or nil.
     public func snapshot(surfaceID: UInt32) -> IOSurfaceSnapshot? {
-        lock.withLock {
+        gpuWriteWait?(surfaceID)  // a screenshot shows finished pixels (see `surface(id:)`)
+        return lock.withLock {
             guard let s = surfaces[surfaceID] else { return nil }
             let count = Int(min(UInt64(s.allocationSize), s.memory.size))
             let bytes = [UInt8](UnsafeRawBufferPointer(start: s.memory.host, count: count))
@@ -532,6 +554,118 @@ public final class IOSurfaceHostService: @unchecked Sendable {
                                      bytesPerRow: Int(s.bytesPerRow), bytesPerElement: Int(s.bytesPerElement),
                                      pixelFormat: s.pixelFormat, bytes: bytes)
         }
+    }
+
+    // MARK: Snapshot (snapshot.md §2.6, §8)
+
+    /// Field tags of the service's state record.
+    enum SnapTag {
+        static let nextSerial: UInt16 = 1, surfaces: UInt16 = 2, connections: UInt16 = 3
+        // surface
+        static let id: UInt16 = 10, entry: UInt16 = 11, serial: UInt16 = 12, name: UInt16 = 13, creation: UInt16 = 14
+        static let planes: UInt16 = 15, layout: UInt16 = 16, seed: UInt16 = 17, casting: UInt16 = 18, values: UInt16 = 19
+        static let attachments: UInt16 = 20, lockCount: UInt16 = 21, useCount: UInt16 = 22, purgeable: UInt16 = 23
+        static let ports: UInt16 = 24
+        // connection
+        static let port: UInt16 = 30, client: UInt16 = 31, refIDs: UInt16 = 32, refCounts: UInt16 = 33
+    }
+
+    /// The service's whole state (surfaces, connections, surface ports), as
+    /// host-task names; nil when the service is busy (its lock is taken):
+    /// the snapshot tries again. Called with the kernel lock held, so it
+    /// only tries the service lock (the service takes it before the kernel lock).
+    public func trySnapshotState() -> SnapshotFields? {
+        guard lock.try() else { return nil }
+        defer { lock.unlock() }
+        typealias T = SnapTag
+        var g = SnapshotFields()
+        g.u64(T.nextSerial, UInt64(nextSurfaceSerial))
+        g.list(T.surfaces, surfaces.values.sorted { $0.id < $1.id }.map { s in
+            var f = SnapshotFields()
+            f.u64(T.id, UInt64(s.id))
+            f.u64(T.entry, UInt64(s.entry))
+            f.u64(T.serial, UInt64(s.serial))
+            f.string(T.name, s.name)
+            f.bytes(T.creation, OSSerialize.encode(.dictionary(s.creation)))
+            f.bytes(T.planes, OSSerialize.encode(.array(s.planes)))
+            f.u64s(T.layout, [s.width, s.height, s.bytesPerRow, s.allocationSize, s.pixelFormat, s.cacheMode,
+                              s.bytesPerElement, s.elementWidth, s.elementHeight].map(UInt64.init))
+            f.u64(T.seed, UInt64(s.seed))
+            f.bool(T.casting, s.castingAllowed)
+            f.bytes(T.values, OSSerialize.encode(.dictionary(s.values)))
+            let attachments = XPCDict(s.attachments.sorted { $0.key < $1.key }.map { XPCDict.Entry(key: $0.key, value: $0.value) })
+            if let bytes = try? XPCWire.encodePayload(.dictionary(attachments)) { f.bytes(T.attachments, bytes) }
+            f.i64(T.lockCount, Int64(s.lockCount))
+            f.i64(T.useCount, Int64(s.useCount))
+            f.u64(T.purgeable, s.purgeable)
+            f.u64s(T.ports, s.ports.sorted().map(UInt64.init))
+            return f
+        })
+        g.list(T.connections, connections.sorted { $0.key < $1.key }.map { port, c in
+            var f = SnapshotFields()
+            f.u64(T.port, UInt64(port))
+            f.u64(T.client, UInt64(c.clientPort))
+            let refs = c.references.sorted { $0.key < $1.key }
+            f.u64s(T.refIDs, refs.map { UInt64($0.key) })
+            f.u64s(T.refCounts, refs.map { UInt64(max(0, $0.value)) })
+            return f
+        })
+        return g
+    }
+
+    /// After a restore, before any guest thread runs: the recorded state.
+    /// The host task holds the recorded rights under their recorded names
+    /// (connection and surface ports with their no-senders requests, set
+    /// membership, memory entries), so only the service's tables come back.
+    /// Returns the number of surfaces.
+    @discardableResult
+    public func restoreState(_ r: SnapshotFieldReader) throws -> Int {
+        typealias T = SnapTag
+        var restored: [UInt32: Surface] = [:]
+        var ports: [UInt32: UInt32] = [:]
+        for f in r.list(T.surfaces) {
+            let entry = f.u32(T.entry)
+            guard let (memory, _, _) = host.memoryEntry(entry) else {
+                throw SnapshotError("IOSurface \(f.u32(T.id)): memory entry 0x\(String(entry, radix: 16)) is gone")
+            }
+            let l = f.u64s(T.layout).map { UInt32(truncatingIfNeeded: $0) } + [UInt32](repeating: 1, count: 9)
+            var layout = Layout()
+            (layout.width, layout.height, layout.bytesPerRow, layout.allocationSize) = (l[0], l[1], l[2], l[3])
+            (layout.pixelFormat, layout.cacheMode) = (l[4], l[5])
+            (layout.bytesPerElement, layout.elementWidth, layout.elementHeight) = (l[6], l[7], l[8])
+            layout.castingAllowed = f.bool(T.casting, default: true)
+            let creation = (try? OSSerialize.decode(f.bytes(T.creation)))?.dictionaryValue ?? []
+            let planes = (try? OSSerialize.decode(f.bytes(T.planes)))?.arrayValue ?? []
+            let s = Surface(id: f.u32(T.id), memory: memory, entry: entry, serial: f.u32(T.serial), name: f.string(T.name) ?? "",
+                            creation: creation, planes: planes, layout: layout)
+            s.seed = f.u32(T.seed)
+            s.values = (try? OSSerialize.decode(f.bytes(T.values)))?.dictionaryValue ?? []
+            if f.has(T.attachments), case let .dictionary(d)? = try? XPCWire.decodePayload(f.bytes(T.attachments), ports: nil) {
+                for e in d.entries { s.attachments[e.key] = e.value }
+            }
+            s.lockCount = Int(f.i64(T.lockCount))
+            s.useCount = Int(f.i64(T.useCount))
+            s.purgeable = f.u64(T.purgeable)
+            for p in f.u64s(T.ports) {
+                let port = UInt32(truncatingIfNeeded: p)
+                s.ports.insert(port)
+                ports[port] = s.id
+            }
+            restored[s.id] = s
+        }
+        var conns: [UInt32: Connection] = [:]
+        for f in r.list(T.connections) {
+            let c = Connection(clientPort: f.u32(T.client))
+            for (id, n) in zip(f.u64s(T.refIDs), f.u64s(T.refCounts)) { c.references[UInt32(truncatingIfNeeded: id)] = Int(n) }
+            conns[f.u32(T.port)] = c
+        }
+        lock.withLock {
+            surfaces = restored
+            surfacePorts = ports
+            connections = conns
+            nextSurfaceSerial = max(nextSurfaceSerial, r.u32(T.nextSerial))
+        }
+        return restored.count
     }
 
     /// The IDs and names of the live surfaces (diagnostics).

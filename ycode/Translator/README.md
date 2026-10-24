@@ -51,9 +51,19 @@ The steps in `src/prepare.*`:
 2. Run the static initializers, so that function-constant-derived globals
    become SSA values.
 3. Clean up with SROA, EarlyCSE, SCCP, ADCE and SimplifyCFG. Expand memory
-   intrinsics.
+   intrinsics. Then inline every out-of-line helper that some call reaches
+   under divergent control flow (a branch on a value that can differ
+   between threads). The Thor's driver can stop a subgroup for good when
+   its lanes are inside DontInline functions on different paths
+   (stage8-contract.md §13.3), so only helpers that are always called by
+   the whole subgroup together stay out of line.
 4. Normalize the CFG with LowerSwitch, UnifyFunctionExitNodes,
-   FixIrreducible, UnifyLoopExits, LoopSimplify and StructurizeCFG.
+   FixIrreducible, UnifyLoopExits, LoopSimplify and StructurizeCFG. With a
+   loop limit (`--loop-limit N`, serve `"loop_limit"`; the host sends
+   2^20 unless `YCODE_GPU_LOOP_LIMIT` says otherwise) every loop whose trip
+   count is not a known constant gets a guard at its header: each
+   invocation may pass guarded headers N times in all, then each loop is
+   left at its next header. The reflection then says `"loop_limit": N`.
 5. Insert the grid guard for kernels.
 6. Plan the structure: merge and continue blocks, splitting blocks where two
    constructs would share a merge.
@@ -118,8 +128,9 @@ On the Thor, copy `OUT_DIR` and `ORACLE_DIR` over, then:
 - `tests/run-thor.sh WORK METALLIB_DIR ORACLE_DIR [RUNTIME_ROOT]`. It builds
   and runs the own corpus (with and without spirv-opt), the GPU tests
   (`run-gpu-tests.sh` with `tests/gpu/airc-gpu.c`, compared with the
-  oracle), the texture operand forms (`tests/ir/texture-forms.sh`) and the
-  serve tests (`serve-test.py`). If a runtime root is given, it also prints
+  oracle), the texture operand forms (`tests/ir/texture-forms.sh`), the
+  loop guard and helper outlining checks (`tests/ir/control-flow.sh`) and
+  the serve tests (`serve-test.py`). If a runtime root is given, it also prints
   statistics for the runtime's home-screen libraries.
 - `airc-gpu --compile VS.spv VS_ENTRY FS.spv FS_ENTRY` times a pipeline
   creation. Set `__GL_SHADER_DISK_CACHE=0` to measure a cold compile.
@@ -131,6 +142,9 @@ Debug environment variables (see `src/main.cpp`):
 - `AIRC_STATS` and `AIRC_STATS_OPS`: phase times and opcode counts
 - `AIRC_STATS_CALLS`: helper call-graph sizes
 - `AIRC_INLINE_ALL` and `AIRC_OUTLINE_MIN`: helper outlining policy
+- `AIRC_OUTLINE_DIVERGENT`: keep helpers out of line even when they are
+  called under divergent control flow (the behaviour before §13.3; for
+  experiments only)
 - `AIRC_LLVM_OPTIONS`: LLVM `cl` options
 
 ## Known limits

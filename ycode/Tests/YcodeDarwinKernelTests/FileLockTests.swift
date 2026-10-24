@@ -183,7 +183,7 @@ import YcodeDarwinABI
         let root = env.rootKernel!
         let state = ProcEnv.scratch + 0xB000
         func purgable(_ control: UInt64, _ value: Int32) -> (Int64, Int32) {
-            env.put(root, Array(withUnsafeBytes(of: value.littleEndian) { $0 }), at: state)
+            env.put(root, withUnsafeBytes(of: value.littleEndian) { Array($0) }, at: state)
             let (_, f) = env.svc(root, UInt64(bitPattern: -11), [0x103, ProcEnv.scratch, control, state])
             return (Int64(f.x[0]), env.read(root, state, 4).readLE(Int32.self, at: 0))
         }

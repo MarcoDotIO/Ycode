@@ -159,6 +159,64 @@ On any exception, the shim's vector entry does the following:
 For kind 4, the shim stores to the doorbell and then spins. The VMM treats
 it as fatal.
 
+### 5.1 Alternative doorbell: forwarded HVC (default on since 2026-10-17)
+
+The doorbell may instead be an `HVC` call that KVM forwards to the VMM. The
+VMM chooses the form per VM (the HVC form by default when the host installs
+the filter below; `YCODE_HVC_DOORBELL=0` keeps the MMIO form); both forms
+carry the same frame and give the same resume semantics.
+
+- **Selection.** Boot info field 64 (doorbell address) = **0** selects the
+  HVC doorbell; any other value is the MMIO doorbell address as above. The
+  VMM writes the same value into every vCPU's boot info of a VM.
+- **Function ID.** `0xC600_5943`: an SMCCC fast call (bit 31), SMC64
+  convention (bit 30), owning entity 6 (vendor-specific hypervisor
+  service), function number `0x5943` ("YC"). It is outside the Arm
+  Architecture service range (`0x8000_0000`–`0x8000_FFFF`), which the KVM
+  filter refuses.
+- **VMM setup.** Before any vCPU of the VM runs, the VMM installs one SMCCC
+  filter range on the VM fd: `KVM_SET_DEVICE_ATTR`, group
+  `KVM_ARM_VM_SMCCC_CTRL` (0), attribute `KVM_ARM_VM_SMCCC_FILTER` (0),
+  `struct kvm_smccc_filter { u32 base = 0xC600_5943; u32 nr_functions = 1;
+  u8 action = KVM_SMCCC_FILTER_FWD_TO_USER (2); u8 pad[15] = 0 }`. If the
+  kernel refuses (no SMCCC filter support), the VMM keeps the MMIO doorbell
+  for that VM and the boot info carries the MMIO address.
+- **Shim.** In place of the doorbell store, the shim keeps the frame address
+  in `x4`, sets `w0` = the function ID, executes `hvc #0`, and then reloads
+  `x0` from `x4`. The `dsb sy` before it stays. The shim relies on no
+  register value the VMM returns: it restores everything from the frame as
+  before. (`HVC` is undefined at EL0, so only the shim can ring this
+  doorbell.)
+- **Exit.** KVM returns `KVM_EXIT_HYPERCALL` with `nr` = the function ID and
+  `flags` bit 0 (`KVM_HYPERCALL_EXIT_SMC`) = 0. At that point the PC already
+  points at the instruction after the `HVC` (KVM API documentation), so the
+  VMM changes no register: it reads the frame at the vCPU's own frame
+  address (it knows it per vCPU; the call carries no address), handles the
+  trap, writes the frame back, and calls `KVM_RUN` again. A hypercall exit
+  with any other `nr`, or with the SMC flag, is an unexpected exit (status
+  71).
+- **Parked vCPUs** (`stage4a-contract.md` §4) are stopped just after the
+  `HVC` instead of at the store; resuming one runs the same restore path, so
+  reuse works unchanged.
+- **Cost.** A bare forwarded HVC round trip is about 230 ns (8 %) cheaper
+  than the MMIO exit on the Thor (`native-mode.md` §8.2). Through the full
+  `ycode-simd` trap path (guest probe `p_fasttraps`, 3 runs each, the Thor
+  under load), the saving is about the same in absolute terms:
+  - lock-free trap −3: MMIO 4691/4692/4902 ns, HVC 4538/4514/4548 ns
+    (median −154 ns, −3 %);
+  - locked trap `getppid`: MMIO 4770/4763/4795 ns, HVC 4683/4544/4540 ns
+    (−226 ns, −5 %).
+- **Boot.** The time to the home screen with HVC was 550 s (set 1) and
+  515/510 s (set 2). Without it, the times were 570/560/535 s and 525 s
+  (`fast-traps.md` §8.3). That is about 2–3 % faster, within the harness
+  noise. The trap counts and lock times were unchanged. Every boot reached
+  the home screen with no host crash and `guest_fatal` 43–44. The VMM
+  prints `ycode-simd: HVC doorbell on (...)` once when it installs the
+  filter.
+- **Recommendation.** Make this the default doorbell. The gain is small but
+  consistent, the cost is nothing, and a host without the SMCCC filter
+  falls back to MMIO by itself. Until the default changes, it stays opt-in.
+
 The VMM resumes the vCPU only by calling `KVM_RUN` again. To stop the guest
 (for example on `exit`), it simply does not resume.
 
@@ -309,6 +367,13 @@ These were settled while building stage 2 and are now part of the contract.
   (level 1).
 - KVM behavior (MMIO exits for unbacked GPAs, `KVM_RUN`, `ONE_REG`): the
   Linux kernel's public KVM API documentation (level 1).
+- SMCCC filter, `KVM_EXIT_HYPERCALL` fields and the PC after a forwarded
+  `HVC` (§5.1): the Linux KVM API documentation and
+  `Documentation/virt/kvm/devices/vm.rst` (level 1); the exit cost:
+  `research/experiments/linux-host/exitbench.c` on the Thor (level 3).
+  The full-path trap cost and the boot times with the HVC doorbell: the
+  guest probe `p_fasttraps` and harness boots on the Thor, 2026-10-17
+  (level 3).
 - The 16 KiB granule is available in KVM guests on the Thor:
   `research/experiments/linux-host/kvm_probe.py` (level 3).
 

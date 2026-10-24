@@ -62,6 +62,8 @@ extension MachIPC {
         public static let vmRead: UInt32 = 0x7963_2014
         /// `mach_vm_region(task, &addr, &size, flavor, info, &count, &object_name)` within the caller's task.
         public static let vmRegion: UInt32 = 0x7963_2015
+        /// `thread_info(thread, flavor, info, &count)` (app-launch.md §3.4).
+        public static let threadInfo: UInt32 = 0x7963_2030
     }
 
     /// `TASK_BOOTSTRAP_PORT`.
@@ -81,6 +83,11 @@ extension MachIPC {
         }
         if lock.isHeldByCurrentThread {
             return handleTrapLocked(x16: x16, frame: &frame, context: context, memory: memory)
+        }
+        // The lock split: the locked path of a Mach trap holds L0 first (its
+        // routines may use process state), then the port lock.
+        if let l0 = lock.root, !l0.isHeldByCurrentThread, KernelThreadLocks.current.held.isEmpty {
+            return l0.withLock(context: context) { handleTrap(x16: x16, frame: &frame, context: context, memory: memory) }
         }
         return lock.withLock(context: context) {
             handleTrapLocked(x16: x16, frame: &frame, context: context, memory: memory)
@@ -105,16 +112,16 @@ extension MachIPC {
         let a = Array(frame.x[0..<8])
         func u32(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i]) }
         func i32(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
-        var call = "mach \(n)"
-        let prefix = "trap mach \(n)"
+        var call = CallText(tracesCalls, "mach \(n)")
+        let prefix = tracesCalls ? "trap mach \(n)" : ""
         func kr(_ value: UInt32, _ extra: String = "") -> TrapOutcome {
             frame.x[0] = UInt64(value)
-            log("\(prefix) \(call) -> \(MachMsgReturn.name(value))\(extra)")
+            trace("\(prefix) \(call) -> \(MachMsgReturn.name(value))\(extra)")
             return .resume
         }
         func nameResult(_ name: UInt32) -> TrapOutcome {
             frame.x[0] = UInt64(name)
-            log("\(prefix) \(call) -> \(hx(name))")
+            trace("\(prefix) \(call) -> \(hx(name))")
             return .resume
         }
         func write32(_ va: UInt64, _ v: UInt32) -> Bool { (try? memory.write(va: va, bytes: le32(v))) != nil }
@@ -122,7 +129,7 @@ extension MachIPC {
 
         switch n {
         case Trap.portAllocate:
-            call = "mach_port_allocate(target=\(hx(u32(0))), right=\(u32(1)), name=\(hx(a[2])))"
+            call.set("mach_port_allocate(target=\(hx(u32(0))), right=\(u32(1)), name=\(hx(a[2])))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             let (result, name) = portAllocate(right: u32(1))
             guard result == 0 else { return kr(result) }
@@ -130,35 +137,35 @@ extension MachIPC {
             return kr(0, " [name=\(hx(name))]")
 
         case Trap.portDeallocate:
-            call = "mach_port_deallocate(target=\(hx(u32(0))), name=\(hx(u32(1))))"
+            call.set("mach_port_deallocate(target=\(hx(u32(0))), name=\(hx(u32(1))))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             return kr(portDeallocate(u32(1)))
 
         case Trap.portModRefs:
-            call = "mach_port_mod_refs(target=\(hx(u32(0))), name=\(hx(u32(1))), right=\(u32(2)), delta=\(i32(3)))"
+            call.set("mach_port_mod_refs(target=\(hx(u32(0))), name=\(hx(u32(1))), right=\(u32(2)), delta=\(i32(3)))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             return kr(portModRefs(u32(1), right: u32(2), delta: i32(3)))
 
         case Trap.portMoveMember:
-            call = "mach_port_move_member(target=\(hx(u32(0))), member=\(hx(u32(1))), after=\(hx(u32(2))))"
+            call.set("mach_port_move_member(target=\(hx(u32(0))), member=\(hx(u32(1))), after=\(hx(u32(2))))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             return kr(portMoveMember(u32(1), after: u32(2)))
 
         case Trap.portInsertRight:
-            call = "mach_port_insert_right(target=\(hx(u32(0))), name=\(hx(u32(1))), poly=\(hx(u32(2))), "
-                + "polyPoly=\(u32(3)))"
+            call.set("mach_port_insert_right(target=\(hx(u32(0))), name=\(hx(u32(1))), poly=\(hx(u32(2))), "
+                + "polyPoly=\(u32(3)))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             return kr(portInsertRight(u32(1), poly: u32(2), polyPoly: u32(3)))
 
         case Trap.portInsertMember, Trap.portExtractMember:
             let insert = n == Trap.portInsertMember
-            call = "mach_port_\(insert ? "insert" : "extract")_member(target=\(hx(u32(0))), name=\(hx(u32(1))), "
-                + "pset=\(hx(u32(2))))"
+            call.set("mach_port_\(insert ? "insert" : "extract")_member(target=\(hx(u32(0))), name=\(hx(u32(1))), "
+                + "pset=\(hx(u32(2))))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             return kr(insert ? portInsertMember(u32(1), set: u32(2)) : portExtractMember(u32(1), set: u32(2)))
 
         case Trap.portConstruct:
-            call = "mach_port_construct(target=\(hx(u32(0))), options=\(hx(a[1])), context=\(hx(a[2])), name=\(hx(a[3])))"
+            call.set("mach_port_construct(target=\(hx(u32(0))), options=\(hx(a[1])), context=\(hx(a[2])), name=\(hx(a[3])))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             guard let raw = try? memory.read(va: a[1], count: 32) else { return kr(MachKern.copyFault) }
             let options = MachPortOptions(bytes: raw)
@@ -169,25 +176,25 @@ extension MachIPC {
             return kr(0, " [name=\(hx(name))]")
 
         case Trap.portDestruct:
-            call = "mach_port_destruct(target=\(hx(u32(0))), name=\(hx(u32(1))), srdelta=\(i32(2)), guard=\(hx(a[3])))"
+            call.set("mach_port_destruct(target=\(hx(u32(0))), name=\(hx(u32(1))), srdelta=\(i32(2)), guard=\(hx(a[3])))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             return kr(portDestruct(u32(1), srdelta: i32(2), guard: a[3]))
 
         case Trap.replyPort:
-            call = "mach_reply_port()"
+            call.set("mach_reply_port()")
             return nameResult(portAllocate(right: MachPortRight.receive).name)
 
         case Trap.threadSelf:
-            call = "thread_self_trap()"
+            call.set("thread_self_trap()")
             if let (p, _) = kernelObject(named: context.portName) { return nameResult(copyoutNewSend(p)) }
             return nameResult(context.portName)
 
         case Trap.taskSelf:
-            call = "task_self_trap()"
+            call.set("task_self_trap()")
             return nameResult(copyoutNewSend(taskPort))
 
         case Trap.hostSelf:
-            call = "host_self_trap()"
+            call.set("host_self_trap()")
             return nameResult(copyoutNewSend(hostPort))
 
         case Trap.machMsg, Trap.machMsgOverwrite:
@@ -196,7 +203,7 @@ extension MachIPC {
         case Trap.taskForPid:
             // Ycode (`processes.md` §3.5): self only; any other pid fails.
             let pidArg = i32(1)
-            call = "task_for_pid(target_tport=\(hx(u32(0))), pid=\(pidArg), t=\(hx(a[2])))"
+            call.set("task_for_pid(target_tport=\(hx(u32(0))), pid=\(pidArg), t=\(hx(a[2])))")
             var name: UInt32 = 0
             var result = MachKern.failure
             if isTaskSelf(u32(0)), pidArg != 0, let target = space(forPID: pidArg), target === self {
@@ -211,7 +218,7 @@ extension MachIPC {
 
         case Trap.taskNameForPid:
             let pidArg = i32(1)
-            call = "task_name_for_pid(target_tport=\(hx(u32(0))), pid=\(pidArg), t=\(hx(a[2])))"
+            call.set("task_name_for_pid(target_tport=\(hx(u32(0))), pid=\(pidArg), t=\(hx(a[2])))")
             var name: UInt32 = 0
             var result = MachKern.failure
             if isTaskSelf(u32(0)), pidArg > 0, let target = space(forPID: pidArg) {
@@ -225,7 +232,7 @@ extension MachIPC {
             return kr(result, " [\(hx(name))]")
 
         case Trap.pidForTask:
-            call = "pid_for_task(t=\(hx(u32(0))), pid=\(hx(a[1])))"
+            call.set("pid_for_task(t=\(hx(u32(0))), pid=\(hx(a[1])))")
             var pidOut: Int32 = -1
             var result = MachKern.failure
             if let (p, object) = kernelObject(named: u32(0)), object.isTaskFlavor, p.active,
@@ -240,8 +247,8 @@ extension MachIPC {
             return machMsg2Trap(&frame, context: context, memory: memory)
 
         case Trap.portGetAttributes:
-            call = "mach_port_get_attributes(target=\(hx(u32(0))), name=\(hx(u32(1))), flavor=\(u32(2)), "
-                + "info=\(hx(a[3])), count=\(hx(a[4])))"
+            call.set("mach_port_get_attributes(target=\(hx(u32(0))), name=\(hx(u32(1))), flavor=\(u32(2)), "
+                + "info=\(hx(a[3])), count=\(hx(a[4])))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             guard let raw = try? memory.read(va: a[4], count: 4) else { return kr(MachKern.copyFault) }
             let count = min(raw.readLE(UInt32.self, at: 0), 17)
@@ -254,17 +261,17 @@ extension MachIPC {
             return kr(0, " [\(words.map { String($0) }.joined(separator: ","))]")
 
         case Trap.portGuard:
-            call = "mach_port_guard(target=\(hx(u32(0))), name=\(hx(u32(1))), guard=\(hx(a[2])), strict=\(u32(3) & 0xFF))"
+            call.set("mach_port_guard(target=\(hx(u32(0))), name=\(hx(u32(1))), guard=\(hx(a[2])), strict=\(u32(3) & 0xFF))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             return kr(portGuard(u32(1), guard: a[2], strict: u32(3) & 0xFF != 0))
 
         case Trap.portUnguard:
-            call = "mach_port_unguard(target=\(hx(u32(0))), name=\(hx(u32(1))), guard=\(hx(a[2])))"
+            call.set("mach_port_unguard(target=\(hx(u32(0))), name=\(hx(u32(1))), guard=\(hx(a[2])))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             return kr(portUnguard(u32(1), guard: a[2]))
 
         case Trap.threadGetSpecialReplyPort:
-            call = "thread_get_special_reply_port()"
+            call.set("thread_get_special_reply_port()")
             let p = newPort()
             p.isSpecialReply = true
             guard let name = newEntry(bits: T.receive | T.send, urefs: 1, port: p) else { return nameResult(0) }
@@ -275,20 +282,20 @@ extension MachIPC {
             return nameResult(name)
 
         case Trap.hostCreateMachVoucher:
-            call = "host_create_mach_voucher_trap(host=\(hx(u32(0))), recipes=\(hx(a[1])), size=\(i32(2)), "
-                + "voucher=\(hx(a[3])))"
+            call.set("host_create_mach_voucher_trap(host=\(hx(u32(0))), recipes=\(hx(a[1])), size=\(i32(2)), "
+                + "voucher=\(hx(a[3])))")
             if i32(2) < 0 { return kr(MachKern.invalidArgument) }
             if i32(2) > Self.maxVoucherRecipeSize { return kr(MachKern.migArrayTooLarge) }
             guard write32(a[3], 0) else { return kr(MachKern.copyFault) }
             return kr(0, " [voucher=0x0]")
 
         case Trap.voucherExtractAttrRecipe:
-            call = "mach_voucher_extract_attr_recipe_trap(voucher=\(hx(u32(0))), key=\(u32(1)), recipe=\(hx(a[2])), "
-                + "size=\(hx(a[3])))"
+            call.set("mach_voucher_extract_attr_recipe_trap(voucher=\(hx(u32(0))), key=\(u32(1)), recipe=\(hx(a[2])), "
+                + "size=\(hx(a[3])))")
             return kr(MachMsgReturn.sendInvalidDest, " [no voucher objects]")
 
         case Trap.portType:
-            call = "mach_port_type(target=\(hx(u32(0))), name=\(hx(u32(1))), ptype=\(hx(a[2])))"
+            call.set("mach_port_type(target=\(hx(u32(0))), name=\(hx(u32(1))), ptype=\(hx(a[2])))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             let (result, type) = portType(u32(1))
             guard result == 0 else { return kr(result) }
@@ -296,8 +303,8 @@ extension MachIPC {
             return kr(0, " [\(hx(type))]")
 
         case Trap.portRequestNotification:
-            call = "mach_port_request_notification(target=\(hx(u32(0))), name=\(hx(u32(1))), msgid=\(i32(2)), "
-                + "sync=\(u32(3)), notify=\(hx(u32(4))), notifyPoly=\(u32(5)), previous=\(hx(a[6])))"
+            call.set("mach_port_request_notification(target=\(hx(u32(0))), name=\(hx(u32(1))), msgid=\(i32(2)), "
+                + "sync=\(u32(3)), notify=\(hx(u32(4))), notifyPoly=\(u32(5)), previous=\(hx(a[6])))")
             guard targetOK(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             let poly = u32(5)
             guard poly == MachMsgType.makeSendOnce || poly == MachMsgType.moveSendOnce else {
@@ -338,19 +345,19 @@ extension MachIPC {
         let rcvSize = UInt64(UInt32(truncatingIfNeeded: a[3]))
         let rcvName = UInt32(truncatingIfNeeded: a[4])
         let timeout = UInt32(truncatingIfNeeded: a[5])
-        var call = "\(n == Trap.machMsg ? "mach_msg_trap" : "mach_msg_overwrite_trap")(msg=\(hx(msg)), "
+        var call = CallText(tracesCalls, "\(n == Trap.machMsg ? "mach_msg_trap" : "mach_msg_overwrite_trap")(msg=\(hx(msg)), "
             + "option=\(hx(options)), send_size=\(sendSize), rcv_size=\(rcvSize), rcv_name=\(hx(rcvName)), "
-            + "timeout=\(timeout))"
+            + "timeout=\(timeout))")
         var note = ""
         func finish(_ value: UInt32) -> TrapOutcome {
             frame.x[0] = UInt64(value)
-            log("trap mach \(n) \(call) -> \(MachMsgReturn.name(value))\(note)")
+            trace("trap mach \(n) \(call) -> \(MachMsgReturn.name(value))\(note)")
             return .resume
         }
         if options & MachMsgOption.sendMsg != 0 {
             if sendSize < 24 || sendSize % 4 != 0 { return finish(MachMsgReturn.sendMsgTooSmall) }
             if sendSize > Int(MachIPCLimits.maxSendSize) { return finish(MachMsgReturn.sendTooLarge) }
-            guard let bytes = try? memory.read(va: msg, count: sendSize) else {
+            guard let bytes = readSendBytes(memory, msg, sendSize) else {
                 return finish(MachMsgReturn.sendInvalidData)
             }
             let bits = bytes.readLE(UInt32.self, at: 0) & MachMsgBits.user
@@ -397,14 +404,14 @@ extension MachIPC {
         let options = a[1]
         let timeout = lo(7)
         let vector = options & MachMsgOption.msgVector != 0
-        let call = "mach_msg2(data=\(hx(data)), options=\(hx(options)), bits=\(hx(lo(2))), "
+        let call = CallText(tracesCalls, "mach_msg2(data=\(hx(data)), options=\(hx(options)), bits=\(hx(lo(2))), "
             + "\(vector ? "send_vecs" : "send_size")=\(hi(2)), remote=\(hx(lo(3))), local=\(hx(hi(3))), "
             + "voucher=\(hx(lo(4))), id=\(Int32(bitPattern: hi(4))), descs=\(lo(5)), rcv_name=\(hx(hi(5))), "
-            + "\(vector ? "rcv_vecs" : "rcv_size")=\(lo(6)), timeout=\(timeout))"
+            + "\(vector ? "rcv_vecs" : "rcv_size")=\(lo(6)), timeout=\(timeout))")
         var note = ""
         func finish(_ value: UInt32) -> TrapOutcome {
             frame.x[0] = UInt64(value)
-            log("trap mach -47 \(call) -> \(MachMsgReturn.name(value))\(note)")
+            trace("trap mach -47 \(call) -> \(MachMsgReturn.name(value))\(note)")
             return .resume
         }
         struct Vector { var data: UInt64; var rcvAddr: UInt64; var sendSize: UInt32; var rcvSize: UInt32 }
@@ -450,7 +457,7 @@ extension MachIPC {
             }
             if sendSize > Int(MachIPCLimits.maxSendSize) { return finish(MachMsgReturn.sendTooLarge) }
             let bodyStart = complex ? 28 : 24
-            guard let body = try? memory.read(va: messageAddress + UInt64(bodyStart), count: sendSize - bodyStart) else {
+            guard let body = readSendBytes(memory, messageAddress + UInt64(bodyStart), sendSize - bodyStart) else {
                 return finish(MachMsgReturn.sendInvalidData)
             }
             let request = MachSendRequest(bits: bits, size: sendSize, remote: lo(3), local: hi(3), voucher: lo(4),
@@ -505,12 +512,12 @@ extension MachIPC {
         let a = Array(frame.x[0..<8])
         func u32(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i]) }
         func i32(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
-        let prefix = "trap yc \(hx(number & 0xFFFF))"
-        var call = "private \(hx(number))"
+        let prefix = tracesCalls ? "trap yc \(hx(number & 0xFFFF))" : ""
+        var call = CallText(tracesCalls, "private \(hx(number))")
         func kr(_ value: UInt32, _ extra: String = "") -> TrapOutcome {
             frame.x[0] = UInt64(value)
             frame.carry = false
-            log("\(prefix) \(call) -> \(MachMsgReturn.name(value))\(extra)")
+            trace("\(prefix) \(call) -> \(MachMsgReturn.name(value))\(extra)")
             return .resume
         }
         func write32(_ va: UInt64, _ v: UInt32) -> Bool { (try? memory.write(va: va, bytes: le32(v))) != nil }
@@ -518,7 +525,7 @@ extension MachIPC {
         switch number {
         case Routine.hostGetClockService:
             let id = i32(1)
-            call = "host_get_clock_service(host=\(hx(u32(0))), clock_id=\(id), out=\(hx(a[2])))"
+            call.set("host_get_clock_service(host=\(hx(u32(0))), clock_id=\(id), out=\(hx(a[2])))")
             guard id == 0 || id == 1 else { return kr(MachKern.invalidArgument) }
             let p: IPCPort
             if let existing = clockPorts[id] {
@@ -536,7 +543,7 @@ extension MachIPC {
             return kr(0, " [\(id == 0 ? "SYSTEM_CLOCK" : "CALENDAR_CLOCK") \(hx(name))]")
 
         case Routine.clockGetTime:
-            call = "clock_get_time(clock=\(hx(u32(0))), out=\(hx(a[1])))"
+            call.set("clock_get_time(clock=\(hx(u32(0))), out=\(hx(a[1])))")
             guard let (_, object) = kernelObject(named: u32(0)), case let .clock(id) = object else {
                 return kr(MachKern.invalidArgument)
             }
@@ -547,7 +554,7 @@ extension MachIPC {
 
         case Routine.semaphoreCreate:
             let value = i32(3)
-            call = "semaphore_create(task=\(hx(u32(0))), out=\(hx(a[1])), policy=\(i32(2)), value=\(value))"
+            call.set("semaphore_create(task=\(hx(u32(0))), out=\(hx(a[1])), policy=\(i32(2)), value=\(value))")
             guard value >= 0 else { return kr(MachKern.invalidArgument) }
             guard let (p, name) = makeKernelObjectName(.semaphore(serial: nextSerial())) else {
                 return kr(MachKern.noSpace)
@@ -563,7 +570,7 @@ extension MachIPC {
 
         case Routine.semaphoreDestroy:
             let name = u32(1)
-            call = "semaphore_destroy(task=\(hx(u32(0))), semaphore=\(hx(name)))"
+            call.set("semaphore_destroy(task=\(hx(u32(0))), semaphore=\(hx(name)))")
             guard let (p, object) = kernelObject(named: name), case .semaphore = object, p.active else {
                 return kr(MachKern.invalidName)
             }
@@ -573,7 +580,7 @@ extension MachIPC {
 
         case Routine.taskGetSpecialPort:
             let which = i32(1)
-            call = "task_get_special_port(task=\(hx(u32(0))), which=\(which), out=\(hx(a[2])))"
+            call.set("task_get_special_port(task=\(hx(u32(0))), which=\(which), out=\(hx(a[2])))")
             let target: MachIPC
             switch taskControl(named: u32(0)) {
             case .invalidDest: return kr(MachMsgReturn.sendInvalidDest)
@@ -595,7 +602,7 @@ extension MachIPC {
         case Routine.taskSetSpecialPort:
             let which = i32(1)
             let name = u32(2)
-            call = "task_set_special_port(task=\(hx(u32(0))), which=\(which), port=\(hx(name)))"
+            call.set("task_set_special_port(task=\(hx(u32(0))), which=\(which), port=\(hx(name)))")
             let target: MachIPC
             switch taskControl(named: u32(0)) {
             case .invalidDest: return kr(MachMsgReturn.sendInvalidDest)
@@ -612,7 +619,7 @@ extension MachIPC {
             return kr(result)
 
         case Routine.portsRegister3:
-            call = "mach_ports_register3(task=\(hx(u32(0))), \(hx(u32(1))), \(hx(u32(2))), \(hx(u32(3))))"
+            call.set("mach_ports_register3(task=\(hx(u32(0))), \(hx(u32(1))), \(hx(u32(2))), \(hx(u32(3))))")
             let target: MachIPC
             switch taskControl(named: u32(0)) {
             case .invalidDest: return kr(MachMsgReturn.sendInvalidDest)
@@ -632,7 +639,7 @@ extension MachIPC {
             return kr(0)
 
         case Routine.portsLookup3:
-            call = "mach_ports_lookup3(task=\(hx(u32(0))), \(hx(a[1])), \(hx(a[2])), \(hx(a[3])))"
+            call.set("mach_ports_lookup3(task=\(hx(u32(0))), \(hx(a[1])), \(hx(a[2])), \(hx(a[3])))")
             let target: MachIPC
             switch taskControl(named: u32(0)) {
             case .invalidDest: return kr(MachMsgReturn.sendInvalidDest)
@@ -647,25 +654,25 @@ extension MachIPC {
             return kr(0, " [\(names.map(hx).joined(separator: ","))]")
 
         case Routine.makeMemoryEntry:
-            call = "mach_make_memory_entry_64(task=\(hx(u32(0))), size=\(hx(a[1])), offset=\(hx(a[2])), "
-                + "permission=\(hx(u32(3))), handle=\(hx(a[4])), parent=\(hx(u32(5))))"
+            call.set("mach_make_memory_entry_64(task=\(hx(u32(0))), size=\(hx(a[1])), offset=\(hx(a[2])), "
+                + "permission=\(hx(u32(3))), handle=\(hx(a[4])), parent=\(hx(u32(5))))")
             let (code, note) = makeMemoryEntry(a, memory: memory)
             return kr(code, note)
 
         case Routine.vmMapObject:
-            call = "mach_vm_map(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), mask=\(hx(a[3])), "
-                + "flags=\(hx(u32(4))), block=\(hx(a[5])))"
+            call.set("mach_vm_map(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), mask=\(hx(a[3])), "
+                + "flags=\(hx(u32(4))), block=\(hx(a[5])))")
             let (code, note) = vmMapObject(a, memory: memory)
             return kr(code, note)
 
         case Routine.vmRemap:
-            call = "mach_vm_remap(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), mask=\(hx(a[3])), "
-                + "flags=\(hx(u32(4))), block=\(hx(a[5])))"
+            call.set("mach_vm_remap(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), mask=\(hx(a[3])), "
+                + "flags=\(hx(u32(4))), block=\(hx(a[5])))")
             let (code, note) = vmRemap(a, memory: memory)
             return kr(code, note)
 
         case Routine.hostGetIOMain:
-            call = "host_get_io_main(host=\(hx(u32(0))), out=\(hx(a[1])))"
+            call.set("host_get_io_main(host=\(hx(u32(0))), out=\(hx(a[1])))")
             guard let (_, object) = kernelObject(named: u32(0)), object == .host else { return kr(MachKern.invalidArgument) }
             let name = copyoutNewSend(system.ioKitMainPort())
             guard write32(a[1], name) else {
@@ -674,8 +681,14 @@ extension MachIPC {
             }
             return kr(0, " [\(hx(name))]")
 
+        case Routine.threadInfo:
+            call.set("thread_info(thread=\(hx(u32(0))), flavor=\(u32(1)), info=\(hx(a[2])), count=\(hx(a[3])))")
+            guard let kernel else { return kr(MachKern.failure) }
+            let (code, note) = kernel.threadInfo(a, ipc: self, memory: memory, caller: context)
+            return kr(code, note)
+
         case Routine.threadGetState:
-            call = "thread_get_state(thread=\(hx(u32(0))), flavor=\(u32(1)), state=\(hx(a[2])), count=\(hx(a[3])))"
+            call.set("thread_get_state(thread=\(hx(u32(0))), flavor=\(u32(1)), state=\(hx(a[2])), count=\(hx(a[3])))")
             guard let kernel else { return kr(MachKern.failure) }
             let (code, note) = kernel.threadGetState(a, ipc: self, memory: memory)
             return kr(code, note)
@@ -690,9 +703,9 @@ extension MachIPC {
             // and reported only.
             let isGet = number == Routine.threadGetExceptionPorts
             let mask = u32(1)
-            call = isGet
+            call.set(isGet
                 ? "thread_get_exception_ports(thread=\(hx(u32(0))), mask=\(hx(mask)), count=\(hx(a[3])))"
-                : "thread_set_exception_ports(thread=\(hx(u32(0))), mask=\(hx(mask)), port=\(hx(u32(2))), behavior=\(hx(u32(3))), flavor=\(u32(4)))"
+                : "thread_set_exception_ports(thread=\(hx(u32(0))), mask=\(hx(mask)), port=\(hx(u32(2))), behavior=\(hx(u32(3))), flavor=\(u32(4)))")
             guard let (thread, object) = kernelObject(named: u32(0)), case .thread = object, thread.active else {
                 return kr(MachKern.invalidArgument)
             }
@@ -758,7 +771,7 @@ extension MachIPC {
             // address keeps the source's offset within its page (the copy
             // is of whole pages), count = size. Unmapped source:
             // KERN_INVALID_ADDRESS. Ycode reads only the caller's own task.
-            call = "mach_vm_read(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), data=\(hx(a[3])), count=\(hx(a[4])))"
+            call.set("mach_vm_read(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), data=\(hx(a[3])), count=\(hx(a[4])))")
             guard isTaskSelf(u32(0)) else { return kr(MachKern.invalidArgument, " [only the caller's task]") }
             let page = VMLayout.pageSize
             guard a[2] > 0, a[2] <= UInt64(UInt32.max), a[1] <= UInt64.max - a[2] else {
@@ -785,8 +798,8 @@ extension MachIPC {
             return kr(MachKern.success, " [\(hx(va + (a[1] - start)))]")
 
         case Routine.vmRegion:
-            call = "mach_vm_region(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), flavor=\(u32(3)), "
-                + "info=\(hx(a[4])), count=\(hx(a[5])), object=\(hx(a[6])))"
+            call.set("mach_vm_region(task=\(hx(u32(0))), addr=\(hx(a[1])), size=\(hx(a[2])), flavor=\(u32(3)), "
+                + "info=\(hx(a[4])), count=\(hx(a[5])), object=\(hx(a[6])))")
             guard isTaskSelf(u32(0)) else { return kr(MachKern.invalidArgument, " [only the caller's task]") }
             guard let addressBytes = try? memory.read(va: a[1], count: 8),
                   let countBytes = try? memory.read(va: a[5], count: 4) else { return kr(MachKern.invalidArgument) }
@@ -804,7 +817,7 @@ extension MachIPC {
             return kr(MachKern.success, " [\(hx(note.va))+\(hx(note.size)) \(note.text)]")
 
         case Routine.taskThreads:
-            call = "task_threads(task=\(hx(u32(0))), list=\(hx(a[1])), count=\(hx(a[2])))"
+            call.set("task_threads(task=\(hx(u32(0))), list=\(hx(a[1])), count=\(hx(a[2])))")
             guard let kernel else { return kr(MachKern.failure) }
             let (code, note) = kernel.taskThreads(a, memory: memory)
             return kr(code, note)
@@ -816,8 +829,8 @@ extension MachIPC {
             // set (KERN_INVALID_ARGUMENT); a guarded one cannot be set either.
             let isGet = number == Routine.portGetContext
             let name = u32(1)
-            call = isGet ? "mach_port_get_context(task=\(hx(u32(0))), name=\(hx(name)), out=\(hx(a[2])))"
-                : "mach_port_set_context(task=\(hx(u32(0))), name=\(hx(name)), context=\(hx(a[2])))"
+            call.set(isGet ? "mach_port_get_context(task=\(hx(u32(0))), name=\(hx(name)), out=\(hx(a[2])))"
+                : "mach_port_set_context(task=\(hx(u32(0))), name=\(hx(name)), context=\(hx(a[2])))")
             guard isTaskSelf(u32(0)) else { return kr(MachMsgReturn.sendInvalidDest) }
             guard MachPortName.isValid(name) else { return kr(MachKern.invalidRight) }
             guard let i = lookup(name) else { return kr(MachKern.invalidName) }
@@ -833,7 +846,7 @@ extension MachIPC {
             return kr(0)
 
         case Routine.hostCreateMachVoucher:
-            call = "host_create_mach_voucher(host=\(hx(u32(0))), recipes=\(hx(a[1])), size=\(i32(2)), voucher=\(hx(a[3])))"
+            call.set("host_create_mach_voucher(host=\(hx(u32(0))), recipes=\(hx(a[1])), size=\(i32(2)), voucher=\(hx(a[3])))")
             guard write32(a[3], 0) else { return kr(MachKern.invalidAddress) }
             return kr(0, " [voucher=0x0]")
 
@@ -841,8 +854,8 @@ extension MachIPC {
             frame.x[0] = UInt64(DarwinKernel.Errno.ENOSYS)
             frame.x[1] = 0
             frame.carry = true
-            log("\(prefix) \(call) -> unimplemented")
-            return .unimplemented(description: "unimplemented private \(hx(number))\n" + frame.description)
+            trace("\(prefix) \(call) -> unimplemented")
+            return .unimplemented(description: "unimplemented private \(hx(number))")
         }
     }
 
@@ -868,7 +881,7 @@ extension MachIPC {
             var r = MachReceiveRequest(name: port, options: UInt64(options), buffer: buffer, size: size, timeout: 0)
             r.mayBlock = false
             let result = receive(r, context: context, memory: memory)
-            log("kevent machport receive \(hx(port)) -> \(MachMsgReturn.name(result.code))\(result.note)")
+            trace("kevent machport receive \(hx(port)) -> \(MachMsgReturn.name(result.code))\(result.note)")
             return KeventMachReceive(returnCode: result.code, size: result.size, auxiliarySize: result.auxSize,
                                      data: result.code == MachMsgReturn.rcvTooLarge ? UInt64(result.identity) : 0)
         }
@@ -906,7 +919,7 @@ extension MachIPC {
         let pieces = memory.regions(overlapping: from..<UInt64.max)
         guard var first = pieces.first else { return nil }
         func kind(_ r: GuestRegion) -> Int {
-            switch r.backing { case .anonymous: 0; case .file: 1; case .shared: 2 }
+            switch r.backing { case .anonymous, .unbacked: 0; case .file: 1; case .shared: 2 }
         }
         for r in pieces.dropFirst() {
             guard r.va == first.end, r.protection == first.protection, kind(r) == kind(first) else { break }

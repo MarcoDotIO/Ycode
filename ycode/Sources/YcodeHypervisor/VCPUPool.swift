@@ -116,6 +116,9 @@ public final class VCPUPool: @unchecked Sendable {
         /// ycode-simd: the kernel's per-thread context). Set before the
         /// thread first runs; read only on this worker's host thread.
         public internal(set) var context: AnyObject?
+        /// The host thread's CPU time (ns) when its current guest thread
+        /// started (set on the host thread; per-thread CPU accounting).
+        public internal(set) var threadCPUBaseNanoseconds: UInt64 = 0
         /// How many guest threads this vCPU has run.
         public internal(set) var threadCount = 0
         /// The x16 and ELR of the trap being handled (diagnostics).
@@ -133,6 +136,11 @@ public final class VCPUPool: @unchecked Sendable {
         public let lastExitMs = Atomic<UInt64>(0)
         public let sampleRequested = Atomic<Bool>(false)
         public let samplePC = Atomic<UInt64>(0)
+        public let sampleLR = Atomic<UInt64>(0)
+        public let sampleFP = Atomic<UInt64>(0)
+        /// The sampled return addresses (written before `sampleCount`
+        /// changes, released by it).
+        public var sampleStack: [UInt64] = []
         public let samplePSTATE = Atomic<UInt64>(0)
         public let sampleELR1 = Atomic<UInt64>(0)
         public let sampleESR1 = Atomic<UInt64>(0)
@@ -141,6 +149,14 @@ public final class VCPUPool: @unchecked Sendable {
         public let hostTID = Atomic<UInt64>(0)
 
         fileprivate unowned let pool: VCPUPool
+        /// Profiling (`VCPUPool.profiling`; this worker's host thread only):
+        /// wall time inside KVM_RUN and inside the trap handler, and when
+        /// the pending thread start was asked for (0: none).
+        public fileprivate(set) var runNanoseconds: UInt64 = 0
+        public fileprivate(set) var handlerNanoseconds: UInt64 = 0
+        fileprivate var startRequestedAt: UInt64 = 0
+        /// Profiling: how the pending start found this vCPU.
+        fileprivate var startKind = StartKind.parked
         fileprivate var pending: VCPUStartState?
         fileprivate var running = false
         fileprivate var started = false
@@ -185,6 +201,10 @@ public final class VCPUPool: @unchecked Sendable {
     /// point of coherency before a fresh vCPU starts with its MMU off: the
     /// shim image and the page tables.
     public var preBootCleanRanges: () -> [(gpa: UInt64, count: Int)] = { [] }
+    /// Diagnostics (the boot profile's PC samples): reads the return
+    /// addresses of the frame-pointer chain from a frame pointer, on the
+    /// sampled vCPU's own thread while its guest is stopped.
+    public var sampleStackReader: ((UInt64) -> [UInt64])?
     /// Diagnostics (one line each).
     public var log: (String) -> Void = { _ in }
 
@@ -202,6 +222,9 @@ public final class VCPUPool: @unchecked Sendable {
     /// context switch (lost writes in glibc's SVE memcpy). On by default;
     /// `YCODE_SHIM_FP_TOUCH=0` turns it off. See also Sources/CKVM/hostcopy.c.
     static let resumeFPTouch: UInt64 = 1 << 1
+    /// `YCODE_TRAP_FRAME_COPY=1`: decode and encode the trap frame through
+    /// byte arrays (the old path; frame-profile.md §7 item 6).
+    static let trapFrameCopy = getenv("YCODE_TRAP_FRAME_COPY").map { String(cString: $0) == "1" } ?? false
     static let shimFPTouch = getenv("YCODE_SHIM_FP_TOUCH").map { String(cString: $0) != "0" } ?? true
 
     /// `YCODE_KICK_ONLY_IN_RUN=1`: the kick signal is blocked on vCPU
@@ -209,10 +232,20 @@ public final class VCPUPool: @unchecked Sendable {
     static let kickOnlyInRun = getenv("YCODE_KICK_ONLY_IN_RUN").map { String(cString: $0) == "1" } ?? false
     static let debugNoKick = getenv("YCODE_DEBUG_NO_KICK").map { String(cString: $0) == "1" } ?? false
 
-    private let lock = HostMutex()
+    private let lock = HostMutex(name: "vCPU pool")
     private let terminated = HostCondition()
     private var workers: [Worker] = []
     private var idle: [Worker] = []
+    /// The index of the next vCPU (and its KVM vCPU id). Assigned when a
+    /// start reserves a new vCPU, so a creation finished later keeps it.
+    private var nextIndex = 0
+    /// vCPUs whose creation (on a `VCPUCreator` thread) has not finished.
+    /// Each counts as a live host thread; a claimed one also as an active
+    /// thread.
+    private var creating = 0
+    /// Creations made ahead (`warmTarget`) that no thread start has claimed
+    /// yet, oldest first.
+    private var warming: [InFlight] = []
     private var termination: Termination?
     /// Set once; read without the lock by the run loops.
     private let ending = Atomic<Bool>(false)
@@ -228,18 +261,137 @@ public final class VCPUPool: @unchecked Sendable {
     /// Every host thread the pool created (statistics).
     public private(set) var hostThreadsCreated = 0
 
+    // MARK: Profiling (diagnostics)
+
+    /// `YCODE_BOOT_PROFILE` (set by the VMM before the first pool): every
+    /// vCPU host thread times its KVM_RUN and trap-handler calls and, when it
+    /// returns, adds its host counters to `hostStats`.
+    nonisolated(unsafe) public static var profiling = false
+
+    /// The host cost of a pool's vCPU threads (summed over threads that
+    /// returned). CPU times from the host kernel's per-thread accounting:
+    /// `guest` is time in guest mode (part of `user`), `system` is host
+    /// kernel time (KVM exits handled in the kernel: stage-2 faults, ...;
+    /// the VMM's system calls), `user − guest` is the VMM's own code.
+    public struct HostStats: Sendable {
+        public var threads = 0
+        public var userTicks: UInt64 = 0
+        public var systemTicks: UInt64 = 0
+        public var guestTicks: UInt64 = 0
+        public var minorFaults: UInt64 = 0
+        public var majorFaults: UInt64 = 0
+        /// Scheduler CPU time and run-queue wait (ns, /proc schedstat).
+        public var cpuNanoseconds: UInt64 = 0
+        public var runQueueNanoseconds: UInt64 = 0
+        /// Wall time inside KVM_RUN and inside the trap handler.
+        public var runNanoseconds: UInt64 = 0
+        public var handlerNanoseconds: UInt64 = 0
+        /// VM exits to user space, and all exits counted by KVM (KVM's
+        /// "exits" statistic: user-space exits plus those KVM handled itself,
+        /// such as stage-2 faults and interrupts), WFI/WFE exits.
+        public var userExits: UInt64 = 0
+        public var kvmExits: UInt64 = 0
+        public var wfxExits: UInt64 = 0
+        /// Thread starts, and the time from the start request to the
+        /// thread's first instruction (vCPU creation for a new vCPU, the
+        /// wakeup for a parked one).
+        public var starts: UInt64 = 0
+        public var startWaitNanoseconds: UInt64 = 0
+        public var maxStartWaitNanoseconds: UInt64 = 0
+
+        public init() {}
+
+        public mutating func add(_ o: HostStats) {
+            threads += o.threads
+            userTicks &+= o.userTicks; systemTicks &+= o.systemTicks; guestTicks &+= o.guestTicks
+            minorFaults &+= o.minorFaults; majorFaults &+= o.majorFaults
+            cpuNanoseconds &+= o.cpuNanoseconds; runQueueNanoseconds &+= o.runQueueNanoseconds
+            runNanoseconds &+= o.runNanoseconds; handlerNanoseconds &+= o.handlerNanoseconds
+            userExits &+= o.userExits; kvmExits &+= o.kvmExits; wfxExits &+= o.wfxExits
+            starts &+= o.starts; startWaitNanoseconds &+= o.startWaitNanoseconds
+            maxStartWaitNanoseconds = max(maxStartWaitNanoseconds, o.maxStartWaitNanoseconds)
+        }
+    }
+    private var stats = HostStats()
+    /// The counters of the pool's returned host threads.
+    public var hostStats: HostStats { lock.withLock { stats } }
+    /// When a vCPU of the pool first entered the guest (monotonic ns; 0: never).
+    public let firstRunNanoseconds = Atomic<UInt64>(0)
+    /// Diagnostics (the boot profile's guest-PC sampler): kicks every vCPU
+    /// that runs guest code so that it records its PC (`samplePC`,
+    /// `sampleCount`); returns those workers.
+    public func kickForPCSamples() -> [Worker] {
+        let list = lock.withLock { workers.filter { $0.running && $0.context != nil } }
+        var kicked: [Worker] = []
+        for w in list where !w.inHandler.load(ordering: .relaxed) {
+            w.sampleRequested.store(true, ordering: .relaxed)
+            _ = ckvm_kick_thread(UInt(w.hostThread), Self.kickSignal)
+            kicked.append(w)
+        }
+        return kicked
+    }
+
+    /// The host thread ids of the pool's live vCPU threads (the sampler).
+    public var hostThreadIDs: [Int] {
+        lock.withLock { workers.map { Int($0.hostTID.load(ordering: .relaxed)) }.filter { $0 != 0 } }
+    }
+
+    private static let kvmStatNames = ["exits", "wfe_exit_stat", "wfi_exit_stat"]
+
+    /// Adds the calling vCPU host thread's counters (its end; profiling only).
+    private func recordThreadEnd(_ worker: Worker) {
+        var t = [UInt64](repeating: 0, count: 8)
+        _ = ckvm_task_stats(ckvm_gettid(), &t)
+        var k = [UInt64](repeating: 0, count: Self.kvmStatNames.count)
+        let names = Self.kvmStatNames.map { strdup($0) }
+        defer { names.forEach { free($0) } }
+        var pointers: [UnsafePointer<CChar>?] = names.map { UnsafePointer($0) }
+        _ = ckvm_vcpu_stats(worker.vcpu.fd, &pointers, Int32(k.count), &k)
+        var s = HostStats()
+        s.threads = 1
+        s.userTicks = t[0]; s.systemTicks = t[1]; s.guestTicks = t[2]
+        s.minorFaults = t[3]; s.majorFaults = t[4]
+        s.cpuNanoseconds = t[5]; s.runQueueNanoseconds = t[6]
+        s.runNanoseconds = worker.runNanoseconds; s.handlerNanoseconds = worker.handlerNanoseconds
+        s.userExits = UInt64(worker.vcpu.exitCount); s.kvmExits = k[0]; s.wfxExits = k[1] &+ k[2]
+        lock.withLock { stats.add(s) }
+    }
+
+    /// A thread start reached its first instruction (profiling only).
+    private func noteStarted(_ worker: Worker) {
+        guard worker.startRequestedAt != 0 else { return }
+        let waited = monotonicNanoseconds() &- worker.startRequestedAt
+        worker.startRequestedAt = 0
+        Self.startLatency[worker.startKind.rawValue].add(waited)
+        lock.withLock {
+            stats.starts &+= 1
+            stats.startWaitNanoseconds &+= waited
+            stats.maxStartWaitNanoseconds = max(stats.maxStartWaitNanoseconds, waited)
+        }
+    }
+
     public init(vm: VirtualMachine, bootTemplate: BootInfo, limit: Int = VCPUSlots.count, maxExitsPerVCPU: Int = 0) throws {
         self.vm = vm
         self.capacity = max(1, min(vm.maxVCPUs, limit, VCPUSlots.count))
+        vm.vcpuIDLimit = capacity
         self.bootTemplate = bootTemplate
         self.maxExitsPerVCPU = maxExitsPerVCPU
         try kvmCheck(ckvm_kick_install(Self.kickSignal), "sigaction (vCPU kick signal)")
     }
 
+    /// SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §3.1): every
+    /// worker created so far, and how many vCPU creations are still pending.
+    public var snapshotWorkers: (workers: [Worker], pendingCreations: Int) { lock.withLock { (workers, creating) } }
+
     /// The number of vCPUs created so far.
     public var vcpuCount: Int { lock.withLock { workers.count } }
     /// The number of created vCPUs with no guest thread.
     public var parkedCount: Int { lock.withLock { idle.count } }
+    /// Diagnostics: the guest-thread contexts of the created vCPUs (nil for
+    /// one without a thread), and the counts behind `hasRoom`.
+    public var debugState: (contexts: [AnyObject?], creating: Int, warming: Int, nextIndex: Int, active: Int) {
+        lock.withLock { (workers.map(\.context), creating, warming.count, nextIndex, activeThreads) }
+    }
     /// The termination, once the pool has ended.
     public var currentTermination: Termination? { lock.withLock { termination } }
     /// True once the pool has ended (threads may still be returning).
@@ -255,19 +407,26 @@ public final class VCPUPool: @unchecked Sendable {
     /// thread on it (it is parked until `start`). Lets the VMM read vCPU
     /// state (the counter, its frequency) before the first thread runs.
     public func createWorker() throws -> Worker {
-        try lock.withLock {
+        var warm: [InFlight] = []
+        let worker: Worker = try lock.withLock {
             guard !ending.load(ordering: .relaxed) else { throw KVMError("vCPU pool", detail: "the pool has ended") }
-            guard workers.count < capacity else { throw KVMError("vCPU pool", detail: "all \(capacity) vCPUs exist") }
+            guard nextIndex < capacity else { throw KVMError("vCPU pool", detail: "all \(capacity) vCPUs exist") }
             let worker = try makeWorkerLocked()
             idle.insert(worker, at: 0)
+            // Warm vCPUs for the threads after the first (thread-latency.md §3).
+            warm = refillLocked(extra: idle.count)
             return worker
         }
+        submit(warm)
+        return worker
     }
 
+    /// Creates the next vCPU and its host thread inline (pool lock held).
     private func makeWorkerLocked() throws -> Worker {
-        let vcpu = try vm.makeVCPU(id: workers.count)
-        let worker = Worker(index: workers.count, vcpu: vcpu, pool: self)
+        let vcpu = try vm.makeVCPU(id: nextIndex)
+        let worker = Worker(index: nextIndex, vcpu: vcpu, pool: self)
         try spawn(worker)
+        nextIndex += 1
         workers.append(worker)
         return worker
     }
@@ -275,36 +434,253 @@ public final class VCPUPool: @unchecked Sendable {
     // MARK: Starting threads
 
     /// Starts a guest thread on a parked vCPU, or on a new vCPU when none is
-    /// parked. Returns nil when the pool is exhausted or has ended (EAGAIN
-    /// for the caller). `context` is attached to the worker before the
-    /// thread runs. Safe to call from any host thread, including from inside
-    /// a trap handler.
+    /// parked, and returns the vCPU's index. Returns nil when the pool is
+    /// exhausted or has ended (EAGAIN for the caller). `context` is attached
+    /// to the worker before the thread runs. Safe to call from any host
+    /// thread, including from inside a trap handler (with the kernel lock
+    /// held).
+    ///
+    /// A new vCPU is not created here: the start reserves its index and
+    /// hands the creation (KVM_CREATE_VCPU, KVM_ARM_VCPU_INIT, the kvm_run
+    /// mapping, the host thread: milliseconds under load) to a
+    /// `VCPUCreator` thread, so a caller that holds the kernel lock never
+    /// waits for it. The thread runs as soon as its vCPU exists. A creation
+    /// that fails ends the pool (status 1), as any vCPU failure does.
+    /// `YCODE_VCPU_CREATORS=0` creates inline, as before.
     @discardableResult
-    public func start(_ state: VCPUStartState, context: AnyObject?) throws -> Worker? {
-        try lock.withLock {
+    public func start(_ state: VCPUStartState, context: AnyObject?) throws -> Int? {
+        var toSubmit: [InFlight] = []
+        let index: Int? = try lock.withLock {
             if ending.load(ordering: .relaxed) { return nil }
-            let worker: Worker
+            let requestedAt = Self.profiling ? monotonicNanoseconds() : 0
             if !idle.isEmpty {
                 // Prefer the lowest-numbered idle vCPU (vCPU 0 for the main thread).
                 let i = idle.indices.min { idle[$0].index < idle[$1].index }!
-                worker = idle.remove(at: i)
-            } else {
-                guard workers.count < capacity else { return nil }
-                worker = try makeWorkerLocked()
+                let worker = idle.remove(at: i)
+                worker.startKind = worker.threadCount > 0 ? .parked : worker.index == 0 ? .main : .warm
+                activateLocked(worker, state, context: context)
+                toSubmit = refillLocked()
+                return worker.index
             }
-            worker.context = context
-            worker.pending = state
-            worker.threadCount += 1
+            if !warming.isEmpty {
+                // A creation made ahead is still running: the thread takes
+                // it and runs as soon as its vCPU exists.
+                let f = warming.removeFirst()
+                f.claim = Claim(state: state, context: context, requestedAt: requestedAt, kind: .claimedWarm)
+                f.urgent.store(true, ordering: .relaxed)
+                activeThreads += 1
+                peakThreads = max(peakThreads, activeThreads)
+                toSubmit = refillLocked()
+                return f.index
+            }
+            guard nextIndex < capacity else { return nil }
+            guard VCPUCreator.shared != nil else {
+                let worker = try makeWorkerLocked()
+                worker.startKind = .created
+                activateLocked(worker, state, context: context)
+                return worker.index
+            }
+            // Reserve: the index, a live host thread (the pool cannot finish
+            // before the creation ends), and an active thread.
+            let f = newCreationLocked()
+            f.claim = Claim(state: state, context: context, requestedAt: requestedAt, kind: .created)
+            f.urgent.store(true, ordering: .relaxed)
             activeThreads += 1
             peakThreads = max(peakThreads, activeThreads)
-            worker.wakeup.signal()
-            return worker
+            toSubmit = [f] + refillLocked()
+            return f.index
         }
+        // Handed over after the pool lock is released (the creator's queue
+        // lock is a leaf).
+        submit(toSubmit)
+        return index
+    }
+
+    /// Gives `worker` (parked, not running) its next guest thread. Pool lock held.
+    private func activateLocked(_ worker: Worker, _ state: VCPUStartState, context: AnyObject?) {
+        worker.context = context
+        worker.pending = state
+        worker.threadCount += 1
+        if Self.profiling { worker.startRequestedAt = max(1, monotonicNanoseconds()) }
+        activeThreads += 1
+        peakThreads = max(peakThreads, activeThreads)
+        worker.wakeup.signal()
     }
 
     /// True when `start` would find a vCPU now (an idle one, or room for a new one).
     public var hasRoom: Bool {
-        lock.withLock { !ending.load(ordering: .relaxed) && (!idle.isEmpty || workers.count < capacity) }
+        lock.withLock { !ending.load(ordering: .relaxed) && (!idle.isEmpty || !warming.isEmpty || nextIndex < capacity) }
+    }
+
+    // MARK: Deferred creation
+
+    /// How a thread start found its vCPU (profiling).
+    public enum StartKind: Int, Sendable, CaseIterable {
+        /// A parked vCPU whose host thread had run a thread before.
+        case parked
+        /// A vCPU made ahead whose host thread was waiting (`warmTarget`).
+        case warm
+        /// A creation made ahead that had not finished yet.
+        case claimedWarm
+        /// A new vCPU created for this start.
+        case created
+        /// vCPU 0's first thread (the main thread; its vCPU is made with the image).
+        case main
+    }
+
+    /// Process-wide start-latency distributions by `StartKind`
+    /// (profiling): from the start request to the thread's first
+    /// instruction being handed to its vCPU.
+    public static let startLatency: [LatencyHistogram] = StartKind.allCases.map { LatencyHistogram("start.\($0)") }
+    /// The phases of a creation on a `VCPUCreator` thread (profiling):
+    /// queue wait, KVM_CREATE_VCPU, KVM_ARM_VCPU_INIT + kvm_run mapping
+    /// (both 0 for a vCPU made ahead by a batch), pthread_create.
+    public static let creationPhases: [LatencyHistogram] = ["queue", "create_vcpu", "vcpu_init", "pthread"].map { LatencyHistogram("creation.\($0)") }
+
+    /// A thread start waiting for a vCPU being created.
+    final class Claim {
+        let state: VCPUStartState
+        let context: AnyObject?
+        /// Profiling: when the start was asked for (monotonic ns; 0 = not profiled).
+        let requestedAt: UInt64
+        let kind: StartKind
+        init(state: VCPUStartState, context: AnyObject?, requestedAt: UInt64, kind: StartKind) {
+            self.state = state
+            self.context = context
+            self.requestedAt = requestedAt
+            self.kind = kind
+        }
+    }
+
+    /// One vCPU creation handed to a `VCPUCreator` thread. `claim` (pool
+    /// lock) is the thread that runs on it, or nil for a creation made
+    /// ahead that no start has taken yet (its vCPU is then parked).
+    final class InFlight: @unchecked Sendable {
+        let index: Int
+        var claim: Claim?
+        /// Profiling: when it was queued.
+        var queuedAt: UInt64 = 0
+        /// Set when a start claims it: the creator threads take it first.
+        let urgent = Atomic<Bool>(false)
+        init(index: Int) { self.index = index }
+    }
+
+    /// `YCODE_VCPU_WARM=<n>` (thread-latency.md §3): each pool keeps up to
+    /// `n` vCPUs with their host threads created ahead and parked, beyond
+    /// the threads running, so a thread start finds one ready instead of
+    /// waiting for KVM_CREATE_VCPU and pthread_create. 0 turns it off.
+    public static let warmTarget = getenv("YCODE_VCPU_WARM").flatMap { Int(String(cString: $0)) }.map { max(0, min($0, 16)) } ?? 0
+
+    /// Reserves the next index for a creation. Pool lock held.
+    private func newCreationLocked() -> InFlight {
+        let f = InFlight(index: nextIndex)
+        nextIndex += 1
+        creating += 1
+        liveHostThreads += 1
+        return f
+    }
+
+    /// The creations needed to bring the ready vCPUs (idle, plus made ahead
+    /// and unclaimed) back to `warmTarget + extra`. Pool lock held; the
+    /// caller submits them after releasing it.
+    private func refillLocked(extra: Int = 0) -> [InFlight] {
+        guard Self.warmTarget > 0, VCPUCreator.shared != nil, !ending.load(ordering: .relaxed) else { return [] }
+        var out: [InFlight] = []
+        while idle.count + warming.count < Self.warmTarget + extra, nextIndex < capacity {
+            let f = newCreationLocked()
+            warming.append(f)
+            out.append(f)
+        }
+        return out
+    }
+
+    private func submit(_ creations: [InFlight]) {
+        guard !creations.isEmpty, let creator = VCPUCreator.shared else { return }
+        for f in creations {
+            if Self.profiling { f.queuedAt = monotonicNanoseconds() }
+            creator.submit(self, f)
+        }
+    }
+
+    /// Statistics (process-wide): vCPUs created off the kernel lock, and
+    /// their total creation time.
+    public static let deferredCreations = Atomic<UInt64>(0)
+    public static let deferredCreationNanoseconds = Atomic<UInt64>(0)
+    /// Their phases: KVM_CREATE_VCPU, KVM_ARM_VCPU_INIT (+ the kvm_run
+    /// mapping), and pthread_create of the vCPU's host thread.
+    public static let deferredCreateVCPUNanoseconds = Atomic<UInt64>(0)
+    public static let deferredInitNanoseconds = Atomic<UInt64>(0)
+    public static let deferredThreadNanoseconds = Atomic<UInt64>(0)
+
+    /// Runs on a `VCPUCreator` thread, with no lock held: creates the vCPU
+    /// and starts its host thread, then gives it the claiming thread start
+    /// or parks it. When the pool ended meanwhile, or the creation fails,
+    /// the creation is dropped (a failure of a claimed one ends the pool).
+    fileprivate func createReserved(_ f: InFlight) {
+        var failure: Error?
+        var worker: Worker?
+        if !ending.load(ordering: .acquiring) {
+            let began = monotonicNanoseconds()
+            if Self.profiling, f.queuedAt != 0 { Self.creationPhases[0].add(began &- f.queuedAt) }
+            do {
+                // Both system calls run without the pool lock. The new host
+                // thread waits for the pool lock and its pending state.
+                let created = Worker(index: f.index, vcpu: try vm.makeVCPU(id: f.index), pool: self)
+                let threadBegan = monotonicNanoseconds()
+                try startHostThread(created)
+                Self.deferredThreadNanoseconds.wrappingAdd(monotonicNanoseconds() &- threadBegan, ordering: .relaxed)
+                if Self.profiling { Self.creationPhases[3].add(monotonicNanoseconds() &- threadBegan) }
+                worker = created
+            } catch {
+                failure = error
+            }
+            Self.deferredCreations.wrappingAdd(1, ordering: .relaxed)
+            Self.deferredCreationNanoseconds.wrappingAdd(monotonicNanoseconds() &- began, ordering: .relaxed)
+        }
+        lock.lock()
+        creating -= 1
+        if let i = warming.firstIndex(where: { $0 === f }) { warming.remove(at: i) }
+        let claim = f.claim
+        if let worker {
+            // The host thread exists and is counted live (by the
+            // reservation); `joinThreads` joins it even if the pool ended.
+            workers.append(worker)
+            hostThreadsCreated += 1
+            var parkedNow = false
+            if ending.load(ordering: .relaxed) {
+                // It sees the end and returns without running a thread.
+                if claim != nil { activeThreads -= 1 }
+            } else if let claim {
+                worker.context = claim.context
+                worker.pending = claim.state
+                worker.threadCount = 1
+                worker.startRequestedAt = claim.requestedAt
+                worker.startKind = claim.kind
+            } else {
+                // Made ahead and not claimed: parked until a start takes it.
+                idle.append(worker)
+                parkedNow = true
+            }
+            worker.wakeup.signal()
+            let parked = parkedNow ? parkedHandler : nil
+            lock.unlock()
+            parked?()
+            return
+        }
+        lock.unlock()
+        // No host thread. A failure of a claimed creation ends the pool;
+        // then the reservation's counts go, which may make this the pool's
+        // last host thread. (A vCPU created without a thread closes with
+        // the VM.)
+        if let failure {
+            log("vCPU \(f.index): cannot create: \(failure)")
+            if claim != nil {
+                terminate(status: 1, message: "vCPU \(f.index): cannot create: \(failure)", vcpuIndex: f.index)
+            }
+        }
+        lock.lock()
+        if claim != nil { activeThreads -= 1 }
+        hostThreadReturnedLocked()
     }
 
     /// Called on a vCPU's host thread (no lock held) each time a thread ends
@@ -319,7 +695,16 @@ public final class VCPUPool: @unchecked Sendable {
     /// each vCPU thread's stack (default: one page).
     static let debugStackGuardMB = getenv("YCODE_DEBUG_STACK_GUARD_MB").flatMap { Int(String(cString: $0)) }.flatMap { $0 > 0 ? $0 : nil }
 
+    /// Starts `worker`'s host thread and counts it. Pool lock held.
     private func spawn(_ worker: Worker) throws {
+        try startHostThread(worker)
+        liveHostThreads += 1
+        hostThreadsCreated += 1
+    }
+
+    /// Creates `worker`'s host thread (with or without the pool lock; the
+    /// thread's first step takes it).
+    private func startHostThread(_ worker: Worker) throws {
         var attributes = pthread_attr_t()
         pthread_attr_init(&attributes)
         defer { pthread_attr_destroy(&attributes) }
@@ -335,8 +720,18 @@ public final class VCPUPool: @unchecked Sendable {
             Unmanaged<Worker>.fromOpaque(box).release()
             throw KVMError("pthread_create (vCPU \(worker.index))", errno: result)
         }
-        liveHostThreads += 1
-        hostThreadsCreated += 1
+    }
+
+    /// A host thread returned, or a reservation was dropped (the pool has
+    /// ended). The last one marks the pool finished and calls `onFinished`.
+    /// Call with the pool lock held; returns with it released.
+    private func hostThreadReturnedLocked() {
+        liveHostThreads -= 1
+        let last = liveHostThreads == 0
+        if last { finished = true }
+        terminated.broadcast()
+        lock.unlock()
+        if last { onFinished() }
     }
 
     // MARK: The host thread of one vCPU
@@ -345,6 +740,7 @@ public final class VCPUPool: @unchecked Sendable {
 
     private func threadMain(_ worker: Worker) {
         worker.hostTID.store(UInt64(ckvm_gettid()), ordering: .relaxed)
+        PostTrapWork.setCurrentVM(vm)
         if Self.kickOnlyInRun {
             let r = ckvm_kick_mask_outside_run(worker.vcpu.fd, Self.kickSignal)
             if r != 0 { var t = "ycode-simd: KVM_SET_SIGNAL_MASK failed (\(r))\n"; _ = t.withUTF8 { write(2, $0.baseAddress, $0.count) } }
@@ -365,6 +761,8 @@ public final class VCPUPool: @unchecked Sendable {
             worker.pending = nil
             worker.running = true
             lock.unlock()
+            worker.threadCPUBaseNanoseconds = hostThreadCPUNanoseconds()
+            if Self.profiling { noteStarted(worker) }
 
             var end = RunEnd.ended
             do {
@@ -389,14 +787,22 @@ public final class VCPUPool: @unchecked Sendable {
             break
         }
         // The pool has ended: this host thread returns.
+        if Self.profiling { recordThreadEnd(worker) }
         lock.lock()
         worker.context = nil
-        liveHostThreads -= 1
-        let last = liveHostThreads == 0
-        if last { finished = true }
-        terminated.broadcast()
-        lock.unlock()
-        if last { onFinished() }
+        hostThreadReturnedLocked()
+    }
+
+    /// The guest's CPU count (`GuestCPUs`; set by the VMM before the first
+    /// image). A thread's TPIDR_EL0, which Darwin user code reads as its CPU
+    /// number, is its vCPU index modulo this count, so every CPU number the
+    /// guest sees is below the CPU count it is told.
+    nonisolated(unsafe) public static var guestCPUCount = 1
+
+    /// The CPU number (TPIDR_EL0) of a thread on `worker`: the state's own
+    /// when it has one, else the vCPU index modulo the guest CPU count.
+    private func cpuNumber(_ worker: Worker, _ state: VCPUStartState) -> UInt64 {
+        state.tpidr != 0 ? state.tpidr : UInt64(worker.index % max(1, Self.guestCPUCount))
     }
 
     /// Puts the new thread's state into the vCPU.
@@ -409,7 +815,7 @@ public final class VCPUPool: @unchecked Sendable {
             info.el0InitialSP = state.sp
             info.trapFrameAddress = worker.frameGPA
             info.tpidrroEL0 = state.tpidrro
-            info.tpidrEL0 = state.tpidr
+            info.tpidrEL0 = cpuNumber(worker, state)
             if state.registers.dropFirst(8).contains(where: { $0 != 0 }) {
                 throw KVMError("vCPU \(worker.index) start", detail: "a fresh vCPU can start only with x0-x7 set: \(state)")
             }
@@ -434,7 +840,7 @@ public final class VCPUPool: @unchecked Sendable {
             frame.elr = state.pc
             frame.spsr = VMLayout.el0InitialSPSR
             frame.tpidrro = state.tpidrro
-            frame.tpidr = state.tpidr
+            frame.tpidr = cpuNumber(worker, state)
             frame.flushTLB = true
             if Self.shimFPTouch { frame.resumeFlags |= Self.resumeFPTouch }
             try vm.write(gpa: worker.frameGPA, bytes: frame.encoded())
@@ -458,15 +864,31 @@ public final class VCPUPool: @unchecked Sendable {
                 terminate(status: 71, message: "vCPU \(worker.index) exceeded \(maxExitsPerVCPU) VM exits", vcpuIndex: worker.index)
                 return .ended
             }
-            let exit = try vcpu.runOnce()
+            let exit: VCPUExit
+            if Self.profiling {
+                let began = monotonicNanoseconds()
+                if firstRunNanoseconds.load(ordering: .relaxed) == 0 {
+                    _ = firstRunNanoseconds.compareExchange(expected: 0, desired: began, ordering: .relaxed)
+                }
+                exit = try vcpu.runOnce()
+                worker.runNanoseconds &+= monotonicNanoseconds() &- began
+            } else {
+                exit = try vcpu.runOnce()
+            }
             worker.lastExitMs.store(monotonicMilliseconds(), ordering: .relaxed)
             if case .interrupted = exit {
                 if worker.sampleRequested.exchange(false, ordering: .relaxed) {
                     worker.samplePC.store((try? vcpu.get(.pc)) ?? 0, ordering: .relaxed)
+                    worker.sampleLR.store((try? vcpu.get(.x(30))) ?? 0, ordering: .relaxed)
+                    worker.sampleFP.store((try? vcpu.get(.x(29))) ?? 0, ordering: .relaxed)
                     worker.samplePSTATE.store((try? vcpu.get(.pstate)) ?? 0, ordering: .relaxed)
                     worker.sampleELR1.store((try? vcpu.get(.elrEL1)) ?? 0, ordering: .relaxed)
                     worker.sampleESR1.store((try? vcpu.get(SystemRegister.esrEL1)) ?? 0, ordering: .relaxed)
-                    worker.sampleCount.wrappingAdd(1, ordering: .relaxed)
+                    // The guest is stopped here: the owner may read its stack.
+                    if let reader = sampleStackReader {
+                        worker.sampleStack = reader(worker.sampleFP.load(ordering: .relaxed))
+                    }
+                    worker.sampleCount.wrappingAdd(1, ordering: .releasing)
                 }
                 continue
             }
@@ -476,20 +898,47 @@ public final class VCPUPool: @unchecked Sendable {
                 return .ended
             }
             let disposition: Disposition
+            let doorbellFrame: UInt64?
             switch exit {
             case let .mmio(.write, address, frameAddress, 8) where address == VMLayout.doorbellGPA && frameAddress == worker.frameGPA:
-                var frame = try TrapFrame(decoding: vm.read(gpa: frameAddress, count: TrapFrame.byteCount))
+                doorbellFrame = frameAddress
+            case let .hypercall(function, flags)
+                where function == UInt64(VirtualMachine.hvcDoorbellFunction) && flags & 1 == 0 && bootTemplate.doorbellAddress == 0:
+                // vm-shim-protocol.md §5.1: the HVC doorbell carries no
+                // address; the frame is this vCPU's own.
+                doorbellFrame = worker.frameGPA
+            default:
+                doorbellFrame = nil
+            }
+            switch doorbellFrame {
+            case let frameAddress?:
+                // The frame is read and written in place (one slot lookup, no
+                // byte arrays); `YCODE_TRAP_FRAME_COPY=1` copies it as before.
+                let framePointer = Self.trapFrameCopy ? nil : try vm.writableHostPointer(gpa: frameAddress, count: TrapFrame.byteCount)
+                var frame = try framePointer.map { TrapFrame(decodingFrameAt: $0) }
+                    ?? TrapFrame(decoding: vm.read(gpa: frameAddress, count: TrapFrame.byteCount))
                 worker.lastTrapX16.store(frame.x[16], ordering: .relaxed)
                 worker.lastTrapELR.store(frame.elr, ordering: .relaxed)
                 worker.lastTrapKind.store(UInt64(frame.kind), ordering: .relaxed)
                 worker.lastTrapESR.store(frame.esr, ordering: .relaxed)
                 worker.handlerSince.store(monotonicMilliseconds(), ordering: .relaxed)
                 worker.inHandler.store(true, ordering: .relaxed)
-                disposition = trapHandler(worker, &frame)
+                if Self.profiling {
+                    let began = monotonicNanoseconds()
+                    disposition = trapHandler(worker, &frame)
+                    worker.handlerNanoseconds &+= monotonicNanoseconds() &- began
+                } else {
+                    disposition = trapHandler(worker, &frame)
+                }
                 worker.inHandler.store(false, ordering: .relaxed)
+                // Host work the trap left for after the kernel lock (C17).
+                PostTrapWork.drain()
                 if case .resume = disposition {
                     if Self.shimFPTouch { frame.resumeFlags |= Self.resumeFPTouch }
-                    try vm.write(gpa: frameAddress, bytes: frame.encoded())
+                    // (Looked up again: the handler may have changed the VM's slots.)
+                    if framePointer != nil {
+                        frame.encode(into: try vm.writableHostPointer(gpa: frameAddress, count: TrapFrame.byteCount))
+                    } else { try vm.write(gpa: frameAddress, bytes: frame.encoded()) }
                 }
             default:
                 disposition = exitHandler(worker, exit)
@@ -701,6 +1150,7 @@ public final class VCPUPool: @unchecked Sendable {
         onEnd = { _ in }
         onFinished = {}
         preBootCleanRanges = { [] }
+        sampleStackReader = nil
         log = { _ in }
     }
 
@@ -711,6 +1161,134 @@ public final class VCPUPool: @unchecked Sendable {
         waitUntilFinished(milliseconds: nil)
         joinThreads()
     }
+}
+
+/// The host threads that create reserved vCPUs for every pool of the process
+/// (`VCPUPool.start`), so that no caller of `start` (a trap handler holding
+/// the kernel lock) waits for KVM_CREATE_VCPU or pthread_create.
+///
+/// `YCODE_VCPU_CREATORS=N` sets the number of threads (default 2, at most
+/// 16; 0 turns deferred creation off: `start` creates inline). Requests run
+/// first in, first out. Lock order: kernel lock, then a pool's lock, then
+/// the creator's queue lock (a leaf: nothing is called while it is held). A
+/// creator thread takes a VM's lock and a pool's lock, never the kernel lock.
+final class VCPUCreator: @unchecked Sendable {
+    static let shared: VCPUCreator? = {
+        let n = getenv("YCODE_VCPU_CREATORS").flatMap { Int(String(cString: $0)) } ?? 2
+        return n <= 0 ? nil : VCPUCreator(threads: min(n, 16))
+    }()
+
+    private let lock = HostMutex(name: "vCPU creator queue")
+    private let wake = HostCondition()
+    private var queue: [(pool: VCPUPool, creation: VCPUPool.InFlight)] = []
+    private let threadLimit: Int
+    private var threads = 0
+    private var idleThreads = 0
+
+    init(threads: Int) { threadLimit = threads }
+
+    /// Queues a creation. Wakes an idle creator thread, or starts one.
+    func submit(_ pool: VCPUPool, _ creation: VCPUPool.InFlight) {
+        lock.lock()
+        queue.append((pool, creation))
+        let startThread = idleThreads == 0 && threads < threadLimit
+        if startThread { threads += 1 }
+        wake.signal()
+        lock.unlock()
+        if startThread { startCreatorThread() }
+    }
+
+    private func startCreatorThread() {
+        var attributes = pthread_attr_t()
+        pthread_attr_init(&attributes)
+        defer { pthread_attr_destroy(&attributes) }
+        pthread_attr_setdetachstate(&attributes, Int32(PTHREAD_CREATE_DETACHED))
+        let box = Unmanaged.passRetained(self).toOpaque()
+        var thread = pthread_t()
+        let result = pthread_create(&thread, &attributes, { argument in
+            let creator = Unmanaged<VCPUCreator>.fromOpaque(argument!).takeRetainedValue()
+            creator.run()
+            return nil
+        }, box)
+        if result != 0 {
+            Unmanaged<VCPUCreator>.fromOpaque(box).release()
+            // No new thread: the request waits for a running one; with none
+            // at all, it runs on this thread (no request is ever stranded).
+            let none: Bool = lock.withLock {
+                threads -= 1
+                return threads == 0
+            }
+            if none { drainInline() }
+        }
+    }
+
+    /// Runs every queued request on the calling thread (no creator thread).
+    private func drainInline() {
+        while let next = take(waiting: false) { next.pool.createReserved(next.creation) }
+    }
+
+    /// The oldest request a thread start waits for, else the oldest one;
+    /// waits for one when `waiting`.
+    private func take(waiting: Bool) -> (pool: VCPUPool, creation: VCPUPool.InFlight)? {
+        lock.lock()
+        defer { lock.unlock() }
+        while queue.isEmpty {
+            guard waiting else { return nil }
+            idleThreads += 1
+            wake.wait(lock)
+            idleThreads -= 1
+        }
+        let i = queue.firstIndex { $0.creation.urgent.load(ordering: .relaxed) } ?? 0
+        return queue.remove(at: i)
+    }
+
+    private func run() {
+        while let next = take(waiting: true) { next.pool.createReserved(next.creation) }
+    }
+}
+
+/// The calling thread's page faults (minor + major) and voluntary and
+/// involuntary context switches so far (diagnostics; getrusage RUSAGE_THREAD).
+public func hostThreadUsage() -> (faults: UInt64, voluntarySwitches: UInt64, involuntarySwitches: UInt64) {
+    var c: (Int, Int, Int, Int) = (0, 0, 0, 0)
+    withUnsafeMutablePointer(to: &c) { $0.withMemoryRebound(to: Int.self, capacity: 4) { ckvm_thread_usage($0) } }
+    return (UInt64(c.0 + c.1), UInt64(c.2), UInt64(c.3))
+}
+
+/// The calling thread's user and system CPU time (µs) and minor faults
+/// (diagnostics; getrusage RUSAGE_THREAD).
+public func hostThreadTimes() -> (userMicros: UInt64, systemMicros: UInt64, minorFaults: UInt64) {
+    var c: (UInt64, UInt64, UInt64) = (0, 0, 0)
+    withUnsafeMutablePointer(to: &c) { $0.withMemoryRebound(to: CUnsignedLongLong.self, capacity: 3) { ckvm_thread_times($0) } }
+    return (c.0, c.1, c.2)
+}
+
+/// The calling host thread's CPU time (CLOCK_THREAD_CPUTIME_ID, ns).
+public func hostThreadCPUNanoseconds() -> UInt64 {
+    var t = timespec()
+    guard clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t) == 0 else { return 0 }
+    return UInt64(t.tv_sec) * 1_000_000_000 + UInt64(t.tv_nsec)
+}
+
+/// The calling thread's Linux thread id (diagnostics).
+public func ckvmThreadID() -> Int { ckvm_gettid() }
+
+/// Diagnostics: a host thread's counters (`ckvm_task_stats`): utime,
+/// stime, guest time (clock ticks), minor and major faults, CPU time and
+/// run-queue wait (ns), the scheduler state letter. Nil when it is gone.
+public func hostTaskStats(_ tid: Int) -> [UInt64]? {
+    var out = [UInt64](repeating: 0, count: 8)
+    return ckvm_task_stats(tid, &out) == 0 ? out : nil
+}
+
+/// Clock ticks per second of the /proc CPU times.
+public let hostClockTicks = UInt64(max(1, ckvm_clock_ticks()))
+
+/// CLOCK_MONOTONIC in nanoseconds.
+public func monotonicNanoseconds() -> UInt64 {
+    var now = timespec()
+    clock_gettime(CLOCK_MONOTONIC, &now)
+    return UInt64(now.tv_sec) * 1_000_000_000 + UInt64(now.tv_nsec)
 }
 
 /// CLOCK_MONOTONIC in milliseconds.

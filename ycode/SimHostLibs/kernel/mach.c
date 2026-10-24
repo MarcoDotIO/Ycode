@@ -25,21 +25,74 @@
 
 /* ---------------------------------------------------------------- time */
 
-/* Traps -3/-4: the kernel's mach time, which every deadline the kernel
- * keeps is measured in. Reading CNTVCT_EL0 in place (as Darwin's own
- * library does with a commpage offset) is not used: under KVM each vCPU of
- * a guest process has its own counter offset (measured: up to 0.11 s apart
- * between the vCPUs of one process; agent I4, research/experiments/
- * simulator/lsd-seed/clockprobe.c), so a thread's counter matches neither
- * the kernel's nor another thread's until the VMM aligns every vCPU's
- * virtual counter. */
+/* mach_absolute_time / mach_continuous_time.
+ * Default: traps -3/-4, the kernel's mach time, which every deadline the
+ * kernel keeps is measured in. With the commpage's YC_FAST_DIRECT_CLOCK
+ * bit (fast-traps.md section 3) every vCPU of every guest process has the
+ * system's counter offset (KVM_ARM_SET_COUNTER_OFFSET), so CNTVCT_EL0 is
+ * that same clock and the library reads it in place, as Darwin's own
+ * library does with USER_TIMEBASE = 1 (darwin-process-start.md section
+ * 3.6), scaled to the guest timebase (24 MHz by default; fast-traps.md
+ * section 3.2): scale(counter) + TIMEBASE_OFFSET, the offset read before
+ * and after.
+ * Without the bit, a vCPU's counter need not match the kernel's (KVM resets
+ * the VM's offset when it creates a vCPU; first-boot.md section 6 item 4).
+ * The shim enables EL0 access (CNTKCTL_EL1.EL0VCTEN). */
+static inline yc_u64 yc_read_cntvct(void)
+{
+    yc_u64 v;
+    __asm__ volatile("isb\n\tmrs %0, cntvct_el0" : "=r"(v) : : "memory");
+    return v;
+}
+
+static inline int yc_direct_clock(void)
+{
+    return (yc_commpage_u8(YC_COMM_FAST_FLAGS) & YC_FAST_DIRECT_CLOCK) != 0;
+}
+
+/* The counter in the guest timebase (fast-traps.md section 3.2): the same
+ * fixed-point formula as the kernel's traps -3/-4, so both paths agree.
+ * The VMM writes the scale before the flag and never changes it. */
+static inline yc_u64 yc_scale_counter(yc_u64 counter)
+{
+    yc_u64 m = yc_commpage_u64(YC_COMM_CLOCK_MULTIPLIER);
+    if (m == 0)
+        return counter;
+    yc_u64 shift = yc_commpage_u64(YC_COMM_CLOCK_SHIFT);
+    unsigned __int128 p = (unsigned __int128)counter * m;
+    return (yc_u64)(p >> (shift & 127));
+}
+
+static yc_u64 yc_direct_absolute(void)
+{
+    for (;;) {
+        yc_u64 before = yc_commpage_u64(YC_COMM_TIMEBASE_OFFSET);
+        yc_u64 counter = yc_read_cntvct();
+        yc_u64 after = yc_commpage_u64(YC_COMM_TIMEBASE_OFFSET);
+        if (before == after)
+            return yc_scale_counter(counter) + before;
+    }
+}
+
 YC_EXPORT yc_u64 mach_absolute_time(void)
 {
+    if (yc_direct_clock())
+        return yc_direct_absolute();
     return YC_MACH0(YC_TRAP_ABSOLUTE_TIME);
 }
 
+/* continuous = absolute + CONT_TIMEBASE (sleep time; Ycode keeps it 0),
+ * re-read while CONT_TIMEBASE changes. */
 YC_EXPORT yc_u64 mach_continuous_time(void)
 {
+    if (yc_direct_clock()) {
+        for (;;) {
+            yc_u64 before = yc_commpage_u64(YC_COMM_CONT_TIMEBASE);
+            yc_u64 absolute = yc_direct_absolute();
+            if (yc_commpage_u64(YC_COMM_CONT_TIMEBASE) == before)
+                return absolute + before;
+        }
+    }
     return YC_MACH0(YC_TRAP_CONTINUOUS_TIME);
 }
 
@@ -82,9 +135,10 @@ YC_EXPORT yc_u64 mach_boottime_usec(void)
 
 /* kern_return_t mach_get_times(uint64_t *absolute_time,
  *     uint64_t *continuous_time, struct timespec *tp)
- * absolute = trap -3, continuous = trap -4, tp = the wall clock from BSD
- * 116 (__gettimeofday, which fills a struct timeval) converted to a
- * struct timespec. Every pointer may be NULL. */
+ * absolute and continuous as mach_absolute_time / mach_continuous_time,
+ * tp = the wall clock (the commpage snapshot, else BSD 116 __gettimeofday,
+ * which fills a struct timeval) converted to a struct timespec. Every
+ * pointer may be NULL. */
 struct yc_timeval {
     yc_i64 tv_sec;
     yc_i32 tv_usec;
@@ -95,11 +149,50 @@ struct yc_timespec {
 };
 int __gettimeofday(struct yc_timeval *tp, void *tzp, yc_u64 *mach_time);
 
+/* int __commpage_gettimeofday(struct timeval *tp): 0 and *tp filled from
+ * the commpage's NEWTIMEOFDAY_DATA snapshot, or non-zero ("not available":
+ * the caller makes BSD 116, which also refreshes the snapshot). The
+ * snapshot is used only with the direct clock (its tick is mach time) and
+ * only while it is less than one second old (fast-traps.md section 4,
+ * darwin-process-start.md section 3.6). */
+YC_EXPORT int __commpage_gettimeofday(struct yc_timeval *tp)
+{
+    if (!yc_direct_clock())
+        return 1;
+    const volatile yc_u64 *d = (const volatile yc_u64 *)(yc_uintptr_t)(YC_COMMPAGE_RW + YC_COMM_NEWTIMEOFDAY);
+    yc_u64 tick, sec, frac, scale, per_sec;
+    for (;;) {
+        tick = d[0];
+        if (tick == 0)
+            return 1;
+        __asm__ volatile("dmb ishld" ::: "memory");
+        sec = d[1];
+        frac = d[2];
+        scale = d[3];
+        per_sec = d[4];
+        __asm__ volatile("dmb ishld" ::: "memory");
+        if (d[0] == tick)
+            break;
+    }
+    yc_u64 now = yc_direct_absolute();
+    yc_u64 delta = now >= tick ? now - tick : 0;
+    if (per_sec == 0 || delta >= per_sec)
+        return 1;
+    yc_u64 frac2 = frac + delta * scale;
+    if (frac2 < frac)
+        sec += 1;
+    if (tp != YC_NULL) {
+        tp->tv_sec = (yc_i64)sec;
+        tp->tv_usec = (yc_i32)(((unsigned __int128)frac2 * 1000000u) >> 64);
+    }
+    return 0;
+}
+
 YC_EXPORT int mach_get_times(yc_u64 *absolute_time, yc_u64 *continuous_time, struct yc_timespec *tp)
 {
     if (tp != YC_NULL) {
         struct yc_timeval tv = {0, 0};
-        if (__gettimeofday(&tv, YC_NULL, YC_NULL) != 0)
+        if (__commpage_gettimeofday(&tv) != 0 && __gettimeofday(&tv, YC_NULL, YC_NULL) != 0)
             return YC_KERN_FAILURE;
         tp->tv_sec = tv.tv_sec;
         tp->tv_nsec = (yc_i64)tv.tv_usec * 1000;
@@ -589,27 +682,105 @@ YC_EXPORT int mig_strncpy_zerofill(char *dest, const char *src, int len)
 
 /* ------------------------------------------------------------- host_info */
 
+#define YC_HOST_BASIC_INFO 1
+#define YC_HOST_BASIC_INFO_COUNT 12u   /* struct host_basic_info: 48 bytes (pack 4) */
+#define YC_HOST_BASIC_INFO_OLD_COUNT 5u
+#define YC_HOST_SCHED_INFO 3
+#define YC_HOST_SCHED_INFO_COUNT 2u    /* struct host_sched_info: 8 bytes */
 #define YC_HOST_PRIORITY_INFO 5
 #define YC_HOST_PRIORITY_INFO_COUNT 8u
 
+/* Facts from the public host_info flavor and structure declarations
+ * (mach/host_info.h): HOST_BASIC_INFO = 1, HOST_SCHED_INFO = 3,
+ * HOST_PRIORITY_INFO = 5. The guest's sysctls report one CPU
+ * (hw.ncpu = 1) and a 1 GiB memory size (Stage3Layout.memorySize), and
+ * the values below match them. The scheduling tick values (10 ms) are a
+ * Ycode choice. */
+#define YC_CPU_TYPE_ARM64 0x0100000cu
+#define YC_CPU_SUBTYPE_ARM64_ALL 0u
+#define YC_GUEST_MEMORY_BYTES (1ull << 30)
+
+/* Writes the flavor number into a message: "host_info (flavor N)". The
+ * message is read by the kernel (it names the unimplemented library
+ * function in the log), so the flavor shows which call is missing. */
+static void yc_host_info_unimplemented(int flavor)
+{
+    char message[32];
+    char digits[12];
+    const char *prefix = "host_info (flavor ";
+    for (int i = 0; i < 18; i++) message[i] = prefix[i];   /* "host_info (flavor " */
+    unsigned long long v = flavor < 0 ? 0ull - (unsigned long long)(long long)flavor : (unsigned long long)flavor;
+    int n = 0;
+    do { digits[n++] = (char)('0' + (v % 10)); v /= 10; } while (v != 0 && n < 11);
+    char *p = message + 18;
+    if (flavor < 0) *p++ = '-';
+    while (n > 0) *p++ = digits[--n];
+    *p++ = ')';
+    *p = '\0';
+    yc_unimplemented(message);
+}
+
 /* kern_return_t host_info(host_t host, host_flavor_t flavor,
  *     host_info_t info, mach_msg_type_number_t *count)
- * HOST_PRIORITY_INFO is answered here (contract section 7.5): kernel 80,
- * system 80, server 64, user 31, depress 0, idle 0, minimum 0,
- * maximum 79. Other flavors are not implemented yet. */
+ * HOST_BASIC_INFO, HOST_SCHED_INFO and HOST_PRIORITY_INFO are answered
+ * here (contract section 7.5). HOST_PRIORITY_INFO: kernel 80, system 80,
+ * server 64, user 31, depress 0, idle 0, minimum 0, maximum 79. Other
+ * flavors report the missing flavor (see yc_host_info_unimplemented). */
 YC_EXPORT int host_info(yc_port_t host, int flavor, int *info, yc_u32 *count)
 {
     (void)host;
+    if (info == YC_NULL || count == YC_NULL)
+        return YC_KERN_INVALID_ARGUMENT;
+    if (flavor == YC_HOST_BASIC_INFO) {
+        /* HOST_BASIC_INFO_OLD_COUNT (5): the first five fields only. */
+        if (*count < YC_HOST_BASIC_INFO_OLD_COUNT)
+            return YC_KERN_FAILURE;
+        if (*count < YC_HOST_BASIC_INFO_COUNT) {
+            info[0] = 1;
+            info[1] = 1;
+            info[2] = (int)(unsigned)YC_GUEST_MEMORY_BYTES;
+            info[3] = (int)YC_CPU_TYPE_ARM64;
+            info[4] = (int)YC_CPU_SUBTYPE_ARM64_ALL;
+            *count = YC_HOST_BASIC_INFO_OLD_COUNT;
+            return YC_KERN_SUCCESS;
+        }
+        /* integer_t max_cpus, avail_cpus; natural_t memory_size (capped at
+         * 2 GiB); cpu_type_t, cpu_subtype_t, cpu_threadtype_t; integer_t
+         * physical_cpu, physical_cpu_max, logical_cpu, logical_cpu_max;
+         * uint64_t max_mem. */
+        info[0] = 1;
+        info[1] = 1;
+        info[2] = (int)(unsigned)YC_GUEST_MEMORY_BYTES;
+        info[3] = (int)YC_CPU_TYPE_ARM64;
+        info[4] = (int)YC_CPU_SUBTYPE_ARM64_ALL;
+        info[5] = 0;
+        info[6] = 1;
+        info[7] = 1;
+        info[8] = 1;
+        info[9] = 1;
+        info[10] = (int)(unsigned)(YC_GUEST_MEMORY_BYTES & 0xffffffffu);
+        info[11] = (int)(unsigned)(YC_GUEST_MEMORY_BYTES >> 32);
+        *count = YC_HOST_BASIC_INFO_COUNT;
+        return YC_KERN_SUCCESS;
+    }
+    if (flavor == YC_HOST_SCHED_INFO) {
+        if (*count < YC_HOST_SCHED_INFO_COUNT)
+            return YC_KERN_FAILURE;
+        info[0] = 10;   /* min_timeout, ms */
+        info[1] = 10;   /* min_quantum, ms */
+        *count = YC_HOST_SCHED_INFO_COUNT;
+        return YC_KERN_SUCCESS;
+    }
     if (flavor == YC_HOST_PRIORITY_INFO) {
         static const int prio[YC_HOST_PRIORITY_INFO_COUNT] = {80, 80, 64, 31, 0, 0, 0, 79};
-        if (info == YC_NULL || count == YC_NULL || *count < YC_HOST_PRIORITY_INFO_COUNT)
+        if (*count < YC_HOST_PRIORITY_INFO_COUNT)
             return YC_KERN_FAILURE;
         for (unsigned i = 0; i < YC_HOST_PRIORITY_INFO_COUNT; i++)
             info[i] = prio[i];
         *count = YC_HOST_PRIORITY_INFO_COUNT;
         return YC_KERN_SUCCESS;
     }
-    yc_unimplemented("host_info (flavor other than HOST_PRIORITY_INFO)");
+    yc_host_info_unimplemented(flavor);
     return YC_KERN_NOT_SUPPORTED;
 }
 

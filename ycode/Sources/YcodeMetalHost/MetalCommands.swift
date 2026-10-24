@@ -24,6 +24,9 @@ public struct MetalCommandBuffer: Sendable {
     public var unknownRecordCount: Int
     /// Problems found while decoding (malformed segments, unknown refs).
     public var diagnostics: [String]
+    /// When the host service received the submission (monotonic ns; 0 =
+    /// unknown). Diagnostics only (the back end's frame trace).
+    public var receivedAtNs: UInt64 = 0
 
     public init(process: MetalProcessID, queue: MetalHandle?, commandBufferRef: UInt64, passes: [MetalPass] = [],
                 unknownRecordCount: Int = 0, diagnostics: [String] = []) {

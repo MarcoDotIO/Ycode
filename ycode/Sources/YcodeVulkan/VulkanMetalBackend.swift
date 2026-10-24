@@ -46,12 +46,80 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         /// Worker threads for translation and pipeline compiles.
         public var compileThreads = 4
         /// `ycode-airc serve` processes (when no translator is given).
-        public var translatorProcesses = 4
+        public var translatorProcesses = ProcessInfo.processInfo.environment["YCODE_AIRC_PROCESSES"].flatMap { Int($0) }.map { max($0, 1) } ?? 4
         /// Where the VkPipelineCache is loaded from and saved to (default:
         /// $YCODE_VULKAN_PIPELINE_CACHE; nil: not persistent).
         public var pipelineCachePath: String? = ProcessInfo.processInfo.environment["YCODE_VULKAN_PIPELINE_CACHE"]
+        /// Copy back to an IOSurface only the part of it a command buffer's
+        /// render passes can have drawn (the union of their scissor rects);
+        /// `YCODE_GPU_SURFACE_DAMAGE=0`: the whole surface every time.
+        public var surfaceDamage = ProcessInfo.processInfo.environment["YCODE_GPU_SURFACE_DAMAGE"] != "0"
+        /// Skip copying an IOSurface in when the image already holds its
+        /// pixels; `YCODE_GPU_SURFACE_SKIP_IN=0`: copy it in every time.
+        public var surfaceSkipCopyIn = ProcessInfo.processInfo.environment["YCODE_GPU_SURFACE_SKIP_IN"] != "0"
+        /// The completion thread waits for the GPU in slices of this many
+        /// ns and reads the timeline counter after each
+        /// (`YCODE_GPU_COMPLETION_POLL_US`, default 1000; 1000000: one
+        /// blocking wait per second as before).
+        public var completionPollNs: UInt64 = UInt64(ProcessInfo.processInfo.environment["YCODE_GPU_COMPLETION_POLL_US"]
+            .flatMap { UInt64($0) }.map { max($0, 50) } ?? 1000) * 1000
+        /// Report `scheduled` as soon as a command buffer is on the Vulkan
+        /// queue (Metal's meaning) instead of at completion; CPU access to
+        /// an IOSurface the GPU is still writing then waits for the write
+        /// (`waitForSurfaceWrites`, called by the IOSurface service on locks
+        /// and host reads). `YCODE_GPU_EARLY_SCHEDULED=0`: at completion.
+        public var earlyScheduled = ProcessInfo.processInfo.environment["YCODE_GPU_EARLY_SCHEDULED"] != "0"
+        /// A CPU access that waits for pending GPU writes to an IOSurface
+        /// (`waitForSurfaceWrites`) waits in slices of this many ns and reads
+        /// the timeline counter after each: a blocking wait on the Thor
+        /// often returns late (§14.2 item 3). `YCODE_GPU_SURFACE_WAIT_POLL_US`
+        /// (default 200; 0: one blocking wait as before).
+        public var surfaceWaitPollNs: UInt64 = UInt64(ProcessInfo.processInfo.environment["YCODE_GPU_SURFACE_WAIT_POLL_US"]
+            .flatMap { UInt64($0) } ?? 200) * 1000
+        /// Kernels (by entry-point name) dispatched one thread per
+        /// workgroup when their reflection allows it (§15.5): the guest
+        /// driver's ASTC decoder hangs the Thor's GPU when two lanes of one
+        /// subgroup decode different kinds of blocks. `YCODE_GPU_LANE_ISOLATED`
+        /// (comma-separated names; default `astc`; empty: none).
+        public var laneIsolatedKernels: Set<String> = Set((ProcessInfo.processInfo.environment["YCODE_GPU_LANE_ISOLATED"] ?? "astc")
+            .split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+        /// Experimental, off by default (§15.6): import guest memory with this
+        /// many bytes of the host memory around the backing object, so that
+        /// a read a little outside it lands in mapped memory (on the Thor a
+        /// GPU access to an unmapped GPU address stalls the GPU for good).
+        /// On the Thor's driver imports that overlap other imports (or the
+        /// driver's own mappings) made later allocations fail with
+        /// VK_ERROR_OUT_OF_DEVICE_MEMORY, so it is not usable there.
+        /// `YCODE_GPU_IMPORT_SLACK_KB` (default 0). Only inside `importSlackWindow`.
+        public var importSlack = (Int(ProcessInfo.processInfo.environment["YCODE_GPU_IMPORT_SLACK_KB"] ?? "") ?? 0) * 1024
+        /// The host memory slack may come from (start, length): the shared
+        /// object arena, which holds only guest objects. Nil: no slack (the
+        /// memory around other mappings may be anything, the driver's own
+        /// mappings included: importing those broke later allocations).
+        public var importSlackWindow: (UInt, UInt)?
+        /// A draw that samples a color attachment of its own pass samples a
+        /// copy made just before it (§15.6). `YCODE_GPU_FEEDBACK_COPY=0`: it
+        /// samples the attachment itself, as before.
+        public var feedbackSnapshots = ProcessInfo.processInfo.environment["YCODE_GPU_FEEDBACK_COPY"] != "0"
+        /// Feedback copies copy only the draw's scissor rectangle (2 texels
+        /// wider); `YCODE_GPU_FEEDBACK_COPY=whole`: the whole attachment level.
+        public var feedbackWholeLevel = ProcessInfo.processInfo.environment["YCODE_GPU_FEEDBACK_COPY"] == "whole"
         /// Seconds between saves of a changed pipeline cache.
         public var pipelineCacheSaveInterval = 15.0
+        /// `shutdown()`: seconds the GPU may take to finish submitted work
+        /// before the completion thread abandons it (stage8-contract.md §12).
+        public var shutdownGrace = 10.0
+        /// A submission still running after this many seconds is logged
+        /// once with a description of its command buffer
+        /// (`YCODE_GPU_HANG_REPORT_S`, default 2; VulkanHangReport.swift).
+        public var hangReportSeconds = ProcessInfo.processInfo.environment["YCODE_GPU_HANG_REPORT_S"].flatMap { Double($0) } ?? 2
+        /// Recording without per-submission diagnostic strings (shader
+        /// names, dispatch notes, draw counts in the label; a hang report
+        /// describes the command buffer instead) and with argument tables
+        /// written from the bound slots only. `YCODE_METAL_RECORD_FAST=0`:
+        /// as before, including a read of the process environment on every
+        /// draw (stage8-contract.md §15).
+        public var recordFast = ProcessInfo.processInfo.environment["YCODE_METAL_RECORD_FAST"] != "0"
         public init() {}
     }
 
@@ -105,6 +173,12 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
     var deviceLost = false
     var running = true
     var completionThread: Thread?
+    /// Set by `shutdown()`: after this (monotonic ns) the completion thread
+    /// stops waiting for the GPU. Under the lock.
+    var shutdownDeadline: UInt64 = .max
+    /// The completion thread gave up on work the GPU had not finished at
+    /// shutdown. Under the lock.
+    var abandonedAtShutdown = false
     var statistics = VulkanBackendStatistics()
     /// Diagnostics: skipped commands by the replay source line that skipped them.
     var skipLines: [Int: Int] = [:]
@@ -128,7 +202,50 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         var queuedAt: UInt64 = DispatchTime.now().uptimeNanoseconds
         /// What it is (diagnostics): the client process and command buffer.
         var label: String = ""
+        /// Its frame-trace line (`YCODE_METAL_TRACE`).
+        var trace: FrameTraceInfo?
+        /// The Metal command buffer (hang and device-loss reports).
+        var commandBuffer: MetalCommandBuffer?
     }
+
+    /// Writes to each IOSurface plane's memory (copy-outs, host writes):
+    /// an image whose recorded generation differs copies the surface in.
+    var surfaceGenerations: [SurfaceSyncKey: UInt64] = [:]
+    /// `scheduled` handlers of submitted command buffers, called outside the lock.
+    var earlyScheduledQueue: [@Sendable () -> Void] = []
+    let flushingScheduled = NSLock()
+    /// A flusher is running a list it took from `earlyScheduledQueue` (under the lock).
+    var scheduledFlushRunning = false
+    /// The last serial that copies back to each IOSurface (by surface ID).
+    var surfaceWriteSerials: [UInt32: UInt64] = [:]
+    /// The timeline value when a surface-write wait last timed out without
+    /// progress (nil: none); waits are skipped while the value stays there.
+    var surfaceWaitStuckAt: UInt64?
+
+    /// Invalid buffer↔image copies still to be logged (VulkanCommandReplay.swift).
+    var invalidCopyLogBudget = 20
+
+    /// Diagnostics: `YCODE_GPU_DAMAGE_LOG=<n>` logs the first n IOSurface render-pass writes.
+    var damageLogBudget = Int(ProcessInfo.processInfo.environment["YCODE_GPU_DAMAGE_LOG"] ?? "") ?? 0
+
+    /// The GPU frame trace (`YCODE_METAL_TRACE=<file>`; VulkanFrameTrace.swift).
+    var frameTrace: FrameTrace?
+
+    /// Diagnostics (`YCODE_METAL_RECORD_PROFILE=1`): host ns spent in the
+    /// parts of recording a command buffer, by `RecordPart`. Under the lock.
+    let recordProfiling = ProcessInfo.processInfo.environment["YCODE_METAL_RECORD_PROFILE"] == "1"
+    var recordProfile = [UInt64](repeating: 0, count: RecordPart.allCases.count)
+    var recordProfileCounts = [Int](repeating: 0, count: RecordPart.allCases.count)
+
+    /// Feedback snapshots (VulkanCommandReplay.swift): copy images by format,
+    /// size and swizzle, and the texture slots that point at one during a pass.
+    var feedbackCopies: [String: VKTexture] = [:]
+    var textureOverride: [MetalHandle: UInt32] = [:]
+
+    // Hang and device-loss reports (VulkanHangReport.swift).
+    var checkpointRecords: [CheckpointRecord] = []
+    var nextCheckpointID: UInt32 = 1
+    var deviceLossReported = false
 
     // Held work (VulkanEventWaits.swift).
     var held: [HeldKey: [HeldItem]] = [:]
@@ -182,9 +299,27 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         completionThread = thread
         thread.start()
         loadPipelineCache()
+        if let path = ProcessInfo.processInfo.environment["YCODE_METAL_TRACE"], !path.isEmpty {
+            frameTrace = FrameTrace(path: path, ctx: ctx, fn: fn)
+            log(frameTrace == nil ? "frame trace: cannot write \(path) or no timestamp queries" : "frame trace: \(path)")
+        }
+        // The translator processes load in the background, so that the
+        // first pipeline does not wait for them (YCODE_AIRC_PRESTART=0: at
+        // the first request, as before).
+        if ProcessInfo.processInfo.environment["YCODE_AIRC_PRESTART"] != "0" {
+            (self.translator as? AircTranslatorPool)?.prestart()
+        }
     }
 
-    /// Waits for all work, stops the completion thread and frees the device.
+    /// The ordered end of the backend (stage8-contract.md §12): finishes the
+    /// pipeline compiles, saves the pipeline cache, lets the GPU finish
+    /// submitted work (at most `Options.shutdownGrace` seconds), stops the
+    /// completion and held-work threads, waits for the device to be idle
+    /// and frees it. Afterwards no backend thread is inside the driver, so
+    /// the process may call exit(). Work still running at the grace limit
+    /// is abandoned: then nothing is freed (freeing objects the GPU still
+    /// uses is undefined) and the driver's own teardown at exit cleans up.
+    /// Idempotent; later calls return at once.
     public func shutdown() {
         cond.lock()
         let first = running
@@ -196,23 +331,52 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
             savePipelineCache()
             if verbose && usesPipelineLibraries { log("pipeline libraries: \(pipelineLibraryStatistics.summary)") }
         }
+        let grace = UInt64(max(options.shutdownGrace, 0) * 1e9)
         cond.lock()
         guard running else { cond.unlock(); return }
         running = false
+        let now = DispatchTime.now().uptimeNanoseconds
+        shutdownDeadline = now &+ grace
         cond.broadcast()
         cond.unlock()
-        if isAvailable {
-            while true {
-                cond.lock()
-                let done = completionThread == nil && heldThread == nil
-                cond.unlock()
-                if done { break }
-                usleep(1000)
-            }
-            _ = fn.vkDeviceWaitIdle!(ctx.pointee.device)
-            destroyEverything()
+        guard isAvailable else {
+            yvk_context_destroy(ctx)
+            return
         }
+        // The completion thread waits for the GPU in steps of 1 s and stops
+        // at the deadline, so both threads end by about deadline + 1 s.
+        let threadsDeadline = now &+ grace &+ 5_000_000_000
+        var threadsDone = false
+        while true {
+            threadsDone = threadsStopped
+            if threadsDone || DispatchTime.now().uptimeNanoseconds >= threadsDeadline { break }
+            usleep(1000)
+        }
+        cond.lock()
+        let abandoned = abandonedAtShutdown
+        cond.unlock()
+        guard threadsDone, !abandoned else {
+            log("shutdown: " + (threadsDone ? "GPU work abandoned" : "backend threads still running")
+                + "; the device is left to the driver's exit teardown")
+            return
+        }
+        _ = fn.vkDeviceWaitIdle!(ctx.pointee.device)
+        destroyEverything()
         yvk_context_destroy(ctx)
+    }
+
+    /// True once the completion and held-work threads have ended.
+    var threadsStopped: Bool {
+        cond.lock()
+        defer { cond.unlock() }
+        return completionThread == nil && heldThread == nil
+    }
+
+    /// True after `shutdown()` gave up on unfinished GPU work (tests, diagnostics).
+    public var abandonedWorkAtShutdown: Bool {
+        cond.lock()
+        defer { cond.unlock() }
+        return abandonedAtShutdown
     }
 
     deinit {
@@ -220,11 +384,21 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         ctx.deallocate()
     }
 
-    /// YCODE_VULKAN_SKIP_DRAWS=1 (debugging): record no draws.
-    var skipDraws: Bool { ProcessInfo.processInfo.environment["YCODE_VULKAN_SKIP_DRAWS"] != nil }
+    /// YCODE_VULKAN_SKIP_DRAWS=1 (debugging): record no draws. Read once:
+    /// `ProcessInfo.environment` builds a dictionary of the whole
+    /// environment on every call (it cost about 30 µs per draw when it was
+    /// read in the draw path; stage8-contract.md §15).
+    var skipDraws: Bool {
+        // `YCODE_METAL_RECORD_FAST=0` reads it on every draw as before (A/B of §15).
+        options.recordFast ? Self.environmentSkipDraws : ProcessInfo.processInfo.environment["YCODE_VULKAN_SKIP_DRAWS"] != nil
+    }
+    static let environmentSkipDraws = ProcessInfo.processInfo.environment["YCODE_VULKAN_SKIP_DRAWS"] != nil
 
-    /// YCODE_VULKAN_LOG=1: log object creation details.
-    var verbose: Bool { ProcessInfo.processInfo.environment["YCODE_VULKAN_LOG"] != nil }
+    /// YCODE_VULKAN_LOG=1: log object creation details (read once).
+    var verbose: Bool { Self.environmentVerbose }
+    static let environmentVerbose = ProcessInfo.processInfo.environment["YCODE_VULKAN_LOG"] != nil
+    /// YCODE_VULKAN_DUMP_FUNCTIONS=<dir> (read once).
+    static let environmentDumpFunctions = ProcessInfo.processInfo.environment["YCODE_VULKAN_DUMP_FUNCTIONS"]
 
     func log(_ message: String) {
         options.log?("[vulkan] " + message)
@@ -321,10 +495,22 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
             return (start, Int(end - start))
         }
         let regionStart = UInt(bitPattern: g.pointer)
-        // Prefer one import of the whole backing object.
-        var candidates: [(UInt, Int)] = [range(g.objectPointer, g.objectLength)]
+        // Prefer one import of the whole backing object, with slack around
+        // it when the host memory there can be imported as well (§15.6).
+        let whole = range(g.objectPointer, g.objectLength)
+        var candidates: [(UInt, Int)] = []
+        let slack = UInt(max(0, options.importSlack)) & ~(align - 1)
+        if slack > 0, let (w0, wlen) = options.importSlackWindow {
+            // Clipped to the window (both ends aligned): no slack outside it.
+            let lo = max(whole.0 &- slack, (w0 + align - 1) & ~(align - 1))
+            let hi = min(whole.0 + UInt(whole.1) + slack, (w0 + wlen) & ~(align - 1))
+            if whole.0 >= slack, lo < whole.0 || hi > whole.0 + UInt(whole.1), lo <= whole.0, hi >= whole.0 + UInt(whole.1) {
+                candidates.append((lo, Int(hi - lo)))
+            }
+        }
+        candidates.append(whole)
         let tight = range(g.pointer, g.length)
-        if tight != candidates[0] { candidates.append(tight) }
+        if tight != whole { candidates.append(tight) }
         var lastError = ""
         for (start, length) in candidates where regionStart >= start && regionStart + UInt(g.length) <= start + UInt(length) {
             let key = AllocationKey(objectID: g.objectID, start: start, length: length)
@@ -341,6 +527,7 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
                 let a = VKAllocation(buffer: b, base: ptr, key: key, owner: g.owner)
                 imports[key] = a
                 statistics.imports += 1
+                if start < whole.0 || start + UInt(length) > whole.0 + UInt(whole.1) { statistics.slackImports += 1 }
                 return (a, Int(regionStart - start))
             }
             lastError = cString(err)
@@ -415,7 +602,7 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
                 alloc.references += 1
                 image.surface = SurfaceLink(allocation: alloc, offset: offset + s.planeOffset, bytesPerRow: s.bytesPerRow,
                                             width: min(s.width, width), height: min(s.height, height), surfaceID: s.surfaceID,
-                                            limit: max(0, s.region.length - s.planeOffset))
+                                            limit: max(0, s.region.length - s.planeOffset), syncState: s.syncState)
                 if verbose {
                     log("texture \(handle): IOSurface \(s.surfaceID) \(s.width)x\(s.height) pitch \(s.bytesPerRow) bpe \(s.bytesPerElement) " +
                         "format \(String(s.pixelFormat, radix: 16)) bytes \(s.region.length); Metal format \(desc.pixelFormat) \(width)x\(height)")
@@ -624,7 +811,7 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         cond.lock(); defer { cond.unlock() }
         functions[handle] = VKFunction(metallib: metallib)
         // Debugging: YCODE_VULKAN_DUMP_FUNCTIONS=<dir> saves each function as sent.
-        if let dir = ProcessInfo.processInfo.environment["YCODE_VULKAN_DUMP_FUNCTIONS"] {
+        if let dir = Self.environmentDumpFunctions {
             let path = "\(dir)/function-\(handle.raw)-\(String(fnv1a64(metallib), radix: 16)).metallib"
             FileManager.default.createFile(atPath: path, contents: Data(metallib))
         }
@@ -738,10 +925,16 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         for g in graveyard { g.action() }
         graveyard.removeAll()
         for p in libraries.all() { fn.vkDestroyPipeline!(device, p, nil) }
+        for t in feedbackCopies.values { releaseTexture(t) }
+        feedbackCopies.removeAll()
+        for g in graveyard { g.action() }
+        graveyard.removeAll()
         for s in samplerCache.values { if let v = s.sampler { fn.vkDestroySampler!(device, v, nil) } }
         samplerCache.removeAll()
         if let s = defaultSampler { fn.vkDestroySampler!(device, s, nil) }
         if let v = dummyView { fn.vkDestroyImageView!(device, v, nil) }
+        frameTrace?.destroy(device, fn)
+        frameTrace = nil
         if let d = dummyImage { yvk_image_destroy(ctx, &d.image) }
         yvk_buffer_destroy(ctx, &dummyBuffer)
         for c in freeChunks { yvk_buffer_destroy(ctx, &c.buffer) }
@@ -750,6 +943,32 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         setup = nil
         if let t = timeline { fn.vkDestroySemaphore!(device, t, nil) }
         timeline = nil
+    }
+}
+
+/// The parts of recording a command buffer (`YCODE_METAL_RECORD_PROFILE=1`).
+enum RecordPart: Int, CaseIterable {
+    case start, surfacesIn, passBegin, drawPrepare, table, renderCommands, passEnd, compute, blit, barriers, surfacesOut, submit, label
+
+    var name: String { "\(self)" }
+}
+
+extension VulkanMetalBackend {
+    /// Adds the time since `start` to a part (when profiling). Under the lock.
+    @inline(__always)
+    func profiled(_ part: RecordPart, since start: UInt64) {
+        guard recordProfiling else { return }
+        recordProfile[part.rawValue] &+= DispatchTime.now().uptimeNanoseconds &- start
+        recordProfileCounts[part.rawValue] += 1
+    }
+
+    @inline(__always)
+    func profileClock() -> UInt64 { recordProfiling ? DispatchTime.now().uptimeNanoseconds : 0 }
+
+    var recordProfileSummary: String {
+        RecordPart.allCases.map { p in
+            String(format: "%@ %.1f ms/%d", p.name, Double(recordProfile[p.rawValue]) / 1e6, recordProfileCounts[p.rawValue])
+        }.joined(separator: ", ")
     }
 }
 
@@ -763,6 +982,53 @@ public struct VulkanBackendStatistics: Sendable {
     /// latency (total and largest, ns).
     public var completedCommandBuffers = 0
     public var latencyTotalNs: UInt64 = 0, latencyMaxNs: UInt64 = 0
+    /// GPU-side boot cost (diagnostics): translator calls (not answered by
+    /// the in-memory cache), whole-pipeline compiles, compute variants,
+    /// submissions that waited for a pipeline, and the CPU time spent
+    /// recording command buffers under the backend lock.
+    public var translations = TimeCounter(), translationHits = 0
+    public var renderCompiles = TimeCounter(), computeCompiles = TimeCounter()
+    public var pipelineWaits = TimeCounter()
+    public var recording = TimeCounter()
+    public var surfaceBytesUp = 0, surfaceBytesDown = 0
+    /// Copy-ins skipped (the image held the surface's pixels), and the bytes
+    /// whole-surface copy-outs would have moved.
+    public var surfaceUploadsSkipped = 0, surfaceBytesDownFull = 0
+    /// Completion waits that timed out although the GPU had reached the
+    /// value (the counter read after the slice found it).
+    public var lateWakeups = 0
+    /// Command buffers reported scheduled at submission, and CPU accesses
+    /// that waited for a pending GPU write to an IOSurface.
+    public var earlyScheduled = 0
+    public var surfaceWriteWaits = TimeCounter()
+    /// Surface-write waits that timed out with the GPU making no progress.
+    public var surfaceWriteWaitTimeouts = 0
+    /// Dispatches run one thread per workgroup (§15.5).
+    public var laneIsolatedDispatches = 0
+    /// Guest-memory imports made with slack around the object (§15.6).
+    public var slackImports = 0
+    /// Copies of a color attachment made for a draw that samples it (§15.6).
+    public var feedbackSnapshots = 0
+    public var feedbackTexels = 0
+    /// Queue-to-completion latency of Metal command buffers: counts below
+    /// 1, 2, 4, 8, 16, 33 ms and above.
+    public var latencyBuckets = [Int](repeating: 0, count: 7)
+    public static let latencyBucketLimitsNs: [UInt64] = [1, 2, 4, 8, 16, 33].map { $0 * 1_000_000 }
+}
+
+/// A count with total and largest duration (ns).
+public struct TimeCounter: Sendable, CustomStringConvertible {
+    public var count = 0
+    public var totalNs: UInt64 = 0, maxNs: UInt64 = 0
+    public init() {}
+    public mutating func add(_ ns: UInt64) {
+        count += 1
+        totalNs &+= ns
+        maxNs = max(maxNs, ns)
+    }
+    public var description: String {
+        String(format: "%d (%.1f ms, max %.1f ms)", count, Double(totalNs) / 1e6, Double(maxNs) / 1e6)
+    }
 }
 
 extension VulkanMetalBackend {
@@ -789,12 +1055,26 @@ extension VulkanMetalBackend {
         return "serials \(serials), \(queued) pending, compile queue \(compileQueue.operationCount), "
             + "\(s.renderPipelines) render / \(s.computePipelines) compute pipelines (broken \(brokenRender) / \(brokenCompute)), "
             + "\(s.submissions) submissions, \(s.draws) draws, \(s.dispatches) dispatches, \(s.blits) blits, \(s.skipped) skipped, "
-            + "surface up/down \(s.surfaceUploads)/\(s.surfaceDownloads), \(s.textures) textures, \(s.buffers) buffers, \(s.imports) imports"
+            + "surface up/down \(s.surfaceUploads)/\(s.surfaceDownloads), \(s.textures) textures, \(s.buffers) buffers, \(s.imports) imports (\(s.slackImports) with slack)"
             + (s.completedCommandBuffers == 0 ? "" : String(format: ", latency avg %.2f ms max %.1f ms",
                                                               Double(s.latencyTotalNs) / Double(s.completedCommandBuffers) / 1e6,
                                                               Double(s.latencyMaxNs) / 1e6))
             + (skips.isEmpty ? "" : " (skips by replay line: \(skips))")
             + (lost ? ", DEVICE LOST" : "")
+            + "; translations \(s.translations) + \(s.translationHits) cached, render compiles \(s.renderCompiles), "
+            + "compute variants \(s.computeCompiles), pipeline waits \(s.pipelineWaits), recording \(s.recording), "
+            + String(format: "surface MB up/down %.0f/%.0f (whole surfaces would be down %.0f; %d copy-ins skipped)",
+                     Double(s.surfaceBytesUp) / 1e6, Double(s.surfaceBytesDown) / 1e6, Double(s.surfaceBytesDownFull) / 1e6,
+                     s.surfaceUploadsSkipped) + ", \(s.lateWakeups) late wake-ups, \(s.earlyScheduled) scheduled at submission, surface write waits \(s.surfaceWriteWaits) (\(s.surfaceWriteWaitTimeouts) timed out)"
+            + ", \(s.laneIsolatedDispatches) lane-isolated dispatches, \(s.feedbackSnapshots) feedback copies (\(s.feedbackTexels / 1_000_000) Mtexels)"
+            + ", latency ms <1/<2/<4/<8/<16/<33/more " + s.latencyBuckets.map(String.init).joined(separator: "/")
+            + (usesPipelineLibraries ? "; libraries: " + pipelineLibraryStatistics.summary : "")
+            + (recordProfiling ? "; recording parts: " + lockedRecordProfileSummary() : "")
+    }
+
+    func lockedRecordProfileSummary() -> String {
+        cond.lock(); defer { cond.unlock() }
+        return recordProfileSummary
     }
 
     /// Counts a skipped command (under the lock).

@@ -58,20 +58,20 @@ extension DarwinKernel {
         return s.semaphore
     }
 
-    func posixSemCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult {
+    func posixSemCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         switch n {
         case PosixSemBSD.open, PosixSemBSD.unlink:
             let name = try readString(a[0], length: 1024, mem)
             guard name.utf8.count <= PosixSemBSD.maxName else { throw fail(Code.ENAMETOOLONG) }
             if n == PosixSemBSD.unlink {
-                call = "sem_unlink(\"\(name)\")"
+                call.set("sem_unlink(\"\(name)\")")
                 guard system.posixSemaphores.removeValue(forKey: name) != nil else { throw fail(Code.ENOENT) }
                 return .value(0)
             }
             let oflag = int(1)
             let mode = UInt16(truncatingIfNeeded: a[2]) & 0o7777
-            call = "sem_open(\"\(name)\", oflag=\(hx(UInt32(bitPattern: oflag))), mode=0o\(String(mode, radix: 8)), value=\(UInt32(truncatingIfNeeded: a[3])))"
+            call.set("sem_open(\"\(name)\", oflag=\(hx(UInt32(bitPattern: oflag))), mode=0o\(String(mode, radix: 8)), value=\(UInt32(truncatingIfNeeded: a[3])))")
             let sem: PosixSemaphore
             if let existing = system.posixSemaphores[name] {
                 if oflag & DarwinOpen.O_CREAT != 0 && oflag & DarwinOpen.O_EXCL != 0 { throw fail(Code.EEXIST) }
@@ -88,13 +88,13 @@ extension DarwinKernel {
             return .value(UInt64(UInt32(bitPattern: fd)))
 
         case PosixSemBSD.close:
-            call = "sem_close(\(int(0)))"
+            call.set("sem_close(\(int(0)))")
             _ = try semaphore(int(0))
             try fileSystem.close(int(0))
             return .value(0)
 
         case PosixSemBSD.post:
-            call = "sem_post(\(int(0)))"
+            call.set("sem_post(\(int(0)))")
             let sem = try semaphore(int(0))
             sem.count += 1
             _ = sem.waiters.wake(count: 1)
@@ -102,7 +102,7 @@ extension DarwinKernel {
 
         default:  // sem_wait, sem_trywait
             let wait = n == PosixSemBSD.wait
-            call = "\(wait ? "sem_wait" : "sem_trywait")(\(int(0)))"
+            call.set("\(wait ? "sem_wait" : "sem_trywait")(\(int(0)))")
             let sem = try semaphore(int(0))
             while sem.count <= 0 {
                 guard wait else { throw fail(Code.EAGAIN) }

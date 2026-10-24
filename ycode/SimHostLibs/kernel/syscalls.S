@@ -2244,24 +2244,10 @@ Lyc_cerror_nocancel:
     svc #0x80
     b.cs Lyc_cerror_nocancel
     ret
-    .globl "_getegid"
-    .p2align 2
-"_getegid":
-    mov x16, #43
-    svc #0x80
-    b.cs Lyc_cerror_nocancel
-    ret
     .globl "_getentropy"
     .p2align 2
 "_getentropy":
     mov x16, #500
-    svc #0x80
-    b.cs Lyc_cerror_nocancel
-    ret
-    .globl "_geteuid"
-    .p2align 2
-"_geteuid":
-    mov x16, #25
     svc #0x80
     b.cs Lyc_cerror_nocancel
     ret
@@ -2283,13 +2269,6 @@ Lyc_cerror_nocancel:
     .p2align 2
 "_getfsstat64":
     mov x16, #347
-    svc #0x80
-    b.cs Lyc_cerror_nocancel
-    ret
-    .globl "_getgid"
-    .p2align 2
-"_getgid":
-    mov x16, #47
     svc #0x80
     b.cs Lyc_cerror_nocancel
     ret
@@ -2388,13 +2367,6 @@ Lyc_cerror_nocancel:
     .p2align 2
 "_getsockopt":
     mov x16, #118
-    svc #0x80
-    b.cs Lyc_cerror_nocancel
-    ret
-    .globl "_getuid"
-    .p2align 2
-"_getuid":
-    mov x16, #24
     svc #0x80
     b.cs Lyc_cerror_nocancel
     ret

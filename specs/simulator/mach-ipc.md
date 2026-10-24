@@ -19,7 +19,8 @@ Scope:
 
 Out of scope: the bootstrap/launchd protocol (it is launchd's own protocol,
 not xnu's), `kevent` with `EVFILT_MACHPORT` and workloops (a separate spec),
-and importance donation / QoS overrides (Ycode may ignore them, §2.13).
+and importance donation / QoS overrides (Ycode may ignore them, §2.13;
+Ycode's model of them, behind switches, is `scheduling-policy.md`).
 
 Relationship to `specs/simulator/host-libraries.md` §10: the private
 Mach-routine traps (`x16 = 0x7963_2000 + n`) stay valid. This spec describes
@@ -262,11 +263,11 @@ an entry without a receive right.
 |---|---|---|
 | `CONTEXT_AS_GUARD` | 0x01 | Guard the new port with `context` (strict if `STRICT`) |
 | `QLIMIT` | 0x02 | Set `qlimit = mpl_qlimit` (≤ 1024) |
-| `TEMPOWNER` | 0x04 | Importance bookkeeping only |
-| `IMPORTANCE_RECEIVER` | 0x08 | Importance only |
+| `TEMPOWNER` | 0x04 | Importance only: the port accepts importance and is a temporary owner (Ycode: `scheduling-policy.md` §4.3) |
+| `IMPORTANCE_RECEIVER` | 0x08 | Importance only: the port accepts importance (`scheduling-policy.md` §4.3) |
 | `INSERT_SEND_RIGHT` | 0x10 | Entry gets send + receive, `urefs 1`; `srights = mscount = 1` |
 | `STRICT` | 0x20 | Strict guard |
-| `DENAP_RECEIVER` | 0x40 | Importance only |
+| `DENAP_RECEIVER` | 0x40 | Importance only: the port accepts importance (`scheduling-policy.md` §4.3) |
 | `IMMOVABLE_RECEIVE` | 0x80 | The receive right can never be moved |
 | `FILTER_MSG` | 0x100 | Message filtering (ignore) |
 | `TG_BLOCK_TRACKING` | 0x200 | Graphics-server only (`KERN_DENIED` otherwise) |
@@ -286,9 +287,9 @@ port type as an ordinary port, with one exception: copyin from a reply port
 | `MACH_PORT_LIMITS_INFO` | 1 | 1 | `{u32 qlimit}`; NULL/DEAD name → count 0, success | `qlimit` ≤ 1024 else `KERN_INVALID_VALUE`; raising it wakes blocked senders |
 | `MACH_PORT_RECEIVE_STATUS` | 2 | 10 | `mach_port_status_t` (below) | — (`KERN_INVALID_ARGUMENT`) |
 | `MACH_PORT_DNREQUESTS_SIZE` | 3 | 1 | number of dead-name request slots | accepted, no effect |
-| `MACH_PORT_TEMPOWNER` | 4 | — | — | importance; accepted |
-| `MACH_PORT_IMPORTANCE_RECEIVER` | 5 | — | — | accepted |
-| `MACH_PORT_DENAP_RECEIVER` | 6 | — | — | accepted |
+| `MACH_PORT_TEMPOWNER` | 4 | — | — | accepted; marks the port as accepting importance and as a temporary owner (`scheduling-policy.md` §4.3) |
+| `MACH_PORT_IMPORTANCE_RECEIVER` | 5 | — | — | accepted; marks the port as accepting importance |
+| `MACH_PORT_DENAP_RECEIVER` | 6 | — | — | accepted; marks the port as accepting importance |
 | `MACH_PORT_INFO_EXT` | 7 | 17 | status + `u32 boost_cnt` + 6 reserved words | — |
 | `MACH_PORT_GUARD_INFO` | 8 | 2 | (assert-only) | — |
 | `MACH_PORT_SERVICE_THROTTLED` | 9 | 1 | service ports only, else `KERN_INVALID_CAPABILITY` | same |
@@ -650,7 +651,7 @@ data that does not fit a receiver without an aux buffer is silently dropped.
 | `MACH_RCV_SYNC_PEEK` | 0x8000 | Sync peek (ignorable) |
 | `MACH_SEND_FILTER_NONFATAL` | 0x10000 | (ignorable) |
 | `MACH_SEND_TRAILER` | 0x20000 | Ignored |
-| `MACH_SEND_NOIMPORTANCE` | 0x40000 | Ignorable |
+| `MACH_SEND_NOIMPORTANCE` | 0x40000 | The message carries no importance (Ycode: `scheduling-policy.md` §4.3) |
 | `MACH_SEND_SYNC_OVERRIDE` | 0x100000 | Ignorable |
 | `MACH_SEND_PROPAGATE_QOS` | 0x200000 | Ignorable |
 | `MACH_SEND_SYNC_BOOTSTRAP_CHECKIN` | 0x800000 | Ignorable |
@@ -769,6 +770,13 @@ So, from the caller's point of view:
   is appended. Queue order is FIFO (xnu may reorder by QoS; Ycode keeps
   FIFO).
 - Raising `qlimit` wakes as many blocked senders as new slots.
+- A receive that frees a slot of a full queue wakes the **oldest** blocked
+  sender and gives the slot to it (it counts in `msgcount` until that
+  sender queues its message); the other blocked senders stay asleep, and a
+  sender that arrives meanwhile finds the queue still full. Ycode before
+  2026-10-23 woke every blocked sender on each receive, and all but one of
+  them went back to sleep (`boot-profile.md` §8: log senders blocked on
+  diagnosticd's queue); `YCODE_PORT_SLOT_HANDOFF=0` restores that.
 - A port in one or more sets makes each set "ready" when its queue becomes
   non-empty. A set receive takes the oldest ready member; after a message is
   taken from a member, that member moves to the back of the set's ready

@@ -50,6 +50,16 @@ In addition:
   - The pool is capped at **min(max_vcpus, 64)** per process. Exhaustion is
     reported as `EAGAIN` from `bsdthread_create` and as a refused workqueue
     request.
+  - A start that finds no parked vCPU **reserves** the next vCPU index
+    under the pool lock and returns it at once. The vCPU and its host thread
+    (`KVM_CREATE_VCPU`, `KVM_ARM_VCPU_INIT`, the `kvm_run` mapping,
+    `pthread_create`) are created afterwards by a VMM creator thread,
+    without the kernel lock; the new guest thread runs as soon as they
+    exist. A reservation counts as a live host thread, so the pool cannot
+    finish (and the VM cannot be destroyed) while a creation is in flight.
+    A creation that fails ends the process like any other vCPU failure
+    (status 1); a process that ends meanwhile drops the reservation.
+    `YCODE_VCPU_CREATORS=0` restores inline creation (diagnostics).
 - **The kernel's shared state** (port spaces, the thread table, ulock
   queues, workqueues, kevent queues, the VFS, the address space) lives in
   one Swift object per VM.
@@ -152,7 +162,8 @@ Following `threads-and-events.md` §1–§2:
     (QoS number in the low 12 bits), x5 = event count or −1.
   - **Admission rule.** A worker that blocks in the kernel (ulock, kevent,
     `mach_msg` receive, semaphore) frees its slot, so another worker may
-    start. The parallelism limit is 8 per QoS bucket.
+    start. The parallelism limit is N per QoS bucket, N being the guest CPU
+    count (`darwin-process-start.md`; 1 by default).
   - Idle workers are parked after 5 s with no work. Parked workers are
     reused before new ones are created.
 - **kevent** (`kevent_qos` 374, `kevent_id` 375; `kevent` 363 and

@@ -1,0 +1,32 @@
+# The parity ladder (specs/simulator/parity-ladder.md §4.2): the 23 labels
+# of the lean profile in the order they are enabled again. One label per
+# line; text after the label is a comment.
+# Mac figures: 18 full boots (r1-r3; 9 first, 9 second), first 120 s:
+# boots in which launchd started the program / mean CPU s.
+# Group A: started in fewer than half of the Mac boots (plus
+# nanoregistrylaunchd, which enables pairedsyncd); quiet ones first, ties
+# broken by Ycode's restart count in a 700 s full run.
+# Group B: started in (almost) every Mac boot; by rising Mac CPU.
+com.apple.knowledgeconstructiond          A  Mac 0/18  0.00 s; Ycode 1 start
+com.apple.sensorkitd                      A  Mac 0/18  0.00 s; Ycode 1
+com.apple.spotlightknowledged             A  Mac 0/18  0.00 s; Ycode 1
+com.apple.mediaanalysisd                  A  Mac 7/18  0.21 s; Ycode 1
+com.apple.nanoregistrylaunchd             A  Mac 12/18 0.22 s; Ycode 1 (enables the Nano jobs)
+com.apple.intelligencetasksd              A  Mac 0/18  0.00 s; Ycode 16 (crash loop)
+com.apple.mlhostd                         A  Mac 6/18  0.00 s; Ycode 18-49
+com.apple.proactiveeventtrackerd          A  Mac 0/18  0.00 s; Ycode 57-61
+com.apple.facetimemessagestored           A  Mac 0/18  0.00 s; Ycode 56-60
+com.apple.pairedsyncd                     A  Mac 3/18  0.06 s; Ycode 59-62
+com.apple.parsec-fbf                      B  Mac 9/18  0.10 s
+com.apple.parsecd                         B  Mac 16/18 0.29 s
+com.apple.textunderstandingd              B  Mac 17/18 0.45 s
+com.apple.accessibility.axassetsd         B  Mac 18/18 0.53 s
+com.apple.siriknowledged                  B  Mac 18/18 0.66 s
+com.apple.spotlightknowledged.updater     B  Mac 17/18 0.72 s
+com.apple.suggestd                        B  Mac 18/18 0.93 s
+com.apple.siriinferenced                  B  Mac 18/18 0.94 s
+com.apple.searchd                         B  Mac 18/18 1.39 s; Ycode 41-49 starts
+com.apple.photoanalysisd                  B  Mac 18/18 1.79 s
+com.apple.homed                           B  Mac 18/18 3.03 s
+com.apple.siriactionsd                    B  Mac 18/18 3.31 s
+com.apple.intelligenceplatformd           B  Mac 11/18 4.05 s

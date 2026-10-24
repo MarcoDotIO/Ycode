@@ -33,6 +33,11 @@ struct TranslateOptions {
     // (by name); used to link functions of the same library.
     std::function<bool(const std::string &name, std::string &module)> resolveVisible;
     bool wantAssembly = false;      // keep the SPIR-V text
+    // Loop guard: when nonzero, each invocation may pass loop headers at
+    // most this many times in all; after that every loop is left at its
+    // header (stage8-contract.md §13.3). Reflection reports it as
+    // "loop_limit".
+    uint32_t loopLimit = 0;
 
     // Function constant values by index (specializes the function the way
     // MTLFunctionConstantValues does; constants not given stay

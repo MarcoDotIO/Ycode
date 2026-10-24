@@ -535,7 +535,7 @@ import YcodeDarwinABI
         #expect(try u64(byName("hw.memsize", buffer: 8).1, 0) == 1 << 30)
         #expect(try u32(byName("hw.cputype", buffer: 4).1, 0) == 0x0100_000C)
         #expect(try u64(byName("hw.cachelinesize", buffer: 8).1, 0) == 64)
-        #expect(try u32(byName("hw.logicalcpu", buffer: 4).1, 0) == 1)
+        #expect(try u32(byName("hw.logicalcpu", buffer: 4).1, 0) == UInt32(GuestCPUs.count))
         #expect(try byName("kern.boottime", buffer: 16).1.count == 16)
         let (f, v) = try byName("hw.optional.arm.FEAT_SME", buffer: 4)
         #expect(!f.carry && u32(v, 0) == 0)

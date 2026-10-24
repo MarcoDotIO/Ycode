@@ -58,6 +58,10 @@ enum VK {
         t.add(Array("test:color.frag".utf8), TranslatedShader(spirv: TestShaders.colorFrag, reflection: ShaderReflection(stage: .fragment, entryPoint: "main")))
         t.add(Array("test:full.vert".utf8), TranslatedShader(spirv: TestShaders.fullVert, reflection: ShaderReflection(stage: .vertex, entryPoint: "main")))
         t.add(Array("test:tex.frag".utf8), TranslatedShader(spirv: TestShaders.texFrag, reflection: ShaderReflection(stage: .fragment, entryPoint: "main")))
+        // The same shader with a reflection that lists its texture (as ycode-airc's does).
+        var texReflection = ShaderReflection(stage: .fragment, entryPoint: "main")
+        texReflection.textures = [ShaderReflection.Binding(index: 0)]
+        t.add(Array("test:tex.frag+refl".utf8), TranslatedShader(spirv: TestShaders.texFrag, reflection: texReflection))
         return t
     }()
 
@@ -192,6 +196,50 @@ struct VulkanBackendTests {
         for h in [ha, hb, hout, hcount, pipe] { b.release(h) }
     }
 
+    /// A kernel named in `laneIsolatedKernels` runs one thread per workgroup
+    /// (§15.5) with the same result; the grid guard still holds.
+    @Test func laneIsolatedKernelRunsOneThreadPerWorkgroup() throws {
+        var o = VulkanMetalBackend.Options()
+        o.laneIsolatedKernels = ["main"]
+        o.log = { print($0) }
+        let b = VulkanMetalBackend(translator: VK.translator, options: o)
+        defer { b.shutdown() }
+        let n = 1000
+        let guest = HostPages(65536)
+        let aOff = 0, bOff = 8192, outOff = 16384, countOff = 32768
+        for i in 0..<n {
+            guest.floats(aOff, n)[i] = Float(i)
+            guest.floats(bOff, n)[i] = 0.25
+            guest.floats(outOff, n)[i] = -1
+        }
+        guest.pointer.storeBytes(of: UInt32(n), toByteOffset: countOff, as: UInt32.self)
+        let ha = VK.handle(), hb = VK.handle(), hout = VK.handle(), hcount = VK.handle(), fn = VK.handle(), pipe = VK.handle()
+        try b.createBuffer(ha, length: n * 4, storage: .shared, guestMemory: guest.region(aOff, n * 4))
+        try b.createBuffer(hb, length: n * 4, storage: .shared, guestMemory: guest.region(bOff, n * 4))
+        try b.createBuffer(hout, length: n * 4, storage: .shared, guestMemory: guest.region(outOff, n * 4))
+        try b.createBuffer(hcount, length: 4, storage: .shared, guestMemory: guest.region(countOff, 4))
+        try b.createFunction(fn, metallib: Array("test:add".utf8))
+        _ = try b.createComputePipeline(pipe, function: fn)
+        let done = DispatchSemaphore(value: 0)
+        let status = StatusBox()
+        let cb = MetalCommandBuffer(process: 1, queue: nil, commandBufferRef: VK.nextID(), passes: [.compute([
+            .setComputePipelineState(pipe),
+            .setBuffer(index: 0, buffer: ha, offset: 0),
+            .setBuffer(index: 1, buffer: hb, offset: 0),
+            .setBuffer(index: 2, buffer: hout, offset: 0),
+            .setBuffer(index: 3, buffer: hcount, offset: 0),
+            .dispatchThreads(MetalSize3(n, 1, 1), threadsPerThreadgroup: MetalSize3(64, 1, 1)),
+        ])])
+        b.submit(cb, scheduled: {}, completed: { s in status.value = s; done.signal() })
+        #expect(done.wait(timeout: .now() + 10) == .success)
+        #expect(status.value == 4)
+        let out = guest.floats(outOff, n)
+        let bad = (0..<n).filter { out[$0] != Float($0) + 0.25 }.count
+        #expect(bad == 0, "\(bad) wrong values")
+        #expect(b.stats.laneIsolatedDispatches == 1)
+        for h in [ha, hb, hout, hcount, pipe, fn] { b.release(h) }
+    }
+
     @Test func clearRenderTarget() throws {
         let t = try VK.texture(MetalPixelFormat.rgba8Unorm, 64, 64)
         let r = VK.run([VK.colorPass(t, clear: [0.25, 0.5, 0.75, 1])])
@@ -207,7 +255,7 @@ struct VulkanBackendTests {
     /// A red triangle with its apex at the top of the target (Metal clip
     /// space is y-up), through a vertex descriptor and a constant buffer.
     func drawTriangle(into target: MetalHandle, format: UInt32, load: UInt16 = MetalLoadAction.clear,
-                      cull: UInt64? = nil, winding: UInt64? = nil) throws -> Int {
+                      cull: UInt64? = nil, winding: UInt64? = nil, scissor: MetalScissorRect? = nil) throws -> Int {
         let b = VK.backend
         let verts = HostPages(16384)
         // float2 position + uchar4 color, stride 12.
@@ -244,6 +292,7 @@ struct VulkanBackendTests {
         ]
         if let w = winding { cmds.append(.setFrontFacingWinding(w)) }
         if let m = cull { cmds.append(.setCullMode(m)) }
+        if let r = scissor { cmds.append(.setScissorRect(r)) }
         cmds.append(.draw(MetalDraw(primitiveType: MetalPrimitiveType.triangle, vertexStart: 0, vertexCount: 3)))
         let r = VK.run([VK.colorPass(target, load: load, cmds)])
         for h in [vb, xb, pipe] { b.release(h) }
@@ -311,6 +360,69 @@ struct VulkanBackendTests {
         }
         #expect(bad == 0, "\(bad) of 4096 pixels wrong")
         for h in [src, smp, pipe, t] { b.release(h) }
+    }
+
+    /// A draw that samples its own color attachment samples a copy made
+    /// just before the draw (§15.6): the cleared color comes back, and the
+    /// copy is counted.
+    @Test func drawSamplingItsOwnTargetReadsASnapshot() throws {
+        let b = VK.backend
+        let smp = VK.handle()
+        try b.createSampler(smp, MetalSamplerDescriptor())
+        var desc = MetalRenderPipelineDescriptor()
+        desc.vertexFunction = try VK.function("full.vert")
+        desc.fragmentFunction = try VK.function("tex.frag+refl")
+        var c = MetalColorAttachmentDescriptor(index: 0)
+        c.pixelFormat = MetalPixelFormat.rgba8Unorm
+        desc.colorAttachments = [c]
+        let pipe = VK.handle()
+        try b.createRenderPipeline(pipe, desc)
+        let t = try VK.texture(MetalPixelFormat.rgba8Unorm, 64, 64, usage: 0x5)
+        let before = b.stats.feedbackSnapshots
+        let r = VK.run([VK.colorPass(t, load: MetalLoadAction.clear, clear: [0, 1, 0, 1], [
+            .setRenderPipelineState(pipe),
+            .setTexture(stage: .fragment, index: 0, texture: t),
+            .setSamplerState(stage: .fragment, index: 0, sampler: smp, lodMinClamp: nil, lodMaxClamp: nil),
+            .draw(MetalDraw(primitiveType: MetalPrimitiveType.triangle, vertexStart: 0, vertexCount: 3)),
+        ])])
+        #expect(r.status == 4)
+        #expect(b.stats.feedbackSnapshots == before + 1)
+        let px = try VK.read(t, 64, 64)
+        let bad = (0..<(64 * 64)).filter { Array(px[4 * $0..<4 * $0 + 4]) != [0, 255, 0, 255] }.count
+        #expect(bad == 0, "\(bad) pixels are not the cleared green")
+        for h in [smp, pipe, t] { b.release(h) }
+    }
+
+    /// A scissored draw that samples its own target copies only its
+    /// scissor rectangle (2 texels wider) and reads the cleared color there.
+    @Test func scissoredFeedbackDrawCopiesItsScissor() throws {
+        let b = VK.backend
+        let smp = VK.handle()
+        try b.createSampler(smp, MetalSamplerDescriptor())
+        var desc = MetalRenderPipelineDescriptor()
+        desc.vertexFunction = try VK.function("full.vert")
+        desc.fragmentFunction = try VK.function("tex.frag+refl")
+        var c = MetalColorAttachmentDescriptor(index: 0)
+        c.pixelFormat = MetalPixelFormat.rgba8Unorm
+        desc.colorAttachments = [c]
+        let pipe = VK.handle()
+        try b.createRenderPipeline(pipe, desc)
+        let t = try VK.texture(MetalPixelFormat.rgba8Unorm, 64, 64, usage: 0x5)
+        let (copies, texels) = (b.stats.feedbackSnapshots, b.stats.feedbackTexels)
+        let r = VK.run([VK.colorPass(t, load: MetalLoadAction.clear, clear: [0, 1, 0, 1], [
+            .setRenderPipelineState(pipe),
+            .setTexture(stage: .fragment, index: 0, texture: t),
+            .setSamplerState(stage: .fragment, index: 0, sampler: smp, lodMinClamp: nil, lodMaxClamp: nil),
+            .setScissorRect(MetalScissorRect(x: 8, y: 8, width: 16, height: 16)),
+            .draw(MetalDraw(primitiveType: MetalPrimitiveType.triangle, vertexStart: 0, vertexCount: 3)),
+        ])])
+        #expect(r.status == 4)
+        #expect(b.stats.feedbackSnapshots == copies + 1)
+        #expect(b.stats.feedbackTexels == texels + 20 * 20)
+        let px = try VK.read(t, 64, 64)
+        let bad = (0..<(64 * 64)).filter { Array(px[4 * $0..<4 * $0 + 4]) != [0, 255, 0, 255] }.count
+        #expect(bad == 0, "\(bad) pixels are not the cleared green")
+        for h in [smp, pipe, t] { b.release(h) }
     }
 
     @Test func blits() throws {
@@ -397,6 +509,181 @@ struct VulkanBackendTests {
         #expect(r.status == 4 && r.scheduledFirst)
         #expect(at(10, 10) == 0xFF00_00FF, "after clear \(hex(at(10, 10)))")
         VK.backend.release(t)
+    }
+
+    final class SurfaceLockState: @unchecked Sendable {
+        let lock = NSLock()
+        var seed: UInt32 = 0
+        var locked = false
+        func get() -> (seed: UInt32, locked: Bool)? { lock.withLock { (seed, locked) } }
+        func write() { lock.withLock { seed &+= 1 } }
+    }
+
+    /// IOSurface copies limited to what changed (stage8-contract.md §14):
+    /// a copy-out covers only the scissor rects drawn in; a copy-in is
+    /// skipped while the image holds the surface's pixels, and happens again
+    /// after a CPU write lock (seed) or another image's copy-out.
+    @Test func ioSurfaceCopiesOnlyWhatChanged() throws {
+        let b = VK.backend
+        let w = 64, h = 64, pitch = 320
+        let surface = HostPages(roundUp(pitch * h, 16384))
+        func at(_ x: Int, _ y: Int) -> UInt32 { surface.pointer.load(fromByteOffset: y * pitch + 4 * x, as: UInt32.self) }
+        func set(_ x: Int, _ y: Int, _ v: UInt32) { surface.pointer.storeBytes(of: v, toByteOffset: y * pitch + 4 * x, as: UInt32.self) }
+        for y in 0..<h { for x in 0..<w { set(x, y, 0xFF00_FF00) } }
+        let state = SurfaceLockState()
+        var backing = IOSurfaceBacking(surfaceID: 9, region: surface.region(0, pitch * h), width: w, height: h,
+                                       bytesPerRow: pitch, bytesPerElement: 4, pixelFormat: 0x4247_5241)
+        backing.syncState = { state.get() }
+        let t1 = try VK.texture(MetalPixelFormat.bgra8Unorm, w, h, usage: 0x5, private: false, iosurface: backing)
+        func image(_ t: MetalHandle, _ x: Int, _ y: Int) throws -> UInt32 {
+            let px = try VK.read(t, w, h)
+            return px.withUnsafeBytes { $0.load(fromByteOffset: 4 * (y * w + x), as: UInt32.self) }
+        }
+        let band = MetalScissorRect(x: 24, y: 0, width: 16, height: h)
+
+        // 1. Scissored draw: red inside the band, green kept outside it.
+        #expect(try drawTriangle(into: t1, format: MetalPixelFormat.bgra8Unorm, load: MetalLoadAction.load, scissor: band) == 4)
+        #expect(at(32, 40) == 0xFFFF_0000, "inside \(hex(at(32, 40)))")
+        #expect(at(4, 62) == 0xFF00_FF00, "outside the scissor \(hex(at(4, 62)))")
+
+        // 2. A write without a lock is not seen: the copy-in is skipped, and
+        // the copy-out (the band only) leaves the written pixel alone.
+        let skipped = b.stats.surfaceUploadsSkipped
+        set(2, 2, 0xFF00_00FF)
+        #expect(try drawTriangle(into: t1, format: MetalPixelFormat.bgra8Unorm, load: MetalLoadAction.load, scissor: band) == 4)
+        #expect(b.stats.surfaceUploadsSkipped == skipped + 1)
+        #expect(at(2, 2) == 0xFF00_00FF, "unlocked CPU write kept in surface memory \(hex(at(2, 2)))")
+        #expect(try image(t1, 2, 2) == 0xFF00_FF00, "image not reloaded")
+
+        // 3. A write under a write lock (seed raised) is copied in.
+        state.write()
+        set(3, 3, 0xFF12_3456)
+        #expect(try drawTriangle(into: t1, format: MetalPixelFormat.bgra8Unorm, load: MetalLoadAction.load, scissor: band) == 4)
+        #expect(try image(t1, 3, 3) == 0xFF12_3456, "seed change copies in")
+        #expect(b.stats.surfaceUploadsSkipped == skipped + 1)
+
+        // 4. A held lock means no skipping.
+        state.lock.withLock { state.locked = true }
+        set(5, 5, 0xFF65_4321)
+        #expect(try drawTriangle(into: t1, format: MetalPixelFormat.bgra8Unorm, load: MetalLoadAction.load, scissor: band) == 4)
+        #expect(try image(t1, 5, 5) == 0xFF65_4321, "locked surface copies in")
+        state.lock.withLock { state.locked = false }
+
+        // 5. Another texture over the same surface writes it: t1 copies in again.
+        let t2 = try VK.texture(MetalPixelFormat.bgra8Unorm, w, h, usage: 0x5, private: false, iosurface: backing)
+        let other = MetalScissorRect(x: 0, y: 48, width: 64, height: 16)
+        #expect(try drawTriangle(into: t2, format: MetalPixelFormat.bgra8Unorm, load: MetalLoadAction.load, scissor: other) == 4)
+        #expect(at(4, 62) == 0xFFFF_0000, "t2 drew the bottom band \(hex(at(4, 62)))")
+        #expect(try drawTriangle(into: t1, format: MetalPixelFormat.bgra8Unorm, load: MetalLoadAction.load, scissor: band) == 4)
+        #expect(try image(t1, 4, 62) == 0xFFFF_0000, "t1 sees t2's copy-out")
+        #expect(at(4, 62) == 0xFFFF_0000)
+
+        // 6. A clear writes everything.
+        #expect(VK.run([VK.colorPass(t1, clear: [0, 0, 1, 1])]).status == 4)
+        #expect(at(2, 2) == 0xFF00_00FF && at(60, 60) == 0xFF00_00FF, "after clear \(hex(at(2, 2)))")
+        for t in [t1, t2] { b.release(t) }
+    }
+
+    /// A copy-out held behind an event wait reaches the surface only when the
+    /// held work is submitted: an image of the same surface that copied it
+    /// in meanwhile must copy it in again afterwards (no stale pixels).
+    @Test func heldCopyOutInvalidatesOtherImages() throws {
+        let b = VK.backend
+        let w = 32, h = 32, pitch = 128
+        let surface = HostPages(roundUp(pitch * h, 16384))
+        func set(_ x: Int, _ y: Int, _ v: UInt32) { surface.pointer.storeBytes(of: v, toByteOffset: y * pitch + 4 * x, as: UInt32.self) }
+        for y in 0..<h { for x in 0..<w { set(x, y, 0xFF00_FF00) } }
+        let state = SurfaceLockState()
+        var backing = IOSurfaceBacking(surfaceID: 13, region: surface.region(0, pitch * h), width: w, height: h,
+                                       bytesPerRow: pitch, bytesPerElement: 4, pixelFormat: 0x4247_5241)
+        backing.syncState = { state.get() }
+        let tA = try VK.texture(MetalPixelFormat.bgra8Unorm, w, h, usage: 0x5, private: false, iosurface: backing)
+        let tB = try VK.texture(MetalPixelFormat.bgra8Unorm, w, h, usage: 0x5, private: false, iosurface: backing)
+        func pixel(_ t: MetalHandle, _ x: Int, _ y: Int) throws -> UInt32 {
+            let px = try VK.read(t, w, h)
+            return px.withUnsafeBytes { $0.load(fromByteOffset: 4 * (y * w + x), as: UInt32.self) }
+        }
+        let event = VK.handle()
+        try b.createEvent(event)
+        // tB holds the surface's (green) pixels.
+        #expect(VK.run([VK.colorPass(tB, load: MetalLoadAction.load)]).status == 4)
+        #expect(try pixel(tB, 2, 2) == 0xFF00_FF00)
+        // tA's clear to blue is held behind an event; meanwhile tB copies in again (still green).
+        let done = DispatchSemaphore(value: 0)
+        let cb = MetalCommandBuffer(process: 1, queue: VK.handle(), commandBufferRef: VK.nextID(),
+                                    passes: [.event([.wait(event, value: 1)]), VK.colorPass(tA, clear: [0, 0, 1, 1])])
+        b.submit(cb, scheduled: {}, completed: { _ in done.signal() })
+        #expect(VK.run([VK.colorPass(tB, load: MetalLoadAction.load)]).status == 4)
+        #expect(try pixel(tB, 2, 2) == 0xFF00_FF00)
+        // The held clear runs; tB must see it.
+        b.signalEvent(event, value: 1)
+        #expect(done.wait(timeout: .now() + 10) == .success)
+        #expect(surface.pointer.load(fromByteOffset: 2 * pitch + 8, as: UInt32.self) == 0xFF00_00FF)
+        #expect(VK.run([VK.colorPass(tB, load: MetalLoadAction.load)]).status == 4)
+        let after = try pixel(tB, 2, 2)
+        #expect(after == 0xFF00_00FF, "tB copied the held write in: \(hex(after))")
+        for t in [event, tA, tB] { b.release(t) }
+        b.waitIdle()
+    }
+
+    /// A GPU that stops making progress (a submission that never completes,
+    /// app-launch.md §3.7) costs one surface-write timeout, then only short
+    /// looks; waiting resumes once the GPU moves again.
+    @Test func surfaceWaitOnAStuckGPU() throws {
+        var o = VulkanMetalBackend.Options()
+        o.log = { print($0) }
+        o.pipelineCachePath = nil
+        let b = VulkanMetalBackend(translator: VK.translator, options: o)
+        let gate = VK.handle()
+        try b.createEvent(gate)
+        // An empty submission that writes surface 21 and waits on the GPU for the gate.
+        b.cond.lock()
+        let rec = try b.newRecording()
+        rec.waitSemaphore = b.events[gate]?.semaphore
+        rec.waitValue = 1
+        rec.writtenSurfaces = [21]
+        try b.submitRecording(rec, entry: nil)
+        b.cond.unlock()
+        var t0 = DispatchTime.now().uptimeNanoseconds
+        #expect(!b.waitForSurfaceWrites(21, timeout: 0.2))
+        let first = DispatchTime.now().uptimeNanoseconds - t0
+        t0 = DispatchTime.now().uptimeNanoseconds
+        #expect(!b.waitForSurfaceWrites(21, timeout: 0.2))
+        let second = DispatchTime.now().uptimeNanoseconds - t0
+        #expect(first >= 150_000_000 && second < 50_000_000, "first \(first / 1_000_000) ms, second \(second / 1_000_000) ms")
+        #expect(b.stats.surfaceWriteWaitTimeouts == 1)
+        b.signalEvent(gate, value: 1)
+        // The GPU moves again: a look sees the write finished, and full waits resume.
+        var done = false
+        for _ in 0..<400 where !done { done = b.waitForSurfaceWrites(21, timeout: 5) }
+        #expect(done)
+        b.release(gate)
+        b.shutdown()
+    }
+
+    /// `scheduled` comes when the work is on the queue (stage8-contract.md
+    /// §14); a reader that waits for the surface's GPU writes then sees the
+    /// finished pixels.
+    @Test func scheduledEarlyAndSurfaceWriteWait() throws {
+        let b = VK.backend
+        guard b.options.earlyScheduled else { return }
+        let w = 64, h = 64, pitch = 256
+        let surface = HostPages(roundUp(pitch * h, 16384))
+        let backing = IOSurfaceBacking(surfaceID: 11, region: surface.region(0, pitch * h), width: w, height: h,
+                                       bytesPerRow: pitch, bytesPerElement: 4, pixelFormat: 0x4247_5241)
+        let t = try VK.texture(MetalPixelFormat.bgra8Unorm, w, h, usage: 0x5, private: false, iosurface: backing)
+        final class Seen: @unchecked Sendable { var pixel: UInt32 = 0; var waited = false; let done = DispatchSemaphore(value: 0) }
+        let seen = Seen()
+        let cb = MetalCommandBuffer(process: 1, queue: nil, commandBufferRef: VK.nextID(), passes: [VK.colorPass(t, clear: [0, 0, 1, 1])])
+        b.submit(cb, scheduled: {
+            seen.waited = b.waitForSurfaceWrites(11, timeout: 5)
+            seen.pixel = surface.pointer.load(fromByteOffset: 10 * pitch + 40, as: UInt32.self)
+        }, completed: { _ in seen.done.signal() })
+        #expect(seen.done.wait(timeout: .now() + 10) == .success)
+        #expect(seen.waited)
+        #expect(seen.pixel == 0xFF00_00FF, "pixel after the wait \(hex(seen.pixel))")
+        #expect(b.stats.earlyScheduled > 0)
+        b.release(t)
     }
 
     /// Asynchronous pipeline creation plus the persistent VkPipelineCache:
@@ -511,6 +798,52 @@ struct VulkanBackendTests {
         #expect(VK.run([.event([.wait(event, value: 1)]), VK.colorPass(t2, clear: [1, 1, 1, 1])]).status == 4)
         for h in [event, cpuEvent, t1, t2, t3] { b.release(h) }
         b.waitIdle()
+    }
+
+    /// The ordered end before exit (stage8-contract.md §12): finished work
+    /// completes normally, work held for an event that never comes completes
+    /// as an error, both backend threads end, nothing is abandoned, and a
+    /// second shutdown returns at once.
+    @Test func shutdownEndsTheBackendThreads() throws {
+        var o = VulkanMetalBackend.Options()
+        o.log = { print($0) }
+        o.pipelineCachePath = nil
+        o.shutdownGrace = 5
+        let b = VulkanMetalBackend(translator: VK.translator, options: o)
+        let event = VK.handle(), t1 = VK.handle(), t2 = VK.handle()
+        try b.createEvent(event)
+        for t in [t1, t2] {
+            try b.createTexture(t, MetalTextureDescriptor(pixelFormat: MetalPixelFormat.rgba8Unorm, width: 16, height: 16,
+                                                          usage: 5, resourceOptions: 0x20), iosurface: nil)
+        }
+        let lock = NSLock()
+        nonisolated(unsafe) var statuses: [String: Int] = [:]
+        let done = DispatchSemaphore(value: 0)
+        func submit(_ name: String, _ queue: MetalHandle, _ passes: [MetalPass]) {
+            b.submit(MetalCommandBuffer(process: 9, queue: queue, commandBufferRef: VK.nextID(), passes: passes),
+                     scheduled: {}, completed: { s in
+                         lock.lock(); statuses[name] = s; lock.unlock()
+                         done.signal()
+                     })
+        }
+        submit("ran", VK.handle(), [VK.colorPass(t1, clear: [1, 0, 0, 1])])
+        #expect(done.wait(timeout: .now() + 10) == .success)
+        submit("held", VK.handle(), [.event([.wait(event, value: 1)]), VK.colorPass(t2, clear: [0, 1, 0, 1])])
+        usleep(50_000)
+        let t0 = DispatchTime.now().uptimeNanoseconds
+        b.shutdown()
+        let ms = (DispatchTime.now().uptimeNanoseconds - t0) / 1_000_000
+        #expect(done.wait(timeout: .now() + 10) == .success, "the held command buffer completes at shutdown")
+        lock.lock()
+        #expect(statuses["ran"] == MetalCommandBufferStatus.completed)
+        #expect(statuses["held"] == MetalCommandBufferStatus.error)
+        lock.unlock()
+        #expect(b.threadsStopped)
+        #expect(!b.abandonedWorkAtShutdown)
+        #expect(ms < 5_000, "shutdown took \(ms) ms")
+        let t1b = DispatchTime.now().uptimeNanoseconds
+        b.shutdown()
+        #expect(DispatchTime.now().uptimeNanoseconds - t1b < 100_000_000)
     }
 }
 

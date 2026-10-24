@@ -557,6 +557,62 @@ both copies of each duplicated field.
 | 0x200 | One 0 byte per vCPU |
 | others | 0 |
 
+**Guest CPU count (nCPU; speed work 2026-10-17).** The guest is told one
+CPU count, N, everywhere it can read one, so that every consumer sizes its
+thread pools alike. N is the launcher setting `YCODE_GUEST_CPUS` (1…64)
+when set, otherwise **1** (measured default, below). N does not depend on how many
+vCPUs an image has (Ycode gives every guest thread its own vCPU). With N:
+
+- commpage: `NCPUS` (0x022, the `kNumCPUs` field of the capabilities),
+  `ACTIVE_CPUS`, `PHYSICAL_CPUS`, `LOGICAL_CPUS` = N; `kUP` only when N = 1;
+  `CPU_CLUSTERS` = 1; `cpu_to_cluster` = N zero bytes;
+- sysctl: `hw.ncpu`, `hw.activecpu`, `hw.availcpu`, `hw.logicalcpu`,
+  `hw.logicalcpu_max`, `hw.physicalcpu`, `hw.physicalcpu_max` = N;
+  `hw.nperflevels` = 1 and `hw.perflevel0.logicalcpu`,
+  `hw.perflevel0.logicalcpu_max`, `hw.perflevel0.physicalcpu`,
+  `hw.perflevel0.physicalcpu_max` = N;
+- workqueue: the constrained parallelism per QoS, the cooperative pool
+  width (`threads-and-events.md` §2.5) and the `QOS_MAX_PARALLELISM` answer
+  (`bsdthread_ctl` 0x800) = N;
+- CPU numbers: a thread's TPIDR_EL0 (its CPU number) is its vCPU index
+  modulo N, so it is always below N.
+
+Why: until 2026-10-17 the commpage and the sysctls said 1 CPU (with `kUP`)
+while the workqueue admitted 8 constrained threads per QoS and
+`QOS_MAX_PARALLELISM` answered 8. libdispatch reads its CPU counts from the
+commpage and from these sysctls, and sizes the cooperative pool that Swift
+concurrency runs on to one thread per CPU, so every guest process had a
+single Swift-concurrency thread.
+
+Why the default is 1 (measured 2026-10-17, full boots on the Thor, SX
+harness, device in tmpfs, 700 s, interleaved with other agents' boots):
+with the cooperative pool and the 8 → N change, N = 14 (the Thor's online
+CPUs) reached the home screen at 415/405/430/390 s, N = 1 at 355/385/320 s;
+with the 24 MHz guest timebase (below) N = 14 and N = 1 were alike
+(300 s and 310 s, one run each; the remaining runs were stopped when the
+data drive filled). In those builds N = 14 also made fileindexerd fail its
+start in a loop ("Failed to init after preparing dependencies",
+NSPOSIXErrorDomain 19; 15–47 crashes per boot) while at N = 1 it still
+waited for searchd. That crash is not caused by N: once searchd runs (the
+renameatx_np fix) fileindexerd crashes the same way at N = 1, because Ycode
+has no host `com.apple.FSEvents` service (`service-fidelity.md`).
+On the integrated build (speed-int fb1a4d6 with fast traps, the HVC
+doorbell and the 24 MHz timebase; two boots at a time) N = 1 reached the
+home screen at 240/285/270 s with the kernel lock busy 23–29 % of the run,
+N = 14 at 245/295/285 s with 30–35 %. More admitted workers did not shorten
+the boot: Ycode's kernel lock serializes the traps they make. Larger N stays
+available through `YCODE_GUEST_CPUS` for experiments.
+
+Evidence: level 1. The commpage fields are from xnu
+(`osfmk/arm/cpu_capabilities.h`, `osfmk/arm/commpage/commpage.c`); the
+sysctl names from xnu (`bsd/kern/kern_mib.c`); libdispatch's use of them
+from libdispatch (`src/shims/hw_config.h`: `_dispatch_hw_get_config`, which
+reads the commpage CPU counts and `hw.activecpu`/`hw.logicalcpu_max`/
+`hw.physicalcpu`); the cooperative width from libdispatch's cooperative root
+queues and xnu `bsd/pthread/workqueue_internal.h`. The value of N is Ycode's
+choice. The default N = 1 is level 3: the boot times and crash counts
+above (Ycode boots on the Thor, exit summaries).
+
 **Timebase mode.** The value 3 (`ACNTVCT_EL0`) must **not** be used: that
 register is Apple-specific and is UNDEFINED on the Thor. Choose one of:
 
@@ -573,6 +629,45 @@ register is Apple-specific and is UNDEFINED on the Thor. Choose one of:
     the frequency is 1 GHz, so this is 1/1.
   - The value 2 (`CNTVCTSS_EL0`) is allowed only if the guest has
     FEAT_ECV.
+
+**Guest timebase (Ycode's choice since 2026-10-17): Mode A semantics, 24
+MHz.** The guest's mach time runs at Apple's arm64 timebase, 24 MHz
+(`mach_timebase_info` = 125/3), whatever the host counter's frequency:
+
+- traps −3 and −4 return the VM's aligned host counter scaled to 24 MHz
+  with the fixed-point clock scale of `fast-traps.md` §3.2 (≈ counter ×
+  24 000 000 / `CNTFRQ_EL0`; on the Thor, 1 GHz: ≈ × 3/125); with the fast
+  traps on (the default) Ycode's library computes the same value at EL0
+  from `CNTVCT_EL0` and the scale the commpage publishes;
+- trap −89 returns 125/3;
+- the commpage says `USER_TIMEBASE` = 0 (no user timebase), so code that
+  reads the commpage (libsyscall's `mach_absolute_time.s`,
+  `kdebug_trace.c`) takes the trap instead of reading `CNTVCT_EL0`, which
+  stays at the host frequency; Ycode's own `libsystem_kernel` traps, or
+  (fast traps) reads the counter only through the scale;
+- every mach-tick value the kernel takes or gives (mach_wait_until,
+  mk_timer, `NOTE_MACHTIME` and absolute kevent timers, ulock deadlines,
+  process start/exit times, the `gettimeofday` mach-time out-parameter, the
+  commpage wall-clock snapshot) uses the same 24 MHz ticks, because the kernel converts with its one
+  counter and frequency.
+
+The launcher setting `YCODE_GUEST_TIMEBASE=host` restores Mode B (the host
+counter as is, 10⁹/`CNTFRQ_EL0`, `USER_TIMEBASE` = 1).
+
+Why: Swift Concurrency on Apple arm64 does not ask for the timebase. It
+converts a task deadline from nanoseconds to mach ticks with the fixed
+ratio 3/125 (its source states that Apple arm platforms use a fixed
+125/3 timebase), then hands the tick value to `dispatch_after` or a dispatch timer
+with the monotonic (continuous) flag; libdispatch compares it with
+`mach_continuous_time`. On a 1 GHz guest counter the deadline is about
+1/42 of the current tick count, always in the past, so every
+`Task.sleep(for:)` and `Task.sleep(until:)` fires at once. A Swift task that
+sleeps in a loop then spins: each round reads the continuous clock, enqueues
+its job on the cooperative root queue (`QUEUE_REQTHREADS2`), and the worker
+returns (`THREAD_RETURN`). That is the suggestd/parsecd/axassetsd pattern
+(about 1000 rounds a second per thread; `threads-and-events.md` §2.5).
+libdispatch's own `dispatch_time` converts with `mach_timebase_info` and is
+correct with either timebase.
 
 **Traps.** Follow §4 exactly:
 
@@ -639,5 +734,8 @@ the repository.
 | Mach trap dispatch and invalid-trap exception | `osfmk/arm64/bsd_arm64.c` (`mach_syscall`), `bsd/uxkern/ux_exception.c`, `bsd/sys/signalvar.h` |
 | `nosys` → SIGSYS, `enosys` | `bsd/kern/subr_xxx.c` |
 | Timebase numer/denom formula, `mach_timebase_info` trap | `osfmk/arm/rtclock.c` (`timebase_callback`, `clock_timebase_info`), `libsyscall/wrappers/mach_timebase_info.c`, `osfmk/kern/syscall_sw.c` |
+| Guest timebase: Swift's fixed 125/3 conversion of task deadlines on Apple arm64 | swift `stdlib/public/Concurrency/DispatchGlobalExecutor.cpp` (`platform_time`, `clock_and_value_to_time`, `swift_dispatchEnqueueWithDeadline`), swiftlang/swift `main`, fetched 2026-10-17 |
+| libdispatch converts with `mach_timebase_info` | libdispatch `src/shims/time.h` (`_dispatch_time_nano2mach`), `src/time.c` (`_dispatch_host_time_init`), apple-oss-distributions/libdispatch `main`, fetched 2026-10-17 |
+| The Thor's counter is 1 GHz | level 3: `ycode-simd` reports `CNTFRQ_EL0 = 1000000000 Hz`; the host kernel log says `arch_timer: cp15 timer(s) running at 1000.00MHz` |
 | `CPUFAMILY_*` constants | `osfmk/mach/machine.h` |
 | macOS arm64 kernel options | `config/MASTER`, `config/MASTER.arm64.MacOSX` |

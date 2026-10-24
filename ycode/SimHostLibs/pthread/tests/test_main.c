@@ -1627,6 +1627,12 @@ static void test_workqueue(void)
     CHECK(reqthreads2_calls == 1 && (uint32_t)reqthreads_pp == 0x4FFu);
     wait_until(&wq_retired, r0 + 1);
     CHECK(wq_calls == w0 + 1 && wq_pp_seen[5] == (0x08000000ul | 0x4FFul));
+    /* The refusal is remembered: the next request skips REQTHREADS2. */
+    r0 = wq_retired;
+    CHECK(T(_pthread_workqueue_add_cooperativethreads)(1, 0x4FF) == 0);
+    CHECK(reqthreads2_calls == 1 && (uint32_t)reqthreads_pp == 0x4FFu);
+    wait_until(&wq_retired, r0 + 1);
+    CHECK(wq_calls == w0 + 2 && wq_pp_seen[6] == (0x08000000ul | 0x4FFul));
 
     CHECK(T(_pthread_workqueue_should_narrow)(0x8FF) == 0); /* not a workqueue thread */
     CHECK(T(_pthread_workqueue_set_event_manager_priority)(0x20FF) == 0 && mgr_prio == 0x20FF);

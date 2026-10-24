@@ -9,6 +9,9 @@
 #   out/SimFramebuffer.framework/SimFramebuffer
 #       the headless framebuffer library (SimFramebuffer/; specs/simulator/
 #       simframebuffer.md); ycode-simd points SIMULATOR_FRAMEBUFFER_FRAMEWORK at it.
+#   out/SimHID.framework/{Info.plist,SimHID}
+#       the HID bundle (SimHID/; specs/simulator/hid-input.md); with
+#       --display-server, ycode-simd points SIMULATOR_HID_SYSTEM_MANAGER at it.
 #
 # Usage: sh build.sh        build and check
 #        sh build.sh clean
@@ -88,3 +91,21 @@ write_tbds "$here/SimFramebuffer/imports.txt" "$obj"
 missing=$(grep -v '^#' "$here/SimFramebuffer/required.txt" | tr ' ' '\n' | grep -v '^$' | sort -u | comm -23 - "$obj/exports.txt")
 [ -z "$missing" ] || die "SimFramebuffer does not export: $missing"
 say "$fw/SimFramebuffer: $(wc -c < "$fw/SimFramebuffer" | tr -d ' ') bytes, $(wc -l < "$obj/exports.txt" | tr -d ' ') exports, all 61 required names"
+
+# --- SimHID (the HID bundle: a directory with Info.plist and the dylib) ---
+fw="$out/SimHID.framework"
+obj="$out/obj/SimHID"
+rm -rf "$obj" "$fw"
+mkdir -p "$obj" "$fw"
+# shellcheck disable=SC2086
+"$CLANG" $CFLAGS -c -o "$obj/simhid.o" "$here/SimHID/simhid.c" || die "compiling simhid.c failed"
+"$PYTHON" -I "$common/strip_platform.py" "$obj/simhid.o" || die "strip_platform failed"
+write_tbds "$here/SimHID/imports.txt" "$obj"
+# shellcheck disable=SC2046
+"$LD64" -arch arm64 -platform_version ios-simulator 27.0 27.1 -dylib \
+    -install_name @rpath/SimHID.framework/SimHID -current_version 1.0.0 -compatibility_version 1.0.0 \
+    -fixup_chains -no_adhoc_codesign -o "$fw/SimHID" "$obj/simhid.o" $(ls "$obj"/import-*.tbd) \
+    || die "linking SimHID failed"
+cp "$here/SimHID/Info.plist" "$fw/Info.plist"
+"$NM" -m "$fw/SimHID" | grep -q "__mod_init_func\|__init_offsets\|make_class" || say "warning: no initializer section found in SimHID"
+say "$fw: $(wc -c < "$fw/SimHID" | tr -d ' ') bytes"

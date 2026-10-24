@@ -1,0 +1,30 @@
+{
+  "com.apple.UIKit.UISplitViewController.Root" => {
+    "primaryEdgeSplitViewControllerColumn" => 2
+    "secondaryEdgeSplitViewControllerColumn" => 999
+    "splitViewControllerColumns" => [
+      0 => {
+        "splitViewControllerColumn" => 4
+        "width" => -3.402823466385289e+38
+      }
+      1 => {
+        "splitViewControllerColumn" => 2
+        "width" => -3.402823466385289e+38
+      }
+      2 => {
+        "splitViewControllerColumn" => 1
+        "width" => -3.402823466385289e+38
+      }
+      3 => {
+        "splitViewControllerColumn" => 3
+        "width" => -3.402823466385289e+38
+      }
+      4 => {
+        "splitViewControllerColumn" => 0
+        "width" => -3.402823466385289e+38
+      }
+    ]
+  }
+  "launchCount" => 1
+  "name" => "external1"
+}

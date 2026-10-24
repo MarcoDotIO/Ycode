@@ -1,0 +1,729 @@
+SUP t=-0.000 app.init=sinceExec=0.287
+SUP mode=lifecycle
+SUPX 0.005 notify-register com.apple.swiftuitrace.state
+SUPX 0.005 lookup2 com.apple.system.notification_center kr=0
+SUPX 0.012 lookup2 com.apple.logd kr=0
+SUPX 0.012 notify-register com.apple.system.logging.prefschanged
+SUPX 0.012 notify-register com.apple.system.logging.prefschanged
+SUPX 0.015 notify-register com.apple.CFPreferences._domainsChangedExternally
+SUPX 0.016 xpc-mach com.apple.cfprefsd.daemon
+SUPX 0.017 notify-register com.apple.system.timezone
+SUPX 0.026 notify-register com.apple.swiftuitrace.uikit
+SUPX 0.027 lookup com.apple.backboard.display.services kr=0
+SUPX 0.029 notify-register com.apple.UIKit.LoggingPreferences
+SUPX 0.031 notify-register com.apple.runningboard.daemonstartup
+SUPX 0.031 notify-register com.apple.iohideventsystem.available
+SUPX 0.033 xpc-mach com.apple.runningboard
+SUPX 0.034 notify-register GSEventHardwareKeyboardAttached
+SUPX 0.034 notify-register GSEventHardwareKeyboardAttached
+SUPX 0.035 notify-register com.apple.UIKit.SimulatorShake
+SUPX 0.041 notify-register com.apple.accessibility.cache.ax
+SUPX 0.043 notify-register com.apple.accessibility.cache.invert.colors
+SUPX 0.043 notify-register com.apple.accessibility.cache.app.ax
+SUPX 0.043 notify-register com.apple.accessibility.hearing.paired.ears.status
+SUPX 0.043 notify-register com.apple.dt.testmanagerd.availability.38058
+SUPX 0.043 notify-register com.apple.dt.testmanagerd.availability.38058
+SUPX 0.043 notify-register com.apple.dt.xctestd.availability.38058
+SUPX 0.043 notify-register com.apple.dt.xctestd.availability.38058
+SUPX 0.043 notify-register com.apple.dt.xctest.remote.availability.38058
+SUPX 0.043 notify-register com.apple.dt.xctest.remote.availability.38058
+SUPX 0.043 notify-register SignificantTimeChangeNotification
+SUPX 0.043 notify-register com.apple.language.changed
+SUPX 0.043 notify-register AppleTimePreferencesChangedNotification
+SUPX 0.043 notify-register AppleNumberPreferencesChangedNotification
+SUPX 0.043 notify-register AppleTimePreferencesChangedNotification
+SUPX 0.043 notify-register AppleDatePreferencesChangedNotification
+SUPX 0.043 notify-register AppleLanguagePreferencesChangedNotification
+SUPX 0.043 notify-register AppleTextBehaviorPreferencesChangedNotification
+SUPX 0.043 notify-register AppleTemperatureUnitPreferencesChangedNotification
+SUPX 0.043 notify-register AppleMeasurementSystemPreferencesChangedNotification
+SUPX 0.043 notify-register com.apple.springboard.showingAlertItem
+SUPX 0.043 notify-register NameLayerTree-38058
+SUPX 0.043 notify-register NameLayerTree
+SUPX 0.043 notify-register kKeepAppsUpToDateEnabledChangedNotification
+SUPX 0.044 notify-register AppleKeyboardsPreferencesChangedNotification
+SUPX 0.044 notify-register AppleKeyboardsSettingsChangedNotification
+SUPX 0.044 notify-register AppleKeyboardsInternalSettingsChangedNotification
+SUPX 0.044 notify-register AppleKeyboardsInputModeChangedNotification
+SUPX 0.044 notify-register AppleKeyboardsContinuousPathSettingsChangedNotification
+SUPX 0.044 notify-register com.apple.preferences.sounds.keyboard-audio.changed
+SUPX 0.044 notify-register kAFPreferencesDidChangeDarwinNotification
+SUPX 0.044 notify-register AssistiveTouchMouseAlwaysShowSoftwareKeyboard.notification
+SUPX 0.045 lookup com.apple.CARenderServer kr=0
+SUPX 0.046 notify-register com.apple.CoreAnimation.CAWindowServer.DisplayChanged
+SUPX 0.046 notify-register com.apple.CoreAnimation.CAWindowServer.DisplayPower
+SUPX 0.046 notify-register UIBacklightLevelChangedNotification
+SUPX 0.048 notify-register com.apple.accessibility.cache.enhance.text.legibility
+SUPX 0.048 notify-register com.apple.accessibility.cache.darken.system.colors.enabled
+SUPX 0.048 notify-register ApplePreferredContentSizeCategoryChangedNotification
+SUPX 0.048 notify-register AppleCarPlayPreferredContentSizeCategoryChangedNotification
+SUPX 0.048 notify-register com.apple.springboard.showingAlertItem
+SUP t=0.044 delegate.didFinishLaunching=state=2
+SUPX 0.050 notify-register com.apple.backboardd.orientation
+SUPX 0.052 notify-register com.apple.LaunchServices.database
+SUPX 0.052 xpc-mach com.apple.lsd.mapdb
+SUPX 0.054 notify-register com.apple.LaunchServices.database
+SUPX 0.057 notify-register com.apple.language.changed
+SUPX 0.059 xpc-mach com.apple.fontservicesd
+SUP t=0.073 app.body=
+SUP t=0.074 app.scenePhase=background->background
+SUPX 0.081 notify-register com.apple.accessibility.cache.full.keyboard.access
+SUPX 0.083 notify-register com.apple.gms.availability.notification
+SUPX 0.083 notify-register com.apple.language.changed
+SUPX 0.083 notify-register com.apple.os-eligibility-domain.change.greymatter
+SUPX 0.087 notify-register com.apple.gms.availability.notification
+SUPX 0.087 notify-register com.apple.os-eligibility-domain.change.greymatter
+SUPX 0.087 notify-register com.apple.language.changed
+SUPX 0.088 notify-register com.apple.system.lowpowermode
+SUPX 0.089 notify-register com.apple.LocalAuthentication.ui.presented
+SUPX 0.089 notify-register com.apple.LocalAuthentication.ui.dismissed
+SUPX 0.098 notify-register com.apple.system.timezone
+SUPX 0.100 notify-register com.apple.accessibility.cache.reduce.motion
+SUPX 0.103 notify-register com.apple.accessibility.cache.use.single.system.color.enabled
+SUP t=0.105 note.scene.willConnect=appState=2
+SUP t=0.105 app.body=
+SUP t=0.106 app.scenePhase=background->inactive
+SUP t=0.106 note.scene.willEnterForeground=appState=2
+SUPX 0.110 notify-register com.apple.backboardd.rawOrientation
+SUP t=0.106 note.app.willEnterForeground=appState=1
+SUPX 0.112 notify-register com.apple.UIIntelligenceSupport.AgentRelaunched.501
+SUPX 0.112 xpc-mach com.apple.uiintelligencesupport.agent
+SUPX 0.116 notify-register com.apple.UIKit.SimulatorSlowMotionAnimationState
+SUPX 0.116 notify-register UIViewGlassTintAmountUpdateNotification
+SUPX 0.119 notify-register com.apple.accessibility.OpaqueTouchGestures
+SUP t=0.120 root.body=
+SUP t=0.153 view.scenePhase=inactive->inactive
+SUP t=0.153 root.onAppear=sinceExec=0.440
+SUP t=0.153 lc.text.onAppear=
+SUP t=0.154 lc.text.task.start=
+SUP lc.screen=466.00x678.00 scale=3.00 native=3.00 maxFPS=60
+SUP lc.scene=UIWindowScene role=UIWindowSceneSessionRoleApplication state=1 windows=1
+SUP lc.window=(0.00,0.00,466.00,678.00) safe=UIEdgeInsets(top: 0.0, left: 0.0, bottom: 34.0, right: 84.0) key=true level=0.0
+SUP lc.traits=h=1 v=2 style=1 contentSize=UICTContentSizeCategoryL idiom=0 layoutDir=0 displayScale=3.0 gamut=1 contrast=0 legibility=0
+SUP lc.rootVC=UIHostingController
+SUPX 0.167 notify-register com.apple.coreservices.useractivity.reconnection
+SUPX 0.169 xpc-mach com.apple.runningboard
+SUP t=0.166 app.body=
+SUP t=0.166 app.scenePhase=inactive->active
+SUP t=0.166 note.scene.didActivate=appState=1
+SUP t=0.167 note.app.didBecomeActive=appState=0
+SUPX 0.172 lookup com.apple.backboard.hid.services kr=0
+SUP t=0.169 root.body=
+SUP t=0.169 view.scenePhase=inactive->active
+SUPX 0.175 notify-register UIBacklightLevelChangedNotification
+SUP t=0.174 displaylink.first=sinceExec=0.461 fps=0
+SUPX 0.214 notify-register com.apple.system.networkd.settings
+SUPX 0.214 notify-register com.apple.system.networkd.settings
+SUPX 0.276 notify-register AppleKeyboardsPreferencesChangedNotification
+SUPX 0.276 notify-register AppleKeyboardsSettingsChangedNotification
+SUPX 0.276 notify-register AppleKeyboardsInternalSettingsChangedNotification
+SUPX 0.276 notify-register AppleKeyboardsInputModeChangedNotification
+SUPX 0.276 notify-register AppleKeyboardsContinuousPathSettingsChangedNotification
+SUPX 0.276 notify-register com.apple.preferences.sounds.keyboard-audio.changed
+SUPX 0.276 notify-register kAFPreferencesDidChangeDarwinNotification
+SUPX 0.276 notify-register AssistiveTouchMouseAlwaysShowSoftwareKeyboard.notification
+SUPX 0.566 notify-register com.apple.accessibility.cache.captioning
+SUPX 0.566 notify-register com.apple.accessibility.cache.mono.audio
+SUPX 0.566 notify-register com.apple.accessibility.cache.quick.speak
+SUPX 0.566 notify-register com.apple.accessibility.cache.differentiate.without.color
+SUPX 0.566 notify-register com.apple.accessibility.cache.enhance.background.contrast
+SUPX 0.566 notify-register com.apple.accessibility.cache.reduce.motion.reduce.slide.transitions
+SUPX 0.566 notify-register com.apple.accessibility.cache.vot
+SUPX 0.566 notify-register com.apple.accessibility.cache.grayscale
+SUPX 0.566 notify-register com.apple.accessibility.cache.prefer.action.slider.alternative.status
+SUPX 0.566 notify-register com.apple.accessibility.haptics.active.status.private
+SUPX 0.566 notify-register com.apple.accessibility.cache.reduce.highlighting.effects.enabled
+SUPX 1.542 notify-register com.apple.accessibility.QuickSpeakEnabled
+SUPX 1.542 notify-register com.apple.accessibility.cache.speech.settings.disabled.by.mc
+SUP displaylink.rate=60.08
+SUP images.lc.count=545
+SUP images.lc=/System/Library/Frameworks/AVFAudio.framework/AVFAudio
+SUP images.lc=/System/Library/Frameworks/AVFoundation.framework/AVFoundation
+SUP images.lc=/System/Library/Frameworks/AVRouting.framework/AVRouting
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Accelerate
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vImage.framework/Libraries/libCGInterfaces.dylib
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vImage.framework/vImage
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/libBLAS.dylib
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/libBNNS.dylib
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/libLAPACK.dylib
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/libLinearAlgebra.dylib
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/libQuadrature.dylib
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/libSparse.dylib
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/libSparseBLAS.dylib
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/libvDSP.dylib
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/libvMisc.dylib
+SUP images.lc=/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/vecLib
+SUP images.lc=/System/Library/Frameworks/Accessibility.framework/Accessibility
+SUP images.lc=/System/Library/Frameworks/Accounts.framework/Accounts
+SUP images.lc=/System/Library/Frameworks/ActivityKit.framework/ActivityKit
+SUP images.lc=/System/Library/Frameworks/AppIntents.framework/AppIntents
+SUP images.lc=/System/Library/Frameworks/AppIntentsTypeSupport.framework/AppIntentsTypeSupport
+SUP images.lc=/System/Library/Frameworks/AudioToolbox.framework/AudioToolbox
+SUP images.lc=/System/Library/Frameworks/BackgroundTasks.framework/BackgroundTasks
+SUP images.lc=/System/Library/Frameworks/CFNetwork.framework/CFNetwork
+SUP images.lc=/System/Library/Frameworks/ClassKit.framework/ClassKit
+SUP images.lc=/System/Library/Frameworks/ClockKit.framework/ClockKit
+SUP images.lc=/System/Library/Frameworks/CloudKit.framework/CloudKit
+SUP images.lc=/System/Library/Frameworks/ColorSync.framework/ColorSync
+SUP images.lc=/System/Library/Frameworks/Combine.framework/Combine
+SUP images.lc=/System/Library/Frameworks/Contacts.framework/Contacts
+SUP images.lc=/System/Library/Frameworks/CoreAudio.framework/CoreAudio
+SUP images.lc=/System/Library/Frameworks/CoreBluetooth.framework/CoreBluetooth
+SUP images.lc=/System/Library/Frameworks/CoreData.framework/CoreData
+SUP images.lc=/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation
+SUP images.lc=/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics
+SUP images.lc=/System/Library/Frameworks/CoreImage.framework/CoreImage
+SUP images.lc=/System/Library/Frameworks/CoreLocation.framework/CoreLocation
+SUP images.lc=/System/Library/Frameworks/CoreMIDI.framework/CoreMIDI
+SUP images.lc=/System/Library/Frameworks/CoreML.framework/CoreML
+SUP images.lc=/System/Library/Frameworks/CoreMedia.framework/CoreMedia
+SUP images.lc=/System/Library/Frameworks/CoreMotion.framework/CoreMotion
+SUP images.lc=/System/Library/Frameworks/CoreServices.framework/CoreServices
+SUP images.lc=/System/Library/Frameworks/CoreSpotlight.framework/CoreSpotlight
+SUP images.lc=/System/Library/Frameworks/CoreTelephony.framework/CoreTelephony
+SUP images.lc=/System/Library/Frameworks/CoreText.framework/CoreText
+SUP images.lc=/System/Library/Frameworks/CoreTransferable.framework/CoreTransferable
+SUP images.lc=/System/Library/Frameworks/CoreVideo.framework/CoreVideo
+SUP images.lc=/System/Library/Frameworks/CryptoKit.framework/CryptoKit
+SUP images.lc=/System/Library/Frameworks/CryptoTokenKit.framework/CryptoTokenKit
+SUP images.lc=/System/Library/Frameworks/DataDetection.framework/DataDetection
+SUP images.lc=/System/Library/Frameworks/DeveloperToolsSupport.framework/DeveloperToolsSupport
+SUP images.lc=/System/Library/Frameworks/ExtensionFoundation.framework/ExtensionFoundation
+SUP images.lc=/System/Library/Frameworks/FileProvider.framework/FileProvider
+SUP images.lc=/System/Library/Frameworks/Foundation.framework/Foundation
+SUP images.lc=/System/Library/Frameworks/GSS.framework/GSS
+SUP images.lc=/System/Library/Frameworks/GeoToolbox.framework/GeoToolbox
+SUP images.lc=/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit
+SUP images.lc=/System/Library/Frameworks/IOSurface.framework/IOSurface
+SUP images.lc=/System/Library/Frameworks/ImageIO.framework/ImageIO
+SUP images.lc=/System/Library/Frameworks/Intents.framework/Intents
+SUP images.lc=/System/Library/Frameworks/JavaScriptCore.framework/JavaScriptCore
+SUP images.lc=/System/Library/Frameworks/LocalAuthentication.framework/LocalAuthentication
+SUP images.lc=/System/Library/Frameworks/LocalAuthentication.framework/Support/SharedUtils.framework/SharedUtils
+SUP images.lc=/System/Library/Frameworks/MediaAccessibility.framework/MediaAccessibility
+SUP images.lc=/System/Library/Frameworks/MediaIntents.framework/MediaIntents
+SUP images.lc=/System/Library/Frameworks/MediaToolbox.framework/MediaToolbox
+SUP images.lc=/System/Library/Frameworks/Metal.framework/Metal
+SUP images.lc=/System/Library/Frameworks/MetalPerformanceShaders.framework/Frameworks/MPSBenchmarkLoop.framework/MPSBenchmarkLoop
+SUP images.lc=/System/Library/Frameworks/MetalPerformanceShaders.framework/Frameworks/MPSCore.framework/MPSCore
+SUP images.lc=/System/Library/Frameworks/MetalPerformanceShaders.framework/Frameworks/MPSFunctions.framework/MPSFunctions
+SUP images.lc=/System/Library/Frameworks/MetalPerformanceShaders.framework/Frameworks/MPSHost.framework/MPSHost
+SUP images.lc=/System/Library/Frameworks/MetalPerformanceShaders.framework/Frameworks/MPSImage.framework/MPSImage
+SUP images.lc=/System/Library/Frameworks/MetalPerformanceShaders.framework/Frameworks/MPSMatrix.framework/MPSMatrix
+SUP images.lc=/System/Library/Frameworks/MetalPerformanceShaders.framework/Frameworks/MPSNDArray.framework/MPSNDArray
+SUP images.lc=/System/Library/Frameworks/MetalPerformanceShaders.framework/Frameworks/MPSNeuralNetwork.framework/MPSNeuralNetwork
+SUP images.lc=/System/Library/Frameworks/MetalPerformanceShaders.framework/Frameworks/MPSRayIntersector.framework/MPSRayIntersector
+SUP images.lc=/System/Library/Frameworks/MetalPerformanceShaders.framework/MetalPerformanceShaders
+SUP images.lc=/System/Library/Frameworks/MetalPerformanceShadersGraph.framework/MetalPerformanceShadersGraph
+SUP images.lc=/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices
+SUP images.lc=/System/Library/Frameworks/NaturalLanguage.framework/NaturalLanguage
+SUP images.lc=/System/Library/Frameworks/Network.framework/Network
+SUP images.lc=/System/Library/Frameworks/NetworkExtension.framework/NetworkExtension
+SUP images.lc=/System/Library/Frameworks/OSLog.framework/OSLog
+SUP images.lc=/System/Library/Frameworks/OpenGLES.framework/OpenGLES
+SUP images.lc=/System/Library/Frameworks/OpenGLES.framework/libCVMSPluginSupport.dylib
+SUP images.lc=/System/Library/Frameworks/OpenGLES.framework/libCoreFSCache.dylib
+SUP images.lc=/System/Library/Frameworks/OpenGLES.framework/libGFXShared.dylib
+SUP images.lc=/System/Library/Frameworks/OpenGLES.framework/libGLImage.dylib
+SUP images.lc=/System/Library/Frameworks/PushKit.framework/PushKit
+SUP images.lc=/System/Library/Frameworks/QuartzCore.framework/QuartzCore
+SUP images.lc=/System/Library/Frameworks/QuickLookThumbnailing.framework/QuickLookThumbnailing
+SUP images.lc=/System/Library/Frameworks/RelevanceKit.framework/RelevanceKit
+SUP images.lc=/System/Library/Frameworks/Security.framework/Security
+SUP images.lc=/System/Library/Frameworks/SwiftData.framework/SwiftData
+SUP images.lc=/System/Library/Frameworks/SwiftUI.framework/SwiftUI
+SUP images.lc=/System/Library/Frameworks/SwiftUICore.framework/SwiftUICore
+SUP images.lc=/System/Library/Frameworks/Symbols.framework/Symbols
+SUP images.lc=/System/Library/Frameworks/SystemConfiguration.framework/SystemConfiguration
+SUP images.lc=/System/Library/Frameworks/TabularData.framework/TabularData
+SUP images.lc=/System/Library/Frameworks/UIKit.framework/UIKit
+SUP images.lc=/System/Library/Frameworks/UniformTypeIdentifiers.framework/UniformTypeIdentifiers
+SUP images.lc=/System/Library/Frameworks/UserNotifications.framework/UserNotifications
+SUP images.lc=/System/Library/Frameworks/VideoToolbox.framework/VideoToolbox
+SUP images.lc=/System/Library/Frameworks/Vision.framework/Vision
+SUP images.lc=/System/Library/Frameworks/Vision.framework/libfaceCore.dylib
+SUP images.lc=/System/Library/Frameworks/WiFiAware.framework/WiFiAware
+SUP images.lc=/System/Library/Frameworks/_LocationEssentials.framework/_LocationEssentials
+SUP images.lc=/System/Library/PrivateFrameworks/AAAFoundation.framework/AAAFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/AAAFoundationSwift.framework/AAAFoundationSwift
+SUP images.lc=/System/Library/PrivateFrameworks/AVFCapture.framework/AVFCapture
+SUP images.lc=/System/Library/PrivateFrameworks/AVFCore.framework/AVFCore
+SUP images.lc=/System/Library/PrivateFrameworks/AXCoreUtilities.framework/AXCoreUtilities
+SUP images.lc=/System/Library/PrivateFrameworks/AXRuntime.framework/AXRuntime
+SUP images.lc=/System/Library/PrivateFrameworks/AccountsDaemon.framework/AccountsDaemon
+SUP images.lc=/System/Library/PrivateFrameworks/AddressBookLegacy.framework/AddressBookLegacy
+SUP images.lc=/System/Library/PrivateFrameworks/AggregateDictionary.framework/AggregateDictionary
+SUP images.lc=/System/Library/PrivateFrameworks/AnimationKit.framework/AnimationKit
+SUP images.lc=/System/Library/PrivateFrameworks/AppConduit.framework/AppConduit
+SUP images.lc=/System/Library/PrivateFrameworks/AppIntentSchemas.framework/AppIntentSchemas
+SUP images.lc=/System/Library/PrivateFrameworks/AppProtection.framework/AppProtection
+SUP images.lc=/System/Library/PrivateFrameworks/AppServerSupport.framework/AppServerSupport
+SUP images.lc=/System/Library/PrivateFrameworks/AppSupport.framework/AppSupport
+SUP images.lc=/System/Library/PrivateFrameworks/AppleAccount.framework/AppleAccount
+SUP images.lc=/System/Library/PrivateFrameworks/AppleFlatBuffers.framework/AppleFlatBuffers
+SUP images.lc=/System/Library/PrivateFrameworks/AppleIDAuthSupport.framework/AppleIDAuthSupport
+SUP images.lc=/System/Library/PrivateFrameworks/AppleIDSSOAuthentication.framework/AppleIDSSOAuthentication
+SUP images.lc=/System/Library/PrivateFrameworks/AppleIntelligenceReporting.framework/AppleIntelligenceReporting
+SUP images.lc=/System/Library/PrivateFrameworks/AppleJPEG.framework/AppleJPEG
+SUP images.lc=/System/Library/PrivateFrameworks/AppleJPEGXL.framework/AppleJPEGXL
+SUP images.lc=/System/Library/PrivateFrameworks/ApplePushService.framework/ApplePushService
+SUP images.lc=/System/Library/PrivateFrameworks/AppleSauce.framework/AppleSauce
+SUP images.lc=/System/Library/PrivateFrameworks/ArgumentParserInternal.framework/ArgumentParserInternal
+SUP images.lc=/System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices
+SUP images.lc=/System/Library/PrivateFrameworks/AsyncAlgorithmsInternal.framework/AsyncAlgorithmsInternal
+SUP images.lc=/System/Library/PrivateFrameworks/AtomicsInternal.framework/AtomicsInternal
+SUP images.lc=/System/Library/PrivateFrameworks/AttributeGraph.framework/AttributeGraph
+SUP images.lc=/System/Library/PrivateFrameworks/AudioAnalytics.framework/AudioAnalytics
+SUP images.lc=/System/Library/PrivateFrameworks/AudioSession.framework/AudioSession
+SUP images.lc=/System/Library/PrivateFrameworks/AudioSession.framework/libSessionUtility.dylib
+SUP images.lc=/System/Library/PrivateFrameworks/AudioToolboxCore.framework/AudioToolboxCore
+SUP images.lc=/System/Library/PrivateFrameworks/AuthKit.framework/AuthKit
+SUP images.lc=/System/Library/PrivateFrameworks/AutoUnlock.framework/AutoUnlock
+SUP images.lc=/System/Library/PrivateFrameworks/AvailabilityKit.framework/AvailabilityKit
+SUP images.lc=/System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices
+SUP images.lc=/System/Library/PrivateFrameworks/BacklightServices.framework/BacklightServices
+SUP images.lc=/System/Library/PrivateFrameworks/BaseBoard.framework/BaseBoard
+SUP images.lc=/System/Library/PrivateFrameworks/BaseBoardUI.framework/BaseBoardUI
+SUP images.lc=/System/Library/PrivateFrameworks/BiomeDSL.framework/BiomeDSL
+SUP images.lc=/System/Library/PrivateFrameworks/BiomeFoundation.framework/BiomeFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/BiomeLibrary.framework/BiomeLibrary
+SUP images.lc=/System/Library/PrivateFrameworks/BiomePubSub.framework/BiomePubSub
+SUP images.lc=/System/Library/PrivateFrameworks/BiomeStorage.framework/BiomeStorage
+SUP images.lc=/System/Library/PrivateFrameworks/BiomeStreams.framework/BiomeStreams
+SUP images.lc=/System/Library/PrivateFrameworks/BiomeSync.framework/BiomeSync
+SUP images.lc=/System/Library/PrivateFrameworks/BiometricKit.framework/BiometricKit
+SUP images.lc=/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager
+SUP images.lc=/System/Library/PrivateFrameworks/BoardServices.framework/BoardServices
+SUP images.lc=/System/Library/PrivateFrameworks/Bom.framework/Bom
+SUP images.lc=/System/Library/PrivateFrameworks/C2.framework/C2
+SUP images.lc=/System/Library/PrivateFrameworks/CMCapture.framework/CMCapture
+SUP images.lc=/System/Library/PrivateFrameworks/CMCaptureCore.framework/CMCaptureCore
+SUP images.lc=/System/Library/PrivateFrameworks/CMCaptureDevice.framework/CMCaptureDevice
+SUP images.lc=/System/Library/PrivateFrameworks/CMImaging.framework/CMImaging
+SUP images.lc=/System/Library/PrivateFrameworks/CMPhoto.framework/CMPhoto
+SUP images.lc=/System/Library/PrivateFrameworks/CSExattrCrypto.framework/CSExattrCrypto
+SUP images.lc=/System/Library/PrivateFrameworks/CVNLP.framework/CVNLP
+SUP images.lc=/System/Library/PrivateFrameworks/CacheDelete.framework/CacheDelete
+SUP images.lc=/System/Library/PrivateFrameworks/CameraOverlayServices.framework/CameraOverlayServices
+SUP images.lc=/System/Library/PrivateFrameworks/CampoServices.framework/CampoServices
+SUP images.lc=/System/Library/PrivateFrameworks/CaptiveNetwork.framework/CaptiveNetwork
+SUP images.lc=/System/Library/PrivateFrameworks/CascadeSets.framework/CascadeSets
+SUP images.lc=/System/Library/PrivateFrameworks/Categories.framework/Categories
+SUP images.lc=/System/Library/PrivateFrameworks/Celestial.framework/Celestial
+SUP images.lc=/System/Library/PrivateFrameworks/CellularPlanManager.framework/CellularPlanManager
+SUP images.lc=/System/Library/PrivateFrameworks/ChronoServices.framework/ChronoServices
+SUP images.lc=/System/Library/PrivateFrameworks/ClockKitUI.framework/ClockKitUI
+SUP images.lc=/System/Library/PrivateFrameworks/CloudAsset.framework/CloudAsset
+SUP images.lc=/System/Library/PrivateFrameworks/CloudCoreInternal.framework/CloudCoreInternal
+SUP images.lc=/System/Library/PrivateFrameworks/CloudDocs.framework/CloudDocs
+SUP images.lc=/System/Library/PrivateFrameworks/CloudServices.framework/CloudServices
+SUP images.lc=/System/Library/PrivateFrameworks/CollectionViewCore.framework/CollectionViewCore
+SUP images.lc=/System/Library/PrivateFrameworks/CollectionsInternal.framework/CollectionsInternal
+SUP images.lc=/System/Library/PrivateFrameworks/CommonAuth.framework/CommonAuth
+SUP images.lc=/System/Library/PrivateFrameworks/CommonUtilities.framework/CommonUtilities
+SUP images.lc=/System/Library/PrivateFrameworks/ComplicationDisplay.framework/ComplicationDisplay
+SUP images.lc=/System/Library/PrivateFrameworks/ContactsFoundation.framework/ContactsFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/ContactsMetrics.framework/ContactsMetrics
+SUP images.lc=/System/Library/PrivateFrameworks/ContextKit.framework/ContextKit
+SUP images.lc=/System/Library/PrivateFrameworks/ContextKitCore.framework/ContextKitCore
+SUP images.lc=/System/Library/PrivateFrameworks/CoreAnalytics.framework/CoreAnalytics
+SUP images.lc=/System/Library/PrivateFrameworks/CoreAutoLayout.framework/CoreAutoLayout
+SUP images.lc=/System/Library/PrivateFrameworks/CoreEmoji.framework/CoreEmoji
+SUP images.lc=/System/Library/PrivateFrameworks/CoreMaterial.framework/CoreMaterial
+SUP images.lc=/System/Library/PrivateFrameworks/CoreNLP.framework/CoreNLP
+SUP images.lc=/System/Library/PrivateFrameworks/CorePhoneNumbers.framework/CorePhoneNumbers
+SUP images.lc=/System/Library/PrivateFrameworks/CoreSVG.framework/CoreSVG
+SUP images.lc=/System/Library/PrivateFrameworks/CoreSceneUnderstanding.framework/CoreSceneUnderstanding
+SUP images.lc=/System/Library/PrivateFrameworks/CoreServicesInternal.framework/CoreServicesInternal
+SUP images.lc=/System/Library/PrivateFrameworks/CoreServicesStore.framework/CoreServicesStore
+SUP images.lc=/System/Library/PrivateFrameworks/CoreSuggestions.framework/CoreSuggestions
+SUP images.lc=/System/Library/PrivateFrameworks/CoreSymbolication.framework/CoreSymbolication
+SUP images.lc=/System/Library/PrivateFrameworks/CoreTime.framework/CoreTime
+SUP images.lc=/System/Library/PrivateFrameworks/CoreUI.framework/CoreUI
+SUP images.lc=/System/Library/PrivateFrameworks/CoreUtils.framework/CoreUtils
+SUP images.lc=/System/Library/PrivateFrameworks/CoreUtilsExtras.framework/CoreUtilsExtras
+SUP images.lc=/System/Library/PrivateFrameworks/CoreUtilsSwift.framework/CoreUtilsSwift
+SUP images.lc=/System/Library/PrivateFrameworks/CryptoKitCBridging.framework/CryptoKitCBridging
+SUP images.lc=/System/Library/PrivateFrameworks/CryptoKitPrivate.framework/CryptoKitPrivate
+SUP images.lc=/System/Library/PrivateFrameworks/DEPClientLibrary.framework/DEPClientLibrary
+SUP images.lc=/System/Library/PrivateFrameworks/DMCEnrollmentLibrary.framework/DMCEnrollmentLibrary
+SUP images.lc=/System/Library/PrivateFrameworks/DMCUtilities.framework/DMCUtilities
+SUP images.lc=/System/Library/PrivateFrameworks/DataAccessExpress.framework/DataAccessExpress
+SUP images.lc=/System/Library/PrivateFrameworks/DataDetectorsCore.framework/DataDetectorsCore
+SUP images.lc=/System/Library/PrivateFrameworks/DataMigration.framework/DataMigration
+SUP images.lc=/System/Library/PrivateFrameworks/Dendrite.framework/Dendrite
+SUP images.lc=/System/Library/PrivateFrameworks/DesignLibrary.framework/DesignLibrary
+SUP images.lc=/System/Library/PrivateFrameworks/DesktopServicesPriv.framework/DesktopServicesPriv
+SUP images.lc=/System/Library/PrivateFrameworks/DiagnosticRequest.framework/DiagnosticRequest
+SUP images.lc=/System/Library/PrivateFrameworks/DoNotDisturb.framework/DoNotDisturb
+SUP images.lc=/System/Library/PrivateFrameworks/DocumentManager.framework/DocumentManager
+SUP images.lc=/System/Library/PrivateFrameworks/DocumentManagerCore.framework/DocumentManagerCore
+SUP images.lc=/System/Library/PrivateFrameworks/EmojiFoundation.framework/EmojiFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/Engram.framework/Engram
+SUP images.lc=/System/Library/PrivateFrameworks/Espresso.framework/Espresso
+SUP images.lc=/System/Library/PrivateFrameworks/FTAWD.framework/FTAWD
+SUP images.lc=/System/Library/PrivateFrameworks/FTServices.framework/FTServices
+SUP images.lc=/System/Library/PrivateFrameworks/FeatureFlags.framework/FeatureFlags
+SUP images.lc=/System/Library/PrivateFrameworks/FeatureFlagsSupport.framework/FeatureFlagsSupport
+SUP images.lc=/System/Library/PrivateFrameworks/FeedbackLogger.framework/FeedbackLogger
+SUP images.lc=/System/Library/PrivateFrameworks/FontServices.framework/FontServices
+SUP images.lc=/System/Library/PrivateFrameworks/FontServices.framework/libFontParser.dylib
+SUP images.lc=/System/Library/PrivateFrameworks/FontServices.framework/libGSFont.dylib
+SUP images.lc=/System/Library/PrivateFrameworks/FontServices.framework/libGSFontCache.dylib
+SUP images.lc=/System/Library/PrivateFrameworks/FramePacing.framework/FramePacing
+SUP images.lc=/System/Library/PrivateFrameworks/FrontBoard.framework/FrontBoard
+SUP images.lc=/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices
+SUP images.lc=/System/Library/PrivateFrameworks/Futhark.framework/Futhark
+SUP images.lc=/System/Library/PrivateFrameworks/GPUCompiler.framework/Versions/32023/Libraries/libGPUCompilerUtils.dylib
+SUP images.lc=/System/Library/PrivateFrameworks/GPUCompiler.framework/Versions/32023/Libraries/libllvm-flatbuffers.dylib
+SUP images.lc=/System/Library/PrivateFrameworks/GRDBInternal.framework/GRDBInternal
+SUP images.lc=/System/Library/PrivateFrameworks/GenerationalStorage.framework/GenerationalStorage
+SUP images.lc=/System/Library/PrivateFrameworks/GenerativeAgents.framework/GenerativeAgents
+SUP images.lc=/System/Library/PrivateFrameworks/GenerativeFunctions.framework/GenerativeFunctions
+SUP images.lc=/System/Library/PrivateFrameworks/GenerativeFunctionsFoundation.framework/GenerativeFunctionsFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/GenerativeFunctionsInstrumentation.framework/GenerativeFunctionsInstrumentation
+SUP images.lc=/System/Library/PrivateFrameworks/GenerativeModels.framework/GenerativeModels
+SUP images.lc=/System/Library/PrivateFrameworks/GenerativeModelsFoundation.framework/GenerativeModelsFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/GeoServices.framework/GeoServices
+SUP images.lc=/System/Library/PrivateFrameworks/GeoServicesCore.framework/GeoServicesCore
+SUP images.lc=/System/Library/PrivateFrameworks/Gestures.framework/Gestures
+SUP images.lc=/System/Library/PrivateFrameworks/GraphVisualizer.framework/GraphVisualizer
+SUP images.lc=/System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices
+SUP images.lc=/System/Library/PrivateFrameworks/Heimdal.framework/Heimdal
+SUP images.lc=/System/Library/PrivateFrameworks/IDS.framework/IDS
+SUP images.lc=/System/Library/PrivateFrameworks/IDSFoundation.framework/IDSFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/IDSSimulatorSupport.framework/IDSSimulatorSupport
+SUP images.lc=/System/Library/PrivateFrameworks/IMFoundation.framework/IMFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/IOKitten.framework/IOKitten
+SUP images.lc=/System/Library/PrivateFrameworks/IconFoundation.framework/IconFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/IconRendering.framework/IconRendering
+SUP images.lc=/System/Library/PrivateFrameworks/IconServices.framework/IconServices
+SUP images.lc=/System/Library/PrivateFrameworks/IdleTimerServices.framework/IdleTimerServices
+SUP images.lc=/System/Library/PrivateFrameworks/InertiaCam.framework/InertiaCam
+SUP images.lc=/System/Library/PrivateFrameworks/InstalledContentLibrary.framework/InstalledContentLibrary
+SUP images.lc=/System/Library/PrivateFrameworks/IntelligencePlatformLibrary.framework/IntelligencePlatformLibrary
+SUP images.lc=/System/Library/PrivateFrameworks/IntentsCore.framework/IntentsCore
+SUP images.lc=/System/Library/PrivateFrameworks/IntentsFoundation.framework/IntentsFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/InternalSwiftProtobuf.framework/InternalSwiftProtobuf
+SUP images.lc=/System/Library/PrivateFrameworks/InternationalSupport.framework/InternationalSupport
+SUP images.lc=/System/Library/PrivateFrameworks/InternationalTextSearch.framework/InternationalTextSearch
+SUP images.lc=/System/Library/PrivateFrameworks/IntlPreferences.framework/IntlPreferences
+SUP images.lc=/System/Library/PrivateFrameworks/KeychainCircle.framework/KeychainCircle
+SUP images.lc=/System/Library/PrivateFrameworks/LanguageModeling.framework/LanguageModeling
+SUP images.lc=/System/Library/PrivateFrameworks/Lexicon.framework/Lexicon
+SUP images.lc=/System/Library/PrivateFrameworks/LinguisticData.framework/LinguisticData
+SUP images.lc=/System/Library/PrivateFrameworks/LinkMetadata.framework/LinkMetadata
+SUP images.lc=/System/Library/PrivateFrameworks/LinkServices.framework/LinkServices
+SUP images.lc=/System/Library/PrivateFrameworks/LocalAuthenticationCore.framework/LocalAuthenticationCore
+SUP images.lc=/System/Library/PrivateFrameworks/LocalAuthenticationCredentialServices.framework/LocalAuthenticationCredentialServices
+SUP images.lc=/System/Library/PrivateFrameworks/LocalStatusKit.framework/LocalStatusKit
+SUP images.lc=/System/Library/PrivateFrameworks/LocationLogEncryption.framework/LocationLogEncryption
+SUP images.lc=/System/Library/PrivateFrameworks/LocationSupport.framework/LocationSupport
+SUP images.lc=/System/Library/PrivateFrameworks/LoggingSupport.framework/LoggingSupport
+SUP images.lc=/System/Library/PrivateFrameworks/MDMClientLibrary.framework/MDMClientLibrary
+SUP images.lc=/System/Library/PrivateFrameworks/MIL.framework/MIL
+SUP images.lc=/System/Library/PrivateFrameworks/MLAssetIO.framework/MLAssetIO
+SUP images.lc=/System/Library/PrivateFrameworks/MLCompilerRuntime.framework/MLCompilerRuntime
+SUP images.lc=/System/Library/PrivateFrameworks/MLCompilerServices.framework/MLCompilerServices
+SUP images.lc=/System/Library/PrivateFrameworks/MallocStackLogging.framework/MallocStackLogging
+SUP images.lc=/System/Library/PrivateFrameworks/ManagedConfiguration.framework/ManagedConfiguration
+SUP images.lc=/System/Library/PrivateFrameworks/ManagedOrganizationContacts.framework/ManagedOrganizationContacts
+SUP images.lc=/System/Library/PrivateFrameworks/Marco.framework/Marco
+SUP images.lc=/System/Library/PrivateFrameworks/MarketplaceIntents.framework/MarketplaceIntents
+SUP images.lc=/System/Library/PrivateFrameworks/MediaExperience.framework/MediaExperience
+SUP images.lc=/System/Library/PrivateFrameworks/MessageSecurity.framework/MessageSecurity
+SUP images.lc=/System/Library/PrivateFrameworks/MetadataUtilities.framework/MetadataUtilities
+SUP images.lc=/System/Library/PrivateFrameworks/MetalTools.framework/MetalTools
+SUP images.lc=/System/Library/PrivateFrameworks/MobileAsset.framework/MobileAsset
+SUP images.lc=/System/Library/PrivateFrameworks/MobileBluetooth.framework/MobileBluetooth
+SUP images.lc=/System/Library/PrivateFrameworks/MobileIcons.framework/MobileIcons
+SUP images.lc=/System/Library/PrivateFrameworks/MobileInstallation.framework/MobileInstallation
+SUP images.lc=/System/Library/PrivateFrameworks/MobileSystemServices.framework/MobileSystemServices
+SUP images.lc=/System/Library/PrivateFrameworks/ModelCatalog.framework/ModelCatalog
+SUP images.lc=/System/Library/PrivateFrameworks/ModelManagerServices.framework/ModelManagerServices
+SUP images.lc=/System/Library/PrivateFrameworks/Montreal.framework/Montreal
+SUP images.lc=/System/Library/PrivateFrameworks/NanoPreferencesSync.framework/NanoPreferencesSync
+SUP images.lc=/System/Library/PrivateFrameworks/NanoRegistry.framework/NanoRegistry
+SUP images.lc=/System/Library/PrivateFrameworks/OAuth.framework/OAuth
+SUP images.lc=/System/Library/PrivateFrameworks/ODIE.framework/ODIE
+SUP images.lc=/System/Library/PrivateFrameworks/OSAServicesClient.framework/OSAServicesClient
+SUP images.lc=/System/Library/PrivateFrameworks/OSAnalytics.framework/OSAnalytics
+SUP images.lc=/System/Library/PrivateFrameworks/OSEligibility.framework/OSEligibility
+SUP images.lc=/System/Library/PrivateFrameworks/OTSVG.framework/OTSVG
+SUP images.lc=/System/Library/PrivateFrameworks/OctagonTrust.framework/OctagonTrust
+SUP images.lc=/System/Library/PrivateFrameworks/PairedDeviceRegistry.framework/PairedDeviceRegistry
+SUP images.lc=/System/Library/PrivateFrameworks/ParsingInternal.framework/ParsingInternal
+SUP images.lc=/System/Library/PrivateFrameworks/Pasteboard.framework/Pasteboard
+SUP images.lc=/System/Library/PrivateFrameworks/PhoneNumbers.framework/PhoneNumbers
+SUP images.lc=/System/Library/PrivateFrameworks/PhysicsKit.framework/PhysicsKit
+SUP images.lc=/System/Library/PrivateFrameworks/PlugInKit.framework/PlugInKit
+SUP images.lc=/System/Library/PrivateFrameworks/PointerUIServices.framework/PointerUIServices
+SUP images.lc=/System/Library/PrivateFrameworks/PoirotSQLite.framework/PoirotSQLite
+SUP images.lc=/System/Library/PrivateFrameworks/PoirotSchematizer.framework/PoirotSchematizer
+SUP images.lc=/System/Library/PrivateFrameworks/PoirotUDFs.framework/PoirotUDFs
+SUP images.lc=/System/Library/PrivateFrameworks/PommesRankingCore.framework/PommesRankingCore
+SUP images.lc=/System/Library/PrivateFrameworks/PrintKit.framework/PrintKit
+SUP images.lc=/System/Library/PrivateFrameworks/PrintKitUI.framework/PrintKitUI
+SUP images.lc=/System/Library/PrivateFrameworks/ProactiveDaemonSupport.framework/ProactiveDaemonSupport
+SUP images.lc=/System/Library/PrivateFrameworks/ProactiveEventTracker.framework/ProactiveEventTracker
+SUP images.lc=/System/Library/PrivateFrameworks/ProactiveSupport.framework/ProactiveSupport
+SUP images.lc=/System/Library/PrivateFrameworks/PromptKit.framework/PromptKit
+SUP images.lc=/System/Library/PrivateFrameworks/ProtectedCloudStorage.framework/ProtectedCloudStorage
+SUP images.lc=/System/Library/PrivateFrameworks/ProtocolBuffer.framework/ProtocolBuffer
+SUP images.lc=/System/Library/PrivateFrameworks/PrototypeTools.framework/PrototypeTools
+SUP images.lc=/System/Library/PrivateFrameworks/Quagga.framework/Quagga
+SUP images.lc=/System/Library/PrivateFrameworks/RTCReporting.framework/RTCReporting
+SUP images.lc=/System/Library/PrivateFrameworks/Rapport.framework/Rapport
+SUP images.lc=/System/Library/PrivateFrameworks/RecapPerformanceTesting.framework/RecapPerformanceTesting
+SUP images.lc=/System/Library/PrivateFrameworks/ReflectionInternal.framework/ReflectionInternal
+SUP images.lc=/System/Library/PrivateFrameworks/RemoteTextInput.framework/RemoteTextInput
+SUP images.lc=/System/Library/PrivateFrameworks/RenderBox.framework/RenderBox
+SUP images.lc=/System/Library/PrivateFrameworks/ReplicatorDependencies.framework/ReplicatorDependencies
+SUP images.lc=/System/Library/PrivateFrameworks/ReplicatorEngine.framework/ReplicatorEngine
+SUP images.lc=/System/Library/PrivateFrameworks/ReplicatorServices.framework/ReplicatorServices
+SUP images.lc=/System/Library/PrivateFrameworks/RunningBoardServices.framework/RunningBoardServices
+SUP images.lc=/System/Library/PrivateFrameworks/RuntimeInternal.framework/RuntimeInternal
+SUP images.lc=/System/Library/PrivateFrameworks/SFSymbols.framework/SFSymbols
+SUP images.lc=/System/Library/PrivateFrameworks/SceneHosting.framework/SceneHosting
+SUP images.lc=/System/Library/PrivateFrameworks/SchemaTypesCore.framework/SchemaTypesCore
+SUP images.lc=/System/Library/PrivateFrameworks/SecurityFoundation.framework/SecurityFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/SensitiveContentAnalysisML.framework/SensitiveContentAnalysisML
+SUP images.lc=/System/Library/PrivateFrameworks/SentencePieceInternal.framework/SentencePieceInternal
+SUP images.lc=/System/Library/PrivateFrameworks/SessionAssertion.framework/SessionAssertion
+SUP images.lc=/System/Library/PrivateFrameworks/SessionFoundation.framework/SessionFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/SetupKit.framework/SetupKit
+SUP images.lc=/System/Library/PrivateFrameworks/ShareSheet.framework/ShareSheet
+SUP images.lc=/System/Library/PrivateFrameworks/Sharing.framework/Sharing
+SUP images.lc=/System/Library/PrivateFrameworks/SharingCore.framework/SharingCore
+SUP images.lc=/System/Library/PrivateFrameworks/SignpostCollection.framework/SignpostCollection
+SUP images.lc=/System/Library/PrivateFrameworks/SignpostMetrics.framework/SignpostMetrics
+SUP images.lc=/System/Library/PrivateFrameworks/SignpostSupport.framework/SignpostSupport
+SUP images.lc=/System/Library/PrivateFrameworks/SimFramebufferClient.framework/SimFramebufferClient
+SUP images.lc=/System/Library/PrivateFrameworks/SimulatorClient.framework/SimulatorClient
+SUP images.lc=/System/Library/PrivateFrameworks/SiriAnalytics.framework/SiriAnalytics
+SUP images.lc=/System/Library/PrivateFrameworks/SiriInstrumentation.framework/SiriInstrumentation
+SUP images.lc=/System/Library/PrivateFrameworks/SoftLinking.framework/SoftLinking
+SUP images.lc=/System/Library/PrivateFrameworks/SoftwareUpdateCoreConnect.framework/SoftwareUpdateCoreConnect
+SUP images.lc=/System/Library/PrivateFrameworks/SoftwareUpdateCoreSupport.framework/SoftwareUpdateCoreSupport
+SUP images.lc=/System/Library/PrivateFrameworks/SpotlightEmbeddingCore.framework/SpotlightEmbeddingCore
+SUP images.lc=/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices
+SUP images.lc=/System/Library/PrivateFrameworks/StatusKit.framework/StatusKit
+SUP images.lc=/System/Library/PrivateFrameworks/StreamingZip.framework/StreamingZip
+SUP images.lc=/System/Library/PrivateFrameworks/Symbolication.framework/Symbolication
+SUP images.lc=/System/Library/PrivateFrameworks/SystemWake.framework/SystemWake
+SUP images.lc=/System/Library/PrivateFrameworks/TCC.framework/TCC
+SUP images.lc=/System/Library/PrivateFrameworks/TextAnimationSupport.framework/TextAnimationSupport
+SUP images.lc=/System/Library/PrivateFrameworks/TextInput.framework/TextInput
+SUP images.lc=/System/Library/PrivateFrameworks/TextRecognition.framework/TextRecognition
+SUP images.lc=/System/Library/PrivateFrameworks/TextureIO.framework/TextureIO
+SUP images.lc=/System/Library/PrivateFrameworks/TimeSync.framework/TimeSync
+SUP images.lc=/System/Library/PrivateFrameworks/TokenGeneration.framework/TokenGeneration
+SUP images.lc=/System/Library/PrivateFrameworks/TokenGenerationCore.framework/TokenGenerationCore
+SUP images.lc=/System/Library/PrivateFrameworks/ToneLibrary.framework/ToneLibrary
+SUP images.lc=/System/Library/PrivateFrameworks/Trial.framework/Trial
+SUP images.lc=/System/Library/PrivateFrameworks/TrialProto.framework/TrialProto
+SUP images.lc=/System/Library/PrivateFrameworks/UIFoundation.framework/UIFoundation
+SUP images.lc=/System/Library/PrivateFrameworks/UIIntelligenceSupport.framework/UIIntelligenceSupport
+SUP images.lc=/System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore
+SUP images.lc=/System/Library/PrivateFrameworks/UIKitServices.framework/UIKitServices
+SUP images.lc=/System/Library/PrivateFrameworks/URLFormatting.framework/URLFormatting
+SUP images.lc=/System/Library/PrivateFrameworks/UnifiedAssetFramework.framework/UnifiedAssetFramework
+SUP images.lc=/System/Library/PrivateFrameworks/UpdateCycle.framework/UpdateCycle
+SUP images.lc=/System/Library/PrivateFrameworks/UserActivity.framework/UserActivity
+SUP images.lc=/System/Library/PrivateFrameworks/UserManagement.framework/UserManagement
+SUP images.lc=/System/Library/PrivateFrameworks/VisionCore.framework/VisionCore
+SUP images.lc=/System/Library/PrivateFrameworks/WebCore.framework/Frameworks/libANGLE-shared.dylib
+SUP images.lc=/System/Library/PrivateFrameworks/WebCore.framework/Frameworks/libwebrtc.dylib
+SUP images.lc=/System/Library/PrivateFrameworks/WebCore.framework/WebCore
+SUP images.lc=/System/Library/PrivateFrameworks/WebGPU.framework/WebGPU
+SUP images.lc=/System/Library/PrivateFrameworks/WebKitLegacy.framework/WebKitLegacy
+SUP images.lc=/System/Library/PrivateFrameworks/WiFiPeerToPeer.framework/WiFiPeerToPeer
+SUP images.lc=/System/Library/PrivateFrameworks/WritingTools.framework/WritingTools
+SUP images.lc=/System/Library/PrivateFrameworks/XCTTargetBootstrap.framework/XCTTargetBootstrap
+SUP images.lc=/System/Library/PrivateFrameworks/XPCDistributed.framework/XPCDistributed
+SUP images.lc=/System/Library/PrivateFrameworks/caulk.framework/caulk
+SUP images.lc=/System/Library/PrivateFrameworks/iCalendar.framework/iCalendar
+SUP images.lc=/System/Library/PrivateFrameworks/perfdata.framework/perfdata
+SUP images.lc=/System/Library/PrivateFrameworks/vCard.framework/vCard
+SUP images.lc=/System/Library/SubFrameworks/UIUtilities.framework/UIUtilities
+SUP images.lc=/usr/lib/libAXSafeCategoryBundle.dylib
+SUP images.lc=/usr/lib/libAccessibility.dylib
+SUP images.lc=/usr/lib/libAppleArchive.dylib
+SUP images.lc=/usr/lib/libAudioStatistics.dylib
+SUP images.lc=/usr/lib/libCRFSuite.dylib
+SUP images.lc=/usr/lib/libCTGreenTeaLogger.dylib
+SUP images.lc=/usr/lib/libCoreEntitlements.dylib
+SUP images.lc=/usr/lib/libMobileGestalt.dylib
+SUP images.lc=/usr/lib/libParallelCompression.dylib
+SUP images.lc=/usr/lib/libSpatial.dylib
+SUP images.lc=/usr/lib/libSystem.B.dylib
+SUP images.lc=/usr/lib/libTLE.dylib
+SUP images.lc=/usr/lib/libTelephonyUtilDynamic.dylib
+SUP images.lc=/usr/lib/libThaiTokenizer.dylib
+SUP images.lc=/usr/lib/libapp_launch_measurement.dylib
+SUP images.lc=/usr/lib/libapple_nghttp2.dylib
+SUP images.lc=/usr/lib/libarchive.2.dylib
+SUP images.lc=/usr/lib/libate.dylib
+SUP images.lc=/usr/lib/libboringssl.dylib
+SUP images.lc=/usr/lib/libbsm.0.dylib
+SUP images.lc=/usr/lib/libbz2.1.0.dylib
+SUP images.lc=/usr/lib/libc++.1.dylib
+SUP images.lc=/usr/lib/libc++abi.dylib
+SUP images.lc=/usr/lib/libcharset.1.dylib
+SUP images.lc=/usr/lib/libcmark-gfm.dylib
+SUP images.lc=/usr/lib/libcmph.dylib
+SUP images.lc=/usr/lib/libcompression.dylib
+SUP images.lc=/usr/lib/libcoretls.dylib
+SUP images.lc=/usr/lib/libcoretls_cfhelpers.dylib
+SUP images.lc=/usr/lib/libcupolicy.dylib
+SUP images.lc=/usr/lib/libedit.3.dylib
+SUP images.lc=/usr/lib/libexpat.1.dylib
+SUP images.lc=/usr/lib/libgermantok.dylib
+SUP images.lc=/usr/lib/libheimdal-asn1.dylib
+SUP images.lc=/usr/lib/libhvf.dylib
+SUP images.lc=/usr/lib/libiconv.2.dylib
+SUP images.lc=/usr/lib/libicucore.A.dylib
+SUP images.lc=/usr/lib/liblangid.dylib
+SUP images.lc=/usr/lib/liblzma.5.dylib
+SUP images.lc=/usr/lib/libmecab.dylib
+SUP images.lc=/usr/lib/libncurses.5.4.dylib
+SUP images.lc=/usr/lib/libnetworkextension.dylib
+SUP images.lc=/usr/lib/libobjc-trampolines.dylib
+SUP images.lc=/usr/lib/libobjc.A.dylib
+SUP images.lc=/usr/lib/libperfcheck.dylib
+SUP images.lc=/usr/lib/libprequelite.dylib
+SUP images.lc=/usr/lib/libquic.dylib
+SUP images.lc=/usr/lib/libresolv.9.dylib
+SUP images.lc=/usr/lib/libsqlite3.dylib
+SUP images.lc=/usr/lib/libswiftPrespecialized.dylib
+SUP images.lc=/usr/lib/libtidy.A.dylib
+SUP images.lc=/usr/lib/libusrtcp.dylib
+SUP images.lc=/usr/lib/libutil.dylib
+SUP images.lc=/usr/lib/libxml2.2.dylib
+SUP images.lc=/usr/lib/libxslt.1.dylib
+SUP images.lc=/usr/lib/libz.1.dylib
+SUP images.lc=/usr/lib/objc/libobjcMsgSend.dylib
+SUP images.lc=/usr/lib/swift/libswiftAVFoundation.dylib
+SUP images.lc=/usr/lib/swift/libswiftAccelerate.dylib
+SUP images.lc=/usr/lib/swift/libswiftCompression.dylib
+SUP images.lc=/usr/lib/swift/libswiftCore.dylib
+SUP images.lc=/usr/lib/swift/libswiftCoreAudio.dylib
+SUP images.lc=/usr/lib/swift/libswiftCoreAudio_Private.dylib
+SUP images.lc=/usr/lib/swift/libswiftCoreFoundation.dylib
+SUP images.lc=/usr/lib/swift/libswiftCoreGraphics.dylib
+SUP images.lc=/usr/lib/swift/libswiftCoreImage.dylib
+SUP images.lc=/usr/lib/swift/libswiftCoreLocation.dylib
+SUP images.lc=/usr/lib/swift/libswiftCoreMIDI.dylib
+SUP images.lc=/usr/lib/swift/libswiftDarwin.dylib
+SUP images.lc=/usr/lib/swift/libswiftDispatch.dylib
+SUP images.lc=/usr/lib/swift/libswiftDistributed.dylib
+SUP images.lc=/usr/lib/swift/libswiftFoundation.dylib
+SUP images.lc=/usr/lib/swift/libswiftIntents.dylib
+SUP images.lc=/usr/lib/swift/libswiftMetal.dylib
+SUP images.lc=/usr/lib/swift/libswiftNaturalLanguage.dylib
+SUP images.lc=/usr/lib/swift/libswiftOSLog.dylib
+SUP images.lc=/usr/lib/swift/libswiftObjectiveC.dylib
+SUP images.lc=/usr/lib/swift/libswiftObservation.dylib
+SUP images.lc=/usr/lib/swift/libswiftQuartzCore.dylib
+SUP images.lc=/usr/lib/swift/libswiftRegexBuilder.dylib
+SUP images.lc=/usr/lib/swift/libswiftSpatial.dylib
+SUP images.lc=/usr/lib/swift/libswiftSwiftOnoneSupport.dylib
+SUP images.lc=/usr/lib/swift/libswiftSynchronization.dylib
+SUP images.lc=/usr/lib/swift/libswiftSystem.dylib
+SUP images.lc=/usr/lib/swift/libswiftUniformTypeIdentifiers.dylib
+SUP images.lc=/usr/lib/swift/libswiftXPC.dylib
+SUP images.lc=/usr/lib/swift/libswift_Builtin_float.dylib
+SUP images.lc=/usr/lib/swift/libswift_Concurrency.dylib
+SUP images.lc=/usr/lib/swift/libswift_DarwinFoundation1.dylib
+SUP images.lc=/usr/lib/swift/libswift_DarwinFoundation2.dylib
+SUP images.lc=/usr/lib/swift/libswift_DarwinFoundation3.dylib
+SUP images.lc=/usr/lib/swift/libswift_RegexParser.dylib
+SUP images.lc=/usr/lib/swift/libswift_StringProcessing.dylib
+SUP images.lc=/usr/lib/swift/libswiftos.dylib
+SUP images.lc=/usr/lib/swift/libswiftsimd.dylib
+SUP images.lc=/usr/lib/swift/libswiftsys_time.dylib
+SUP images.lc=/usr/lib/system/libcache.dylib
+SUP images.lc=/usr/lib/system/libcommonCrypto.dylib
+SUP images.lc=/usr/lib/system/libcompiler_rt.dylib
+SUP images.lc=/usr/lib/system/libcopyfile.dylib
+SUP images.lc=/usr/lib/system/libcorecrypto.dylib
+SUP images.lc=/usr/lib/system/libdispatch.dylib
+SUP images.lc=/usr/lib/system/libdyld.dylib
+SUP images.lc=/usr/lib/system/libmacho.dylib
+SUP images.lc=/usr/lib/system/libremovefile.dylib
+SUP images.lc=/usr/lib/system/libsystem_asl.dylib
+SUP images.lc=/usr/lib/system/libsystem_blocks.dylib
+SUP images.lc=/usr/lib/system/libsystem_c.dylib
+SUP images.lc=/usr/lib/system/libsystem_collections.dylib
+SUP images.lc=/usr/lib/system/libsystem_configuration.dylib
+SUP images.lc=/usr/lib/system/libsystem_containermanager.dylib
+SUP images.lc=/usr/lib/system/libsystem_coreservices.dylib
+SUP images.lc=/usr/lib/system/libsystem_darwin.dylib
+SUP images.lc=/usr/lib/system/libsystem_dnssd.dylib
+SUP images.lc=/usr/lib/system/libsystem_eligibility.dylib
+SUP images.lc=/usr/lib/system/libsystem_featureflags.dylib
+SUP images.lc=/usr/lib/system/libsystem_info.dylib
+SUP images.lc=/usr/lib/system/libsystem_kernel.dylib
+SUP images.lc=/usr/lib/system/libsystem_m.dylib
+SUP images.lc=/usr/lib/system/libsystem_malloc.dylib
+SUP images.lc=/usr/lib/system/libsystem_networkextension.dylib
+SUP images.lc=/usr/lib/system/libsystem_notify.dylib
+SUP images.lc=/usr/lib/system/libsystem_platform.dylib
+SUP images.lc=/usr/lib/system/libsystem_pthread.dylib
+SUP images.lc=/usr/lib/system/libsystem_sandbox.dylib
+SUP images.lc=/usr/lib/system/libsystem_sanitizers.dylib
+SUP images.lc=/usr/lib/system/libsystem_sim_kernel.dylib
+SUP images.lc=/usr/lib/system/libsystem_sim_kernel_host.dylib
+SUP images.lc=/usr/lib/system/libsystem_sim_platform.dylib
+SUP images.lc=/usr/lib/system/libsystem_sim_platform_host.dylib
+SUP images.lc=/usr/lib/system/libsystem_sim_pthread.dylib
+SUP images.lc=/usr/lib/system/libsystem_sim_pthread_host.dylib
+SUP images.lc=/usr/lib/system/libsystem_trace.dylib
+SUP images.lc=/usr/lib/system/libsystem_trial.dylib
+SUP images.lc=/usr/lib/system/libunwind.dylib
+SUP images.lc=/usr/lib/system/libxpc.dylib
+SUP t=4.739 app.body=
+SUP t=4.739 app.scenePhase=active->inactive
+SUP t=4.739 note.scene.willDeactivate=appState=0
+SUPX 4.744 notify-register com.apple.UIKit.ScrollPocketStatistics
+SUPX 4.744 notify-post com.apple.UIKit.ScrollPocketStatistics
+SUP t=4.740 note.app.willResignActive=appState=0
+SUP t=4.741 root.body=
+SUP t=4.742 view.scenePhase=active->inactive
+SUP t=9.567 app.body=
+SUP t=9.567 app.scenePhase=inactive->background
+SUP t=9.567 note.scene.didEnterBackground=appState=2
+SUP t=9.572 note.app.didEnterBackground=appState=2
+SUP t=9.573 root.body=
+SUP t=9.573 view.scenePhase=inactive->background
+SUP t=10.465 app.body=
+SUP t=10.465 app.scenePhase=background->inactive
+SUP t=10.465 note.scene.willEnterForeground=appState=2
+SUP t=10.465 note.app.willEnterForeground=appState=2
+SUPX 10.470 notify-register com.apple.UIIntelligenceSupport.AgentRelaunched.501
+SUPX 10.470 xpc-mach com.apple.uiintelligencesupport.agent
+SUP t=10.469 root.body=
+SUP t=10.469 view.scenePhase=background->inactive
+SUP t=10.496 app.body=
+SUP t=10.496 app.scenePhase=inactive->active
+SUP t=10.496 note.scene.didActivate=appState=1
+SUP t=10.497 note.app.didBecomeActive=appState=0
+SUPX 10.502 notify-register com.apple.LocalAuthentication.ui.presented
+SUPX 10.502 notify-register com.apple.LocalAuthentication.ui.dismissed
+SUP t=10.500 root.body=
+SUP t=10.500 view.scenePhase=inactive->active
+SUP t=14.801 app.body=
+SUP t=14.801 app.scenePhase=active->inactive
+SUP t=14.801 note.scene.willDeactivate=appState=0
+SUPX 14.806 notify-post com.apple.UIKit.ScrollPocketStatistics
+SUP t=14.801 note.app.willResignActive=appState=0
+SUP t=14.805 root.body=
+SUP t=14.805 view.scenePhase=active->inactive
+SUP t=18.333 lc.onOpenURL=suiprobe://hello?x=1
+SUP t=18.747 app.body=
+SUP t=18.748 app.scenePhase=inactive->active
+SUP t=18.748 note.scene.didActivate=appState=1
+SUP t=18.749 note.app.didBecomeActive=appState=0
+SUP t=18.751 root.body=
+SUP t=18.751 view.scenePhase=inactive->active
+dev.ycode.suiprobe: 38058

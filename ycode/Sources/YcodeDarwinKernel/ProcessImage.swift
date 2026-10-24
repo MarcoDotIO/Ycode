@@ -2,6 +2,12 @@
 // (`specs/simulator/stage3-contract.md` §2, §5, §6). Each returns bytes plus
 // the guest addresses the caller needs; none of them touches guest memory.
 
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
+
 // MARK: - Fixed addresses
 
 /// The stage-3a guest virtual address map (`stage3-contract.md` §2).
@@ -268,6 +274,96 @@ public enum SimulatorEnvironment {
 
 // MARK: - Commpage
 
+/// The guest's CPU count, N (`darwin-process-start.md`, "Guest CPU count"):
+/// the commpage, the `hw.*cpu*` sysctls, the workqueue parallelism, the
+/// cooperative pool width and `QOS_MAX_PARALLELISM` all use it.
+/// `YCODE_GUEST_CPUS=<n>` (1…64; a launcher setting) sets it; otherwise 1.
+/// One CPU is the measured default: N = 14 did not reach the home screen
+/// sooner on the Thor and kept the kernel lock busier (more parallel
+/// workers, more lock contention).
+public enum GuestCPUs {
+    public static let defaultCount = 1
+    public static let count: Int = {
+        if let raw = getenv("YCODE_GUEST_CPUS"), let n = Int(String(cString: raw)) { return min(64, max(1, n)) }
+        return defaultCount
+    }()
+}
+
+/// The guest's mach timebase (`darwin-process-start.md`, "Guest timebase").
+/// By default the guest sees Apple's arm64 timebase, 24 MHz
+/// (`mach_timebase_info` 125/3), whatever the host counter's frequency:
+/// Swift Concurrency converts its deadlines to mach ticks with that fixed
+/// ratio on Apple arm64 (swift `DispatchGlobalExecutor.cpp`,
+/// `platform_time`), so on a 1 GHz counter every `Task.sleep` deadline
+/// lands in the past and sleeping tasks spin. Guest mach time is then the
+/// host counter scaled (`scale`), served by traps −3/−4 only; the commpage
+/// advertises no user timebase (`USER_TIMEBASE` = 0).
+/// `YCODE_GUEST_TIMEBASE=host` gives the guest the host counter instead
+/// (`mach_timebase_info` = 10⁹ / `CNTFRQ_EL0`, `USER_TIMEBASE` = 1).
+public enum GuestTimebase {
+    /// Apple arm64's timebase frequency (125/3 ns per tick).
+    public static let appleFrequency: UInt64 = 24_000_000
+
+    /// True when the guest uses the host counter as is (`YCODE_GUEST_TIMEBASE=host`).
+    public static let usesHostCounter: Bool = {
+        guard let raw = getenv("YCODE_GUEST_TIMEBASE") else { return false }
+        return String(cString: raw).lowercased() == "host"
+    }()
+
+    /// The guest's tick frequency for a host counter of `hostFrequency` Hz.
+    public static func frequency(hostFrequency: UInt64) -> UInt64 {
+        usesHostCounter ? hostFrequency : appleFrequency
+    }
+
+    /// The fixed-point clock scale (`fast-traps.md` §3.2): mach time =
+    /// ⌊counter × multiplier / 2^shift⌋. The kernel's traps and the guest
+    /// library's in-place read use exactly this formula, so they agree.
+    public struct ClockScale: Equatable, Sendable {
+        public var multiplier: UInt64
+        public var shift: UInt64
+
+        public static let identity = ClockScale(multiplier: 1, shift: 0)
+
+        public init(multiplier: UInt64, shift: UInt64) {
+            self.multiplier = multiplier
+            self.shift = shift
+        }
+
+        /// The scale from a `from` Hz counter to `to` Hz ticks: identity when
+        /// equal, else the largest shift ≤ 64 whose multiplier
+        /// ⌈to × 2^shift / from⌉ fits 64 bits (rounded up, so whole
+        /// multiples of the ratio come out exact).
+        public init(from: UInt64, to: UInt64) {
+            guard from != to, from != 0, to != 0 else { self = .identity; return }
+            for s in stride(from: 64, through: 0, by: -1) {
+                // to × 2^s as (hi, lo).
+                let hi: UInt64 = s == 64 ? to : (s == 0 ? 0 : to >> (64 - s))
+                let lo: UInt64 = s == 64 ? 0 : to << s
+                guard hi < from else { continue }
+                let (q, r) = from.dividingFullWidth((hi, lo))
+                guard r == 0 || q < UInt64.max else { continue }
+                self.init(multiplier: r == 0 ? q : q + 1, shift: UInt64(s))
+                return
+            }
+            self = .identity
+        }
+
+        @inline(__always)
+        public func apply(_ ticks: UInt64) -> UInt64 {
+            if shift == 0 { return ticks &* multiplier }
+            let (hi, lo) = ticks.multipliedFullWidth(by: multiplier)
+            return shift == 64 ? hi : (hi << (64 - shift)) | (lo >> shift)
+        }
+    }
+
+    /// `ticks` of a `from` Hz counter as guest mach ticks of a `to` Hz
+    /// timebase (`ClockScale`; monotonic).
+    @inline(__always)
+    public static func scale(_ ticks: UInt64, from: UInt64, to: UInt64) -> UInt64 {
+        from == to ? ticks : ClockScale(from: from, to: to).apply(ticks)
+    }
+}
+
 /// The two commpage data pages (`darwin-process-start.md` §3, values from
 /// `stage3-contract.md` §6). Simulator code reads the legacy RW offsets, so
 /// both copies of the duplicated fields are filled.
@@ -299,10 +395,66 @@ public struct CommpageBuilder: Equatable, Sendable {
         public static let contHWTimebase = 0x0A8
         public static let approxTime = 0x0C0
         public static let approxTimeSupported = 0x0C8
+        /// Ycode-private flag byte in Darwin's UNUSED1 padding
+        /// (`fast-traps.md` §2; bits in `FastFlag`).
+        public static let fastFlags = 0x0F8
         public static let newTimeOfDay = 0x120
         public static let remoteTimeParams = 0x148
         public static let dyldFlags = 0x160
         public static let cpuToCluster = 0x200
+        /// Ycode-private credential block above `_COMM_PAGE_END`
+        /// (`fast-traps.md` §5): u32 uid, euid, gid, egid.
+        public static let credentials = 0x1000
+        /// Ycode-private clock scale (`fast-traps.md` §3.2): u64 multiplier
+        /// at 0x1010, u64 shift at 0x1018.
+        public static let clockMultiplier = 0x1010
+        public static let clockShift = 0x1018
+    }
+
+    /// Bits of the `Offset.fastFlags` byte (`fast-traps.md` §2).
+    public enum FastFlag {
+        /// The guest reads `CNTVCT_EL0` in place: every vCPU of every VM has
+        /// the system's counter offset (§3.1).
+        public static let directClock: UInt8 = 1
+        /// The credential calls answer from `Offset.credentials` (§5).
+        public static let credentialBlock: UInt8 = 2
+    }
+
+    /// The `NEWTIMEOFDAY_DATA` fields after `TimeStamp_tick`
+    /// (`darwin-process-start.md` §3.6, `fast-traps.md` §4).
+    public struct TimeOfDaySnapshot: Equatable, Sendable {
+        public var tick: UInt64
+        public var seconds: UInt64
+        /// The sub-second part as a 64-bit binary fraction.
+        public var fraction: UInt64
+        /// ⌊2^63 / frequency⌋ × 2.
+        public var scale: UInt64
+        public var ticksPerSecond: UInt64
+
+        /// The snapshot of calendar time (`seconds`, `nanoseconds`) taken at
+        /// mach time `tick`, for a counter of `frequency` Hz.
+        public init(tick: UInt64, seconds: Int64, nanoseconds: Int64, frequency: UInt64) {
+            let nsec = UInt64(clamping: min(max(nanoseconds, 0), 999_999_999))
+            self.tick = tick
+            self.seconds = UInt64(bitPattern: max(seconds, 0))
+            // ⌊nsec × 2^64 / 10^9⌋ (nsec < 10^9, so the quotient fits).
+            self.fraction = UInt64(1_000_000_000).dividingFullWidth((high: nsec, low: 0)).quotient
+            let f = max(frequency, 1)
+            self.scale = ((UInt64(1) << 63) / f) &* 2
+            self.ticksPerSecond = f
+        }
+
+        /// The calendar time this snapshot gives at mach time `now`, as
+        /// the guest library computes it (nil when the snapshot is stale or
+        /// invalid: the caller makes BSD 116).
+        public func timeval(at now: UInt64) -> (seconds: UInt64, microseconds: UInt32)? {
+            guard tick != 0 else { return nil }
+            let delta = now >= tick ? now - tick : 0
+            guard delta < ticksPerSecond else { return nil }
+            let (frac, wrapped) = fraction.addingReportingOverflow(delta &* scale)
+            let usec = frac.multipliedFullWidth(by: 1_000_000).high
+            return (seconds + (wrapped ? 1 : 0), UInt32(truncatingIfNeeded: usec))
+        }
     }
 
     /// Capability bits (`darwin-process-start.md` §3.5).
@@ -325,7 +477,7 @@ public struct CommpageBuilder: Equatable, Sendable {
     public static let userTimebaseSpec: UInt8 = 1
     public static let remoteTimeSentinel: UInt64 = 0xFFFF_FFFF_FFFF_FFFC
 
-    public var cpuCount: UInt8 = 1
+    public var cpuCount = UInt8(GuestCPUs.count)
     public var cacheLineSize: UInt16 = 64
     public var memorySize: UInt64 = Stage3Layout.memorySize
     public var pageShift: UInt8 = 14
@@ -333,6 +485,26 @@ public struct CommpageBuilder: Equatable, Sendable {
     public var optionalCapabilities: UInt64 = 0
     public var bootTimeMicroseconds: UInt64 = 0
     public var timebaseOffset: UInt64 = 0
+    /// `USER_TIMEBASE` (0x090): 1 when the guest's mach time is the counter
+    /// it can read (`GuestTimebase.usesHostCounter`), else 0 (traps only).
+    public var userTimebase: UInt8 = GuestTimebase.usesHostCounter ? CommpageBuilder.userTimebaseSpec : 0
+    /// The Ycode fast-path flags (`FastFlag`; 0 = every call traps).
+    public var fastFlags: UInt8 = 0
+    /// The first `NEWTIMEOFDAY_DATA` snapshot (nil = zero, "invalid").
+    public var timeOfDay: TimeOfDaySnapshot?
+    /// What `Offset.credentials` holds (uid, euid, gid, egid).
+    public var credentials = Credentials()
+    /// The clock scale at `Offset.clockMultiplier`/`clockShift`
+    /// (`fast-traps.md` §3.2; nil = zero, "no scaling").
+    public var clockScale: GuestTimebase.ClockScale?
+
+    /// The credential block's values (`fast-traps.md` §5).
+    public struct Credentials: Equatable, Sendable {
+        public var uid: UInt32 = 0, euid: UInt32 = 0, gid: UInt32 = 0, egid: UInt32 = 0
+        public init(uid: UInt32 = 0, euid: UInt32 = 0, gid: UInt32 = 0, egid: UInt32 = 0) {
+            self.uid = uid; self.euid = euid; self.gid = gid; self.egid = egid
+        }
+    }
 
     public init() {}
 
@@ -360,14 +532,30 @@ public struct CommpageBuilder: Equatable, Sendable {
         p[Offset.userPageShift64] = pageShift
         p.putLE(cacheLineSize, at: Offset.cacheLineSize)
         p[Offset.cpuClusters] = 1
+        p[Offset.ncpus] = cpuCount
         p[Offset.activeCPUs] = cpuCount
         p[Offset.physicalCPUs] = cpuCount
         p[Offset.logicalCPUs] = cpuCount
         p[Offset.kernelPageShift] = pageShift
         p.putLE(memorySize, at: Offset.memorySize)
         p.putLE(timebaseOffset, at: Offset.timebaseOffset)
-        p[Offset.userTimebase] = Self.userTimebaseSpec
+        p[Offset.userTimebase] = userTimebase
         p.putLE(bootTimeMicroseconds, at: Offset.boottimeUsec)
+        p[Offset.fastFlags] = fastFlags
+        if let t = timeOfDay {
+            for (i, v) in [t.tick, t.seconds, t.fraction, t.scale, t.ticksPerSecond].enumerated() {
+                p.putLE(v, at: Offset.newTimeOfDay + 8 * i)
+            }
+        }
+        if let scale = clockScale {
+            p.putLE(scale.multiplier, at: Offset.clockMultiplier)
+            p.putLE(scale.shift, at: Offset.clockShift)
+        }
+        if fastFlags & FastFlag.credentialBlock != 0 {
+            for (i, v) in [credentials.uid, credentials.euid, credentials.gid, credentials.egid].enumerated() {
+                p.putLE(v, at: Offset.credentials + 4 * i)
+            }
+        }
         p.putLE(Self.remoteTimeSentinel, at: Offset.remoteTimeParams)
         // cpu_to_cluster: one 0 byte per vCPU (already zero).
         return p

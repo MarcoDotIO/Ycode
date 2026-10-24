@@ -11,8 +11,9 @@ extension Array where Element == UInt8 {
     }
 
     /// Appends `value` little-endian.
-    mutating func appendLE<T: FixedWidthInteger>(_ value: T) {
-        putLE(value, at: count)
+    @inline(__always) mutating func appendLE<T: FixedWidthInteger>(_ value: T) {
+        var v = value.littleEndian
+        Swift.withUnsafeBytes(of: &v) { append(contentsOf: $0) }
     }
 
     /// Stores raw bytes at `offset`, growing the array with zeros if needed.

@@ -50,6 +50,30 @@ import YcodeDarwinABI
         #expect(env.bsd(k, 517, [UInt64(fd), UInt64(bitPattern: -2), pa, 0]) == -45)
     }
 
+    /// renameatx_np flags (service-fidelity.md §4): RENAME_NOFOLLOW_ANY (searchd's
+    /// index state file) and RENAME_SECLUDE are accepted; a symbolic link in a
+    /// non-final component is ELOOP with NOFOLLOW_ANY and followed without it;
+    /// unknown flags and EXCL|SWAP are EINVAL.
+    @Test func renameNoFollowAnyAndSeclude() throws {
+        let env = try ProcEnv()
+        let k = env.rootKernel!
+        let cwd = UInt64(bitPattern: -2)
+        let dir = env.root + "/real", link = env.root + "/link"
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: dir)
+        try Data("s".utf8).write(to: URL(fileURLWithPath: dir + "/state.tmp"))
+        let tmp = put(env, k, dir + "/state.tmp", At.out + 0x100), state = put(env, k, dir + "/state", At.out + 0x300)
+        #expect(env.bsd(k, 488, [cwd, tmp, cwd, state, 0x10]) == 0)                 // RENAME_NOFOLLOW_ANY
+        #expect(FileManager.default.fileExists(atPath: dir + "/state"))
+        let viaLink = put(env, k, link + "/state", At.out + 0x500), back = put(env, k, dir + "/again", At.out + 0x700)
+        #expect(env.bsd(k, 488, [cwd, viaLink, cwd, back, 0x10]) == -62)            // a link on the way: ELOOP
+        #expect(env.bsd(k, 488, [cwd, state, cwd, viaLink, 0x10]) == -62)           // also for the target
+        #expect(env.bsd(k, 488, [cwd, viaLink, cwd, back, 0x1]) == 0)               // RENAME_SECLUDE; link followed
+        #expect(FileManager.default.fileExists(atPath: dir + "/again"))
+        #expect(env.bsd(k, 488, [cwd, back, cwd, state, 0x8]) == -22)               // RENAME_RESERVED1
+        #expect(env.bsd(k, 488, [cwd, back, cwd, state, 0x6]) == -22)               // EXCL | SWAP
+    }
+
     /// Extended attributes on a writable prefix: kept as host attributes.
     @Test func extendedAttributesRoundTrip() throws {
         let env = try ProcEnv()

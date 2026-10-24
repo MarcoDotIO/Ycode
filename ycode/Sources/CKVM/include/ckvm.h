@@ -53,6 +53,18 @@ int ckvm_discard_anonymous(void *address, size_t size);
 /// range stays anonymous zeros, so no access can raise SIGBUS. `offset` must
 /// be a multiple of the host page size. Returns NULL on failure (errno set).
 void *ckvm_map_file_private(int fd, uint64_t offset, size_t file_bytes, size_t total_size);
+/// As `ckvm_map_file_private`, but at `at` inside an existing reservation
+/// (MAP_FIXED): `file_bytes` of the file, then anonymous zero pages up to
+/// `total_size`, all private and read/write. On failure the range is made an
+/// inaccessible reservation again and NULL is returned (errno set).
+void *ckvm_map_file_private_at(void *at, int fd, uint64_t offset, size_t file_bytes, size_t total_size);
+/// Moves the mapping [old, old+size) to `at` (mremap MREMAP_MAYMOVE |
+/// MREMAP_FIXED), replacing what was mapped there in one step. Returns `at`
+/// or NULL (errno set).
+void *ckvm_mremap_fixed(void *old, size_t size, void *at);
+/// Puts [at, at+size) back to an inaccessible MAP_NORESERVE reservation
+/// (dropping whatever was mapped there). Returns 0 or -errno.
+int ckvm_reserve_at(void *at, size_t size);
 
 /// The host page size (sysconf(_SC_PAGESIZE)).
 size_t ckvm_host_page_size(void);
@@ -125,6 +137,29 @@ uint64_t ckvm_reg_timer_ctl(void);
 uint64_t ckvm_host_cntfrq(void);
 uint64_t ckvm_host_cntvct(void);
 
+/// KVM_CAP_COUNTER_OFFSET (227): KVM_ARM_SET_COUNTER_OFFSET is available.
+enum { CKVM_CAP_COUNTER_OFFSET = 227 };
+/// KVM_ARM_SET_COUNTER_OFFSET (VM ioctl, Linux 6.4+): one VM-wide offset
+/// subtracted from the host counter for every vCPU of the VM, present and
+/// future (vCPU creation no longer resets it). Call before any vCPU of the
+/// VM runs. Returns 0 or -errno (-ENOSYS when the headers lack the ioctl).
+int ckvm_set_counter_offset(int vm_fd, uint64_t offset);
+
+/// Installs one SMCCC filter range on the VM (KVM_SET_DEVICE_ATTR, group
+/// KVM_ARM_VM_SMCCC_CTRL, attribute KVM_ARM_VM_SMCCC_FILTER): calls with a
+/// function ID in [base, base + count) get `action` (0 handle, 1 deny,
+/// 2 forward to user space as KVM_EXIT_HYPERCALL). Before any vCPU runs.
+/// Returns 0 or -errno.
+int ckvm_set_smccc_filter(int vm_fd, uint32_t base, uint32_t count, uint8_t action);
+enum { CKVM_SMCCC_FILTER_FWD_TO_USER = 2 };
+
+/// Stores a commpage NEWTIMEOFDAY_DATA snapshot at `block` (five u64:
+/// tick, sec, frac, scale, ticks per second) with Darwin's writer order
+/// (fast-traps.md §4): tick = 0, a store barrier, the other four fields, a
+/// store barrier, the new tick. Every store is a single aligned 64-bit store.
+void ckvm_publish_timeofday(void *block, uint64_t tick, uint64_t sec, uint64_t frac, uint64_t scale,
+                            uint64_t ticks_per_second);
+
 // ---- struct kvm_run accessors ------------------------------------------------
 
 /// Exit reason numbers (the KVM_EXIT_* values used by the hypervisor).
@@ -171,6 +206,10 @@ uint64_t ckvm_run_system_event_data(const void *run, uint32_t index);
 /// KVM_EXIT_ARM_NISV: ESR_EL2 bits and the faulting IPA.
 uint64_t ckvm_run_arm_nisv_esr_iss(const void *run);
 uint64_t ckvm_run_arm_nisv_fault_ipa(const void *run);
+/// KVM_EXIT_HYPERCALL: the SMCCC function ID (`nr`) and `flags`
+/// (bit 0 = SMC conduit, bit 1 = 16-bit instruction).
+uint64_t ckvm_run_hypercall_nr(const void *run);
+uint64_t ckvm_run_hypercall_flags(const void *run);
 
 // ---- Kicking a vCPU thread and cache maintenance ------------------------------
 
@@ -181,6 +220,26 @@ int ckvm_kick_install(int signo);
 int ckvm_kick_thread(unsigned long thread, int signo);
 /// The calling thread's Linux thread id (diagnostics).
 long ckvm_gettid(void);
+/// The calling thread's counters (diagnostics): out[0] minor faults,
+/// out[1] major faults, out[2] voluntary and out[3] involuntary context
+/// switches (getrusage RUSAGE_THREAD).
+void ckvm_thread_usage(long out[4]);
+/// The calling thread's user and system CPU time (microseconds) and minor
+/// faults (getrusage RUSAGE_THREAD; diagnostics).
+void ckvm_thread_times(unsigned long long out[3]);
+/// Diagnostics (`YCODE_BOOT_PROFILE`): a host thread's counters from
+/// /proc/self/task/<tid>/{stat,schedstat}: out[0] utime, out[1] stime,
+/// out[2] guest time (clock ticks, `ckvm_clock_ticks`), out[3] minor and
+/// out[4] major faults, out[5] CPU time (ns), out[6] run-queue wait (ns),
+/// out[7] scheduler state letter ('R', 'S', 'D', ...). Returns 0, or -1 when
+/// the thread is gone.
+int ckvm_task_stats(long tid, uint64_t out[8]);
+/// sysconf(_SC_CLK_TCK).
+long ckvm_clock_ticks(void);
+/// Diagnostics: the vCPU's KVM binary statistics (KVM_GET_STATS_FD) named in
+/// `names` (each a u64 counter, e.g. "exits", "wfi_exit_stat"); a missing
+/// name reads 0. Returns 0, or -errno when the kernel has no statistics fd.
+int ckvm_vcpu_stats(int vcpu_fd, const char *const *names, int count, uint64_t *out);
 /// Blocks `signo` on the calling thread, and has KVM unblock it only while
 /// this thread is inside KVM_RUN on `vcpu_fd` (KVM_SET_SIGNAL_MASK): a kick
 /// is then delivered only in KVM_RUN, never in the middle of host code.
@@ -223,6 +282,25 @@ int ckvm_hwwatch_arm_slot(int slot, uint64_t address);
 /// buffer forever, reporting any word that does not read back (stderr).
 int ckvm_memcheck_start(int threads);
 void ckvm_hwwatch_disarm_slot(int slot);
+
+
+// ---- Kernel-lock holder stack samples (diagnostics) --------------------------
+
+/// Installs the SIGPROF handler that records the receiving thread's call
+/// stack (`backtrace`, SA_RESTART) and warms the unwinder up. Returns 0 or -errno.
+int ckvm_stack_sampler_install(void);
+/// Asks the host thread `tid` (of this process) for its call stack: sends it
+/// SIGPROF and waits up to `timeout_us` for the handler. Copies up to `max`
+/// return addresses to `out` and returns their count, 0 when the thread did
+/// not answer in time, or -errno. One caller at a time.
+int ckvm_stack_sample(long tid, void **out, int max, int timeout_us);
+
+// ---- Parent death ---------------------------------------------------------
+
+/// Asks the kernel to send `signo` to this process when its parent ends
+/// (`prctl(PR_SET_PDEATHSIG)`, Linux man page prctl(2)); sends it at once
+/// when the parent has already ended. Returns 0 or -errno.
+int ckvm_signal_on_parent_death(int signo);
 
 #endif // __linux__ && __aarch64__
 

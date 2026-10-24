@@ -66,6 +66,37 @@ struct SurfaceLink {
     let surfaceID: UInt32
     /// Bytes of surface memory from `offset` on; no copy may go past them.
     let limit: Int
+    /// The surface's seed and whether a lock is held (nil: unknown).
+    var syncState: (@Sendable () -> (seed: UInt32, locked: Bool)?)?
+    /// Identifies the surface plane across images (copy-in tracking).
+    var syncKey: SurfaceSyncKey { SurfaceSyncKey(surfaceID: surfaceID, offset: offset) }
+}
+
+struct SurfaceSyncKey: Hashable {
+    var surfaceID: UInt32
+    var offset: Int
+}
+
+/// The part of a surface a command buffer can have written (pixels of
+/// level 0, half-open), or all of it.
+struct SurfaceDamage {
+    var isFull = false
+    var x0 = Int.max, y0 = Int.max, x1 = Int.min, y1 = Int.min
+    static let full = SurfaceDamage(isFull: true)
+
+    init() {}
+    init(isFull: Bool) { self.isFull = isFull }
+    init(x: Int, y: Int, width: Int, height: Int) {
+        if width > 0 && height > 0 { x0 = x; y0 = y; x1 = x + width; y1 = y + height }
+    }
+
+    var isEmpty: Bool { !isFull && (x1 <= x0 || y1 <= y0) }
+
+    mutating func add(_ d: SurfaceDamage) {
+        if isFull || d.isEmpty { return }
+        if d.isFull { self = .full; return }
+        x0 = min(x0, d.x0); y0 = min(y0, d.y0); x1 = max(x1, d.x1); y1 = max(y1, d.y1)
+    }
 }
 
 /// The Vulkan image behind a texture and all its views.
@@ -81,6 +112,10 @@ final class VKImage {
     var surface: SurfaceLink?
     /// The image has been moved to VK_IMAGE_LAYOUT_GENERAL.
     var initialized = false
+    /// IOSurface images: the surface generation and seed when the image
+    /// last held the surface's pixels (nil: unknown, copy in before use).
+    var syncedGeneration: UInt64?
+    var syncedSeed: UInt32 = 0
 
     init(image: yvk_image, format: VulkanPixelFormat, metalFormat: UInt32, imageType: VkImageType, width: Int,
          height: Int, depth: Int, levels: Int, layers: Int, samples: Int, usage: VkImageUsageFlags) {
@@ -316,6 +351,18 @@ final class Recording {
     var waitValue: UInt64 = 0
     /// The shaders this recording uses (diagnostics: a GPU hang names them).
     var shaders: [String] = []
+    /// The first dispatches' geometry and small buffer contents (diagnostics:
+    /// a GPU hang prints them with the shaders).
+    var dispatchNotes: [String] = []
+
+    /// IOSurfaces this recording copies back to (their writes are pending
+    /// until its serial completes).
+    var writtenSurfaces: [UInt32] = []
+    /// The same surfaces' planes (copy-in tracking).
+    var writtenSurfaceKeys: [SurfaceSyncKey] = []
+    /// Recorded now but submitted later (held behind an event wait): its
+    /// copy-outs reach the surfaces only at submission.
+    var deferred = false
 
     /// Draw statistics (diagnostics): draws, the largest vertex×instance
     /// count of one draw, indirect draws.
@@ -329,6 +376,9 @@ final class Recording {
     func noteShaders(_ names: String) {
         if shaders.count < 16 && !shaders.contains(names) { shaders.append(names) }
     }
+
+    /// Names its checkpoint markers (VulkanHangReport.swift).
+    var checkpointID: UInt32 = 0
 
     init(cb: VkCommandBuffer?) { self.cb = cb }
 }

@@ -45,12 +45,16 @@ final class MetalHostCore: @unchecked Sendable {
     /// Clock for event times (host seconds).
     var clock: () -> Double = { ProcessInfo.processInfo.systemUptime }
 
-    private let lock = NSLock()
-    private var processes: [MetalProcessID: Process] = [:]
-    private var connections: [UInt32: Connection] = [:]
-    private var nextProcess: MetalProcessID = 1
-    private var nextHandle: UInt64 = 1
-    private var nextGPUAddress: UInt64 = 0x100_0000_0000
+    // Internal (not private) for the snapshot extension (MetalHostSnapshot.swift).
+    let lock = NSLock()
+    var processes: [MetalProcessID: Process] = [:]
+    var connections: [UInt32: Connection] = [:]
+    var nextProcess: MetalProcessID = 1
+    var nextHandle: UInt64 = 1
+    var nextGPUAddress: UInt64 = 0x100_0000_0000
+    /// Command buffers handed to the backend whose completion event is not
+    /// sent yet (a snapshot waits for 0, snapshot.md §8 option 2).
+    var inFlight = 0
     private var stats = MetalHostStatistics()
     private var loggedUnknown: Set<String> = []
 
@@ -109,6 +113,10 @@ final class MetalHostCore: @unchecked Sendable {
         var eventValue: UInt64 = 0
         /// Between `add` and the end of the backend's create call.
         var pendingCreate = false
+        /// How the object was made, for a replay after a snapshot restore.
+        var recipe: MetalRecipe?
+        /// The guest asked for the buffer's GPU address (op 38).
+        var addressQueried = false
         init(kind: MetalRefKind, ref: UInt32) { self.kind = kind; self.ref = ref }
     }
 
@@ -123,6 +131,11 @@ final class MetalHostCore: @unchecked Sendable {
         /// ended: `finishCreate` releases them.
         var orphans: [MetalHandle: Object] = [:]
         var ended = false
+        /// Released objects that live objects were made from (a pipeline's
+        /// function, a view's parent): kept for a replay. `dependents`: how
+        /// many live or kept recipes name each handle.
+        var ghosts: [MetalHandle: (kind: MetalRefKind, recipe: MetalRecipe)] = [:]
+        var dependents: [MetalHandle: Int] = [:]
         /// The guest pid of the first hand-shake's sender (diagnostics; 0 = unknown).
         var guestPID: Int32 = 0
         /// Diagnostics: submissions, events sent, the last submission (host seconds).
@@ -147,6 +160,11 @@ final class MetalHostCore: @unchecked Sendable {
             s.liveObjects = processes.values.reduce(0) { $0 + $1.objects.count }
             return s
         }
+    }
+
+    /// The guest pids of the live client processes (snapshot.md §8 option 1).
+    func clientPIDs() -> [Int32] {
+        lock.withLock { processes.values.map(\.guestPID).filter { $0 > 0 }.sorted() }
     }
 
     /// Diagnostics: one line per live client process (guest pid, objects,
@@ -203,6 +221,8 @@ final class MetalHostCore: @unchecked Sendable {
                 if o.pendingCreate { p.orphans[h] = o } else { all.append((h, o)) }
             }
             p.objects.removeAll()
+            p.ghosts.removeAll()
+            p.dependents.removeAll()
             return all
         }
         for (h, o) in objects {
@@ -382,14 +402,19 @@ final class MetalHostCore: @unchecked Sendable {
             }
         }
         if region == nil, storage == .shared || storage == .managed { storage = .private }
-        return makeBuffer(p, length: length, storage: storage, region: region, retained: retained, heap: nil,
+        var recipe = MetalRecipe(mt: 1)
+        recipe.length = length
+        recipe.options = options
+        if case let .sharedMemory(size, port)? = d["sharedMem"] { (recipe.right, recipe.rightSize) = (port.name, UInt64(size)) }
+        return makeBuffer(p, length: length, storage: storage, region: region, retained: retained, heap: nil, recipe: recipe,
                           reply: { ref in ["bufferRef": .uint64(UInt64(ref))] })
     }
 
     private func makeBuffer(_ p: Process, length: Int, storage: MetalStorageMode, region: GuestSharedRegion?, retained: [UInt32],
-                            heap: MetalHandle?, reply: (UInt32) -> XPCDict) -> Outcome {
+                            heap: MetalHandle?, recipe: MetalRecipe, reply: (UInt32) -> XPCDict) -> Outcome {
         let span = (UInt64(max(length, 1)) + 0xFFFF) & ~0xFFFF
         let (h, ref) = add(.resource, p) { o in
+            o.recipe = recipe
             o.rights = retained
             o.heap = heap
             o.heapBytes = heap == nil ? 0 : (UInt64(length) + 255) & ~255
@@ -408,7 +433,7 @@ final class MetalHostCore: @unchecked Sendable {
 
     // messageType 7 (§8.1)
     private func newQueue(_ d: XPCDict, _ p: Process) -> Outcome {
-        let (_, ref) = add(.queue, p)
+        let (_, ref) = add(.queue, p) { $0.recipe = MetalRecipe(mt: 7) }
         return Outcome(reply: ["commandQueueRef": .uint64(UInt64(ref))])
     }
 
@@ -423,19 +448,19 @@ final class MetalHostCore: @unchecked Sendable {
             case 1:
                 var r = ByteReader(rec.body)
                 let desc = try MetalDescriptorCodec.texture(&r)
-                let (h, ref) = add(.resource, p)
+                let (h, ref) = add(.resource, p) { $0.recipe = MetalRecipe(mt: 8, op: 1, body: rec.body) }
                 do { try backend.createTexture(h, desc, iosurface: nil) } catch { backendFailed("createTexture \(h)", error) }
                 finishCreate(h, p)
                 return Outcome(reply: Self.refReply(ref, words: 1))
             case 3:
                 let desc = try MetalDescriptorCodec.sampler(rec.body)
-                let (h, ref) = add(.sampler, p)
+                let (h, ref) = add(.sampler, p) { $0.recipe = MetalRecipe(mt: 8, op: 3, body: rec.body) }
                 do { try backend.createSampler(h, desc) } catch { backendFailed("createSampler \(h)", error) }
                 finishCreate(h, p)
                 return Outcome(reply: Self.refReply(ref, words: 1))
             case 4:
                 let desc = try MetalDescriptorCodec.depthStencil(rec.body)
-                let (h, ref) = add(.depthStencil, p)
+                let (h, ref) = add(.depthStencil, p) { $0.recipe = MetalRecipe(mt: 8, op: 4, body: rec.body) }
                 do { try backend.createDepthStencilState(h, desc) } catch { backendFailed("createDepthStencilState \(h)", error) }
                 finishCreate(h, p)
                 return Outcome(reply: Self.refReply(ref, words: 1))
@@ -470,7 +495,10 @@ final class MetalHostCore: @unchecked Sendable {
         } else {
             log("metal: op 47 without an iosurface right")
         }
-        let (h, ref) = add(.resource, p) { $0.rights = retained }
+        var recipe = MetalRecipe(mt: 13, op: 47, body: rec.body)
+        recipe.right = retained.first ?? 0
+        recipe.plane = plane
+        let (h, ref) = add(.resource, p) { $0.rights = retained; $0.recipe = recipe }
         do { try backend.createTexture(h, desc, iosurface: backing) } catch { backendFailed("createTexture(IOSurface) \(h)", error) }
         finishCreate(h, p)
         return Outcome(reply: Self.refReply(ref), retained: retained)
@@ -482,7 +510,7 @@ final class MetalHostCore: @unchecked Sendable {
             refuse("15", "no functionIR")
             return Outcome(reply: [:])
         }
-        let (h, ref) = add(.function, p)
+        let (h, ref) = add(.function, p) { $0.recipe = MetalRecipe(mt: 15, body: ir) }
         do { try backend.createFunction(h, metallib: ir) } catch { backendFailed("createFunction \(h)", error) }
         finishCreate(h, p)
         return Outcome(reply: Self.refReply(ref))
@@ -520,6 +548,7 @@ final class MetalHostCore: @unchecked Sendable {
                 p.tables[k] = t
                 guard let o = p.objects.removeValue(forKey: h) else { return nil }
                 if let heap = o.heap, let ho = p.objects[heap] { ho.heapUsed -= min(ho.heapUsed, o.heapBytes) }
+                retire(h, o, p)
                 return (h, o)
             }
             return nil
@@ -638,8 +667,10 @@ final class MetalHostCore: @unchecked Sendable {
                     view.swizzle = [UInt8(s & 0xFF), UInt8((s >> 8) & 0xFF), UInt8((s >> 16) & 0xFF), UInt8(s >> 24)]
                 }
             }
-            let (h, ref) = add(.resource, p)
-            if let parent = lookUp(.resource, parentRef, p) {
+            let parentHandle = lookUp(.resource, parentRef, p)
+            let (h, ref) = add(.resource, p) { $0.recipe = MetalRecipe(mt: 12, op: rec.op, body: rec.body, deps: parentHandle.map { [$0] } ?? []) }
+            noteDependencies(h, p)
+            if let parent = parentHandle {
                 do { try backend.createTextureView(h, parent: parent, view) } catch { backendFailed("createTextureView \(h)", error) }
             } else {
                 log("metal: texture view of unknown parent ref \(parentRef)")
@@ -650,9 +681,11 @@ final class MetalHostCore: @unchecked Sendable {
             let computePayload = try MetalPipelineCodec.payload(rec.body)
             let fref = try MetalPipelineCodec.computeFunctionRef(computePayload)
             noteUnknownKeys("compute pipeline", MetalPipelineCodec.computeUnknownKeys(computePayload))
-            let (h, ref) = add(.computePipeline, p)
+            let fHandle = lookUp(.function, fref, p)
+            let (h, ref) = add(.computePipeline, p) { $0.recipe = MetalRecipe(mt: 12, op: 11, body: rec.body, deps: fHandle.map { [$0] } ?? []) }
+            noteDependencies(h, p)
             var info = MetalComputePipelineInfo()
-            if let f = lookUp(.function, fref, p) {
+            if let f = fHandle {
                 do { info = try backend.createComputePipeline(h, function: f) } catch { backendFailed("createComputePipeline \(h)", error) }
             } else {
                 log("metal: compute pipeline with unknown function ref \(fref)")
@@ -663,28 +696,36 @@ final class MetalHostCore: @unchecked Sendable {
             w.pad(to: 24)
             return ["replyData": .data(w.bytes)]
         case 13:
-            let (h, ref) = add(.fence, p)
+            let (h, ref) = add(.fence, p) { $0.recipe = MetalRecipe(mt: 12, op: 13) }
             do { try backend.createFence(h) } catch { backendFailed("createFence \(h)", error) }
             finishCreate(h, p)
             return Self.refReply(ref)
         case 14:
             let payload = try MetalPipelineCodec.payload(rec.body)
+            var refMap: [(UInt32, MetalHandle)] = []
             let desc = try lock.withLock {
-                try MetalPipelineCodec.renderPipeline(payload) { p.handle(.function, $0) }
+                try MetalPipelineCodec.renderPipeline(payload) { ref in
+                    let h = p.handle(.function, ref)
+                    if let h { refMap.append((ref, h)) }
+                    return h
+                }
             }
             noteUnknownKeys("render pipeline", desc.unknownKeys)
-            let (h, ref) = add(.renderPipeline, p)
+            var recipe = MetalRecipe(mt: 12, op: 14, body: rec.body, deps: refMap.map(\.1))
+            recipe.refMap = refMap
+            let (h, ref) = add(.renderPipeline, p) { $0.recipe = recipe }
+            noteDependencies(h, p)
             do { try backend.createRenderPipeline(h, desc) } catch { backendFailed("createRenderPipeline \(h)", error) }
             finishCreate(h, p)
             return Self.refReply(ref)
         case 16:
-            let (_, ref) = add(.argumentLayout, p)
+            let (_, ref) = add(.argumentLayout, p) { $0.recipe = MetalRecipe(mt: 12, op: 16) }
             refuse("12:16", "argument-buffer layouts are answered but not modelled")
             var w = MetalByteWriter()
             w.u32(ref); w.u32(0); w.u32(0xFFFF_0001); w.u32(0xFFFF_FFFF)
             return ["replyData": .data(w.bytes)]
         case 17:
-            let (_, ref) = add(.argumentEncoder, p)
+            let (_, ref) = add(.argumentEncoder, p) { $0.recipe = MetalRecipe(mt: 12, op: 17) }
             var w = MetalByteWriter()
             w.u32(ref); w.u32(0); w.u16(24); w.u16(8); w.u32(0)
             return ["replyData": .data(w.bytes)]
@@ -694,7 +735,7 @@ final class MetalHostCore: @unchecked Sendable {
         case 20:
             _ = try r.u32()
             let size = try r.u64()
-            let (_, ref) = add(.heap, p) { $0.heapSize = size }
+            let (_, ref) = add(.heap, p) { $0.heapSize = size; $0.recipe = MetalRecipe(mt: 12, op: 20, body: rec.body) }
             return Self.refReply(ref)
         case 21:
             _ = try r.u32()
@@ -703,7 +744,11 @@ final class MetalHostCore: @unchecked Sendable {
             desc.resourceOptions = (desc.resourceOptions & ~0xF0) | 0x20
             let heap = lookUp(.heap, heapRef, p)
             let bytes = Self.heapTextureSize(desc)
-            let (h, ref) = add(.resource, p) { $0.heap = heap; $0.heapBytes = heap == nil ? 0 : bytes }
+            let (h, ref) = add(.resource, p) {
+                $0.heap = heap
+                $0.heapBytes = heap == nil ? 0 : bytes
+                $0.recipe = MetalRecipe(mt: 12, op: 21, body: rec.body)
+            }
             if let heap { lock.withLock { if let ho = p.objects[heap] { ho.heapUsed += bytes } } }
             do { try backend.createTexture(h, desc, iosurface: nil) } catch { backendFailed("createTexture(heap) \(h)", error) }
             finishCreate(h, p)
@@ -720,13 +765,15 @@ final class MetalHostCore: @unchecked Sendable {
             let heapRef = try r.u32()
             let length = try r.int64()
             let heap = lookUp(.heap, heapRef, p)
-            let outcome = makeBuffer(p, length: length, storage: .private, region: nil, retained: [], heap: heap,
+            var recipe = MetalRecipe(mt: 12, op: 24, body: rec.body)
+            recipe.length = length
+            let outcome = makeBuffer(p, length: length, storage: .private, region: nil, retained: [], heap: heap, recipe: recipe,
                                      reply: { Self.refReply($0) })
             return outcome.reply
         case 25:
             return ["replyData": .data([0])]
         case 28:
-            let (h, ref) = add(.event, p)
+            let (h, ref) = add(.event, p) { $0.recipe = MetalRecipe(mt: 12, op: 28) }
             do { try backend.createEvent(h) } catch { backendFailed("createEvent \(h)", error) }
             finishCreate(h, p)
             return Self.refReply(ref)
@@ -764,6 +811,7 @@ final class MetalHostCore: @unchecked Sendable {
         case 38:
             let ref = try r.u32()
             guard let h = lookUp(.resource, ref, p) else { return Self.u64Reply([0]) }
+            lock.withLock { p.objects[h]?.addressQueried = true }
             let address = backend.gpuAddress(ofBuffer: h) ?? lock.withLock { p.objects[h]?.gpuAddress } ?? 0
             return Self.u64Reply([address])
         case 39:
@@ -789,6 +837,7 @@ final class MetalHostCore: @unchecked Sendable {
     }
 
     private func submit(_ d: XPCDict, _ p: Process) {
+        let receivedAt = DispatchTime.now().uptimeNanoseconds
         let cbRef = d["commandBufferRef"]?.integerValue ?? 0
         let queueRef = UInt32(truncatingIfNeeded: d["commandQueue"]?.integerValue ?? 0)
         var segments: [[UInt8]] = []
@@ -800,13 +849,17 @@ final class MetalHostCore: @unchecked Sendable {
             segments.append(b)
         }
         var missing = 0
-        let (cb, unknownOps) = lock.withLock {
-            MetalCommandDecoder.decode(segments: segments, process: p.id, queue: p.handle(.queue, queueRef),
-                                       commandBufferRef: cbRef) { kind, ref in
-                if let h = p.handle(kind, ref) { return h }
-                missing += 1
-                return nil
-            }
+        // Decoded outside the core lock (0.1-1 ms per frame of the render
+        // server, which held up every other request): the refs resolve
+        // through a copy of the process's tables taken under the lock, which
+        // sees exactly what the lock would have shown at that moment
+        // (stage8-contract.md §15).
+        let (tables, queue) = lock.withLock { (p.tables, p.handle(.queue, queueRef)) }
+        var (cb, unknownOps) = MetalCommandDecoder.decode(segments: segments, process: p.id, queue: queue,
+                                                          commandBufferRef: cbRef) { kind, ref in
+            if let h = tables[kind]?.map[ref] { return h }
+            missing += 1
+            return nil
         }
         var newUnknown: [UInt32] = []
         lock.withLock {
@@ -822,13 +875,18 @@ final class MetalHostCore: @unchecked Sendable {
         if missing > 0 { log("metal: submission \(cbRef) of process \(p.id) names \(missing) unknown refs") }
         for diag in cb.diagnostics { log("metal: submission \(cbRef): \(diag)") }
 
+        cb.receivedAtNs = receivedAt
         let flight = InFlight(start: clock())
+        lock.withLock { inFlight += 1 }
         backend.submit(cb, scheduled: { [weak self] in
             guard let core = self else { return }
             p.events.async { core.sendScheduled(p, cbRef, flight) }
         }, completed: { [weak self] status in
             guard let core = self else { return }
-            p.events.async { core.sendCompleted(p, cbRef, flight, status: status) }
+            p.events.async {
+                core.sendCompleted(p, cbRef, flight, status: status)
+                core.lock.withLock { core.inFlight -= 1 }
+            }
         })
     }
 

@@ -249,7 +249,7 @@ struct CodeSigningInfo {
     var validationCategory: UInt32
     var signature: [UInt8]
 
-    private static let cacheLock = NSLock()
+    private static let cacheLock = RecursiveMutex(name: "code signature cache")
     nonisolated(unsafe) private static var cache: [String: CodeSigningInfo?] = [:]
     nonisolated(unsafe) private static var platformRoots: [String] = []
 
@@ -345,7 +345,7 @@ extension DarwinKernel {
     /// pidversion (word 7) (ESRCH); STATUS, CDHASH, PIDOFFSET, the
     /// entitlement blobs, BLOB, IDENTITY, TEAMID, and VALIDATION_CATEGORY
     /// may target any process, the others only the caller (EPERM).
-    func csopsCall(_ withToken: Bool, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    func csopsCall(_ withToken: Bool, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let requested = Int32(truncatingIfNeeded: a[0]), ops = UInt32(truncatingIfNeeded: a[1])
         let addr = a[2], size = a[3]
         let targetPID = requested == 0 ? pid : requested

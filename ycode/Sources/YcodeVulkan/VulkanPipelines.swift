@@ -25,10 +25,19 @@ extension VulkanMetalBackend {
                                  linkedCount: request.linkVertexHash?.count ?? -1)
         if useCache {
             translationLock.lock()
-            if let t = translations[key] { translationLock.unlock(); return t }
+            if let t = translations[key] {
+                translationLock.unlock()
+                cond.lock(); statistics.translationHits += 1; cond.unlock()
+                return t
+            }
             translationLock.unlock()
         }
         guard let translator else { throw VulkanBackendError("no shader translator (ycode-airc not found)") }
+        let start = DispatchTime.now().uptimeNanoseconds
+        defer {
+            let ns = DispatchTime.now().uptimeNanoseconds &- start
+            cond.lock(); statistics.translations.add(ns); cond.unlock()
+        }
         let t = try translator.translate(request)
         translationLock.lock()
         translations[key] = t
@@ -241,10 +250,12 @@ extension VulkanMetalBackend {
 
     /// Compiles one topology class of a built pipeline. Needs no lock: it
     /// reads fields that do not change after setup.
-    func compileRenderVariant(_ p: VKRenderPipeline, topologyClass cls: UInt32) -> VkPipeline? {
+    func compileRenderVariant(_ p: VKRenderPipeline, topologyClass cls: UInt32, locked: Bool = false) -> VkPipeline? {
         let start = DispatchTime.now().uptimeNanoseconds
         let result = compileRenderVariantTimed(p, topologyClass: cls)
-        let ms = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
+        let ns = DispatchTime.now().uptimeNanoseconds &- start
+        if locked { statistics.renderCompiles.add(ns) } else { cond.lock(); statistics.renderCompiles.add(ns); cond.unlock() }
+        let ms = Double(ns) / 1e6
         if verbose { log("compile render \(p.desc.label ?? "unlabelled") class \(cls): \(String(format: "%.1f", ms)) ms") }
         return result
     }
@@ -283,7 +294,7 @@ extension VulkanMetalBackend {
         guard p.isBuilt else { return nil }
         if let v = p.variants[cls] { return v }
         if p.failed.contains(cls) { return nil }
-        guard let pipe = compileRenderVariant(p, topologyClass: cls) else {
+        guard let pipe = compileRenderVariant(p, topologyClass: cls, locked: true) else {
             p.failed.insert(cls)
             return nil
         }
@@ -329,7 +340,12 @@ extension VulkanMetalBackend {
     }
 
     /// Compiles one compute variant. Needs no lock.
-    func compileComputeVariant(_ shader: TranslatedShader, _ key: ComputeVariantKey) -> VkPipeline? {
+    func compileComputeVariant(_ shader: TranslatedShader, _ key: ComputeVariantKey, locked: Bool = false) -> VkPipeline? {
+        let start = DispatchTime.now().uptimeNanoseconds
+        defer {
+            let ns = DispatchTime.now().uptimeNanoseconds &- start
+            if locked { statistics.computeCompiles.add(ns) } else { cond.lock(); statistics.computeCompiles.add(ns); cond.unlock() }
+        }
         let r = shader.reflection
         var constants: [yvk_spec_constant] = []
         let ids = r.compute?.workgroupSizeSpecIds ?? YcodeMetalABI.specWorkgroup
@@ -371,13 +387,42 @@ extension VulkanMetalBackend {
         guard let shader = p.shader, !p.broken else { return nil }
         if let v = p.variants[key] { return v }
         if p.failed.contains(key) { return nil }
-        guard let pipe = compileComputeVariant(shader, key) else {
+        guard let pipe = compileComputeVariant(shader, key, locked: true) else {
             p.failed.insert(key)
             return nil
         }
         pipelineCacheDirty = true
         p.variants[key] = pipe
         return pipe
+    }
+
+    // MARK: - Lane-isolated kernels (§15.5)
+
+    /// Whether a kernel runs one thread per workgroup: it is named in
+    /// `Options.laneIsolatedKernels` and its result cannot depend on the
+    /// workgroup shape (it reads only grid-wide built-ins, has no
+    /// threadgroup memory and no barriers or subgroup operations).
+    func laneIsolated(_ shader: TranslatedShader?) -> Bool {
+        guard let r = shader?.reflection, r.stage == .kernel, let name = r.entryPoint,
+              options.laneIsolatedKernels.contains(name) else { return false }
+        let gridOnly: Set<String> = ["thread_position_in_grid", "threads_per_grid"]
+        guard Set(r.builtins ?? []).isSubset(of: gridOnly) else { return false }
+        let used = Set(r.uses ?? [])
+        if used.contains("barrier") || used.contains(where: { $0.contains("simd") || $0.contains("quad") }) { return false }
+        if let tg = r.compute?.threadgroupMemory, (tg.staticBytes ?? 0) > 0 || tg.dynamic == true || !(tg.slots ?? []).isEmpty {
+            return false
+        }
+        return true
+    }
+
+    /// A dispatch as recorded: workgroups and workgroup size, with the
+    /// threads of the grid (lane-isolated kernels get one thread per
+    /// workgroup; nil when they cannot, e.g. too many workgroups).
+    func isolatedDispatch(threads t: (Int, Int, Int)) -> (groups: (Int, Int, Int), group: (Int, Int, Int))? {
+        let l = ctx.pointee.properties.limits
+        guard t.0 > 0, t.1 > 0, t.2 > 0, t.0 <= Int(l.maxComputeWorkGroupCount.0), t.1 <= Int(l.maxComputeWorkGroupCount.1),
+              t.2 <= Int(l.maxComputeWorkGroupCount.2) else { return nil }
+        return (t, (1, 1, 1))
     }
 
     // MARK: - Before a submission
@@ -387,7 +432,8 @@ extension VulkanMetalBackend {
     /// under the lock never waits for a translation or a cold compile.
     func preparePipelines(_ mcb: MetalCommandBuffer) {
         var renders: [VKRenderPipeline] = []
-        var dispatches: [(VKComputePipeline, (Int, Int, Int), [Int: Int])] = []
+        // (pipeline, workgroup size, threadgroup memory lengths, the lane-isolated variant)
+        var dispatches: [(VKComputePipeline, (Int, Int, Int), [Int: Int], Bool)] = []
         cond.lock()
         for pass in mcb.passes {
             switch pass {
@@ -402,8 +448,13 @@ extension VulkanMetalBackend {
                     switch c {
                     case .setComputePipelineState(let h): current = h.flatMap { computePipelines[$0] }
                     case .setThreadgroupMemoryLength(let n, let index): tg[index] = n
-                    case .dispatchThreadgroups(_, let t), .dispatchThreads(_, let t), .dispatchThreadgroupsIndirect(_, _, let t):
-                        if let p = current { dispatches.append((p, (max(t.width, 1), max(t.height, 1), max(t.depth, 1)), tg)) }
+                    case .dispatchThreadgroups(_, let t), .dispatchThreads(_, let t):
+                        if let p = current {
+                            dispatches.append((p, (max(t.width, 1), max(t.height, 1), max(t.depth, 1)), tg, false))
+                            dispatches.append((p, (1, 1, 1), tg, true))
+                        }
+                    case .dispatchThreadgroupsIndirect(_, _, let t):
+                        if let p = current { dispatches.append((p, (max(t.width, 1), max(t.height, 1), max(t.depth, 1)), tg, false)) }
                     default: break
                     }
                 }
@@ -411,15 +462,21 @@ extension VulkanMetalBackend {
             }
         }
         cond.unlock()
+        let waitStart = DispatchTime.now().uptimeNanoseconds
+        defer {
+            let ns = DispatchTime.now().uptimeNanoseconds &- waitStart
+            if ns > 1_000_000 { cond.lock(); statistics.pipelineWaits.add(ns); cond.unlock() }
+        }
         let deadline = DispatchTime.now() + 120
         for p in renders where p.ready.wait(timeout: deadline) == .timedOut { log("a render pipeline is still building after 120 s") }
-        for (p, _, _) in dispatches where p.ready.wait(timeout: deadline) == .timedOut { log("a compute pipeline is still building") }
-        for (p, size, tg) in dispatches {
+        for (p, _, _, _) in dispatches where p.ready.wait(timeout: deadline) == .timedOut { log("a compute pipeline is still building") }
+        for (p, size, tg, isolatedVariant) in dispatches {
             cond.lock()
             let shader = p.shader
             let lengths = (shader?.reflection.compute?.threadgroupMemory?.slots ?? []).map { tg[$0.index] ?? 0 }
             let key = ComputeVariantKey(x: size.0, y: size.1, z: size.2, threadgroupMemory: lengths)
             let needed = shader != nil && !p.broken && p.variants[key] == nil && !p.failed.contains(key)
+                && (!isolatedVariant || laneIsolated(shader))
             cond.unlock()
             guard needed, let shader else { continue }
             let pipe = compileComputeVariant(shader, key)

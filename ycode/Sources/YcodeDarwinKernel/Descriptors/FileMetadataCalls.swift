@@ -24,7 +24,7 @@ enum MetadataBSD {
 }
 
 extension DarwinKernel {
-    func metadataCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult {
+    func metadataCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         func u32(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i]) }
         func mode(_ i: Int) -> UInt16 { UInt16(truncatingIfNeeded: a[i]) }
@@ -35,15 +35,18 @@ extension DarwinKernel {
             let from = at ? try resolveAtPath(int(0), a[1], mem) : try readPath(a[0], mem)
             let to = at ? try resolveAtPath(int(2), a[3], mem) : try readPath(a[1], mem)
             let flags = n == MetadataBSD.renameatxNp ? u32(4) : 0
-            call = "rename(\"\(from)\", \"\(to)\"\(flags != 0 ? ", flags=\(hx(flags))" : ""))"
-            try fs.rename(from, to: to, flags: flags)
+            call.set("rename(\"\(from)\", \"\(to)\"\(flags != 0 ? ", flags=\(hx(flags))" : ""))")
+            // Host files are renamed without the kernel lock (§5.2); a socket
+            // file (the guest's own name table) with it.
+            let renamed = Self.lockedFileIO ? false : try lock.unlocked { try fs.renameHostFiles(from, to: to, flags: flags) }
+            if !renamed { try fs.rename(from, to: to, flags: flags) }
             return .value(0)
 
         case MetadataBSD.chmod, MetadataBSD.fchmodat:
             let at = n == MetadataBSD.fchmodat
             let path = at ? try resolveAtPath(int(0), a[1], mem) : try readPath(a[0], mem)
             let m = mode(at ? 2 : 1)
-            call = "chmod(\"\(path)\", 0o\(String(m & 0o7777, radix: 8)))"
+            call.set("chmod(\"\(path)\", 0o\(String(m & 0o7777, radix: 8)))")
             try fs.chmod(path, mode: m, followSymlinks: !(at && int(3) & MetadataBSD.atSymlinkNoFollow != 0))
             return .value(0)
 
@@ -56,8 +59,8 @@ extension DarwinKernel {
             let isFD = n == MetadataBSD.fchmodExtended
             let path = isFD ? "" : try readPath(a[0], mem)
             let uid = u32(1), gid = u32(2), newMode = int(3)
-            call = (isFD ? "fchmod_extended(\(int(0)), " : "chmod_extended(\"\(path)\", ")
-                + "uid=\(hx(uid)), gid=\(hx(gid)), mode=\(newMode == -1 ? "-1" : "0o" + String(newMode, radix: 8)), xsecurity=\(hx(a[4])))"
+            call.set((isFD ? "fchmod_extended(\(int(0)), " : "chmod_extended(\"\(path)\", ")
+                + "uid=\(hx(uid)), gid=\(hx(gid)), mode=\(newMode == -1 ? "-1" : "0o" + String(newMode, radix: 8)), xsecurity=\(hx(a[4])))")
             if uid != MetadataBSD.kauthIDNone || gid != MetadataBSD.kauthIDNone {
                 let u = uid == MetadataBSD.kauthIDNone ? UInt32.max : uid, g = gid == MetadataBSD.kauthIDNone ? UInt32.max : gid
                 if isFD { try fs.fchown(int(0), uid: u, gid: g) } else { try fs.chown(path, uid: u, gid: g, followSymlinks: true) }
@@ -73,12 +76,12 @@ extension DarwinKernel {
             // file-system control command; as an unknown ioctl, ENOTTY
             // (xnu fsctl_internal → VNOP_IOCTL; level 1). copyfile then
             // takes its plain-copy path.
-            call = "ffsctl(\(int(0)), cmd=\(hx(UInt64(u32(1)))), data=\(hx(a[2])), options=\(hx(a[3])))"
+            call.set("ffsctl(\(int(0)), cmd=\(hx(UInt64(u32(1)))), data=\(hx(a[2])), options=\(hx(a[3])))")
             _ = try fs.fstat(int(0))
             throw fail(25)
 
         case MetadataBSD.fchmod:
-            call = "fchmod(\(int(0)), 0o\(String(mode(1) & 0o7777, radix: 8)))"
+            call.set("fchmod(\(int(0)), 0o\(String(mode(1) & 0o7777, radix: 8)))")
             try fs.fchmod(int(0), mode: mode(1))
             return .value(0)
 
@@ -86,13 +89,13 @@ extension DarwinKernel {
             let at = n == MetadataBSD.fchownat
             let path = at ? try resolveAtPath(int(0), a[1], mem) : try readPath(a[0], mem)
             let base = at ? 2 : 1
-            call = "chown(\"\(path)\", \(int(base)), \(int(base + 1)))"
+            call.set("chown(\"\(path)\", \(int(base)), \(int(base + 1)))")
             let follow = n == MetadataBSD.chown || (at && int(4) & MetadataBSD.atSymlinkNoFollow == 0)
             try fs.chown(path, uid: u32(base), gid: u32(base + 1), followSymlinks: follow)
             return .value(0)
 
         case MetadataBSD.fchown:
-            call = "fchown(\(int(0)), \(int(1)), \(int(2)))"
+            call.set("fchown(\(int(0)), \(int(1)), \(int(2)))")
             try fs.fchown(int(0), uid: u32(1), gid: u32(2))
             return .value(0)
 
@@ -111,18 +114,19 @@ extension DarwinKernel {
             }
             if n == MetadataBSD.utimes {
                 let path = try readPath(a[0], mem)
-                call = "utimes(\"\(path)\", \(hx(a[1])))"
+                call.set("utimes(\"\(path)\", \(hx(a[1])))")
                 try fs.setTimes(path, access: access, modification: modification, followSymlinks: true)
             } else {
-                call = "futimes(\(int(0)), \(hx(a[1])))"
+                call.set("futimes(\(int(0)), \(hx(a[1])))")
                 try fs.setTimes(int(0), access: access, modification: modification)
             }
             return .value(0)
 
         case MetadataBSD.truncate:
             let path = try readPath(a[0], mem)
-            call = "truncate(\"\(path)\", \(Int64(bitPattern: a[1])))"
-            try fs.truncate(path, length: Int64(bitPattern: a[1]))
+            call.set("truncate(\"\(path)\", \(Int64(bitPattern: a[1])))")
+            let length = Int64(bitPattern: a[1])
+            try hostFileSystemUnlocked { try $0.truncate(path, length: length) }
             return .value(0)
 
         case MetadataBSD.chflags, MetadataBSD.fchflags:
@@ -130,17 +134,17 @@ extension DarwinKernel {
             // existing file of a writable prefix (Ycode decision).
             if n == MetadataBSD.chflags {
                 let path = try readPath(a[0], mem)
-                call = "chflags(\"\(path)\", \(hx(u32(1))))"
+                call.set("chflags(\"\(path)\", \(hx(u32(1))))")
                 _ = try fs.stat(path, followSymlinks: true)
             } else {
-                call = "fchflags(\(int(0)), \(hx(u32(1))))"
+                call.set("fchflags(\(int(0)), \(hx(u32(1))))")
                 _ = try fs.fstat(int(0))
             }
             return .value(0)
 
         case MetadataBSD.mincore:
             // Every page of a mapping is resident (MINCORE_INCORE).
-            call = "mincore(\(hx(a[0])), \(hx(a[1])), \(hx(a[2])))"
+            call.set("mincore(\(hx(a[0])), \(hx(a[1])), \(hx(a[2])))")
             let start = a[0] & ~Self.pageMask
             let pages = Int((a[0] + a[1] - start + Self.pageSize - 1) / Self.pageSize)
             guard pages <= 1 << 20 else { throw fail(Code.EINVAL) }
@@ -149,7 +153,7 @@ extension DarwinKernel {
 
         case MetadataBSD.macSyscall:
             let policy = (try? readString(a[0], length: 64, mem)) ?? "?"
-            call = "__mac_syscall(\"\(policy)\", \(int(1)), \(hx(a[2])))"
+            call.set("__mac_syscall(\"\(policy)\", \(int(1)), \(hx(a[2])))")
             // Diagnostics: the argument block's first words and the strings
             // its pointer-like words reach.
             if tracing, let raw = try? mem.read(va: a[2], count: 64) {
@@ -184,7 +188,7 @@ extension DarwinKernel {
             throw fail(MetadataBSD.enoPolicy)
 
         default:  // clonefileat, fclonefileat
-            call = n == MetadataBSD.clonefileat ? "clonefileat(...)" : "fclonefileat(\(int(0)), ...)"
+            call.set(n == MetadataBSD.clonefileat ? "clonefileat(...)" : "fclonefileat(\(int(0)), ...)")
             throw fail(Code.ENOTSUP)
         }
     }

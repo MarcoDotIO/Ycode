@@ -1,0 +1,34 @@
+RKP mode=arview-ar
+RKP metal.name=Apple iOS simulator GPU
+RKP metal.families=apple1,apple2,common1
+RKP metal.argumentBuffersTier=0
+RKP metal.raytracing=false
+RKP metal.maxThreadsPerThreadgroup=512
+RKP metal.readWriteTextureTier=0
+RKP metal.sampleCount4=true
+RKP metal.maxBufferLength=268435456
+RKP os=27.1
+RKP arkit.worldTracking.isSupported=false
+RKP arkit.face.isSupported=false
+RKP arkit.body.isSupported=false
+RKP arkit.orientation.isSupported=false
+RKP arview.cameraMode=nonAR
+RKP arview.automaticallyConfigureSession=true
+RKP arview.session.configuration=nil
+RKP arview.background=Background(value: RealityKit.ARView.Environment.Background.Value.cameraFeed(0.0))
+RKP arview.firstUpdateAt=0.000
+RKP arview.anchors=world true plane false cameraTransform (0.0000,0.0000,2.0000)
+RKP arview.renderOptions=56
+RKP arview.renderOptions.set=motionBlur=8,depthOfField=16,HDR=32
+RKP arview.renderOptions.all=cameraGrain=1,groundingShadows=4,motionBlur=8,depthOfField=16,HDR=32,personOcclusion=128,arEnvLighting=256,faceMesh=1024
+RKP arview.debugOptions=0
+RKP arview.contentScaleFactor=3.0
+RKP arview.project(origin)=Optional((233.0, 339.0))
+RKP arview.hitTestCenter=
+RKP arview.arRaycastCenter=0
+RKP arview.snapshot=1398.0x2034.0 scale 1.0
+RKP arview.updates=371
+RKP arview.updatesPerSecond=59.3
+RKP arview.deltaTime=mean 0.01695 min 0.01560 max 0.04962 first 0.0387,0.0490,0.0167,0.0173
+RKP framecounter.done=1
+dev.ycode.rkprobe: <pid>

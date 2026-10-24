@@ -99,6 +99,9 @@ extern uint64_t mach_absolute_time(void);
 extern dispatch_queue_t dispatch_queue_create(const char *label, void *attr);
 extern void dispatch_async_f(dispatch_queue_t queue, void *context, dispatch_function_t work);
 extern void dispatch_once_f(dispatch_once_t *predicate, void *context, dispatch_function_t function);
+typedef uint64_t dispatch_time_t;
+extern dispatch_time_t dispatch_time(dispatch_time_t when, int64_t delta);
+extern void dispatch_after_f(dispatch_time_t when, dispatch_queue_t queue, void *context, dispatch_function_t work);
 extern void *_Block_copy(const void *);
 extern void _Block_release(const void *);
 extern void os_unfair_lock_lock(os_unfair_lock *);
@@ -139,6 +142,7 @@ struct SFBSwapchain {
     uint64_t presentationMode;
     os_unfair_lock lock;
     uint64_t target;          /* SwapBegin's target time */
+    uint64_t begun;           /* mach time of SwapBegin (timing log) */
     SFBSwapCompletion block;  /* SwapSetCallback's block (copied) */
     void *context;
     dispatch_queue_t queue;
@@ -526,6 +530,7 @@ EXPORT Boolean SFBSwapchainSwapBegin(const void *sc, uint64_t targetTime, CFErro
     (void)error;
     os_unfair_lock_lock(&SWAPCHAIN->lock);
     SWAPCHAIN->target = targetTime;
+    SWAPCHAIN->begun = mach_absolute_time();
     SWAPCHAIN->pendingSurface = 0;
     os_unfair_lock_unlock(&SWAPCHAIN->lock);
     return 1;
@@ -599,6 +604,48 @@ static void write_frame_record(uint64_t display, uint32_t surface, CGRect r, uin
     os_unfair_lock_unlock(&stateLock);
 }
 
+/* ---- Swap timing log (diagnostic, display-stream.md §10) ----
+ * With YCODE_FRAMEBUFFER_TIMING set to a path, every submitted swap writes
+ * one 48-byte little-endian entry into a ring of 8192 entries in that file
+ * (offset (frame mod 8192) × 48): u64 frame, u64 target time (SwapBegin's
+ * argument), u64 mach time at SwapBegin, u64 mach time at SwapSubmit,
+ * u64 mach time when the completion block was called (0 until then),
+ * u32 surface id, u32 0. Times are guest mach ticks. Off (no file, no
+ * writes) without the variable. */
+#define TIMING_RING 8192u
+#define TIMING_ENTRY 48u
+static int timingFD = -2;
+static os_unfair_lock timingLock;
+
+static int timing_fd(void) {
+    os_unfair_lock_lock(&timingLock);
+    if (timingFD == -2) {
+        const char *path = getenv("YCODE_FRAMEBUFFER_TIMING");
+        timingFD = path && *path ? open(path, O_WRONLY | O_CREAT | O_CLOEXEC, 0644) : -1;
+    }
+    int fd = timingFD;
+    os_unfair_lock_unlock(&timingLock);
+    return fd;
+}
+
+static void put_u64(uint8_t *p, uint64_t v) {
+    for (int i = 0; i < 8; i++) p[i] = (uint8_t)(v >> (8 * i));
+}
+
+static void write_timing(uint64_t frame, uint64_t target, uint64_t begun, uint64_t submitted, uint64_t completed,
+                         uint32_t surface) {
+    int fd = timing_fd();
+    if (fd < 0) return;
+    uint8_t e[TIMING_ENTRY];
+    put_u64(e, frame);
+    put_u64(e + 8, target);
+    put_u64(e + 16, begun);
+    put_u64(e + 24, submitted);
+    put_u64(e + 32, completed);
+    put_u64(e + 40, surface);
+    (void)pwrite(fd, e, sizeof e, (int64_t)((frame % TIMING_RING) * TIMING_ENTRY));
+}
+
 EXPORT void SFBSwapchainSwapSetCallback(const void *sc, void *context, uintptr_t value, void *block) {
     (void)value;
     void *copy = block ? _Block_copy(block) : NULL;
@@ -615,14 +662,43 @@ struct completion {
     SFBSwapCompletion block;
     void *context;
     uint64_t target;
+    /* For the timing log (timing on only). */
+    uint64_t frame, begun, submitted;
+    uint32_t surface;
+    int timed;
 };
 
 static void complete(void *argument) {
     struct completion *c = argument;
-    c->block(NULL, c->swapchain, c->target, mach_absolute_time(), c->context);
+    uint64_t now = mach_absolute_time();
+    if (c->timed) write_timing(c->frame, c->target, c->begun, c->submitted, now, c->surface);
+    c->block(NULL, c->swapchain, c->target, now, c->context);
     _Block_release(c->block);
     CFRelease(c->swapchain);
     free(c);
+}
+
+/* Diagnostic (display-stream.md §10): YCODE_FRAMEBUFFER_COMPLETION=delay-<ms>
+ * calls completion blocks that much later (does the render server wait for
+ * them?); delay-<ms>-ab only in odd seconds of mach time (paired A/B).
+ * Unset: asynchronously at once, as spec §7 item 7 says. */
+static int64_t completionDelayNs = -1;
+static int completionAB;
+
+static int64_t completion_delay(void) {
+    if (completionDelayNs < 0) {
+        const char *v = getenv("YCODE_FRAMEBUFFER_COMPLETION");
+        int64_t ns = 0;
+        if (v && v[0] == 'd' && v[1] == 'e' && v[2] == 'l' && v[3] == 'a' && v[4] == 'y' && v[5] == '-') {
+            const char *d = v + 6;
+            int64_t ms = 0;
+            while (*d >= '0' && *d <= '9') ms = ms * 10 + (*d++ - '0');
+            ns = ms * 1000000;
+            completionAB = d[0] == '-' && d[1] == 'a' && d[2] == 'b';
+        }
+        completionDelayNs = ns;
+    }
+    return completionDelayNs;
 }
 
 EXPORT Boolean SFBSwapchainSwapSubmit(const void *sc, CFErrorRef *error) {
@@ -632,11 +708,15 @@ EXPORT Boolean SFBSwapchainSwapSubmit(const void *sc, CFErrorRef *error) {
     SFBSwapCompletion block = s->block ? _Block_copy(s->block) : NULL;
     void *context = s->context;
     uint64_t target = s->target;
+    uint64_t begun = s->begun;
     uint32_t surface = s->pendingSurface;
     CGRect rect = s->pendingRect;
     uint64_t frame = ++s->presented;
     os_unfair_lock_unlock(&s->lock);
+    uint64_t submitted = mach_absolute_time();
     if (surface) write_frame_record(1, surface, rect, frame);
+    int timed = timing_fd() >= 0;
+    if (timed && !block) write_timing(frame, target, begun, submitted, 0, surface);
     if (!block) return 1;
     struct completion *c = calloc(1, sizeof *c);
     if (!c) {
@@ -647,7 +727,17 @@ EXPORT Boolean SFBSwapchainSwapSubmit(const void *sc, CFErrorRef *error) {
     c->block = block;
     c->context = context;
     c->target = target;
-    dispatch_async_f(s->queue, c, complete);
+    c->frame = frame;
+    c->begun = begun;
+    c->submitted = submitted;
+    c->surface = surface;
+    c->timed = timed;
+    int64_t delay = completion_delay();
+    if (completionAB && (mach_absolute_time() / 24000000u) % 2 == 0) delay = 0;
+    if (delay > 0)
+        dispatch_after_f(dispatch_time(0, delay), s->queue, c, complete);
+    else
+        dispatch_async_f(s->queue, c, complete);
     return 1;
 }
 

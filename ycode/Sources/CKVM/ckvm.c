@@ -32,6 +32,7 @@ int ckvm_available(void) { return 0; }
 #include <stdio.h>
 #include <linux/perf_event.h>
 #include <linux/hw_breakpoint.h>
+#include <sys/prctl.h>
 
 int ckvm_available(void) { return 1; }
 
@@ -98,6 +99,51 @@ void *ckvm_map_file_private(int fd, uint64_t offset, size_t file_bytes, size_t t
         }
     }
     return base;
+}
+
+void *ckvm_map_file_private_at(void *at, int fd, uint64_t offset, size_t file_bytes, size_t total_size) {
+    if (file_bytes > total_size || total_size == 0) {
+        errno = EINVAL;
+        return NULL;
+    }
+    // The file mapping covers whole host pages (the bytes of its last page
+    // past the end of the file read as zeros), so the anonymous tail starts
+    // at the next host page boundary: MAP_FIXED needs an aligned address,
+    // and a file that ends inside a host page would otherwise fail with
+    // EINVAL (simulator performance-contract.md §6, C16).
+    size_t page = (size_t)sysconf(_SC_PAGESIZE);
+    size_t file_span = (file_bytes + page - 1) & ~(page - 1);
+    if (file_span > total_size) file_span = total_size;
+    if (file_span < total_size) {
+        void *tail = mmap((char *)at + file_span, total_size - file_span, PROT_READ | PROT_WRITE,
+                          MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0);
+        if (tail == MAP_FAILED) {
+            int saved = errno;
+            (void)mmap(at, total_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0);
+            errno = saved;
+            return NULL;
+        }
+    }
+    if (file_bytes > 0) {
+        void *p = mmap(at, file_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED, fd, (off_t)offset);
+        if (p == MAP_FAILED) {
+            int saved = errno;
+            (void)mmap(at, total_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0);
+            errno = saved;
+            return NULL;
+        }
+    }
+    return at;
+}
+
+void *ckvm_mremap_fixed(void *old, size_t size, void *at) {
+    void *p = mremap(old, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, at);
+    return p == MAP_FAILED ? NULL : p;
+}
+
+int ckvm_reserve_at(void *at, size_t size) {
+    void *p = mmap(at, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0);
+    return p == MAP_FAILED ? -errno : 0;
 }
 
 size_t ckvm_host_page_size(void) {
@@ -275,6 +321,54 @@ uint64_t ckvm_host_cntvct(void) {
     return value;
 }
 
+int ckvm_set_counter_offset(int vm_fd, uint64_t offset) {
+#ifdef KVM_ARM_SET_COUNTER_OFFSET
+    struct kvm_arm_counter_offset arg;
+    memset(&arg, 0, sizeof arg);
+    arg.counter_offset = offset;
+    return result_or_errno(ioctl(vm_fd, KVM_ARM_SET_COUNTER_OFFSET, &arg));
+#else
+    (void)vm_fd; (void)offset;
+    return -ENOSYS;
+#endif
+}
+
+void ckvm_publish_timeofday(void *block, uint64_t tick, uint64_t sec, uint64_t frac, uint64_t scale,
+                            uint64_t ticks_per_second) {
+    uint64_t *w = (uint64_t *)block;
+    __atomic_store_n(&w[0], 0, __ATOMIC_RELAXED);
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+    __atomic_store_n(&w[1], sec, __ATOMIC_RELAXED);
+    __atomic_store_n(&w[2], frac, __ATOMIC_RELAXED);
+    __atomic_store_n(&w[3], scale, __ATOMIC_RELAXED);
+    __atomic_store_n(&w[4], ticks_per_second, __ATOMIC_RELAXED);
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+    __atomic_store_n(&w[0], tick, __ATOMIC_RELAXED);
+}
+
+// struct kvm_smccc_filter and the group/attribute numbers (arch/arm64
+// uapi asm/kvm.h, Linux 6.4+), spelled out so older headers still build.
+struct ckvm_smccc_filter {
+    uint32_t base;
+    uint32_t nr_functions;
+    uint8_t action;
+    uint8_t pad[15];
+};
+
+int ckvm_set_smccc_filter(int vm_fd, uint32_t base, uint32_t count, uint8_t action) {
+    struct ckvm_smccc_filter filter;
+    memset(&filter, 0, sizeof filter);
+    filter.base = base;
+    filter.nr_functions = count;
+    filter.action = action;
+    struct kvm_device_attr attr;
+    memset(&attr, 0, sizeof attr);
+    attr.group = 0; // KVM_ARM_VM_SMCCC_CTRL
+    attr.attr = 0;  // KVM_ARM_VM_SMCCC_FILTER
+    attr.addr = (uint64_t)(uintptr_t)&filter;
+    return result_or_errno(ioctl(vm_fd, KVM_SET_DEVICE_ATTR, &attr));
+}
+
 // ---- struct kvm_run accessors ------------------------------------------------
 
 #define RUN(p) ((const struct kvm_run *)(p))
@@ -327,6 +421,9 @@ uint64_t ckvm_run_system_event_data(const void *run, uint32_t index) {
 
 uint64_t ckvm_run_arm_nisv_esr_iss(const void *run) { return RUN(run)->arm_nisv.esr_iss; }
 uint64_t ckvm_run_arm_nisv_fault_ipa(const void *run) { return RUN(run)->arm_nisv.fault_ipa; }
+
+uint64_t ckvm_run_hypercall_nr(const void *run) { return RUN(run)->hypercall.nr; }
+uint64_t ckvm_run_hypercall_flags(const void *run) { return RUN(run)->hypercall.flags; }
 
 // ---- Kicking a vCPU thread and cache maintenance ------------------------------
 
@@ -591,4 +688,185 @@ int ckvm_capture_frames(uintptr_t *out, int count) {
 long ckvm_gettid(void) { return (long)syscall(SYS_gettid); }
 #else
 long ckvm_gettid(void) { return 0; }
+#endif
+
+/* The calling thread's resource usage counters (diagnostics): minor and
+ * major page faults, voluntary and involuntary context switches. */
+#if defined(__linux__)
+#include <sys/resource.h>
+void ckvm_thread_usage(long out[4]) {
+    struct rusage ru;
+    if (getrusage(RUSAGE_THREAD, &ru) != 0) { out[0] = out[1] = out[2] = out[3] = 0; return; }
+    out[0] = ru.ru_minflt; out[1] = ru.ru_majflt; out[2] = ru.ru_nvcsw; out[3] = ru.ru_nivcsw;
+}
+/* The calling thread's user and system CPU time (microseconds) and minor
+ * faults (diagnostics: the boot profile's per-trap cost table). */
+void ckvm_thread_times(unsigned long long out[3]) {
+    struct rusage ru;
+    if (getrusage(RUSAGE_THREAD, &ru) != 0) { out[0] = out[1] = out[2] = 0; return; }
+    out[0] = (unsigned long long)ru.ru_utime.tv_sec * 1000000ull + (unsigned long long)ru.ru_utime.tv_usec;
+    out[1] = (unsigned long long)ru.ru_stime.tv_sec * 1000000ull + (unsigned long long)ru.ru_stime.tv_usec;
+    out[2] = (unsigned long long)ru.ru_minflt;
+}
+#else
+void ckvm_thread_usage(long out[4]) { out[0] = out[1] = out[2] = out[3] = 0; }
+void ckvm_thread_times(unsigned long long out[3]) { out[0] = out[1] = out[2] = 0; }
+#endif
+
+#if defined(__linux__) && defined(__aarch64__)
+long ckvm_clock_ticks(void) { return sysconf(_SC_CLK_TCK); }
+
+int ckvm_task_stats(long tid, uint64_t out[8]) {
+    char path[64], buf[1024];
+    for (int i = 0; i < 8; i++) out[i] = 0;
+    snprintf(path, sizeof path, "/proc/self/task/%ld/stat", tid);
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    close(fd);
+    if (n <= 0) return -1;
+    buf[n] = 0;
+    /* Fields after "pid (comm) ": 1 state, ... 10 minflt, 12 majflt,
+       14 utime, 15 stime, ... 43 guest_time (proc(5) numbering, 1-based
+       from pid; here counted from the state field = field 3). */
+    char *p = strrchr(buf, ')');
+    if (!p) return -1;
+    p += 2;
+    int field = 3;
+    out[7] = (uint64_t)(unsigned char)*p;
+    while (*p && field <= 43) {
+        if (field == 10) out[3] = strtoull(p, NULL, 10);
+        else if (field == 12) out[4] = strtoull(p, NULL, 10);
+        else if (field == 14) out[0] = strtoull(p, NULL, 10);
+        else if (field == 15) out[1] = strtoull(p, NULL, 10);
+        else if (field == 43) out[2] = strtoull(p, NULL, 10);
+        while (*p && *p != ' ') p++;
+        while (*p == ' ') p++;
+        field++;
+    }
+    snprintf(path, sizeof path, "/proc/self/task/%ld/schedstat", tid);
+    fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd >= 0) {
+        n = read(fd, buf, sizeof buf - 1);
+        close(fd);
+        if (n > 0) {
+            buf[n] = 0;
+            char *end = NULL;
+            out[5] = strtoull(buf, &end, 10);
+            if (end) out[6] = strtoull(end, NULL, 10);
+        }
+    }
+    return 0;
+}
+
+int ckvm_vcpu_stats(int vcpu_fd, const char *const *names, int count, uint64_t *out) {
+    for (int i = 0; i < count; i++) out[i] = 0;
+#ifdef KVM_GET_STATS_FD
+    int sfd = ioctl(vcpu_fd, KVM_GET_STATS_FD, NULL);
+    if (sfd < 0) return -errno;
+    struct kvm_stats_header h;
+    if (pread(sfd, &h, sizeof h, 0) != (ssize_t)sizeof h) { close(sfd); return -EIO; }
+    size_t dsize = sizeof(struct kvm_stats_desc) + h.name_size;
+    char *descs = malloc(dsize * h.num_desc);
+    if (!descs) { close(sfd); return -ENOMEM; }
+    if (pread(sfd, descs, dsize * h.num_desc, h.desc_offset) != (ssize_t)(dsize * h.num_desc)) {
+        free(descs); close(sfd); return -EIO;
+    }
+    for (uint32_t d = 0; d < h.num_desc; d++) {
+        struct kvm_stats_desc *desc = (struct kvm_stats_desc *)(descs + d * dsize);
+        for (int i = 0; i < count; i++) {
+            if (strncmp(desc->name, names[i], h.name_size) == 0) {
+                uint64_t v = 0;
+                if (pread(sfd, &v, sizeof v, h.data_offset + desc->offset) == (ssize_t)sizeof v) out[i] = v;
+            }
+        }
+    }
+    free(descs);
+    close(sfd);
+    return 0;
+#else
+    (void)vcpu_fd; (void)names;
+    return -ENOSYS;
+#endif
+}
+#else
+long ckvm_clock_ticks(void) { return 100; }
+int ckvm_task_stats(long tid, uint64_t out[8]) { (void)tid; for (int i = 0; i < 8; i++) out[i] = 0; return -1; }
+int ckvm_vcpu_stats(int vcpu_fd, const char *const *names, int count, uint64_t *out) {
+    (void)vcpu_fd; (void)names; for (int i = 0; i < count; i++) out[i] = 0; return -38;
+}
+#endif
+
+// ---- Kernel-lock holder stack samples (diagnostics) --------------------------
+#if defined(__linux__) && defined(__aarch64__)
+#include <execinfo.h>
+#include <sched.h>
+
+// States of the one sample slot: -1 idle, -2 requested, -3 being written by
+// the handler, >= 0 the number of frames written. The sampler cancels a late
+// request with -4 (the handler then does nothing).
+static volatile long stack_target_tid;
+static volatile int stack_state = -1;
+static void *stack_frames[64];
+
+static void stack_handler(int signo) {
+    (void)signo;
+    int saved = errno;
+    if (syscall(SYS_gettid) == stack_target_tid && __sync_bool_compare_and_swap(&stack_state, -2, -3)) {
+        int n = backtrace(stack_frames, 64);
+        __atomic_store_n(&stack_state, n < 0 ? 0 : n, __ATOMIC_RELEASE);
+    }
+    errno = saved;
+}
+
+int ckvm_stack_sampler_install(void) {
+    void *warm[4];
+    (void)backtrace(warm, 4); // loads the unwinder outside a signal handler
+    struct sigaction action;
+    memset(&action, 0, sizeof action);
+    action.sa_handler = stack_handler;
+    action.sa_flags = SA_RESTART;
+    sigemptyset(&action.sa_mask);
+    return result_or_errno(sigaction(SIGPROF, &action, NULL));
+}
+
+int ckvm_stack_sample(long tid, void **out, int max, int timeout_us) {
+    stack_target_tid = tid;
+    __atomic_store_n(&stack_state, -2, __ATOMIC_RELEASE);
+    if (syscall(SYS_tgkill, getpid(), (int)tid, SIGPROF) != 0) {
+        int e = errno;
+        __atomic_store_n(&stack_state, -1, __ATOMIC_RELEASE);
+        return -e;
+    }
+    struct timespec start, now;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    for (;;) {
+        int s = __atomic_load_n(&stack_state, __ATOMIC_ACQUIRE);
+        if (s >= 0) {
+            int n = s < max ? s : max;
+            for (int i = 0; i < n; i++) out[i] = stack_frames[i];
+            __atomic_store_n(&stack_state, -1, __ATOMIC_RELEASE);
+            return n;
+        }
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long waited = (now.tv_sec - start.tv_sec) * 1000000L + (now.tv_nsec - start.tv_nsec) / 1000;
+        if (s == -2 && waited > timeout_us && __sync_bool_compare_and_swap(&stack_state, -2, -4)) {
+            __atomic_store_n(&stack_state, -1, __ATOMIC_RELEASE);
+            return 0;
+        }
+        sched_yield();
+    }
+}
+
+// ---- Parent death ---------------------------------------------------------
+
+int ckvm_signal_on_parent_death(int signo)
+{
+    pid_t parent = getppid();
+    if (prctl(PR_SET_PDEATHSIG, (unsigned long)signo, 0, 0, 0) < 0) return -errno;
+    // The parent may have ended before the request: then nothing would come.
+    if (getppid() != parent || parent == 1) kill(getpid(), signo);
+    return 0;
+}
+
 #endif

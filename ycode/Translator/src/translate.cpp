@@ -1717,6 +1717,7 @@ Json Translator::reflection() {
     r.set("builtins", jBuiltins);
     r.set("function_constants", jFunctionConstants);
     r.set("private_bytes", (unsigned long long)privateBytes);
+    if (!loopBudgetVar.empty()) r.set("loop_limit", (unsigned long long)opts.loopLimit);
     Json u = Json::array();
     for (auto &s : uses) u.push(s);
     r.set("uses", u);
@@ -2112,7 +2113,8 @@ TranslateResult translate(const std::string &module, const std::string &name, co
     }
     uint64_t ibStride = imageblockStride(EI);
     std::vector<Function *> helpers;
-    bool guarded = prepareFunction(M, *F, wantGuard, [&](Function &G) { expandImageblockSlices(G, ibStride); }, &helpers);
+    bool guarded = prepareFunction(M, *F, wantGuard, [&](Function &G) { expandImageblockSlices(G, ibStride); }, &helpers,
+                                   opts.loopLimit != 0);
     stats("prepared");
     if (EI.stage == Stage::Kernel) {
         // A kernel that still calls discard_fragment with no function

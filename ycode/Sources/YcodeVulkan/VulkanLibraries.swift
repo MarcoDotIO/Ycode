@@ -143,7 +143,7 @@ extension VulkanMetalBackend {
             }
             parts += [fsLib, fo]
         }
-        let optimize = ProcessInfo.processInfo.environment["YCODE_VULKAN_LIBRARY_LTO"] != nil
+        let optimize = Self.environmentLibraryLTO
         let start = DispatchTime.now().uptimeNanoseconds
         let linked = parts.withUnsafeBufferPointer { yvk_library_link(ctx, $0.baseAddress, UInt32($0.count), optimize ? 1 : 0, &err, err.count) }
         let ms = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
@@ -154,6 +154,8 @@ extension VulkanMetalBackend {
         libraries.lock.unlock()
         return linked ?? fail("link")
     }
+
+    static let environmentLibraryLTO = ProcessInfo.processInfo.environment["YCODE_VULKAN_LIBRARY_LTO"] != nil
 
     func shaderKey(_ s: TranslatedShader) -> String {
         // FNV-1a over 32-bit words (4× fewer steps than over bytes).

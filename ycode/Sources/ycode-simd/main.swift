@@ -66,7 +66,7 @@
 // and installs it with the guest helper `ylaunch install` (InstallCoordination)
 // run as a one-shot; `--launch <bundle id>` then opens it with `ylaunch open`
 // (FrontBoardServices, debug options) with stdout/stderr in
-// /tmp/ycode-app.{out,err} (DEV/data/tmp), plus `--app-arg`/`--app-env`.
+// /tmp/ycode-app.{out,err} (DEV/data/tmp), plus `--app-arg`/`--app-env`, and `--app-url` (a URL the app is asked to open).
 // Both outputs are printed at the end. `ylaunch` is taken from
 // `--guest-tools <dir>` (default: <shim dir>/guest-tests/stage7, as built by
 // SimShim/guest-tests/build-stage7.sh) and copied to DEV/data/tmp/ycode-tools.
@@ -80,7 +80,10 @@
 // with 701 before any job starts. `--screenshot <path.png>` writes the
 // presented display buffer as a PNG at the end of the run (before the
 // session ends); `--screenshot-at S` (repeatable) also at S seconds, as
-// <path>-<S>s.png.
+// <path>-<S>s.png. `--display-server <address>` serves the presented
+// display live and takes viewer input (DisplayServer.swift;
+// specs/simulator/display-stream.md); with it, SIGTERM, SIGINT and SIGHUP
+// end the device session cleanly instead of killing the VMM.
 //
 // Stage 6 (stage6-contract.md §1): `--runtime-paths` puts CoreSimulator's
 // four job directories first in `Paths` (RR/System/Library/LaunchDaemons,
@@ -113,10 +116,12 @@ import YcodeDarwinABI
 import YcodeHypervisor
 
 #if os(Linux) && arch(arm64)
+import CKVM
 import Foundation
 import Glibc
 import YcodeDarwinKernel
 import YcodeMachO
+import YcodeDisplayStream
 
 let usage = """
     usage: ycode-simd --exec <macho> --runtime-root <dir> [--run-dir <dir> | --keep-run-dir] [--trace]
@@ -124,12 +129,16 @@ let usage = """
                       [--host-libs <dir>] [--keep-going] [--libfunc-return <name>=<value>[,...]] [--repeat N]
                       [--env K=V]... [--host-bootstrap [--debug-bootstrap-discard]] [--exec-args <arg>...]
            ycode-simd --device <dir> --runtime-root <dir> [--udid <UDID>] [--job-path <dir>]... [--env K=V]...
+                      [--device-type iphone-duo (default) | ipad-a16 | ipad-pro-13-m5] (a device keeps its first type)
                       [--runtime-paths] [--oneshot "/guest/program arg..."]... [--oneshot-delay S] [--runtime-job <label>]...
-                      [--install-app <host .app>] [--launch <bundle id> [--app-arg A]... [--app-env K=V]...]
+                      [--install-app <host .app>] [--launch <bundle id> [--app-arg A]... [--app-env K=V]... [--app-url U]]
                       [--guest-tools <dir with ylaunch>] [--framebuffer-library <SimFramebuffer binary> | none]
                       [--screenshot <path.png> [--screenshot-at S]...] [--skip-first-boot-migration]
+                      [--display-server unix:<path> | [<host>:]<port>] (live display and input; display-stream.md)
+                      [--hid-bundle <SimHID.framework dir> | none] (default with --display-server: the built one)
                       [--metal-translator <ycode-airc>] (default: $YCODE_AIRC, next to ycode-simd, $PATH)
-                      [--gpu-cache-dir <dir>] (Vulkan pipeline cache and ycode-airc translation cache)
+                      [--gpu-cache-dir <dir> | --no-gpu-cache] (Vulkan pipeline cache and ycode-airc
+                      translation cache; default for --device: ${XDG_CACHE_HOME:-~/.cache}/ycode/gpu)
                       [--debug-plist-bool KEY=true|false]... [--debug-no-session-end]
                       [--trace] [--keep-going] [--timeout-ms N] [--host-libs <dir>] [--debug-bootstrap-discard]
                       [--exec-args <arg>...]
@@ -163,6 +172,8 @@ struct Options {
     var maxExits: Int?
     /// Stage 4c device mode: the device directory, its UDID, job directories.
     var devicePath: String?
+    /// The device type (`--device-type`; ipad.md §4.3 R1).
+    var deviceType: DeviceType = .default
     var udid: String?
     var jobPaths: [String] = []
     /// Device mode: one-shot programs (argv split on spaces, run through the
@@ -182,6 +193,10 @@ struct Options {
     /// Record the first-boot data migration as done before the boot.
     var skipFirstBootMigration = false
     var screenshotTimes: [Int] = []
+    /// The display server's address (`--display-server`; display-stream.md).
+    var displayServer: DisplayAddress?
+    /// Ycode's HID bundle (`--hid-bundle`; hid-input.md): "none" = no input.
+    var hidBundle: String?
     /// Debug: start no Metal host service.
     var debugNoMetal = false
     /// The shader translator (`ycode-airc`) for the Metal back end; nil:
@@ -190,6 +205,9 @@ struct Options {
     /// Persistent GPU caches: <dir>/vulkan-pipelines.bin
     /// ($YCODE_VULKAN_PIPELINE_CACHE) and <dir>/airc ($YCODE_AIRC_CACHE).
     var gpuCacheDirectory: String?
+    /// `--no-gpu-cache`: no persistent GPU caches (every boot translates and
+    /// compiles its shaders again).
+    var noGPUCache = false
     /// Debug: offer no host services (IOSurface) to the guest.
     var debugNoHostServices = false
     /// Stage 7: install a host `.app`, launch a bundle id, with these
@@ -197,6 +215,7 @@ struct Options {
     var installApp: String?
     var launchBundleID: String?
     var appArguments: [String] = []
+    var appURL: String?
     var appEnvironment: [String] = []
     var guestTools: String?
     /// The headless SimFramebuffer library (`--framebuffer-library`; "none" = empty variable).
@@ -336,6 +355,12 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--debug-extra-arg": options.debugExtraArguments.append(value(for: argument))
         case "--device": options.devicePath = value(for: argument)
         case "--udid": options.udid = value(for: argument)
+        case "--device-type":
+            let id = value(for: argument)
+            guard let type = DeviceType.named(id) else {
+                die("--device-type needs one of: \(DeviceType.all.map(\.id).joined(separator: ", ")) (not '\(id)')", status: 64)
+            }
+            options.deviceType = type
         case "--debug-bootstrap-discard": options.debugBootstrapDiscard = true
         case "--host-bootstrap": options.hostBootstrap = true
         case "--job-path": options.jobPaths.append(value(for: argument))
@@ -351,7 +376,14 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--debug-no-metal": options.debugNoMetal = true
         case "--metal-translator": options.metalTranslator = value(for: argument)
         case "--gpu-cache-dir": options.gpuCacheDirectory = value(for: argument)
+        case "--no-gpu-cache": options.noGPUCache = true
         case "--screenshot": options.screenshotPath = value(for: argument)
+        case "--display-server":
+            guard let address = DisplayAddress(value(for: argument)) else {
+                die("--display-server needs unix:<path>, <host>:<port>, or <port>", status: 64)
+            }
+            options.displayServer = address
+        case "--hid-bundle": options.hidBundle = value(for: argument)
         case "--skip-first-boot-migration": options.skipFirstBootMigration = true
         case "--screenshot-at":
             guard let n = Int(value(for: argument)), n > 0 else { die("--screenshot-at needs seconds > 0", status: 64) }
@@ -359,6 +391,7 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--install-app": options.installApp = value(for: argument)
         case "--launch": options.launchBundleID = value(for: argument)
         case "--app-arg": options.appArguments.append(value(for: argument))
+        case "--app-url": options.appURL = value(for: argument)
         case "--app-env":
             let pair = value(for: argument)
             guard let eq = pair.firstIndex(of: "="), eq != pair.startIndex else { die("--app-env needs K=V", status: 64) }
@@ -607,7 +640,29 @@ func runStage2Pool(_ options: Options, vm: VirtualMachine, tables: PageTableBuil
     exit(0)
 }
 
+// Boot priority (boot-profile.md §8.6, scheduling-policy.md §7.4):
+// `YCODE_BOOT_PRIORITY=1` makes a device run use thread QoS with the cgroup
+// host backend, so the UI path (SpringBoard, boosted daemons) gets the host
+// CPUs a cold boot saturates. Off by default: one of seven such boots held
+// the kernel lock three times as long and took twice the time (a holder in
+// the idle class, §7.4). An explicit YCODE_SCHED_QOS wins. Without a
+// delegable cgroup the backend reports itself unavailable and stays off.
+if CommandLine.arguments.contains("--device"), getenv("YCODE_BOOT_PRIORITY").map({ String(cString: $0) == "1" }) ?? false,
+   getenv("YCODE_SCHED_QOS") == nil {
+    setenv("YCODE_SCHED_QOS", "1", 0)
+    setenv("YCODE_HOST_SCHED", "cgroup", 0)
+    SchedPolicy.qosEnabled = true
+}
+// Scheduling policy (scheduling-policy.md §4.7): with YCODE_HOST_SCHED=cgroup
+// the VMM may re-execute itself in a delegated cgroup before anything starts.
+HostSched.prepareProcess()
 let options = parseOptions(CommandLine.arguments)
+// The warm-boot launcher (`YCODE_EXIT_WITH_PARENT=1`, snapshot.md §12.5):
+// should it end without stopping this process, SIGTERM (a stop) comes
+// instead, so the device is not left running without its launcher.
+if getenv("YCODE_EXIT_WITH_PARENT").map({ String(cString: $0) == "1" }) ?? false {
+    _ = ckvm_signal_on_parent_death(SIGTERM)
+}
 if let n = getenv("YCODE_DEBUG_MEMCHECK").flatMap({ Int(String(cString: $0)) }), n > 0 {
     HardwareWatchpoint.startMemoryCheck(threads: n)
     stderrLine("ycode-simd: debug: \(n) lost-write checker threads")
@@ -622,7 +677,19 @@ if getenv("YCODE_DEBUG_HWWATCH").map({ String(cString: $0) == "1" }) ?? false {
     DebugHardwareWatch.disarm = { HardwareWatchpoint.disarm($0) }
     stderrLine("ycode-simd: debug: hardware write watch on allocator map elements")
 }
-if let dir = options.gpuCacheDirectory {
+// A device boot keeps its GPU caches by default (stage8-contract.md §13),
+// as the reference simulator keeps its Metal shader caches across boots:
+// the second boot translates and compiles nothing it has seen before.
+// Variables set by the caller win.
+var gpuCacheDirectory = options.gpuCacheDirectory
+if gpuCacheDirectory == nil, !options.noGPUCache, options.devicePath != nil, !options.debugNoMetal,
+   getenv("YCODE_VULKAN_PIPELINE_CACHE") == nil, getenv("YCODE_AIRC_CACHE") == nil {
+    let env = ProcessInfo.processInfo.environment
+    let base = env["XDG_CACHE_HOME"].flatMap { $0.hasPrefix("/") ? $0 : nil }
+        ?? (env["HOME"].map { $0 + "/.cache" } ?? NSTemporaryDirectory())
+    gpuCacheDirectory = base + "/ycode/gpu"
+}
+if let dir = gpuCacheDirectory, !options.noGPUCache {
     // Before any other thread starts: the Metal back end and ycode-airc read
     // these variables.
     let absolute = dir.hasPrefix("/") ? dir : FileManager.default.currentDirectoryPath + "/" + dir

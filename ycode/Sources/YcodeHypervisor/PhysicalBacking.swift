@@ -25,7 +25,98 @@
 #if os(Linux) && arch(arm64)
 import CKVM
 import Glibc
+import Synchronization
 import YcodeDarwinABI
+
+/// Diagnostics (`VCPUPool.profiling`): how often and how long the backing
+/// called the host for guest memory, process-wide (count, ns, bytes). Each
+/// kind runs inside a guest trap, under the kernel lock.
+public final class BackingCounter: @unchecked Sendable {
+    public let name: String
+    public let count = Atomic<UInt64>(0)
+    public let nanoseconds = Atomic<UInt64>(0)
+    public let bytes = Atomic<UInt64>(0)
+    init(_ name: String) { self.name = name }
+
+    @inline(__always) func add(since start: UInt64, bytes n: UInt64 = 0) {
+        count.wrappingAdd(1, ordering: .relaxed)
+        nanoseconds.wrappingAdd(monotonicNanoseconds() &- start, ordering: .relaxed)
+        bytes.wrappingAdd(n, ordering: .relaxed)
+    }
+
+    var text: String {
+        "\(name) \(count.load(ordering: .relaxed)) (\(nanoseconds.load(ordering: .relaxed) / 1_000_000) ms, "
+            + "\(bytes.load(ordering: .relaxed) >> 20) MiB)"
+    }
+}
+
+/// Work a trap handler leaves for its vCPU thread to do after the trap,
+/// when the kernel lock is no longer held (`performance-contract.md` §6,
+/// C17): today, returning anonymous pool memory to the host
+/// (`MADV_DONTNEED`), which blocks in the host kernel (the process's
+/// mmap lock, KVM's MMU notifier) for 0.3 ms on average and up to tens of
+/// milliseconds. Per host thread; only the vCPU threads of one VM queue
+/// work for that VM's memory (`isCurrentVM`), so the VM is open while the
+/// work runs (a VM closes only after its vCPU threads were joined).
+public enum PostTrapWork {
+    private final class State {
+        var vm: ObjectIdentifier?
+        var work: [() -> Void] = []
+    }
+    nonisolated(unsafe) private static var key: pthread_key_t = {
+        var k = pthread_key_t()
+        pthread_key_create(&k) { p in if let p { Unmanaged<AnyObject>.fromOpaque(p).release() } }
+        return k
+    }()
+
+    private static var state: State {
+        if let p = pthread_getspecific(key) { return Unmanaged<State>.fromOpaque(p).takeUnretainedValue() }
+        let s = State()
+        pthread_setspecific(key, Unmanaged.passRetained(s).toOpaque())
+        return s
+    }
+
+    /// The calling vCPU thread runs `vm`'s vCPU (set once by its thread).
+    public static func setCurrentVM(_ vm: VirtualMachine) { state.vm = ObjectIdentifier(vm) }
+
+    /// True when the calling thread is a vCPU thread of `vm`.
+    public static func isCurrentVM(_ vm: VirtualMachine) -> Bool {
+        guard let p = pthread_getspecific(key) else { return false }
+        return Unmanaged<State>.fromOpaque(p).takeUnretainedValue().vm == ObjectIdentifier(vm)
+    }
+
+    /// Queues `body` to run on this thread after the trap.
+    static func defer_(_ body: @escaping () -> Void) { state.work.append(body) }
+
+    /// Runs the queued work (the vCPU run loop, after each handler call,
+    /// with no lock held).
+    public static func drain() {
+        guard let p = pthread_getspecific(key) else { return }
+        let s = Unmanaged<State>.fromOpaque(p).takeUnretainedValue()
+        while !s.work.isEmpty {
+            let list = s.work
+            s.work.removeAll()
+            for body in list { body() }
+        }
+    }
+}
+
+public enum BackingStats {
+    public static let deferredDiscards = BackingCounter("discards after the trap")
+    public static let fileMemslots = BackingCounter("file memslots")
+    public static let fileWindowMaps = BackingCounter("file window maps")
+    public static let fileCopies = BackingCounter("file copies")
+    public static let sharedMemslots = BackingCounter("shared-object memslots")
+    public static let discards = BackingCounter("discards")
+    public static let zeroFills = BackingCounter("zero fills")
+
+    /// One line for reports.
+    public static var report: String {
+        "host memory calls in traps: " + [fileMemslots, fileWindowMaps, fileCopies, sharedMemslots, discards, zeroFills,
+                                         deferredDiscards]
+            .map(\.text).joined(separator: "; ")
+    }
+}
 
 public final class KVMPhysicalBacking {
     public let vm: VirtualMachine
@@ -71,6 +162,75 @@ public final class KVMPhysicalBacking {
     public private(set) var fileMappingCount = 0
     /// Number of file mappings served from the read-only arena (for tracing).
     public private(set) var readOnlyViewCount = 0
+    /// The private file window (`performance-contract.md` §6, C16): one host
+    /// reservation, registered as one memslot when the backing is made, into
+    /// which writable file mappings larger than `copyLimit` are mapped
+    /// (MAP_FIXED, private) instead of each getting a memslot of its own.
+    /// A guest mmap then costs a host mmap but no KVM memslot change (which
+    /// waits for an SRCU grace period). Nil when off or refused.
+    private let privateWindowHost: UnsafeMutableRawPointer?
+    public let privateWindowGPA: UInt64
+    public let privateWindowSize: UInt64
+    private var privateWindowNext: UInt64 = 0
+    /// On by default; `YCODE_PRIVATE_FILE_WINDOW=0` turns the window off (one memslot per
+    /// mapping, as before).
+    public static let privateWindowEnabled = getenv("YCODE_PRIVATE_FILE_WINDOW").map { String(cString: $0) != "0" } ?? true
+    public static let defaultPrivateWindowSize: UInt64 = 64 << 30
+    /// On by default (`YCODE_DEFERRED_DISCARD=0`: off): pool memory a trap releases is returned
+    /// to the host after the trap (`PostTrapWork`), not under the kernel
+    /// lock; until then the run stays allocated, so no one can get it back
+    /// before its pages are dropped.
+    public static let deferredDiscardEnabled = getenv("YCODE_DEFERRED_DISCARD").map { String(cString: $0) != "0" } ?? true
+    /// Runs dropped after a trap, ready to go back to the pool (guarded by
+    /// `readyLock`, a leaf lock; the pool itself is changed under the
+    /// kernel lock only).
+    private let readyLock = HostMutex(name: "pool runs ready")
+    private var readyRuns: [(gpa: UInt64, size: UInt64)] = []
+    private var hasReadyRuns = false
+
+    /// SNAPSHOT hook (snapshot.md §6.3, lazy restore): set once a restore
+    /// mapped page-file overlays (private file mappings) into the pool. A
+    /// discard then replaces the range with fresh anonymous memory, because
+    /// `MADV_DONTNEED` on a private file mapping brings the file's bytes
+    /// back instead of zeros.
+    public var hasOverlays = false
+
+    /// Returns pool host pages to the host (they read as zeros afterwards).
+    @inline(__always) private func discardHost(_ host: UnsafeMutableRawPointer, _ size: Int) -> Int32 {
+        hasOverlays ? ckvm_reset_anonymous(host, size) : ckvm_discard_anonymous(host, size)
+    }
+
+    /// Drops [gpa, gpa+size) (allocated in `pool`, unmapped by the guest)
+    /// after the trap, then makes it free again. Kernel lock held.
+    private func discardAfterTrap(_ gpa: UInt64, _ size: UInt64) {
+        let host = poolHost + Int(gpa - poolGPA)
+        PostTrapWork.defer_ { [self] in
+            let began = VCPUPool.profiling ? monotonicNanoseconds() : 0
+            _ = discardHost(host, Int(size))
+            if VCPUPool.profiling { BackingStats.deferredDiscards.add(since: began, bytes: size) }
+            readyLock.withLock {
+                readyRuns.append((gpa, size))
+                hasReadyRuns = true
+            }
+        }
+    }
+
+    /// Returns the runs dropped after earlier traps to the pool. Kernel lock held.
+    private func takeReadyRuns() {
+        let runs: [(gpa: UInt64, size: UInt64)] = readyLock.withLock {
+            guard hasReadyRuns else { return [] }
+            hasReadyRuns = false
+            let r = readyRuns
+            readyRuns.removeAll()
+            return r
+        }
+        for r in runs { pool.free(r.gpa, r.size) }
+    }
+
+    /// The shared object arena's GPA in this VM, when registered (C19).
+    public static let sharedArenaGPA: UInt64 = 0xC0_0000_0000
+    private var sharedArenaRegistered = false
+
     /// Shared memory objects registered in this VM (kept alive while the
     /// VM may touch them; their slots are never unmapped by the VM).
     private var sharedSlots: [ObjectIdentifier: (object: SharedMemoryObject, gpa: UInt64)] = [:]
@@ -95,6 +255,23 @@ public final class KVMPhysicalBacking {
             throw error
         }
         let limit = UInt64(1) << physicalAddressBits
+        // The private file window at the start of the file GPA range (below
+        // the read-only arena); per-mapping file slots follow it.
+        var privateHost: UnsafeMutableRawPointer?
+        var privateSize: UInt64 = 0
+        let privateGPA = fileWindowGPA
+        if Self.privateWindowEnabled, privateGPA < readOnlyFileWindowGPA,
+           Self.defaultPrivateWindowSize <= readOnlyFileWindowGPA - privateGPA,
+           let reservation = mmap(nil, Int(Self.defaultPrivateWindowSize), PROT_NONE,
+                                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0), reservation != MAP_FAILED {
+            if (try? vm.addMemorySlot(gpa: privateGPA, size: Self.defaultPrivateWindowSize, host: reservation, kind: .file,
+                                      name: "private file window")) != nil {
+                privateHost = reservation
+                privateSize = Self.defaultPrivateWindowSize
+            } else {
+                munmap(reservation, Int(Self.defaultPrivateWindowSize))
+            }
+        }
         var window: UInt64?
         var arena: SharedFileArena?
         if sharedReadOnlyFiles, !Self.debugNoArena, vm.supportsReadOnlyMemory, let a = SharedFileArena.shared,
@@ -113,7 +290,19 @@ public final class KVMPhysicalBacking {
         self.poolHost = host
         self.pool = RangeAllocator(base: poolGPA, size: poolSize)
         self.stale = RangeAllocator(base: poolGPA, size: poolSize, hardwareWatch: DebugHardwareWatch.arm != nil)
-        self.nextFileGPA = fileWindowGPA
+        // Above the read-only file window (and only with it, which bounds
+        // the per-mapping file slots below it).
+        if let objects = SharedObjectArena.shared, window != nil, let ro = SharedFileArena.shared,
+           Self.sharedArenaGPA >= readOnlyFileWindowGPA + ro.size,
+           objects.size <= limit - Self.sharedArenaGPA,
+           (try? vm.addMemorySlot(gpa: Self.sharedArenaGPA, size: objects.size, host: objects.base, kind: .shared,
+                                  name: "shared object arena")) != nil {
+            sharedArenaRegistered = true
+        }
+        self.privateWindowHost = privateHost
+        self.privateWindowGPA = privateGPA
+        self.privateWindowSize = privateSize
+        self.nextFileGPA = fileWindowGPA + privateSize
         self.readOnlyFileWindowGPA = window
         self.arena = arena
         self.fileWindowLimit = window ?? limit
@@ -136,6 +325,7 @@ public final class KVMPhysicalBacking {
     public func allocateAnonymous(size: UInt64) throws -> UInt64 {
         let size = Self.roundUp(max(size, 1), Self.granule)
         guard !vm.isClosed else { throw KVMError("anonymous pool", errno: EBADF, detail: "the VM is closed") }
+        if Self.deferredDiscardEnabled { takeReadyRuns() }
         guard let start = pool.allocate(size) else {
             throw KVMError("anonymous pool", errno: ENOMEM,
                            detail: "no free run of \(size) bytes (\(anonymousBytesInUse >> 20) MiB of \(poolSize >> 20) MiB in use)")
@@ -143,14 +333,19 @@ public final class KVMPhysicalBacking {
         if stale.bytesInUse > 0 {
             let old = stale.free(start, size)
             let oldBytes = old.reduce(0) { $0 + ($1.upperBound - $1.lowerBound) }
+            let began = VCPUPool.profiling ? monotonicNanoseconds() : 0
             if oldBytes > Self.zeroFillLimit {
                 // Cheaper to drop the whole run at once.
-                _ = ckvm_discard_anonymous(poolHost + Int(start - poolGPA), Int(size))
+                _ = discardHost(poolHost + Int(start - poolGPA), Int(size))
+                if VCPUPool.profiling {
+                    BackingStats.discards.add(since: began, bytes: size)
+                }
             } else {
                 for r in old {
                     (poolHost + Int(r.lowerBound - poolGPA)).initializeMemory(as: UInt8.self, repeating: 0,
                                                                               count: Int(r.upperBound - r.lowerBound))
                 }
+                if VCPUPool.profiling { BackingStats.zeroFills.add(since: began) }
             }
         }
         return start
@@ -167,16 +362,39 @@ public final class KVMPhysicalBacking {
         guard !vm.isClosed else { return }
         // Ignore a range that is not entirely allocated (double free): keep the allocator consistent.
         guard pool.isAllocated(gpa, size) else { return }
+        let deferred = Self.deferredDiscardEnabled && PostTrapWork.isCurrentVM(vm)
+        if deferred, size > Self.discardLimit || Self.debugNoStale {
+            // Stays allocated until it is dropped after the trap.
+            discardAfterTrap(gpa, size)
+            return
+        }
         pool.free(gpa, size)
+        let began = VCPUPool.profiling ? monotonicNanoseconds() : 0
         if size <= Self.discardLimit && !Self.debugNoStale {
             stale.mark(gpa, size)
             if stale.bytesInUse > Self.staleLimit {
+                if deferred {
+                    // Allocated again (they were free and stale) until dropped.
+                    for r in stale.takeAll() {
+                        pool.mark(r.lowerBound, r.upperBound - r.lowerBound)
+                        discardAfterTrap(r.lowerBound, r.upperBound - r.lowerBound)
+                    }
+                    return
+                }
+                var bytes: UInt64 = 0
                 for r in stale.takeAll() {
-                    _ = ckvm_discard_anonymous(poolHost + Int(r.lowerBound - poolGPA), Int(r.upperBound - r.lowerBound))
+                    _ = discardHost(poolHost + Int(r.lowerBound - poolGPA), Int(r.upperBound - r.lowerBound))
+                    bytes += r.upperBound - r.lowerBound
+                }
+                if VCPUPool.profiling {
+                    BackingStats.discards.add(since: began, bytes: bytes)
                 }
             }
         } else {
-            _ = ckvm_discard_anonymous(poolHost + Int(gpa - poolGPA), Int(size))
+            _ = discardHost(poolHost + Int(gpa - poolGPA), Int(size))
+            if VCPUPool.profiling {
+                BackingStats.discards.add(since: began, bytes: size)
+            }
         }
     }
 
@@ -197,8 +415,14 @@ public final class KVMPhysicalBacking {
         }
         let available = offset < fileSize ? fileSize - offset : 0
         let fileBytes = Int(min(min(size, available), total))
+        let began = VCPUPool.profiling ? monotonicNanoseconds() : 0
         if total <= Self.copyLimit && !Self.debugNoFileCopy {
             // A copy in pool memory: no memslot (and released with the mapping).
+            defer {
+                if VCPUPool.profiling {
+                    BackingStats.fileCopies.add(since: began, bytes: total)
+                }
+            }
             let gpa = try allocateAnonymous(size: total)
             let destination = poolHost + Int(gpa - poolGPA)
             var done = 0
@@ -218,6 +442,26 @@ public final class KVMPhysicalBacking {
             copiedFileMappingCount += 1
             return gpa
         }
+        if let windowHost = privateWindowHost, total <= privateWindowSize - privateWindowNext {
+            // The private file window: a host mapping, no memslot change.
+            let at = windowHost + Int(privateWindowNext)
+            guard ckvm_map_file_private_at(at, hostFD, offset, fileBytes, Int(total)) != nil else {
+                let saved = Glibc.errno
+                var target = [CChar](repeating: 0, count: 512)
+                let n = readlink("/proc/self/fd/\(hostFD)", &target, 511)
+                let what = n > 0 ? String(cString: target) : "?"
+                throw KVMError("mmap \(name) at offset 0x\(String(offset, radix: 16)) (private file window; fd \(hostFD) -> \(what); "
+                               + "fileBytes \(fileBytes) total \(total); arena files \(SharedFileArena.shared?.fileCount ?? -1) "
+                               + "bytes \((SharedFileArena.shared?.bytesUsed ?? 0) >> 20) MiB)", errno: saved)
+            }
+            let gpa = privateWindowGPA + privateWindowNext
+            privateWindowNext += total
+            fileMappingCount += 1
+            if VCPUPool.profiling {
+                BackingStats.fileWindowMaps.add(since: began, bytes: total)
+            }
+            return gpa
+        }
         guard let host = ckvm_map_file_private(hostFD, offset, fileBytes, Int(total)) else {
             throw KVMError("mmap \(name) at offset 0x\(String(offset, radix: 16))", errno: Glibc.errno)
         }
@@ -230,6 +474,9 @@ public final class KVMPhysicalBacking {
         }
         nextFileGPA = gpa + total
         fileMappingCount += 1
+        if VCPUPool.profiling {
+            BackingStats.fileMemslots.add(since: began, bytes: total)
+        }
         return gpa
     }
 
@@ -251,6 +498,14 @@ public final class KVMPhysicalBacking {
     /// returns its GPA.
     public func mapShared(_ object: SharedMemoryObject) throws -> UInt64 {
         if let slot = sharedSlots[ObjectIdentifier(object)] { return slot.gpa }
+        if sharedArenaRegistered, let offset = object.arenaOffset {
+            // In the arena this VM registered at start: no memslot change.
+            let gpa = Self.sharedArenaGPA + offset
+            sharedSlots[ObjectIdentifier(object)] = (object, gpa)
+            return gpa
+        }
+        let began = VCPUPool.profiling ? monotonicNanoseconds() : 0
+        defer { if VCPUPool.profiling { BackingStats.sharedMemslots.add(since: began) } }
         let gpa = Self.roundUp(nextFileGPA, Self.granule)
         guard gpa <= fileWindowLimit, object.size <= fileWindowLimit - gpa else {
             throw KVMError("shared memslot", errno: ENOMEM, detail: "guest physical space exhausted")

@@ -1,0 +1,150 @@
+{
+ "comparisons": [
+  {
+   "highTemperature": {
+    "_0": {
+     "baseline": {
+      "kind": {
+       "mean": {}
+      },
+      "startDate": "1991-01-01T00:00:00Z",
+      "value": {
+       "unit": {
+        "converter": {
+         "coefficient": 1,
+         "constant": 273.15
+        },
+        "symbol": "°C"
+       },
+       "value": 1.5
+      }
+     },
+     "currentValue": {
+      "unit": {
+       "converter": {
+        "coefficient": 1,
+        "constant": 273.15
+       },
+       "symbol": "°C"
+      },
+      "value": 4.1
+     },
+     "deviation": {
+      "higher": {}
+     }
+    }
+   }
+  },
+  {
+   "lowTemperature": {
+    "_0": {
+     "baseline": {
+      "kind": {
+       "mean": {}
+      },
+      "startDate": "1991-01-01T00:00:00Z",
+      "value": {
+       "unit": {
+        "converter": {
+         "coefficient": 1,
+         "constant": 273.15
+        },
+        "symbol": "°C"
+       },
+       "value": -6.0
+      }
+     },
+     "currentValue": {
+      "unit": {
+       "converter": {
+        "coefficient": 1,
+        "constant": 273.15
+       },
+       "symbol": "°C"
+      },
+      "value": -7.9
+     },
+     "deviation": {
+      "normal": {}
+     }
+    }
+   }
+  },
+  {
+   "precipitationAmount": {
+    "_0": {
+     "baseline": {
+      "kind": {
+       "mean": {}
+      },
+      "startDate": "1991-01-01T00:00:00Z",
+      "value": {
+       "unit": {
+        "converter": {
+         "coefficient": 0.001,
+         "constant": 0
+        },
+        "symbol": "mm"
+       },
+       "value": 2.4
+      }
+     },
+     "currentValue": {
+      "unit": {
+       "converter": {
+        "coefficient": 0.001,
+        "constant": 0
+       },
+       "symbol": "mm"
+      },
+      "value": 3.0
+     },
+     "deviation": {
+      "normal": {}
+     }
+    }
+   }
+  },
+  {
+   "snowfallAmount": {
+    "_0": {
+     "baseline": {
+      "kind": {
+       "mean": {}
+      },
+      "startDate": "1991-01-01T00:00:00Z",
+      "value": {
+       "unit": {
+        "converter": {
+         "coefficient": 0.001,
+         "constant": 0
+        },
+        "symbol": "mm"
+       },
+       "value": 20.0
+      }
+     },
+     "currentValue": {
+      "unit": {
+       "converter": {
+        "coefficient": 0.001,
+        "constant": 0
+       },
+       "symbol": "mm"
+      },
+      "value": 52.0
+     },
+     "deviation": {
+      "muchHigher": {}
+     }
+    }
+   }
+  }
+ ],
+ "metadata": {
+  "date": "2026-01-15T12:00:00Z",
+  "expirationDate": "2026-01-15T18:00:00Z",
+  "latitude": 41.5,
+  "longitude": -81.5
+ }
+}

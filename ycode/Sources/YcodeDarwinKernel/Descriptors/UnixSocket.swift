@@ -108,6 +108,9 @@ final class UnixSocket: KernelDescriptorObject {
     var peer: UnixSocket?
     /// A datagram socket connected to a log path nobody serves.
     var logSink: String?
+    /// The host end of a host-provided stream socket (`HostStreamSockets`):
+    /// bytes the peer sends are handed to it instead of being queued.
+    var hostSink: ((ArraySlice<UInt8>) -> Void)?
     var isConnected = false
     var cantReceiveMore = false
     var cantSendMore = false
@@ -266,6 +269,10 @@ final class UnixSocket: KernelDescriptorObject {
     /// Appends stream bytes (and rights) sent by the peer.
     func appendStream(_ bytes: ArraySlice<UInt8>, rights: [DarwinOpenFile]?) {
         guard !cantReceiveMore else { return }  // shut down for reading: dropped
+        if let hostSink {
+            hostSink(bytes)  // rights are dropped (released with this call)
+            return
+        }
         segments.append(Segment(bytes: Array(bytes), rights: rights))
         queuedBytes += bytes.count
     }
@@ -567,6 +574,22 @@ extension DarwinKernel {
         case .stream:
             if s.isListening { throw fail(Code.EOPNOTSUPP) }
             if s.isConnected || s.peer != nil { throw fail(Code.EISCONN) }
+            if let sink = HostStreamSockets.sink(for: fileSystem.normalize(address.path, cwd: fileSystem.cwd),
+                                                 from: descriptorUser) {
+                // A host-provided socket (no guest listener): connected at
+                // once to a host end that consumes what is sent.
+                let host = UnixSocket(kind: .stream, lock: lock, creator: descriptorUser)
+                host.address = address.raw
+                host.hostSink = sink
+                host.peer = s
+                host.isConnected = true
+                host.peerCredentials = descriptorUser
+                s.peer = host
+                s.isConnected = true
+                s.peerCredentials = descriptorUser
+                s.signals.fire()
+                return
+            }
             guard let listener = try boundSocket(at: address.path) else { throw fail(Code.ECONNREFUSED) }
             guard listener.kind == s.kind else { throw fail(Code.EPROTOTYPE) }
             guard listener.isListening, listener !== s else { throw fail(Code.ECONNREFUSED) }

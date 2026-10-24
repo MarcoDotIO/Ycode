@@ -1107,6 +1107,22 @@ void Translator::call(CallInst *C) {
         bind(C, E.op("OpAny", E.tBool(), {ge}));
         return;
     }
+    if (n == "airc.loop_budget") {
+        // One more loop-header pass of this invocation; true once the
+        // count exceeds the limit (prepare.cpp, insertLoopGuards). The
+        // count is a Private variable of its own (initialized to zero per
+        // invocation), so the compiler can keep it in a register.
+        if (loopBudgetVar.empty()) {
+            std::string pt = E.tPtr("Private", u32), zero = E.u32(0);  // declared before the variable
+            loopBudgetVar = E.fresh();
+            E.globals << loopBudgetVar << " = OpVariable " << pt << " Private " << zero << "\n";
+            E.interface.push_back(loopBudgetVar);
+        }
+        std::string c = E.op("OpIAdd", u32, {E.op("OpLoad", u32, {loopBudgetVar}), E.u32(1)});
+        E.stmt("OpStore " + loopBudgetVar + " " + c);
+        bind(C, E.op("OpUGreaterThan", E.tBool(), {c, E.u32(opts.loopLimit)}));
+        return;
+    }
     if (n.starts_with("air.convert.")) {
         SmallVector<StringRef, 8> p;
         n.split(p, '.');

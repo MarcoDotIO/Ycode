@@ -489,6 +489,66 @@ signed images only.
 - `accessx_np(entries, size, results, uid)` is BSD 284 (`access_extended`),
   same arguments (xnu `sys/unistd.h`, `vfs_syscalls.c`; level 1).
 - `mach_absolute_time`/`mach_continuous_time` stay the traps −3/−4 and
-  `__commpage_gettimeofday` stays "not available": reading `CNTVCT_EL0` in
-  place needs every vCPU's virtual counter aligned to the kernel's mach time
-  first (`first-boot.md` §6 item 4).
+  `__commpage_gettimeofday` stays "not available" by default: reading
+  `CNTVCT_EL0` in place needs every vCPU's virtual counter aligned to the
+  kernel's mach time first (`first-boot.md` §6 item 4). With the commpage
+  flag byte of `fast-traps.md` §2 (VMM switch `YCODE_FAST_TRAPS=1`) the
+  library reads the counter, the `NEWTIMEOFDAY_DATA` snapshot and the
+  credential block instead (`fast-traps.md` §3–§5); `getuid`, `geteuid`,
+  `getgid` and `getegid` are hand-written for that.
+
+### 11.5 `host_info` flavors (speed work, 2026-10-13)
+
+`host_info` in `libsystem_kernel` answers three flavors in the library
+(no trap). The flavor numbers and structure layouts are the public ones in
+`mach/host_info.h` (level 1). The structures are packed to 4 bytes, and the
+count is in 32-bit words.
+
+| Flavor | Count | Values |
+|---|---|---|
+| `HOST_BASIC_INFO` (1) | 12 (`HOST_BASIC_INFO_COUNT`), or 5 (`HOST_BASIC_INFO_OLD_COUNT`) | `max_cpus` 1, `avail_cpus` 1, `memory_size` 1 GiB, `cpu_type` `CPU_TYPE_ARM64` (0x0100000C), `cpu_subtype` 0 (`CPU_SUBTYPE_ARM64_ALL`), `cpu_threadtype` 0, `physical_cpu` 1, `physical_cpu_max` 1, `logical_cpu` 1, `logical_cpu_max` 1, `max_mem` (uint64 at +40) 1 GiB. With a count of 5 to 11 only the first five fields are written and the count becomes 5. |
+| `HOST_SCHED_INFO` (3) | 2 | `min_timeout` 10, `min_quantum` 10 (ms; a Ycode choice) |
+| `HOST_PRIORITY_INFO` (5) | 8 | as §7 item 5 |
+
+A count below the flavor's minimum is `KERN_FAILURE`; a NULL `info` or
+`count` is `KERN_INVALID_ARGUMENT`. Other flavors return
+`KERN_NOT_SUPPORTED`, and the unimplemented-function report names the
+flavor ("host_info (flavor N)"). The CPU and memory values agree with the
+guest's sysctls (`hw.ncpu`, `hw.memsize`, `hw.cputype`, `hw.cpusubtype`).
+JavaScriptCore asked for one of the new flavors at start-up and failed
+without it (level 3, Ycode boot logs). From the speed explorer X15's
+prototype.
+
+### 11.6 Cooperative thread requests without a cooperative pool (speed work, 2026-10-16)
+
+`_pthread_workqueue_add_cooperativethreads(n, priority)` asks the kernel for
+one cooperative thread per call of `workq_kernreturn` op
+`QUEUE_REQTHREADS2` (0x030, count 1; `threads-and-events.md` §2.3). Ycode's
+kernel has no cooperative pool and refuses the op with `ENOTSUP`. The
+library then:
+
+1. counts one pending cooperative request at that QoS;
+2. asks for a constrained worker at that QoS (`QUEUE_REQTHREADS`, count 1);
+3. marks the next plain constrained worker of that QoS as cooperative
+   (`_PTHREAD_PRIORITY_COOPERATIVE_FLAG` 0x0800_0000 in its priority), so
+   libdispatch's cooperative root queue is still drained.
+
+The first refusal with `ENOTSUP` or `ENOSYS` is remembered for the life of
+the process. Later cooperative requests skip the `QUEUE_REQTHREADS2` trap
+and go straight to step 1. A kernel does not gain or lose the pool while a
+process runs, so the result is the same with one trap fewer. `EINVAL` (an
+argument error) is not remembered. Requests with no QoS still return the
+error.
+
+Why: Swift-concurrency daemons (`suggestd`, `parsecd`, `axassetsd`) run a
+worker cycle of about five traps (two `mach_continuous_time`, the refused
+`QUEUE_REQTHREADS2`, `QUEUE_REQTHREADS`, `THREAD_RETURN`) more than 1000
+times a second for each thread. They were the busiest processes of the
+integration-branch boots (5–14 M traps each in 900 s). Every trap takes the
+kernel lock, so the refused trap cost one lock acquisition in five of
+those cycles.
+
+Evidence: op numbers and the meaning of the cooperative flag are from
+open-source xnu/libpthread (`workqueue_internal.h`, `qos_private.h`;
+level 1). The worker cycle and trap counts are from Ycode traces and exit
+summaries (level 3). The fallback mapping is a Ycode design.

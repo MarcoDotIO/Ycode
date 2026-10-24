@@ -5,6 +5,7 @@
 #if os(Linux) && arch(arm64)
 import Foundation
 import Glibc
+import Synchronization
 import YcodeDarwinABI
 import YcodeDarwinKernel
 import YcodeHypervisor
@@ -98,56 +99,114 @@ struct GuestImage {
 /// The dyld shared cache of the runtime, parsed once per host process and
 /// shared by every image's `ImageMap` (each image of a run maps the same
 /// cache). Thread-safe.
+///
+/// Four locks, so that a slow parse never stalls a fast question: `loadLock`
+/// guards the `SharedCache` value (its header and image table: fast);
+/// `smallLock` the mapping list, the main mapping and the libSystem image
+/// ranges (a few dozen Mach-O headers); `fullLock` the full image list
+/// (every cached image's Mach-O header: seconds); `crashLock` the
+/// crash-info sections (every image's segments: seconds).
+/// `prewarm()` builds everything on a background thread at start, so the
+/// first fault report or trace does not wait for the full parse under the
+/// kernel lock (`performance-contract.md` §6, C15).
 final class SharedCacheIndex: @unchecked Sendable {
     let cachePath: String
-    private let lock = HostMutex()
+    private let loadLock = HostMutex(name: "shared cache index (load)")
+    private let smallLock = HostMutex(name: "shared cache index (small)")
+    private let fullLock = HostMutex(name: "shared cache index (full)")
+    /// The `__crash_info` list has its own lock: its parse (every image's
+    /// segments) takes seconds, and the full image list must not wait for it
+    /// (a trap's milestone note reads that list under the kernel lock).
+    private let crashLock = HostMutex(name: "shared cache index (crash info)")
     private var cache: SharedCache?
     private var loadFailed = false
     private var images: [GuestImage]?
     private var crashInfo: [(image: String, address: UInt64, size: UInt64)]?
     private var mappingList: [(file: String, mapping: SharedCache.Mapping)]?
     private var firstMapping: SharedCache.Mapping??
+    private var libSystem: [GuestImage]?
+    /// Set (under `fullLock`) once `images` exists; read without a lock.
+    private let imagesReady = Atomic<Bool>(false)
 
     init(cachePath: String) { self.cachePath = cachePath }
 
-    private func sharedCacheLocked() -> SharedCache? {
-        if cache == nil && !loadFailed {
-            do { cache = try SharedCache(contentsOf: URL(fileURLWithPath: cachePath)) } catch {
-                loadFailed = true
-                stderrLine("ycode-simd: cannot read the shared cache \(cachePath): \(error)")
+    private func sharedCache() -> SharedCache? {
+        loadLock.withLock {
+            if cache == nil && !loadFailed {
+                do { cache = try SharedCache(contentsOf: URL(fileURLWithPath: cachePath)) } catch {
+                    loadFailed = true
+                    stderrLine("ycode-simd: cannot read the shared cache \(cachePath): \(error)")
+                }
+            }
+            return cache
+        }
+    }
+
+    /// The path (install name) of every image in the cache's image table.
+    func imagePaths() -> [String] { sharedCache()?.images.map(\.path) ?? [] }
+
+    /// Builds every list on a background thread (call once, at start).
+    func prewarm() {
+        Thread.detachNewThread { [self] in
+            let began = monotonicNanoseconds()
+            _ = libSystemImages()
+            let small = monotonicNanoseconds()
+            _ = cacheImages()
+            _ = crashInfoSections()
+            if BootProfile.shared != nil {
+                stderrLine("ycode-simd: shared cache index: libSystem images in \((small &- began) / 1_000_000) ms, "
+                    + "full index in \((monotonicNanoseconds() &- began) / 1_000_000) ms")
             }
         }
-        return cache
     }
 
     /// Every mapping of every cache file (main file first), as in the headers.
     func mappings() -> [(file: String, mapping: SharedCache.Mapping)] {
-        lock.withLock {
-            if let mappingList { return mappingList }
-            guard let cache = sharedCacheLocked() else { return [] }
-            let list = cache.files.flatMap { f in f.mappings.map { (f.url.path, $0) } }
-            mappingList = list
-            return list
-        }
+        if let list = smallLock.withLock({ mappingList }) { return list }
+        guard let cache = sharedCache() else { return [] }
+        let list = cache.files.flatMap { f in f.mappings.map { (f.url.path, $0) } }
+        smallLock.withLock { mappingList = list }
+        return list
     }
 
     /// The main file's first mapping (for addresses outside every image).
     func mainMapping() -> SharedCache.Mapping? {
-        lock.withLock {
-            if let firstMapping { return firstMapping }
-            let first = sharedCacheLocked()?.mainFile.mappings.first
-            firstMapping = .some(first)
-            return first
+        if let first = smallLock.withLock({ firstMapping }) { return first }
+        let first = sharedCache()?.mainFile.mappings.first
+        smallLock.withLock { firstMapping = .some(first) }
+        return first
+    }
+
+    /// True when `path` is one of the images the libSystem milestone
+    /// (host-libraries.md §8.1) watches for.
+    static func isLibSystemPath(_ path: String) -> Bool {
+        path.hasPrefix("/usr/lib/system/libsystem_") || path == "/usr/lib/libSystem.B.dylib"
+    }
+
+    /// The __TEXT ranges of the cache's libsystem_* images and libSystem.B
+    /// (header addresses), sorted: the milestone check reads only these, not
+    /// the full image list.
+    func libSystemImages() -> [GuestImage] {
+        if let list = smallLock.withLock({ libSystem }) { return list }
+        var list: [GuestImage] = []
+        if let cache = sharedCache() {
+            for image in cache.images where Self.isLibSystemPath(image.path) {
+                guard let macho = try? cache.machO(for: image), let text = macho.segment(named: "__TEXT") else { continue }
+                list.append(GuestImage(name: image.path, start: text.vmAddress, end: text.vmAddress + text.vmSize, base: image.address))
+            }
         }
+        list.sort { $0.start < $1.start }
+        smallLock.withLock { libSystem = list }
+        return list
     }
 
     /// Every cache image's `__crash_info` section (any `__DATA*` segment) at
     /// its header address: the CrashReporter annotations a library fills
     /// before it traps (Libc `CrashReporterClient.h`, level 1).
     func crashInfoSections() -> [(image: String, address: UInt64, size: UInt64)] {
-        lock.withLock {
+        crashLock.withLock {
             if let crashInfo { return crashInfo }
-            guard let cache = sharedCacheLocked() else { return [] }
+            guard let cache = sharedCache() else { return [] }
             var list: [(image: String, address: UInt64, size: UInt64)] = []
             for image in cache.images {
                 guard let macho = try? cache.machO(for: image) else { continue }
@@ -164,9 +223,9 @@ final class SharedCacheIndex: @unchecked Sendable {
 
     /// The cache images' __TEXT ranges at their header addresses, sorted.
     func cacheImages() -> [GuestImage] {
-        lock.withLock {
+        fullLock.withLock {
             if let images { return images }
-            guard let cache = sharedCacheLocked() else { return [] }
+            guard let cache = sharedCache() else { return [] }
             var list: [GuestImage] = []
             for image in cache.images {
                 guard let macho = try? cache.machO(for: image), let text = macho.segment(named: "__TEXT") else { continue }
@@ -174,8 +233,14 @@ final class SharedCacheIndex: @unchecked Sendable {
             }
             list.sort { $0.start < $1.start }
             images = list
+            imagesReady.store(true, ordering: .releasing)
             return list
         }
+    }
+
+    /// The full list when it is built, else nil (never waits for the parse).
+    func cacheImagesIfReady() -> [GuestImage]? {
+        imagesReady.load(ordering: .acquiring) ? cacheImages() : nil
     }
 }
 
@@ -240,6 +305,29 @@ final class ImageMap {
     func describe(_ address: UInt64) -> String {
         guard let (image, offset) = attribute(address) else { return hex(address) }
         return "\(image.name) + \(hex(offset))"
+    }
+
+    /// The libSystem milestone's attribution (host-libraries.md §8.1): the
+    /// image and offset when `address` lies in one of Ycode's host
+    /// libraries, in a cache libsystem_* image or in libSystem.B; nil
+    /// otherwise. Reads only the small libSystem list, never the full
+    /// cache index (whose first parse takes seconds).
+    func libSystemAttribution(_ address: UInt64) -> (image: GuestImage, offset: UInt64)? {
+        if fixed.contains(where: { address >= $0.start && address < $0.end }) { return nil }
+        if let hit = hostLibrary(address) { return hit }
+        guard address >= VMLayout.sharedRegionBase, address < VMLayout.sharedRegionEnd else { return nil }
+        let header = address &- cacheDelta
+        guard let image = cache.libSystemImages().first(where: { header >= $0.start && header < $0.end }) else { return nil }
+        return (image, header - image.base)
+    }
+
+    /// `describe`, or the plain address while the full cache index is not built yet.
+    func describeIfCheap(_ address: UInt64) -> String {
+        if cache.cacheImagesIfReady() == nil, address >= VMLayout.sharedRegionBase, address < VMLayout.sharedRegionEnd,
+           libSystemAttribution(address) == nil {
+            return hex(address)
+        }
+        return describe(address)
     }
 }
 

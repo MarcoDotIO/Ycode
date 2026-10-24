@@ -53,7 +53,7 @@ import YcodeDarwinABI
         (_, f) = env.svc(0x7963_0009, [name, old, lenp, 0, 0])
         #expect(f.carry && f.x[0] == 12)
 
-        for (n, expected) in [("hw.ncpu", UInt64(1)), ("hw.activecpu", 1), ("hw.optional.arm.caps", 0)] {
+        for (n, expected) in [("hw.ncpu", UInt64(GuestCPUs.count)), ("hw.activecpu", UInt64(GuestCPUs.count)), ("hw.optional.arm.caps", 0)] {
             try env.putString(n, at: name)
             try env.put(leBytes(0xAAAA_AAAA_AAAA_AAAA), at: old)
             try env.put(leBytes(8), at: lenp)
@@ -69,7 +69,7 @@ import YcodeDarwinABI
         try env.putString("hw.ncpu", at: name)
         try env.put(leBytes(4), at: lenp)
         (_, f) = env.svc(274, [name, 7, old, lenp, 0, 0])
-        #expect(try !f.carry && env.u32(old) == 1)
+        #expect(try !f.carry && env.u32(old) == UInt32(GuestCPUs.count))
     }
 
     @Test func mibForm() throws {
@@ -82,7 +82,7 @@ import YcodeDarwinABI
         try putMIB([6, 3])
         try env.put(leBytes(4), at: lenp)
         var (_, f) = env.svc(202, [mib, 2, old, lenp, 0, 0])
-        #expect(try !f.carry && env.u32(old) == 1)
+        #expect(try !f.carry && env.u32(old) == UInt32(GuestCPUs.count))
 
         // name2oid {0, 3} then a read by the returned OID.
         try putMIB([0, 3])

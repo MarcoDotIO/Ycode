@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import YcodeDarwinABI
 
 /// One guest process (`specs/simulator/processes.md` §2.1). The record
@@ -27,7 +28,10 @@ public final class DarwinProcess: @unchecked Sendable, CustomStringConvertible {
     /// `p_xhighbits`: bits 24…31 of an `exit` value (for `waitid`).
     var exitHighBits: Int32 = 0
     /// The current image. Nil for pid 1 (pseudo-init) and for zombies.
-    public internal(set) var kernel: DarwinKernel?
+    public internal(set) var kernel: DarwinKernel? {
+        // The image's own `proc_info` dirty control runs without L0 (ProcInfo.swift).
+        didSet { kernel?.processDirtyLink.withLock { $0 = dirty } }
+    }
     /// What the launcher returned for the current image.
     var image: (any LaunchedImage)?
     /// Children, in creation order (wait scans them in this order).
@@ -60,12 +64,42 @@ public final class DarwinProcess: @unchecked Sendable, CustomStringConvertible {
     var continuedBy: Int32 = 0
     /// Dirty tracking (`proc_info` DIRTYCONTROL): 0x1 tracked, 0x2 allows
     /// idle exit, 0x4 dirty, 0x8 launch in progress.
-    var dirtyState: UInt32 = 0
+    var dirtyState: UInt32 {
+        get { dirty.bits.load(ordering: .acquiring) }
+        set { dirty.bits.store(newValue, ordering: .releasing) }
+    }
+    /// The word behind `dirtyState`: an atomic, so the process's own
+    /// DIRTYCONTROL calls change it without L0 (`bsd-locking.md` §4).
+    let dirty = ProcessDirtyState()
     /// `psa_apptype`, `psa_pcontrol` (recorded only).
     var processType: UInt32 = 0
     var processControl: UInt32 = 0
+    /// Scheduling policy (`scheduling-policy.md` §4.1): the spawn's QoS
+    /// clamp (0 none, 1 utility, 2 background, 3 maintenance) and darwin
+    /// role, `setpriority(PRIO_DARWIN_PROCESS)`, the importance assertions
+    /// held for it, and its start hold (host monotonic ns at the start).
+    var qosClamp = 0
+    var darwinRole: UInt32 = 0
+    var requestedDarwinBG = false
+    /// Importance assertions (port-lock state with the lock split).
+    var importanceBoosts = 0
+    var holdStart: UInt64? {
+        didSet { holdActive.store(holdStart != nil, ordering: .releasing) }
+    }
+    /// `holdStart != nil`, readable without the kernel lock (the port lock's
+    /// importance code checks it; `mach-ipc-locking.md` §4.5).
+    let holdActive = Atomic<Bool>(false)
+    var holdLabel = ""
     /// The pid version of the current image (audit token word 7).
     var pidVersion: UInt32 = 0
+    /// The last image's executable UUID, kept for the zombie.
+    var zombieExecutableUUID: [UInt8]?
+    /// The current image's main-executable LC_UUID, or 16 zero bytes when
+    /// none is known (`processes.md` §2.11).
+    var executableUUID: [UInt8] {
+        let u = kernel?.executableUUID ?? zombieExecutableUUID ?? []
+        return u.count == 16 ? u : [UInt8](repeating: 0, count: 16)
+    }
     /// `terminate_with_payload` reason, kept for diagnostics.
     var exitReason: String?
 
@@ -137,8 +171,23 @@ public final class DarwinSystem: @unchecked Sendable {
     var posixSemaphoreStorage: [String: PosixSemaphore] = [:]
     /// Advisory file locks and data-protection classes (`fileLocks`).
     var fileLockStorage: FileLockTable?
+    /// Guards the creation of `fileLockStorage` (`fileLocks`).
+    let fileLockCreation = Mutex<Void>(())
+    /// Pids that ever set or cleared a process-owned (POSIX) file lock: a
+    /// close without L0 (`bsd-locking.md` §4.2) releases that process's
+    /// locks on the file under L0 only for these. Sticky; its own leaf lock
+    /// (read without L0). A pid is added before the lock call looks up its
+    /// descriptor.
+    let posixLockUsers = Mutex<Set<Int32>>([])
     /// Object id → path, for fsgetpath and openbyid_np (internally locked).
     let objectPaths = ObjectPathIndex()
+    /// Scheduling policy (`SchedPolicy.swift`): processes in their start
+    /// hold, the hold thread, its wakeup, counters, and the hold log sink.
+    var heldProcesses: [DarwinProcess] = []
+    var holdThreadRunning = false
+    let holdWake = WaitQueue()
+    public internal(set) var schedStats = SchedStats()
+    public var holdLog: ((String) -> Void)?
     /// The last pid handed out (`processes.md` §2.1, `stage4b-contract.md` §2 item 7).
     var lastPID: Int32 = VMLayout.guestPID
     var nextPIDVersion: UInt32 = 0x100
@@ -157,9 +206,26 @@ public final class DarwinSystem: @unchecked Sendable {
         self.init(implicit: false)
     }
 
-    init(implicit: Bool) {
-        lock = KernelLock()
+    /// A system with or without the IPC lock split (`mach-ipc-locking.md` §4).
+    public convenience init(ipcLocks: Bool) {
+        self.init(implicit: false, ipcLocks: ipcLocks)
+    }
+
+    /// The lock split for every new system (`mach-ipc-locking.md` §4): on by
+    /// default; `YCODE_IPC_LOCKS=0` turns it off. One-process (implicit)
+    /// systems never have it.
+    nonisolated(unsafe) public static var ipcLocksDefault = getenv("YCODE_IPC_LOCKS").map { String(cString: $0) != "0" } ?? true
+
+    /// Tests: `YCODE_IPC_LOCKS_TESTS=1` gives every system the lock split,
+    /// one-process (implicit) systems included, so that the whole kernel
+    /// suite runs with it (the test helpers then try the fast paths first).
+    nonisolated(unsafe) public static var splitForTests = getenv("YCODE_IPC_LOCKS_TESTS").map { String(cString: $0) == "1" } ?? false
+
+    init(implicit: Bool, ipcLocks: Bool = DarwinSystem.ipcLocksDefault || DarwinSystem.splitForTests) {
+        let split = ipcLocks && (!implicit || Self.splitForTests)
+        lock = KernelLock(ipcLocks: split)
         mach = MachIPCSystem()
+        if split { mach.portLock = KernelLock(fineLockOf: lock, level: 2, name: "port lock (G)") }
         isImplicit = implicit
         // A blocking guest thread frees its workqueue slot in its own process.
         lock.blockingObserver = { context, blocking in
@@ -293,7 +359,7 @@ public final class DarwinSystem: @unchecked Sendable {
                 if let zombie { processes[zombie.pid] = nil }
                 processes[pid] = nil
                 processes[Self.initPID]?.children.removeAll { $0 == pid }
-                (kernel.machIPC as? MachIPC)?.terminateTask()
+                kernel.withPorts { (kernel.machIPC as? MachIPC)?.terminateTask() }
                 throw error
             }
             if request.startSuspended { record.state = .stopped }
@@ -336,11 +402,12 @@ public final class DarwinSystem: @unchecked Sendable {
             // 1. Other threads end; 2. Mach teardown; 3. descriptors.
             k.endImage(outcome)
             k.tearDownKEvents()
-            (k.machIPC as? MachIPC)?.terminateTask()
+            k.withPorts { (k.machIPC as? MachIPC)?.terminateTask() }
             k.fileSystem.closeAll()
             fileLocks.release(owner: .process(p.pid))
             k.log("note: process \(p.pid) exited, wait status \(hx(UInt32(bitPattern: waitStatus)))")
         }
+        p.zombieExecutableUUID = p.kernel?.executableUUID
         p.image = nil
         p.kernel = nil
         p.status = waitStatus

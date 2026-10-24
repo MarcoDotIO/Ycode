@@ -1,0 +1,74 @@
+RKP mode=rv-usd
+RKP metal.name=Apple iOS simulator GPU
+RKP metal.families=apple1,apple2,common1
+RKP metal.argumentBuffersTier=0
+RKP metal.raytracing=false
+RKP metal.maxThreadsPerThreadgroup=512
+RKP metal.readWriteTextureTier=0
+RKP metal.sampleCount4=true
+RKP metal.maxBufferLength=268435456
+RKP os=27.1
+RKP rv.make=0.000
+RKP rv.firstUpdateAt=0.068
+RKP usd.cube.usda.loadSeconds=1.348
+RKP usd.cube.usda.tree.00=<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube.usda.tree.01=.Root<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube.usda.tree.02=..Spinner<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube.usda.tree.03=...Cube<ModelEntity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [ModelComponent,SynchronizationComponent,Transform] meshmin(-0.0500,-0.0500,-0.0500) max(0.0500,0.0500,0.0500) mats[PhysicallyBasedMaterial] tintkCGColorSpaceModelRGB 0.8 0.1 0.1 1 contentHeadroom=undefined
+RKP usd.cube.usda.tree.04=...Ball<ModelEntity> pos(0.0000,0.1000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [ModelComponent,SynchronizationComponent,Transform] meshmin(-0.0300,-0.0300,-0.0300) max(0.0300,0.0300,0.0300) mats[PhysicallyBasedMaterial] tintkCGColorSpaceModelRGB 0.18 0.18 0.18 1 contentHeadroom=undefined
+RKP usd.cube.usda.animations=global scene animation 2.0;default subtree animation 2.0
+RKP usd.cube.usda.visualBounds=min(-0.0500,-0.0500,-0.0500) max(0.0500,0.1300,0.0500)
+RKP usd.export=bytes 113809 magic 504b0304 path <device>/data/Containers/Data/Application/362B952E-F637-457B-BECC-65BA2E65DAAF/tmp/export.usdz
+RKP usd.exportUsda=ok <device>/data/Containers/Data/Application/362B952E-F637-457B-BECC-65BA2E65DAAF/tmp/export.usda
+RKP usd.cube.usdz.loadSeconds=0.057
+RKP usd.cube.usdz.tree.00=<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube.usdz.tree.01=.Root<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube.usdz.tree.02=..Spinner<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube.usdz.tree.03=...Cube<ModelEntity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [ModelComponent,SynchronizationComponent,Transform] meshmin(-0.0500,-0.0500,-0.0500) max(0.0500,0.0500,0.0500) mats[PhysicallyBasedMaterial] tintkCGColorSpaceModelRGB 0.8 0.1 0.1 1 contentHeadroom=undefined
+RKP usd.cube.usdz.tree.04=...Ball<ModelEntity> pos(0.0000,0.1000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [ModelComponent,SynchronizationComponent,Transform] meshmin(-0.0300,-0.0300,-0.0300) max(0.0300,0.0300,0.0300) mats[PhysicallyBasedMaterial] tintkCGColorSpaceModelRGB 0.18 0.18 0.18 1 contentHeadroom=undefined
+RKP usd.cube.usdz.animations=global scene animation 2.0;default subtree animation 2.0
+RKP usd.cube.usdz.visualBounds=min(-0.0500,-0.0500,-0.0500) max(0.0500,0.1300,0.0500)
+RKP usd.cube_cm.usda.loadSeconds=0.051
+RKP usd.cube_cm.usda.tree.00=<Entity> pos(0.0000,0.0000,0.0000) scale(0.0100,0.0100,0.0100) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube_cm.usda.tree.01=.Root<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube_cm.usda.tree.02=..Spinner<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube_cm.usda.tree.03=...Cube<ModelEntity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [ModelComponent,SynchronizationComponent,Transform] meshmin(-0.0500,-0.0500,-0.0500) max(0.0500,0.0500,0.0500) mats[PhysicallyBasedMaterial] tintkCGColorSpaceModelRGB 0.8 0.1 0.1 1 contentHeadroom=undefined
+RKP usd.cube_cm.usda.tree.04=...Ball<ModelEntity> pos(0.0000,0.1000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [ModelComponent,SynchronizationComponent,Transform] meshmin(-0.0300,-0.0300,-0.0300) max(0.0300,0.0300,0.0300) mats[PhysicallyBasedMaterial] tintkCGColorSpaceModelRGB 0.18 0.18 0.18 1 contentHeadroom=undefined
+RKP usd.cube_cm.usda.animations=global scene animation 2.0;default subtree animation 2.0
+RKP usd.cube_cm.usda.visualBounds=min(-0.0005,-0.0005,-0.0005) max(0.0005,0.0013,0.0005)
+RKP usd.cube_zup.usda.loadSeconds=0.048
+RKP usd.cube_zup.usda.tree.00=<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(-0.7071,-0.0000,-0.0000,0.7071) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube_zup.usda.tree.01=.Root<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube_zup.usda.tree.02=..Spinner<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.cube_zup.usda.tree.03=...Cube<ModelEntity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [ModelComponent,SynchronizationComponent,Transform] meshmin(-0.0500,-0.0500,-0.0500) max(0.0500,0.0500,0.0500) mats[PhysicallyBasedMaterial] tintkCGColorSpaceModelRGB 0.8 0.1 0.1 1 contentHeadroom=undefined
+RKP usd.cube_zup.usda.tree.04=...Ball<ModelEntity> pos(0.0000,0.1000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [ModelComponent,SynchronizationComponent,Transform] meshmin(-0.0300,-0.0300,-0.0300) max(0.0300,0.0300,0.0300) mats[PhysicallyBasedMaterial] tintkCGColorSpaceModelRGB 0.18 0.18 0.18 1 contentHeadroom=undefined
+RKP usd.cube_zup.usda.animations=global scene animation 2.0;default subtree animation 2.0
+RKP usd.cube_zup.usda.visualBounds=min(-0.0500,-0.0500,-0.1300) max(0.0500,0.0500,0.0500)
+RKP usd.skinned.usda.loadSeconds=0.216
+RKP usd.skinned.usda.tree.00=<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.skinned.usda.tree.01=.Root<ModelEntity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,MeshDeformerComponent,ModelComponent,SkeletalPosesComponent,SynchronizationComponent,Transform] meshmin(-0.0200,0.0000,-0.0200) max(0.0200,0.2000,0.0200) mats[AnyMaterial]
+RKP usd.skinned.usda.tree.02=..Skel<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [SynchronizationComponent,Transform]
+RKP usd.skinned.usda.tree.03=..Bar<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [SynchronizationComponent,Transform]
+RKP usd.skinned.usda.animations=global scene animation 1.0;default subtree animation 1.0
+RKP usd.skinned.usda.visualBounds=min(-0.0200,0.0000,-0.0200) max(0.0200,0.2000,0.0200)
+RKP usd.Probe.reality.loadSeconds=0.663
+RKP usd.Probe.reality.tree.00=Root<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.Probe.reality.tree.01=.Root<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.Probe.reality.tree.02=..Spinner<Entity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [AnimationLibraryComponent,SynchronizationComponent,Transform]
+RKP usd.Probe.reality.tree.03=...Cube<ModelEntity> pos(0.0000,0.0000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [ModelComponent,SynchronizationComponent,Transform] meshmin(-0.0500,-0.0500,-0.0500) max(0.0500,0.0500,0.0500) mats[PhysicallyBasedMaterial] tintkCGColorSpaceModelRGB 0.8 0.1 0.1 1 contentHeadroom=undefined
+RKP usd.Probe.reality.tree.04=...Ball<ModelEntity> pos(0.0000,0.1000,0.0000) scale(1.0000,1.0000,1.0000) rot(0.0000,0.0000,0.0000,1.0000) [ModelComponent,SynchronizationComponent,Transform] meshmin(-0.0300,-0.0300,-0.0300) max(0.0300,0.0300,0.0300) mats[PhysicallyBasedMaterial] tintkCGColorSpaceModelRGB 0.18 0.18 0.18 1 contentHeadroom=undefined
+RKP usd.Probe.reality.animations=global scene animation 2.0;default subtree animation 2.0
+RKP usd.Probe.reality.visualBounds=min(-0.0500,-0.0500,-0.0500) max(0.0500,0.1300,0.0500)
+RKP rv.screenPoints=466.0x678.0
+RKP rv.centerRay=origin (0.0000,0.7000,1.3000) dir (0.0000,-0.4191,-0.9080)
+RKP rv.project(0.0000,0.0000,0.0000)=Optional((233.0, 375.1760494709015))
+RKP rv.project(0.1000,0.0000,0.0000)=Optional((272.84325087070465, 375.1760494709015))
+RKP rv.project(0.0000,0.1000,0.0000)=Optional((233.0, 339.0))
+RKP usd.asModelEntity=ModelEntity children 0 model true bounds min(-0.0500,-0.0500,-0.0500) max(0.0500,0.1300,0.0500)
+RKP usd.done=1
+RKP rv.anchors=plane anchored false world anchored true root anchored true rootScene true
+RKP rv.updates=336
+RKP rv.updatesPerSecond=53.7
+RKP rv.deltaTime=mean 0.01872 min 0.01072 max 0.61630 first 0.0288,0.0597,0.0172,0.0167
+RKP framecounter.done=1
+dev.ycode.rkprobe: <pid>

@@ -89,7 +89,7 @@ final class HostBootstrapLogger: @unchecked Sendable {
         while !isStopping {
             let message: MachHostReceivedMessage
             do {
-                message = try host.receive(on: host.bootstrapPort, timeout: 100_000_000)
+                message = try host.receive(on: host.bootstrapPort, timeout: 100_000_000, tracked: true)
             } catch let error as MachHostError where error == .timedOut || error == .interrupted {
                 continue
             } catch {
@@ -99,6 +99,7 @@ final class HostBootstrapLogger: @unchecked Sendable {
             count += 1
             emit(Self.describe(message, number: count))
             if discard { host.discard(message) } else { serve(message) }
+            host.finishedMessage()
         }
     }
 

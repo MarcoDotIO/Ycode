@@ -1,0 +1,126 @@
+#!/bin/bash
+# ycode-sim-try: try the Ycode iOS simulator from a Mac. Boots a device on
+# the Linux simulator host over ssh, forwards its display socket, and opens
+# the viewer (mouse = touch, keyboard, Home/Lock/Volume, screenshots). When
+# the viewer quits, the device shuts down and its boot slot is freed.
+#
+# usage: ycode/scripts/ycode-sim-try [--cold | --erase | --fresh] [--device-type ID] [--sync-build] [--no-build] [viewer options...]
+#
+# The device keeps its state between sessions: quitting the viewer saves it,
+# and the next session restores it (a usable home screen in seconds instead
+# of a cold boot; apps, data and settings stay until --erase).
+#
+#   --cold         boot cold this time (the device keeps its data; the session's end saves it again)
+#   --erase        erase the device (its data and saved state) and start from the pristine device
+#   --fresh        start from a fresh copy of the pristine device (the old one is moved aside)
+#   --device-type ID  iphone-duo (default), ipad-a16 or ipad-pro-13-m5 (specs/simulator/ipad.md);
+#                  each type is its own device with its own saved state (see ycode-sim-serve)
+#   --sync-build   copy this checkout's ycode/ to the host and build it there first
+#                  (into $YCODE_SIM_HOME/ycode, in a build slot; set YCODE_SIM_TREE to
+#                  that directory in sim-serve.env to boot it)
+#   --no-build     do not build the viewer (use the last build)
+#   viewer options are passed on, e.g. --downscale 2 --quality 70 for a slow link,
+#   --zoom 0.75, --script <file> (see Sources/ycode-sim-viewer/ScriptRunner.swift)
+#
+# Configuration: shell assignments in $YCODE_SIM_TRY_CONFIG, else
+# ~/.config/ycode/sim-try.env (keep it out of the repository; never commit
+# real hosts, users or paths). Variables already in the environment win.
+#
+#   YCODE_SIM_HOST      user@host of the simulator host (ssh key login)      required
+#   YCODE_SIM_HOME      your area on the host's data volume, e.g. <data volume>/<you>/sim-try   required
+#   YCODE_SIM_PORT      local port for the forwarded display (default 47100)
+#   YCODE_SIM_SSH_OPTS  extra ssh options (e.g. "-J jumphost")
+#   On the host, ycode-sim-serve reads $YCODE_SIM_HOME/sim-serve.env (YCODE_SIM_TREE,
+#   YCODE_SIM_RUNTIME, YCODE_SIM_PRISTINE, YCODE_SIM_LOCKS, ...; see scripts/ycode-sim-serve).
+#   With --sync-build, sim-serve.env also names YCODE_SIM_TRANSLATOR (a built ycode-airc on the host).
+#
+# Example ~/.config/ycode/sim-try.env:
+#   YCODE_SIM_HOST=<user>@<simulator host>
+#   YCODE_SIM_HOME=<data volume>/<area>/sim-try
+
+set -u
+here=$(cd "$(dirname "$0")" && pwd)
+pkg=$(cd "$here/.." && pwd)
+conf=${YCODE_SIM_TRY_CONFIG:-$HOME/.config/ycode/sim-try.env}
+if [ -f "$conf" ]; then
+    saved=$(env | grep '^YCODE_SIM_' || true)
+    # shellcheck disable=SC1090
+    . "$conf"
+    while IFS= read -r line; do [ -n "$line" ] && export "${line?}"; done <<< "$saved"
+fi
+
+say() { echo "ycode-sim-try: $*"; }
+die() { echo "ycode-sim-try: error: $*" >&2; exit 2; }
+
+fresh=; sync=0; build=1; viewer_args=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --fresh|--cold|--erase) fresh="$fresh $1" ;;
+    --device-type) fresh="$fresh --device-type ${2:-}"; shift ;;
+    --sync-build) sync=1 ;;
+    --no-build) build=0 ;;
+    -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
+    *) viewer_args+=("$1") ;;
+    esac
+    shift
+done
+
+[ -n "${YCODE_SIM_HOST:-}" ] || die "set YCODE_SIM_HOST (user@host) in $conf or the environment; see --help"
+[ -n "${YCODE_SIM_HOME:-}" ] || die "set YCODE_SIM_HOME (your area on the host) in $conf or the environment; see --help"
+HOST=$YCODE_SIM_HOST
+H=$YCODE_SIM_HOME
+PORT=${YCODE_SIM_PORT:-47100}
+# shellcheck disable=SC2206
+SSH=(ssh -o BatchMode=yes -o ServerAliveInterval=15 ${YCODE_SIM_SSH_OPTS:-})
+SERVE=$H/bin/ycode-sim-serve
+REMOTE_ENV="YCODE_SIM_CONFIG=$H/sim-serve.env YCODE_SIM_HOME=$H"
+
+# 1. The viewer (a debug build is fine).
+if [ $build = 1 ]; then
+    say "building the viewer…"
+    (cd "$pkg" && swift build --product ycode-sim-viewer 2>&1 | grep -E "error|warning: unre|Compiling ycode-sim|Build complete" | grep -v "^\s*$") \
+        || die "the viewer did not build"
+fi
+VIEWER=$(cd "$pkg" && swift build --product ycode-sim-viewer --show-bin-path)/ycode-sim-viewer
+[ -x "$VIEWER" ] || die "no viewer at $VIEWER"
+
+# 2. The host side: the serve script and the launcher it runs (always
+# current), optionally the build.
+"${SSH[@]}" "$HOST" "mkdir -p '$H/bin'" </dev/null || die "cannot reach $HOST over ssh (key login)"
+scp -q -o BatchMode=yes "$here/ycode-sim-serve" "$HOST:$SERVE" || die "cannot copy ycode-sim-serve"
+scp -q -o BatchMode=yes "$here/ycode-sim.sh" "$HOST:$H/bin/ycode-sim" || die "cannot copy ycode-sim.sh"
+"${SSH[@]}" "$HOST" "chmod +x '$SERVE' '$H/bin/ycode-sim'" </dev/null
+if [ $sync = 1 ]; then
+    say "copying ycode/ to $HOST:$H/ycode and building there (release; several minutes)…"
+    rsync -az --delete --exclude .build --exclude '.build-*' --exclude Translator/build --exclude '*.profraw' \
+        --exclude SimShim/out --exclude SimHostLibs/out --exclude SimGuestFrameworks/out \
+        -e "${SSH[*]}" "$pkg/" "$HOST:$H/ycode/" || die "rsync failed"
+    "${SSH[@]}" "$HOST" "mkdir -p '$H/specs/simulator'" </dev/null
+    rsync -az --delete -e "${SSH[*]}" "$pkg/../specs/simulator/data/" "$HOST:$H/specs/simulator/data/" || die "rsync of the spec data failed"
+    "${SSH[@]}" "$HOST" "$REMOTE_ENV YCODE_SIM_TREE='$H/ycode' '$SERVE' build" </dev/null || die "the host build failed"
+fi
+
+# 3. Boot the device and forward its socket (one ssh session; closing it stops the device).
+LOG=$(mktemp -t ycode-sim-try)
+cleanup() {
+    trap - EXIT INT TERM
+    say "stopping the device (it is saved for the next session)…"
+    "${SSH[@]}" "$HOST" "$REMOTE_ENV '$SERVE' stop" </dev/null 2>&1 | sed 's/^/  /'
+    [ -n "${sshpid:-}" ] && kill "$sshpid" 2>/dev/null
+    wait 2>/dev/null
+    say "done (host log: $HOST:$H/run/ycode-simd.log)"
+}
+trap cleanup EXIT INT TERM
+say "starting the device on $HOST (a saved device is back in about 10–20 s, a cold boot takes about 80 s; the viewer shows progress)…"
+# -q: no "channel N: open failed" line for each viewer attempt before the socket exists.
+"${SSH[@]}" -q -tt -o ExitOnForwardFailure=yes -L "127.0.0.1:$PORT:$H/run/display.sock" "$HOST" \
+    "$REMOTE_ENV '$SERVE' start $fresh" </dev/null > >(tee "$LOG" | LC_ALL=C sed -l -e 's/\r$//' -e 's/^/  host: /') 2>&1 &
+sshpid=$!
+sleep 2
+kill -0 "$sshpid" 2>/dev/null || die "the ssh session ended at once (port $PORT busy? see above)"
+
+# 4. The viewer (it reconnects until the device's display server is up).
+"$VIEWER" --connect "127.0.0.1:$PORT" ${viewer_args[@]+"${viewer_args[@]}"}
+status=$?
+say "viewer closed ($status)"
+exit $status

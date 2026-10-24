@@ -1,0 +1,755 @@
+{
+ "baselineStartDate": "1991-01-01T00:00:00Z",
+ "days": [
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.1
+   },
+   "averagePrecipitationProbability": 0.31,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 16
+   },
+   "day": 1
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.2
+   },
+   "averagePrecipitationProbability": 0.32,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 17
+   },
+   "day": 2
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.3
+   },
+   "averagePrecipitationProbability": 0.33,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 18
+   },
+   "day": 3
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.4
+   },
+   "averagePrecipitationProbability": 0.34,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 19
+   },
+   "day": 4
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.0
+   },
+   "averagePrecipitationProbability": 0.35,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 20
+   },
+   "day": 5
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.1
+   },
+   "averagePrecipitationProbability": 0.36,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 21
+   },
+   "day": 6
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.2
+   },
+   "averagePrecipitationProbability": 0.3,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 22
+   },
+   "day": 7
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.3
+   },
+   "averagePrecipitationProbability": 0.31,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 23
+   },
+   "day": 8
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.4
+   },
+   "averagePrecipitationProbability": 0.32,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 15
+   },
+   "day": 9
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.0
+   },
+   "averagePrecipitationProbability": 0.33,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 16
+   },
+   "day": 10
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.1
+   },
+   "averagePrecipitationProbability": 0.34,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 17
+   },
+   "day": 11
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.2
+   },
+   "averagePrecipitationProbability": 0.35,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 18
+   },
+   "day": 12
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.3
+   },
+   "averagePrecipitationProbability": 0.36,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 19
+   },
+   "day": 13
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.4
+   },
+   "averagePrecipitationProbability": 0.3,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 20
+   },
+   "day": 14
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.0
+   },
+   "averagePrecipitationProbability": 0.31,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 21
+   },
+   "day": 15
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.1
+   },
+   "averagePrecipitationProbability": 0.32,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 22
+   },
+   "day": 16
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.2
+   },
+   "averagePrecipitationProbability": 0.33,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 23
+   },
+   "day": 17
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.3
+   },
+   "averagePrecipitationProbability": 0.34,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 15
+   },
+   "day": 18
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.4
+   },
+   "averagePrecipitationProbability": 0.35,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 16
+   },
+   "day": 19
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.0
+   },
+   "averagePrecipitationProbability": 0.36,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 17
+   },
+   "day": 20
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.1
+   },
+   "averagePrecipitationProbability": 0.3,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 18
+   },
+   "day": 21
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.2
+   },
+   "averagePrecipitationProbability": 0.31,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 19
+   },
+   "day": 22
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.3
+   },
+   "averagePrecipitationProbability": 0.32,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 20
+   },
+   "day": 23
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.4
+   },
+   "averagePrecipitationProbability": 0.33,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 21
+   },
+   "day": 24
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.0
+   },
+   "averagePrecipitationProbability": 0.34,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 22
+   },
+   "day": 25
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.1
+   },
+   "averagePrecipitationProbability": 0.35,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 23
+   },
+   "day": 26
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.2
+   },
+   "averagePrecipitationProbability": 0.36,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 15
+   },
+   "day": 27
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.3
+   },
+   "averagePrecipitationProbability": 0.3,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 16
+   },
+   "day": 28
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.4
+   },
+   "averagePrecipitationProbability": 0.31,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 17
+   },
+   "day": 29
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.0
+   },
+   "averagePrecipitationProbability": 0.32,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 18
+   },
+   "day": 30
+  },
+  {
+   "averagePrecipitationAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 2.1
+   },
+   "averagePrecipitationProbability": 0.33,
+   "averageSnowfallAmount": {
+    "unit": {
+     "converter": {
+      "coefficient": 0.001,
+      "constant": 0
+     },
+     "symbol": "mm"
+    },
+    "value": 19
+   },
+   "day": 31
+  }
+ ],
+ "metadata": {
+  "date": "2026-01-15T12:00:00Z",
+  "expirationDate": "2026-01-16T12:00:00Z",
+  "latitude": 41.5,
+  "longitude": -81.5
+ }
+}

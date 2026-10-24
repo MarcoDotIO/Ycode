@@ -57,7 +57,8 @@ still the frame that holds everything together.
 | Workspaces, schemes, xcconfig, build-setting resolution | **Rebuild** from format specs. Swift Build's open xcspecs document the settings. |
 | IDE shell: windows, navigators, editors, inspectors, plug-ins | **Rebuild** in AppKit (Swift plus ObjC where needed). |
 | Source editor | **Rebuild** on TextKit 2. |
-| Interface Builder, asset catalog editor, Instruments UI, Xcode Cloud, AI assistant | Later. These are separate products in their own right. |
+| Interface Builder, asset catalog editor | Started: basic editors exist (see M4). |
+| Instruments UI, Xcode Cloud, AI assistant | Later. These are separate products in their own right. |
 
 ## 3. Module plan (`ycode/`)
 
@@ -65,17 +66,28 @@ still the frame that holds everything together.
     YcodeProject      pbxproj object graph, typed model, mutations         [done: I/O + views]
     YcodeWorkspace    .xcworkspace, .xcscheme (Xcode-exact XML I/O)      [done: M2]
     YcodeSettings     xcconfig, macro language, levels, derived rules    [done: M2]
-    YcodeBuild        PIF generation → swift-build, diagnostics stream
-    YcodeLanguage     LSP client (sourcekit-lsp/clangd), index queries
-    YcodeDebug        DAP client to lldb-dap
-    YcodeDevices      simctl/devicectl wrappers
-    YcodeUI           AppKit shell: workspace window, navigators, editor
+    YcodeBuild        PIF generation → swift-build, xcodebuild fallback,   [experimental: M3]
+                      diagnostics stream, package resolution, destinations
+    YcodeXcodebuild   xcodebuild-compatible engine behind `ycodebuild`    [experimental]
+    YcodeLanguage     LSP client (sourcekit-lsp): completion, hover,       [experimental: M5]
+                      definition, rename, references, call hierarchy, code actions
+    YcodeDebug        DAP client to lldb-dap                               [experimental: M6]
+    YcodeUI           AppKit IDE: workspace window, navigators, editors,    [experimental: M4]
+                      inspectors, Interface Builder, previews, settings
+    YcodeApp          Ycode.app entry point (macOS)
     YcodeMachO        Mach-O + dyld shared cache reader (read-only)       [simulator track, stage 1]
     ycode             CLI (describe / schemes / settings / roundtrip / build / test)
-    Ycode.app         GUI (macOS); Linux front end TBD
+    ycodebuild        `ycodebuild-cli`: the xcodebuild-compatible command line
+    Tools/ycode-swb   swift-build helper (`swbuild`, pinned release/6.4.x)
 
-All library modules build and pass their tests on macOS (arm64) and Linux
-(x86-64, Swift 6.4). The Linux workstation is the CI target for portability.
+Simulator and device lists come from `simctl` / `devicectl` JSON inside
+`YcodeBuild` (destinations) and `YcodeUI` (Devices window); there is no
+separate `YcodeDevices` module.
+
+The model, build, language and debug libraries build and pass their tests
+on macOS (arm64) and Linux (x86-64, Swift 6.4); `YcodeUI` and `YcodeApp`
+are macOS-only (AppKit). The Linux workstation is the CI target for
+portability.
 
 ## 4. Milestones
 
@@ -89,16 +101,27 @@ All library modules build and pass their tests on macOS (arm64) and Linux
    the spec-defaults level.)*
 3. **M3: Build.** Generate PIF, drive swift-build, and stream diagnostics.
    `ycode build` must produce the same products as `xcodebuild` for the
-   corpus.
+   corpus. *(Experimental, working: a shared PIF generator drives
+   swift-build for projects, workspaces and packages, with an xcodebuild
+   fallback; `ycodebuild` mirrors xcodebuild's command line including
+   test, archive and export. Product equivalence is checked on a small
+   corpus, not proven in general.)*
 4. **M4: Shell.** An AppKit workspace window with the project navigator, a
    TextKit 2 editor with highlighting, a build button, and an issue
-   navigator.
+   navigator. *(Experimental, working, and well beyond the original scope:
+   tabs and splits, assistant, inspectors, project/scheme editors,
+   plist/asset/String Catalog editors, Interface Builder documents,
+   SwiftUI previews, Library, Organizer, Settings.)*
 5. **M5: Language features.** Completion, jump-to-definition, and live
-   issues through sourcekit-lsp.
+   issues through sourcekit-lsp. *(Experimental, working; also Quick Help,
+   rename, references, call hierarchy, code actions and fix-its.)*
 6. **M6: Run and debug.** Schemes to launch, lldb-dap breakpoints, the
-   variables view, and the console.
+   variables view, and the console. *(Experimental, working; also
+   watchpoints, console input, attach, disassembly.)*
 7. **M7: Tests and devices.** The test navigator, results, simulators, and
-   devices.
+   devices. *(Partly: the test navigator and results work; Devices and
+   Simulators is a read-only list; running on simulators and devices is
+   not done.)*
 
 **Simulator track (parallel):** the owner's goal is to run an app from an
 `.ipsw` on x86-64 Linux. This means full-system emulation, not a port of

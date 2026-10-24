@@ -33,10 +33,12 @@ struct StructurePlan {
 // (a call to the marker `airc.grid_oob`, lowered by the emitter) when the
 // function, after inlining, has no barrier. Returns whether it did.
 // `helpers` receives the functions kept out of line (each prepared like F);
-// every other defined function is inlined.
+// every other defined function is inlined. `loopGuard`: every loop header
+// calls the marker `airc.loop_budget` (i1: the invocation's loop budget is
+// spent) and leaves the loop when it returns true.
 bool prepareFunction(llvm::Module &M, llvm::Function &F, bool gridGuard,
                      const std::function<void(llvm::Function &)> &afterInline = nullptr,
-                     std::vector<llvm::Function *> *helpers = nullptr);
+                     std::vector<llvm::Function *> *helpers = nullptr, bool loopGuard = false);
 
 // Computes the structured-control-flow plan, splitting blocks where two
 // constructs would share a merge block. Throws structurize-failed.

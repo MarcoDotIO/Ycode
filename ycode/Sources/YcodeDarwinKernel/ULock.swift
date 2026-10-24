@@ -3,6 +3,11 @@ import YcodeDarwinABI
 
 // `__ulock_wait` (515), `__ulock_wait2` (544), `__ulock_wake` (516) with real
 // waits between threads (`specs/simulator/threads-and-events.md` §4.1).
+//
+// With the lock split the ulock queues are the image's event-lock state
+// (L_P, `bsd-locking.md` §5): `ulocks` and every ulock wait queue are used
+// with L_P held, and the waits are on L_P, so the calls can run without L0
+// (`handleBSDFast`). Without the split L_P is L0.
 
 /// The waiters on one user address.
 final class ULockQueue {
@@ -11,6 +16,8 @@ final class ULockQueue {
     let waiters = WaitQueue()
     /// `UL_UNFAIR_LOCK`: the owner named by the last waiter's lock word.
     var owner: ThreadContext?
+    /// The thread that carries this queue's inheritance push (`scheduling-policy.md` §4.6).
+    weak var pushedOwner: ThreadContext?
 
     init(opcode: UInt32) { self.opcode = opcode }
 }
@@ -60,15 +67,21 @@ extension DarwinKernel {
 
     // MARK: wait
 
-    func ulockWait(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    func ulockWait(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        try withEvents { try ulockWaitLocked(n, a, &call, mem) }
+    }
+
+    /// `ulockWait` with the event lock held.
+    private func ulockWaitLocked(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        eventLock?.checkHeld("the ulock queues")
         let operation = UInt32(truncatingIfNeeded: a[0])
         let op = operation & ULock.opMask
         let flags = operation & ~ULock.opMask
         let noErrno = flags & ULockFlag.noErrno != 0
         let isWait2 = n == BSD2.ulockWait2
         let addr = a[1]
-        call = "\(isWait2 ? "__ulock_wait2" : "__ulock_wait")(op=\(hx(operation)), addr=\(hx(addr)), "
-            + "value=\(hx(a[2])), timeout=\(isWait2 ? "\(a[3]) ns" : "\(UInt32(truncatingIfNeeded: a[3])) us"))"
+        call.set("\(isWait2 ? "__ulock_wait2" : "__ulock_wait")(op=\(hx(operation)), addr=\(hx(addr)), "
+            + "value=\(hx(a[2])), timeout=\(isWait2 ? "\(a[3]) ns" : "\(UInt32(truncatingIfNeeded: a[3])) us"))")
         guard flags & ~ULockFlag.waitFlags == 0, Self.ulockOpcodes.contains(op) else {
             return try ulockResult(Errno.EINVAL, noErrno: noErrno)
         }
@@ -117,7 +130,12 @@ extension DarwinKernel {
         queue.opcode = op
         if op == ULock.unfairLock { queue.owner = owner }
         ulocks[addr] = queue
-        let result = queue.waiters.wait(on: lock, deadline: deadline)
+        // Inheritance (scheduling-policy.md §4.6): the owner of an unfair
+        // lock runs at least at its waiters' highest class while they wait.
+        let inherit = SchedPolicy.qosEnabled && op == ULock.unfairLock
+        let result = queue.waiters.wait(on: eventWaitLock, deadline: deadline, tag: 0,
+                                        beforeSleeping: inherit ? { [unowned self] in self.refreshULockPush(addr: addr, queue: queue) } : nil)
+        if inherit { refreshULockPush(addr: addr, queue: queue) }
         let remaining = queue.waiters.count
         if remaining == 0, ulocks[addr] === queue { ulocks[addr] = nil }
         switch result {
@@ -135,9 +153,9 @@ extension DarwinKernel {
 
     // MARK: wake
 
-    func ulockWake(_ a: [UInt64], _ call: inout String) throws -> UInt64 {
+    func ulockWake(_ a: [UInt64], _ call: inout CallText) throws -> UInt64 {
         let operation = UInt32(truncatingIfNeeded: a[0])
-        call = "__ulock_wake(op=\(hx(operation)), addr=\(hx(a[1])), wake_value=\(hx(a[2])))"
+        call.set("__ulock_wake(op=\(hx(operation)), addr=\(hx(a[1])), wake_value=\(hx(a[2])))")
         let noErrno = operation & ULockFlag.noErrno != 0
         let (e, woke) = ulockWakeCore(operation: operation, addr: a[1], wakeValue: a[2])
         if let e {
@@ -150,6 +168,11 @@ extension DarwinKernel {
 
     /// The wake rules of §4.1. Returns an errno or the number of threads woken.
     func ulockWakeCore(operation: UInt32, addr: UInt64, wakeValue: UInt64) -> (Int32?, Int) {
+        withEvents { ulockWakeCoreLocked(operation: operation, addr: addr, wakeValue: wakeValue) }
+    }
+
+    private func ulockWakeCoreLocked(operation: UInt32, addr: UInt64, wakeValue: UInt64) -> (Int32?, Int) {
+        eventLock?.checkHeld("the ulock queues")
         let op = operation & ULock.opMask
         let flags = operation & ~ULock.opMask
         guard flags & ~ULockFlag.wakeFlags == 0, Self.ulockOpcodes.contains(op), addr != 0 else { return (Errno.EINVAL, 0) }
@@ -170,7 +193,9 @@ extension DarwinKernel {
             return n == 1 ? (nil, 1) : (Self.EALREADY, 0)
         }
         if wakeAll {
-            return (nil, queue.waiters.wakeAll())
+            let n = queue.waiters.wakeAll()
+            if op == ULock.unfairLock { refreshULockPush(addr: addr, queue: queue) }
+            return (nil, n)
         }
         if op == ULock.unfairLock && !nonOwner, let owner = queue.owner, owner.isAlive, owner !== current {
             // Not the owner: the real owner wakes later.
@@ -178,7 +203,10 @@ extension DarwinKernel {
         }
         var woken: ThreadContext?
         let n = queue.waiters.wake(limit: 1) { c, _ in woken = c; return true }
-        if op == ULock.unfairLock { queue.owner = woken }
+        if op == ULock.unfairLock {
+            queue.owner = woken
+            refreshULockPush(addr: addr, queue: queue)
+        }
         return (nil, n)
     }
 }

@@ -1,0 +1,224 @@
+SUP t=-0.000 app.init=sinceExec=0.577
+SUP mode=keyboard
+SUPX 0.004 notify-register com.apple.swiftuitrace.state
+SUPX 0.004 lookup2 com.apple.system.notification_center kr=0
+SUPX 0.008 lookup2 com.apple.logd kr=0
+SUPX 0.008 notify-register com.apple.system.logging.prefschanged
+SUPX 0.008 notify-register com.apple.system.logging.prefschanged
+SUPX 0.011 notify-register com.apple.CFPreferences._domainsChangedExternally
+SUPX 0.012 xpc-mach com.apple.cfprefsd.daemon
+SUPX 0.013 notify-register com.apple.system.timezone
+SUPX 0.024 notify-register com.apple.swiftuitrace.uikit
+SUPX 0.024 lookup com.apple.backboard.display.services kr=0
+SUPX 0.028 notify-register com.apple.runningboard.daemonstartup
+SUPX 0.029 xpc-mach com.apple.runningboard
+SUPX 0.029 notify-register GSEventHardwareKeyboardAttached
+SUPX 0.029 notify-register GSEventHardwareKeyboardAttached
+SUPX 0.029 notify-register com.apple.iohideventsystem.available
+SUPX 0.029 notify-register com.apple.UIKit.SimulatorShake
+SUPX 0.031 notify-register com.apple.UIKit.LoggingPreferences
+SUPX 0.035 notify-register com.apple.accessibility.cache.ax
+SUPX 0.047 notify-register com.apple.accessibility.cache.invert.colors
+SUPX 0.047 notify-register com.apple.accessibility.cache.app.ax
+SUPX 0.047 notify-register com.apple.accessibility.hearing.paired.ears.status
+SUPX 0.047 notify-register com.apple.dt.testmanagerd.availability.28176
+SUPX 0.047 notify-register com.apple.dt.testmanagerd.availability.28176
+SUPX 0.047 notify-register com.apple.dt.xctestd.availability.28176
+SUPX 0.047 notify-register com.apple.dt.xctestd.availability.28176
+SUPX 0.047 notify-register com.apple.dt.xctest.remote.availability.28176
+SUPX 0.048 notify-register com.apple.dt.xctest.remote.availability.28176
+SUPX 0.048 notify-register SignificantTimeChangeNotification
+SUPX 0.048 notify-register com.apple.language.changed
+SUPX 0.048 notify-register AppleTimePreferencesChangedNotification
+SUPX 0.048 notify-register AppleNumberPreferencesChangedNotification
+SUPX 0.048 notify-register AppleTimePreferencesChangedNotification
+SUPX 0.048 notify-register AppleDatePreferencesChangedNotification
+SUPX 0.048 notify-register AppleLanguagePreferencesChangedNotification
+SUPX 0.048 notify-register AppleTextBehaviorPreferencesChangedNotification
+SUPX 0.048 notify-register AppleTemperatureUnitPreferencesChangedNotification
+SUPX 0.048 notify-register AppleMeasurementSystemPreferencesChangedNotification
+SUPX 0.048 notify-register com.apple.springboard.showingAlertItem
+SUPX 0.048 notify-register NameLayerTree-28176
+SUPX 0.048 notify-register NameLayerTree
+SUPX 0.048 notify-register kKeepAppsUpToDateEnabledChangedNotification
+SUPX 0.049 notify-register AppleKeyboardsPreferencesChangedNotification
+SUPX 0.049 notify-register AppleKeyboardsSettingsChangedNotification
+SUPX 0.049 notify-register AppleKeyboardsInternalSettingsChangedNotification
+SUPX 0.049 notify-register AppleKeyboardsInputModeChangedNotification
+SUPX 0.049 notify-register AppleKeyboardsContinuousPathSettingsChangedNotification
+SUPX 0.049 notify-register com.apple.preferences.sounds.keyboard-audio.changed
+SUPX 0.049 notify-register kAFPreferencesDidChangeDarwinNotification
+SUPX 0.049 notify-register AssistiveTouchMouseAlwaysShowSoftwareKeyboard.notification
+SUPX 0.049 lookup com.apple.CARenderServer kr=0
+SUPX 0.050 notify-register com.apple.CoreAnimation.CAWindowServer.DisplayChanged
+SUPX 0.050 notify-register com.apple.CoreAnimation.CAWindowServer.DisplayPower
+SUPX 0.050 notify-register UIBacklightLevelChangedNotification
+SUPX 0.052 notify-register com.apple.accessibility.cache.enhance.text.legibility
+SUPX 0.052 notify-register com.apple.accessibility.cache.darken.system.colors.enabled
+SUPX 0.052 notify-register ApplePreferredContentSizeCategoryChangedNotification
+SUPX 0.052 notify-register AppleCarPlayPreferredContentSizeCategoryChangedNotification
+SUPX 0.052 notify-register com.apple.springboard.showingAlertItem
+SUP t=0.050 delegate.didFinishLaunching=state=2
+SUPX 0.054 notify-register com.apple.backboardd.orientation
+SUPX 0.057 notify-register com.apple.LaunchServices.database
+SUPX 0.057 xpc-mach com.apple.lsd.mapdb
+SUPX 0.059 notify-register com.apple.LaunchServices.database
+SUPX 0.061 notify-register com.apple.language.changed
+SUPX 0.064 xpc-mach com.apple.fontservicesd
+SUP t=0.077 app.body=
+SUP t=0.079 app.scenePhase=background->background
+SUPX 0.085 notify-register com.apple.accessibility.cache.full.keyboard.access
+SUPX 0.086 notify-register com.apple.gms.availability.notification
+SUPX 0.086 notify-register com.apple.language.changed
+SUPX 0.086 notify-register com.apple.os-eligibility-domain.change.greymatter
+SUPX 0.090 notify-register com.apple.gms.availability.notification
+SUPX 0.090 notify-register com.apple.os-eligibility-domain.change.greymatter
+SUPX 0.090 notify-register com.apple.language.changed
+SUPX 0.092 notify-register com.apple.system.lowpowermode
+SUPX 0.092 notify-register com.apple.LocalAuthentication.ui.presented
+SUPX 0.092 notify-register com.apple.LocalAuthentication.ui.dismissed
+SUPX 0.102 notify-register com.apple.system.timezone
+SUPX 0.104 notify-register com.apple.accessibility.cache.reduce.motion
+SUPX 0.107 notify-register com.apple.accessibility.cache.use.single.system.color.enabled
+SUPX 0.112 notify-register com.apple.backboardd.rawOrientation
+SUP t=0.109 app.body=
+SUP t=0.110 app.scenePhase=background->inactive
+SUPX 0.114 notify-register com.apple.UIIntelligenceSupport.AgentRelaunched.501
+SUPX 0.114 xpc-mach com.apple.uiintelligencesupport.agent
+SUPX 0.118 notify-register com.apple.UIKit.SimulatorSlowMotionAnimationState
+SUPX 0.119 notify-register UIViewGlassTintAmountUpdateNotification
+SUPX 0.122 notify-register com.apple.accessibility.OpaqueTouchGestures
+SUP t=0.128 root.body=
+SUPX 0.149 notify-register AppleKeyboardsPreferencesChangedNotification
+SUPX 0.149 notify-register AppleKeyboardsSettingsChangedNotification
+SUPX 0.149 notify-register AppleKeyboardsInternalSettingsChangedNotification
+SUPX 0.149 notify-register AppleKeyboardsInputModeChangedNotification
+SUPX 0.149 notify-register AppleKeyboardsContinuousPathSettingsChangedNotification
+SUPX 0.149 notify-register com.apple.preferences.sounds.keyboard-audio.changed
+SUPX 0.149 notify-register kAFPreferencesDidChangeDarwinNotification
+SUPX 0.149 notify-register AssistiveTouchMouseAlwaysShowSoftwareKeyboard.notification
+SUP t=0.172 view.scenePhase=inactive->inactive
+SUP t=0.173 root.onAppear=sinceExec=0.751
+SUP t=0.173 kb.bottomText.frame=(163.50,607.67,55.00,20.33) safe=t0.00 l0.00 b0.00 r0.00
+SUP t=0.173 kb.field.frame=(16.00,16.00,350.00,34.00) safe=t0.00 l0.00 b0.00 r0.00
+SUP target.kb.field=0.4099,0.0487
+SUP t=0.173 kb.safeArea.initial=t0.00 l0.00 b34.00 r84.00
+SUP kb.activeInputModes=en-US,emoji
+SUPX 0.186 notify-register com.apple.accessibility.cache.non.blinking.cursor.status
+SUPX 0.206 notify-register com.apple.coreservices.useractivity.reconnection
+SUPX 0.209 xpc-mach com.apple.runningboard
+SUP t=0.209 app.body=
+SUP t=0.209 app.scenePhase=inactive->active
+SUPX 0.213 lookup com.apple.backboard.hid.services kr=0
+SUP t=0.212 root.body=
+SUP t=0.213 view.scenePhase=inactive->active
+SUPX 0.218 notify-register UIBacklightLevelChangedNotification
+SUP t=0.220 displaylink.first=sinceExec=0.797 fps=0
+SUPX 0.272 notify-register com.apple.system.networkd.settings
+SUPX 0.272 notify-register com.apple.system.networkd.settings
+SUPX 0.559 notify-register com.apple.accessibility.cache.captioning
+SUPX 0.559 notify-register com.apple.accessibility.cache.mono.audio
+SUPX 0.559 notify-register com.apple.accessibility.cache.quick.speak
+SUPX 0.559 notify-register com.apple.accessibility.cache.differentiate.without.color
+SUPX 0.559 notify-register com.apple.accessibility.cache.enhance.background.contrast
+SUPX 0.559 notify-register com.apple.accessibility.cache.reduce.motion.reduce.slide.transitions
+SUPX 0.559 notify-register com.apple.accessibility.cache.vot
+SUPX 0.559 notify-register com.apple.accessibility.cache.grayscale
+SUPX 0.559 notify-register com.apple.accessibility.cache.prefer.action.slider.alternative.status
+SUPX 0.559 notify-register com.apple.accessibility.haptics.active.status.private
+SUPX 0.559 notify-register com.apple.accessibility.cache.reduce.highlighting.effects.enabled
+SUP t=1.222 kb.set=focus=1
+SUPX 1.341 notify-register com.apple.accessibility.cache.enhance.background.contrast
+SUPX 1.347 notify-register com.apple.accessibility.cache.command.and.control
+SUPX 1.354 notify-register com.apple.UIKit.ForceGraphicsQuality
+SUPX 1.361 notify-register com.apple.accessibility.cache.button.shapes.enabled
+SUPX 1.368 notify-register com.apple.managedconfiguration.restrictionchanged
+SUPX 1.368 notify-register com.apple.managedconfiguration.passcodechanged
+SUPX 1.368 notify-register PINPolicyChangedNotification
+SUPX 1.368 notify-register com.apple.ManagedConfiguration.profileListChanged
+SUPX 1.368 notify-register com.apple.managedconfiguration.settingschanged
+SUPX 1.368 notify-register com.apple.managedconfiguration.effectivesettingschanged
+SUPX 1.368 notify-register com.apple.managedconfiguration.appwhitelistdidchange
+SUPX 1.368 notify-register com.apple.managedconfiguration.defaultsdidchange
+SUPX 1.368 notify-register com.apple.managedconfiguration.keyboardsettingschanged
+SUPX 1.368 notify-register com.apple.managedconfiguration.newssettingschanged
+SUPX 1.368 notify-register com.apple.managedconfiguration.clientrestrictionschanged
+SUPX 1.368 notify-register com.apple.managedconfiguration.webFilterUIActiveDidChange
+SUPX 1.368 notify-register com.apple.ManagedConfiguration.managedAppsChanged
+SUPX 1.368 notify-register MCManagedBooksChanged
+SUPX 1.368 notify-register com.apple.managedconfiguration.allowpasscodemodificationchanged
+SUPX 1.368 notify-register com.apple.ManagedConfiguration.removedSystemAppsChanged
+SUPX 1.368 notify-register com.apple.ManagedConfiguration.diagnosticsCollected
+SUPX 1.368 notify-register com.apple.managedconfiguration.allowhealthdatasubmissionchanged
+SUPX 1.368 notify-register com.apple.managedconfiguration.homescreenlayoutchanged
+SUPX 1.368 notify-register com.apple.managedconfiguration.clearpasscodegenerationcaches
+SUPX 1.368 notify-register com.apple.devicemanagementclient.skipKeyChanged
+SUPX 1.370 xpc-mach com.apple.containermanagerd.system
+SUPX 1.377 notify-register com.apple.coreui.statistics
+SUPX 1.616 notify-register com.apple.springboard.ringerstate
+SUPX 1.733 notify-register com.apple.accessibility.cache.lower.case.keyboard.enabled
+SUPX 1.735 notify-register com.apple.keyboard.isDictationRunning
+SUPX 1.738 notify-register kAFPreferencesDidChangeDarwinNotification
+SUPX 1.745 notify-register com.apple.callkit.callcontroller.shouldconnect
+SUPX 1.762 notify-register com.apple.accessibility.cache.switch.control
+SUPX 1.762 notify-register com.apple.accessibility.cache.ast
+SUPX 1.764 xpc-mach com.apple.remote-text-editing-legacy
+SUPX 1.764 xpc-mach com.apple.sharing.remote-text-editing
+SUPX 1.764 xpc-mach com.apple.rti-screencontinuity
+SUPX 1.772 notify-register com.apple.pasteboard.notify.changed
+SUPX 1.772 xpc-mach com.apple.pasteboard.pasted
+SUP t=1.795 kb.focus=nil->Optional(1)
+SUPX 1.806 notify-register com.apple.accessibility.cache.zoom
+SUPX 1.806 notify-register com.apple.accessibility.QuickSpeakEnabled
+SUPX 1.806 notify-register com.apple.accessibility.cache.speech.settings.disabled.by.mc
+SUPX 1.835 notify-register com.apple.da.tasking_changed
+SUPX 1.893 notify-register com.apple.system.SystemConfiguration.nwi
+SUPX 1.893 notify-register com.apple.system.SystemConfiguration.nwi
+SUPX 1.893 notify-register com.apple.system.SystemConfiguration.nwi
+SUPX 1.893 xpc-mach com.apple.SystemConfiguration.NetworkInformation_sim
+SUPX 1.894 notify-register AFInternalPreferencesDidChangeDarwinNotification
+SUPX 1.894 notify-register AFAssistantEnablementDidChangeDarwinNotification
+SUPX 1.895 notify-register AFDictationEnablementDidChangeDarwinNotification
+SUPX 1.914 notify-register com.apple.accessibility.enhance.background.contrast.status
+SUPX 1.914 notify-register com.apple.accessibility.darken.system.colors
+SUPX 1.914 notify-register com.apple.accessibility.text.legibility.status
+SUPX 1.914 notify-register com.apple.accessibility.reduce.highlighting.effects.status
+SUP t=2.012 kb.didHide=end=(0.00,678.00,466.00,0.00) duration=0.3833 curve=7 local=true
+SUP displaylink.rate=43.22
+SUPX 3.486 notify-register KeyRepeatEnabled.notification
+SUPX 3.486 notify-register KeyRepeatDelay.notification
+SUPX 3.486 notify-register SlowKeysEnabled.notification
+SUPX 3.486 notify-register KeyRepeatInterval.notification
+SUP t=3.510 kb.didShow=end=(0.00,678.00,466.00,289.00) duration=0.0000 curve=7 local=true
+SUP t=3.617 kb.text=''->'H'
+SUP t=3.925 kb.text='H'->'Hi'
+SUP t=5.897 kb.willChangeFrame=end=(0.00,678.00,466.00,0.00) duration=0.3833 curve=7 local=true
+SUP t=5.898 kb.willHide=end=(0.00,678.00,466.00,0.00) duration=0.3833 curve=7 local=true
+SUP t=5.901 kb.onSubmit=Hi
+SUPX 5.913 notify-register com.apple.keyboard.isOnScreen
+SUPX 5.913 notify-register com.apple.keyboard.isOnScreen
+SUPX 5.913 notify-register com.apple.system.SystemConfiguration.nwi
+SUP t=5.909 kb.didHide=end=(0.00,678.00,466.00,0.00) duration=0.3833 curve=7 local=true
+SUP t=5.918 kb.focus=Optional(1)->nil
+SUP t=7.522 kb.set=focus=2
+SUPX 7.564 xpc-mach com.apple.rti-screencontinuity
+SUPX 7.564 xpc-mach com.apple.remote-text-editing-legacy
+SUP t=7.565 kb.focus=nil->Optional(2)
+SUPX 8.776 notify-register com.apple.system.SystemConfiguration.nwi
+SUPX 8.795 xpc-mach com.apple.remote-text-editing-legacy
+SUPX 8.795 xpc-mach com.apple.rti-screencontinuity
+SUP t=8.832 kb.focus=Optional(2)->Optional(1)
+SUPX 8.836 notify-register com.apple.siri.uaf.com.apple.linguisticdata
+SUPX 8.838 notify-register com.apple.MobileAsset.AutoAssetNotification^com.apple.MobileAsset.MAAutoAsset^STARTUP_ACTIVATED
+SUPX 8.838 notify-register com.apple.MobileAsset.LinguisticData.dds.assets-updated
+SUPX 8.839 notify-register com.apple.MobileAsset.AutoAssetNotification^com.apple.MobileAsset.LinguisticDataAuto^ASSET_VERSION_DOWNLOADED
+SUPX 8.851 xpc-mach com.apple.mobileasset.autoasset
+SUP t=8.912 kb.didShow=end=(0.00,678.00,466.00,289.00) duration=0.0000 curve=7 local=true
+SUP t=9.622 kb.set=focus=nil
+SUP t=9.651 kb.willChangeFrame=end=(0.00,678.00,466.00,0.00) duration=0.3833 curve=7 local=true
+SUP t=9.651 kb.willHide=end=(0.00,678.00,466.00,0.00) duration=0.3833 curve=7 local=true
+SUP t=9.657 kb.focus=Optional(1)->nil
+SUPX 9.670 notify-register com.apple.system.SystemConfiguration.nwi
+SUP t=9.667 kb.didHide=end=(0.00,678.00,466.00,0.00) duration=0.3833 curve=7 local=true
+SUP t=11.174 done=keyboard
+dev.ycode.suiprobe: 28176

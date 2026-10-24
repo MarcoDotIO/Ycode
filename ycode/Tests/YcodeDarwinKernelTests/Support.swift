@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import YcodeDarwinABI
 @testable import YcodeDarwinKernel
 
@@ -54,7 +55,7 @@ struct Env {
         frame.x[16] = x16
         for (i, v) in args.enumerated() { frame.x[i] = v }
         if let x3 { frame.x[3] = x3 }
-        return kernel.handle(&frame, memory: space)
+        return kernel.handleTrying(&frame, context: kernel.mainThread, memory: space)
     }
 
     func svc(_ x16: UInt64, _ args: [UInt64] = []) -> (DarwinKernel.Outcome, TrapFrame) {
@@ -70,6 +71,32 @@ struct Env {
     func string(_ va: UInt64) throws -> String {
         let b = try space.read(va: va, count: 256)
         return String(decoding: b.prefix { $0 != 0 }, as: UTF8.self)
+    }
+}
+
+let reportedSplit = Atomic<Bool>(false)
+
+extension DarwinKernel {
+    /// As the VMM: an IPC fast path first (`YCODE_IPC_LOCKS_TESTS=1` turns
+    /// the lock split on in every test system), else the locked path.
+    func handleTrying(_ frame: inout TrapFrame, context: ThreadContext, memory: any KernelGuestMemory) -> Outcome {
+        if DarwinSystem.splitForTests || DarwinKernel.bsdFastForTests, !reportedSplit.exchange(true, ordering: .relaxed) {
+            atexit {
+                print("ipc fast traps in tests: \(DarwinKernel.ipcFastServed.load(ordering: .relaxed)) served, "
+                    + "\(DarwinKernel.ipcFastDeclined.load(ordering: .relaxed)) declined; "
+                    + "bsd fast traps: \(DarwinKernel.bsdFastServed.load(ordering: .relaxed)) served, "
+                    + "\(DarwinKernel.bsdFastDeclined.load(ordering: .relaxed)) declined")
+            }
+        }
+        if DarwinSystem.splitForTests, hasIPCFastPaths, let o = handleIPCFast(&frame, context: context, memory: memory) {
+            return o
+        }
+        // BSD traps without L0 (bsd-locking.md), as the VMM tries them.
+        if DarwinKernel.bsdFastForTests, context.kernel === self,
+           let o = handleBSDFast(&frame, context: context, memory: memory) {
+            return o
+        }
+        return handle(&frame, context: context, memory: memory)
     }
 }
 

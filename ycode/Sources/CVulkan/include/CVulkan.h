@@ -151,13 +151,21 @@ typedef struct YVKDynamicRenderingLocalReadFeatures {
     X(vkCmdBlitImage) \
     X(vkCmdFillBuffer) \
     X(vkCmdUpdateBuffer) \
-    X(vkCmdClearColorImage)
+    X(vkCmdClearColorImage) \
+    X(vkCreateQueryPool) \
+    X(vkDestroyQueryPool) \
+    X(vkCmdResetQueryPool) \
+    X(vkCmdWriteTimestamp2) \
+    X(vkGetQueryPoolResults)
 
 /* Optional device functions (extensions); NULL when not present. */
 #define YVK_OPTIONAL_DEVICE_FUNCTIONS(X) \
     X(vkGetMemoryHostPointerPropertiesEXT) \
     X(vkCmdSetPolygonModeEXT) \
-    X(vkCmdSetDepthClampEnableEXT)
+    X(vkCmdSetDepthClampEnableEXT) \
+    X(vkCmdSetCheckpointNV) \
+    X(vkGetQueueCheckpointDataNV) \
+    X(vkGetQueueCheckpointData2NV)
 
 typedef struct yvk_dispatch {
     PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
@@ -203,7 +211,10 @@ typedef struct yvk_features {
              externalMemoryFd,
              /* VK_EXT_graphics_pipeline_library with fast linking and
                 independent interpolation decorations. */
-             graphicsPipelineLibrary;
+             graphicsPipelineLibrary,
+             /* VK_NV_device_diagnostic_checkpoints, enabled when present and
+                YCODE_GPU_CHECKPOINTS is not 0 (diagnostics of GPU hangs). */
+             diagnosticCheckpoints;
 } yvk_features;
 
 typedef struct yvk_context {
@@ -442,10 +453,35 @@ void yvk_cmd_image_layout(VkCommandBuffer cb, VkImage image, VkImageAspectFlags 
 VkResult yvk_submit(yvk_context *ctx, VkCommandBuffer cb, VkSemaphore signal, uint64_t value,
                     VkSemaphore waitSemaphore, uint64_t waitValue);
 VkSemaphore yvk_timeline_create(yvk_context *ctx, uint64_t initial);
+/* Diagnostic checkpoints (VK_NV_device_diagnostic_checkpoints; nothing
+   without it): a marker in the command stream, and after device loss the
+   last markers the queue passed, top and bottom of the pipe. Returns the
+   number written to markers/stages (at most max). */
+void yvk_cmd_checkpoint(VkCommandBuffer cb, uint64_t marker);
+uint32_t yvk_queue_checkpoints(yvk_context *ctx, uint64_t *markers, uint64_t *stages, uint32_t max);
 /* Waits until semaphore >= value or timeoutNs passes. VK_SUCCESS or VK_TIMEOUT. */
 VkResult yvk_timeline_wait(yvk_context *ctx, VkSemaphore semaphore, uint64_t value, uint64_t timeoutNs);
 uint64_t yvk_timeline_value(yvk_context *ctx, VkSemaphore semaphore);
+/* The counter and the call's result (VK_ERROR_DEVICE_LOST once the driver
+   has killed the context, which a timed-out wait does not always say). */
+VkResult yvk_timeline_query(yvk_context *ctx, VkSemaphore semaphore, uint64_t *value);
 VkResult yvk_timeline_signal(yvk_context *ctx, VkSemaphore semaphore, uint64_t value);
+
+/* Starts a helper process (the shader translator) with pipes on its stdin
+   and stdout; stderr is inherited. Every other descriptor of this process
+   is closed in the child (posix_spawn with closefrom on Linux, the
+   close-on-exec default on Darwin), without scanning /proc/self/fd in
+   this process. Returns 0, or an errno value. *toChild and *fromChild are
+   close-on-exec in this process. */
+int yvk_spawn_piped(const char *path, char *const argv[], int *pid, int *toChild, int *fromChild);
+/* Writes all bytes; a closed reader gives EPIPE, never SIGPIPE (the signal
+   is blocked in the calling thread and a pending one is consumed).
+   Returns 0 or an errno value. */
+int yvk_write_all(int fd, const void *bytes, size_t length);
+/* Reads exactly length bytes. Returns 0, an errno value, or -1 at end of file. */
+int yvk_read_exactly(int fd, void *bytes, size_t length);
+/* Ends a helper process: SIGKILL, then waits for it. */
+void yvk_end_child(int pid);
 
 #ifdef __cplusplus
 }

@@ -19,6 +19,34 @@ import Testing
         return (cb, ops)
     }
 
+    /// Decoding a pass grows linearly with its records: the open pass's
+    /// command list is appended to in place (it used to be copied at every
+    /// append, quadratic in the commands of a pass; stage8-contract.md §15).
+    @Test func longPassDecodesInLinearTime() {
+        func segment(draws: Int) -> [[UInt8]] {
+            var records = [Build.record(26) { $0.append(Build.renderPass(colors: [(0, 3, 2, 1, [0, 0, 0, 1])], width: 64, height: 64)) }]
+            for _ in 0..<draws {
+                records.append(Build.record(116) { $0.u32(4) })
+                records.append(Build.record(125) { $0.u32(0); $0.u32(1); $0.u32(1); $0.u64(256) })
+                records.append(Build.record(3) { $0.u16(0); $0.u16(4); $0.u16(2); $0.u16(4) })
+            }
+            return [Build.segment(kind: MetalEncoderKind.render, records, size: 0)]
+        }
+        func seconds(_ segments: [[UInt8]], rounds: Int) -> Double {
+            let start = DispatchTime.now().uptimeNanoseconds
+            for _ in 0..<rounds { _ = decode(segments) }
+            return Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9 / Double(rounds)
+        }
+        let small = segment(draws: 400), large = segment(draws: 6400)
+        _ = seconds(small, rounds: 3)
+        let (cb, _) = decode(large)
+        guard case .render(let p)? = cb.passes.first else { Issue.record("no render pass"); return }
+        #expect(p.commands.count == 3 * 6400)
+        let ratio = seconds(large, rounds: 3) / seconds(small, rounds: 30)
+        // 16 times the records: linear is about 16, quadratic about 256.
+        #expect(ratio < 64, "decode time ratio \(ratio) for 16 times the records")
+    }
+
     /// The render records backboardd uses (§10): 26, 3, 6, 7, 110, 111, 112, 114, 116, 117, 125, 126, 130.
     func backboarddRecords() -> [[UInt8]] {
         [

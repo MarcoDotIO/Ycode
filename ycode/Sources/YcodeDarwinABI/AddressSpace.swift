@@ -4,6 +4,8 @@
 // Contract: specs/simulator/stage3-contract.md §2, §3, §4; stage 6 §5
 // (performance: O(log n) mapping operations, shared read-only file views).
 
+import Foundation
+
 // MARK: - Protection
 
 /// Darwin VM protection bits (`VM_PROT_*` and `PROT_*` share the values).
@@ -84,6 +86,10 @@ public struct GuestRegion: Equatable, Hashable, Sendable, CustomStringConvertibl
         case file(path: String, offset: UInt64, gpa: UInt64)
         /// Part of a shared memory object (a Mach memory entry's memory).
         case shared(serial: UInt64, offset: UInt64, gpa: UInt64)
+        /// Anonymous memory whose pages get backing when first touched
+        /// (a large reservation; `GuestAddressSpace.lazyAnonymousThreshold`).
+        /// It has no GPA; untouched pages read as zeros.
+        case unbacked
     }
 
     public var va: UInt64
@@ -100,6 +106,7 @@ public struct GuestRegion: Equatable, Hashable, Sendable, CustomStringConvertibl
     public var gpa: UInt64 {
         switch backing {
         case let .anonymous(gpa), let .file(_, _, gpa), let .shared(_, _, gpa): gpa
+        case .unbacked: 0
         }
     }
 
@@ -108,6 +115,7 @@ public struct GuestRegion: Equatable, Hashable, Sendable, CustomStringConvertibl
         case let .anonymous(gpa): "anonymous gpa \(hex(gpa))"
         case let .file(path, offset, gpa): "\(path) @\(hex(offset)) gpa \(hex(gpa))"
         case let .shared(serial, offset, gpa): "shared object #\(serial) @\(hex(offset)) gpa \(hex(gpa))"
+        case .unbacked: "anonymous, backed on first touch"
         }
     }
 
@@ -151,9 +159,23 @@ public protocol GuestVirtualMemory: GuestMemoryAccess, AnyObject {
     func regions(overlapping range: Range<UInt64>) -> [GuestRegion]
     /// Bumps on every page-table change.
     var generation: UInt64 { get }
+    /// A guest translation fault at `va`: gives an untouched page of a lazy
+    /// anonymous mapping its backing (when its protection allows any
+    /// access) and returns true; false when the fault is a real one.
+    func resolveTranslationFault(va: UInt64) -> Bool
+    /// Runs `body` with no other change of this address space in between.
+    func atomically<T>(_ body: () throws -> T) rethrows -> T
 }
 
 extension GuestVirtualMemory {
+    /// Runs `body` so that no other change of this address space happens
+    /// during it (a check-then-map sequence). The default runs it as is
+    /// (single-threaded test memories); `GuestAddressSpace` holds its
+    /// mutex (L1), which every change takes (`boot-profile.md` §3.6).
+    public func atomically<T>(_ body: () throws -> T) rethrows -> T { try body() }
+
+    public func resolveTranslationFault(va: UInt64) -> Bool { false }
+
     public func region(containing va: UInt64) -> GuestRegion? {
         regions.first { $0.va <= va && va < $0.end }
     }
@@ -199,6 +221,9 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         var permanent: Bool
         /// `gpa` is the backing's shared read-only view of `file`.
         var readOnlyShared: Bool = false
+        /// Anonymous memory without backing yet (`gpa` unused, no page-table
+        /// entries): pages get backing when first touched.
+        var lazy: Bool = false
         var end: UInt64 { va + size }
         var start: UInt64 { va }
 
@@ -208,7 +233,7 @@ public final class GuestAddressSpace: GuestVirtualMemory {
             var c = self
             c.va = start
             c.size = stop - start
-            c.gpa = gpa + (start - va)
+            c.gpa = lazy ? 0 : gpa + (start - va)
             c.fileOffset = fileOffset + (start - va)
             return c
         }
@@ -216,7 +241,7 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         var isAnonymous: Bool { file == nil && shared == nil }
         /// Pages the backing may have allocated from its pool: anonymous
         /// memory and private file views.
-        var isReleasable: Bool { shared == nil && !readOnlyShared }
+        var isReleasable: Bool { shared == nil && !readOnlyShared && !lazy }
     }
 
     public let backing: any PhysicalBacking
@@ -237,7 +262,7 @@ public final class GuestAddressSpace: GuestVirtualMemory {
     private let sortedExclusions: [Range<UInt64>]
 
     /// Held by every public operation (recursive).
-    public let mutex = RecursiveMutex()
+    public let mutex = RecursiveMutex(name: "address space (L1)")
     /// Ordered by VA, disjoint.
     private let chunks = IntervalMap<Chunk>()
     private var readOnlySharedChunks = 0
@@ -263,6 +288,8 @@ public final class GuestAddressSpace: GuestVirtualMemory {
             backing = .shared(serial: object.serial, offset: c.fileOffset, gpa: c.gpa)
         } else if let file = c.file {
             backing = .file(path: file.guestPath, offset: c.fileOffset, gpa: c.gpa)
+        } else if c.lazy {
+            backing = .unbacked
         } else {
             backing = .anonymous(gpa: c.gpa)
         }
@@ -294,6 +321,12 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         mutex.withLock { chunks.element(containing: va)?.file }
     }
 
+    /// SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §2.1): the
+    /// shared memory object mapped at `va`, if the mapping there is shared.
+    public func sharedObject(at va: UInt64) -> SharedMemoryObject? {
+        mutex.withLock { chunks.element(containing: va)?.shared }
+    }
+
     // MARK: GuestVirtualMemory
 
     public func mapAnonymous(at: UInt64?, size: UInt64, protection: VMProtection, hint: UInt64?) throws -> UInt64 {
@@ -318,6 +351,12 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         try mutex.withLock { try shareLocked(va: va, size: size) }
     }
 
+    /// `GuestVirtualMemory.atomically`: the address-space mutex (L1,
+    /// recursive) around `body`.
+    public func atomically<T>(_ body: () throws -> T) rethrows -> T {
+        try mutex.withLock(body)
+    }
+
     private func shareLocked(va: UInt64, size: UInt64) throws -> (object: SharedMemoryObject, offset: UInt64) {
         try checkLive()
         let (lo, hi) = try checkedRange(va: va, size: size, permanent: false)
@@ -334,9 +373,12 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         // Move the contents, then point every page at the object.
         var moved: [Chunk] = []
         for c in affected.map({ $0.slice(lo, hi) }) {
-            let bytes = try backing.readPhysical(gpa: c.gpa, count: Int(c.size))
-            object.write(offset: c.va - lo, bytes: bytes)
+            if !c.lazy {
+                let bytes = try backing.readPhysical(gpa: c.gpa, count: Int(c.size))
+                object.write(offset: c.va - lo, bytes: bytes)
+            }
             var n = c
+            n.lazy = false
             n.gpa = gpa + (c.va - lo)
             n.file = nil
             n.shared = object
@@ -396,7 +438,16 @@ public final class GuestAddressSpace: GuestVirtualMemory {
             affected = chunks.overlapping(lo, hi)
         }
         do {
-            try pageTables.protect(va: lo, size: hi - lo, attributes: protection.el0PageAttributes)
+            if affected.contains(where: \.lazy) {
+                // Lazy parts have no page-table entries; their pages get the
+                // new protection when they are first touched.
+                for c in affected where !c.lazy {
+                    let s = c.slice(lo, hi)
+                    try pageTables.protect(va: s.va, size: s.size, attributes: protection.el0PageAttributes)
+                }
+            } else {
+                try pageTables.protect(va: lo, size: hi - lo, attributes: protection.el0PageAttributes)
+            }
         } catch {
             throw mapPageTableError(error)
         }
@@ -440,6 +491,7 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         if isDiscarded, count > 0 { throw GuestMemoryError.unmapped(va: cursor) }
         var remaining = UInt64(count)
         while remaining > 0 {
+            if pageTables.translate(cursor) == nil { _ = materializeLocked(va: cursor) }
             guard let (pa, attributes) = pageTables.translate(cursor) else { throw GuestMemoryError.unmapped(va: cursor) }
             if checkingEL0Access {
                 let ok = write ? attributes.access.isEL0Writable : attributes.access.isEL0Readable
@@ -531,6 +583,62 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         try pageTables.writeDirtyTables { gpa, bytes in try backing.writePhysical(gpa: gpa, from: bytes) }
     }
 
+    // MARK: Lazy anonymous memory
+
+    /// Anonymous mappings of at least this size are lazy: backing comes per
+    /// block when a page is first touched (`YCODE_LAZY_ANON_MB`, default
+    /// 256 MiB; 0 turns it off).
+    public static let lazyAnonymousThreshold: UInt64 = {
+        if let v = getenv("YCODE_LAZY_ANON_MB"), let mb = UInt64(String(cString: v)) {
+            return mb == 0 ? UInt64.max : mb << 20
+        }
+        return 256 << 20
+    }()
+    /// The unit in which a lazy mapping gets backing (aligned, clipped to
+    /// the mapping): 256 KiB, 16 pages.
+    public static let lazyBlockSize: UInt64 = 256 << 10
+    /// Lazy blocks given backing so far (statistics).
+    public private(set) var lazyBlocksMaterialized: UInt64 = 0
+
+    public func resolveTranslationFault(va: UInt64) -> Bool {
+        mutex.withLock {
+            guard !isDiscarded else { return false }
+            let page = va & VMLayout.addressWithoutTag
+            guard pageTables.translate(page) == nil else { return false }
+            return materializeLocked(va: page)
+        }
+    }
+
+    /// Gives the block around `va` of a lazy mapping its backing, with the
+    /// mapping's protection. False when `va` is not in a lazy mapping, the
+    /// mapping allows no access, or no memory is left.
+    private func materializeLocked(va: UInt64) -> Bool {
+        guard !isDiscarded, let c = chunks.element(containing: va), c.lazy, c.protection != .none else { return false }
+        let block = Self.lazyBlockSize
+        let lo = max(c.va, va & ~(block - 1))
+        let hi = min(c.end, (va & ~(block - 1)) + block)
+        let size = hi - lo
+        let gpa: UInt64
+        do { gpa = try backing.allocateAnonymous(size: size) } catch {
+            MapFailureLog.note("backing for a touched lazy block of 0x\(String(size, radix: 16)) bytes at 0x\(String(lo, radix: 16)): \(error)")
+            return false
+        }
+        do {
+            try pageTables.map(va: lo, pa: gpa, size: size, attributes: c.protection.el0PageAttributes)
+        } catch {
+            backing.release(gpa: gpa, size: size)
+            MapFailureLog.note("page tables for a touched lazy block at 0x\(String(lo, radix: 16)): \(error)")
+            return false
+        }
+        var b = c.slice(lo, hi)
+        b.lazy = false
+        b.gpa = gpa
+        replaceChunks(lo, hi, with: [b])
+        lazyBlocksMaterialized += 1
+        do { try commit() } catch { return false }
+        return true
+    }
+
     // MARK: Implementation
 
     private static let pageMask = VMLayout.pageSize - 1
@@ -587,7 +695,21 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         }
         let replaced = chunks.overlapping(lo, hi)
         guard !replaced.contains(where: \.permanent) else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
-        do { try pageTables.checkCapacity(va: lo, size: rounded) } catch { throw mapPageTableError(error) }
+        if file == nil, shared == nil, !permanent, rounded >= Self.lazyAnonymousThreshold {
+            // A large anonymous mapping (a reservation such as JavaScriptCore's
+            // 32 GiB cage; app-launch.md §3.2): no backing and no page-table
+            // entries until a page is touched (`resolveTranslationFault`).
+            if !replaced.isEmpty { do { try pageTables.unmap(va: lo, size: rounded) } catch { throw mapPageTableError(error) } }
+            releaseAnonymous(replaced, lo: lo, hi: hi)
+            replaceChunks(lo, hi, with: [Chunk(va: lo, size: rounded, protection: protection, gpa: 0, file: nil,
+                                               fileOffset: 0, shared: nil, permanent: false, lazy: true)])
+            try commit()
+            return lo
+        }
+        do { try pageTables.checkCapacity(va: lo, size: rounded) } catch {
+            MapFailureLog.note("page tables for 0x\(String(rounded, radix: 16)) bytes at 0x\(String(lo, radix: 16)): \(error)")
+            throw mapPageTableError(error)
+        }
 
         var readOnlyShared = false
         let gpa: UInt64
@@ -605,8 +727,10 @@ public final class GuestAddressSpace: GuestVirtualMemory {
                 gpa = try backing.allocateAnonymous(size: rounded)
             }
         } catch let e as DarwinErrnoError {
+            MapFailureLog.note("backing for 0x\(String(rounded, radix: 16)) bytes (\(file?.guestPath ?? (shared != nil ? "shared" : "anonymous"))): \(e)")
             throw e
         } catch {
+            MapFailureLog.note("backing for 0x\(String(rounded, radix: 16)) bytes (\(file?.guestPath ?? (shared != nil ? "shared" : "anonymous"))): \(error)")
             throw DarwinErrnoError(DarwinErrnoCode.ENOMEM)
         }
 
@@ -715,6 +839,20 @@ public final class GuestAddressSpace: GuestVirtualMemory {
         case .virtualAddressOutOfRange, .physicalAddressOutOfRange: return DarwinErrnoError(DarwinErrnoCode.ENOMEM)
         case .unaligned, .emptyRange, .alreadyMapped: return DarwinErrnoError(DarwinErrnoCode.EINVAL)
         }
+    }
+}
+
+/// Diagnostics: the first guest mappings that failed for a host-side
+/// reason (memory backing or page tables), with the underlying error, on
+/// stderr. Process-wide, at most `limit` lines.
+public enum MapFailureLog {
+    nonisolated(unsafe) private static var count = 0
+    private static let lock = NSLock()
+    public static let limit = 40
+    static func note(_ text: String) {
+        lock.lock(); count += 1; let n = count; lock.unlock()
+        guard n <= limit else { return }
+        FileHandle.standardError.write(("ycode-simd: guest mapping failed: " + text + (n == limit ? " (further failures not shown)" : "") + "\n").data(using: .utf8)!)
     }
 }
 

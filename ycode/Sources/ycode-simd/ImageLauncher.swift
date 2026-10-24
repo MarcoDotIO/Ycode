@@ -29,12 +29,160 @@ enum LaunchErrno {
 /// Host-wide counters for the leak check (`--repeat`).
 final class VMCounters: @unchecked Sendable {
     static let shared = VMCounters()
-    private let lock = HostMutex()
+    private let lock = HostMutex(name: "VM counters")
     private var created = 0
     private var destroyed = 0
     func vmCreated() { lock.withLock { created += 1 } }
     func vmDestroyed() { lock.withLock { destroyed += 1 } }
     var snapshot: (created: Int, destroyed: Int) { lock.withLock { (created, destroyed) } }
+}
+
+/// Diagnostics (with `YCODE_TRAP_PROFILE`): where building an image's VM
+/// spends its time (spawn and exec run it under the kernel lock).
+final class ImageBuildProfile: @unchecked Sendable {
+    static let shared: ImageBuildProfile? = TrapProfile.shared == nil ? nil : ImageBuildProfile()
+    static let phases = ["VM", "load", "setup", "vCPU 0", "clock", "wire"]
+    private let lock = HostMutex()
+    private var builds = 0
+    private var totals = [UInt64](repeating: 0, count: phases.count)
+
+    /// Times the phases of one build (`mark` after each).
+    struct Timer {
+        var last = monotonicNanoseconds()
+        var spans: [UInt64] = []
+        mutating func mark() {
+            let now = monotonicNanoseconds()
+            spans.append(now &- last)
+            last = now
+        }
+    }
+
+    func record(_ timer: Timer) {
+        lock.withLock {
+            builds += 1
+            for (i, ns) in timer.spans.enumerated() where i < totals.count { totals[i] &+= ns }
+        }
+    }
+
+    var report: String {
+        lock.withLock {
+            let all = totals.reduce(0, &+)
+            let parts = zip(Self.phases, totals).map { "\($0) \($1 / 1_000_000) ms (\(builds == 0 ? 0 : $1 / UInt64(builds) / 1000) us)" }
+            let deferred = VCPUPool.deferredCreations.load(ordering: .relaxed)
+            let deferredNs = VCPUPool.deferredCreationNanoseconds.load(ordering: .relaxed)
+            return "Image builds \(builds), \(all / 1_000_000) ms in all: " + parts.joined(separator: ", ")
+                + "; vCPUs created off the kernel lock \(deferred) (avg \(deferred == 0 ? 0 : deferredNs / deferred / 1000) us)"
+                + "; all vCPU creations: KVM_CREATE_VCPU \(VCPUPool.deferredCreateVCPUNanoseconds.load(ordering: .relaxed) / 1_000_000) ms, "
+                + "VCPU_INIT+map \(VCPUPool.deferredInitNanoseconds.load(ordering: .relaxed) / 1_000_000) ms; "
+                + "off-lock host threads \(VCPUPool.deferredThreadNanoseconds.load(ordering: .relaxed) / 1_000_000) ms"
+        }
+    }
+}
+
+/// Empty VMs (a `ProcessBuilder`: KVM VM, memslots, EL1 tables) built
+/// without the kernel lock by the thread that is about to make a spawn or
+/// exec trap, so the image build that trap runs under the kernel lock
+/// takes a ready VM instead of creating one there (KVM_CREATE_VM and the
+/// memslot additions: about 19 ms each in a profiled boot, ~6 % of the
+/// lock's hold time). At most `limit` wait; a spawn that fails before its
+/// image is built leaves its VM for the next one. Traced images build
+/// their own (the builder's log is fixed at creation).
+/// `YCODE_VM_PREBUILD=0` turns it off (A/B).
+final class PrebuiltVMs: @unchecked Sendable {
+    static let enabled = getenv("YCODE_VM_PREBUILD").map { String(cString: $0) != "0" } ?? true
+    /// `YCODE_VM_PREBUILD_ASYNC` (default on, `=0` off; boot-profile.md
+    /// §7.3, C22): one background thread keeps `asyncLimit` VMs ready, so a
+    /// spawn or exec trap takes one instead of building it on the trapping
+    /// thread. A trap that finds none ready still builds its own (off the
+    /// kernel lock, as before).
+    static let async = enabled && (getenv("YCODE_VM_PREBUILD_ASYNC").map { String(cString: $0) != "0" } ?? true)
+    static let limit = 2
+    static let asyncLimit = getenv("YCODE_VM_PREBUILD_READY").flatMap { Int(String(cString: $0)) }.map { max(1, min(16, $0)) } ?? 4
+    /// `YCODE_VCPU_PREBUILT` (default on, `=0` off): the image's first
+    /// vCPUs (`YCODE_VCPU_PRECREATE`, vCPU 0 among them) are made with the
+    /// prebuilt VM, off the kernel lock (thread-latency.md §3.1); off: at
+    /// image build, under the lock.
+    static let precreateVCPUs = getenv("YCODE_VCPU_PREBUILT").map { String(cString: $0) != "0" } ?? true
+
+    /// Builds one VM (and, with `precreateVCPUs`, its first vCPUs). No lock held.
+    static func build() -> ProcessBuilder? {
+        let builder = try? ProcessBuilder(log: nil)
+        if precreateVCPUs { builder?.vm.makeSpareVCPUs(count: VirtualMachine.precreateCount) }
+        return builder
+    }
+    private let lock = HostMutex(name: "prebuilt VMs")
+    private let wanted = HostCondition()
+    private var ready: [ProcessBuilder] = []
+    /// Builds in progress (counted toward `limit`).
+    private var building = 0
+    private var builderStarted = false
+
+    /// Builds one VM unless `limit` are ready or being built. Call with no
+    /// lock held. With the background builder: nothing when one is ready.
+    func prepare() {
+        guard Self.enabled else { return }
+        if Self.async {
+            startBuilder()
+            let start: Bool = lock.withLock {
+                if !ready.isEmpty { return false }
+                building += 1
+                return true
+            }
+            guard start else { return }
+            // None ready: build one here, as without the builder.
+            let builder = Self.build()
+            lock.withLock {
+                building -= 1
+                if let builder { ready.append(builder) }
+            }
+            return
+        }
+        let start: Bool = lock.withLock {
+            guard ready.count + building < Self.limit else { return false }
+            building += 1
+            return true
+        }
+        guard start else { return }
+        let builder = Self.build()
+        lock.withLock {
+            building -= 1
+            if let builder { ready.append(builder) }
+        }
+    }
+
+    /// Starts the background builder once (with `async`).
+    func startBuilder() {
+        guard Self.async else { return }
+        let start: Bool = lock.withLock {
+            if builderStarted { return false }
+            builderStarted = true
+            return true
+        }
+        guard start else { return }
+        let thread = Thread { [self] in builderLoop() }
+        thread.name = "ycode VM prebuild"
+        thread.start()
+    }
+
+    /// A ready VM, or nil (the caller builds one).
+    func take() -> ProcessBuilder? {
+        lock.withLock {
+            let b = ready.popLast()
+            if Self.async { wanted.signal() }
+            return b
+        }
+    }
+
+    /// The background builder: tops the ready list up to `asyncLimit`.
+    private func builderLoop() {
+        while true {
+            lock.lock()
+            while ready.count >= Self.asyncLimit { wanted.wait(lock, milliseconds: 1000) }
+            lock.unlock()
+            guard let builder = Self.build() else { usleep(100_000); continue }
+            lock.withLock { ready.append(builder) }
+        }
+    }
 }
 
 /// The trap-log prefix of the trap a host thread is handling (one host
@@ -61,6 +209,34 @@ final class ImageRecord: @unchecked Sendable {
     var tornDown = false
     /// The live image until teardown.
     var image: GuestImageInstance?
+    /// Boot profile (`YCODE_BOOT_PROFILE`, BootProfile.swift): the parent
+    /// pid at launch and the image's milestones (monotonic ns; 0 = not yet).
+    var ppid: Int32 = 0
+    var launchNs: UInt64 = 0
+    var builtNs: UInt64 = 0
+    var milestoneNs: UInt64 = 0
+    var endNs: UInt64 = 0
+    var tornDownNs: UInt64 = 0
+    /// Fixed at teardown: the vCPU threads' host counters, the image's
+    /// kernel-lock time, first guest entry, traps.
+    var hostStats: VCPUPool.HostStats?
+    var lockHeldNs: UInt64 = 0
+    var lockWaitNs: UInt64 = 0
+    var lockAcquisitions: UInt64 = 0
+    var firstRunNs: UInt64 = 0
+    var traps = 0
+    var taskLocalTraps = 0
+    var vcpus = 0
+    /// At the milestone: traps, lock wait and hold, the main thread's CPU.
+    var milestoneTraps = 0
+    var milestoneLockWaitNs: UInt64 = 0
+    var milestoneLockHeldNs: UInt64 = 0
+    var milestoneCPUNs: UInt64 = 0
+    var milestoneGuestTicks: UInt64 = 0
+    var milestoneSystemTicks: UInt64 = 0
+    var milestoneRunNs: UInt64 = 0
+    var milestoneHandlerNs: UInt64 = 0
+    var milestoneTopTraps = ""
 
     init(serial: Int, pid: Int32, executable: String) {
         self.serial = serial
@@ -88,7 +264,7 @@ final class LaunchHandle: LaunchedImage {
 /// The VMM's `ProcessLauncher`: builds one VM per image.
 final class VMMLauncher: ProcessLauncher, @unchecked Sendable {
     let config: ExecConfiguration
-    private let lock = HostMutex()
+    private let lock = HostMutex(name: "VMM launcher")
     private let changed = HostCondition()
     private var live: [GuestImageInstance] = []
     private var finishedImages: [GuestImageInstance] = []
@@ -104,10 +280,26 @@ final class VMMLauncher: ProcessLauncher, @unchecked Sendable {
     /// the host counter at its start. Later VMs are aligned to it.
     private var systemCounterOffset: UInt64?
     private var systemBootHostCounter: UInt64 = 0
+    private var systemCounterFrequency: UInt64 = 0
+
+    /// The system clock in counter units (`snapshot.md` §5): the guest
+    /// counter now (host counter − system offset), the boot counter, and the
+    /// counter frequency; nil before the first VM.
+    var snapshotSystemClock: (guestCounter: UInt64, bootCounter: UInt64, frequency: UInt64)? {
+        lock.withLock {
+            guard let offset = systemCounterOffset else { return nil }
+            return (Hypervisor.hostCounter() &- offset, systemBootHostCounter &- offset, systemCounterFrequency)
+        }
+    }
     /// The last launch failure's detail (for the root's error message).
     private(set) var lastLaunchFailure: String?
+    /// VMs built ahead, off the kernel lock, for spawn and exec.
+    let prebuilt = PrebuiltVMs()
 
-    init(config: ExecConfiguration) { self.config = config }
+    init(config: ExecConfiguration) {
+        self.config = config
+        if !config.trace { prebuilt.startBuilder() }
+    }
 
     /// "[pid N] " once several images exist.
     func tag(_ pid: Int32) -> String { multiImage.load(ordering: .relaxed) ? "[pid \(pid)] " : "" }
@@ -115,33 +307,73 @@ final class VMMLauncher: ProcessLauncher, @unchecked Sendable {
     // MARK: ProcessLauncher
 
     func launch(_ request: ProcessImageRequest, kernel: DarwinKernel) throws -> any LaunchedImage {
+        let image = try build(request, kernel: kernel)
+        return try register(image, startSuspended: request.startSuspended)
+    }
+
+    /// A built image (`prepare`).
+    final class Prepared: PreparedImage {
+        let image: GuestImageInstance
+        init(_ image: GuestImageInstance) { self.image = image }
+    }
+
+    /// Builds the image without registering it: safe without the kernel
+    /// lock (the new kernel is not visible to other threads yet;
+    /// bsd-locking.md §7).
+    func prepare(_ request: ProcessImageRequest, kernel: DarwinKernel) throws -> (any PreparedImage)? {
+        Prepared(try build(request, kernel: kernel))
+    }
+
+    func activate(_ prepared: any PreparedImage, startSuspended: Bool) throws -> any LaunchedImage {
+        try register((prepared as! Prepared).image, startSuspended: startSuspended)
+    }
+
+    func discard(_ prepared: any PreparedImage) {
+        (prepared as! Prepared).image.abandon()
+    }
+
+    private func noteFailure(_ text: String) -> String {
+        lock.withLock { lastLaunchFailure = text }
+        return text
+    }
+
+    private func build(_ request: ProcessImageRequest, kernel: DarwinKernel) throws -> GuestImageInstance {
         let number: Int = lock.withLock {
             serial += 1
             if serial > 1 { multiImage.store(true, ordering: .relaxed) }
             return serial
         }
-        let image: GuestImageInstance
         do {
-            image = try GuestImageInstance(launcher: self, serial: number, request: request, kernel: kernel)
+            return try GuestImageInstance(launcher: self, serial: number, request: request, kernel: kernel)
         } catch let error as DarwinErrnoError {
-            lastLaunchFailure = "\(request.executablePath): \(error)"
-            if config.trace || number == 1 { stderrLine("ycode-simd: \(tag(kernel.pid))cannot launch \(lastLaunchFailure!)") }
+            let text = noteFailure("\(request.executablePath): \(error)")
+            if config.trace || number == 1 { stderrLine("ycode-simd: \(tag(kernel.pid))cannot launch \(text)") }
             throw error
         } catch {
-            lastLaunchFailure = "\(request.executablePath): \(error)"
-            stderrLine("ycode-simd: \(tag(kernel.pid))cannot build a VM for \(lastLaunchFailure!)")
+            let text = noteFailure("\(request.executablePath): \(error)")
+            stderrLine("ycode-simd: \(tag(kernel.pid))cannot build a VM for \(text)")
             throw DarwinErrnoError(LaunchErrno.ENOMEM)
         }
+    }
+
+    /// Registers a built image and starts its main thread. Kernel lock held.
+    private func register(_ image: GuestImageInstance, startSuspended: Bool) throws -> any LaunchedImage {
+        let kernel = image.kernel
+        if BootProfile.shared != nil { image.record.ppid = kernel.system.process(pid: kernel.pid)?.ppid ?? 0 }
         lock.withLock {
             live.append(image)
             records.append(image.record)
         }
-        if !request.startSuspended {
+        // Frame profile: who launched the image (FrameProfile.swift).
+        if FrameProfile.active.load(ordering: .relaxed), let fp = FrameProfile.shared {
+            fp.imageLaunched(pid: kernel.pid, serial: image.record.serial, executable: image.record.executable, suspended: startSuspended)
+        }
+        if !startSuspended {
             do {
                 try image.startMainThread()
             } catch {
-                lastLaunchFailure = "\(request.executablePath): \(error)"
-                stderrLine("ycode-simd: \(tag(kernel.pid))cannot start \(lastLaunchFailure!)")
+                let text = noteFailure("\(image.record.executable): \(error)")
+                stderrLine("ycode-simd: \(tag(kernel.pid))cannot start \(text)")
                 image.abandon()
                 lock.withLock {
                     live.removeAll { $0 === image }
@@ -154,10 +386,47 @@ final class VMMLauncher: ProcessLauncher, @unchecked Sendable {
         return LaunchHandle(image)
     }
 
+    /// SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §3.1, §5): the
+    /// live images, and the restore's system clock (the guest counter
+    /// continues at the snapshot's value; set before the first VM is built).
+    var snapshotLiveImages: [GuestImageInstance] { lock.withLock { live } }
+    func snapshotPresetSystemClock(offset: UInt64, bootHostCounter: UInt64) {
+        lock.withLock {
+            systemCounterOffset = offset
+            systemBootHostCounter = bootHostCounter
+        }
+    }
+
     /// The counter offset and boot counter a new VM uses (the first VM sets
     /// the system's). Called while building an image.
     func systemClock(for vcpu: VCPU, frequency: UInt64, log: (String) -> Void) throws -> (offset: UInt64, bootCounter: UInt64) {
+        try systemClock(for: vcpu, vm: nil, frequency: frequency, log: log).clock
+    }
+
+    /// As above; with `vm` and `YCODE_FAST_TRAPS=1` the VM gets the system's
+    /// offset VM-wide (KVM_ARM_SET_COUNTER_OFFSET, fast-traps.md §3.1) and
+    /// `direct` says that every vCPU of it reads the kernel's clock in place.
+    /// Call before any vCPU of the VM runs.
+    func systemClock(for vcpu: VCPU, vm: VirtualMachine?, frequency: UInt64, log: (String) -> Void) throws
+        -> (clock: (offset: UInt64, bootCounter: UInt64), direct: Bool) {
         let own = try vcpu.counterOffset()
+        lock.withLock { systemCounterFrequency = frequency }
+        if FastTraps.enabled, let vm, vm.supportsCounterOffset {
+            let system: UInt64 = lock.withLock {
+                if systemCounterOffset == nil {
+                    systemCounterOffset = own
+                    systemBootHostCounter = Hypervisor.hostCounter()
+                }
+                return systemCounterOffset!
+            }
+            do {
+                try vm.setCounterOffset(system)
+                let boot = lock.withLock { systemBootHostCounter } &- system
+                return ((system, boot), true)
+            } catch {
+                log("cannot set the VM-wide counter offset: \(error)")
+            }
+        }
         let system: UInt64? = lock.withLock {
             if systemCounterOffset == nil {
                 systemCounterOffset = own
@@ -180,7 +449,7 @@ final class VMMLauncher: ProcessLauncher, @unchecked Sendable {
             }
         }
         let boot = lock.withLock { systemBootHostCounter } &- offset
-        return (offset, boot)
+        return ((offset, boot), false)
     }
 
     // MARK: Events from images and the kernel
@@ -189,6 +458,7 @@ final class VMMLauncher: ProcessLauncher, @unchecked Sendable {
     func imageEnded(_ image: GuestImageInstance, _ end: VCPUPool.Termination) {
         lock.withLock {
             if image.record.end == nil || image.record.end!.kind == .stopped { image.record.end = end }
+            if BootProfile.shared != nil, image.record.endNs == 0 { image.record.endNs = monotonicNanoseconds() }
             changed.broadcast()
         }
     }
@@ -374,6 +644,7 @@ final class VMMLauncher: ProcessLauncher, @unchecked Sendable {
     private func tearDown(_ image: GuestImageInstance) {
         guard !image.record.tornDown else { return }
         image.pool.joinThreads()
+        if BootProfile.shared != nil { image.captureProfile() }
         image.record.finalSummary = image.summary(locked: true)
         image.record.finalUnimplemented = image.unimplementedSummary()
         image.destroy()
@@ -410,11 +681,21 @@ final class GuestImageInstance: @unchecked Sendable {
 
     // Bookkeeping guarded by the kernel lock.
     private var milestoneReached = false
+    /// Boot profile: traps before the milestone by number (faults: -1000).
+    private var preMilestoneTraps: [Int64: Int] = [:]
     private var tracker = CacheMappingTracker()
-    private var trapCount = 0
+    /// Lock-free: counted on every trap, from any vCPU thread.
+    private let trapCountAtomic = Atomic<Int>(0)
+    /// Traps answered without the kernel lock (`handleTaskLocal`).
+    let taskLocalTrapCount = Atomic<Int>(0)
+    /// Mirrors `milestoneReached` for the unlocked fast path.
+    private let milestoneDone = Atomic<Bool>(false)
     private var trapCounts: [String: Int] = [:]
     /// True once a kernel outcome ended the image (exit, fatal, exec).
     private let endedByKernel = Atomic<Bool>(false)
+    /// True once one thread printed the image's fatal report: a process ends
+    /// with one report, its first faulting thread's (`service-fidelity.md` §3).
+    private let fatalReported = Atomic<Bool>(false)
 
     /// VMM log line (with the pid tag once several images exist).
     func say(_ text: String) { stderrLine("ycode-simd: " + launcher.tag(pid) + text) }
@@ -432,15 +713,24 @@ final class GuestImageInstance: @unchecked Sendable {
         self.trace = trace
         self.fileSystem = kernel.fileSystem
         let execPath = request.executablePath
+        if !TrapProfile.programFilter.isEmpty {
+            kernel.trapProfileSelected = TrapProfile.programFilter.contains((execPath as NSString).lastPathComponent)
+        }
         let verbose = trace || (serial == 1 && !config.quietRuns)
         record = ImageRecord(serial: serial, pid: kernel.pid, executable: execPath)
+        if BootProfile.shared != nil {
+            // (`ppid` is set when the image is registered, under the kernel lock.)
+            record.launchNs = monotonicNanoseconds()
+        }
         let pid = kernel.pid
         func say(_ text: String) { stderrLine("ycode-simd: " + launcher.tag(pid) + text) }
 
         // The executable must be an arm64 iOS-simulator Mach-O executable.
         try Self.checkExecutable(hostPath: request.hostExecutablePath)
 
-        let builder = try ProcessBuilder(log: trace ? { say($0) } : nil)
+        var buildTimer = ImageBuildProfile.shared.map { _ in ImageBuildProfile.Timer() }
+        let builder = try (trace ? nil : launcher.prebuilt.take()) ?? ProcessBuilder(log: trace ? { say($0) } : nil)
+        buildTimer?.mark()
         VMCounters.shared.vmCreated()
         vm = builder.vm
         space = builder.space
@@ -454,6 +744,7 @@ final class GuestImageInstance: @unchecked Sendable {
 
             let main = try builder.loadMainExecutable(path: execPath, hostPath: request.hostExecutablePath)
             let sim = try builder.loadDyldSim(path: config.dyldSimPath, guestPath: config.dyldSimPath, base: VMLayout.dyldSimBaseVA)
+            buildTimer?.mark()
             guard let prepareEntry = sim.entry else { throw LoaderError.message("dyld_sim entry not found") }
             if verbose {
                 say("main \(execPath) at \(hex(main.machHeader)); dyld_sim at \(hex(sim.machHeader)) slide \(hex(sim.slide)) entry \(hex(prepareEntry))")
@@ -505,13 +796,18 @@ final class GuestImageInstance: @unchecked Sendable {
             if verbose { say("main-thread block at \(hex(threadBlock.address)); TPIDRRO_EL0 = \(hex(threadBlock.tsdBase))") }
 
             // Boot info template, the vCPU pool, and vCPU 0 (stage4a-contract.md §2, §4).
-            let pool = try VCPUPool(vm: vm, bootTemplate: BootInfo(ttbr0EL1: space.pageTables.rootGPA, el0EntryPC: 0),
+            buildTimer?.mark()
+            let doorbell = FastTraps.doorbellAddress(for: vm, log: { say($0) })
+            let pool = try VCPUPool(vm: vm, bootTemplate: BootInfo(ttbr0EL1: space.pageTables.rootGPA, el0EntryPC: 0,
+                                                                   doorbellAddress: doorbell),
                                     maxExitsPerVCPU: config.maxExits)
             poolForCleanup = pool
             if config.trace { pool.log = { say($0) } }
             let vcpu0 = try pool.createWorker().vcpu
+            buildTimer?.mark()
             let (frequency, frequencySource) = vcpu0.counterFrequency()
-            let clock = try launcher.systemClock(for: vcpu0, frequency: frequency, log: { say($0) })
+            let (clock, directClock) = try launcher.systemClock(for: vcpu0, vm: vm, frequency: frequency, log: { say($0) })
+            buildTimer?.mark()
             if verbose {
                 say("CNTFRQ_EL0 = \(frequency) Hz (\(frequencySource)); KVM_CAP_MAX_VCPUS \(vm.maxVCPUs), "
                     + "KVM_CAP_NR_VCPUS \(vm.recommendedVCPUs); vCPU pool capacity \(pool.capacity)")
@@ -546,14 +842,47 @@ final class GuestImageInstance: @unchecked Sendable {
             }
             // Without a trace the kernel formats no trap text at all.
             kernel.tracing = trace
-            kernel.counter = { Hypervisor.hostCounter() &- offset }
-            kernel.counterFrequency = frequency
-            kernel.bootCounter = clock.bootCounter
+            // Guest mach time: the aligned counter, scaled to the guest
+            // timebase (24 MHz unless YCODE_GUEST_TIMEBASE=host) with the
+            // fixed-point scale the guest library also uses in place
+            // (fast-traps.md §3.2).
+            let guestHz = GuestTimebase.frequency(hostFrequency: frequency)
+            let clockScale = GuestTimebase.ClockScale(from: frequency, to: guestHz)
+            if clockScale == .identity {
+                kernel.counter = { Hypervisor.hostCounter() &- offset }
+            } else {
+                kernel.counter = { clockScale.apply(Hypervisor.hostCounter() &- offset) }
+            }
+            kernel.counterFrequency = guestHz
+            kernel.timeOfDayPublisher = try FastTraps.configureCommpage(
+                space: space, vm: vm, directClock: directClock, counter: kernel.counter, frequency: guestHz,
+                clockScale: clockScale, wallClock: kernel.wallClock)
+            kernel.bootCounter = clockScale.apply(clock.bootCounter)
             kernel.allImageInfosAddress = HostPageLayout.allImageInfos
             kernel.mainStackTop = VMLayout.userStackTop
             kernel.threadHost = PoolThreadHost(pool: pool)
+            // getrusage(RUSAGE_SELF): the image's host threads' CPU, split
+            // into user and system by their tick counts.
+            kernel.processCPUTimes = { [weak pool] in
+                guard let pool else { return (0, 0) }
+                var total: UInt64 = 0, userTicks: UInt64 = 0, systemTicks: UInt64 = 0
+                for tid in pool.hostThreadIDs {
+                    guard let s = hostTaskStats(tid) else { continue }
+                    userTicks &+= s[0]
+                    systemTicks &+= s[1]
+                    total &+= s[5]
+                }
+                let ticks = userTicks &+ systemTicks
+                let system = ticks == 0 ? 0 : UInt64(Double(total) * Double(systemTicks) / Double(ticks))
+                return (total &- system, system)
+            }
+            kernel.executableUUID = uuidBytes(main.uuid)
 
             mainState = VCPUStartState(pc: VMLayout.hostPageEntryVA, sp: arguments.stackPointer, tpidrro: threadBlock.tsdBase)
+            if var timer = buildTimer {
+                timer.mark()
+                ImageBuildProfile.shared?.record(timer)
+            }
         } catch {
             poolForCleanup?.shutdown()
             builder.vm.close()
@@ -562,6 +891,7 @@ final class GuestImageInstance: @unchecked Sendable {
             throw error
         }
         record.image = self
+        if BootProfile.shared != nil { record.builtNs = monotonicNanoseconds() }
 
         // Pool callbacks (cleared by `VCPUPool.joinThreads` at teardown).
         let shimCount = config.shim.count
@@ -583,6 +913,30 @@ final class GuestImageInstance: @unchecked Sendable {
         }
         pool.onEnd = { end in self.launcher.imageEnded(self, end) }
         pool.onFinished = { self.finished() }
+        if BootProfile.pcHz > 0 {
+            // The PC samples' call chains (frame pointers; at most 8 frames,
+            // each 16 bytes of guest stack read through the address space).
+            pool.sampleStackReader = { [weak space] fp in
+                guard let space else { return [] }
+                var out: [UInt64] = []
+                var frame = fp
+                for _ in 0..<8 {
+                    guard frame != 0, frame & 7 == 0,
+                          let raw = try? space.read(va: frame, count: 16, checkingEL0Access: true) else { break }
+                    func word(_ o: Int) -> UInt64 { (0..<8).reduce(UInt64(0)) { $0 | UInt64(raw[o + $1]) << (8 * UInt64($1)) } }
+                    out.append(word(8))
+                    let next = word(0)
+                    guard next > frame else { break }
+                    frame = next
+                }
+                return out
+            }
+        }
+        // SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §3.1, §7
+        // step 9): the quiesce gates and the restore hook wrap the pool's
+        // callbacks before any thread runs. Nil (nothing done) unless a
+        // YCODE_SNAPSHOT_* or YCODE_RESTORE_DIR variable is set.
+        SnapshotSupport.shared?.attach(self)
     }
 
     /// The main thread on vCPU 0 (§6 initial state, with host-libraries.md
@@ -590,10 +944,21 @@ final class GuestImageInstance: @unchecked Sendable {
     func startMainThread() throws {
         guard let state = mainState else { return }
         mainState = nil
-        guard let worker = try pool.start(state, context: kernel.mainThread) else {
+        if FrameProfile.active.load(ordering: .relaxed), let fp = FrameProfile.shared {
+            fp.startRequested(pid: pid, context: kernel.mainThread, mainThread: true, serial: record.serial)
+        }
+        guard let index = try pool.start(state, context: kernel.mainThread) else {
             throw KVMError("vCPU pool", detail: "vCPU 0 is unavailable")
         }
-        kernel.mainThread.vcpuIndex = worker.index
+        kernel.mainThread.vcpuIndex = index
+    }
+
+    /// SNAPSHOT hook (snapshot.md §3.2 `unstarted`): the main thread's start
+    /// state while the image was launched suspended and not resumed (a
+    /// start hold), and its replacement after a restore. Kernel lock held.
+    var snapshotMainState: VCPUStartState? {
+        get { mainState }
+        set { mainState = newValue }
     }
 
     /// `LaunchedImage.resume` for an image launched suspended.
@@ -756,54 +1121,190 @@ final class GuestImageInstance: @unchecked Sendable {
         return text.replacingOccurrences(of: "\n", with: "\\n")
     }
 
+    /// dyld_sim's mmap of a shared-cache file (§1 item 1): records where
+    /// each expected mapping went (`pending` is the mmap as it arrived,
+    /// `frame` its result). Takes the kernel lock only for a cache file.
+    private func noteCacheMapping(_ pending: CacheMappingTracker.Pending?, _ frame: TrapFrame, context: ThreadContext,
+                                  verbose: Bool) {
+        let images = self.images
+        if let p = pending, let path = p.path, !frame.carry, frame.x[0] == p.address,
+           p.flags & 0x10 != 0, (path as NSString).lastPathComponent.hasPrefix("dyld_sim_shared_cache_") {
+            var mappingNotes: [String] = []
+            kernel.lock.withLock(context: context) {
+                if tracker.expected.isEmpty { tracker.expected = images.cacheMappings() }
+                let name = (path as NSString).lastPathComponent
+                if let index = tracker.expected.firstIndex(where: {
+                    ($0.file as NSString).lastPathComponent == name && $0.mapping.fileOffset == p.offset && $0.mapping.size == p.size
+                }) {
+                    let header = tracker.expected[index].mapping.address
+                    tracker.seen[index] = p.address
+                    if index == 0 { images.cacheDelta = p.address &- header }
+                    if verbose {
+                        mappingNotes.append("ycode-simd: " + launcher.tag(pid) + "shared-cache mapping \(index + 1)/\(tracker.expected.count) \(name) @\(hex(p.offset)) size \(hex(p.size)) mapped at \(hex(p.address)) (header address \(hex(header))\(p.address == header ? ", exact" : ""))")
+                    }
+                }
+            }
+            for line in mappingNotes { stderrLine(line) }
+        }
+    }
+
     private func handleTrap(_ worker: VCPUPool.Worker, _ frame: inout TrapFrame) -> VCPUPool.Disposition {
-        let kernel = self.kernel, images = self.images, space = self.space
         let context = (worker.context as? ThreadContext) ?? kernel.mainThread
-        let threadTag = context.threadID == 1 ? "" : "t\(context.threadID) "
-        let verbose = trace || (record.serial == 1 && !launcher.config.quietRuns)
+        context.hostCPUBaseNanoseconds = worker.threadCPUBaseNanoseconds
         // Diagnostics: the trap as it arrives, before any lock.
         context.arrivingTrap = frame.x[16]
         defer { context.arrivingTrap = nil }
+        // Frame profile (FrameProfile.swift): trap enter and exit while a window is open.
+        if FrameProfile.active.load(ordering: .relaxed), let fp = FrameProfile.shared {
+            let number: Int32 = frame.trapKind == .svc ? Int32(truncatingIfNeeded: frame.x[16]) : -1000
+            fp.trapEnter(pid: pid, context: context, number: number, frame: frame)
+            defer { fp.trapExit(pid: pid, context: context, number: number, frame: frame) }
+            return handleTrapBody(worker, &frame, context: context)
+        }
+        return handleTrapBody(worker, &frame, context: context)
+    }
+
+    private func handleTrapBody(_ worker: VCPUPool.Worker, _ frame: inout TrapFrame, context: ThreadContext) -> VCPUPool.Disposition {
+        let kernel = self.kernel, images = self.images, space = self.space
+        let threadTag = context.threadID == 1 ? "" : "t\(context.threadID) "
+        let verbose = trace || (record.serial == 1 && !launcher.config.quietRuns)
+        // Boot profile: the trap's cost (`YCODE_BOOT_PROFILE_TRAPS=1`).
+        let costOn = BootProfile.trapCosts
+        let costNumber: Int64 = frame.trapKind == .svc ? Int64(Int32(truncatingIfNeeded: frame.x[16])) : -1000
+        let costPre = costOn && !milestoneDone.load(ordering: .relaxed)
+        let costTimes = costOn ? hostThreadTimes() : (userMicros: UInt64(0), systemMicros: UInt64(0), minorFaults: UInt64(0))
+        let costNs: UInt64 = costOn ? monotonicNanoseconds() : 0
+        defer {
+            if costOn {
+                BootProfile.shared?.recordTrapCost(number: costNumber, preMilestone: costPre,
+                                                   wallNs: monotonicNanoseconds() &- costNs, start: costTimes)
+            }
+        }
 
         // Before the trap: attribution, the milestone (host-libraries.md
         // §8.1, printed once: the first trap from a cache libsystem_* image,
         // the cache libSystem.B, or one of Ycode's host libraries), and
-        // dyld_sim's mmap of the shared cache (§1 item 1).
+        // dyld_sim's mmap of the shared cache (§1 item 1). This bookkeeping
+        // runs inside the trap's own kernel-lock acquisition (`beforeTrap`),
+        // and only for a trap that needs it: tracing, the milestone still
+        // pending, or an mmap (the cache mapping tracker reads the fd
+        // table). Every trap takes the kernel lock once here.
         let isSVC = frame.trapKind == .svc
         let x16 = UInt32(truncatingIfNeeded: frame.x[16])
         var pendingResult: CacheMappingTracker.Pending?
-        kernel.lock.withLock(context: context) { () -> Void in
-            trapCount += 1
-            let attribution = (trace || !milestoneReached) ? images.attribute(frame.elr) : nil
-            if !milestoneReached, let (image, offset) = attribution,
-               image.name.hasPrefix("/usr/lib/system/libsystem_") || image.name == "/usr/lib/libSystem.B.dylib" {
-                milestoneReached = true
-                if verbose {
-                    stderrLine(launcher.tag(pid) + "milestone: libSystem initializer reached (\(image.name) + \(hex(offset)); "
-                        + "LR \(hex(frame.x[30])) = \(images.describe(frame.x[30])))")
-                }
+        let count = trapCountAtomic.add(1, ordering: .relaxed).newValue
+        // Task-local traps (boot-profile.md §3.6): no kernel lock. Before the
+        // libSystem milestone only for traps that are not the milestone
+        // itself (the locked prologue records it).
+        if DarwinKernel.taskLocalTrapsEnabled, !trace, isSVC, DarwinKernel.isTaskLocalTrap(Int32(bitPattern: x16)),
+           milestoneDone.load(ordering: .relaxed) || images.libSystemAttribution(frame.elr) == nil {
+            let entryX0 = frame.x[0], entryX1 = frame.x[1], fullX16 = frame.x[16]
+            context.trapInProgress = (fullX16, Array(frame.x[0..<8]))
+            let outcome = kernel.handleTaskLocal(&frame, context: context, memory: space)
+            context.trapInProgress = nil
+            if outcome != nil {
+                // (handleTaskLocal only ever answers .resume.)
+                taskLocalTrapCount.wrappingAdd(1, ordering: .relaxed)
+                context.trapCount += 1
+                if context.recentTraps.count == 16 { context.recentTraps.removeFirst() }
+                context.recentTraps.append((fullX16, entryX0, entryX1, frame.carry ? (1 << 63) | frame.x[0] : frame.x[0]))
+                return .resume
             }
-            if trace {
-                let place = attribution.map { "\($0.image.name.split(separator: "/").last.map(String.init) ?? $0.image.name)+\(hex($0.offset))" } ?? hex(frame.elr)
-                trapPrefix.value = "[\(trapCount)] \(threadTag)\(place): "
-            }
-            if trace, isSVC, x16 == 374 || x16 == 375 {
-                // kevent_qos / kevent_id: show each change.
-                dumpKevents(space, list: frame.x[1], count: Int(frame.x[2]), label: "change")
-            }
-            guard isSVC, x16 == 197 else { return }
-            let fd = Int32(truncatingIfNeeded: frame.x[4])
-            pendingResult = .init(address: frame.x[0], size: frame.x[1], flags: frame.x[3], fd: fd,
-                                  offset: frame.x[5], path: try? fileSystem.path(for: fd))
         }
-        let pending = pendingResult
-
+        // BSD descriptor and lookup traps without L0 (bsd-locking.md), under
+        // the task-local traps' milestone rule.
+        if !trace, isSVC, DarwinKernel.bsdFastTrapsEnabled, DarwinKernel.isBSDFastTrap(Int32(bitPattern: x16)),
+           milestoneDone.load(ordering: .relaxed) || images.libSystemAttribution(frame.elr) == nil {
+            let entryX0 = frame.x[0], entryX1 = frame.x[1], fullX16 = frame.x[16]
+            // mmap: the shared-cache mapping record, as the locked prologue
+            // makes it (the descriptor table needs no kernel lock).
+            let mmapPending: CacheMappingTracker.Pending? = x16 == 197
+                ? .init(address: frame.x[0], size: frame.x[1], flags: frame.x[3], fd: Int32(truncatingIfNeeded: frame.x[4]),
+                        offset: frame.x[5], path: try? fileSystem.path(for: Int32(truncatingIfNeeded: frame.x[4])))
+                : nil
+            context.trapInProgress = (fullX16, Array(frame.x[0..<8]))
+            let outcome = kernel.handleBSDFast(&frame, context: context, memory: space)
+            context.trapInProgress = nil
+            if outcome != nil {
+                if mmapPending != nil { noteCacheMapping(mmapPending, frame, context: context, verbose: verbose) }
+                // (handleBSDFast only ever answers .resume.)
+                context.trapCount += 1
+                if context.recentTraps.count == 16 { context.recentTraps.removeFirst() }
+                context.recentTraps.append((fullX16, entryX0, entryX1, frame.carry ? (1 << 63) | frame.x[0] : frame.x[0]))
+                return .resume
+            }
+        }
+        // IPC fast paths (mach-ipc-locking.md §4.3): no kernel lock, after
+        // the libSystem milestone (the locked prologue records it).
+        if !trace, isSVC, kernel.hasIPCFastPaths, DarwinKernel.isIPCFastTrap(Int32(bitPattern: x16)),
+           milestoneDone.load(ordering: .relaxed) {
+            let entryX0 = frame.x[0], entryX1 = frame.x[1], fullX16 = frame.x[16]
+            context.trapInProgress = (fullX16, Array(frame.x[0..<8]))
+            let outcome = kernel.handleIPCFast(&frame, context: context, memory: space)
+            context.trapInProgress = nil
+            if let outcome {
+                context.trapCount += 1
+                if context.recentTraps.count == 16 { context.recentTraps.removeFirst() }
+                context.recentTraps.append((fullX16, entryX0, entryX1, frame.carry ? (1 << 63) | frame.x[0] : frame.x[0]))
+                return .resume  // (handleIPCFast only ever answers .resume)
+            }
+        }
+        // Relaxed is enough: `milestoneReached` itself is read and written
+        // under the kernel lock; this mirror only lets later traps skip the
+        // prologue once it is true.
+        let needsPrologue = trace || !milestoneDone.load(ordering: .relaxed) || (isSVC && x16 == 197)
+        // Output is collected under the lock and written after it.
+        var notes: [String] = []
         // The trap as it arrived (the kernel may rewrite the frame, e.g. for
         // signal delivery): fault reports describe this one.
         let arrivedFrame = frame
+        // posix_spawn, execve, __mac_execve: build the new image's VM now,
+        // before the trap takes the kernel lock (`PrebuiltVMs`).
+        if isSVC, x16 == 244 || x16 == 59 || x16 == 380, !trace {
+            // Boot profile: the inline build counts as pseudo-trap 100000.
+            let t0 = costOn ? hostThreadTimes() : (userMicros: UInt64(0), systemMicros: UInt64(0), minorFaults: UInt64(0))
+            let n0: UInt64 = costOn ? monotonicNanoseconds() : 0
+            launcher.prebuilt.prepare()
+            if costOn {
+                BootProfile.shared?.recordTrapCost(number: 100_000, preMilestone: false, wallNs: monotonicNanoseconds() &- n0, start: t0)
+            }
+        }
         context.trapInProgress = (frame.x[16], Array(frame.x[0..<8]))
         let entryX0 = frame.x[0], entryX1 = frame.x[1]
-        let outcome = kernel.handle(&frame, context: context, memory: space)
+        let outcome = kernel.handle(&frame, context: context, memory: space) { entry in
+            // Non-escaping: the captured locals stay on the stack.
+            guard needsPrologue else { return }
+            if BootProfile.shared != nil, !milestoneReached {
+                preMilestoneTraps[isSVC ? Int64(Int32(truncatingIfNeeded: x16)) : -1000, default: 0] += 1
+            }
+            // The full attribution only when tracing; the milestone needs
+            // only the libSystem images (the full cache index takes seconds
+            // to build the first time).
+            let attribution = trace ? images.attribute(entry.elr) : nil
+            if !milestoneReached, let (image, offset) = images.libSystemAttribution(entry.elr) {
+                milestoneReached = true
+                milestoneDone.store(true, ordering: .relaxed)
+                if BootProfile.shared != nil { noteMilestone(worker) }
+                if verbose {
+                    notes.append(launcher.tag(pid) + "milestone: libSystem initializer reached (\(image.name) + \(hex(offset)); "
+                        + "LR \(hex(entry.x[30])) = \(images.describeIfCheap(entry.x[30])))")
+                }
+            }
+            if trace {
+                let place = attribution.map { "\($0.image.name.split(separator: "/").last.map(String.init) ?? $0.image.name)+\(hex($0.offset))" } ?? hex(entry.elr)
+                trapPrefix.value = "[\(count)] \(threadTag)\(place): "
+            }
+            if trace, isSVC, x16 == 374 || x16 == 375 {
+                // kevent_qos / kevent_id: show each change.
+                dumpKevents(space, list: entry.x[1], count: Int(entry.x[2]), label: "change")
+            }
+            guard isSVC, x16 == 197 else { return }
+            let fd = Int32(truncatingIfNeeded: entry.x[4])
+            pendingResult = .init(address: entry.x[0], size: entry.x[1], flags: entry.x[3], fd: fd,
+                                  offset: entry.x[5], path: try? fileSystem.path(for: fd))
+        }
+        for note in notes { stderrLine(note) }
+        let pending = pendingResult
         context.trapInProgress = nil
         // The trap ring (fault reports, the blocked-thread report): every
         // trap, with its result (bit 63: carry, an errno).
@@ -815,23 +1316,7 @@ final class GuestImageInstance: @unchecked Sendable {
             kernel.lock.withLock { dumpKevents(space, list: frame.x[3], count: Int(frame.x[5]), label: "event") }
         }
 
-        if let p = pending, let path = p.path, !frame.carry, frame.x[0] == p.address,
-           p.flags & 0x10 != 0, (path as NSString).lastPathComponent.hasPrefix("dyld_sim_shared_cache_") {
-            kernel.lock.withLock(context: context) {
-                if tracker.expected.isEmpty { tracker.expected = images.cacheMappings() }
-                let name = (path as NSString).lastPathComponent
-                if let index = tracker.expected.firstIndex(where: {
-                    ($0.file as NSString).lastPathComponent == name && $0.mapping.fileOffset == p.offset && $0.mapping.size == p.size
-                }) {
-                    let header = tracker.expected[index].mapping.address
-                    tracker.seen[index] = p.address
-                    if index == 0 { images.cacheDelta = p.address &- header }
-                    if verbose {
-                        say("shared-cache mapping \(index + 1)/\(tracker.expected.count) \(name) @\(hex(p.offset)) size \(hex(p.size)) mapped at \(hex(p.address)) (header address \(hex(header))\(p.address == header ? ", exact" : ""))")
-                    }
-                }
-            }
-        }
+        noteCacheMapping(pending, frame, context: context, verbose: verbose)
 
         switch outcome {
         case .resume:
@@ -853,7 +1338,7 @@ final class GuestImageInstance: @unchecked Sendable {
                 text += "\(DarwinKernel.cachePatchPlaceholderMessage): ELR \(hex(reportFrame.elr)) = "
                     + "\(describeAddress(reportFrame.elr)); LR \(hex(reportFrame.x[30])) = \(describeAddress(reportFrame.x[30]))\n"
             }
-            text += "fatal guest condition on \(context), vCPU \(worker.index) (exit \(status)):\n\(message)\n\(faultReport(reportFrame))"
+            text += "fatal guest condition in \((record.executable as NSString).lastPathComponent) on \(context), vCPU \(worker.index) (exit \(status)):\n\(message)\n\(faultReport(reportFrame))"
             if !context.recentTraps.isEmpty {
                 text += "\n  last traps of this thread: " + context.recentTraps.map(DarwinKernel.ringEntry).joined(separator: " ")
             }
@@ -863,9 +1348,15 @@ final class GuestImageInstance: @unchecked Sendable {
                 if !notes.isEmpty { text += "\n" + notes.joined(separator: "\n") }
             }
             // A child's fault or abort is worth a line; a default-action
-            // signal (128 + n, e.g. kill) is ordinary process life.
-            if pid != rootPID, trace || status == DarwinKernel.exceptionExitStatus || status == DarwinKernel.abortExitStatus {
+            // signal (128 + n, e.g. kill) is ordinary process life. The
+            // other threads of the dying process take the same outcome at
+            // their next trap; only the first one reports (as a Darwin crash
+            // report names one crashed thread).
+            let first = fatalReported.compareExchange(expected: false, desired: true, ordering: .relaxed).exchanged
+            if first, pid != rootPID, trace || status == DarwinKernel.exceptionExitStatus || status == DarwinKernel.abortExitStatus {
                 say(text)
+            } else if !first, trace {
+                say("\(context) ends with the process (fatal condition already reported)")
             }
             return end(.terminated, status: status, message: text, worker: worker)
         case let .unimplemented(description):
@@ -886,8 +1377,17 @@ final class GuestImageInstance: @unchecked Sendable {
             frame.elr = frame.x[30]
             return .resume
         case let .unimplementedLibraryFunction(name):
-            kernel.lock.withLock { trapCounts["libfunc " + name, default: 0] += 1 }
-            say("unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(describeAddress(frame.x[30])))")
+            // Every call is counted; the line is printed for the first three
+            // calls of each function and then for every hundredth (a boot
+            // repeats some of them thousands of times).
+            let seen = kernel.lock.withLock { () -> Int in
+                trapCounts["libfunc " + name, default: 0] += 1
+                return trapCounts["libfunc " + name] ?? 0
+            }
+            if seen <= 3 || seen % 100 == 0 {
+                say("unimplemented libfunc \(name) (LR \(hex(frame.x[30])) = \(describeAddress(frame.x[30])))"
+                    + (seen > 3 ? " [call \(seen)]" : ""))
+            }
             if launcher.config.trace && !options.keepGoing {
                 let message = "first unimplemented host-library function (\(context)): \(name)\n\(frame)\n\(faultReport(frame))"
                 launcher.abortHost(status: DarwinKernel.unimplementedLibraryFunctionExitStatus, message: launcher.tag(pid) + message)
@@ -910,13 +1410,17 @@ final class GuestImageInstance: @unchecked Sendable {
     /// thread may hold the kernel lock forever).
     func summary(locked: Bool) -> String {
         let exits = pool.exitCount
-        guard locked else { return "\(trapCount) traps, \(exits) VM exits, \(pool.vcpuCount) vCPUs (peak \(pool.peakThreads) threads)" }
+        let traps = trapCountAtomic.load(ordering: .relaxed)
+        guard locked else { return "\(traps) traps, \(exits) VM exits, \(pool.vcpuCount) vCPUs (peak \(pool.peakThreads) threads)" }
         return kernel.lock.withLock {
             let expected = tracker.expected.count
             let exact = tracker.seen.filter { tracker.expected[$0.key].mapping.address == $0.value }.count
-            return "\(trapCount) traps, \(exits) VM exits, \(pool.vcpuCount) vCPUs (peak \(pool.peakThreads) threads); "
+            // The lock counters belong to the system (every process shares the lock).
+            let locks = "; kernel lock \(kernel.lock.acquisitions) acquisitions, "
+                + "\(kernel.lock.totalHeldNanoseconds / 1_000_000) ms held"
+            return "\(traps) traps, \(exits) VM exits, \(pool.vcpuCount) vCPUs (peak \(pool.peakThreads) threads); "
                 + "shared-cache mappings mapped: \(tracker.seen.count)/\(expected)"
-                + " (\(exact) at the header address); milestone \(milestoneReached ? "reached" : "not reached")"
+                + " (\(exact) at the header address); milestone \(milestoneReached ? "reached" : "not reached")" + locks
         }
     }
 
@@ -927,7 +1431,64 @@ final class GuestImageInstance: @unchecked Sendable {
         return counts.sorted { $0.key < $1.key }.map { "\($0.key) x\($0.value)" }.joined(separator: ", ")
     }
 
-    var trapTotal: Int { kernel.lock.withLock { trapCount } }
+    var trapTotal: Int { trapCountAtomic.load(ordering: .relaxed) }
+
+    /// Boot profile: the image (name) and offset of a guest PC, without the
+    /// kernel lock (the PC sampler; host libraries, whose lookup needs the
+    /// address space, are reported together as "other").
+    func attributeForProfile(_ pc: UInt64) -> (String, UInt64) {
+        if let image = images.fixed.first(where: { pc >= $0.start && pc < $0.end }) {
+            return ((image.name as NSString).lastPathComponent, pc &- image.base)
+        }
+        if pc >= VMLayout.sharedRegionBase, pc < VMLayout.sharedRegionEnd, let list = images.cache.cacheImagesIfReady() {
+            let header = pc &- images.cacheDelta
+            var low = 0, high = list.count
+            while low < high {
+                let mid = (low + high) / 2
+                if list[mid].start <= header { low = mid + 1 } else { high = mid }
+            }
+            if low > 0, header < list[low - 1].end {
+                return ((list[low - 1].name as NSString).lastPathComponent, header &- list[low - 1].base)
+            }
+            return ("shared cache (no image)", 0)
+        }
+        if pc >= 0xFFFF_0000_0000_0000 { return ("EL1 shim", 0) }
+        return ("other (host library, JIT, stub)", pc & ~0xFFFF)
+    }
+
+    /// Boot profile: the milestone's time, and this image's traps, lock
+    /// wait and its (main) thread's CPU so far. Kernel lock held.
+    private func noteMilestone(_ worker: VCPUPool.Worker) {
+        record.milestoneNs = monotonicNanoseconds()
+        record.milestoneTraps = trapCountAtomic.load(ordering: .relaxed)
+        record.milestoneLockWaitNs = kernel.profileLockWaitNanoseconds
+        record.milestoneLockHeldNs = kernel.profileLockHeldNanoseconds
+        record.milestoneRunNs = worker.runNanoseconds
+        record.milestoneHandlerNs = worker.handlerNanoseconds
+        record.milestoneTopTraps = preMilestoneTraps.sorted { $0.value > $1.value }.prefix(6)
+            .map { "\($0.key)x\($0.value)" }.joined(separator: " ")
+        if let s = hostTaskStats(ckvmThreadID()) {
+            record.milestoneCPUNs = s[5]
+            record.milestoneGuestTicks = s[2]
+            record.milestoneSystemTicks = s[1]
+        }
+    }
+
+    /// Boot profile: fixes the image's counters in its record (teardown,
+    /// after every vCPU thread returned).
+    func captureProfile() {
+        record.hostStats = pool.hostStats
+        record.firstRunNs = pool.firstRunNanoseconds.load(ordering: .relaxed)
+        record.traps = trapTotal
+        record.taskLocalTraps = taskLocalTrapCount.load(ordering: .relaxed)
+        record.vcpus = pool.vcpuCount
+        kernel.lock.withLock {
+            record.lockHeldNs = kernel.profileLockHeldNanoseconds
+            record.lockWaitNs = kernel.profileLockWaitNanoseconds
+            record.lockAcquisitions = kernel.profileLockAcquisitions
+        }
+        record.tornDownNs = monotonicNanoseconds()
+    }
 }
 
 /// The kernel's `ThreadHost`: new Darwin threads go to the image's vCPU pool.
@@ -940,14 +1501,28 @@ final class PoolThreadHost: ThreadHost {
     weak var pool: VCPUPool?
     init(pool: VCPUPool) { self.pool = pool }
 
-    var canStartThread: Bool { pool?.hasRoom ?? false }
+    /// Set while a snapshot restore builds its processes and starts the
+    /// restored threads (snapshot.md §7 steps 4–9): the kernel starts no new
+    /// thread then. A message a host service delivers in that window (a
+    /// reply to a request the snapshot left queued) would otherwise make the
+    /// receiving process's workqueue start a new worker for each request it
+    /// sees while its restored workers are not running yet; those workers
+    /// wait at the start gate, and the next requests start more, until the
+    /// process's pool is full and its restored threads find no vCPU (§12.4).
+    /// Requests stay pending and are handed out at step 10.
+    static let restoring = Atomic<Bool>(false)
+
+    var canStartThread: Bool { !Self.restoring.load(ordering: .acquiring) && (pool?.hasRoom ?? false) }
 
     func startThread(_ start: ThreadStartState, context: ThreadContext) throws -> Int {
-        guard let pool else { throw Exhausted(capacity: 0) }
+        guard let pool, !Self.restoring.load(ordering: .acquiring) else { throw Exhausted(capacity: 0) }
         let state = VCPUStartState(pc: start.pc, sp: start.sp, registers: start.x, tpidrro: start.tpidrro, tpidr: start.tpidr)
-        guard let worker = try pool.start(state, context: context) else { throw Exhausted(capacity: pool.capacity) }
-        context.vcpuIndex = worker.index
-        return worker.index
+        if FrameProfile.active.load(ordering: .relaxed), let fp = FrameProfile.shared {
+            fp.startRequested(pid: context.kernel?.pid ?? -1, context: context, mainThread: false)
+        }
+        guard let index = try pool.start(state, context: context) else { throw Exhausted(capacity: pool.capacity) }
+        context.vcpuIndex = index
+        return index
     }
 
     /// Stage 4b §3.4: kick every vCPU of this image out of the guest; the

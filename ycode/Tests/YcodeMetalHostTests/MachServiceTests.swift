@@ -99,4 +99,36 @@ import YcodeXPC
         #expect(service.statistics.processes == 0)
         #expect(backend.calls.contains(.submit(commandBufferRef: 5, passes: 1)))
     }
+
+    /// The ordered end before exit (stage8-contract.md §12): the receive
+    /// thread has stopped and the connection queues are idle when the
+    /// backend is shut down; a second shutdown does nothing.
+    @Test func shutdownStopsTheServiceBeforeTheBackend() throws {
+        let host = DarwinSystem().hostTask
+        let backend = NullBackend()
+        let service = try MetalHostService(host: host, backend: backend, memory: nil, surfaces: nil, log: { _ in })
+        final class Seen: @unchecked Sendable { var receivingAtBackendShutdown: Bool? }
+        let seen = Seen()
+        backend.onShutdown = { [unowned service] in
+            seen.receivingAtBackendShutdown = service.receiving
+        }
+        service.start()
+        let c = Client(host: host, service: service)
+        let (conn, _) = try c.open()
+        let r = try c.request(conn, ["messageType": .uint64(0), "version": .uint64(1), "connectionType": .uint64(0),
+                                     "processRef": .uint64(0)])
+        #expect(r["processRef"]?.uint64Value != 0)
+        var waited = 0
+        while !service.receiving && waited < 100 { usleep(1000); waited += 1 }
+        #expect(service.receiving)
+
+        let t0 = DispatchTime.now().uptimeNanoseconds
+        #expect(service.shutdown(drainTimeout: 5))
+        #expect(DispatchTime.now().uptimeNanoseconds - t0 < 2_000_000_000, "the receive thread stops within its 200 ms receive timeout")
+        #expect(backend.shutdownCount == 1)
+        #expect(seen.receivingAtBackendShutdown == false)
+        #expect(!service.receiving)
+        #expect(service.shutdown())
+        #expect(backend.shutdownCount == 1, "idempotent")
+    }
 }

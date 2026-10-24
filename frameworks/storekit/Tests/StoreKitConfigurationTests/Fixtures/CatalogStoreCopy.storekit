@@ -1,0 +1,234 @@
+{
+ "version": {
+  "minor": 0,
+  "major": 4
+ },
+ "subscriptionGroups": [
+  {
+   "subscriptions": [
+    {
+     "winbackOffers": [],
+     "type": "RecurringSubscription",
+     "subscriptionGroupID": "200000001",
+     "referenceName": "Plus Monthly",
+     "recurringSubscriptionPeriod": "P1M",
+     "productID": "dev.ycode.skprobe.plus.monthly",
+     "localizations": [
+      {
+       "locale": "en_US",
+       "displayName": "Plus Monthly",
+       "description": "Plus, billed every month."
+      }
+     ],
+     "introductoryOffer": {
+      "subscriptionPeriod": "P1W",
+      "paymentMode": "free",
+      "numberOfPeriods": 1,
+      "internalID": "100000031"
+     },
+     "internalID": "100000011",
+     "groupNumber": 1,
+     "familyShareable": false,
+     "displayPrice": "3.99",
+     "codeOffers": [
+      {
+       "subscriptionPeriod": "P1M",
+       "referenceName": "CODEFREE",
+       "paymentMode": "free",
+       "numberOfPeriods": 1,
+       "isStackable": true,
+       "internalID": "100000033",
+       "eligibility": [
+        "new",
+        "existing",
+        "expired"
+       ]
+      }
+     ],
+     "adHocOffers": [
+      {
+       "subscriptionPeriod": "P1M",
+       "referenceName": "Three cheaper months",
+       "paymentMode": "payAsYouGo",
+       "offerID": "plus.promo3",
+       "numberOfPeriods": 3,
+       "internalID": "100000032",
+       "displayPrice": "1.99"
+      }
+     ]
+    },
+    {
+     "winbackOffers": [],
+     "type": "RecurringSubscription",
+     "subscriptionGroupID": "200000001",
+     "referenceName": "Plus Yearly",
+     "recurringSubscriptionPeriod": "P1Y",
+     "productID": "dev.ycode.skprobe.plus.yearly",
+     "localizations": [
+      {
+       "locale": "en_US",
+       "displayName": "Plus Yearly",
+       "description": "Plus, billed every year."
+      }
+     ],
+     "internalID": "100000012",
+     "groupNumber": 1,
+     "familyShareable": false,
+     "displayPrice": "29.99",
+     "codeOffers": [],
+     "adHocOffers": []
+    },
+    {
+     "winbackOffers": [],
+     "type": "RecurringSubscription",
+     "subscriptionGroupID": "200000001",
+     "referenceName": "Plus Lite",
+     "recurringSubscriptionPeriod": "P1M",
+     "productID": "dev.ycode.skprobe.plus.lite",
+     "localizations": [
+      {
+       "locale": "en_US",
+       "displayName": "Plus Lite",
+       "description": "The smaller Plus plan."
+      }
+     ],
+     "introductoryOffer": {
+      "subscriptionPeriod": "P1M",
+      "paymentMode": "payAsYouGo",
+      "numberOfPeriods": 2,
+      "internalID": "100000034",
+      "displayPrice": "0.99"
+     },
+     "internalID": "100000013",
+     "groupNumber": 2,
+     "familyShareable": false,
+     "displayPrice": "1.99",
+     "codeOffers": [],
+     "adHocOffers": []
+    }
+   ],
+   "name": "Plus",
+   "localizations": [
+    {
+     "locale": "en_US",
+     "displayName": "Ycode Plus",
+     "description": "The Plus plans."
+    }
+   ],
+   "id": "200000001"
+  },
+  {
+   "subscriptions": [
+    {
+     "winbackOffers": [],
+     "type": "RecurringSubscription",
+     "subscriptionGroupID": "200000002",
+     "referenceName": "Extra Weekly",
+     "recurringSubscriptionPeriod": "P1W",
+     "productID": "dev.ycode.skprobe.extra.weekly",
+     "localizations": [
+      {
+       "locale": "en_US",
+       "displayName": "Extra Weekly",
+       "description": "Extras every week."
+      }
+     ],
+     "introductoryOffer": {
+      "subscriptionPeriod": "P1M",
+      "paymentMode": "payUpFront",
+      "numberOfPeriods": 1,
+      "internalID": "100000035",
+      "displayPrice": "0.99"
+     },
+     "internalID": "100000021",
+     "groupNumber": 1,
+     "familyShareable": true,
+     "displayPrice": "0.49",
+     "codeOffers": [],
+     "adHocOffers": []
+    }
+   ],
+   "name": "Extra",
+   "localizations": [],
+   "id": "200000002"
+  }
+ ],
+ "settings": {
+  "_timeRate": 0,
+  "_storefront": "USA",
+  "_storeKitErrors": [],
+  "_renewalBillingIssuesEnabled": false,
+  "_locale": "en_US",
+  "_failTransactionsEnabled": false,
+  "_disableDialogs": true,
+  "_billingIssuesEnabled": false,
+  "_billingGracePeriodEnabled": false,
+  "_askToBuyEnabled": false
+ },
+ "products": [
+  {
+   "type": "Consumable",
+   "referenceName": "100 Probe Coins",
+   "productID": "dev.ycode.skprobe.coins100",
+   "localizations": [
+    {
+     "locale": "en_US",
+     "displayName": "100 Probe Coins",
+     "description": "A pile of coins for the probe."
+    },
+    {
+     "locale": "de",
+     "displayName": "100 Testmuenzen",
+     "description": "Ein Haufen Muenzen fuer die Probe."
+    }
+   ],
+   "internalID": "100000001",
+   "familyShareable": false,
+   "displayPrice": "0.99"
+  },
+  {
+   "type": "NonConsumable",
+   "referenceName": "Probe Pro",
+   "productID": "dev.ycode.skprobe.pro",
+   "localizations": [
+    {
+     "locale": "en_US",
+     "displayName": "Probe Pro",
+     "description": "Unlocks every probe feature."
+    }
+   ],
+   "internalID": "100000002",
+   "familyShareable": true,
+   "displayPrice": "4.99"
+  }
+ ],
+ "nonRenewingSubscriptions": [
+  {
+   "type": "NonRenewingSubscription",
+   "referenceName": "Probe Season Pass",
+   "productID": "dev.ycode.skprobe.season",
+   "localizations": [
+    {
+     "locale": "en_US",
+     "displayName": "Probe Season Pass",
+     "description": "One season of probing."
+    }
+   ],
+   "internalID": "100000004",
+   "familyShareable": false,
+   "displayPrice": "2.99"
+  }
+ ],
+ "identifier": "5C0DE0A1",
+ "appPolicies": {
+  "policies": [
+   {
+    "policyURL": "https://example.com/privacy",
+    "policyText": "",
+    "locale": "en_US"
+   }
+  ],
+  "eula": ""
+ },
+ "appName": "StoreProbe"
+}

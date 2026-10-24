@@ -1,0 +1,287 @@
+{
+ "baselineStartDate": "1991-01-01T00:00:00Z",
+ "metadata": {
+  "date": "2026-01-15T12:00:00Z",
+  "expirationDate": "2026-01-16T12:00:00Z",
+  "latitude": 41.5,
+  "longitude": -81.5
+ },
+ "months": [
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": -8.899
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": -14.485
+   },
+   "month": 1
+  },
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": -6.0
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": -12.0
+   },
+   "month": 2
+  },
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": -2.623
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": -9.106
+   },
+   "month": 3
+  },
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 1.0
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": -6.0
+   },
+   "month": 4
+  },
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 4.623
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": -2.894
+   },
+   "month": 5
+  },
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 8.0
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": -0.0
+   },
+   "month": 6
+  },
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 10.899
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 2.485
+   },
+   "month": 7
+  },
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 13.124
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 4.392
+   },
+   "month": 8
+  },
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 14.523
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 5.591
+   },
+   "month": 9
+  },
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 15.0
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 6.0
+   },
+   "month": 10
+  },
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 14.523
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 5.591
+   },
+   "month": 11
+  },
+  {
+   "averageHighTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 13.124
+   },
+   "averageLowTemperature": {
+    "unit": {
+     "converter": {
+      "coefficient": 1,
+      "constant": 273.15
+     },
+     "symbol": "°C"
+    },
+    "value": 4.392
+   },
+   "month": 12
+  }
+ ]
+}

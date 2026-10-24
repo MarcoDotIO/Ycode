@@ -226,6 +226,8 @@ public enum MachMsgOption {
     public static let rcvSyncWait: UInt64 = 0x4000
     public static let rcvSyncPeek: UInt64 = 0x8000
     public static let sendTrailer: UInt64 = 0x20000
+    /// `MACH_SEND_NOIMPORTANCE`: the message carries no importance.
+    public static let sendNoImportance: UInt64 = 0x40000
     public static let msgVector: UInt64 = 1 << 32
     public static let sendKobjectCall: UInt64 = 1 << 33
     public static let sendMQCall: UInt64 = 1 << 34

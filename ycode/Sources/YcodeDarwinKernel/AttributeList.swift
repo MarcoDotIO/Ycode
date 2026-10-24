@@ -94,7 +94,7 @@ extension DarwinKernel {
     }
 
     /// getattrlist (220), fgetattrlist (228), getattrlistat (476).
-    func attributeListCall(_ n: Int, _ a: [UInt64], _ call: inout String,
+    func attributeListCall(_ n: Int, _ a: [UInt64], _ call: inout CallText,
                            _ mem: any KernelGuestMemory) throws -> UInt64 {
         let fs = fileSystem
         // Arguments: [fd,] path?, alist, buffer, size, options.
@@ -105,16 +105,16 @@ extension DarwinKernel {
             let fd = Int32(truncatingIfNeeded: a[0])
             request = (a[1], a[2], a[3], a[4])
             object = (try fs.path(for: fd), true)
-            call = "fgetattrlist(fd=\(fd) [\(object.path)], "
+            call.set("fgetattrlist(fd=\(fd) [\(object.path)], ")
         case 476:
             let fd = Int32(truncatingIfNeeded: a[0])
             request = (a[2], a[3], a[4], a[5])
             object = (try resolveAtPath(fd, a[1], mem), request.options & AttrList.noFollow == 0)
-            call = "getattrlistat(\(fd), \"\(object.path)\", "
+            call.set("getattrlistat(\(fd), \"\(object.path)\", ")
         default:
             request = (a[1], a[2], a[3], a[4])
             object = (try readPath(a[0], mem), request.options & AttrList.noFollow == 0)
-            call = "getattrlist(\"\(object.path)\", "
+            call.set("getattrlist(\"\(object.path)\", ")
         }
         let raw = try mem.read(va: request.alist, count: 24)
         let groups = (0..<5).map { raw.readLE(UInt32.self, at: 4 + 4 * $0) }
@@ -418,7 +418,7 @@ extension DarwinKernel {
 extension DarwinKernel {
     static let finderInfoName = "com.apple.FinderInfo"
 
-    func setAttributeListCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    func setAttributeListCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let fs = fileSystem
         let request: (alist: UInt64, buffer: UInt64, size: UInt64, options: UInt64)
         let target: DarwinFileSystem.XattrTarget
@@ -429,18 +429,18 @@ extension DarwinKernel {
             request = (a[1], a[2], a[3], a[4])
             path = try fs.path(for: fd)
             target = .descriptor(fd)
-            call = "fsetattrlist(fd=\(fd) [\(path)], "
+            call.set("fsetattrlist(fd=\(fd) [\(path)], ")
         case 524:
             let fd = Int32(truncatingIfNeeded: a[0])
             request = (a[2], a[3], a[4], a[5])
             path = try resolveAtPath(fd, a[1], mem)
             target = .path(path, followSymlinks: request.options & AttrList.noFollow == 0)
-            call = "setattrlistat(\(fd), \"\(path)\", "
+            call.set("setattrlistat(\(fd), \"\(path)\", ")
         default:
             request = (a[1], a[2], a[3], a[4])
             path = try readPath(a[0], mem)
             target = .path(path, followSymlinks: request.options & AttrList.noFollow == 0)
-            call = "setattrlist(\"\(path)\", "
+            call.set("setattrlist(\"\(path)\", ")
         }
         let raw = try mem.read(va: request.alist, count: 24)
         let groups = (0..<5).map { raw.readLE(UInt32.self, at: 4 + 4 * $0) }
@@ -543,10 +543,10 @@ extension DarwinKernel {
 // position is the descriptor's directory position (shared with
 // getdirentries64). Returns the number of records, 0 at the end.
 extension DarwinKernel {
-    func attributeListBulkCall(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    func attributeListBulkCall(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let fd = Int32(truncatingIfNeeded: a[0])
         let options = a[4]
-        call = "getattrlistbulk(dirfd=\(fd), alist=\(hx(a[1])), buffer=\(hx(a[2])), size=\(a[3]), options=\(hx(options)))"
+        call.set("getattrlistbulk(dirfd=\(fd), alist=\(hx(a[1])), buffer=\(hx(a[2])), size=\(a[3]), options=\(hx(options)))")
         let raw = try mem.read(va: a[1], count: 24)
         let groups = (0..<5).map { raw.readLE(UInt32.self, at: 4 + 4 * $0) }
         let (common, volume, dir, file, fork) = (groups[0], groups[1], groups[2], groups[3], groups[4])

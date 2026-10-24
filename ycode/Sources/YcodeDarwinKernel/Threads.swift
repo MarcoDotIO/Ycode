@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import YcodeDarwinABI
 
 // Darwin threads of stage 4a (`specs/simulator/stage4a-contract.md` §2, §5;
@@ -37,14 +38,33 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible {
     /// and x0…x7 at entry; nil between traps. Set by the VMM.
     public var trapInProgress: (x16: UInt64, args: [UInt64])?
     /// The user registers at the entry of the trap in progress (nil while
-    /// the thread runs guest code): what thread_get_state reports.
-    public internal(set) var entryFrame: TrapFrame?
+    /// the thread runs guest code): what thread_get_state reports. Written
+    /// by the thread's own host thread at the entry and end of every trap,
+    /// on the locked path (L0) and on the IPC fast paths (no L0), and read
+    /// by other threads (thread_get_state, the snapshot quiesce), so it has
+    /// a leaf lock of its own (`mach-ipc-locking.md` §4.2): a reader gets a
+    /// whole copy, never one that is being replaced.
+    public internal(set) var entryFrame: TrapFrame? {
+        get { entryFrameStore.withLock { $0 } }
+        set { entryFrameStore.withLock { $0 = newValue } }
+    }
+    private let entryFrameStore = Mutex<TrapFrame?>(nil)
     /// Diagnostics: set from the moment the VMM sees the trap (before it
     /// takes the kernel lock) until it returns.
     public var arrivingTrap: UInt64?
+    /// Diagnostics (the VMM's frame profile): a small tag of the image this
+    /// thread belongs to, so a main thread after an exec (same pid, same
+    /// thread id) is told apart from the one it replaced. 0 unless set.
+    public var traceTag: UInt32 = 0
+    /// Diagnostics (the frame profile): the Linux thread id of the host
+    /// thread this guest thread last trapped on. 0 unless set.
+    public var traceHostTID: Int32 = 0
     /// Diagnostics: traps made, and the last 16 (x16, x0 and x1 at entry, x0
     /// at return with bit 63 set when carry was set), newest last.
     public var trapCount = 0
+    /// The host thread's CPU time (CLOCK_THREAD_CPUTIME_ID, ns) when this
+    /// guest thread started on it; the host sets it (`thread_selfusage`).
+    public var hostCPUBaseNanoseconds: UInt64 = 0
     public var recentTraps: [(UInt64, UInt64, UInt64, UInt64)] = []
     /// The process image (kernel) this thread belongs to (stage 4b). Set
     /// when the kernel makes the thread, or at its first trap.
@@ -56,6 +76,43 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible {
     var worker: WorkerState?
     /// A thread created with `PTHREAD_START_SUSPENDED` that has not started.
     var suspendedStart: ThreadStartState?
+    /// SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §4.2): the
+    /// process signal mask a `sigsuspend` in progress restores at its end.
+    var snapshotSigsuspendSavedMask: UInt32?
+
+    /// Scheduling (`scheduling-policy.md` §4.4): the requested QoS (0 =
+    /// unspecified; a worker's request QoS is used then), overrides by
+    /// resource and the dispatch override, inheritance pushes (classes; −1
+    /// none), the importance carried from a received message, the
+    /// thread's own darwin-bg, and the resulting class.
+    var requestedQoS = 0
+    var dispatchOverrideQoS = 0
+    /// QOS_OVERRIDE_START overrides by resource. Changed by `bsdthread_ctl`
+    /// of any thread of the image (under L0) and by the thread's workqueue
+    /// return (under its event lock only, on the fast path), so it has a
+    /// leaf lock of its own (`mach-ipc-locking.md` §4.2).
+    private let explicitOverridesStore = Mutex<[UInt64: Int]>([:])
+
+    func setExplicitOverride(_ qos: Int, for resource: UInt64) {
+        explicitOverridesStore.withLock { $0[resource] = qos }
+    }
+
+    /// False when `resource` had no override.
+    func removeExplicitOverride(for resource: UInt64) -> Bool {
+        explicitOverridesStore.withLock { $0.removeValue(forKey: resource) != nil }
+    }
+
+    func removeAllExplicitOverrides() {
+        explicitOverridesStore.withLock { $0.removeAll() }
+    }
+
+    /// The highest explicit override (0: none).
+    var maxExplicitOverride: Int { explicitOverridesStore.withLock { $0.values.max() ?? 0 } }
+    var ulockPushes: [UInt64: Int] = [:]
+    var ipcPushClass = -1
+    var carriedImportance: DarwinProcess?
+    var threadDarwinBG = false
+    let schedClassStore = Atomic<Int>(SchedClass.default)
 
     public init(threadID: UInt64, portName: UInt32, vcpuIndex: Int, kind: Kind, pthreadAddress: UInt64 = 0) {
         self.threadID = threadID
@@ -231,7 +288,8 @@ extension DarwinKernel {
                                 pthreadAddress: pthread)
         nextThreadID += 1
         ctx.kernel = self
-        threadsByPort[ctx.portName] = ctx
+        // Read by the fast kevent path (owner discovery) under the event lock.
+        withEvents { threadsByPort[ctx.portName] = ctx }
         return ctx
     }
 
@@ -246,7 +304,7 @@ extension DarwinKernel {
             }
             if termination == nil { termination = .exit(status: status) }
             lock.terminate()
-            kevents.timerWake.wakeAll()
+            withEvents { kevents.timerWake.wakeAll() }
         }
     }
 
@@ -265,9 +323,9 @@ extension DarwinKernel {
 
     // MARK: bsdthread_create (360)
 
-    func bsdthreadCreate(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult {
+    func bsdthreadCreate(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         let flags = UInt32(truncatingIfNeeded: a[4])
-        call = "bsdthread_create(func=\(hx(a[0])), arg=\(hx(a[1])), stack=\(hx(a[2])), pthread=\(hx(a[3])), flags=\(hx(flags)))"
+        call.set("bsdthread_create(func=\(hx(a[0])), arg=\(hx(a[1])), stack=\(hx(a[2])), pthread=\(hx(a[3])), flags=\(hx(flags)))")
         guard let reg = threadRegistration else { throw Failure(errno: Errno.EINVAL) }
         guard flags & PthreadStart.custom != 0 else { throw Failure(errno: Errno.EINVAL) }
         if flags & PthreadStart.qosClass != 0 {
@@ -278,8 +336,14 @@ extension DarwinKernel {
         }
         let pthread = a[3], stack = a[2]
         let ctx = makeThread(kind: .pthread, pthread: pthread)
+        if SchedPolicy.qosEnabled {
+            // PTHREAD_START_QOSCLASS gives the QoS; otherwise the creator's (scheduling-policy.md §4.4).
+            ctx.requestedQoS = flags & PthreadStart.qosClass != 0
+                ? PthreadPriority.qos(flags & 0x00FF_FFFF) ?? 0 : current.baseQoS
+            refreshSchedClass(ctx)
+        }
         func undo() {
-            threadsByPort[ctx.portName] = nil
+            withEvents { threadsByPort[ctx.portName] = nil }
             ctx.isAlive = false
             deallocateThreadPort(ctx.portName)
         }
@@ -324,12 +388,12 @@ extension DarwinKernel {
 
     // MARK: bsdthread_terminate (361)
 
-    func bsdthreadTerminate(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult {
+    func bsdthreadTerminate(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         let ctx = current
         var port = UInt32(truncatingIfNeeded: a[2])
         var semaphoreName = UInt32(truncatingIfNeeded: a[3])
-        call = "bsdthread_terminate(stack=\(hx(a[0])), size=\(hx(a[1])), port=\(hx(port)), sema_or_ulock=\(hx(a[3])))"
-        if ctx.kind == .workqueue { workqueueThreadTerminating(ctx) }
+        call.set("bsdthread_terminate(stack=\(hx(a[0])), size=\(hx(a[1])), port=\(hx(port)), sema_or_ulock=\(hx(a[3])))")
+        if ctx.kind == .workqueue { withEvents { workqueueThreadTerminating(ctx) } }
         // Join gate: an aligned address instead of a semaphore name.
         var gate: (address: UInt64, port: UInt32)?
         if a[3] != 0, a[3] | 3 != a[3] {
@@ -347,7 +411,8 @@ extension DarwinKernel {
             }
         }
         ctx.isAlive = false
-        threadsByPort[ctx.portName] = nil
+        withEvents { threadsByPort[ctx.portName] = nil }
+        if ctx.carriedImportance != nil { withPorts { endServicing(ctx) } }
         if semaphoreName != 0 { semaphore(named: semaphoreName)?.signal() }
         // The reference on the thread's own name is dropped with the thread
         // (below); any other name passed is dropped here.
@@ -361,7 +426,7 @@ extension DarwinKernel {
         }
         threadPortTerminated(ctx)
         // A freed vCPU may let a pending workqueue request start.
-        pumpWorkqueue(mem)
+        withEvents { pumpWorkqueue(mem) }
         if threadsByPort.isEmpty {
             call += " [last thread]"
             return .exit(0)
@@ -371,28 +436,58 @@ extension DarwinKernel {
 
     // MARK: bsdthread_ctl (478)
 
-    func bsdthreadCtl(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    func bsdthreadCtl(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let cmd = UInt32(truncatingIfNeeded: a[0])
-        call = "bsdthread_ctl(cmd=\(hx(cmd)), \(hx(a[1])), \(hx(a[2])), \(hx(a[3])))"
+        call.set("bsdthread_ctl(cmd=\(hx(cmd)), \(hx(a[1])), \(hx(a[2])), \(hx(a[3])))")
         switch cmd {
         case 0x10, 0x401, 0x402:
             throw Failure(errno: Errno.ENOTSUP)
-        case 0x40, 0x80, 0x200, 0x400, 0x1000, 0x2000, 0x4000:
+        case 0x40, 0x400:
+            // QOS_OVERRIDE_START (port, pp, resource) and QOS_OVERRIDE_DISPATCH
+            // (port, pp, ulock address): raise the target's effective QoS
+            // (scheduling-policy.md §4.4).
+            if SchedPolicy.qosEnabled, let t = threadsByPort[UInt32(truncatingIfNeeded: a[1])],
+               let q = PthreadPriority.qos(UInt32(truncatingIfNeeded: a[2])) {
+                if cmd == 0x40 { t.setExplicitOverride(q, for: a[3]) } else { t.dispatchOverrideQoS = max(t.dispatchOverrideQoS, q) }
+                refreshSchedClass(t)
+            }
+            return 0
+        case 0x80:
+            // QOS_OVERRIDE_END (port, resource).
+            if SchedPolicy.qosEnabled, let t = threadsByPort[UInt32(truncatingIfNeeded: a[1])],
+               t.removeExplicitOverride(for: a[2]) {
+                refreshSchedClass(t)
+            }
+            return 0
+        case 0x200:
+            // QOS_OVERRIDE_RESET: the caller's dispatch override ends.
+            if SchedPolicy.qosEnabled, current.dispatchOverrideQoS != 0 {
+                current.dispatchOverrideQoS = 0
+                refreshSchedClass(current)
+            }
+            return 0
+        case 0x1000, 0x2000, 0x4000:
             return 0
         case 0x800:
             return UInt64(WorkqueueState.parallelism)
         case 0x100:
             let ctx = current
             let flags = UInt32(truncatingIfNeeded: a[3])
-            if flags & 0x01 != 0, PthreadPriority.qos(UInt32(truncatingIfNeeded: a[1])) == nil {
-                throw Failure(errno: Errno.EINVAL)
+            if flags & 0x01 != 0 {
+                guard let q = PthreadPriority.qos(UInt32(truncatingIfNeeded: a[1])) else { throw Failure(errno: Errno.EINVAL) }
+                if SchedPolicy.qosEnabled, ctx.requestedQoS != q {
+                    ctx.requestedQoS = q
+                    refreshSchedClass(ctx)
+                }
             }
             if flags & 0x10 != 0 {
-                guard let w = ctx.worker, w.boundBucket != Self.managerQoS, !(w.boundQueue?.kind == .workloop) else {
-                    throw Failure(errno: Errno.EINVAL)
+                try withEvents {
+                    guard let w = ctx.worker, w.boundBucket != Self.managerQoS, !(w.boundQueue?.kind == .workloop) else {
+                        throw Failure(errno: Errno.EINVAL)
+                    }
+                    guard w.boundQueue != nil else { throw Failure(errno: Self.EALREADY) }
+                    unbindWorker(ctx, release: false)
                 }
-                guard w.boundQueue != nil else { throw Failure(errno: Self.EALREADY) }
-                unbindWorker(ctx, release: false)
                 call += " [kevent unbind]"
             }
             return 0

@@ -116,6 +116,14 @@ The kernel passed in already has: its pid, pid version, its
 `DarwinFileSystem` (the child's descriptor table and cwd), and its
 `MachIPC` with inherited ports.
 
+Optional two-step form (2026-10-19, `bsd-locking.md` §7): `prepare(request,
+kernel)` builds and wires the image as `launch` does but registers and
+starts nothing, and is called **without** the kernel lock while the new
+kernel is visible to no other thread; `activate(prepared, startSuspended:)`
+registers and starts it with the lock held; `discard(prepared)` destroys
+one that will not run. A launcher without it returns nil from `prepare`
+(the default) and is called through `launch` as before.
+
 ### 3.4 `ThreadHost.stopAllThreads()` (implemented by V)
 
 Called by P (lock held) when a process image must stop while some of its

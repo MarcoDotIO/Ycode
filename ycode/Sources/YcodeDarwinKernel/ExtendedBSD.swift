@@ -40,6 +40,8 @@ struct ExtendedBSDState {
     ]
     var umask: UInt16 = 0o022
     var directoryCursors: [Int32: DirectoryCursor] = [:]
+    /// select diagnostics (`Select.swift`, `YCODE_DEBUG_SELECT_STATS=1`).
+    var selectStats = SelectStats()
     /// I/O policies (iopolicysys): process scope by iotype, thread scope by
     /// thread id and iotype, and the darwin-background scope.
     var ioPolicies: [Int32: Int32] = [:]
@@ -64,7 +66,8 @@ extension DarwinKernel {
                           sigsuspend = 111, sigsuspendNocancel = 410,
                           getxattr = 234, fgetxattr = 235, setxattr = 236, fsetxattr = 237,
                           removexattr = 238, fremovexattr = 239, listxattr = 240, flistxattr = 241,
-                          gettid = 286, openDprotectedNp = 216, openatDprotectedNp = 218
+                          gettid = 286, openDprotectedNp = 216, openatDprotectedNp = 218,
+                          threadSelfusage = 482
         /// psynch calls that wait (can never be woken on one thread).
         public static let psynchWaits: [Int: String] = [
             297: "psynch_rw_longrdlock", 298: "psynch_rw_yieldwrlock", 300: "psynch_rw_upgrade",
@@ -127,7 +130,7 @@ extension DarwinKernel {
     // MARK: Dispatch
 
     /// Handles the stage-3b calls; nil = not handled here.
-    private func extendedAttributeCall(_ n: Int, _ a: [UInt64], _ call: inout String,
+    private func extendedAttributeCall(_ n: Int, _ a: [UInt64], _ call: inout CallText,
                                        _ mem: any KernelGuestMemory) throws -> UInt64 {
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         let byDescriptor = [BSD2.fgetxattr, BSD2.fsetxattr, BSD2.fremovexattr, BSD2.flistxattr].contains(n)
@@ -150,7 +153,7 @@ extension DarwinKernel {
         let fs = fileSystem
         switch n {
         case BSD2.listxattr, BSD2.flistxattr:
-            call = "\(byDescriptor ? "flistxattr" : "listxattr")(\(subject), buf=\(hx(a[1])), size=\(a[2]))"
+            call.set("\(byDescriptor ? "flistxattr" : "listxattr")(\(subject), buf=\(hx(a[1])), size=\(a[2]))")
             let names = try fs.listExtendedAttributes(target)
             let bytes: [UInt8] = names.flatMap { name -> [UInt8] in Array(name.utf8) + [0] }
             if a[1] == 0 { return UInt64(bytes.count) }
@@ -161,7 +164,7 @@ extension DarwinKernel {
             let name = try readString(a[1], length: 256, mem)
             switch n {
             case BSD2.getxattr, BSD2.fgetxattr:
-                call = "\(byDescriptor ? "fgetxattr" : "getxattr")(\(subject), \"\(name)\", size=\(a[3]))"
+                call.set("\(byDescriptor ? "fgetxattr" : "getxattr")(\(subject), \"\(name)\", size=\(a[3]))")
                 guard a[4] == 0 else { throw Failure(errno: Errno.EINVAL) }
                 let value = try fs.getExtendedAttribute(target, name: name)
                 if a[2] == 0 { return UInt64(value.count) }
@@ -169,26 +172,29 @@ extension DarwinKernel {
                 if !value.isEmpty { try mem.write(va: a[2], bytes: value) }
                 return UInt64(value.count)
             case BSD2.setxattr, BSD2.fsetxattr:
-                call = "\(byDescriptor ? "fsetxattr" : "setxattr")(\(subject), \"\(name)\", size=\(a[3]), options=\(hx(UInt32(bitPattern: options))))"
+                call.set("\(byDescriptor ? "fsetxattr" : "setxattr")(\(subject), \"\(name)\", size=\(a[3]), options=\(hx(UInt32(bitPattern: options))))")
                 guard a[4] == 0, a[3] <= 1 << 26 else { throw Failure(errno: Errno.EINVAL) }
                 let value: [UInt8] = a[3] == 0 ? [] : try mem.read(va: a[2], count: Int(a[3]))
                 try fs.setExtendedAttribute(target, name: name, value: value, create: options & 0x2 != 0,
                                             replace: options & 0x4 != 0)
                 return 0
             default:
-                call = "\(byDescriptor ? "fremovexattr" : "removexattr")(\(subject), \"\(name)\")"
+                call.set("\(byDescriptor ? "fremovexattr" : "removexattr")(\(subject), \"\(name)\")")
                 try fs.removeExtendedAttribute(target, name: name)
                 return 0
             }
         }
     }
 
-    func extendedBSDCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ fallback: inout Int32,
+    func extendedBSDCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ fallback: inout Int32,
                          _ mem: any KernelGuestMemory) throws -> BSDResult? {
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         switch n {
         case BSD2.readv, BSD2.writev:
             return .value(try vectoredIO(write: n == BSD2.writev, a, &call, mem))
+
+        case SelectBSD.select, SelectBSD.pselect:
+            return try selectCall(n, a, &call, mem)
 
         case 284:
             // access_extended(entries, size, results, uid) (xnu bsd/kern/
@@ -203,7 +209,7 @@ extension DarwinKernel {
             // `access` does (the object must exist; permissions are not
             // modeled).
             let size = Int(min(a[1], 1 << 20))
-            call = "access_extended(entries=\(hx(a[0])), size=\(size), results=\(hx(a[2])), uid=\(int(3)))"
+            call.set("access_extended(entries=\(hx(a[0])), size=\(size), results=\(hx(a[2])), uid=\(int(3)))")
             guard size <= 16 * 1024 else { throw Failure(errno: Errno.ENOMEM) }
             guard size >= 16 + 2 else { throw Failure(errno: Errno.EINVAL) }
             var buffer = try mem.read(va: a[0], count: size)
@@ -253,7 +259,7 @@ extension DarwinKernel {
             // chronod's mapped-file allocator asserts that it does
             // (first-boot.md §6).
             let flags = int(2)
-            call = "msync(addr=\(hx(a[0])), len=\(hx(a[1])), flags=\(hx(UInt64(UInt32(bitPattern: flags)))))"
+            call.set("msync(addr=\(hx(a[0])), len=\(hx(a[1])), flags=\(hx(UInt64(UInt32(bitPattern: flags)))))")
             guard a[0] & (VMLayout.pageSize - 1) == 0, flags & ~0x1F == 0, flags & 0x11 != 0x11 else {
                 throw Failure(errno: Errno.EINVAL)
             }
@@ -278,7 +284,7 @@ extension DarwinKernel {
             let raw = try mem.read(va: a[1], count: 12)
             let scope = raw.readLE(Int32.self, at: 0), iotype = raw.readLE(Int32.self, at: 4)
             let policy = raw.readLE(Int32.self, at: 8)
-            call = "iopolicysys(cmd=\(cmd), scope=\(scope), iotype=\(iotype), policy=\(policy))"
+            call.set("iopolicysys(cmd=\(cmd), scope=\(scope), iotype=\(iotype), policy=\(policy))")
             guard (0...1).contains(cmd), (0...2).contains(scope), (0...15).contains(iotype) else {
                 throw Failure(errno: Errno.EINVAL)
             }
@@ -305,7 +311,7 @@ extension DarwinKernel {
             // RLIMIT_NOFILE as the file system enforces it (xnu
             // bsd/kern/kern_descrip.c getdtablesize; level 1). xpcproxy_sim
             // sizes its stdio setup with it.
-            call = "getdtablesize()"
+            call.set("getdtablesize()")
             return .value(UInt64(fileSystem.maxDescriptors))
 
         case 191, 192:
@@ -319,10 +325,10 @@ extension DarwinKernel {
             let name = int(1)
             if n == 191 {
                 let path = try readPath(a[0], mem)
-                call = "pathconf(\"\(path)\", name=\(name))"
+                call.set("pathconf(\"\(path)\", name=\(name))")
                 _ = try statUnlocked(path, followSymlinks: true)
             } else {
-                call = "fpathconf(fd=\(int(0)), name=\(name))"
+                call.set("fpathconf(fd=\(int(0)), name=\(name))")
                 _ = try fileSystem.fstat(int(0))
             }
             let values: [Int32: Int64] = [
@@ -356,17 +362,34 @@ extension DarwinKernel {
             // counters (instructions, cycles; xnu syscalls.master, level 1).
             // Ycode keeps none and answers ENOTSUP, as a kernel built
             // without the counters does.
-            call = "thread_selfcounts(kind=\(int(0)), buf=\(hx(a[1])), size=\(a[2]))"
+            call.set("thread_selfcounts(kind=\(int(0)), buf=\(hx(a[1])), size=\(a[2]))")
             throw Failure(errno: 45)  // ENOTSUP
 
         case 96:
             // setpriority(which, who, prio) (setpriority(2), sys/resource.h:
             // PRIO_PROCESS 0, PRIO_PGRP 1, PRIO_USER 2, PRIO_DARWIN_THREAD 3,
             // PRIO_DARWIN_PROCESS 4, PRIO_DARWIN_GPU 5, PRIO_DARWIN_ROLE 6;
-            // level 1). Ycode has no scheduler priorities: a known `which`
-            // succeeds and changes nothing; others are EINVAL.
-            call = "setpriority(which=\(int(0)), who=\(a[1]), prio=\(int(2)))"
+            // level 1). A known `which` succeeds. With the scheduling policy
+            // (scheduling-policy.md §4.4), PRIO_DARWIN_BG on the calling
+            // thread or on a process makes it darwin-bg; 0 ends that. The
+            // rest changes nothing; unknown `which` values are EINVAL.
+            call.set("setpriority(which=\(int(0)), who=\(a[1]), prio=\(int(2)))")
             guard (0...6).contains(int(0)) else { throw Failure(errno: Errno.EINVAL) }
+            if SchedPolicy.qosEnabled {
+                let bg = int(2) == DarwinPriority.prioDarwinBG
+                if int(0) == DarwinPriority.prioDarwinThread, a[1] == 0, current.threadDarwinBG != bg {
+                    current.threadDarwinBG = bg
+                    refreshSchedClass(current)
+                    call += " [thread darwin-bg \(bg)]"
+                } else if int(0) == DarwinPriority.prioDarwinProcess {
+                    let target = int(1) == 0 ? pid : Int32(truncatingIfNeeded: int(1))
+                    if let p = system.processes[target], p.state != .zombie, p.requestedDarwinBG != bg {
+                        p.requestedDarwinBG = bg
+                        p.kernel?.refreshSchedClasses()
+                        call += " [process \(target) darwin-bg \(bg)]"
+                    }
+                }
+            }
             return .value(0)
 
         case BSD2.ulockWait, BSD2.ulockWait2:
@@ -375,7 +398,7 @@ extension DarwinKernel {
             return .value(try ulockWake(a, &call))
 
         case BSD2.getentropy:
-            call = "getentropy(buf=\(hx(a[0])), size=\(a[1]))"
+            call.set("getentropy(buf=\(hx(a[0])), size=\(a[1]))")
             guard a[1] <= 256 else { throw Failure(errno: Errno.EINVAL) }
             if a[1] > 0 {
                 var bytes = entropy(Int(a[1]))
@@ -385,7 +408,7 @@ extension DarwinKernel {
             return .value(0)
 
         case BSD2.sigprocmask, BSD2.pthreadSigmask:
-            call = "\(n == BSD2.sigprocmask ? "sigprocmask" : "__pthread_sigmask")(how=\(int(0)), set=\(hx(a[1])), oset=\(hx(a[2])))"
+            call.set("\(n == BSD2.sigprocmask ? "sigprocmask" : "__pthread_sigmask")(how=\(int(0)), set=\(hx(a[1])), oset=\(hx(a[2])))")
             let old = extended.signalMask
             if a[1] != 0 {
                 let set = try mem.read(va: a[1], count: 4).readLE(UInt32.self, at: 0)
@@ -405,7 +428,7 @@ extension DarwinKernel {
             return .value(try sigaction(a, &call, mem))
 
         case BSD2.sigaltstack:
-            call = "sigaltstack(nss=\(hx(a[0])), oss=\(hx(a[1])))"
+            call.set("sigaltstack(nss=\(hx(a[0])), oss=\(hx(a[1])))")
             let old = extended.alternateStack
             if a[0] != 0 {
                 let b = try mem.read(va: a[0], count: 24)
@@ -425,7 +448,7 @@ extension DarwinKernel {
         case BSD2.getrlimit, BSD2.setrlimit:
             let which = int(0) & ~RLimit.posixFlag
             let isGet = n == BSD2.getrlimit
-            call = "\(isGet ? "getrlimit" : "setrlimit")(which=\(which), rlp=\(hx(a[1])))"
+            call.set("\(isGet ? "getrlimit" : "setrlimit")(which=\(which), rlp=\(hx(a[1])))")
             guard (0...8).contains(which) else { throw Failure(errno: Errno.EINVAL) }
             if isGet {
                 let l = extended.rlimits[which] ?? (RLimit.infinity, RLimit.infinity)
@@ -447,12 +470,12 @@ extension DarwinKernel {
             return .value(0)
 
         case BSD2.csops, BSD2.csopsAudittoken:
-            call = "\(n == BSD2.csops ? "csops" : "csops_audittoken")(pid=\(int(0)), ops=\(int(1)), addr=\(hx(a[2])), size=\(a[3]))"
+            call.set("\(n == BSD2.csops ? "csops" : "csops_audittoken")(pid=\(int(0)), ops=\(int(1)), addr=\(hx(a[2])), size=\(a[3]))")
             return .value(try csopsCall(n == BSD2.csopsAudittoken, a, &call, mem))
 
         case BSD2.procInfo:
-            call = "proc_info(callnum=\(int(0)), pid=\(int(1)), flavor=\(int(2)), arg=\(hx(a[3])), buffer=\(hx(a[4])), "
-                + "buffersize=\(int(5)))"
+            call.set("proc_info(callnum=\(int(0)), pid=\(int(1)), flavor=\(int(2)), arg=\(hx(a[3])), buffer=\(hx(a[4])), "
+                + "buffersize=\(int(5)))")
             trace("note: proc_info call \(int(0)) flavor \(int(2)) is not supported")
             throw Failure(errno: Errno.ENOTSUP)
 
@@ -460,10 +483,10 @@ extension DarwinKernel {
             return .value(try getdirentries64(a, &call, mem))
 
         case BSD2.kevent, BSD2.kevent64, BSD2.keventQos, BSD2.keventId:
-            return .value(try keventCall(n, a, &call, mem))
+            return .value(try withEvents { try keventCall(n, a, &call, mem) })
 
         case BSD2.kqueueWorkloopCtl:
-            return .value(try kqueueWorkloopCtl(a, &call, mem))
+            return .value(try withEvents { try kqueueWorkloopCtl(a, &call, mem) })
 
         case BSD2.bsdthreadCreate:
             return try bsdthreadCreate(a, &call, mem)
@@ -476,7 +499,7 @@ extension DarwinKernel {
             let isKill = n == BSD2.kill
             let sig = int(1)
             let target = UInt32(truncatingIfNeeded: a[0])
-            call = isKill ? "kill(pid=\(int(0)), sig=\(sig), posix=\(int(2)))" : "__pthread_kill(thread=\(hx(target)), sig=\(sig))"
+            call.set(isKill ? "kill(pid=\(int(0)), sig=\(sig), posix=\(int(2)))" : "__pthread_kill(thread=\(hx(target)), sig=\(sig))")
             if isKill {
                 guard int(0) == pid || int(0) == 0 || int(0) == -1 || int(0) == -pid else { throw Failure(errno: Errno.ESRCH) }
             } else {
@@ -498,12 +521,16 @@ extension DarwinKernel {
             // thread (none can be in stage 4a: only `KernelLock.interrupt`
             // or the process ending wakes it), restore the mask. Always EINTR.
             let mask = UInt32(truncatingIfNeeded: a[0])
-            call = "\(n == BSD2.sigsuspend ? "sigsuspend" : "__sigsuspend_nocancel")(mask=\(hx(mask)))"
+            call.set("\(n == BSD2.sigsuspend ? "sigsuspend" : "__sigsuspend_nocancel")(mask=\(hx(mask)))")
             let old = extended.signalMask
             extended.signalMask = mask & ~SignalConstant.unblockable
             // Stage 4b: a pending signal the new mask lets through ends the
             // wait (its handler is not run; the signal is consumed).
             var result = WaitResult.woken
+            // SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §4.2):
+            // the mask to restore, so a snapshot can restart this wait.
+            current.snapshotSigsuspendSavedMask = old
+            defer { current.snapshotSigsuspendSavedMask = nil }
             while extended.pendingSignals & ~extended.signalMask == 0 {
                 result = signalWaiters.wait(on: lock, deadline: nil)
                 if result == .interrupted { break }
@@ -514,70 +541,89 @@ extension DarwinKernel {
             throw Failure(errno: Self.EINTR)
 
         case BSD2.disableThreadsignal:
-            call = "__disable_threadsignal(\(int(0)))"
+            call.set("__disable_threadsignal(\(int(0)))")
             return .value(0)
 
         case BSD2.semwaitSignal, BSD2.semwaitSignalNocancel:
-            call = "__semwait_signal(cond=\(hx(UInt32(truncatingIfNeeded: a[0]))), mutex=\(hx(UInt32(truncatingIfNeeded: a[1]))), "
-                + "timeout=\(int(2)), relative=\(int(3)), sec=\(Int64(bitPattern: a[4])), nsec=\(int(5)))"
+            call.set("__semwait_signal(cond=\(hx(UInt32(truncatingIfNeeded: a[0]))), mutex=\(hx(UInt32(truncatingIfNeeded: a[1]))), "
+                + "timeout=\(int(2)), relative=\(int(3)), sec=\(Int64(bitPattern: a[4])), nsec=\(int(5)))")
             return .value(try semwaitSignal(a, &call))
 
         case let n where BSD2.psynchWaits[n] != nil:
             let name = BSD2.psynchWaits[n]!
-            call = "\(name)(\(hx(a[0])), \(hx(a[1])), \(hx(a[2])), \(hx(a[3])), \(hx(a[4])))"
+            call.set("\(name)(\(hx(a[0])), \(hx(a[1])), \(hx(a[2])), \(hx(a[3])), \(hx(a[4])))")
             trace("DEADLOCK?: \(name) on \(hx(a[0])) would block the only thread; returning ENOTSUP")
             throw Failure(errno: Errno.ENOTSUP)
 
         case let n where BSD2.psynchWakes[n] != nil:
-            call = "\(BSD2.psynchWakes[n]!)(\(hx(a[0])), \(hx(a[1])), \(hx(a[2])), \(hx(a[3])), \(hx(a[4])))"
+            call.set("\(BSD2.psynchWakes[n]!)(\(hx(a[0])), \(hx(a[1])), \(hx(a[2])), \(hx(a[3])), \(hx(a[4])))")
             call += " [no waiters on one thread]"
             return .value(0)
 
         case BSD2.workqOpen:
-            call = "workq_open()"
+            call.set("workq_open()")
             guard threadRegistration != nil else { throw Failure(errno: Errno.EINVAL) }
-            workqueue.isOpen = true
+            withEvents { workqueue.isOpen = true }
             return .value(0)
         case BSD2.workqKernreturn:
-            return try workqKernreturn(a, &call, mem)
+            return try withEvents { try workqKernreturn(a, &call, mem) }
 
         case BSD2.statfs64, BSD2.fstatfs64:
             let path: String
             if n == BSD2.statfs64 {
                 path = try fileSystem.realpath(try readPath(a[0], mem))
-                call = "statfs64(\"\(path)\", buf=\(hx(a[1])))"
+                call.set("statfs64(\"\(path)\", buf=\(hx(a[1])))")
             } else {
                 path = try fileSystem.path(for: int(0))
-                call = "fstatfs64(fd=\(int(0)), buf=\(hx(a[1]))) [\(path)]"
+                call.set("fstatfs64(fd=\(int(0)), buf=\(hx(a[1]))) [\(path)]")
             }
             let st = n == BSD2.statfs64 ? try fileSystem.stat(path, followSymlinks: true) : try fileSystem.fstat(int(0))
             try mem.write(va: a[1], bytes: statfs64Bytes(guestPath: path, dev: st.dev))
             return .value(0)
 
         case BSD2.threadSelfid:
-            call = "thread_selfid()"
+            call.set("thread_selfid()")
             return .value(current.threadID)
 
         case BSD2.getppid:
-            call = "getppid()"
+            call.set("getppid()")
             return .value(1)
 
         case BSD2.umask:
-            call = "umask(0o\(String(a[0] & 0o777, radix: 8)))"
+            call.set("umask(0o\(String(a[0] & 0o777, radix: 8)))")
             let old = extended.umask
             extended.umask = UInt16(a[0] & 0o777)
             return .value(UInt64(old))
 
         case BSD2.getrusage:
-            call = "getrusage(who=\(int(0)), rusage=\(hx(a[1])))"
-            try mem.write(va: a[1], bytes: [UInt8](repeating: 0, count: 144))
+            // struct user64_rusage (144 bytes): ru_utime and ru_stime as
+            // 16-byte timevals (i64 seconds, i32 microseconds), then 14
+            // longs (left zero). RUSAGE_SELF (0) reports the process's CPU
+            // (its host threads: guest code and the kernel work done for
+            // it); RUSAGE_CHILDREN (-1) zero (no children are accounted).
+            call.set("getrusage(who=\(int(0)), rusage=\(hx(a[1])))")
+            guard int(0) == 0 || int(0) == -1 else { throw Failure(errno: Errno.EINVAL) }
+            var b = [UInt8](repeating: 0, count: 144)
+            if int(0) == 0, let times = processCPUTimes?() {
+                b.putLE(Int64(times.user / 1_000_000_000), at: 0)
+                b.putLE(Int32(times.user / 1000 % 1_000_000), at: 8)
+                b.putLE(Int64(times.system / 1_000_000_000), at: 16)
+                b.putLE(Int32(times.system / 1000 % 1_000_000), at: 24)
+            }
+            try mem.write(va: a[1], bytes: b)
             return .value(0)
+
+        case BSD2.threadSelfusage:
+            // The calling thread's CPU time (user + system) in mach
+            // absolute time units (Libc converts with the timebase).
+            call.set("thread_selfusage()")
+            return .value(Self.threadSelfUsage(context: current, counterFrequency: counterFrequency))
 
         case BSD2.access, BSD2.faccessat:
             let isAt = n == BSD2.faccessat
             let path = try resolveAtPath(isAt ? int(0) : Self.atFDCWD, isAt ? a[1] : a[0], mem)
             let mode = isAt ? int(2) : int(1)
-            call = isAt ? "faccessat(\(int(0)), \"\(path)\", mode=\(mode), flag=\(hx(a[3])))" : "access(\"\(path)\", mode=\(mode))"
+            call.set(isAt ? "faccessat(\(int(0)), \"\(path)\", mode=\(mode), flag=\(hx(a[3])))" : "access(\"\(path)\", mode=\(mode))")
             let follow = !isAt || int(3) & Self.atSymlinkNofollow == 0
             let st = try statUnlocked(path, followSymlinks: follow)
             if let denied = accessDenied(st, path: path, read: mode & 4 != 0, write: mode & 2 != 0, execute: mode & 1 != 0) {
@@ -597,19 +643,19 @@ extension DarwinKernel {
         // gettid (pthread_getugid_np): a thread without an override identity
         // (every Ycode thread) gets ESRCH (xnu bsd/kern/kern_prot.c).
         case BSD2.gettid:
-            call = "gettid(uidp=\(hx(a[0])), gidp=\(hx(a[1])))"
+            call.set("gettid(uidp=\(hx(a[0])), gidp=\(hx(a[1])))")
             throw Failure(errno: Errno.ESRCH)
 
         case BSD2.fstatat, BSD2.fstatat64:
             let path = try resolveAtPath(int(0), a[1], mem)
-            call = "fstatat64(\(int(0)), \"\(path)\", buf=\(hx(a[2])), flag=\(hx(a[3])))"
+            call.set("fstatat64(\(int(0)), \"\(path)\", buf=\(hx(a[2])), flag=\(hx(a[3])))")
             let st = try statUnlocked(path, followSymlinks: int(3) & Self.atSymlinkNofollow == 0)
             try mem.write(va: a[2], bytes: st.encodedStat64())
             return .value(0)
 
         case BSD2.openat:
             let path = try resolveAtPath(int(0), a[1], mem)
-            call = "openat(\(int(0)), \"\(path)\", flags=\(openFlagsText(int(2))), mode=0o\(String(a[3] & 0o7777, radix: 8)))"
+            call.set("openat(\(int(0)), \"\(path)\", flags=\(openFlagsText(int(2))), mode=0o\(String(a[3] & 0o7777, radix: 8)))")
             let newFD = try openUnlocked(path, flags: int(2), mode: UInt16(truncatingIfNeeded: a[3]))
             extended.directoryCursors[newFD] = nil
             return .value(UInt64(UInt32(bitPattern: newFD)))
@@ -623,9 +669,9 @@ extension DarwinKernel {
             let path = try resolveAtPath(at ? int(0) : Self.atFDCWD, at ? a[1] : a[0], mem)
             let base = at ? 2 : 1
             let flags = int(base), dpclass = int(base + 1), dpflags = int(base + 2)
-            call = "\(at ? "openat_dprotected_np(\(int(0)), " : "open_dprotected_np(")\"\(path)\", "
+            call.set("\(at ? "openat_dprotected_np(\(int(0)), " : "open_dprotected_np(")\"\(path)\", "
                 + "flags=\(openFlagsText(flags)), class=\(dpclass), dpflags=\(hx(UInt64(UInt32(bitPattern: dpflags)))), "
-                + "mode=0o\(String(a[base + 3] & 0o7777, radix: 8)))"
+                + "mode=0o\(String(a[base + 3] & 0o7777, radix: 8)))")
             try checkDataProtectionOpen(flags: flags, dpflags: dpflags)
             let created = (try? fileSystem.stat(path, followSymlinks: true)) == nil
             let newFD = try fileSystem.open(path, flags: flags, mode: UInt16(truncatingIfNeeded: a[base + 3]))
@@ -635,12 +681,12 @@ extension DarwinKernel {
 
         case BSD2.terminateWithPayload:
             let reason = a[5] == 0 ? "" : ((try? readString(a[5], length: 4096, mem)) ?? "<unreadable>")
-            call = "terminate_with_payload(pid=\(int(0)), namespace=\(int(1)), code=\(hx(a[2])))"
+            call.set("terminate_with_payload(pid=\(int(0)), namespace=\(int(1)), code=\(hx(a[2])))")
             return .fatal(Self.abortExitStatus, "terminate_with_payload: namespace \(int(1)) code \(hx(a[2])): \(reason)")
 
         case BSD2.osFaultWithPayload:
             let reason = a[4] == 0 ? "" : ((try? readString(a[4], length: 4096, mem)) ?? "<unreadable>")
-            call = "os_fault_with_payload(namespace=\(int(0)), code=\(hx(a[1]))) [\(reason)]"
+            call.set("os_fault_with_payload(namespace=\(int(0)), code=\(hx(a[1]))) [\(reason)]")
             return .value(0)
 
         default:
@@ -653,7 +699,7 @@ extension DarwinKernel {
     /// Signals `mutex` (when non-zero), then waits on the semaphore `cond`
     /// (or just sleeps when `cond` is 0) until signalled, the timeout, or an
     /// interruption.
-    private func semwaitSignal(_ a: [UInt64], _ call: inout String) throws -> UInt64 {
+    private func semwaitSignal(_ a: [UInt64], _ call: inout CallText) throws -> UInt64 {
         let cond = UInt32(truncatingIfNeeded: a[0]), mutex = UInt32(truncatingIfNeeded: a[1])
         var deadline: UInt64?
         if Int32(truncatingIfNeeded: a[2]) != 0 {
@@ -748,7 +794,7 @@ extension DarwinKernel {
     /// number returned. Foundation finds the volume of a file (its
     /// NSURLVolumeURLKey, read-only and local flags) by matching the file's
     /// fsid here (level 3: our probe `lsd-seed/fsprobe.m`).
-    func fileSystemStatList(buffer: UInt64, size: UInt64, _ call: inout String,
+    func fileSystemStatList(buffer: UInt64, size: UInt64, _ call: inout CallText,
                             _ mem: any KernelGuestMemory) throws -> UInt64 {
         var mounts: [(path: String, dev: UInt32)] = []
         if let root = try? fileSystem.stat("/", followSymlinks: true) { mounts.append(("/", root.dev)) }
@@ -777,7 +823,7 @@ extension DarwinKernel {
     /// No delivery yet: an ignored signal is dropped, a default action ends
     /// the guest (status 128 + signal, as a shell reports it), and a caught
     /// signal is logged and dropped.
-    private func signalSelf(_ sig: Int32, _ call: inout String) -> BSDResult {
+    private func signalSelf(_ sig: Int32, _ call: inout CallText) -> BSDResult {
         let names: [Int32: String] = [1: "SIGHUP", 2: "SIGINT", 3: "SIGQUIT", 4: "SIGILL", 5: "SIGTRAP", 6: "SIGABRT",
                                       8: "SIGFPE", 9: "SIGKILL", 10: "SIGBUS", 11: "SIGSEGV", 13: "SIGPIPE", 14: "SIGALRM",
                                       15: "SIGTERM"]
@@ -800,10 +846,10 @@ extension DarwinKernel {
 
     // MARK: readv / writev
 
-    private func vectoredIO(write: Bool, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    private func vectoredIO(write: Bool, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let fd = Int32(truncatingIfNeeded: a[0])
         let count = Int32(truncatingIfNeeded: a[2])
-        call = "\(write ? "writev" : "readv")(fd=\(fd), iov=\(hx(a[1])), iovcnt=\(count))"
+        call.set("\(write ? "writev" : "readv")(fd=\(fd), iov=\(hx(a[1])), iovcnt=\(count))")
         guard count > 0, count <= 1024 else { throw Failure(errno: Errno.EINVAL) }
         let raw = try mem.read(va: a[1], count: 16 * Int(count))
         var iov: [(base: UInt64, length: UInt64)] = []
@@ -831,9 +877,9 @@ extension DarwinKernel {
 
     // MARK: sigaction
 
-    private func sigaction(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    private func sigaction(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let signum = Int32(truncatingIfNeeded: a[0])
-        call = "sigaction(\(signum), nsa=\(hx(a[1])), osa=\(hx(a[2])))"
+        call.set("sigaction(\(signum), nsa=\(hx(a[1])), osa=\(hx(a[2])))")
         guard (1...31).contains(signum) else { throw Failure(errno: Errno.EINVAL) }
         let old = extended.signalActions[signum] ?? ExtendedBSDState.SignalAction()
         if a[1] != 0 {
@@ -881,10 +927,10 @@ extension DarwinKernel {
     /// 8-byte aligned. With a buffer of at least 1024 bytes the last 4 bytes
     /// carry the flags word (bit 0 = end of directory), as the libc reader
     /// expects. `*position` receives the offset before the read.
-    private func getdirentries64(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    private func getdirentries64(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let fd = Int32(truncatingIfNeeded: a[0])
         let bufferSize = Int(min(a[2], 1 << 20))
-        call = "getdirentries64(fd=\(fd), buf=\(hx(a[1])), bufsize=\(a[2]), position=\(hx(a[3])))"
+        call.set("getdirentries64(fd=\(fd), buf=\(hx(a[1])), bufsize=\(a[2]), position=\(hx(a[3])))")
         let file = try fileSystem.file(for: fd)
         guard file.isDirectory else { throw Failure(errno: Errno.ENOTDIR) }
         if extended.directoryCursors[fd].map({ $0.file !== file }) ?? true {
@@ -976,5 +1022,27 @@ extension DarwinKernel {
         else { bits = st.mode & 7 }
         if (read && bits & 4 == 0) || (write && bits & 2 == 0) || (execute && bits & 1 == 0) { return 13 }  // EACCES
         return nil
+    }
+}
+
+// MARK: Thread CPU time (`thread_selfusage`, BSD 482)
+
+extension DarwinKernel {
+    /// The calling host thread's CPU time (ns). A guest thread runs on one
+    /// host thread (its vCPU's) for its whole life.
+    public static func hostThreadCPUNanoseconds() -> UInt64 {
+        var t = timespec()
+        guard clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t) == 0 else { return 0 }
+        return UInt64(t.tv_sec) * 1_000_000_000 + UInt64(t.tv_nsec)
+    }
+
+    /// `thread_selfusage`: the calling guest thread's CPU time (its host
+    /// thread's time since the guest thread started there), in guest
+    /// counter ticks.
+    static func threadSelfUsage(context: ThreadContext, counterFrequency: UInt64) -> UInt64 {
+        let now = hostThreadCPUNanoseconds()
+        let ns = now >= context.hostCPUBaseNanoseconds ? now - context.hostCPUBaseNanoseconds : now
+        let f = counterFrequency == 0 ? 1_000_000_000 : counterFrequency
+        return UInt64((Double(ns) * Double(f) / 1e9).rounded(.down))
     }
 }

@@ -1,0 +1,12 @@
+RKP mode=renderer
+RKP metal.name=Apple iOS simulator GPU
+RKP metal.families=apple1,apple2,common1
+RKP metal.argumentBuffersTier=0
+RKP metal.raytracing=false
+RKP metal.maxThreadsPerThreadgroup=512
+RKP metal.readWriteTextureTier=0
+RKP metal.sampleCount4=true
+RKP metal.maxBufferLength=268435456
+RKP os=27.1
+RKP renderer.submitted=ok
+dev.ycode.rkprobe: <pid>

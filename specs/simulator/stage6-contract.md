@@ -109,6 +109,142 @@ orchestrator).
 - VM teardown: `discardAll()` under the lock, `vm.close()` outside it
   (KVM teardown takes 2–70 ms).
 
+### 5.2 Regular-file transfers and renames without the kernel lock (speed round 2)
+
+Host file-system stalls held the kernel lock for up to 1.2 s (`rename`,
+`read`, `pread`, `write`; the device copy lives on a USB drive). These calls
+now follow the §5.1 pattern for regular host files:
+
+- **Checks under L0.** The descriptor is looked up once, with the lock:
+  EBADF (closed, or not open for reading/writing), EISDIR (a read of a
+  directory), the write guard (EXC_GUARD → EPERM). The call keeps strong
+  references to the open file description and to the host file. Errors and
+  their order are those of the plain calls.
+- **Transfer.** `pread`/`pwrite` run at their explicit offset. `read` and
+  `write` use the description's offset under the description's **offset
+  lock** (an L2 leaf, `DarwinOpenFile.ioLock`, not recursive), held for the whole
+  transfer: the transfer and the offset update are atomic with respect to
+  every other user of the offset (another transfer, `lseek`, a dup'd or
+  inherited descriptor). O_APPEND is sampled at the check and moves the
+  offset to the end of file inside the transfer.
+- **Reads try the page cache first, with the lock held** (Linux `preadv2`
+  with `RWF_NOWAIT`; a short result counts only when it reaches the end of
+  file). tmpfs refuses `RWF_NOWAIT` with `EOPNOTSUPP`; a file on a memory
+  file system (tmpfs or ramfs, by `fstatfs` magic, asked once per host
+  file) is then read with a plain `pread` under the lock, because its pages
+  never wait for a device. A device directory in RAM (the bench harness's
+  tmpfs mode) otherwise released L0 for every read. Only a read that would wait for the device releases L0, because
+  re-taking L0 costs a contended acquisition (≈1 ms under boot load).
+  Writes, renames and the path operations below always release L0 for
+  the host call.
+- **Revalidation after L0 is taken again.** The descriptor is not looked
+  up again, and the call does not fail when the guest closed or replaced
+  it meanwhile. The transfer belongs to the open file description it
+  started on (POSIX resolves the descriptor once, at the start of the call;
+  xnu holds an I/O reference on the file for the whole call), so a
+  concurrent `close`, `dup2` or exec-time close does not affect it. The
+  call holds strong references to the description and to the host file;
+  the host descriptor closes only when its last holder lets go, so its
+  number can never be reused by another open during the transfer. Only
+  the image is checked: when it ended meanwhile (exit, exec, a fatal
+  signal), a read fails with EINTR and copies nothing into guest memory.
+  Read data is copied into guest memory, and write data was copied out of
+  it, with L0 held; the guest-memory layer checks the addresses then, as
+  for any call.
+- **Offsets.** `pread`/`pwrite` never touch the offset. For `read` and
+  `write` the offset is read, used and advanced under the offset lock in
+  one step. A short transfer advances the offset by the bytes
+  transferred; a failed one leaves it unchanged. `lseek` is a
+  read-modify-write of the offset under the offset lock, so it never loses
+  a concurrent transfer's update. A thread holding L0 never waits for the
+  offset lock: the cached read and `lseek` first try it without waiting;
+  when a transfer holds it, the read takes the unlocked path and `lseek`
+  waits for it with L0 released.
+- **Other host-only calls.** `ftruncate` of a regular host file, and
+  `guarded_write_np`/`guarded_pwrite_np` of a regular host file (the guard
+  is checked under L0), run the host call without L0, like `write`.
+- **Renames and other path operations.** Path resolution and the
+  socket-name table are safe to read without L0. A rename or unlink whose
+  name is a socket file changes the guest's own name table, so it runs
+  again under L0. Every other rename and unlink, and every `mkdir`,
+  `rmdir` and `truncate(path)`, is a host operation alone and runs without
+  L0. The umask is read before L0 is released. Known difference: a `bind`
+  that creates a socket name at the same moment as a `mkdir` of that name,
+  or inside a directory that an `rmdir` is removing, is not ordered
+  against it (Darwin serializes both on the directory vnode).
+- Lock order stays L0 → L1 → L2. The offset lock is never held while
+  another lock is taken, and no thread waits for it while holding L0.
+- `YCODE_FS_LOCKED_IO=1` keeps these calls under L0 (diagnostics).
+- **No host access-time updates.** Host opens use `O_NOATIME` where the
+  host allows it (files the host user owns), for every access mode. A
+  device copy keeps old access times, so with `relatime` the first read of
+  each file would otherwise write the inode through the journal. The
+  holder samples showed reads waiting in `do_get_write_access`, among them
+  `pread` on files opened read-write (databases), whose page-cache read
+  runs with L0 held. As a result, the guest's access times do not move on
+  reads (a known difference from Darwin).
+- Evidence: level 1. Shared offsets of dup'd descriptors and atomic
+  offset updates follow POSIX `read(2)`/`write(2)`/`lseek(2)`/`dup(2)`.
+  The I/O reference that keeps a file usable across a concurrent `close`
+  follows xnu's `fp_lookup`/`fp_drop` (Apple open source).
+
+### 5.3 New-image VMs built before the kernel lock (speed round 2)
+
+An image build (spawn, exec) runs under L0. Its first step, creating the
+KVM VM and adding its memslots, took about 19 ms per image in a profiled
+boot (951 builds, 18 s of L0 hold). The VM is empty at that point and
+belongs to no process, so it is built earlier: a thread that is about to
+make a `posix_spawn`, `execve` or `__mac_execve` trap first builds one
+empty VM with no lock held and leaves it ready; the image build takes a
+ready VM when there is one and builds its own otherwise. At most two VMs
+wait; a spawn that fails before its image is built leaves its VM to the
+next build. Traced images always build their own. `YCODE_VM_PREBUILD=0`
+turns this off. No guest-visible behavior changes.
+
+Host-side cost model (measured on the Thor, a standalone program): creating
+a KVM VM registers an MMU notifier on the host process, which takes the
+process's memory-map lock for writing and locks every mapping. Its cost
+grows with the number of host mappings (2.7 ms at 17 mappings, 5.5 ms at
+10 k, 14 ms at 40 k), and while it runs, every first touch of guest memory
+in every VM of the process waits (with VMs created back to back, 6 µs per
+touched page became 37 µs at 40 k mappings). Building the VM off L0 does
+not remove that cost; fewer host mappings or fewer VM creations would.
+
+Evidence: level 3 (our own measurements; Linux KVM and mmu_notifier
+behavior as documented in the kernel sources). The rest is Ycode's own
+design.
+
+### 5.4 vCPUs created in batches (speed round 2)
+
+Every guest thread runs on its own vCPU, and a new thread beyond the
+image's existing vCPUs waits for one to be created (off L0, on a creator
+thread; §5 of the stage-4 pool design). Measured on the Thor (Linux 6.8,
+arm64, standalone program): once a VM has run with more than one vCPU,
+each `KVM_CREATE_VCPU` that follows another vCPU's first `KVM_RUN` waits
+for an RCU grace period, 25–60 ms (35 ms mean). Creations with no first
+run in between, and all creations before the VM's second vCPU runs, take
+microseconds. Profiled boots averaged 30 ms per new vCPU over ~2,700
+creations.
+
+Rule: when a vCPU must be created, the VM creates the next `n` free ids
+too, back to back (`n` = 3 by default; `YCODE_VCPU_BATCH=<n>`, 0 = one at a
+time), bounded by the pool's capacity. They wait unused; a later thread
+start that reaches one of those ids takes it with no ioctl. A request for
+an id whose batch is still being created waits for that batch. The batch
+made together with vCPU 0 at image build costs no grace period, so an
+image's first four threads never wait for one, and each later batch of
+four waits for at most one. Unused vCPUs are closed with the VM. Guest-
+visible behavior does not change (the guest's CPU count comes from
+`sysctl`, not from the number of KVM vCPUs).
+
+Evidence: level 3 (our own measurements). The rest is Ycode's own design. `RWF_NOWAIT`
+  follows the Linux `preadv2(2)` manual page. tmpfs refusing it with
+  `EOPNOTSUPP` (and ext4 accepting it) is level 3: a probe on the Thor
+  (kernel 6.8, `/run/user` tmpfs) and the x86-64 workstation (kernel 7.0,
+  `/tmp` tmpfs), where `HostFileIOTests` failed before the fallback. The
+  tmpfs and ramfs magic numbers are those of Linux `statfs(2)`. The rest is
+  Ycode's own locking design.
+
 ## 6. Resolution (stage 6 done, 2026-10-12)
 
 **Exit criterion met** (orchestrator, fresh tree on the Thor, release

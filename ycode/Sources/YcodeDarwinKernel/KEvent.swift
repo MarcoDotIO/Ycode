@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import YcodeDarwinABI
 
 // kevent for stage 4a (`specs/simulator/threads-and-events.md` §3;
@@ -238,10 +239,10 @@ final class Knote {
     var receiveGone = false
     /// Diagnostics (`DarwinKernel.recordKnoteHistory`): the last state changes.
     var history: [String] = []
-    func note(_ text: String) {
+    func note(_ text: @autoclosure () -> String) {
         guard DarwinKernel.recordKnoteHistory else { return }
         if history.count == 10 { history.removeFirst() }
-        history.append("\(KernelClock.now() / 1_000_000 % 1_000_000): " + text)
+        history.append("\(KernelClock.now() / 1_000_000 % 1_000_000): " + text())
     }
     /// EV_VANISHED was asked for at EV_ADD. As in xnu (`KN_REQVANISH`), the
     /// bit is a request, not part of the knote's flags: ordinary events never
@@ -292,6 +293,10 @@ final class KQueue {
 
     let kind: Kind
     var knotes: [Knote] = []
+    /// EVFILT_READ/EVFILT_WRITE knotes in `knotes`: their readiness is the
+    /// descriptors' state (L0), which a fast path cannot read
+    /// (`mach-ipc-locking.md` §4.3).
+    var descriptorKnotes = 0
     /// The descriptor object of a `kqueue()` queue (stage 4b).
     weak var object: KQueueObject?
     /// Threads scanning a descriptor kqueue or polling a workloop.
@@ -309,6 +314,19 @@ final class KQueue {
     var requestOvercommit = false
     var fixedPriority = false
     var createReference = false
+    /// Diagnostics (snapshot.md §12.5): a workloop's last thread-request
+    /// changes (ms clock, what, thread id), for the thread report.
+    var requestLog: [(ms: UInt64, what: RequestEvent, thread: UInt64)] = []
+    enum RequestEvent: String {
+        case requested, cleared, taken, returned, bound, unbound, restored, repaired
+    }
+    func logRequest(_ what: RequestEvent, thread: UInt64 = 0) {
+        if requestLog.count == 12 { requestLog.removeFirst() }
+        requestLog.append((KernelClock.now() / 1_000_000 % 10_000_000, what, thread))
+    }
+    var requestLogText: String {
+        requestLog.map { "\($0.ms) \($0.what.rawValue)\($0.thread == 0 ? "" : " t\($0.thread)")" }.joined(separator: ", ")
+    }
 
     init(kind: Kind, workloopID: UInt64 = 0) {
         self.kind = kind
@@ -351,6 +369,78 @@ struct KEventState {
     let timerWake = WaitQueue()
     var timerThreadStarted = false
     var loggedFilters: Set<Int16> = []
+    /// Diagnostics (`YCODE_DEBUG_KEVENT_STATS=1`).
+    var stats = KEventStats()
+    /// The EVFILT_MACHPORT knotes of every kqueue in the registry above, by
+    /// port name, in `allKQueues` order (`mach-ipc-locking.md` §3.1). Built
+    /// on first use; nil after any change of which kqueues are registered or
+    /// which EVFILT_MACHPORT knotes they hold.
+    var machportIndex: [UInt32: [Knote]]?
+}
+
+/// Diagnostics for the kevent family (`YCODE_DEBUG_KEVENT_STATS=1`), per
+/// image: what each call asks for (by its first change), how its waits end,
+/// and a breakdown of any call that holds the kernel lock for long.
+struct KEventStats {
+    static let enabled = getenv("YCODE_DEBUG_KEVENT_STATS").map { String(cString: $0) == "1" } ?? false
+    static let reportEvery: UInt64 = 20000
+    /// A call whose own lock-held time is at least this is reported at once.
+    static let slowNanoseconds: UInt64 = 50_000_000
+
+    var calls: UInt64 = 0
+    /// Calls by trap and first change ("375 WORKLOOP sync-wait", ...).
+    var kinds: [String: UInt64] = [:]
+    var zeroEventReturns: UInt64 = 0
+    var eventReturns: UInt64 = 0
+    /// Waits for events on a kqueue (`kq.waiters`): count, wakeups that
+    /// found nothing, and timeouts.
+    var scanWaits: UInt64 = 0
+    var emptyScanWakeups: UInt64 = 0
+    var scanTimeouts: UInt64 = 0
+    /// EVFILT_WORKLOOP sync waits: how they end, and their length.
+    var syncWaits: UInt64 = 0
+    var syncWokenByWake: UInt64 = 0
+    var syncWokenByDrop: UInt64 = 0
+    var syncInterrupted: UInt64 = 0
+    var syncOnExistingKnote: UInt64 = 0
+    var syncWaitNs: UInt64 = 0
+    /// <100 us, <1 ms, <10 ms, <100 ms, longer.
+    var syncHistogram: [UInt64] = [0, 0, 0, 0, 0]
+    /// SYNC_WAKE changes on an existing knote, and how many found a waiter.
+    var syncWakes: UInt64 = 0
+    var syncWakesWithWaiter: UInt64 = 0
+    /// Time spent pumping the workqueue from kevent (thread starts included).
+    var pumpNs: UInt64 = 0
+    var pumps: UInt64 = 0
+    /// The current call's waits, by thread.
+    var waitNsByThread: [ObjectIdentifier: UInt64] = [:]
+    /// Lock held by kevent calls (own time, waits excluded) and the longest.
+    var heldNs: UInt64 = 0
+    var maxHeldNs: UInt64 = 0
+
+    static func histogramIndex(_ ns: UInt64) -> Int {
+        ns < 100_000 ? 0 : ns < 1_000_000 ? 1 : ns < 10_000_000 ? 2 : ns < 100_000_000 ? 3 : 4
+    }
+
+    static func kind(_ n: Int, _ changes: [KEventRecord], nevents: Int32, flags: UInt32) -> String {
+        var s = "\(n)"
+        if let c = changes.first {
+            s += " " + (EVFilter.names[c.filter].map { String($0.dropFirst(7)) } ?? "filter \(c.filter)")
+            if c.filter == EVFilter.workloop {
+                let f = c.fflags
+                if f & NoteWorkloop.threadRequest != 0 { s += " thread-request" }
+                if f & NoteWorkloop.syncWait != 0 { s += " sync-wait" }
+                if f & NoteWorkloop.syncWake != 0 { s += " sync-wake" }
+                if f & NoteWorkloop.endOwnership != 0 { s += " end-ownership" }
+            }
+            if c.flags & EV.delete != 0 { s += " delete" }
+            if changes.count > 1 { s += " +\(changes.count - 1)" }
+        } else {
+            s += " no-change"
+        }
+        if nevents > 0 && flags & KEventFlag.errorEvents == 0 { s += flags & KEventFlag.immediate != 0 ? " poll" : " scan" }
+        return s
+    }
 }
 
 extension DarwinKernel {
@@ -364,11 +454,86 @@ extension DarwinKernel {
     /// Makes a descriptor kqueue reachable as `fd` (there is no `kqueue()`
     /// call yet; tests and a later descriptor layer use this).
     func installDescriptorKQueue(_ fd: Int32) {
+        withEvents { installDescriptorKQueueLocked(fd) }
+    }
+
+    private func installDescriptorKQueueLocked(_ fd: Int32) {
         kevents.descriptorQueues[fd] = KQueue(kind: .descriptor(fd))
+        kevents.machportIndex = nil
     }
 
     /// `kevent` (363), `kevent64` (369), `kevent_qos` (374), `kevent_id` (375).
-    func keventCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    func keventCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        guard KEventStats.enabled else { return try keventBody(n, a, &call, mem) }
+        let ctxID = ObjectIdentifier(current)
+        let t0 = KernelClock.now()
+        let pump0 = kevents.stats.pumpNs
+        let workers0 = workqueue.workers.count
+        kevents.stats.waitNsByThread[ctxID] = 0
+        var events: UInt64 = 0
+        var failure: Error?
+        do { events = try keventBody(n, a, &call, mem) } catch { failure = error }
+        let total = KernelClock.now() &- t0
+        let waited = kevents.stats.waitNsByThread.removeValue(forKey: ctxID) ?? 0
+        let held = total > waited ? total - waited : 0
+        kevents.stats.calls += 1
+        kevents.stats.heldNs &+= held
+        if failure == nil { if events == 0 { kevents.stats.zeroEventReturns += 1 } else { kevents.stats.eventReturns += 1 } }
+        if held > kevents.stats.maxHeldNs { kevents.stats.maxHeldNs = held }
+        if held >= KEventStats.slowNanoseconds {
+            let format: KEventFormat = n == BSD2.kevent ? .legacy : n == BSD2.kevent64 ? .k64 : .qos
+            let count = Int(max(0, min(Int32(truncatingIfNeeded: a[2]), 16)))
+            let changes = (try? readKEvents(a[1], count: count, format: format, mem)) ?? []
+            let kind = KEventStats.kind(n, changes, nevents: Int32(truncatingIfNeeded: a[4]),
+                                        flags: n >= BSD2.keventQos ? UInt32(truncatingIfNeeded: a[7]) : 0)
+            keventStatsLine("slow call: pid \(pid) (\(processRecord?.comm ?? "?")) thread \(current.threadID) [\(kind)]: "
+                + "held \(held / 1_000_000) ms (total \(total / 1_000_000) ms, waited \(waited / 1_000_000) ms), "
+                + "pumping \((kevents.stats.pumpNs &- pump0) / 1_000_000) ms, workers \(workers0) -> \(workqueue.workers.count)")
+        }
+        if kevents.stats.calls % KEventStats.reportEvery == 0 { reportKEventStats() }
+        if let failure { throw failure }
+        return events
+    }
+
+    private func keventStatsLine(_ text: String) {
+        FileHandle.standardError.write(Data(("ycode-kevent-stats: " + text + "\n").utf8))
+    }
+
+    func reportKEventStats() {
+        let s = kevents.stats
+        let kinds = s.kinds.sorted { $0.value > $1.value }.prefix(8).map { "\($0.key): \($0.value)" }.joined(separator: ", ")
+        keventStatsLine("pid \(pid) (\(processRecord?.comm ?? "?")): \(s.calls) calls, held \(s.heldNs / 1_000_000) ms "
+            + "(max \(s.maxHeldNs / 1_000_000) ms), returns 0 events \(s.zeroEventReturns) / events \(s.eventReturns); "
+            + "scan waits \(s.scanWaits) (empty wakeups \(s.emptyScanWakeups), timeouts \(s.scanTimeouts)); "
+            + "sync waits \(s.syncWaits), on an existing knote \(s.syncOnExistingKnote) (woken by wake \(s.syncWokenByWake), "
+            + "by drop \(s.syncWokenByDrop), interrupted \(s.syncInterrupted); \(s.syncWaitNs / 1_000_000) ms; "
+            + "<100us/<1ms/<10ms/<100ms/more \(s.syncHistogram.map(String.init).joined(separator: "/"))); "
+            + "sync wakes \(s.syncWakes) (with a waiter \(s.syncWakesWithWaiter)); pumps \(s.pumps) "
+            + "\(s.pumpNs / 1_000_000) ms; kinds: \(kinds)")
+    }
+
+    /// `WaitQueue.wait`, with its duration charged to the calling thread's
+    /// current kevent call when diagnostics are on.
+    func keventWait(_ queue: WaitQueue, deadline: UInt64?) -> WaitResult {
+        guard KEventStats.enabled else { return queue.wait(on: eventWaitLock, deadline: deadline) }
+        let t = KernelClock.now()
+        let r = queue.wait(on: eventWaitLock, deadline: deadline)
+        let ns = KernelClock.now() &- t
+        let id = ObjectIdentifier(current)
+        if let w = kevents.stats.waitNsByThread[id] { kevents.stats.waitNsByThread[id] = w &+ ns }
+        return r
+    }
+
+    /// `pumpWorkqueue(nil)`, timed when diagnostics are on.
+    private func keventPump() {
+        guard KEventStats.enabled else { return pumpWorkqueue(nil) }
+        let t = KernelClock.now()
+        pumpWorkqueue(nil)
+        kevents.stats.pumpNs &+= KernelClock.now() &- t
+        kevents.stats.pumps += 1
+    }
+
+    private func keventBody(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let format: KEventFormat = n == BSD2.kevent ? .legacy : n == BSD2.kevent64 ? .k64 : .qos
         let nchanges = Int32(truncatingIfNeeded: a[2]), nevents = Int32(truncatingIfNeeded: a[4])
         var flags: UInt32 = 0
@@ -377,20 +542,20 @@ extension DarwinKernel {
         switch n {
         case BSD2.kevent:
             timeoutPointer = a[5]
-            call = "kevent(\(Int32(truncatingIfNeeded: a[0])), changes=\(hx(a[1])), nchanges=\(nchanges), events=\(hx(a[3])), "
-                + "nevents=\(nevents), timeout=\(hx(a[5])))"
+            call.set("kevent(\(Int32(truncatingIfNeeded: a[0])), changes=\(hx(a[1])), nchanges=\(nchanges), events=\(hx(a[3])), "
+                + "nevents=\(nevents), timeout=\(hx(a[5])))")
         case BSD2.kevent64:
             flags = UInt32(truncatingIfNeeded: a[5])
             timeoutPointer = a[6]
-            call = "kevent64(\(Int32(truncatingIfNeeded: a[0])), changes=\(hx(a[1])), nchanges=\(nchanges), events=\(hx(a[3])), "
-                + "nevents=\(nevents), flags=\(hx(flags)), timeout=\(hx(a[6])))"
+            call.set("kevent64(\(Int32(truncatingIfNeeded: a[0])), changes=\(hx(a[1])), nchanges=\(nchanges), events=\(hx(a[3])), "
+                + "nevents=\(nevents), flags=\(hx(flags)), timeout=\(hx(a[6])))")
         default:
             dataOut = a[5]
             dataAvailable = a[6]
             flags = UInt32(truncatingIfNeeded: a[7])
-            call = "\(n == BSD2.keventQos ? "kevent_qos(\(Int32(truncatingIfNeeded: a[0]))" : "kevent_id(\(hx(a[0]))"), "
+            call.set("\(n == BSD2.keventQos ? "kevent_qos(\(Int32(truncatingIfNeeded: a[0]))" : "kevent_id(\(hx(a[0]))"), "
                 + "changes=\(hx(a[1])), nchanges=\(nchanges), events=\(hx(a[3])), nevents=\(nevents), "
-                + "data_out=\(hx(a[5])), data_available=\(hx(a[6])), flags=\(hx(flags)))"
+                + "data_out=\(hx(a[5])), data_available=\(hx(a[6])), flags=\(hx(flags)))")
         }
         flags &= KEventFlag.userSet
         guard nchanges >= 0, nevents >= 0 else { throw Failure(errno: Errno.EINVAL) }
@@ -406,7 +571,7 @@ extension DarwinKernel {
             }
             if n == BSD2.keventQos, flags & KEventFlag.workq != 0 {
                 if nevents > 0 && !errorEvents { throw Failure(errno: Errno.EINVAL) }
-                if kevents.workq == nil { kevents.workq = KQueue(kind: .workq) }
+                if kevents.workq == nil { kevents.workq = KQueue(kind: .workq); kevents.machportIndex = nil }
                 kq = kevents.workq!
             } else {
                 guard let q = descriptorKQueue(Int32(truncatingIfNeeded: a[0])) else { throw Failure(errno: Errno.EBADF) }
@@ -448,6 +613,9 @@ extension DarwinKernel {
         }
 
         let changes = try readKEvents(a[1], count: Int(nchanges), format: format, mem)
+        if KEventStats.enabled {
+            kevents.stats.kinds[KEventStats.kind(n, changes, nevents: nevents, flags: flags), default: 0] += 1
+        }
         var output: [KEventRecord] = []
         if let e = applyChanges(changes, to: kq, outputCapacity: Int(nevents), output: &output, context: ctx,
                                 flags: flags, mem) {
@@ -463,17 +631,24 @@ extension DarwinKernel {
             area = KEventDataArea(base: dataOut, size: available, stackData: flags & KEventFlag.stackData != 0)
         }
         if !errorEvents, nevents > 0, output.isEmpty {
+            var woke = false
             while true {
                 let found = scanForDelivery(kq, bucket: nil, max: Int(nevents), area: &area, context: ctx, mem)
                 if !found.isEmpty {
                     output = found
                     break
                 }
+                if KEventStats.enabled, woke { kevents.stats.emptyScanWakeups += 1 }
                 if flags & KEventFlag.immediate != 0 { break }
                 if let deadline, deadline <= KernelClock.now() { break }
-                let r = kq.waiters.wait(on: lock, deadline: deadline)
+                if KEventStats.enabled { kevents.stats.scanWaits += 1 }
+                let r = keventWait(kq.waiters, deadline: deadline)
+                woke = true
                 if r == .interrupted { throw Failure(errno: Self.EINTR) }
-                if r == .timedOut { break }
+                if r == .timedOut {
+                    if KEventStats.enabled { kevents.stats.scanTimeouts += 1 }
+                    break
+                }
             }
         }
         if dataOut != 0, dataAvailable != 0, area.size != available { try writeU64(dataAvailable, area.size, mem) }
@@ -518,8 +693,22 @@ extension DarwinKernel {
                                      outputCapacity: outputCapacity - output.count, mem)
             if let waiter = result.wait {
                 // EVFILT_WORKLOOP sync wait: block until woken or deleted.
-                let r = waiter.syncWaiters.wait(on: lock, deadline: nil)
+                let t = KEventStats.enabled ? KernelClock.now() : 0
+                let r = keventWait(waiter.syncWaiters, deadline: nil)
                 if r == .interrupted { result.errno = Self.EINTR }
+                if KEventStats.enabled {
+                    let ns = KernelClock.now() &- t
+                    kevents.stats.syncWaits += 1
+                    kevents.stats.syncWaitNs &+= ns
+                    kevents.stats.syncHistogram[KEventStats.histogramIndex(ns)] += 1
+                    if r == .interrupted {
+                        kevents.stats.syncInterrupted += 1
+                    } else if waiter.dropped {
+                        kevents.stats.syncWokenByDrop += 1
+                    } else {
+                        kevents.stats.syncWokenByWake += 1
+                    }
+                }
             }
             if result.errno != nil || c.flags & EV.receipt != 0 {
                 if output.count < outputCapacity {
@@ -595,8 +784,22 @@ extension DarwinKernel {
                 let new = Knote(c)
                 new.kq = kq
                 new.bucket = workqBucket(c.qos)
-                if let e = attachFilter(new, c, mem) { return ChangeResult(errno: e) }
+                // A descriptor knote is counted before its descriptor is
+                // looked up, so a close without L0 that removed the
+                // descriptor afterwards sees it (bsd-locking.md §4.2).
+                let watchesDescriptor = Self.isDescriptorWatch(filter)
+                if watchesDescriptor { noteDescriptorWatch(c.ident, 1) }
+                if let e = attachFilter(new, c, mem) {
+                    if watchesDescriptor { noteDescriptorWatch(c.ident, -1) }
+                    return ChangeResult(errno: e)
+                }
                 kq.knotes.append(new)
+                if new.filter == EVFilter.machport { kevents.machportIndex = nil }
+                if new.filter == EVFilter.signal { signalKnoteCount.wrappingAdd(1, ordering: .relaxed) }
+                if new.filter == EVFilter.read || new.filter == EVFilter.write {
+                    kq.descriptorKnotes += 1
+                    descriptorKnoteCount.wrappingAdd(1, ordering: .relaxed)
+                }
                 if new.filter == EVFilter.timer { armTimer(new) }
                 kn = new
             }
@@ -703,6 +906,29 @@ extension DarwinKernel {
 
     // MARK: EVFILT_TIMER
 
+    /// The host deadline of an absolute calendar-time EVFILT_TIMER
+    /// (`NOTE_ABSOLUTE` without `NOTE_MACHTIME`: `data` is wall-clock time
+    /// since 1970 in the knote's units), from the wall clock now: a past
+    /// time is due now. Nil for any other timer, or on overflow. Used at
+    /// registration and again after a restore (snapshot.md §5): such a
+    /// timer follows the calendar, which moved on while the snapshot sat
+    /// on disk, not the guest's mach time, which did not.
+    func wallClockTimerDeadline(fflags: UInt32, data: Int64) -> UInt64? {
+        let units = fflags & NoteTimer.unitMask
+        guard fflags & NoteTimer.absolute != 0, units != NoteTimer.machTime, units.nonzeroBitCount <= 1 else { return nil }
+        let perUnit: UInt64 = switch units {
+        case NoteTimer.seconds: 1_000_000_000
+        case NoteTimer.useconds: 1_000
+        case NoteTimer.nseconds: 1
+        default: 1_000_000
+        }
+        let (absNs, overflow) = UInt64(max(0, data)).multipliedReportingOverflow(by: perUnit)
+        guard !overflow else { return nil }
+        let w = wallClock()
+        let wallNs = UInt64(max(0, w.seconds)) &* 1_000_000_000 &+ UInt64(max(0, w.nanoseconds))
+        return absNs > wallNs ? KernelClock.deadline(afterNanoseconds: absNs - wallNs) : KernelClock.now()
+    }
+
     private func setTimer(_ kn: Knote, _ c: KEventRecord, isNew: Bool) -> Int32? {
         let units = c.fflags & NoteTimer.unitMask
         guard units.nonzeroBitCount <= 1 else { return Errno.EINVAL }
@@ -728,10 +954,8 @@ extension DarwinKernel {
             if units == NoteTimer.machTime {
                 deadline = hostDeadline(machTicks: UInt64(bitPattern: c.data))
             } else {
-                guard let absNs = toNanoseconds(UInt64(max(0, c.data))) else { return Errno.ERANGE }
-                let w = wallClock()
-                let wallNs = UInt64(max(0, w.seconds)) &* 1_000_000_000 &+ UInt64(max(0, w.nanoseconds))
-                deadline = absNs > wallNs ? KernelClock.deadline(afterNanoseconds: absNs - wallNs) : now
+                guard let d = wallClockTimerDeadline(fflags: c.fflags, data: c.data) else { return Errno.ERANGE }
+                deadline = d
             }
         } else if c.data <= 0 {
             deadline = now
@@ -765,12 +989,44 @@ extension DarwinKernel {
             return
         }
         kevents.timers[ObjectIdentifier(kn)] = kn
-        startTimerThreadIfNeeded()
-        kevents.timerWake.wakeAll()
+        // The timer thread waits on this image's event lock, which is held
+        // here (frame-profile.md §5.3): wake it now.
+        if timerThreadOnEventLock {
+            startTimerThreadIfNeeded()
+            kevents.timerWake.wakeAll()
+            return
+        }
+        // The timer thread and its wakeup are L0's (`mach-ipc-locking.md` §4.5).
+        lock.deferIfFast(.kernelLock(lock)) { [weak self] in
+            guard let self else { return }
+            startTimerThreadIfNeeded()
+            kevents.timerWake.wakeAll()
+        }
+    }
+
+    /// The readiness observer of a descriptor knote (EVFILT_READ/WRITE):
+    /// the descriptor object calls it (under L0) when its readiness
+    /// changes. The knote and its kqueue are event-lock state, so it takes
+    /// this image's event lock (`mach-ipc-locking.md` §4.2). Used at
+    /// registration and by the snapshot restore (snapshot.md §12.5, whose
+    /// own copy left the lock out).
+    func readinessObserver(for kn: Knote) -> () -> Void {
+        { [weak self, weak kn] in
+            guard let self, let kn else { return }
+            self.withEvents {
+                guard !kn.dropped else { return }
+                kn.active = true
+                self.activated(kn)
+            }
+        }
     }
 
     /// Fires every due timer. Returns the earliest remaining deadline.
     func fireDueTimers() -> UInt64? {
+        withEvents { fireDueTimersLocked() }
+    }
+
+    private func fireDueTimersLocked() -> UInt64? {
         let now = KernelClock.now()
         var next: UInt64?
         for (key, kn) in kevents.timers {
@@ -779,6 +1035,7 @@ extension DarwinKernel {
                 continue
             }
             if d <= now {
+                if let hook = KernelTrace.timerFired { hook(pid, now &- d, 1) }
                 if kn.timerInterval > 0 {
                     let n = 1 + (now - d) / kn.timerInterval
                     kn.timerFires += Int64(n)
@@ -800,9 +1057,14 @@ extension DarwinKernel {
     /// The timer service thread: fires timers at their deadlines. It holds
     /// the kernel weakly and stops at `terminate()` or when the kernel goes.
     func startTimerThreadIfNeeded() {
-        guard !kevents.timerThreadStarted else { return }
-        kevents.timerThreadStarted = true
-        let box = TimerThreadBox(kernel: self, lock: lock, wake: kevents.timerWake)
+        let start = withEvents { () -> Bool in
+            guard !kevents.timerThreadStarted else { return false }
+            kevents.timerThreadStarted = true
+            return true
+        }
+        guard start else { return }
+        let box = TimerThreadBox(kernel: self, lock: lock, events: timerThreadOnEventLock ? eventLock : nil,
+                                 wake: kevents.timerWake)
         let thread = Thread { box.run() }
         thread.name = "ycode-kernel-timers"
         thread.start()
@@ -904,9 +1166,14 @@ extension DarwinKernel {
                 // is already woken just succeeds (only a second thread-request
                 // attach is EALREADY); libdispatch can wake twice in a race.
                 if cmd & NoteWorkloop.syncWake != 0 {
+                    if KEventStats.enabled {
+                        kevents.stats.syncWakes += 1
+                        if !existing.syncWaiters.isEmpty { kevents.stats.syncWakesWithWaiter += 1 }
+                    }
                     existing.syncWoken = true
                     existing.syncWaiters.wakeAll()
                 }
+                if KEventStats.enabled, cmd & NoteWorkloop.syncWait != 0 { kevents.stats.syncOnExistingKnote += 1 }
                 existing.fflags |= cmd & NoteWorkloop.syncMask
                 kn = existing
             } else {
@@ -939,11 +1206,15 @@ extension DarwinKernel {
 
     /// Removes a knote.
     func drop(_ kn: Knote) {
+        eventLock?.checkHeld("a knote")
         kn.dropped = true
         kn.active = false
         if let token = kn.observerToken {
-            kn.object?.removeReadinessObserver(token)
+            // A descriptor's observer list is L0 state; the observer itself
+            // ignores a dropped knote meanwhile.
+            let object = kn.object
             kn.observerToken = nil
+            lock.deferIfFast(.kernelLock(lock)) { object?.removeReadinessObserver(token) }
         }
         kevents.timers[ObjectIdentifier(kn)] = nil
         if kn.isSyncKnote, !kn.syncWaiters.isEmpty {
@@ -951,12 +1222,23 @@ extension DarwinKernel {
             kn.syncWaiters.wakeAll()
         }
         guard let kq = kn.kq else { return }
+        let before = kq.knotes.count
         kq.knotes.removeAll { $0 === kn }
+        if kn.filter == EVFilter.machport { kevents.machportIndex = nil }
+        if kq.knotes.count < before, kn.filter == EVFilter.signal { signalKnoteCount.wrappingSubtract(1, ordering: .relaxed) }
+        if kq.knotes.count < before, kn.filter == EVFilter.read || kn.filter == EVFilter.write {
+            kq.descriptorKnotes -= 1
+            descriptorKnoteCount.wrappingSubtract(1, ordering: .relaxed)
+        }
+        if kq.knotes.count < before, Self.isDescriptorWatch(kn.filter) {
+            noteDescriptorWatch(kn.ident, -1)
+        }
         reevaluateRequests(kq, bucket: kq.kind == .workq ? kn.bucket : nil)
     }
 
     /// A knote became active: wake a scanner or request a worker.
     func activated(_ kn: Knote) {
+        eventLock?.checkHeld("a knote")
         guard let kq = kn.kq, kn.enabled, !kn.suppressed else { return }
         reevaluateRequests(kq, bucket: kq.kind == .workq ? kn.bucket : nil)
     }
@@ -972,7 +1254,16 @@ extension DarwinKernel {
         case EVFilter.user: return true
         case EVFilter.proc: return kn.procFired != 0 || kn.procExited
         case EVFilter.signal: return kn.signalCount > 0
-        case EVFilter.read, EVFilter.write: return descriptorState(kn).ready
+        case EVFilter.read, EVFilter.write:
+            // Without the kernel mutex (a fast path that raced a new
+            // descriptor knote): reported once L0 re-evaluates the kqueue.
+            if eventLock != nil, !lock.isHeldByCurrentThread {
+                if let kq = kn.kq, kq.descriptorKnotes > 0 {
+                    reevaluateRequests(kq, bucket: kq.kind == .workq ? kn.bucket : nil)  // deferred to L0
+                }
+                return false
+            }
+            return descriptorState(kn).ready
         default: return false
         }
     }
@@ -980,11 +1271,24 @@ extension DarwinKernel {
     /// Issues (or cancels) the thread request of a bucket or workloop, or
     /// wakes the scanners of a descriptor kqueue (K2, §2.9 rule 1).
     func reevaluateRequests(_ kq: KQueue, bucket: Int?) {
+        eventLock?.checkHeld("a kqueue")
+        // Descriptor readiness is L0 state: without the kernel mutex the
+        // re-evaluation waits for it (`mach-ipc-locking.md` §4.5).
+        if kq.descriptorKnotes > 0, eventLock != nil, !lock.isHeldByCurrentThread {
+            lock.deferIfFast(.kernelLock(lock)) { [weak self, weak kq] in
+                guard let self, let kq else { return }
+                withEvents { reevaluateRequests(kq, bucket: bucket) }
+            }
+            return
+        }
         switch kq.kind {
         case .descriptor:
             if kq.knotes.contains(where: { deliverable($0, in: kq) }) {
                 kq.waiters.wakeAll()
-                kq.object?.notifyObservers()
+                // Observers (select, an outer kqueue) wait under L0.
+                if let object = kq.object {
+                    lock.deferIfFast(.kernelLock(lock)) { object.notifyObservers() }
+                }
             }
         case .workq:
             let buckets = bucket.map { [$0] } ?? Array(Set(kq.knotes.map(\.bucket)))
@@ -1000,24 +1304,35 @@ extension DarwinKernel {
                 }
                 kq.buckets[b] = state
             }
-            if pump { pumpWorkqueue(nil) }
+            if pump { keventPump() }
         case .workloop:
-            let active = kq.knotes.filter { deliverable($0, in: kq) }
             if kq.servicer != nil {
-                if !active.isEmpty { kq.waiters.wakeAll() }
+                if kq.knotes.contains(where: { deliverable($0, in: kq) }) { kq.waiters.wakeAll() }
                 return
             }
-            if !active.isEmpty && kq.owner == nil {
-                kq.requestQoS = active.compactMap { PthreadPriority.qos($0.qos) }.max() ?? 4
-                kq.requestOvercommit = active.contains { $0.qos & PthreadPriority.overcommit != 0 }
+            // One pass: is any knote deliverable, the highest QoS among them,
+            // and whether any asks for overcommit.
+            var anyActive = false
+            var highest: Int?
+            var overcommit = false
+            for kn in kq.knotes where deliverable(kn, in: kq) {
+                anyActive = true
+                if let q = PthreadPriority.qos(kn.qos) { highest = max(highest ?? q, q) }
+                if kn.qos & PthreadPriority.overcommit != 0 { overcommit = true }
+            }
+            if anyActive && kq.owner == nil {
+                kq.requestQoS = highest ?? 4
+                kq.requestOvercommit = overcommit
                 if !kq.requested {
                     kq.requested = true
                     workqueue.pendingWorkloops.append(kq)
-                    pumpWorkqueue(nil)
+                    kq.logRequest(.requested)
+                    keventPump()
                 }
             } else if kq.requested {
                 kq.requested = false
                 workqueue.pendingWorkloops.removeAll { $0 === kq }
+                kq.logRequest(.cleared)
             }
             maybeFreeWorkloop(kq)
         }
@@ -1027,7 +1342,7 @@ extension DarwinKernel {
     func maybeFreeWorkloop(_ kq: KQueue) {
         guard kq.kind == .workloop, kq.knotes.isEmpty, kq.servicer == nil, !kq.createReference, !kq.requested,
               kq.waiters.isEmpty, kevents.workloops[kq.workloopID] === kq else { return }
-        kevents.workloops[kq.workloopID] = nil
+        kevents.workloops[kq.workloopID] = nil  // no knotes: the machport index is unaffected
         trace("note: workloop \(hx(kq.workloopID)) freed")
     }
 
@@ -1171,33 +1486,50 @@ extension DarwinKernel {
 
     /// `MachIPC`'s hook: a message was queued on `name` (a port or a set).
     func machPortMessageQueued(_ name: UInt32) {
-        let queues = allKQueues
-        for kq in queues {
-            for kn in kq.knotes where kn.filter == EVFilter.machport && UInt32(truncatingIfNeeded: kn.ident) == name {
-                kn.active = true
-                activated(kn)
+        eventLock?.checkHeld("the EVFILT_MACHPORT hook")
+        for kn in machportKnotes(named: name) {
+            kn.active = true
+            activated(kn)
+        }
+    }
+
+    /// `YCODE_KNOTE_INDEX=0`: scan every kqueue for each queued message (as before).
+    nonisolated(unsafe) static var machportKnoteIndex = getenv("YCODE_KNOTE_INDEX").map { String(cString: $0) != "0" } ?? true
+
+    /// The EVFILT_MACHPORT knotes watching `name`, in the order a scan of
+    /// `allKQueues` finds them (the index, `KEventState.machportIndex`).
+    func machportKnotes(named name: UInt32) -> [Knote] {
+        guard Self.machportKnoteIndex else {
+            return allKQueues.flatMap { kq in
+                kq.knotes.filter { $0.filter == EVFilter.machport && UInt32(truncatingIfNeeded: $0.ident) == name }
             }
         }
+        if let index = kevents.machportIndex { return index[name] ?? [] }
+        var index: [UInt32: [Knote]] = [:]
+        for kq in allKQueues {
+            for kn in kq.knotes where kn.filter == EVFilter.machport {
+                index[UInt32(truncatingIfNeeded: kn.ident), default: []].append(kn)
+            }
+        }
+        kevents.machportIndex = index
+        return index[name] ?? []
     }
 
     /// `MachIPC`'s hook: the receive right or port set `name` left the space.
     func machPortReceiveRightGone(_ name: UInt32) {
-        let queues = allKQueues
-        for kq in queues {
-            for kn in kq.knotes where kn.filter == EVFilter.machport && UInt32(truncatingIfNeeded: kn.ident) == name {
-                trace("note: receive right or port set \(hx(UInt64(name))) left the space; its knote vanishes")
-                kn.receiveGone = true
-                kn.active = true
-                activated(kn)
-            }
+        for kn in machportKnotes(named: name) {
+            trace("note: receive right or port set \(hx(UInt64(name))) left the space; its knote vanishes")
+            kn.receiveGone = true
+            kn.active = true
+            activated(kn)
         }
     }
 
     // MARK: kqueue_workloop_ctl
 
-    func kqueueWorkloopCtl(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    func kqueueWorkloopCtl(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let cmd = UInt32(truncatingIfNeeded: a[0])
-        call = "kqueue_workloop_ctl(cmd=\(cmd), options=\(hx(a[1])), params=\(hx(a[2])), size=\(a[3]))"
+        call.set("kqueue_workloop_ctl(cmd=\(cmd), options=\(hx(a[1])), params=\(hx(a[2])), size=\(a[3]))")
         let size = Int(min(a[3], 36))
         guard size >= 16 else { throw Failure(errno: Errno.EINVAL) }
         var p = try mem.read(va: a[2], count: size)
@@ -1236,15 +1568,19 @@ extension DarwinKernel {
 final class TimerThreadBox: @unchecked Sendable {
     weak var kernel: DarwinKernel?
     let lock: KernelLock
+    /// The image's event lock when the thread runs under it instead of L0.
+    let events: KernelLock?
     let wake: WaitQueue
 
-    init(kernel: DarwinKernel, lock: KernelLock, wake: WaitQueue) {
+    init(kernel: DarwinKernel, lock: KernelLock, events: KernelLock?, wake: WaitQueue) {
         self.kernel = kernel
         self.lock = lock
+        self.events = events
         self.wake = wake
     }
 
     func run() {
+        if let events { return runUnderEventLock(events) }
         lock.withLock {
             while !lock.isTerminated {
                 var next: UInt64?
@@ -1252,10 +1588,33 @@ final class TimerThreadBox: @unchecked Sendable {
                     // Stage 4b: the lock outlives one image; stop with it.
                     guard let k = kernel, !k.isTerminating else { return }
                     next = k.fireDueTimers()
-                    k.pumpWorkqueue(nil)
+                    k.withEvents { k.pumpWorkqueue(nil) }
                 }
                 let cap = KernelClock.deadline(afterNanoseconds: 1_000_000_000)
                 _ = wake.wait(on: lock, deadline: min(next ?? cap, cap))
+            }
+        }
+    }
+
+    /// The timer thread under the image's event lock (frame-profile.md
+    /// §5.3): timers fire and the workqueue is pumped with L_P (G inside for
+    /// Mach timers), as on a kevent fast path; what needs L0 (starting a
+    /// workqueue thread, a kqueue descriptor's observers) is deferred work,
+    /// run before the thread sleeps. The wait queue is bound to L_P; every
+    /// waker holds it (`withEvents`).
+    private func runUnderEventLock(_ events: KernelLock) {
+        lock.withFastPath(context: nil) {
+            events.withLock {
+                while !lock.isTerminated {
+                    var next: UInt64?
+                    do {
+                        guard let k = kernel, !k.isTerminating else { return }
+                        next = k.fireDueTimers()
+                        k.pumpWorkqueue(nil)
+                    }
+                    let cap = KernelClock.deadline(afterNanoseconds: 1_000_000_000)
+                    _ = wake.wait(on: events, deadline: min(next ?? cap, cap))
+                }
             }
         }
     }
@@ -1341,32 +1700,43 @@ extension DarwinKernel {
 
     /// How many knotes of `kq` a scan would deliver now.
     func deliverableCount(_ kq: KQueue) -> Int {
-        kq.knotes.reduce(0) { $0 + (deliverable($1, in: kq) ? 1 : 0) }
+        withEvents { kq.knotes.reduce(0) { $0 + (deliverable($1, in: kq) ? 1 : 0) } }
     }
 
     /// `kqueue()` (BSD 362): a new descriptor kqueue.
-    func kqueueCall(_ call: inout String) throws -> UInt64 {
-        call = "kqueue()"
+    func kqueueCall(_ call: inout CallText) throws -> UInt64 {
+        eventLock?.checkHeld("the kqueue registry")
+        call.set("kqueue()")
         let kq = KQueue(kind: .descriptor(-1))
         let object = KQueueObject(queue: kq, kernel: self)
         kq.object = object
         let fd = try fileSystem.installObject(object, statusFlags: DarwinOpen.O_RDWR, closeOnExec: false)
         kevents.objectQueues[ObjectIdentifier(kq)] = kq
+        kevents.machportIndex = nil
         call += " [kqueue fd \(fd)]"
         return UInt64(UInt32(bitPattern: fd))
     }
 
     /// The last descriptor of a `kqueue()` queue closed: its knotes go.
     func closeDescriptorKQueue(_ object: KQueueObject) {
+        withEvents { closeDescriptorKQueueLocked(object) }
+    }
+
+    private func closeDescriptorKQueueLocked(_ object: KQueueObject) {
         let kq = object.queue
         for kn in kq.knotes { drop(kn) }
         kq.waiters.wakeAll()
         kevents.objectQueues[ObjectIdentifier(kq)] = nil
+        kevents.machportIndex = nil
     }
 
     /// The image ends (exit or exec): every knote is dropped, so that no
     /// other process keeps calling into this kernel.
     func tearDownKEvents() {
+        withEvents { tearDownKEventsLocked() }
+    }
+
+    private func tearDownKEventsLocked() {
         for kq in allKQueues {
             for kn in kq.knotes {
                 kn.dropped = true
@@ -1390,6 +1760,34 @@ extension DarwinKernel {
         lock.withLock {
             extended.directoryCursors[fd] = nil
             guard !isTerminating else { return }
+            // Descriptor knotes are added only under L0 (held here), so a
+            // count of 0 means there is nothing to drop.
+            guard isDescriptorWatched(fd) else { return }
+            withEvents { closeDescriptorKnotes(fd) }
+        }
+    }
+
+    /// Counts a knote of a descriptor-watch filter on `ident` (+1 before its
+    /// descriptor is looked up, −1 when it fails or is dropped).
+    func noteDescriptorWatch(_ ident: UInt64, _ delta: Int) {
+        descriptorWatches.withLock { w in
+            let n = (w[ident] ?? 0) + delta
+            w[ident] = n > 0 ? n : nil
+        }
+    }
+
+    /// True when descriptor `fd` may have knotes that its close drops.
+    func isDescriptorWatched(_ fd: Int32) -> Bool {
+        descriptorWatches.withLock { $0[UInt64(UInt32(bitPattern: fd))] != nil }
+    }
+
+    /// Filters whose knotes a descriptor's close drops (`closeDescriptorKnotes`).
+    static func isDescriptorWatch(_ filter: Int16) -> Bool {
+        filter == EVFilter.read || filter == EVFilter.write || filter == EVFilter.vnode
+    }
+
+    private func closeDescriptorKnotes(_ fd: Int32) {
+        do {
             for kq in allKQueues {
                 for kn in kq.knotes where kn.ident == UInt64(UInt32(bitPattern: fd))
                     && (kn.filter == EVFilter.read || kn.filter == EVFilter.write || kn.filter == EVFilter.vnode) {
@@ -1419,6 +1817,10 @@ extension DarwinKernel {
 
     /// The system posts an event of a watched process to one of our knotes.
     func processEventFired(_ kn: Knote, event: UInt32, data: Int64) {
+        withEvents { processEventFiredLocked(kn, event: event, data: data) }
+    }
+
+    private func processEventFiredLocked(_ kn: Knote, event: UInt32, data: Int64) {
         guard !kn.dropped else { return }
         var wanted = kn.fflags & event
         if event == NoteProc.exit {
@@ -1439,6 +1841,12 @@ extension DarwinKernel {
 
     /// Counts one process-directed posting of `signal` (even when ignored).
     func countSignalForKEvent(_ signal: Int32) {
+        // EVFILT_SIGNAL knotes are added only under L0 (held here).
+        guard signalKnoteCount.load(ordering: .relaxed) > 0 else { return }
+        withEvents { countSignalForKEventLocked(signal) }
+    }
+
+    private func countSignalForKEventLocked(_ signal: Int32) {
         for kq in allKQueues {
             for kn in kq.knotes where kn.filter == EVFilter.signal && kn.ident == UInt64(signal) && !kn.dropped {
                 kn.signalCount += 1
@@ -1462,11 +1870,7 @@ extension DarwinKernel {
         }
         if let o = object as? KernelDescriptorObject {
             kn.object = o
-            kn.observerToken = o.addReadinessObserver { [weak self, weak kn] in
-                guard let self, let kn, !kn.dropped else { return }
-                kn.active = true
-                self.activated(kn)
-            }
+            kn.observerToken = o.addReadinessObserver(readinessObserver(for: kn))
             kn.active = true
         } else if object != nil {
             logFilterOnce(kn.filter, "a descriptor object without readiness never fires")

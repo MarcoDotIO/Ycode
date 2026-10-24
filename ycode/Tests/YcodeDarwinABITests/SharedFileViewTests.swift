@@ -57,13 +57,70 @@ import Testing
         #expect(fstat(fd, &st) == 0 && st.st_size == 0x5000)
     }
 
-    @Test func readOnlyDescriptorsAndOffsetsPastTheEndAreRefused() {
+    @Test func readOnlyDescriptorsAndUnalignedOffsetsAreRefused() {
         let (fd, path) = temporaryFile(size: 0x4000, flags: O_RDONLY)
         defer { close(fd); unlink(path) }
         #expect(SharedMemoryObject(hostFile: fd, offset: 0, size: 0x4000, fileSize: 0x4000) == nil)
         let (rw, path2) = temporaryFile(size: 0x4000, flags: O_RDWR)
         defer { close(rw); unlink(path2) }
-        #expect(SharedMemoryObject(hostFile: rw, offset: 0x4000, size: 0x4000, fileSize: 0x4000) == nil)
         #expect(SharedMemoryObject(hostFile: rw, offset: 0x10, size: 0x4000, fileSize: 0x4000) == nil)
     }
+
+    /// service-fidelity.md §10: a view made while the file was short shows
+    /// what is later written past the old end, and its writes there reach
+    /// the file (SpotlightIndex maps 1 MiB of a 16 KiB file and grows it).
+    @Test func viewsFollowTheFileWhenItGrows() throws {
+        let (fd, path) = temporaryFile(size: 0x4000, flags: O_RDWR)
+        defer { close(fd); unlink(path) }
+        let a = try #require(SharedMemoryObject(hostFile: fd, offset: 0, size: 0x10000, fileSize: 0x4000))
+        #expect(a.fileBackedBytes == 0x4000)
+        // A view that starts at the end of the file has no file pages yet.
+        let b = try #require(SharedMemoryObject(hostFile: fd, offset: 0x8000, size: 0x8000, fileSize: 0x4000))
+        #expect(b.fileBackedBytes == 0)
+        #expect(ftruncate(fd, 0xC000) == 0)
+        var data: [UInt8] = [5, 6, 7]
+        #expect(pwrite(fd, &data, 3, 0x8010) == 3)
+        SharedFileViews.sizeMayHaveChanged(hostFD: fd)
+        #expect(a.fileBackedBytes == 0xC000 && b.fileBackedBytes == 0x4000)
+        #expect(a.read(offset: 0x8010, count: 3) == [5, 6, 7])
+        #expect(b.read(offset: 0x10, count: 3) == [5, 6, 7])
+        a.write(offset: 0x9000, bytes: [0x42])
+        var back = [UInt8](repeating: 0, count: 1)
+        #expect(pread(fd, &back, 1, 0x9000) == 1 && back == [0x42])
+        #expect(b.read(offset: 0x1000, count: 1) == [0x42])
+    }
+
+    /// Truncation makes the pages past the new end zeros again (no host fault).
+    @Test func viewsFollowTheFileWhenItShrinks() throws {
+        let (fd, path) = temporaryFile(size: 0x10000, flags: O_RDWR)
+        defer { close(fd); unlink(path) }
+        let a = try #require(SharedMemoryObject(hostFile: fd, offset: 0, size: 0x10000, fileSize: 0x10000))
+        a.write(offset: 0x8000, bytes: [1])
+        #expect(ftruncate(fd, 0x4000) == 0)
+        SharedFileViews.sizeMayHaveChanged(hostFD: fd)
+        #expect(a.fileBackedBytes == 0x4000)
+        #expect(a.read(offset: 0x8000, count: 1) == [0])
+        #expect(ftruncate(fd, 0x10000) == 0)
+        SharedFileViews.sizeMayHaveChanged(hostFD: fd)
+        #expect(a.read(offset: 0x8000, count: 1) == [0], "the truncated bytes are gone, as on Darwin")
+    }
+
+    #if os(Linux)
+    /// A read-only descriptor's view (reopened for the host mapping) sees
+    /// later writes through another descriptor.
+    @Test func readOnlyViewsSeeLaterWrites() throws {
+        let (rw, path) = temporaryFile(size: 0x4000, flags: O_RDWR)
+        defer { close(rw); unlink(path) }
+        let ro = open(path, O_RDONLY)
+        defer { close(ro) }
+        let v = try #require(SharedMemoryObject(hostFile: ro, offset: 0, size: 0x8000, fileSize: 0x4000, reopenReadOnly: true))
+        var data: [UInt8] = [3, 1, 4]
+        #expect(pwrite(rw, &data, 3, 0x10) == 3)
+        #expect(v.read(offset: 0x10, count: 3) == [3, 1, 4])
+        #expect(pwrite(rw, &data, 3, 0x6000) == 3)
+        SharedFileViews.sizeMayHaveChanged(hostFD: rw)
+        #expect(v.read(offset: 0x6000, count: 3) == [3, 1, 4])
+    }
+    #endif
+
 }

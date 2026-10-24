@@ -113,6 +113,22 @@ extern int vm_page_shift, vm_kernel_page_shift;
 #define YC_COMM_KERNEL_PAGE_SHIFT 0x037
 #define YC_COMM_BOOTTIME_USEC 0x0A0
 #define YC_COMM_KDEBUG_ENABLE 0x100
+#define YC_COMM_TIMEBASE_OFFSET 0x088
+#define YC_COMM_CONT_TIMEBASE 0x098
+#define YC_COMM_NEWTIMEOFDAY 0x120
+/* Ycode-private flag byte in Darwin's UNUSED1 padding (fast-traps.md
+ * section 2): bit 0 = mach time from CNTVCT_EL0 in place (every vCPU has the
+ * system's counter offset), bit 1 = credentials from the block at 0x1000
+ * (u32 uid, euid, gid, egid; section 5). 0 = every call traps. */
+#define YC_COMM_FAST_FLAGS 0x0F8
+#define YC_FAST_DIRECT_CLOCK 0x1
+#define YC_FAST_CRED_BLOCK 0x2
+#define YC_COMM_CREDENTIALS 0x1000
+/* Ycode-private clock scale (fast-traps.md section 3.2): mach time =
+ * floor(CNTVCT_EL0 * multiplier / 2^shift) + TIMEBASE_OFFSET; u64 each.
+ * Multiplier 0 = no scaling. */
+#define YC_COMM_CLOCK_MULTIPLIER 0x1010
+#define YC_COMM_CLOCK_SHIFT 0x1018
 
 static inline yc_u8 yc_commpage_u8(unsigned off)
 {

@@ -52,6 +52,40 @@ import YcodeDarwinABI
         #expect(code2 == 0 && Received(raw2).id == 2)
     }
 
+    /// `mach-ipc.md` §2.9 (`YCODE_PORT_SLOT_HANDOFF`, boot-profile.md §8):
+    /// a receive from a full queue wakes the oldest blocked sender only and
+    /// keeps the freed slot for it; a sender that arrives meanwhile finds the
+    /// queue still full; the second blocked sender stays asleep until the
+    /// next receive. Messages arrive in the senders' blocking order.
+    @Test func dequeueHandsTheSlotToTheOldestBlockedSender() throws {
+        let env = try IPCEnv()
+        let (_, p) = env.construct(flags: MachPortConstruct.qlimit, qlimit: 1)
+        #expect(env.send(TestMessage(remote: p, remoteDisposition: MachMsgType.makeSend, id: 1).bytes) == 0)
+        let first = ThreadContext(threadID: 2, portName: env.ipc.allocateThreadPort(), vcpuIndex: 1, kind: .pthread)
+        let second = ThreadContext(threadID: 3, portName: env.ipc.allocateThreadPort(), vcpuIndex: 2, kind: .pthread)
+        let b1 = IPCEnv.scratch + 0x10000, b2 = IPCEnv.scratch + 0x11000
+        env.put(TestMessage(remote: p, remoteDisposition: MachMsgType.makeSend, id: 2).bytes, at: b1)
+        env.put(TestMessage(remote: p, remoteDisposition: MachMsgType.makeSend, id: 3).bytes, at: b2)
+        let wait1 = spawn { env.kr(-31, [b1, MachMsgOption.sendMsg, 24, 0, 0, 0, 0], context: first) }
+        Thread.sleep(forTimeInterval: 0.05)
+        let wait2 = spawn { env.kr(-31, [b2, MachMsgOption.sendMsg, 24, 0, 0, 0, 0], context: second) }
+        Thread.sleep(forTimeInterval: 0.05)
+        #expect(env.lock.withLock { first.blockedInKernel && second.blockedInKernel })
+        let (code, raw) = env.receive(p)
+        #expect(code == 0 && Received(raw).id == 1)
+        #expect(wait1() == 0)
+        // The second sender was not woken by that receive.
+        #expect(env.lock.withLock { second.blockedInKernel })
+        #expect(env.send(TestMessage(remote: p, remoteDisposition: MachMsgType.makeSend, id: 4).bytes,
+                         options: MachMsgOption.sendMsg | MachMsgOption.sendTimeout) == MachMsgReturn.sendTimedOut)
+        let (c2, r2) = env.receive(p)
+        #expect(c2 == 0 && Received(r2).id == 2)
+        #expect(wait2() == 0)
+        let (c3, r3) = env.receive(p)
+        #expect(c3 == 0 && Received(r3).id == 3)
+        #expect(env.ipc.portCounters(p)?.msgcount == 0)
+    }
+
     @Test func blockedReceiverGetsPortChanged() throws {
         let env = try IPCEnv()
         let p = env.allocate()

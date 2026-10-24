@@ -75,6 +75,9 @@
 #define CNTKCTL_EL0VCT  (1 << 1)
 #define RESUME_FLUSH_TLB_BIT 0
 #define RESUME_FP_TOUCH_BIT  1
+/* Contract 5.1: SMCCC fast call, SMC64, vendor hypervisor service, 0x5943. */
+#define HVC_DOORBELL_FN_LO   0x5943
+#define HVC_DOORBELL_FN_HI   0xC600
 
 /* "YCDBOOT1" read as a little-endian u64. */
 #define BOOT_MAGIC_0    0x4359
@@ -293,8 +296,10 @@ trap_common:
         mrs     x2, tpidr_el1
         ldr     x2, [x2, #BI_DOORBELL]
         dsb     sy
+        cbz     x2, .Lhvc_doorbell              /* boot info doorbell 0: HVC form (contract 5.1) */
         str     x0, [x2]                        /* KVM_EXIT_MMIO, 8-byte write */
         dsb     sy
+.Lrang:
 
         tbnz    x1, #FATAL_BIT, .Lfatal
 
@@ -355,6 +360,22 @@ trap_common:
         ldp     x0, x1, [x0, #TF_X0 + 0]        /* base last; no writeback, so allowed */
         isb
         eret
+
+        /*
+         * Contract 5.1: the forwarded-HVC doorbell. KVM returns
+         * KVM_EXIT_HYPERCALL with the PC already after the hvc; the VMM
+         * finds the frame by the vCPU and returns no register value, so the
+         * frame address survives in x4 and x0 is reloaded from it. x1 (the
+         * kind code) is not touched.
+         */
+.Lhvc_doorbell:
+        mov     x4, x0
+        movz    w0, #HVC_DOORBELL_FN_LO
+        movk    w0, #HVC_DOORBELL_FN_HI, lsl #16
+        hvc     #0
+        mov     x0, x4
+        dsb     sy
+        b       .Lrang
 
 .Lfatal:
         wfi

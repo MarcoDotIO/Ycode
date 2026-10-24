@@ -1,0 +1,1537 @@
+SUP t=-0.000 app.init=sinceExec=0.269
+SUP mode=layout
+SUPX 0.003 notify-register com.apple.swiftuitrace.state
+SUPX 0.003 lookup2 com.apple.system.notification_center kr=0
+SUPX 0.006 lookup2 com.apple.logd kr=0
+SUPX 0.006 notify-register com.apple.system.logging.prefschanged
+SUPX 0.006 notify-register com.apple.system.logging.prefschanged
+SUPX 0.007 notify-register com.apple.CFPreferences._domainsChangedExternally
+SUPX 0.008 xpc-mach com.apple.cfprefsd.daemon
+SUPX 0.008 notify-register com.apple.system.timezone
+SUPX 0.014 notify-register com.apple.swiftuitrace.uikit
+SUPX 0.014 lookup com.apple.backboard.display.services kr=0
+SUPX 0.015 notify-register com.apple.UIKit.LoggingPreferences
+SUPX 0.016 notify-register com.apple.iohideventsystem.available
+SUPX 0.017 notify-register com.apple.runningboard.daemonstartup
+SUPX 0.017 xpc-mach com.apple.runningboard
+SUPX 0.018 notify-register GSEventHardwareKeyboardAttached
+SUPX 0.018 notify-register GSEventHardwareKeyboardAttached
+SUPX 0.018 notify-register com.apple.UIKit.SimulatorShake
+SUPX 0.023 notify-register com.apple.accessibility.cache.ax
+SUPX 0.024 notify-register com.apple.accessibility.cache.invert.colors
+SUPX 0.024 notify-register com.apple.accessibility.cache.app.ax
+SUPX 0.024 notify-register com.apple.accessibility.hearing.paired.ears.status
+SUPX 0.024 notify-register com.apple.dt.testmanagerd.availability.35414
+SUPX 0.024 notify-register com.apple.dt.testmanagerd.availability.35414
+SUPX 0.024 notify-register com.apple.dt.xctestd.availability.35414
+SUPX 0.024 notify-register com.apple.dt.xctestd.availability.35414
+SUPX 0.024 notify-register com.apple.dt.xctest.remote.availability.35414
+SUPX 0.024 notify-register com.apple.dt.xctest.remote.availability.35414
+SUPX 0.024 notify-register SignificantTimeChangeNotification
+SUPX 0.024 notify-register com.apple.language.changed
+SUPX 0.024 notify-register AppleTimePreferencesChangedNotification
+SUPX 0.024 notify-register AppleNumberPreferencesChangedNotification
+SUPX 0.024 notify-register AppleTimePreferencesChangedNotification
+SUPX 0.024 notify-register AppleDatePreferencesChangedNotification
+SUPX 0.024 notify-register AppleLanguagePreferencesChangedNotification
+SUPX 0.024 notify-register AppleTextBehaviorPreferencesChangedNotification
+SUPX 0.024 notify-register AppleTemperatureUnitPreferencesChangedNotification
+SUPX 0.024 notify-register AppleMeasurementSystemPreferencesChangedNotification
+SUPX 0.024 notify-register com.apple.springboard.showingAlertItem
+SUPX 0.024 notify-register NameLayerTree-35414
+SUPX 0.024 notify-register NameLayerTree
+SUPX 0.024 notify-register kKeepAppsUpToDateEnabledChangedNotification
+SUPX 0.025 notify-register AppleKeyboardsPreferencesChangedNotification
+SUPX 0.025 notify-register AppleKeyboardsSettingsChangedNotification
+SUPX 0.025 notify-register AppleKeyboardsInternalSettingsChangedNotification
+SUPX 0.025 notify-register AppleKeyboardsInputModeChangedNotification
+SUPX 0.025 notify-register AppleKeyboardsContinuousPathSettingsChangedNotification
+SUPX 0.025 notify-register com.apple.preferences.sounds.keyboard-audio.changed
+SUPX 0.025 notify-register kAFPreferencesDidChangeDarwinNotification
+SUPX 0.026 notify-register AssistiveTouchMouseAlwaysShowSoftwareKeyboard.notification
+SUPX 0.026 lookup com.apple.CARenderServer kr=0
+SUPX 0.028 notify-register com.apple.CoreAnimation.CAWindowServer.DisplayChanged
+SUPX 0.028 notify-register com.apple.CoreAnimation.CAWindowServer.DisplayPower
+SUPX 0.028 notify-register UIBacklightLevelChangedNotification
+SUPX 0.029 notify-register com.apple.accessibility.cache.enhance.text.legibility
+SUPX 0.029 notify-register com.apple.accessibility.cache.darken.system.colors.enabled
+SUPX 0.029 notify-register ApplePreferredContentSizeCategoryChangedNotification
+SUPX 0.029 notify-register AppleCarPlayPreferredContentSizeCategoryChangedNotification
+SUPX 0.029 notify-register com.apple.springboard.showingAlertItem
+SUP t=0.027 delegate.didFinishLaunching=state=2
+SUPX 0.030 notify-register com.apple.backboardd.orientation
+SUPX 0.032 notify-register com.apple.LaunchServices.database
+SUPX 0.032 xpc-mach com.apple.lsd.mapdb
+SUPX 0.033 notify-register com.apple.LaunchServices.database
+SUPX 0.035 notify-register com.apple.language.changed
+SUPX 0.037 xpc-mach com.apple.fontservicesd
+SUP t=0.046 app.body=
+SUP t=0.047 app.scenePhase=background->background
+SUPX 0.052 notify-register com.apple.accessibility.cache.full.keyboard.access
+SUPX 0.054 notify-register com.apple.gms.availability.notification
+SUPX 0.054 notify-register com.apple.language.changed
+SUPX 0.054 notify-register com.apple.os-eligibility-domain.change.greymatter
+SUPX 0.057 notify-register com.apple.gms.availability.notification
+SUPX 0.057 notify-register com.apple.os-eligibility-domain.change.greymatter
+SUPX 0.057 notify-register com.apple.language.changed
+SUPX 0.058 notify-register com.apple.system.lowpowermode
+SUPX 0.058 notify-register com.apple.LocalAuthentication.ui.presented
+SUPX 0.058 notify-register com.apple.LocalAuthentication.ui.dismissed
+SUPX 0.066 notify-register com.apple.system.timezone
+SUPX 0.070 notify-register com.apple.accessibility.cache.reduce.motion
+SUPX 0.072 notify-register com.apple.accessibility.cache.use.single.system.color.enabled
+SUPX 0.077 notify-register com.apple.backboardd.rawOrientation
+SUP t=0.075 app.body=
+SUP t=0.075 app.scenePhase=background->inactive
+SUPX 0.078 notify-register com.apple.UIIntelligenceSupport.AgentRelaunched.501
+SUPX 0.078 xpc-mach com.apple.uiintelligencesupport.agent
+SUPX 0.082 notify-register com.apple.UIKit.SimulatorSlowMotionAnimationState
+SUPX 0.082 notify-register UIViewGlassTintAmountUpdateNotification
+SUPX 0.085 notify-register com.apple.accessibility.OpaqueTouchGestures
+SUP t=0.087 root.body=
+SUP t=0.089 view.scenePhase=inactive->inactive
+SUP t=0.089 root.onAppear=sinceExec=0.358
+SUP layout.root.size=382.00x644.00
+SUP layout.root.safeArea=t0.00 l0.00 b34.00 r84.00
+SUP layout.screen=466.00x678.00 scale=3.00 native=3.00 maxFPS=60
+SUP layout.scene=UIWindowScene role=UIWindowSceneSessionRoleApplication state=1 windows=1
+SUP layout.window=(0.00,0.00,466.00,678.00) safe=UIEdgeInsets(top: 0.0, left: 0.0, bottom: 34.0, right: 84.0) key=true level=0.0
+SUP layout.traits=h=1 v=2 style=1 contentSize=UICTContentSizeCategoryL idiom=0 layoutDir=0 displayScale=3.0 gamut=1 contrast=0 legibility=0
+SUP layout.rootVC=UIHostingController
+SUP font.ui.largeTitle=sizes=31.00,32.00,33.00,34.00,36.00,38.00,40.00,44.00,48.00,52.00,56.00,60.00 large: name=.SFUI-Regular family=.AppleSystemUIFont asc=32.37 desc=-8.20 leading=0.43 lineHeight=40.57 capHeight=23.96 xHeight=17.27
+SUP font.ui.title1=sizes=25.00,26.00,27.00,28.00,30.00,32.00,34.00,38.00,43.00,48.00,53.00,58.00 large: name=.SFUI-Regular family=.AppleSystemUIFont asc=26.66 desc=-6.75 leading=0.59 lineHeight=33.41 capHeight=19.73 xHeight=14.22
+SUP font.ui.title2=sizes=19.00,20.00,21.00,22.00,24.00,26.00,28.00,34.00,39.00,44.00,50.00,56.00 large: name=.SFUI-Regular family=.AppleSystemUIFont asc=20.95 desc=-5.31 leading=1.75 lineHeight=26.25 capHeight=15.50 xHeight=11.37
+SUP font.ui.title3=sizes=17.00,18.00,19.00,20.00,22.00,24.00,26.00,31.00,37.00,43.00,49.00,55.00 large: name=.SFUI-Regular family=.AppleSystemUIFont asc=19.04 desc=-4.82 leading=1.13 lineHeight=23.87 capHeight=14.09 xHeight=10.44
+SUP font.ui.headline=sizes=14.00,15.00,16.00,17.00,19.00,21.00,23.00,28.00,33.00,40.00,47.00,53.00 large: name=.SFUI-Semibold family=.AppleSystemUIFont asc=16.19 desc=-4.10 leading=1.71 lineHeight=20.29 capHeight=11.98 xHeight=9.07
+SUP font.ui.subheadline=sizes=12.00,13.00,14.00,15.00,17.00,19.00,21.00,25.00,30.00,36.00,42.00,49.00 large: name=.SFUI-Regular family=.AppleSystemUIFont asc=14.28 desc=-3.62 leading=2.10 lineHeight=17.90 capHeight=10.57 xHeight=7.90
+SUP font.ui.body=sizes=14.00,15.00,16.00,17.00,19.00,21.00,23.00,28.00,33.00,40.00,47.00,53.00 large: name=.SFUI-Regular family=.AppleSystemUIFont asc=16.19 desc=-4.10 leading=1.71 lineHeight=20.29 capHeight=11.98 xHeight=8.95
+SUP font.ui.callout=sizes=13.00,14.00,15.00,16.00,18.00,20.00,22.00,26.00,32.00,38.00,44.00,51.00 large: name=.SFUI-Regular family=.AppleSystemUIFont asc=15.23 desc=-3.86 leading=1.91 lineHeight=19.09 capHeight=11.27 xHeight=8.42
+SUP font.ui.footnote=sizes=12.00,12.00,12.00,13.00,15.00,17.00,19.00,23.00,27.00,33.00,38.00,44.00 large: name=.SFUI-Regular family=.AppleSystemUIFont asc=12.38 desc=-3.14 leading=2.49 lineHeight=15.51 capHeight=9.16 xHeight=6.84
+SUP font.ui.caption1=sizes=11.00,11.00,11.00,12.00,14.00,16.00,18.00,22.00,26.00,32.00,37.00,43.00 large: name=.SFUI-Regular family=.AppleSystemUIFont asc=11.43 desc=-2.89 leading=1.68 lineHeight=14.32 capHeight=8.46 xHeight=6.32
+SUP font.ui.caption2=sizes=11.00,11.00,11.00,11.00,13.00,15.00,17.00,20.00,24.00,29.00,34.00,40.00 large: name=.SFUI-Regular family=.AppleSystemUIFont asc=10.47 desc=-2.65 leading=-0.13 lineHeight=13.13 capHeight=7.75 xHeight=5.79
+SUP font.ui.extraLargeTitle=sizes=33.00,34.00,35.00,36.00,38.00,40.00,42.00,44.00,46.00,48.00,50.00,52.00 large: name=.SFUI-Bold family=.AppleSystemUIFont asc=34.28 desc=-8.68 leading=-0.96 lineHeight=42.96 capHeight=25.37 xHeight=18.84
+SUP font.ui.extraLargeTitle2=sizes=25.00,26.00,27.00,28.00,30.00,32.00,34.00,36.00,38.00,40.00,42.00,44.00 large: name=.SFUI-Bold family=.AppleSystemUIFont asc=26.66 desc=-6.75 leading=0.59 lineHeight=33.41 capHeight=19.73 xHeight=14.66
+SUP font.ui.system17=name=.SFUI-Regular family=.AppleSystemUIFont lineHeight=20.29
+SUP font.families.count=87
+SUP font.families=Academy Engraved LET|Al Nile|American Typewriter|Apple Color Emoji|Apple SD Gothic Neo|Apple Symbols|Arial|Arial Hebrew|Arial Rounded MT Bold|Avenir|Avenir Next|Avenir Next Condensed|Baskerville|Bodoni 72|Bodoni 72 Oldstyle|Bodoni 72 Smallcaps|Bodoni Ornaments|Bradley Hand|Chalkboard SE|Chalkduster|Charter|Cochin|Copperplate|Courier New|DIN Alternate|DIN Condensed|Damascus|Devanagari Sangam MN|Didot|Euphemia UCAS|Farah|Futura|Galvji|Geeza Pro|Georgia|Gill Sans|Grantha Sangam MN|Helvetica|Helvetica Neue|Hiragino Maru Gothic ProN|Hiragino Mincho ProN|Hiragino Sans|Hoefler Text|Impact|Kailasa|Kefa III|Khmer Sangam MN|Kohinoor Bangla|Kohinoor Devanagari|Kohinoor Gujarati|Kohinoor Telugu|Lao Sangam MN|Malayalam Sangam MN|Marker Felt|Menlo|Mishafi|Mukta Mahee|Myanmar Sangam MN|Noteworthy|Noto Nastaliq Urdu|Noto Sans Kannada|Noto Sans Oriya|Noto Sans Sunuwar|Noto Sans Syriac|Noto Serif Myanmar|Optima|Palatino|Papyrus|Party LET|PingFang HK|PingFang MO|PingFang SC|PingFang TC|Rockwell|STIX Two Math|STIX Two Text|Savoye LET|Sinhala Sangam MN|Snell Roundhand|Symbol|Tamil Sangam MN|Thonburi|Times New Roman|Trebuchet MS|Verdana|Zapf Dingbats|Zapfino
+SUPX 0.132 notify-register com.apple.coreservices.useractivity.reconnection
+SUPX 0.134 xpc-mach com.apple.runningboard
+SUP t=0.133 app.body=
+SUP t=0.133 app.scenePhase=inactive->active
+SUPX 0.136 lookup com.apple.backboard.hid.services kr=0
+SUP t=0.135 root.body=
+SUP t=0.135 view.scenePhase=inactive->active
+SUPX 0.139 notify-register UIBacklightLevelChangedNotification
+SUP t=0.143 displaylink.first=sinceExec=0.412 fps=0
+SUPX 0.177 notify-register com.apple.system.networkd.settings
+SUPX 0.177 notify-register com.apple.system.networkd.settings
+SUPX 0.296 notify-register AppleKeyboardsPreferencesChangedNotification
+SUPX 0.296 notify-register AppleKeyboardsSettingsChangedNotification
+SUPX 0.296 notify-register AppleKeyboardsInternalSettingsChangedNotification
+SUPX 0.296 notify-register AppleKeyboardsInputModeChangedNotification
+SUPX 0.296 notify-register AppleKeyboardsContinuousPathSettingsChangedNotification
+SUPX 0.296 notify-register com.apple.preferences.sounds.keyboard-audio.changed
+SUPX 0.296 notify-register kAFPreferencesDidChangeDarwinNotification
+SUPX 0.296 notify-register AssistiveTouchMouseAlwaysShowSoftwareKeyboard.notification
+SUP layout.text.hello.fit[nilxnil]=39.00x20.33
+SUP layout.text.hello.fit[0.00x0.00]=0.00x0.00
+SUP layout.text.hello.fit[infxinf]=39.00x20.33
+SUP layout.text.hello.fit[100.00xnil]=39.00x20.33
+SUP layout.text.hello.fit[nilx100.00]=39.00x20.33
+SUP layout.text.hello.fit[100.00x100.00]=39.00x20.33
+SUP layout.text.hello.fit[300.00x500.00]=39.00x20.33
+SUP layout.text.hello.dims[300.00x500.00]=39.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=39.00
+SUP layout.text.hello.priority=0.00
+SUPX 0.547 notify-register com.apple.accessibility.cache.captioning
+SUPX 0.547 notify-register com.apple.accessibility.cache.mono.audio
+SUPX 0.547 notify-register com.apple.accessibility.cache.quick.speak
+SUPX 0.547 notify-register com.apple.accessibility.cache.differentiate.without.color
+SUPX 0.547 notify-register com.apple.accessibility.cache.enhance.background.contrast
+SUPX 0.547 notify-register com.apple.accessibility.cache.reduce.motion.reduce.slide.transitions
+SUPX 0.547 notify-register com.apple.accessibility.cache.vot
+SUPX 0.547 notify-register com.apple.accessibility.cache.grayscale
+SUPX 0.548 notify-register com.apple.accessibility.cache.prefer.action.slider.alternative.status
+SUPX 0.548 notify-register com.apple.accessibility.haptics.active.status.private
+SUPX 0.548 notify-register com.apple.accessibility.cache.reduce.highlighting.effects.enabled
+SUP layout.text.long.fit[nilxnil]=339.00x20.33
+SUP layout.text.long.fit[0.00x0.00]=0.00x0.00
+SUP layout.text.long.fit[infxinf]=339.00x20.33
+SUP layout.text.long.fit[100.00xnil]=93.33x86.33
+SUP layout.text.long.fit[nilx100.00]=339.00x20.33
+SUP layout.text.long.fit[100.00x100.00]=93.33x86.33
+SUP layout.text.long.fit[300.00x500.00]=275.00x42.33
+SUP layout.text.long.dims[300.00x500.00]=275.00x42.33 firstBaseline=16.33 lastBaseline=38.33 centerY=21.17 leading=0.00 trailing=275.00
+SUP layout.text.long.priority=0.00
+SUP layout.text.long.w100.fit[nilxnil]=339.00x20.33
+SUP layout.text.long.w100.fit[0.00x0.00]=0.00x0.00
+SUP layout.text.long.w100.fit[infxinf]=339.00x20.33
+SUP layout.text.long.w100.fit[100.00xnil]=93.33x86.33
+SUP layout.text.long.w100.fit[nilx100.00]=339.00x20.33
+SUP layout.text.long.w100.fit[100.00x100.00]=93.33x86.33
+SUP layout.text.long.w100.fit[300.00x500.00]=275.00x42.33
+SUP layout.text.long.w100.dims[100.00x500.00]=93.33x86.33 firstBaseline=16.33 lastBaseline=82.33 centerY=43.17 leading=0.00 trailing=93.33
+SUP layout.text.long.w100.priority=0.00
+SUP layout.text.long.lineLimit1.fit[nilxnil]=339.00x20.33
+SUP layout.text.long.lineLimit1.fit[0.00x0.00]=0.00x0.00
+SUP layout.text.long.lineLimit1.fit[infxinf]=339.00x20.33
+SUP layout.text.long.lineLimit1.fit[100.00xnil]=88.00x20.33
+SUP layout.text.long.lineLimit1.fit[nilx100.00]=339.00x20.33
+SUP layout.text.long.lineLimit1.fit[100.00x100.00]=88.00x20.33
+SUP layout.text.long.lineLimit1.fit[300.00x500.00]=292.00x20.33
+SUP layout.text.long.lineLimit1.dims[100.00x500.00]=88.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=88.00
+SUP layout.text.long.lineLimit1.priority=0.00
+SUP layout.text.long.lineLimit2.fit[nilxnil]=339.00x20.33
+SUP layout.text.long.lineLimit2.fit[0.00x0.00]=0.00x0.00
+SUP layout.text.long.lineLimit2.fit[infxinf]=339.00x20.33
+SUP layout.text.long.lineLimit2.fit[100.00xnil]=96.33x42.33
+SUP layout.text.long.lineLimit2.fit[nilx100.00]=339.00x20.33
+SUP layout.text.long.lineLimit2.fit[100.00x100.00]=96.33x42.33
+SUP layout.text.long.lineLimit2.fit[300.00x500.00]=275.00x42.33
+SUP layout.text.long.lineLimit2.dims[100.00x500.00]=96.33x42.33 firstBaseline=16.33 lastBaseline=38.33 centerY=21.17 leading=0.00 trailing=96.33
+SUP layout.text.long.lineLimit2.priority=0.00
+SUPX 1.523 notify-register com.apple.accessibility.QuickSpeakEnabled
+SUPX 1.523 notify-register com.apple.accessibility.cache.speech.settings.disabled.by.mc
+SUP layout.text.empty.fit[nilxnil]=0.00x14.00
+SUP layout.text.empty.fit[0.00x0.00]=0.00x0.00
+SUP layout.text.empty.fit[infxinf]=0.00x14.00
+SUP layout.text.empty.fit[100.00xnil]=0.00x14.00
+SUP layout.text.empty.fit[nilx100.00]=0.00x14.00
+SUP layout.text.empty.fit[100.00x100.00]=0.00x14.00
+SUP layout.text.empty.fit[300.00x500.00]=0.00x14.00
+SUP layout.text.empty.dims[300.00x500.00]=0.00x14.00 firstBaseline=11.00 lastBaseline=11.00 centerY=7.00 leading=0.00 trailing=0.00
+SUP layout.text.empty.priority=0.00
+SUP layout.text.system17.fit[nilxnil]=39.00x20.33
+SUP layout.text.system17.fit[0.00x0.00]=0.00x0.00
+SUP layout.text.system17.fit[infxinf]=39.00x20.33
+SUP layout.text.system17.fit[100.00xnil]=39.00x20.33
+SUP layout.text.system17.fit[nilx100.00]=39.00x20.33
+SUP layout.text.system17.fit[100.00x100.00]=39.00x20.33
+SUP layout.text.system17.fit[300.00x500.00]=39.00x20.33
+SUP layout.text.system17.dims[300.00x500.00]=39.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=39.00
+SUP layout.text.system17.priority=0.00
+SUP displaylink.rate=59.51
+SUP layout.text.bold.fit[nilxnil]=41.00x20.33
+SUP layout.text.bold.fit[0.00x0.00]=0.00x0.00
+SUP layout.text.bold.fit[infxinf]=41.00x20.33
+SUP layout.text.bold.fit[100.00xnil]=41.00x20.33
+SUP layout.text.bold.fit[nilx100.00]=41.00x20.33
+SUP layout.text.bold.fit[100.00x100.00]=41.00x20.33
+SUP layout.text.bold.fit[300.00x500.00]=41.00x20.33
+SUP layout.text.bold.dims[300.00x500.00]=41.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=41.00
+SUP layout.text.bold.priority=0.00
+SUP layout.text.twoLines.fit[nilxnil]=45.00x42.33
+SUP layout.text.twoLines.fit[0.00x0.00]=0.00x0.00
+SUP layout.text.twoLines.fit[infxinf]=45.00x42.33
+SUP layout.text.twoLines.fit[100.00xnil]=45.00x42.33
+SUP layout.text.twoLines.fit[nilx100.00]=45.00x42.33
+SUP layout.text.twoLines.fit[100.00x100.00]=45.00x42.33
+SUP layout.text.twoLines.fit[300.00x500.00]=45.00x42.33
+SUP layout.text.twoLines.dims[300.00x500.00]=45.00x42.33 firstBaseline=16.33 lastBaseline=38.33 centerY=21.17 leading=0.00 trailing=45.00
+SUP layout.text.twoLines.priority=0.00
+SUP layout.font.largeTitle.fit[nilxnil]=41.00x40.67
+SUP layout.font.largeTitle.dims[300.00x500.00]=41.00x40.67 firstBaseline=32.33 lastBaseline=32.33 centerY=20.33 leading=0.00 trailing=41.00
+SUP layout.font.largeTitle.priority=0.00
+SUP layout.font.title.fit[nilxnil]=33.67x33.67
+SUP layout.font.title.dims[300.00x500.00]=33.67x33.67 firstBaseline=26.67 lastBaseline=26.67 centerY=16.83 leading=0.00 trailing=33.67
+SUP layout.font.title.priority=0.00
+SUP layout.font.title2.fit[nilxnil]=26.33x26.33
+SUP layout.font.title2.dims[300.00x500.00]=26.33x26.33 firstBaseline=21.00 lastBaseline=21.00 centerY=13.17 leading=0.00 trailing=26.33
+SUP layout.font.title2.priority=0.00
+SUP layout.font.title3.fit[nilxnil]=24.00x24.00
+SUP layout.font.title3.dims[300.00x500.00]=24.00x24.00 firstBaseline=19.00 lastBaseline=19.00 centerY=12.00 leading=0.00 trailing=24.00
+SUP layout.font.title3.priority=0.00
+SUP layout.font.headline.fit[nilxnil]=21.67x20.33
+SUP layout.font.headline.dims[300.00x500.00]=21.67x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=21.67
+SUP layout.font.headline.priority=0.00
+SUP layout.font.subheadline.fit[nilxnil]=18.67x18.00
+SUP layout.font.subheadline.dims[300.00x500.00]=18.67x18.00 firstBaseline=14.33 lastBaseline=14.33 centerY=9.00 leading=0.00 trailing=18.67
+SUP layout.font.subheadline.priority=0.00
+SUP layout.font.body.fit[nilxnil]=20.67x20.33
+SUP layout.font.body.dims[300.00x500.00]=20.67x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=20.67
+SUP layout.font.body.priority=0.00
+SUP layout.font.callout.fit[nilxnil]=19.67x19.33
+SUP layout.font.callout.dims[300.00x500.00]=19.67x19.33 firstBaseline=15.33 lastBaseline=15.33 centerY=9.67 leading=0.00 trailing=19.67
+SUP layout.font.callout.priority=0.00
+SUP layout.font.footnote.fit[nilxnil]=16.33x15.67
+SUP layout.font.footnote.dims[300.00x500.00]=16.33x15.67 firstBaseline=12.33 lastBaseline=12.33 centerY=7.83 leading=0.00 trailing=16.33
+SUP layout.font.footnote.priority=0.00
+SUP layout.font.caption.fit[nilxnil]=15.33x14.33
+SUP layout.font.caption.dims[300.00x500.00]=15.33x14.33 firstBaseline=11.33 lastBaseline=11.33 centerY=7.17 leading=0.00 trailing=15.33
+SUP layout.font.caption.priority=0.00
+SUP layout.font.caption2.fit[nilxnil]=14.00x13.33
+SUP layout.font.caption2.dims[300.00x500.00]=14.00x13.33 firstBaseline=10.33 lastBaseline=10.33 centerY=6.67 leading=0.00 trailing=14.00
+SUP layout.font.caption2.priority=0.00
+SUP layout.dyn.xSmall.fit[nilxnil]=37.33x215.33
+SUP layout.dyn.xSmall.dims[300.00x500.00]=37.33x215.33 firstBaseline=29.67 lastBaseline=212.33 centerY=107.67 leading=0.00 trailing=37.33
+SUP layout.dyn.xSmall.priority=0.00
+SUP layout.dyn.xSmall.frame.caption2=(0.00,202.00,14.00,13.33)
+SUP layout.dyn.xSmall.frame.caption=(0.00,188.67,14.00,13.33)
+SUP layout.dyn.xSmall.frame.footnote=(0.00,174.33,15.33,14.33)
+SUP layout.dyn.xSmall.frame.callout=(0.00,158.67,16.33,15.67)
+SUP layout.dyn.xSmall.frame.body=(0.00,141.67,17.33,17.00)
+SUP layout.dyn.xSmall.frame.subheadline=(0.00,127.33,15.33,14.33)
+SUP layout.dyn.xSmall.frame.headline=(0.00,110.33,18.33,17.00)
+SUP layout.dyn.xSmall.frame.title3=(0.00,90.00,20.67,20.33)
+SUP layout.dyn.xSmall.frame.title2=(0.00,67.00,23.00,23.00)
+SUP layout.dyn.xSmall.frame.title=(0.00,37.00,30.00,30.00)
+SUP layout.dyn.xSmall.frame.largeTitle=(0.00,0.00,37.33,37.00)
+SUP layout.dyn.small.fit[nilxnil]=38.67x225.00
+SUP layout.dyn.small.dims[300.00x500.00]=38.67x225.00 firstBaseline=30.33 lastBaseline=222.00 centerY=112.50 leading=0.00 trailing=38.67
+SUP layout.dyn.small.priority=0.00
+SUP layout.dyn.small.frame.caption2=(0.00,211.67,14.00,13.33)
+SUP layout.dyn.small.frame.caption=(0.00,198.33,14.00,13.33)
+SUP layout.dyn.small.frame.footnote=(0.00,184.00,15.33,14.33)
+SUP layout.dyn.small.frame.callout=(0.00,167.00,17.33,17.00)
+SUP layout.dyn.small.frame.body=(0.00,149.00,18.67,18.00)
+SUP layout.dyn.small.frame.subheadline=(0.00,133.33,16.33,15.67)
+SUP layout.dyn.small.frame.headline=(0.00,115.33,19.33,18.00)
+SUP layout.dyn.small.frame.title3=(0.00,93.67,21.67,21.67)
+SUP layout.dyn.small.frame.title2=(0.00,69.67,24.00,24.00)
+SUP layout.dyn.small.frame.title=(0.00,38.33,31.33,31.33)
+SUP layout.dyn.small.frame.largeTitle=(0.00,0.00,38.67,38.33)
+SUP layout.dyn.medium.fit[nilxnil]=39.67x235.00
+SUP layout.dyn.medium.dims[300.00x500.00]=39.67x235.00 firstBaseline=31.33 lastBaseline=232.00 centerY=117.50 leading=0.00 trailing=39.67
+SUP layout.dyn.medium.priority=0.00
+SUP layout.dyn.medium.frame.caption2=(0.00,221.67,14.00,13.33)
+SUP layout.dyn.medium.frame.caption=(0.00,208.33,14.00,13.33)
+SUP layout.dyn.medium.frame.footnote=(0.00,194.00,15.33,14.33)
+SUP layout.dyn.medium.frame.callout=(0.00,176.00,18.67,18.00)
+SUP layout.dyn.medium.frame.body=(0.00,156.67,19.67,19.33)
+SUP layout.dyn.medium.frame.subheadline=(0.00,139.67,17.33,17.00)
+SUP layout.dyn.medium.frame.headline=(0.00,120.33,20.67,19.33)
+SUP layout.dyn.medium.frame.title3=(0.00,97.33,23.00,23.00)
+SUP layout.dyn.medium.frame.title2=(0.00,72.00,25.00,25.33)
+SUP layout.dyn.medium.frame.title=(0.00,39.67,32.67,32.33)
+SUP layout.dyn.medium.frame.largeTitle=(0.00,0.00,39.67,39.67)
+SUP layout.dyn.large.fit[nilxnil]=41.00x246.00
+SUP layout.dyn.large.dims[300.00x500.00]=41.00x246.00 firstBaseline=32.33 lastBaseline=243.00 centerY=123.00 leading=0.00 trailing=41.00
+SUP layout.dyn.large.priority=0.00
+SUP layout.dyn.large.frame.caption2=(0.00,232.67,14.00,13.33)
+SUP layout.dyn.large.frame.caption=(0.00,218.33,15.33,14.33)
+SUP layout.dyn.large.frame.footnote=(0.00,202.67,16.33,15.67)
+SUP layout.dyn.large.frame.callout=(0.00,183.33,19.67,19.33)
+SUP layout.dyn.large.frame.body=(0.00,163.00,20.67,20.33)
+SUP layout.dyn.large.frame.subheadline=(0.00,145.00,18.67,18.00)
+SUP layout.dyn.large.frame.headline=(0.00,124.67,21.67,20.33)
+SUP layout.dyn.large.frame.title3=(0.00,100.67,24.00,24.00)
+SUP layout.dyn.large.frame.title2=(0.00,74.33,26.33,26.33)
+SUP layout.dyn.large.frame.title=(0.00,40.67,33.67,33.67)
+SUP layout.dyn.large.frame.largeTitle=(0.00,0.00,41.00,40.67)
+SUP layout.dyn.xLarge.fit[nilxnil]=43.33x272.67
+SUP layout.dyn.xLarge.dims[300.00x500.00]=43.33x272.67 firstBaseline=34.33 lastBaseline=269.33 centerY=136.33 leading=0.00 trailing=43.33
+SUP layout.dyn.xLarge.priority=0.00
+SUP layout.dyn.xLarge.frame.caption2=(0.00,257.00,16.33,15.67)
+SUP layout.dyn.xLarge.frame.caption=(0.00,240.00,17.33,17.00)
+SUP layout.dyn.xLarge.frame.footnote=(0.00,222.00,18.67,18.00)
+SUP layout.dyn.xLarge.frame.callout=(0.00,200.33,21.67,21.67)
+SUP layout.dyn.xLarge.frame.body=(0.00,177.33,23.00,23.00)
+SUP layout.dyn.xLarge.frame.subheadline=(0.00,157.00,20.67,20.33)
+SUP layout.dyn.xLarge.frame.headline=(0.00,134.00,24.00,23.00)
+SUP layout.dyn.xLarge.frame.title3=(0.00,107.67,26.33,26.33)
+SUP layout.dyn.xLarge.frame.title2=(0.00,79.00,29.00,28.67)
+SUP layout.dyn.xLarge.frame.title=(0.00,43.00,36.33,36.00)
+SUP layout.dyn.xLarge.frame.largeTitle=(0.00,0.00,43.33,43.00)
+SUP layout.dyn.xxLarge.fit[nilxnil]=45.67x299.33
+SUP layout.dyn.xxLarge.dims[300.00x500.00]=45.67x299.33 firstBaseline=36.33 lastBaseline=295.67 centerY=149.67 leading=0.00 trailing=45.67
+SUP layout.dyn.xxLarge.priority=0.00
+SUP layout.dyn.xxLarge.frame.caption2=(0.00,281.33,18.67,18.00)
+SUP layout.dyn.xxLarge.frame.caption=(0.00,262.00,19.67,19.33)
+SUP layout.dyn.xxLarge.frame.footnote=(0.00,241.67,20.67,20.33)
+SUP layout.dyn.xxLarge.frame.callout=(0.00,217.67,24.00,24.00)
+SUP layout.dyn.xxLarge.frame.body=(0.00,192.33,25.00,25.33)
+SUP layout.dyn.xxLarge.frame.subheadline=(0.00,169.33,23.00,23.00)
+SUP layout.dyn.xxLarge.frame.headline=(0.00,144.00,26.33,25.33)
+SUP layout.dyn.xxLarge.frame.title3=(0.00,115.33,29.00,28.67)
+SUP layout.dyn.xxLarge.frame.title2=(0.00,84.00,31.33,31.33)
+SUP layout.dyn.xxLarge.frame.title=(0.00,45.67,38.67,38.33)
+SUP layout.dyn.xxLarge.frame.largeTitle=(0.00,0.00,45.67,45.67)
+SUP layout.dyn.xxxLarge.fit[nilxnil]=48.00x325.67
+SUP layout.dyn.xxxLarge.dims[300.00x500.00]=48.00x325.67 firstBaseline=38.00 lastBaseline=321.67 centerY=162.83 leading=0.00 trailing=48.00
+SUP layout.dyn.xxxLarge.priority=0.00
+SUP layout.dyn.xxxLarge.frame.caption2=(0.00,305.33,20.67,20.33)
+SUP layout.dyn.xxxLarge.frame.caption=(0.00,283.67,21.67,21.67)
+SUP layout.dyn.xxxLarge.frame.footnote=(0.00,260.67,23.00,23.00)
+SUP layout.dyn.xxxLarge.frame.callout=(0.00,234.33,26.33,26.33)
+SUP layout.dyn.xxxLarge.frame.body=(0.00,206.67,27.67,27.67)
+SUP layout.dyn.xxxLarge.frame.subheadline=(0.00,181.33,25.00,25.33)
+SUP layout.dyn.xxxLarge.frame.headline=(0.00,153.67,29.00,27.67)
+SUP layout.dyn.xxxLarge.frame.title3=(0.00,122.33,31.33,31.33)
+SUP layout.dyn.xxxLarge.frame.title2=(0.00,88.67,33.67,33.67)
+SUP layout.dyn.xxxLarge.frame.title=(0.00,48.00,41.00,40.67)
+SUP layout.dyn.xxxLarge.frame.largeTitle=(0.00,0.00,48.00,48.00)
+SUP layout.dyn.ax1.fit[nilxnil]=52.67x382.67
+SUP layout.dyn.ax1.dims[300.00x500.00]=52.67x382.67 firstBaseline=42.00 lastBaseline=377.67 centerY=191.33 leading=0.00 trailing=52.67
+SUP layout.dyn.ax1.priority=0.00
+SUP layout.dyn.ax1.frame.caption2=(0.00,358.67,24.00,24.00)
+SUP layout.dyn.ax1.frame.caption=(0.00,332.33,26.33,26.33)
+SUP layout.dyn.ax1.frame.footnote=(0.00,304.67,27.67,27.67)
+SUP layout.dyn.ax1.frame.callout=(0.00,273.33,31.33,31.33)
+SUP layout.dyn.ax1.frame.body=(0.00,239.67,33.67,33.67)
+SUP layout.dyn.ax1.frame.subheadline=(0.00,209.67,30.00,30.00)
+SUP layout.dyn.ax1.frame.headline=(0.00,176.00,35.33,33.67)
+SUP layout.dyn.ax1.frame.title3=(0.00,139.00,37.33,37.00)
+SUP layout.dyn.ax1.frame.title2=(0.00,98.33,41.00,40.67)
+SUP layout.dyn.ax1.frame.title=(0.00,52.67,45.67,45.67)
+SUP layout.dyn.ax1.frame.largeTitle=(0.00,0.00,52.67,52.67)
+SUP layout.dyn.ax2.fit[nilxnil]=57.33x445.67
+SUP layout.dyn.ax2.dims[300.00x500.00]=57.33x445.67 firstBaseline=45.67 lastBaseline=440.00 centerY=222.83 leading=0.00 trailing=57.33
+SUP layout.dyn.ax2.priority=0.00
+SUP layout.dyn.ax2.frame.caption2=(0.00,417.00,29.00,28.67)
+SUP layout.dyn.ax2.frame.caption=(0.00,385.67,31.33,31.33)
+SUP layout.dyn.ax2.frame.footnote=(0.00,353.33,32.67,32.33)
+SUP layout.dyn.ax2.frame.callout=(0.00,315.00,38.67,38.33)
+SUP layout.dyn.ax2.frame.body=(0.00,275.33,39.67,39.67)
+SUP layout.dyn.ax2.frame.subheadline=(0.00,239.33,36.33,36.00)
+SUP layout.dyn.ax2.frame.headline=(0.00,199.67,41.67,39.67)
+SUP layout.dyn.ax2.frame.title3=(0.00,155.33,44.33,44.33)
+SUP layout.dyn.ax2.frame.title2=(0.00,108.67,46.67,46.67)
+SUP layout.dyn.ax2.frame.title=(0.00,57.33,51.33,51.33)
+SUP layout.dyn.ax2.frame.largeTitle=(0.00,0.00,57.33,57.33)
+SUP layout.dyn.ax3.fit[nilxnil]=62.00x521.00
+SUP layout.dyn.ax3.dims[300.00x500.00]=62.00x521.00 firstBaseline=49.67 lastBaseline=514.00 centerY=260.50 leading=0.00 trailing=62.00
+SUP layout.dyn.ax3.priority=0.00
+SUP layout.dyn.ax3.frame.caption2=(0.00,486.33,35.00,34.67)
+SUP layout.dyn.ax3.frame.caption=(0.00,448.00,38.67,38.33)
+SUP layout.dyn.ax3.frame.footnote=(0.00,408.33,39.67,39.67)
+SUP layout.dyn.ax3.frame.callout=(0.00,362.67,45.67,45.67)
+SUP layout.dyn.ax3.frame.body=(0.00,314.67,48.00,48.00)
+SUP layout.dyn.ax3.frame.subheadline=(0.00,271.67,43.33,43.00)
+SUP layout.dyn.ax3.frame.headline=(0.00,223.67,50.33,48.00)
+SUP layout.dyn.ax3.frame.title3=(0.00,172.33,51.33,51.33)
+SUP layout.dyn.ax3.frame.title2=(0.00,119.67,52.67,52.67)
+SUP layout.dyn.ax3.frame.title=(0.00,62.33,57.33,57.33)
+SUP layout.dyn.ax3.frame.largeTitle=(0.00,0.00,62.00,62.33)
+SUP layout.dyn.ax4.fit[nilxnil]=66.67x595.33
+SUP layout.dyn.ax4.dims[300.00x500.00]=66.67x595.33 firstBaseline=53.33 lastBaseline=587.00 centerY=297.67 leading=0.00 trailing=66.67
+SUP layout.dyn.ax4.priority=0.00
+SUP layout.dyn.ax4.frame.caption2=(0.00,554.67,41.00,40.67)
+SUP layout.dyn.ax4.frame.caption=(0.00,510.33,44.33,44.33)
+SUP layout.dyn.ax4.frame.footnote=(0.00,464.67,45.67,45.67)
+SUP layout.dyn.ax4.frame.callout=(0.00,412.00,52.67,52.67)
+SUP layout.dyn.ax4.frame.body=(0.00,355.67,56.00,56.33)
+SUP layout.dyn.ax4.frame.subheadline=(0.00,305.33,50.33,50.33)
+SUP layout.dyn.ax4.frame.headline=(0.00,249.00,58.67,56.33)
+SUP layout.dyn.ax4.frame.title3=(0.00,190.33,58.33,58.67)
+SUP layout.dyn.ax4.frame.title2=(0.00,130.33,59.67,60.00)
+SUP layout.dyn.ax4.frame.title=(0.00,67.00,63.00,63.33)
+SUP layout.dyn.ax4.frame.largeTitle=(0.00,0.00,66.67,67.00)
+SUP layout.dyn.ax5.fit[nilxnil]=71.00x672.00
+SUP layout.dyn.ax5.dims[300.00x500.00]=71.00x672.00 firstBaseline=57.00 lastBaseline=662.00 centerY=336.00 leading=0.00 trailing=71.00
+SUP layout.dyn.ax5.priority=0.00
+SUP layout.dyn.ax5.frame.caption2=(0.00,624.00,48.00,48.00)
+SUP layout.dyn.ax5.frame.caption=(0.00,572.67,51.33,51.33)
+SUP layout.dyn.ax5.frame.footnote=(0.00,520.00,52.67,52.67)
+SUP layout.dyn.ax5.frame.callout=(0.00,459.00,60.67,61.00)
+SUP layout.dyn.ax5.frame.body=(0.00,395.67,63.00,63.33)
+SUP layout.dyn.ax5.frame.subheadline=(0.00,337.00,58.33,58.67)
+SUP layout.dyn.ax5.frame.headline=(0.00,273.67,66.00,63.33)
+SUP layout.dyn.ax5.frame.title3=(0.00,208.00,65.33,65.67)
+SUP layout.dyn.ax5.frame.title2=(0.00,141.00,66.67,67.00)
+SUP layout.dyn.ax5.frame.title=(0.00,71.67,69.00,69.33)
+SUP layout.dyn.ax5.frame.largeTitle=(0.00,0.00,71.00,71.67)
+SUP layout.color.fit[nilxnil]=10.00x10.00
+SUP layout.color.fit[0.00x0.00]=0.00x0.00
+SUP layout.color.fit[infxinf]=infxinf
+SUP layout.color.fit[100.00xnil]=100.00x10.00
+SUP layout.color.fit[nilx100.00]=10.00x100.00
+SUP layout.color.fit[100.00x100.00]=100.00x100.00
+SUP layout.color.fit[300.00x500.00]=300.00x500.00
+SUP layout.color.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.color.priority=0.00
+SUP layout.rectangle.fit[nilxnil]=10.00x10.00
+SUP layout.rectangle.fit[0.00x0.00]=0.00x0.00
+SUP layout.rectangle.fit[infxinf]=infxinf
+SUP layout.rectangle.fit[100.00xnil]=100.00x10.00
+SUP layout.rectangle.fit[nilx100.00]=10.00x100.00
+SUP layout.rectangle.fit[100.00x100.00]=100.00x100.00
+SUP layout.rectangle.fit[300.00x500.00]=300.00x500.00
+SUP layout.rectangle.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.rectangle.priority=0.00
+SUP layout.circle.fit[nilxnil]=10.00x10.00
+SUP layout.circle.fit[0.00x0.00]=0.00x0.00
+SUP layout.circle.fit[infxinf]=infxinf
+SUP layout.circle.fit[100.00xnil]=100.00x100.00
+SUP layout.circle.fit[nilx100.00]=100.00x100.00
+SUP layout.circle.fit[100.00x100.00]=100.00x100.00
+SUP layout.circle.fit[300.00x500.00]=300.00x300.00
+SUP layout.circle.dims[300.00x100.00]=100.00x100.00 firstBaseline=100.00 lastBaseline=100.00 centerY=50.00 leading=0.00 trailing=100.00
+SUP layout.circle.priority=0.00
+SUP layout.capsule.fit[nilxnil]=10.00x10.00
+SUP layout.capsule.fit[0.00x0.00]=0.00x0.00
+SUP layout.capsule.fit[infxinf]=infxinf
+SUP layout.capsule.fit[100.00xnil]=100.00x10.00
+SUP layout.capsule.fit[nilx100.00]=10.00x100.00
+SUP layout.capsule.fit[100.00x100.00]=100.00x100.00
+SUP layout.capsule.fit[300.00x500.00]=300.00x500.00
+SUP layout.capsule.dims[300.00x100.00]=300.00x100.00 firstBaseline=100.00 lastBaseline=100.00 centerY=50.00 leading=0.00 trailing=300.00
+SUP layout.capsule.priority=0.00
+SUP layout.rect.frame.fit[nilxnil]=50.00x30.00
+SUP layout.rect.frame.fit[0.00x0.00]=50.00x30.00
+SUP layout.rect.frame.fit[infxinf]=50.00x30.00
+SUP layout.rect.frame.fit[100.00xnil]=50.00x30.00
+SUP layout.rect.frame.fit[nilx100.00]=50.00x30.00
+SUP layout.rect.frame.fit[100.00x100.00]=50.00x30.00
+SUP layout.rect.frame.fit[300.00x500.00]=50.00x30.00
+SUP layout.rect.frame.dims[300.00x500.00]=50.00x30.00 firstBaseline=30.00 lastBaseline=30.00 centerY=15.00 leading=0.00 trailing=50.00
+SUP layout.rect.frame.priority=0.00
+SUP layout.spacer.fit[nilxnil]=8.00x8.00
+SUP layout.spacer.fit[0.00x0.00]=8.00x8.00
+SUP layout.spacer.fit[infxinf]=infxinf
+SUP layout.spacer.fit[100.00xnil]=100.00x8.00
+SUP layout.spacer.fit[nilx100.00]=8.00x100.00
+SUP layout.spacer.fit[100.00x100.00]=100.00x100.00
+SUP layout.spacer.fit[300.00x500.00]=300.00x500.00
+SUP layout.spacer.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.spacer.priority=-inf
+SUP layout.spacer.min20.fit[nilxnil]=20.00x20.00
+SUP layout.spacer.min20.fit[0.00x0.00]=20.00x20.00
+SUP layout.spacer.min20.fit[infxinf]=infxinf
+SUP layout.spacer.min20.fit[100.00xnil]=100.00x20.00
+SUP layout.spacer.min20.fit[nilx100.00]=20.00x100.00
+SUP layout.spacer.min20.fit[100.00x100.00]=100.00x100.00
+SUP layout.spacer.min20.fit[300.00x500.00]=300.00x500.00
+SUP layout.spacer.min20.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.spacer.min20.priority=-inf
+SUP layout.divider.fit[nilxnil]=10.00x0.33
+SUP layout.divider.fit[0.00x0.00]=0.00x0.33
+SUP layout.divider.fit[infxinf]=infx0.33
+SUP layout.divider.fit[100.00xnil]=100.00x0.33
+SUP layout.divider.fit[nilx100.00]=10.00x0.33
+SUP layout.divider.fit[100.00x100.00]=100.00x0.33
+SUP layout.divider.fit[300.00x500.00]=300.00x0.33
+SUP layout.divider.dims[300.00x500.00]=300.00x0.33 firstBaseline=0.33 lastBaseline=0.33 centerY=0.17 leading=0.00 trailing=300.00
+SUP layout.divider.priority=0.00
+SUP layout.hstack.divider.fit[nilxnil]=38.67x20.33
+SUP layout.hstack.divider.fit[0.00x0.00]=16.33x0.00
+SUP layout.hstack.divider.fit[infxinf]=38.67xinf
+SUP layout.hstack.divider.fit[100.00xnil]=38.67x20.33
+SUP layout.hstack.divider.fit[nilx100.00]=38.67x100.00
+SUP layout.hstack.divider.fit[100.00x100.00]=38.67x100.00
+SUP layout.hstack.divider.fit[300.00x500.00]=38.67x500.00
+SUP layout.hstack.divider.dims[300.00x500.00]=38.67x500.00 firstBaseline=256.17 lastBaseline=256.17 centerY=250.00 leading=0.00 trailing=38.67
+SUP layout.hstack.divider.priority=0.00
+SUPX 10.881 notify-register com.apple.coreui.statistics
+SUP layout.image.symbol.fit[nilxnil]=22.00x20.67
+SUP layout.image.symbol.fit[0.00x0.00]=22.00x20.67
+SUP layout.image.symbol.fit[infxinf]=22.00x20.67
+SUP layout.image.symbol.fit[100.00xnil]=22.00x20.67
+SUP layout.image.symbol.fit[nilx100.00]=22.00x20.67
+SUP layout.image.symbol.fit[100.00x100.00]=22.00x20.67
+SUP layout.image.symbol.fit[300.00x500.00]=22.00x20.67
+SUP layout.image.symbol.dims[300.00x500.00]=22.00x20.67 firstBaseline=17.00 lastBaseline=17.00 centerY=10.33 leading=0.00 trailing=22.00
+SUP layout.image.symbol.priority=0.00
+SUP layout.image.symbol.largeTitle.fit[nilxnil]=44.00x41.67
+SUP layout.image.symbol.largeTitle.fit[0.00x0.00]=44.00x41.67
+SUP layout.image.symbol.largeTitle.fit[infxinf]=44.00x41.67
+SUP layout.image.symbol.largeTitle.fit[100.00xnil]=44.00x41.67
+SUP layout.image.symbol.largeTitle.fit[nilx100.00]=44.00x41.67
+SUP layout.image.symbol.largeTitle.fit[100.00x100.00]=44.00x41.67
+SUP layout.image.symbol.largeTitle.fit[300.00x500.00]=44.00x41.67
+SUP layout.image.symbol.largeTitle.dims[300.00x500.00]=44.00x41.67 firstBaseline=34.00 lastBaseline=34.00 centerY=20.83 leading=0.00 trailing=44.00
+SUP layout.image.symbol.largeTitle.priority=0.00
+SUP layout.image.symbol.scaleSmall.fit[nilxnil]=17.67x16.33
+SUP layout.image.symbol.scaleSmall.fit[0.00x0.00]=17.67x16.33
+SUP layout.image.symbol.scaleSmall.fit[infxinf]=17.67x16.33
+SUP layout.image.symbol.scaleSmall.fit[100.00xnil]=17.67x16.33
+SUP layout.image.symbol.scaleSmall.fit[nilx100.00]=17.67x16.33
+SUP layout.image.symbol.scaleSmall.fit[100.00x100.00]=17.67x16.33
+SUP layout.image.symbol.scaleSmall.fit[300.00x500.00]=17.67x16.33
+SUP layout.image.symbol.scaleSmall.dims[300.00x500.00]=17.67x16.33 firstBaseline=14.67 lastBaseline=14.67 centerY=8.17 leading=0.00 trailing=17.67
+SUP layout.image.symbol.scaleSmall.priority=0.00
+SUP layout.image.symbol.scaleLarge.fit[nilxnil]=28.00x26.67
+SUP layout.image.symbol.scaleLarge.fit[0.00x0.00]=28.00x26.67
+SUP layout.image.symbol.scaleLarge.fit[infxinf]=28.00x26.67
+SUP layout.image.symbol.scaleLarge.fit[100.00xnil]=28.00x26.67
+SUP layout.image.symbol.scaleLarge.fit[nilx100.00]=28.00x26.67
+SUP layout.image.symbol.scaleLarge.fit[100.00x100.00]=28.00x26.67
+SUP layout.image.symbol.scaleLarge.fit[300.00x500.00]=28.00x26.67
+SUP layout.image.symbol.scaleLarge.dims[300.00x500.00]=28.00x26.67 firstBaseline=20.00 lastBaseline=20.00 centerY=13.33 leading=0.00 trailing=28.00
+SUP layout.image.symbol.scaleLarge.priority=0.00
+SUP layout.image.symbol.wide.fit[nilxnil]=23.33x20.67
+SUP layout.image.symbol.wide.fit[0.00x0.00]=23.33x20.67
+SUP layout.image.symbol.wide.fit[infxinf]=23.33x20.67
+SUP layout.image.symbol.wide.fit[100.00xnil]=23.33x20.67
+SUP layout.image.symbol.wide.fit[nilx100.00]=23.33x20.67
+SUP layout.image.symbol.wide.fit[100.00x100.00]=23.33x20.67
+SUP layout.image.symbol.wide.fit[300.00x500.00]=23.33x20.67
+SUP layout.image.symbol.wide.dims[300.00x500.00]=23.33x20.67 firstBaseline=16.33 lastBaseline=16.33 centerY=10.33 leading=0.00 trailing=23.33
+SUP layout.image.symbol.wide.priority=0.00
+SUP layout.image.symbol.resizable.fit[nilxnil]=18.67x18.00
+SUP layout.image.symbol.resizable.fit[0.00x0.00]=0.00x0.00
+SUP layout.image.symbol.resizable.fit[infxinf]=infxinf
+SUP layout.image.symbol.resizable.fit[100.00xnil]=100.00x18.00
+SUP layout.image.symbol.resizable.fit[nilx100.00]=18.67x100.00
+SUP layout.image.symbol.resizable.fit[100.00x100.00]=100.00x100.00
+SUP layout.image.symbol.resizable.fit[300.00x500.00]=300.00x500.00
+SUP layout.image.symbol.resizable.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.image.symbol.resizable.priority=0.00
+SUP layout.image.symbol.resizableFit.fit[nilxnil]=18.67x18.00
+SUP layout.image.symbol.resizableFit.fit[0.00x0.00]=0.00x0.00
+SUP layout.image.symbol.resizableFit.fit[infxinf]=infxinf
+SUP layout.image.symbol.resizableFit.fit[100.00xnil]=100.00x96.43
+SUP layout.image.symbol.resizableFit.fit[nilx100.00]=103.70x100.00
+SUP layout.image.symbol.resizableFit.fit[100.00x100.00]=100.00x96.43
+SUP layout.image.symbol.resizableFit.fit[300.00x500.00]=300.00x289.29
+SUP layout.image.symbol.resizableFit.dims[300.00x500.00]=300.00x289.29 firstBaseline=289.29 lastBaseline=289.29 centerY=144.64 leading=0.00 trailing=300.00
+SUP layout.image.symbol.resizableFit.priority=0.00
+SUP layout.label.fit[nilxnil]=63.00x20.99
+SUP layout.label.fit[0.00x0.00]=30.00x20.67
+SUP layout.label.fit[infxinf]=63.00x20.99
+SUP layout.label.fit[100.00xnil]=63.00x20.99
+SUP layout.label.fit[nilx100.00]=63.00x20.99
+SUP layout.label.fit[100.00x100.00]=63.00x20.99
+SUP layout.label.fit[300.00x500.00]=63.00x20.99
+SUP layout.label.dims[300.00x500.00]=63.00x20.99 firstBaseline=16.99 lastBaseline=17.00 centerY=10.49 leading=0.00 trailing=63.00
+SUP layout.label.priority=0.00
+SUP layout.hstack.texts.fit[nilxnil]=30.33x20.33
+SUP layout.hstack.texts.fit[0.00x0.00]=8.00x0.00
+SUP layout.hstack.texts.fit[infxinf]=30.33x20.33
+SUP layout.hstack.texts.fit[100.00xnil]=30.33x20.33
+SUP layout.hstack.texts.fit[nilx100.00]=30.33x20.33
+SUP layout.hstack.texts.fit[100.00x100.00]=30.33x20.33
+SUP layout.hstack.texts.fit[300.00x500.00]=30.33x20.33
+SUP layout.hstack.texts.dims[300.00x500.00]=30.33x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=30.33
+SUP layout.hstack.texts.priority=0.00
+SUP layout.hstack.texts.frame.b=(19.33,0.00,11.00,20.33)
+SUP layout.hstack.texts.frame.a=(0.00,0.00,11.33,20.33)
+SUP layout.hstack.colors.fit[nilxnil]=28.00x10.00
+SUP layout.hstack.colors.fit[0.00x0.00]=28.00x10.00
+SUP layout.hstack.colors.fit[infxinf]=28.00x10.00
+SUP layout.hstack.colors.fit[100.00xnil]=28.00x10.00
+SUP layout.hstack.colors.fit[nilx100.00]=28.00x10.00
+SUP layout.hstack.colors.fit[100.00x100.00]=28.00x10.00
+SUP layout.hstack.colors.fit[300.00x500.00]=28.00x10.00
+SUP layout.hstack.colors.dims[300.00x500.00]=28.00x10.00 firstBaseline=10.00 lastBaseline=10.00 centerY=5.00 leading=0.00 trailing=28.00
+SUP layout.hstack.colors.priority=0.00
+SUP layout.hstack.colors.frame.b=(18.00,0.00,10.00,10.00)
+SUP layout.hstack.colors.frame.a=(0.00,0.00,10.00,10.00)
+SUP layout.hstack.textImage.fit[nilxnil]=41.33x20.67
+SUP layout.hstack.textImage.fit[0.00x0.00]=30.00x20.67
+SUP layout.hstack.textImage.fit[infxinf]=41.33x20.67
+SUP layout.hstack.textImage.fit[100.00xnil]=41.33x20.67
+SUP layout.hstack.textImage.fit[nilx100.00]=41.33x20.67
+SUP layout.hstack.textImage.fit[100.00x100.00]=41.33x20.67
+SUP layout.hstack.textImage.fit[300.00x500.00]=41.33x20.67
+SUP layout.hstack.textImage.dims[300.00x500.00]=41.33x20.67 firstBaseline=16.50 lastBaseline=17.00 centerY=10.33 leading=0.00 trailing=41.33
+SUP layout.hstack.textImage.priority=0.00
+SUP layout.hstack.textImage.frame.b=(19.33,0.00,22.00,20.67)
+SUP layout.hstack.textImage.frame.a=(0.00,0.17,11.33,20.33)
+SUP layout.vstack.texts.fit[nilxnil]=11.33x42.67
+SUP layout.vstack.texts.fit[0.00x0.00]=0.00x2.00
+SUP layout.vstack.texts.fit[infxinf]=11.33x42.67
+SUP layout.vstack.texts.fit[100.00xnil]=11.33x42.67
+SUP layout.vstack.texts.fit[nilx100.00]=11.33x42.67
+SUP layout.vstack.texts.fit[100.00x100.00]=11.33x42.67
+SUP layout.vstack.texts.fit[300.00x500.00]=11.33x42.67
+SUP layout.vstack.texts.dims[300.00x500.00]=11.33x42.67 firstBaseline=16.33 lastBaseline=38.67 centerY=21.33 leading=0.00 trailing=11.33
+SUP layout.vstack.texts.priority=0.00
+SUP layout.vstack.texts.frame.b=(0.17,22.33,11.00,20.33)
+SUP layout.vstack.texts.frame.a=(0.00,0.00,11.33,20.33)
+SUP layout.vstack.colors.fit[nilxnil]=10.00x28.00
+SUP layout.vstack.colors.fit[0.00x0.00]=10.00x28.00
+SUP layout.vstack.colors.fit[infxinf]=10.00x28.00
+SUP layout.vstack.colors.fit[100.00xnil]=10.00x28.00
+SUP layout.vstack.colors.fit[nilx100.00]=10.00x28.00
+SUP layout.vstack.colors.fit[100.00x100.00]=10.00x28.00
+SUP layout.vstack.colors.fit[300.00x500.00]=10.00x28.00
+SUP layout.vstack.colors.dims[300.00x500.00]=10.00x28.00 firstBaseline=28.00 lastBaseline=28.00 centerY=14.00 leading=0.00 trailing=10.00
+SUP layout.vstack.colors.priority=0.00
+SUP layout.vstack.colors.frame.b=(0.00,18.00,10.00,10.00)
+SUP layout.vstack.colors.frame.a=(0.00,0.00,10.00,10.00)
+SUP layout.hstack.spacer.fit[nilxnil]=77.67x20.33
+SUP layout.hstack.spacer.fit[0.00x0.00]=8.00x0.00
+SUP layout.hstack.spacer.fit[infxinf]=infx20.33
+SUP layout.hstack.spacer.fit[100.00xnil]=100.00x20.33
+SUP layout.hstack.spacer.fit[nilx100.00]=77.67x20.33
+SUP layout.hstack.spacer.fit[100.00x100.00]=100.00x20.33
+SUP layout.hstack.spacer.fit[300.00x500.00]=300.00x20.33
+SUP layout.hstack.spacer.dims[300.00x500.00]=300.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=300.00
+SUP layout.hstack.spacer.priority=0.00
+SUP layout.hstack.spacer.frame.r=(260.00,0.00,40.00,20.33)
+SUP layout.hstack.spacer.frame.s=(29.67,10.17,230.33,0.00)
+SUP layout.hstack.spacer.frame.l=(0.00,0.00,29.67,20.33)
+SUP layout.hstack.flex.fit[nilxnil]=75.00x20.33
+SUP layout.hstack.flex.fit[0.00x0.00]=16.00x0.00
+SUP layout.hstack.flex.fit[infxinf]=infxinf
+SUP layout.hstack.flex.fit[100.00xnil]=100.00x42.33
+SUP layout.hstack.flex.fit[nilx100.00]=75.00x100.00
+SUP layout.hstack.flex.fit[100.00x100.00]=100.00x100.00
+SUP layout.hstack.flex.fit[300.00x500.00]=300.00x500.00
+SUP layout.hstack.flex.dims[300.00x500.00]=300.00x500.00 firstBaseline=256.17 lastBaseline=256.17 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.hstack.flex.priority=0.00
+SUP layout.hstack.flex.frame.c=(261.00,239.83,39.00,20.33)
+SUP layout.hstack.flex.frame.b=(203.00,0.00,50.00,500.00)
+SUP layout.hstack.flex.frame.a=(0.00,0.00,195.00,500.00)
+SUP layout.hstack.twoColors.fit[nilxnil]=28.00x10.00
+SUP layout.hstack.twoColors.fit[0.00x0.00]=8.00x0.00
+SUP layout.hstack.twoColors.fit[infxinf]=infxinf
+SUP layout.hstack.twoColors.fit[100.00xnil]=100.00x10.00
+SUP layout.hstack.twoColors.fit[nilx100.00]=28.00x100.00
+SUP layout.hstack.twoColors.fit[100.00x100.00]=100.00x100.00
+SUP layout.hstack.twoColors.fit[300.00x500.00]=300.00x500.00
+SUP layout.hstack.twoColors.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.hstack.twoColors.priority=0.00
+SUP layout.hstack.twoColors.frame.b=(154.00,0.00,146.00,500.00)
+SUP layout.hstack.twoColors.frame.a=(0.00,0.00,146.00,500.00)
+SUP layout.hstack.threeColors.spacing0.fit[nilxnil]=170.00x10.00
+SUP layout.hstack.threeColors.spacing0.fit[0.00x0.00]=150.00x0.00
+SUP layout.hstack.threeColors.spacing0.fit[infxinf]=infxinf
+SUP layout.hstack.threeColors.spacing0.fit[100.00xnil]=150.00x10.00
+SUP layout.hstack.threeColors.spacing0.fit[nilx100.00]=170.00x100.00
+SUP layout.hstack.threeColors.spacing0.fit[100.00x100.00]=150.00x100.00
+SUP layout.hstack.threeColors.spacing0.fit[300.00x500.00]=300.00x500.00
+SUP layout.hstack.threeColors.spacing0.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.hstack.threeColors.spacing0.priority=0.00
+SUP layout.hstack.threeColors.spacing0.frame.c=(225.00,0.00,75.00,500.00)
+SUP layout.hstack.threeColors.spacing0.frame.b=(75.00,0.00,150.00,500.00)
+SUP layout.hstack.threeColors.spacing0.frame.a=(0.00,0.00,75.00,500.00)
+SUP layout.hstack.equalTexts.fit[nilxnil]=475.67x20.33
+SUP layout.hstack.equalTexts.fit[0.00x0.00]=8.00x0.00
+SUP layout.hstack.equalTexts.fit[infxinf]=475.67x20.33
+SUP layout.hstack.equalTexts.fit[100.00xnil]=100.00x196.33
+SUP layout.hstack.equalTexts.fit[nilx100.00]=475.67x20.33
+SUP layout.hstack.equalTexts.fit[100.00x100.00]=100.00x86.33
+SUP layout.hstack.equalTexts.fit[300.00x500.00]=294.67x64.33
+SUP layout.hstack.equalTexts.dims[300.00x500.00]=294.67x64.33 firstBaseline=16.33 lastBaseline=60.33 centerY=32.17 leading=0.00 trailing=294.67
+SUP layout.hstack.equalTexts.priority=0.00
+SUP layout.hstack.equalTexts.frame.b=(166.00,22.00,128.67,20.33)
+SUP layout.hstack.equalTexts.frame.a=(0.00,0.00,158.00,64.33)
+SUP layout.hstack.priority.fit[nilxnil]=686.00x20.33
+SUP layout.hstack.priority.fit[0.00x0.00]=8.00x0.00
+SUP layout.hstack.priority.fit[infxinf]=686.00x20.33
+SUP layout.hstack.priority.fit[100.00xnil]=100.00x768.33
+SUP layout.hstack.priority.fit[nilx100.00]=686.00x20.33
+SUP layout.hstack.priority.fit[100.00x100.00]=100.00x86.33
+SUP layout.hstack.priority.fit[300.00x500.00]=300.00x482.33
+SUP layout.hstack.priority.dims[300.00x500.00]=300.00x482.33 firstBaseline=16.33 lastBaseline=478.33 centerY=241.17 leading=0.00 trailing=300.00
+SUP layout.hstack.priority.priority=0.00
+SUP layout.hstack.priority.frame.b=(25.00,220.00,275.00,42.33)
+SUP layout.hstack.priority.frame.a=(0.00,0.00,17.00,482.33)
+SUP layout.hstack.baseline.fit[nilxnil]=85.33x40.67
+SUP layout.hstack.baseline.fit[0.00x0.00]=8.00x32.33
+SUP layout.hstack.baseline.fit[infxinf]=85.33x40.67
+SUP layout.hstack.baseline.fit[100.00xnil]=85.33x40.67
+SUP layout.hstack.baseline.fit[nilx100.00]=85.33x40.67
+SUP layout.hstack.baseline.fit[100.00x100.00]=85.33x40.67
+SUP layout.hstack.baseline.fit[300.00x500.00]=85.33x40.67
+SUP layout.hstack.baseline.dims[300.00x500.00]=85.33x40.67 firstBaseline=32.33 lastBaseline=32.33 centerY=20.33 leading=0.00 trailing=85.33
+SUP layout.hstack.baseline.priority=0.00
+SUP layout.hstack.baseline.frame.b=(55.67,21.00,29.67,14.33)
+SUP layout.hstack.baseline.frame.a=(0.00,0.00,47.67,40.67)
+SUP layout.hstack.center.fit[nilxnil]=85.33x40.67
+SUP layout.hstack.center.fit[0.00x0.00]=8.00x0.00
+SUP layout.hstack.center.fit[infxinf]=85.33x40.67
+SUP layout.hstack.center.fit[100.00xnil]=85.33x40.67
+SUP layout.hstack.center.fit[nilx100.00]=85.33x40.67
+SUP layout.hstack.center.fit[100.00x100.00]=85.33x40.67
+SUP layout.hstack.center.fit[300.00x500.00]=85.33x40.67
+SUP layout.hstack.center.dims[300.00x500.00]=85.33x40.67 firstBaseline=24.50 lastBaseline=32.33 centerY=20.33 leading=0.00 trailing=85.33
+SUP layout.hstack.center.priority=0.00
+SUP layout.hstack.center.frame.b=(55.67,13.17,29.67,14.33)
+SUP layout.hstack.center.frame.a=(0.00,0.00,47.67,40.67)
+SUP layout.hstack.top.fit[nilxnil]=88.00x80.00
+SUP layout.hstack.top.fit[0.00x0.00]=88.00x80.00
+SUP layout.hstack.top.fit[infxinf]=88.00x80.00
+SUP layout.hstack.top.fit[100.00xnil]=88.00x80.00
+SUP layout.hstack.top.fit[nilx100.00]=88.00x80.00
+SUP layout.hstack.top.fit[100.00x100.00]=88.00x80.00
+SUP layout.hstack.top.fit[300.00x500.00]=88.00x80.00
+SUP layout.hstack.top.dims[300.00x500.00]=88.00x80.00 firstBaseline=80.00 lastBaseline=80.00 centerY=40.00 leading=0.00 trailing=88.00
+SUP layout.hstack.top.priority=0.00
+SUP layout.hstack.top.frame.b=(58.00,0.00,30.00,20.00)
+SUP layout.hstack.top.frame.a=(0.00,0.00,50.00,80.00)
+SUP layout.vstack.leading.fit[nilxnil]=86.33x42.67
+SUP layout.vstack.leading.fit[0.00x0.00]=0.00x2.00
+SUP layout.vstack.leading.fit[infxinf]=86.33x42.67
+SUP layout.vstack.leading.fit[100.00xnil]=86.33x42.67
+SUP layout.vstack.leading.fit[nilx100.00]=86.33x42.67
+SUP layout.vstack.leading.fit[100.00x100.00]=86.33x42.67
+SUP layout.vstack.leading.fit[300.00x500.00]=86.33x42.67
+SUP layout.vstack.leading.dims[300.00x500.00]=86.33x42.67 firstBaseline=16.33 lastBaseline=38.67 centerY=21.33 leading=0.00 trailing=86.33
+SUP layout.vstack.leading.priority=0.00
+SUP layout.vstack.leading.frame.b=(0.00,22.33,86.33,20.33)
+SUP layout.vstack.leading.frame.a=(0.00,0.00,41.67,20.33)
+SUP layout.vstack.center.fit[nilxnil]=86.33x42.67
+SUP layout.vstack.center.fit[0.00x0.00]=0.00x2.00
+SUP layout.vstack.center.fit[infxinf]=86.33x42.67
+SUP layout.vstack.center.fit[100.00xnil]=86.33x42.67
+SUP layout.vstack.center.fit[nilx100.00]=86.33x42.67
+SUP layout.vstack.center.fit[100.00x100.00]=86.33x42.67
+SUP layout.vstack.center.fit[300.00x500.00]=86.33x42.67
+SUP layout.vstack.center.dims[300.00x500.00]=86.33x42.67 firstBaseline=16.33 lastBaseline=38.67 centerY=21.33 leading=0.00 trailing=86.33
+SUP layout.vstack.center.priority=0.00
+SUP layout.vstack.center.frame.b=(0.00,22.33,86.33,20.33)
+SUP layout.vstack.center.frame.a=(22.33,0.00,41.67,20.33)
+SUP layout.vstack.spacer.fit[nilxnil]=56.00x48.67
+SUP layout.vstack.spacer.fit[0.00x0.00]=0.00x8.00
+SUP layout.vstack.spacer.fit[infxinf]=56.00xinf
+SUP layout.vstack.spacer.fit[100.00xnil]=56.00x48.67
+SUP layout.vstack.spacer.fit[nilx100.00]=56.00x100.00
+SUP layout.vstack.spacer.fit[100.00x100.00]=56.00x100.00
+SUP layout.vstack.spacer.fit[300.00x500.00]=56.00x500.00
+SUP layout.vstack.spacer.dims[300.00x500.00]=56.00x500.00 firstBaseline=16.33 lastBaseline=496.00 centerY=250.00 leading=0.00 trailing=56.00
+SUP layout.vstack.spacer.priority=0.00
+SUP layout.vstack.spacer.frame.b=(0.00,479.67,56.00,20.33)
+SUP layout.vstack.spacer.frame.s=(28.00,20.33,0.00,459.33)
+SUP layout.vstack.spacer.frame.a=(13.83,0.00,28.33,20.33)
+SUP layout.zstack.fit[nilxnil]=100.00x50.00
+SUP layout.zstack.fit[0.00x0.00]=100.00x50.00
+SUP layout.zstack.fit[infxinf]=100.00x50.00
+SUP layout.zstack.fit[100.00xnil]=100.00x50.00
+SUP layout.zstack.fit[nilx100.00]=100.00x50.00
+SUP layout.zstack.fit[100.00x100.00]=100.00x50.00
+SUP layout.zstack.fit[300.00x500.00]=100.00x50.00
+SUP layout.zstack.dims[300.00x500.00]=100.00x50.00 firstBaseline=31.17 lastBaseline=31.17 centerY=25.00 leading=0.00 trailing=100.00
+SUP layout.zstack.priority=0.00
+SUP layout.zstack.frame.b=(42.00,14.83,16.00,20.33)
+SUP layout.zstack.frame.a=(0.00,0.00,100.00,50.00)
+SUP layout.zstack.bottomTrailing.fit[nilxnil]=100.00x50.00
+SUP layout.zstack.bottomTrailing.fit[0.00x0.00]=100.00x50.00
+SUP layout.zstack.bottomTrailing.fit[infxinf]=100.00x50.00
+SUP layout.zstack.bottomTrailing.fit[100.00xnil]=100.00x50.00
+SUP layout.zstack.bottomTrailing.fit[nilx100.00]=100.00x50.00
+SUP layout.zstack.bottomTrailing.fit[100.00x100.00]=100.00x50.00
+SUP layout.zstack.bottomTrailing.fit[300.00x500.00]=100.00x50.00
+SUP layout.zstack.bottomTrailing.dims[300.00x500.00]=100.00x50.00 firstBaseline=46.00 lastBaseline=46.00 centerY=25.00 leading=0.00 trailing=100.00
+SUP layout.zstack.bottomTrailing.priority=0.00
+SUP layout.zstack.bottomTrailing.frame.b=(84.00,29.67,16.00,20.33)
+SUP layout.zstack.bottomTrailing.frame.a=(0.00,0.00,100.00,50.00)
+SUP layout.zstack.flex.fit[nilxnil]=16.00x20.33
+SUP layout.zstack.flex.fit[0.00x0.00]=0.00x0.00
+SUP layout.zstack.flex.fit[infxinf]=infxinf
+SUP layout.zstack.flex.fit[100.00xnil]=100.00x20.33
+SUP layout.zstack.flex.fit[nilx100.00]=16.00x100.00
+SUP layout.zstack.flex.fit[100.00x100.00]=100.00x100.00
+SUP layout.zstack.flex.fit[300.00x500.00]=300.00x500.00
+SUP layout.zstack.flex.dims[300.00x500.00]=300.00x500.00 firstBaseline=256.17 lastBaseline=256.17 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.zstack.flex.priority=0.00
+SUP layout.zstack.flex.frame.b=(142.00,239.83,16.00,20.33)
+SUP layout.zstack.flex.frame.a=(0.00,0.00,300.00,500.00)
+SUP layout.frame.fixed.fit[nilxnil]=100.00x100.00
+SUP layout.frame.fixed.fit[0.00x0.00]=100.00x100.00
+SUP layout.frame.fixed.fit[infxinf]=100.00x100.00
+SUP layout.frame.fixed.fit[100.00xnil]=100.00x100.00
+SUP layout.frame.fixed.fit[nilx100.00]=100.00x100.00
+SUP layout.frame.fixed.fit[100.00x100.00]=100.00x100.00
+SUP layout.frame.fixed.fit[300.00x500.00]=100.00x100.00
+SUP layout.frame.fixed.dims[300.00x500.00]=100.00x100.00 firstBaseline=56.17 lastBaseline=56.17 centerY=50.00 leading=0.00 trailing=100.00
+SUP layout.frame.fixed.priority=0.00
+SUP layout.frame.fixed.frame.t=(30.50,39.83,39.00,20.33)
+SUP layout.frame.topLeading.fit[nilxnil]=100.00x100.00
+SUP layout.frame.topLeading.fit[0.00x0.00]=100.00x100.00
+SUP layout.frame.topLeading.fit[infxinf]=100.00x100.00
+SUP layout.frame.topLeading.fit[100.00xnil]=100.00x100.00
+SUP layout.frame.topLeading.fit[nilx100.00]=100.00x100.00
+SUP layout.frame.topLeading.fit[100.00x100.00]=100.00x100.00
+SUP layout.frame.topLeading.fit[300.00x500.00]=100.00x100.00
+SUP layout.frame.topLeading.dims[300.00x500.00]=100.00x100.00 firstBaseline=16.33 lastBaseline=16.33 centerY=50.00 leading=0.00 trailing=100.00
+SUP layout.frame.topLeading.priority=0.00
+SUP layout.frame.topLeading.frame.t=(0.00,0.00,39.00,20.33)
+SUP layout.frame.widthOnly.fit[nilxnil]=100.00x20.33
+SUP layout.frame.widthOnly.fit[0.00x0.00]=100.00x20.33
+SUP layout.frame.widthOnly.fit[infxinf]=100.00x20.33
+SUP layout.frame.widthOnly.fit[100.00xnil]=100.00x20.33
+SUP layout.frame.widthOnly.fit[nilx100.00]=100.00x20.33
+SUP layout.frame.widthOnly.fit[100.00x100.00]=100.00x20.33
+SUP layout.frame.widthOnly.fit[300.00x500.00]=100.00x20.33
+SUP layout.frame.widthOnly.dims[300.00x500.00]=100.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=100.00
+SUP layout.frame.widthOnly.priority=0.00
+SUP layout.frame.widthOnly.frame.t=(30.50,0.00,39.00,20.33)
+SUP layout.frame.maxInf.fit[nilxnil]=39.00x20.33
+SUP layout.frame.maxInf.fit[0.00x0.00]=0.00x0.00
+SUP layout.frame.maxInf.fit[infxinf]=infx20.33
+SUP layout.frame.maxInf.fit[100.00xnil]=100.00x20.33
+SUP layout.frame.maxInf.fit[nilx100.00]=39.00x20.33
+SUP layout.frame.maxInf.fit[100.00x100.00]=100.00x20.33
+SUP layout.frame.maxInf.fit[300.00x500.00]=300.00x20.33
+SUP layout.frame.maxInf.dims[300.00x500.00]=300.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=300.00
+SUP layout.frame.maxInf.priority=0.00
+SUP layout.frame.maxInf.frame.t=(130.50,0.00,39.00,20.33)
+SUP layout.frame.maxInfBoth.fit[nilxnil]=39.00x20.33
+SUP layout.frame.maxInfBoth.fit[0.00x0.00]=0.00x0.00
+SUP layout.frame.maxInfBoth.fit[infxinf]=infxinf
+SUP layout.frame.maxInfBoth.fit[100.00xnil]=100.00x20.33
+SUP layout.frame.maxInfBoth.fit[nilx100.00]=39.00x100.00
+SUP layout.frame.maxInfBoth.fit[100.00x100.00]=100.00x100.00
+SUP layout.frame.maxInfBoth.fit[300.00x500.00]=300.00x500.00
+SUP layout.frame.maxInfBoth.dims[300.00x500.00]=300.00x500.00 firstBaseline=256.17 lastBaseline=256.17 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.frame.maxInfBoth.priority=0.00
+SUP layout.frame.maxInfBoth.frame.t=(130.50,239.83,39.00,20.33)
+SUP layout.frame.minmax.fit[nilxnil]=50.00x20.00
+SUP layout.frame.minmax.fit[0.00x0.00]=50.00x20.00
+SUP layout.frame.minmax.fit[infxinf]=150.00x40.00
+SUP layout.frame.minmax.fit[100.00xnil]=100.00x20.00
+SUP layout.frame.minmax.fit[nilx100.00]=50.00x40.00
+SUP layout.frame.minmax.fit[100.00x100.00]=100.00x40.00
+SUP layout.frame.minmax.fit[300.00x500.00]=150.00x40.00
+SUP layout.frame.minmax.dims[300.00x500.00]=150.00x40.00 firstBaseline=40.00 lastBaseline=40.00 centerY=20.00 leading=0.00 trailing=150.00
+SUP layout.frame.minmax.priority=0.00
+SUP layout.frame.minmax.frame.c=(0.00,0.00,150.00,40.00)
+SUP layout.frame.minOnText.fit[nilxnil]=200.00x20.33
+SUP layout.frame.minOnText.fit[0.00x0.00]=200.00x20.33
+SUP layout.frame.minOnText.fit[infxinf]=200.00x20.33
+SUP layout.frame.minOnText.fit[100.00xnil]=200.00x20.33
+SUP layout.frame.minOnText.fit[nilx100.00]=200.00x20.33
+SUP layout.frame.minOnText.fit[100.00x100.00]=200.00x20.33
+SUP layout.frame.minOnText.fit[300.00x500.00]=200.00x20.33
+SUP layout.frame.minOnText.dims[300.00x500.00]=200.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=200.00
+SUP layout.frame.minOnText.priority=0.00
+SUP layout.frame.minOnText.frame.t=(80.50,0.00,39.00,20.33)
+SUP layout.frame.ideal.fit[nilxnil]=120.00x30.00
+SUP layout.frame.ideal.fit[0.00x0.00]=0.00x0.00
+SUP layout.frame.ideal.fit[infxinf]=infxinf
+SUP layout.frame.ideal.fit[100.00xnil]=100.00x30.00
+SUP layout.frame.ideal.fit[nilx100.00]=120.00x100.00
+SUP layout.frame.ideal.fit[100.00x100.00]=100.00x100.00
+SUP layout.frame.ideal.fit[300.00x500.00]=300.00x500.00
+SUP layout.frame.ideal.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.frame.ideal.priority=0.00
+SUP layout.frame.ideal.fixedSize.fit[nilxnil]=120.00x30.00
+SUP layout.frame.ideal.fixedSize.fit[0.00x0.00]=120.00x30.00
+SUP layout.frame.ideal.fixedSize.fit[infxinf]=120.00x30.00
+SUP layout.frame.ideal.fixedSize.fit[100.00xnil]=120.00x30.00
+SUP layout.frame.ideal.fixedSize.fit[nilx100.00]=120.00x30.00
+SUP layout.frame.ideal.fixedSize.fit[100.00x100.00]=120.00x30.00
+SUP layout.frame.ideal.fixedSize.fit[300.00x500.00]=120.00x30.00
+SUP layout.frame.ideal.fixedSize.dims[300.00x500.00]=120.00x30.00 firstBaseline=30.00 lastBaseline=30.00 centerY=15.00 leading=0.00 trailing=120.00
+SUP layout.frame.ideal.fixedSize.priority=0.00
+SUP layout.frame.tooSmall.fit[nilxnil]=50.00x20.00
+SUP layout.frame.tooSmall.fit[0.00x0.00]=50.00x20.00
+SUP layout.frame.tooSmall.fit[infxinf]=50.00x20.00
+SUP layout.frame.tooSmall.fit[100.00xnil]=50.00x20.00
+SUP layout.frame.tooSmall.fit[nilx100.00]=50.00x20.00
+SUP layout.frame.tooSmall.fit[100.00x100.00]=50.00x20.00
+SUP layout.frame.tooSmall.fit[300.00x500.00]=50.00x20.00
+SUP layout.frame.tooSmall.dims[300.00x500.00]=50.00x20.00 firstBaseline=16.17 lastBaseline=16.17 centerY=10.00 leading=0.00 trailing=50.00
+SUP layout.frame.tooSmall.priority=0.00
+SUP layout.frame.tooSmall.frame.t=(3.67,-0.17,42.67,20.33)
+SUP layout.fixedSize.fit[nilxnil]=339.00x20.33
+SUP layout.fixedSize.fit[0.00x0.00]=339.00x20.33
+SUP layout.fixedSize.fit[infxinf]=339.00x20.33
+SUP layout.fixedSize.fit[100.00xnil]=339.00x20.33
+SUP layout.fixedSize.fit[nilx100.00]=339.00x20.33
+SUP layout.fixedSize.fit[100.00x100.00]=339.00x20.33
+SUP layout.fixedSize.fit[300.00x500.00]=339.00x20.33
+SUP layout.fixedSize.dims[100.00x500.00]=339.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=339.00
+SUP layout.fixedSize.priority=0.00
+SUP layout.fixedSize.vertical.fit[nilxnil]=339.00x20.33
+SUP layout.fixedSize.vertical.fit[0.00x0.00]=0.00x768.33
+SUP layout.fixedSize.vertical.fit[infxinf]=339.00x20.33
+SUP layout.fixedSize.vertical.fit[100.00xnil]=93.33x86.33
+SUP layout.fixedSize.vertical.fit[nilx100.00]=339.00x20.33
+SUP layout.fixedSize.vertical.fit[100.00x100.00]=93.33x86.33
+SUP layout.fixedSize.vertical.fit[300.00x500.00]=275.00x42.33
+SUP layout.fixedSize.vertical.dims[100.00x500.00]=93.33x86.33 firstBaseline=16.33 lastBaseline=82.33 centerY=43.17 leading=0.00 trailing=93.33
+SUP layout.fixedSize.vertical.priority=0.00
+SUP layout.padding.default.fit[nilxnil]=71.00x52.33
+SUP layout.padding.default.fit[0.00x0.00]=32.00x32.00
+SUP layout.padding.default.fit[infxinf]=71.00x52.33
+SUP layout.padding.default.fit[100.00xnil]=71.00x52.33
+SUP layout.padding.default.fit[nilx100.00]=71.00x52.33
+SUP layout.padding.default.fit[100.00x100.00]=71.00x52.33
+SUP layout.padding.default.fit[300.00x500.00]=71.00x52.33
+SUP layout.padding.default.dims[300.00x500.00]=71.00x52.33 firstBaseline=32.33 lastBaseline=32.33 centerY=26.17 leading=0.00 trailing=71.00
+SUP layout.padding.default.priority=0.00
+SUP layout.padding.default.frame.t=(16.00,16.00,39.00,20.33)
+SUP layout.padding.10.fit[nilxnil]=59.00x40.33
+SUP layout.padding.10.fit[0.00x0.00]=20.00x20.00
+SUP layout.padding.10.fit[infxinf]=59.00x40.33
+SUP layout.padding.10.fit[100.00xnil]=59.00x40.33
+SUP layout.padding.10.fit[nilx100.00]=59.00x40.33
+SUP layout.padding.10.fit[100.00x100.00]=59.00x40.33
+SUP layout.padding.10.fit[300.00x500.00]=59.00x40.33
+SUP layout.padding.10.dims[300.00x500.00]=59.00x40.33 firstBaseline=26.33 lastBaseline=26.33 centerY=20.17 leading=0.00 trailing=59.00
+SUP layout.padding.10.priority=0.00
+SUP layout.padding.10.frame.t=(10.00,10.00,39.00,20.33)
+SUP layout.padding.horizontal.fit[nilxnil]=71.00x20.33
+SUP layout.padding.horizontal.fit[0.00x0.00]=32.00x0.00
+SUP layout.padding.horizontal.fit[infxinf]=71.00x20.33
+SUP layout.padding.horizontal.fit[100.00xnil]=71.00x20.33
+SUP layout.padding.horizontal.fit[nilx100.00]=71.00x20.33
+SUP layout.padding.horizontal.fit[100.00x100.00]=71.00x20.33
+SUP layout.padding.horizontal.fit[300.00x500.00]=71.00x20.33
+SUP layout.padding.horizontal.dims[300.00x500.00]=71.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=71.00
+SUP layout.padding.horizontal.priority=0.00
+SUP layout.padding.horizontal.frame.t=(16.00,0.00,39.00,20.33)
+SUP layout.padding.color.fit[nilxnil]=42.00x42.00
+SUP layout.padding.color.fit[0.00x0.00]=32.00x32.00
+SUP layout.padding.color.fit[infxinf]=infxinf
+SUP layout.padding.color.fit[100.00xnil]=100.00x42.00
+SUP layout.padding.color.fit[nilx100.00]=42.00x100.00
+SUP layout.padding.color.fit[100.00x100.00]=100.00x100.00
+SUP layout.padding.color.fit[300.00x500.00]=300.00x500.00
+SUP layout.padding.color.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.padding.color.priority=0.00
+SUP layout.padding.color.frame.c=(16.00,16.00,268.00,468.00)
+SUP layout.padding.negative.fit[nilxnil]=29.00x10.33
+SUP layout.padding.negative.fit[0.00x0.00]=0.00x10.33
+SUP layout.padding.negative.fit[infxinf]=29.00x10.33
+SUP layout.padding.negative.fit[100.00xnil]=29.00x10.33
+SUP layout.padding.negative.fit[nilx100.00]=29.00x10.33
+SUP layout.padding.negative.fit[100.00x100.00]=29.00x10.33
+SUP layout.padding.negative.fit[300.00x500.00]=29.00x10.33
+SUP layout.padding.negative.dims[300.00x500.00]=29.00x10.33 firstBaseline=11.33 lastBaseline=11.33 centerY=5.17 leading=0.00 trailing=29.00
+SUP layout.padding.negative.priority=0.00
+SUP layout.padding.negative.frame.t=(-5.00,-5.00,39.00,20.33)
+SUP layout.aspect.fit.fit[nilxnil]=10.00x10.00
+SUP layout.aspect.fit.fit[0.00x0.00]=0.00x0.00
+SUP layout.aspect.fit.fit[infxinf]=infxinf
+SUP layout.aspect.fit.fit[100.00xnil]=100.00x50.00
+SUP layout.aspect.fit.fit[nilx100.00]=200.00x100.00
+SUP layout.aspect.fit.fit[100.00x100.00]=100.00x50.00
+SUP layout.aspect.fit.fit[300.00x500.00]=300.00x150.00
+SUP layout.aspect.fit.dims[300.00x500.00]=300.00x150.00 firstBaseline=150.00 lastBaseline=150.00 centerY=75.00 leading=0.00 trailing=300.00
+SUP layout.aspect.fit.priority=0.00
+SUP layout.aspect.fill.fit[nilxnil]=10.00x10.00
+SUP layout.aspect.fill.fit[0.00x0.00]=0.00x0.00
+SUP layout.aspect.fill.fit[infxinf]=infxinf
+SUP layout.aspect.fill.fit[100.00xnil]=100.00x50.00
+SUP layout.aspect.fill.fit[nilx100.00]=200.00x100.00
+SUP layout.aspect.fill.fit[100.00x100.00]=200.00x100.00
+SUP layout.aspect.fill.fit[300.00x500.00]=1000.00x500.00
+SUP layout.aspect.fill.dims[300.00x500.00]=1000.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=1000.00
+SUP layout.aspect.fill.priority=0.00
+SUP layout.aspect.fit.symbol.fit[nilxnil]=18.67x18.00
+SUP layout.aspect.fit.symbol.fit[0.00x0.00]=0.00x0.00
+SUP layout.aspect.fit.symbol.fit[infxinf]=infxinf
+SUP layout.aspect.fit.symbol.fit[100.00xnil]=100.00x96.43
+SUP layout.aspect.fit.symbol.fit[nilx100.00]=103.70x100.00
+SUP layout.aspect.fit.symbol.fit[100.00x100.00]=100.00x96.43
+SUP layout.aspect.fit.symbol.fit[300.00x500.00]=300.00x289.29
+SUP layout.aspect.fit.symbol.dims[300.00x500.00]=300.00x289.29 firstBaseline=289.29 lastBaseline=289.29 centerY=144.64 leading=0.00 trailing=300.00
+SUP layout.aspect.fit.symbol.priority=0.00
+SUP layout.offset.fit[nilxnil]=39.00x20.33
+SUP layout.offset.fit[0.00x0.00]=0.00x0.00
+SUP layout.offset.fit[infxinf]=39.00x20.33
+SUP layout.offset.fit[100.00xnil]=39.00x20.33
+SUP layout.offset.fit[nilx100.00]=39.00x20.33
+SUP layout.offset.fit[100.00x100.00]=39.00x20.33
+SUP layout.offset.fit[300.00x500.00]=39.00x20.33
+SUP layout.offset.dims[300.00x500.00]=39.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=39.00
+SUP layout.offset.priority=0.00
+SUP layout.offset.frame.t=(20.00,10.00,39.00,20.33)
+SUP layout.position.fit[nilxnil]=39.00x20.33
+SUP layout.position.fit[0.00x0.00]=0.00x0.00
+SUP layout.position.fit[infxinf]=infxinf
+SUP layout.position.fit[100.00xnil]=100.00x20.33
+SUP layout.position.fit[nilx100.00]=39.00x100.00
+SUP layout.position.fit[100.00x100.00]=100.00x100.00
+SUP layout.position.fit[300.00x500.00]=300.00x500.00
+SUP layout.position.dims[300.00x500.00]=300.00x500.00 firstBaseline=56.17 lastBaseline=56.17 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.position.priority=0.00
+SUP layout.position.frame.t=(30.50,39.83,39.00,20.33)
+SUP layout.overlay.fit[nilxnil]=39.00x20.33
+SUP layout.overlay.fit[0.00x0.00]=0.00x0.00
+SUP layout.overlay.fit[infxinf]=39.00x20.33
+SUP layout.overlay.fit[100.00xnil]=39.00x20.33
+SUP layout.overlay.fit[nilx100.00]=39.00x20.33
+SUP layout.overlay.fit[100.00x100.00]=39.00x20.33
+SUP layout.overlay.fit[300.00x500.00]=39.00x20.33
+SUP layout.overlay.dims[300.00x500.00]=39.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=39.00
+SUP layout.overlay.priority=0.00
+SUP layout.overlay.frame.o=(-80.50,0.00,200.00,20.33)
+SUP layout.background.fit[nilxnil]=39.00x20.33
+SUP layout.background.fit[0.00x0.00]=0.00x0.00
+SUP layout.background.fit[infxinf]=39.00x20.33
+SUP layout.background.fit[100.00xnil]=39.00x20.33
+SUP layout.background.fit[nilx100.00]=39.00x20.33
+SUP layout.background.fit[100.00x100.00]=39.00x20.33
+SUP layout.background.fit[300.00x500.00]=39.00x20.33
+SUP layout.background.dims[300.00x500.00]=39.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=39.00
+SUP layout.background.priority=0.00
+SUP layout.background.frame.b=(0.00,0.00,39.00,20.33)
+SUP layout.background.padded.fit[nilxnil]=71.00x52.33
+SUP layout.background.padded.fit[0.00x0.00]=32.00x32.00
+SUP layout.background.padded.fit[infxinf]=71.00x52.33
+SUP layout.background.padded.fit[100.00xnil]=71.00x52.33
+SUP layout.background.padded.fit[nilx100.00]=71.00x52.33
+SUP layout.background.padded.fit[100.00x100.00]=71.00x52.33
+SUP layout.background.padded.fit[300.00x500.00]=71.00x52.33
+SUP layout.background.padded.dims[300.00x500.00]=71.00x52.33 firstBaseline=32.33 lastBaseline=32.33 centerY=26.17 leading=0.00 trailing=71.00
+SUP layout.background.padded.priority=0.00
+SUP layout.background.padded.frame.b=(0.00,0.00,71.00,52.33)
+SUP layout.background.ignoresSafeArea.fit[nilxnil]=39.00x20.33
+SUP layout.background.ignoresSafeArea.fit[0.00x0.00]=0.00x0.00
+SUP layout.background.ignoresSafeArea.fit[infxinf]=39.00x20.33
+SUP layout.background.ignoresSafeArea.fit[100.00xnil]=39.00x20.33
+SUP layout.background.ignoresSafeArea.fit[nilx100.00]=39.00x20.33
+SUP layout.background.ignoresSafeArea.fit[100.00x100.00]=39.00x20.33
+SUP layout.background.ignoresSafeArea.fit[300.00x500.00]=39.00x20.33
+SUP layout.background.ignoresSafeArea.dims[300.00x500.00]=39.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=39.00
+SUP layout.background.ignoresSafeArea.priority=0.00
+SUP layout.background.ignoresSafeArea.frame.b=(0.00,0.00,39.00,20.33)
+SUP layout.geometryReader.fit[nilxnil]=10.00x10.00
+SUP layout.geometryReader.fit[0.00x0.00]=0.00x0.00
+SUP layout.geometryReader.fit[infxinf]=infxinf
+SUP layout.geometryReader.fit[100.00xnil]=100.00x10.00
+SUP layout.geometryReader.fit[nilx100.00]=10.00x100.00
+SUP layout.geometryReader.fit[100.00x100.00]=100.00x100.00
+SUP layout.geometryReader.fit[300.00x500.00]=300.00x500.00
+SUP layout.geometryReader.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.geometryReader.priority=0.00
+SUP layout.geometryReader.frame.t=(0.00,0.00,16.00,20.33)
+SUP layout.alignmentGuide.fit[nilxnil]=47.33x42.67
+SUP layout.alignmentGuide.fit[0.00x0.00]=0.00x2.00
+SUP layout.alignmentGuide.fit[infxinf]=47.33x42.67
+SUP layout.alignmentGuide.fit[100.00xnil]=47.33x42.67
+SUP layout.alignmentGuide.fit[nilx100.00]=47.33x42.67
+SUP layout.alignmentGuide.fit[100.00x100.00]=47.33x42.67
+SUP layout.alignmentGuide.fit[300.00x500.00]=47.33x42.67
+SUP layout.alignmentGuide.dims[300.00x500.00]=47.33x42.67 firstBaseline=16.33 lastBaseline=38.67 centerY=21.33 leading=0.00 trailing=47.33
+SUP layout.alignmentGuide.priority=0.00
+SUP layout.alignmentGuide.frame.b=(0.00,22.33,31.33,20.33)
+SUP layout.alignmentGuide.frame.a=(15.67,0.00,31.67,20.33)
+SUP layout.alignmentGuide.explicitLeading.fit[nilxnil]=49.67x40.33
+SUP layout.alignmentGuide.explicitLeading.fit[0.00x0.00]=18.00x40.00
+SUP layout.alignmentGuide.explicitLeading.fit[infxinf]=49.67x40.33
+SUP layout.alignmentGuide.explicitLeading.fit[100.00xnil]=49.67x40.33
+SUP layout.alignmentGuide.explicitLeading.fit[nilx100.00]=49.67x40.33
+SUP layout.alignmentGuide.explicitLeading.fit[100.00x100.00]=49.67x40.33
+SUP layout.alignmentGuide.explicitLeading.fit[300.00x500.00]=49.67x40.33
+SUP layout.alignmentGuide.explicitLeading.dims[300.00x500.00]=49.67x40.33 firstBaseline=36.33 lastBaseline=36.33 centerY=20.17 leading=0.00 trailing=49.67
+SUP layout.alignmentGuide.explicitLeading.priority=0.00
+SUP layout.alignmentGuide.explicitLeading.frame.b=(39.67,0.00,10.00,40.00)
+SUP layout.alignmentGuide.explicitLeading.frame.a=(0.00,9.83,31.67,20.33)
+SUP layout.layoutPriority.vstack.fit[nilxnil]=10.00x28.00
+SUP layout.layoutPriority.vstack.fit[0.00x0.00]=0.00x8.00
+SUP layout.layoutPriority.vstack.fit[infxinf]=infxinf
+SUP layout.layoutPriority.vstack.fit[100.00xnil]=100.00x28.00
+SUP layout.layoutPriority.vstack.fit[nilx100.00]=10.00x100.00
+SUP layout.layoutPriority.vstack.fit[100.00x100.00]=100.00x100.00
+SUP layout.layoutPriority.vstack.fit[300.00x500.00]=300.00x500.00
+SUP layout.layoutPriority.vstack.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.layoutPriority.vstack.priority=0.00
+SUP layout.layoutPriority.vstack.frame.b=(0.00,8.00,300.00,492.00)
+SUP layout.layoutPriority.vstack.frame.a=(0.00,0.00,300.00,0.00)
+SUP layout.clipped.fit[nilxnil]=100.00x50.00
+SUP layout.clipped.fit[0.00x0.00]=100.00x50.00
+SUP layout.clipped.fit[infxinf]=100.00x50.00
+SUP layout.clipped.fit[100.00xnil]=100.00x50.00
+SUP layout.clipped.fit[nilx100.00]=100.00x50.00
+SUP layout.clipped.fit[100.00x100.00]=100.00x50.00
+SUP layout.clipped.fit[300.00x500.00]=100.00x50.00
+SUP layout.clipped.dims[300.00x500.00]=100.00x50.00 firstBaseline=50.00 lastBaseline=50.00 centerY=25.00 leading=0.00 trailing=100.00
+SUP layout.clipped.priority=0.00
+SUP layout.clipped.frame.c=(-150.00,0.00,400.00,50.00)
+SUP layout.scaleEffect.fit[nilxnil]=39.00x20.33
+SUP layout.scaleEffect.fit[0.00x0.00]=0.00x0.00
+SUP layout.scaleEffect.fit[infxinf]=39.00x20.33
+SUP layout.scaleEffect.fit[100.00xnil]=39.00x20.33
+SUP layout.scaleEffect.fit[nilx100.00]=39.00x20.33
+SUP layout.scaleEffect.fit[100.00x100.00]=39.00x20.33
+SUP layout.scaleEffect.fit[300.00x500.00]=39.00x20.33
+SUP layout.scaleEffect.dims[300.00x500.00]=39.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=39.00
+SUP layout.scaleEffect.priority=0.00
+SUP layout.scaleEffect.frame.t=(-19.50,-10.17,78.00,40.67)
+SUP layout.rotationEffect.fit[nilxnil]=39.00x20.33
+SUP layout.rotationEffect.fit[0.00x0.00]=0.00x0.00
+SUP layout.rotationEffect.fit[infxinf]=39.00x20.33
+SUP layout.rotationEffect.fit[100.00xnil]=39.00x20.33
+SUP layout.rotationEffect.fit[nilx100.00]=39.00x20.33
+SUP layout.rotationEffect.fit[100.00x100.00]=39.00x20.33
+SUP layout.rotationEffect.fit[300.00x500.00]=39.00x20.33
+SUP layout.rotationEffect.dims[300.00x500.00]=39.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=39.00
+SUP layout.rotationEffect.priority=0.00
+SUP layout.rotationEffect.frame.t=(9.33,-9.33,20.33,39.00)
+SUP layout.grid.fit[nilxnil]=131.00x51.31
+SUP layout.grid.fit[0.00x0.00]=18.00x51.31
+SUP layout.grid.fit[infxinf]=131.00x51.31
+SUP layout.grid.fit[100.00xnil]=89.67x95.31
+SUP layout.grid.fit[nilx100.00]=131.00x51.31
+SUP layout.grid.fit[100.00x100.00]=89.67x95.31
+SUP layout.grid.fit[300.00x500.00]=131.00x51.31
+SUP layout.grid.dims[300.00x500.00]=131.00x51.31 firstBaseline=16.33 lastBaseline=47.31 centerY=25.65 leading=0.00 trailing=131.00
+SUP layout.grid.priority=0.00
+SUP layout.grid.frame.d=(99.33,36.14,10.00,10.00)
+SUP layout.grid.frame.c=(0.00,30.98,69.67,20.33)
+SUP layout.grid.frame.b=(77.67,0.00,53.33,20.33)
+SUP layout.grid.frame.a=(29.17,0.00,11.33,20.33)
+SUP layout.grid.spacing0.fit[nilxnil]=123.00x40.67
+SUP layout.grid.spacing0.fit[0.00x0.00]=10.00x40.67
+SUP layout.grid.spacing0.fit[infxinf]=123.00x40.67
+SUP layout.grid.spacing0.fit[100.00xnil]=91.00x84.67
+SUP layout.grid.spacing0.fit[nilx100.00]=123.00x40.67
+SUP layout.grid.spacing0.fit[100.00x100.00]=91.00x84.67
+SUP layout.grid.spacing0.fit[300.00x500.00]=123.00x40.67
+SUP layout.grid.spacing0.dims[300.00x500.00]=123.00x40.67 firstBaseline=16.33 lastBaseline=36.67 centerY=20.33 leading=0.00 trailing=123.00
+SUP layout.grid.spacing0.priority=0.00
+SUP layout.grid.spacing0.frame.d=(91.33,25.50,10.00,10.00)
+SUP layout.grid.spacing0.frame.c=(0.00,20.33,69.67,20.33)
+SUP layout.grid.spacing0.frame.b=(69.67,0.00,53.33,20.33)
+SUP layout.grid.spacing0.frame.a=(29.17,0.00,11.33,20.33)
+SUP layout.grid.flex.fit[nilxnil]=58.67x47.10
+SUP layout.grid.flex.fit[0.00x0.00]=8.00x26.77
+SUP layout.grid.flex.fit[infxinf]=infxinf
+SUP layout.grid.flex.fit[100.00xnil]=100.00x47.10
+SUP layout.grid.flex.fit[nilx100.00]=58.67x100.00
+SUP layout.grid.flex.fit[100.00x100.00]=100.00x100.00
+SUP layout.grid.flex.fit[300.00x500.00]=300.00x500.00
+SUP layout.grid.flex.dims[300.00x500.00]=300.00x500.00 firstBaseline=242.78 lastBaseline=496.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.grid.flex.priority=0.00
+SUP layout.grid.flex.frame.c=(144.33,479.67,11.33,20.33)
+SUP layout.grid.flex.frame.b=(259.33,226.45,40.67,20.33)
+SUP layout.grid.flex.frame.a=(0.00,0.00,251.33,473.23)
+SUP layout.lazyvgrid.flexible2.fit[nilxnil]=28.00x48.00
+SUP layout.lazyvgrid.flexible2.fit[0.00x0.00]=28.00x48.00
+SUP layout.lazyvgrid.flexible2.fit[infxinf]=0.00x0.00
+SUP layout.lazyvgrid.flexible2.fit[100.00xnil]=100.00x48.00
+SUP layout.lazyvgrid.flexible2.fit[nilx100.00]=28.00x48.00
+SUP layout.lazyvgrid.flexible2.fit[100.00x100.00]=100.00x48.00
+SUP layout.lazyvgrid.flexible2.fit[300.00x500.00]=300.00x48.00
+SUP layout.lazyvgrid.flexible2.dims[300.00x500.00]=300.00x48.00 firstBaseline=48.00 lastBaseline=48.00 centerY=24.00 leading=0.00 trailing=300.00
+SUP layout.lazyvgrid.flexible2.priority=0.00
+SUP layout.lazyvgrid.flexible2.frame.c1=(154.00,0.00,146.00,20.00)
+SUP layout.lazyvgrid.flexible2.frame.c3=(154.00,28.00,146.00,20.00)
+SUP layout.lazyvgrid.flexible2.frame.c0=(0.00,0.00,146.00,20.00)
+SUP layout.lazyvgrid.flexible2.frame.c2=(0.00,28.00,146.00,20.00)
+SUP layout.lazyvgrid.adaptive80.fit[nilxnil]=10.00x160.00
+SUP layout.lazyvgrid.adaptive80.fit[0.00x0.00]=0.00x0.00
+SUP layout.lazyvgrid.adaptive80.fit[infxinf]=0.00x0.00
+SUP layout.lazyvgrid.adaptive80.fit[100.00xnil]=100.00x160.00
+SUP layout.lazyvgrid.adaptive80.fit[nilx100.00]=10.00x160.00
+SUP layout.lazyvgrid.adaptive80.fit[100.00x100.00]=100.00x160.00
+SUP layout.lazyvgrid.adaptive80.fit[300.00x500.00]=300.00x48.00
+SUP layout.lazyvgrid.adaptive80.dims[300.00x500.00]=300.00x48.00 firstBaseline=48.00 lastBaseline=48.00 centerY=24.00 leading=0.00 trailing=300.00
+SUP layout.lazyvgrid.adaptive80.priority=0.00
+SUP layout.lazyvgrid.adaptive80.frame.c2=(205.33,0.00,94.67,20.00)
+SUP layout.lazyvgrid.adaptive80.frame.c5=(205.33,28.00,94.67,20.00)
+SUP layout.lazyvgrid.adaptive80.frame.c4=(102.67,28.00,94.67,20.00)
+SUP layout.lazyvgrid.adaptive80.frame.c3=(0.00,28.00,94.67,20.00)
+SUP layout.lazyvgrid.adaptive80.frame.c0=(0.00,0.00,94.67,20.00)
+SUP layout.lazyvgrid.adaptive80.frame.c1=(102.67,0.00,94.67,20.00)
+SUP layout.lazyvgrid.fixed.fit[nilxnil]=128.00x48.00
+SUP layout.lazyvgrid.fixed.fit[0.00x0.00]=128.00x48.00
+SUP layout.lazyvgrid.fixed.fit[infxinf]=0.00x0.00
+SUP layout.lazyvgrid.fixed.fit[100.00xnil]=128.00x48.00
+SUP layout.lazyvgrid.fixed.fit[nilx100.00]=128.00x48.00
+SUP layout.lazyvgrid.fixed.fit[100.00x100.00]=128.00x48.00
+SUP layout.lazyvgrid.fixed.fit[300.00x500.00]=300.00x48.00
+SUP layout.lazyvgrid.fixed.dims[300.00x500.00]=300.00x48.00 firstBaseline=48.00 lastBaseline=48.00 centerY=24.00 leading=0.00 trailing=300.00
+SUP layout.lazyvgrid.fixed.priority=0.00
+SUP layout.lazyvgrid.fixed.frame.c1=(144.00,0.00,70.00,20.00)
+SUP layout.lazyvgrid.fixed.frame.c3=(144.00,28.00,70.00,20.00)
+SUP layout.lazyvgrid.fixed.frame.c0=(86.00,0.00,50.00,20.00)
+SUP layout.lazyvgrid.fixed.frame.c2=(86.00,28.00,50.00,20.00)
+SUP layout.viewThatFits.fit[nilxnil]=339.00x20.33
+SUP layout.viewThatFits.fit[0.00x0.00]=0.00x0.00
+SUP layout.viewThatFits.fit[infxinf]=339.00x20.33
+SUP layout.viewThatFits.fit[100.00xnil]=39.67x20.33
+SUP layout.viewThatFits.fit[nilx100.00]=339.00x20.33
+SUP layout.viewThatFits.fit[100.00x100.00]=39.67x20.33
+SUP layout.viewThatFits.fit[300.00x500.00]=39.67x20.33
+SUP layout.viewThatFits.dims[300.00x500.00]=39.67x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=39.67
+SUP layout.viewThatFits.priority=0.00
+SUP layout.viewThatFits.frame.b=(0.00,0.00,39.67,20.33)
+SUP layout.viewThatFits.w400.fit[nilxnil]=339.00x20.33
+SUP layout.viewThatFits.w400.fit[0.00x0.00]=0.00x0.00
+SUP layout.viewThatFits.w400.fit[infxinf]=339.00x20.33
+SUP layout.viewThatFits.w400.fit[100.00xnil]=39.67x20.33
+SUP layout.viewThatFits.w400.fit[nilx100.00]=339.00x20.33
+SUP layout.viewThatFits.w400.fit[100.00x100.00]=39.67x20.33
+SUP layout.viewThatFits.w400.fit[300.00x500.00]=39.67x20.33
+SUP layout.viewThatFits.w400.dims[400.00x500.00]=339.00x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=339.00
+SUP layout.viewThatFits.w400.priority=0.00
+SUP layout.viewThatFits.w400.frame.a=(0.00,0.00,339.00,20.33)
+SUPX 28.959 notify-register com.apple.accessibility.cache.button.shapes.enabled
+SUP layout.button.default.fit[nilxnil]=27.67x20.33
+SUP layout.button.default.fit[0.00x0.00]=0.00x0.00
+SUP layout.button.default.fit[infxinf]=27.67x20.33
+SUP layout.button.default.fit[100.00xnil]=27.67x20.33
+SUP layout.button.default.fit[nilx100.00]=27.67x20.33
+SUP layout.button.default.fit[100.00x100.00]=27.67x20.33
+SUP layout.button.default.fit[300.00x500.00]=27.67x20.33
+SUP layout.button.default.dims[300.00x500.00]=27.67x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=27.67
+SUP layout.button.default.priority=0.00
+SUPX 29.215 notify-register com.apple.accessibility.cache.enhance.background.contrast
+SUP layout.button.bordered.fit[nilxnil]=51.67x34.33
+SUP layout.button.bordered.fit[0.00x0.00]=24.00x14.00
+SUP layout.button.bordered.fit[infxinf]=51.67x34.33
+SUP layout.button.bordered.fit[100.00xnil]=51.67x34.33
+SUP layout.button.bordered.fit[nilx100.00]=51.67x34.33
+SUP layout.button.bordered.fit[100.00x100.00]=51.67x34.33
+SUP layout.button.bordered.fit[300.00x500.00]=51.67x34.33
+SUP layout.button.bordered.dims[300.00x500.00]=51.67x34.33 firstBaseline=23.33 lastBaseline=23.33 centerY=17.17 leading=0.00 trailing=51.67
+SUP layout.button.bordered.priority=0.00
+SUP layout.button.borderedProminent.fit[nilxnil]=51.67x34.33
+SUP layout.button.borderedProminent.fit[0.00x0.00]=24.00x14.00
+SUP layout.button.borderedProminent.fit[infxinf]=51.67x34.33
+SUP layout.button.borderedProminent.fit[100.00xnil]=51.67x34.33
+SUP layout.button.borderedProminent.fit[nilx100.00]=51.67x34.33
+SUP layout.button.borderedProminent.fit[100.00x100.00]=51.67x34.33
+SUP layout.button.borderedProminent.fit[300.00x500.00]=51.67x34.33
+SUP layout.button.borderedProminent.dims[300.00x500.00]=51.67x34.33 firstBaseline=23.33 lastBaseline=23.33 centerY=17.17 leading=0.00 trailing=51.67
+SUP layout.button.borderedProminent.priority=0.00
+SUP layout.button.glass.fit[nilxnil]=51.67x34.33
+SUP layout.button.glass.fit[0.00x0.00]=24.00x14.00
+SUP layout.button.glass.fit[infxinf]=51.67x34.33
+SUP layout.button.glass.fit[100.00xnil]=51.67x34.33
+SUP layout.button.glass.fit[nilx100.00]=51.67x34.33
+SUP layout.button.glass.fit[100.00x100.00]=51.67x34.33
+SUP layout.button.glass.fit[300.00x500.00]=51.67x34.33
+SUP layout.button.glass.dims[300.00x500.00]=51.67x34.33 firstBaseline=23.33 lastBaseline=23.33 centerY=17.17 leading=0.00 trailing=51.67
+SUP layout.button.glass.priority=0.00
+SUP layout.button.borderless.fit[nilxnil]=27.67x20.33
+SUP layout.button.borderless.fit[0.00x0.00]=0.00x0.00
+SUP layout.button.borderless.fit[infxinf]=27.67x20.33
+SUP layout.button.borderless.fit[100.00xnil]=27.67x20.33
+SUP layout.button.borderless.fit[nilx100.00]=27.67x20.33
+SUP layout.button.borderless.fit[100.00x100.00]=27.67x20.33
+SUP layout.button.borderless.fit[300.00x500.00]=27.67x20.33
+SUP layout.button.borderless.dims[300.00x500.00]=27.67x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=27.67
+SUP layout.button.borderless.priority=0.00
+SUP layout.button.plain.fit[nilxnil]=27.67x20.33
+SUP layout.button.plain.fit[0.00x0.00]=0.00x0.00
+SUP layout.button.plain.fit[infxinf]=27.67x20.33
+SUP layout.button.plain.fit[100.00xnil]=27.67x20.33
+SUP layout.button.plain.fit[nilx100.00]=27.67x20.33
+SUP layout.button.plain.fit[100.00x100.00]=27.67x20.33
+SUP layout.button.plain.fit[300.00x500.00]=27.67x20.33
+SUP layout.button.plain.dims[300.00x500.00]=27.67x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=27.67
+SUP layout.button.plain.priority=0.00
+SUP layout.button.large.fit[nilxnil]=67.67x50.33
+SUP layout.button.large.fit[0.00x0.00]=40.00x30.00
+SUP layout.button.large.fit[infxinf]=67.67x50.33
+SUP layout.button.large.fit[100.00xnil]=67.67x50.33
+SUP layout.button.large.fit[nilx100.00]=67.67x50.33
+SUP layout.button.large.fit[100.00x100.00]=67.67x50.33
+SUP layout.button.large.fit[300.00x500.00]=67.67x50.33
+SUP layout.button.large.dims[300.00x500.00]=67.67x50.33 firstBaseline=31.33 lastBaseline=31.33 centerY=25.17 leading=0.00 trailing=67.67
+SUP layout.button.large.priority=0.00
+SUPX 30.787 notify-register com.apple.accessibility.cache.increase.button.legibility
+SUP layout.toggle.fit[nilxnil]=91.33x28.00
+SUP layout.toggle.fit[0.00x0.00]=69.00x28.00
+SUP layout.toggle.fit[infxinf]=infx28.00
+SUP layout.toggle.fit[100.00xnil]=100.00x28.00
+SUP layout.toggle.fit[nilx100.00]=91.33x28.00
+SUP layout.toggle.fit[100.00x100.00]=100.00x28.00
+SUP layout.toggle.fit[300.00x500.00]=300.00x28.00
+SUP layout.toggle.dims[300.00x500.00]=300.00x28.00 firstBaseline=0.00 lastBaseline=28.00 centerY=14.00 leading=0.00 trailing=300.00
+SUP layout.toggle.priority=0.00
+SUP layout.toggle.labelsHidden.fit[nilxnil]=61.00x28.00
+SUP layout.toggle.labelsHidden.fit[0.00x0.00]=61.00x28.00
+SUP layout.toggle.labelsHidden.fit[infxinf]=61.00x28.00
+SUP layout.toggle.labelsHidden.fit[100.00xnil]=61.00x28.00
+SUP layout.toggle.labelsHidden.fit[nilx100.00]=61.00x28.00
+SUP layout.toggle.labelsHidden.fit[100.00x100.00]=61.00x28.00
+SUP layout.toggle.labelsHidden.fit[300.00x500.00]=61.00x28.00
+SUP layout.toggle.labelsHidden.dims[300.00x500.00]=61.00x28.00 firstBaseline=0.00 lastBaseline=28.00 centerY=14.00 leading=0.00 trailing=61.00
+SUP layout.toggle.labelsHidden.priority=0.00
+SUP layout.slider.fit[nilxnil]=0.00x31.00
+SUP layout.slider.fit[0.00x0.00]=0.00x31.00
+SUP layout.slider.fit[infxinf]=infx31.00
+SUP layout.slider.fit[100.00xnil]=100.00x31.00
+SUP layout.slider.fit[nilx100.00]=0.00x31.00
+SUP layout.slider.fit[100.00x100.00]=100.00x31.00
+SUP layout.slider.fit[300.00x500.00]=300.00x31.00
+SUP layout.slider.dims[300.00x500.00]=300.00x31.00 firstBaseline=0.00 lastBaseline=31.00 centerY=15.50 leading=0.00 trailing=300.00
+SUP layout.slider.priority=0.00
+SUP layout.stepper.fit[nilxnil]=112.67x32.00
+SUP layout.stepper.fit[0.00x0.00]=102.00x32.00
+SUP layout.stepper.fit[infxinf]=infx32.00
+SUP layout.stepper.fit[100.00xnil]=102.00x32.00
+SUP layout.stepper.fit[nilx100.00]=112.67x32.00
+SUP layout.stepper.fit[100.00x100.00]=102.00x32.00
+SUP layout.stepper.fit[300.00x500.00]=300.00x32.00
+SUP layout.stepper.dims[300.00x500.00]=300.00x32.00 firstBaseline=0.00 lastBaseline=32.00 centerY=16.00 leading=0.00 trailing=300.00
+SUP layout.stepper.priority=0.00
+SUP layout.progress.spinner.fit[nilxnil]=20.00x20.00
+SUP layout.progress.spinner.fit[0.00x0.00]=20.00x20.00
+SUP layout.progress.spinner.fit[infxinf]=20.00x20.00
+SUP layout.progress.spinner.fit[100.00xnil]=20.00x20.00
+SUP layout.progress.spinner.fit[nilx100.00]=20.00x20.00
+SUP layout.progress.spinner.fit[100.00x100.00]=20.00x20.00
+SUP layout.progress.spinner.fit[300.00x500.00]=20.00x20.00
+SUP layout.progress.spinner.dims[300.00x500.00]=20.00x20.00 firstBaseline=0.00 lastBaseline=20.00 centerY=10.00 leading=0.00 trailing=20.00
+SUP layout.progress.spinner.priority=0.00
+SUP layout.progress.linear.fit[nilxnil]=0.00x4.00
+SUP layout.progress.linear.fit[0.00x0.00]=0.00x4.00
+SUP layout.progress.linear.fit[infxinf]=infx4.00
+SUP layout.progress.linear.fit[100.00xnil]=100.00x4.00
+SUP layout.progress.linear.fit[nilx100.00]=0.00x4.00
+SUP layout.progress.linear.fit[100.00x100.00]=100.00x4.00
+SUP layout.progress.linear.fit[300.00x500.00]=300.00x4.00
+SUP layout.progress.linear.dims[300.00x500.00]=300.00x4.00 firstBaseline=0.00 lastBaseline=4.00 centerY=2.00 leading=0.00 trailing=300.00
+SUP layout.progress.linear.priority=0.00
+SUP layout.picker.segmented.fit[nilxnil]=84.00x31.00
+SUP layout.picker.segmented.fit[0.00x0.00]=0.00x31.00
+SUP layout.picker.segmented.fit[infxinf]=infx31.00
+SUP layout.picker.segmented.fit[100.00xnil]=100.00x31.00
+SUP layout.picker.segmented.fit[nilx100.00]=84.00x31.00
+SUP layout.picker.segmented.fit[100.00x100.00]=100.00x31.00
+SUP layout.picker.segmented.fit[300.00x500.00]=300.00x31.00
+SUP layout.picker.segmented.dims[300.00x500.00]=300.00x31.00 firstBaseline=20.67 lastBaseline=20.67 centerY=15.50 leading=0.00 trailing=300.00
+SUP layout.picker.segmented.priority=0.00
+SUPX 32.637 notify-register com.apple.accessibility.cache.non.blinking.cursor.status
+SUP layout.textfield.plain.fit[nilxnil]=90.00x22.00
+SUP layout.textfield.plain.fit[0.00x0.00]=0.00x22.00
+SUP layout.textfield.plain.fit[infxinf]=infx22.00
+SUP layout.textfield.plain.fit[100.00xnil]=100.00x22.00
+SUP layout.textfield.plain.fit[nilx100.00]=90.00x22.00
+SUP layout.textfield.plain.fit[100.00x100.00]=100.00x22.00
+SUP layout.textfield.plain.fit[300.00x500.00]=300.00x22.00
+SUP layout.textfield.plain.dims[300.00x500.00]=300.00x22.00 firstBaseline=17.33 lastBaseline=17.33 centerY=11.00 leading=0.00 trailing=300.00
+SUP layout.textfield.plain.priority=0.00
+SUP layout.textfield.rounded.fit[nilxnil]=118.00x34.00
+SUP layout.textfield.rounded.fit[0.00x0.00]=0.00x34.00
+SUP layout.textfield.rounded.fit[infxinf]=infx34.00
+SUP layout.textfield.rounded.fit[100.00xnil]=100.00x34.00
+SUP layout.textfield.rounded.fit[nilx100.00]=118.00x34.00
+SUP layout.textfield.rounded.fit[100.00x100.00]=100.00x34.00
+SUP layout.textfield.rounded.fit[300.00x500.00]=300.00x34.00
+SUP layout.textfield.rounded.dims[300.00x500.00]=300.00x34.00 firstBaseline=23.33 lastBaseline=23.33 centerY=17.00 leading=0.00 trailing=300.00
+SUP layout.textfield.rounded.priority=0.00
+SUP layout.secureField.fit[nilxnil]=73.33x21.00
+SUP layout.secureField.fit[0.00x0.00]=0.00x21.00
+SUP layout.secureField.fit[infxinf]=infx21.00
+SUP layout.secureField.fit[100.00xnil]=100.00x21.00
+SUP layout.secureField.fit[nilx100.00]=73.33x21.00
+SUP layout.secureField.fit[100.00x100.00]=100.00x21.00
+SUP layout.secureField.fit[300.00x500.00]=300.00x21.00
+SUP layout.secureField.dims[300.00x500.00]=300.00x21.00 firstBaseline=16.67 lastBaseline=16.67 centerY=10.50 leading=0.00 trailing=300.00
+SUP layout.secureField.priority=0.00
+SUP layout.datePicker.compact.fit[nilxnil]=142.67x34.33
+SUP layout.datePicker.compact.fit[0.00x0.00]=130.67x34.33
+SUP layout.datePicker.compact.fit[infxinf]=infx34.33
+SUP layout.datePicker.compact.fit[100.00xnil]=130.67x34.33
+SUP layout.datePicker.compact.fit[nilx100.00]=142.67x34.33
+SUP layout.datePicker.compact.fit[100.00x100.00]=130.67x34.33
+SUP layout.datePicker.compact.fit[300.00x500.00]=300.00x34.33
+SUP layout.datePicker.compact.dims[300.00x500.00]=300.00x34.33 firstBaseline=0.00 lastBaseline=34.33 centerY=17.17 leading=0.00 trailing=300.00
+SUP layout.datePicker.compact.priority=0.00
+SUP layout.gauge.fit[nilxnil]=12.33x46.98
+SUP layout.gauge.fit[0.00x0.00]=0.00x26.64
+SUP layout.gauge.fit[infxinf]=infx46.98
+SUP layout.gauge.fit[100.00xnil]=100.00x46.98
+SUP layout.gauge.fit[nilx100.00]=12.33x46.98
+SUP layout.gauge.fit[100.00x100.00]=100.00x46.98
+SUP layout.gauge.fit[300.00x500.00]=300.00x46.98
+SUP layout.gauge.dims[300.00x500.00]=300.00x46.98 firstBaseline=16.33 lastBaseline=16.33 centerY=23.49 leading=0.00 trailing=300.00
+SUP layout.gauge.priority=0.00
+SUP layout.link.fit[nilxnil]=47.33x20.33
+SUP layout.link.fit[0.00x0.00]=0.00x0.00
+SUP layout.link.fit[infxinf]=47.33x20.33
+SUP layout.link.fit[100.00xnil]=47.33x20.33
+SUP layout.link.fit[nilx100.00]=47.33x20.33
+SUP layout.link.fit[100.00x100.00]=47.33x20.33
+SUP layout.link.fit[300.00x500.00]=47.33x20.33
+SUP layout.link.dims[300.00x500.00]=47.33x20.33 firstBaseline=16.33 lastBaseline=16.33 centerY=10.17 leading=0.00 trailing=47.33
+SUP layout.link.priority=0.00
+SUP layout.scrollView.fit[nilxnil]=11.33x1030.98
+SUP layout.scrollView.fit[0.00x0.00]=0.00x0.00
+SUP layout.scrollView.fit[infxinf]=infxinf
+SUP layout.scrollView.fit[100.00xnil]=100.00x1030.98
+SUP layout.scrollView.fit[nilx100.00]=11.33x100.00
+SUP layout.scrollView.fit[100.00x100.00]=100.00x100.00
+SUP layout.scrollView.fit[300.00x500.00]=300.00x500.00
+SUP layout.scrollView.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.scrollView.priority=0.00
+SUP layout.scrollView.frame.c=(0.00,30.98,300.00,1000.00)
+SUP layout.scrollView.frame.a=(144.33,0.00,11.33,20.33)
+SUP layout.scrollView.horizontal.fit[nilxnil]=1019.33x20.33
+SUP layout.scrollView.horizontal.fit[0.00x0.00]=0.00x20.33
+SUP layout.scrollView.horizontal.fit[infxinf]=infxinf
+SUP layout.scrollView.horizontal.fit[100.00xnil]=100.00x20.33
+SUP layout.scrollView.horizontal.fit[nilx100.00]=1019.33x100.00
+SUP layout.scrollView.horizontal.fit[100.00x100.00]=100.00x100.00
+SUP layout.scrollView.horizontal.fit[300.00x500.00]=300.00x500.00
+SUP layout.scrollView.horizontal.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.scrollView.horizontal.priority=0.00
+SUP layout.scrollView.horizontal.frame.c=(19.33,0.00,1000.00,500.00)
+SUP layout.scrollView.horizontal.frame.a=(0.00,239.83,11.33,20.33)
+SUP layout.list.two.fit[nilxnil]=0.00x0.00
+SUP layout.list.two.fit[300.00x500.00]=300.00x500.00
+SUP layout.list.two.dims[300.00x500.00]=300.00x500.00 firstBaseline=0.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.list.two.priority=0.00
+SUP layout.list.two.frame.b=(40.00,102.83,11.00,20.33)
+SUP layout.list.two.frame.a=(40.00,50.83,11.33,20.33)
+SUP layout.list.plain.fit[300.00x500.00]=300.00x500.00
+SUP layout.list.plain.dims[300.00x500.00]=300.00x500.00 firstBaseline=0.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.list.plain.priority=0.00
+SUP layout.list.plain.frame.b=(20.00,67.83,11.00,20.33)
+SUP layout.list.plain.frame.a=(20.00,15.83,11.33,20.33)
+SUP layout.form.toggle.fit[300.00x500.00]=300.00x500.00
+SUP layout.form.toggle.dims[300.00x500.00]=300.00x500.00 firstBaseline=0.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.form.toggle.priority=0.00
+SUP layout.form.toggle.frame.t=(40.00,50.83,240.00,20.33)
+SUPX 35.506 lookup com.apple.springboard.services kr=0
+SUP layout.navigationStack.fit[300.00x500.00]=300.00x500.00
+SUP layout.navigationStack.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.navigationStack.priority=0.00
+SUP layout.navigationStack.frame.t=(100.00,280.83,16.00,20.33)
+SUP layout.navigationStack.inline.fit[300.00x500.00]=300.00x500.00
+SUP layout.navigationStack.inline.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.navigationStack.inline.priority=0.00
+SUP layout.navigationStack.inline.frame.t=(100.00,280.83,16.00,20.33)
+SUP layout.tabView.fit[300.00x500.00]=300.00x500.00
+SUP layout.tabView.dims[300.00x500.00]=300.00x500.00 firstBaseline=500.00 lastBaseline=500.00 centerY=250.00 leading=0.00 trailing=300.00
+SUP layout.tabView.priority=0.00
+SUP layout.tabView.frame.t=(100.00,239.83,16.00,20.33)
+SUP layout.spacingMatrix.spacing.text->text=h=8.00 v=2.00
+SUP layout.spacingMatrix.spacing.text->textCaption=h=8.00 v=2.00
+SUP layout.spacingMatrix.spacing.text->image=h=8.00 v=0.00
+SUP layout.spacingMatrix.spacing.text->color=h=8.00 v=10.64
+SUP layout.spacingMatrix.spacing.text->button=h=8.00 v=2.00
+SUP layout.spacingMatrix.spacing.text->toggle=h=8.00 v=10.64
+SUP layout.spacingMatrix.spacing.text->textField=h=8.00 v=10.64
+SUP layout.spacingMatrix.spacing.text->padded=h=8.00 v=10.64
+SUP layout.spacingMatrix.spacing.textCaption->text=h=8.00 v=2.00
+SUP layout.spacingMatrix.spacing.textCaption->textCaption=h=8.00 v=2.00
+SUP layout.spacingMatrix.spacing.textCaption->image=h=8.00 v=0.00
+SUP layout.spacingMatrix.spacing.textCaption->color=h=8.00 v=7.53
+SUP layout.spacingMatrix.spacing.textCaption->button=h=8.00 v=2.00
+SUP layout.spacingMatrix.spacing.textCaption->toggle=h=8.00 v=7.53
+SUP layout.spacingMatrix.spacing.textCaption->textField=h=8.00 v=7.53
+SUP layout.spacingMatrix.spacing.textCaption->padded=h=8.00 v=7.53
+SUP layout.spacingMatrix.spacing.image->text=h=8.00 v=0.00
+SUP layout.spacingMatrix.spacing.image->textCaption=h=8.00 v=0.00
+SUP layout.spacingMatrix.spacing.image->image=h=8.00 v=0.00
+SUP layout.spacingMatrix.spacing.image->color=h=8.00 v=3.33
+SUP layout.spacingMatrix.spacing.image->button=h=8.00 v=0.00
+SUP layout.spacingMatrix.spacing.image->toggle=h=8.00 v=3.33
+SUP layout.spacingMatrix.spacing.image->textField=h=8.00 v=3.33
+SUP layout.spacingMatrix.spacing.image->padded=h=8.00 v=3.33
+SUP layout.spacingMatrix.spacing.color->text=h=8.00 v=6.43
+SUP layout.spacingMatrix.spacing.color->textCaption=h=8.00 v=4.56
+SUP layout.spacingMatrix.spacing.color->image=h=8.00 v=2.33
+SUP layout.spacingMatrix.spacing.color->color=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.color->button=h=8.00 v=6.43
+SUP layout.spacingMatrix.spacing.color->toggle=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.color->textField=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.color->padded=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.button->text=h=8.00 v=2.00
+SUP layout.spacingMatrix.spacing.button->textCaption=h=8.00 v=2.00
+SUP layout.spacingMatrix.spacing.button->image=h=8.00 v=0.00
+SUP layout.spacingMatrix.spacing.button->color=h=8.00 v=10.64
+SUP layout.spacingMatrix.spacing.button->button=h=8.00 v=2.00
+SUP layout.spacingMatrix.spacing.button->toggle=h=8.00 v=10.64
+SUP layout.spacingMatrix.spacing.button->textField=h=8.00 v=10.64
+SUP layout.spacingMatrix.spacing.button->padded=h=8.00 v=10.64
+SUP layout.spacingMatrix.spacing.toggle->text=h=8.00 v=6.43
+SUP layout.spacingMatrix.spacing.toggle->textCaption=h=8.00 v=4.56
+SUP layout.spacingMatrix.spacing.toggle->image=h=8.00 v=2.33
+SUP layout.spacingMatrix.spacing.toggle->color=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.toggle->button=h=8.00 v=6.43
+SUP layout.spacingMatrix.spacing.toggle->toggle=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.toggle->textField=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.toggle->padded=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.textField->text=h=8.00 v=6.43
+SUP layout.spacingMatrix.spacing.textField->textCaption=h=8.00 v=4.56
+SUP layout.spacingMatrix.spacing.textField->image=h=8.00 v=2.33
+SUP layout.spacingMatrix.spacing.textField->color=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.textField->button=h=8.00 v=6.43
+SUP layout.spacingMatrix.spacing.textField->toggle=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.textField->textField=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.textField->padded=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.padded->text=h=8.00 v=6.43
+SUP layout.spacingMatrix.spacing.padded->textCaption=h=8.00 v=4.56
+SUP layout.spacingMatrix.spacing.padded->image=h=8.00 v=2.33
+SUP layout.spacingMatrix.spacing.padded->color=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.padded->button=h=8.00 v=6.43
+SUP layout.spacingMatrix.spacing.padded->toggle=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.padded->textField=h=8.00 v=8.00
+SUP layout.spacingMatrix.spacing.padded->padded=h=8.00 v=8.00
+SUP layout.spacingMatrix.dims[nilxnil]=300.00x400.00 firstBaseline=16.33 lastBaseline=382.33 centerY=200.00 leading=0.00 trailing=300.00
+SUP layout.spacingMatrix.priority=0.00
+SUP layout.cases=139
+SUP t=36.528 done=layout
+dev.ycode.suiprobe: 35414

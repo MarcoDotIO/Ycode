@@ -49,17 +49,17 @@ extension DarwinKernel {
         try writeU32(lengthPointer, UInt32(address.count), mem)
     }
 
-    func socketCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult {
+    func socketCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         switch n {
         case DescriptorBSD.socket:
-            call = "socket(domain=\(int(0)), type=\(int(1)), protocol=\(int(2)))"
+            call.set("socket(domain=\(int(0)), type=\(int(1)), protocol=\(int(2)))")
             let s = try makeSocket(domain: int(0), type: int(1), proto: int(2))
             let fd = try fileSystem.installObject(s, statusFlags: DarwinOpen.O_RDWR, closeOnExec: false)
             return .value(UInt64(fd))
 
         case DescriptorBSD.socketpair:
-            call = "socketpair(domain=\(int(0)), type=\(int(1)), protocol=\(int(2)), sv=\(hx(a[3])))"
+            call.set("socketpair(domain=\(int(0)), type=\(int(1)), protocol=\(int(2)), sv=\(hx(a[3])))")
             let a1 = try makeSocket(domain: int(0), type: int(1), proto: int(2))
             let b1 = try makeSocket(domain: int(0), type: int(1), proto: int(2))
             guard fileSystem.freeDescriptorCount >= 2 else { throw fail(Code.EMFILE) }
@@ -89,7 +89,7 @@ extension DarwinKernel {
             return .value(0)
 
         case DescriptorBSD.bind:
-            call = "bind(s=\(int(0)), name=\(hx(a[1])), namelen=\(int(2)))"
+            call.set("bind(s=\(int(0)), name=\(hx(a[1])), namelen=\(int(2)))")
             let (s, _) = try socketObject(int(0))
             let address = try readUnixAddress(a[1], length: UInt64(UInt32(truncatingIfNeeded: a[2])), mem)
             call += " [\"\(address.path)\"]"
@@ -100,7 +100,7 @@ extension DarwinKernel {
             return .value(0)
 
         case DescriptorBSD.listen:
-            call = "listen(s=\(int(0)), backlog=\(int(1)))"
+            call.set("listen(s=\(int(0)), backlog=\(int(1)))")
             let (s, _) = try socketObject(int(0))
             guard s.kind == .stream else { throw fail(Code.EOPNOTSUPP) }
             guard !s.isConnected, s.peer == nil else { throw fail(Code.EINVAL) }
@@ -114,7 +114,7 @@ extension DarwinKernel {
             return .value(0)
 
         case DescriptorBSD.accept:
-            call = "accept(s=\(int(0)), name=\(hx(a[1])), anamelen=\(hx(a[2])))"
+            call.set("accept(s=\(int(0)), name=\(hx(a[1])), anamelen=\(hx(a[2])))")
             let (s, file) = try socketObject(int(0))
             guard s.isListening else { throw fail(Code.EINVAL) }
             s.lastUser = descriptorUser
@@ -139,7 +139,7 @@ extension DarwinKernel {
             return .value(UInt64(fd))
 
         case DescriptorBSD.connect:
-            call = "connect(s=\(int(0)), name=\(hx(a[1])), namelen=\(int(2)))"
+            call.set("connect(s=\(int(0)), name=\(hx(a[1])), namelen=\(int(2)))")
             let (s, _) = try socketObject(int(0))
             let address = try readUnixAddress(a[1], length: UInt64(UInt32(truncatingIfNeeded: a[2])), mem)
             call += " [\"\(address.path)\"]"
@@ -147,7 +147,7 @@ extension DarwinKernel {
             return .value(0)
 
         case DescriptorBSD.shutdown:
-            call = "shutdown(s=\(int(0)), how=\(int(1)))"
+            call.set("shutdown(s=\(int(0)), how=\(int(1)))")
             let (s, _) = try socketObject(int(0))
             let how = int(1)
             guard (0...2).contains(how) else { throw fail(Code.EINVAL) }
@@ -165,7 +165,7 @@ extension DarwinKernel {
 
         case DescriptorBSD.getsockname, DescriptorBSD.getpeername:
             let peer = n == DescriptorBSD.getpeername
-            call = "\(peer ? "getpeername" : "getsockname")(fdes=\(int(0)), asa=\(hx(a[1])), alen=\(hx(a[2])))"
+            call.set("\(peer ? "getpeername" : "getsockname")(fdes=\(int(0)), asa=\(hx(a[1])), alen=\(hx(a[2])))")
             let (s, _) = try socketObject(int(0))
             let address: [UInt8]
             if peer {
@@ -181,8 +181,8 @@ extension DarwinKernel {
             return try sendtoCall(a, &call, mem)
 
         case DescriptorBSD.recvfrom:
-            call = "recvfrom(s=\(int(0)), buf=\(hx(a[1])), len=\(hx(a[2])), flags=\(hx(a[3])), from=\(hx(a[4])), "
-                + "fromlenaddr=\(hx(a[5])))"
+            call.set("recvfrom(s=\(int(0)), buf=\(hx(a[1])), len=\(hx(a[2])), flags=\(hx(a[3])), from=\(hx(a[4])), "
+                + "fromlenaddr=\(hx(a[5])))")
             let (s, file) = try socketObject(int(0))
             guard file.isReadable else { throw fail(Code.EBADF) }
             guard a[2] <= UInt64(Int32.max) else { throw fail(Code.EINVAL) }
@@ -198,8 +198,8 @@ extension DarwinKernel {
             return try recvmsgCall(a, &call, mem)
 
         case DescriptorBSD.setsockopt:
-            call = "setsockopt(s=\(int(0)), level=\(hx(UInt32(bitPattern: int(1)))), name=\(hx(UInt32(bitPattern: int(2)))), "
-                + "val=\(hx(a[3])), valsize=\(int(4)))"
+            call.set("setsockopt(s=\(int(0)), level=\(hx(UInt32(bitPattern: int(1)))), name=\(hx(UInt32(bitPattern: int(2)))), "
+                + "val=\(hx(a[3])), valsize=\(int(4)))")
             let (s, _) = try socketObject(int(0))
             let size = Int(UInt32(truncatingIfNeeded: a[4]))
             let value = a[3] == 0 || size == 0 ? [] : try mem.read(va: a[3], count: min(size, 256))
@@ -207,8 +207,8 @@ extension DarwinKernel {
             return .value(0)
 
         case DescriptorBSD.getsockopt:
-            call = "getsockopt(s=\(int(0)), level=\(hx(UInt32(bitPattern: int(1)))), name=\(hx(UInt32(bitPattern: int(2)))), "
-                + "val=\(hx(a[3])), avalsize=\(hx(a[4])))"
+            call.set("getsockopt(s=\(int(0)), level=\(hx(UInt32(bitPattern: int(1)))), name=\(hx(UInt32(bitPattern: int(2)))), "
+                + "val=\(hx(a[3])), avalsize=\(hx(a[4])))")
             let (s, _) = try socketObject(int(0))
             let value = try socketOption(s, level: int(1), name: int(2))
             guard a[4] != 0 else { throw fail(Code.EFAULT) }
@@ -238,11 +238,11 @@ extension DarwinKernel {
     /// `sendto`. A descriptor that is not a socket keeps stage 4a's
     /// behavior: the text is logged and the call fails with ENOTSOCK (the
     /// simulator runtime's logging calls `sendto` on descriptor 0 today).
-    private func sendtoCall(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult {
+    private func sendtoCall(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         let fd = Int32(truncatingIfNeeded: a[0])
         let flags = Int32(truncatingIfNeeded: a[3])
-        call = "sendto(s=\(fd), buf=\(hx(a[1])), len=\(a[2]), flags=\(hx(UInt32(bitPattern: flags))), to=\(hx(a[4])), "
-            + "tolen=\(Int32(truncatingIfNeeded: a[5])))"
+        call.set("sendto(s=\(fd), buf=\(hx(a[1])), len=\(a[2]), flags=\(hx(UInt32(bitPattern: flags))), to=\(hx(a[4])), "
+            + "tolen=\(Int32(truncatingIfNeeded: a[5])))")
         let file = try fileSystem.openFile(for: fd)
         guard let s = file.object as? UnixSocket else {
             if a[2] > 0, let bytes = try? mem.read(va: a[1], count: Int(min(a[2], 2048))) { logDatagramText(bytes) }
@@ -278,10 +278,10 @@ extension DarwinKernel {
         }
     }
 
-    private func sendmsgCall(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult {
+    private func sendmsgCall(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         let fd = Int32(truncatingIfNeeded: a[0])
         let flags = Int32(truncatingIfNeeded: a[2])
-        call = "sendmsg(s=\(fd), msg=\(hx(a[1])), flags=\(hx(UInt32(bitPattern: flags))))"
+        call.set("sendmsg(s=\(fd), msg=\(hx(a[1])), flags=\(hx(UInt32(bitPattern: flags))))")
         let (s, file) = try socketObject(fd)
         guard file.isWritable else { throw fail(Code.EBADF) }
         let h = MessageHeader(try mem.read(va: a[1], count: 48))
@@ -326,10 +326,10 @@ extension DarwinKernel {
         return files
     }
 
-    private func recvmsgCall(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult {
+    private func recvmsgCall(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         let fd = Int32(truncatingIfNeeded: a[0])
         let flags = Int32(truncatingIfNeeded: a[2])
-        call = "recvmsg(s=\(fd), msg=\(hx(a[1])), flags=\(hx(UInt32(bitPattern: flags))))"
+        call.set("recvmsg(s=\(fd), msg=\(hx(a[1])), flags=\(hx(UInt32(bitPattern: flags))))")
         let (s, file) = try socketObject(fd)
         guard file.isReadable else { throw fail(Code.EBADF) }
         let h = MessageHeader(try mem.read(va: a[1], count: 48))
@@ -489,9 +489,9 @@ extension DarwinKernel {
             b.appendLE(p.lastUser.pid)
             return b
         case SocketABI.localPeerUUID, SocketABI.localPeerEUUID:
-            guard s.peer != nil else { throw fail(Code.ENOTCONN) }
-            // Ycode does not know executable UUIDs here: all zero.
-            return [UInt8](repeating: 0, count: 16)
+            guard let p = s.peer else { throw fail(Code.ENOTCONN) }
+            // The peer process's main-executable UUID (zero if it is gone).
+            return system.processes[p.lastUser.pid]?.executableUUID ?? [UInt8](repeating: 0, count: 16)
         case SocketABI.localPeerToken:
             guard let p = s.peer else { throw fail(Code.ENOTCONN) }
             let user = p.lastUser

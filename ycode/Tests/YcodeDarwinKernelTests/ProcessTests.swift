@@ -342,9 +342,16 @@ import YcodeDarwinABI
         #expect(String(decoding: env.read(root, At.out, 1024).prefix { $0 != 0 }, as: UTF8.self) == env.exe)
         // UNIQIDENTIFIERINFO and NOTEEXIT on a zombie.
         let c = try #require(env.kernel(pid))
+        let uuid: [UInt8] = Array(0x10...0x1F)
+        c.executableUUID = uuid
         #expect(env.bsd(root, 336, [2, UInt64(pid), 17, 0, At.out, 56]) == 56)
         #expect(env.read(root, At.out + 32, 4).readLE(UInt32.self, at: 0) == c.pidVersion)
+        #expect(env.read(root, At.out, 16) == uuid)  // p_uuid: the main executable's LC_UUID
+        #expect(env.bsd(root, 336, [2, UInt64(pid), 18, 0, At.out, 192]) == 192)
+        #expect(env.read(root, At.out + 136, 16) == uuid)
         _ = env.svc(c, 1, [9])
+        #expect(env.bsd(root, 336, [2, UInt64(pid), 17, 1, At.out, 56]) == 56)
+        #expect(env.read(root, At.out, 16) == uuid)  // kept for the zombie
         #expect(env.bsd(root, 336, [2, UInt64(pid), 21, UInt64(NoteProc.exitStatus), At.out, 4]) == 4)
         #expect(env.u32(root, At.out) == 9 << 8)
         // sysctl kern.proc.pid.<pid>: a 648-byte kinfo_proc; an unknown pid gives 0 bytes.
@@ -363,6 +370,7 @@ import YcodeDarwinABI
         let ru = env.read(root, At.out, 96)
         let start = ru.readLE(UInt64.self, at: 80), end = ru.readLE(UInt64.self, at: 88)
         #expect(start != 0 && end >= start)
+        #expect(Array(ru[0..<16]) == uuid)  // ri_uuid
         // EXITREASONBASICINFO (25) / EXITREASONINFO (24): no reason → ENOENT; too small → ENOMEM.
         #expect(env.bsd(root, 336, [2, UInt64(pid), 25, 0, At.out, 24]) == -2)
         #expect(env.bsd(root, 336, [2, UInt64(pid), 24, 0, At.out, 40]) == -2)

@@ -61,7 +61,7 @@ enum DescriptorControl {
 
 extension DarwinKernel {
     /// BSD calls the descriptor layer owns. nil = not mine.
-    func descriptorCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ fallback: inout Int32,
+    func descriptorCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ fallback: inout Int32,
                         _ mem: any KernelGuestMemory) throws -> BSDResult? {
         let n = DescriptorBSD.nocancel[n] ?? n
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
@@ -76,27 +76,32 @@ extension DarwinKernel {
             return try objectIO(n, a, &call, mem)
 
         case DescriptorBSD.pwrite:
-            call = "pwrite(fd=\(int(0)), buf=\(hx(a[1])), len=\(hx(a[2])), off=\(hx(a[3])))"
+            call.set("pwrite(fd=\(int(0)), buf=\(hx(a[1])), len=\(hx(a[2])), off=\(hx(a[3])))")
             guard a[2] <= UInt64(Int32.max), Int64(bitPattern: a[3]) >= 0 else { throw fail(Code.EINVAL) }
             let bytes = a[2] == 0 ? [] : try mem.read(va: a[1], count: Int(a[2]))
+            // A regular host file: the host write runs without the kernel
+            // lock (stage6-contract.md §5.2).
+            if let io = try hostFileIO(int(0), writing: true) {
+                return .value(UInt64(try writeUnlocked(io, bytes, offset: a[3])))
+            }
             return .value(UInt64(try fileSystem.pwrite(int(0), bytes, offset: a[3])))
 
         case DescriptorBSD.lseek:
-            call = "lseek(fd=\(int(0)), offset=\(Int64(bitPattern: a[1])), whence=\(int(2)))"
-            return .value(try fileSystem.lseek(int(0), offset: Int64(bitPattern: a[1]), whence: int(2)))
+            call.set("lseek(fd=\(int(0)), offset=\(Int64(bitPattern: a[1])), whence=\(int(2)))")
+            return .value(try lseekCall(int(0), offset: Int64(bitPattern: a[1]), whence: int(2)))
 
         case DescriptorBSD.pipe:
-            call = "pipe()"
+            call.set("pipe()")
             let (r, w) = try makePipe()
             call += " [read fd \(r), write fd \(w)]"
             return pipeResult(r, w)
 
         case DescriptorBSD.dup:
-            call = "dup(\(int(0)))"
+            call.set("dup(\(int(0)))")
             return .value(UInt64(try fileSystem.dup(int(0))))
 
         case DescriptorBSD.dup2:
-            call = "dup2(\(int(0)), \(int(1)))"
+            call.set("dup2(\(int(0)), \(int(1)))")
             try fileSystem.dup2(int(0), int(1))
             return .value(UInt64(UInt32(bitPattern: int(1))))
 
@@ -117,17 +122,17 @@ extension DarwinKernel {
 
         case DescriptorBSD.unlink:
             let path = try readPath(a[0], mem)
-            call = "unlink(\"\(path)\")"
-            try fileSystem.unlink(path)
+            call.set("unlink(\"\(path)\")")
+            try unlinkUnlocked(path)
             return .value(0)
 
         case DescriptorBSD.unlinkat:
             let path = try resolveAtPath(int(0), a[1], mem)
-            call = "unlinkat(\(int(0)), \"\(path)\", flag=\(hx(a[2])))"
+            call.set("unlinkat(\(int(0)), \"\(path)\", flag=\(hx(a[2])))")
             if int(2) & DescriptorControl.atRemoveDir != 0 {
-                try fileSystem.rmdir(path)
+                try hostFileSystemUnlocked { try $0.rmdir(path) }
             } else {
-                try fileSystem.unlink(path)
+                try unlinkUnlocked(path)
             }
             return .value(0)
 
@@ -135,15 +140,16 @@ extension DarwinKernel {
             let isAt = n == DescriptorBSD.mkdirat
             let path = isAt ? try resolveAtPath(int(0), a[1], mem) : try readPath(a[0], mem)
             let mode = UInt16(truncatingIfNeeded: isAt ? a[2] : a[1])
-            call = isAt ? "mkdirat(\(int(0)), \"\(path)\", mode=0o\(String(mode & 0o7777, radix: 8)))"
-                : "mkdir(\"\(path)\", mode=0o\(String(mode & 0o7777, radix: 8)))"
-            try fileSystem.mkdir(path, mode: mode, umask: extended.umask)
+            call.set(isAt ? "mkdirat(\(int(0)), \"\(path)\", mode=0o\(String(mode & 0o7777, radix: 8)))"
+                : "mkdir(\"\(path)\", mode=0o\(String(mode & 0o7777, radix: 8)))")
+            let umask = extended.umask
+            try hostFileSystemUnlocked { try $0.mkdir(path, mode: mode, umask: umask) }
             return .value(0)
 
         case DescriptorBSD.rmdir:
             let path = try readPath(a[0], mem)
-            call = "rmdir(\"\(path)\")"
-            try fileSystem.rmdir(path)
+            call.set("rmdir(\"\(path)\")")
+            try hostFileSystemUnlocked { try $0.rmdir(path) }
             return .value(0)
 
         case DescriptorBSD.guardedOpen, DescriptorBSD.guardedOpenDprotected, DescriptorBSD.guardedClose,
@@ -155,8 +161,8 @@ extension DarwinKernel {
             let isAt = n == DescriptorBSD.readlinkat
             let path = isAt ? try resolveAtPath(int(0), a[1], mem) : try readPath(a[0], mem)
             let (buffer, size) = isAt ? (a[2], a[3]) : (a[1], a[2])
-            call = isAt ? "readlinkat(\(int(0)), \"\(path)\", buf=\(hx(buffer)), bufsize=\(size))"
-                : "readlink(\"\(path)\", buf=\(hx(buffer)), bufsize=\(size))"
+            call.set(isAt ? "readlinkat(\(int(0)), \"\(path)\", buf=\(hx(buffer)), bufsize=\(size))"
+                : "readlink(\"\(path)\", buf=\(hx(buffer)), bufsize=\(size))")
             let target = Array(try fileSystem.readlink(path).utf8)
             // No NUL; silently truncated to the buffer (POSIX).
             let n = min(target.count, Int(min(size, UInt64(Int32.max))))
@@ -166,7 +172,7 @@ extension DarwinKernel {
 
         case DescriptorBSD.chdir, DescriptorBSD.pthreadChdir:
             let path = try readPath(a[0], mem)
-            call = "\(n == DescriptorBSD.chdir ? "chdir" : "__pthread_chdir")(\"\(path)\")"
+            call.set("\(n == DescriptorBSD.chdir ? "chdir" : "__pthread_chdir")(\"\(path)\")")
             // The per-thread cwd of __pthread_chdir is approximated by the
             // process cwd.
             try fileSystem.chdir(path)
@@ -174,7 +180,7 @@ extension DarwinKernel {
             return .value(0)
 
         case DescriptorBSD.fchdir, DescriptorBSD.pthreadFchdir:
-            call = "\(n == DescriptorBSD.fchdir ? "fchdir" : "__pthread_fchdir")(\(int(0)))"
+            call.set("\(n == DescriptorBSD.fchdir ? "fchdir" : "__pthread_fchdir")(\(int(0)))")
             try fileSystem.fchdir(int(0))
             call += " [\(fileSystem.cwd)]"
             return .value(0)
@@ -190,6 +196,33 @@ extension DarwinKernel {
         }
     }
 
+    /// A path operation that changes only the host file system, run with the
+    /// kernel lock released (`stage6-contract.md` §5.2): resolution and the
+    /// socket-name table are safe to read without it. With
+    /// `YCODE_FS_LOCKED_IO=1` it keeps the lock.
+    func hostFileSystemUnlocked(_ body: (DarwinFileSystem) throws -> Void) throws {
+        let fs = fileSystem
+        if Self.lockedFileIO { return try body(fs) }
+        try lock.unlocked { try body(fs) }
+    }
+
+    /// `unlink`: a host file without the kernel lock; a socket file (the
+    /// guest's own name table) with it.
+    func unlinkUnlocked(_ path: String) throws {
+        let fs = fileSystem
+        let done = Self.lockedFileIO ? false : try lock.unlocked { try fs.unlinkHostFile(path) }
+        if !done { try fs.unlink(path) }
+    }
+
+    /// `lseek`: checked with the kernel lock; the offset moves at once
+    /// unless a transfer on the same description holds its offset lock,
+    /// which is then waited for without the kernel lock (§5.2).
+    func lseekCall(_ fd: Int32, offset: Int64, whence: Int32) throws -> UInt64 {
+        let target = try fileSystem.lseekTarget(fd)
+        if let moved = try target.seek(offset: offset, whence: whence, wait: false) { return moved }
+        return try lock.unlocked { try target.seek(offset: offset, whence: whence)! }
+    }
+
     /// `pipe` returns the read end in x0 and the write end in x1 (Ycode's
     /// libsystem_kernel `pipe` stores w0/w1 into fds[]).
     func pipeResult(_ r: Int32, _ w: Int32) -> BSDResult {
@@ -200,23 +233,23 @@ extension DarwinKernel {
 
     /// read, write, readv, writev, pread on an object descriptor; nil for
     /// host files, the console, and closed descriptors (bsdCall's paths).
-    private func objectIO(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult? {
+    private func objectIO(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult? {
         let fd = Int32(truncatingIfNeeded: a[0])
         // Device nodes are served by the file system itself (bsdCall's paths).
         guard let file = try? fileSystem.openFile(for: fd), let object = file.object,
               !(object is DarwinDevice) else { return nil }
         switch n {
         case DescriptorBSD.pread:
-            call = "pread(fd=\(fd), buf=\(hx(a[1])), len=\(hx(a[2])), off=\(hx(a[3])))"
+            call.set("pread(fd=\(fd), buf=\(hx(a[1])), len=\(hx(a[2])), off=\(hx(a[3])))")
             throw fail(Code.ESPIPE)
         case DescriptorBSD.read:
-            call = "read(fd=\(fd), buf=\(hx(a[1])), len=\(hx(a[2])))"
+            call.set("read(fd=\(fd), buf=\(hx(a[1])), len=\(hx(a[2])))")
             guard file.isReadable else { throw fail(Code.EBADF) }
             let bytes = try objectRead(object, file, count: Int(min(a[2], UInt64(Int32.max))))
             if !bytes.isEmpty { try mem.write(va: a[1], bytes: bytes) }
             return .value(UInt64(bytes.count))
         case DescriptorBSD.write:
-            call = "write(fd=\(fd), buf=\(hx(a[1])), len=\(hx(a[2])))"
+            call.set("write(fd=\(fd), buf=\(hx(a[1])), len=\(hx(a[2])))")
             try fileSystem.checkGuard(fd, DarwinGuard.write, flavor: DarwinGuard.exceptionWrite)
             guard file.isWritable else { throw fail(Code.EBADF) }
             guard a[2] <= UInt64(Int32.max) else { throw fail(Code.EINVAL) }
@@ -224,7 +257,7 @@ extension DarwinKernel {
             return .value(UInt64(try objectWrite(object, file, bytes)))
         default:
             let isWrite = n == DescriptorBSD.writev
-            call = "\(isWrite ? "writev" : "readv")(fd=\(fd), iov=\(hx(a[1])), iovcnt=\(Int32(truncatingIfNeeded: a[2])))"
+            call.set("\(isWrite ? "writev" : "readv")(fd=\(fd), iov=\(hx(a[1])), iovcnt=\(Int32(truncatingIfNeeded: a[2])))")
             let iov = try readIOVec(a[1], count: Int32(truncatingIfNeeded: a[2]), mem, limitError: Code.EINVAL)
             if isWrite {
                 try fileSystem.checkGuard(fd, DarwinGuard.write, flavor: DarwinGuard.exceptionWrite)
@@ -297,7 +330,7 @@ extension DarwinKernel {
     // MARK: fcntl / ioctl
 
     /// The fcntl commands this layer owns; nil for the rest.
-    private func descriptorFcntl(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult? {
+    private func descriptorFcntl(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult? {
         let fd = Int32(truncatingIfNeeded: a[0])
         let cmd = Int32(truncatingIfNeeded: a[1])
         let arg = Int32(truncatingIfNeeded: a[2])
@@ -306,21 +339,21 @@ extension DarwinKernel {
             return .value(try fileLockFcntl(fd, cmd, a[2], &call, mem))
         case DescriptorControl.dupfd, DescriptorControl.dupfdCloexec:
             let cloexec = cmd == DescriptorControl.dupfdCloexec
-            call = "fcntl(fd=\(fd), \(cloexec ? "F_DUPFD_CLOEXEC" : "F_DUPFD"), arg=\(arg))"
+            call.set("fcntl(fd=\(fd), \(cloexec ? "F_DUPFD_CLOEXEC" : "F_DUPFD"), arg=\(arg))")
             _ = try fileSystem.openFile(for: fd)  // EBADF first
             return .value(UInt64(try fileSystem.dup(fd, minimum: arg, closeOnExec: cloexec)))
         case DescriptorControl.setfl:
-            call = "fcntl(fd=\(fd), F_SETFL, arg=\(hx(UInt32(bitPattern: arg))))"
+            call.set("fcntl(fd=\(fd), F_SETFL, arg=\(hx(UInt32(bitPattern: arg))))")
             try fileSystem.setStatusFlags(fd, arg)
             let file = try fileSystem.openFile(for: fd)
             file.object.map { notifyObjectChanged($0) }
             return .value(0)
         case DescriptorControl.setNoSigPipe:
-            call = "fcntl(fd=\(fd), F_SETNOSIGPIPE, arg=\(arg))"
+            call.set("fcntl(fd=\(fd), F_SETNOSIGPIPE, arg=\(arg))")
             try fileSystem.openFile(for: fd).noSigPipe = arg != 0
             return .value(0)
         case DescriptorControl.getNoSigPipe:
-            call = "fcntl(fd=\(fd), F_GETNOSIGPIPE)"
+            call.set("fcntl(fd=\(fd), F_GETNOSIGPIPE)")
             return .value(try fileSystem.openFile(for: fd).noSigPipe ? 1 : 0)
         default:
             return nil
@@ -329,26 +362,26 @@ extension DarwinKernel {
 
     /// FIONBIO etc. on objects; FIOCLEX/FIONCLEX on any descriptor. nil for
     /// the rest (bsdCall answers ENOTTY).
-    private func descriptorIoctl(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult? {
+    private func descriptorIoctl(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult? {
         let fd = Int32(truncatingIfNeeded: a[0])
         let request = UInt32(truncatingIfNeeded: a[1])
         switch request {
         case DescriptorControl.fioclex, DescriptorControl.fionclex:
-            call = "ioctl(fd=\(fd), \(request == DescriptorControl.fioclex ? "FIOCLEX" : "FIONCLEX"))"
+            call.set("ioctl(fd=\(fd), \(request == DescriptorControl.fioclex ? "FIOCLEX" : "FIONCLEX"))")
             try fileSystem.setCloseOnExec(fd, request == DescriptorControl.fioclex)
             return .value(0)
         case DescriptorControl.fionbio, DescriptorControl.fionread, DescriptorControl.fioasync:
             guard let file = try? fileSystem.openFile(for: fd), let object = file.object else { return nil }
             switch request {
             case DescriptorControl.fionread:
-                call = "ioctl(fd=\(fd), FIONREAD, arg=\(hx(a[2])))"
+                call.set("ioctl(fd=\(fd), FIONREAD, arg=\(hx(a[2])))")
                 let n = (object as? KernelDescriptorObject)?.readReadiness().data ?? 0
                 let value: Int64 = (object as? UnixSocket)?.isListening == true ? 0 : n
                 try writeU32(a[2], UInt32(truncatingIfNeeded: value), mem)
             default:
                 let on = try mem.read(va: a[2], count: 4).readLE(Int32.self, at: 0) != 0
                 let flag = request == DescriptorControl.fionbio ? DarwinOpen.O_NONBLOCK : DarwinOpen.O_ASYNC
-                call = "ioctl(fd=\(fd), \(request == DescriptorControl.fionbio ? "FIONBIO" : "FIOASYNC"), \(on ? 1 : 0))"
+                call.set("ioctl(fd=\(fd), \(request == DescriptorControl.fionbio ? "FIONBIO" : "FIOASYNC"), \(on ? 1 : 0))")
                 file.statusFlags = on ? file.statusFlags | flag : file.statusFlags & ~flag
                 notifyObjectChanged(object)
             }
@@ -390,7 +423,7 @@ extension DarwinKernel {
     /// themselves (close, dup, F_SETFD, SCM_RIGHTS, write) live in
     /// `DarwinFileSystem.checkGuard`; a violation fails with EPERM and is
     /// logged (Darwin would also end the process with EXC_GUARD).
-    func guardedCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult {
+    func guardedCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         func u32(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i]) }
         switch n {
@@ -398,8 +431,8 @@ extension DarwinKernel {
             let path = try readPath(a[0], mem)
             let flags = int(3)
             let mode = UInt16(truncatingIfNeeded: n == DescriptorBSD.guardedOpen ? a[4] : a[6])
-            call = "\(n == DescriptorBSD.guardedOpen ? "guarded_open_np" : "guarded_open_dprotected_np")(\"\(path)\", "
-                + "guard=\(hx(a[1])), guardflags=\(hx(u32(2))), flags=\(openFlagsText(flags)), mode=0o\(String(mode & 0o7777, radix: 8)))"
+            call.set("\(n == DescriptorBSD.guardedOpen ? "guarded_open_np" : "guarded_open_dprotected_np")(\"\(path)\", "
+                + "guard=\(hx(a[1])), guardflags=\(hx(u32(2))), flags=\(openFlagsText(flags)), mode=0o\(String(mode & 0o7777, radix: 8)))")
             guard flags & DarwinOpen.O_CLOEXEC != 0, DarwinGuard.isValid(u32(2)) else { throw fail(Code.EINVAL) }
             if n == DescriptorBSD.guardedOpenDprotected { try checkDataProtectionOpen(flags: flags, dpflags: int(5)) }
             let created = n == DescriptorBSD.guardedOpenDprotected && (try? fileSystem.stat(path, followSymlinks: true)) == nil
@@ -411,25 +444,25 @@ extension DarwinKernel {
             return .value(UInt64(fd))
 
         case DescriptorBSD.guardedClose:
-            call = "guarded_close_np(\(int(0)), guard=\(hx(a[1])))"
+            call.set("guarded_close_np(\(int(0)), guard=\(hx(a[1])))")
             let value = try readU64(a[1], mem)
             try fileSystem.guardedClose(int(0), guard: value)
             return .value(0)
 
         case DescriptorBSD.guardedKqueue:
-            call = "guarded_kqueue_np(guard=\(hx(a[0])), guardflags=\(hx(u32(1))))"
+            call.set("guarded_kqueue_np(guard=\(hx(a[0])), guardflags=\(hx(u32(1))))")
             guard DarwinGuard.isValid(u32(1)) else { throw fail(Code.EINVAL) }
             let value = try readU64(a[0], mem)
             guard value != 0 else { throw fail(Code.EINVAL) }
-            var inner = ""
-            let fd = Int32(truncatingIfNeeded: try kqueueCall(&inner))
+            var inner = CallText(call.enabled)
+            let fd = Int32(truncatingIfNeeded: try withEvents { try kqueueCall(&inner) })
             try fileSystem.setGuard(fd, DescriptorGuard(value: value, flags: u32(1)))
             call += " [kqueue fd \(fd)]"
             return .value(UInt64(fd))
 
         case DescriptorBSD.changeFdguard:
-            call = "change_fdguard_np(\(int(0)), guard=\(hx(a[1])), guardflags=\(hx(u32(2))), nguard=\(hx(a[3])), "
-                + "nguardflags=\(hx(u32(4))), fdflagsp=\(hx(a[5])))"
+            call.set("change_fdguard_np(\(int(0)), guard=\(hx(a[1])), guardflags=\(hx(u32(2))), nguard=\(hx(a[3])), "
+                + "nguardflags=\(hx(u32(4))), fdflagsp=\(hx(a[5])))")
             let old = a[1] == 0 ? nil : try readU64(a[1], mem)
             let new = a[3] == 0 ? nil : try readU64(a[3], mem)
             let fdFlags = a[5] == 0 ? 0 : Int32(bitPattern: try mem.read(va: a[5], count: 4).readLE(UInt32.self, at: 0))
@@ -448,18 +481,26 @@ extension DarwinKernel {
             let bytes: [UInt8]
             switch n {
             case DescriptorBSD.guardedWritev:
-                call = "guarded_writev_np(\(fd), guard=\(hx(a[1])), iov=\(hx(a[2])), iovcnt=\(int(3)))"
+                call.set("guarded_writev_np(\(fd), guard=\(hx(a[1])), iov=\(hx(a[2])), iovcnt=\(int(3)))")
                 bytes = try gather(try readIOVec(a[2], count: int(3), mem, limitError: Code.EINVAL), mem)
             default:
-                call = n == DescriptorBSD.guardedWrite
+                call.set(n == DescriptorBSD.guardedWrite
                     ? "guarded_write_np(\(fd), guard=\(hx(a[1])), buf=\(hx(a[2])), nbyte=\(hx(a[3])))"
-                    : "guarded_pwrite_np(\(fd), guard=\(hx(a[1])), buf=\(hx(a[2])), nbyte=\(hx(a[3])), offset=\(hx(a[4])))"
+                    : "guarded_pwrite_np(\(fd), guard=\(hx(a[1])), buf=\(hx(a[2])), nbyte=\(hx(a[3])), offset=\(hx(a[4])))")
                 guard a[3] <= UInt64(Int32.max) else { throw fail(Code.EINVAL) }
                 bytes = a[3] == 0 ? [] : try mem.read(va: a[2], count: Int(a[3]))
             }
             if n == DescriptorBSD.guardedPwrite {
                 guard Int64(bitPattern: a[4]) >= 0 else { throw fail(Code.EINVAL) }
+                if let io = try hostFileIO(fd, writing: true, guardChecked: true) {
+                    return .value(UInt64(try writeUnlocked(io, bytes, offset: a[4])))
+                }
                 return .value(UInt64(try fileSystem.pwrite(fd, bytes, offset: a[4], guardChecked: true)))
+            }
+            // A regular host file: the host write runs without the kernel
+            // lock (§5.2).
+            if let io = try hostFileIO(fd, writing: true, guardChecked: true) {
+                return .value(UInt64(try writeUnlocked(io, bytes, offset: nil)))
             }
             if let object = file.object, !(object is DarwinDevice) {
                 return .value(UInt64(try objectWrite(object, file, bytes)))

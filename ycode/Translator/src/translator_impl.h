@@ -64,6 +64,7 @@ struct Translator {
     std::map<const llvm::AllocaInst *, uint64_t> allocaOffset;
     uint64_t privateBytes = 0;
     std::string arenaVar;
+    std::string loopBudgetVar;                  // Private u32 loop-header count (loop guard)
     std::map<const llvm::GlobalVariable *, uint64_t> wgStaticOffset;
     uint64_t wgStaticBytes = 0;
     std::vector<unsigned> wgSlots;              // [[threadgroup(n)]] slots used

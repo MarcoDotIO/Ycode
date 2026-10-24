@@ -4,6 +4,7 @@ import YcodeWorkspace
 import YcodeSettings
 import YcodePlist
 import YcodeMachO
+import YcodeBuild
 
 /// Command-line front end. The GUI will share these libraries.
 func usage() -> Never {
@@ -15,6 +16,10 @@ func usage() -> Never {
            ycode macho <file>
            ycode deps <executable> --root <RuntimeRoot> [--tree]
            ycode dsc <dyld_shared_cache> [--images N] [--image <install-path>]
+           ycode build <path.xcodeproj|.xcworkspace|dir> [-scheme S] [-configuration C]
+                       [-destination D] [-derivedDataPath P] [--clean|--test|--build-for-testing|--test-without-building] [--quiet]
+                       [--engine xcodebuild|swift-build] [NAME=value]...
+           ycode pif <path.xcodeproj>
            ycode roundtrip [--print] <path.xcodeproj|.xcscheme|contents.xcworkspacedata>...
 
     """.utf8))
@@ -224,6 +229,71 @@ func depsCommand(_ rest: [String]) throws {
     }
 }
 
+/// Runs a build through the xcodebuild engine and prints its issues.
+/// Exit status: 0 on success, 1 on failure. See `specs/ide/build.md`.
+func buildCommand(_ args: [String]) -> Int32 {
+    var request = BuildRequest(container: .package(FileManager.default.currentDirectoryPath))
+    var quiet = false
+    var engineName = "xcodebuild"
+    var i = 0
+    func value() -> String {
+        i += 1
+        guard i < args.count else { usage() }
+        return args[i]
+    }
+    while i < args.count {
+        switch args[i] {
+        case "-scheme": request.scheme = value()
+        case "-configuration": request.configuration = value()
+        case "-destination": request.destination = value()
+        case "-derivedDataPath": request.derivedDataPath = value()
+        case "--clean": request.action = .clean
+        case "--test": request.action = .test
+        case "--build-for-testing": request.action = .buildForTesting
+        case "--test-without-building": request.action = .testWithoutBuilding
+        case "--quiet": quiet = true
+        case "--engine": engineName = value()
+        case let a where a.contains("=") && !a.hasPrefix("-"):
+            let eq = a.firstIndex(of: "=")!
+            request.settings.append((String(a[..<eq]), String(a[a.index(after: eq)...])))
+        case let a where !a.hasPrefix("-"): request.container = .init(path: a)
+        default: usage()
+        }
+        i += 1
+    }
+    let engine: BuildEngine
+    switch engineName {
+    case "xcodebuild": engine = XcodebuildEngine()
+    case "swift-build":
+        guard let tool = SwiftBuildEngine.locate() else {
+            FileHandle.standardError.write(Data("ycode: swbuild not found (set YCODE_SWBUILD)\n".utf8))
+            return 1
+        }
+        engine = SwiftBuildEngine(swbuild: tool)
+    default: usage()
+    }
+    let op = engine.start(request)
+    let isQuiet = quiet
+    let result = op.runBlocking { event in
+        switch event {
+        case .output(let line) where !isQuiet: print(line)
+        case .issue(let d) where isQuiet && d.severity != .note:
+            print(d)
+            d.notes.forEach { print("  \($0)") }
+        default: break
+        }
+    }
+    let verb = switch request.action {
+    case .clean: "CLEAN"
+    case .buildForTesting: "TEST BUILD"
+    case .test: "TEST"
+    case .testWithoutBuilding: "TEST EXECUTE"
+    default: "BUILD"
+    }
+    FileHandle.standardError.write(Data("ycode: \(verb) \(result.status) (\(result.errorCount) errors, \(result.warningCount) warnings)\n".utf8))
+    return result.status == .succeeded ? 0 : 1
+}
+
 var args = Array(CommandLine.arguments.dropFirst())
 guard let command = args.first else { usage() }
 args.removeFirst()
@@ -298,6 +368,20 @@ case "_strip-settings":
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
         try proj.serialized(projectName: out.deletingPathExtension().lastPathComponent)
             .write(to: out.appendingPathComponent("project.pbxproj"), atomically: true, encoding: .utf8)
+    } catch {
+        FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
+        exit(1)
+    }
+case "build":
+    exit(buildCommand(args))
+case "pif":
+    // Prints the Project Interchange Format for swift-build (specs/ide/build-pif.md).
+    guard args.count == 1 else { usage() }
+    do {
+        let url = URL(fileURLWithPath: args[0])
+        let pif = try PIFGenerator(proj: try PBXProj(contentsOf: url), xcodeprojURL: url).pif()
+        FileHandle.standardOutput.write(try pif.serialized())
+        print()
     } catch {
         FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
         exit(1)

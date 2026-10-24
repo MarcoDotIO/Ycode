@@ -1,0 +1,223 @@
+#!/bin/bash
+# ycode-sim-serve: runs one Ycode simulator device with a live display
+# server on the Linux simulator host (specs/simulator/display-stream.md).
+# scripts/ycode-sim-try (on the Mac) installs this script on the host, runs
+# it over ssh, forwards the display socket, and opens the viewer.
+#
+# usage: ycode-sim-serve start [--cold | --erase | --fresh] [--device-type ID]   boot the device; runs until it is stopped
+#        ycode-sim-serve stop              stop the device (it is saved for the next start), then kill
+#        ycode-sim-serve status
+#        ycode-sim-serve build             build $YCODE_SIM_TREE (release) in a build slot
+#
+# The device keeps its state between sessions like the IDE's runs
+# (scripts/ycode-sim.sh, installed next to this script as `ycode-sim`, runs
+# it; specs/simulator/snapshot.md §12.2): a stop saves the running device,
+# and the next start restores it in place (a usable home screen in seconds,
+# with apps, data and settings as they were). A start whose save is missing
+# or does not match (another simulator build, a crash) boots cold with the
+# device's data as it is.
+#   --cold    boot cold this time (the data stays; the stop saves it again)
+#   --erase   erase the device (data and saved state) and boot a new copy of the pristine device
+#   --fresh   move the device aside (device.old.<time>) and boot a new copy
+#   --device-type ID  the device type (ycode-simd --device-type: iphone-duo, the default,
+#             ipad-a16, ipad-pro-13-m5; specs/simulator/ipad.md). Each type has its own
+#             device (devices/default for iphone-duo, devices/<ID> for the others), its
+#             own saved state (snapshots/<same name>) and its own pristine device
+#
+# Configuration: shell assignments in $YCODE_SIM_CONFIG, else
+# ~/.config/ycode/sim-serve.env on this host; variables already set in the
+# environment win. Never commit real values.
+#
+#   YCODE_SIM_HOME       this user's area on the data volume (device copy, socket, logs)   required
+#   YCODE_SIM_TREE       a built ycode/ tree: .build/release/ycode-simd, SimShim/out,
+#                        SimHostLibs/out, SimGuestFrameworks/out, Translator/build/ycode-airc   required
+#   YCODE_SIM_RUNTIME    the iOS runtime's RuntimeRoot directory                             required
+#   YCODE_SIM_PRISTINE   a first-booted device directory; copied once to $YCODE_SIM_HOME/devices/default  required
+#   YCODE_SIM_PRISTINE_<ID>  the same for another device type, ID upper case with _ for -
+#                        (YCODE_SIM_PRISTINE_IPAD_A16, YCODE_SIM_PRISTINE_IPAD_PRO_13_M5); unset: the
+#                        device starts empty and its first boot runs the data migration (minutes)
+#   YCODE_SIM_LOCKS      a shared directory of boot-slot locks (boot.1 … boot.N, flock),
+#                        so this device never runs beside benchmark boots     (default: $YCODE_SIM_HOME/locks)
+#   YCODE_SIM_SLOTS      the number of boot slots (default 4)
+#   YCODE_SIM_GPU_CACHE  the GPU cache directory (default $YCODE_SIM_HOME/gpu-cache)
+#   YCODE_SIM_GUEST_TOOLS  a directory with ylaunch (optional)
+#   YCODE_SIM_HOURS      how long the device may run (default 4)
+#   YCODE_SIM_TRANSLATOR (build only) a built ycode-airc to copy into the tree
+#
+# Files under $YCODE_SIM_HOME: devices/default/ (the device; an older
+# layout's device/ is moved there), snapshots/default/ (its saved state),
+# runs/default/ (the launcher's frames and logs), run/display.sock (the
+# display server), run/ycode-simd.pid (the launcher's pid), run/ycode-simd.log
+# (the last session's log; the one before is ycode-simd.log.1).
+
+set -u
+conf=${YCODE_SIM_CONFIG:-$HOME/.config/ycode/sim-serve.env}
+if [ -f "$conf" ]; then
+    # Variables set in the environment win over the file.
+    saved=$(env | grep '^YCODE_SIM_' || true)
+    # shellcheck disable=SC1090
+    . "$conf"
+    while IFS= read -r line; do [ -n "$line" ] && export "${line?}"; done <<< "$saved"
+fi
+
+say() { echo "ycode-sim-serve: $*"; }
+die() { echo "ycode-sim-serve: error: $*" >&2; exit 2; }
+
+[ -n "${YCODE_SIM_HOME:-}" ] || die "YCODE_SIM_HOME is not set (see the configuration in $0)"
+H=$YCODE_SIM_HOME
+RUN=$H/run
+SOCK=$RUN/display.sock
+PIDFILE=$RUN/ycode-simd.pid
+LOG=$RUN/ycode-simd.log
+mkdir -p "$RUN" || die "cannot create $RUN"
+
+running_pid() {
+    [ -f "$PIDFILE" ] || return 1
+    local pid
+    pid=$(cat "$PIDFILE" 2>/dev/null) || return 1
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && grep -q ycode-sim "/proc/$pid/cmdline" 2>/dev/null && echo "$pid"
+}
+
+stop_device() {
+    local pid
+    pid=$(running_pid) || { say "no device running"; return 0; }
+    say "stopping the device (pid $pid): saving it for the next start"
+    kill -TERM "$pid" 2>/dev/null
+    for _ in $(seq 1 150); do
+        kill -0 "$pid" 2>/dev/null || { say "stopped"; return 0; }
+        sleep 1
+    done
+    say "still running after 150 s; killing it"
+    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null
+}
+
+case "${1:-}" in
+stop) stop_device; exit 0 ;;
+status)
+    if pid=$(running_pid); then say "running (pid $pid), socket $SOCK, log $LOG"; else say "not running"; fi
+    exit 0 ;;
+start) shift ;;
+build)
+    [ -n "${YCODE_SIM_TREE:-}" ] && [ -d "$YCODE_SIM_TREE" ] || die "YCODE_SIM_TREE is not a directory"
+    cd "$YCODE_SIM_TREE" || exit 2
+    mkdir -p Translator/build
+    [ -n "${YCODE_SIM_TRANSLATOR:-}" ] && cp "$YCODE_SIM_TRANSLATOR" Translator/build/ycode-airc
+    [ -x Translator/build/ycode-airc ] || die "no Translator/build/ycode-airc: set YCODE_SIM_TRANSLATOR"
+    if [ -n "${YCODE_SIM_LOCKS:-}" ]; then
+        while :; do
+            got=
+            for i in 1 2; do exec 7>>"$YCODE_SIM_LOCKS/build.$i"; if flock -n 7; then got=$i; break; fi; exec 7>&-; done
+            [ -n "$got" ] && break
+            say "waiting for a build slot…"; sleep 10
+        done
+        echo "$(date +%T) slot build.$got: ycode-sim-serve build $(id -un) $YCODE_SIM_TREE" >> "$YCODE_SIM_LOCKS/history.txt"
+    fi
+    # shellcheck disable=SC1090
+    . ~/.local/share/swiftly/env.sh
+    # SimHostLibs also needs the ycode tool and ../specs/simulator/data next to the tree.
+    say "building the package (release), SimShim, SimHostLibs, SimGuestFrameworks in $YCODE_SIM_TREE…"
+    nice -n 5 swift build -c release -j 6 2>&1 | grep -E "error:|Build complete" || exit 1
+    sh SimShim/build.sh 2>&1 | tail -1 && YCODE=$PWD/.build/release/ycode sh SimHostLibs/build.sh 2>&1 | tail -1 \
+        && sh SimGuestFrameworks/build.sh 2>&1 | tail -2 || die "a guest-side build failed"
+    exit 0 ;;
+*) sed -n '2,11p' "$0"; exit 64 ;;
+esac
+
+fresh=0; erase=0; cold=0; dtype=iphone-duo
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --fresh) fresh=1 ;;
+    --erase) erase=1 ;;
+    --cold) cold=1 ;;
+    --device-type) dtype=${2:-}; shift ;;
+    *) die "unknown option $1" ;;
+    esac
+    shift
+done
+
+case "$dtype" in iphone-duo|ipad-a16|ipad-pro-13-m5) ;; *) die "unknown --device-type '$dtype'" ;; esac
+# The device of this type and its pristine copy.
+if [ "$dtype" = iphone-duo ]; then NAME=default; PRISTINE_VAR=YCODE_SIM_PRISTINE
+else NAME=$dtype; PRISTINE_VAR=YCODE_SIM_PRISTINE_$(echo "$dtype" | tr 'a-z-' 'A-Z_'); fi
+for v in YCODE_SIM_TREE YCODE_SIM_RUNTIME; do
+    [ -n "${!v:-}" ] || die "$v is not set (see the configuration in $0)"
+done
+[ "$dtype" = iphone-duo ] && { [ -n "${YCODE_SIM_PRISTINE:-}" ] || die "YCODE_SIM_PRISTINE is not set (see the configuration in $0)"; }
+PRISTINE=${!PRISTINE_VAR:-}
+Y=$YCODE_SIM_TREE
+SIMD=$Y/.build/release/ycode-simd
+LAUNCHER=$(dirname "$0")/ycode-sim
+for f in "$SIMD" "$Y/SimShim/out/shim.bin" "$Y/SimShim/out/host_stubs.bin" "$Y/SimGuestFrameworks/out/SimHID.framework/SimHID" \
+         "$Y/Translator/build/ycode-airc" "$YCODE_SIM_RUNTIME/sbin/launchd_sim" "$LAUNCHER"; do
+    [ -e "$f" ] || die "missing $f"
+done
+
+# One device per user area (fd 7; not passed on).
+exec 7>>"$RUN/serve.lock"
+flock -n 7 || die "another ycode-sim-serve is running for $H (ycode-sim-serve stop)"
+if pid=$(running_pid); then die "the device is already running (pid $pid)"; fi
+
+# The launcher's settings (scripts/ycode-sim.sh; specs/simulator/snapshot.md §12):
+# snapshots and run files under $H, this area's GPU cache, boot slots.
+export YCODE_SIM_TREE="$Y" YCODE_SIM_DATA="$H" YCODE_SIM_SLOTS="${YCODE_SIM_SLOTS:-4}"
+export YCODE_SIM_LOCKS="${YCODE_SIM_LOCKS:-$H/locks}" YCODE_SIM_GPU_CACHE="${YCODE_SIM_GPU_CACHE:-$H/gpu-cache}"
+export YCODE_SIM_TIMEOUT_MS=$(( ${YCODE_SIM_HOURS:-4} * 3600 * 1000 ))
+[ -n "${YCODE_SIM_GUEST_TOOLS:-}" ] && export YCODE_SIM_GUEST_TOOLS
+mkdir -p "$YCODE_SIM_GPU_CACHE" "$YCODE_SIM_LOCKS"
+
+DEV=$H/devices/$NAME
+# The layout before warm boots kept the device in $H/device.
+if [ -d "$H/device" ] && [ ! -e "$DEV" ]; then
+    mkdir -p "$H/devices" && mv "$H/device" "$DEV" && say "moved $H/device to $DEV"
+fi
+if [ "$erase" = 1 ]; then
+    say "erasing the device (its data and its saved state)"
+    "$LAUNCHER" --erase --device "$DEV" 2>&1 | sed 's/^/  /'
+elif [ "$fresh" = 1 ] && [ -d "$DEV" ]; then
+    old="$DEV.old.$(date +%s)"
+    mv "$DEV" "$old" && say "moved the old device to $old (delete it when no longer needed)"
+fi
+if [ ! -d "$DEV" ] && [ -z "$PRISTINE" ]; then
+    say "no $PRISTINE_VAR: $DEV starts empty (its first boot runs the data migration and takes minutes)"
+    mkdir -p "$DEV" || die "cannot create $DEV"
+elif [ ! -d "$DEV" ]; then
+    say "copying the pristine device to $DEV"
+    mkdir -p "$H/devices"
+    cp -a "$PRISTINE" "$DEV.partial" && mv "$DEV.partial" "$DEV" || die "cannot copy $PRISTINE"
+fi
+
+[ -f "$LOG" ] && mv "$LOG" "$LOG.1"
+args=(--device "$DEV" --runtime-root "$YCODE_SIM_RUNTIME" --display-server "unix:$SOCK")
+# The iPhone's arguments stay as they were (its saved state still matches).
+[ "$dtype" != iphone-duo ] && args+=(--device-type "$dtype")
+# Warm boot (the launcher's): a stop saves the device, the next start
+# restores it in place; --cold boots cold this time (the data stays).
+envs=(YCODE_WARM_BOOT=1)
+[ "$cold" = 1 ] && envs+=(YCODE_WARM_FORCE_COLD=1)
+# Its own session (process group), so a last-resort kill reaches ycode-simd too.
+# (Crash reports: the launcher's default, runs/<device>/crashes, snapshot.md §12.5.)
+setsid env "${envs[@]}" "$LAUNCHER" "${args[@]}" > "$LOG" 2>&1 7>&- &
+pid=$!
+echo "$pid" > "$PIDFILE"
+say "started (pid $pid); display socket $SOCK; log $LOG"
+
+# The ssh session ending (SIGHUP) or a Ctrl-C stops the device cleanly.
+stopping=0
+on_signal() {
+    [ $stopping = 1 ] && return
+    stopping=1
+    say "stopping the device"
+    kill -TERM "$pid" 2>/dev/null
+    ( sleep 150; kill -KILL -- "-$pid" 2>/dev/null ) &
+}
+trap on_signal HUP INT TERM
+
+# Progress lines for the person at the other end.
+( tail -n +1 -F --pid="$pid" "$LOG" 2>/dev/null | grep --line-buffered -E "^ycode-sim: |^ycode-simd: (display server: (listening|viewer)|HID:|hid: |signal|cannot|warning|error|device run ended|snapshot: (stop: |restored |exiting))|^Fatal|Crash" \
+    | sed -u 's/^/  /' ) &
+
+status=0
+while kill -0 "$pid" 2>/dev/null; do wait "$pid"; status=$?; done
+rm -f "$PIDFILE"
+say "the device stopped ($status)"
+exit 0

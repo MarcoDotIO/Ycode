@@ -43,6 +43,12 @@ final class SubmitSink {
     let key: HeldKey
     var holding: Bool
     var items: [HeldItem] = []
+    /// Frame-trace details (diagnostics).
+    var surfacesIn: [UInt32] = [], surfacesOut: [UInt32] = []
+    var earlierDraws = 0
+    /// The frame trace's timestamp slot and segment labels (`YCODE_METAL_TRACE_SEGMENTS=1`).
+    var traceSlot = -1
+    var segments: [String] = []
     init(key: HeldKey, holding: Bool) {
         self.key = key
         self.holding = holding
@@ -53,6 +59,7 @@ extension VulkanMetalBackend {
     /// Submits `rec`, or holds it. Under the lock.
     func sinkSubmit(_ sink: SubmitSink, _ rec: Recording, entry: PendingSubmission?) throws {
         if sink.holding {
+            rec.deferred = true
             _ = fn.vkEndCommandBuffer!(rec.cb)
             sink.items.append(.submit(rec, entry))
         } else {
@@ -120,6 +127,7 @@ extension VulkanMetalBackend {
         held.removeAll()
         releaseHeldGraveyardLocked()
         heldThread = nil
+        cond.broadcast()  // the completion thread ends only after this thread
         cond.unlock()
     }
 

@@ -80,15 +80,15 @@ extension DarwinKernel {
     }
 
     /// shm_open, shm_unlink, ftruncate. nil = not mine.
-    func posixShmCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> BSDResult? {
+    func posixShmCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult? {
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         switch n {
         case PosixShmBSD.shmOpen:
             let oflag = int(1)
             let mode = UInt16(truncatingIfNeeded: a[2]) & 0o7777
-            call = "shm_open(\(hx(a[0])), oflag=\(hx(UInt64(UInt32(bitPattern: oflag)))), mode=0o\(String(mode, radix: 8)))"
+            call.set("shm_open(\(hx(a[0])), oflag=\(hx(UInt64(UInt32(bitPattern: oflag)))), mode=0o\(String(mode, radix: 8)))")
             let name = try shmName(a[0], mem)
-            call = "shm_open(\"\(name)\", oflag=\(hx(UInt64(UInt32(bitPattern: oflag)))), mode=0o\(String(mode, radix: 8)))"
+            call.set("shm_open(\"\(name)\", oflag=\(hx(UInt64(UInt32(bitPattern: oflag)))), mode=0o\(String(mode, radix: 8)))")
             // FFLAGS(oflag) = oflag + 1: neither FREAD nor FWRITE is EINVAL.
             guard ((oflag & DarwinOpen.O_ACCMODE) + 1) & 3 != 0 else { throw fail(Code.EINVAL) }
             let segment: PosixShmSegment
@@ -107,19 +107,19 @@ extension DarwinKernel {
             return .value(UInt64(UInt32(bitPattern: fd)))
 
         case PosixShmBSD.shmUnlink:
-            call = "shm_unlink(\(hx(a[0])))"
+            call.set("shm_unlink(\(hx(a[0])))")
             let name: String
             do { name = try shmName(a[0], mem) } catch let e as DarwinErrnoError where e.errno == Code.ENAMETOOLONG {
                 throw fail(Code.EINVAL)
             }
-            call = "shm_unlink(\"\(name)\")"
+            call.set("shm_unlink(\"\(name)\")")
             guard system.posixShmSegments.removeValue(forKey: name) != nil else { throw fail(Code.ENOENT) }
             return .value(0)
 
         case PosixShmBSD.ftruncate:
             let fd = int(0)
             let length = Int64(bitPattern: a[1])
-            call = "ftruncate(fd=\(fd), length=\(hx(a[1])))"
+            call.set("ftruncate(fd=\(fd), length=\(hx(a[1])))")
             let file = try fileSystem.openFile(for: fd)
             if let shm = file.object as? PosixShmDescriptor {
                 let segment = shm.segment
@@ -137,8 +137,13 @@ extension DarwinKernel {
             guard let guestFile = file.guestFile else { throw fail(Code.EINVAL) }
             guard file.isWritable else { throw fail(Code.EINVAL) }
             guard length >= 0 else { throw fail(Code.EINVAL) }
-            let hostError = hostFtruncate(guestFile.hostFD, length)
+            // The host file is kept alive by `guestFile`; the host call runs
+            // without the kernel lock (stage6-contract.md §5.2).
+            let hostError = Self.lockedFileIO ? hostFtruncate(guestFile.hostFD, length)
+                : lock.unlocked { hostFtruncate(guestFile.hostFD, length) }
             guard hostError == 0 else { throw fail(DarwinErrnoCode.fromHost(hostError)) }
+            // Shared views of the file follow its new size (service-fidelity.md §10).
+            SharedFileViews.sizeMayHaveChanged(hostFD: guestFile.hostFD)
             return .value(0)
 
         default:

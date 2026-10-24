@@ -111,6 +111,32 @@ YC_EXPORT int getpid(void)
     return pid;
 }
 
+/* uid_t getuid(void), geteuid, gid_t getgid, getegid: BSD 24, 25, 47, 43,
+ * which never fail; or, when the commpage's YC_FAST_CRED_BLOCK bit is set,
+ * the VMM's credential block (u32 uid, euid, gid, egid at RW offset
+ * 0x1000), read on every call: the library keeps no copy, so the kernel
+ * alone decides when the block changes or stops being valid
+ * (fast-traps.md section 5). */
+static inline yc_u32 yc_bsd0_u32(long number)
+{
+    register yc_uintptr_t x0 __asm__("x0");
+    register long x16 __asm__("x16") = number;
+    __asm__ volatile("svc #0x80" : "=r"(x0), "+r"(x16) : : "x1", "memory", "cc");
+    return (yc_u32)x0;
+}
+
+static inline yc_u32 yc_credential(unsigned index, long number)
+{
+    if (yc_commpage_u8(YC_COMM_FAST_FLAGS) & YC_FAST_CRED_BLOCK)
+        return yc_commpage_u32(YC_COMM_CREDENTIALS + 4 * index);
+    return yc_bsd0_u32(number);
+}
+
+YC_EXPORT yc_u32 getuid(void) { return yc_credential(0, 24); }
+YC_EXPORT yc_u32 geteuid(void) { return yc_credential(1, 25); }
+YC_EXPORT yc_u32 getgid(void) { return yc_credential(2, 47); }
+YC_EXPORT yc_u32 getegid(void) { return yc_credential(3, 43); }
+
 /* int accessx_np(const struct accessx_descriptor *entries, size_t size,
  *     int *results, uid_t uid): BSD 284 (access_extended), which takes the
  * same four arguments (sys/unistd.h and xnu bsd/kern/vfs_syscalls.c,
@@ -123,16 +149,7 @@ YC_EXPORT int accessx_np(const void *entries, yc_size_t size, int *results, yc_u
     return __access_extended(entries, size, results, uid);
 }
 
-/* int __commpage_gettimeofday(struct timeval *tp): Ycode keeps no
- * gettimeofday data in the commpage, so this always reports "not
- * available" (non-zero) and callers fall back to BSD 116
- * (host-libraries.md section 10). A library wall clock from the counter
- * waits for aligned vCPU counters (mach.c, mach_absolute_time). */
-YC_EXPORT int __commpage_gettimeofday(void *tp)
-{
-    (void)tp;
-    return 1;
-}
+/* __commpage_gettimeofday: mach.c (fast-traps.md section 4). */
 
 /* int setiopolicy_np(int iotype, int scope, int policy);
  * int getiopolicy_np(int iotype, int scope);

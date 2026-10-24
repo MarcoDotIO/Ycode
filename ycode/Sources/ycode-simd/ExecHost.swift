@@ -41,6 +41,9 @@ final class ExecConfiguration: @unchecked Sendable {
     let prefixes: [DarwinFileSystem.Prefix]
     let hostLibraryPaths: Set<String>
     let cacheIndex: SharedCacheIndex
+    /// Cache-only image files reported by `stat` (app-launch.md §3.5); nil
+    /// with `YCODE_CACHE_IMAGE_FILES=0`.
+    let cacheImageFiles: CacheImageFiles?
     let maxExits: Int
     let timeout: UInt64
     /// --repeat runs after the first: no per-image startup lines.
@@ -69,10 +72,12 @@ final class ExecConfiguration: @unchecked Sendable {
                                       jobPaths: options.jobPaths.map(absolutePath), runtimePaths: options.runtimePaths,
                                       oneshots: options.oneshots, runtimeJobs: options.runtimeJobs)
             layout.plistBoolOverrides = options.plistBoolOverrides
+            layout.deviceType = options.deviceType
             layout.oneshotDelay = options.oneshotDelay
             layout.installApp = options.installApp.map(absolutePath)
             layout.launchBundleID = options.launchBundleID
             layout.appArguments = options.appArguments
+            layout.appURL = options.appURL
             layout.appEnvironment = options.appEnvironment
             if options.framebufferLibrary != "none" {
                 let fallback = options.shimPath.map { shim -> String in
@@ -83,13 +88,19 @@ final class ExecConfiguration: @unchecked Sendable {
                 layout.framebufferLibrary = options.framebufferLibrary.map(absolutePath)
                     ?? fallback.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             }
+            layout.hidBundle = hidBundlePath(options)
             layout.skipFirstBootMigration = options.skipFirstBootMigration
+            // SNAPSHOT (snapshot.md §7): a restore keeps DEV as the snapshot left it.
+            layout.restoring = !(ProcessInfo.processInfo.environment["YCODE_RESTORE_DIR"] ?? "").isEmpty
             layout.guestTools = options.guestTools.map(absolutePath)
                 ?? options.shimPath.map { ((absolutePath($0) as NSString).deletingLastPathComponent as NSString)
                     .appendingPathComponent("guest-tests/stage7") }
             // The guest's /var, /tmp, and /etc are links into /private: a
             // host path below them (or below /private/...) is unreachable
             // at its own guest path.
+            // DEV's guest path: the one its data carries (a copy keeps the
+            // original's; app-launch.md §3.3).
+            layout.guestDev = layout.resolveGuestDevicePath()
             for (what, path) in [("device directory", layout.dev), ("runtime root", root)] + layout.jobPaths.map({ ("job path", $0) }) {
                 for shadowed in ["/tmp", "/var", "/etc", "/private/tmp", "/private/var", "/private/etc"]
                     where path == shadowed || path.hasPrefix(shadowed + "/") {
@@ -99,9 +110,11 @@ final class ExecConfiguration: @unchecked Sendable {
             do { try layout.prepare() } catch { die("cannot prepare the device directory \(layout.dev): \(error)", status: 66) }
             device = layout
             execPath = layout.launchdSimPath
-            rootArguments = ["launchd_sim", layout.plistPath] + options.execArguments
+            rootArguments = ["launchd_sim", layout.guestPath(layout.plistPath)] + options.execArguments
             rootEnvironment = layout.launchdEnvironment(overrides: options.environment)
-            stderrLine("ycode-simd: device \(layout.dev), UDID \(layout.udid); bootstrap plist \(layout.plistPath); TMP \(layout.tmpGuestPath) -> \(layout.tmpHostPath)")
+            let t = layout.deviceType
+            stderrLine("ycode-simd: device type \(t.id) (\(t.name), \(t.modelIdentifier), \(t.screen.width)x\(t.screen.height) @\(Int(t.screen.scale)))")
+            stderrLine("ycode-simd: device \(layout.dev)\(layout.guestDev == layout.dev ? "" : " (guest path \(layout.guestDev))"), UDID \(layout.udid); bootstrap plist \(layout.plistPath); TMP \(layout.tmpGuestPath) -> \(layout.tmpHostPath)")
         } else {
             device = nil
             execPath = absolutePath(options.execPath!)
@@ -115,7 +128,10 @@ final class ExecConfiguration: @unchecked Sendable {
             rootEnvironment = env
         }
         dyldSimPath = root + "/usr/lib/dyld_sim"
-        cacheIndex = SharedCacheIndex(cachePath: root + "/System/Library/Caches/com.apple.dyld/dyld_sim_shared_cache_arm64")
+        let index = SharedCacheIndex(cachePath: root + "/System/Library/Caches/com.apple.dyld/dyld_sim_shared_cache_arm64")
+        cacheIndex = index
+        cacheImageFiles = CacheImageFiles.enabledByEnvironment
+            ? CacheImageFiles(runtimeRoot: root, imagePaths: { index.imagePaths() }) : nil
         for path in [execPath, dyldSimPath] where access(path, R_OK) != 0 {
             die("cannot read \(path): \(String(cString: strerror(errno)))", status: 66)
         }
@@ -153,7 +169,7 @@ final class ExecConfiguration: @unchecked Sendable {
             DarwinKernel.setPlatformCodeRoots([root])
             // Device mode (stage4c-contract.md §2): DEV, /private/var/tmp (TMP is in it)
             // (and /var/tmp), /tmp and /private/tmp, all writable.
-            prefixes.append(DarwinFileSystem.Prefix(guestPath: device.dev, hostPath: device.dev, writable: true))
+            prefixes.append(DarwinFileSystem.Prefix(guestPath: device.guestDev, hostPath: device.dev, writable: true))
             // On macOS a simulator process sees the host's /System, and the
             // runtime opens some framework bundles at their unrooted install
             // paths (CoreFoundation's own bundle: CFBundleGetInfoDictionary
@@ -168,6 +184,8 @@ final class ExecConfiguration: @unchecked Sendable {
             // /var/tmp and /tmp reach these through the guest links.
             prefixes.append(DarwinFileSystem.Prefix(guestPath: "/private/var/tmp", hostPath: device.privateVarTmpHostPath, writable: true))
             prefixes.append(DarwinFileSystem.Prefix(guestPath: "/private/tmp", hostPath: device.data + "/tmp", writable: true))
+            // The memory directory (frame record, timing rings; DeviceMemoryFiles.swift).
+            prefixes.append(DarwinFileSystem.Prefix(guestPath: device.memoryGuestPath, hostPath: device.memoryHostPath, writable: true))
         }
         // Ycode's host libraries (host-libraries.md §5): three read-only
         // single-file prefixes; every other /usr/lib/system path stays ENOENT.
@@ -227,6 +245,7 @@ final class ExecConfiguration: @unchecked Sendable {
     /// console, 3 /dev/console write-only; the cwd is /.
     func makeRootFileSystem() -> DarwinFileSystem {
         let fs = DarwinFileSystem(prefixes: prefixes, console: { fd, bytes in writeFD(fd == 2 ? 2 : 1, bytes) })
+        fs.cacheImageFiles = cacheImageFiles
         if device != nil {
             fs.rootDevice = Self.rootDevice
             fs.guestSymlinks = DarwinFileSystem.darwinRootSymlinks
@@ -272,13 +291,18 @@ struct HostStats: CustomStringConvertible {
 
     var description: String {
         let vms = VMCounters.shared.snapshot
-        return "\(threads) host threads, RSS \(rssKiB / 1024) MiB, \(fds) fds; VMs created \(vms.created), destroyed \(vms.destroyed)"
+        let deferred = VCPUPool.deferredCreations.load(ordering: .relaxed)
+        let deferredNs = VCPUPool.deferredCreationNanoseconds.load(ordering: .relaxed)
+        return "\(threads) host threads, RSS \(rssKiB / 1024) MiB, \(fds) fds; VMs created \(vms.created), destroyed \(vms.destroyed); "
+            + "vCPUs created off the kernel lock \(deferred) (avg \(deferred == 0 ? 0 : deferredNs / deferred / 1000) us)"
     }
 }
 
 /// Launchers whose images did not all stop (threads stuck in the kernel):
 /// kept alive for the rest of the host process, never freed under them.
 nonisolated(unsafe) var abandonedLaunchers: [VMMLauncher] = []
+/// The SIGUSR1 source of the thread report (kept for the life of the run).
+nonisolated(unsafe) var threadReportSignalSource: DispatchSourceSignal?
 
 /// The holding-tank variable (stage4c-contract.md §8.3; `…_FD_HACK` is not set).
 let holdingTankKey = "XPC_SIMULATOR_HOLDING_TANK_HACK"
@@ -286,7 +310,29 @@ let holdingTankKey = "XPC_SIMULATOR_HOLDING_TANK_HACK"
 /// One run of the root process. Returns the host exit status once the root
 /// process ended and the rest of the system was stopped.
 func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> Int32 {
+    // Profiling: host locks are named for the futex report from here on.
+    _ = TrapProfile.shared
+    // Thread CPU numbers stay below the guest CPU count (darwin-process-start.md).
+    VCPUPool.guestCPUCount = GuestCPUs.count
+    // Diagnostics: `YCODE_BOOT_PROFILE=<path>` (BootProfile.swift).
+    BootProfile.shared?.enable()
+    // The full shared-cache image index (fault reports, traces) is built in
+    // the background; the libSystem milestone never waits for it
+    // (performance-contract.md §6, C15). `YCODE_CACHE_INDEX_PREWARM=0`: built
+    // on first use, as before.
+    if getenv("YCODE_CACHE_INDEX_PREWARM").map({ String(cString: $0) != "0" }) ?? true { config.cacheIndex.prewarm() }
     let system = DarwinSystem()
+    // The objects every process start asks for by id are in the object
+    // index from the start (boot-profile.md §7).
+    let prewarmed = system.prewarmObjectPaths(fileSystem: config.makeRootFileSystem())
+    if BootProfile.shared != nil { stderrLine("ycode-simd: object index: \(prewarmed) start-up objects noted") }
+    // Scheduling policy (scheduling-policy.md §6): the switches and the hold log.
+    if SchedPolicy.holdEnabled || SchedPolicy.qosEnabled {
+        HostSched.threadID = { ckvmThreadID() }
+        stderrLine("ycode-simd: sched: start hold \(SchedPolicy.holdEnabled ? "on" : "off"), thread QoS \(SchedPolicy.qosEnabled ? "on" : "off")"
+            + (SchedPolicy.qosEnabled ? ", lock admission \(SchedPolicy.admissionEnabled ? "on" : "off"), host \(HostSched.configure())" : ""))
+        system.holdLog = { stderrLine("ycode-simd: sched: " + $0) }
+    }
     if config.trace || !config.options.tracePIDs.isEmpty || !config.options.traceNames.isEmpty {
         MachIPC.traceMessageStrings = true
     }
@@ -301,6 +347,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     var session: DeviceSession?
     var ioSurfaceService: IOSurfaceHostService?
     var metalService: MetalHostService?
+    var hidService: HIDHostService?
     if config.device != nil || config.options.hostBootstrap {
         system.mach.hostBootstrapIsDefault = true
         let logPath = config.device?.hostBootstrapLogPath ?? config.runDir + "/ycode-host-bootstrap.log"
@@ -335,6 +382,8 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                 } catch {
                     stderrLine("ycode-simd: warning: cannot start the IOSurface service: \(error)")
                 }
+                // Viewer input (hid-input.md §7): with the HID bundle only.
+                hidService = startHIDService(config: config, session: s, host: system.hostTask)
                 // The Metal host service (stage8-contract.md §5.2): only with a
                 // usable GPU back end. Without one no Metal name is offered, and
                 // the runtime renders on the CPU (headless-rendering.md).
@@ -344,10 +393,24 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                     // next to ycode-simd, or on $PATH.
                     var backendOptions = VulkanMetalBackend.Options()
                     backendOptions.log = { stderrLine("ycode-simd: metal backend: " + $0) }
-                    let translator: (any ShaderTranslator)? = config.options.metalTranslator
-                        .map { AircProcessTranslator(executable: URL(fileURLWithPath: $0)) }
+                    // Guest memory may be imported with slack only inside the
+                    // shared object arena (stage8-contract.md §15.6).
+                    backendOptions.importSlackWindow = SharedObjectArena.shared.map { (UInt(bitPattern: $0.base), UInt($0.size)) }
+                    // A pool of translator processes, started now (a single
+                    // process serialized every translation: at a restore or an
+                    // app's first frames the render server's command buffers
+                    // waited seconds for their pipelines; stage8-contract.md §14).
+                    let translator: (any ShaderTranslator)? = config.options.metalTranslator.map {
+                        let pool = AircTranslatorPool(executable: URL(fileURLWithPath: $0), count: backendOptions.translatorProcesses)
+                        if ProcessInfo.processInfo.environment["YCODE_AIRC_PRESTART"] != "0" { pool.prestart() }
+                        return pool
+                    }
                     let backend = VulkanMetalBackend(translator: translator, options: backendOptions)
                     if backend.isAvailable {
+                        // CPU access to a surface waits for GPU writes reported scheduled early.
+                        if backend.options.earlyScheduled {
+                            ioSurfaceService?.gpuWriteWait = { [weak backend] id in backend?.waitForSurfaceWrites(id) }
+                        }
                         MetalCommandDecoder.anomalyLog = { stderrLine("ycode-simd: " + $0) }
                         do {
                             let metal = try MetalHostService(host: system.hostTask, backend: backend,
@@ -372,19 +435,201 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         bootstrapLogger = logger
     }
 
+    // SNAPSHOT (agent SNAP, snapshot.md §2.6, §9): the device session's
+    // control channel and session port, and the Metal clients, are saved as
+    // host-service records; after a restore the session is adopted again.
+    if let snap = SnapshotSupport.shared {
+        snap.stopHooks = (appPID: { [weak session] in session?.launchedAppPID },
+                          appStepsRunning: { [weak session] in session?.appStepsRunning ?? false },
+                          endSession: { [weak session] in session?.end() })
+        snap.hostServiceState = { [weak session, weak metalService, weak hidService] in
+            var out: [SnapshotFields] = []
+            // Viewer input (hid-input.md §7 item 6): the bundle's registration.
+            if let client = hidService?.snapshotClient {
+                var g = SnapshotFields()
+                g.string(ST_HostService.name, "hid")
+                g.u64(ST_HostService.hidClient, UInt64(client))
+                out.append(g)
+            }
+            if let st = session?.snapshotState {
+                var g = SnapshotFields()
+                g.string(ST_HostService.name, "device-session")
+                g.u64(ST_HostService.channel, UInt64(st.channel))
+                g.u64(ST_HostService.session, UInt64(st.session))
+                out.append(g)
+            }
+            if let store = DefaultHostServices.scDynamicStore {
+                var g = SnapshotFields()
+                g.string(ST_HostService.name, "scdynamicstore")
+                g.list(ST_HostService.sessions, store.snapshotSessions.map { s in
+                    var e = SnapshotFields()
+                    e.u64(1, UInt64(s.session))
+                    e.u64s(2, s.notify.map(UInt64.init))
+                    return e
+                })
+                out.append(g)
+            }
+            if let metal = metalService {
+                var g = SnapshotFields()
+                g.string(ST_HostService.name, "metal")
+                g.u64s(ST_HostService.pids, metal.clientPIDs().map { UInt64(max(0, $0)) })
+                out.append(g)
+            }
+            return out
+        }
+        // IOSurface and Metal (§8 option 2): read with the guest quiesced and
+        // every service idle (no message in hand, no command buffer in flight).
+        // `YCODE_SNAPSHOT_GPU=0`: not saved (a restore then has to restart the
+        // Metal clients, YCODE_RESTORE_KILL=auto).
+        let saveGPU = getenv("YCODE_SNAPSHOT_GPU").map { String(cString: $0) != "0" } ?? true
+        let hostTask = system.hostTask
+        snap.quiescedServiceState = { [weak ioSurfaceService, weak metalService] in
+            let inHand = hostTask.messagesInHandLocked
+            if inHand > 0 { return .failure(SnapshotError("\(inHand) host-service messages in hand")) }
+            guard saveGPU else { return .success([]) }
+            if let reason = metalService?.snapshotBusyReason { return .failure(SnapshotError(reason)) }
+            var out: [SnapshotFields] = []
+            if let io = ioSurfaceService {
+                guard let st = io.trySnapshotState() else { return .failure(SnapshotError("IOSurface service busy")) }
+                var g = SnapshotFields()
+                g.string(ST_HostService.name, "iosurface")
+                g.nested(ST_HostService.state, st)
+                out.append(g)
+            }
+            if let metal = metalService {
+                guard let st = metal.trySnapshotState() else { return .failure(SnapshotError("Metal service busy")) }
+                var g = SnapshotFields()
+                g.string(ST_HostService.name, "metal-objects")
+                g.nested(ST_HostService.state, st)
+                out.append(g)
+            }
+            return .success(out)
+        }
+        let replayGPU = getenv("YCODE_RESTORE_GPU").map { String(cString: $0) != "0" } ?? true
+        snap.restoreHostServices = { [weak session, weak ioSurfaceService, weak metalService, weak hidService] records in
+            for r in records where r.string(ST_HostService.name) == "hid" {
+                let client = r.u32(ST_HostService.hidClient)
+                guard let hid = hidService, MachPortName.isValid(client) else { continue }
+                hid.restoreRegistration(client: client)
+            }
+            if hidService != nil, !records.contains(where: { $0.string(ST_HostService.name) == "hid" }) {
+                snapLog("restore: no HID registration in the snapshot; the device takes input only after its HID bundle registers")
+            }
+            if replayGPU {
+                for r in records where r.string(ST_HostService.name) == "iosurface" {
+                    guard let io = ioSurfaceService, let st = r.nested(ST_HostService.state) else { continue }
+                    do {
+                        let n = try io.restoreState(st)
+                        snapLog("restore: IOSurface: \(n) surfaces")
+                    } catch {
+                        snapLog("restore: IOSurface state not restored: \(error)")
+                    }
+                }
+                for r in records where r.string(ST_HostService.name) == "metal-objects" {
+                    guard let metal = metalService, let st = r.nested(ST_HostService.state) else { continue }
+                    let began = monotonicNanoseconds()
+                    let rep = metal.restoreState(st)
+                    snapLog("restore: Metal: \(rep.processes) processes, \(rep.objects) objects and \(rep.ghosts) kept recipes "
+                        + "made again in \((monotonicNanoseconds() - began) / 1_000_000) ms (\(rep.failures) failed); contents: textures "
+                        + "\(rep.textureBytes >> 10) KiB, buffers \(rep.bufferBytes >> 10) KiB, \(rep.contentsSkipped) skipped; "
+                        + "\(rep.addressesChanged) buffer GPU addresses and \(rep.samplerIDsChanged) sampler IDs changed")
+                    for line in rep.lines { snapLog("restore: " + line) }
+                }
+            }
+            for r in records where r.string(ST_HostService.name) == "scdynamicstore" {
+                let list = r.list(ST_HostService.sessions).map { e in (session: e.u32(1), notify: e.u64s(2).map { UInt32(truncatingIfNeeded: $0) }) }
+                DefaultHostServices.scDynamicStore?.restoreSessions(list)
+                snapLog("restore: SCDynamicStore: \(list.count) sessions")
+            }
+            for r in records where r.string(ST_HostService.name) == "device-session" {
+                session?.reattach(channel: r.u32(ST_HostService.channel), session: r.u32(ST_HostService.session))
+            }
+        }
+    }
+
+    // Diagnostics: `YCODE_FRAME_PROFILE_BOOT` opens a frame-profile window
+    // before the root process exists (FrameProfile.swift; boot-profile.md §8).
+    FrameProfile.shared?.prepareBoot(launcher: launcher, statePath: config.device?.framebufferStatePath, surfaces: ioSurfaceService)
+    HomeWatch.startIfRequested(statePath: config.device?.framebufferStatePath, surfaces: ioSurfaceService)
     let rootKernel: DarwinKernel
     do {
         // Device mode (stage4c-contract.md §8.3): launchd_sim needs the pid of
         // a child of its own in XPC_SIMULATOR_HOLDING_TANK_HACK; the process
         // layer makes an already-exited one (bootstrap-wire.md §5.4).
-        rootKernel = try system.spawnInitialProcess(config.rootRequest, fileSystem: config.makeRootFileSystem(),
-                                                    exitedChildEnvironmentKey: config.device != nil ? holdingTankKey : nil)
+        // SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §7):
+        // YCODE_RESTORE_DIR restores a snapshot instead of spawning the root.
+        if let restored = try SnapshotSupport.shared?.restoreIfRequested(system: system, launcher: launcher, config: config) {
+            rootKernel = restored
+        } else {
+            rootKernel = try system.spawnInitialProcess(config.rootRequest, fileSystem: config.makeRootFileSystem(),
+                                                        exitedChildEnvironmentKey: config.device != nil ? holdingTankKey : nil)
+        }
     } catch {
         let detail = launcher.lastLaunchFailure ?? "\(config.execPath): \(error)"
         die("cannot start the root process: \(detail)", status: (error as? DarwinErrnoError) != nil ? 66 : 1)
     }
     _ = rootKernel
     let started = monotonicMilliseconds()
+    // SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §9): the
+    // YCODE_SNAPSHOT_AT_MS / _WHEN_FILE / _CENSUS triggers.
+    SnapshotSupport.shared?.rootStarted(system: system, launcher: launcher, config: config)
+    // Diagnostics (agent SP-SNAP): `YCODE_THREAD_REPORT_AT_S=<s>[,<s>…]` writes
+    // where every thread of every live process waits, that many seconds
+    // after the root process started, without ending the run.
+    let threadReport: @Sendable (String) -> Void = { [weak system] title in
+        guard let system else { return }
+        stderrLine("ycode-simd: thread report \(title):")
+        for p in system.allProcesses {
+            guard let k = p.kernel else { continue }
+            let lines = k.lock.withLock { k.blockedThreadReport() }
+            if lines.isEmpty { continue }
+            stderrLine("ycode-simd: threads of pid \(p.pid) (\((p.executablePath as NSString).lastPathComponent)):")
+            for line in lines { stderrLine("  " + line) }
+        }
+    }
+    if let spec = getenv("YCODE_THREAD_REPORT_AT_S").map({ String(cString: $0) }) {
+        let times = spec.split(separator: ",").compactMap { UInt64($0) }.sorted()
+        Thread.detachNewThread {
+            let start = monotonicMilliseconds()
+            for t in times {
+                while monotonicMilliseconds() - start < t * 1000 { usleep(200_000) }
+                threadReport("at \(t) s")
+            }
+        }
+    }
+    // SIGUSR1: the same report now, without ending the run (the warm-boot
+    // launcher asks for one before it kills a restore that failed,
+    // snapshot.md §12.5).
+    signal(SIGUSR1, SIG_IGN)
+    threadReportSignalSource = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .global())
+    threadReportSignalSource?.setEventHandler {
+        threadReport("on SIGUSR1, \((monotonicMilliseconds() - started) / 1000) s after the root started")
+    }
+    threadReportSignalSource?.resume()
+    // Diagnostics: `YCODE_TRAP_PROFILE=<path>` (per-trap kernel-lock profile,
+    // rewritten every `YCODE_TRAP_PROFILE_INTERVAL` s and at the end).
+    TrapProfile.shared?.extraReport = { [weak system] in
+        let split = system?.lock.splitReport ?? ""
+        return (ImageBuildProfile.shared?.report ?? "") + (split.isEmpty ? "" : "\n" + split)
+    }
+    if TrapProfile.shared != nil {
+        TrapProfile.threadUsage = {
+            let u = hostThreadUsage()
+            return .init(faults: u.faults, voluntarySwitches: u.voluntarySwitches, involuntarySwitches: u.involuntarySwitches)
+        }
+        TrapProfile.currentThreadID = { ckvmThreadID() }
+        // `YCODE_TRAP_PROFILE_SAMPLE_US=<us>` (default 2000; 0 = off): the lock-holder sampler.
+        let sampleUS = getenv("YCODE_TRAP_PROFILE_SAMPLE_US").flatMap { UInt32(String(cString: $0)) } ?? 2000
+        if sampleUS > 0 { TrapProfile.shared?.startHolderSampler(lock: system.lock, every: sampleUS) }
+        #if os(Linux) && arch(arm64)
+        if let path = getenv("YCODE_TRAP_PROFILE").map({ String(cString: $0) }) {
+            LockStackSampler.startIfRequested(lock: system.lock, profilePath: path, portLock: system.mach.portLock)
+        }
+        #endif
+    }
+    TrapProfile.shared?.startPeriodicDump()
+    BootProfile.shared?.startSampler(launcher: launcher, lock: system.lock)
+    BootProfile.shared?.startPCSampler(launcher: launcher)
     if config.options.debugThreadReport {
         DarwinKernel.recordKnoteHistory = true
         system.lock.slowHoldNanoseconds = 20_000_000
@@ -450,11 +695,46 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
             }
         }
     }
+    // After a restore the display shows the restored frame before any guest
+    // thread runs; the first frame the guest presents afterwards is the
+    // display's own sign of life (snapshot.md §12.5).
+    if let device = config.device, SnapshotSupport.shared?.settings.restoreDirectory != nil {
+        let statePath = device.framebufferStatePath
+        Thread.detachNewThread {
+            let reader = FrameRecordReader(path: statePath)
+            let first = reader.read()
+            for _ in 0..<1200 {
+                usleep(250_000)
+                guard let now = reader.read() else { continue }
+                if now != first {
+                    stderrLine("ycode-simd: snapshot: restore: first new frame (frame \(first.map { String($0.frame) } ?? "none") -> "
+                        + "\(now.frame)) \(monotonicMilliseconds() - started) ms after the root started")
+                    return
+                }
+            }
+            stderrLine("ycode-simd: snapshot: restore: no new frame in 300 s (frame \(first.map { String($0.frame) } ?? "none"))")
+        }
+    }
+
+    // Diagnostics: `YCODE_FRAME_PROFILE=<path>` (FrameProfile.swift; frame-profile.md).
+    FrameProfile.shared?.start(launcher: launcher, statePath: config.device?.framebufferStatePath)
+
+    // The live display and viewer input (DisplayServer.swift; display-stream.md).
+    // Guest mach time now (display timing traces): the system counter at the guest timebase.
+    let guestClock: () -> UInt64? = { [weak launcher] in
+        guard let c = launcher?.snapshotSystemClock else { return nil }
+        let scale = GuestTimebase.ClockScale(from: c.frequency, to: GuestTimebase.frequency(hostFrequency: c.frequency))
+        return scale.apply(c.guestCounter)
+    }
+    let display = startDisplayServer(config: config, surfaces: ioSurfaceService, session: session, hid: hidService, started: started,
+                                     guestClock: guestClock)
 
     var result = launcher.superviseRoot(timeoutMilliseconds: config.timeout)
+    display?.stop(message: "the device run ended")
     if let capture, let path = config.options.screenshotPath {
         stderrLine("ycode-simd: screenshot: " + capture.capture(to: path))
     }
+    config.device?.finishMemoryDirectory()
     if config.options.debugExtraWait, !result.watchdog {
         let left = launcher.superviseAll(deadline: started + config.timeout)
         if left > 0 { result = (71, "watchdog: \(left) images still running after \(config.timeout) ms", true) }
@@ -465,6 +745,10 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         // stopped; `--timeout-ms` is the length of the run. Reaching it with
         // launchd_sim alive is a normal end: exit 0, every process stopped.
         result = (0, "device run ended after \(config.timeout) ms (--timeout-ms); launchd_sim (pid \(rootPID)) was still running", false)
+        // The IDE's warm boot (snapshot.md §12): the end of the run's time
+        // is a stop like any other; with YCODE_SNAPSHOT_STOP_DIR the device
+        // is saved and the host process exits here.
+        _ = SnapshotSupport.shared?.stopAndSave(reason: "the run's time limit (--timeout-ms)")
         if let session, session.isBound, !config.options.debugNoSessionEnd {
             // The clean end: destroy the session port; launchd_sim shuts the
             // guest down and exits 0 (launch-sim-control.md §3.1). (The
@@ -507,6 +791,8 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         if stillAlive > 0 { system.terminateAllProcesses() }
         stillAlive = launcher.stopAll(milliseconds: 1000)
     }
+    TrapProfile.shared?.dump()
+    BootProfile.shared?.writeReport(records: launcher.records)
 
     // Summary: the root's first image as in stage 3/4a, then every image.
     let records = launcher.records
@@ -539,10 +825,23 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
             stderrLine("ycode-simd: process table at host exit: " + table.map { "\($0)" }.joined(separator: "; "))
         }
     }
+    if !quietSummary, SchedPolicy.holdEnabled || SchedPolicy.qosEnabled {
+        stderrLine("ycode-simd: sched: " + system.schedReport + "; " + HostSched.report)
+    }
     if !quietSummary {
         stderrLine("ycode-simd: host: \(HostStats.current())" + (stillAlive > 0 ? "; \(stillAlive) images not torn down" : ""))
     }
-    metalService?.stop()
+    // The GPU back end ends in order before exit() (stage8-contract.md §12):
+    // exit() runs the driver's own teardown, and a back-end thread still
+    // inside the driver then crashes the host (SIGSEGV, "device lost").
+    if let metalService {
+        let t0 = monotonicMilliseconds()
+        let drained = metalService.shutdown()
+        if !quietSummary {
+            stderrLine("ycode-simd: Metal host service: shut down in \(monotonicMilliseconds() - t0) ms"
+                + (drained ? "" : " (a connection was still busy)"))
+        }
+    }
     ioSurfaceService?.stop()
     if let bootstrapLogger {
         bootstrapLogger.stop()

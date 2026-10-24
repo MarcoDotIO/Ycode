@@ -1,5 +1,41 @@
 import Foundation
+import Synchronization
 import YcodeDarwinABI
+
+/// Diagnostics A/B (X11 speed exploration): `YCODE_X11_EAGER=1` makes trace
+/// text eager again, as before this change, so the formatting cost of one
+/// build can be measured against itself. Off by default.
+let forceEagerTraceText: Bool = getenv("YCODE_X11_EAGER").map { String(cString: $0) == "1" } ?? false
+
+/// Whether trace text is built at all: the kernel is tracing, or the eager
+/// A/B switch is on.
+@inline(__always) func traceTextWanted(_ tracing: Bool) -> Bool { tracing || forceEagerTraceText }
+
+/// The one-line description of a trap's call (`write(fd=…)`), built only when
+/// trace text is wanted. Its arguments are autoclosures, so a trap with
+/// tracing off formats nothing (no hex strings, no guest-memory reads for
+/// the description).
+public struct CallText: CustomStringConvertible {
+    private(set) var text: String
+    let enabled: Bool
+
+    init(_ tracing: Bool, _ initial: @autoclosure () -> String = "") {
+        enabled = traceTextWanted(tracing)
+        text = enabled ? initial() : ""
+    }
+
+    /// Replaces the description (`call = …`).
+    @inline(__always) mutating func set(_ make: @autoclosure () -> String) {
+        if enabled { text = make() }
+    }
+
+    /// Appends to the description (`call += …`).
+    @inline(__always) static func += (lhs: inout CallText, rhs: @autoclosure () -> String) {
+        if lhs.enabled { lhs.text += rhs() }
+    }
+
+    public var description: String { text }
+}
 
 /// The guest memory the kernel works on: EL0-checked reads and writes plus
 /// the mapping operations (`GuestAddressSpace` implements both).
@@ -277,7 +313,19 @@ public final class DarwinKernel {
 
     public let fileSystem: DarwinFileSystem
     public var sysctl = SysctlTable.standard
+    /// Diagnostics (`KernelLock.profileProcesses`, `YCODE_BOOT_PROFILE`):
+    /// kernel-lock time held and waited for on behalf of this image's
+    /// threads, and the acquisitions. Changed with the kernel lock held.
+    public internal(set) var profileLockHeldNanoseconds: UInt64 = 0
+    public internal(set) var profileLockWaitNanoseconds: UInt64 = 0
+    public internal(set) var profileLockAcquisitions: UInt64 = 0
     public var pid: Int32
+    /// The dirty-tracking word of this image's process record, set when the
+    /// record takes the image (a leaf lock: read by the `proc_info` fast path).
+    let processDirtyLink = Mutex<ProcessDirtyState?>(nil)
+    /// Diagnostics (`YCODE_TRAP_PROFILE_PROGRAM`): this image's traps are
+    /// counted in the trap profile (set by the launcher per image).
+    public var trapProfileSelected = false
     /// Receives one line (without a newline) per trap.
     public var log: (String) -> Void
     /// Whether trap descriptions are built and passed to `log` at all. Off,
@@ -286,14 +334,23 @@ public final class DarwinKernel {
     public var tracing = true
     /// `log(line)` when tracing; `line` is not evaluated otherwise.
     @inline(__always) func trace(_ line: @autoclosure () -> String) {
-        if tracing { log(line()) }
+        // A fast path (only when a test lets one run for a traced image)
+        // writes no trace: the log sink is serialized by L0.
+        if tracing, eventLock == nil || lock.isHeldByCurrentThread, !KernelThreadLocks.current.bsdFast { log(line()) }
     }
     /// The guest's `CNTVCT_EL0` (mach_absolute_time ticks).
     public var counter: () -> UInt64
     /// `CNTFRQ_EL0` in Hz.
     public var counterFrequency: UInt64
+    /// The process's CPU time so far (user, system; ns), for
+    /// `getrusage(RUSAGE_SELF)`. nil: zero.
+    public var processCPUTimes: (() -> (user: UInt64, system: UInt64))?
     /// Calendar time for `gettimeofday`.
     public var wallClock: () -> (seconds: Int64, nanoseconds: Int64)
+    /// `fast-traps.md` §4: called (under the kernel lock) after each
+    /// `gettimeofday` trap with a fresh (mach time, calendar time) pair, to
+    /// store the commpage's `NEWTIMEOFDAY_DATA` snapshot. nil: no snapshot.
+    public var timeOfDayPublisher: ((_ tick: UInt64, _ seconds: Int64, _ nanoseconds: Int64) -> Void)?
     /// What `TASK_DYLD_INFO` reports.
     public var allImageInfosAddress: UInt64 = HostPageLayout.allImageInfos
     public var allImageInfosSize: UInt64 = UInt64(DyldAllImageInfos.byteCount)
@@ -320,6 +377,12 @@ public final class DarwinKernel {
     /// The one kernel lock of this VM (`KernelSync.swift`). `handle` holds it
     /// for the whole trap.
     public let lock: KernelLock
+    /// The lock split (`mach-ipc-locking.md` §4): this image's event lock L_P,
+    /// which guards its kevent engine and workqueue on fast paths. Nil
+    /// without the split.
+    public let eventLock: KernelLock?
+    /// The lock that kevent and workqueue waits use: L_P with the split, else L0.
+    var eventWaitLock: KernelLock { eventLock ?? lock }
     /// The system this process belongs to (process table, shared Mach state,
     /// the launcher; stage 4b). Every process of one system shares its lock.
     public let system: DarwinSystem
@@ -343,21 +406,43 @@ public final class DarwinKernel {
     var threadsByPort: [UInt32: ThreadContext] = [:]
     var nextThreadID: UInt64 = 2
     /// What every later trap returns once the process is exiting.
-    var termination: Outcome?
+    var termination: Outcome? {
+        didSet { terminatingFlag.store(termination != nil, ordering: .releasing) }
+    }
+    /// `termination != nil`, readable without the kernel lock (fast paths).
+    let terminatingFlag = Atomic<Bool>(false)
     /// The first non-SVC trap (fault, BRK) that ended the image, as it
     /// arrived: the VMM's fault report describes it even when another thread
     /// of the process returns the fatal outcome. Lock held.
     public private(set) var faultFrame: TrapFrame?
     /// Contract-pinned (stage 4b §3.4): true once this image is ending (exit,
     /// kill, exec). The VMM reads it without the lock before re-entering a vCPU.
-    public var isTerminating: Bool { termination != nil }
+    public var isTerminating: Bool { terminatingFlag.load(ordering: .acquiring) }
     /// ulock wait queues by address.
     var ulocks: [UInt64: ULockQueue] = [:]
+    /// The process record of this image (`schedProcess`).
+    weak var schedProcessCache: DarwinProcess?
     /// `vm_purgable_control` states by page address (Ycode never purges).
-    var purgeableStates: [UInt64: Int32] = [:]
+    /// Its own leaf lock: the call is a task-local trap (`bsd-locking.md` §6).
+    var purgeableStates: [UInt64: Int32] {
+        get { purgeableStore.withLock { $0 } }
+        set { purgeableStore.withLock { $0 = newValue } }
+    }
+    let purgeableStore = Mutex<[UInt64: Int32]>([:])
     /// The process workqueue and the kevent engine.
     var workqueue = WorkqueueState()
     var kevents = KEventState()
+    /// EVFILT_READ/EVFILT_WRITE and EVFILT_SIGNAL knotes of this image
+    /// (atomics: L0 code checks them without the event lock; such knotes are
+    /// added only under L0, `mach-ipc-locking.md` §4.2).
+    let descriptorKnoteCount = Atomic<Int>(0)
+    /// EVFILT_READ, EVFILT_WRITE and EVFILT_VNODE knotes of this image
+    /// (the ones a descriptor's close drops), by ident, counted from before
+    /// their descriptor is looked up; may count too many (a dropped kqueue),
+    /// never too few. A close without L0 runs the close hook under L0 only
+    /// when its descriptor is here (`bsd-locking.md` §4.2). A leaf lock.
+    let descriptorWatches = Mutex<[UInt64: Int]>([:])
+    let signalKnoteCount = Atomic<Int>(0)
     /// The address space of the last trap (for work started outside a trap).
     var lastMemory: (any KernelGuestMemory)?
 
@@ -369,6 +454,11 @@ public final class DarwinKernel {
     var exitValue: Int32?
     /// The signal that ends this process, when one does.
     var deathSignal: Int32?
+    /// The main executable's LC_UUID (16 bytes), set by the launcher before
+    /// the image runs. `proc_info` UNIQIDENTIFIERINFO `p_uuid`, rusage
+    /// `ri_uuid` and `LOCAL_PEERUUID` report it (`processes.md` §2.11);
+    /// logd attributes a client's log messages by it.
+    public var executableUUID: [UInt8]?
 
     /// - Parameters:
     ///   - fileSystem: the guest VFS.
@@ -391,6 +481,7 @@ public final class DarwinKernel {
         let system = system ?? DarwinSystem(implicit: true)
         self.system = system
         self.lock = system.lock
+        eventLock = system.lock.splitEnabled ? KernelLock(fineLockOf: system.lock, level: 1, name: "event lock (pid \(pid))") : nil
         // kern.bootsessionuuid: this boot's session UUID (libsystem_trace's
         // logd aborts without it; xnu bsd/kern/kern_sysctl.c, a string).
         sysctl.entries.append(.init(name: "kern.bootsessionuuid", mib: [1, 1006], value: .string(system.bootSessionUUID)))
@@ -412,6 +503,12 @@ public final class DarwinKernel {
         }
     }
 
+    /// SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §7 step 6):
+    /// a restored image gets its `bsdthread_register` result back. Lock held.
+    func snapshotRestoreThreadRegistration(_ registration: ThreadRegistration?) {
+        threadRegistration = registration
+    }
+
     private func attachIPCHooks() {
         machIPC?.messageQueuedHandler = { [weak self] name in self?.machPortMessageQueued(name) }
         (machIPC as? MachIPC)?.receiveRightGoneHandler = { [weak self] name in self?.machPortReceiveRightGone(name) }
@@ -428,7 +525,16 @@ public final class DarwinKernel {
     }
 
     /// The thread whose trap is being handled (the main thread outside a trap).
-    var current: ThreadContext { lock.currentContext ?? mainThread }
+    var current: ThreadContext {
+        // A fast path (`mach-ipc-locking.md` §4.3) runs without L0: its
+        // thread is the one this host thread serves.
+        // Without L0 (a fast path or its deferred work) L0's context belongs
+        // to another thread and must not be read.
+        if eventLock != nil, !lock.isHeldByCurrentThread {
+            return KernelThreadLocks.current.inheritedContext ?? mainThread
+        }
+        return lock.currentContext ?? mainThread
+    }
 
     public static func hostWallClock() -> (seconds: Int64, nanoseconds: Int64) {
         let t = Date().timeIntervalSince1970
@@ -459,8 +565,31 @@ public final class DarwinKernel {
     /// call releases it while it sleeps. A thread that blocks returns only
     /// when its call completes. `.threadExit` means the thread is gone (park
     /// its vCPU); once the process exits, every call returns the exit outcome.
-    public func handle(_ frame: inout TrapFrame, context: ThreadContext, memory: any KernelGuestMemory) -> Outcome {
+    ///
+    /// `beforeTrap`, when given, runs first inside the same lock acquisition,
+    /// on the frame as it arrived: the VMM's pre-trap bookkeeping (image
+    /// attribution, the libSystem milestone, the shared-cache mmap record)
+    /// shares the trap's one acquisition instead of taking a second one.
+    public func handle(_ frame: inout TrapFrame, context: ThreadContext, memory: any KernelGuestMemory,
+                       beforeTrap: (TrapFrame) -> Void = { _ in }) -> Outcome {
+        // Diagnostics (`YCODE_TRAP_PROFILE`): handler time per trap number.
+        if let profile = lock.trapProfile {
+            let key = TrapProfile.filtered(frame.x.count > 16 ? Int64(Int32(truncatingIfNeeded: frame.x[16])) : 0,
+                                           kernel: self)
+            let start = KernelClock.now()
+            defer { profile.noteHandler(key, KernelClock.now() &- start) }
+            return handleTrap(&frame, context: context, memory: memory, beforeTrap: beforeTrap)
+        }
+        let outcome = handleTrap(&frame, context: context, memory: memory, beforeTrap: beforeTrap)
+        // The host priority follows the class (scheduling-policy.md §4.7), outside the lock.
+        if HostSched.backend != .none { HostSched.apply(context.schedClass) }
+        return outcome
+    }
+
+    private func handleTrap(_ frame: inout TrapFrame, context: ThreadContext, memory: any KernelGuestMemory,
+                            beforeTrap: (TrapFrame) -> Void) -> Outcome {
         lock.withLock(context: context) {
+            beforeTrap(frame)
             if context.kernel == nil { context.kernel = self }
             if let termination { return termination }
             context.entryFrame = frame
@@ -478,10 +607,10 @@ public final class DarwinKernel {
                 // With other threads (or the timer thread) around, the exit
                 // is final: blocked threads wake and every later trap returns
                 // it. A lone thread's process just reports it (the VMM ends).
-                if termination == nil, threadsByPort.count > 1 || kevents.timerThreadStarted {
+                if termination == nil, threadsByPort.count > 1 || withEvents({ kevents.timerThreadStarted }) {
                     termination = outcome
                     lock.terminate()
-                    kevents.timerWake.wakeAll()
+                    withEvents { kevents.timerWake.wakeAll() }
                 }
                 return outcome
             default:
@@ -497,7 +626,7 @@ public final class DarwinKernel {
     func endImage(_ outcome: Outcome) {
         if termination == nil { termination = outcome }
         if system.isImplicit { lock.terminate() } else { lock.terminate(kernel: self) }
-        kevents.timerWake.wakeAll()
+        withEvents { kevents.timerWake.wakeAll() }
         signalWaiters.wakeAll()
         threadHost?.stopAllThreads()
     }
@@ -514,7 +643,7 @@ public final class DarwinKernel {
             if let deathSignal { return (deathSignal, 0) }
             switch status {
             case 129...159: return (status - 128, 0)
-            case Self.exceptionExitStatus: return (Signal.sigsegv, 0)
+            case Self.exceptionExitStatus: return (faultFrame.map(Self.faultSignal) ?? Signal.sigsegv, 0)
             default: return (Signal.sigkill, 0)
             }
         default:
@@ -522,8 +651,50 @@ public final class DarwinKernel {
         }
     }
 
+    /// The signal that ends a process after a fatal hardware exception
+    /// (`processes.md` §2.3.1): the Mach exception the arm64 Darwin kernel
+    /// raises for the exception class, mapped as `ux_exception` maps it.
+    /// BRK and debug exceptions → EXC_BREAKPOINT → SIGTRAP; an undefined or
+    /// illegal instruction → EXC_BAD_INSTRUCTION → SIGILL; a floating-point
+    /// trap → EXC_ARITHMETIC → SIGFPE; a translation, access-flag or
+    /// address-size fault → KERN_INVALID_ADDRESS → SIGSEGV; a permission or
+    /// alignment fault, or PC/SP misalignment → SIGBUS. Anything else: SIGSEGV.
+    public static func faultSignal(_ frame: TrapFrame) -> Int32 {
+        let syndrome = frame.syndrome
+        guard let ec = syndrome.exceptionClass else { return Signal.sigsegv }
+        switch ec {
+        case .brk, .breakpointLowerEL, .breakpointSameEL, .softwareStepLowerEL, .softwareStepSameEL,
+             .watchpointLowerEL, .watchpointSameEL:
+            return Signal.sigtrap
+        case .unknown, .illegalExecutionState:
+            return Signal.sigill
+        case .floatingPoint:
+            return Signal.sigfpe
+        case .pcAlignment, .spAlignment:
+            return Signal.sigbus
+        case .instructionAbortLowerEL, .instructionAbortSameEL, .dataAbortLowerEL, .dataAbortSameEL:
+            let fsc = syndrome.faultStatusCode ?? 0x04
+            switch fsc {
+            case 0x0C...0x0F, 0x21: return Signal.sigbus
+            default: return Signal.sigsegv
+            }
+        default:
+            return Signal.sigsegv
+        }
+    }
+
     private func handleLocked(_ frame: inout TrapFrame, memory: any KernelGuestMemory) -> Outcome {
         guard frame.trapKind == .svc else {
+            // The first touch of a page of a lazy anonymous mapping
+            // (`GuestAddressSpace.lazyAnonymousThreshold`): give it backing
+            // and run the instruction again.
+            let syndrome = frame.syndrome
+            if let ec = syndrome.exceptionClass, ec == .dataAbortLowerEL || ec == .instructionAbortLowerEL,
+               let fsc = syndrome.faultStatusCode, (0x04...0x07).contains(fsc),
+               memory.resolveTranslationFault(va: frame.far) {
+                frame.flushTLB = true
+                return .resume
+            }
             trace("trap \(frame.trapKind?.description ?? "kind \(frame.kind)") fatal")
             if faultFrame == nil { faultFrame = frame }
             if Self.isCachePatchPlaceholderFault(frame) {
@@ -567,11 +738,13 @@ public final class DarwinKernel {
         }
         var number = Int(low & 0xFFFF)
         var args = Array(frame.x[0..<8])
-        var prefix = "trap bsd \(number)"
+        // The trace prefix is built only when trace text is wanted.
+        let wantText = traceTextWanted(tracing)
+        var prefix = wantText ? "trap bsd \(number)" : ""
         if number == 0 {
             number = Int(frame.x[0] & 0xFFFF)
             args = Array(frame.x[1...8])
-            prefix = "trap bsd 0 (indirect \(number))"
+            prefix = wantText ? "trap bsd 0 (indirect \(number))" : ""
         }
         return handleBSD(number, args, prefix: prefix, &frame, memory)
     }
@@ -624,11 +797,21 @@ public final class DarwinKernel {
 
     private func handleBSD(_ n: Int, _ a: [UInt64], prefix: String, _ frame: inout TrapFrame,
                            _ mem: any KernelGuestMemory) -> Outcome {
-        var call = tracing ? TrapNames.describe(TrapNames.bsd(n), a) : ""
+        var call = CallText(tracing, TrapNames.describe(TrapNames.bsd(n), a))
         var fallback = Errno.EINVAL
         let result: BSDResult
         do {
-            result = try bsdCall(n, a, &call, &fallback, mem)
+            if n == BSD.stat64 && Self.isLoaderHelper(pc: frame.elr) {
+                // The loader's stat helper: no cache-only image files.
+                let path = try readPath(a[0], mem)
+                call.set("stat64(\"\(path)\", buf=\(hx(a[1]))) [loader helper]")
+                let fs = fileSystem
+                let st = try lock.unlocked { try fs.stat(path, followSymlinks: true, cacheImages: false) }
+                try mem.write(va: a[1], bytes: st.encodedStat64())
+                result = .value(0)
+            } else {
+                result = try bsdCall(n, a, &call, &fallback, mem)
+            }
         } catch {
             let e = errno(of: error, default: fallback)
             frame.x[0] = UInt64(UInt32(bitPattern: e))
@@ -671,13 +854,15 @@ public final class DarwinKernel {
             frame.x[0] = UInt64(Errno.ENOSYS)
             frame.x[1] = 0
             frame.carry = true
-            let text = "unimplemented bsd \(n) \(call)"
+            // The frame is not described here: the VMM prints it once on the
+            // trace path, and the summary key stops at the call text.
             trace("\(prefix) \(call) -> unimplemented")
-            return .unimplemented(description: text + "\n" + frame.description)
+            // Without trace text the summary key is the call's name.
+            return .unimplemented(description: "unimplemented bsd \(n) " + (call.enabled ? call.description : TrapNames.bsd(n).name))
         }
     }
 
-    private func bsdCall(_ n: Int, _ a: [UInt64], _ call: inout String, _ fallback: inout Int32,
+    private func bsdCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ fallback: inout Int32,
                          _ mem: any KernelGuestMemory) throws -> BSDResult {
         let fs = fileSystem
         // The `_nocancel` variants behave like their plain calls (no
@@ -693,62 +878,70 @@ public final class DarwinKernel {
 
         switch n {
         case BSD.exit:
-            call = "exit(\(int(0)))"
+            call.set("exit(\(int(0)))")
             return .exit(Int32(a[0] & 0xFF))
 
         case BSD.read, BSD.pread:
             let isPread = n == BSD.pread
-            call = isPread ? "pread(fd=\(fd(0)), buf=\(hx(a[1])), len=\(hx(a[2])), off=\(hx(a[3])))"
-                : "read(fd=\(fd(0)), buf=\(hx(a[1])), len=\(hx(a[2])))"
+            call.set(isPread ? "pread(fd=\(fd(0)), buf=\(hx(a[1])), len=\(hx(a[2])), off=\(hx(a[3])))"
+                : "read(fd=\(fd(0)), buf=\(hx(a[1])), len=\(hx(a[2])))")
             let count = Int(min(a[2], UInt64(Int32.max)))
-            let bytes = isPread ? try fs.pread(fd(0), count: count, offset: a[3]) : try fs.read(fd(0), count: count)
+            let bytes: [UInt8]
+            if let io = try hostFileIO(fd(0), writing: false) {
+                bytes = try readUnlocked(io, count: count, offset: isPread ? a[3] : nil)
+            } else {
+                bytes = isPread ? try fs.pread(fd(0), count: count, offset: a[3]) : try fs.read(fd(0), count: count)
+            }
             if !bytes.isEmpty { try mem.write(va: a[1], bytes: bytes) }
             return .value(UInt64(bytes.count))
 
         case BSD.write:
-            call = "write(fd=\(fd(0)), buf=\(hx(a[1])), len=\(hx(a[2])))"
+            call.set("write(fd=\(fd(0)), buf=\(hx(a[1])), len=\(hx(a[2])))")
             guard a[2] <= UInt64(Int32.max) else { throw Failure(errno: Errno.EINVAL) }
             let bytes = a[2] == 0 ? [] : try mem.read(va: a[1], count: Int(a[2]))
+            if let io = try hostFileIO(fd(0), writing: true) {
+                return .value(UInt64(try writeUnlocked(io, bytes, offset: nil)))
+            }
             return .value(UInt64(try fs.write(fd(0), bytes)))
 
         case BSD.open:
             let path = try readPath(a[0], mem)
-            call = "open(\"\(path)\", flags=\(openFlagsText(int(1))), mode=0o\(String(a[2] & 0o7777, radix: 8)))"
+            call.set("open(\"\(path)\", flags=\(openFlagsText(int(1))), mode=0o\(String(a[2] & 0o7777, radix: 8)))")
             let newFD = try openUnlocked(path, flags: int(1), mode: UInt16(truncatingIfNeeded: a[2]))
             return .value(UInt64(UInt32(bitPattern: newFD)))
 
         case BSD.close:
-            call = "close(\(fd(0)))"
+            call.set("close(\(fd(0)))")
             try fs.close(fd(0))
             extended.directoryCursors[fd(0)] = nil
             return .value(0)
 
         case BSD.getpid:
-            call = "getpid()"
+            call.set("getpid()")
             return .value(UInt64(UInt32(bitPattern: pid)))
         case BSD.getuid, BSD.geteuid:
-            call = n == BSD.getuid ? "getuid()" : "geteuid()"
+            call.set(n == BSD.getuid ? "getuid()" : "geteuid()")
             return .value(UInt64(DarwinFileSystem.guestUID))
         case BSD.getgid, BSD.getegid:
-            call = n == BSD.getgid ? "getgid()" : "getegid()"
+            call.set(n == BSD.getgid ? "getgid()" : "getegid()")
             return .value(UInt64(DarwinFileSystem.guestGID))
 
         case BSD.ioctl:
-            call = "ioctl(fd=\(fd(0)), request=\(hx(a[1])), arg=\(hx(a[2])))"
+            call.set("ioctl(fd=\(fd(0)), request=\(hx(a[1])), arg=\(hx(a[2])))")
             throw Failure(errno: Errno.ENOTTY)
 
         case BSD.mmap:
             return .value(try mmap(a, &call, &fallback, mem))
 
         case BSD.munmap:
-            call = "munmap(addr=\(hx(a[0])), len=\(hx(a[1])))"
+            call.set("munmap(addr=\(hx(a[0])), len=\(hx(a[1])))")
             guard a[0] & Self.pageMask == 0, a[1] > 0 else { throw Failure(errno: Errno.EINVAL) }
             try mem.unmap(va: a[0], size: roundUp(a[1], to: Self.pageSize))
             return .value(0)
 
         case BSD.mprotect:
             let prot = protection(a[2])
-            call = "mprotect(addr=\(hx(a[0])), len=\(hx(a[1])), prot=\(protText(a[2])))"
+            call.set("mprotect(addr=\(hx(a[0])), len=\(hx(a[1])), prot=\(protText(a[2])))")
             let start = a[0] & ~Self.pageMask
             let size = roundUp(a[1] + (a[0] - start), to: Self.pageSize)
             if size > 0 { try mem.protect(va: start, size: size, protection: prot) }
@@ -761,7 +954,7 @@ public final class DarwinKernel {
             // level 1). The others are hints or allow lazy discard, so keeping
             // the pages is correct. Other values are EINVAL (the madvise(2)
             // manual page: "the value of advice is incorrect"; level 1).
-            call = "madvise(addr=\(hx(a[0])), len=\(hx(a[1])), advice=\(int(2)))"
+            call.set("madvise(addr=\(hx(a[0])), len=\(hx(a[1])), advice=\(int(2)))")
             guard (0...11).contains(int(2)) else { throw Failure(errno: Errno.EINVAL) }
             if int(2) == 11, a[1] > 0 {
                 let end = a[0].addingReportingOverflow(a[1])
@@ -782,7 +975,7 @@ public final class DarwinKernel {
             return .value(try fcntl(a, &call, mem))
 
         case BSD.gettimeofday:
-            call = "gettimeofday(tp=\(hx(a[0])), tzp=\(hx(a[1])), mach_time=\(hx(a[2])))"
+            call.set("gettimeofday(tp=\(hx(a[0])), tzp=\(hx(a[1])), mach_time=\(hx(a[2])))")
             let (sec, nsec) = wallClock()
             if a[0] != 0 {
                 var tv: [UInt8] = []
@@ -797,6 +990,13 @@ public final class DarwinKernel {
                 t.appendLE(counter())
                 try mem.write(va: a[2], bytes: t)
             }
+            // fast-traps.md §4: refresh the commpage wall-clock snapshot
+            // (the library traps here only when its snapshot is stale).
+            if let publish = timeOfDayPublisher {
+                let tick = counter()
+                let (s2, ns2) = wallClock()
+                publish(tick, s2, ns2)
+            }
             return .value(0)
 
         case BSD.sysctl:
@@ -804,7 +1004,7 @@ public final class DarwinKernel {
 
         case BSD.sysctlbyname:
             let name = try readString(a[0], length: Int(min(a[1], 1024)), mem)
-            call = "sysctlbyname(\"\(name)\", old=\(hx(a[2])), oldlenp=\(hx(a[3])), new=\(hx(a[4])), newlen=\(hx(a[5])))"
+            call.set("sysctlbyname(\"\(name)\", old=\(hx(a[2])), oldlenp=\(hx(a[3])), new=\(hx(a[4])), newlen=\(hx(a[5])))")
             return .value(try sysctlRead(sysctl.lookup(name: name), name: name,
                                          old: a[2], oldlenp: a[3], new: a[4], newlen: a[5], mem))
 
@@ -824,18 +1024,18 @@ public final class DarwinKernel {
             return .value(try openByIDCall(a, &call, mem))
 
         case BSD.issetugid:
-            call = "issetugid()"
+            call.set("issetugid()")
             return .value(0)
 
         case BSD.stat64, BSD.lstat64:
             let path = try readPath(a[0], mem)
-            call = "\(n == BSD.stat64 ? "stat64" : "lstat64")(\"\(path)\", buf=\(hx(a[1])))"
+            call.set("\(n == BSD.stat64 ? "stat64" : "lstat64")(\"\(path)\", buf=\(hx(a[1])))")
             let st = try statUnlocked(path, followSymlinks: n == BSD.stat64)
             try mem.write(va: a[1], bytes: st.encodedStat64())
             return .value(0)
 
         case BSD.fstat64:
-            call = "fstat64(fd=\(fd(0)), buf=\(hx(a[1])))"
+            call.set("fstat64(fd=\(fd(0)), buf=\(hx(a[1])))")
             try mem.write(va: a[1], bytes: fs.fstat(fd(0)).encodedStat64())
             return .value(0)
 
@@ -845,11 +1045,11 @@ public final class DarwinKernel {
             // size out-parameter is 0 (xnu vfs_syscalls.c stat2/fstat1).
             let st: DarwinStat
             if n == 343 {
-                call = "fstat64_extended(fd=\(fd(0)), buf=\(hx(a[1])), xsec=\(hx(a[2])), xsize=\(hx(a[3])))"
+                call.set("fstat64_extended(fd=\(fd(0)), buf=\(hx(a[1])), xsec=\(hx(a[2])), xsize=\(hx(a[3])))")
                 st = try fs.fstat(fd(0))
             } else {
                 let path = try readPath(a[0], mem)
-                call = "\(n == 341 ? "stat64_extended" : "lstat64_extended")(\"\(path)\", buf=\(hx(a[1])))"
+                call.set("\(n == 341 ? "stat64_extended" : "lstat64_extended")(\"\(path)\", buf=\(hx(a[1])))")
                 st = try statUnlocked(path, followSymlinks: n == 341)
             }
             try mem.write(va: a[1], bytes: st.encodedStat64())
@@ -857,7 +1057,7 @@ public final class DarwinKernel {
             return .value(0)
 
         case BSD.getfsstat64:
-            call = "getfsstat64(buf=\(hx(a[0])), bufsize=\(int(1)), flags=\(int(2)))"
+            call.set("getfsstat64(buf=\(hx(a[0])), bufsize=\(int(1)), flags=\(int(2)))")
             return .value(try fileSystemStatList(buffer: a[0], size: a[1], &call, mem))
 
         case BSD.bsdthreadRegister:
@@ -865,8 +1065,8 @@ public final class DarwinKernel {
 
         case BSD.abortWithPayload:
             let reason = a[4] == 0 ? "" : ((try? readString(a[4], length: 4096, mem)) ?? "<unreadable>")
-            call = "abort_with_payload(namespace=\(UInt32(truncatingIfNeeded: a[0])), code=\(hx(a[1])), "
-                + "payload=\(hx(a[2])), size=\(UInt32(truncatingIfNeeded: a[3])), flags=\(hx(a[5])))"
+            call.set("abort_with_payload(namespace=\(UInt32(truncatingIfNeeded: a[0])), code=\(hx(a[1])), "
+                + "payload=\(hx(a[2])), size=\(UInt32(truncatingIfNeeded: a[3])), flags=\(hx(a[5])))")
             let message = "abort_with_payload: namespace \(UInt32(truncatingIfNeeded: a[0])) code \(hx(a[1])): \(reason)"
             return .fatal(Self.abortExitStatus, message)
 
@@ -880,14 +1080,17 @@ public final class DarwinKernel {
 
     // MARK: mmap
 
-    private func mmap(_ a: [UInt64], _ call: inout String, _ fallback: inout Int32,
-                      _ mem: any KernelGuestMemory) throws -> UInt64 {
+    /// `fast` (a BSD fast path, `bsd-locking.md` §4.5): a POSIX shared
+    /// memory object (L0 state) throws `BSDFastDecline` before anything
+    /// changes.
+    func mmap(_ a: [UInt64], _ call: inout CallText, _ fallback: inout Int32,
+              _ mem: any KernelGuestMemory, fast: Bool = false) throws -> UInt64 {
         let addr = a[0], len = a[1]
         let flags = Int32(truncatingIfNeeded: a[3])
         let fd = Int32(truncatingIfNeeded: a[4])
         let pos = a[5]
-        call = "mmap(addr=\(hx(addr)), len=\(hx(len)), prot=\(protText(a[2])), flags=\(mapFlagsText(flags)), "
-            + "fd=\(fd), off=\(hx(pos)))"
+        call.set("mmap(addr=\(hx(addr)), len=\(hx(len)), prot=\(protText(a[2])), flags=\(mapFlagsText(flags)), "
+            + "fd=\(fd), off=\(hx(pos)))")
         fallback = Errno.ENOMEM
         guard len > 0 else { throw Failure(errno: Errno.EINVAL) }
         let anonymous = flags & MapFlag.anonymous != 0
@@ -910,20 +1113,32 @@ public final class DarwinKernel {
         if anonymous {
             va = try mem.mapAnonymous(at: at, size: size, protection: prot, hint: hint)
         } else if let open = try? fileSystem.openFile(for: fd), let shm = open.object as? PosixShmDescriptor {
+            if fast { throw BSDFastDecline() }
             guard pageOffset == 0 else { throw Failure(errno: Errno.EINVAL) }
             va = try mapPosixShm(shm, file: open, flags: flags, prot: prot, offset: pos, size: size, at: at, hint: hint, mem)
         } else {
+            // (`file(for:)` looks the descriptor up again: a descriptor that
+            // became a shared memory object meanwhile is ENODEV, as any
+            // object; the guest raced its own close or dup2.)
             let file = try fileSystem.file(for: fd)
             let shared = flags & MapFlag.shared != 0 && flags & MapFlag.private == 0
             // MAP_SHARED of a file open for writing: a view of the host
             // file's pages, so writes reach the file and every other view
             // (IconServices' store is written through one mapping and read
             // through another; chronod's mapped-file allocator; SQLite's
-            // shared-memory index). Otherwise a private view.
+            // shared-memory index). A read-only MAP_SHARED view of a file
+            // under a writable prefix is a view too, so it sees later
+            // writes (SpotlightIndex reads its index files through such
+            // views while it appends to them; service-fidelity.md §10).
+            // Otherwise a private view.
+            let readOnlyView = !prot.contains(.write) && fileSystem.writable(guestPath: file.guestPath)
             if shared, !Self.debugPrivateSharedFiles,
                let object = SharedMemoryObject(hostFile: file.hostFD, offset: pos - pageOffset, size: size,
-                                               fileSize: file.size) {
+                                               fileSize: file.size, reopenReadOnly: readOnlyView) {
                 call += " [shared file view]"
+                // SNAPSHOT hook (agent SNAP, snapshot.md §2.1): what to map again on restore.
+                object.snapshotFileSource = .init(guestPath: file.guestPath, hostPath: file.hostPath,
+                                                  offset: pos - pageOffset, requestedSize: size)
                 va = try mem.mapShared(object, offset: 0, at: at, size: size, protection: prot, hint: hint)
             } else {
                 if shared { trace("note: MAP_SHARED file mapping of \(file.guestPath) is mapped private") }
@@ -938,11 +1153,11 @@ public final class DarwinKernel {
     /// BSD 366 (`host-library-init.md` §6.1): records the entry points and
     /// offsets, writes back the record's out fields, and returns the feature
     /// mask of `host-libraries.md` §7.4.
-    private func bsdthreadRegister(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    private func bsdthreadRegister(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let size = UInt32(truncatingIfNeeded: a[2])
         let recordSize = UInt32(truncatingIfNeeded: a[4])
-        call = "bsdthread_register(threadstart=\(hx(a[0])), wqthread=\(hx(a[1])), pthsize=\(hx(size)), "
-            + "data=\(hx(a[3])), datasize=\(recordSize), offset=\(hx(a[5])))"
+        call.set("bsdthread_register(threadstart=\(hx(a[0])), wqthread=\(hx(a[1])), pthsize=\(hx(size)), "
+            + "data=\(hx(a[3])), datasize=\(recordSize), offset=\(hx(a[5])))")
         guard size <= 64 << 10 else { throw Failure(errno: Errno.EINVAL) }
         guard threadRegistration == nil else { throw Failure(errno: Errno.EINVAL) }
         var registration = ThreadRegistration(
@@ -987,6 +1202,46 @@ public final class DarwinKernel {
         return try lock.unlocked { try fs.stat(path, followSymlinks: followSymlinks) }
     }
 
+    /// Diagnostics A/B: `YCODE_FS_LOCKED_IO=1` keeps regular-file reads,
+    /// writes and renames under the kernel lock (as before §5.2).
+    static let lockedFileIO = getenv("YCODE_FS_LOCKED_IO").map { String(cString: $0) == "1" } ?? false
+
+    /// The `HostFileIO` of a regular host file (checks made now, with the
+    /// lock), or nil: the plain call handles the descriptor.
+    func hostFileIO(_ fd: Int32, writing: Bool, guardChecked: Bool = false) throws -> HostFileIO? {
+        guard !Self.lockedFileIO else { return nil }
+        return try fileSystem.hostFileIO(fd, writing: writing, guardChecked: guardChecked)
+    }
+
+    /// A regular-file read (`offset` nil: at the description's offset): from
+    /// the page cache with the lock held when it is all there, otherwise
+    /// with the kernel lock released for the host I/O (§5.2).
+    ///
+    /// After the lock is taken again only the image is checked (EINTR when
+    /// it ended meanwhile, as for `openUnlocked`): the descriptor is not
+    /// looked up again, because the transfer belongs to the description it
+    /// started on, and the caller copies the data into guest memory with
+    /// the lock held.
+    func readUnlocked(_ io: HostFileIO, count: Int, offset: UInt64?) throws -> [UInt8] {
+        if let offset {
+            if let cached = io.preadIfCached(count: count, offset: offset) { return cached }
+        } else if let cached = io.readIfCached(count: count) {
+            return cached
+        }
+        let bytes = try lock.unlocked { try offset.map { try io.pread(count: count, offset: $0) } ?? io.read(count: count) }
+        guard !isTerminating else { throw Failure(errno: 4) }
+        return bytes
+    }
+
+    /// A regular-file write (`offset` nil: at the description's offset, or
+    /// at the end with O_APPEND) with the kernel lock released for the host
+    /// I/O (§5.2). The bytes were copied from guest memory with the lock
+    /// held; nothing is revalidated afterwards (the result goes to the
+    /// guest only).
+    func writeUnlocked(_ io: HostFileIO, _ bytes: [UInt8], offset: UInt64?) throws -> Int {
+        try lock.unlocked { try offset.map { try io.pwrite(bytes, offset: $0) } ?? io.write(bytes) }
+    }
+
     /// `open`: resolve and open the host file without the kernel lock, then
     /// install the descriptor with it (EINTR if the image ended meanwhile).
     func openUnlocked(_ path: String, flags: Int32, mode: UInt16) throws -> Int32 {
@@ -998,17 +1253,19 @@ public final class DarwinKernel {
 
     // MARK: fcntl
 
-    private func fcntl(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    /// fcntl command names for trace text.
+    static let fcntlNames: [Int32: String] = [1: "F_GETFD", 2: "F_SETFD", 3: "F_GETFL", 50: "F_GETPATH",
+                                              42: "F_PREALLOCATE", 44: "F_RDADVISE", 45: "F_RDAHEAD", 48: "F_NOCACHE",
+                                              51: "F_FULLFSYNC", 63: "F_GETPROTECTIONCLASS", 64: "F_SETPROTECTIONCLASS", 77: "F_GETPROTECTIONLEVEL",
+                                              85: "F_BARRIERFSYNC", 102: "F_GETPATH_NOFIRMLINK", 95: "F_SETCONFINED", 96: "F_GETCONFINED",
+                                              97: "F_ADDFILESIGS_RETURN", 98: "F_CHECK_LV"]
+
+    private func fcntl(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let fs = fileSystem
         let fd = Int32(truncatingIfNeeded: a[0])
         let cmd = Int32(truncatingIfNeeded: a[1])
         let arg = a[2]
-        let names: [Int32: String] = [1: "F_GETFD", 2: "F_SETFD", 3: "F_GETFL", 50: "F_GETPATH",
-                                      42: "F_PREALLOCATE", 44: "F_RDADVISE", 45: "F_RDAHEAD", 48: "F_NOCACHE",
-                                      51: "F_FULLFSYNC", 63: "F_GETPROTECTIONCLASS", 64: "F_SETPROTECTIONCLASS", 77: "F_GETPROTECTIONLEVEL",
-                                      85: "F_BARRIERFSYNC", 102: "F_GETPATH_NOFIRMLINK", 95: "F_SETCONFINED", 96: "F_GETCONFINED",
-                                      97: "F_ADDFILESIGS_RETURN", 98: "F_CHECK_LV"]
-        call = "fcntl(fd=\(fd), \(names[cmd] ?? "cmd \(cmd)"), arg=\(hx(arg)))"
+        call.set("fcntl(fd=\(fd), \(Self.fcntlNames[cmd] ?? "cmd \(cmd)"), arg=\(hx(arg)))")
         switch cmd {
         case Fcntl.getpath:
             let path = try fs.path(for: fd)
@@ -1079,15 +1336,15 @@ public final class DarwinKernel {
 
     // MARK: sysctl
 
-    private func sysctlMIB(_ a: [UInt64], _ call: inout String, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    func sysctlMIB(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let count = Int(UInt32(truncatingIfNeeded: a[1]))
-        call = "sysctl(name=\(hx(a[0])), namelen=\(count), old=\(hx(a[2])), oldlenp=\(hx(a[3])), "
-            + "new=\(hx(a[4])), newlen=\(hx(a[5])))"
+        call.set("sysctl(name=\(hx(a[0])), namelen=\(count), old=\(hx(a[2])), oldlenp=\(hx(a[3])), "
+            + "new=\(hx(a[4])), newlen=\(hx(a[5])))")
         guard count >= 1, count <= 12 else { throw Failure(errno: Errno.EINVAL) }
         let raw = try mem.read(va: a[0], count: 4 * count)
         let mib = (0..<count).map { raw.readLE(Int32.self, at: 4 * $0) }
-        call = "sysctl([\(mib.map(String.init).joined(separator: ","))], old=\(hx(a[2])), oldlenp=\(hx(a[3])), "
-            + "new=\(hx(a[4])), newlen=\(hx(a[5])))"
+        call.set("sysctl([\(mib.map(String.init).joined(separator: ","))], old=\(hx(a[2])), oldlenp=\(hx(a[3])), "
+            + "new=\(hx(a[4])), newlen=\(hx(a[5])))")
         if mib == [0, 3] {
             // name2oid: the name is the new value; the OID is returned in old.
             var nameBytes = try mem.read(va: a[4], count: Int(min(a[5], 1024)))
@@ -1115,7 +1372,7 @@ public final class DarwinKernel {
                               old: a[2], oldlenp: a[3], new: a[4], newlen: a[5], mem)
     }
 
-    private func sysctlRead(_ entry: SysctlTable.Entry?, name: String, old: UInt64, oldlenp: UInt64,
+    func sysctlRead(_ entry: SysctlTable.Entry?, name: String, old: UInt64, oldlenp: UInt64,
                             new: UInt64, newlen: UInt64, _ mem: any KernelGuestMemory) throws -> UInt64 {
         guard let entry else {
             trace("note: sysctl \"\(name)\" is not known")
@@ -1147,8 +1404,8 @@ public final class DarwinKernel {
 
     private func handleMach(_ n: Int, _ frame: inout TrapFrame, _ mem: any KernelGuestMemory) -> Outcome {
         let a = Array(frame.x[0..<8])
-        var call = tracing ? TrapNames.describe(TrapNames.mach(n), a) : ""
-        let prefix = "trap mach \(n)"
+        var call = CallText(tracing, TrapNames.describe(TrapNames.mach(n), a))
+        let prefix = traceTextWanted(tracing) ? "trap mach \(n)" : ""
         func port(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i]) }
         func kr(_ value: UInt64, _ extra: String = "") -> Outcome {
             frame.x[0] = value
@@ -1169,7 +1426,7 @@ public final class DarwinKernel {
             return .resume
 
         case Mach.vmAllocate:
-            call = "vm_allocate(target=\(hx(port(0))), addr=\(hx(a[1])), size=\(hx(a[2])), flags=\(hx(a[3])))"
+            call.set("vm_allocate(target=\(hx(port(0))), addr=\(hx(a[1])), size=\(hx(a[2])), flags=\(hx(a[3])))")
             let anywhere = a[3] & Self.vmFlagsAnywhere != 0
             guard let requested = try? readU64(a[1], mem) else { return kr(KernReturn.invalidAddress) }
             if a[2] == 0 {
@@ -1184,10 +1441,14 @@ public final class DarwinKernel {
                                               hint: requested == 0 ? nil : requested & ~Self.pageMask)
                 } else {
                     guard requested & Self.pageMask == 0 else { return kr(KernReturn.invalidArgument) }
-                    if a[3] & Self.vmFlagsOverwrite == 0, overlapsMapping(requested, size, mem) {
-                        return kr(KernReturn.noSpace)
+                    // Check and map as one address-space change (task-local
+                    // traps may map concurrently; boot-profile.md §3.6).
+                    let placed: UInt64? = try mem.atomically {
+                        if a[3] & Self.vmFlagsOverwrite == 0, overlapsMapping(requested, size, mem) { return nil }
+                        return try mem.mapAnonymous(at: requested, size: size, protection: [.read, .write], hint: nil)
                     }
-                    va = try mem.mapAnonymous(at: requested, size: size, protection: [.read, .write], hint: nil)
+                    guard let placed else { return kr(KernReturn.noSpace) }
+                    va = placed
                 }
             } catch {
                 return kr(KernReturn.noSpace)
@@ -1200,31 +1461,11 @@ public final class DarwinKernel {
             // state, out: old), 1 GET_STATE, 2 PURGE_ALL. Ycode memory is
             // never purged, so a volatile region keeps its contents and
             // reports VOLATILE, never EMPTY (2).
-            let control = Int32(truncatingIfNeeded: a[2])
-            call = "vm_purgable_control(target=\(hx(port(0))), addr=\(hx(a[1])), control=\(control), state=\(hx(a[3])))"
-            let page = a[1] & ~Self.pageMask
-            switch control {
-            case 0, 1:
-                guard let raw = try? mem.read(va: a[3], count: 4) else { return kr(KernReturn.invalidAddress) }
-                let old = purgeableStates[page] ?? 0
-                if control == 0 {
-                    let requested = raw.readLE(Int32.self, at: 0)
-                    let state = requested & 0x3
-                    guard state != 2 else { return kr(KernReturn.invalidArgument) }  // EMPTY may not be set
-                    purgeableStates[page] = state == 0 ? nil : state
-                }
-                var out: [UInt8] = []
-                out.appendLE(old)
-                guard (try? mem.write(va: a[3], bytes: out)) != nil else { return kr(KernReturn.invalidAddress) }
-                return kr(KernReturn.success, " [old state \(old)]")
-            case 2:
-                return kr(KernReturn.success)
-            default:
-                return kr(KernReturn.invalidArgument)
-            }
+            call.set("vm_purgable_control(target=\(hx(port(0))), addr=\(hx(a[1])), control=\(Int32(truncatingIfNeeded: a[2])), state=\(hx(a[3])))")
+            return kr(purgeableControl(a, mem))
 
         case Mach.vmDeallocate:
-            call = "vm_deallocate(target=\(hx(port(0))), addr=\(hx(a[1])), size=\(hx(a[2])))"
+            call.set("vm_deallocate(target=\(hx(port(0))), addr=\(hx(a[1])), size=\(hx(a[2])))")
             guard a[2] != 0 else { return kr(KernReturn.success) }
             let start = a[1] & ~Self.pageMask
             let size = roundUp(a[2] + (a[1] - start), to: Self.pageSize)
@@ -1233,8 +1474,8 @@ public final class DarwinKernel {
 
         case Mach.vmProtect:
             let protBits = a[4] & ~Self.vmProtCopy
-            call = "vm_protect(target=\(hx(port(0))), addr=\(hx(a[1])), size=\(hx(a[2])), set_max=\(a[3] & 1), "
-                + "prot=\(protText(a[4]))\(a[4] & Self.vmProtCopy != 0 ? "|COPY" : ""))"
+            call.set("vm_protect(target=\(hx(port(0))), addr=\(hx(a[1])), size=\(hx(a[2])), set_max=\(a[3] & 1), "
+                + "prot=\(protText(a[4]))\(a[4] & Self.vmProtCopy != 0 ? "|COPY" : ""))")
             if a[3] & 0xFFFF_FFFF != 0 { return kr(KernReturn.success, " [maximum protection not tracked]") }
             guard a[2] != 0 else { return kr(KernReturn.success) }
             let start = a[1] & ~Self.pageMask
@@ -1245,7 +1486,7 @@ public final class DarwinKernel {
             return kr(KernReturn.success)
 
         case Mach.timebaseInfo:
-            call = "mach_timebase_info(info=\(hx(a[0])))"
+            call.set("mach_timebase_info(info=\(hx(a[0])))")
             let tb = timebase
             var b: [UInt8] = []
             b.appendLE(tb.numer)
@@ -1255,8 +1496,8 @@ public final class DarwinKernel {
 
         case Mach.vmMap:
             // target, *addr, size, mask, flags, cur_protection.
-            call = "mach_vm_map(target=\(hx(port(0))), addr=\(hx(a[1])), size=\(hx(a[2])), mask=\(hx(a[3])), "
-                + "flags=\(hx(a[4])), prot=\(protText(a[5])))"
+            call.set("mach_vm_map(target=\(hx(port(0))), addr=\(hx(a[1])), size=\(hx(a[2])), mask=\(hx(a[3])), "
+                + "flags=\(hx(a[4])), prot=\(protText(a[5])))")
             guard let requested = try? readU64(a[1], mem) else { return kr(KernReturn.invalidAddress) }
             guard a[2] != 0 else { return kr(KernReturn.invalidArgument) }
             let size = roundUp(a[2], to: Self.pageSize)
@@ -1279,10 +1520,12 @@ public final class DarwinKernel {
                     }
                 } else {
                     guard requested & Self.pageMask == 0 else { return kr(KernReturn.invalidArgument) }
-                    if a[4] & Self.vmFlagsOverwrite == 0, overlapsMapping(requested, size, mem) {
-                        return kr(KernReturn.noSpace)
+                    let placed: UInt64? = try mem.atomically {
+                        if a[4] & Self.vmFlagsOverwrite == 0, overlapsMapping(requested, size, mem) { return nil }
+                        return try mem.mapAnonymous(at: requested, size: size, protection: prot, hint: nil)
                     }
-                    va = try mem.mapAnonymous(at: requested, size: size, protection: prot, hint: nil)
+                    guard let placed else { return kr(KernReturn.noSpace) }
+                    va = placed
                 }
             } catch {
                 return kr(KernReturn.noSpace)
@@ -1291,19 +1534,19 @@ public final class DarwinKernel {
             return kr(KernReturn.success, " [addr=\(hx(va))]")
 
         case Mach.generateActivityID:
-            call = "mach_generate_activity_id(target=\(hx(port(0))), count=\(port(1)), id=\(hx(a[2])))"
+            call.set("mach_generate_activity_id(target=\(hx(port(0))), count=\(port(1)), id=\(hx(a[2])))")
             nextActivityID &+= UInt64(max(port(1), 1))
             guard (try? writeU64(a[2], nextActivityID, mem)) != nil else { return kr(KernReturn.invalidAddress) }
             return kr(KernReturn.success, " [\(hx(nextActivityID))]")
 
         case Mach.pidForTask:
-            call = "pid_for_task(task=\(hx(port(0))), pid=\(hx(a[1])))"
+            call.set("pid_for_task(task=\(hx(port(0))), pid=\(hx(a[1])))")
             guard port(0) == WellKnownPort.task else { return kr(KernReturn.failure) }
             guard (try? writeU32(a[1], UInt32(bitPattern: pid), mem)) != nil else { return kr(KernReturn.invalidAddress) }
             return kr(KernReturn.success)
 
         case Mach.waitUntil:
-            call = "mach_wait_until(deadline=\(hx(a[0])))"
+            call.set("mach_wait_until(deadline=\(hx(a[0])))")
             let result = WaitQueue().wait(on: lock, deadline: hostDeadline(machTicks: a[0]))
             return kr(result == .interrupted ? KernReturn.aborted : KernReturn.success)
 
@@ -1314,7 +1557,7 @@ public final class DarwinKernel {
             let entry = TrapNames.mach(n)
             frame.x[0] = entry.name == "kern_invalid" || !isPortReturning(n) ? KernReturn.failure : 0
             trace("\(prefix) \(call) -> unimplemented")
-            return .unimplemented(description: "unimplemented mach \(n) \(call)\n" + frame.description)
+            return .unimplemented(description: "unimplemented mach \(n) " + (call.enabled ? call.description : entry.name))
         }
     }
 
@@ -1328,8 +1571,9 @@ public final class DarwinKernel {
 
     private func handlePrivate(_ number: UInt32, _ frame: inout TrapFrame, _ mem: any KernelGuestMemory) -> Outcome {
         let a = Array(frame.x[0..<8])
-        let prefix = "trap yc \(hx(number & 0xFFFF))"
-        var call = "private \(hx(number))"
+        let wantText = traceTextWanted(tracing)
+        let prefix = wantText ? "trap yc \(hx(number & 0xFFFF))" : ""
+        var call = CallText(tracing, "private \(hx(number))")
         // BSD-style result.
         func ok(_ v: UInt64, _ extra: String = "") -> Outcome {
             frame.x[0] = v
@@ -1356,7 +1600,7 @@ public final class DarwinKernel {
 
         switch number {
         case Private.vlog:
-            call = "vlog(fmt=\(hx(a[0])), va_list=\(hx(a[1])))"
+            call.set("vlog(fmt=\(hx(a[0])), va_list=\(hx(a[1])))")
             do {
                 let fmt = try readString(a[0], length: 4096, mem)
                 let text = vlogFormat(fmt, vaList: a[1], mem)
@@ -1369,10 +1613,10 @@ public final class DarwinKernel {
             }
 
         case Private.realpath:
-            call = "realpath(path=\(hx(a[0])), out=\(hx(a[1])))"
+            call.set("realpath(path=\(hx(a[0])), out=\(hx(a[1])))")
             do {
                 let path = try readPath(a[0], mem)
-                call = "realpath(\"\(path)\", out=\(hx(a[1])))"
+                call.set("realpath(\"\(path)\", out=\(hx(a[1])))")
                 let resolved = try fileSystem.realpath(path)
                 let bytes = cString(resolved)
                 guard bytes.count <= DarwinFileSystem.maxPathLength else { throw Failure(errno: Errno.ENAMETOOLONG) }
@@ -1383,7 +1627,7 @@ public final class DarwinKernel {
             }
 
         case Private.getcwd:
-            call = "getcwd(buf=\(hx(a[0])), size=\(a[1]))"
+            call.set("getcwd(buf=\(hx(a[0])), size=\(a[1]))")
             do {
                 guard a[1] > 0 else { throw Failure(errno: Errno.EINVAL) }
                 let bytes = cString(fileSystem.cwd)
@@ -1395,7 +1639,7 @@ public final class DarwinKernel {
             }
 
         case Private.vmCopy:
-            call = "vm_copy(target=\(hx(a[0])), src=\(hx(a[1])), size=\(hx(a[2])), dst=\(hx(a[3])))"
+            call.set("vm_copy(target=\(hx(a[0])), src=\(hx(a[1])), size=\(hx(a[2])), dst=\(hx(a[3])))")
             guard a[2] <= UInt64(Int32.max) else { return kr(KernReturn.invalidArgument) }
             do {
                 let bytes = try mem.read(va: a[1], count: Int(a[2]))
@@ -1406,8 +1650,8 @@ public final class DarwinKernel {
             return kr(KernReturn.success)
 
         case Private.procRegionFilename:
-            call = "proc_regionfilename(pid=\(Int32(truncatingIfNeeded: a[0])), addr=\(hx(a[1])), buf=\(hx(a[2])), "
-                + "size=\(UInt32(truncatingIfNeeded: a[3])))"
+            call.set("proc_regionfilename(pid=\(Int32(truncatingIfNeeded: a[0])), addr=\(hx(a[1])), buf=\(hx(a[2])), "
+                + "size=\(UInt32(truncatingIfNeeded: a[3])))")
             guard let region = mem.region(containing: a[1]), case let .file(path, _, _) = region.backing else {
                 return ok(0, " [no file]")
             }
@@ -1416,7 +1660,7 @@ public final class DarwinKernel {
             return ok(UInt64(bytes.count), " [\(path)]")
 
         case Private.taskInfo:
-            call = "task_info(task=\(hx(a[0])), flavor=\(a[1] & 0xFFFF_FFFF), info=\(hx(a[2])), count=\(hx(a[3])))"
+            call.set("task_info(task=\(hx(a[0])), flavor=\(a[1] & 0xFFFF_FFFF), info=\(hx(a[2])), count=\(hx(a[3])))")
             if a[1] & 0xFFFF_FFFF == Self.taskAuditToken {
                 // TASK_AUDIT_TOKEN (15, 8 words; osfmk/mach/task_info.h): the
                 // task's token, as its messages carry it. task_info takes a
@@ -1429,7 +1673,7 @@ public final class DarwinKernel {
                     target = self
                 } else {
                     guard let ipc = machIPC as? MachIPC,
-                          let (port, object) = ipc.kernelObject(named: UInt32(truncatingIfNeeded: a[0])) else {
+                          let (port, object) = withPorts({ ipc.kernelObject(named: UInt32(truncatingIfNeeded: a[0])) }) else {
                         return kr(KernReturn.invalidArgument, " [not a task port]")
                     }
                     switch object {
@@ -1469,18 +1713,18 @@ public final class DarwinKernel {
             return kr(KernReturn.success, " [TASK_DYLD_INFO \(hx(allImageInfosAddress))]")
 
         case Private.threadInfo:
-            call = "thread_info(thread=\(hx(a[0])), flavor=\(a[1] & 0xFFFF_FFFF), info=\(hx(a[2])), count=\(hx(a[3])))"
+            call.set("thread_info(thread=\(hx(a[0])), flavor=\(a[1] & 0xFFFF_FFFF), info=\(hx(a[2])), count=\(hx(a[3])))")
             return kr(KernReturn.invalidArgument, " [flavor not supported]")
 
         case Private.machMsgDestroy:
-            call = "mach_msg_destroy(header=\(hx(a[0])))"
+            call.set("mach_msg_destroy(header=\(hx(a[0])))")
             return ok(0)
 
         case Private.sysctlbyname:
-            call = "sysctlbyname(name=\(hx(a[0])), old=\(hx(a[1])), oldlenp=\(hx(a[2])), new=\(hx(a[3])), newlen=\(hx(a[4])))"
+            call.set("sysctlbyname(name=\(hx(a[0])), old=\(hx(a[1])), oldlenp=\(hx(a[2])), new=\(hx(a[3])), newlen=\(hx(a[4])))")
             do {
                 let name = try readString(a[0], length: 1024, mem)
-                call = "sysctlbyname(\"\(name)\", old=\(hx(a[1])), oldlenp=\(hx(a[2])), new=\(hx(a[3])), newlen=\(hx(a[4])))"
+                call.set("sysctlbyname(\"\(name)\", old=\(hx(a[1])), oldlenp=\(hx(a[2])), new=\(hx(a[3])), newlen=\(hx(a[4])))")
                 return ok(try sysctlRead(sysctl.lookup(name: name), name: name,
                                          old: a[1], oldlenp: a[2], new: a[3], newlen: a[4], mem))
             } catch {
@@ -1489,10 +1733,11 @@ public final class DarwinKernel {
 
         case Private.notifyImageListChanges:
             let count = Int(UInt32(truncatingIfNeeded: a[1]))
-            call = "notifyMonitorOfImageListChanges(unloading=\(a[0] & 0xFF), count=\(count), "
-                + "addrs=\(hx(a[2])), paths=\(hx(a[3])))"
+            call.set("notifyMonitorOfImageListChanges(unloading=\(a[0] & 0xFF), count=\(count), "
+                + "addrs=\(hx(a[2])), paths=\(hx(a[3])))")
             var images: [String] = []
-            for i in 0..<min(count, 256) {
+            // Only the description reads these: skip the guest reads untraced.
+            for i in 0..<min(count, 256) where traceTextWanted(tracing) {
                 let base = (try? readU64(a[2] + UInt64(8 * i), mem)) ?? 0
                 let pathPointer = (try? readU64(a[3] + UInt64(8 * i), mem)) ?? 0
                 let path = pathPointer == 0 ? "?" : ((try? readString(pathPointer, length: 1024, mem)) ?? "?")
@@ -1502,11 +1747,11 @@ public final class DarwinKernel {
             return ok(0)
 
         case Private.notifyMainCalled:
-            call = "notifyMonitorOfMainCalled()"
+            call.set("notifyMonitorOfMainCalled()")
             return ok(0)
 
         case Private.notifyBeforeInitializers:
-            call = "notifyMonitorOfDyldBeforeInitializers()"
+            call.set("notifyMonitorOfDyldBeforeInitializers()")
             return ok(0)
 
         case Private.unimplementedLibraryFunction:
@@ -1519,7 +1764,7 @@ public final class DarwinKernel {
             frame.x[1] = 0
             frame.carry = true
             trace("\(prefix) \(call) -> unimplemented")
-            return .unimplemented(description: "unimplemented private \(hx(number))\n" + frame.description)
+            return .unimplemented(description: "unimplemented private \(hx(number))")
         }
     }
 

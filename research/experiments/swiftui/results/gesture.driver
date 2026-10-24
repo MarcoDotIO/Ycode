@@ -1,0 +1,6 @@
+SUPDRIVER 19:59:11 tap g.tap
+SUPDRIVER 19:59:14 double tap g.double
+SUPDRIVER 19:59:16 long press g.long
+SUPDRIVER 19:59:20 drag g.drag
+SUPDRIVER 19:59:22 tap g.button
+SUPDRIVER 19:59:25 drag g.simul

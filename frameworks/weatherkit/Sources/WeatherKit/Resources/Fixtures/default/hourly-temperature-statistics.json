@@ -1,0 +1,1691 @@
+{
+ "baselineStartDate": "1991-01-01T00:00:00Z",
+ "hours": [
+  {
+   "hour": 313,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.9
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.9
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.1
+    }
+   }
+  },
+  {
+   "hour": 314,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.8
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.8
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.2
+    }
+   }
+  },
+  {
+   "hour": 315,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.7
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.7
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.3
+    }
+   }
+  },
+  {
+   "hour": 316,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.6
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.6
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.4
+    }
+   }
+  },
+  {
+   "hour": 317,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.5
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.5
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.5
+    }
+   }
+  },
+  {
+   "hour": 318,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.4
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.4
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.6
+    }
+   }
+  },
+  {
+   "hour": 319,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.3
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.3
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.7
+    }
+   }
+  },
+  {
+   "hour": 320,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.2
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.2
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.8
+    }
+   }
+  },
+  {
+   "hour": 321,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.1
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.1
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.9
+    }
+   }
+  },
+  {
+   "hour": 322,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.0
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.0
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.0
+    }
+   }
+  },
+  {
+   "hour": 323,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.9
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.9
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.1
+    }
+   }
+  },
+  {
+   "hour": 324,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.8
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.8
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.2
+    }
+   }
+  },
+  {
+   "hour": 325,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.7
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.7
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.3
+    }
+   }
+  },
+  {
+   "hour": 326,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.6
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.6
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.4
+    }
+   }
+  },
+  {
+   "hour": 327,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.5
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.5
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.5
+    }
+   }
+  },
+  {
+   "hour": 328,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.4
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.4
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.6
+    }
+   }
+  },
+  {
+   "hour": 329,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.3
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.3
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.7
+    }
+   }
+  },
+  {
+   "hour": 330,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.2
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.2
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.8
+    }
+   }
+  },
+  {
+   "hour": 331,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.1
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.1
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.9
+    }
+   }
+  },
+  {
+   "hour": 332,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.0
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.0
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 5.0
+    }
+   }
+  },
+  {
+   "hour": 333,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -6.9
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -0.9
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 5.1
+    }
+   }
+  },
+  {
+   "hour": 334,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -6.8
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -0.8
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 5.2
+    }
+   }
+  },
+  {
+   "hour": 335,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -6.7
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -0.7
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 5.3
+    }
+   }
+  },
+  {
+   "hour": 336,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -9.0
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -3.0
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.0
+    }
+   }
+  },
+  {
+   "hour": 337,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.9
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.9
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.1
+    }
+   }
+  },
+  {
+   "hour": 338,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.8
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.8
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.2
+    }
+   }
+  },
+  {
+   "hour": 339,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.7
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.7
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.3
+    }
+   }
+  },
+  {
+   "hour": 340,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.6
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.6
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.4
+    }
+   }
+  },
+  {
+   "hour": 341,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.5
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.5
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.5
+    }
+   }
+  },
+  {
+   "hour": 342,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.4
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.4
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.6
+    }
+   }
+  },
+  {
+   "hour": 343,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.3
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.3
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.7
+    }
+   }
+  },
+  {
+   "hour": 344,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.2
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.2
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.8
+    }
+   }
+  },
+  {
+   "hour": 345,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.1
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.1
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.9
+    }
+   }
+  },
+  {
+   "hour": 346,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -8.0
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -2.0
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.0
+    }
+   }
+  },
+  {
+   "hour": 347,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.9
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.9
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.1
+    }
+   }
+  },
+  {
+   "hour": 348,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.8
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.8
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.2
+    }
+   }
+  },
+  {
+   "hour": 349,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.7
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.7
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.3
+    }
+   }
+  },
+  {
+   "hour": 350,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.6
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.6
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.4
+    }
+   }
+  },
+  {
+   "hour": 351,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.5
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.5
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.5
+    }
+   }
+  },
+  {
+   "hour": 352,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.4
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.4
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.6
+    }
+   }
+  },
+  {
+   "hour": 353,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.3
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.3
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.7
+    }
+   }
+  },
+  {
+   "hour": 354,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.2
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.2
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.8
+    }
+   }
+  },
+  {
+   "hour": 355,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.1
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.1
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 4.9
+    }
+   }
+  },
+  {
+   "hour": 356,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -7.0
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -1.0
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 5.0
+    }
+   }
+  },
+  {
+   "hour": 357,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -6.9
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -0.9
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 5.1
+    }
+   }
+  },
+  {
+   "hour": 358,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -6.8
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -0.8
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 5.2
+    }
+   }
+  },
+  {
+   "hour": 359,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -6.7
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -0.7
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 5.3
+    }
+   }
+  },
+  {
+   "hour": 360,
+   "percentiles": {
+    "p10": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -9.0
+    },
+    "p50": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": -3.0
+    },
+    "p90": {
+     "unit": {
+      "converter": {
+       "coefficient": 1,
+       "constant": 273.15
+      },
+      "symbol": "°C"
+     },
+     "value": 3.0
+    }
+   }
+  }
+ ],
+ "metadata": {
+  "date": "2026-01-15T12:00:00Z",
+  "expirationDate": "2026-01-16T12:00:00Z",
+  "latitude": 41.5,
+  "longitude": -81.5
+ }
+}

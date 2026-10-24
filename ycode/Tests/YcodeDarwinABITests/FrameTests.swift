@@ -181,3 +181,27 @@ private func u64(_ b: [UInt8], _ o: Int) -> UInt64 {
         for c in ExceptionClass.allCases { #expect(ExceptionSyndrome(ec: c.rawValue).exceptionClass == c) }
     }
 }
+
+/// The in-place trap frame decode and encode (frame-profile.md §8): the
+/// same values and bytes as the byte-array path.
+@Suite struct TrapFramePointerTests {
+    @Test func inPlaceMatchesTheByteArrays() throws {
+        var bytes = [UInt8](repeating: 0, count: TrapFrame.byteCount)
+        for i in bytes.indices { bytes[i] = UInt8(truncatingIfNeeded: i &* 37 &+ 11) }
+        let viaArray = try TrapFrame(decoding: bytes)
+        let viaPointer = bytes.withUnsafeBytes { TrapFrame(decodingFrameAt: $0.baseAddress!) }
+        #expect(viaArray == viaPointer)
+        var f = viaPointer
+        f.x[0] = 0xDEAD_BEEF
+        f.carry = true
+        f.flushTLB = true
+        var out = [UInt8](repeating: 0xFF, count: TrapFrame.byteCount)
+        out.withUnsafeMutableBytes { f.encode(into: $0.baseAddress!) }
+        #expect(out == f.encoded())
+        // A short x array encodes its missing registers as 0.
+        var short = f
+        short.x = [1, 2, 3]
+        out.withUnsafeMutableBytes { short.encode(into: $0.baseAddress!) }
+        #expect(out == short.encoded())
+    }
+}

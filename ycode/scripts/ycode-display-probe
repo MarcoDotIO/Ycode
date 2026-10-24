@@ -1,0 +1,407 @@
+#!/usr/bin/env python3
+# ycode-display-probe: a headless display-stream client for measuring frame
+# rate and input latency (specs/simulator/display-stream.md §10). Runs next
+# to ycode-simd (no ssh hop) or through a forward, with only the Python
+# standard library. Run it with `python3 -I`.
+#
+# usage: ycode-display-probe --connect unix:<socket>|<host>:<port> [options] <command>...
+#   --fps N --encoding jpeg|zlib --quality Q --downscale D   the client hello
+#   --timing <file>   the guest's swap timing log (YCODE_FRAMEBUFFER_TIMING=1:
+#                     DEV/data/tmp/ycode-framebuffer.timing); summarized per phase
+#   --json <file>     write every frame and input event as JSON lines
+#   --trace <dir>     the device's DEV/data/tmp with YCODE_DISPLAY_TIMING=1: input -> photon
+#                     stage by stage (server trace + swap log + HID event log), run on the host
+# commands (run in order):
+#   live                 wait until a frame arrives
+#   wait <s>             idle for s seconds (frames are still counted)
+#   swipe <x0> <y0> <x1> <y1> <ms> [hz]   one-finger drag in device points, moves at hz (default 120)
+#   swipes <n> <x0> <y0> <x1> <y1> <ms> <gap ms>   n swipes there and back
+#   tap <x> <y>          touch down, up 80 ms later
+#   key <usage>          page-7 key down/up
+#   button home|lock     down, up 100 ms later
+#   mark <name>          starts a new phase (statistics are per phase)
+#   shot <path.png>      asks the server for a screenshot (full resolution) and writes it
+# Prints per phase: frames received, received fps, guest frames (counter
+# delta) and guest fps, input → first frame latencies, and, with --timing,
+# the guest's swap cadence (submit intervals, target-time steps).
+import json
+import os
+import socket
+import struct
+import sys
+import threading
+import time
+
+
+def now():
+    return time.monotonic()
+
+
+class Probe:
+    def __init__(self, address, hello, json_path=None):
+        if address.startswith("unix:"):
+            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.sock.connect(address[5:])
+        else:
+            host, port = address.rsplit(":", 1)
+            self.sock = socket.create_connection((host, int(port)))
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.lock = threading.Lock()
+        self.cond = threading.Condition(self.lock)
+        self.frames = []          # (t, seq, guestFrame, inputSeq, bytes, tiles, full)
+        self.inputs = {}          # seq -> (t, label)
+        self.seq = 0
+        self.closed = False
+        self.phase = "start"
+        self.phases = [("start", now())]
+        self.shots = {}
+        self.shot_token = 0
+        self.json = open(json_path, "w") if json_path else None
+        self.send(0x81, json.dumps(hello).encode())
+        threading.Thread(target=self.reader, daemon=True).start()
+
+    def send(self, kind, payload):
+        data = struct.pack("<IB", len(payload) + 1, kind) + payload
+        with self.lock:
+            self.sock.sendall(data)
+
+    def reader(self):
+        buf = b""
+        while True:
+            try:
+                chunk = self.sock.recv(1 << 20)
+            except OSError:
+                chunk = b""
+            if not chunk:
+                with self.cond:
+                    self.closed = True
+                    self.cond.notify_all()
+                return
+            buf += chunk
+            while len(buf) >= 5:
+                n = struct.unpack_from("<I", buf)[0]
+                if len(buf) < 4 + n:
+                    break
+                kind = buf[4]
+                payload = buf[5:4 + n]
+                buf = buf[4 + n:]
+                t = now()
+                if kind == 0x03:
+                    seq, gframe, _srv, iseq, _w, _h, _enc, flags, tiles = struct.unpack_from("<QQQIHHBBH", payload)
+                    with self.cond:
+                        self.frames.append((t, seq, gframe, iseq, len(payload), tiles, flags & 1, self.phase))
+                        self.cond.notify_all()
+                    if self.json:
+                        self.json.write(json.dumps({"t": t, "frame": seq, "guest": gframe, "input": iseq, "bytes": len(payload), "tiles": tiles}) + "\n")
+                elif kind == 0x05 and len(payload) >= 4:
+                    with self.cond:
+                        self.shots[struct.unpack_from("<I", payload)[0]] = payload[4:]
+                        self.cond.notify_all()
+                elif kind == 0x06:
+                    print("notice:", payload.decode(errors="replace"), flush=True)
+
+    def input(self, kind, body, label=None):
+        with self.lock:
+            self.seq += 1
+            s = self.seq
+            self.inputs[s] = (now(), label, self.phase)
+        self.send(kind, struct.pack("<I", s) + body)
+        if self.json:
+            self.json.write(json.dumps({"t": now(), "input": s, "label": label}) + "\n")
+        return s
+
+    def touch(self, phase, x, y, label=None):
+        return self.input(0x82, struct.pack("<BBBHff", 1, 0, phase, 0, x, y), label)
+
+    def mark(self, name):
+        with self.lock:
+            self.phase = name
+            self.phases.append((name, now()))
+
+    def screenshot(self, path, timeout=20):
+        self.shot_token += 1
+        token = self.shot_token
+        self.send(0x87, struct.pack("<I", token))
+        end = now() + timeout
+        with self.cond:
+            while token not in self.shots and not self.closed and now() < end:
+                self.cond.wait(0.5)
+            png = self.shots.pop(token, None)
+        if png:
+            with open(path, "wb") as f:
+                f.write(png)
+        print(f"shot {path}: {len(png) if png else 0} bytes", flush=True)
+
+    def wait_live(self, timeout=600):
+        end = now() + timeout
+        with self.cond:
+            while not self.frames and not self.closed and now() < end:
+                self.cond.wait(0.5)
+        if not self.frames:
+            sys.exit("no frame arrived")
+
+    def swipe(self, x0, y0, x1, y1, ms, hz=120.0):
+        steps = max(1, int(ms / 1000.0 * hz))
+        self.touch(0, x0, y0, "swipe")
+        t0 = now()
+        for i in range(1, steps + 1):
+            target = t0 + i / hz
+            d = target - now()
+            if d > 0:
+                time.sleep(d)
+            f = i / steps
+            self.touch(1, x0 + (x1 - x0) * f, y0 + (y1 - y0) * f)
+        self.touch(2, x1, y1)
+
+    def report(self, timing=None):
+        ends = self.phases[1:] + [("end", now())]
+        for (name, t0), (_, t1) in zip(self.phases, ends):
+            fr = [f for f in self.frames if t0 <= f[0] < t1]
+            dur = max(t1 - t0, 1e-6)
+            line = f"phase {name}: {dur:.1f} s, {len(fr)} frames received ({len(fr) / dur:.1f} fps)"
+            if len(fr) >= 2:
+                g = fr[-1][2] - fr[0][2]
+                span = fr[-1][0] - fr[0][0]
+                line += f", guest frames {g} ({g / max(span, 1e-6):.1f} fps between the first and last frame)"
+                kb = sum(f[4] for f in fr) / 1024
+                line += f", {kb / dur:.0f} KB/s"
+            print(line)
+            # input -> first frame whose input sequence covers it (labelled inputs only)
+            lats = []
+            for s, (ti, label, ph) in sorted(self.inputs.items()):
+                if ph != name or not label:
+                    continue
+                first = next((f for f in self.frames if f[3] >= s and f[0] >= ti), None)
+                if first:
+                    lats.append((first[0] - ti) * 1000)
+            if lats:
+                lats.sort()
+                print(f"  input -> first frame ({len(lats)}): p50 {lats[len(lats) // 2]:.0f} ms, min {lats[0]:.0f}, max {lats[-1]:.0f}")
+            # received frame intervals
+            if len(fr) >= 3:
+                iv = sorted((b[0] - a[0]) * 1000 for a, b in zip(fr, fr[1:]))
+                print(f"  received intervals: p10 {iv[len(iv) // 10]:.1f} p50 {iv[len(iv) // 2]:.1f} p90 {iv[len(iv) * 9 // 10]:.1f} ms")
+        if timing:
+            summarize_timing(timing)
+
+
+def summarize_timing(path, freq=24e6):
+    try:
+        data = open(path, "rb").read()
+    except OSError as e:
+        print("timing:", e)
+        return
+    entries = []
+    for off in range(0, len(data) - 47, 48):
+        frame, target, begun, submitted, completed, surface = struct.unpack_from("<QQQQQQ", data, off)
+        if frame:
+            entries.append((frame, target, begun, submitted, completed, surface & 0xFFFFFFFF))
+    entries.sort()
+    if len(entries) < 3:
+        print(f"timing: {len(entries)} entries")
+        return
+    ms = lambda ticks: ticks / freq * 1000.0
+    # Only consecutive frames, in bursts (gaps of more than 200 ms split them).
+    bursts, cur = [], [entries[0]]
+    for e in entries[1:]:
+        if e[0] == cur[-1][0] + 1 and ms(e[3] - cur[-1][3]) < 200:
+            cur.append(e)
+        else:
+            bursts.append(cur)
+            cur = [e]
+    bursts.append(cur)
+    bursts = [b for b in bursts if len(b) >= 5]
+    print(f"timing: {len(entries)} swaps, {len(bursts)} bursts of 5 or more consecutive frames")
+    allsub, alltgt, lead, build, comp = [], [], [], [], []
+    for b in bursts:
+        for a, c in zip(b, b[1:]):
+            allsub.append(ms(c[3] - a[3]))
+            alltgt.append(ms(c[1] - a[1]) if c[1] and a[1] else None)
+        for e in b:
+            if e[1]:
+                lead.append(ms(e[1] - e[3]) if e[1] >= e[3] else -ms(e[3] - e[1]))
+            build.append(ms(e[3] - e[2]))
+            if e[4]:
+                comp.append(ms(e[4] - e[3]))
+
+    def q(v):
+        v = sorted(x for x in v if x is not None)
+        if not v:
+            return "n/a"
+        return f"p10 {v[len(v) // 10]:.2f} p50 {v[len(v) // 2]:.2f} p90 {v[len(v) * 9 // 10]:.2f} max {v[-1]:.2f} (n {len(v)})"
+    print("  submit interval ms:   ", q(allsub))
+    print("  target step ms:       ", q(alltgt))
+    print("  target - submit ms:   ", q(lead))
+    print("  begin -> submit ms:   ", q(build))
+    print("  submit -> completion: ", q(comp))
+    for b in sorted(bursts, key=len, reverse=True)[:3]:
+        dur = ms(b[-1][3] - b[0][3])
+        print(f"  burst frames {b[0][0]}-{b[-1][0]}: {len(b)} swaps in {dur:.0f} ms = {len(b) / max(dur / 1000, 1e-6):.1f} fps")
+
+
+def load_ring(path, size, fmt):
+    try:
+        data = open(path, "rb").read()
+    except OSError:
+        return []
+    out = [struct.unpack_from(fmt, data, o) for o in range(0, len(data) - size + 1, size)]
+    return sorted(e for e in out if e[0])
+
+
+def breakdown(probe, trace_path, fb_path, hid_path, freq=24e6):
+    """Input -> photon, stage by stage, for the labelled inputs (display-stream.md §10)."""
+    syncs, inputs, records, frames = [], {}, [], []
+    try:
+        lines = open(trace_path).read().split("\n")
+    except OSError as e:
+        print("trace:", e)
+        return
+    for l in lines:
+        w = l.split()
+        if not w:
+            continue
+        if w[0] == "sync":
+            syncs.append((int(w[1]), int(w[2])))
+        elif w[0] == "input":
+            inputs[int(w[1])] = (w[2], int(w[3]), int(w[4]), int(w[5]))
+        elif w[0] == "record":
+            records.append((int(w[1]), int(w[2]), w[3] if len(w) > 3 else ""))
+        elif w[0] == "frame":
+            # frame seq guest scan0 encoded sent bytes tiles inputseq [ab banded|single watch|poll]
+            frames.append((int(w[1]), int(w[2]), int(w[3]), int(w[4]), int(w[5]), int(w[6]), w[11] if len(w) > 11 else "", w[10] if len(w) > 10 else ""))
+    if not syncs:
+        print("trace: no clock sync lines")
+        return
+    # guest ticks -> host ns: the median offset of the sync pairs
+    offs = sorted(h - g / freq * 1e9 for h, g in syncs)
+    off = offs[len(offs) // 2]
+    g2h = lambda g: g / freq * 1e9 + off
+    fb = load_ring(fb_path, 48, "<QQQQQQ")          # frame, target, begin, submit, complete, surface
+    hid = {e[0]: e for e in load_ring(hid_path, 32, "<QQQQ")}  # seq, received, dispatched, kind
+    rec_seen = {}
+    for fr, t, arm in records:
+        rec_seen.setdefault(fr, (t, arm))
+    # record-seen latency (host seen - guest submit), by watcher arm
+    lat = {}
+    for e in fb:
+        if e[0] in rec_seen:
+            t, arm = rec_seen[e[0]]
+            lat.setdefault(arm or "all", []).append((t - g2h(e[3])) / 1e6)
+    for arm, v in sorted(lat.items()):
+        v.sort()
+        print(f"  submit -> server sees the record ({arm}): p10 {v[len(v) // 10]:.2f} p50 {v[len(v) // 2]:.2f} p90 {v[len(v) * 9 // 10]:.2f} ms (n {len(v)})")
+    enc = {}
+    for f in frames:
+        enc.setdefault(f[7] or "all", []).append((f[3] - f[2]) / 1e6)
+    for arm, v in sorted(enc.items()):
+        v.sort()
+        print(f"  scan + encode ({arm}): p50 {v[len(v) // 2]:.2f} p90 {v[len(v) * 9 // 10]:.2f} max {v[-1]:.2f} ms (n {len(v)})")
+    snd = sorted((f[4] - f[3]) / 1e6 for f in frames)
+    if snd:
+        print(f"  send (socket write): p50 {snd[len(snd) // 2]:.2f} p90 {snd[len(snd) * 9 // 10]:.2f} ms")
+    # per labelled input
+    print("  input -> photon (ms): recv->HID | HID->guest rx | rx->dispatched | ->next SwapBegin | build | submit->seen | seen->sent | sent->probe | total")
+    rows = []
+    for s_, (ti, label, ph) in sorted(probe.inputs.items()):
+        if not label or s_ not in inputs:
+            continue
+        kind, recv, handed, hseq = inputs[s_]
+        h = hid.get(hseq)
+        if not h:
+            continue
+        rx, disp = g2h(h[1]), g2h(h[2])
+        sw = next((e for e in fb if g2h(e[2]) >= disp), None)
+        if not sw:
+            continue
+        seen = rec_seen.get(sw[0], (None,))[0]
+        fr = next((f for f in frames if f[1] >= sw[0]), None)
+        pr = next((f for f in probe.frames if fr and f[1] == fr[0]), None)
+        if not (seen and fr and pr):
+            continue
+        t_probe = pr[0] * 1e9  # monotonic seconds -> ns (same clock on the host)
+        st = [(handed - recv), (rx - handed), (disp - rx), (g2h(sw[2]) - disp), (g2h(sw[3]) - g2h(sw[2])), (seen - g2h(sw[3])), (fr[4] - seen), (t_probe - fr[4]), (t_probe - recv)]
+        rows.append((label, kind, [x / 1e6 for x in st]))
+    for label, kind, st in rows:
+        print(f"    {label:6s} {kind:13s} " + " | ".join(f"{x:7.2f}" for x in st))
+    if rows:
+        med = [sorted(r[2][i] for r in rows)[len(rows) // 2] for i in range(9)]
+        print("    median               " + " | ".join(f"{x:7.2f}" for x in med))
+
+
+def main(argv):
+    hello = {"protocol": "ycode-display/1", "client": "ycode-display-probe", "maxFPS": 60, "encoding": "jpeg", "quality": 75, "downscale": 1}
+    address = timing = jpath = tracedir = None
+    args = list(argv)
+    while args and args[0].startswith("--"):
+        o = args.pop(0)
+        if o == "--connect":
+            address = args.pop(0)
+        elif o == "--fps":
+            hello["maxFPS"] = int(args.pop(0))
+        elif o == "--encoding":
+            hello["encoding"] = args.pop(0)
+        elif o == "--quality":
+            hello["quality"] = int(args.pop(0))
+        elif o == "--downscale":
+            hello["downscale"] = int(args.pop(0))
+        elif o == "--timing":
+            timing = args.pop(0)
+        elif o == "--trace":
+            tracedir = args.pop(0)
+        elif o == "--json":
+            jpath = args.pop(0)
+        else:
+            sys.exit("unknown option " + o)
+    if not address:
+        sys.exit("usage: ycode-display-probe --connect unix:<socket>|<host>:<port> [options] <command>...")
+    p = Probe(address, hello, jpath)
+    while args:
+        c = args.pop(0)
+        if c == "live":
+            p.wait_live()
+        elif c == "wait":
+            time.sleep(float(args.pop(0)))
+        elif c == "mark":
+            p.mark(args.pop(0))
+        elif c == "shot":
+            p.screenshot(args.pop(0))
+        elif c == "swipe":
+            x0, y0, x1, y1, ms_ = (float(args.pop(0)) for _ in range(5))
+            hz = 120.0
+            if args and args[0].replace(".", "").isdigit():
+                hz = float(args.pop(0))
+            p.swipe(x0, y0, x1, y1, ms_, hz)
+        elif c == "swipes":
+            n = int(args.pop(0))
+            x0, y0, x1, y1, ms_, gap = (float(args.pop(0)) for _ in range(6))
+            for i in range(n):
+                a, b = ((x0, y0), (x1, y1)) if i % 2 == 0 else ((x1, y1), (x0, y0))
+                p.swipe(a[0], a[1], b[0], b[1], ms_)
+                time.sleep(gap / 1000)
+        elif c == "tap":
+            x, y = float(args.pop(0)), float(args.pop(0))
+            p.touch(0, x, y, "tap")
+            time.sleep(0.08)
+            p.touch(2, x, y)
+        elif c == "key":
+            u = int(args.pop(0), 0)
+            p.input(0x83, struct.pack("<BBHH", 1, 0, 7, u), "key")
+            time.sleep(0.05)
+            p.input(0x83, struct.pack("<BBHH", 0, 0, 7, u))
+        elif c == "button":
+            b = {"home": 1, "lock": 2}[args.pop(0)]
+            p.input(0x84, struct.pack("<BB", b, 1), "button")
+            time.sleep(0.1)
+            p.input(0x84, struct.pack("<BB", b, 0))
+        else:
+            sys.exit("unknown command " + c)
+    p.report(timing)
+    if tracedir:
+        time.sleep(0.5)
+        breakdown(p, tracedir + "/ycode-display.trace", tracedir + "/ycode-framebuffer.timing", tracedir + "/ycode-simhid.timing")
+    if p.json:
+        p.json.close()
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

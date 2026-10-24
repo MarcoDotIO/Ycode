@@ -1,0 +1,28 @@
+SUP t=-0.000 app.init=sinceExec=0.290
+SUP mode=persist
+SUP t=0.032 delegate.didFinishLaunching=state=2
+SUP t=0.062 app.body=
+SUP t=0.063 app.scenePhase=background->background
+SUP t=0.089 note.scene.willConnect=appState=2
+SUP t=0.090 app.body=
+SUP t=0.090 app.scenePhase=background->inactive
+SUP t=0.090 note.scene.willEnterForeground=appState=2
+SUP t=0.090 app.body=
+SUP t=0.090 app.scenePhase=inactive->active
+SUP t=0.090 note.scene.didActivate=appState=2
+SUP t=0.091 note.app.willEnterForeground=appState=1
+SUP t=0.091 note.app.didBecomeActive=appState=0
+SUP t=0.103 root.body=
+SUP t=0.116 view.scenePhase=active->active
+SUP t=0.116 root.onAppear=sinceExec=0.407
+SUP t=0.116 persist.read=launches=1 scenePick=0 sceneText='' name=external1
+SUP persist.home=Containers/Data/Application/6D6C9B4B-45C3-41BA-96F1-A50DA4CCB02D
+SUP t=0.117 persist.wrote=launches=2 scenePick=20
+SUP persist.userDefaults.launchCount=2
+SUP t=0.140 displaylink.first=sinceExec=0.431 fps=0
+SUP t=1.167 persist.externalWrite=UserDefaults name=external2
+SUP t=1.170 persist.appStorage.name=external1->external2
+SUP displaylink.rate=60.00
+SUP t=2.214 persist.after=name=external2
+SUP t=2.214 done=persist
+dev.ycode.suiprobe: 39707

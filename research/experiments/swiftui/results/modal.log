@@ -1,0 +1,208 @@
+SUP t=-0.000 app.init=sinceExec=0.274
+SUP mode=modal
+SUPX 0.003 notify-register com.apple.swiftuitrace.state
+SUPX 0.004 lookup2 com.apple.system.notification_center kr=0
+SUPX 0.006 lookup2 com.apple.logd kr=0
+SUPX 0.006 notify-register com.apple.system.logging.prefschanged
+SUPX 0.006 notify-register com.apple.system.logging.prefschanged
+SUPX 0.007 notify-register com.apple.CFPreferences._domainsChangedExternally
+SUPX 0.008 xpc-mach com.apple.cfprefsd.daemon
+SUPX 0.008 notify-register com.apple.system.timezone
+SUPX 0.013 notify-register com.apple.swiftuitrace.uikit
+SUPX 0.014 lookup com.apple.backboard.display.services kr=0
+SUPX 0.018 notify-register com.apple.runningboard.daemonstartup
+SUPX 0.018 xpc-mach com.apple.runningboard
+SUPX 0.018 notify-register GSEventHardwareKeyboardAttached
+SUPX 0.018 notify-register GSEventHardwareKeyboardAttached
+SUPX 0.018 notify-register com.apple.iohideventsystem.available
+SUPX 0.020 notify-register com.apple.UIKit.SimulatorShake
+SUPX 0.025 notify-register com.apple.accessibility.cache.ax
+SUPX 0.026 notify-register com.apple.accessibility.cache.invert.colors
+SUPX 0.026 notify-register com.apple.accessibility.cache.app.ax
+SUPX 0.026 notify-register com.apple.accessibility.hearing.paired.ears.status
+SUPX 0.026 notify-register com.apple.dt.testmanagerd.availability.28587
+SUPX 0.026 notify-register com.apple.dt.testmanagerd.availability.28587
+SUPX 0.026 notify-register com.apple.dt.xctestd.availability.28587
+SUPX 0.026 notify-register com.apple.dt.xctestd.availability.28587
+SUPX 0.027 notify-register com.apple.dt.xctest.remote.availability.28587
+SUPX 0.027 notify-register com.apple.dt.xctest.remote.availability.28587
+SUPX 0.027 notify-register SignificantTimeChangeNotification
+SUPX 0.027 notify-register com.apple.language.changed
+SUPX 0.027 notify-register AppleTimePreferencesChangedNotification
+SUPX 0.027 notify-register AppleNumberPreferencesChangedNotification
+SUPX 0.027 notify-register AppleTimePreferencesChangedNotification
+SUPX 0.027 notify-register AppleDatePreferencesChangedNotification
+SUPX 0.027 notify-register AppleLanguagePreferencesChangedNotification
+SUPX 0.027 notify-register AppleTextBehaviorPreferencesChangedNotification
+SUPX 0.027 notify-register AppleTemperatureUnitPreferencesChangedNotification
+SUPX 0.027 notify-register AppleMeasurementSystemPreferencesChangedNotification
+SUPX 0.027 notify-register com.apple.springboard.showingAlertItem
+SUPX 0.027 notify-register NameLayerTree-28587
+SUPX 0.027 notify-register NameLayerTree
+SUPX 0.027 notify-register kKeepAppsUpToDateEnabledChangedNotification
+SUPX 0.028 notify-register AppleKeyboardsPreferencesChangedNotification
+SUPX 0.028 notify-register AppleKeyboardsSettingsChangedNotification
+SUPX 0.028 notify-register AppleKeyboardsInternalSettingsChangedNotification
+SUPX 0.028 notify-register AppleKeyboardsInputModeChangedNotification
+SUPX 0.028 notify-register AppleKeyboardsContinuousPathSettingsChangedNotification
+SUPX 0.028 notify-register com.apple.preferences.sounds.keyboard-audio.changed
+SUPX 0.028 notify-register kAFPreferencesDidChangeDarwinNotification
+SUPX 0.028 notify-register AssistiveTouchMouseAlwaysShowSoftwareKeyboard.notification
+SUPX 0.028 lookup com.apple.CARenderServer kr=0
+SUPX 0.030 notify-register com.apple.CoreAnimation.CAWindowServer.DisplayChanged
+SUPX 0.030 notify-register com.apple.CoreAnimation.CAWindowServer.DisplayPower
+SUPX 0.030 notify-register UIBacklightLevelChangedNotification
+SUPX 0.031 notify-register com.apple.accessibility.cache.enhance.text.legibility
+SUPX 0.031 notify-register com.apple.accessibility.cache.darken.system.colors.enabled
+SUPX 0.031 notify-register ApplePreferredContentSizeCategoryChangedNotification
+SUPX 0.031 notify-register AppleCarPlayPreferredContentSizeCategoryChangedNotification
+SUPX 0.031 notify-register com.apple.springboard.showingAlertItem
+SUP t=0.029 delegate.didFinishLaunching=state=2
+SUPX 0.032 notify-register com.apple.backboardd.orientation
+SUPX 0.034 notify-register com.apple.LaunchServices.database
+SUPX 0.034 xpc-mach com.apple.lsd.mapdb
+SUPX 0.034 notify-register com.apple.UIKit.LoggingPreferences
+SUPX 0.035 notify-register com.apple.LaunchServices.database
+SUPX 0.037 notify-register com.apple.language.changed
+SUPX 0.039 xpc-mach com.apple.fontservicesd
+SUP t=0.049 app.body=
+SUP t=0.050 app.scenePhase=background->background
+SUPX 0.055 notify-register com.apple.accessibility.cache.full.keyboard.access
+SUPX 0.057 notify-register com.apple.gms.availability.notification
+SUPX 0.057 notify-register com.apple.language.changed
+SUPX 0.057 notify-register com.apple.os-eligibility-domain.change.greymatter
+SUPX 0.060 notify-register com.apple.gms.availability.notification
+SUPX 0.060 notify-register com.apple.os-eligibility-domain.change.greymatter
+SUPX 0.060 notify-register com.apple.language.changed
+SUPX 0.062 notify-register com.apple.system.lowpowermode
+SUPX 0.062 notify-register com.apple.LocalAuthentication.ui.presented
+SUPX 0.062 notify-register com.apple.LocalAuthentication.ui.dismissed
+SUPX 0.071 notify-register com.apple.system.timezone
+SUPX 0.072 notify-register com.apple.accessibility.cache.reduce.motion
+SUPX 0.075 notify-register com.apple.accessibility.cache.use.single.system.color.enabled
+SUPX 0.080 notify-register com.apple.backboardd.rawOrientation
+SUPX 0.082 notify-register com.apple.UIIntelligenceSupport.AgentRelaunched.501
+SUPX 0.082 xpc-mach com.apple.uiintelligencesupport.agent
+SUP t=0.077 app.body=
+SUP t=0.078 app.scenePhase=background->inactive
+SUPX 0.086 notify-register com.apple.UIKit.SimulatorSlowMotionAnimationState
+SUPX 0.086 notify-register UIViewGlassTintAmountUpdateNotification
+SUPX 0.089 notify-register com.apple.accessibility.OpaqueTouchGestures
+SUP t=0.091 root.body=
+SUPX 0.123 notify-register com.apple.accessibility.cache.button.shapes.enabled
+SUP t=0.131 view.scenePhase=inactive->inactive
+SUP t=0.131 root.onAppear=sinceExec=0.405
+SUP t=0.132 modal.root.onAppear=
+SUP t=0.132 modal.root.task.start=
+SUPX 0.146 notify-register com.apple.coreservices.useractivity.reconnection
+SUPX 0.149 xpc-mach com.apple.runningboard
+SUP t=0.148 app.body=
+SUP t=0.148 app.scenePhase=inactive->active
+SUPX 0.151 lookup com.apple.backboard.hid.services kr=0
+SUP t=0.150 root.body=
+SUP t=0.151 view.scenePhase=inactive->active
+SUPX 0.155 notify-register UIBacklightLevelChangedNotification
+SUP t=0.155 displaylink.first=sinceExec=0.429 fps=0
+SUPX 0.191 notify-register com.apple.system.networkd.settings
+SUPX 0.192 notify-register com.apple.system.networkd.settings
+SUPX 0.303 notify-register AppleKeyboardsPreferencesChangedNotification
+SUPX 0.303 notify-register AppleKeyboardsSettingsChangedNotification
+SUPX 0.303 notify-register AppleKeyboardsInternalSettingsChangedNotification
+SUPX 0.303 notify-register AppleKeyboardsInputModeChangedNotification
+SUPX 0.303 notify-register AppleKeyboardsContinuousPathSettingsChangedNotification
+SUPX 0.303 notify-register com.apple.preferences.sounds.keyboard-audio.changed
+SUPX 0.303 notify-register kAFPreferencesDidChangeDarwinNotification
+SUPX 0.303 notify-register AssistiveTouchMouseAlwaysShowSoftwareKeyboard.notification
+SUPX 0.549 notify-register com.apple.accessibility.cache.captioning
+SUPX 0.549 notify-register com.apple.accessibility.cache.mono.audio
+SUPX 0.549 notify-register com.apple.accessibility.cache.quick.speak
+SUPX 0.549 notify-register com.apple.accessibility.cache.differentiate.without.color
+SUPX 0.549 notify-register com.apple.accessibility.cache.enhance.background.contrast
+SUPX 0.549 notify-register com.apple.accessibility.cache.reduce.motion.reduce.slide.transitions
+SUPX 0.549 notify-register com.apple.accessibility.cache.vot
+SUPX 0.549 notify-register com.apple.accessibility.cache.grayscale
+SUPX 0.549 notify-register com.apple.accessibility.cache.prefer.action.slider.alternative.status
+SUPX 0.549 notify-register com.apple.accessibility.haptics.active.status.private
+SUPX 0.549 notify-register com.apple.accessibility.cache.reduce.highlighting.effects.enabled
+SUP t=1.181 modal.step=sheet on
+SUP t=1.187 modal.sheet.isPresented=true
+SUPX 1.223 notify-register com.apple.accessibility.cache.enhance.background.contrast
+SUP t=1.235 modal.sheet.onAppear=
+SUP t=1.235 modal.sheet.task.start=
+SUP t=1.235 modal.sheet.frame=(8.00,288.00,374.00,356.00) safe=t0.00 l0.00 b34.00 r76.00
+SUPX 1.240 notify-register com.apple.coreui.statistics
+SUP t=1.248 modal.sheet.frame=(8.00,280.00,374.00,356.00) safe=t0.00 l0.00 b34.00 r76.00
+SUPX 1.526 notify-register com.apple.accessibility.QuickSpeakEnabled
+SUPX 1.526 notify-register com.apple.accessibility.cache.speech.settings.disabled.by.mc
+SUP t=2.028 modal.presented=w(0.00,0.00,466.00,678.00):PresentationHostingController[2]
+SUP displaylink.rate=57.28
+SUP t=3.281 modal.step=detent large
+SUP t=3.289 modal.sheet.detent=PresentationDetent(id: Large)
+SUP t=3.294 modal.sheet.frame=(8.00,0.00,374.00,356.00) safe=t0.00 l0.00 b34.00 r76.00
+SUP t=3.295 modal.sheet.frame=(8.00,0.00,374.00,636.00) safe=t0.00 l0.00 b34.00 r76.00
+SUP t=3.296 modal.sheet.frame=(8.00,8.00,374.00,636.00) safe=t0.00 l0.00 b34.00 r76.00
+SUP t=4.121 modal.presented=w(0.00,0.00,466.00,678.00):PresentationHostingController[2]
+SUP t=5.264 modal.step=sheet off
+SUP t=5.265 modal.sheet.isPresented=false
+SUP t=5.285 modal.sheet.frame=(8.00,678.00,374.00,636.00) safe=t0.00 l0.00 b34.00 r76.00
+SUP t=5.798 modal.sheet.frame=(0.00,0.00,374.00,636.00) safe=t0.00 l0.00 b34.00 r76.00
+SUP t=5.798 modal.sheet.onDismiss=
+SUP t=5.802 modal.sheet.onDisappear=
+SUP t=5.804 modal.sheet.task.cancelled=
+SUP t=6.101 modal.presented=w(0.00,0.00,466.00,678.00):
+SUP t=7.481 modal.step=alert on
+SUP t=7.482 modal.alert.isPresented=true
+SUP t=8.327 modal.presented=w(0.00,0.00,466.00,678.00):PlatformAlertController[4]
+SUP t=9.581 modal.step=alert off
+SUP t=9.594 modal.alert.isPresented=false
+SUP t=10.421 modal.presented=w(0.00,0.00,466.00,678.00):
+SUP t=11.681 modal.step=dialog on
+SUPX 11.718 notify-register com.apple.UIKit.ForceGraphicsQuality
+SUPX 11.780 lookup com.apple.metal.simulator.SUIProbe kr=1102
+SUPX 11.781 xpc-mach com.apple.metal.simulator
+SUPX 11.782 lookup com.apple.metal.simulator.SUIProbe kr=1102
+SUPX 11.782 xpc-mach com.apple.metal.simulator
+SUPX 11.783 lookup com.apple.metal.simulator.SUIProbe kr=1102
+SUPX 11.783 xpc-mach com.apple.metal.simulator
+IOSurfaceClientSetSurfaceNotify failed e00002c7
+SUPX 11.813 xpc-mach com.apple.IOSurface.Remote
+SUP t=12.521 modal.presented=w(0.00,0.00,466.00,678.00):PlatformAlertController[7] w(0.00,0.00,466.00,678.00):
+SUP t=13.191 modal.step=dialog off
+SUP t=14.031 modal.presented=w(0.00,0.00,466.00,678.00): w(0.00,0.00,466.00,678.00):
+SUP t=15.881 modal.step=popover on
+SUP t=15.893 modal.popover.onAppear=
+SUP t=15.893 modal.popover.task.start=
+SUP t=15.893 modal.popover.frame=(147.50,299.83,95.00,52.33) safe=t0.00 l0.00 b0.00 r0.00
+SUP t=16.722 modal.presented=w(0.00,0.00,466.00,678.00):PresentationHostingController[7] w(0.00,0.00,466.00,678.00):
+SUP t=17.981 modal.step=popover off
+SUP t=17.988 modal.popover.frame=(147.50,969.83,95.00,52.33) safe=t0.00 l0.00 b0.00 r0.00
+SUP t=18.498 modal.popover.frame=(139.50,291.83,95.00,52.33) safe=t0.00 l0.00 b0.00 r0.00
+SUP t=18.499 modal.popover.onDisappear=
+SUP t=18.500 modal.popover.task.cancelled=
+SUP t=18.821 modal.presented=w(0.00,0.00,466.00,678.00): w(0.00,0.00,466.00,678.00):
+SUP t=20.081 modal.step=popoverCompact on
+SUP t=20.090 modal.popoverCompact.onAppear=
+SUP t=20.090 modal.popoverCompact.task.start=
+SUP t=20.090 modal.popoverCompact.frame=(108.00,305.67,166.33,52.33) safe=t0.00 l0.00 b0.00 r0.00
+SUP t=20.091 modal.popoverCompact.frame=(108.00,265.17,166.33,52.33) safe=t0.00 l0.00 b0.00 r0.00
+SUP t=20.093 modal.popoverCompact.frame=(108.00,299.17,166.33,52.33) safe=t0.00 l0.00 b0.00 r0.00
+SUP t=20.922 modal.presented=w(0.00,0.00,466.00,678.00):PresentationHostingController[7] w(0.00,0.00,466.00,678.00):
+SUP t=22.182 modal.step=popoverCompact off
+SUP t=22.189 modal.popoverCompact.frame=(190.33,371.60,1.66,0.52) safe=t0.00 l0.00 b0.00 r0.00
+SUP t=22.711 modal.popoverCompact.frame=(0.00,7.83,166.33,52.33) safe=t0.00 l0.00 b0.00 r0.00
+SUP t=22.712 modal.popoverCompact.onDisappear=
+SUP t=22.713 modal.popoverCompact.task.cancelled=
+SUP t=23.022 modal.presented=w(0.00,0.00,466.00,678.00): w(0.00,0.00,466.00,678.00):
+SUP t=24.282 modal.step=cover on
+SUP t=24.296 modal.cover.onAppear=
+SUP t=24.296 modal.cover.task.start=
+SUP t=24.296 modal.cover.frame=(0.00,0.00,382.00,644.00) safe=t0.00 l0.00 b34.00 r84.00
+SUP t=25.122 modal.presented=w(0.00,0.00,466.00,678.00):PresentationHostingController[5] w(0.00,0.00,466.00,678.00):
+SUP t=26.381 modal.step=cover off
+SUP t=26.401 modal.cover.frame=(0.00,678.00,382.00,644.00) safe=t0.00 l0.00 b34.00 r84.00
+SUP t=26.904 modal.cover.onDismiss=
+SUP t=26.904 modal.cover.onDisappear=
+SUP t=26.905 modal.cover.task.cancelled=
+SUP t=27.221 done=modal
+SUP t=27.221 modal.presented=w(0.00,0.00,466.00,678.00): w(0.00,0.00,466.00,678.00):
+dev.ycode.suiprobe: 28587

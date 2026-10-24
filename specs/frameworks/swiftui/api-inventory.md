@@ -1,0 +1,1772 @@
+# SwiftUI: API name inventory (iOS 27.1 SDK)
+
+Status: generated, round 0 (KIT-SWIFTUI, 2026-10-19). Level 4 evidence: produced by
+`research/experiments/swiftui/inventory/inv.py` and `mkinv.py` from the public SDK module
+interfaces of `SwiftUICore` and `SwiftUI` (iPhoneSimulator 27.1). Only names, argument
+labels, conformance names and iOS availability are kept; no declaration, type signature,
+body or documentation text. Underscored, SPI and non-iOS (macOS/watchOS/tvOS/visionOS-only
+or iOS-unavailable) symbols are left out (1221 records skipped).
+
+Legend: `[17.0]` = first iOS release with the member when it differs from its type;
+"deprecated" = marked deprecated for iOS. Types are grouped into areas by a name heuristic;
+the grouping is ours and only for navigation. Module = where the type is declared;
+`SwiftUI` re-exports `SwiftUICore`, so apps see one module.
+
+## Contents
+
+- App, scenes and lifecycle (57 types)
+- Views and composition (53 types)
+- Layout and geometry (71 types)
+- Text and fonts (26 types)
+- Images and symbols (10 types)
+- Shapes, colour and drawing (159 types)
+- Animation, transactions and transitions (55 types)
+- Data flow, environment and preferences (20 types)
+- Navigation, tabs, toolbars and presentation (56 types)
+- Lists, scrolling and collections (42 types)
+- Controls, forms and text input (62 types)
+- Gestures, input and drag and drop (41 types)
+- Accessibility (12 types)
+- UIKit interoperability and hosting (5 types)
+- Previews and developer tools (7 types)
+- Other (54 types)
+- View modifiers by area
+- Top-level functions and macros
+
+## App, scenes and lifecycle
+
+- **protocol `App`** — SwiftUI, iOS 14.0
+  - `associatedtype Body`, `body`, `init()`, `static main()`
+- **struct `CommandGroup`** : Commands, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(before:)`, `init(after:)`, `init(replacing:)`, `body`, `typealias Body`
+- **struct `CommandGroupPlacement`** : Sendable — SwiftUI, iOS 14.0
+  - `static appInfo`, `static appSettings`, `static systemServices`, `static appVisibility`, `static appTermination`, `static newItem`, `static saveItem`, `static importExport`, `static printItem`, `static undoRedo`, `static pasteboard`, `static textEditing`, `static textFormatting`, `static toolbar`, `static sidebar`, `static windowSize`, `static windowArrangement`, `static help`
+- **struct `CommandMenu`** : Commands, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(_:)`, `body`, `typealias Body`
+- **protocol `Commands`** — SwiftUI, iOS 14.0
+  - `associatedtype Body`, `body`
+- **struct `CommandsBuilder`** : ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `static buildExpression(_:)`, `static buildBlock()`, `static buildBlock(_:)`, `static buildIf(_:)` [16.0], `static buildEither(first:)` [16.0], `static buildEither(second:)` [16.0], `static buildLimitedAvailability(_:)` [17.5], `static buildBlock(_:_:)`, `static buildBlock(_:_:_:)`, `static buildBlock(_:_:_:_:)`, `static buildBlock(_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:_:)`
+- **struct `DefaultDocumentGroupLaunchActions`** : View, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `body`, `init()`, `typealias Body`
+- **struct `DefaultNewDocumentButtonLabel`** : View — SwiftUI, iOS 27.0
+  - `body`, `typealias Body`
+- **struct `DismissAction`** : Sendable — SwiftUI, iOS 15.0
+  - `callAsFunction()`
+- **struct `DismissBehavior`** : Sendable — SwiftUI, iOS 17.0
+  - `static interactive`, `static destructive`
+- **struct `DismissSearchAction`** : Sendable — SwiftUI, iOS 15.0
+  - `callAsFunction()`
+- **struct `DismissWindowAction`** : Sendable — SwiftUI, iOS 17.0
+  - `callAsFunction()`, `callAsFunction(id:)`, `callAsFunction(value:)`, `callAsFunction(id:value:)`
+- **protocol `Document`** : ReadableDocument, WritableDocument — SwiftUI, iOS 27.0
+- **protocol `DocumentBaseBox`** : AnyObject — SwiftUI, iOS 17.0
+  - `associatedtype Document`, `base`
+- **struct `DocumentConfiguration`** : Sendable — SwiftUI, iOS 17.0
+  - `isEditable`, `fileURL`
+- **struct `DocumentCreationContext`** — SwiftUI, iOS 27.0
+  - `creationSource`, `description`, `static ==(lhs:rhs:)`, `hash(into:)`, `hashValue`
+- **struct `DocumentCreationSource`** : Sendable, Hashable — SwiftUI, iOS 27.0
+  - `init(id:)`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `DocumentGroup`** : Scene, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(viewer:_:)` [27.0], `init(allowCreating:editor:_:)` [27.0], `init(newDocument:)`, `init(viewing:)`, `body`, `typealias Body`
+- **struct `DocumentGroupLaunchScene`** : Scene, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `body`, `typealias Body`, `init(_:_:)`, `init(_:backgroundStyle:_:)`
+- **struct `DocumentLaunchGeometryProxy`** : ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `frame`, `titleViewFrame`
+- **struct `DocumentLaunchView`** : View, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `body`, `init(_:for:_:)`, `init(_:for:backgroundStyle:_:)`, `typealias Body`
+- **struct `DocumentReadConfiguration`** — SwiftUI, iOS 27.0
+  - `contentType`, `description`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **protocol `DocumentReader`** — SwiftUI, iOS 27.0
+  - `associatedtype Snapshot`, `associatedtype Source`, `read(from:progress:)`
+- **struct `DocumentWriteConfiguration`** — SwiftUI, iOS 27.0
+  - `contentType`, `description`
+- **protocol `DocumentWriter`** — SwiftUI, iOS 27.0
+  - `associatedtype Snapshot`, `associatedtype Destination`, `write(snapshot:to:previous:progress:)`
+- **struct `EmptyCommands`** : Commands, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `typealias Body`
+- **protocol `FileDocument`** : Sendable — SwiftUI, iOS 14.0, deprecated
+  - `static readableContentTypes` [14.0], `static writableContentTypes` [14.0], `init(configuration:)` [14.0], `typealias ReadConfiguration` [14.0], `fileWrapper(configuration:)` [14.0], `typealias WriteConfiguration` [14.0]
+- **struct `FileDocumentConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 14.0, deprecated
+  - `document` [14.0], `fileURL` [14.0], `isEditable` [14.0], `creationSource` [27.0]
+- **struct `FileDocumentReadConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 14.0, deprecated
+  - `contentType` [14.0], `file` [14.0]
+- **struct `FileDocumentWriteConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 14.0, deprecated
+  - `contentType` [14.0], `existingFile` [14.0]
+- **struct `FileWrapperDocumentReader`** : DocumentReader — SwiftUI, iOS 27.0
+  - `typealias ReadConfiguration`, `init(_:)`, `read(from:progress:)`, `typealias Source`
+- **struct `FileWrapperDocumentWriter`** : DocumentWriter — SwiftUI, iOS 27.0
+  - `typealias WriteConfiguration`, `init(_:)`, `write(snapshot:to:previous:progress:)`, `typealias Destination`
+- **struct `InspectorCommands`** : Commands, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `init()`, `body`, `typealias Body`
+- **struct `NewDocumentButton`** : View, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `body`, `typealias Body`, `init(_:contentType:)`, `init(_:for:contentType:)` [18.0, deprecated], `init(_:contentType:source:)` [27.0]
+- **struct `OpenURLAction`** : Sendable — SwiftUICore, iOS 14.0
+  - `struct Result` [15.0], `init()` [15.0], `callAsFunction(_:)`, `callAsFunction(_:prefersInApp:)` [26.0]
+  - `OpenURLAction.Result`: `static handled` [15.0], `static discarded` [15.0], `static systemAction` [15.0], `static systemAction(_:)` [15.0], `static systemAction(_:prefersInApp:)` [26.0]
+- **struct `OpenWindowAction`** : Sendable — SwiftUI, iOS 16.0
+  - `callAsFunction(value:)`, `callAsFunction(id:)`, `callAsFunction(id:value:)`
+  - `OpenWindowAction.SharingBehavior`: `static requested`, `static required`
+- **protocol `ReadableDocument`** : AnyObject — SwiftUI, iOS 27.0
+  - `associatedtype Reader`, `typealias ReadConfiguration`, `static readableContentTypes`, `reader(configuration:)`, `apply(snapshot:previous:)`, `static writableContentTypes`
+- **protocol `ReferenceFileDocument`** : ObservableObject, Sendable — SwiftUI, iOS 14.0, deprecated
+  - `associatedtype Snapshot` [14.0], `static readableContentTypes` [14.0], `static writableContentTypes` [14.0], `init(configuration:)` [14.0], `typealias ReadConfiguration` [14.0], `snapshot(contentType:)` [14.0], `fileWrapper(snapshot:configuration:)` [14.0], `typealias WriteConfiguration` [14.0]
+- **struct `ReferenceFileDocumentConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 14.0, deprecated
+  - `fileURL` [14.0], `isEditable` [14.0]
+- **protocol `Scene`** — SwiftUI, iOS 14.0
+  - `restorationBehavior(_:)` [18.0], `windowResizability(_:)` [17.0], `windowManagerRole(_:)` [18.0], `defaultSize(_:)` [17.0], `defaultSize(width:height:)` [17.0], `environment(_:_:)`, `transformEnvironment(_:)` [17.0], `environment(_:)` [17.0], `environmentObject(_:)` [17.0], `defaultAppStorage(_:)`, `handlesExternalEvents(matching:)`, `persistentSystemOverlays(_:)` [18.0], `onChange(of:initial:)` [17.0], `onChange(of:)` [14.0, deprecated 17.0], `documentLaunchTitle(_:)` [27.0], `documentLaunchSubtitle(_:)` [27.0], `commands()`, `documentBrowserContextMenu()` [18.1], `associatedtype Body`, `body`, `commandsRemoved()` [16.0], `commandsReplaced()` [16.0], `backgroundTask(_:)` [16.0], `windowToolbarLabelStyle(fixed:)` [18.0], `windowToolbarLabelStyle(_:)` [18.0]
+- **struct `SceneBuilder`** : ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `static buildExpression(_:)`, `static buildBlock(_:)`, `static buildOptional(_:)`, `static buildLimitedAvailability(_:)` [16.1]
+- **enum `ScenePhase`** : Comparable, Sendable — SwiftUI, iOS 14.0
+  - `case background`, `case inactive`, `case active`, `static < `, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `SceneStorage`** : DynamicProperty — SwiftUI, iOS 14.0
+  - `init(wrappedValue:_:)` [17.0], `wrappedValue`, `projectedValue`, `init(_:)`, `init(wrappedValue:_:store:)` [18.0]
+- **struct `SearchScopeActivation`** : ~Swift.Sendable — SwiftUI, iOS 16.4
+  - `static automatic`, `static onTextEntry`, `static onSearchPresentation`
+- **struct `SidebarCommands`** : Commands, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `body`, `typealias Body`
+- **struct `TabSearchActivation`** : Hashable, Sendable — SwiftUI, iOS 26.0
+  - `static automatic`, `static searchTabSelection`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `TextEditingCommands`** : Commands, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `body`, `typealias Body`
+- **struct `TextFormattingCommands`** : Commands, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `body`, `typealias Body`
+- **struct `TextInputDictationActivation`** : Equatable, Sendable — SwiftUI, iOS 17.0
+  - `static onSelect`, `static onLook`, `static ==(a:b:)`
+- **struct `ToolbarCommands`** : Commands, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `body`, `typealias Body`
+- **struct `UIApplicationDelegateAdaptor`** : DynamicProperty — SwiftUI, iOS 14.0
+  - `wrappedValue`, `init(_:)`, `projectedValue`
+- **struct `WindowBackgroundShapeStyle`** : ShapeStyle — SwiftUI, iOS 17.0
+  - `init()`, `typealias Resolved`
+- **struct `WindowGroup`** : Scene, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(id:)` [14.0, deprecated 18.0], `init(_:id:)` [14.0, deprecated 18.0], `init()` [14.0, deprecated 18.0], `init(_:)` [14.0, deprecated 18.0], `body`, `typealias Body`, `init(id:for:)` [16.0], `init(_:id:for:)` [16.0], `init(for:)` [16.0], `init(_:for:)` [16.0], `init(id:for:content:)` [16.0], `init(_:id:for:content:)` [16.0], `init(for:content:)` [16.0], `init(_:for:content:)` [16.0]
+- **struct `WindowManagerRole`** : Sendable — SwiftUI, iOS 18.0
+  - `static automatic`
+- **struct `WindowResizability`** : Sendable — SwiftUI, iOS 17.0
+  - `static automatic`, `static contentSize`, `static contentMinSize`
+- **struct `WindowToolbarFullScreenVisibility`** : Sendable — SwiftUI, iOS 18.0
+  - `static automatic`
+- **protocol `WritableDocument`** : AnyObject — SwiftUI, iOS 27.0
+  - `associatedtype Writer`, `typealias WriteConfiguration`, `static writableContentTypes`, `writer(configuration:)`, `snapshot(contentType:)`
+
+## Views and composition
+
+- **protocol `AccessibilityRotorContent`** — SwiftUI, iOS 15.0
+  - `associatedtype Body`, `body`
+- **struct `AccessibilityRotorContentBuilder`** : ~Swift.Sendable — SwiftUI, iOS 15.0
+  - `static buildExpression(_:)`, `static buildBlock(_:)`, `static buildIf(_:)`
+- **struct `AnyTabContent`** : TabContent, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `typealias TabValue`, `init(_:)`, `typealias Body`
+- **struct `AnyView`** : View, ~Sendable — SwiftUICore, iOS 13.0
+  - `init(_:)`, `init(erasing:)`, `init(_fromValue:)`, `typealias Body`
+- **protocol `ContainerValueKey`** — SwiftUICore, iOS 18.0
+  - `associatedtype Value`, `static defaultValue`
+- **struct `ContainerValues`** : ~Sendable — SwiftUICore, iOS 18.0
+  - `subscript(<Keykey:)`, `tag(for:)`, `hasTag(_:)`
+- **protocol `CustomizableToolbarContent`** : ToolbarContent — SwiftUI, iOS 14.0
+  - `sharedBackgroundVisibility(_:)` [26.0], `customizationBehavior(_:)` [16.0], `visibilityPriority(_:)` [27.0], `defaultCustomization(_:options:)` [16.0], `defaultCustomization()` [16.0, deprecated 16.0], `matchedTransitionSource(id:in:)` [26.0]
+- **protocol `DynamicTableRowContent`** : TableRowContent — SwiftUI, iOS 16.0
+  - `dropDestination(for:)`, `onInsert(of:)`, `associatedtype Data`, `data`
+- **protocol `DynamicViewContent`** : View — SwiftUICore, iOS 13.0
+  - `associatedtype Data`, `data`, `dropDestination(for:)` [16.0], `onInsert(of:)` [14.0], `reorderable()` [27.0], `reorderable(collectionID:)` [27.0], `onMove()`, `onDelete()`
+- **struct `EditableCollectionContent`** : ~Swift.Sendable, View — SwiftUI, iOS 16.0
+  - `body`, `typealias Body`
+- **struct `EmptyModifier`** : ViewModifier, Sendable, _SceneModifier — SwiftUICore, iOS 13.0
+  - `static identity`, `typealias Body`, `init()`, `body(content:)`
+- **struct `EmptyTableRowContent`** : ~Swift.Sendable, TableRowContent — SwiftUI, iOS 16.0
+  - `typealias TableRowValue`, `typealias TableRowBody`
+- **struct `EmptyView`** : View, Sendable, ToolbarContent — SwiftUICore, iOS 13.0
+  - `init()`, `typealias Body`
+- **struct `EquatableView`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `content`, `init(content:)`, `typealias Body`
+- **struct `ForEach`** : ~Sendable, ToolbarContent — SwiftUICore, iOS 13.0
+  - `init(sections:)` [18.0], `init(subviews:)` [18.0], `data`, `content`, `typealias Body`, `init(_:)`, `init(_:id:)`, `init(_:content:)`, `init(_:id:content:)`, `init(_:editActions:)` [16.0], `init(_:id:editActions:)` [16.0], `body` [15.0], `typealias TabValue` [18.0], `typealias TableRowValue` [16.0], `typealias TableRowBody` [16.0]
+- **struct `ForEachSectionCollection`** : RandomAccessCollection, ~Sendable — SwiftUICore, iOS 18.0
+  - `startIndex`, `endIndex`, `subscript(index:)`, `typealias Element`, `typealias Index`, `typealias Indices`, `typealias Iterator`, `typealias SubSequence`
+- **struct `ForEachSubviewCollection`** : RandomAccessCollection, ~Sendable — SwiftUICore, iOS 18.0
+  - `startIndex`, `endIndex`, `subscript(index:)`, `typealias Element`, `typealias Index`, `typealias Indices`, `typealias Iterator`, `typealias SubSequence`
+- **struct `Group`** : ~Sendable, AccessibilityRotorContent — SwiftUICore, iOS 13.0
+  - `typealias Body`, `init(_content:)`, `init()`, `init(subviews:)` [18.0], `init(sections:)` [18.0], `body` [15.0], `typealias TabValue` [18.0], `typealias TableRowValue` [16.0], `typealias TableColumnSortComparator` [16.0], `typealias TableColumnBody` [16.0], `typealias TableRowBody` [16.0]
+- **struct `GroupElementsOfContent`** : View, ~Sendable — SwiftUICore, iOS 18.0
+  - `body`, `typealias Body`
+- **struct `GroupSectionsOfContent`** : View, ~Sendable — SwiftUICore, iOS 18.0
+  - `body`, `typealias Body`
+- **protocol `KeyframeTrackContent`** — SwiftUICore, iOS 17.0
+  - `associatedtype Value`, `associatedtype Body`
+- **struct `KeyframeTrackContentBuilder`** : ~Sendable — SwiftUICore, iOS 17.0
+  - `static buildExpression(_:)`, `static buildArray(_:)`, `static buildEither(first:)`, `static buildEither(second:)`, `static buildPartialBlock(first:)`, `static buildPartialBlock(accumulated:next:)`, `static buildBlock()`, `struct Conditional`
+  - `KeyframeTrackContentBuilder.Conditional`: `typealias Body`, `typealias Value`
+- **struct `LabeledContent`** : ~Swift.Sendable, View — SwiftUI, iOS 16.0
+  - `init(content:)`, `body`, `typealias Body`, `init(_:)`, `init(_:value:)`, `init(_:value:format:)`
+- **struct `LabeledControlGroupContent`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `body`, `typealias Body`
+- **struct `LabeledToolbarItemGroupContent`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `body`, `typealias Body`
+- **struct `ModifiedContent`** — SwiftUICore, iOS 13.0
+  - `typealias Body`, `content`, `modifier`, `init(content:modifier:)`, `static ==(a:b:)`, `animatableData` [26.0], `typealias AnimatableData` [26.0], `body`, `data`, `typealias Data`, `accessibilityValue(_:isEnabled:)` [18.0], `accessibilityValue(_:)` [14.0], `accessibility(value:)` [13.0, deprecated], `accessibilityLabel(_:isEnabled:)` [18.0], `accessibilityLabel(_:)` [14.0], `accessibilityAdjustableAction()`, `accessibilityTextContentType(_:)` [15.0], `accessibilityHeading(_:)` [15.0], `accessibilityHint(_:isEnabled:)` [18.0], `accessibilityHint(_:)` [14.0], `accessibility(hidden:)` [13.0, deprecated], `accessibility(label:)` [13.0, deprecated], `accessibility(hint:)` [13.0, deprecated], `accessibility(inputLabels:)` [13.0, deprecated], `accessibility(identifier:)` [13.0, deprecated], `accessibility(selectionIdentifier:)` [13.0, deprecated], `accessibility(sortPriority:)` [13.0, deprecated], `accessibility(activationPoint:)` [13.0, deprecated], `accessibilitySortPriority(_:)` [14.0], `accessibilityScrollAction()`, `accessibilityRespondsToUserInteraction(_:isEnabled:)` [18.0], `accessibilityRespondsToUserInteraction(_:)` [15.0], `typealias TableRowValue` [16.0], `typealias TableRowBody` [16.0], `tableRowBody` [16.0], `accessibilityDirectTouch(_:options:)` [17.0], `accessibilityHidden(_:isEnabled:)` [18.0], `accessibilityHidden(_:)` [14.0], `accessibilityScrollStatus(_:isEnabled:)` [26.0], `accessibilityInputLabels(_:isEnabled:)` [18.0], `accessibilityInputLabels(_:)` [14.0], `accessibilityIdentifier(_:isEnabled:)` [18.0], `accessibilityIdentifier(_:)` [14.0], `accessibilityCustomContent(_:_:importance:)` [15.0], `accessibilityAddTraits(_:)` [14.0], `accessibilityRemoveTraits(_:)` [14.0], `accessibility(addTraits:)` [13.0, deprecated], `accessibility(removeTraits:)` [13.0, deprecated], `accessibilityZoomAction()` [16.0], `accessibilityActivationPoint(_:isEnabled:)` [18.0], `accessibilityDragPoint(_:description:isEnabled:)` [18.0], `accessibilityDropPoint(_:description:isEnabled:)` [18.0], `accessibilityActivationPoint(_:)` [14.0], `accessibilityDragPoint(_:description:)` [16.0], `accessibilityDropPoint(_:description:)` [16.0], `accessibilityAction(_:)`, `accessibilityAction(named:)`
+- **struct `PresentedWindowContent`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `typealias Body`
+- **struct `PreviewModifierContent`** : View, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `typealias Body`
+- **protocol `SceneAccessoryContent`** — SwiftUI, iOS 27.0
+  - `onAvailabilityChange()`, `associatedtype Body`, `body`
+- **struct `SearchUnavailableContent`** : ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `struct Label`, `struct Description`, `struct Actions`
+  - `SearchUnavailableContent.Actions`: `body`, `typealias Body`
+  - `SearchUnavailableContent.Description`: `body`, `typealias Body`
+  - `SearchUnavailableContent.Label`: `body`, `typealias Body`
+- **struct `SectionConfiguration`** : Identifiable, ~Sendable — SwiftUICore, iOS 18.0
+  - `struct ID`, `id`, `containerValues`, `header`, `footer`, `content`, `actions`, `struct Actions`
+  - `SectionConfiguration.Actions`: `body`, `typealias Body`
+  - `SectionConfiguration.ID`: `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **protocol `SliderTickContent`** — SwiftUI, iOS 26.0
+  - `associatedtype Value`, `associatedtype Body`, `body`
+- **struct `Subview`** : View, Identifiable, ~Sendable — SwiftUICore, iOS 18.0
+  - `struct ID`, `id`, `containerValues`, `typealias Body`, `enum ContainerSizingOptions` [26.0]
+  - `Subview.ContainerSizingOptions`: `case uniform(…)` [26.0], `case variable` [26.0]
+  - `Subview.ID`: `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `SubviewsCollection`** : RandomAccessCollection, ~Sendable, View — SwiftUICore, iOS 18.0
+  - `index(before:)`, `index(after:)`, `subscript(index:)`, `subscript(bounds:)`, `startIndex`, `endIndex`, `typealias Element`, `typealias Index`, `typealias Indices`, `typealias Iterator`, `typealias SubSequence`, `typealias Body`
+- **struct `SubviewsCollectionSlice`** : RandomAccessCollection, ~Sendable, View — SwiftUICore, iOS 18.0
+  - `subscript(index:)`, `subscript(bounds:)`, `startIndex`, `endIndex`, `typealias Element`, `typealias Index`, `typealias Indices`, `typealias Iterator`, `typealias SubSequence`, `typealias Body`
+- **protocol `TabContent`** — SwiftUI, iOS 18.0
+  - `accessibilityValue(_:isEnabled:)`, `accessibilityLabel(_:isEnabled:)`, `accessibilityHint(_:isEnabled:)`, `customizationBehavior(_:for:)`, `customizationID(_:)`, `sectionActions()`, `dropDestination(for:)`, `springLoadingBehavior(_:)`, `draggable()` [18.1], `badge(_:)`, `associatedtype TabValue`, `associatedtype Body`, `popover(isPresented:attachmentAnchor:arrowEdge:)`, `popover(item:attachmentAnchor:arrowEdge:)`, `accessibilityInputLabels(_:isEnabled:)`, `swipeActions(edge:allowsFullSwipe:)`, `contextMenu()`, `accessibilityIdentifier(_:isEnabled:)`, `defaultVisibility(_:for:)`, `hidden(_:)`, `disabled(_:)` [18.4], `tabPlacement(_:)`, `help(_:)` [27.0]
+- **struct `TabContentBuilder`** : ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `struct Content`, `static buildExpression(_:)`, `static buildBlock(_:)`, `static buildIf(_:)`, `static buildEither(first:)`, `static buildEither(second:)`, `static buildLimitedAvailability(_:)`, `static buildBlock(_:_:)`, `static buildBlock(_:_:_:)`, `static buildBlock(_:_:_:_:)`, `static buildBlock(_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:_:)`
+  - `TabContentBuilder.Content`: `body`, `typealias Body`
+- **protocol `TableColumnContent`** — SwiftUI, iOS 16.0
+  - `defaultVisibility(_:)` [17.0], `customizationID(_:)` [17.0], `disabledCustomizationBehavior(_:)` [17.0], `alignment(_:)` [17.0], `associatedtype TableRowValue`, `associatedtype TableColumnSortComparator`, `associatedtype TableColumnBody`, `tableColumnBody`
+- **struct `TableForEachContent`** : TableRowContent, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `typealias TableRowValue`, `tableRowBody`, `typealias TableRowBody`
+- **struct `TableHeaderRowContent`** : TableRowContent, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `typealias TableRowValue`, `tableRowBody`, `typealias TableRowBody`
+- **struct `TableOutlineGroupContent`** : TableRowContent, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `typealias TableRowValue`, `tableRowBody`, `typealias TableRowBody`
+- **protocol `TableRowContent`** — SwiftUI, iOS 16.0
+  - `selectionDisabled(_:)` [17.0], `draggable()` [17.0], `dropDestination(for:)` [17.0], `itemProvider(_:)`, `contextMenu()`, `contextMenu(menuItems:)`, `associatedtype TableRowValue`, `associatedtype TableRowBody`, `tableRowBody`
+- **protocol `ToolbarContent`** — SwiftUI, iOS 14.0
+  - `sharedBackgroundVisibility(_:)` [26.0], `associatedtype Body`, `body`, `visibilityPriority(_:)` [27.0], `matchedTransitionSource(id:in:)` [26.0]
+- **struct `ToolbarContentBuilder`** : ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `static buildExpression(_:)`, `static buildBlock(_:)`, `static buildIf(_:)` [16.0], `static buildEither(first:)` [16.0], `static buildEither(second:)` [16.0], `static buildLimitedAvailability(_:)` [17.5], `static buildBlock(_:_:)`, `static buildBlock(_:_:_:)`, `static buildBlock(_:_:_:_:)`, `static buildBlock(_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:_:)`
+- **struct `TupleContent`** : Sendable, ToolbarContent — SwiftUICore, iOS 26.0
+  - `content`, `init(_:)`, `body`, `typealias Body`
+- **struct `TupleSliderTickContent`** : SliderTickContent, ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `typealias Value`, `typealias TicksCollection`, `value`, `body`, `typealias Body`
+- **struct `TupleTableColumnContent`** : TableColumnContent, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `typealias TableRowValue`, `typealias TableColumnSortComparator`, `value`, `typealias TableColumnBody`
+- **struct `TupleTableRowContent`** : TableRowContent, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `typealias TableRowValue`, `value`, `typealias TableRowBody`
+- **struct `TupleView`** : View, ~Sendable — SwiftUICore, iOS 13.0
+  - `value`, `init(_:)`, `typealias Body`
+- **protocol `View`** — SwiftUICore, iOS 13.0
+  - requirements and core members: `associatedtype Body`, `body`
+  - modifiers: see "View modifiers by area" below
+- **struct `ViewBuilder`** — SwiftUICore, iOS 13.0
+  - `static buildBlock()`, `static buildBlock(_:)`, `static buildIf(_:)`, `static buildEither(first:)`, `static buildEither(second:)`, `static buildLimitedAvailability(_:)` [14.0]
+- **protocol `ViewModifier`** — SwiftUICore, iOS 13.0
+  - `associatedtype Body`, `body(content:)`, `typealias Content`, `concat(_:)`, `transaction()`, `animation(_:)`
+- **struct `ViewThatFits`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init(in:)`, `typealias Body`
+
+## Layout and geometry
+
+- **struct `AdaptableTabBarPlacement`** : Hashable, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `static automatic`, `static tabBar`, `static sidebar`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `Alignment`** : Equatable — SwiftUICore, iOS 13.0
+  - `horizontal`, `vertical`, `init(horizontal:vertical:)`, `static ==(a:b:)`, `static center`, `static leading`, `static trailing`, `static top`, `static bottom`, `static topLeading`, `static topTrailing`, `static bottomLeading`, `static bottomTrailing`, `static centerFirstTextBaseline`, `static centerLastTextBaseline`, `static leadingFirstTextBaseline`, `static leadingLastTextBaseline`, `static trailingFirstTextBaseline`, `static trailingLastTextBaseline`
+- **protocol `AlignmentID`** — SwiftUICore, iOS 13.0
+  - `static defaultValue(in:)`
+- **struct `AlignmentKey`** : Hashable, Comparable, Sendable — SwiftUICore, iOS 13.0
+  - `static < `, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `Anchor`** : Sendable — SwiftUICore, iOS 13.0
+  - `struct Source`, `static ==(lhs:rhs:)` [15.0], `hash(into:)` [15.0], `hashValue` [15.0]
+  - `Anchor.Source`: `init(_:)`, `static point(_:)`, `static unitPoint(_:)`, `static topLeading`, `static top`, `static topTrailing`, `static leading`, `static center`, `static trailing`, `static bottomLeading`, `static bottom`, `static bottomTrailing`, `static rect(_:)`, `static bounds`
+- **struct `AnyLayout`** : Layout, Sendable — SwiftUICore, iOS 16.0
+  - `init(_:)`, `struct Cache`, `typealias AnimatableData`, `makeCache(subviews:)`, `updateCache(_:subviews:)`, `spacing(subviews:cache:)`, `sizeThatFits(proposal:subviews:cache:)`, `placeSubviews(in:proposal:subviews:cache:)`, `explicitAlignment(of:in:proposal:subviews:cache:)`, `animatableData`
+- **enum `Axis`** : Int8, CaseIterable, CustomStringConvertible — SwiftUICore, iOS 13.0
+  - `case horizontal`, `case vertical`, `otherAxis`, `perpendicularEdges`, `struct Set`, `init(rawValue:)`, `typealias AllCases`, `typealias RawValue`, `static allCases`, `rawValue`, `description`
+  - `Axis.Set`: `typealias Element`, `rawValue`, `init(rawValue:)`, `static horizontal`, `static vertical`, `typealias ArrayLiteralElement`, `typealias RawValue`
+- **struct `ContainerBackgroundPlacement`** : Sendable, Hashable — SwiftUI, iOS 17.0
+  - `static navigation` [18.0], `static navigationSplitView` [18.0], `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `ContainerRelativeShape`** : Shape, InsettableShape — SwiftUICore, iOS 14.0
+  - `path(in:)`, `init()`, `typealias AnimatableData`, `typealias Body`, `inset(by:)`, `typealias InsetShape`
+- **struct `ContentMarginPlacement`** : ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `static automatic`, `static scrollContent`, `static scrollIndicators`
+- **enum `ContentMode`** : Hashable, CaseIterable, Sendable — SwiftUICore, iOS 13.0
+  - `case fit`, `case fill`, `static ==(a:b:)`, `typealias AllCases`, `static allCases`, `hash(into:)`, `hashValue`
+- **struct `ContentToolbarPlacement`** : Hashable, Sendable — SwiftUI, iOS 18.4
+  - `static tabViewSidebar`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **enum `CoordinateSpace`** : ~Sendable — SwiftUICore, iOS 13.0
+  - `case global`, `case local`, `case named(…)`, `isGlobal`, `isLocal`, `hash(into:)`, `static ==(lhs:rhs:)`, `hashValue`
+- **protocol `CoordinateSpaceProtocol`** — SwiftUICore, iOS 17.0
+  - `coordinateSpace`, `static named(_:)`, `static local`, `static global`, `static scrollView(axis:)`, `static scrollView`
+- **struct `Divider`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`, `typealias Body`
+- **enum `Edge`** : Int8, CaseIterable — SwiftUICore, iOS 13.0
+  - `case top, leading, bottom, trailing`, `struct Set`, `init(rawValue:)`, `typealias AllCases`, `typealias RawValue`, `static allCases`, `rawValue`, `enum Corner` [26.0]
+  - `Edge.Corner`: `case topLeading, topTrailing, bottomLeading, bottomTrailing` [26.0], `struct Set` [26.0], `init(rawValue:)` [26.0], `typealias AllCases` [26.0], `typealias RawValue` [26.0], `static allCases` [26.0], `rawValue` [26.0], `debugDescription` [26.0], `struct Style` [26.0]
+  - `Edge.Corner.Set`: `typealias Element` [26.0], `rawValue` [26.0], `init(rawValue:)` [26.0], `static none` [26.0], `static topLeading` [26.0], `static topTrailing` [26.0], `static bottomLeading` [26.0], `static bottomTrailing` [26.0], `static all` [26.0], `static leading` [26.0], `static trailing` [26.0], `static bottom` [26.0], `static top` [26.0], `init(_:)` [26.0], `contains(_:)` [26.0], `typealias ArrayLiteralElement` [26.0], `typealias RawValue` [26.0], `debugDescription` [26.0]
+  - `Edge.Corner.Style`: `static fixed(_:)` [26.0], `static concentric` [26.0], `static concentric(minimum:)` [26.0], `animatableData` [26.0], `struct AnimatableData` [26.0], `static ==(a:b:)` [26.0], `hash(into:)` [26.0], `hashValue` [26.0], `typealias FloatLiteralType` [26.0], `init(floatLiteral:)` [26.0], `typealias IntegerLiteralType` [26.0], `init(integerLiteral:)` [26.0]
+  - `Edge.Corner.Style.AnimatableData`: `static -(lhs:rhs:)` [26.0], `static +(lhs:rhs:)` [26.0], `scale(by:)` [26.0], `magnitudeSquared` [26.0], `static zero` [26.0], `static ==(a:b:)` [26.0]
+  - `Edge.Set`: `typealias Element`, `rawValue`, `init(rawValue:)`, `static top`, `static leading`, `static bottom`, `static trailing`, `static all`, `static horizontal`, `static vertical`, `init(_:)`, `typealias ArrayLiteralElement`, `typealias RawValue`
+- **struct `EdgeInsets`** : Equatable — SwiftUICore, iOS 13.0
+  - `inset(by:edges:)` [26.0], `top`, `leading`, `bottom`, `trailing`, `init(top:leading:bottom:trailing:)`, `init()`, `static ==(a:b:)`, `typealias AnimatableData`, `animatableData`, `round(_:toMultipleOf:)` [18.0], `round(toMultipleOf:)` [18.0], `rounded(_:toMultipleOf:)` [18.0], `rounded(toMultipleOf:)` [18.0], `approximates(_:epsilon:)` [18.0], `init(_:)` [14.0]
+- **protocol `GeometryEffect`** : Animatable, ViewModifier — SwiftUICore, iOS 13.0
+  - `effectValue(size:)`, `ignoredByLayout()`
+- **struct `GeometryProxy`** : ~Sendable — SwiftUICore, iOS 13.0
+  - `size`, `subscript(<Tanchor:)`, `safeAreaInsets`, `frame(in:)` [13.0, deprecated], `reservedRegions(kind:options:layoutDirectionBehavior:)`, `bounds(of:)` [17.0], `containerCornerInsets` [26.0]
+- **struct `GeometryReader`** : View, ~Sendable — SwiftUICore, iOS 13.0
+  - `content`, `init()`, `typealias Body`
+- **struct `GlobalCoordinateSpace`** : CoordinateSpaceProtocol, ~Sendable — SwiftUICore, iOS 17.0
+  - `init()`, `coordinateSpace`
+- **struct `Grid`** : ~Swift.Sendable, View — SwiftUI, iOS 16.0
+  - `init(alignment:horizontalSpacing:verticalSpacing:)`, `typealias Body`
+- **struct `GridItem`** : Sendable, Equatable — SwiftUI, iOS 14.0
+  - `enum Size`, `size`, `spacing`, `alignment`, `init(_:spacing:alignment:)`, `static ==(a:b:)` [26.0]
+  - `GridItem.Size`: `case fixed(…)`, `case flexible(…)`, `case adaptive(…)`, `static ==(a:b:)` [26.0]
+- **struct `GridLayout`** : _VariadicView.UnaryViewRoot, Layout — SwiftUI, iOS 16.0
+  - `alignment`, `horizontalSpacing`, `verticalSpacing`, `init(alignment:horizontalSpacing:verticalSpacing:)`, `typealias Body`, `makeCache(subviews:)`, `updateCache(_:subviews:)`, `spacing(subviews:cache:)`, `sizeThatFits(proposal:subviews:cache:)`, `placeSubviews(in:proposal:subviews:cache:)`, `explicitAlignment(of:in:proposal:subviews:cache:)`, `typealias AnimatableData`, `struct Cache`
+- **struct `GridRow`** : ~Swift.Sendable, View — SwiftUI, iOS 16.0
+  - `init(alignment:)`, `typealias Body`
+- **struct `HorizontalAlignment`** : Equatable — SwiftUICore, iOS 13.0
+  - `init(_:)`, `key`, `static ==(a:b:)`, `combineExplicit(_:)` [16.0], `static leading`, `static center`, `static trailing`, `static listRowSeparatorLeading` [16.0], `static listRowSeparatorTrailing` [16.0]
+- **struct `HStack`** : View, ~Sendable — SwiftUICore, iOS 13.0
+  - `init(alignment:spacing:)`, `typealias Body`
+- **struct `HStackLayout`** : Layout, BitwiseCopyable — SwiftUICore, iOS 16.0
+  - `alignment`, `spacing`, `init(alignment:spacing:)`, `typealias AnimatableData`, `typealias Cache`
+- **struct `InsetGroupedListStyle`** : ListStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`
+- **struct `InsetListStyle`** : ListStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`
+- **protocol `InsettableShape`** : Shape — SwiftUICore, iOS 13.0
+  - `associatedtype InsetShape`, `inset(by:)`, `strokeBorder(_:style:antialiased:)`, `strokeBorder(style:antialiased:)`, `strokeBorder(_:lineWidth:antialiased:)`, `strokeBorder(lineWidth:antialiased:)`
+- **struct `InsetTableStyle`** : TableStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **protocol `Layout`** : Sendable, Animatable — SwiftUICore, iOS 16.0
+  - `static layoutProperties`, `associatedtype Cache`, `typealias Subviews`, `makeCache(subviews:)`, `updateCache(_:subviews:)`, `spacing(subviews:cache:)`, `sizeThatFits(proposal:subviews:cache:)`, `placeSubviews(in:proposal:subviews:cache:)`, `explicitAlignment(of:in:proposal:subviews:cache:)`, `callAsFunction()`
+- **enum `LayoutDirection`** : Hashable, CaseIterable, Sendable — SwiftUICore, iOS 13.0
+  - `case leftToRight`, `case rightToLeft`, `static ==(a:b:)`, `typealias AllCases`, `static allCases`, `hash(into:)`, `hashValue`, `init(_:)` [14.0]
+- **enum `LayoutDirectionBehavior`** : Hashable, Sendable — SwiftUICore, iOS 17.0
+  - `case fixed`, `case mirrors(…)`, `static mirrors`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `LayoutProperties`** : Sendable — SwiftUICore, iOS 16.0
+  - `init()`, `stackOrientation`
+- **struct `LayoutSubview`** : Equatable, ~Sendable — SwiftUICore, iOS 16.0
+  - `subscript(<Kkey:)`, `priority`, `sizeThatFits(_:)`, `dimensions(in:)`, `spacing`, `place(at:anchor:proposal:)`, `static ==(a:b:)`, `containerValues` [18.0]
+- **struct `LayoutSubviews`** : Equatable, RandomAccessCollection, Sendable — SwiftUICore, iOS 16.0
+  - `typealias SubSequence`, `typealias Element`, `typealias Index`, `layoutDirection`, `startIndex`, `endIndex`, `subscript(index:)`, `subscript(bounds:)`, `subscript(<Sindices:)`, `static ==(lhs:rhs:)`, `typealias Indices`, `typealias Iterator`
+- **protocol `LayoutValueKey`** — SwiftUICore, iOS 16.0
+  - `associatedtype Value`, `static defaultValue`
+- **struct `LazyHStack`** : View, ~Sendable — SwiftUICore, iOS 14.0
+  - `init(alignment:spacing:pinnedViews:)`, `typealias Body`
+- **struct `LazyVStack`** : View, ~Sendable — SwiftUICore, iOS 14.0
+  - `init(alignment:spacing:pinnedViews:)`, `typealias Body`
+- **struct `LocalCoordinateSpace`** : CoordinateSpaceProtocol, ~Sendable — SwiftUICore, iOS 17.0
+  - `init()`, `coordinateSpace`
+- **struct `MatchedGeometryProperties`** : OptionSet, Sendable — SwiftUICore, iOS 14.0
+  - `rawValue`, `init(rawValue:)`, `static position`, `static size`, `static frame`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **struct `NamedCoordinateSpace`** : CoordinateSpaceProtocol, Equatable, ~Sendable — SwiftUICore, iOS 17.0
+  - `coordinateSpace`, `static ==(a:b:)`
+- **struct `NavigationStack`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `init(path:)`, `body`, `typealias Body`
+- **struct `ProposedViewSize`** : Equatable, Sendable — SwiftUICore, iOS 16.0
+  - `width`, `height`, `static zero`, `static unspecified`, `static infinity`, `init(width:height:)`, `init(_:)`, `replacingUnspecifiedDimensions(by:)`, `static ==(a:b:)`
+- **struct `RectangleCornerInsets`** : Hashable, Sendable, BitwiseCopyable — SwiftUICore, iOS 26.0
+  - `topLeading`, `topTrailing`, `bottomLeading`, `bottomTrailing`, `init()`, `init(topLeading:topTrailing:bottomLeading:bottomTrailing:)`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `SafeAreaRegions`** : OptionSet, Sendable — SwiftUICore, iOS 14.0
+  - `rawValue`, `init(rawValue:)`, `static container`, `static keyboard`, `static all`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **struct `ScaledMetric`** : DynamicProperty, Sendable — SwiftUICore, iOS 14.0
+  - `init(wrappedValue:relativeTo:)`, `init(wrappedValue:)`, `wrappedValue`
+- **struct `ScrollGeometry`** : Equatable, Sendable — SwiftUICore, iOS 18.0
+  - `contentOffset`, `contentSize`, `contentInsets`, `containerSize`, `visibleRect`, `bounds`, `static ==(a:b:)`, `init(contentOffset:contentSize:contentInsets:containerSize:)`, `debugDescription`
+- **struct `SearchFieldPlacement`** : Sendable — SwiftUI, iOS 15.0
+  - `static automatic`, `static toolbar`, `static toolbarPrincipal`, `static sidebar`, `static navigationBarDrawer`, `static navigationBarDrawer(displayMode:)`, `struct NavigationBarDrawerDisplayMode`
+  - `SearchFieldPlacement.NavigationBarDrawerDisplayMode`: `static automatic`, `static always`
+- **struct `SearchSuggestionsPlacement`** : Equatable, Sendable — SwiftUI, iOS 16.0
+  - `static automatic`, `static menu`, `static content`, `struct Set`, `static ==(a:b:)`
+  - `SearchSuggestionsPlacement.Set`: `typealias Element`, `rawValue`, `static menu`, `static content`, `init(rawValue:)`, `typealias ArrayLiteralElement`, `typealias RawValue`
+- **struct `Spacer`** : View — SwiftUICore, iOS 13.0
+  - `minLength`, `init(minLength:)`, `typealias Body`
+- **struct `StackNavigationViewStyle`** : NavigationViewStyle, ~Swift.Sendable — SwiftUI, iOS 13.0, deprecated
+  - `init()` [13.0]
+- **struct `TabBarPlacement`** : Hashable, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `static topBar`, `static sidebar`, `static bottomBar`, `static ornament`, `static pageIndicator`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `TableColumnAlignment`** : Hashable, Sendable — SwiftUI, iOS 17.0
+  - `static automatic`, `static leading`, `static center`, `static trailing`, `static numeric`, `static numeric(_:)`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `TabPlacement`** : Hashable, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `static automatic`, `static pinned`, `static sidebarOnly`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **enum `TabViewBottomAccessoryPlacement`** : Hashable, Sendable — SwiftUI, iOS 26.0
+  - `case inline`, `case expanded`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **enum `TextAlignment`** : Hashable, CaseIterable, Sendable — SwiftUICore, iOS 13.0
+  - `case leading`, `case center`, `case trailing`, `static ==(a:b:)`, `typealias AllCases`, `static allCases`, `hash(into:)`, `hashValue`
+- **struct `TextInputFormattingControlPlacement`** : Sendable — SwiftUI, iOS 26.0
+  - `struct Set`
+  - `TextInputFormattingControlPlacement.Set`: `rawValue`, `init(rawValue:)`, `static contextMenu`, `static inputAssistant`, `static all`, `static `default``, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **struct `ToolbarItemPlacement`** : ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `static automatic`, `static principal`, `static navigation`, `static primaryAction`, `static secondaryAction` [16.0], `static status`, `static confirmationAction`, `static cancellationAction`, `static destructiveAction`, `static keyboard` [15.0], `static topBarLeading`, `static topBarTrailing`, `static topBarPinnedTrailing` [27.0], `static navigationBarLeading` [14.0, deprecated], `static navigationBarTrailing` [14.0, deprecated], `static title`, `static largeTitle` [26.0], `static bottomBar`, `static subtitle` [26.0], `static largeSubtitle` [26.0]
+- **struct `ToolbarPlacement`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `static automatic`, `static bottomBar`, `static navigationBar`, `static tabBar`, `static statusBar` [27.0]
+- **struct `UIGestureRecognizerRepresentableCoordinateSpaceConverter`** : ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `localLocation`, `convert(globalPoint:to:)`, `location(in:)`, `localVelocity`, `velocity(in:)`, `localTranslation`, `translation(in:)`
+- **struct `UnitPoint`** : Hashable, Animatable — SwiftUICore, iOS 13.0
+  - `x`, `y`, `init()`, `init(x:y:)`, `static zero`, `static center`, `static leading`, `static trailing`, `static top`, `static bottom`, `static topLeading`, `static topTrailing`, `static bottomLeading`, `static bottomTrailing`, `static ==(a:b:)`, `hash(into:)`, `hashValue`, `typealias AnimatableData`, `animatableData`, `encode(to:)` [26.0], `init(from:)` [26.0]
+- **struct `VerticalAlignment`** : Equatable — SwiftUICore, iOS 13.0
+  - `init(_:)`, `key`, `static ==(a:b:)`, `combineExplicit(_:)` [16.0], `static top`, `static center`, `static bottom`, `static firstTextBaseline`, `static lastTextBaseline`
+- **struct `ViewDimensions`** : ~Sendable, Equatable — SwiftUICore, iOS 13.0
+  - `width`, `height`, `subscript(guide:)`, `subscript(explicit:)`, `static ==(lhs:rhs:)`
+- **struct `ViewSpacing`** : Sendable — SwiftUICore, iOS 16.0
+  - `static zero`, `init()`, `formUnion(_:edges:)`, `union(_:edges:)`, `distance(to:along:)`
+- **struct `VStack`** : View, ~Sendable — SwiftUICore, iOS 13.0
+  - `init(alignment:spacing:)`, `typealias Body`
+- **struct `VStackLayout`** : Layout, BitwiseCopyable — SwiftUICore, iOS 16.0
+  - `alignment`, `spacing`, `init(alignment:spacing:)`, `typealias AnimatableData`, `typealias Cache`
+- **struct `ZStack`** : View, ~Sendable — SwiftUICore, iOS 13.0
+  - `init(alignment:)`, `typealias Body`
+- **struct `ZStackLayout`** : Layout, BitwiseCopyable — SwiftUICore, iOS 16.0
+  - `alignment`, `init(alignment:)`, `typealias AnimatableData`, `typealias Cache`
+
+## Text and fonts
+
+- **struct `AccessoryLinearCapacityGaugeStyle`** : GaugeStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `AccessoryLinearGaugeStyle`** : GaugeStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **enum `DynamicTypeSize`** : Hashable, Comparable, CaseIterable, Sendable — SwiftUICore, iOS 15.0
+  - `case xSmall`, `case small`, `case medium`, `case large`, `case xLarge`, `case xxLarge`, `case xxxLarge`, `case accessibility1`, `case accessibility2`, `case accessibility3`, `case accessibility4`, `case accessibility5`, `isAccessibilitySize`, `static < `, `static ==(a:b:)`, `typealias AllCases`, `static allCases`, `hash(into:)`, `hashValue`, `init(_:)`
+- **struct `Font`** : Hashable, Sendable — SwiftUICore, iOS 13.0
+  - `hash(into:)`, `static ==(lhs:rhs:)`, `hashValue`, `struct Context` [15.0], `struct Resolved` [26.0], `resolve(in:)` [26.0], `static largeTitle`, `static title`, `static title2` [14.0], `static title3` [14.0], `static headline`, `static subheadline`, `static body`, `static callout`, `static footnote`, `static caption`, `static caption2` [14.0], `static system(_:design:weight:)` [16.0], `static system(_:design:)` [13.0, deprecated], `enum TextStyle`, `italic()`, `italic(_:)` [26.0], `smallCaps()`, `smallCaps(_:)` [26.0], `lowercaseSmallCaps()`, `lowercaseSmallCaps(_:)` [26.0], `uppercaseSmallCaps()`, `uppercaseSmallCaps(_:)` [26.0], `monospacedDigit()`, `weight(_:)`, `width(_:)` [16.0], `bold()`, `bold(_:)` [26.0], `monospaced()` [15.0], `monospaced(_:)` [26.0], `leading(_:)` [14.0], `pointSize(_:)` [26.0], `scaled(by:)` [26.0], `struct Weight`, `struct Width` [16.0], `enum Leading` [14.0], `static `default`` [26.0], `static custom(_:size:)`, `static custom(_:size:relativeTo:)` [14.0], `static custom(_:fixedSize:)` [14.0], `init(_:)`, `static system(size:weight:design:)` [16.0], `enum Design`
+  - `Font.Context`: `static ==(a:b:)` [15.0], `hash(into:)` [15.0], `hashValue` [15.0], `debugDescription` [18.0]
+  - `Font.Design`: `case `default``, `case serif`, `case rounded`, `case monospaced`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `Font.Leading`: `case standard` [14.0], `case tight` [14.0], `case loose` [14.0], `static ==(a:b:)` [14.0], `hash(into:)` [14.0], `hashValue` [14.0]
+  - `Font.Resolved`: `ctFont` [26.0], `isBold` [26.0], `isItalic` [26.0], `pointSize` [26.0], `weight` [26.0], `width` [26.0], `leading` [26.0], `isMonospaced` [26.0], `isLowercaseSmallCaps` [26.0], `isUppercaseSmallCaps` [26.0], `isSmallCaps` [26.0], `hashValue` [26.0], `hash(into:)` [26.0], `static ==(lhs:rhs:)` [26.0]
+  - `Font.TextStyle`: `case largeTitle`, `case title`, `case title2` [14.0], `case title3` [14.0], `case headline`, `case subheadline`, `case body`, `case callout`, `case footnote`, `case caption`, `case caption2` [14.0], `static allCases`, `static ==(a:b:)`, `typealias AllCases`, `hash(into:)`, `hashValue`, `encode(to:)` [26.0], `init(from:)` [26.0]
+  - `Font.Weight`: `value`, `static ultraLight`, `static thin`, `static light`, `static regular`, `static medium`, `static semibold`, `static bold`, `static heavy`, `static black`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `Font.Width`: `value` [16.0], `static compressed` [16.0], `static condensed` [16.0], `static standard` [16.0], `static expanded` [16.0], `init(_:)` [16.0], `static ==(a:b:)` [16.0], `hash(into:)` [16.0], `hashValue` [16.0]
+- **enum `LegibilityWeight`** : Hashable, Sendable — SwiftUICore, iOS 13.0
+  - `case regular`, `case bold`, `static ==(a:b:)`, `hash(into:)`, `hashValue`, `init(_:)` [14.0]
+- **struct `LinearCapacityGaugeStyle`** : GaugeStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `LinearGradient`** : ShapeStyle, View, Sendable — SwiftUICore, iOS 13.0
+  - `gradient`, `startPoint`, `endPoint`, `init(gradient:startPoint:endPoint:)`, `init(colors:startPoint:endPoint:)`, `init(stops:startPoint:endPoint:)`, `typealias Body`, `typealias Resolved` [17.0]
+- **struct `LinearKeyframe`** : KeyframeTrackContent, ~Sendable — SwiftUICore, iOS 17.0
+  - `init(_:duration:timingCurve:)`, `typealias Body`
+- **struct `LinearProgressViewStyle`** : ProgressViewStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `init(tint:)` [14.0, deprecated], `makeBody(configuration:)`, `typealias Body`
+- **struct `LocalizedStringKey`** : Equatable, ExpressibleByStringInterpolation, ~Sendable — SwiftUICore, iOS 13.0
+  - `init(_:)`, `init(stringLiteral:)`, `init(stringInterpolation:)`, `struct StringInterpolation`, `static ==(a:b:)`, `typealias ExtendedGraphemeClusterLiteralType`, `typealias StringLiteralType`, `typealias UnicodeScalarLiteralType`
+  - `LocalizedStringKey.StringInterpolation`: `init(literalCapacity:interpolationCount:)`, `appendLiteral(_:)`, `appendInterpolation(_:)`, `appendInterpolation(_:formatter:)`, `appendInterpolation(_:format:)` [15.0], `appendInterpolation(_:specifier:)`, `typealias StringLiteralType`, `appendInterpolation(accessibilityName:)` [18.0], `appendInterpolation(_:style:)` [14.0], `appendInterpolation(timerInterval:pauseTime:countsDown:showsHours:)` [16.0]
+- **struct `Text`** : Equatable, Sendable — SwiftUICore, iOS 13.0
+  - `textVariant(_:)` [18.0], `init(_:tableName:bundle:comment:)`, `init(_:)` [16.0], `typealias Body`, `struct LineStyle` [15.0], `speechAlwaysIncludesPunctuation(_:)` [15.0], `speechSpellsOutCharacters(_:)` [15.0], `speechAdjustedPitch(_:)` [15.0], `speechAnnouncementsQueued(_:)` [15.0], `init(_:formatter:)` [14.0], `init(_:format:)` [15.0], `struct DateStyle` [14.0], `init(_:style:)` [14.0], `init(timerInterval:pauseTime:countsDown:showsHours:)` [16.0], `static +(lhs:rhs:)`, `enum TruncationMode`, `enum Case` [14.0], `typesettingLanguage(_:isEnabled:)` [17.0], `struct WritingDirectionStrategy` [26.0], `customAttribute(_:)` [17.0], `struct Layout` [17.0], `struct LayoutKey` [17.0], `foregroundColor(_:)` [13.0, deprecated], `foregroundStyle(_:)` [17.0], `font(_:)`, `fontWeight(_:)`, `fontWidth(_:)` [16.0], `bold()`, `bold(_:)` [16.0], `italic()`, `italic(_:)` [16.0], `monospaced(_:)` [16.4], `fontDesign(_:)` [16.1], `monospacedDigit()` [15.0], `strikethrough(_:color:)`, `strikethrough(_:pattern:color:)` [16.0], `underline(_:color:)`, `underline(_:pattern:color:)` [16.0], `kerning(_:)`, `tracking(_:)`, `baselineOffset(_:)`, `struct Scale` [17.0], `textScale(_:isEnabled:)` [17.0], `struct AlignmentStrategy` [26.0], `init(verbatim:)`, `static ==(a:b:)`, `accessibilityTextContentType(_:)` [15.0], `accessibilityHeading(_:)` [15.0], `accessibilityLabel(_:)` [15.0]
+  - `Text.AlignmentStrategy`: `static layoutBased` [26.0], `static writingDirectionBased` [26.0], `static `default`` [26.0], `static ==(a:b:)` [26.0], `hash(into:)` [26.0], `hashValue` [26.0]
+  - `Text.Case`: `case uppercase` [14.0], `case lowercase` [14.0], `static ==(a:b:)` [14.0], `hash(into:)` [14.0], `hashValue` [14.0]
+  - `Text.DateStyle`: `static time` [14.0], `static date` [14.0], `static relative` [14.0], `static offset` [14.0], `static timer` [14.0], `static ==(a:b:)` [14.0], `encode(to:)` [14.0], `init(from:)` [14.0]
+  - `Text.Layout`: `isTruncated` [18.0], `startIndex` [17.0], `endIndex` [17.0], `subscript(index:)` [17.0], `struct CharacterIndex` [17.0], `struct TypographicBounds` [17.0], `struct Line` [17.0], `struct Run` [17.0], `struct RunSlice` [17.0], `static ==(a:b:)` [17.0], `typealias Element` [17.0], `typealias Index` [17.0], `typealias Indices` [17.0], `typealias Iterator` [17.0], `typealias SubSequence` [17.0], `struct DrawingOptions` [17.0]
+  - `Text.Layout.CharacterIndex`: `static < ` [17.0], `advanced(by:)` [17.0], `distance(to:)` [17.0], `typealias Stride` [17.0], `hash(into:)` [17.0], `hashValue` [17.0]
+  - `Text.Layout.DrawingOptions`: `rawValue` [17.0], `init(rawValue:)` [17.0], `static disablesSubpixelQuantization` [17.0], `typealias ArrayLiteralElement` [17.0], `typealias Element` [17.0], `typealias RawValue` [17.0]
+  - `Text.Layout.Line`: `origin` [17.0], `startIndex` [17.0], `endIndex` [17.0], `subscript(index:)` [17.0], `typographicBounds` [17.0], `static ==(lhs:rhs:)` [17.0], `typealias Element` [17.0], `typealias Index` [17.0], `typealias Indices` [17.0], `typealias Iterator` [17.0], `typealias SubSequence` [17.0]
+  - `Text.Layout.Run`: `startIndex` [17.0], `endIndex` [17.0], `subscript(index:)` [17.0], `subscript(bounds:)` [17.0], `subscript(<Tkey:)` [17.0], `layoutDirection` [17.0], `typographicBounds` [17.0], `characterIndices` [17.0], `static ==(lhs:rhs:)` [17.0], `typealias Element` [17.0], `typealias Index` [17.0], `typealias Indices` [17.0], `typealias Iterator` [17.0], `typealias SubSequence` [17.0]
+  - `Text.Layout.RunSlice`: `run` [17.0], `indices` [17.0], `init(run:indices:)` [17.0], `startIndex` [17.0], `endIndex` [17.0], `subscript(index:)` [17.0], `subscript(bounds:)` [17.0], `subscript(<Tkey:)` [17.0], `typographicBounds` [17.0], `characterIndices` [17.0], `static ==(a:b:)` [17.0], `typealias Element` [17.0], `typealias Index` [17.0], `typealias Indices` [17.0], `typealias Iterator` [17.0], `typealias SubSequence` [17.0]
+  - `Text.Layout.TypographicBounds`: `origin` [17.0], `width` [17.0], `ascent` [17.0], `descent` [17.0], `leading` [17.0], `init()` [17.0], `rect` [17.0], `static ==(a:b:)` [17.0]
+  - `Text.LayoutKey`: `struct AnchoredLayout` [17.0], `typealias Value` [17.0], `static defaultValue` [17.0], `static reduce(value:)` [17.0]
+  - `Text.LayoutKey.AnchoredLayout`: `origin` [17.0], `layout` [17.0], `static ==(a:b:)` [17.0]
+  - `Text.LineStyle`: `init(pattern:color:)` [15.0], `struct Pattern` [15.0], `static single` [15.0], `static ==(a:b:)` [15.0], `hash(into:)` [15.0], `hashValue` [15.0], `init(nsUnderlineStyle:)` [15.0]
+  - `Text.LineStyle.Pattern`: `static solid` [15.0], `static dot` [15.0], `static dash` [15.0], `static dashDot` [15.0], `static dashDotDot` [15.0]
+  - `Text.Scale`: `static `default`` [17.0], `static secondary` [17.0], `static ==(a:b:)` [17.0], `hash(into:)` [17.0], `hashValue` [17.0]
+  - `Text.TruncationMode`: `case head`, `case tail`, `case middle`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `Text.WritingDirectionStrategy`: `static layoutBased` [26.0], `static contentBased` [26.0], `static `default`` [26.0], `static ==(a:b:)` [26.0], `hash(into:)` [26.0], `hashValue` [26.0]
+- **protocol `TextAttribute`** : Hashable — SwiftUICore, iOS 17.0
+- **struct `TextEditor`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(text:)`, `init(text:selection:)` [18.0], `body`, `typealias Body`
+- **protocol `TextEditorStyle`** — SwiftUI, iOS 17.0
+  - `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`, `static automatic`, `static plain`
+- **struct `TextEditorStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 17.0
+- **struct `TextField`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init(_:value:format:prompt:)` [15.0], `init(value:format:prompt:)` [15.0], `init(_:value:formatter:prompt:)` [15.0], `init(value:formatter:prompt:)` [15.0], `init(_:value:formatter:)`, `init(_:value:formatter:onEditingChanged:)` [13.0, deprecated], `body`, `typealias Body`, `init(_:text:axis:)` [16.0], `init(_:text:prompt:axis:)` [16.0], `init(text:prompt:axis:)` [16.0], `init(_:text:prompt:)` [15.0], `init(text:prompt:)` [15.0], `init(_:text:selection:prompt:axis:)` [18.0], `init(text:selection:prompt:axis:)` [18.0], `init(_:text:)`, `init(_:text:onEditingChanged:)` [13.0, deprecated]
+- **protocol `TextFieldStyle`** — SwiftUI, iOS 13.0
+  - `static automatic`, `static roundedBorder`, `static plain`
+- **struct `TextInputAutocapitalization`** : Sendable — SwiftUI, iOS 15.0
+  - `init(_:)`, `static never`, `static words`, `static sentences`, `static characters`
+- **struct `TextInputDictationBehavior`** : Equatable, Sendable — SwiftUI, iOS 17.0
+  - `static automatic`, `static inline(activation:)`, `static ==(a:b:)`
+- **struct `TextProxy`** : ~Sendable — SwiftUICore, iOS 18.0
+  - `sizeThatFits(_:)`
+- **protocol `TextRenderer`** : Animatable — SwiftUICore, iOS 17.0
+  - `draw(layout:in:)`, `sizeThatFits(proposal:text:)` [18.0], `displayPadding` [18.0]
+- **protocol `TextSelectability`** — SwiftUICore, iOS 15.0
+  - `static allowsSelection`, `static enabled`, `static disabled`
+- **struct `TextSelection`** : Equatable, Hashable, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `enum Indices`, `indices`, `affinity`, `init(range:)`, `init(ranges:)`, `init(insertionPoint:)`, `isInsertion`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `TextSelection.Indices`: `case selection(…)`, `case multiSelection(…)`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **enum `TextSelectionAffinity`** : Equatable, Hashable, Sendable — SwiftUI, iOS 18.0
+  - `case automatic`, `case upstream`, `case downstream`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **protocol `TextVariantPreference`** — SwiftUICore, iOS 18.0
+  - `static fixed`, `static sizeDependent`
+- **struct `TypesettingLanguage`** : Sendable, Equatable — SwiftUICore, iOS 17.0
+  - `static automatic`, `static explicit(_:)`, `static ==(a:b:)`
+
+## Images and symbols
+
+- **struct `AsyncImage`** : View, ~Swift.Sendable — SwiftUI, iOS 15.0
+  - `init(url:scale:)`, `init(url:scale:content:)`, `init(url:scale:transaction:)`, `init(request:scale:)`, `init(request:scale:content:)`, `init(request:scale:transaction:)`, `body`, `typealias Body`
+- **enum `AsyncImagePhase`** : Sendable — SwiftUI, iOS 15.0
+  - `case empty`, `case success(…)`, `case failure(…)`, `image`, `error`
+- **struct `Image`** : Equatable, Sendable — SwiftUICore, iOS 13.0
+  - `enum ResizingMode`, `resizable(capInsets:resizingMode:)`, `enum Orientation`, `enum Interpolation`, `interpolation(_:)`, `antialiased(_:)`, `symbolRenderingMode(_:)` [15.0], `symbolVariableValueMode(_:)` [26.0], `symbolColorRenderingMode(_:)` [26.0], `init(_:scale:orientation:label:)`, `init(decorative:scale:orientation:)`, `renderingMode(_:)`, `init(_:bundle:)`, `init(_:bundle:label:)`, `init(decorative:bundle:)`, `init(systemName:)`, `init(_internalSystemName:)` [14.0], `init(systemName:variableValue:)` [16.0], `init(_internalSystemName:variableValue:)` [16.0], `init(_:variableValue:bundle:)` [16.0], `init(_:variableValue:bundle:label:)` [16.0], `init(decorative:variableValue:bundle:)` [16.0], `init(_systemName:colorPalette:)` [13.0, deprecated], `init(_internalSystemName:colorPalette:)` [13.0, deprecated], `init(_:)` [17.0], `struct DynamicRange` [17.0], `allowedDynamicRange(_:)` [17.0], `init(size:label:opaque:colorMode:)` [16.0], `enum TemplateRenderingMode`, `enum Scale`, `provider`, `static ==(lhs:rhs:)`, `typealias Body`, `init(uiImage:)`, `static transferRepresentation` [16.0], `typealias Representation` [16.0]
+  - `Image.DynamicRange`: `static standard` [17.0], `static constrainedHigh` [17.0], `static high` [17.0], `static ==(a:b:)` [17.0], `hash(into:)` [17.0], `hashValue` [17.0]
+  - `Image.Interpolation`: `case none`, `case low`, `case medium`, `case high`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `Image.Orientation`: `case up`, `case upMirrored`, `case down`, `case downMirrored`, `case left`, `case leftMirrored`, `case right`, `case rightMirrored`, `init(rawValue:)`, `typealias AllCases`, `typealias RawValue`, `static allCases`, `rawValue`
+  - `Image.ResizingMode`: `case tile`, `case stretch`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `Image.Scale`: `case small`, `case medium`, `case large`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `Image.TemplateRenderingMode`: `case template`, `case original`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `ImagePaint`** : ShapeStyle — SwiftUICore, iOS 13.0
+  - `image`, `sourceRect`, `scale`, `init(image:sourceRect:scale:)`, `typealias Resolved` [17.0]
+- **class `ImageRenderer`** : ObservableObject, ~Sendable, Observable — SwiftUICore, iOS 16.0
+  - `objectWillChange`, `content`, `proposedSize`, `scale`, `isOpaque`, `colorMode`, `allowedDynamicRange` [26.0], `init(content:)`, `cgImage`, `render(rasterizationScale:renderer:)`, `isObservationEnabled` [17.2], `typealias ObjectWillChangePublisher`, `uiImage`
+- **struct `SymbolColorRenderingMode`** : Equatable, Sendable — SwiftUICore, iOS 26.0
+  - `static flat`, `static gradient`, `static ==(a:b:)`
+- **struct `SymbolEffectTransition`** : Transition, ~Sendable — SwiftUICore, iOS 17.0
+  - `body(content:phase:)`, `static properties`, `typealias Body`
+- **struct `SymbolRenderingMode`** : Sendable — SwiftUICore, iOS 15.0
+  - `static monochrome`, `static multicolor`, `static hierarchical`, `static palette`
+- **struct `SymbolVariableValueMode`** : Equatable, Sendable — SwiftUICore, iOS 26.0
+  - `static color`, `static draw`, `static ==(a:b:)`
+- **struct `SymbolVariants`** : Hashable, Sendable — SwiftUICore, iOS 15.0
+  - `static none`, `static circle`, `static square`, `static rectangle`, `static fill`, `static slash`, `contains(_:)`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+
+## Shapes, colour and drawing
+
+- **struct `AccessoryCircularCapacityGaugeStyle`** : GaugeStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `AccessoryCircularGaugeStyle`** : GaugeStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `Angle`** : Hashable, Comparable — SwiftUICore, iOS 13.0
+  - `radians`, `degrees`, `init()`, `init(radians:)`, `init(degrees:)`, `static radians(_:)`, `static degrees(_:)`, `static < `, `static ==(a:b:)`, `hash(into:)`, `hashValue`, `encode(to:)` [26.0], `init(from:)` [26.0], `animatableData`, `static zero`, `typealias AnimatableData`
+- **struct `AngularGradient`** : ShapeStyle, View, Sendable — SwiftUICore, iOS 13.0
+  - `gradient`, `center`, `startAngle`, `endAngle`, `init(gradient:center:startAngle:endAngle:)`, `init(colors:center:startAngle:endAngle:)`, `init(stops:center:startAngle:endAngle:)`, `init(gradient:center:angle:)`, `init(colors:center:angle:)`, `init(stops:center:angle:)`, `typealias Body`, `typealias Resolved` [17.0]
+- **struct `AnyGradient`** : Hashable, ShapeStyle, Sendable — SwiftUICore, iOS 16.0
+  - `provider`, `init(_:)`, `hash(into:)`, `static ==(lhs:rhs:)`, `typealias Resolved` [17.0], `hashValue`, `colorSpace(_:)`
+- **struct `AnyShape`** : Shape, Sendable — SwiftUICore, iOS 16.0
+  - `init(_:)`, `path(in:)`, `sizeThatFits(_:)`, `typealias AnimatableData`, `animatableData`, `typealias Body`
+- **struct `AnyShapeStyle`** : ShapeStyle — SwiftUICore, iOS 15.0
+  - `storage`, `init(_:)`, `typealias Resolved` [17.0]
+- **struct `AutomaticControlGroupStyle`** : ControlGroupStyle, ~Swift.Sendable — SwiftUI, iOS 15.0
+  - `makeBody(configuration:)`, `typealias Body`
+- **struct `AutomaticDisclosureGroupStyle`** : DisclosureGroupStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `AutomaticFormStyle`** : FormStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `AutomaticHoverEffect`** : CustomHoverEffect, ~Sendable — SwiftUICore, iOS 18.0
+  - `init()`, `body(content:)`, `typealias Body`
+- **struct `AutomaticLabeledContentStyle`** : LabeledContentStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `AutomaticNavigationSplitViewStyle`** : NavigationSplitViewStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `AutomaticTableStyle`** : TableStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `makeBody(configuration:)`, `typealias Body`
+- **struct `AutomaticTextEditorStyle`** : TextEditorStyle, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `makeBody(configuration:)`, `init()`, `struct Body`
+  - `AutomaticTextEditorStyle.Body`: `body`, `typealias Body`
+- **struct `BackgroundStyle`** : ShapeStyle, BitwiseCopyable — SwiftUICore, iOS 14.0
+  - `init()`, `typealias Resolved` [17.0]
+- **struct `BalancedNavigationSplitViewStyle`** : NavigationSplitViewStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **enum `BlendMode`** : Sendable, Equatable — SwiftUICore, iOS 13.0
+  - `case normal`, `case multiply`, `case screen`, `case overlay`, `case darken`, `case lighten`, `case colorDodge`, `case colorBurn`, `case softLight`, `case hardLight`, `case difference`, `case exclusion`, `case hue`, `case saturation`, `case color`, `case luminosity`, `case sourceAtop`, `case destinationOver`, `case destinationOut`, `case plusDarker`, `case plusLighter`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `BorderedButtonStyle`** : PrimitiveButtonStyle, ~Swift.Sendable — SwiftUI, iOS 15.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `BorderedProminentButtonStyle`** : PrimitiveButtonStyle, ~Swift.Sendable — SwiftUI, iOS 15.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `BorderlessButtonMenuStyle`** : MenuStyle, ~Swift.Sendable — SwiftUI, iOS 14.0, deprecated
+  - `init()` [14.0], `makeBody(configuration:)` [14.0], `typealias Body`
+- **struct `BorderlessButtonStyle`** : PrimitiveButtonStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `ButtonBorderShape`** : Equatable, Sendable, Shape — SwiftUI, iOS 15.0
+  - `static automatic`, `static capsule`, `static roundedRectangle`, `static roundedRectangle(radius:)`, `static circle` [17.0], `static ==(a:b:)`, `path(in:)` [17.0], `typealias AnimatableData` [17.0], `typealias Body` [17.0], `inset(by:)` [17.0], `typealias InsetShape` [17.0]
+- **struct `ButtonMenuStyle`** : MenuStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **protocol `ButtonStyle`** — SwiftUI, iOS 13.0
+  - `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`
+- **struct `ButtonToggleStyle`** : ToggleStyle, ~Swift.Sendable — SwiftUI, iOS 15.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `Canvas`** : ~Sendable — SwiftUICore, iOS 15.0
+  - `symbols`, `renderer`, `isOpaque`, `colorMode`, `rendersAsynchronously`, `init(opaque:colorMode:rendersAsynchronously:renderer:)`, `typealias Body`, `init(opaque:colorMode:rendersAsynchronously:)`
+- **struct `Capsule`** : Shape, InsettableShape — SwiftUICore, iOS 13.0
+  - `style`, `init(style:)`, `path(in:)`, `layoutDirectionBehavior` [17.0], `typealias AnimatableData`, `typealias Body`, `inset(by:)`, `typealias InsetShape`, `corners(in:)` [26.0]
+- **struct `Circle`** : Shape — SwiftUICore, iOS 13.0
+  - `path(in:)`, `init()`, `layoutDirectionBehavior` [17.0], `typealias AnimatableData`, `typealias Body`, `sizeThatFits(_:)` [16.0], `inset(by:)`, `typealias InsetShape`, `corners(in:)` [26.0]
+- **struct `CircularProgressViewStyle`** : ProgressViewStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `init(tint:)` [14.0, deprecated], `makeBody(configuration:)`, `typealias Body`
+- **struct `Color`** : Hashable, CustomStringConvertible, Sendable, ShapeStyle, CoreTransferable.Transferable — SwiftUICore, iOS 13.0
+  - `static accentColor`, `struct Resolved` [17.0], `init(_:)` [17.0], `enum RGBColorSpace`, `init(_:red:green:blue:opacity:)`, `init(_:white:opacity:)`, `init(hue:saturation:brightness:opacity:)`, `gradient` [16.0], `static red`, `static orange`, `static yellow`, `static green`, `static mint` [15.0], `static teal` [15.0], `static cyan` [15.0], `static blue`, `static indigo` [15.0], `static purple`, `static pink`, `static brown` [15.0], `static white`, `static gray`, `static black`, `static clear`, `static primary`, `static secondary`, `struct ResolvedHDR` [26.0], `headroom(_:)` [26.0], `exposureAdjust(_:)` [26.0], `provider`, `resolve(in:)` [17.0], `resolveHDR(in:)` [26.0], `cgColor` [14.0, deprecated], `hash(into:)`, `static ==(lhs:rhs:)`, `description`, `hashValue`, `typealias Body`, `init(cgColor:)` [15.0], `init(_:bundle:)`, `opacity(_:)`, `mix(with:by:in:)` [18.0], `static transferRepresentation` [16.0], `typealias Representation` [16.0], `init(uiColor:)` [15.0]
+  - `Color.RGBColorSpace`: `case sRGB`, `case sRGBLinear`, `case displayP3`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `Color.Resolved`: `linearRed` [17.0], `linearGreen` [17.0], `linearBlue` [17.0], `opacity` [17.0], `static ==(a:b:)` [17.0], `hash(into:)` [17.0], `hashValue` [17.0], `typealias Resolved` [17.0], `description` [17.0], `typealias AnimatableData` [17.0], `animatableData` [17.0], `init(colorSpace:red:green:blue:opacity:)` [17.0], `red` [17.0], `green` [17.0], `blue` [17.0], `encode(to:)` [17.0], `init(from:)` [17.0], `cgColor` [17.0]
+  - `Color.ResolvedHDR`: `init(_:headroom:)` [26.0], `linearRed` [26.0], `linearGreen` [26.0], `linearBlue` [26.0], `red` [26.0], `green` [26.0], `blue` [26.0], `opacity` [26.0], `headroom` [26.0], `static ==(lhs:rhs:)` [26.0], `hash(into:)` [26.0], `hashValue` [26.0], `typealias Resolved` [26.0], `typealias AnimatableData` [26.0], `animatableData` [26.0], `description` [26.0], `encode(to:)` [26.0], `init(from:)` [26.0]
+- **struct `ColorMatrix`** : Equatable, Sendable — SwiftUICore, iOS 15.0
+  - `r1`, `g1`, `b1`, `a1`, `init()`, `static ==(a:b:)`
+- **struct `ColorPicker`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(selection:supportsOpacity:)`, `body`, `typealias Body`, `init(_:selection:supportsOpacity:)`
+- **enum `ColorRenderingMode`** : Sendable, Equatable — SwiftUICore, iOS 13.0
+  - `case nonLinear`, `case linear`, `case extendedLinear`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **enum `ColorScheme`** : CaseIterable, Sendable, Equatable — SwiftUICore, iOS 13.0
+  - `case light`, `case dark`, `static ==(a:b:)`, `typealias AllCases`, `static allCases`, `hash(into:)`, `hashValue`, `init(_:)` [14.0]
+- **enum `ColorSchemeContrast`** : CaseIterable, Sendable, Equatable — SwiftUICore, iOS 13.0
+  - `case standard`, `case increased`, `static ==(a:b:)`, `typealias AllCases`, `static allCases`, `hash(into:)`, `hashValue`, `init(_:)` [14.0]
+- **struct `ColumnNavigationViewStyle`** : NavigationViewStyle, ~Swift.Sendable — SwiftUI, iOS 15.0, deprecated
+- **struct `ColumnsFormStyle`** : FormStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `CompactDatePickerStyle`** : DatePickerStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `makeBody(configuration:)` [16.0], `typealias Body`
+- **struct `CompactMenuControlGroupStyle`** : ControlGroupStyle, ~Swift.Sendable — SwiftUI, iOS 16.4
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `ConcentricRectangle`** : Shape, Animatable — SwiftUICore, iOS 26.0
+  - `init()`, `init(corners:isUniform:)`, `init(topLeadingCorner:topTrailingCorner:bottomLeadingCorner:bottomTrailingCorner:)`, `init(uniformTopCorners:uniformBottomCorners:)`, `init(uniformLeadingCorners:uniformTrailingCorners:)`, `init(uniformTopCorners:bottomLeadingCorner:bottomTrailingCorner:)`, `init(uniformBottomCorners:topLeadingCorner:topTrailingCorner:)`, `init(uniformLeadingCorners:topTrailingCorner:bottomTrailingCorner:)`, `init(uniformTrailingCorners:topLeadingCorner:bottomLeadingCorner:)`, `path(in:)`, `animatableData`, `struct AnimatableData`, `typealias Body`
+  - `ConcentricRectangle.AnimatableData`: `scale(by:)`, `magnitudeSquared`, `static zero`, `static +(lhs:rhs:)`, `static -(lhs:rhs:)`, `static ==(a:b:)`
+- **struct `ContentShapeKinds`** : OptionSet, Sendable — SwiftUICore, iOS 15.0
+  - `rawValue`, `init(rawValue:)`, `static interaction`, `static dragPreview`, `static contextMenuPreview`, `static hoverEffect`, `static accessibility` [17.0], `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **protocol `ControlGroupStyle`** — SwiftUI, iOS 15.0
+  - `static palette` [17.0], `static automatic`, `static navigation`, `static menu` [16.4], `static compactMenu` [16.4], `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`
+- **protocol `CustomHoverEffect`** — SwiftUICore, iOS 18.0
+  - `associatedtype Body`, `typealias Content`, `body(content:)`, `static automatic`, `static highlight`, `static lift`, `hoverEffectDisabled(_:)`
+- **protocol `DatePickerStyle`** — SwiftUI, iOS 13.0
+  - `static wheel`, `static automatic`, `static graphical` [14.0], `static compact` [14.0], `associatedtype Body`, `makeBody(configuration:)` [16.0], `typealias Configuration` [16.0]
+- **struct `DefaultButtonStyle`** : PrimitiveButtonStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `DefaultDatePickerStyle`** : DatePickerStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`, `makeBody(configuration:)` [16.0], `typealias Body`
+- **struct `DefaultGaugeStyle`** : GaugeStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `DefaultGlassEffectShape`** : Shape — SwiftUICore, iOS 26.0
+  - `init()`, `path(in:)`, `static role`, `layoutDirectionBehavior`, `sizeThatFits(_:)`, `typealias AnimatableData`, `typealias Body`
+- **struct `DefaultGroupBoxStyle`** : GroupBoxStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `DefaultLabelStyle`** : LabelStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `DefaultListStyle`** : ListStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`
+- **struct `DefaultMenuStyle`** : MenuStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `DefaultNavigationViewStyle`** : NavigationViewStyle, ~Swift.Sendable — SwiftUI, iOS 13.0, deprecated
+  - `init()` [13.0]
+- **struct `DefaultPickerStyle`** : PickerStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`
+- **struct `DefaultProgressViewStyle`** : ProgressViewStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `DefaultTabViewStyle`** : TabViewStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`
+- **struct `DefaultTextFieldStyle`** : TextFieldStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`
+- **struct `DefaultToggleStyle`** : ToggleStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **protocol `DisclosureGroupStyle`** — SwiftUI, iOS 16.0
+  - `static automatic`, `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`
+- **struct `DoubleColumnNavigationViewStyle`** : NavigationViewStyle, ~Swift.Sendable — SwiftUI, iOS 13.0, deprecated
+  - `init()` [13.0]
+- **struct `Ellipse`** : Shape, InsettableShape — SwiftUICore, iOS 13.0
+  - `path(in:)`, `init()`, `layoutDirectionBehavior` [17.0], `typealias AnimatableData`, `typealias Body`, `inset(by:)`, `typealias InsetShape`
+- **struct `EllipticalGradient`** : ShapeStyle, View, Sendable — SwiftUICore, iOS 15.0
+  - `gradient`, `center`, `startRadiusFraction`, `endRadiusFraction`, `init(gradient:center:startRadiusFraction:endRadiusFraction:)`, `init(colors:center:startRadiusFraction:endRadiusFraction:)`, `init(stops:center:startRadiusFraction:endRadiusFraction:)`, `typealias Body`, `typealias Resolved` [17.0]
+- **struct `EmptyHoverEffect`** : CustomHoverEffect, ~Sendable — SwiftUICore, iOS 18.0
+  - `typealias Body`
+- **struct `EmptyVisualEffect`** : VisualEffect — SwiftUICore, iOS 17.0
+  - `init()`, `typealias AnimatableData`
+- **struct `FillShapeStyle`** : ShapeStyle, BitwiseCopyable — SwiftUICore, iOS 17.0
+  - `init()`, `typealias Resolved`
+- **struct `FillStyle`** : Equatable, Sendable — SwiftUICore, iOS 13.0
+  - `isEOFilled`, `isAntialiased`, `init(eoFill:antialiased:)`, `static ==(a:b:)`
+- **struct `ForegroundStyle`** : ShapeStyle — SwiftUICore, iOS 13.0
+  - `init()`, `typealias Resolved` [17.0]
+- **protocol `FormStyle`** — SwiftUI, iOS 16.0
+  - `static columns`, `static grouped`, `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`, `static automatic`
+- **protocol `GaugeStyle`** — SwiftUI, iOS 16.0
+  - `static accessoryCircularCapacity`, `static linearCapacity`, `static accessoryLinear`, `static accessoryLinearCapacity`, `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`, `static automatic`, `static accessoryCircular`
+- **struct `Glass`** : Equatable, Sendable — SwiftUICore, iOS 26.0
+  - `static regular`, `static clear`, `static identity`, `tint(_:)`, `interactive(_:)`, `static ==(a:b:)`
+- **struct `GlassButtonStyle`** : PrimitiveButtonStyle, ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `init()`, `init(_:)` [26.1], `makeBody(configuration:)`, `typealias Body`
+- **struct `GlassEffectContainer`** : View, Sendable — SwiftUICore, iOS 26.0
+  - `init(spacing:)`, `body`, `typealias Body`
+- **struct `GlassEffectTransition`** : Sendable — SwiftUICore, iOS 26.0
+  - `static matchedGeometry`, `static materialize`, `static identity`
+- **struct `GlassProminentButtonStyle`** : PrimitiveButtonStyle, ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `Gradient`** : Equatable, Hashable — SwiftUICore, iOS 13.0
+  - `struct Stop`, `stops`, `init(stops:)`, `init(colors:)`, `static ==(a:b:)`, `hash(into:)` [16.0], `hashValue` [16.0], `typealias Resolved` [17.0], `struct ColorSpace` [16.0], `colorSpace(_:)` [16.0]
+  - `Gradient.ColorSpace`: `static device` [16.0], `static perceptual` [16.0], `static ==(a:b:)` [16.0], `hash(into:)` [16.0], `hashValue` [16.0]
+  - `Gradient.Stop`: `color`, `location`, `init(color:location:)`, `static ==(a:b:)`, `hash(into:)` [16.0], `hashValue` [16.0]
+- **struct `GraphicalDatePickerStyle`** : DatePickerStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `makeBody(configuration:)` [16.0], `typealias Body`
+- **struct `GraphicsContext`** : ~Sendable — SwiftUICore, iOS 15.0
+  - `struct BlendMode`, `opacity`, `blendMode`, `environment`, `transform`, `scaleBy(x:y:)`, `translateBy(x:y:)`, `rotate(by:)`, `concatenate(_:)`, `struct ClipOptions`, `clipBoundingRect`, `clip(to:style:options:)`, `clipToLayer(opacity:options:)`, `struct Filter`, `struct ShadowOptions`, `struct BlurOptions`, `struct FilterOptions`, `addFilter(_:options:)`, `struct Shading`, `struct GradientOptions`, `resolve(_:)`, `drawLayer()`, `fill(_:with:style:)`, `stroke(_:with:style:)`, `stroke(_:with:lineWidth:)`, `struct ResolvedImage`, `draw(_:in:style:)`, `draw(_:at:anchor:)`, `struct ResolvedText`, `draw(_:in:)`, `struct ResolvedSymbol`, `resolveSymbol(id:)`, `withCGContext()`, `draw(_:options:)` [17.0]
+  - `GraphicsContext.BlendMode`: `rawValue`, `init(rawValue:)`, `static normal`, `static multiply`, `static screen`, `static overlay`, `static darken`, `static lighten`, `static colorDodge`, `static colorBurn`, `static softLight`, `static hardLight`, `static difference`, `static exclusion`, `static hue`, `static saturation`, `static color`, `static luminosity`, `static clear`, `static copy`, `static sourceIn`, `static sourceOut`, `static sourceAtop`, `static destinationOver`, `static destinationIn`, `static destinationOut`, `static destinationAtop`, `static xor`, `static plusDarker`, `static plusLighter`, `typealias RawValue`
+  - `GraphicsContext.BlurOptions`: `rawValue`, `init(rawValue:)`, `static opaque`, `static dithersResult`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+  - `GraphicsContext.ClipOptions`: `rawValue`, `init(rawValue:)`, `static inverse`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+  - `GraphicsContext.Filter`: `static projectionTransform(_:)`, `static shadow(color:radius:x:y:blendMode:options:)`, `static colorMultiply(_:)`, `static alphaMultiply(_:)` [18.0], `static colorMatrix(_:)`, `static colorMatrix(_:isPremultiplied:)` [18.2], `static hueRotation(_:)`, `static saturation(_:)`, `static brightness(_:)`, `static contrast(_:)`, `static colorInvert(_:)`, `static grayscale(_:)`, `static luminanceToAlpha`, `static blur(radius:options:)`, `static alphaThreshold(min:max:color:)`, `static colorShader(_:)` [17.0], `static distortionShader(_:maxSampleOffset:)` [17.0], `static layerShader(_:maxSampleOffset:)` [17.0]
+  - `GraphicsContext.FilterOptions`: `rawValue`, `init(rawValue:)`, `static linearColor`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+  - `GraphicsContext.GradientOptions`: `rawValue`, `init(rawValue:)`, `static `repeat``, `static mirror`, `static linearColor`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+  - `GraphicsContext.ResolvedImage`: `size`, `baseline`, `shading`
+  - `GraphicsContext.ResolvedSymbol`: `size`
+  - `GraphicsContext.ResolvedText`: `shading`, `measure(in:)`, `firstBaseline(in:)`, `lastBaseline(in:)`
+  - `GraphicsContext.Shading`: `static backdrop`, `static foreground`, `static palette(_:)`, `static color(_:)`, `static color(_:red:green:blue:opacity:)`, `static color(_:white:opacity:)`, `static shader(_:bounds:)` [17.0], `static meshGradient(_:)` [18.0], `static style(_:)`, `static linearGradient(_:startPoint:endPoint:options:)`, `static radialGradient(_:center:startRadius:endRadius:options:)`, `static radialGradient(_:startCenter:startRadius:endCenter:endRadius:options:)` [18.2], `static conicGradient(_:center:angle:options:)`, `static tiledImage(_:origin:sourceRect:scale:)`
+  - `GraphicsContext.ShadowOptions`: `rawValue`, `init(rawValue:)`, `static shadowAbove`, `static shadowOnly`, `static invertsAlpha`, `static disablesGroup`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **protocol `GroupBoxStyle`** — SwiftUI, iOS 14.0
+  - `static automatic`, `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`
+- **struct `GroupedFormStyle`** : FormStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `GroupedListStyle`** : ListStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`
+- **struct `HierarchicalShapeStyle`** : ShapeStyle — SwiftUICore, iOS 15.0
+  - `id`, `static primary`, `static secondary`, `static tertiary`, `static quaternary`, `typealias Resolved` [17.0], `static quinary` [16.0]
+- **struct `HierarchicalShapeStyleModifier`** : ShapeStyle — SwiftUICore, iOS 17.0
+  - `typealias Resolved`
+- **struct `HighlightHoverEffect`** : CustomHoverEffect, ~Sendable — SwiftUICore, iOS 18.0
+  - `init()`, `body(content:)`, `typealias Body`
+- **struct `HoverEffect`** : ~Sendable, CustomHoverEffect — SwiftUICore, iOS 13.4
+  - `init(_:)` [18.0], `static automatic`, `static highlight`, `static lift`, `typealias Body` [18.0]
+- **struct `IconOnlyLabelStyle`** : LabelStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **protocol `IndexViewStyle`** — SwiftUI, iOS 14.0
+  - `static page`, `static page(backgroundDisplayMode:)`
+- **struct `InlinePickerStyle`** : PickerStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`
+- **protocol `LabeledContentStyle`** — SwiftUI, iOS 16.0
+  - `static automatic`, `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`
+- **protocol `LabelStyle`** — SwiftUI, iOS 14.0
+  - `static automatic`, `static iconOnly`, `static titleAndIcon` [14.5], `static titleOnly`, `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`
+- **struct `LiftHoverEffect`** : CustomHoverEffect, ~Sendable — SwiftUICore, iOS 18.0
+  - `init()`, `body(content:)`, `typealias Body`
+- **struct `LinkShapeStyle`** : ShapeStyle, BitwiseCopyable — SwiftUI, iOS 17.0
+  - `init()`, `typealias Resolved`
+- **protocol `ListStyle`** — SwiftUI, iOS 13.0
+  - `static automatic`, `static sidebar` [14.0], `static inset` [14.0], `static grouped`, `static insetGrouped` [14.0], `static plain`
+- **struct `Material`** : Sendable — SwiftUICore, iOS 15.0
+  - `static regular`, `static thick`, `static thin`, `static ultraThin`, `static ultraThick`, `static bar`, `typealias Resolved` [17.0], `materialActiveAppearance(_:)` [18.0]
+- **struct `MenuControlGroupStyle`** : ControlGroupStyle, ~Swift.Sendable — SwiftUI, iOS 16.4
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `MenuPickerStyle`** : PickerStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`
+- **protocol `MenuStyle`** — SwiftUI, iOS 14.0
+  - `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`, `static button` [16.0], `static automatic`, `static borderlessButton`
+- **struct `MeshGradient`** : ShapeStyle, Equatable, Sendable, View — SwiftUICore, iOS 18.0
+  - `enum Locations`, `enum Colors`, `struct BezierPoint`, `width`, `height`, `locations`, `colors`, `background`, `smoothsColors`, `colorSpace`, `init(width:height:locations:colors:background:smoothsColors:colorSpace:)`, `init(width:height:points:colors:background:smoothsColors:colorSpace:)`, `init(width:height:points:resolvedColors:background:smoothsColors:colorSpace:)`, `init(width:height:bezierPoints:colors:background:smoothsColors:colorSpace:)`, `init(width:height:bezierPoints:resolvedColors:background:smoothsColors:colorSpace:)`, `static ==(a:b:)`, `typealias Body`, `typealias Resolved`
+  - `MeshGradient.BezierPoint`: `position`, `leadingControlPoint`, `topControlPoint`, `trailingControlPoint`, `bottomControlPoint`, `init(position:leadingControlPoint:topControlPoint:trailingControlPoint:bottomControlPoint:)`, `static ==(a:b:)`
+  - `MeshGradient.Colors`: `case colors(…)`, `case resolvedColors(…)`, `static ==(a:b:)`
+  - `MeshGradient.Locations`: `case points(…)`, `case bezierPoints(…)`, `static ==(a:b:)`
+- **struct `NavigationControlGroupStyle`** : ControlGroupStyle, ~Swift.Sendable — SwiftUI, iOS 15.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `NavigationLinkPickerStyle`** : PickerStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`
+- **protocol `NavigationSplitViewStyle`** — SwiftUI, iOS 16.0
+  - `static balanced`, `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`, `static prominentDetail`, `static automatic`
+- **protocol `NavigationViewStyle`** — SwiftUI, iOS 13.0, deprecated
+  - `static columns` [15.0], `static automatic` [13.0], `static stack` [13.0]
+- **struct `OffsetShape`** : Shape, InsettableShape — SwiftUICore, iOS 13.0
+  - `shape`, `offset`, `init(shape:offset:)`, `path(in:)`, `static role` [15.0], `layoutDirectionBehavior` [17.0], `typealias AnimatableData`, `animatableData`, `typealias Body`, `inset(by:)`, `typealias InsetShape`
+- **struct `PageIndexViewStyle`** : IndexViewStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `struct BackgroundDisplayMode`, `init(backgroundDisplayMode:)`
+  - `PageIndexViewStyle.BackgroundDisplayMode`: `static automatic`, `static interactive`, `static always`, `static never`
+- **struct `PageTabViewStyle`** : TabViewStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `struct IndexDisplayMode`, `init(indexDisplayMode:)`
+  - `PageTabViewStyle.IndexDisplayMode`: `static automatic`, `static always`, `static never`
+- **struct `PaletteControlGroupStyle`** : ControlGroupStyle, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `PalettePickerStyle`** : PickerStyle, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `init()`
+- **struct `PaletteSelectionEffect`** : Sendable, Equatable — SwiftUI, iOS 17.0
+  - `static ==(lhs:rhs:)`, `static automatic`, `static symbolVariant(_:)`, `static custom`
+- **struct `Path`** : Equatable, LosslessStringConvertible, Sendable, Shape — SwiftUICore, iOS 13.0
+  - `class PathBox`, `storage`, `init()`, `init(_:)`, `init(roundedRect:cornerSize:style:)`, `init(roundedRect:cornerRadius:style:)`, `init(roundedRect:cornerRadii:style:)` [16.0], `init(ellipseIn:)`, `description`, `cgPath`, `isEmpty`, `boundingRect`, `contains(_:eoFill:)`, `enum Element`, `forEach()`, `strokedPath(_:)`, `trimmedPath(from:to:)`, `static ==(a:b:)`, `path(in:)`, `typealias AnimatableData`, `typealias Body`, `move(to:)`, `addLine(to:)`, `addQuadCurve(to:control:)`, `addCurve(to:control1:control2:)`, `closeSubpath()`, `addRect(_:transform:)`, `addRoundedRect(in:cornerSize:style:transform:)`, `addRoundedRect(in:cornerRadii:style:transform:)` [16.0], `addEllipse(in:transform:)`, `addRects(_:transform:)`, `addLines(_:)`, `addRelativeArc(center:radius:startAngle:delta:transform:)`, `addArc(center:radius:startAngle:endAngle:clockwise:transform:)`, `addArc(tangent1End:tangent2End:radius:transform:)`, `addPath(_:transform:)`, `currentPoint`, `normalized(eoFill:)` [17.0], `intersection(_:eoFill:)` [17.0], `union(_:eoFill:)` [17.0], `subtracting(_:eoFill:)` [17.0], `symmetricDifference(_:eoFill:)` [17.0], `lineIntersection(_:eoFill:)` [17.0], `lineSubtraction(_:eoFill:)` [17.0], `applying(_:)`, `offsetBy(dx:dy:)`
+  - `Path.Element`: `case move(…)`, `case line(…)`, `case quadCurve(…)`, `case curve(…)`, `case closeSubpath`, `static ==(a:b:)`
+- **protocol `PickerStyle`** — SwiftUI, iOS 13.0
+  - `static wheel`, `static inline` [14.0], `static automatic`, `static segmented`, `static tabs` [27.0], `static palette` [17.0], `static navigationLink` [16.0], `static menu` [14.0]
+- **struct `PlaceholderTextShapeStyle`** : ShapeStyle, BitwiseCopyable — SwiftUI, iOS 17.0
+  - `init()`, `typealias Resolved`
+- **struct `PlainButtonStyle`** : PrimitiveButtonStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `PlainListStyle`** : ListStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`
+- **struct `PlainTextEditorStyle`** : TextEditorStyle, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `makeBody(configuration:)`, `init()`, `typealias Body`
+- **struct `PlainTextFieldStyle`** : TextFieldStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`
+- **protocol `PrimitiveButtonStyle`** — SwiftUI, iOS 13.0
+  - `static automatic`, `static glass` [26.0], `static glass(_:)` [26.0], `static borderless`, `static glassProminent` [26.0], `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`, `static plain`, `static bordered` [15.0], `static borderedProminent` [15.0]
+- **protocol `ProgressViewStyle`** — SwiftUI, iOS 14.0
+  - `static linear`, `static circular`, `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`, `static automatic`
+- **struct `ProminentDetailNavigationSplitViewStyle`** : NavigationSplitViewStyle, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `RadialGradient`** : ShapeStyle, View, Sendable — SwiftUICore, iOS 13.0
+  - `gradient`, `center`, `startRadius`, `endRadius`, `init(gradient:center:startRadius:endRadius:)`, `init(colors:center:startRadius:endRadius:)`, `init(stops:center:startRadius:endRadius:)`, `typealias Body`, `typealias Resolved` [17.0]
+- **struct `Rectangle`** : Shape, InsettableShape — SwiftUICore, iOS 13.0
+  - `path(in:)`, `layoutDirectionBehavior` [17.0], `init()`, `typealias AnimatableData`, `typealias Body`, `inset(by:)`, `typealias InsetShape`, `corners(in:)` [26.0]
+- **struct `RectangleCornerRadii`** : Equatable, Animatable — SwiftUICore, iOS 16.0
+  - `topLeading`, `bottomLeading`, `bottomTrailing`, `topTrailing`, `init(topLeading:bottomLeading:bottomTrailing:topTrailing:)`, `typealias AnimatableData`, `animatableData`, `static ==(a:b:)`, `subscript(corner:)` [26.0]
+- **struct `RotatedShape`** : Shape, InsettableShape — SwiftUICore, iOS 13.0
+  - `shape`, `angle`, `anchor`, `init(shape:angle:anchor:)`, `path(in:)`, `static role` [15.0], `layoutDirectionBehavior` [17.0], `typealias AnimatableData`, `animatableData`, `typealias Body`, `inset(by:)`, `typealias InsetShape`
+- **struct `RoundedBorderTextFieldStyle`** : TextFieldStyle, ~Swift.Sendable — SwiftUI, iOS 13.0, deprecated
+  - `init()` [13.0]
+- **enum `RoundedCornerStyle`** : Sendable, Equatable — SwiftUICore, iOS 13.0
+  - `case circular`, `case continuous`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `RoundedRectangle`** : Shape, InsettableShape — SwiftUICore, iOS 13.0
+  - `cornerSize`, `style`, `init(cornerSize:style:)`, `init(cornerRadius:style:)`, `path(in:)`, `layoutDirectionBehavior` [17.0], `animatableData`, `typealias AnimatableData`, `typealias Body`, `inset(by:)`, `typealias InsetShape`, `corners(in:)` [26.0]
+- **protocol `RoundedRectangularShape`** : InsettableShape — SwiftUICore, iOS 26.0
+  - `typealias Corners`, `corners(in:)`
+- **struct `RoundedRectangularShapeCorners`** : Sendable, Hashable, Animatable — SwiftUICore, iOS 26.0
+  - `topLeading`, `bottomLeading`, `topTrailing`, `bottomTrailing`, `init(topLeading:topTrailing:bottomLeading:bottomTrailing:)`, `init(all:)`, `static fixed(_:)`, `static concentric`, `static concentric(minimum:)`, `subscript(corner:)`, `animatableData`, `struct AnimatableData`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `RoundedRectangularShapeCorners.AnimatableData`: `scale(by:)`, `magnitudeSquared`, `static zero`, `static +(lhs:rhs:)`, `static -(lhs:rhs:)`, `static ==(a:b:)`
+- **struct `ScaledShape`** : Shape — SwiftUICore, iOS 13.0
+  - `shape`, `scale`, `anchor`, `init(shape:scale:anchor:)`, `path(in:)`, `static role` [15.0], `layoutDirectionBehavior` [17.0], `typealias AnimatableData`, `animatableData`, `typealias Body`
+- **struct `ScrollEdgeEffectStyle`** : Hashable, Sendable — SwiftUI, iOS 26.0
+  - `static automatic`, `static hard`, `static soft`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `SegmentedPickerStyle`** : PickerStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`
+- **struct `SelectionShapeStyle`** : ShapeStyle — SwiftUI, iOS 15.0
+  - `init()`, `typealias Resolved` [17.0]
+- **struct `SeparatorShapeStyle`** : ShapeStyle — SwiftUICore, iOS 17.0
+  - `init()`, `typealias Resolved`
+- **struct `Shader`** : Equatable, Sendable — SwiftUICore, iOS 17.0
+  - `struct Argument`, `function`, `arguments`, `dithersColor`, `init(function:arguments:)`, `static ==(a:b:)`, `compile(as:)` [18.0], `struct UsageType` [18.0], `typealias Resolved`
+  - `Shader.Argument`: `static float(_:)`, `static float2(_:_:)`, `static float3(_:_:_:)`, `static float4(_:_:_:_:)`, `static float2(_:)`, `static floatArray(_:)`, `static boundingRect`, `static color(_:)`, `static colorArray(_:)`, `static image(_:)`, `static data(_:)`, `static ==(a:b:)`
+  - `Shader.UsageType`: `static shapeStyle` [18.0], `static colorEffect` [18.0], `static distortionEffect` [18.0], `static layerEffect` [18.0], `static ==(a:b:)` [18.0], `hash(into:)` [18.0], `hashValue` [18.0]
+- **struct `ShaderFunction`** : Equatable, Sendable — SwiftUICore, iOS 17.0
+  - `library`, `name`, `init(library:name:)`, `dynamicallyCall(withArguments:)`, `static ==(a:b:)`
+- **struct `ShaderLibrary`** : Equatable, Sendable — SwiftUICore, iOS 17.0
+  - `static `default``, `static bundle(_:)`, `init(data:)`, `init(url:)`, `static subscript(dynamicMember:)`, `static ==(lhs:rhs:)`
+- **struct `ShadowStyle`** : Equatable, Sendable — SwiftUICore, iOS 16.0
+  - `static drop(color:radius:x:y:)`, `static inner(color:radius:x:y:)`, `static ==(a:b:)`
+- **protocol `Shape`** : Sendable, Animatable, View — SwiftUICore, iOS 13.0
+  - `trim(from:to:)`, `path(in:)`, `static role` [15.0], `layoutDirectionBehavior` [17.0], `sizeThatFits(_:)` [16.0], `stroke(style:)`, `stroke(lineWidth:)`, `static rect`, `static rect(cornerSize:style:)`, `static rect(cornerRadius:style:)`, `static rect(cornerRadii:style:)` [16.0], `static rect(topLeadingRadius:bottomLeadingRadius:bottomTrailingRadius:topTrailingRadius:style:)` [16.0], `static capsule`, `static capsule(style:)`, `static ellipse`, `static circle`, `intersection(_:eoFill:)` [17.0], `union(_:eoFill:)` [17.0], `subtracting(_:eoFill:)` [17.0], `symmetricDifference(_:eoFill:)` [17.0], `lineIntersection(_:eoFill:)` [17.0], `lineSubtraction(_:eoFill:)` [17.0], `static rect(corners:isUniform:)` [26.0], `static rect(topLeadingCorner:topTrailingCorner:bottomLeadingCorner:bottomTrailingCorner:)` [26.0], `static rect(uniformTopCorners:uniformBottomCorners:)` [26.0], `static rect(uniformLeadingCorners:uniformTrailingCorners:)` [26.0], `static rect(uniformTopCorners:bottomLeadingCorner:bottomTrailingCorner:)` [26.0], `static rect(uniformBottomCorners:topLeadingCorner:topTrailingCorner:)` [26.0], `static rect(uniformLeadingCorners:topTrailingCorner:bottomTrailingCorner:)` [26.0], `static rect(uniformTrailingCorners:topLeadingCorner:bottomLeadingCorner:)` [26.0], `static containerRelative` [14.0], `size(_:)`, `size(width:height:)`, `size(_:anchor:)` [18.0], `size(width:height:anchor:)` [18.0], `offset(_:)`, `offset(x:y:)`, `scale(x:y:anchor:)`, `scale(_:anchor:)`, `rotation(_:anchor:)`, `transform(_:)`, `fill(_:style:)`, `fill(style:)`, `stroke(_:style:)`, `stroke(_:lineWidth:)`, `body`, `stroke(_:style:antialiased:)` [17.0], `stroke(_:lineWidth:antialiased:)` [17.0], `static buttonBorder` [17.0]
+- **enum `ShapeRole`** : Sendable, Equatable — SwiftUICore, iOS 15.0
+  - `case fill`, `case stroke`, `case separator`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **protocol `ShapeStyle`** : Sendable — SwiftUICore, iOS 13.0
+  - `static linearGradient(_:startPoint:endPoint:)`, `static linearGradient(colors:startPoint:endPoint:)`, `static linearGradient(stops:startPoint:endPoint:)`, `static radialGradient(_:center:startRadius:endRadius:)`, `static radialGradient(colors:center:startRadius:endRadius:)`, `static radialGradient(stops:center:startRadius:endRadius:)`, `static ellipticalGradient(_:center:startRadiusFraction:endRadiusFraction:)` [15.0], `static ellipticalGradient(colors:center:startRadiusFraction:endRadiusFraction:)` [15.0], `static ellipticalGradient(stops:center:startRadiusFraction:endRadiusFraction:)` [15.0], `static angularGradient(_:center:startAngle:endAngle:)`, `static angularGradient(colors:center:startAngle:endAngle:)`, `static angularGradient(stops:center:startAngle:endAngle:)`, `static conicGradient(_:center:angle:)`, `static conicGradient(colors:center:angle:)`, `static conicGradient(stops:center:angle:)`, `static image(_:sourceRect:scale:)`, `static fill` [17.0], `static opacity(_:)` [16.0], `blendMode(_:)` [15.0], `static regularMaterial` [15.0], `static thickMaterial` [15.0], `static thinMaterial` [15.0], `static ultraThinMaterial` [15.0], `static ultraThickMaterial` [15.0], `static bar` [15.0], `materialActiveAppearance(_:)` [18.0], `static primary` [15.0], `static secondary` [15.0], `static tertiary` [15.0], `static quaternary` [15.0], `static quinary` [16.0], `static red`, `static orange`, `static yellow`, `static green`, `static mint` [15.0], `static teal` [15.0], `static cyan` [15.0], `static blue`, `static indigo` [15.0], `static purple`, `static pink`, `static brown` [15.0], `static white`, `static gray`, `static black`, `static clear`, `static separator` [17.0], `shadow(_:)` [16.0], ``in`(_:)`, `static background` [14.0], `static foreground`, `associatedtype Resolved` [17.0], `resolve(in:)` [17.0], `body`, `static tint` [15.0], `static placeholder` [17.0], `static link` [17.0], `static selection` [15.0], `static windowBackground` [17.0]
+- **protocol `ShapeView`** : View — SwiftUICore, iOS 17.0
+  - `associatedtype Content`, `shape`, `fill(_:style:)`, `stroke(_:style:antialiased:)`, `stroke(_:lineWidth:antialiased:)`, `strokeBorder(_:style:antialiased:)`, `strokeBorder(_:lineWidth:antialiased:)`
+- **struct `SidebarAdaptableTabViewStyle`** : TabViewStyle, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `init()`
+- **struct `SidebarListStyle`** : ListStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`
+- **struct `StrokeStyle`** : Equatable, Animatable — SwiftUICore, iOS 13.0
+  - `lineWidth`, `lineCap`, `lineJoin`, `miterLimit`, `dash`, `dashPhase`, `init(lineWidth:lineCap:lineJoin:miterLimit:dash:dashPhase:)`, `static ==(a:b:)`, `typealias AnimatableData`, `animatableData`
+- **struct `SwitchToggleStyle`** : ToggleStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`, `init(tint:)` [14.0, deprecated], `makeBody(configuration:)`, `typealias Body`
+- **enum `SystemFormatStyle`** : Sendable — SwiftUICore, iOS 18.0
+  - `struct DateReference`, `struct DateOffset`, `struct Timer`, `struct Stopwatch`
+  - `SystemFormatStyle.DateOffset`: `init(to:allowedFields:maxFieldCount:sign:)`, `calendar(_:)`, `locale(_:)`, `format(_:)`, `static ==(a:b:)`, `typealias FormatInput`, `typealias FormatOutput`, `encode(to:)`, `hash(into:)`, `hashValue`, `init(from:)`, `discreteInput(before:)`, `discreteInput(after:)`, `input(before:)`, `input(after:)`
+  - `SystemFormatStyle.DateReference`: `init(to:allowedFields:maxFieldCount:thresholdField:)`, `calendar(_:)`, `format(_:)`, `locale(_:)`, `static ==(a:b:)`, `typealias FormatInput`, `typealias FormatOutput`, `encode(to:)`, `hash(into:)`, `hashValue`, `init(from:)`, `discreteInput(before:)`, `discreteInput(after:)`, `input(before:)`, `input(after:)`
+  - `SystemFormatStyle.Stopwatch`: `typealias FormatInput`, `init(startingAt:showsHours:maxFieldCount:maxPrecision:)`, `format(_:)`, `locale(_:)`, `static ==(a:b:)`, `typealias FormatOutput`, `hash(into:)`, `hashValue`, `discreteInput(before:)`, `discreteInput(after:)`, `init(from:)`, `encode(to:)`
+  - `SystemFormatStyle.Timer`: `typealias FormatInput`, `init(countingDownIn:showsHours:maxFieldCount:maxPrecision:)`, `init(countingUpIn:showsHours:maxFieldCount:maxPrecision:)`, `format(_:)`, `locale(_:)`, `static ==(a:b:)`, `typealias FormatOutput`, `encode(to:)`, `hash(into:)`, `hashValue`, `init(from:)`, `discreteInput(before:)`, `discreteInput(after:)`
+- **struct `TabBarOnlyTabViewStyle`** : TabViewStyle, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `init()`
+- **protocol `TableStyle`** — SwiftUI, iOS 16.0
+  - `static inset`, `static automatic`, `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`
+- **struct `TabsPickerStyle`** : PickerStyle — SwiftUI, iOS 27.0
+  - `init()`
+- **protocol `TabViewStyle`** — SwiftUI, iOS 14.0
+  - `static sidebarAdaptable` [18.0], `static page`, `static page(indexDisplayMode:)`, `static tabBarOnly` [18.0], `static automatic`
+- **struct `TintShapeStyle`** : ShapeStyle — SwiftUICore, iOS 15.0
+  - `init()`, `typealias Resolved` [17.0]
+- **struct `TitleAndIconLabelStyle`** : LabelStyle, ~Swift.Sendable — SwiftUI, iOS 14.5
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **struct `TitleOnlyLabelStyle`** : LabelStyle, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init()`, `makeBody(configuration:)`, `typealias Body`
+- **protocol `ToggleStyle`** — SwiftUI, iOS 13.0
+  - `static button` [15.0], `associatedtype Body`, `makeBody(configuration:)`, `typealias Configuration`, `static automatic`, `static `switch``
+- **struct `ToolbarLabelStyle`** : Sendable, Equatable — SwiftUI, iOS 18.0
+  - `static automatic`, `static ==(a:b:)`
+- **struct `TransformedShape`** : Shape — SwiftUICore, iOS 13.0
+  - `shape`, `transform`, `init(shape:transform:)`, `path(in:)`, `static role` [15.0], `layoutDirectionBehavior` [17.0], `typealias AnimatableData`, `animatableData`, `typealias Body`
+- **struct `UnevenRoundedRectangle`** : Shape, InsettableShape — SwiftUICore, iOS 16.0
+  - `cornerRadii`, `style`, `init(cornerRadii:style:)`, `init(topLeadingRadius:bottomLeadingRadius:bottomTrailingRadius:topTrailingRadius:style:)`, `path(in:)`, `animatableData`, `typealias AnimatableData`, `typealias Body`, `inset(by:)`, `typealias InsetShape`, `corners(in:)` [26.0]
+- **protocol `VisualEffect`** : Sendable, Animatable — SwiftUICore, iOS 17.0
+  - `offset(_:)`, `offset(x:y:)`, `rotationEffect(_:anchor:)`, `colorEffect(_:isEnabled:)`, `distortionEffect(_:maxSampleOffset:isEnabled:)`, `layerEffect(_:maxSampleOffset:isEnabled:)`, `blendMode(_:)` [18.0], `contrast(_:)`, `blur(radius:opaque:)`, `grayscale(_:)`, `rotation3DEffect(_:axis:anchor:anchorZ:perspective:)`, `opacity(_:)`, `brightness(_:)`, `transformEffect(_:)`, `combining(_:)` [26.0], `saturation(_:)`, `scaleEffect(_:anchor:)`, `scaleEffect(x:y:anchor:)`, `hueRotation(_:)`
+- **struct `WheelDatePickerStyle`** : DatePickerStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`, `makeBody(configuration:)` [16.0], `typealias Body`
+- **struct `WheelPickerStyle`** : PickerStyle, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`
+
+## Animation, transactions and transitions
+
+- **protocol `Animatable`** — SwiftUICore, iOS 13.0
+  - `associatedtype AnimatableData`, `animatableData`, `static subscript(<T_animatableType:)`, `subscript(<T_animatableValue:)`
+- **protocol `AnimatableModifier`** : Animatable, ViewModifier — SwiftUI, iOS 13.0, deprecated
+- **struct `AnimatablePair`** : VectorArithmetic, Sendable — SwiftUICore, iOS 13.0
+  - `first`, `second`, `init(_:_:)`, `subscript()`, `static zero`, `static +=(lhs:rhs:)`, `static -=(lhs:rhs:)`, `static +(lhs:rhs:)`, `static -(lhs:rhs:)`, `scale(by:)`, `magnitudeSquared`, `static ==(a:b:)`
+- **struct `AnimatableValues`** : VectorArithmetic, Sendable — SwiftUICore, iOS 26.0
+  - `value`, `init(_:)`, `static zero`, `static +=(lhs:rhs:)`, `static -=(lhs:rhs:)`, `static +(lhs:rhs:)`, `static -(lhs:rhs:)`, `scale(by:)`, `magnitudeSquared`, `static ==(lhs:rhs:)`
+- **struct `Animation`** : Equatable, Sendable — SwiftUICore, iOS 13.0
+  - `static `default``, `speed(_:)`, `static timingCurve(_:duration:)` [17.0], `static spring(_:blendDuration:)` [17.0], `static interpolatingSpring(_:initialVelocity:)` [17.0], `logicallyComplete(after:)` [17.0], `static interpolatingSpring(mass:stiffness:damping:initialVelocity:)`, `static interpolatingSpring(duration:bounce:initialVelocity:)`, `static interpolatingSpring`, `delay(_:)`, `static spring(duration:bounce:blendDuration:)`, `static spring(response:dampingFraction:blendDuration:)`, `static spring`, `static interactiveSpring(response:dampingFraction:blendDuration:)`, `static interactiveSpring`, `static interactiveSpring(duration:extraBounce:blendDuration:)`, `static smooth`, `static smooth(duration:extraBounce:)`, `static snappy`, `static snappy(duration:extraBounce:)`, `static bouncy`, `static bouncy(duration:extraBounce:)`, `static easeInOut(duration:)`, `static easeInOut`, `static easeIn(duration:)`, `static easeIn`, `static easeOut(duration:)`, `static easeOut`, `static linear(duration:)`, `static linear`, `static timingCurve(_:_:_:_:duration:)`, `repeatCount(_:autoreverses:)`, `repeatForever(autoreverses:)`, `init(_:)` [17.0], `static ==(lhs:rhs:)`, `animate(value:time:context:)` [17.0], `velocity(value:time:context:)` [17.0], `shouldMerge(previous:value:time:context:)` [17.0], `base` [17.0], `hash(into:)` [17.0], `hashValue` [17.0], `description`, `debugDescription`, `customMirror`
+- **struct `AnimationCompletionCriteria`** : Hashable, Sendable — SwiftUICore, iOS 17.0
+  - `static logicallyComplete`, `static removed`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `AnimationContext`** : ~Sendable — SwiftUICore, iOS 17.0
+  - `state`, `isLogicallyComplete`, `environment`, `withState(_:)`
+- **struct `AnimationState`** : ~Sendable — SwiftUICore, iOS 17.0
+  - `init()`, `subscript(<Kkey:)`
+- **protocol `AnimationStateKey`** — SwiftUICore, iOS 17.0
+  - `associatedtype Value`, `static defaultValue`
+- **struct `AnimationTimelineSchedule`** : TimelineSchedule, Sendable — SwiftUI, iOS 15.0
+  - `init(minimumInterval:paused:)`, `entries(from:mode:)`, `struct Entries`
+  - `AnimationTimelineSchedule.Entries`: `next()`, `typealias Element`, `typealias Iterator`
+- **struct `AnyNavigationTransition`** : NavigationTransition, ~Swift.Sendable — SwiftUI, iOS 27.0
+  - `init(_:)`
+- **struct `AnyTransition`** : ~Sendable — SwiftUICore, iOS 13.0
+  - `static modifier(active:identity:)`, `static offset(_:)`, `static offset(x:y:)`, `static move(edge:)`, `static asymmetric(insertion:removal:)`, `static slide`, `static push(from:)` [16.0], `init(_:)` [17.0], `animation(_:)`, `combined(with:)`, `static identity`, `static scale`, `static scale(scale:anchor:)`
+- **struct `AsymmetricTransition`** : Transition, ~Sendable — SwiftUICore, iOS 17.0
+  - `insertion`, `removal`, `init(insertion:removal:)`, `body(content:phase:)`, `static properties`, `typealias Body`
+- **struct `AutomaticNavigationTransition`** : NavigationTransition, ~Swift.Sendable — SwiftUI, iOS 18.0
+- **struct `BlurReplaceTransition`** : Transition, ~Sendable — SwiftUICore, iOS 17.0
+  - `struct Configuration`, `configuration`, `init(configuration:)`, `body(content:phase:)`, `typealias Body`
+  - `BlurReplaceTransition.Configuration`: `static downUp`, `static upUp`, `static ==(a:b:)`
+- **struct `ContentTransition`** : Equatable, Sendable — SwiftUICore, iOS 16.0
+  - `static symbolEffect(_:options:)` [17.0], `static symbolEffect` [17.0], `static identity`, `static opacity`, `static interpolate`, `static numericText(countsDown:)`, `static numericText(value:)` [17.0], `static ==(a:b:)`
+- **struct `CrossFadeNavigationTransition`** : NavigationTransition, Sendable — SwiftUI, iOS 27.0
+- **struct `CubicKeyframe`** : KeyframeTrackContent, ~Sendable — SwiftUICore, iOS 17.0
+  - `init(_:duration:startVelocity:endVelocity:)`, `typealias Body`
+- **protocol `CustomAnimation`** : Hashable, Sendable — SwiftUICore, iOS 17.0
+  - `animate(value:time:context:)`, `velocity(value:time:context:)`, `shouldMerge(previous:value:time:context:)`
+- **struct `EmptyAnimatableData`** : VectorArithmetic, Sendable — SwiftUICore, iOS 13.0
+  - `init()`, `static zero`, `static +=(lhs:rhs:)`, `static -=(lhs:rhs:)`, `static +(lhs:rhs:)`, `static -(lhs:rhs:)`, `scale(by:)`, `magnitudeSquared`, `static ==(a:b:)`
+- **struct `EmptyMatchedTransitionSourceConfiguration`** : MatchedTransitionSourceConfiguration — SwiftUI, iOS 18.0
+- **struct `EveryMinuteTimelineSchedule`** : TimelineSchedule, Sendable — SwiftUICore, iOS 15.0
+  - `struct Entries`, `init()`, `entries(from:mode:)`
+  - `EveryMinuteTimelineSchedule.Entries`: `next()`, `typealias Element`, `typealias Iterator`
+- **struct `ExplicitTimelineSchedule`** : TimelineSchedule, ~Sendable — SwiftUICore, iOS 15.0
+  - `init(_:)`, `entries(from:mode:)`
+- **struct `IdentityTransition`** : Transition, ~Sendable — SwiftUICore, iOS 17.0
+  - `init()`, `body(content:phase:)`, `static properties`, `typealias Body`
+- **struct `KeyframeAnimator`** : View, ~Sendable — SwiftUICore, iOS 17.0
+  - `init(initialValue:trigger:content:)`, `init(initialValue:repeating:content:)`, `typealias Body`
+- **protocol `Keyframes`** — SwiftUICore, iOS 17.0
+  - `associatedtype Value`, `associatedtype Body`
+- **struct `KeyframesBuilder`** : ~Sendable — SwiftUICore, iOS 17.0
+  - `static buildExpression(_:)`, `static buildArray(_:)`, `static buildEither(first:)`, `static buildEither(second:)`, `static buildPartialBlock(first:)`, `static buildPartialBlock(accumulated:next:)`, `static buildBlock()`, `static buildFinalResult(_:)`
+- **struct `KeyframeTimeline`** : ~Sendable — SwiftUICore, iOS 17.0
+  - `init(initialValue:)`, `duration`, `value(time:)`, `value(progress:)`
+- **struct `KeyframeTrack`** : Keyframes, ~Sendable — SwiftUICore, iOS 17.0
+  - `init()`, `init(_:)`, `typealias Body`
+- **protocol `MatchedTransitionSourceConfiguration`** : Sendable — SwiftUI, iOS 18.0
+  - `shadow(color:radius:x:y:)`, `clipShape(_:)`, `background(_:)`
+- **struct `MoveKeyframe`** : KeyframeTrackContent, ~Sendable — SwiftUICore, iOS 17.0
+  - `init(_:)`, `typealias Body`
+- **struct `MoveTransition`** : Transition, ~Sendable — SwiftUICore, iOS 17.0
+  - `edge`, `init(edge:)`, `body(content:phase:)`, `typealias Body`
+- **struct `Namespace`** : DynamicProperty, Sendable, BitwiseCopyable — SwiftUICore, iOS 14.0
+  - `init()`, `wrappedValue`, `struct ID`
+  - `Namespace.ID`: `id`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **protocol `NavigationTransition`** — SwiftUI, iOS 18.0
+  - `static automatic`, `static zoom(sourceID:in:)`, `static crossFade` [27.0]
+- **struct `OffsetTransition`** : Transition, ~Sendable — SwiftUICore, iOS 17.0
+  - `offset`, `init(_:)`, `body(content:phase:)`, `typealias Body`
+- **struct `OpacityTransition`** : Transition, ~Sendable — SwiftUICore, iOS 17.0
+  - `init()`, `body(content:phase:)`, `static properties`, `typealias Body`
+- **struct `PeriodicTimelineSchedule`** : TimelineSchedule, Sendable — SwiftUICore, iOS 15.0
+  - `struct Entries`, `init(from:by:)`, `entries(from:mode:)`
+  - `PeriodicTimelineSchedule.Entries`: `next()`, `typealias Element`, `typealias Iterator`
+- **struct `PhaseAnimator`** : View, ~Sendable — SwiftUICore, iOS 17.0
+  - `init(_:trigger:content:)`, `init(_:content:)`, `body`, `typealias Body`
+- **struct `PushTransition`** : Transition, ~Sendable — SwiftUICore, iOS 17.0
+  - `edge`, `init(edge:)`, `body(content:phase:)`, `typealias Body`
+- **struct `ScaleTransition`** : Transition, ~Sendable — SwiftUICore, iOS 17.0
+  - `scale`, `anchor`, `init(_:anchor:)`, `body(content:phase:)`, `typealias Body`
+- **struct `ScrollTransitionConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `static animated(_:)`, `static animated`, `static interactive(timingCurve:)`, `static interactive`, `static identity`, `animation(_:)`, `threshold(_:)`, `struct Threshold`
+  - `ScrollTransitionConfiguration.Threshold`: `static visible`, `static hidden`, `static centered`, `static visible(_:)`, `interpolated(towards:amount:)`, `inset(by:)`
+- **enum `ScrollTransitionPhase`** : ~Swift.Sendable, Equatable — SwiftUI, iOS 17.0
+  - `case topLeading`, `case identity`, `case bottomTrailing`, `isIdentity`, `value`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `SlideTransition`** : Transition, ~Sendable — SwiftUICore, iOS 17.0
+  - `init()`, `body(content:phase:)`, `typealias Body`
+- **struct `Spring`** : Hashable, Sendable — SwiftUICore, iOS 17.0
+  - `static ==(a:b:)`, `hash(into:)`, `hashValue`, `init(duration:bounce:)`, `duration`, `bounce`, `init(response:dampingRatio:)`, `response`, `dampingRatio`, `init(mass:stiffness:damping:allowOverDamping:)`, `mass`, `stiffness`, `damping`, `init(settlingDuration:dampingRatio:epsilon:)`, `settlingDuration`, `settlingDuration(target:initialVelocity:epsilon:)`, `value(target:initialVelocity:time:)`, `velocity(target:initialVelocity:time:)`, `update(value:velocity:target:deltaTime:)`, `force(target:position:velocity:)`, `settlingDuration(fromValue:toValue:initialVelocity:epsilon:)`, `value(fromValue:toValue:initialVelocity:time:)`, `velocity(fromValue:toValue:initialVelocity:time:)`, `force(fromValue:toValue:position:velocity:)`, `static smooth`, `static smooth(duration:extraBounce:)`, `static snappy`, `static snappy(duration:extraBounce:)`, `static bouncy`, `static bouncy(duration:extraBounce:)`
+- **struct `SpringKeyframe`** : KeyframeTrackContent, ~Sendable — SwiftUICore, iOS 17.0
+  - `init(_:duration:spring:startVelocity:)`, `typealias Body`
+- **protocol `TimelineSchedule`** — SwiftUICore, iOS 15.0
+  - `typealias Mode`, `associatedtype Entries`, `entries(from:mode:)`, `static periodic(from:by:)`, `static everyMinute`, `static explicit(_:)`, `static animation`, `static animation(minimumInterval:paused:)`
+- **enum `TimelineScheduleMode`** : Sendable, Equatable — SwiftUICore, iOS 15.0
+  - `case normal`, `case lowFrequency`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `TimelineView`** : ~Swift.Sendable, View — SwiftUI, iOS 15.0
+  - `struct Context`, `typealias Body`, `init(_:)`
+  - `TimelineView.Context`: `invalidateTimelineContent()` [16.0], `enum Cadence`, `date`, `cadence`
+  - `TimelineView.Context.Cadence`: `case live`, `case seconds`, `case minutes`, `static < `, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `Transaction`** : ~Sendable — SwiftUICore, iOS 13.0
+  - `init()`, `init(plist:)`, `subscript(<Kkey:)` [17.0], `isEmpty`, `isContinuous`, `scrollTargetAnchor` [17.0], `scrollPositionUpdatePreservesVelocity` [18.0], `scrollContentOffsetAdjustmentBehavior` [18.0], `addAnimationCompletion(criteria:)` [17.0], `init(animation:)`, `animation`, `disablesAnimations`, `tracksVelocity` [17.0], `dismissBehavior` [17.0]
+- **protocol `TransactionKey`** — SwiftUICore, iOS 17.0
+  - `associatedtype Value`, `static defaultValue`
+- **protocol `Transition`** — SwiftUICore, iOS 17.0
+  - `static offset(_:)`, `static offset(x:y:)`, `static move(edge:)`, `static opacity`, `static slide`, `static push(from:)`, `static symbolEffect(_:options:)`, `static symbolEffect`, `animation(_:)`, `combined(with:)`, `associatedtype Body`, `body(content:phase:)`, `static properties`, `typealias Content`, `apply(content:phase:)`, `static identity`, `static blurReplace(_:)`, `static blurReplace`, `static scale`, `static scale(_:anchor:)`
+- **enum `TransitionPhase`** — SwiftUICore, iOS 17.0
+  - `case willAppear`, `case identity`, `case didDisappear`, `isIdentity`, `static ==(a:b:)`, `hash(into:)`, `hashValue`, `value`
+- **struct `TransitionProperties`** : Sendable — SwiftUICore, iOS 17.0
+  - `init(hasMotion:)`, `hasMotion`
+- **struct `UnitCurve`** : Sendable — SwiftUICore, iOS 17.0
+  - `static bezier(startControlPoint:endControlPoint:)`, `value(at:)`, `velocity(at:)`, `inverse`, `static ==(a:b:)`, `hash(into:)`, `hashValue`, `static easeInEaseOut` [17.0, deprecated], `static easeInOut`, `static easeIn`, `static easeOut`, `static circularEaseIn`, `static circularEaseOut`, `static circularEaseInOut`, `static linear`
+- **struct `ZoomNavigationTransition`** : NavigationTransition, ~Swift.Sendable — SwiftUI, iOS 18.0
+
+## Data flow, environment and preferences
+
+- **struct `AppStorage`** : DynamicProperty — SwiftUI, iOS 14.0
+  - `init(wrappedValue:_:store:)` [17.0], `wrappedValue`, `projectedValue`, `init(_:store:)`
+- **struct `Bindable`** — SwiftUICore, iOS 17.0
+  - `wrappedValue`, `projectedValue`, `subscript(<SubjectdynamicMember:)`, `init(_:)`, `id`, `typealias ID`
+- **struct `Binding`** : Sendable — SwiftUICore, iOS 13.0
+  - `transaction`, `location`, `init(get:)`, `static constant(_:)`, `wrappedValue`, `projectedValue`, `init(projectedValue:)`, `subscript(<SubjectdynamicMember:)`, `id` [15.0], `typealias ID` [15.0], `typealias Element` [15.0], `typealias Iterator` [15.0], `typealias SubSequence` [15.0], `typealias Index` [15.0], `typealias Indices` [15.0], `startIndex` [15.0], `endIndex` [15.0], `indices` [15.0], `index(after:)` [15.0], `formIndex(after:)` [15.0], `subscript(position:)` [15.0], `index(before:)` [15.0], `formIndex(before:)` [15.0], `transaction(_:)`, `animation(_:)`, `init(_:)`
+- **protocol `DynamicProperty`** — SwiftUICore, iOS 13.0
+  - `update()`
+- **struct `Environment`** : DynamicProperty, Sendable — SwiftUICore, iOS 13.0
+  - `init(_:)`, `wrappedValue`
+- **protocol `EnvironmentalModifier`** : ViewModifier — SwiftUICore, iOS 13.0
+  - `associatedtype ResolvedModifier`, `resolve(in:)`
+- **protocol `EnvironmentKey`** — SwiftUICore, iOS 13.0
+  - `associatedtype Value`, `static defaultValue`
+- **struct `EnvironmentObject`** : DynamicProperty — SwiftUICore, iOS 13.0
+  - `struct Wrapper`, `wrappedValue`, `optionalWrappedValue`
+  - `EnvironmentObject.Wrapper`: `subscript(<SubjectdynamicMember:)`
+- **struct `EnvironmentValues`** : CustomStringConvertible, ~Sendable — SwiftUICore, iOS 13.0
+  - `layoutDirection`, `isEnabled`, `accessibilityAssistiveAccessEnabled` [18.0], `accessibilityVoiceOverEnabled` [15.0], `accessibilitySwitchControlEnabled` [15.0], `isHoverEffectEnabled` [17.0], `openURL` [14.0], `fontResolutionContext` [15.0], `buttonSizing` [26.0], `isLuminanceReduced` [16.0], `redactionReasons` [14.0], `controlSize` [15.0], `backgroundMaterial` [15.0], `materialActiveAppearance` [18.0], `symbolRenderingMode` [15.0], `symbolVariableValueMode` [26.0], `symbolColorRenderingMode` [26.0], `multilineTextAlignment`, `truncationMode`, `lineSpacing`, `allowsTightening`, `minimumScaleFactor`, `textCase` [14.0], `lineLimit`, `backgroundProminence` [17.0], `lineHeight` [26.0], `backgroundStyle` [16.0], `appearsActive` [18.0], `init()`, `subscript(<Kkey:)`, `description`, `dynamicTypeSize` [15.0], `sizeCategory` [13.0, deprecated], `accessibilityLargeContentViewerEnabled` [15.0], `subscript(<TobjectType:)` [17.0], `headerProminence` [15.0], `allowedDynamicRange` [17.0], `symbolVariants` [15.0], `contentTransition` [16.0], `contentTransitionAddsDrawingGroup` [16.0], `font`, `imageScale`, `displayScale`, `pixelLength`, `legibilityWeight`, `locale`, `calendar`, `timeZone`, `horizontalSizeClass`, `verticalSizeClass`, `accessibilityEnabled`, `accessibilityDifferentiateWithoutColor`, `accessibilityReduceTransparency`, `accessibilityReduceMotion`, `accessibilityPrefersCrossFadeTransitions` [26.4], `accessibilityInvertColors`, `accessibilityShowButtonShapes` [14.0], `accessibilityShowBorders` [14.0], `accessibilityDimFlashingLights` [17.0], `accessibilityPlayAnimatedImages` [17.0], `accessibilityReduceHighlightingEffects` [26.4], `colorScheme`, `colorSchemeContrast`, `supportsMultipleWindows` [16.0], `dismiss` [15.0], `isPresented` [15.0], `writingToolsBehavior` [18.0], `findContext` [26.0], `openWindow` [16.0], `menuOrder` [16.0], `isSceneCaptured` [17.0], `springLoadingBehavior` [17.0], `isTabBarShowingSections` [18.0], `tabBarPlacement` [18.0], `tabViewBottomAccessoryPlacement` [26.0], `scenePhase` [14.0], `defaultMinListRowHeight`, `defaultMinListHeaderHeight`, `navigationLinkIndicatorVisibility` [17.0], `presentationMode` [13.0, deprecated], `refresh` [15.0], `sidebarRowSize` [16.0], `verticalScrollIndicatorVisibility` [16.0], `horizontalScrollIndicatorVisibility` [16.0], `isScrollEnabled` [16.0], `scrollDismissesKeyboardMode` [16.0], `verticalScrollBounceBehavior` [16.4], `horizontalScrollBounceBehavior` [16.4], `isSearching` [15.0], `dismissSearch` [15.0], `searchSuggestionsPlacement` [16.0], `documentConfiguration` [17.0], `undoManager`, `editMode`, `preferredPencilDoubleTapAction` [17.5], `preferredPencilSqueezeAction` [17.5], `isUserAuthenticationEnabled` [18.0], `accessibilityQuickActionsEnabled` [16.0], `supportsRemoteScenes` [26.0], `textSelectionAffinity` [18.0], `menuIndicatorVisibility` [15.0], `keyboardShortcut` [15.0], `autocorrectionDisabled`, `disableAutocorrection` [13.0, deprecated], `toolbarLabelStyle` [18.0], `managedObjectContext`, `buttonRepeatBehavior` [17.0], `isFocusEffectEnabled` [17.0], `isFocused` [14.0], `labelsVisibility` [18.0], `dismissWindow` [17.0], `rename` [16.0], `labelReservedIconWidth` [26.0], `labelIconToTitleSpacing` [26.0], `badgeProminence` [17.0]
+- **struct `FocusedBinding`** : DynamicProperty, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(_:)`, `wrappedValue`, `projectedValue`
+- **struct `FocusedObject`** : DynamicProperty, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `struct Wrapper`, `projectedValue`, `init()`
+  - `FocusedObject.Wrapper`: `subscript(<TdynamicMember:)`
+- **struct `FocusedValue`** : DynamicProperty, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(_:)` [17.0], `wrappedValue`
+- **protocol `FocusedValueKey`** — SwiftUI, iOS 14.0
+  - `associatedtype Value`
+- **struct `FocusedValues`** : ~Swift.Sendable, Equatable — SwiftUI, iOS 14.0
+  - `subscript(<Keykey:)`, `static ==(lhs:rhs:)` [15.0]
+- **struct `FocusInteractions`** : OptionSet, Sendable — SwiftUI, iOS 17.0
+  - `static activate`, `static edit`, `static automatic`, `rawValue`, `init(rawValue:)`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **struct `FocusState`** : DynamicProperty, ~Swift.Sendable — SwiftUI, iOS 15.0
+  - `struct Binding`, `wrappedValue`, `projectedValue`, `init()`
+  - `FocusState.Binding`: `wrappedValue`, `projectedValue`
+- **struct `ObservedObject`** : DynamicProperty — SwiftUICore, iOS 13.0
+  - `struct Wrapper`, `init(wrappedValue:)`, `wrappedValue`, `projectedValue`
+  - `ObservedObject.Wrapper`: `subscript(<SubjectdynamicMember:)`
+- **protocol `PreferenceKey`** — SwiftUICore, iOS 13.0
+  - `associatedtype Value`, `static defaultValue`, `static reduce(value:)`
+- **struct `State`** : DynamicProperty, Sendable — SwiftUICore, iOS 13.0
+  - `init(wrappedValue:)`, `init(initialValue:)`, `wrappedValue`, `projectedValue`, `init()`
+- **struct `StateObject`** : DynamicProperty — SwiftUICore, iOS 14.0
+  - `wrappedValue`, `projectedValue`
+
+## Navigation, tabs, toolbars and presentation
+
+- **struct `Alert`** : ~Swift.Sendable — SwiftUI, iOS 13.0, deprecated
+  - `init(title:message:dismissButton:)` [13.0], `init(title:message:primaryButton:secondaryButton:)` [13.0], `struct Button` [13.0]
+  - `Alert.Button`: `static `default`(_:action:)` [13.0], `static cancel(_:action:)` [13.0], `static cancel(_:)` [13.0], `static destructive(_:action:)` [13.0]
+- **struct `AutomaticPresentationSizing`** : PresentationSizing, Sendable — SwiftUI, iOS 18.0
+  - `proposedSize(for:context:)`
+- **protocol `CustomPresentationDetent`** — SwiftUI, iOS 16.0
+  - `static height(in:)`, `typealias Context`
+- **struct `DefaultToolbarItem`** : ToolbarContent, ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `init(kind:placement:)`, `body`, `typealias Body`
+- **struct `DialogSeverity`** : Equatable, Sendable — SwiftUI, iOS 17.0
+  - `static automatic`, `static critical`, `static standard`, `static ==(a:b:)`
+- **struct `FileDialogBrowserOptions`** : OptionSet, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `rawValue`, `init(rawValue:)`, `static enumeratePackages`, `static includeHiddenFiles`, `static displayFileExtensions`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **struct `FittedPresentationSizing`** : PresentationSizing, Sendable — SwiftUI, iOS 18.0
+  - `proposedSize(for:context:)`
+- **struct `FormPresentationSizing`** : PresentationSizing, Sendable — SwiftUI, iOS 18.0
+  - `proposedSize(for:context:)`
+- **struct `NavigationBarItem`** : Sendable — SwiftUI, iOS 13.0
+  - `enum TitleDisplayMode`
+  - `NavigationBarItem.TitleDisplayMode`: `case automatic`, `case inline`, `case large`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `NavigationLink`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init(value:)` [16.0], `init(_:value:)` [16.0], `init(destination:)`, `body`, `typealias Body`, `init(_:)`, `isDetailLink(_:)`, `init(isActive:destination:)` [13.0, deprecated 16.0], `init(tag:selection:destination:)` [13.0, deprecated 16.0], `init(destination:isActive:)` [13.0, deprecated 16.0], `init(destination:tag:selection:)` [13.0, deprecated 16.0], `init(_:isActive:)` [13.0, deprecated 16.0], `init(_:tag:selection:)` [13.0, deprecated 16.0], `init(_:destination:)` [13.0, deprecated], `init(_:destination:isActive:)` [13.0, deprecated 16.0], `init(_:destination:tag:selection:)` [13.0, deprecated 16.0]
+- **struct `NavigationPath`** : ~Swift.Sendable, Equatable — SwiftUI, iOS 16.0
+  - `count`, `isEmpty`, `codable`, `init()`, `init(_:)`, `append(_:)`, `removeLast(_:)`, `struct CodableRepresentation`, `static ==(lhs:rhs:)`
+  - `NavigationPath.CodableRepresentation`: `init(from:)`, `encode(to:)`, `static ==(lhs:rhs:)`
+- **struct `NavigationSplitView`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init(sidebar:)`, `init(columnVisibility:sidebar:)`, `body`, `typealias Body`, `init(preferredCompactColumn:sidebar:)` [17.0], `init(columnVisibility:preferredCompactColumn:sidebar:)` [17.0]
+- **struct `NavigationSplitViewColumn`** : Hashable, Sendable — SwiftUI, iOS 17.0
+  - `static sidebar`, `static content`, `static detail`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `NavigationSplitViewStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+- **struct `NavigationSplitViewVisibility`** : Equatable, Codable, Sendable — SwiftUI, iOS 16.0
+  - `static detailOnly`, `static doubleColumn`, `static all`, `static automatic`, `static ==(lhs:rhs:)`, `encode(to:)`, `init(from:)`
+- **struct `NavigationView`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0, deprecated
+  - `init()` [13.0], `typealias Body`
+- **struct `PagePresentationSizing`** : PresentationSizing, Sendable — SwiftUI, iOS 18.0
+  - `proposedSize(for:context:)`
+- **enum `PopoverAttachmentAnchor`** : ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `case rect(…)`, `case point(…)`
+- **struct `PresentationAdaptation`** : Sendable — SwiftUI, iOS 16.4
+  - `static automatic`, `static none`, `static popover`, `static sheet`, `static fullScreenCover`
+- **struct `PresentationBackgroundInteraction`** : Sendable — SwiftUI, iOS 16.4
+  - `static automatic`, `static enabled`, `static enabled(upThrough:)`, `static disabled`
+- **struct `PresentationContentInteraction`** : Equatable, Sendable — SwiftUI, iOS 16.4
+  - `static automatic`, `static resizes`, `static scrolls`, `static ==(a:b:)`
+- **struct `PresentationDetent`** : Hashable, Sendable — SwiftUI, iOS 16.0
+  - `static medium`, `static large`, `static fraction(_:)`, `static height(_:)`, `static custom(_:)`, `struct Context`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `PresentationDetent.Context`: `maxDetentValue`, `subscript(<TdynamicMember:)`
+- **struct `PresentationMode`** : ~Swift.Sendable — SwiftUI, iOS 13.0, deprecated
+  - `isPresented` [13.0], `dismiss()` [13.0]
+- **protocol `PresentationSizing`** — SwiftUI, iOS 18.0
+  - `proposedSize(for:context:)`, `sticky(horizontal:vertical:)`, `fitted(horizontal:vertical:)`, `static form`, `static page`, `static fitted`, `static automatic`
+- **struct `PresentationSizingContext`** : ~Swift.Sendable — SwiftUI, iOS 18.0
+- **struct `PresentationSizingRoot`** : ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `sizeThatFits(_:)`
+- **struct `SearchPresentationToolbarBehavior`** : ~Swift.Sendable — SwiftUI, iOS 17.1
+  - `static automatic`, `static avoidHidingContent`
+- **struct `SearchToolbarBehavior`** : Hashable, Sendable — SwiftUI, iOS 26.0
+  - `static automatic`, `static minimize`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **enum `SidebarRowSize`** : Sendable, Hashable — SwiftUI, iOS 16.0
+  - `case small`, `case medium`, `case large`, `static ==(a:b:)`, `hash(into:)` [17.0], `hashValue` [17.0]
+- **struct `Tab`** : ~Swift.Sendable, TabContent — SwiftUI, iOS 18.0
+  - `typealias TabValue`, `init(_:image:value:)`, `init(_:image:value:role:)`, `init(_:systemImage:value:)`, `init(_:systemImage:value:role:)`, `init(value:)`, `init(value:role:)`, `init(value:content:)`, `init(value:role:content:)`, `body`, `typealias Body`, `init(_:image:)`, `init(_:image:role:)`, `init(_:systemImage:)`, `init(_:systemImage:role:)`, `init()`, `init(role:)`, `init(content:)`, `init(role:content:)`
+- **struct `TabBarMinimizeBehavior`** : Hashable, Sendable — SwiftUI, iOS 26.0
+  - `static automatic`, `static onScrollDown`, `static onScrollUp`, `static never`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `TabCustomizationBehavior`** : Equatable, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `static automatic`, `static reorderable`, `static disabled`, `static ==(a:b:)`
+- **struct `Table`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `typealias Body`, `init(of:@SwiftUI.TableColumnBuilder<Value,:)`, `init(of:selection:@SwiftUI.TableColumnBuilder<Value,:)`, `init(sortOrder:@SwiftUI.TableColumnBuilder<Value,:)`, `init(of:sortOrder:@SwiftUI.TableColumnBuilder<Value,:)`, `init(selection:sortOrder:@SwiftUI.TableColumnBuilder<Value,:)`, `init(of:selection:sortOrder:@SwiftUI.TableColumnBuilder<Value,:)`, `init(_:)`, `init(_:selection:)`, `init(_:sortOrder:)`, `init(_:selection:sortOrder:)`, `init(of:columnCustomization:@SwiftUI.TableColumnBuilder<Value,:)` [17.0], `init(of:selection:columnCustomization:@SwiftUI.TableColumnBuilder<Value,:)` [17.0], `init(of:sortOrder:columnCustomization:@SwiftUI.TableColumnBuilder<Value,:)` [17.0], `init(of:selection:sortOrder:columnCustomization:@SwiftUI.TableColumnBuilder<Value,:)` [17.0], `init(_:columnCustomization:)` [17.0], `init(_:selection:columnCustomization:)` [17.0], `init(_:sortOrder:columnCustomization:)` [17.0], `init(_:selection:sortOrder:columnCustomization:)` [17.0], `init(_:children:columnCustomization:)` [17.0], `init(_:children:selection:columnCustomization:)` [17.0], `init(_:children:sortOrder:columnCustomization:)` [17.0], `init(_:children:selection:sortOrder:columnCustomization:)` [17.0]
+- **struct `TableColumn`** : TableColumnContent, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `typealias TableRowValue`, `typealias TableColumnSortComparator`, `typealias TableColumnBody`, `init(_:sortUsing:)`, `init(_:)`, `init(_:value:)`, `width(_:)`, `width(min:ideal:max:)`, `width()` [16.0, deprecated], `init(_:value:comparator:)`
+- **struct `TableColumnBuilder`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `static buildIf(_:)` [17.4], `static buildEither(first:)` [17.4], `static buildEither(second:)` [17.4], `static buildLimitedAvailability(_:)` [17.5], `static buildExpression(_:)`, `static buildBlock(_:)`, `static buildBlock(_:_:)`, `static buildBlock(_:_:_:)`, `static buildBlock(_:_:_:_:)`, `static buildBlock(_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:_:)`
+- **struct `TableColumnCustomization`** : Equatable, Sendable, Codable — SwiftUI, iOS 17.0
+  - `init()`, `subscript(visibility:)`, `resetOrder()`, `static ==(a:b:)`, `encode(to:)`, `init(from:)`
+- **struct `TableColumnCustomizationBehavior`** : SetAlgebra, Sendable — SwiftUI, iOS 17.0
+  - `typealias Element`, `init()`, `static all`, `static reorder`, `static resize`, `static visibility`, `contains(_:)`, `union(_:)`, `intersection(_:)`, `symmetricDifference(_:)`, `insert(_:)`, `remove(_:)`, `update(with:)`, `formUnion(_:)`, `formIntersection(_:)`, `formSymmetricDifference(_:)`, `static ==(a:b:)`, `typealias ArrayLiteralElement`
+- **struct `TableColumnForEach`** : TableColumnContent, ~Swift.Sendable — SwiftUI, iOS 17.4
+  - `typealias TableRowValue`, `typealias TableColumnSortComparator`, `typealias TableColumnBody`, `data`, `content`, `init(_:)`, `init(_:id:)`
+- **struct `TableRow`** : TableRowContent, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `typealias TableRowValue`, `typealias TableRowBody`, `init(_:)`
+- **struct `TableRowBuilder`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `static buildIf(_:)`, `static buildEither(first:)`, `static buildEither(second:)`, `static buildExpression(_:)`, `static buildBlock(_:)`, `static buildBlock(_:_:)`, `static buildBlock(_:_:_:)`, `static buildBlock(_:_:_:_:)`, `static buildBlock(_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:_:)`
+- **struct `TableStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+- **struct `TabRole`** : Hashable, Sendable — SwiftUI, iOS 18.0
+  - `static search`, `static prominent`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `TabSection`** : ~Swift.Sendable, TabContent — SwiftUI, iOS 18.0
+  - `typealias TabValue`, `typealias Body`, `init(@SwiftUI.TabContentBuilder<SelectionValue>:)`, `init()`, `init(_:)`, `init(@SwiftUI.TabContentBuilder<V?>:)`
+- **struct `TabView`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init(selection:)` [13.0, deprecated], `body`, `typealias Body`, `init()`
+- **struct `TabViewCustomization`** : Equatable, Sendable, Codable — SwiftUI, iOS 18.0
+  - `init()`, `subscript(tab:)` [18.4], `subscript(section:)` [18.4], `resetVisibility()`, `resetSectionOrder()`, `subscript(sectionID:)` [18.0, deprecated], `subscript(sidebarVisibility:)` [18.0, deprecated], `resetSectionOrder(for:)` [18.0, deprecated], `static ==(a:b:)`, `encode(to:)`, `init(from:)`, `struct TabCustomization` [18.4], `struct SectionCustomization` [18.4]
+  - `TabViewCustomization.SectionCustomization`: `tabOrder` [18.4], `resetTabOrder()` [18.4]
+  - `TabViewCustomization.TabCustomization`: `sidebarVisibility` [18.4], `tabBarVisibility` [18.4]
+- **struct `ToolbarCustomizationBehavior`** : Sendable — SwiftUI, iOS 16.0
+  - `static `default``, `static reorderable`, `static disabled`
+- **struct `ToolbarCustomizationOptions`** : OptionSet, Sendable — SwiftUI, iOS 16.0
+  - `typealias RawValue`, `static alwaysAvailable`, `rawValue`, `init(rawValue:)`, `typealias ArrayLiteralElement`, `typealias Element`
+- **struct `ToolbarDefaultItemKind`** : ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `static sidebarToggle`, `static title` [18.0], `static search` [26.0]
+- **struct `ToolbarItem`** : ToolbarContent, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `typealias Body`, `init(placement:)`, `init(id:placement:)`, `init(id:placement:showsByDefault:)` [14.0, deprecated], `id`
+- **struct `ToolbarItemGroup`** : ToolbarContent, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(placement:)`, `typealias Body`, `init(placement:content:)` [16.0]
+- **struct `ToolbarItemVisibilityPriority`** : Hashable, Sendable — SwiftUI, iOS 27.0
+  - `static automatic`, `static low`, `static high`, `init(lowerThan:)`, `init(higherThan:)`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `ToolbarOverflowMenu`** : ToolbarContent, CustomizableToolbarContent, ~Swift.Sendable — SwiftUI, iOS 27.0
+  - `init()`, `typealias Body`
+- **struct `ToolbarRole`** : Sendable — SwiftUI, iOS 16.0
+  - `static automatic`, `static navigationStack`, `static browser`, `static editor`
+- **struct `ToolbarSpacer`** : ToolbarContent, CustomizableToolbarContent, ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `init(_:placement:)`, `typealias Body`
+- **struct `ToolbarTitleDisplayMode`** : ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `static automatic`, `static large`, `static inlineLarge`, `static inline`
+- **struct `ToolbarTitleMenu`** : ToolbarContent, CustomizableToolbarContent, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `typealias Body`
+
+## Lists, scrolling and collections
+
+- **struct `AnyScrollTargetBehavior`** : ScrollTargetBehavior, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `base`, `init(_:)`, `updateTarget(_:context:)`, `properties(context:)` [18.4]
+- **struct `AttributedTextSelection`** : Equatable, Sendable — SwiftUI, iOS 26.0
+  - `enum Indices`, `static ==(a:b:)`, `init()`, `init(insertionPoint:typingAttributes:)`, `init(ranges:)`, `init(range:)`, `indices(in:)`, `affinity(in:)`, `typingAttributes(in:)`, `attributes(in:)`, `struct Attributes`
+  - `AttributedTextSelection.Attributes`: `makeIterator()`, `subscript(<Ktype:)`, `typealias Element`, `typealias Iterator`
+  - `AttributedTextSelection.Indices`: `case insertionPoint(…)`, `case ranges(…)`, `static ==(a:b:)`
+- **struct `DisclosureGroup`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(content:)`, `init(isExpanded:content:)`, `body`, `typealias Body`, `init(_:)`, `init(_:isExpanded:)`
+- **struct `DisclosureGroupStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `struct Label`, `label`, `struct Content`, `content`, `isExpanded`
+  - `DisclosureGroupStyleConfiguration.Content`: `typealias Body`
+  - `DisclosureGroupStyleConfiguration.Label`: `typealias Body`
+- **struct `DisclosureTableRow`** : TableRowContent, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `typealias TableRowValue`, `init(_:isExpanded:)`, `tableRowBody`, `typealias TableRowBody`
+- **struct `EditButton`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`, `body`, `typealias Body`
+- **enum `EditMode`** : Sendable, Equatable — SwiftUI, iOS 13.0
+  - `case inactive`, `case transient`, `case active`, `isEditing`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `ItemProviderTableRowModifier`** : _TableRowContentModifier, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `body`, `typealias Body`
+- **struct `LazyHGrid`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(rows:alignment:spacing:pinnedViews:)`, `typealias Body`
+- **struct `LazyState`** : DynamicProperty, Sendable — SwiftUICore, iOS 17.0
+  - `enum Storage`, `init()`, `init(_initialValue:)`, `wrappedValue`, `projectedValue`
+  - `LazyState.Storage`: `case thunk(…)`, `case value(…)`
+- **struct `LazyVGrid`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(columns:alignment:spacing:pinnedViews:)`, `typealias Body`
+- **struct `List`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init(selection:)`, `body`, `typealias Body`, `init(_:selection:)`, `init(_:children:selection:rowContent:)` [14.0], `init(_:id:selection:)`, `init(_:id:children:selection:rowContent:)` [14.0], `init()`, `init(_:)`, `init(_:children:rowContent:)` [14.0], `init(_:id:)`, `init(_:id:children:rowContent:)` [14.0], `init(_:selection:rowContent:)`, `init(_:id:selection:rowContent:)`, `init(_:rowContent:)`, `init(_:id:rowContent:)`, `init(_:editActions:selection:rowContent:)` [16.0], `init(_:id:editActions:selection:rowContent:)` [16.0], `init(_:editActions:rowContent:)` [16.0], `init(_:id:editActions:rowContent:)` [16.0]
+- **struct `ListItemTint`** : Sendable — SwiftUI, iOS 14.0
+  - `static fixed(_:)`, `static preferred(_:)`, `static monochrome`
+- **struct `ListSectionSpacing`** : Sendable — SwiftUI, iOS 17.0
+  - `static `default``, `static compact`, `static custom(_:)`
+- **struct `OnInsertTableRowModifier`** : _TableRowContentModifier, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `body`, `typealias Body`
+- **struct `OutlineGroup`** : ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(_:children:)`, `init(_:id:children:)`, `body`, `typealias Body`, `typealias TableRowValue` [17.0], `tableRowBody` [17.0], `typealias TableRowBody` [17.0]
+- **struct `PagingScrollTargetBehavior`** : ScrollTargetBehavior, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `init()`, `updateTarget(_:context:)`, `properties(context:)` [18.4]
+- **struct `PinnedScrollableViews`** : OptionSet, Sendable — SwiftUICore, iOS 14.0
+  - `rawValue`, `init(rawValue:)`, `static sectionHeaders`, `static sectionFooters`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **struct `RefreshAction`** : Sendable — SwiftUI, iOS 15.0
+  - `callAsFunction()`
+- **struct `ScrollAnchorRole`** : Hashable, Sendable — SwiftUI, iOS 18.0
+  - `static initialOffset`, `static sizeChanges`, `static alignment`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `ScrollBounceBehavior`** : Sendable — SwiftUI, iOS 16.4
+  - `static automatic`, `static always`, `static basedOnSize`
+- **struct `ScrollContentOffsetAdjustmentBehavior`** : ~Sendable — SwiftUICore, iOS 18.0
+  - `static automatic`, `static disabled`
+- **struct `ScrollDismissesKeyboardMode`** : Sendable, Equatable, Hashable — SwiftUI, iOS 16.0
+  - `static automatic`, `static immediately`, `static interactively`, `static never`, `static ==(a:b:)` [18.2], `hash(into:)` [18.2], `hashValue` [18.2]
+- **struct `ScrollIndicatorVisibility`** : ~Swift.Sendable, Equatable — SwiftUI, iOS 16.0
+  - `static automatic`, `static visible`, `static hidden`, `static never`, `static ==(a:b:)` [16.4]
+- **struct `ScrollInputBehavior`** : Sendable, Equatable — SwiftUI, iOS 18.0
+  - `static automatic`, `static enabled`, `static disabled`, `static ==(a:b:)`
+- **struct `ScrollInputKind`** : Sendable, Equatable — SwiftUI, iOS 18.0
+  - `static ==(a:b:)`
+- **enum `ScrollPhase`** : Equatable, CustomDebugStringConvertible — SwiftUICore, iOS 18.0
+  - `case idle`, `case tracking`, `case interacting`, `case decelerating`, `case animating`, `isScrolling`, `static ==(a:b:)`, `hash(into:)`, `hashValue`, `debugDescription`
+- **struct `ScrollPhaseChangeContext`** : ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `geometry`, `velocity`
+- **struct `ScrollPosition`** : Sendable — SwiftUICore, iOS 18.0
+  - `init(id:anchor:)`, `init(idType:)`, `init(idType:edge:)`, `init(idType:point:)`, `init(idType:x:y:)`, `init(idType:x:)`, `init(idType:y:)`, `scrollTo(id:anchor:)`, `scrollTo(edge:)`, `scrollTo(point:)`, `scrollTo(x:y:)`, `scrollTo(x:)`, `scrollTo(y:)`, `isPositionedByUser`, `edge`, `point`, `x` [26.0], `y` [26.0], `viewID`, `viewID(type:)`, `static ==(lhs:rhs:)`
+- **struct `ScrollTarget`** : ~Sendable, Hashable, Equatable — SwiftUICore, iOS 17.0
+  - `rect`, `anchor`, `hash(into:)` [18.0], `static ==(a:b:)` [18.0], `hashValue` [18.0]
+- **protocol `ScrollTargetBehavior`** — SwiftUI, iOS 17.0
+  - `updateTarget(_:context:)`, `properties(context:)` [18.4], `typealias TargetContext`, `typealias Properties` [18.4], `typealias PropertiesContext` [18.4], `static paging`, `static viewAligned`, `static viewAligned(limitBehavior:)`, `static viewAligned(anchor:)` [26.0], `static viewAligned(limitBehavior:anchor:)` [26.0]
+- **struct `ScrollTargetBehaviorContext`** : ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `originalTarget`, `velocity`, `contentSize`, `containerSize`, `axes`, `subscript(<TdynamicMember:)`
+- **struct `ScrollTargetBehaviorProperties`** : Equatable, Sendable — SwiftUI, iOS 18.4
+  - `limitsScrolls`, `init()`, `static ==(a:b:)`
+- **struct `ScrollTargetBehaviorPropertiesContext`** : ~Swift.Sendable — SwiftUI, iOS 18.4
+  - `environment`, `axes`
+- **struct `ScrollView`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `content`, `axes`, `showsIndicators`, `init(_:showsIndicators:)` [13.0, deprecated], `body`, `typealias Body`, `init(_:)`
+- **struct `ScrollViewProxy`** : ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `scrollTo(_:anchor:)`
+- **struct `ScrollViewReader`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `content`, `init()`, `body`, `typealias Body`
+- **struct `Section`** : ~Swift.Sendable, TableRowContent — SwiftUI, iOS 13.0
+  - `typealias TableRowValue` [16.0], `typealias TableRowBody` [16.0], `init(@SwiftUI.TableRowBuilder<V>:)` [16.0], `init(_:)` [16.0], `init()` [16.0], `init(isExpanded:@SwiftUI.TableRowBuilder<V>:)` [17.0], `init(_:isExpanded:)` [17.0], `init(content:)`, `typealias Body`, `init(isExpanded:content:)` [17.0], `init(header:footer:)` [13.0, deprecated], `init(footer:)` [13.0, deprecated], `init(header:)` [13.0, deprecated]
+- **struct `SectionCollection`** : RandomAccessCollection, ~Sendable — SwiftUICore, iOS 18.0
+  - `subscript(index:)`, `startIndex`, `endIndex`, `typealias Element`, `typealias Index`, `typealias Indices`, `typealias Iterator`, `typealias SubSequence`
+- **struct `SectionedFetchRequest`** : ~Swift.Sendable, DynamicProperty — SwiftUI, iOS 15.0
+  - `wrappedValue`, `struct Configuration`, `projectedValue`, `update()`, `init(entity:sectionIdentifier:sortDescriptors:predicate:animation:)`, `init(fetchRequest:sectionIdentifier:animation:)`, `init(fetchRequest:sectionIdentifier:transaction:)`, `init(sectionIdentifier:sortDescriptors:predicate:animation:)`
+  - `SectionedFetchRequest.Configuration`: `sectionIdentifier`, `nsSortDescriptors`, `nsPredicate`, `sortDescriptors`
+- **struct `SectionedFetchResults`** : RandomAccessCollection — SwiftUI, iOS 15.0
+  - `struct Section`, `nsSortDescriptors`, `nsPredicate`, `sectionIdentifier`, `startIndex`, `endIndex`, `subscript(position:)`, `typealias Element`, `typealias Index`, `typealias Indices`, `typealias Iterator`, `typealias SubSequence`, `sortDescriptors`
+  - `SectionedFetchResults.Section`: `startIndex`, `endIndex`, `subscript(position:)`, `id`, `typealias Element`, `typealias ID`, `typealias Index`, `typealias Indices`, `typealias Iterator`, `typealias SubSequence`
+- **struct `ViewAlignedScrollTargetBehavior`** : ScrollTargetBehavior, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `struct LimitBehavior`, `init(limitBehavior:)`, `init(limitBehavior:anchor:)` [26.0], `init(anchor:)` [26.0], `updateTarget(_:context:)`, `properties(context:)` [18.4]
+  - `ViewAlignedScrollTargetBehavior.LimitBehavior`: `static automatic`, `static always`, `static alwaysByFew` [18.0], `static alwaysByOne` [18.0], `static never`
+
+## Controls, forms and text input
+
+- **enum `AccessibilityLabeledPairRole`** : Hashable — SwiftUI, iOS 14.0
+  - `case label`, `case content`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `AccessibilityTextContentType`** : Sendable — SwiftUICore, iOS 15.0
+  - `static plain`, `static console`, `static fileSystem`, `static messaging`, `static narrative`, `static sourceCode`, `static spreadsheet`, `static wordProcessing`
+- **enum `AttributedTextFormatting`** : ~Sendable — SwiftUICore, iOS 26.0
+  - `struct DefinitionBuilder`, `struct EmptyDefinition`, `struct AnyDefinition`, `struct TupleDefinition`, `struct ValueConstraint`, `struct AttributeContainerProxy`, `struct Transferable`
+  - `AttributedTextFormatting.AnyDefinition`: `init(_:)`, `body`, `typealias Body`
+  - `AttributedTextFormatting.AttributeContainerProxy`: `subscript(<Kkey:)`, `subscript(<KdynamicMember:)`, `subscript(key:)`, `subscript(dynamicMember:)`, `subscript(<SdynamicMember:)`, `subscript(<Sscope:)`, `struct Scoped`
+  - `AttributedTextFormatting.AttributeContainerProxy.Scoped`: `subscript(<KdynamicMember:)`, `subscript(dynamicMember:)`
+  - `AttributedTextFormatting.DefinitionBuilder`: `static buildExpression(_:)`, `static buildBlock(_:)`, `static buildBlock()`, `static buildBlock(_:_:)`, `static buildLimitedAvailability(_:)`, `static buildIf(_:)`, `static buildEither(first:)`, `static buildEither(second:)`
+  - `AttributedTextFormatting.EmptyDefinition`: `init()`, `body`, `typealias Body`
+  - `AttributedTextFormatting.Transferable`: `init(text:in:)`, `static transferRepresentation`, `typealias Representation`
+  - `AttributedTextFormatting.TupleDefinition`: `init(definition:)`, `body`, `typealias Body`
+  - `AttributedTextFormatting.ValueConstraint`: `init(for:values:default:)`, `constrain(_:)`, `static ==(a:b:)`, `typealias Body`, `hash(into:)`, `hashValue`
+- **protocol `AttributedTextFormattingDefinition`** — SwiftUICore, iOS 26.0
+  - `associatedtype Body`, `associatedtype Scope`, `typealias ValueConstraint`, `constrain(_:)`
+- **struct `Button`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init(action:)`, `body`, `typealias Body`, `init(_:)`, `init(_:systemImage:)` [14.0], `init(_:image:)` [17.0], `init(role:action:)` [15.0], `init(_:role:)` [15.0], `init(_:systemImage:role:)` [15.0], `init(_:image:role:)` [17.0], `init(role:)` [26.0]
+- **struct `ButtonRepeatBehavior`** : Hashable, Sendable — SwiftUI, iOS 17.0
+  - `static automatic`, `static enabled`, `static disabled`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `ButtonRole`** : Equatable, Sendable — SwiftUI, iOS 15.0
+  - `static destructive`, `static cancel`, `static confirm` [26.0], `static close` [26.0], `static ==(a:b:)`
+- **struct `ButtonSizing`** : Hashable, Sendable — SwiftUICore, iOS 26.0
+  - `static automatic`, `static flexible`, `static fitted`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `ButtonStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `struct Label`, `role` [15.0], `label`, `isPressed`
+  - `ButtonStyleConfiguration.Label`: `typealias Body`
+- **struct `ContextMenu`** : ~Swift.Sendable — SwiftUI, iOS 13.0, deprecated
+  - `init()` [13.0]
+- **struct `ControlGroup`** : View, ~Swift.Sendable — SwiftUI, iOS 15.0
+  - `init()`, `body`, `typealias Body`, `init(_:)`, `init(content:)` [16.0], `init(_:systemImage:content:)` [16.0], `init(_:image:content:)` [17.0]
+- **struct `ControlGroupStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 15.0
+  - `struct Content`, `content`, `struct Label` [16.0], `label` [16.0]
+  - `ControlGroupStyleConfiguration.Content`: `typealias Body`
+  - `ControlGroupStyleConfiguration.Label`: `typealias Body` [16.0]
+- **enum `ControlSize`** : CaseIterable, Sendable, Comparable — SwiftUICore, iOS 15.0
+  - `case mini`, `case small`, `case regular`, `case large`, `case extraLarge` [17.0], `static allCases`, `static ==(a:b:)`, `typealias AllCases`, `hash(into:)`, `hashValue`, `static < ` [26.0]
+- **protocol `ControlWidget`** — SwiftUI, iOS 18.0
+  - `init()`, `associatedtype Body`, `body`
+- **protocol `ControlWidgetConfiguration`** — SwiftUI, iOS 18.0
+  - `associatedtype Body`, `body`
+- **struct `ControlWidgetConfigurationBuilder`** : ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `static buildExpression(_:)`, `static buildBlock(_:)`
+- **protocol `ControlWidgetTemplate`** — SwiftUI, iOS 18.0
+  - `associatedtype Body`, `body`
+- **struct `ControlWidgetTemplateBuilder`** : ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `static buildExpression(_:)`, `static buildBlock(_:)`
+- **struct `DatePicker`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `typealias Components`, `body`, `typealias Body`, `init(selection:displayedComponents:)`, `init(selection:in:displayedComponents:)`, `init(_:selection:displayedComponents:)`, `init(_:selection:in:displayedComponents:)`
+- **struct `DatePickerComponents`** : OptionSet, Sendable — SwiftUI, iOS 13.0
+  - `rawValue`, `init(rawValue:)`, `static hourAndMinute`, `static date`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **struct `DatePickerStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `struct Label`, `label`, `selection`, `minimumDate`, `maximumDate`, `displayedComponents`
+  - `DatePickerStyleConfiguration.Label`: `typealias Body`
+- **struct `DefaultButtonLabel`** : View, ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `body`, `typealias Body`
+- **struct `DefaultDateProgressLabel`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `body`, `typealias Body`
+- **struct `DefaultShareLinkLabel`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `body`, `typealias Body`
+- **struct `DefaultTabLabel`** : View, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `body`, `typealias Body`
+- **struct `EmptyControlWidgetConfiguration`** : ControlWidgetConfiguration, ~Swift.Sendable, BitwiseCopyable — SwiftUI, iOS 18.0
+  - `typealias Body`, `init()`
+- **struct `EmptyControlWidgetTemplate`** : ~Swift.Sendable, ControlWidgetTemplate — SwiftUI, iOS 18.0
+  - `typealias Body`, `init()`
+- **struct `Form`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init()`, `body`, `typealias Body`, `init(_:)` [16.0]
+- **struct `FormStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `struct Content`, `content`
+  - `FormStyleConfiguration.Content`: `typealias Body`
+- **struct `Gauge`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init(value:in:)`, `init(value:in:label:)`, `body`, `typealias Body`
+- **struct `GaugeStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `struct Label`, `struct CurrentValueLabel`, `struct MinimumValueLabel`, `struct MaximumValueLabel`, `struct MarkedValueLabel`, `value`, `label`, `currentValueLabel`, `minimumValueLabel`, `maximumValueLabel`
+  - `GaugeStyleConfiguration.CurrentValueLabel`: `typealias Body`
+  - `GaugeStyleConfiguration.Label`: `typealias Body`
+  - `GaugeStyleConfiguration.MarkedValueLabel`: `typealias Body`
+  - `GaugeStyleConfiguration.MaximumValueLabel`: `typealias Body`
+  - `GaugeStyleConfiguration.MinimumValueLabel`: `typealias Body`
+- **struct `KeyboardShortcut`** : Sendable, Hashable — SwiftUI, iOS 14.0
+  - `struct Localization` [15.0], `static defaultAction`, `static cancelAction`, `key`, `modifiers`, `localization` [15.0], `init(_:modifiers:)`, `init(_:modifiers:localization:)` [15.0], `static ==(lhs:rhs:)` [15.0], `hash(into:)` [15.0], `hashValue` [15.0]
+  - `KeyboardShortcut.Localization`: `static automatic` [15.0], `static withoutMirroring` [15.0], `static custom` [15.0]
+- **struct `Label`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(title:)`, `body`, `typealias Body`, `init(_:image:)`, `init(_:systemImage:)`, `init(_:)`
+- **struct `LabeledContentStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `struct Label`, `struct Content`, `label`, `content`
+  - `LabeledContentStyleConfiguration.Content`: `typealias Body`
+  - `LabeledContentStyleConfiguration.Label`: `typealias Body`
+- **struct `LabelStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `struct Title`, `struct Icon`, `title`, `icon`
+  - `LabelStyleConfiguration.Icon`: `typealias Body`
+  - `LabelStyleConfiguration.Title`: `typealias Body`
+- **struct `Link`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(destination:)`, `body`, `typealias Body`, `init(_:destination:)`
+- **struct `Menu`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `body`, `typealias Body`, `init(content:)`, `init(_:)`, `init(_:content:)` [15.0], `init(_:systemImage:)`, `init(_:systemImage:content:)` [15.0], `init(_:image:)` [17.0], `init(_:image:content:)` [17.0]
+- **struct `MenuActionDismissBehavior`** : Equatable, ~Swift.Sendable — SwiftUI, iOS 16.4
+  - `static automatic`, `static enabled`, `static disabled`, `static ==(a:b:)`
+- **struct `MenuOrder`** : Equatable, Hashable, Sendable — SwiftUI, iOS 16.0
+  - `static automatic`, `static priority`, `static fixed`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `MenuStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `struct Label`, `struct Content`
+  - `MenuStyleConfiguration.Content`: `typealias Body`
+  - `MenuStyleConfiguration.Label`: `typealias Body`
+- **struct `MultiDatePicker`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `body`, `typealias Body`, `init(selection:)`, `init(selection:in:)`, `init(_:selection:)`, `init(_:selection:in:)`
+- **struct `PasteButton`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init(supportedContentTypes:)`, `init(payloadType:)`, `body`, `typealias Body`
+- **struct `Picker`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `body`, `typealias Body`, `init(sources:selection:content:)` [16.0], `init(selection:content:)`, `init(_:selection:)`, `init(_:sources:selection:)` [16.0], `init(_:systemImage:selection:)` [14.0], `init(_:systemImage:sources:selection:)` [16.0], `init(_:image:selection:)` [17.0], `init(_:image:sources:selection:)` [17.0], `init(_:selection:content:)` [18.0], `init(_:sources:selection:content:)` [18.0], `init(_:systemImage:selection:content:)` [18.0], `init(_:systemImage:sources:selection:content:)` [18.0], `init(_:image:selection:content:)` [18.0], `init(_:image:sources:selection:content:)` [18.0], `init(selection:label:)` [13.0, deprecated]
+- **struct `PrimitiveButtonStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `struct Label`, `role` [15.0], `label`, `trigger()`
+  - `PrimitiveButtonStyleConfiguration.Label`: `typealias Body`
+- **struct `ProgressView`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(timerInterval:countsDown:label:)` [16.0], `init(timerInterval:countsDown:)` [16.0], `body`, `typealias Body`, `init()`, `init(_:)`, `init(value:total:)`, `init(value:total:label:)`, `init(_:value:total:)`
+- **struct `ProgressViewStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `struct Label`, `struct CurrentValueLabel`, `fractionCompleted`, `label`, `currentValueLabel`
+  - `ProgressViewStyleConfiguration.CurrentValueLabel`: `typealias Body`
+  - `ProgressViewStyleConfiguration.Label`: `typealias Body`
+- **struct `RenameButton`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init()`, `body`, `typealias Body`
+- **struct `SecureField`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `body`, `typealias Body`, `init(_:text:prompt:)` [15.0], `init(text:prompt:)` [15.0], `init(_:text:)`
+- **struct `ShareLink`** : View, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init(items:subject:message:preview:)`, `body`, `typealias Body`, `init(item:subject:message:preview:)`, `init(items:subject:message:)`, `init(item:subject:message:)`, `init(_:items:subject:message:preview:)`, `init(_:item:subject:message:preview:)`, `init(_:items:subject:message:)`, `init(_:item:subject:message:)`
+- **struct `Slider`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `body`, `typealias Body`, `init(value:in:label:)`, `init(value:in:step:label:)`, `init(value:in:)`, `init(value:in:step:)`, `init(value:in:onEditingChanged:)` [13.0, deprecated], `init(value:in:step:onEditingChanged:)` [13.0, deprecated], `init(value:in:neutralValue:enabledBounds:label:)` [26.0], `init(value:in:step:neutralValue:enabledBounds:label:)` [26.0]
+- **struct `SliderTick`** : SliderTickContent, Identifiable, Comparable, ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `typealias Value`, `typealias Body`, `struct ID`, `init(_:)`, `id`, `static < `, `static ==(lhs:rhs:)`, `body`, `init(_:_:)`
+  - `SliderTick.ID`: `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `SliderTickBuilder`** : ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `static buildBlock()`, `static buildBlock(_:)`, `static buildExpression(_:)`, `static buildIf(_:)`, `static buildEither(first:)`, `static buildEither(second:)`, `static buildBlock(_:_:)`, `static buildBlock(_:_:_:)`, `static buildBlock(_:_:_:_:)`, `static buildBlock(_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:)`, `static buildBlock(_:_:_:_:_:_:_:_:_:_:)`
+- **struct `SliderTickContentForEach`** : SliderTickContent, ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `typealias Value`, `typealias Body`, `init(_:id:)`, `init(_:)`, `body`
+- **struct `Stepper`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init(label:)`, `body`, `typealias Body`, `init(value:step:label:)`, `init(value:in:step:label:)`, `init(_:onIncrement:)`, `init(_:value:step:)`, `init(_:value:in:step:)`, `init(value:step:format:label:)` [16.0], `init(value:in:step:format:label:)` [16.0], `init(_:value:step:format:)` [16.0], `init(_:value:in:step:format:)` [16.0], `init(onIncrement:)` [13.0, deprecated], `init(value:step:onEditingChanged:)` [13.0, deprecated], `init(value:in:step:onEditingChanged:)` [13.0, deprecated]
+- **struct `SubmitLabel`** : Sendable — SwiftUI, iOS 15.0
+  - `static done`, `static go`, `static send`, `static join`, `static route`, `static search`, `static `return``, `static next`, `static `continue``
+- **struct `SubmitTriggers`** : OptionSet, Sendable — SwiftUI, iOS 15.0
+  - `typealias RawValue`, `rawValue`, `init(rawValue:)`, `static text`, `static search`, `typealias ArrayLiteralElement`, `typealias Element`
+- **struct `Toggle`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `init(isOn:)`, `init(sources:isOn:)` [16.0], `body`, `typealias Body`, `init(_:)`, `init(_:isOn:)`, `init(_:sources:isOn:)` [16.0], `init(_:systemImage:isOn:)` [14.0], `init(_:systemImage:sources:isOn:)` [16.0], `init(_:image:isOn:)` [17.0], `init(_:image:sources:isOn:)` [17.0]
+- **struct `ToggleStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `struct Label`, `label`, `isOn`, `isMixed` [16.0]
+  - `ToggleStyleConfiguration.Label`: `typealias Body`
+- **struct `UIHostingControllerSizingOptions`** : OptionSet, Sendable — SwiftUI, iOS 16.0
+  - `rawValue`, `init(rawValue:)`, `static preferredContentSize`, `static intrinsicContentSize`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **protocol `UIViewControllerRepresentable`** : View — SwiftUI, iOS 13.0
+  - `associatedtype UIViewControllerType`, `makeUIViewController(context:)`, `updateUIViewController(_:context:)`, `static dismantleUIViewController(_:coordinator:)`, `associatedtype Coordinator`, `makeCoordinator()`, `sizeThatFits(_:uiViewController:context:)` [16.0], `typealias Context`, `typealias LayoutOptions` [17.0], `body`
+- **struct `UIViewControllerRepresentableContext`** : Sendable — SwiftUI, iOS 13.0
+  - `coordinator`, `transaction`, `environment`, `animate()` [18.0]
+- **struct `WritingToolsBehavior`** : Sendable, Hashable — SwiftUI, iOS 18.0
+  - `static automatic`, `static complete`, `static limited`, `static disabled`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+
+## Gestures, input and drag and drop
+
+- **struct `AccessibilityDirectTouchOptions`** : OptionSet, Sendable — SwiftUICore, iOS 17.0
+  - `typealias RawValue`, `rawValue`, `init(rawValue:)`, `static silentOnTouch`, `static requiresActivation`, `typealias ArrayLiteralElement`, `typealias Element`
+- **struct `AccessibilityZoomGestureAction`** : ~Sendable — SwiftUICore, iOS 16.0
+  - `enum Direction`, `direction`, `location`, `point`
+  - `AccessibilityZoomGestureAction.Direction`: `case zoomIn`, `case zoomOut`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `AnyGesture`** : Gesture, ~Sendable — SwiftUICore, iOS 13.0
+  - `init(_:)`, `typealias Body`
+- **struct `DragConfiguration`** : ~Swift.Sendable, CustomDebugStringConvertible — SwiftUI, iOS 26.0
+  - `struct OperationsWithinApp`, `struct OperationsOutsideApp`, `operationsWithinApp`, `operationsOutsideApp`, `init(operationsWithinApp:operationsOutsideApp:)`, `init(allowMove:)`, `debugDescription`
+  - `DragConfiguration.OperationsOutsideApp`: `init(allowCopy:)`
+  - `DragConfiguration.OperationsWithinApp`: `init(allowMove:)`
+- **struct `DragGesture`** : Gesture, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `struct Value`, `minimumDistance`, `coordinateSpace`, `init(minimumDistance:coordinateSpace:)` [13.0, deprecated], `typealias Body`
+  - `DragGesture.Value`: `time`, `location`, `startLocation`, `translation`, `velocity`, `predictedEndLocation`, `predictedEndTranslation`, `static ==(a:b:)`
+- **struct `DragSession`** : Identifiable, ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `enum Phase`, `struct ID`, `id`, `phase`, `draggedItemIndex`, `draggedItemIDs(for:)`, `location`
+  - `DragSession.ID`: `matches(_:)`, `static ==(a:b:)`, `hash(into:)`, `hashValue`, `debugDescription`
+  - `DragSession.Phase`: `case initial`, `case active`, `case ending(…)`, `case ended(…)`, `case dataTransferCompleted`, `static ==(a:b:)`, `hash(into:)`, `hashValue`, `description`
+- **struct `DropConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `operation`, `init(operation:)`
+- **protocol `DropDelegate`** — SwiftUI, iOS 13.4
+  - `validateDrop(info:)`, `performDrop(info:)`, `dropEntered(info:)`, `dropUpdated(info:)`, `dropExited(info:)`
+- **struct `DropInfo`** : ~Swift.Sendable — SwiftUI, iOS 13.4
+  - `location`, `hasItemsConforming(to:)` [14.0], `itemProviders(for:)` [14.0]
+- **enum `DropOperation`** : Sendable, Equatable — SwiftUI, iOS 13.4
+  - `case cancel`, `case forbidden`, `case copy`, `case move`, `struct Set` [26.0], `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `DropOperation.Set`: `rawValue` [26.0], `init(rawValue:)` [26.0], `static cancel` [26.0], `static copy` [26.0], `static move` [26.0], `static forbidden` [26.0], `typealias ArrayLiteralElement` [26.0], `typealias Element` [26.0], `typealias RawValue` [26.0], `description` [26.0]
+- **struct `DropProposal`** : Sendable — SwiftUI, iOS 13.4
+  - `operation`, `operationOutsideApplication` [26.0], `init(operation:)`, `init(withinApplication:outsideApplication:)` [26.0], `debugDescription` [26.0]
+- **struct `DropSession`** : Identifiable, ~Swift.Sendable, CustomDebugStringConvertible — SwiftUI, iOS 26.0
+  - `struct LocalSession`, `struct ID`, `enum Phase`, `id`, `phase`, `localSession`, `itemsCount`, `suggestedOperations`, `size`, `location`, `debugDescription`, `reorderDestination(for:in:)` [27.0], `reorderDestination(for:itemID:in:)` [27.0]
+  - `DropSession.ID`: `matches(_:)`, `static ==(a:b:)`, `hash(into:)`, `hashValue`, `description`
+  - `DropSession.LocalSession`: `draggedItemIDs(for:)`
+  - `DropSession.Phase`: `case entering`, `case active`, `case exiting`, `case ended(…)`, `case dataTransferCompleted`, `static ==(lhs:rhs:)`, `hash(into:)`, `hashValue`, `description`
+- **struct `EventModifiers`** : OptionSet, Sendable — SwiftUICore, iOS 13.0
+  - `rawValue`, `init(rawValue:)`, `static capsLock`, `static shift`, `static control`, `static option`, `static command`, `static numericPad`, `static function` [13.0, deprecated 15.0], `static all`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **struct `ExclusiveGesture`** : Gesture, ~Sendable — SwiftUICore, iOS 13.0
+  - `enum Value`, `first`, `second`, `init(_:_:)`, `typealias Body`
+  - `ExclusiveGesture.Value`: `case first(…)`, `case second(…)`, `static ==(a:b:)`
+- **protocol `Gesture`** — SwiftUICore, iOS 13.0
+  - `simultaneously(with:)`, `exclusively(before:)`, `onEnded()`, `onChanged()`, `map()`, `associatedtype Value`, `associatedtype Body`, `body`, `sequenced(before:)`, `updating(_:)`
+- **struct `GestureMask`** : OptionSet, Sendable — SwiftUICore, iOS 13.0
+  - `rawValue`, `init(rawValue:)`, `static none`, `static gesture`, `static subviews`, `static all`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **struct `GestureState`** : DynamicProperty, Sendable — SwiftUI, iOS 13.0
+  - `init(wrappedValue:)`, `init(initialValue:)`, `init(wrappedValue:resetTransaction:)`, `init(initialValue:resetTransaction:)`, `wrappedValue`, `projectedValue`, `init(resetTransaction:)`, `init()`
+- **struct `GestureStateGesture`** : Gesture, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `typealias Value`, `base`, `state`, `body`, `init(base:state:)`, `typealias Body`
+- **struct `HandGestureShortcut`** : Sendable, Equatable — SwiftUI, iOS 18.0
+  - `static primaryAction`, `static ==(a:b:)`
+- **enum `HoverPhase`** : Equatable, Sendable — SwiftUI, iOS 16.0
+  - `case active(…)`, `case ended`, `static ==(a:b:)`
+- **struct `KeyEquivalent`** : Sendable, Hashable — SwiftUI, iOS 14.0
+  - `static upArrow`, `static downArrow`, `static leftArrow`, `static rightArrow`, `static escape`, `static delete`, `static deleteForward`, `static home`, `static end`, `static pageUp`, `static pageDown`, `static clear`, `static tab`, `static space`, `static `return``, `character`, `init(_:)`, `static ==(a:b:)` [17.0], `hash(into:)` [17.0], `hashValue` [17.0], `init(extendedGraphemeClusterLiteral:)`, `typealias ExtendedGraphemeClusterLiteralType`, `typealias UnicodeScalarLiteralType`
+- **struct `KeyPress`** : Sendable, CustomDebugStringConvertible — SwiftUI, iOS 17.0
+  - `phase`, `key`, `characters`, `modifiers`, `struct Phases`, `enum Result`, `debugDescription`
+  - `KeyPress.Phases`: `static down`, `static `repeat``, `static up`, `static all`, `debugDescription`, `rawValue`, `init(rawValue:)`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+  - `KeyPress.Result`: `case handled`, `case ignored`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `LongPressGesture`** : Gesture, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `minimumDuration`, `maximumDistance`, `init(minimumDuration:maximumDistance:)`, `typealias Value`, `typealias Body`
+- **struct `MagnificationGesture`** : Gesture, ~Swift.Sendable — SwiftUI, iOS 13.0, deprecated
+  - `minimumScaleDelta` [13.0], `init(minimumScaleDelta:)` [13.0], `typealias Value` [13.0], `typealias Body`
+- **struct `MagnifyGesture`** : Gesture, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `struct Value`, `minimumScaleDelta`, `init(minimumScaleDelta:)`, `typealias Body`
+  - `MagnifyGesture.Value`: `time`, `magnification`, `velocity`, `startAnchor`, `startLocation`, `static ==(a:b:)`
+- **struct `PencilDoubleTapGestureValue`** : Hashable, ~Swift.Sendable — SwiftUI, iOS 17.5
+  - `hoverPose`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `PencilHoverPose`** : Hashable, ~Swift.Sendable — SwiftUI, iOS 17.5
+  - `location`, `anchor`, `zDistance`, `altitude`, `azimuth`, `roll`, `hash(into:)`, `static ==(a:b:)`, `hashValue`
+- **struct `PencilPreferredAction`** : Hashable, ~Swift.Sendable — SwiftUI, iOS 17.5
+  - `static switchEraser`, `static switchPrevious`, `static showColorPalette`, `static showInkAttributes`, `static showContextualPalette`, `static runSystemShortcut`, `static ignore`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **enum `PencilSqueezeGesturePhase`** : Equatable, ~Swift.Sendable — SwiftUI, iOS 17.5
+  - `case active(…)`, `case ended(…)`, `case failed`, `static ==(a:b:)`
+- **struct `PencilSqueezeGestureValue`** : Hashable, ~Swift.Sendable — SwiftUI, iOS 17.5
+  - `hoverPose`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `RotateGesture`** : Gesture, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `struct Value`, `minimumAngleDelta`, `init(minimumAngleDelta:)`, `typealias Body`
+  - `RotateGesture.Value`: `time`, `rotation`, `velocity`, `startAnchor`, `startLocation`, `static ==(a:b:)`
+- **struct `RotationGesture`** : Gesture, ~Swift.Sendable — SwiftUI, iOS 13.0, deprecated
+  - `minimumAngleDelta` [13.0], `init(minimumAngleDelta:)` [13.0], `typealias Value` [13.0], `typealias Body`
+- **struct `SensoryFeedback`** : Equatable, Sendable — SwiftUI, iOS 17.0
+  - `static success`, `static warning`, `static error`, `static selection`, `static increase`, `static decrease`, `static start`, `static stop`, `static alignment`, `static levelChange`, `static pathComplete` [17.5], `static impact`, `static impact(weight:intensity:)`, `static impact(flexibility:intensity:)`, `struct Weight`, `struct Flexibility`, `static ==(a:b:)`, `static selection(_:)` [26.0], `static press(_:)` [26.0], `static release(_:)` [26.0], `struct SelectionFeedback` [26.0], `struct PressFeedback` [26.0], `struct ReleaseFeedback` [26.0]
+  - `SensoryFeedback.Flexibility`: `static rigid`, `static solid`, `static soft`, `static ==(a:b:)`
+  - `SensoryFeedback.PressFeedback`: `static button` [26.0], `static buttonIconOnly` [26.0], `static slider` [26.0], `static toggle` [26.0], `static tab` [26.0], `static ==(a:b:)` [26.0], `hash(into:)` [26.0], `hashValue` [26.0]
+  - `SensoryFeedback.ReleaseFeedback`: `static slider` [26.0], `static ==(a:b:)` [26.0], `hash(into:)` [26.0], `hashValue` [26.0]
+  - `SensoryFeedback.SelectionFeedback`: `static maximum` [26.0], `static minimum` [26.0], `static on` [26.0], `static off` [26.0], `static ==(a:b:)` [26.0], `hash(into:)` [26.0], `hashValue` [26.0]
+  - `SensoryFeedback.Weight`: `static light`, `static medium`, `static heavy`, `static ==(a:b:)`
+- **struct `SequenceGesture`** : Gesture, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `enum Value`, `first`, `second`, `init(_:_:)`, `typealias Body`
+  - `SequenceGesture.Value`: `case first(…)`, `case second(…)`, `static ==(a:b:)`
+- **struct `SimultaneousGesture`** : Gesture, ~Sendable — SwiftUICore, iOS 13.0
+  - `struct Value`, `first`, `second`, `init(_:_:)`, `typealias Body`
+  - `SimultaneousGesture.Value`: `first`, `second`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `SpatialEventCollection`** : Collection, ~Swift.Sendable, Equatable — SwiftUI, iOS 18.0
+  - `struct Event`, `subscript(index:)`, `struct Iterator`, `makeIterator()`, `struct Index`, `startIndex`, `endIndex`, `subscript(position:)`, `index(after:)`, `typealias Element`, `typealias Indices`, `typealias SubSequence`, `static ==(lhs:rhs:)`
+  - `SpatialEventCollection.Event`: `struct ID`, `hash(into:)`, `enum Kind`, `enum Phase`, `struct InputDevicePose`, `id`, `timestamp`, `kind`, `location`, `phase`, `modifierKeys`, `inputDevicePose`, `static ==(a:b:)`, `hashValue`
+  - `SpatialEventCollection.Event.ID`: `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `SpatialEventCollection.Event.InputDevicePose`: `altitude`, `azimuth`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `SpatialEventCollection.Event.Kind`: `case touch`, `case pencil`, `case pointer`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `SpatialEventCollection.Event.Phase`: `case active`, `case ended`, `case cancelled`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+  - `SpatialEventCollection.Index`: `static < `, `static ==(a:b:)`
+  - `SpatialEventCollection.Iterator`: `next()`, `typealias Element`
+- **struct `SpatialEventGesture`** : Gesture, ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `init(coordinateSpace:)`, `typealias Value`, `coordinateSpace`, `typealias Body`
+- **struct `SpatialTapGesture`** : Gesture, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `struct Value`, `count`, `coordinateSpace`, `init(count:coordinateSpace:)` [16.0, deprecated], `typealias Body`
+  - `SpatialTapGesture.Value`: `location`, `static ==(a:b:)`
+- **struct `TapGesture`** : Gesture, ~Sendable — SwiftUICore, iOS 13.0
+  - `count`, `init(count:)`, `typealias Body`, `typealias Value`
+- **protocol `UIGestureRecognizerRepresentable`** — SwiftUI, iOS 18.0
+  - `associatedtype UIGestureRecognizerType`, `associatedtype Coordinator`, `typealias Context`, `typealias CoordinateSpaceConverter`, `makeCoordinator(converter:)`, `makeUIGestureRecognizer(context:)`, `updateUIGestureRecognizer(_:context:)`, `handleUIGestureRecognizerAction(_:context:)`
+- **struct `UIGestureRecognizerRepresentableContext`** : ~Swift.Sendable — SwiftUI, iOS 18.0
+  - `coordinator`, `converter`
+
+## Accessibility
+
+- **struct `AccessibilityActionCategory`** : Equatable, Sendable — SwiftUICore, iOS 18.0
+  - `static `default``, `static edit`, `init(_:)`, `static ==(a:b:)`
+- **struct `AccessibilityActionKind`** : Equatable, Sendable — SwiftUICore, iOS 13.0
+  - `static `default``, `static escape`, `static magicTap`, `init(named:)`, `static ==(a:b:)`
+- **enum `AccessibilityAdjustmentDirection`** : Sendable, Equatable — SwiftUICore, iOS 13.0
+  - `case increment`, `case decrement`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `AccessibilityAttachmentModifier`** : ViewModifier, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `typealias Body`
+- **struct `AccessibilityChildBehavior`** : Hashable, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `hash(into:)`, `static ==(lhs:rhs:)`, `hashValue`, `static ignore`, `static contain`, `static combine`
+- **struct `AccessibilityCustomContentKey`** : ~Sendable, Equatable — SwiftUICore, iOS 15.0
+  - `init(_:id:)`, `init(_:)`, `static ==(a:b:)`
+- **struct `AccessibilityFocusState`** : DynamicProperty, Sendable — SwiftUI, iOS 15.0
+  - `struct Binding`, `wrappedValue`, `projectedValue`, `init()`, `init(for:)`
+  - `AccessibilityFocusState.Binding`: `wrappedValue`, `projectedValue`
+- **enum `AccessibilityHeadingLevel`** : UInt, Equatable — SwiftUICore, iOS 15.0
+  - `case unspecified`, `case h1`, `case h2`, `case h3`, `case h4`, `case h5`, `case h6`, `init(rawValue:)`, `typealias RawValue`, `rawValue`
+- **struct `AccessibilityRotorEntry`** : ~Swift.Sendable, AccessibilityRotorContent — SwiftUI, iOS 15.0
+  - `body`, `typealias Body`, `init(_:id:textRange:)`, `init(_:id:in:textRange:)`, `init(_:textRange:)`, `init(_:_:in:textRange:)`
+- **struct `AccessibilitySystemRotor`** : Sendable — SwiftUI, iOS 15.0
+  - `static links(visited:)`, `static links`, `static headings(level:)`, `static headings`, `static boldText`, `static italicText`, `static underlineText`, `static misspelledWords`, `static images`, `static textFields`, `static tables`, `static lists`, `static landmarks`
+- **struct `AccessibilityTechnologies`** : SetAlgebra, Sendable — SwiftUICore, iOS 15.0
+  - `static voiceOver`, `static switchControl`, `init()`, `union(_:)`, `formUnion(_:)`, `intersection(_:)`, `formIntersection(_:)`, `symmetricDifference(_:)`, `formSymmetricDifference(_:)`, `contains(_:)`, `insert(_:)`, `remove(_:)`, `update(with:)`, `static ==(a:b:)`, `typealias ArrayLiteralElement`, `typealias Element`
+- **struct `AccessibilityTraits`** : SetAlgebra, Sendable — SwiftUICore, iOS 13.0
+  - `static isButton`, `static isHeader`, `static isSelected`, `static isLink`, `static isSearchField`, `static isImage`, `static playsSound`, `static isKeyboardKey`, `static isStaticText`, `static isSummaryElement`, `static updatesFrequently`, `static startsMediaSession`, `static allowsDirectInteraction`, `static causesPageTurn`, `static isModal`, `static isToggle` [17.0], `static isTabBar` [17.0], `init()`, `union(_:)`, `formUnion(_:)`, `intersection(_:)`, `formIntersection(_:)`, `symmetricDifference(_:)`, `formSymmetricDifference(_:)`, `contains(_:)`, `insert(_:)`, `remove(_:)`, `update(with:)`, `static ==(a:b:)`, `typealias ArrayLiteralElement`, `typealias Element`
+
+## UIKit interoperability and hosting
+
+- **protocol `AXChartDescriptorRepresentable`** — SwiftUICore, iOS 15.0
+  - `makeChartDescriptor()`, `updateChartDescriptor(_:)`
+- **struct `UIHostingConfiguration`** : UIContentConfiguration, ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `background()`, `background(_:)`, `margins(_:_:)`, `minSize(width:height:)`, `minSize()` [16.0, deprecated], `makeContentView()`, `updated(for:)`, `init()`
+- **protocol `UIHostingSceneDelegate`** : UISceneDelegate — SwiftUI, iOS 26.0
+  - `associatedtype RootScene`, `static rootScene`
+- **protocol `UIViewRepresentable`** : View — SwiftUI, iOS 13.0
+  - `associatedtype UIViewType`, `makeUIView(context:)`, `updateUIView(_:context:)`, `static dismantleUIView(_:coordinator:)`, `associatedtype Coordinator`, `makeCoordinator()`, `sizeThatFits(_:uiView:context:)` [16.0], `typealias Context`, `typealias LayoutOptions` [17.0], `body`
+- **struct `UIViewRepresentableContext`** : Sendable — SwiftUI, iOS 13.0
+  - `coordinator`, `transaction`, `environment`, `animate()` [18.0]
+
+## Previews and developer tools
+
+- **protocol `PreviewContext`** — SwiftUI, iOS 14.0
+  - `subscript(<Keykey:)`
+- **protocol `PreviewContextKey`** — SwiftUI, iOS 14.0
+  - `associatedtype Value`, `static defaultValue`
+- **struct `PreviewDevice`** : RawRepresentable, ExpressibleByStringLiteral, Sendable — SwiftUI, iOS 13.0
+  - `rawValue`, `init(rawValue:)`, `init(stringLiteral:)`, `typealias ExtendedGraphemeClusterLiteralType`, `typealias RawValue`, `typealias StringLiteralType`, `typealias UnicodeScalarLiteralType`
+- **protocol `PreviewModifier`** — SwiftUI, iOS 18.0
+  - `associatedtype Context`, `associatedtype Body`, `typealias Content`, `static makeSharedContext()`, `body(content:context:)`
+- **enum `PreviewPlatform`** : Sendable, Equatable — SwiftUI, iOS 13.0
+  - `case iOS`, `case macOS`, `case tvOS`, `case watchOS`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **protocol `PreviewProvider`** : _PreviewProvider — SwiftUI, iOS 13.0
+  - `associatedtype Previews`, `static previews`, `static platform`
+- **struct `SharePreview`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `init(_:image:icon:)`, `init(_:icon:)`, `init(_:image:)`, `init(_:)`
+
+## Other
+
+- **struct `ActionSheet`** : ~Swift.Sendable — SwiftUI, iOS 13.0, deprecated
+  - `init(title:message:buttons:)` [13.0], `typealias Button` [13.0]
+- **struct `AssistiveAccess`** : Scene, ~Swift.Sendable — SwiftUI, iOS 26.0
+  - `init()`, `body`, `typealias Body`
+- **protocol `AttributedTextValueConstraint`** : Hashable, Sendable, AttributedTextFormattingDefinition — SwiftUICore, iOS 26.0
+  - `associatedtype AttributeKey`, `constrain(_:)`, `body`, `typealias Attributes`
+- **struct `BackgroundProminence`** : Hashable, Sendable — SwiftUICore, iOS 17.0
+  - `static standard`, `static increased`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `BackgroundTask`** : Sendable — SwiftUI, iOS 16.0
+  - `static urlSession`, `static urlSession(_:)`, `static urlSession()`, `static processingTask(_:)` [27.0], `static appRefresh(_:)`
+- **struct `BadgeProminence`** : Hashable, Sendable — SwiftUI, iOS 17.0
+  - `static decreased`, `static standard`, `static increased`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `CameraCaptureAccessory`** : SceneAccessoryContent — SwiftUI, iOS 27.1
+  - `init()`, `init(isEnabled:)`, `body`, `typealias Body`
+- **enum `ContentSizeCategory`** : Hashable, CaseIterable, Sendable — SwiftUICore, iOS 13.0, deprecated
+  - `case extraSmall` [13.0], `case small` [13.0], `case medium` [13.0], `case large` [13.0], `case extraLarge` [13.0], `case extraExtraLarge` [13.0], `case extraExtraExtraLarge` [13.0], `case accessibilityMedium` [13.0], `case accessibilityLarge` [13.0], `case accessibilityExtraLarge` [13.0], `case accessibilityExtraExtraLarge` [13.0], `case accessibilityExtraExtraExtraLarge` [13.0], `isAccessibilityCategory` [13.4], `static ==(a:b:)` [13.0], `typealias AllCases`, `static allCases` [13.0], `hash(into:)` [13.0], `hashValue` [13.0], `static < ` [14.0], `static <= ` [14.0], `static >(lhs:rhs:)` [14.0], `static >=(lhs:rhs:)` [14.0], `init(_:)` [14.0]
+- **struct `ContentUnavailableView`** : View, ~Swift.Sendable — SwiftUI, iOS 17.0
+  - `init(label:)`, `body`, `typealias Body`, `init(_:image:description:)`, `init(_:systemImage:description:)`, `static search`, `static search(text:)`
+- **struct `DebugReplaceableView`** : View, ~Sendable — SwiftUICore, iOS 26.0
+  - `init(erasing:)`, `typealias Body`
+- **struct `DefaultFocusEvaluationPriority`** : Sendable — SwiftUI, iOS 16.0
+  - `static automatic`, `static userInitiated`
+- **struct `DisabledTextSelectability`** : TextSelectability, ~Sendable — SwiftUICore, iOS 15.0
+  - `static allowsSelection`
+- **struct `EditActions`** : OptionSet, Sendable — SwiftUI, iOS 16.0
+  - `rawValue`, `init(rawValue:)`, `static all`, `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **struct `EmptyWidgetConfiguration`** : WidgetConfiguration, Sendable — SwiftUI, iOS 14.0
+  - `init()`, `typealias Body`
+- **struct `EnabledTextSelectability`** : TextSelectability, ~Sendable — SwiftUICore, iOS 15.0
+  - `static allowsSelection`
+- **struct `ExternalNonInteractiveAccessory`** : SceneAccessoryContent — SwiftUI, iOS 27.0
+  - `init()`, `init(isEnabled:)`, `body`, `typealias Body`
+- **struct `FetchedResults`** : RandomAccessCollection — SwiftUI, iOS 13.0
+  - `nsSortDescriptors` [15.0], `nsPredicate` [15.0], `startIndex`, `endIndex`, `subscript(position:)`, `typealias Element`, `typealias Index`, `typealias Indices`, `typealias Iterator`, `typealias SubSequence`, `sortDescriptors` [15.0]
+- **struct `FetchRequest`** : DynamicProperty — SwiftUI, iOS 13.0
+  - `wrappedValue`, `struct Configuration` [15.0], `projectedValue` [15.0], `update()`, `init(entity:sortDescriptors:predicate:animation:)`, `init(fetchRequest:animation:)`, `init(fetchRequest:transaction:)`, `init(sortDescriptors:predicate:animation:)`
+  - `FetchRequest.Configuration`: `nsSortDescriptors` [15.0], `nsPredicate` [15.0], `sortDescriptors` [15.0]
+- **struct `FillShapeView`** : ShapeView, ~Sendable — SwiftUICore, iOS 17.0
+  - `shape`, `style`, `fillStyle`, `background`, `init(shape:style:fillStyle:background:)`, `typealias Body`
+- **struct `FindContext`** : Sendable — SwiftUI, iOS 26.0
+  - `isPresented`, `supportsReplace`
+- **struct `FixedTextVariant`** : TextVariantPreference, Sendable — SwiftUICore, iOS 18.0
+- **struct `GroupBox`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `init(content:)`, `body`, `typealias Body`, `init(_:)`, `init()`, `init(label:)` [14.0, deprecated]
+- **struct `GroupBoxStyleConfiguration`** : ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `struct Label`, `struct Content`, `label`, `content`
+  - `GroupBoxStyleConfiguration.Content`: `typealias Body`
+  - `GroupBoxStyleConfiguration.Label`: `typealias Body`
+- **enum `HorizontalDirection`** : Int8, CaseIterable, Codable, Equatable — SwiftUICore, iOS 18.0
+  - `case leading`, `case trailing`, `struct Set`, `init(rawValue:)`, `typealias AllCases`, `typealias RawValue`, `static allCases`, `rawValue`
+  - `HorizontalDirection.Set`: `typealias Element`, `rawValue`, `init(rawValue:)`, `static leading`, `static trailing`, `static all`, `init(_:)`, `typealias ArrayLiteralElement`, `typealias RawValue`
+- **enum `HorizontalEdge`** : Int8, CaseIterable, Codable, Equatable — SwiftUICore, iOS 15.0
+  - `case leading`, `case trailing`, `struct Set`, `init(rawValue:)`, `typealias AllCases`, `typealias RawValue`, `static allCases`, `rawValue`
+  - `HorizontalEdge.Set`: `typealias Element`, `rawValue`, `init(rawValue:)`, `static leading`, `static trailing`, `static all`, `init(_:)`, `typealias ArrayLiteralElement`, `typealias RawValue`
+- **struct `IndexedIdentifierCollection`** : Collection, ~Swift.Sendable, BidirectionalCollection — SwiftUI, iOS 16.0
+  - `struct Element`, `typealias Index`, `startIndex`, `endIndex`, `subscript(position:)`, `index(after:)`, `typealias Indices`, `typealias Iterator`, `typealias SubSequence`, `index(before:)`, `index(_:offsetBy:)`, `distance(from:to:)`
+- **struct `InterfaceOrientation`** : CaseIterable, Identifiable, Equatable, Sendable — SwiftUI, iOS 15.0
+  - `static allCases`, `id`, `static portrait`, `static portraitUpsideDown`, `static landscapeLeft`, `static landscapeRight`, `static ==(a:b:)`, `typealias AllCases`, `typealias ID`
+- **struct `LimitedAvailabilityConfiguration`** : WidgetConfiguration, ~Swift.Sendable — SwiftUI, iOS 16.1
+  - `typealias Body`
+- **struct `MaterialActiveAppearance`** : Sendable, Equatable — SwiftUICore, iOS 18.0
+  - `static automatic`, `static active`, `static matchWindow`, `static ==(a:b:)`
+- **struct `OutlineSubgroupChildren`** : View, ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `typealias Body`
+- **struct `PlaceholderContentView`** : View, ~Sendable — SwiftUICore, iOS 17.0
+  - `typealias Body`
+- **struct `PreferredColorSchemeKey`** : PreferenceKey, ~Sendable — SwiftUICore, iOS 13.0
+  - `typealias Value`, `static reduce(value:)`
+- **struct `ProjectionTransform`** : Equatable — SwiftUICore, iOS 13.0
+  - `m11`, `m21`, `m31`, `init()`, `init(_:)`, `isIdentity`, `isAffine`, `invert()`, `inverted()`, `static ==(a:b:)`, `dot(_:_:)`, `concatenating(_:)`
+- **enum `Prominence`** : Sendable, Equatable — SwiftUICore, iOS 15.0
+  - `case standard`, `case increased`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `RedactionReasons`** : OptionSet, Sendable — SwiftUICore, iOS 14.0
+  - `rawValue`, `init(rawValue:)`, `static placeholder`, `static privacy` [15.0], `static invalidated` [17.0], `typealias ArrayLiteralElement`, `typealias Element`, `typealias RawValue`
+- **struct `RenameAction`** : ~Swift.Sendable — SwiftUI, iOS 16.0
+  - `callAsFunction()`
+- **struct `ScenePadding`** : Equatable, Sendable — SwiftUI, iOS 16.0
+  - `static minimum`, `static ==(a:b:)`
+- **struct `SceneRestorationBehavior`** : Sendable — SwiftUI, iOS 18.0
+  - `static automatic`
+- **struct `SizeDependentTextVariant`** : TextVariantPreference, Sendable — SwiftUICore, iOS 18.0
+- **struct `SpacerSizing`** : Sendable — SwiftUI, iOS 26.0
+  - `static flexible`, `static fixed`
+- **struct `SpringLoadingBehavior`** : Hashable, Sendable — SwiftUI, iOS 17.0
+  - `static automatic`, `static enabled`, `static disabled`, `static ==(a:b:)`, `hash(into:)`, `hashValue`
+- **struct `StrokeBorderShapeView`** : ShapeView, ~Sendable — SwiftUICore, iOS 17.0
+  - `shape`, `style`, `strokeStyle`, `isAntialiased`, `background`, `init(shape:style:strokeStyle:isAntialiased:background:)`, `typealias Body`
+- **struct `StrokeShapeView`** : ShapeView, ~Sendable — SwiftUICore, iOS 17.0
+  - `shape`, `style`, `strokeStyle`, `isAntialiased`, `background`, `init(shape:style:strokeStyle:isAntialiased:background:)`, `typealias Body`
+- **struct `SubscriptionView`** : View, ~Swift.Sendable — SwiftUI, iOS 13.0
+  - `content`, `publisher`, `action`, `init(content:publisher:)`, `typealias Body`
+- **struct `TimeDataSource`** : Sendable — SwiftUICore, iOS 18.0
+  - `static currentDate`, `static durationOffset(to:)`, `static dateRange(startingAt:)`, `static dateRange(endingAt:)`
+- **enum `UserInterfaceSizeClass`** : Sendable, Equatable — SwiftUICore, iOS 13.0
+  - `case compact`, `case regular`, `static ==(a:b:)`, `hash(into:)`, `hashValue`, `init(_:)` [14.0]
+- **protocol `VectorArithmetic`** : AdditiveArithmetic — SwiftUICore, iOS 13.0
+  - `scale(by:)`, `magnitudeSquared`, `scaled(by:)`, `interpolate(towards:amount:)`, `interpolated(towards:amount:)`
+- **enum `VerticalDirection`** : Int8, CaseIterable, Codable, Equatable — SwiftUICore, iOS 18.0
+  - `case up`, `case down`, `struct Set`, `init(rawValue:)`, `typealias AllCases`, `typealias RawValue`, `static allCases`, `rawValue`
+  - `VerticalDirection.Set`: `typealias Element`, `rawValue`, `init(rawValue:)`, `static up`, `static down`, `static all`, `init(_:)`, `typealias ArrayLiteralElement`, `typealias RawValue`
+- **enum `VerticalEdge`** : Int8, CaseIterable, Codable, Equatable — SwiftUICore, iOS 15.0
+  - `case top`, `case bottom`, `struct Set`, `init(rawValue:)`, `typealias AllCases`, `typealias RawValue`, `static allCases`, `rawValue`
+  - `VerticalEdge.Set`: `typealias Element`, `rawValue`, `init(rawValue:)`, `static top`, `static bottom`, `static all`, `init(_:)`, `typealias ArrayLiteralElement`, `typealias RawValue`
+- **enum `Visibility`** : Hashable, CaseIterable, Sendable — SwiftUICore, iOS 15.0
+  - `case automatic`, `case visible`, `case hidden`, `static ==(a:b:)`, `typealias AllCases`, `static allCases`, `hash(into:)`, `hashValue`
+- **protocol `Widget`** — SwiftUI, iOS 14.0
+  - `associatedtype Body`, `init()`, `body`
+- **protocol `WidgetBundle`** — SwiftUI, iOS 14.0
+  - `associatedtype Body`, `init()`, `body`
+- **struct `WidgetBundleBuilder`** : ~Swift.Sendable — SwiftUI, iOS 14.0
+  - `static buildExpression(_:)`, `static buildBlock()`, `static buildBlock(_:)`, `static buildOptional(_:)`, `static buildLimitedAvailability(_:)` [16.1]
+- **protocol `WidgetConfiguration`** — SwiftUI, iOS 14.0
+  - `associatedtype Body`, `body`, `backgroundTask(_:)` [16.0]
+
+## View modifiers by area
+
+Members of `View` (protocol extensions in both modules), i.e. the modifier and
+convenience surface. One entry per distinct label set.
+
+### Layout and geometry (43)
+
+`alignmentGuide(_:)` [13.0], `aspectRatio(_:contentMode:)` [13.0], `containerRelativeFrame(_:alignment:)` [17.0], `containerRelativeFrame(_:count:span:spacing:alignment:)` [17.0], `containerShape(_:)` [26.0], `contentMargins(_:_:for:)` [17.0], `contentMargins(_:for:)` [17.0], `coordinateSpace(_:)` [17.0], `coordinateSpace(name:)` [13.0], `edgesIgnoringSafeArea(_:)` [13.0, deprecated], `fixedSize()` [13.0], `fixedSize(horizontal:vertical:)` [13.0], `flipsForRightToLeftLayoutDirection(_:)` [13.0], `frame()` [13.0, deprecated], `frame(minWidth:idealWidth:maxWidth:minHeight:idealHeight:maxHeight:alignment:)` [13.0], `frame(width:height:alignment:)` [13.0], `gridCellAnchor(_:)` [16.0], `gridCellColumns(_:)` [16.0], `gridCellUnsizedAxes(_:)` [16.0], `gridColumnAlignment(_:)` [16.0], `ignoresSafeArea(_:edges:)` [14.0], `labelIconToTitleSpacing(_:)` [26.0], `layoutDirectionBehavior(_:)` [17.0], `layoutPriority(_:)` [13.0], `layoutValue(key:value:)` [16.0], `lineSpacing(_:)` [13.0], `listRowSpacing(_:)` [15.0], `listSectionSpacing(_:)` [17.0], `offset(_:)` [13.0], `offset(x:y:)` [13.0], `onGeometryChange(for:of:)` [16.0], `onGeometryChange(for:of:_:)` [18.0], `padding(_:)` [13.0], `padding(_:_:)` [13.0], `position(_:)` [13.0], `position(x:y:)` [13.0], `safeAreaBar(edge:alignment:spacing:)` [26.0], `safeAreaInset(edge:alignment:spacing:)` [15.0], `safeAreaPadding(_:)` [17.0], `safeAreaPadding(_:_:)` [17.0], `scaledToFill()` [13.0], `scaledToFit()` [13.0], `zIndex(_:)` [13.0]
+
+### Text and fonts (51)
+
+`accessibilityRotor(_:textRanges:)` [15.0], `accessibilityTextContentType(_:)` [15.0], `attributedTextFormattingDefinition(_:)` [26.0], `baselineOffset(_:)` [16.0], `bold(_:)` [16.0], `contextMenu()` [13.0], `contextMenu(_:)` [13.0], `contextMenu(forSelectionType:)` [16.0], `contextMenu(menuItems:)` [16.0], `documentBrowserContextMenu()` [18.1], `dynamicTypeSize(_:)` [15.0], `font(_:)` [13.0], `fontDesign(_:)` [16.1], `fontWeight(_:)` [16.0], `fontWidth(_:)` [16.0], `italic(_:)` [16.0], `kerning(_:)` [16.0], `lineHeight(_:)` [26.0], `lineLimit(_:)` [13.0], `lineLimit(_:reservesSpace:)` [16.0], `minimumScaleFactor(_:)` [13.0], `monospaced(_:)` [16.0], `monospacedDigit()` [15.0], `multilineTextAlignment(_:)` [13.0], `multilineTextAlignment(strategy:)` [26.0], `previewContext(_:)` [14.0], `searchable(text:editableTokens:isPresented:placement:prompt:)` [17.0], `searchable(text:editableTokens:placement:prompt:)` [17.0], `searchable(text:isPresented:placement:prompt:)` [17.0], `searchable(text:placement:prompt:)` [15.0], `searchable(text:tokens:isPresented:placement:prompt:)` [17.0], `searchable(text:tokens:placement:prompt:)` [16.0], `searchable(text:tokens:suggestedTokens:isPresented:placement:prompt:)` [17.0], `searchable(text:tokens:suggestedTokens:placement:prompt:)` [16.0], `speechAnnouncementsQueued(_:)` [15.0], `strikethrough(_:pattern:color:)` [16.0], `textCase(_:)` [14.0], `textContentType(_:)` [13.0], `textEditorStyle(_:)` [17.0], `textFieldStyle(_:)` [13.0], `textInputAutocapitalization(_:)` [15.0], `textInputFormattingControlVisibility(_:for:)` [26.0], `textRenderer(_:)` [18.0], `textScale(_:isEnabled:)` [17.0], `textSelection(_:)` [15.0], `textSelectionAffinity(_:)` [18.0], `tracking(_:)` [16.0], `truncationMode(_:)` [13.0], `typesettingLanguage(_:isEnabled:)` [17.0], `underline(_:pattern:color:)` [16.0], `writingDirection(strategy:)` [26.0]
+
+### Drawing, colour and effects (72)
+
+`accentColor(_:)` [13.0, deprecated], `allowedDynamicRange(_:)` [17.0], `background(_:alignment:)` [13.0, deprecated], `background(_:ignoresSafeAreaEdges:)` [15.0], `background(_:in:fillStyle:)` [15.0], `background(alignment:)` [15.0], `background(ignoresSafeAreaEdges:)` [15.0], `background(in:fillStyle:)` [15.0], `backgroundExtensionEffect()` [26.0], `backgroundExtensionEffect(isEnabled:)` [26.0], `backgroundPreferenceValue(_:)` [13.0], `backgroundPreferenceValue(_:alignment:)` [16.0], `backgroundPreferenceValue(_v0:_:alignment:)` [13.0], `backgroundStyle(_:)` [16.0], `blendMode(_:)` [13.0], `blur(radius:opaque:)` [13.0], `border(_:width:)` [13.0], `brightness(_:)` [13.0], `clipped(antialiased:)` [13.0], `clipShape(_:style:)` [13.0], `colorEffect(_:isEnabled:)` [17.0], `colorInvert()` [13.0], `colorMultiply(_:)` [13.0], `colorScheme(_:)` [13.0], `compositingGroup()` [13.0], `containerBackground(_:for:)` [17.0], `containerBackground(for:alignment:)` [17.0], `contrast(_:)` [13.0], `cornerRadius(_:antialiased:)` [13.0, deprecated], `distortionEffect(_:maxSampleOffset:isEnabled:)` [17.0], `drawingGroup(opaque:colorMode:)` [13.0], `foregroundColor(_:)` [13.0, deprecated], `foregroundStyle(_:)` [15.0], `foregroundStyle(_:_:)` [15.0], `foregroundStyle(_:_:_:)` [15.0], `glassEffect(_:in:)` [26.0], `glassEffectID(_:in:)` [26.0], `glassEffectTransition(_:)` [26.0], `glassEffectUnion(id:namespace:)` [26.0], `grayscale(_:)` [13.0], `hueRotation(_:)` [13.0], `imageScale(_:)` [13.0], `layerEffect(_:maxSampleOffset:isEnabled:)` [17.0], `luminanceToAlpha()` [13.0], `mask(_:)` [13.0, deprecated], `mask(alignment:)` [15.0], `opacity(_:)` [13.0], `overlay(_:alignment:)` [13.0, deprecated], `overlay(_:ignoresSafeAreaEdges:)` [15.0], `overlay(_:in:fillStyle:)` [15.0], `overlay(alignment:)` [15.0], `overlayPreferenceValue(_:)` [13.0], `overlayPreferenceValue(_:alignment:)` [16.0], `overlayPreferenceValue(_v0:_:alignment:)` [13.0], `preferredColorScheme(_:)` [13.0], `projectionEffect(_:)` [13.0], `rotation3DEffect(_:axis:anchor:anchorZ:perspective:)` [13.0], `rotationEffect(_:anchor:)` [13.0], `saturation(_:)` [13.0], `scaleEffect(_:anchor:)` [13.0], `scaleEffect(x:y:anchor:)` [13.0], `shadow(color:radius:x:y:)` [13.0], `symbolColorRenderingMode(_:)` [26.0], `symbolEffect(_:options:isActive:)` [17.0], `symbolEffect(_:options:value:)` [17.0], `symbolEffectsRemoved(_:)` [17.0], `symbolRenderingMode(_:)` [15.0], `symbolVariableValueMode(_:)` [26.0], `symbolVariant(_:)` [15.0], `tint(_:)` [16.0], `transformEffect(_:)` [13.0], `visualEffect()` [17.0]
+
+### Animation and transitions (17)
+
+`animation(_:)` [15.0], `animation(_:value:)` [13.0], `contentTransition(_:)` [16.0], `geometryGroup()` [17.0], `keyframeAnimator(initialValue:repeating:content:)` [17.0], `keyframeAnimator(initialValue:trigger:content:)` [17.0], `matchedGeometryEffect(id:in:properties:anchor:isSource:)` [14.0], `matchedTransitionSource(id:in:)` [18.0], `navigationTransition(_:)` [18.0], `phaseAnimator(_:content:)` [17.0], `phaseAnimator(_:trigger:content:)` [17.0], `scrollTransition(_:axis:)` [17.0], `scrollTransition(topLeading:bottomTrailing:axis:)` [17.0], `transaction()` [13.0], `transaction(_:)` [17.0], `transaction(value:)` [17.0], `transition(_:)` [13.0]
+
+### Lifecycle and events (16)
+
+`handlesExternalEvents(preferring:allowing:)` [14.0], `onAppear(perform:)` [13.0], `onChange(of:)` [14.0, deprecated 17.0], `onChange(of:initial:)` [17.0], `onContinueUserActivity(_:perform:)` [14.0], `onDisappear(perform:)` [13.0], `onOpenURL(perform:)` [14.0], `onOpenURL(prefersInApp:)` [26.0], `onReceive(_:)` [13.0], `onSubmit(of:)` [15.0], `refreshable()` [15.0], `task(id:name:executorPreference:priority:file:line:)` [26.4], `task(id:name:priority:file:line:)` [15.0], `task(name:executorPreference:priority:file:line:)` [26.4], `userActivity(_:element:_:)` [14.0], `userActivity(_:isActive:_:)` [14.0]
+
+### Navigation, toolbars and presentation (130)
+
+`accessibilityRepresentation()` [15.0], `alert(_:isPresented:)` [15.0], `alert(_:isPresented:actions:)` [15.0], `alert(_:isPresented:presenting:)` [15.0], `alert(_:isPresented:presenting:actions:)` [15.0], `alert(_:item:)` [15.0], `alert(_:item:actions:)` [15.0], `alert(error:)` [15.0], `alert(error:actions:)` [15.0], `alert(isPresented:)` [13.0, deprecated], `alert(isPresented:error:)` [15.0], `alert(isPresented:error:actions:)` [15.0], `alert(item:)` [13.0, deprecated], `assistiveAccessNavigationIcon(_:)` [26.0], `assistiveAccessNavigationIcon(systemImage:)` [26.0], `badge(_:)` [15.0], `badgeProminence(_:)` [17.0], `confirmationDialog(_:isPresented:titleVisibility:)` [15.0], `confirmationDialog(_:isPresented:titleVisibility:actions:)` [15.0], `confirmationDialog(_:isPresented:titleVisibility:presenting:)` [15.0], `confirmationDialog(_:isPresented:titleVisibility:presenting:actions:)` [15.0], `confirmationDialog(_:item:titleVisibility:)` [15.0], `confirmationDialog(_:item:titleVisibility:actions:)` [15.0], `contentToolbar(for:)` [18.4], `dialogIcon(_:)` [17.0], `dialogSeverity(_:)` [17.0], `dialogSuppressionToggle(_:isSuppressed:)` [17.0], `dialogSuppressionToggle(isSuppressed:)` [17.0], `fileDialogBrowserOptions(_:)` [17.0], `fileDialogConfirmationLabel(_:)` [17.0], `fileDialogCustomizationID(_:)` [17.0], `fileDialogDefaultDirectory(_:)` [17.0], `fileDialogImportsUnresolvedAliases(_:)` [17.0], `fileDialogMessage(_:)` [17.0], `fileDialogURLEnabled(_:)` [17.0], `fileExporter(isPresented:document:contentType:defaultFilename:)` [14.0], `fileExporter(isPresented:document:contentTypes:defaultFilename:onCompletion:)` [17.0, deprecated], `fileExporter(isPresented:documents:contentType:)` [14.0], `fileExporter(isPresented:documents:contentTypes:)` [27.0], `fileExporter(isPresented:documents:contentTypes:onCompletion:)` [17.0, deprecated], `fileExporter(isPresented:item:contentTypes:defaultFilename:onCompletion:)` [17.0], `fileExporter(isPresented:items:contentTypes:onCompletion:)` [17.0], `fileExporterFilenameLabel(_:)` [17.0], `fileImporter(isPresented:allowedContentTypes:)` [14.0], `fileImporter(isPresented:allowedContentTypes:allowsMultipleSelection:)` [14.0], `fileImporter(isPresented:allowedContentTypes:allowsMultipleSelection:onCompletion:)` [17.0], `fileMover(isPresented:file:)` [14.0], `fileMover(isPresented:file:onCompletion:)` [17.0], `fileMover(isPresented:files:)` [14.0], `fileMover(isPresented:files:onCompletion:)` [17.0], `fullScreenCover(isPresented:onDismiss:)` [14.0], `fullScreenCover(item:onDismiss:)` [14.0], `inspector(isPresented:)` [17.0], `inspectorColumnWidth(_:)` [17.0], `inspectorColumnWidth(min:ideal:max:)` [17.0], `interactiveDismissDisabled(_:)` [15.0], `navigationBarBackButtonHidden(_:)` [13.0], `navigationBarHidden(_:)` [13.0, deprecated], `navigationBarItems(leading:)` [13.0, deprecated], `navigationBarItems(leading:trailing:)` [13.0, deprecated], `navigationBarItems(trailing:)` [13.0, deprecated], `navigationBarTitle(_:)` [13.0, deprecated], `navigationBarTitle(_:displayMode:)` [13.0, deprecated], `navigationBarTitleDisplayMode(_:)` [14.0], `navigationDestination(for:)` [16.0], `navigationDestination(isPresented:)` [16.0], `navigationDestination(item:)` [17.0], `navigationDocument(_:)` [16.0], `navigationDocument(_:preview:)` [16.0], `navigationLinkIndicatorVisibility(_:)` [17.0], `navigationSplitViewColumnWidth(_:)` [16.0], `navigationSplitViewColumnWidth(min:ideal:max:)` [16.0], `navigationSplitViewStyle(_:)` [16.0], `navigationSubtitle(_:)` [26.0], `navigationTitle(_:)` [14.0], `navigationViewStyle(_:)` [13.0, deprecated], `persistentSystemOverlays(_:)` [16.0], `popover(isPresented:attachmentAnchor:arrowEdge:)` [13.0], `popover(item:attachmentAnchor:arrowEdge:)` [13.0], `presentationBackground(_:)` [16.4], `presentationBackground(alignment:)` [16.4], `presentationBackgroundInteraction(_:)` [16.4], `presentationCompactAdaptation(_:)` [16.4], `presentationCompactAdaptation(horizontal:vertical:)` [16.4], `presentationContentInteraction(_:)` [16.4], `presentationCornerRadius(_:)` [16.4], `presentationDetents(_:)` [16.0], `presentationDetents(_:selection:)` [16.0], `presentationDragIndicator(_:)` [16.0], `presentationSizing(_:)` [18.0], `searchCompletion(_:)` [15.0], `searchDictationBehavior(_:)` [17.0], `searchFocused(_:)` [18.0], `searchFocused(_:equals:)` [18.0], `searchPresentationToolbarBehavior(_:)` [17.1], `searchScopes(_:)` [16.0], `searchScopes(_:activation:)` [16.4], `searchSelection(_:)` [26.0], `searchSuggestions()` [16.0], `searchSuggestions(_:for:)` [16.0], `searchToolbarBehavior(_:)` [26.0], `sheet(isPresented:onDismiss:)` [13.0], `sheet(item:onDismiss:)` [13.0], `statusBar(hidden:)` [13.0, deprecated], `statusBarHidden(_:)` [13.0, deprecated], `tabBarMinimizeBehavior(_:)` [26.0], `tabItem()` [13.0, deprecated], `tableColumnHeaders(_:)` [17.0], `tableStyle(_:)` [16.0], `tabViewBottomAccessory()` [26.0], `tabViewBottomAccessory(isEnabled:)` [26.1], `tabViewCustomization(_:)` [18.0], `tabViewSearchActivation(_:)` [26.0], `tabViewSidebarBottomBar()` [18.0], `tabViewSidebarFooter()` [18.0], `tabViewSidebarHeader()` [18.0], `tabViewStyle(_:)` [14.0], `toolbar()` [14.0], `toolbar(_:for:)` [16.0, deprecated], `toolbar(id:)` [14.0], `toolbar(removing:)` [17.0], `toolbarBackground(_:for:)` [16.0], `toolbarBackgroundVisibility(_:for:)` [18.0], `toolbarColorScheme(_:for:)` [16.0], `toolbarOverflowMenu()` [27.0], `toolbarRole(_:)` [16.0], `toolbarTitleDisplayMode(_:)` [17.0], `toolbarTitleMenu()` [16.0], `toolbarVisibility(_:for:)` [18.0], `windowToolbarFullScreenVisibility(_:)` [18.0]
+
+### Lists and scrolling (43)
+
+`accessibilityScrollAction()` [13.0], `accessibilityScrollStatus(_:isEnabled:)` [26.0], `defaultScrollAnchor(_:)` [17.0], `defaultScrollAnchor(_:for:)` [18.0], `deleteDisabled(_:)` [13.0], `headerProminence(_:)` [15.0], `listItemTint(_:)` [14.0], `listRowBackground(_:)` [13.0], `listRowInsets(_:)` [13.0], `listRowInsets(_:_:)` [26.0], `listRowSeparator(_:edges:)` [15.0], `listRowSeparatorTint(_:edges:)` [15.0], `listSectionIndexVisibility(_:)` [26.0], `listSectionMargins(_:_:)` [26.0], `listSectionSeparator(_:edges:)` [15.0], `listSectionSeparatorTint(_:edges:)` [15.0], `listStyle(_:)` [13.0], `moveDisabled(_:)` [13.0], `onScrollGeometryChange(for:of:_:)` [18.0], `onScrollPhaseChange()` [18.0], `onScrollTargetVisibilityChange(idType:threshold:)` [18.0], `onScrollVisibilityChange(threshold:)` [18.0], `scrollBounceBehavior(_:axes:)` [16.4], `scrollClipDisabled(_:)` [17.0], `scrollContentBackground(_:)` [16.0], `scrollDisabled(_:)` [16.0], `scrollDismissesKeyboard(_:)` [16.0], `scrollEdgeEffectHidden(_:for:)` [26.0], `scrollEdgeEffectStyle(_:for:)` [26.0], `scrollIndicators(_:axes:)` [16.0], `scrollIndicatorsFlash(onAppear:)` [17.0], `scrollIndicatorsFlash(trigger:)` [17.0], `scrollInputBehavior(_:for:)` [18.0], `scrollPosition(_:anchor:)` [18.0], `scrollPosition(id:anchor:)` [17.0], `scrollTargetBehavior(_:)` [17.0], `scrollTargetLayout(isEnabled:)` [17.0], `sectionActions()` [18.0], `sectionIndexLabel(_:)` [26.0], `selectionDisabled(_:)` [17.0], `swipeActions(edge:allowsFullSwipe:)` [15.0], `swipeActions(edge:allowsFullSwipe:content:)` [27.0], `swipeActionsContainer()` [27.0]
+
+### Controls and input (46)
+
+`accessibilityDefaultFocus(_:_:)` [26.0], `accessibilityFocused(_:)` [15.0], `accessibilityFocused(_:equals:)` [15.0], `autocorrectionDisabled(_:)` [13.0], `buttonBorderShape(_:)` [15.0], `buttonRepeatBehavior(_:)` [17.0], `buttonStyle(_:)` [13.0], `controlGroupStyle(_:)` [15.0], `controlSize(_:)` [15.0], `datePickerStyle(_:)` [13.0], `defaultFocus(_:_:priority:)` [17.0], `disabled(_:)` [13.0], `disclosureGroupStyle(_:)` [16.0], `focusable(_:)` [17.0], `focusable(_:interactions:)` [17.0], `focused(_:)` [15.0], `focused(_:equals:)` [15.0], `focusedObject(_:)` [16.0], `focusedSceneObject(_:)` [16.0], `focusedSceneValue(_:)` [17.0], `focusedSceneValue(_:_:)` [15.0], `focusedValue(_:)` [17.0], `focusedValue(_:_:)` [14.0], `focusEffectDisabled(_:)` [17.0], `formStyle(_:)` [16.0], `gaugeStyle(_:)` [16.0], `keyboardShortcut(_:)` [14.0], `keyboardShortcut(_:modifiers:)` [14.0], `keyboardShortcut(_:modifiers:localization:)` [15.0], `keyboardType(_:)` [13.0], `labeledContentStyle(_:)` [16.0], `labelsHidden()` [13.0], `labelStyle(_:)` [14.0], `menuActionDismissBehavior(_:)` [16.4], `menuIndicator(_:)` [15.0], `menuOrder(_:)` [16.0], `menuStyle(_:)` [14.0], `onKeyPress(_:)` [17.0], `onKeyPress(_:phases:)` [17.0], `onKeyPress(characters:phases:)` [17.0], `onKeyPress(keys:phases:)` [17.0], `onKeyPress(phases:)` [17.0], `pickerStyle(_:)` [13.0], `progressViewStyle(_:)` [14.0], `submitLabel(_:)` [15.0], `toggleStyle(_:)` [13.0]
+
+### Gestures, drag and drop, haptics (51)
+
+`accessibilityDragPoint(_:description:)` [16.0], `accessibilityDragPoint(_:description:isEnabled:)` [18.0], `accessibilityDropPoint(_:description:)` [16.0], `accessibilityDropPoint(_:description:isEnabled:)` [18.0], `allowsHitTesting(_:)` [13.0], `contentShape(_:_:eoFill:)` [15.0], `contentShape(_:eoFill:)` [13.0], `defaultHoverEffect(_:)` [17.0], `defersSystemGestures(on:)` [16.0], `dragConfiguration(_:)` [27.0], `dragContainer(for:in:)` [27.0], `dragContainer(for:itemID:in:)` [27.0], `dragContainerSelection()` [27.0], `draggable()` [16.0], `draggable(_:)` [27.0], `draggable(_:containerNamespace:)` [27.0], `draggable(_:id:)` [27.0], `draggable(_:id:containerNamespace:)` [27.0], `draggable(containerItemID:containerNamespace:)` [27.0], `dropConfiguration()` [27.0], `dropDestination(for:action:)` [16.0, deprecated], `dropDestination(for:isEnabled:)` [26.0], `gesture(_:including:)` [13.0], `gesture(_:isEnabled:)` [13.0], `gesture(_:name:isEnabled:)` [18.0], `handGestureShortcut(_:isEnabled:)` [18.0], `highPriorityGesture(_:including:)` [13.0], `highPriorityGesture(_:isEnabled:)` [13.0], `highPriorityGesture(_:name:isEnabled:)` [18.0], `hoverEffect(_:)` [13.4], `hoverEffect(_:isEnabled:)` [18.0], `hoverEffectDisabled(_:)` [17.0], `onContinuousHover(coordinateSpace:)` [16.0, deprecated], `onDrag()` [13.4], `onDrag(_:)` [15.0], `onDragSessionUpdated()` [27.0], `onDrop(of:delegate:)` [14.0], `onDrop(of:isTargeted:)` [14.0], `onDropSessionUpdated()` [27.0], `onHover()` [13.4], `onLongPressGesture(minimumDuration:maximumDistance:)` [13.0], `onLongPressGesture(minimumDuration:maximumDistance:pressing:)` [13.0, deprecated], `onPencilDoubleTap()` [17.5], `onPencilSqueeze()` [17.5], `onTapGesture(count:)` [13.0], `onTapGesture(count:coordinateSpace:)` [16.0, deprecated], `sensoryFeedback(_:trigger:)` [17.0], `sensoryFeedback(trigger:)` [17.0], `simultaneousGesture(_:including:)` [13.0], `simultaneousGesture(_:isEnabled:)` [13.0], `simultaneousGesture(_:name:isEnabled:)` [18.0]
+
+### Accessibility (55)
+
+`accessibility(activationPoint:)` [13.0, deprecated], `accessibility(addTraits:)` [13.0, deprecated], `accessibility(hidden:)` [13.0, deprecated], `accessibility(hint:)` [13.0, deprecated], `accessibility(identifier:)` [13.0, deprecated], `accessibility(inputLabels:)` [13.0, deprecated], `accessibility(label:)` [13.0, deprecated], `accessibility(removeTraits:)` [13.0, deprecated], `accessibility(selectionIdentifier:)` [13.0, deprecated], `accessibility(sortPriority:)` [13.0, deprecated], `accessibility(value:)` [13.0, deprecated], `accessibilityAction(_:)` [13.0], `accessibilityAction(action:)` [15.0], `accessibilityAction(named:)` [13.0], `accessibilityActions()` [16.0], `accessibilityActions(category:)` [18.0], `accessibilityActivationPoint(_:)` [14.0], `accessibilityActivationPoint(_:isEnabled:)` [18.0], `accessibilityAddTraits(_:)` [14.0], `accessibilityAdjustableAction()` [13.0], `accessibilityChartDescriptor(_:)` [15.0], `accessibilityChildren()` [15.0], `accessibilityCustomContent(_:_:importance:)` [15.0], `accessibilityDirectTouch(_:options:)` [17.0], `accessibilityElement(children:)` [13.0], `accessibilityHeading(_:)` [15.0], `accessibilityHidden(_:)` [14.0], `accessibilityHidden(_:isEnabled:)` [18.0], `accessibilityHint(_:)` [14.0], `accessibilityHint(_:isEnabled:)` [18.0], `accessibilityIdentifier(_:)` [14.0], `accessibilityIdentifier(_:isEnabled:)` [18.0], `accessibilityIgnoresInvertColors(_:)` [14.0], `accessibilityInputLabels(_:)` [14.0], `accessibilityInputLabels(_:isEnabled:)` [18.0], `accessibilityLabel()` [18.0], `accessibilityLabel(_:)` [14.0], `accessibilityLabel(_:isEnabled:)` [18.0], `accessibilityLabeledPair(role:id:in:)` [14.0], `accessibilityLinkedGroup(id:in:)` [14.0], `accessibilityRemoveTraits(_:)` [14.0], `accessibilityRespondsToUserInteraction(_:)` [15.0], `accessibilityRespondsToUserInteraction(_:isEnabled:)` [18.0], `accessibilityRotor(_:)` [15.0], `accessibilityRotor(_:entries:entryID:entryLabel:)` [15.0], `accessibilityRotor(_:entries:entryLabel:)` [15.0], `accessibilityRotorEntry(id:in:)` [15.0], `accessibilityShowsLargeContentViewer()` [15.0], `accessibilitySortPriority(_:)` [14.0], `accessibilityValue(_:)` [14.0], `accessibilityValue(_:isEnabled:)` [18.0], `accessibilityZoomAction()` [16.0], `speechAdjustedPitch(_:)` [15.0], `speechAlwaysIncludesPunctuation(_:)` [15.0], `speechSpellsOutCharacters(_:)` [15.0]
+
+### Previews (4)
+
+`previewDevice(_:)` [13.0], `previewDisplayName(_:)` [13.0], `previewInterfaceOrientation(_:)` [15.0], `previewLayout(_:)` [13.0]
+
+### Other (68)
+
+`actionSheet(isPresented:)` [13.0, deprecated], `actionSheet(item:)` [13.0, deprecated], `allowsWindowActivationEvents()` [18.0], `allowsWindowActivationEvents(_:)` [18.0], `anchorPreference(key:value:)` [13.0], `autocapitalization(_:)` [13.0, deprecated], `buttonSizing(_:)` [26.0], `containerCornerOffset(_:sizeToFit:)` [26.0], `containerValue(_:_:)` [18.0], `copyable()` [27.0], `cuttable(for:)` [27.0], `defaultAdaptableTabBarPlacement(_:)` [18.0], `defaultAppStorage(_:)` [14.0], `disableAutocorrection(_:)` [13.0, deprecated], `dismissalConfirmationDialog(_:shouldPresent:)` [27.0], `dismissalConfirmationDialog(_:shouldPresent:actions:)` [27.0], `documentLaunchSubtitle(_:)` [27.0], `documentLaunchTitle(_:)` [27.0], `environment(_:)` [17.0], `environment(_:_:)` [13.0], `environmentObject(_:)` [13.0], `equatable()` [13.0], `findDisabled(_:)` [16.0], `findNavigator(isPresented:)` [16.0], `groupBoxStyle(_:)` [14.0], `help(_:)` [14.0], `hidden()` [13.0], `id(_:)` [13.0], `indexViewStyle(_:)` [14.0], `interactionActivityTrackingTag(_:)` [16.0], `invalidatableContent(_:)` [17.0], `itemProvider()` [13.0], `labelReservedIconWidth(_:)` [26.0], `labelsVisibility(_:)` [18.0], `materialActiveAppearance(_:)` [18.0], `modifier(_:)` [13.0], `onCopyCommand(perform:)` [27.0], `onCutCommand(perform:)` [27.0], `onInteractiveResizeChange()` [26.0], `onPasteCommand(of:)` [27.0], `onPasteCommand(of:validator:)` [27.0], `onPreferenceChange(_:)` [13.0], `paletteSelectionEffect(_:)` [17.0], `pasteDestination(for:action:)` [27.0], `preference(key:value:)` [13.0], `privacySensitive(_:)` [15.0], `redacted(reason:)` [14.0], `renameAction()` [16.0], `renameAction(_:)` [16.0], `reorderContainer(for:in:isEnabled:move:)` [27.0], `reorderContainer(for:isEnabled:move:)` [27.0], `reorderContainer(for:itemID:in:isEnabled:move:)` [27.0], `reorderContainer(for:itemID:isEnabled:move:)` [27.0], `replaceDisabled(_:)` [16.0], `sceneAccessory()` [27.0], `scenePadding(_:)` [15.0], `scenePadding(_:edges:)` [16.0], `sliderThumbVisibility(_:)` [26.0], `springLoadingBehavior(_:)` [17.0], `submitScope(_:)` [15.0], `tag(_:includeOptional:)` [13.0], `transformAnchorPreference(key:value:)` [13.0], `transformEnvironment(_:)` [13.0], `transformPreference(_:)` [13.0], `typeSelectEquivalent(_:)` [16.0], `unredacted()` [14.0], `writingToolsAffordanceVisibility(_:)` [18.4], `writingToolsBehavior(_:)` [18.0]
+
+## Top-level functions, macros and other top-level names
+
+`typealias ContentBuilder` [13.0], `typealias EmptyContent` [13.0], `Preview(_:)` [13.0], `Preview(_:traits:_:)` [17.0], `Preview(_:traits:arguments:)` [26.0], `Previewable()` [17.0], `typealias TimelineViewDefaultContext` [15.0], `typealias UITraitBridgedEnvironmentKey` [17.0], `withAnimation(_:)` [13.0], `withAnimation(_:completionCriteria:_:)` [17.0], `withTransaction(_:)` [13.0], `withTransaction(_:_:)` [13.0]
+
+## Evidence
+
+| Claim | Level |
+|---|---|
+| Every name, label, conformance and availability in this file | 4 (public SDK module interfaces, names only, extracted by our scripts) |
+| Area grouping | ours (no evidence claim) |

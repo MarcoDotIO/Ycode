@@ -479,6 +479,63 @@ GPU).
   unique within one Ycode VM; Ycode may keep CoreSimulator's naming for
   familiarity.
 
+### 8.1 Simulator log forwarding through diagnosticd (observed, 2026-10-13)
+
+These observations come from Ycode boots of iOS 27.1 (level 3: traces,
+Mach traffic counters, diagnosticd's own log file `DEV/data/var/db/
+diagnostics/diagnosticd.0.log`). File contents were read as formats (level 2).
+
+1. When diagnosticd starts, it removes
+   `DEV/data/Library/Preferences/Logging/com.apple.diagnosticd.filter.plist`.
+   It then starts a **system-mode stream client for itself** ("System mode
+   client started - diagnosticd (pid) - mode: 0x9, filter: <empty>") and
+   writes the filter plist again. The new plist has `global` = 0x9_0007_0000.
+   A `log stream` one-shot adds its own client with a `process` filter
+   ({name: level}).
+2. Every process reads the filter plist when its logging starts. While the
+   filter is global, the process sends **every** log message to
+   `com.apple.diagnosticd` as an XPC message (Mach id 0x10000000, about
+   1 KB). In a 600 s boot, diagnosticd received about 300 000 such
+   messages. These were most of the system's Mach messages. diagnosticd made
+   about 1000 `kevent_id` calls per second: EVFILT_MACHPORT receives and
+   `dispatch_sync` workloop waits. Every one of those waits ended with a real
+   `NOTE_WL_SYNC_WAKE`. None of the wakeups was empty.
+3. diagnosticd forwards the stream to the host. It connects an AF_UNIX
+   stream socket to `/private/var/run/.sim_diagnosticd_socket`. This is a
+   host path. On the Mac, CoreSimulator provides it. In Ycode the path does
+   not exist, so the connect fails with ENOENT. diagnosticd then logs
+   "assertion failed: … diagnosticd + 3176 … 0x2" and tries again later
+   (about 1100 failed attempts in 150 s).
+
+Consequences for Ycode:
+
+- The per-message XPC traffic is the guest's own forwarding design, so
+  Ycode does not suppress it. It costs much more under Ycode's global kernel
+  lock than on the Mac. Cheaper Mach messaging is the lever.
+- **Host end of `.sim_diagnosticd_socket` (implemented,
+  `Descriptors/HostStreamSockets.swift`).** A guest `connect` of an AF_UNIX
+  stream socket to `/private/var/run/.sim_diagnosticd_socket` succeeds at
+  once, with no guest listener. The host end consumes and discards what is
+  sent, and never sends anything back. Observed use: diagnosticd connects
+  once per boot and keeps the connection open. It then makes one `write`
+  per forwarded log entry. Each write is a JSON object about 1.1–1.6 KB long:
+  `{"action":{"_type":"u","action":6},"entryData":{"_type":"d","entryData":"<base64>"}}`
+  (`_type` "u" is an unsigned integer and "d" is data). The base64 payload is
+  diagnosticd's binary entry, which is not studied. With the host end in
+  place, the reconnect-and-assert loop stops.
+- **The host end is off by default (2026-10-16).** While the connection is
+  up, diagnosticd encodes and writes every forwarded entry for the whole
+  boot. In paired 900 s boots of the integration branch, diagnosticd made
+  3–4 times as many traps with the host end (6.8–10.9 M against
+  1.9–3.2 M), the busiest log senders (`suggestd`, `parsecd`, `axassetsd`)
+  rose with it, and kernel-lock acquisitions grew by 30–90 %. Without the
+  host end the connect fails with ENOENT. diagnosticd then logs the
+  assertion and retries for about 100 s (about 250 attempts), and then stops
+  trying. That costs far less than the stream. Switches:
+  `YCODE_SIM_DIAGNOSTICD_SOCKET=1` turns the host end on;
+  `YCODE_SIM_DIAGNOSTICD_LOG=1` turns it on and prints the stream's strings;
+  `YCODE_DEBUG_NO_HOST_SOCKETS=1` forces it off.
+
 ## 9. Open questions
 
 1. The two `XPC_SIMULATOR_HOLDING_TANK_*` variables: fd 5 is a Unix socket
@@ -531,6 +588,8 @@ GPU).
 | Bootstrap port, lookups, check-in, XPC lookup §5.1–5.3 | 3 | our probe program `bsprobe` (our own code) run with `simctl spawn` |
 | SimLaunchHost operations, liblaunch_sim loading, host registrations §6.1–6.3 | 3 | host `log show` for CoreSimulatorService and SimLaunchHost; `lsof` of SimLaunchHost |
 | Requirements and design §7–§8 | — | derived from the above; Ycode design |
+| Simulator log forwarding: filter file, system-mode client, per-message XPC sends, host socket path and the JSON entry stream on it §8.1 | 2, 3 | plists and diagnosticd.0.log read as formats; Ycode boot traces (`--trace-name`) and Mach traffic counters (`YCODE_DEBUG_MACH_STATS=1`) |
+| Cost of the host end, the retry-then-stop behavior without it, and the default-off choice §8.1 | 3 | paired Ycode boots on the Thor (2026-10-16): per-process trap counts from the exit summary, kernel-lock totals, `diagnosticd.0.log` read as a format |
 
 No disassembly or decompilation was used (level 5 not used). Dirty-room
 notes: `research/notes/launchd-sim-observations.md`.

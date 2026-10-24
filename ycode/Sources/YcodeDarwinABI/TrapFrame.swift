@@ -103,6 +103,41 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
         kind = readLE(bytes, at: Offset.kind)
     }
 
+    /// Decodes the 320 bytes at `p` (guest memory the caller owns for the
+    /// call): as `init(decoding:)` without the intermediate byte array.
+    public init(decodingFrameAt p: UnsafeRawPointer) {
+        @inline(__always) func word(_ offset: Int) -> UInt64 { UInt64(littleEndian: p.loadUnaligned(fromByteOffset: offset, as: UInt64.self)) }
+        x = [UInt64](unsafeUninitializedCapacity: Self.registerCount) { buffer, count in
+            for i in 0..<Self.registerCount { buffer[i] = word(Offset.x0 + 8 * i) }
+            count = Self.registerCount
+        }
+        spEL0 = word(Offset.spEL0)
+        elr = word(Offset.elr)
+        spsr = word(Offset.spsr)
+        esr = word(Offset.esr)
+        far = word(Offset.far)
+        tpidrro = word(Offset.tpidrro)
+        tpidr = word(Offset.tpidr)
+        kind = word(Offset.kind)
+    }
+
+    /// Writes the 320-byte frame to `p`: the same bytes as `encoded()`.
+    public func encode(into p: UnsafeMutableRawPointer) {
+        @inline(__always) func put(_ v: UInt64, _ offset: Int) { p.storeBytes(of: v.littleEndian, toByteOffset: offset, as: UInt64.self) }
+        let n = min(x.count, Self.registerCount)
+        x.withUnsafeBufferPointer { b in for i in 0..<n { put(b[i], Offset.x0 + 8 * i) } }
+        for i in n..<Self.registerCount { put(0, Offset.x0 + 8 * i) }
+        put(spEL0, Offset.spEL0)
+        put(elr, Offset.elr)
+        put(spsr, Offset.spsr)
+        put(esr, Offset.esr)
+        put(far, Offset.far)
+        put(tpidrro, Offset.tpidrro)
+        put(tpidr, Offset.tpidr)
+        put(kind, Offset.kind)
+        put(resumeFlags, Offset.resumeFlags)
+    }
+
     /// The 320-byte frame. Missing `x` entries encode as 0 and extra ones are
     /// ignored. The word at +312 is `resumeFlags` (0 unless the VMM set it).
     public func encoded() -> [UInt8] {

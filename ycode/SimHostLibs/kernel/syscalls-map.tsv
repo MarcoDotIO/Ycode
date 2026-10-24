@@ -362,13 +362,13 @@ _getauid	table	bsd-syscall	353	cerror_nocancel
 _getdirentries	table	bsd-syscall	-	stub: legacy 32-bit-inode directory format
 _getdirentriesattr	table	bsd-syscall	222	cerror_nocancel
 _getdtablesize	surface	bsd-syscall	89	cerror_nocancel
-_getegid	surface	bsd-syscall	43	cerror_nocancel
+_getegid	surface	bsd-syscall	-	hand-written
 _getentropy	surface	bsd-syscall	500	cerror_nocancel
-_geteuid	surface	bsd-syscall	25	cerror_nocancel
+_geteuid	surface	bsd-syscall	-	hand-written
 _getfh	table	bsd-syscall	161	cerror_nocancel
 _getfsstat	surface	bsd-syscall	347	cerror_nocancel
 _getfsstat64	table	bsd-syscall	347	cerror_nocancel
-_getgid	surface	bsd-syscall	47	cerror_nocancel
+_getgid	surface	bsd-syscall	-	hand-written
 _getgroups	surface	bsd-syscall	79	cerror_nocancel
 _gethostuuid	surface	bsd-syscall	142	cerror_nocancel
 _getitimer	table	bsd-syscall	86	cerror_nocancel
@@ -384,7 +384,7 @@ _getsgroups_np	table	bsd-syscall-private	288	cerror_nocancel
 _getsid	surface	bsd-syscall	310	cerror_nocancel
 _getsockname	surface	bsd-syscall	32	cerror_nocancel
 _getsockopt	surface	bsd-syscall	118	cerror_nocancel
-_getuid	surface	bsd-syscall	24	cerror_nocancel
+_getuid	surface	bsd-syscall	-	hand-written
 _getwgroups_np	table	bsd-syscall-private	290	cerror_nocancel
 _getxattr	surface	bsd-syscall	234	cerror_nocancel
 _grab_pgo_data	table	bsd-syscall	493	cerror_nocancel

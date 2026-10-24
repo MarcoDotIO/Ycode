@@ -1,0 +1,30 @@
+{
+ "anchorDate": "2026-01-15T12:00:00Z",
+ "attribution": "attribution.json",
+ "defaultExpiration": 3600,
+ "expiration": {
+  "availability": 3600,
+  "currentWeather": 600,
+  "forecastDaily": 3600,
+  "forecastHourly": 3600,
+  "forecastNextHour": 300,
+  "historicalComparisons": 21600,
+  "weatherAlerts": 600,
+  "weatherChanges": 3600
+ },
+ "legalAttributionText": "Fixture data\nMade-up weather values written by the Ycode project for tests and demos.\nNot a forecast for any real place.",
+ "name": "default",
+ "products": {
+  "dailyPrecipitationStatistics": "daily-precipitation-statistics.json",
+  "dailyPrecipitationSummary": "daily-precipitation-summary.json",
+  "dailyTemperatureStatistics": "daily-temperature-statistics.json",
+  "dailyTemperatureSummary": "daily-temperature-summary.json",
+  "historicalComparisons": "historical-comparisons.json",
+  "hourlyTemperatureStatistics": "hourly-temperature-statistics.json",
+  "monthlyPrecipitationStatistics": "monthly-precipitation-statistics.json",
+  "monthlyTemperatureStatistics": "monthly-temperature-statistics.json"
+ },
+ "rebase": "days",
+ "timeZone": "UTC",
+ "weather": "weather.json"
+}
