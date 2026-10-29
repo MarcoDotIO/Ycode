@@ -22,7 +22,7 @@ public final class WorkspaceSession {
 
     public var model: WorkspaceModel { didSet { issueTargetStore.targets = [:] } }
     public var scheme: String?
-    public var destination: RunDestination?
+    public var destination: Destination?
     /// The build engine chosen in Settings ▸ Locations ▸ Build System.
     public var engine: BuildEngine = BuildSystemPreference.current().makeEngine()
     public private(set) var activity: Activity = .idle

@@ -198,10 +198,6 @@ public struct BreakpointStore: Equatable, Sendable {
     }
 }
 
-/// Another name for `YcodeBuild.Destination`. Inside this module it
-/// shadows the unrelated `YcodeXcodebuild.RunDestination`.
-public typealias RunDestination = Destination
-
 /// What a workspace window shows: the opened container, its navigator tree,
 /// schemes and destinations.
 public struct WorkspaceModel: Sendable {
@@ -214,7 +210,7 @@ public struct WorkspaceModel: Sendable {
     /// Destination pop-up sections; starts with the Mac, filled in from
     /// simctl/devicectl later (`DestinationCatalog.load`).
     public var destinationGroups: [DestinationGroup] = DestinationCatalog.groups(devices: [], simulators: [])
-    public var destinations: [RunDestination] { destinationGroups.flatMap(\.destinations) }
+    public var destinations: [Destination] { destinationGroups.flatMap(\.destinations) }
     /// Loaded projects by `.xcodeproj` path, kept for byte-exact saving.
     public var projects: [String: PBXProj] = [:]
 
@@ -275,7 +271,7 @@ public struct WorkspaceModel: Sendable {
         return names.filter { seen.insert($0).inserted }
     }
 
-    public func buildRequest(scheme: String?, destination: RunDestination?, action: BuildRequest.Action) -> BuildRequest {
+    public func buildRequest(scheme: String?, destination: Destination?, action: BuildRequest.Action) -> BuildRequest {
         let container: BuildRequest.Container = switch kind {
         case .project: .project(url.path)
         case .workspace: .workspace(url.path)
