@@ -127,13 +127,15 @@ func makeArchive(in dir: URL, name: String, app: String?, version: String, build
         #expect(devs.count == 1 && devs[0].state == "paired, disconnected" && devs[0].model == "Test Model")
         let c = DevicesController(devices: devs, simulators: sims)
         c.view.frame = NSRect(x: 0, y: 0, width: 820, height: 480)
+        // A disconnected device is listed under Unavailable, after the simulators.
+        c.show(.devices)
         #expect(c.detailRows.contains { $0 == ("Connection", "paired, disconnected") })
         c.show(.simulators)
         c.select(row: 1)
-        #expect(c.detailRows.contains { $0 == ("State", "Booted") } && c.detailRows.contains { $0 == ("OS Version", "iOS 30.1") })
+        #expect(c.detailRows.contains { $0 == ("State", "Booted") } && c.detailRows.contains { $0 == ("OS", "iOS 30.1") })
         let empty = DevicesController(devices: [], simulators: [])
         _ = empty.view
-        #expect(empty.detailRows.first?.0 == "No Devices Connected")
+        #expect(empty.detailRows.first?.0 == "No Selection")
         _ = try WindowSnapshotTests().render(c.view, to: "devices.png")
     }
 }

@@ -83,6 +83,13 @@ final class SourceTextView: NSTextView {
             if action == .quickHelp { owner?.quickHelp(atOffset: offset) } else { owner?.jumpToDefinition(atOffset: offset) }
             return
         }
+        // A click on an issue annotation that has a fix-it offers it
+        // (reference-ui-6.md §4.3.2; the gutter has no lightbulb).
+        let p = convert(event.locationInWindow, from: nil)
+        if let line = owner?.annotationLine(at: p), let menu = owner?.fixItMenu(line: line) {
+            menu.popUp(positioning: nil, at: p, in: self)
+            return
+        }
         super.mouseDown(with: event)
         // A click inside a placeholder selects the whole token.
         let s = selectedRange()
@@ -479,7 +486,9 @@ final class JumpBar: NSView {
     var componentTitles: [String] {
         (stack.arrangedSubviews + issueStack.arrangedSubviews).compactMap { v -> String? in
             switch v {
-            case let p as NSPopUpButton: p.pullsDown ? (p.itemArray.first?.title ?? "") : (p.titleOfSelectedItem ?? "")
+            case let p as NSPopUpButton:
+                p.pullsDown ? (p.itemArray.first?.title.isEmpty == false ? p.itemArray.first!.title : (p.accessibilityLabel() ?? ""))
+                    : (p.titleOfSelectedItem ?? "")
             case let b as NSButton: b.toolTip ?? b.title
             case let t as NSTextField: t.stringValue
             default: nil
@@ -498,6 +507,8 @@ final class JumpBar: NSView {
     var onNextIssue: (() -> Void)?
     var onPickIssue: ((Int) -> Void)?
     private(set) var issuesMenu: NSPopUpButton?
+    /// The severity glyph the Issues menu shows (error if any, else warning).
+    private(set) var issueGlyph: String?
 
     func setIssues(_ list: [IssueEntry]?) {
         guard list != issues || (list != nil && issueStack.arrangedSubviews.isEmpty) else { return }
@@ -505,21 +516,28 @@ final class JumpBar: NSView {
         issueStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         issuesMenu = nil
         guard let list else { return }
-        let prev = iconButton("chevron.up", "Show Previous Issue")
+        // Three glyph-only controls: ‹, the severity glyph menu, ›
+        // (reference-ui-6.md §4.1.2, E2).
+        let prev = iconButton("chevron.left", "Show Previous Issue")
         prev.target = self
         prev.action = #selector(previousIssueClicked)
-        let next = iconButton("chevron.down", "Show Next Issue")
+        let next = iconButton("chevron.right", "Show Next Issue")
         next.target = self
         next.action = #selector(nextIssueClicked)
         let pop = NSPopUpButton(frame: .zero, pullsDown: true)
         pop.isBordered = false
         pop.controlSize = .small
         pop.font = .systemFont(ofSize: 11)
-        pop.addItem(withTitle: "Issues")
+        pop.addItem(withTitle: "")
         let hasError = list.contains { $0.isError }
-        pop.item(at: 0)?.image = NSImage(systemSymbolName: hasError ? "xmark.octagon.fill" : "exclamationmark.triangle.fill", accessibilityDescription: "Issues")
+        issueGlyph = hasError ? "xmark.octagon.fill" : "exclamationmark.triangle.fill"
+        pop.item(at: 0)?.image = NSImage(systemSymbolName: issueGlyph!, accessibilityDescription: "Issues")
+        pop.imagePosition = .imageOnly
+        (pop.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
+        pop.widthAnchor.constraint(equalToConstant: 20).isActive = true
         pop.toolTip = "Issues"
         pop.setAccessibilityLabel("Issues")
+        pop.setAccessibilityTitle("Issues")
         if list.isEmpty {
             pop.addItem(withTitle: "No Issues")
             pop.lastItem?.isEnabled = false
@@ -544,6 +562,7 @@ final class JumpBar: NSView {
 
     private func iconButton(_ symbol: String, _ name: String) -> NSButton {
         let b = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: name) ?? NSImage(), target: nil, action: nil)
+        b.identifier = NSUserInterfaceItemIdentifier(symbol)
         b.isBordered = false
         b.toolTip = name
         return b
@@ -580,6 +599,17 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     public var jumpBarTitles: [String] { jumpBar.componentTitles }
     /// The Issues pull-down's entries ("message" per issue; tests).
     public var jumpBarIssueTitles: [String]? { jumpBar.issuesMenu.map { $0.itemArray.dropFirst().map(\.title) } }
+    /// The Issues menu's glyph and its visible title ("" — glyph only; tests).
+    public var jumpBarIssueGlyph: (symbol: String, title: String)? {
+        jumpBar.issuesMenu.map { (jumpBar.issueGlyph ?? "", $0.itemArray.first?.title ?? "") }
+    }
+    /// The issue arrows' glyphs (tests).
+    public var jumpBarIssueArrowSymbols: [String] {
+        jumpBar.issueStack.arrangedSubviews.compactMap { v in
+            guard let b = v as? NSButton, !(b is NSPopUpButton) else { return nil }
+            return b.identifier?.rawValue
+        }
+    }
     /// Shows the file's issues at the jump bar's right end; nil hides them.
     public func setJumpBarIssues(_ list: [(message: String, line: Int, isError: Bool)]?) {
         jumpBar.setIssues(list?.map { JumpBar.IssueEntry(message: $0.message, line: $0.line, isError: $0.isError) })
@@ -715,6 +745,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         scrollView.verticalRulerView = gutter
         scrollView.hasVerticalRuler = true
         scrollView.rulersVisible = true
+        // The gutter (a ruler) draws past its frame unless clipped: a
+        // gutter-wide cell showed above it, in the jump bar's row
+        // (reference-ui-6.md §1.3.3).
+        scrollView.clipsToBounds = true
+        gutter.clipsToBounds = true
         gutter.onClick = { [weak self] l in self?.fileURL.map { self?.onBreakpointClick?($0.path, l) } }
         gutter.onMove = { [weak self] a, b in self?.fileURL.map { self?.onBreakpointMove?($0.path, a, b) } }
         gutter.onRemove = { [weak self] l in self?.fileURL.map { self?.onBreakpointRemove?($0.path, l) } }
@@ -762,7 +797,23 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
             MainActor.assumeIsolated { self?.applyPreferences() }
         }
         applyPreferences()
+        // No document yet: Related Items and "No Selection" over an empty
+        // editor (reference-ui-6.md §1.3.1, W4).
+        jumpBar.setPath(pathComponents)
+        if fileURL == nil && auxiliary == nil && textView.string.isEmpty { showsNoDocument = true }
     }
+
+    /// The editor shows no document: no gutter and no editable text, only
+    /// the editor's background under the jump bar (reference-ui-6.md §1.3).
+    public internal(set) var showsNoDocument: Bool {
+        get { noDocument.value }
+        set {
+            noDocument.value = newValue
+            scrollView.rulersVisible = !newValue
+            if newValue { textView.isEditable = false }
+        }
+    }
+    let noDocument = NoDocumentFlag()
 
     /// The minimap keeps its share of the editor's width (§6.5).
     public override func viewDidLayout() {
@@ -781,8 +832,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     /// A view shown instead of the text (project editor, property-list
     /// editor). The jump bar stays.
     public private(set) var auxiliary: NSView?
+    /// The file the auxiliary editor shows, when it shows one (the window
+    /// title names it, reference-ui-6.md §1.1).
+    public private(set) var auxiliaryFile: URL?
 
-    public func showAuxiliary(_ v: NSView, path: [(String, String)]) {
+    public func showAuxiliary(_ v: NSView, path: [(String, String)], file: URL? = nil) {
         _ = view
         try? save()
         hideComparison()
@@ -796,6 +850,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
             v.leadingAnchor.constraint(equalTo: view.leadingAnchor), v.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         fileURL = nil
+        auxiliaryFile = file
         pathComponents = path
         scrollView.isHidden = true
         minimap.isHidden = true
@@ -804,6 +859,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     public func hideAuxiliary() {
         auxiliary?.removeFromSuperview()
         auxiliary = nil
+        auxiliaryFile = nil
         scrollView.isHidden = false
         minimap.isHidden = false
     }
@@ -1094,6 +1150,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         language = .init(fileName: url.lastPathComponent)
         symbolCache.symbols = nil
         clearMultipleSelection()
+        showsNoDocument = false
         textView.string = text
         isDirty = false
         reindex()
@@ -1101,6 +1158,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         updateDisplayExtras()
         refreshSourceChanges()
         onDocumentOpened?(url, text)
+        // A newly opened file starts at line 1, column 1 (reference-ui-6.md
+        // §4.2.2); an open that names a line moves the caret afterwards.
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        textView.scrollRangeToVisible(NSRange(location: 0, length: 0))
+        textViewDidChangeSelection(Notification(name: NSTextView.didChangeSelectionNotification, object: textView))
     }
 
     /// Shows read-only text that is not a file (a build log).
@@ -1113,6 +1175,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         jumpBar.symbolTitle = nil
         textView.caretLine = nil
         gutter.caretLine = nil
+        showsNoDocument = true
         if let old { onDocumentClosed?(old) }
         onBecameEmpty?()
     }
@@ -1125,6 +1188,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         syntaxOverride = nil
         symbolCache.symbols = nil
         clearMultipleSelection()
+        showsNoDocument = false
         textView.string = text
         textView.isEditable = false
         refreshSourceChanges()
@@ -1436,6 +1500,15 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     }
 
     public func textViewDidChangeSelection(_ notification: Notification) {
+        // Setting the text posts this before the line index is rebuilt; a
+        // stale index turns the offset into the column (reference-ui-6.md
+        // §4.2.1, E3).
+        // (Typing keeps its incremental index: `pendingEdit` is set then.)
+        if pendingEdit == nil, textView.lineIndex.length != (textView.string as NSString).length {
+            let idx = LineIndex(textView.string)
+            textView.lineIndex = idx
+            gutter.lineIndex = idx
+        }
         let caret = fileURL == nil && textView.string.isEmpty ? nil : currentLine
         textView.caretLine = caret
         gutter.caretLine = caret
@@ -1590,6 +1663,37 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         gutter.marks.fixable = Set(textView.issues.filter { $0.value.contains { !$0.fixIts.isEmpty } }.keys)
     }
 
+    /// The line whose issue annotation is at `p` (text-view coordinates):
+    /// right of the line's code, where the annotation is drawn.
+    public func annotationLine(at p: NSPoint) -> Int? {
+        guard textView.showsIssues else { return nil }
+        let line = textView.lineIndex.line(at: textView.characterIndexForInsertion(at: p))
+        guard textView.issues[line]?.isEmpty == false, let r = textView.lineRect(line), r.contains(p),
+              let lr = textView.lineIndex.range(ofLine: line) else { return nil }
+        let end = NSMaxRange(lr)
+        let textEnd = textView.segmentRects(NSRange(location: max(lr.location, end - 1), length: end > lr.location ? 1 : 0)).first?.maxX ?? r.minX
+        return p.x >= textEnd + 16 ? line : nil
+    }
+
+    /// The menu a click on a line's annotation opens when its issues carry
+    /// fix-its: the message, then "Fix" (applies them); nil otherwise.
+    public func fixItMenu(line: Int) -> NSMenu? {
+        guard let list = textView.issues[line], list.contains(where: { !$0.fixIts.isEmpty }),
+              let first = InlineIssueLayout.primary(list.filter { !$0.fixIts.isEmpty }) else { return nil }
+        let m = NSMenu()
+        m.autoenablesItems = false
+        let title = NSMenuItem(title: first.message, action: nil, keyEquivalent: "")
+        title.isEnabled = false
+        m.addItem(title)
+        let fix = NSMenuItem(title: "Fix", action: #selector(fixItChosen(_:)), keyEquivalent: "")
+        fix.target = self
+        fix.tag = line
+        m.addItem(fix)
+        return m
+    }
+
+    @objc func fixItChosen(_ item: NSMenuItem) { gutter.onFixIt?(item.tag) }
+
     /// Test diamonds for the open file.
     public func setTests(_ marks: [Int: GutterView.TestStatusMark]) { gutter.marks.tests = marks }
 
@@ -1645,12 +1749,12 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         let lines = ns.lineRange(for: textView.selectedRange())
         let block = ns.substring(with: lines)
         let parts = block.components(separatedBy: "\n")
-        let body = parts.last == "" ? Array(parts.dropLast()) : parts
+        let body = parts.last?.isEmpty == true ? Array(parts.dropLast()) : parts
         let allCommented = body.allSatisfy { $0.trimmingCharacters(in: .whitespaces).hasPrefix("//") || $0.isEmpty }
         let changed = body.map { line -> String in
             if allCommented, let r = line.range(of: "// ") ?? line.range(of: "//") { return line.replacingCharacters(in: r, with: "") }
             return allCommented ? line : "// " + line
-        }.joined(separator: "\n") + (parts.last == "" ? "\n" : "")
+        }.joined(separator: "\n") + (parts.last?.isEmpty == true ? "\n" : "")
         if textView.shouldChangeText(in: lines, replacementString: changed) {
             textView.replaceCharacters(in: lines, with: changed)
             textView.didChangeText()
@@ -1690,3 +1794,6 @@ extension SourceEditorController {
 
     static let showCodeActionsAction = NSSelectorFromString("showCodeActions:")
 }
+
+/// Whether the editor shows no document (an extension-friendly box).
+@MainActor final class NoDocumentFlag { var value = false }

@@ -10,10 +10,15 @@ import Musl
 /// Guest virtual memory as seen through the stage-1 tables. Implemented by
 /// the hypervisor; `TranslatingGuestMemory` is a ready-made implementation.
 public protocol GuestMemoryAccess {
+    /// Reads `count` bytes at `va`; throws `GuestMemoryError` when a page is
+    /// unmapped or not readable from EL0.
     func read(va: UInt64, count: Int) throws -> [UInt8]
+    /// Writes `bytes` at `va`; throws `GuestMemoryError` when a page is
+    /// unmapped or not writable from EL0.
     func write(va: UInt64, bytes: [UInt8]) throws
 }
 
+/// Why a guest virtual memory access failed.
 public enum GuestMemoryError: Error, Equatable, Sendable, CustomStringConvertible {
     /// No valid translation for `va`.
     case unmapped(va: UInt64)
@@ -136,7 +141,8 @@ public enum DarwinTrapNumber: Equatable, Sendable, CustomStringConvertible {
     }
 }
 
-/// Darwin errno values used by the stage-2 calls.
+/// Darwin errno values used by the stage-2 calls (xnu `bsd/sys/errno.h`;
+/// `vm-shim-protocol.md` §6). A failed call returns one in x0 with carry set.
 public enum DarwinErrno {
     public static let EFAULT: UInt64 = 14
     public static let EBADF: UInt64 = 9
@@ -198,12 +204,14 @@ public struct DarwinTrapDispatcher {
     public var pid: Int32
     /// Bytes written to guest fd 1 and fd 2, decoded as UTF-8.
     public var stdout: (String) -> Void
+    /// See `stdout`.
     public var stderr: (String) -> Void
     /// Receives one line (without a newline) per handled trap.
     public var log: (String) -> Void
     /// The source of `mach_absolute_time` / `mach_continuous_time`, in 24 MHz ticks.
     public var machAbsoluteTime: () -> UInt64
 
+    /// A dispatcher whose output goes to the host's stdout and stderr by default.
     public init(
         pid: Int32 = VMLayout.guestPID,
         stdout: @escaping (String) -> Void = DarwinTrapDispatcher.writeHostStdout,
@@ -218,17 +226,21 @@ public struct DarwinTrapDispatcher {
         self.machAbsoluteTime = machAbsoluteTime
     }
 
+    /// Writes `s` to the host process's standard output.
     public static func writeHostStdout(_ s: String) { FileHandle.standardOutput.write(Data(s.utf8)) }
+    /// Writes `s` to the host process's standard error.
     public static func writeHostStderr(_ s: String) { FileHandle.standardError.write(Data(s.utf8)) }
 
-    /// BSD call numbers handled in stage 2.
+    /// BSD call numbers handled in stage 2 (`vm-shim-protocol.md` §6; xnu
+    /// `bsd/kern/syscalls.master`).
     public enum BSD {
         public static let exit: Int32 = 1
         public static let write: Int32 = 4
         public static let getpid: Int32 = 20
     }
 
-    /// Mach fast traps handled in stage 2.
+    /// Mach fast traps handled in stage 2 (`vm-shim-protocol.md` §6): the
+    /// negative x16 trap numbers.
     public enum Mach {
         public static let machAbsoluteTime: Int32 = -3
         public static let machContinuousTime: Int32 = -4

@@ -6,27 +6,46 @@ import AppKit
 /// `specs/ide/settings.md`.
 @MainActor
 public final class Preferences {
+    /// Posted (object: the `Preferences`) after any setting changes.
     public static let didChange = Notification.Name("YcodePreferencesDidChange")
+    /// The instance the app uses; tests substitute their own.
     public static var shared = Preferences()
 
+    /// The store behind every setting; keys carry the `Ycode.` prefix.
     public let defaults: UserDefaults
     /// Where user themes (`.ycodetheme`) live.
     public let themesDirectory: URL
 
+    /// Registers `factoryDefaults` in `defaults`. `themesDirectory` defaults to
+    /// `Application Support/Ycode/Themes`.
     public init(defaults: UserDefaults = .standard, themesDirectory: URL? = nil) {
         self.defaults = defaults
         self.themesDirectory = themesDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Ycode/Themes")
+        registerFactoryDefaults()
     }
 
     func changed() { NotificationCenter.default.post(name: Self.didChange, object: self) }
+
+    /// Settings whose factory value is registered with the defaults
+    /// system (keys without the `Ycode.` prefix). Registered values are not
+    /// stored: a value the user sets is, and wins.
+    public static let factoryDefaults: [String: Any] = ["minimap": true]
+
+    /// Registers `factoryDefaults` (in the registration domain, so reading
+    /// the plain defaults sees them too).
+    public func registerFactoryDefaults() {
+        defaults.register(defaults: Dictionary(uniqueKeysWithValues: Self.factoryDefaults.map { ("Ycode.\($0.key)", $0.value) }))
+    }
 
     func get<T>(_ key: String, _ fallback: T) -> T { defaults.object(forKey: "Ycode.\(key)") as? T ?? fallback }
     func set(_ key: String, _ value: Any?) { defaults.set(value, forKey: "Ycode.\(key)"); changed() }
 
     // MARK: General
 
+    /// Settings ▸ General appearance: follow the system, or force light or dark.
     public enum Appearance: String, CaseIterable, Sendable { case system = "System", light = "Light", dark = "Dark" }
+    /// The app's appearance (default System); see `nsAppearance`.
     public var appearance: Appearance {
         get { Appearance(rawValue: get("appearance", "System")) ?? .system }
         set { set("appearance", newValue.rawValue) }
@@ -35,6 +54,7 @@ public final class Preferences {
     public var nsAppearance: NSAppearance? {
         switch appearance { case .system: nil; case .light: NSAppearance(named: .aqua); case .dark: NSAppearance(named: .darkAqua) }
     }
+    /// Whether the project navigator shows file name extensions.
     public enum FileExtensions: String, CaseIterable, Sendable { case hide = "Hide All", show = "Show All" }
     /// Settings ▸ General ▸ File extensions; Hide All is the factory
     /// default (reference-ui-5.md §5.1, N2).
@@ -47,6 +67,9 @@ public final class Preferences {
 
     // MARK: Behaviors
 
+    /// The Behaviors events Ycode raises; the raw value is the row title.
+    /// Stored per event under `Ycode.behavior.<caseName>`. See
+    /// `specs/ide/settings.md` (Behaviors).
     public enum Event: String, CaseIterable, Sendable {
         case buildStarts = "When build starts", buildErrors = "When build generates errors"
         case buildWarnings = "When build generates warnings", buildSucceeds = "When build succeeds", buildFails = "When build fails"
@@ -118,11 +141,14 @@ public final class Preferences {
         .runEnds: Behavior(hideDebugAreaIfNoOutput: true),
     ]
 
+    /// The user's behavior for `e`, else its entry in `defaultBehaviors`, else
+    /// no actions.
     public func behavior(_ e: Event) -> Behavior {
         if let data = defaults.data(forKey: "Ycode.behavior.\(e)"), let b = try? JSONDecoder().decode(Behavior.self, from: data) { return b }
         return Self.defaultBehaviors[e] ?? Behavior()
     }
 
+    /// Stores `b` for `e` (JSON) and posts `didChange`.
     public func setBehavior(_ b: Behavior, for e: Event) {
         defaults.set(try? JSONEncoder().encode(b), forKey: "Ycode.behavior.\(e)")
         changed()
@@ -135,21 +161,35 @@ public final class Preferences {
 
     // MARK: Text editing
 
+    /// Editing ▸ Display: show the line-number gutter (default on).
     public var showLineNumbers: Bool { get { get("lineNumbers", true) } set { set("lineNumbers", newValue) } }
+    /// Editing ▸ Display: show the code folding ribbon (default off).
     public var showFoldingRibbon: Bool { get { get("foldingRibbon", false) } set { set("foldingRibbon", newValue) } }
-    public var showMinimap: Bool { get { get("minimap", false) } set { set("minimap", newValue) } }
+    /// Editor ▸ Minimap: on in the factory state (reference-ui-6.md §4.5,
+    /// E9); a user who turned it off keeps it off (the value is stored).
+    public var showMinimap: Bool { get { get("minimap", Self.factoryDefaults["minimap"] as? Bool ?? true) } set { set("minimap", newValue) } }
+    /// Editing ▸ Display: draw the page guide at `pageGuideColumn` (default off).
     public var showPageGuide: Bool { get { get("pageGuide", false) } set { set("pageGuide", newValue) } }
+    /// Page guide column, in characters (default 80, at least 1).
     public var pageGuideColumn: Int { get { get("pageGuideColumn", 80) } set { set("pageGuideColumn", max(1, newValue)) } }
+    /// Indentation: indent with tab characters instead of spaces (default off).
     public var indentWithTabs: Bool { get { get("indentWithTabs", false) } set { set("indentWithTabs", newValue) } }
+    /// Width of a tab character, in columns (default 4, clamped to 1...16).
     public var tabWidth: Int { get { get("tabWidth", 4) } set { set("tabWidth", max(1, min(16, newValue))) } }
+    /// Columns per indentation step (default 4, clamped to 1...16).
     public var indentWidth: Int { get { get("indentWidth", 4) } set { set("indentWidth", max(1, min(16, newValue))) } }
+    /// Trim trailing whitespace on save, as one undo group (default on).
     public var trimTrailingWhitespace: Bool { get { get("trimWhitespace", true) } set { set("trimWhitespace", newValue) } }
+    /// Wrap lines to the editor width (default on); off scrolls horizontally.
     public var wrapLines: Bool { get { get("wrapLines", true) } set { set("wrapLines", newValue) } }
     /// Spaces wrapped lines are indented by (Editing ▸ Display).
     public var wrappedLineIndent: Int { get { get("wrappedLineIndent", 4) } set { set("wrappedLineIndent", max(0, min(16, newValue))) } }
+    /// Highlight other instances of the selected symbol (default on), after
+    /// `highlightDelay`.
     public var highlightSelectedSymbol: Bool { get { get("highlightSelectedSymbol", true) } set { set("highlightSelectedSymbol", newValue) } }
     /// Seconds before instances of the selected symbol are highlighted.
     public var highlightDelay: Double { get { get("highlightDelay", 0.25) } set { set("highlightDelay", max(0, min(5, newValue))) } }
+    /// Also trim lines that contain only whitespace (default off).
     public var trimWhitespaceOnlyLines: Bool { get { get("trimWhitespaceOnlyLines", false) } set { set("trimWhitespaceOnlyLines", newValue) } }
 
     /// Editor ▸ Font Size (`reference-ui-5.md` §6.4): the source editor's
@@ -167,6 +207,7 @@ public final class Preferences {
 
     // MARK: Source control
 
+    /// Settings ▸ Source Control ▸ Enable source control (default on).
     public var sourceControlEnabled: Bool { get { get("sourceControl", true) } set { set("sourceControl", newValue) } }
 
     // MARK: Debugger
@@ -176,6 +217,7 @@ public final class Preferences {
 
     // MARK: Themes
 
+    /// The selected theme's name (default: the first built-in).
     public var themeName: String {
         get { get("theme", EditorTheme.builtIns[0].name) }
         set { set("theme", newValue) }
@@ -190,6 +232,8 @@ public final class Preferences {
         return EditorTheme.builtIns + user.filter { u in !EditorTheme.builtIns.contains { $0.name == u.name } }
     }
 
+    /// The selected theme; falls back to the first built-in when
+    /// `themeName` names no theme.
     public var theme: EditorTheme { themes.first { $0.name == themeName } ?? EditorTheme.builtIns[0] }
 
     /// Saves a user theme (built-in names are refused) and selects it.
@@ -211,6 +255,8 @@ public final class Preferences {
         return copy
     }
 
+    /// Deletes a user theme's file; built-in or unknown names are ignored.
+    /// Selects the first built-in when the deleted theme was selected.
     public func deleteTheme(named name: String) {
         guard let t = themes.first(where: { $0.name == name }), !EditorTheme.builtIns.contains(where: { $0.name == name }) else { return }
         try? FileManager.default.removeItem(at: themesDirectory.appendingPathComponent(t.fileName))
@@ -225,6 +271,7 @@ public final class Preferences {
         return t
     }
 
+    /// Export: writes `t` as a `.ycodetheme` file at `url`.
     public func exportTheme(_ t: EditorTheme, to url: URL) throws { try t.write(to: url) }
 
     // MARK: Key bindings
@@ -241,6 +288,8 @@ public final class Preferences {
         public var mods: MenuCommand.Modifiers { MenuCommand.Modifiers(rawValue: modifiers) }
     }
 
+    /// Shortcut overrides by command id (`Ycode.keyBindings`, JSON). An empty
+    /// `key` removes the command's shortcut. Setting posts `didChange`.
     public var keyBindingOverrides: [String: Shortcut] {
         get {
             guard let d = defaults.data(forKey: "Ycode.keyBindings"), let m = try? JSONDecoder().decode([String: Shortcut].self, from: d) else { return [:] }
@@ -269,7 +318,7 @@ public struct EditorTheme: Codable, Equatable, Sendable {
     /// Per token kind (`SourceTokenizer.Kind` raw name): a font other than
     /// the source font (Settings ▸ Appearance ▸ Fonts). Absent: the source
     /// font (keywords bold).
-    public var tokenFonts: [String: FontSpec]? = nil
+    public var tokenFonts: [String: FontSpec]?
 
     /// A font by name (empty: the monospaced system font) and size.
     public struct FontSpec: Codable, Equatable, Sendable {
@@ -408,6 +457,7 @@ public enum KeyBindings {
         return []
     }
 
+    /// Removes the override for command `id`, restoring its default shortcut.
     public static func reset(_ id: String, _ prefs: Preferences = .shared) {
         var o = prefs.keyBindingOverrides
         o[id] = nil

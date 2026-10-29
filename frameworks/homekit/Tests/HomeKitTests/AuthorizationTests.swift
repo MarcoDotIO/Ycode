@@ -61,7 +61,7 @@ struct AuthorizationTests {
         let ns = await withCheckedContinuation { (c: CheckedContinuation<NSError?, Never>) in
             m2.addHome(withName: "Home") { _, e in c.resume(returning: e as NSError?) }
         }
-        #expect(ns?.userInfo.keys.map { $0 } == [NSLocalizedDescriptionKey], "only a localized description (errors.md §2)")
+        #expect(ns.map { Array($0.userInfo.keys) } == [NSLocalizedDescriptionKey], "only a localized description (errors.md §2)")
     }
 
     @Test("HK-B07/B08: without the entitlement, Allow gives 5 but no homes; later launches read 0 and get 47")

@@ -52,42 +52,67 @@ still the frame that holds everything together.
 | Packages | **Reuse** SwiftPM (libSwiftPM or the `swift package` CLI). |
 | Syntax highlighting and formatting | **Reuse** swift-syntax and tree-sitter grammars. |
 | Testing | **Reuse** xctest and swift-testing runners. Parse results through `xcresulttool` or our own reader. |
-| Simulators and devices | **Shell out** to `simctl` and `devicectl`. Apple ships both with documented CLIs. |
+| Simulators and devices | **Shell out** to `simctl` and `devicectl` for the Mac's simulators and physical devices. Apple ships both with documented CLIs. The Ycode simulator on arm64 Linux is our own (`docs/SIMULATOR-LINUX.md`); the IDE drives it over ssh (`specs/ide/run.md`). |
 | Project model and pbxproj I/O | **Rebuild** (`YcodeProject`). Started. |
 | Workspaces, schemes, xcconfig, build-setting resolution | **Rebuild** from format specs. Swift Build's open xcspecs document the settings. |
 | IDE shell: windows, navigators, editors, inspectors, plug-ins | **Rebuild** in AppKit (Swift plus ObjC where needed). |
 | Source editor | **Rebuild** on TextKit 2. |
-| Interface Builder, asset catalog editor | Started: basic editors exist (see M4). |
-| Instruments UI, Xcode Cloud, AI assistant | Later. These are separate products in their own right. |
+| Interface Builder, asset catalog editor | **Rebuild.** Basic editors exist (see M4). |
+| Apple frameworks for apps on Linux | **Rebuild** as open packages in `frameworks/` (see `docs/FUTURE.md`). |
+| Coding assistant | **Rebuild** (`YcodeAssistant` + `YcodeUI`): local models (Ollama, llama.cpp), OpenAI (ChatGPT sign-in or API key) and agent CLIs run read-only; changes are proposed and reviewed (`specs/ide/coding-assistant.md`). |
+| Instruments UI, Xcode Cloud | Later. These are separate products in their own right. |
 
 ## 3. Module plan (`ycode/`)
 
-    YcodePlist        OpenStep, XML, and binary plist I/O                  [done: OpenStep]
-    YcodeProject      pbxproj object graph, typed model, mutations         [done: I/O + views]
-    YcodeWorkspace    .xcworkspace, .xcscheme (Xcode-exact XML I/O)      [done: M2]
-    YcodeSettings     xcconfig, macro language, levels, derived rules    [done: M2]
-    YcodeBuild        PIF generation → swift-build, xcodebuild fallback,   [experimental: M3]
+IDE and project model:
+
+    YcodePlist        OpenStep, XML and binary plist I/O                   [done]
+    YcodeProject      pbxproj object graph, typed model, mutations          [done: I/O + views]
+    YcodeWorkspace    .xcworkspace, .xcscheme (Xcode-exact XML I/O)         [done: M2]
+    YcodeSettings     xcconfig, macro language, levels, derived rules       [done: M2]
+    YcodeMachO        Mach-O + dyld shared cache reader (read-only)         [done: read]
+    YcodeSubprocess   subprocess runs, the debug-build main-thread guard
+    YcodeBuild        PIF generation → swift-build, xcodebuild fallback,    [experimental: M3]
                       diagnostics stream, package resolution, destinations
-    YcodeXcodebuild   xcodebuild-compatible engine behind `ycodebuild`    [experimental]
-    YcodeLanguage     LSP client (sourcekit-lsp): completion, hover,       [experimental: M5]
+    YcodeXcodebuild   xcodebuild-compatible engine behind `ycodebuild`      [experimental]
+    YcodeLanguage     LSP client (sourcekit-lsp): completion, hover,        [experimental: M5]
                       definition, rename, references, call hierarchy, code actions
-    YcodeDebug        DAP client to lldb-dap                               [experimental: M6]
-    YcodeUI           AppKit IDE: workspace window, navigators, editors,    [experimental: M4]
-                      inspectors, Interface Builder, previews, settings
+    YcodeDebug        DAP client to lldb-dap                                [experimental: M6]
+    YcodeAssistant    coding assistant: model providers (Ollama, llama.cpp, [experimental]
+                      OpenAI, agent CLIs), OpenAI sign-in, prompts, proposals
+    YcodeDeviceModel  device windows' model: frames, zoom, the hub sidebar  [experimental]
+    YcodeDeviceUI     the compact device window and the live session (macOS)
+    YcodeUI           AppKit IDE: workspace window, navigators, editors,     [experimental: M4]
+                      inspectors, Interface Builder, previews, Device Hub, settings
     YcodeApp          Ycode.app entry point (macOS)
-    YcodeMachO        Mach-O + dyld shared cache reader (read-only)       [simulator track, stage 1]
-    ycode             CLI (describe / schemes / settings / roundtrip / build / test)
+    ycode             CLI: describe, schemes, settings, roundtrip, macho, dsc, deps, build, pif
     ycodebuild        `ycodebuild-cli`: the xcodebuild-compatible command line
     Tools/ycode-swb   swift-build helper (`swbuild`, pinned release/6.4.x)
 
-Simulator and device lists come from `simctl` / `devicectl` JSON inside
-`YcodeBuild` (destinations) and `YcodeUI` (Devices window); there is no
-separate `YcodeDevices` module.
+Simulator (`docs/SIMULATOR-LINUX.md`):
 
-The model, build, language and debug libraries build and pass their tests
-on macOS (arm64) and Linux (x86-64, Swift 6.4); `YcodeUI` and `YcodeApp`
-are macOS-only (AppKit). The Linux workstation is the CI target for
-portability.
+    YcodeDarwinABI     guest memory, address spaces, the file system, trap numbers
+    YcodeDarwinKernel  the Darwin kernel personality: BSD calls, Mach IPC, processes,
+                       threads, kevent, workqueues, snapshots
+    YcodeHypervisor    KVM VMs and vCPUs (arm64 Linux only), with CKVM
+    YcodeXPC           bootstrap and the XPC wire format
+    YcodeHostServices  host services: IOSurface, audio, camera, HID, FSEvents,
+                       SCDynamicStore, power
+    YcodeMetalHost     the Metal host service and its command decoding
+    YcodeVulkan        the Vulkan back end, with CVulkan
+    YcodeDisplayStream the display-stream protocol between ycode-simd and its viewers
+    YcodeSimFeatures   simulator settings features, shared by ycode-simd, the viewer and the IDE
+    ycode-simd         the VM monitor (arm64 Linux)
+    ycode-sim-viewer   the viewer (macOS)
+
+Mac simulator and device lists come from `simctl` / `devicectl` JSON inside
+`YcodeBuild` (destinations) and `YcodeUI` (Device Hub).
+
+Everything except `YcodeUI`, `YcodeDeviceUI`, `YcodeApp` and
+`ycode-sim-viewer` builds and passes its tests on macOS (arm64) and Linux
+(x86-64 and arm64, Swift 6.4). `ycode-simd` and `YcodeHypervisor` do real work
+only on arm64 Linux. The x86-64 Linux workstation is the CI target for
+portability; the arm64 Linux host is the only one that compiles the KVM paths.
 
 ## 4. Milestones
 
@@ -119,22 +144,25 @@ portability.
    variables view, and the console. *(Experimental, working; also
    watchpoints, console input, attach, disassembly.)*
 7. **M7: Tests and devices.** The test navigator, results, simulators, and
-   devices. *(Partly: the test navigator and results work; Devices and
-   Simulators is a read-only list; running on simulators and devices is
-   not done.)*
+   devices. *(Partly: the test navigator and results work. Runs go to My Mac,
+   the Mac's simulators, and the Ycode simulator. The Device Hub starts,
+   stops and shows Ycode's simulators; other simulators and physical devices
+   are listed only.)*
 
-**Simulator track (parallel):** the owner's goal is to run an app from an
-`.ipsw` on x86-64 Linux. This means full-system emulation, not a port of
-Xcode's Simulator. See `docs/SIMULATOR.md` for the staged plan and its open
-decisions.
+**Simulator track (parallel):** run Xcode's simulator runtimes on arm64
+Linux, on a Darwin compatibility layer in KVM micro-VMs. See
+`docs/SIMULATOR.md` for why and where it stands, and
+`docs/SIMULATOR-LINUX.md` for the design.
+
+**Open frameworks (parallel):** clean-room packages for Apple frameworks in
+`frameworks/`. See `frameworks/README.md`.
 
 ## 5. Research queue (dirty room)
 
-- Write the `.xcscheme` XML grammar and the `.xcworkspacedata` grammar into
-  specs (level 2).
-- Write the build-setting resolution order (project → target → xcconfig →
-  command line) into a spec by diffing `xcodebuild -showBuildSettings`
-  (level 3).
+Done and in specs: the `.xcscheme` and `.xcworkspacedata` grammars
+(`specs/formats/xcode-xml.md`) and the build-setting resolution order
+(`specs/build-settings.md`). Still open:
+
 - Write the IDE extension-point architecture into a spec from the plug-in
   `Info.plist`/`.ideplugin` metadata (level 4). This decides how the Ycode
   shell is divided into modules.

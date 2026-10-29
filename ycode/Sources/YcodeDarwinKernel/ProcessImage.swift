@@ -12,29 +12,42 @@ import Darwin
 
 /// The stage-3a guest virtual address map (`stage3-contract.md` §2).
 public enum Stage3Layout {
+    /// The guest page size in bytes (16 KiB).
     public static let pageSize: UInt64 = 0x4000
     /// The main stack: 8 MiB ending at `userStack`.
     public static let userStack: UInt64 = 0x1_6FE0_0000
+    /// The main stack's size in bytes.
     public static let stackSize: UInt64 = 8 << 20
+    /// The main stack's lowest address.
     public static let stackBase: UInt64 = userStack - stackSize
     /// The shared-region reservation (nothing else may be mapped here).
     public static let sharedRegionStart: UInt64 = 0x1_8000_0000
+    /// The end of the shared-region reservation (exclusive).
     public static let sharedRegionEnd: UInt64 = 0x3_0000_0000
     /// Where `dyld_sim` is mapped.
     public static let dyldSimBase: UInt64 = 0x3_0000_0000
     /// First address for "anywhere" allocations.
     public static let anonymousBase: UInt64 = 0x3_2000_0000
+    /// The read-only commpage (16 KiB).
     public static let commpageRO: UInt64 = 0xF_FFFF_4000
+    /// The commpage that `stage3-contract.md` §6 fills (16 KiB; EL0 maps it read-only).
     public static let commpageRW: UInt64 = 0xF_FFFF_C000
     /// The main-thread block's page (`host-libraries.md` §8.3): one 16 KiB
     /// EL0 RW page right after the Ycode host page.
     public static let mainThreadPage: UInt64 = 0x3_1001_0000
+    /// The main-thread block page's size in bytes.
     public static let mainThreadPageSize: UInt64 = 0x4000
-    /// Guest RAM size reported in the commpage.
-    public static let memorySize: UInt64 = 1 << 30
+    /// Guest RAM size reported in the commpage and by `hw.memsize`: 1 GiB.
+    /// The VMM may set it once, before the first image (diagnostics,
+    /// `YCODE_GUEST_MEMSIZE`).
+    nonisolated(unsafe) public static var memorySize: UInt64 = 1 << 30
 }
 
 /// Offsets of the Ycode host page (`stage3-contract.md` §5).
+///
+/// Every address is a guest virtual address inside the 64 KiB page at
+/// `base`; every `…Size` is in bytes. The table in §5 says what each area
+/// holds and who writes it.
 public enum HostPageLayout {
     public static let base: UInt64 = 0x3_1000_0000
     public static let size: UInt64 = 0x1_0000
@@ -59,6 +72,10 @@ public enum HostPageLayout {
 }
 
 /// The well-known Mach port names (`stage3-contract.md` §8).
+///
+/// `task`, `thread` and `host` are the names the self traps return.
+/// Dynamically allocated names start at `firstDynamic` and advance by
+/// `dynamicStep`.
 public enum WellKnownPort {
     public static let task: UInt32 = 0x103
     public static let thread: UInt32 = 0x203
@@ -82,16 +99,23 @@ public struct KernelArgumentBlock: Equatable, Sendable {
     /// kernel would hand over, and the launch block's `stackTop`. Not
     /// rounded to 16 bytes.
     public var stackPointer: UInt64
+    /// The guest address of the `argc` word, just above the mach_header slot.
     public var argcAddress: UInt64 { stackPointer + 8 }
+    /// The guest address of `argv[0]`'s pointer slot.
     public var argvAddress: UInt64
+    /// The guest address of `envp[0]`'s pointer slot.
     public var envpAddress: UInt64
+    /// The guest address of `apple[0]`'s pointer slot.
     public var appleAddress: UInt64
     /// Start of the string area (`userStack − stringAreaSize`).
     public var stringAreaAddress: UInt64
+    /// The number of `argv` strings.
     public var argc: Int
     /// Guest address of every string, in order.
     public var argvStringAddresses: [UInt64]
+    /// Guest address of every `envp` string, in order.
     public var envpStringAddresses: [UInt64]
+    /// Guest address of every `apple[]` string, in order (`apple[0]` first).
     public var appleStringAddresses: [UInt64]
 
     /// Builds the block.
@@ -258,6 +282,8 @@ public struct MainThreadBlock: Equatable, Sendable {
 
 /// The `envp` of the simulated process (`stage3-contract.md` §6).
 public enum SimulatorEnvironment {
+    /// The environment strings, with every runtime path rooted at `runtimeRoot`
+    /// (the simulator runtime's root path).
     public static func make(runtimeRoot: String) -> [String] {
         [
             "DYLD_ROOT_PATH=\(runtimeRoot)",
@@ -282,7 +308,9 @@ public enum SimulatorEnvironment {
 /// sooner on the Thor and kept the kernel lock busier (more parallel
 /// workers, more lock contention).
 public enum GuestCPUs {
+    /// The CPU count when `YCODE_GUEST_CPUS` is unset.
     public static let defaultCount = 1
+    /// The guest's CPU count, read once from `YCODE_GUEST_CPUS` and clamped to 1…64.
     public static let count: Int = {
         if let raw = getenv("YCODE_GUEST_CPUS"), let n = Int(String(cString: raw)) { return min(64, max(1, n)) }
         return defaultCount
@@ -418,6 +446,13 @@ public struct CommpageBuilder: Equatable, Sendable {
         public static let directClock: UInt8 = 1
         /// The credential calls answer from `Offset.credentials` (§5).
         public static let credentialBlock: UInt8 = 2
+        /// Calls with a fixed kernel answer are answered in the library
+        /// (§5a): `madvise` advice 0…10 (success), other advice but 11
+        /// (EINVAL), `issetugid` (0).
+        public static let localCalls: UInt8 = 4
+        /// The library keeps the sysctl name-to-OID and `kern.boottime`
+        /// answers (§5a).
+        public static let sysctlCache: UInt8 = 8
     }
 
     /// The `NEWTIMEOFDAY_DATA` fields after `TimeStamp_tick`
@@ -478,11 +513,14 @@ public struct CommpageBuilder: Equatable, Sendable {
     public static let remoteTimeSentinel: UInt64 = 0xFFFF_FFFF_FFFF_FFFC
 
     public var cpuCount = UInt8(GuestCPUs.count)
-    public var cacheLineSize: UInt16 = 64
+    /// The coherency line size (`hw.cachelinesize`; cpu-features.md §4.5).
+    public var cacheLineSize = UInt16(GuestCPUProfile.current.cacheLineSize)
     public var memorySize: UInt64 = Stage3Layout.memorySize
     public var pageShift: UInt8 = 14
-    /// Optional capability bits the guest vCPU really has (0 by default).
-    public var optionalCapabilities: UInt64 = 0
+    /// Optional capability bits the guest vCPU really has: the installed
+    /// CPU profile's (cpu-features.md §4.4; 0 with `YCODE_CPU_FEATURES=off`
+    /// or before a profile is installed).
+    public var optionalCapabilities: UInt64 = GuestCPUProfile.current.commpageOptionalBits
     public var bootTimeMicroseconds: UInt64 = 0
     public var timebaseOffset: UInt64 = 0
     /// `USER_TIMEBASE` (0x090): 1 when the guest's mach time is the counter

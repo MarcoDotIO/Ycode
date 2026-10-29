@@ -30,7 +30,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let t = TestDefaults("order")
         defer { t.remove() }
         let wc = SettingsWindowController(prefs: Preferences(defaults: t.defaults), components: [])
-        #expect(wc.tabs.tabViewItems.map(\.label) == ["General", "Appearance", "Accounts", "Intelligence", "Behaviors", "Navigation",
+        #expect(wc.tabs.tabViewItems.map(\.label) == ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation",
                                                        "Notifications", "Editing", "Shortcuts", "Source Control", "Components",
                                                        "Simulators", "Locations"])
         #expect(wc.sidebar.numberOfRows == 13 && wc.selectedPane == "General")

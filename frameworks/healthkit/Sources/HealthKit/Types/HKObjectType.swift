@@ -243,6 +243,7 @@ public class HKObjectType: NSObject, NSSecureCoding, NSCopying, @unchecked Senda
     public class func seriesType(forIdentifier identifier: String) -> HKSeriesType? {
         TypeRegistry.type(identifier) as? HKSeriesType
     }
+    // swiftlint:disable force_cast - the registry holds the subclass registered for this identifier
     public class func workoutType() -> HKWorkoutType { TypeRegistry.type(HKWorkoutTypeIdentifier) as! HKWorkoutType }
     public class func activitySummaryType() -> HKActivitySummaryType {
         TypeRegistry.type("HKActivitySummaryTypeIdentifier") as! HKActivitySummaryType
@@ -265,6 +266,7 @@ public class HKObjectType: NSObject, NSSecureCoding, NSCopying, @unchecked Senda
     public class func userAnnotatedMedicationType() -> HKUserAnnotatedMedicationType {
         TypeRegistry.type(HKDataTypeIdentifierUserAnnotatedMedicationConcept) as! HKUserAnnotatedMedicationType
     }
+    // swiftlint:enable force_cast
 
     public func requiresPerObjectAuthorization() -> Bool { info.perObject }
 
@@ -316,8 +318,10 @@ public final class HKWorkoutType: HKSampleType, @unchecked Sendable {
 }
 public final class HKSeriesType: HKSampleType, @unchecked Sendable {
     public override class var supportsSecureCoding: Bool { true }
+    // swiftlint:disable force_cast - the registry holds the subclass registered for this identifier
     public class func workoutRoute() -> HKSeriesType { TypeRegistry.type(HKWorkoutRouteTypeIdentifier) as! HKSeriesType }
     public class func heartbeat() -> HKSeriesType { TypeRegistry.type(HKDataTypeIdentifierHeartbeatSeries) as! HKSeriesType }
+    // swiftlint:enable force_cast
 }
 public final class HKDocumentType: HKSampleType, @unchecked Sendable {
     public override class var supportsSecureCoding: Bool { true }
@@ -352,6 +356,7 @@ public final class HKUserAnnotatedMedicationType: HKObjectType, @unchecked Senda
 
 // MARK: - Swift refinements: non-optional initializers that return the interned type
 
+// swiftlint:disable force_cast - the registry interns one instance of this exact class per identifier
 public protocol _HKTypeInterning {}
 extension HKObjectType: _HKTypeInterning {}
 extension _HKTypeInterning where Self: HKQuantityType {
@@ -413,3 +418,4 @@ extension _HKTypeInterning where Self: HKScoredAssessmentType {
 extension _HKTypeInterning where Self: HKWorkoutType {
     public init() { self = HKObjectType.workoutType() as! Self }
 }
+// swiftlint:enable force_cast

@@ -9,10 +9,18 @@ public struct FileInspectorInfo: Equatable {
     public var relativePath: String?
     /// Every target with whether it includes the file (empty: no targets).
     public var memberships: [TargetMembership]
-    public init(workingCopy: String? = nil, relativePath: String? = nil, memberships: [TargetMembership] = []) {
+    /// The file sits inside a synchronized folder: its location is the
+    /// folder's (reference-ui-6.md §6, I1).
+    public var inSynchronizedFolder: Bool
+    /// A file of a Swift package: only Identity and Type and Text Settings.
+    public var isPackageFile: Bool
+    public init(workingCopy: String? = nil, relativePath: String? = nil, memberships: [TargetMembership] = [],
+                inSynchronizedFolder: Bool = false, isPackageFile: Bool = false) {
         self.workingCopy = workingCopy
         self.relativePath = relativePath
         self.memberships = memberships
+        self.inSynchronizedFolder = inSynchronizedFolder
+        self.isPackageFile = isPackageFile
     }
 }
 
@@ -39,6 +47,11 @@ public final class InspectorAreaController: NSViewController {
     public var onSelectHistoryCommit: ((URL, GitRepository.Commit) -> Void)?
     /// Quick Help ▸ Search Documentation.
     public var onSearchDocumentation: (() -> Void)?
+    /// File inspector ▸ Location's folder button chose a new location
+    /// (file, chosen URL).
+    public var onChooseLocation: ((URL, URL) -> Void)?
+    /// The rules drawn between sections of the shown inspector (tests).
+    public private(set) var sectionRuleCount = 0
     /// The shown file's info and history (tests).
     public private(set) var shownInfo: FileInspectorInfo?
     public private(set) var historyCommits: [GitRepository.Commit] = []
@@ -56,6 +69,19 @@ public final class InspectorAreaController: NSViewController {
     public private(set) var selectedIndex = 0
     private var buttons: [NSButton] = []
     private let bar = NSStackView()
+    /// liquid-glass.md §2.5: the tab bar's glass capsule (248 × 30 at a
+    /// 260-point width: 5 from the divider, 6 from the right edge) and the
+    /// selected tab's recessed pill (about 78 × 24).
+    let barGlass = GlassBars.capsule()
+    let tabPill = SelectionPillView()
+    static let tabPillSize = NSSize(width: 78, height: 24)
+    /// The tab bar as drawn (tests).
+    var tabBarView: NSView { GlassBars.enabled ? barGlass : bar }
+
+    public override func viewDidLayout() {
+        super.viewDidLayout()
+        if GlassBars.enabled { tabPill.follow(buttons.first { $0.tag == selectedIndex }, size: Self.tabPillSize) }
+    }
     /// Inspectors added by the focused editor (Interface Builder adds
     /// Identity, Attributes, Size, Connections), after the standard three.
     public private(set) var extraInspectors: [(name: String, symbol: String)] = []
@@ -128,15 +154,37 @@ public final class InspectorAreaController: NSViewController {
         centerLabel.alignment = .center
         centerLabel.font = .systemFont(ofSize: 13)
         centerLabel.isHidden = true
-        for v in [bar, sep, content, centerLabel] as [NSView] {
+        // liquid-glass.md §2.1: a 1-point line between the editor and the
+        // inspector, the area's full height.
+        let divider = NSBox()
+        divider.boxType = .separator
+        let glass = GlassBars.enabled
+        for v in [bar, sep, content, centerLabel, divider] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
+        if glass {
+            barGlass.translatesAutoresizingMaskIntoConstraints = false
+            root.addSubview(barGlass, positioned: .below, relativeTo: bar)
+            root.addSubview(tabPill, positioned: .below, relativeTo: bar)
+            sep.alphaValue = 0   // no line under the floating bar
+            NSLayoutConstraint.activate([
+                barGlass.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: GlassBars.topOffset),
+                barGlass.leadingAnchor.constraint(equalTo: divider.trailingAnchor, constant: 5),
+                barGlass.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -6),
+                barGlass.heightAnchor.constraint(equalToConstant: GlassBars.height),
+            ])
+        }
         NSLayoutConstraint.activate([
-            bar.topAnchor.constraint(equalTo: root.topAnchor, constant: 4),
-            bar.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 8),
-            bar.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8),
+            // Below the toolbar (the inspector runs the full height).
+            bar.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: glass ? GlassBars.topOffset + 2 : 4),
+            bar.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: glass ? 10 : 8),
+            bar.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: glass ? -10 : -8),
             bar.heightAnchor.constraint(equalToConstant: 26),
+            divider.topAnchor.constraint(equalTo: root.topAnchor),
+            divider.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            divider.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            divider.widthAnchor.constraint(equalToConstant: 1),
             centerLabel.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             centerLabel.centerYAnchor.constraint(equalTo: root.centerYAnchor),
             sep.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 2),
@@ -159,9 +207,11 @@ public final class InspectorAreaController: NSViewController {
     public func select(_ index: Int) {
         selectedIndex = index
         for b in buttons { b.contentTintColor = b.tag == index ? .controlAccentColor : .secondaryLabelColor }
+        if isViewLoaded { view.needsLayout = true }   // the pill follows
         content.arrangedSubviews.forEach { $0.removeFromSuperview() }
         centerLabel.isHidden = true
         sectionTitles = []
+        sectionRuleCount = 0
         rowValues = []
         if index >= CommandTable.inspectors.count, let provider = extraProvider {
             let v = provider(index - CommandTable.inspectors.count)
@@ -176,14 +226,23 @@ public final class InspectorAreaController: NSViewController {
             if let q = quickHelp {
                 content.addArrangedSubview(QuickHelpView.make(QuickHelpDocument(hover: q, file: quickHelpFile)))
             } else {
-                // §7.5: the caret is not on a symbol.
+                // §7.5: the caret is not on a symbol. reference-ui-6.md §6
+                // (I3): "No Quick Help" and the button centered, then a rule.
                 content.addArrangedSubview(heading("Quick Help"))
-                content.addArrangedSubview(note("No Quick Help"))
+                let none = note("No Quick Help")
+                none.alignment = .center
                 let search = NSButton(title: "Search Documentation", target: self, action: #selector(searchDocumentationClicked))
                 search.controlSize = .small
                 search.font = .systemFont(ofSize: 11)
                 fileControls["Search Documentation"] = search
-                content.addArrangedSubview(search)
+                fileControls["No Quick Help"] = none
+                let centered = NSStackView(views: [none, search])
+                centered.orientation = .vertical
+                centered.alignment = .centerX
+                centered.spacing = 6
+                content.addArrangedSubview(centered)
+                centered.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -24).isActive = true
+                addRule()
             }
         }
     }
@@ -226,25 +285,47 @@ public final class InspectorAreaController: NSViewController {
         } else {
             historyCommits = []
         }
+        historyRowViews = []
         guard !historyCommits.isEmpty else { showCentered("No History"); return }
         for (i, c) in historyCommits.enumerated() {
+            // reference-ui-6.md §6 (I2): author (emphasized) and subject on
+            // the left; the short hash over the relative date on the right.
             let author = NSTextField(labelWithString: c.authorName)
             author.font = .boldSystemFont(ofSize: 11)
             author.lineBreakMode = .byTruncatingTail
-            let date = NSTextField(labelWithString: GitDates.relativeDay(c.date))
-            date.font = .systemFont(ofSize: 10)
-            date.textColor = .secondaryLabelColor
-            date.setContentHuggingPriority(.required, for: .horizontal)
-            date.setContentCompressionResistancePriority(.required, for: .horizontal)
-            let top = NSStackView(views: [author, NSView(), date])
             let subject = NSTextField(labelWithString: c.subject)
             subject.font = .systemFont(ofSize: 11)
             subject.textColor = .secondaryLabelColor
             subject.lineBreakMode = .byTruncatingTail
-            let rowView = NSStackView(views: [top, subject])
+            let hash = NSTextField(labelWithString: c.shortHash)
+            hash.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+            hash.textColor = .secondaryLabelColor
+            hash.alignment = .right
+            let date = NSTextField(labelWithString: GitDates.relativeDay(c.date))
+            date.font = .systemFont(ofSize: 10)
+            date.textColor = .secondaryLabelColor
+            date.alignment = .right
+            let left = NSStackView(views: [author, subject])
+            left.orientation = .vertical
+            left.alignment = .leading
+            left.spacing = 1
+            left.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            for l in [author, subject] { l.setContentCompressionResistancePriority(.defaultLow, for: .horizontal) }
+            let right = NSStackView(views: [hash, date])
+            right.orientation = .vertical
+            right.alignment = .trailing
+            right.spacing = 1
+            for v in [right, hash, date] as [NSView] {
+                v.setContentHuggingPriority(.required, for: .horizontal)
+                v.setContentCompressionResistancePriority(.required, for: .horizontal)
+            }
+            let top = NSStackView(views: [left, NSView(), right])
+            top.alignment = .top
+            let rowView = NSStackView(views: [top])
             rowView.orientation = .vertical
             rowView.alignment = .leading
             rowView.spacing = 1
+            historyRowViews.append((left: left, right: right))
             let button = NSButton(title: "", target: self, action: #selector(historyRowClicked(_:)))
             button.isBordered = false
             button.isTransparent = true
@@ -263,10 +344,13 @@ public final class InspectorAreaController: NSViewController {
         }
     }
 
-    /// The history rows: author, subject, relative day (tests).
-    public var historyRows: [(author: String, subject: String, date: String)] {
-        historyCommits.map { ($0.authorName, $0.subject, GitDates.relativeDay($0.date)) }
+    /// The history rows: author, subject, relative day, short hash (tests).
+    public var historyRows: [(author: String, subject: String, date: String, hash: String)] {
+        historyCommits.map { ($0.authorName, $0.subject, GitDates.relativeDay($0.date), $0.shortHash) }
     }
+    /// Each shown history row's left (author, subject) and right (hash,
+    /// date) columns (tests).
+    public private(set) var historyRowViews: [(left: NSStackView, right: NSStackView)] = []
 
     @objc private func historyRowClicked(_ b: NSButton) { selectHistoryRow(b.tag) }
 
@@ -292,12 +376,21 @@ public final class InspectorAreaController: NSViewController {
         nameField = name
         content.addArrangedSubview(row("Name", name))
         content.addArrangedSubview(row("Type", popUp("Type", ["Default - " + Self.typeName(for: file)])))
-        let choose = NSButton(image: NSImage(systemSymbolName: "folder", accessibilityDescription: "Choose location")!, target: nil, action: nil)
+        let info = fileInfo?(file) ?? FileInspectorInfo()
+        shownInfo = info
+        // reference-ui-6.md §6 (I1): a file in a synchronized folder has
+        // the folder's location (a disabled pop-up, no folder button);
+        // otherwise the pop-up and the folder button are enabled.
+        let choose = NSButton(image: NSImage(systemSymbolName: "folder", accessibilityDescription: "Choose location")!, target: self,
+                              action: #selector(chooseLocationClicked))
         choose.isBordered = false
-        choose.isEnabled = false
+        choose.toolTip = "Choose location"
         let isProject = file.pathExtension == "xcodeproj"
-        let location = popUp("Location", [isProject ? "Absolute" : "Relative to Group"])
-        location.isEnabled = !isProject
+        let location = popUp("Location", [isProject ? "Absolute" : (info.inSynchronizedFolder ? "Relative to Folder" : "Relative to Group")])
+        location.isEnabled = !isProject && !info.inSynchronizedFolder
+        choose.isEnabled = !isProject
+        choose.isHidden = info.inSynchronizedFolder
+        fileControls["Choose Location"] = choose
         content.addArrangedSubview(row("Location", NSStackView(views: [location, choose])))
         if isProject { content.addArrangedSubview(row("", note("Containing directory"))) }
         let fileName = NSTextField(labelWithString: file.lastPathComponent)
@@ -312,8 +405,6 @@ public final class InspectorAreaController: NSViewController {
         fileControls["Reveal"] = reveal
         content.addArrangedSubview(row("Full Path", NSStackView(views: [path, reveal])))
         rowValues.append(("Full Path", file.path))
-        let info = fileInfo?(file) ?? FileInspectorInfo()
-        shownInfo = info
         if let wc = info.workingCopy, let rel = info.relativePath {
             for (k, v) in [("Working Copy", wc), ("Relative Path", rel)] {
                 content.addArrangedSubview(row(k, v))
@@ -328,7 +419,9 @@ public final class InspectorAreaController: NSViewController {
                 for (k, v) in rows { content.addArrangedSubview(row(k, v)) }
             }
         }
-        if !isProject {
+        // §6 (I1): a package's files show only Identity and Type and Text
+        // Settings.
+        if !isProject && !info.isPackageFile {
             onDemandResourceTags()
             targetMembership(file, info)
         }
@@ -383,6 +476,19 @@ public final class InspectorAreaController: NSViewController {
         onRename?(file, f.stringValue)
     }
 
+    /// The folder button: choose the file's new location.
+    @objc private func chooseLocationClicked() {
+        guard let file, let window = view.window, window.isVisible else { return }
+        let panel = NSOpenPanel()
+        panel.directoryURL = file.deletingLastPathComponent()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            MainActor.assumeIsolated { self?.onChooseLocation?(file, url) }
+        }
+    }
+
     @objc private func revealClicked() {
         guard let file, view.window?.isVisible == true else { return }
         NSWorkspace.shared.activateFileViewerSelecting([file])
@@ -420,6 +526,19 @@ public final class InspectorAreaController: NSViewController {
         content.addArrangedSubview(heading("Target Membership"))
         let members = info.memberships.filter(\.isMember)
         selectedMemberships.formIntersection(members.map(\.targetID))
+        // reference-ui-6.md §6 (I1): a bordered table, one row per target
+        // (glyph, name, "Default" under it), and "+", "−", the pencil on
+        // its bottom edge inside the border.
+        let table = NSStackView()
+        table.orientation = .vertical
+        table.alignment = .leading
+        table.spacing = 2
+        table.edgeInsets = NSEdgeInsets(top: 4, left: 4, bottom: 2, right: 4)
+        table.wantsLayer = true
+        table.layer?.borderWidth = 1
+        table.layer?.cornerRadius = 5
+        table.layer?.borderColor = NSColor.separatorColor.cgColor
+        fileControls["Target Membership Table"] = table
         for m in members {
             let name = NSTextField(labelWithString: m.name)
             name.font = .systemFont(ofSize: 11)
@@ -447,7 +566,8 @@ public final class InspectorAreaController: NSViewController {
                 pick.leadingAnchor.constraint(equalTo: r.leadingAnchor), pick.trailingAnchor.constraint(equalTo: r.trailingAnchor),
                 pick.topAnchor.constraint(equalTo: r.topAnchor), pick.bottomAnchor.constraint(equalTo: r.bottomAnchor),
             ])
-            content.addArrangedSubview(r)
+            table.addArrangedSubview(r)
+            r.widthAnchor.constraint(equalTo: table.widthAnchor, constant: -8).isActive = true
             rowValues.append(("Target", m.name))
         }
         func small(_ symbol: String, _ tip: String, _ sel: Selector?) -> NSButton {
@@ -458,14 +578,21 @@ public final class InspectorAreaController: NSViewController {
             return b
         }
         let add = small("plus", "Choose which targets include this file", #selector(addMembershipClicked(_:)))
-        add.isEnabled = info.memberships.contains { !$0.isMember && $0.isEditable }
+        add.isEnabled = true   // §6 (I1)
         let remove = small("minus", "Remove this file from selected targets", #selector(removeMembershipClicked))
         remove.isEnabled = info.memberships.contains { selectedMemberships.contains($0.targetID) && $0.isEditable }
         let edit = small("pencil", "Edit target membership options", nil)
         fileControls["Add Target"] = add
         fileControls["Remove Target"] = remove
         fileControls["Edit Target Membership"] = edit
-        content.addArrangedSubview(NSStackView(views: [add, remove, edit]))
+        let rule = NSBox.hairline()
+        table.addArrangedSubview(rule)
+        rule.widthAnchor.constraint(equalTo: table.widthAnchor).isActive = true
+        let buttons = NSStackView(views: [add, remove, edit])
+        buttons.spacing = 4
+        table.addArrangedSubview(buttons)
+        content.addArrangedSubview(table)
+        table.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -24).isActive = true
     }
 
     @objc private func membershipRowClicked(_ b: NSButton) {
@@ -479,9 +606,17 @@ public final class InspectorAreaController: NSViewController {
         refresh()
     }
 
-    /// The "+" menu: the targets that do not include the file.
+    /// The "+" menu: the targets that do not include the file (a disabled
+    /// "No Other Targets" when every target does).
     public func addMembershipMenu() -> NSMenu {
         let menu = NSMenu(title: "Targets")
+        defer {
+            if menu.items.isEmpty {
+                let none = NSMenuItem(title: "No Other Targets", action: nil, keyEquivalent: "")
+                none.isEnabled = false
+                menu.addItem(none)
+            }
+        }
         for m in shownInfo?.memberships ?? [] where !m.isMember {
             let item = NSMenuItem(title: m.name, action: m.isEditable ? #selector(addMembershipChosen(_:)) : nil, keyEquivalent: "")
             item.target = self
@@ -512,11 +647,22 @@ public final class InspectorAreaController: NSViewController {
         refresh()
     }
 
+    /// A section heading; from the second section on, a thin rule above it
+    /// (reference-ui-6.md §6, I1).
     private func heading(_ s: String) -> NSTextField {
+        if !sectionTitles.isEmpty { addRule() }
         sectionTitles.append(s)
         let l = NSTextField(labelWithString: s)
         l.font = .boldSystemFont(ofSize: 11)
         return l
+    }
+
+    /// A thin rule across the inspector.
+    private func addRule() {
+        let rule = NSBox.hairline()
+        content.addArrangedSubview(rule)
+        rule.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -24).isActive = true
+        sectionRuleCount += 1
     }
 
     private func note(_ s: String) -> NSTextField {

@@ -89,7 +89,7 @@ struct KernelHangProbeTests {
         let tg = (tgParts.count == 2 ? tgParts[0] : 8, tgParts.count == 2 ? tgParts[1] : 8)
         var slowest = 0.0
         var lastStatus = -1
-        /// One dispatch over the current inputs; false when it did not finish in 8 s.
+        // One dispatch over the current inputs; false when it did not finish in 8 s.
         func dispatchOnce() throws -> Bool {
             let done = DispatchSemaphore(value: 0)
             let status = StatusBox()
@@ -179,6 +179,106 @@ struct KernelHangProbeTests {
         }
         print("hang-probe: \(rounds) rounds of \(grid)x\(grid) blocks finished; slowest dispatch \(String(format: "%.3f", slowest)) s")
         for h in [hin, htab, hzero, hpar, tex, pipe, fn] { b.release(h) }
+    }
+}
+
+/// Replays a captured `astc` mip chain (a hang capture of
+/// VulkanHangReport.swift, stage8-contract.md §15.9) through the whole back
+/// end, as the guest submitted it: per level a copy of the level's blocks
+/// into one staging buffer, then the kernel over the level's blocks into a
+/// one-level view of a fresh mipmapped texture, with the captured buffer
+/// bytes as guest memory. Repeats the command buffer and reports a round
+/// that does not finish in 8 s.
+///
+///   YCODE_TEST_CAPTURE=DIR YCODE_TEST_CAPTURE_CHAIN=chain.txt swift test --filter CaptureReplay
+///
+/// chain.txt: one line per dispatch, `gridW gridH b0 b1 b2 b2offset b3 texW texH`
+/// (the hang report's handles: b0 blocks, b1 partition tables, b2 parameters,
+/// b3 zero partition tables). YCODE_TEST_CAPTURE_ROUNDS (default 20).
+@Suite(.serialized, .enabled(if: HangProbe.env["YCODE_TEST_CAPTURE"] != nil && VK.available, "needs YCODE_TEST_CAPTURE and a GPU"))
+struct CaptureReplayTests {
+    @Test func capturedChainFinishes() throws {
+        let dir = HangProbe.env["YCODE_TEST_CAPTURE"]!
+        let files = try FileManager.default.contentsOfDirectory(atPath: dir)
+        guard let spvName = files.first(where: { $0.hasSuffix("-kernel.spv") }) else { Issue.record("no kernel in \(dir)"); return }
+        let spvData = try Data(contentsOf: URL(fileURLWithPath: "\(dir)/\(spvName)"))
+        let reflection = try ShaderReflection.decode(Data(contentsOf: URL(fileURLWithPath: "\(dir)/\(spvName.dropLast(4)).json")))
+        var words = [UInt32](repeating: 0, count: spvData.count / 4)
+        _ = words.withUnsafeMutableBytes { spvData.copyBytes(to: $0) }
+        let t = PrebuiltShaderTranslator()
+        t.add(Array("capture:kernel".utf8), TranslatedShader(spirv: words, reflection: reflection))
+        var o = VulkanMetalBackend.Options()
+        o.log = { print($0) }
+        let b = VulkanMetalBackend(translator: t, options: o)
+        defer { b.shutdown() }
+        let fn = VK.handle(), pipe = VK.handle()
+        try b.createFunction(fn, metallib: Array("capture:kernel".utf8))
+        _ = try b.createComputePipeline(pipe, function: fn)
+
+        let chainText = try String(contentsOfFile: HangProbe.env["YCODE_TEST_CAPTURE_CHAIN"] ?? "\(dir)/chain.txt", encoding: .utf8)
+        let chain = chainText.split(separator: "\n").map { $0.split(separator: " ").compactMap { Int($0) } }.filter { $0.count == 9 }
+        guard let first = chain.first else { Issue.record("empty chain"); return }
+        // Every captured buffer named by the chain, in guest memory of its own (16 KiB runs, as the guest's).
+        var handles: [Int: MetalHandle] = [:]
+        var pages: [HostPages] = []
+        for id in Set(chain.flatMap { [$0[2], $0[3], $0[4], $0[6]] }) {
+            let d = try Data(contentsOf: URL(fileURLWithPath: "\(dir)/b\(id).bin"))
+            let mem = HostPages(roundUp(max(d.count, 1), 16384))
+            d.withUnsafeBytes { mem.pointer.copyMemory(from: $0.baseAddress!, byteCount: d.count) }
+            let h = VK.handle()
+            try b.createBuffer(h, length: d.count, storage: .shared, guestMemory: mem.region(0, d.count))
+            handles[id] = h
+            pages.append(mem)
+        }
+        let staging = VK.handle()
+        var stagingBytes = 0
+        for c in chain { stagingBytes += try Data(contentsOf: URL(fileURLWithPath: "\(dir)/b\(c[2]).bin")).count }
+        try b.createBuffer(staging, length: max(stagingBytes, 16), storage: .private, guestMemory: nil)
+        let rounds = Int(HangProbe.env["YCODE_TEST_CAPTURE_ROUNDS"] ?? "") ?? 20
+        var slowest = 0.0
+        for round in 0..<rounds {
+            let tex = VK.handle()
+            try b.createTexture(tex, MetalTextureDescriptor(pixelFormat: MetalPixelFormat.rgba8Unorm, width: first[7], height: first[8],
+                                                            mipmapLevelCount: chain.count, usage: 0x3), iosurface: nil)
+            var views: [MetalHandle] = []
+            var passes: [MetalPass] = []
+            var offset = 0
+            for (level, c) in chain.enumerated() {
+                let view = VK.handle()
+                try b.createTextureView(view, parent: tex, MetalTextureViewDescriptor(pixelFormat: MetalPixelFormat.rgba8Unorm,
+                                                                                    levels: level..<(level + 1)))
+                views.append(view)
+                let size = try Data(contentsOf: URL(fileURLWithPath: "\(dir)/b\(c[2]).bin")).count
+                passes.append(.blit([.copyBufferToBuffer(source: handles[c[2]], sourceOffset: 0, destination: staging,
+                                                         destinationOffset: offset, size: size)]))
+                offset += size
+                passes.append(.compute([
+                    .setComputePipelineState(pipe),
+                    .setBuffer(index: 0, buffer: handles[c[2]], offset: 0),
+                    .setBuffer(index: 1, buffer: handles[c[3]], offset: 0),
+                    .setBuffer(index: 2, buffer: handles[c[4]], offset: c[5]),
+                    .setBuffer(index: 3, buffer: handles[c[6]], offset: 0),
+                    .setTexture(index: 0, texture: level == 0 ? tex : view),
+                    .dispatchThreads(MetalSize3(c[0], c[1], 1), threadsPerThreadgroup: MetalSize3(32, 16, 1)),
+                ]))
+            }
+            let done = DispatchSemaphore(value: 0)
+            let status = StatusBox()
+            let start = DispatchTime.now().uptimeNanoseconds
+            b.submit(MetalCommandBuffer(process: 1, queue: nil, commandBufferRef: VK.nextID(), passes: passes),
+                     scheduled: {}, completed: { s in status.value = s; done.signal() })
+            if done.wait(timeout: .now() + 8) == .timedOut {
+                Issue.record("round \(round): the captured chain did not finish in 8 s")
+                return  // the queue is stuck
+            }
+            slowest = max(slowest, Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9)
+            #expect(status.value == 4, "round \(round): status \(status.value)")
+            for v in views { b.release(v) }
+            b.release(tex)
+        }
+        print("capture-replay: \(rounds) rounds of \(chain.count) dispatches finished; slowest \(String(format: "%.3f", slowest)) s")
+        for h in Array(handles.values) + [staging, pipe, fn] { b.release(h) }
+        _ = pages
     }
 }
 

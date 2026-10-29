@@ -13,7 +13,7 @@ extension WorkspaceSession {
         await syncBreakpoints()
         try? await c.continue(threadID: t)
         clearStopState()
-        setActivity(.running(DebugPresentation.runningTitle(runningProduct)))
+        setActivity(.running(runningActivityTitle))
     }
 
     /// Step Over / Into / Out with the DAP options: Step … Instruction

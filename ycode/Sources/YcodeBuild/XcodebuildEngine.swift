@@ -78,8 +78,10 @@ public enum ProcessBuild {
         let thread = Thread {
             var lines = LineBuffer()
             var parser = DiagnosticParser()
+            var counter = LogTaskCounter()
             func handle(_ line: String) {
                 continuation.yield(.output(line))
+                if let p = counter.feed(line) { continuation.yield(.progress(done: p.done, total: p.total)) }
                 if let a = activity(line) { continuation.yield(.activity(a)) }
                 for d in parser.feed(line) { continuation.yield(.issue(d)) }
             }
@@ -111,6 +113,54 @@ public enum ProcessBuild {
             if process.isRunning { process.interrupt() }
         }
     }
+}
+
+/// Task counts read from a text build log (`specs/ide/reference-ui-6.md`
+/// §3.2). A SwiftPM log numbers its steps ("[3/7] Compiling …": step 3
+/// of 7 runs, so 2 are done). An xcodebuild log names each step when it
+/// begins (a line starting with a step name such as `CompileSwift`,
+/// `Ld`, `CodeSign`); the steps seen are the tasks known so far and every
+/// step before the latest one is done.
+public struct LogTaskCounter: Sendable {
+    public private(set) var done = 0
+    public private(set) var total = 0
+    public init() {}
+
+    /// The counts after `line`, or nil when the line is not a step.
+    public mutating func feed(_ line: String) -> (done: Int, total: Int)? {
+        if line.hasPrefix("["), let close = line.firstIndex(of: "]") {
+            let parts = line[line.index(after: line.startIndex)..<close].split(separator: "/")
+            if parts.count == 2, let n = Int(parts[0]), let m = Int(parts[1]), n >= 1, m >= n {
+                done = max(done, n - 1)
+                total = max(total, m)
+                return (done, total)
+            }
+        }
+        guard Self.isStep(line) else { return nil }
+        total += 1
+        done = total - 1
+        return (done, total)
+    }
+
+    /// A step header: an unindented line whose first word is a step name
+    /// (a capitalized identifier) followed by its arguments.
+    static func isStep(_ line: String) -> Bool {
+        guard let first = line.first, first.isUppercase, line.contains(" ") else { return false }
+        let word = line.prefix { $0 != " " }
+        guard word.allSatisfy({ $0.isLetter || $0.isNumber }), word.count > 1 else { return false }
+        return stepNames.contains(String(word))
+    }
+
+    /// The step names of an xcodebuild log that stand for one build task each.
+    static let stepNames: Set<String> = [
+        "CompileSwift", "SwiftCompile", "CompileSwiftSources", "SwiftDriver", "SwiftEmitModule", "SwiftMergeGeneratedHeaders",
+        "CompileC", "Ld", "CodeSign", "CompileAssetCatalog", "CompileAssetCatalogVariant", "ProcessInfoPlistFile", "PhaseScriptExecution",
+        "CpResource", "CopySwiftLibs", "GenerateDSYMFile", "Libtool", "CompileStoryboard", "CompileXIB", "LinkStoryboards",
+        "ProcessProductPackaging", "ProcessProductPackagingDER", "RegisterExecutionPolicyException", "Touch", "Copy", "CreateBuildDirectory",
+        "WriteAuxiliaryFile", "MkDir", "SymLink", "Validate", "ValidateEmbeddedBinary", "ExtractAppIntentsMetadata",
+        "AppIntentsSSUTraining", "GenerateAssetSymbols", "ProcessPCH", "CompileMetalFile", "MetalLink", "Strip", "Ditto",
+        "EmitSwiftModule", "SwiftMergeModule", "CopyPlistFile", "CopyStringsFile", "CompileXCStrings", "ScanDependencies",
+    ]
 }
 
 /// A thread-safe boolean that only goes from false to true.

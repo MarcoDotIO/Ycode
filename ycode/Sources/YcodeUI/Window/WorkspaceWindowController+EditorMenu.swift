@@ -7,7 +7,7 @@ extension WorkspaceWindowController {
     /// Editor ▸ Show Editor Only (⌘↩): hides the canvas, the assistant and
     /// the comparison, leaving the focused editor.
     @objc public func showEditorOnly(_ sender: Any?) {
-        if canvas != nil { toggleCanvas(nil) }
+        if canvasAuto.modeOn || canvas != nil { setCanvasMode(false) }
         if editorArea.tab.assistant != nil { toggleAssistant(nil) }
         if editor.isShowingComparison { editor.hideComparison() }
         editor.hideInlineComparison()
@@ -37,7 +37,7 @@ extension WorkspaceWindowController {
         switch item.action {
         case #selector(performRefactorItem(_:)):
             return RefactorCatalog.actionIndex(forItem: item.tag, in: cachedCodeActions) != nil
-        case #selector(toggleCanvas(_:)): item.state = canvas != nil ? .on : .off
+        case #selector(toggleCanvas(_:)): item.state = canvasAuto.modeOn ? .on : .off   // E10: the mode, drawn or not
         case #selector(toggleAssistant(_:)): item.state = editorArea.tab.assistant != nil ? .on : .off
         case #selector(toggleComparison(_:)): item.state = editor.isShowingComparison || editor.isShowingInlineComparison ? .on : .off
         case NSSelectorFromString("toggleMinimap:"): item.state = editor.showsMinimap ? .on : .off

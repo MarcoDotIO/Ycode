@@ -256,11 +256,11 @@ struct BuildLog {
         var file: String?
         var line: Int?
         var targetName: String?
-        var column: Int? = nil
+        var column: Int?
         /// The compiler's category (`Semantic Issue`), when it gives one.
-        var category: String? = nil
+        var category: String?
         /// The task that reported it.
-        var taskID: Int? = nil
+        var taskID: Int?
     }
     var issues: [Issue] = []
     /// Tasks as the result bundle's build log records them.
@@ -389,7 +389,7 @@ struct BuildLog {
                 console.rawOut(text.hasSuffix("\n") ? text : text + "\n")
             }
         case "error", "warning", "note", "remark":
-            let kind = m["kind"] as! String
+            let kind = m["kind"] as? String ?? ""
             let context = m["locationContext"] as? [String: Any]
             if kind == "error" || kind == "warning" {
                 let loc = m["location"] as? [String: Any]

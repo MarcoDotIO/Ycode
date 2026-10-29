@@ -17,8 +17,10 @@ import Foundation
 /// A failed control request: `code` is the reply's RetCode (with
 /// `0xC000 | e` decoded to `errno`), or a Mach send/receive error.
 public struct LaunchSimControlError: Error, CustomStringConvertible {
+    /// The request that failed, for messages.
     public var operation: String
     public var code: UInt32
+    /// The errno when `code` has the `0xC000 | e` form, else nil.
     public var errno: Int32? { code & 0xFFFF_C000 == 0xC000 ? Int32(code & 0x3FFF) : nil }
     public init(operation: String, code: UInt32) {
         self.operation = operation
@@ -32,12 +34,17 @@ public struct LaunchSimControlError: Error, CustomStringConvertible {
 
 /// The spawn attributes of a 704 request (launch-sim-control.md §4).
 public struct LaunchSimSpawnAttributes {
+    /// The guest path of the executable.
     public var path: String
+    /// The argument strings, `argv[0]` first.
     public var argv: [String]
+    /// Environment strings, each `KEY=VALUE`.
     public var environment: [String] = []
+    /// The working directory; nil means none, so the process starts in `/`.
     public var workingDirectory: String?
     /// CPU type preference (0 = none); subtype is always "any".
     public var cpuType: UInt32 = 0
+    /// Create the process stopped (§4).
     public var startSuspended = false
 
     public init(path: String, argv: [String], environment: [String] = [], workingDirectory: String? = nil,
@@ -113,12 +120,13 @@ public final class LaunchSimControl: @unchecked Sendable {
 
     /// Sends one routine request; returns the reply port (a receive right
     /// of the host task, to destroy after the reply).
-    private func send(_ id: Int32, _ operation: String, descriptors: [MachHostDescriptor], body: [UInt8]) throws -> UInt32 {
+    private func send(_ id: Int32, _ operation: String, descriptors: [MachHostDescriptor], body: [UInt8],
+                      timeout: UInt64 = 5_000_000_000) throws -> UInt32 {
         let reply = try host.makePort()
         do {
             try host.send(MachHostOutgoingMessage(remotePort: channel, remoteDisposition: MachMsgType.copySend,
                                                   localPort: reply, localDisposition: MachMsgType.makeSendOnce,
-                                                  id: id, descriptors: descriptors, body: body), timeout: 5_000_000_000)
+                                                  id: id, descriptors: descriptors, body: body), timeout: timeout)
         } catch let e as MachHostError {
             try? host.destroyPort(reply)
             throw LaunchSimControlError(operation: operation, code: e.code)
@@ -159,10 +167,13 @@ public final class LaunchSimControl: @unchecked Sendable {
     /// 701 sent without waiting: before the 808 reply hands the service
     /// port over, the request queues on it and is answered once launchd_sim
     /// has created its domains (launch-sim-control.md §5.1). Returns a token
-    /// for `finishRegistration`.
-    public func queueRegistration(_ name: String, port: UInt32) throws -> UInt32 {
+    /// for `finishRegistration`. A full queue fails at once (`timeout` 0):
+    /// nobody reads the port before the 808 reply, so waiting only delays
+    /// that reply, and with it the whole boot (5 s per name that does not
+    /// fit, visionos.md §10.19.3).
+    public func queueRegistration(_ name: String, port: UInt32, timeout: UInt64 = 0) throws -> UInt32 {
         try send(Self.register, "register \(name)", descriptors: [.port(name: port, disposition: MachMsgType.copySend)],
-                 body: Self.ndr + Self.name128(name))
+                 body: Self.ndr + Self.name128(name), timeout: timeout)
     }
 
     /// Waits for a queued 701's reply.

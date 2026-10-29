@@ -16,9 +16,18 @@
  * (NULL, swapchain, target time, now, context). Nothing is presented:
  * frames are dropped. Handlers are kept and never called.
  *
- * Built without SDK headers, like the host libraries: every type and
- * imported function is declared here, and the build links against .tbd
- * stubs of libSystem and CoreFoundation (build.sh).
+ * A foldable device type (specs/simulator/foldable.md §8.1 D1) has a second
+ * built-in display, described by YCODE_FRAMEBUFFER_SECOND_DISPLAY
+ * ("<id> <name> <device name> <width> <height> <scale> <pitch> <uid>",
+ * e.g. the iPhone Duo's inner panel "3 LCD-1 primary-1 2007 2853 3 460
+ * <uid>"). It is published next to display 1 from the start, always
+ * connected and powered, with a swapchain of its own; the guest decides
+ * which one it draws to. Backlight and UI-orientation calls are kept per
+ * display and reported in that display's frame record (D2). With it the
+ * library publishes the reference's whole list of simframebuffer.md §4 —
+ * LCD 1, TVOut 2, the second display, Wireless 4, Resizable 5 — so the
+ * guest numbers the displays as the reference does (the inner panel is
+ * "Unknown.main[3]"; simframebuffer.md §10).
  */
 
 typedef __SIZE_TYPE__ size_t;
@@ -108,9 +117,11 @@ extern void os_unfair_lock_lock(os_unfair_lock *);
 extern void os_unfair_lock_unlock(os_unfair_lock *);
 extern int open(const char *path, int flags, ...);
 extern long pwrite(int fd, const void *buf, size_t n, int64_t offset);
+extern int getpid(void);
 extern uint32_t IOSurfaceGetID(const void *surface);
 #define O_WRONLY 0x0001
 #define O_CREAT 0x0200
+#define O_TRUNC 0x0400
 #define O_CLOEXEC 0x01000000
 
 /* ---- Types of the interface (spec §3) ---- */
@@ -129,10 +140,21 @@ struct SFBConnection {
 
 struct SFBDisplay {
     CFRuntimeBase base;
-    uint32_t width, height, scale, pitch;
+    uint32_t id;    /* SFBDisplayGetID (1, or the second display's id) */
+    uint32_t slot;  /* its frame record: 0 for display 1, 1 for the second */
+    uint32_t type;  /* 0 built-in panel, 1 TV-out (§3.4) */
+    uint32_t width, height, scale, pitch;  /* mode (canvas) */
+    uint32_t power, flags;                 /* 1, 1 built-in; 0, 0 others */
+    uint32_t deviceWidth, deviceHeight;    /* panel pixels; 0 × 0 for TV-out */
     CFStringRef name, deviceName, uid;
     const void *swapchain; /* weak: the display's one swapchain */
     os_unfair_lock lock;
+    /* The last presented frame and the last backlight / UI-orientation
+     * values set (its frame record; ~0: never set). Under stateLock. */
+    uint32_t lastSurface;
+    CGRect lastRect;
+    uint64_t lastFrame;
+    uint64_t backlight, orientation;
 };
 
 struct SFBSwapchain {
@@ -169,6 +191,62 @@ static char *put_hex(char *p, char *end, uintptr_t v) {
     while (n && p < end) *p++ = digits[--n];
     return p;
 }
+
+
+/* ---- Call log (diagnostic): with YCODE_FRAMEBUFFER_CALLS set to a path,
+ * the first 4096 calls write one line each ("<name> <value>\n", the value a
+ * surface id, a mode or 0). Off (no file, no writes) without the variable.
+ * It shows which calls a presenter other than backboardd makes (visionos.md
+ * §9 Q5). The display setters (SFBDisplaySet*) and SFBDisplayGetMaskPath
+ * have a budget of their own (4096 more lines), so getters called once per
+ * frame do not hide them (backlight calls at fold swaps, foldable.md §9 Q4). */
+static int callsFD = -2;
+static int64_t callsAt;
+static uint32_t callsCount, callsKeyCount;
+static os_unfair_lock callsLock;
+
+static int call_is_key(const char *name) {
+    static const char setter[] = "SFBDisplaySet", mask[] = "SFBDisplayGetMaskPath";
+    size_t i = 0;
+    while (setter[i] && name[i] == setter[i]) i++;
+    if (!setter[i]) return 1;
+    for (i = 0; mask[i] && name[i] == mask[i]; i++) {}
+    return !mask[i] && !name[i];
+}
+
+static void call_log(const char *name, uint64_t value) {
+    if (__atomic_load_n(&callsFD, __ATOMIC_RELAXED) == -1) return; /* off: no lock taken */
+    os_unfair_lock_lock(&callsLock);
+    if (callsFD == -2) {
+        /* One file per process: "<path>.<pid>". */
+        const char *path = getenv("YCODE_FRAMEBUFFER_CALLS");
+        callsFD = -1;
+        if (path && *path) {
+            char full[1024], digits[12];
+            char *p = put_text(full, full + sizeof full - 14, path), *d = digits;
+            uint32_t pid = (uint32_t)getpid();
+            do { *d++ = (char)('0' + pid % 10); pid /= 10; } while (pid);
+            *p++ = '.';
+            while (d > digits) *p++ = *--d;
+            *p = 0;
+            callsFD = open(full, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+        }
+    }
+    int key = callsFD >= 0 && callsCount >= 4096 && call_is_key(name) && callsKeyCount < 4096;
+    if (callsFD >= 0 && (callsCount < 4096 || key)) {
+        char buf[96];
+        char *p = buf, *end = buf + sizeof buf - 1;
+        p = put_text(p, end, name);
+        p = put_text(p, end, " ");
+        p = put_hex(p, end, (uintptr_t)value);
+        *p++ = '\n';
+        (void)pwrite(callsFD, buf, (size_t)(p - buf), callsAt);
+        callsAt += p - buf;
+        if (key) callsKeyCount++; else callsCount++;
+    }
+    os_unfair_lock_unlock(&callsLock);
+}
+#define CALL(name, value) call_log(name, (uint64_t)(value))
 
 static CFStringRef make_string(const char *s) {
     return CFStringCreateWithCString(NULL, s, kCFStringEncodingUTF8);
@@ -251,15 +329,92 @@ static void *create(CFTypeID type, size_t size) {
     return (void *)_CFRuntimeCreateInstance(NULL, type, (CFIndex)(size - sizeof(CFRuntimeBase)), NULL);
 }
 
-/* ---- The one display (spec §7 item 4) ---- */
+/* ---- The displays (spec §7 item 4; foldable.md §8.1 D1) ---- */
 
-static struct SFBDisplay *theDisplay;
+#define MAX_DISPLAYS 5
+static struct SFBDisplay *theDisplays[MAX_DISPLAYS];
+static uint32_t displayCount;
 static dispatch_once_t displayOnce;
 
-static void make_display(void *unused) {
+/* The next space-separated word of *s (at most n - 1 bytes) into out. */
+static int next_word(const char **s, char *out, int n) {
+    const char *p = *s;
+    while (*p == ' ') p++;
+    int i = 0;
+    while (*p && *p != ' ') {
+        if (i < n - 1) out[i++] = *p;
+        p++;
+    }
+    out[i] = 0;
+    *s = p;
+    return i > 0;
+}
+
+static uint32_t word_number(const char *w) {
+    uint32_t v = 0;
+    while (*w >= '0' && *w <= '9') v = v * 10 + (uint32_t)(*w++ - '0');
+    return v;
+}
+
+static struct SFBDisplay *new_display(uint32_t id, uint32_t slot) {
+    struct SFBDisplay *d = create(displayTypeID, sizeof(struct SFBDisplay));
+    if (!d) return NULL;
+    d->id = id;
+    d->slot = slot;
+    d->power = 1;
+    d->flags = 1;
+    d->backlight = ~0ull;
+    d->orientation = ~0ull;
+    return d;
+}
+
+/* YCODE_FRAMEBUFFER_SECOND_DISPLAY: "<id> <name> <device name> <width>
+ * <height> <scale> <pitch> <uid>" (all eight words), or nothing. */
+static struct SFBDisplay *make_second_display(void) {
+    const char *spec = getenv("YCODE_FRAMEBUFFER_SECOND_DISPLAY");
+    if (!spec || !*spec) return NULL;
+    char w[8][64];
+    for (int i = 0; i < 8; i++)
+        if (!next_word(&spec, w[i], sizeof w[i])) return NULL;
+    uint32_t id = word_number(w[0]);
+    if (id < 2) return NULL;
+    struct SFBDisplay *d = new_display(id, 1);
+    if (!d) return NULL;
+    d->name = make_string(w[1]);
+    d->deviceName = make_string(w[2]);
+    d->width = word_number(w[3]);
+    d->height = word_number(w[4]);
+    d->scale = word_number(w[5]);
+    d->pitch = word_number(w[6]);
+    d->uid = make_string(w[7]);
+    d->deviceWidth = d->width;
+    d->deviceHeight = d->height;
+    return d;
+}
+
+/* The reference's other displays (simframebuffer.md §4): TV-out (2),
+ * wireless (4) and resizable (5); never presented, powered off. */
+static struct SFBDisplay *make_other(uint32_t id, uint32_t type, const char *name, const char *deviceName, uint32_t width,
+                                     uint32_t height, uint32_t scale, uint32_t pitch, const char *uid) {
+    struct SFBDisplay *d = new_display(id, id);
+    if (!d) return NULL;
+    d->type = type;
+    d->width = width;
+    d->height = height;
+    d->scale = scale;
+    d->pitch = pitch;
+    d->power = 0;
+    d->flags = 0;
+    d->name = make_string(name);
+    d->deviceName = make_string(deviceName);
+    d->uid = make_string(uid);
+    return d;
+}
+
+static void make_displays(void *unused) {
     (void)unused;
     classes();
-    struct SFBDisplay *d = create(displayTypeID, sizeof(struct SFBDisplay));
+    struct SFBDisplay *d = new_display(1, 0);
     if (!d) return;
     d->width = env_number("SIMULATOR_MAINSCREEN_WIDTH", 1398);
     d->height = env_number("SIMULATOR_MAINSCREEN_HEIGHT", 2034);
@@ -267,13 +422,36 @@ static void make_display(void *unused) {
     d->pitch = env_number("SIMULATOR_MAINSCREEN_PITCH", 460);
     d->name = make_string("LCD");
     d->deviceName = make_string("primary");
-    d->uid = make_string("59434F44-4500-4000-8000-000000000001");
-    theDisplay = d;  /* held for the life of the process */
+    /* A device type may fix its display's unique id (visionos.md §3.3:
+     * the Vision Pro's); otherwise Ycode's constant. */
+    const char *uid = getenv("YCODE_FRAMEBUFFER_DISPLAY_UID");
+    d->uid = make_string(uid && *uid ? uid : "59434F44-4500-4000-8000-000000000001");
+    d->deviceWidth = d->width;
+    d->deviceHeight = d->height;
+    theDisplays[0] = d;  /* held for the life of the process */
+    displayCount = 1;
+    struct SFBDisplay *second = make_second_display();
+    if (second) {
+        struct SFBDisplay *more[4] = {
+            make_other(2, 1, "TVOut", "external-0", 720, 480, 1, 72, "59434F44-4500-4000-8000-000000000002"),
+            second,
+            make_other(4, 2, "Wireless", "wireless0", 720, 480, 1, 72, "59434F44-4500-4000-8000-000000000004"),
+            make_other(5, 4, "Resizable", "resizable", 7680, 4320, 3, 120, "59434F44-4500-4000-8000-000000000005"),
+        };
+        for (int i = 0; i < 4; i++)
+            if (more[i]) theDisplays[displayCount++] = more[i];
+    }
 }
 
+/* Display 1 (the main display), or NULL. */
 static struct SFBDisplay *display(void) {
-    dispatch_once_f(&displayOnce, NULL, make_display);
-    return theDisplay;
+    dispatch_once_f(&displayOnce, NULL, make_displays);
+    return theDisplays[0];
+}
+
+static uint32_t display_count(void) {
+    (void)display();
+    return displayCount;
 }
 
 static void set_error(CFErrorRef *error, CFIndex code) {
@@ -285,14 +463,16 @@ static void set_error(CFErrorRef *error, CFIndex code) {
 
 /* ---- Connection (spec §3.3) ---- */
 
-EXPORT const char *simFramebufferGetStructName(void) { return ""; }
+EXPORT const char *simFramebufferGetStructName(void) { CALL("simFramebufferGetStructName", 0); return ""; }
 
 EXPORT CFTypeID SFBConnectionGetTypeID(void) {
+    CALL("SFBConnectionGetTypeID", 0);
     classes();
     return connectionTypeID;
 }
 
 EXPORT const void *SFBConnectionCreate(CFAllocatorRef allocator, CFStringRef name) {
+    CALL("SFBConnectionCreate", 0);
     (void)allocator;
     classes();
     struct SFBConnection *c = create(connectionTypeID, sizeof(struct SFBConnection));
@@ -301,12 +481,14 @@ EXPORT const void *SFBConnectionCreate(CFAllocatorRef allocator, CFStringRef nam
 }
 
 EXPORT Boolean SFBConnectionConnect(const void *connection, CFErrorRef *error) {
+    CALL("SFBConnectionConnect", 0);
     (void)connection;
     (void)error;
     return 1;
 }
 
 EXPORT uint64_t SFBConnectionGetID(const void *connection) {
+    CALL("SFBConnectionGetID", 0);
     (void)connection;
     return 1;
 }
@@ -321,43 +503,56 @@ static void set_handler(const void *connection, int which, void *queue, void *bl
     if (old) _Block_release(old);
 }
 
-EXPORT void SFBConnectionSetDisplayConnectedHandler(const void *c, void *queue, void *block) { set_handler(c, 0, queue, block); }
-EXPORT void SFBConnectionSetDisplayUpdatedHandler(const void *c, void *queue, void *block) { set_handler(c, 1, queue, block); }
-EXPORT void SFBConnectionSetDisplayDisconnectedHandler(const void *c, void *queue, void *block) { set_handler(c, 2, queue, block); }
+EXPORT void SFBConnectionSetDisplayConnectedHandler(const void *c, void *queue, void *block) { CALL("SFBConnectionSetDisplayConnectedHandler", 0); set_handler(c, 0, queue, block); }
+EXPORT void SFBConnectionSetDisplayUpdatedHandler(const void *c, void *queue, void *block) { CALL("SFBConnectionSetDisplayUpdatedHandler", 0); set_handler(c, 1, queue, block); }
+EXPORT void SFBConnectionSetDisplayDisconnectedHandler(const void *c, void *queue, void *block) { CALL("SFBConnectionSetDisplayDisconnectedHandler", 0); set_handler(c, 2, queue, block); }
 
 EXPORT CFArrayRef SFBConnectionCopyDisplays(const void *connection, CFErrorRef *error) {
+    CALL("SFBConnectionCopyDisplays", 0);
     (void)connection;
     struct SFBDisplay *d = display();
     if (!d) {
         set_error(error, 1);
         return NULL;
     }
-    const void *values[1] = {d};
-    return CFArrayCreate(NULL, values, 1, &kCFTypeArrayCallBacks);
+    const void *values[MAX_DISPLAYS];
+    uint32_t n = display_count();
+    for (uint32_t i = 0; i < n; i++) values[i] = theDisplays[i];
+    return CFArrayCreate(NULL, values, (CFIndex)n, &kCFTypeArrayCallBacks);
 }
 
 EXPORT const void *SFBConnectionCopyDisplay(const void *connection, uint64_t id, CFErrorRef *error) {
+    CALL("SFBConnectionCopyDisplay", id);
     (void)connection;
     (void)error;
-    struct SFBDisplay *d = display();
-    return (d && id == 1) ? CFRetain(d) : NULL;
+    uint32_t n = display_count();
+    for (uint32_t i = 0; i < n; i++)
+        if (theDisplays[i]->id == id) return CFRetain(theDisplays[i]);
+    return NULL;
 }
 
 EXPORT const void *SFBConnectionCopyDisplayByUID(const void *connection, CFStringRef uid) {
+    CALL("SFBConnectionCopyDisplayByUID", 0);
     (void)connection;
-    struct SFBDisplay *d = display();
-    if (!d || !uid) return NULL;
-    return (CFEqual(uid, d->uid) || CFEqual(uid, d->deviceName)) ? CFRetain(d) : NULL;
+    if (!uid) return NULL;
+    uint32_t n = display_count();
+    for (uint32_t i = 0; i < n; i++) {
+        struct SFBDisplay *d = theDisplays[i];
+        if (CFEqual(uid, d->uid) || CFEqual(uid, d->deviceName)) return CFRetain(d);
+    }
+    return NULL;
 }
 
 /* Not called by the runtime (spec §7 item 8): they fail. */
 EXPORT const void *SFBConnectionCreateDisplay(const void *c, const void *a, CFErrorRef *error) {
+    CALL("SFBConnectionCreateDisplay", 0);
     (void)c;
     (void)a;
     set_error(error, 2);
     return NULL;
 }
 EXPORT Boolean SFBConnectionUpdateDisplay(const void *c, const void *d, const void *a, CFErrorRef *error) {
+    CALL("SFBConnectionUpdateDisplay", 0);
     (void)c;
     (void)d;
     (void)a;
@@ -365,6 +560,7 @@ EXPORT Boolean SFBConnectionUpdateDisplay(const void *c, const void *d, const vo
     return 0;
 }
 EXPORT Boolean SFBConnectionRemoveDisplay(const void *c, const void *d, CFErrorRef *error) {
+    CALL("SFBConnectionRemoveDisplay", 0);
     (void)c;
     (void)d;
     set_error(error, 2);
@@ -376,51 +572,57 @@ EXPORT Boolean SFBConnectionRemoveDisplay(const void *c, const void *d, CFErrorR
 #define DISPLAY ((const struct SFBDisplay *)d)
 
 EXPORT CFTypeID SFBDisplayGetTypeID(void) {
+    CALL("SFBDisplayGetTypeID", 0);
     classes();
     return displayTypeID;
 }
-EXPORT CFStringRef SFBDisplayGetName(const void *d) { return DISPLAY->name; }
-EXPORT CFStringRef SFBDisplayGetDisplayUID(const void *d) { return DISPLAY->uid; }
-EXPORT CFStringRef SFBDisplayGetDeviceName(const void *d) { return DISPLAY->deviceName; }
-EXPORT uint64_t SFBDisplayGetConnectionID(const void *d) { (void)d; return 1; }
-EXPORT uint64_t SFBDisplayGetID(const void *d) { (void)d; return 1; }
-EXPORT uint64_t SFBDisplayGetType(const void *d) { (void)d; return 0; }
-EXPORT uint64_t SFBDisplayGetPowerState(const void *d) { (void)d; return 1; }
-EXPORT uint64_t SFBDisplayGetFlags(const void *d) { (void)d; return 1; }
-EXPORT uint64_t SFBDisplayGetModeCount(const void *d) { (void)d; return 1; }
-EXPORT uint64_t SFBDisplayGetCanvasSizeCount(const void *d) { (void)d; return 0; }
-EXPORT uint64_t SFBDisplayGetDotPitch(const void *d) { return DISPLAY->pitch; }
-EXPORT uint64_t SFBDisplayGetMaxLayerCount(const void *d) { (void)d; return 1; }
-EXPORT uint64_t SFBDisplayGetMaxSwapchainCount(const void *d) { (void)d; return 1; }
-EXPORT uint64_t SFBDisplayGetSupportedPresentationModes(const void *d) { (void)d; return 3; }
-EXPORT uint64_t SFBDisplayGetSupportedSurfaceFlags(const void *d) { (void)d; return 0x38; }
-EXPORT CFStringRef SFBDisplayGetMaskPath(const void *d) { (void)d; return NULL; }
+EXPORT CFStringRef SFBDisplayGetName(const void *d) { CALL("SFBDisplayGetName", 0); return DISPLAY->name; }
+EXPORT CFStringRef SFBDisplayGetDisplayUID(const void *d) { CALL("SFBDisplayGetDisplayUID", 0); return DISPLAY->uid; }
+EXPORT CFStringRef SFBDisplayGetDeviceName(const void *d) { CALL("SFBDisplayGetDeviceName", 0); return DISPLAY->deviceName; }
+EXPORT uint64_t SFBDisplayGetConnectionID(const void *d) { CALL("SFBDisplayGetConnectionID", 0); (void)d; return 1; }
+EXPORT uint64_t SFBDisplayGetID(const void *d) { CALL("SFBDisplayGetID", 0); return DISPLAY->id; }
+EXPORT uint64_t SFBDisplayGetType(const void *d) { CALL("SFBDisplayGetType", 0); return DISPLAY->type; }
+EXPORT uint64_t SFBDisplayGetPowerState(const void *d) { CALL("SFBDisplayGetPowerState", 0); return DISPLAY->power; }
+EXPORT uint64_t SFBDisplayGetFlags(const void *d) { CALL("SFBDisplayGetFlags", 0); return DISPLAY->flags; }
+EXPORT uint64_t SFBDisplayGetModeCount(const void *d) { CALL("SFBDisplayGetModeCount", 0); (void)d; return 1; }
+EXPORT uint64_t SFBDisplayGetCanvasSizeCount(const void *d) { CALL("SFBDisplayGetCanvasSizeCount", 0); (void)d; return 0; }
+EXPORT uint64_t SFBDisplayGetDotPitch(const void *d) { CALL("SFBDisplayGetDotPitch", 0); return DISPLAY->pitch; }
+EXPORT uint64_t SFBDisplayGetMaxLayerCount(const void *d) { CALL("SFBDisplayGetMaxLayerCount", 0); (void)d; return 1; }
+EXPORT uint64_t SFBDisplayGetMaxSwapchainCount(const void *d) { CALL("SFBDisplayGetMaxSwapchainCount", 0); (void)d; return 1; }
+EXPORT uint64_t SFBDisplayGetSupportedPresentationModes(const void *d) { CALL("SFBDisplayGetSupportedPresentationModes", 0); (void)d; return 3; }
+EXPORT uint64_t SFBDisplayGetSupportedSurfaceFlags(const void *d) { CALL("SFBDisplayGetSupportedSurfaceFlags", 0); (void)d; return 0x38; }
+EXPORT CFStringRef SFBDisplayGetMaskPath(const void *d) { CALL("SFBDisplayGetMaskPath", 0); (void)d; return NULL; }
 
 /* The 35-byte mode record (spec §3.5; values of display 1 of §4 except
- * the size and scale). */
+ * the size and scale). The mode id equals the display id; offset 24 is 2
+ * for the main panel and 1 for the others (§3.5 table). */
 static void write_mode(const struct SFBDisplay *d, uint8_t *out) {
-    uint32_t words[8] = {1, d->width, d->height, d->scale, 1, 0x42475241u /* 'BGRA' */, 2, 6000};
+    uint32_t words[8] = {d->id, d->width, d->height, d->scale, 1, 0x42475241u /* 'BGRA' */, d->slot == 0 ? 2 : 1, 6000};
     for (int i = 0; i < 8; i++)
         for (int b = 0; b < 4; b++) out[4 * i + b] = (uint8_t)(words[i] >> (8 * b));
-    out[32] = 1;
+    out[32] = d->type == 0 ? 1 : 0;  /* 1 built-in, 0 others */
     out[33] = 1;
     out[34] = 1;
 }
 
 EXPORT Boolean SFBDisplayGetMode(const void *d, uint64_t index, void *out) {
+    CALL("SFBDisplayGetMode", index);
     if (index != 0 || !out) return 0;
     write_mode(DISPLAY, out);
     return 1;
 }
 EXPORT const void *SFBDisplayGetPreferredMode(const void *d, void *out) {
+    CALL("SFBDisplayGetPreferredMode", 0);
     if (out) write_mode(DISPLAY, out);
     return d;
 }
 EXPORT const void *SFBDisplayGetCurrentMode(const void *d, void *out) {
+    CALL("SFBDisplayGetCurrentMode", 0);
     if (out) write_mode(DISPLAY, out);
     return d;
 }
 EXPORT Boolean SFBDisplaySetCurrentMode(const void *d, const void *mode, CFErrorRef *error) {
+    CALL("SFBDisplaySetCurrentMode", 0);
     (void)d;
     (void)mode;
     (void)error;
@@ -428,15 +630,22 @@ EXPORT Boolean SFBDisplaySetCurrentMode(const void *d, const void *mode, CFError
 }
 
 EXPORT CGSize SFBDisplayGetDeviceSize(const void *d) {
+    CALL("SFBDisplayGetDeviceSize", 0);
+    CGSize s = {DISPLAY->deviceWidth, DISPLAY->deviceHeight};
+    return s;
+}
+static CGSize canvas_size(const void *d) {
     CGSize s = {DISPLAY->width, DISPLAY->height};
     return s;
 }
-EXPORT CGSize SFBDisplayGetCurrentCanvasSize(const void *d) { return SFBDisplayGetDeviceSize(d); }
+EXPORT CGSize SFBDisplayGetCurrentCanvasSize(const void *d) { CALL("SFBDisplayGetCurrentCanvasSize", 0); return canvas_size(d); }
 EXPORT CGSize SFBDisplayGetCanvasSize(const void *d, uint64_t index) {
+    CALL("SFBDisplayGetCanvasSize", 0);
     (void)index;
-    return SFBDisplayGetDeviceSize(d);
+    return canvas_size(d);
 }
 EXPORT Boolean SFBDisplaySetCanvasSize(const void *d, CGSize size, CFErrorRef *error) {
+    CALL("SFBDisplaySetCanvasSize", 0);
     (void)d;
     (void)size;
     (void)error;
@@ -444,27 +653,40 @@ EXPORT Boolean SFBDisplaySetCanvasSize(const void *d, CGSize size, CFErrorRef *e
 }
 
 EXPORT Boolean SFBDisplayGetExtendedProperties(const void *d, void *out) {
-    (void)d;
-    (void)out;
-    return 0;
+    CALL("SFBDisplayGetExtendedProperties", 0);
+    /* Only the wireless display has them (§3.4): 21 bytes as observed. */
+    if (DISPLAY->type != 2 || !out) return 0;
+    uint32_t words[5] = {720, 480, 4, 1, 0};
+    uint8_t *o = out;
+    for (int i = 0; i < 5; i++)
+        for (int b = 0; b < 4; b++) o[4 * i + b] = (uint8_t)(words[i] >> (8 * b));
+    o[20] = 0x80;
+    return 1;
 }
 EXPORT CFArrayRef SFBDisplayCopyExtendedPropertyProtocols(const void *d) {
+    CALL("SFBDisplayCopyExtendedPropertyProtocols", 0);
     (void)d;
     return CFArrayCreate(NULL, NULL, 0, &kCFTypeArrayCallBacks);
 }
+static void display_state_changed(struct SFBDisplay *d, uint64_t *field, uint64_t value);
+
+/* The call log's value for these two is (display id << 16) | value. */
 EXPORT Boolean SFBDisplaySetCurrentUIOrientation(const void *d, uint64_t orientation, CFErrorRef *error) {
-    (void)d;
-    (void)orientation;
+    CALL("SFBDisplaySetCurrentUIOrientation", (uint64_t)DISPLAY->id << 16 | (orientation & 0xFFFF));
     (void)error;
+    struct SFBDisplay *disp = (struct SFBDisplay *)d;
+    display_state_changed(disp, &disp->orientation, orientation);
     return 1;
 }
 EXPORT Boolean SFBDisplaySetBacklightState(const void *d, uint64_t state, CFErrorRef *error) {
-    (void)d;
-    (void)state;
+    CALL("SFBDisplaySetBacklightState", (uint64_t)DISPLAY->id << 16 | (state & 0xFFFF));
     (void)error;
+    struct SFBDisplay *disp = (struct SFBDisplay *)d;
+    display_state_changed(disp, &disp->backlight, state);
     return 1;
 }
 EXPORT Boolean SFBDisplaySetBrightnessFactor(const void *d, double factor, CFErrorRef *error) {
+    CALL("SFBDisplaySetBrightnessFactor", 0);
     (void)d;
     (void)factor;
     (void)error;
@@ -478,6 +700,7 @@ static os_unfair_lock idLock;
 
 EXPORT const void *SFBDisplayCreateSwapchain(const void *d, uint64_t presentationMode, CFDictionaryRef options,
                                              CFErrorRef *error) {
+    CALL("SFBDisplayCreateSwapchain", presentationMode);
     (void)options;
     struct SFBDisplay *disp = (struct SFBDisplay *)d;
     classes();
@@ -507,26 +730,29 @@ EXPORT const void *SFBDisplayCreateSwapchain(const void *d, uint64_t presentatio
 #define SWAPCHAIN ((struct SFBSwapchain *)sc)
 
 EXPORT CFTypeID SFBSwapchainGetTypeID(void) {
+    CALL("SFBSwapchainGetTypeID", 0);
     classes();
     return swapchainTypeID;
 }
-EXPORT uint64_t SFBSwapchainGetID(const void *sc) { return SWAPCHAIN->id; }
-EXPORT uint64_t SFBSwapchainGetDisplayID(const void *sc) { (void)sc; return 1; }
-EXPORT uint64_t SFBSwapchainGetConnectionID(const void *sc) { (void)sc; return 1; }
-EXPORT CGSize SFBSwapchainGetFramebufferSize(const void *sc) { return SFBDisplayGetDeviceSize(SWAPCHAIN->display); }
-EXPORT uint64_t SFBSwapchainGetPixelFormat(const void *sc) { (void)sc; return 0x42475241u; }
-EXPORT uint64_t SFBSwapchainGetColorspace(const void *sc) { (void)sc; return 1; }
-EXPORT uint64_t SFBSwapchainGetHDRMode(const void *sc) { (void)sc; return 1; }
-EXPORT uint64_t SFBSwapchainGetPresentationMode(const void *sc) { return SWAPCHAIN->presentationMode; }
-EXPORT uint64_t SFBSwapchainGetMaxSurfacesPerOperation(const void *sc) { (void)sc; return 32; }
+EXPORT uint64_t SFBSwapchainGetID(const void *sc) { CALL("SFBSwapchainGetID", 0); return SWAPCHAIN->id; }
+EXPORT uint64_t SFBSwapchainGetDisplayID(const void *sc) { CALL("SFBSwapchainGetDisplayID", 0); return SWAPCHAIN->display->id; }
+EXPORT uint64_t SFBSwapchainGetConnectionID(const void *sc) { CALL("SFBSwapchainGetConnectionID", 0); (void)sc; return 1; }
+EXPORT CGSize SFBSwapchainGetFramebufferSize(const void *sc) { CALL("SFBSwapchainGetFramebufferSize", 0); return canvas_size(SWAPCHAIN->display); }
+EXPORT uint64_t SFBSwapchainGetPixelFormat(const void *sc) { CALL("SFBSwapchainGetPixelFormat", 0); (void)sc; return 0x42475241u; }
+EXPORT uint64_t SFBSwapchainGetColorspace(const void *sc) { CALL("SFBSwapchainGetColorspace", 0); (void)sc; return 1; }
+EXPORT uint64_t SFBSwapchainGetHDRMode(const void *sc) { CALL("SFBSwapchainGetHDRMode", 0); (void)sc; return 1; }
+EXPORT uint64_t SFBSwapchainGetPresentationMode(const void *sc) { CALL("SFBSwapchainGetPresentationMode", 0); return SWAPCHAIN->presentationMode; }
+EXPORT uint64_t SFBSwapchainGetMaxSurfacesPerOperation(const void *sc) { CALL("SFBSwapchainGetMaxSurfacesPerOperation", 0); (void)sc; return 32; }
 
 EXPORT const void *SFBSwapchainAcquireSurfaceFence(const void *sc, CFErrorRef *error) {
+    CALL("SFBSwapchainAcquireSurfaceFence", 0);
     (void)sc;
     set_error(error, 2);
     return NULL;
 }
 
 EXPORT Boolean SFBSwapchainSwapBegin(const void *sc, uint64_t targetTime, CFErrorRef *error) {
+    CALL("SFBSwapchainSwapBegin", targetTime);
     (void)error;
     os_unfair_lock_lock(&SWAPCHAIN->lock);
     SWAPCHAIN->target = targetTime;
@@ -538,6 +764,7 @@ EXPORT Boolean SFBSwapchainSwapBegin(const void *sc, uint64_t targetTime, CFErro
 
 EXPORT Boolean SFBSwapchainSwapAddSurface(const void *sc, const void *surface, CGRect source, CGRect destination,
                                           uint64_t a, uint64_t b) {
+    CALL("SFBSwapchainSwapAddSurface", surface ? IOSurfaceGetID(surface) : 0);
     (void)source;
     (void)a;
     (void)b;
@@ -556,10 +783,15 @@ EXPORT Boolean SFBSwapchainSwapAddSurface(const void *sc, const void *surface, C
 }
 
 /* ---- The frame record for the host (Ycode) ----
- * Each submitted frame rewrites one 96-byte text record at offset 0 of the
- * file named by YCODE_FRAMEBUFFER_STATE:
- *   "ycode-framebuffer 1 display <id> surface <IOSurface id> rect <x> <y> <w> <h> frame <n>\n"
- * padded with spaces. The VMM reads it to find the presented surface. */
+ * Each display has one 96-byte text record in the file named by
+ * YCODE_FRAMEBUFFER_STATE, display 1 at offset 0 and the second display
+ * at offset 96 (its slot × 96), rewritten on every submitted frame:
+ *   "ycode-framebuffer 1 display <id> surface <IOSurface id> rect <x> <y> <w> <h> frame <n>[ bl <b>][ uio <o>]\n"
+ * padded with spaces. `bl` and `uio` are the last values given to
+ * SFBDisplaySetBacklightState and SFBDisplaySetCurrentUIOrientation (absent
+ * until one is set); such a call rewrites the record too (surface 0 before
+ * the display's first frame). The VMM reads it to find the presented
+ * surface. */
 static int stateFD = -2;
 static os_unfair_lock stateLock;
 
@@ -574,33 +806,58 @@ static char *put_decimal(char *p, char *end, uint64_t v) {
     return p;
 }
 
-static void write_frame_record(uint64_t display, uint32_t surface, CGRect r, uint64_t frame) {
-    os_unfair_lock_lock(&stateLock);
+/* Writes display d's record; call with stateLock held. */
+static void write_record_locked(struct SFBDisplay *d) {
     if (stateFD == -2) {
         const char *path = getenv("YCODE_FRAMEBUFFER_STATE");
         stateFD = path && *path ? open(path, O_WRONLY | O_CREAT | O_CLOEXEC, 0644) : -1;
     }
-    if (stateFD >= 0) {
-        char buf[96];
-        char *p = buf, *end = buf + sizeof buf - 1;
-        p = put_text(p, end, "ycode-framebuffer 1 display ");
-        p = put_decimal(p, end, display);
-        p = put_text(p, end, " surface ");
-        p = put_decimal(p, end, surface);
-        p = put_text(p, end, " rect ");
-        p = put_decimal(p, end, (uint64_t)r.x);
-        p = put_text(p, end, " ");
-        p = put_decimal(p, end, (uint64_t)r.y);
-        p = put_text(p, end, " ");
-        p = put_decimal(p, end, (uint64_t)r.width);
-        p = put_text(p, end, " ");
-        p = put_decimal(p, end, (uint64_t)r.height);
-        p = put_text(p, end, " frame ");
-        p = put_decimal(p, end, frame);
-        while (p < end) *p++ = ' ';
-        *p = '\n';
-        (void)pwrite(stateFD, buf, sizeof buf, 0);
+    if (stateFD < 0) return;
+    char buf[96];
+    char *p = buf, *end = buf + sizeof buf - 1;
+    CGRect r = d->lastRect;
+    p = put_text(p, end, "ycode-framebuffer 1 display ");
+    p = put_decimal(p, end, d->id);
+    p = put_text(p, end, " surface ");
+    p = put_decimal(p, end, d->lastSurface);
+    p = put_text(p, end, " rect ");
+    p = put_decimal(p, end, (uint64_t)r.x);
+    p = put_text(p, end, " ");
+    p = put_decimal(p, end, (uint64_t)r.y);
+    p = put_text(p, end, " ");
+    p = put_decimal(p, end, (uint64_t)r.width);
+    p = put_text(p, end, " ");
+    p = put_decimal(p, end, (uint64_t)r.height);
+    p = put_text(p, end, " frame ");
+    p = put_decimal(p, end, d->lastFrame);
+    if (d->backlight != ~0ull) {
+        p = put_text(p, end, " bl ");
+        p = put_decimal(p, end, d->backlight);
     }
+    if (d->orientation != ~0ull) {
+        p = put_text(p, end, " uio ");
+        p = put_decimal(p, end, d->orientation);
+    }
+    while (p < end) *p++ = ' ';
+    *p = '\n';
+    (void)pwrite(stateFD, buf, sizeof buf, (int64_t)d->slot * 96);
+}
+
+static void write_frame_record(struct SFBDisplay *d, uint32_t surface, CGRect r, uint64_t frame) {
+    os_unfair_lock_lock(&stateLock);
+    d->lastSurface = surface;
+    d->lastRect = r;
+    d->lastFrame = frame;
+    write_record_locked(d);
+    os_unfair_lock_unlock(&stateLock);
+}
+
+static void display_state_changed(struct SFBDisplay *d, uint64_t *field, uint64_t value) {
+    if (!d) return;
+    os_unfair_lock_lock(&stateLock);
+    int changed = *field != value;
+    *field = value;
+    if (changed) write_record_locked(d);
     os_unfair_lock_unlock(&stateLock);
 }
 
@@ -647,6 +904,7 @@ static void write_timing(uint64_t frame, uint64_t target, uint64_t begun, uint64
 }
 
 EXPORT void SFBSwapchainSwapSetCallback(const void *sc, void *context, uintptr_t value, void *block) {
+    CALL("SFBSwapchainSwapSetCallback", value);
     (void)value;
     void *copy = block ? _Block_copy(block) : NULL;
     os_unfair_lock_lock(&SWAPCHAIN->lock);
@@ -702,6 +960,7 @@ static int64_t completion_delay(void) {
 }
 
 EXPORT Boolean SFBSwapchainSwapSubmit(const void *sc, CFErrorRef *error) {
+    CALL("SFBSwapchainSwapSubmit", 0);
     (void)error;
     struct SFBSwapchain *s = SWAPCHAIN;
     os_unfair_lock_lock(&s->lock);
@@ -714,8 +973,9 @@ EXPORT Boolean SFBSwapchainSwapSubmit(const void *sc, CFErrorRef *error) {
     uint64_t frame = ++s->presented;
     os_unfair_lock_unlock(&s->lock);
     uint64_t submitted = mach_absolute_time();
-    if (surface) write_frame_record(1, surface, rect, frame);
-    int timed = timing_fd() >= 0;
+    if (surface) write_frame_record(s->display, surface, rect, frame);
+    /* The timing ring keeps display 1's swaps (frame numbers are per display). */
+    int timed = s->display->slot == 0 && timing_fd() >= 0;
     if (timed && !block) write_timing(frame, target, begun, submitted, 0, surface);
     if (!block) return 1;
     struct completion *c = calloc(1, sizeof *c);
@@ -742,6 +1002,7 @@ EXPORT Boolean SFBSwapchainSwapSubmit(const void *sc, CFErrorRef *error) {
 }
 
 EXPORT Boolean SFBSwapchainSwapCancel(const void *sc, CFErrorRef *error) {
+    CALL("SFBSwapchainSwapCancel", 0);
     (void)sc;
     (void)error;
     return 1;

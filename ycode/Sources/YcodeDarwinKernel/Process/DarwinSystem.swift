@@ -17,44 +17,126 @@ public final class DarwinProcess: @unchecked Sendable, CustomStringConvertible {
     }
 
     public let pid: Int32
-    public internal(set) var ppid: Int32
-    public internal(set) var pgid: Int32
-    public internal(set) var sid: Int32
     /// `p_uniqueid`: fresh per process, kept across exec.
     public let uniqueID: UInt64
-    public internal(set) var state: State
+
+    /// The members that `proc_info`, `csops` and the `kern.proc` sysctls
+    /// read without the kernel lock (`bsd-locking.md` §13): written with L0
+    /// held (as every member), each read and write under `fieldsLock`, a
+    /// leaf. A reader without L0 takes one consistent copy (`view`).
+    struct Fields {
+        var ppid: Int32
+        var pgid: Int32
+        var sid: Int32
+        var state: State
+        var status: Int32 = 0
+        var kernel: DarwinKernel?
+        var executablePath: String
+        var comm: String
+        var name: String
+        var startTime: (seconds: Int64, microseconds: Int64)
+        var startAbsTime: UInt64 = 0
+        var exitAbsTime: UInt64 = 0
+        var parentUniqueID: UInt64 = 0
+        var originalParentPIDVersion: UInt32 = 0
+        var exiting = false
+        var pidVersion: UInt32 = 0
+        var zombieExecutableUUID: [UInt8]?
+    }
+    private let fieldsLock = DescriptorTableLock(name: "process record")
+    nonisolated(unsafe) private var fields: Fields
+
+    /// One consistent copy of the fields (any thread).
+    func view() -> Fields { fieldsLock.withLock { fields } }
+
+    public internal(set) var ppid: Int32 {
+        get { fieldsLock.withLock { fields.ppid } }
+        set { fieldsLock.withLock { fields.ppid = newValue } }
+    }
+    public internal(set) var pgid: Int32 {
+        get { fieldsLock.withLock { fields.pgid } }
+        set { fieldsLock.withLock { fields.pgid = newValue } }
+    }
+    public internal(set) var sid: Int32 {
+        get { fieldsLock.withLock { fields.sid } }
+        set { fieldsLock.withLock { fields.sid = newValue } }
+    }
+    public internal(set) var state: State {
+        get { fieldsLock.withLock { fields.state } }
+        set { fieldsLock.withLock { fields.state = newValue } }
+    }
     /// The wait status word once exited (`processes.md` §2.3).
-    public internal(set) var status: Int32 = 0
+    public internal(set) var status: Int32 {
+        get { fieldsLock.withLock { fields.status } }
+        set { fieldsLock.withLock { fields.status = newValue } }
+    }
     /// `p_xhighbits`: bits 24…31 of an `exit` value (for `waitid`).
     var exitHighBits: Int32 = 0
     /// The current image. Nil for pid 1 (pseudo-init) and for zombies.
     public internal(set) var kernel: DarwinKernel? {
-        // The image's own `proc_info` dirty control runs without L0 (ProcInfo.swift).
-        didSet { kernel?.processDirtyLink.withLock { $0 = dirty } }
+        get { fieldsLock.withLock { fields.kernel } }
+        set {
+            // The old image is released after the leaf lock (its deinit may take locks).
+            let old = fieldsLock.withLock { () -> DarwinKernel? in
+                let old = fields.kernel
+                fields.kernel = newValue
+                return old
+            }
+            withExtendedLifetime(old) {}
+            // The image's own `proc_info` dirty control runs without L0 (ProcInfo.swift).
+            newValue?.processDirtyLink.withLock { $0 = dirty }
+        }
     }
     /// What the launcher returned for the current image.
     var image: (any LaunchedImage)?
     /// Children, in creation order (wait scans them in this order).
     var children: [Int32] = []
     /// The guest path of the current image.
-    public internal(set) var executablePath: String
+    public internal(set) var executablePath: String {
+        get { fieldsLock.withLock { fields.executablePath } }
+        set { fieldsLock.withLock { fields.executablePath = newValue } }
+    }
     /// `p_comm` (≤ 15 bytes) and `p_name` (≤ 31 bytes).
-    var comm: String
-    var name: String
+    var comm: String {
+        get { fieldsLock.withLock { fields.comm } }
+        set { fieldsLock.withLock { fields.comm = newValue } }
+    }
+    var name: String {
+        get { fieldsLock.withLock { fields.name } }
+        set { fieldsLock.withLock { fields.name = newValue } }
+    }
     /// `P_EXEC`: an image was activated (every spawned process). `setpgid`
     /// on such a child fails with EACCES.
     var hasExeced = true
     /// Start time (`pbi_start_tv*`).
-    var startTime: (seconds: Int64, microseconds: Int64)
+    var startTime: (seconds: Int64, microseconds: Int64) {
+        get { fieldsLock.withLock { fields.startTime } }
+        set { fieldsLock.withLock { fields.startTime = newValue } }
+    }
     /// mach_absolute_time at start and at exit (0 while running), for
     /// `proc_pid_rusage` (ri_proc_start_abstime / ri_proc_exit_abstime).
-    var startAbsTime: UInt64 = 0
-    var exitAbsTime: UInt64 = 0
+    var startAbsTime: UInt64 {
+        get { fieldsLock.withLock { fields.startAbsTime } }
+        set { fieldsLock.withLock { fields.startAbsTime = newValue } }
+    }
+    var exitAbsTime: UInt64 {
+        get { fieldsLock.withLock { fields.exitAbsTime } }
+        set { fieldsLock.withLock { fields.exitAbsTime = newValue } }
+    }
     /// The parent's unique id (`puniqueid`) and pid version at creation.
-    var parentUniqueID: UInt64 = 0
-    var originalParentPIDVersion: UInt32 = 0
+    var parentUniqueID: UInt64 {
+        get { fieldsLock.withLock { fields.parentUniqueID } }
+        set { fieldsLock.withLock { fields.parentUniqueID = newValue } }
+    }
+    var originalParentPIDVersion: UInt32 {
+        get { fieldsLock.withLock { fields.originalParentPIDVersion } }
+        set { fieldsLock.withLock { fields.originalParentPIDVersion = newValue } }
+    }
     /// The exit sequence has started.
-    var exiting = false
+    var exiting: Bool {
+        get { fieldsLock.withLock { fields.exiting } }
+        set { fieldsLock.withLock { fields.exiting = newValue } }
+    }
     /// EVFILT_PROC knotes watching this pid.
     var watchers: [ProcessWatch] = []
     /// Threads of this process blocked in `wait4`/`waitid`.
@@ -91,31 +173,30 @@ public final class DarwinProcess: @unchecked Sendable, CustomStringConvertible {
     let holdActive = Atomic<Bool>(false)
     var holdLabel = ""
     /// The pid version of the current image (audit token word 7).
-    var pidVersion: UInt32 = 0
+    var pidVersion: UInt32 {
+        get { fieldsLock.withLock { fields.pidVersion } }
+        set { fieldsLock.withLock { fields.pidVersion = newValue } }
+    }
     /// The last image's executable UUID, kept for the zombie.
-    var zombieExecutableUUID: [UInt8]?
+    var zombieExecutableUUID: [UInt8]? {
+        get { fieldsLock.withLock { fields.zombieExecutableUUID } }
+        set { fieldsLock.withLock { fields.zombieExecutableUUID = newValue } }
+    }
     /// The current image's main-executable LC_UUID, or 16 zero bytes when
     /// none is known (`processes.md` §2.11).
-    var executableUUID: [UInt8] {
-        let u = kernel?.executableUUID ?? zombieExecutableUUID ?? []
-        return u.count == 16 ? u : [UInt8](repeating: 0, count: 16)
-    }
+    var executableUUID: [UInt8] { view().executableUUID }
     /// `terminate_with_payload` reason, kept for diagnostics.
     var exitReason: String?
 
     init(pid: Int32, ppid: Int32, pgid: Int32, sid: Int32, uniqueID: UInt64, executablePath: String,
          startTime: (Int64, Int64)) {
         self.pid = pid
-        self.ppid = ppid
-        self.pgid = pgid
-        self.sid = sid
         self.uniqueID = uniqueID
-        self.executablePath = executablePath
-        self.startTime = startTime
-        state = .running
         let last = GuestPath.lastComponent(executablePath)
-        comm = String(decoding: Array(last.utf8.prefix(15)), as: UTF8.self)
-        name = String(decoding: Array(last.utf8.prefix(31)), as: UTF8.self)
+        fields = Fields(ppid: ppid, pgid: pgid, sid: sid, state: .running, executablePath: executablePath,
+                        comm: String(decoding: Array(last.utf8.prefix(15)), as: UTF8.self),
+                        name: String(decoding: Array(last.utf8.prefix(31)), as: UTF8.self),
+                        startTime: startTime)
     }
 
     public var isZombie: Bool { state == .zombie }
@@ -125,10 +206,14 @@ public final class DarwinProcess: @unchecked Sendable, CustomStringConvertible {
     }
 
     func setImagePath(_ path: String) {
-        executablePath = path
         let last = GuestPath.lastComponent(path)
-        comm = String(decoding: Array(last.utf8.prefix(15)), as: UTF8.self)
-        name = String(decoding: Array(last.utf8.prefix(31)), as: UTF8.self)
+        let comm = String(decoding: Array(last.utf8.prefix(15)), as: UTF8.self)
+        let name = String(decoding: Array(last.utf8.prefix(31)), as: UTF8.self)
+        fieldsLock.withLock {
+            fields.executablePath = path
+            fields.comm = comm
+            fields.name = name
+        }
     }
 }
 
@@ -164,7 +249,28 @@ public final class DarwinSystem: @unchecked Sendable {
 
     /// The process table: live processes and zombies by pid. Pid 1 is the
     /// pseudo-init (`processes.md` §2.1): it has no image and reaps orphans.
-    var processes: [Int32: DarwinProcess] = [:]
+    ///
+    /// Written with L0 held, each read and write under `processTableLock`
+    /// (a leaf), so `proc_info`, `csops` and the `kern.proc` sysctls read it
+    /// without L0 (`bsd-locking.md` §13). Writes copy the dictionary (spawn
+    /// and exit only).
+    var processes: [Int32: DarwinProcess] {
+        get { processTableLock.withLock { processTable } }
+        set {
+            // A removed record is released after the leaf lock (its image's deinit may take locks).
+            let old = processTableLock.withLock { () -> [Int32: DarwinProcess] in
+                let old = processTable
+                processTable = newValue
+                return old
+            }
+            withExtendedLifetime(old) {}
+        }
+    }
+    private let processTableLock = DescriptorTableLock(name: "process table")
+    nonisolated(unsafe) private var processTable: [Int32: DarwinProcess] = [:]
+
+    /// A process record by pid, without L0 (any thread).
+    func processRecord(_ pid: Int32) -> DarwinProcess? { processTableLock.withLock { processTable[pid] } }
     /// POSIX shared memory names (shm_open), system-wide.
     var posixShmSegments: [String: PosixShmSegment] = [:]
     /// POSIX named semaphores (`PosixSem.swift`).
@@ -194,7 +300,7 @@ public final class DarwinSystem: @unchecked Sendable {
     var nextUniqueID: UInt64 = 1
     /// This boot's salt and session UUID (`executable_boothash=`,
     /// `darwin-process-start.md` §1.4 row 10).
-    public var bootSalt: UInt32 = UInt32.random(in: 0...UInt32.max)
+    public var bootSalt = UInt32.random(in: 0...UInt32.max)
     public var bootSessionUUID: String = UUID().uuidString
     /// The pseudo-init's pid.
     public static let initPID: Int32 = 1
@@ -239,6 +345,12 @@ public final class DarwinSystem: @unchecked Sendable {
     /// Contract-pinned (§3.2): called (lock held) when a process exits for
     /// good, with its wait status (`processes.md` §2.3).
     public var processExited: ((_ pid: Int32, _ status: Int32) -> Void)?
+
+    /// The environment a spawned or executed image gets, from its guest
+    /// executable path and the environment the caller passed (the device's
+    /// camera layer goes into apps this way; camera.md "Ycode
+    /// implementation"). Called with the kernel lock held; nil: unchanged.
+    public var imageEnvironment: (@Sendable (_ executable: String, _ envp: [String]) -> [String])?
 
     // MARK: Lookups
 
@@ -362,7 +474,10 @@ public final class DarwinSystem: @unchecked Sendable {
                 kernel.withPorts { (kernel.machIPC as? MachIPC)?.terminateTask() }
                 throw error
             }
-            if request.startSuspended { record.state = .stopped }
+            if request.startSuspended {
+                record.state = .stopped
+                kernel.startedSuspended()
+            }
             return kernel
         }
     }
@@ -404,7 +519,7 @@ public final class DarwinSystem: @unchecked Sendable {
             k.tearDownKEvents()
             k.withPorts { (k.machIPC as? MachIPC)?.terminateTask() }
             k.fileSystem.closeAll()
-            fileLocks.release(owner: .process(p.pid))
+            lock.wakeFileLockWaiters(fileLocks.release(owner: .process(p.pid)))
             k.log("note: process \(p.pid) exited, wait status \(hx(UInt32(bitPattern: waitStatus)))")
         }
         p.zombieExecutableUUID = p.kernel?.executableUUID
@@ -457,5 +572,14 @@ public final class DarwinSystem: @unchecked Sendable {
             guard let kn = w.knote, let k = w.kernel, !k.isTerminating else { continue }
             k.processEventFired(kn, event: event, data: data)
         }
+    }
+}
+
+extension DarwinProcess.Fields {
+    var isZombie: Bool { state == .zombie }
+    /// As `DarwinProcess.executableUUID`.
+    var executableUUID: [UInt8] {
+        let u = kernel?.executableUUID ?? zombieExecutableUUID ?? []
+        return u.count == 16 ? u : [UInt8](repeating: 0, count: 16)
     }
 }

@@ -154,7 +154,7 @@ public enum Xcodebuild {
         if inv.actions.contains(.installsrc) && inv.scheme != nil {
             throw XcodebuildFailure("Cannot use the installsrc action with -scheme.", exitCode: ExitCode.usage)
         }
-        if inv.destinations.count > 0 && inv.scheme == nil && !inv.has("-list") && inv.value("-xctestrun") == nil {
+        if !inv.destinations.isEmpty && inv.scheme == nil && !inv.has("-list") && inv.value("-xctestrun") == nil {
             console.warning("Ignoring provided run destination because no scheme was passed.")
         }
 

@@ -16,12 +16,21 @@
  *      spawned child (fork is not implemented by Ycode's kernel: posix_spawn
  *      is the process-creation path; a fork child is checked when fork
  *      works);
+ *   6a. madvise: for advice -1, 0...12 and 99, on a mapped range, an unmapped
+ *      range and a zero-length range, the library's answer (result, errno)
+ *      equals BSD 75's; MADV_ZERO (11) zeroes the range both ways;
+ *   6b. sysctl: name-to-OID ({0, 3}) and kern.boottime answers of the library
+ *      (twice: the second from its copy) equal BSD 202's, with a size query,
+ *      a short buffer (ENOMEM), no oldlenp (EINVAL) and an unknown name
+ *      (ENOENT); issetugid equals BSD 327;
  *   7. per-call cost of every path (ns).
  * Prints "fasttraps ok flags=0xNN ..." then one "bench" line. */
 #include <mach/mach_time.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>
+#include <sys/mman.h>
+#include <sys/sysctl.h>
 #include <sys/time.h>
 
 #include "../stage4b/probe_util.h"
@@ -54,6 +63,104 @@ static int trap_gettimeofday(struct timeval *tv)
     register long x16 __asm__("x16") = 116;
     __asm__ volatile("svc #0x80" : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x16) : : "memory", "cc");
     return (int)x0;
+}
+
+static int trap_madvise(void *addr, size_t len, int advice, int *err)
+{
+    register uint64_t x0 __asm__("x0") = (uint64_t)addr;
+    register uint64_t x1 __asm__("x1") = len;
+    register uint64_t x2 __asm__("x2") = (uint64_t)(long)advice;
+    register long x16 __asm__("x16") = 75;
+    uint64_t failed;
+    __asm__ volatile("svc #0x80\n\tcset %[f], cs" : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x16), [f] "=r"(failed) : : "memory", "cc");
+    *err = failed ? (int)x0 : 0;
+    return failed ? -1 : (int)x0;
+}
+
+static void check_madvise(void)
+{
+    static const int advice[] = {-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 99};
+    char *mapped = mmap(NULL, 65536, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (mapped == MAP_FAILED)
+        probe_fail("mmap: %s", strerror(errno));
+    void *ranges[3] = {mapped, (void *)0x7f0000000000ull, mapped};
+    size_t lengths[3] = {65536, 65536, 0};
+    for (unsigned i = 0; i < sizeof advice / sizeof *advice; i++) {
+        for (int r = 0; r < 3; r++) {
+            if (r == 1 && advice[i] == 11)
+                continue; /* MADV_ZERO of an unmapped range: kernel only */
+            memset(mapped, 0x5a, 65536);
+            errno = 0;
+            int lib = madvise(ranges[r], lengths[r], advice[i]);
+            int lib_err = lib == 0 ? 0 : errno;
+            int lib_zeroed = mapped[100] == 0;
+            memset(mapped, 0x5a, 65536);
+            int err;
+            int trapped = trap_madvise(ranges[r], lengths[r], advice[i], &err);
+            int trap_zeroed = mapped[100] == 0;
+            if (lib != trapped || lib_err != err || lib_zeroed != trap_zeroed)
+                probe_fail("madvise advice %d range %d: library %d errno %d zeroed %d, BSD 75 %d errno %d zeroed %d",
+                           advice[i], r, lib, lib_err, lib_zeroed, trapped, err, trap_zeroed);
+        }
+    }
+    munmap(mapped, 65536);
+}
+
+static int trap_sysctl(int *name, unsigned namelen, void *old, size_t *oldlenp, void *new, size_t newlen, int *err)
+{
+    register uint64_t x0 __asm__("x0") = (uint64_t)name;
+    register uint64_t x1 __asm__("x1") = namelen;
+    register uint64_t x2 __asm__("x2") = (uint64_t)old;
+    register uint64_t x3 __asm__("x3") = (uint64_t)oldlenp;
+    register uint64_t x4 __asm__("x4") = (uint64_t)new;
+    register uint64_t x5 __asm__("x5") = newlen;
+    register long x16 __asm__("x16") = 202;
+    uint64_t failed;
+    __asm__ volatile("svc #0x80\n\tcset %[f], cs"
+                     : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3), "+r"(x4), "+r"(x5), "+r"(x16), [f] "=r"(failed) : : "memory", "cc");
+    *err = failed ? (int)x0 : 0;
+    return failed ? -1 : (int)x0;
+}
+
+/* One sysctl both ways: result, errno, *oldlenp and the bytes must agree. */
+static void sysctl_both(const char *what, int *mib, unsigned n, int with_old, size_t len, int with_lenp, const char *newname)
+{
+    unsigned char a[256], b[256];
+    size_t la = len, lb = len;
+    memset(a, 0xEE, sizeof a);
+    memset(b, 0xEE, sizeof b);
+    size_t nl = newname ? strlen(newname) : 0;
+    errno = 0;
+    int ra = sysctl(mib, n, with_old ? a : NULL, with_lenp ? &la : NULL, (void *)newname, nl);
+    int ea = ra == 0 ? 0 : errno;
+    int eb;
+    int rb = trap_sysctl(mib, n, with_old ? b : NULL, with_lenp ? &lb : NULL, (void *)newname, nl, &eb);
+    if (ra != rb || ea != eb || (with_lenp && la != lb) || memcmp(a, b, sizeof a) != 0)
+        probe_fail("sysctl %s: library %d errno %d len %zu, BSD 202 %d errno %d len %zu", what, ra, ea, la, rb, eb, lb);
+}
+
+static void check_sysctl(void)
+{
+    static const char *names[] = {"kern.boottime", "hw.ncpu", "kern.ostype", "hw.optional.arm.FEAT_LSE", "no.such.name"};
+    int oid[2] = {0, 3}, boot[2] = {1, 21};
+    for (int round = 0; round < 2; round++) {
+        for (unsigned i = 0; i < sizeof names / sizeof *names; i++) {
+            sysctl_both(names[i], oid, 2, 1, 48, 1, names[i]);
+            sysctl_both(names[i], oid, 2, 0, 48, 1, names[i]);   /* size query */
+            sysctl_both(names[i], oid, 2, 1, 4, 1, names[i]);    /* short buffer */
+            sysctl_both(names[i], oid, 2, 1, 48, 0, names[i]);   /* no oldlenp */
+        }
+        sysctl_both("kern.boottime value", boot, 2, 1, 64, 1, NULL);
+        sysctl_both("kern.boottime size", boot, 2, 0, 64, 1, NULL);
+        sysctl_both("kern.boottime short", boot, 2, 1, 8, 1, NULL);
+        sysctl_both("kern.boottime no lenp", boot, 2, 1, 64, 0, NULL);
+    }
+    struct timeval tv;
+    size_t l = sizeof tv;
+    if (sysctlbyname("kern.boottime", &tv, &l, NULL, 0) != 0 || l != sizeof tv || tv.tv_sec < 1000000000)
+        probe_fail("sysctlbyname kern.boottime: len %zu sec %ld", l, (long)tv.tv_sec);
+    if ((long)issetugid() != (long)trap_bsd0(327))
+        probe_fail("issetugid %d against BSD 327 %llu", issetugid(), (unsigned long long)trap_bsd0(327));
 }
 
 static int64_t tv_us(const struct timeval *tv) { return (int64_t)tv->tv_sec * 1000000 + tv->tv_usec; }
@@ -212,9 +319,13 @@ int main(int argc, char **argv)
         forked = "ok";
     }
 
+    /* 6a. madvise answered in the library (fast-traps.md section 5a). */
+    check_madvise();
+    check_sysctl();
+
     /* 7. Cost per call. */
     enum { N = 20000 };
-    double r[10];
+    double r[11];
     uint64_t t0;
     volatile uint64_t sink = 0;
     struct timeval tv;
@@ -226,12 +337,19 @@ int main(int argc, char **argv)
     t0 = mach_absolute_time(); for (int i = 0; i < N; i++) sink += geteuid(); r[5] = ns_per_call(t0, mach_absolute_time(), N, &tb);
     t0 = mach_absolute_time(); for (int i = 0; i < N; i++) sink += trap_bsd0(25); r[6] = ns_per_call(t0, mach_absolute_time(), N, &tb);
     t0 = mach_absolute_time(); for (int i = 0; i < N; i++) sink += (uint64_t)getppid(); r[7] = ns_per_call(t0, mach_absolute_time(), N, &tb);
+    static char page[16384];
+    int e;
+    t0 = mach_absolute_time(); for (int i = 0; i < N; i++) sink += (uint64_t)madvise(page, sizeof page, 7); r[8] = ns_per_call(t0, mach_absolute_time(), N, &tb);
+    t0 = mach_absolute_time(); for (int i = 0; i < N; i++) sink += (uint64_t)trap_madvise(page, sizeof page, 7, &e); r[9] = ns_per_call(t0, mach_absolute_time(), N, &tb);
+    struct timeval bt;
+    size_t btl = sizeof bt;
+    t0 = mach_absolute_time(); for (int i = 0; i < N; i++) { btl = sizeof bt; sink += (uint64_t)sysctlbyname("kern.boottime", &bt, &btl, NULL, 0); } r[10] = ns_per_call(t0, mach_absolute_time(), N, &tb);
     (void)sink;
 
     printf("fasttraps ok flags=0x%02x threads=%d cross=ok sleep_ms=%llu tod_worst_us=%lld fork=%s\n", flags, THREADS,
            (unsigned long long)ms, (long long)worst, forked);
     printf("bench ns/call: mach_absolute_time %.0f (trap -3 %.0f), mach_continuous_time %.0f, gettimeofday %.0f "
-           "(BSD 116 %.0f), geteuid %.0f (BSD 25 %.0f), getppid (trap) %.0f\n",
-           r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]);
+           "(BSD 116 %.0f), geteuid %.0f (BSD 25 %.0f), getppid (trap) %.0f, madvise %.0f (BSD 75 %.0f), sysctlbyname kern.boottime %.0f\n",
+           r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10]);
     return 0;
 }

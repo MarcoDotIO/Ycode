@@ -402,8 +402,9 @@ extension DarwinKernel {
     private func makeRequest(_ request: SpawnRequest, guestPath: String, hostPath: String) -> ProcessImageRequest {
         var apple: [String] = []
         if request.attributes.flags & SpawnFlag.nanoAllocator != 0 { apple.append("MallocNanoZone=1") }
+        let envp = system.imageEnvironment?(guestPath, request.envp) ?? request.envp
         var image = ProcessImageRequest(executablePath: guestPath, hostExecutablePath: hostPath, argv: request.argv,
-                                        envp: request.envp, apple: apple,
+                                        envp: envp, apple: apple,
                                         startSuspended: request.attributes.flags & SpawnFlag.startSuspended != 0)
         image.apple += system.kernelAppleStrings(for: image)
         return image
@@ -566,7 +567,10 @@ extension DarwinKernel {
             trace("note: sched: pid \(childPID) type \(ProcessTypeCode.name(record.processType)) clamp \(record.qosClamp) "
                 + "role \(record.darwinRole) boosts \(record.importanceBoosts)\(hold ? " held" : "")")
         }
-        if request.attributes.flags & SpawnFlag.startSuspended != 0 { record.state = .stopped }
+        if request.attributes.flags & SpawnFlag.startSuspended != 0 {
+            record.state = .stopped
+            record.kernel?.startedSuspended()
+        }
         // Step 12: NOTE_FORK to the parent's watchers.
         system.postProcessEvent(me, NoteProc.fork)
         trace("note: spawned pid \(childPID) \(guestPath)")
@@ -608,7 +612,10 @@ extension DarwinKernel {
             if SchedPolicy.importanceEnabled { ipc.bindImportanceWatchPorts(ipc.pendingWatchPorts, to: me) }
             ipc.pendingWatchPorts = []
         } }
-        if request.attributes.flags & SpawnFlag.startSuspended != 0 { me.state = .stopped }
+        if request.attributes.flags & SpawnFlag.startSuspended != 0 {
+            me.state = .stopped
+            next.startedSuspended()
+        }
         // The old image ends quietly: its other threads stop, its port
         // space dies (§4.6), its descriptor table goes (the new one shares
         // the descriptions it kept).

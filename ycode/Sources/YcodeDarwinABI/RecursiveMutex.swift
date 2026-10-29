@@ -15,9 +15,12 @@ import Musl
 /// report (`TrapProfile.nameLock`). Nil unless profiling; set before the
 /// first VM is built.
 public enum DebugLockNames {
+    /// Called with a lock's address and name when a named lock is created.
     nonisolated(unsafe) public static var register: ((UnsafeMutableRawPointer, String) -> Void)?
 }
 
+/// A recursive pthread mutex: the thread that holds it may lock it again.
+/// Every `lock()` needs a matching `unlock()` on the same thread.
 public final class RecursiveMutex: @unchecked Sendable {
     private let mutex: UnsafeMutablePointer<pthread_mutex_t>
 
@@ -45,6 +48,7 @@ public final class RecursiveMutex: @unchecked Sendable {
     public func lock() { pthread_mutex_lock(mutex) }
     public func unlock() { pthread_mutex_unlock(mutex) }
 
+    /// Runs `body` while holding the mutex and returns its result.
     @inline(__always)
     public func withLock<T>(_ body: () throws -> T) rethrows -> T {
         pthread_mutex_lock(mutex)

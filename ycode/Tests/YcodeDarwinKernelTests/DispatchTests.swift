@@ -138,7 +138,48 @@ import YcodeDarwinABI
         let env = try Env()
         let (_, a) = env.svc(20)
         #expect(!a.flushTLB)
+        // A new mapping only fills invalid entries: no flush (guest-cpu.md §4.2) ...
         let (_, b) = env.svc(197, [0, 0x4000, 3, 0x1002, UInt64(bitPattern: -1), 0])
-        #expect(b.flushTLB)
+        #expect(!b.carry)
+        #expect(b.flushTLB == GuestAddressSpace.flushOnAdditions)
+        // ... removing it does.
+        let (_, c) = env.svc(73, [b.x[0], 0x4000])
+        #expect(c.x[0] == 0 && !c.carry)
+        #expect(c.flushTLB)
+        // ... and only that page's translation (vm-shim-protocol.md §5.2).
+        if TrapFrame.invalidateByVA && !GuestAddressSpace.flushOnAdditions {
+            #expect(c.tlbInvalidationRange == TLBRange(va: b.x[0], pages: 1))
+        }
+    }
+
+    @Test func tlbInvalidationRequests() {
+        var f = TrapFrame()
+        f.requestTLBInvalidation(TLBRange(va: 0x1_2345_C000, pages: 3))
+        #expect(f.flushTLB)
+        if TrapFrame.invalidateByVA {
+            #expect(f.tlbInvalidationRange == TLBRange(va: 0x1_2345_C000, pages: 3))
+            #expect(f.resumeFlags == 1 | 8 | (2 << 8) | ((0x1_2345_C000 >> 14) << 16))
+        }
+        // The same range again keeps it; another one widens to the whole TLB.
+        f.requestTLBInvalidation(TLBRange(va: 0x1_2345_C000, pages: 3))
+        #expect(f.tlbInvalidationRange == (TrapFrame.invalidateByVA ? TLBRange(va: 0x1_2345_C000, pages: 3) : nil))
+        f.requestTLBInvalidation(TLBRange(va: 0x4000, pages: 1))
+        #expect(f.flushTLB && f.tlbInvalidationRange == nil)
+        // Too many pages, an unaligned VA or no range: the whole TLB.
+        var g = TrapFrame()
+        g.requestTLBInvalidation(TLBRange(va: 0x4000, pages: 257))
+        #expect(g.flushTLB && g.tlbInvalidationRange == nil)
+        var h = TrapFrame()
+        h.requestTLBInvalidation(TLBRange(va: 0x4001, pages: 1))
+        #expect(h.flushTLB && h.tlbInvalidationRange == nil)
+        var k = TrapFrame()
+        k.resumeFlags = 2
+        k.requestTLBInvalidation(nil)
+        #expect(k.resumeFlags == 3)
+        // Setting flushTLB directly asks for the whole TLB.
+        var m = TrapFrame()
+        m.requestTLBInvalidation(TLBRange(va: 0x8000, pages: 2))
+        m.flushTLB = true
+        #expect(m.flushTLB && m.tlbInvalidationRange == nil)
     }
 }

@@ -245,7 +245,13 @@ public final class KVMPhysicalBacking {
                 sharedReadOnlyFiles: Bool = true,
                 readOnlyFileWindowGPA: UInt64 = KVMPhysicalBacking.defaultReadOnlyFileWindowGPA) throws {
         precondition(poolGPA % Self.granule == 0 && poolSize % Self.granule == 0 && fileWindowGPA % Self.granule == 0)
-        guard let host = ckvm_alloc_anonymous(Int(poolSize)) else {
+        let hostPool: UnsafeMutableRawPointer? = switch Self.poolHuge {
+        case "1": ckvm_alloc_anonymous_aligned(Int(poolSize), 2 << 20, 1)
+        case "align": ckvm_alloc_anonymous_aligned(Int(poolSize), 2 << 20, 0)
+        case "never": ckvm_alloc_anonymous_aligned(Int(poolSize), 2 << 20, -1)
+        default: ckvm_alloc_anonymous(Int(poolSize))
+        }
+        guard let host = hostPool else {
             throw KVMError("mmap anonymous pool (\(poolSize >> 20) MiB, MAP_NORESERVE)", errno: Glibc.errno)
         }
         do {
@@ -308,10 +314,192 @@ public final class KVMPhysicalBacking {
         self.fileWindowLimit = window ?? limit
     }
 
+    // MARK: Reuse (boot-profile.md §9, SP1)
+
+    /// Set when the image that used this backing ended and its VM is kept
+    /// for another image (`retireForReuse`). From then on every operation
+    /// refuses (allocations and mappings throw, releases do nothing), so a
+    /// late call through the old address space never touches memory that
+    /// now belongs to another process.
+    public private(set) var retired = false
+
+    /// True when the VM has only the memslots this backing registered at
+    /// start (no per-mapping file slots, no per-object shared slots) and no
+    /// restore overlay, so `retireForReuse` can give it to another image.
+    public var reusable: Bool {
+        !retired && !hasOverlays && nextFileGPA == fileWindowGPA + privateWindowSize
+            && sharedSlots.values.allSatisfy { $0.gpa >= Self.sharedArenaGPA }
+    }
+
+    /// A file range mapped in the private window (SP1 inheritance).
+    struct WindowKey: Equatable {
+        var device: UInt64, inode: UInt64, size: Int64, mtime: Int64
+        var offset: UInt64, total: UInt64, fileBytes: Int
+    }
+    /// The window's mappings made (or inherited and used) by this backing.
+    private var windowMaps: [(key: WindowKey, at: UInt64)] = []
+    /// Mappings an earlier image of this VM made, scrubbed back to the
+    /// file's bytes, not yet used again.
+    private var inheritedWindowMaps: [(key: WindowKey, at: UInt64)] = []
+    /// `YCODE_VM_REUSE_WINDOW` (default on with reuse, `=0` off): keep the
+    /// private window's file mappings of a reused VM for the next image.
+    public static let windowInheritance = getenv("YCODE_VM_REUSE_WINDOW").map { String(cString: $0) != "0" } ?? true
+    /// Diagnostics: window mappings served from an earlier image's.
+    public static let inheritedWindowHits = Atomic<UInt64>(0)
+
+    /// Marks the backing retired (see `retired`). Kernel lock held (as for
+    /// every other change of the backing). Returns `reusable` as it was.
+    public func retireForReuse() -> Bool {
+        let ok = reusable
+        retired = true
+        return ok
+    }
+
+    /// Returns the retired backing's memory to the host: the pool (it reads
+    /// as zeros again) and the used part of the private file window (put
+    /// back to an inaccessible reservation). No lock held; no thread uses
+    /// the VM. False when the window cannot be reserved again.
+    public func scrubForReuse() -> Bool {
+        precondition(retired)
+        _ = discardHost(poolHost, Int(poolSize))
+        if let window = privateWindowHost, privateWindowNext > 0 {
+            if Self.windowInheritance {
+                // Private file pages go back to the file's bytes (copy-on-
+                // write copies dropped) and the zero tails to zeros; the
+                // mappings stay for the next image (`init(reusing:)`).
+                guard ckvm_discard_anonymous(window, Int(privateWindowNext)) == 0 else { return false }
+            } else {
+                guard ckvm_reserve_at(window, Int(privateWindowNext)) == 0 else { return false }
+                privateWindowNext = 0
+                windowMaps.removeAll()
+                inheritedWindowMaps.removeAll()
+            }
+        }
+        return true
+    }
+
+    /// A fresh backing over the memslots of `old` (retired and scrubbed):
+    /// the same pool, windows and arenas, with empty allocators.
+    public init(reusing old: KVMPhysicalBacking) {
+        precondition(old.retired)
+        vm = old.vm
+        poolGPA = old.poolGPA
+        poolSize = old.poolSize
+        fileWindowGPA = old.fileWindowGPA
+        physicalLimit = old.physicalLimit
+        poolHost = old.poolHost
+        pool = RangeAllocator(base: old.poolGPA, size: old.poolSize)
+        stale = RangeAllocator(base: old.poolGPA, size: old.poolSize, hardwareWatch: DebugHardwareWatch.arm != nil)
+        sharedArenaRegistered = old.sharedArenaRegistered
+        privateWindowHost = old.privateWindowHost
+        privateWindowGPA = old.privateWindowGPA
+        privateWindowSize = old.privateWindowSize
+        nextFileGPA = old.fileWindowGPA + old.privateWindowSize
+        privateWindowNext = old.privateWindowNext
+        inheritedWindowMaps = old.windowMaps + old.inheritedWindowMaps
+        readOnlyFileWindowGPA = old.readOnlyFileWindowGPA
+        arena = old.arena
+        fileWindowLimit = old.fileWindowLimit
+    }
+
     /// Diagnostics: `YCODE_DEBUG_NO_FILE_ARENA=1` (no shared read-only file
     /// window), `YCODE_DEBUG_NO_STALE=1` (released pool pages are dropped at
     /// once, never zero-filled on reuse), `YCODE_DEBUG_NO_FILE_COPY=1`
     /// (small file mappings get their own memslot instead of a pool copy).
+    /// `YCODE_POOL_HUGE=1`: the pool's host mapping is 2 MiB-aligned (as its
+    /// GPA is) and asks for transparent huge pages (MADV_HUGEPAGE), so KVM
+    /// can map guest RAM with 2 MiB stage-2 blocks; `align`: aligned only.
+    /// `never`: aligned, and no transparent huge pages (MADV_NOHUGEPAGE:
+    /// 4 KiB stage-2 pages for all guest RAM; an experiment, guest-cpu.md §3).
+    /// Default: as before (guest-cpu.md §4.5).
+    static let poolHuge = getenv("YCODE_POOL_HUGE").map { String(cString: $0) } ?? "0"
+
+    /// `YCODE_POOL_KEEP_THP=1` (guest-cpu.md §4.6): pool memory goes back to
+    /// the host (`MADV_DONTNEED`) only in whole 2 MiB host pages. The host
+    /// backs the pool with transparent huge pages, and KVM maps a guest's
+    /// RAM with 2 MiB stage-2 blocks where it does; dropping part of a huge
+    /// page splits it into 4 KiB pages, and every guest page around the
+    /// dropped part is then mapped again 4 KiB at a time (one stage-2 fault
+    /// each, and TLB entries that cover 4 KiB). With the switch, the parts
+    /// of a released run outside whole huge pages stay resident as stale
+    /// pool memory (zero-filled when allocated again), as runs of up to
+    /// `discardLimit` already did; whole huge pages inside a stale run are
+    /// dropped once more than `keepStaleLimit` bytes are stale.
+    static let keepHugePages = getenv("YCODE_POOL_KEEP_THP").map { String(cString: $0) == "1" } ?? false
+    static let hostHuge: UInt64 = 2 << 20
+    static let keepStaleLimit: UInt64 = 64 << 20
+    /// Keep mode: stale bytes in a new run up to this are zero-filled; above
+    /// it the whole huge pages among them are dropped and the rest zero-filled.
+    static let keepZeroFillLimit: UInt64 = 4 << 20
+    /// Keep mode: stale bytes at which the next release drops whole huge pages.
+    private var staleDropAt = keepStaleLimit
+
+    /// The GPAs [lo, hi) of the whole host huge pages inside [gpa, gpa+size)
+    /// (lo == hi: none).
+    private func hugeInterior(_ gpa: UInt64, _ size: UInt64) -> (lo: UInt64, hi: UInt64) {
+        let h = UInt64(UInt(bitPattern: poolHost)) + (gpa - poolGPA)
+        let lo = (h + Self.hostHuge - 1) & ~(Self.hostHuge - 1)
+        let hi = (h + size) & ~(Self.hostHuge - 1)
+        guard hi > lo else { return (gpa, gpa) }
+        return (gpa + (lo - h), gpa + (hi - h))
+    }
+
+    /// Zero-fills [lo, hi) of the pool's host memory.
+    private func zeroPool(_ lo: UInt64, _ hi: UInt64) {
+        guard hi > lo else { return }
+        (poolHost + Int(lo - poolGPA)).initializeMemory(as: UInt8.self, repeating: 0, count: Int(hi - lo))
+    }
+
+    /// Keep mode: [gpa, gpa+size) is free again and holds old data.
+    private func freeStale(_ gpa: UInt64, _ size: UInt64) {
+        guard size > 0 else { return }
+        pool.free(gpa, size)
+        stale.mark(gpa, size)
+    }
+
+    /// Keep mode `release` (allocated run, guards done; kernel lock held).
+    private func releaseKeepingHugePages(_ gpa: UInt64, _ size: UInt64, deferred: Bool) {
+        let (lo, hi) = hugeInterior(gpa, size)
+        if hi > lo, size > Self.discardLimit {
+            freeStale(gpa, lo - gpa)
+            freeStale(hi, gpa + size - hi)
+            if deferred {
+                discardAfterTrap(lo, hi - lo)
+            } else {
+                pool.free(lo, hi - lo)
+                let began = VCPUPool.profiling ? monotonicNanoseconds() : 0
+                _ = discardHost(poolHost + Int(lo - poolGPA), Int(hi - lo))
+                if VCPUPool.profiling { BackingStats.discards.add(since: began, bytes: hi - lo) }
+            }
+        } else {
+            freeStale(gpa, size)
+        }
+        guard stale.bytesInUse > staleDropAt else { return }
+        // Drop the whole huge pages of the stale runs (adjacent runs merged).
+        var merged: [Range<UInt64>] = []
+        for r in stale.takeAll() {
+            if let last = merged.last, last.upperBound == r.lowerBound {
+                merged[merged.count - 1] = last.lowerBound..<r.upperBound
+            } else {
+                merged.append(r)
+            }
+        }
+        for r in merged {
+            let (a, b) = hugeInterior(r.lowerBound, r.upperBound - r.lowerBound)
+            guard b > a else { stale.mark(r.lowerBound, r.upperBound - r.lowerBound); continue }
+            if r.lowerBound < a { stale.mark(r.lowerBound, a - r.lowerBound) }
+            if b < r.upperBound { stale.mark(b, r.upperBound - b) }
+            if deferred {
+                pool.mark(a, b - a)   // allocated until dropped (as `discardAfterTrap` expects)
+                discardAfterTrap(a, b - a)
+            } else {
+                let began = VCPUPool.profiling ? monotonicNanoseconds() : 0
+                _ = discardHost(poolHost + Int(a - poolGPA), Int(b - a))
+                if VCPUPool.profiling { BackingStats.discards.add(since: began, bytes: b - a) }
+            }
+        }
+        staleDropAt = max(Self.keepStaleLimit, stale.bytesInUse * 2)
+    }
     static let debugNoArena = getenv("YCODE_DEBUG_NO_FILE_ARENA").map { String(cString: $0) == "1" } ?? false
     static let debugNoStale = getenv("YCODE_DEBUG_NO_STALE").map { String(cString: $0) == "1" } ?? false
     static let debugNoFileCopy = getenv("YCODE_DEBUG_NO_FILE_COPY").map { String(cString: $0) == "1" } ?? false
@@ -324,7 +512,7 @@ public final class KVMPhysicalBacking {
     /// contiguous guest memory from the pool (first fit). Returns its GPA.
     public func allocateAnonymous(size: UInt64) throws -> UInt64 {
         let size = Self.roundUp(max(size, 1), Self.granule)
-        guard !vm.isClosed else { throw KVMError("anonymous pool", errno: EBADF, detail: "the VM is closed") }
+        guard !vm.isClosed, !retired else { throw KVMError("anonymous pool", errno: EBADF, detail: "the VM is closed") }
         if Self.deferredDiscardEnabled { takeReadyRuns() }
         guard let start = pool.allocate(size) else {
             throw KVMError("anonymous pool", errno: ENOMEM,
@@ -334,7 +522,21 @@ public final class KVMPhysicalBacking {
             let old = stale.free(start, size)
             let oldBytes = old.reduce(0) { $0 + ($1.upperBound - $1.lowerBound) }
             let began = VCPUPool.profiling ? monotonicNanoseconds() : 0
-            if oldBytes > Self.zeroFillLimit {
+            if Self.keepHugePages {
+                // Never drop part of a host huge page (guest-cpu.md §4.6).
+                for r in old {
+                    let (a, b) = oldBytes > Self.keepZeroFillLimit
+                        ? hugeInterior(r.lowerBound, r.upperBound - r.lowerBound) : (r.upperBound, r.upperBound)
+                    if b > a {
+                        zeroPool(r.lowerBound, a)
+                        _ = discardHost(poolHost + Int(a - poolGPA), Int(b - a))
+                        zeroPool(b, r.upperBound)
+                    } else {
+                        zeroPool(r.lowerBound, r.upperBound)
+                    }
+                }
+                if VCPUPool.profiling { BackingStats.zeroFills.add(since: began, bytes: oldBytes) }
+            } else if oldBytes > Self.zeroFillLimit {
                 // Cheaper to drop the whole run at once.
                 _ = discardHost(poolHost + Int(start - poolGPA), Int(size))
                 if VCPUPool.profiling {
@@ -358,11 +560,16 @@ public final class KVMPhysicalBacking {
         let size = Self.roundUp(size, Self.granule)
         guard size > 0, gpa >= poolGPA, gpa + size <= poolGPA + poolSize, gpa % Self.granule == 0 else { return }
         // After the VM's teardown the pool's host memory is gone (and its
-        // addresses may belong to another mapping): never touch it.
-        guard !vm.isClosed else { return }
+        // addresses may belong to another mapping), or another image uses
+        // it (a reused VM): never touch it.
+        guard !vm.isClosed, !retired else { return }
         // Ignore a range that is not entirely allocated (double free): keep the allocator consistent.
         guard pool.isAllocated(gpa, size) else { return }
         let deferred = Self.deferredDiscardEnabled && PostTrapWork.isCurrentVM(vm)
+        if Self.keepHugePages {
+            releaseKeepingHugePages(gpa, size, deferred: deferred)
+            return
+        }
         if deferred, size > Self.discardLimit || Self.debugNoStale {
             // Stays allocated until it is dropped after the trap.
             discardAfterTrap(gpa, size)
@@ -404,6 +611,7 @@ public final class KVMPhysicalBacking {
     /// starting at `offset`, into a new memslot. Bytes past the end of the
     /// file read as zeros. Returns the slot's GPA.
     public func mapFile(hostFD: Int32, fileSize: UInt64, offset: UInt64, size: UInt64, name: String) throws -> UInt64 {
+        guard !retired else { throw KVMError("file mapping", errno: EBADF, detail: "the image ended") }
         let hostPage = UInt64(ckvm_host_page_size())
         guard offset % hostPage == 0 else {
             throw KVMError("file memslot", errno: EINVAL, detail: "offset 0x\(String(offset, radix: 16)) of \(name) is not host-page aligned")
@@ -442,6 +650,24 @@ public final class KVMPhysicalBacking {
             copiedFileMappingCount += 1
             return gpa
         }
+        // A reused VM (SP1): the same file range mapped by the image before,
+        // returned to the file's bytes when the VM was scrubbed: no host call.
+        var key: WindowKey?
+        if privateWindowHost != nil, Self.windowInheritance {
+            var st = stat()
+            if fstat(hostFD, &st) == 0 {
+                key = WindowKey(device: UInt64(st.st_dev), inode: UInt64(st.st_ino), size: Int64(st.st_size),
+                                mtime: Int64(st.st_mtim.tv_sec) &* 1_000_000_000 &+ Int64(st.st_mtim.tv_nsec),
+                                offset: offset, total: total, fileBytes: fileBytes)
+                if let i = inheritedWindowMaps.firstIndex(where: { $0.key == key! }) {
+                    let entry = inheritedWindowMaps.remove(at: i)
+                    windowMaps.append(entry)
+                    fileMappingCount += 1
+                    Self.inheritedWindowHits.wrappingAdd(1, ordering: .relaxed)
+                    return privateWindowGPA + entry.at
+                }
+            }
+        }
         if let windowHost = privateWindowHost, total <= privateWindowSize - privateWindowNext {
             // The private file window: a host mapping, no memslot change.
             let at = windowHost + Int(privateWindowNext)
@@ -455,6 +681,7 @@ public final class KVMPhysicalBacking {
                                + "bytes \((SharedFileArena.shared?.bytesUsed ?? 0) >> 20) MiB)", errno: saved)
             }
             let gpa = privateWindowGPA + privateWindowNext
+            if let key { windowMaps.append((key, privateWindowNext)) }
             privateWindowNext += total
             fileMappingCount += 1
             if VCPUPool.profiling {
@@ -484,7 +711,7 @@ public final class KVMPhysicalBacking {
     /// file window, or nil when the window cannot serve them (see
     /// `SharedFileArena.view`).
     public func mapFileReadOnly(hostFD: Int32, offset: UInt64, size: UInt64) -> UInt64? {
-        guard let arena, let window = readOnlyFileWindowGPA,
+        guard !retired, let arena, let window = readOnlyFileWindowGPA,
               let at = arena.view(hostFD: hostFD, offset: offset, size: Self.roundUp(max(size, 1), Self.granule)) else {
             return nil
         }
@@ -497,6 +724,7 @@ public final class KVMPhysicalBacking {
     /// Registers `object` as a memslot (once per VM) in the file window and
     /// returns its GPA.
     public func mapShared(_ object: SharedMemoryObject) throws -> UInt64 {
+        guard !retired else { throw KVMError("shared mapping", errno: EBADF, detail: "the image ended") }
         if let slot = sharedSlots[ObjectIdentifier(object)] { return slot.gpa }
         if sharedArenaRegistered, let offset = object.arenaOffset {
             // In the arena this VM registered at start: no memslot change.
@@ -521,6 +749,7 @@ public final class KVMPhysicalBacking {
 
     /// Reads `count` bytes at `gpa`. The range may span consecutive memslots.
     public func readPhysical(gpa: UInt64, count: Int) throws -> [UInt8] {
+        guard !retired else { throw KVMError("guest physical read", errno: EFAULT, detail: "the image ended") }
         if let slot = vm.memorySlot(containing: gpa), slot.contains(gpa: gpa, count: count) {
             // The common case: one slot.
             return [UInt8](UnsafeRawBufferPointer(start: UnsafeRawPointer(bitPattern: slot.hostAddress)! + Int(gpa - slot.gpa),
@@ -549,6 +778,7 @@ public final class KVMPhysicalBacking {
 
     /// `writePhysical` from a raw buffer.
     public func writePhysical(gpa: UInt64, from bytes: UnsafeRawBufferPointer) throws {
+        guard !retired else { throw KVMError("guest physical write", errno: EFAULT, detail: "the image ended") }
         var address = gpa, offset = 0
         while offset < bytes.count {
             guard let slot = vm.memorySlot(containing: address) else {

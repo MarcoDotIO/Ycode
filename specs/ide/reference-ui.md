@@ -145,7 +145,8 @@ menu is named **Integrate**.
   The current line also has a subtle full-width background.
 - **Minimap:** on by default (in this user's settings), about 110 points wide
   at the right edge of the editor. (Pass 5: the width scales with the
-  editor, about 13–14 % of its width; `reference-ui-5.md` §6.5.)
+  editor, about 13–14 % of its width; `reference-ui-5.md` §6.5. Pass 6b:
+  the factory default is on; `reference-ui-6.md` §4.5.)
 - **Code-folding ribbon:** not visible at rest.
 - **Position indicator:** "Line: N Col: N" appears at the right end of the
   bottom bar (the bar shared with the collapsed debug area).

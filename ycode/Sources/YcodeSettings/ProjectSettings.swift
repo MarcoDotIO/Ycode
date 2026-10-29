@@ -7,28 +7,38 @@ import YcodeProject
 ///
 /// See `specs/build-settings.md` §3.
 public struct ProjectSettingsBuilder {
+    /// The parsed project.
     public var proj: PBXProj
+    /// The `.xcodeproj` bundle; relative paths resolve against its parent.
     public var xcodeprojURL: URL
+    /// The `.xcodeproj` name without the extension (`PROJECT_NAME`).
     public var projectName: String
     /// The lowest level (platform, SDK, and spec defaults). Empty for now.
     /// Callers can supply one.
-    public var defaults: SettingsLevel = SettingsLevel(name: "defaults")
+    public var defaults = SettingsLevel(name: "defaults")
     /// Command-line style overrides (`NAME=value`), the highest level.
     public var overrides: [String: String] = [:]
-    public var developerDirectory: String? = nil
+    /// Replaces a `<DEVELOPER_DIR>` prefix in xcconfig include paths; when
+    /// nil, such an include is skipped with a diagnostic.
+    public var developerDirectory: String?
     /// Resolves an `SDKROOT` value to an installed SDK.
     public var sdkLookup: (String) -> SDKCatalog.SDK? = { _ in nil }
 
+    /// Takes `projectName` from the last path component of `xcodeprojURL`.
     public init(proj: PBXProj, xcodeprojURL: URL) {
         self.proj = proj
         self.xcodeprojURL = xcodeprojURL
         projectName = xcodeprojURL.deletingPathExtension().lastPathComponent
     }
 
+    /// The result of `resolve(target:configuration:)`.
     public struct Resolved {
+        /// The evaluator over the full level stack.
         public var settings: BuildSettings
         /// The levels above `builtins` (the ones the project defines).
         public var definedLevelNames: [String]
+        /// Missing configurations and unreadable or invalid xcconfig files,
+        /// found while building the stack.
         public var diagnostics: [String]
     }
 

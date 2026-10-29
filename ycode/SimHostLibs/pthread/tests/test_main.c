@@ -664,12 +664,22 @@ static void test_identity_before_init(void)
     CHECK(T(pthread_is_threaded_np)() == 0);
 }
 
+static int unlocked_later;
+static void *unlock_later(void *m)
+{
+    my_block = make_block(); /* this host thread is another guest thread */
+    usleep(20000);
+    __atomic_store_n(&unlocked_later, 1, __ATOMIC_RELEASE);
+    if (T(pthread_mutex_unlock)((ymutex_t *)m) != 0)
+        __atomic_store_n(&unlocked_later, 2, __ATOMIC_RELEASE);
+    return NULL;
+}
+
 static void test_mutex_static(void)
 {
     ymutex_t m = YMUTEX_INIT;
     CHECK(T(pthread_mutex_unlock)(&m) == 1 /* EPERM */);
     CHECK(T(pthread_mutex_lock)(&m) == 0);
-    CHECK(T(pthread_mutex_lock)(&m) == 11 /* EDEADLK */);
     CHECK(T(pthread_mutex_trylock)(&m) == 16 /* EBUSY */);
     CHECK(T(pthread_mutex_destroy)(&m) == 16);
     CHECK(T(pthread_mutex_unlock)(&m) == 0);
@@ -694,6 +704,30 @@ static void test_mutex_static(void)
     CHECK(T(pthread_mutex_destroy)(&r) == 16);
     CHECK(T(pthread_mutex_unlock)(&r) == 0);
     CHECK(T(pthread_mutex_unlock)(&r) == 1);
+
+    /* A normal mutex held by this thread and unlocked by another is
+     * released (Darwin); error-checking and recursive ones are not. */
+    ymutex_t h = YMUTEX_INIT, he = YMUTEX_ERRCHK_INIT;
+    CHECK(T(pthread_mutex_lock)(&h) == 0);
+    CHECK(T(pthread_mutex_lock)(&he) == 0);
+    unsigned char *mine = my_block;
+    my_block = make_block(); /* another thread */
+    CHECK(T(pthread_mutex_unlock)(&h) == 0);
+    CHECK(T(pthread_mutex_unlock)(&h) == 1); /* not held: EPERM */
+    CHECK(T(pthread_mutex_unlock)(&he) == 1);
+    my_block = mine;
+    CHECK(T(pthread_mutex_lock)(&h) == 0); /* free again: no EDEADLK */
+    CHECK(T(pthread_mutex_unlock)(&h) == 0);
+    CHECK(T(pthread_mutex_unlock)(&he) == 0);
+
+    /* Relocking a normal mutex waits until another thread unlocks it. */
+    CHECK(T(pthread_mutex_lock)(&h) == 0);
+    pthread_t other;
+    CHECK(pthread_create(&other, NULL, unlock_later, &h) == 0);
+    CHECK(T(pthread_mutex_lock)(&h) == 0);
+    CHECK(__atomic_load_n(&unlocked_later, __ATOMIC_ACQUIRE) == 1);
+    pthread_join(other, NULL);
+    CHECK(T(pthread_mutex_unlock)(&h) == 0);
 
     ymutex_t bad = { 0x12345678, { 0 } };
     CHECK(T(pthread_mutex_lock)(&bad) == 22);
@@ -737,7 +771,7 @@ static void test_mutex_attr(void)
     CHECK(T(pthread_mutexattr_settype)(&a, 0) == 22);
     CHECK(T(pthread_mutex_init)(&m, &a) == 22);
     CHECK(T(pthread_mutex_init)(&m, NULL) == 0);
-    CHECK(T(pthread_mutex_lock)(&m) == 0 && T(pthread_mutex_lock)(&m) == 11);
+    CHECK(T(pthread_mutex_lock)(&m) == 0 && T(pthread_mutex_trylock)(&m) == 16);
     CHECK(T(pthread_mutex_unlock)(&m) == 0);
 }
 

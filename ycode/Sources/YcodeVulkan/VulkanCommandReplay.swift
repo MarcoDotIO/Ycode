@@ -67,6 +67,10 @@ func forEachBit<T: FixedWidthInteger>(_ mask: T, offset: Int = 0, _ body: (Int) 
 }
 
 extension VulkanMetalBackend {
+    /// Records and queues a Metal command buffer (`MetalBackend.submit`).
+    /// Waits outside the backend lock for its pipelines to finish building,
+    /// then replays it under the lock. Without a GPU it reports completion
+    /// at once; after a device loss it completes with an error status.
     public func submit(_ commandBuffer: MetalCommandBuffer, scheduled: @escaping @Sendable () -> Void,
                        completed: @escaping @Sendable (_ status: Int) -> Void) {
         guard isAvailable else {
@@ -106,6 +110,7 @@ extension VulkanMetalBackend {
             try flushSetup()
             rec = try newRecording()
             registerCheckpoints(rec!, commandBuffer)
+            beginProbe(commandBuffer)
             profiled(.start, since: t0)
             if let ft = frameTrace, trace != nil {
                 trace!.slot = ft.allocate()
@@ -118,6 +123,8 @@ extension VulkanMetalBackend {
                                           scheduled: scheduled, completed: completed)
             entry.label = "process \(commandBuffer.process) command buffer \(commandBuffer.commandBufferRef)"
             entry.commandBuffer = commandBuffer
+            entry.dispatchTables = rec!.dispatchTables
+            endProbe(&entry)
             profiled(.label, since: t1)
             let r = rec!
             rec = nil
@@ -140,6 +147,7 @@ extension VulkanMetalBackend {
             try sinkSubmit(sink, r, entry: entry)
             profiled(.submit, since: t2)
         } catch {
+            abandonProbe()
             if let t = trace, let ft = frameTrace { ft.release(t.slot) }
             log("command buffer \(commandBuffer.commandBufferRef) of process \(commandBuffer.process): \(error)")
             if let r = rec {
@@ -342,9 +350,12 @@ extension VulkanMetalBackend {
         if copiedIn { segment("in") }
         profiled(.surfacesIn, since: tIn)
 
+        debugReplayProcess = mcb.process
         for (i, pass) in mcb.passes.enumerated() {
             if i > 0 { let tb = profileClock(); barrier(rec.cb); profiled(.barriers, since: tb) }
             checkpoint(rec, pass: i, command: Self.checkpointPassBegin)
+            if probe != nil { probeBefore(pass, i, rec.cb) }
+            defer { if probe != nil { probeAfter(pass, i, rec.cb) } }
             switch pass {
             case .render(let p):
                 try replayRender(p, rec, passIndex: i)
@@ -448,12 +459,32 @@ extension VulkanMetalBackend {
         return "R\(size)" + (samples > 1 ? "s\(samples)" : "") + "/\(draws)/\(load)\(resolve)"
     }
 
+    /// Diagnostics (stage8-contract.md §15.9, visionos.md §10.20): a kernel
+    /// that writes a texture Metal did not mark `shaderWrite`, or one that has
+    /// no storage view (its format cannot be a storage image: such writes go
+    /// to the dummy image). The first 16 such pairs are logged.
+    func noteWritesWithoutUsage(_ p: VKComputePipeline, _ b: StageBindings) {
+        for t in p.shader?.reflection.textures ?? [] where (t.access ?? "").contains("write") && t.index < b.textures.count {
+            guard let h = b.textures[t.index], let tex = textures[h] else { continue }
+            let noUsage = tex.metalUsage != 0 && tex.metalUsage & MetalTextureUsage.shaderWrite == 0
+            guard noUsage || tex.storageView == nil else { continue }
+            let key = "\(shaderName(p.shader)) t\(h.raw)"
+            guard writesWithoutUsageSeen.insert(key).inserted else { continue }
+            writesWithoutUsageLogged += 1
+            let (w, hh, _) = tex.levelSize(0)
+            log("kernel \(shaderName(p.shader)) writes t\(h.raw) (\(w)x\(hh) fmt \(tex.metalFormat), Metal usage 0x\(String(tex.metalUsage, radix: 16))"
+                + (noUsage ? ", no shaderWrite)" : ")")
+                + (tex.storageView == nil ? "; no storage view (Vulkan format \(tex.format.format.rawValue)): the write goes to the dummy image" : ""))
+        }
+    }
+
     // MARK: Argument tables
 
     /// Writes a stage's argument table; returns its device address.
     func writeTable(_ b: StageBindings, _ statics: StageStatics, _ rec: Recording) throws -> UInt64 {
         let slice = try allocTransient(rec, YcodeMetalABI.tableSize, align: 64)
         let p = slice.pointer
+        rec.lastTable = p
         p.initializeMemory(as: UInt8.self, repeating: 0, count: YcodeMetalABI.tableSize)
         func put(_ entry: Int, _ v: UInt64) {
             if entry >= 0 && entry < YcodeMetalABI.tableEntries { p.storeBytes(of: v, toByteOffset: 8 * entry, as: UInt64.self) }
@@ -615,6 +646,10 @@ extension VulkanMetalBackend {
         info.width = UInt32(width)
         info.height = UInt32(height)
         info.layerCount = 1
+        if Self.debugPassDrawsSize != nil { debugPassDraws(pass, width: width, height: height, process: debugReplayProcess) }
+        // Visibility results (record 132): occlusion queries, reset here,
+        // outside rendering (VulkanVisibility.swift).
+        var vis = visibilityQueries(pass, rec)
         yvk_cmd_begin_rendering(cb, &info)
         bindHeap(rec, graphics: true)
 
@@ -650,14 +685,14 @@ extension VulkanMetalBackend {
             s == .vertex ? withUnsafeMutablePointer(to: &vs) { $0 } : withUnsafeMutablePointer(to: &fs) { $0 }
         }
 
-        /// A draw that samples a color attachment of this pass reads a copy
-        /// of it made just before the draw (Metal's texture barrier: the
-        /// draw sees the earlier draws' results). Sampling the attachment
-        /// itself while rendering to it is a feedback loop Vulkan leaves
-        /// undefined; on the Thor it hung the GPU (§15.6). Ends the
-        /// rendering, copies, begins it again with every attachment loaded,
-        /// and points the sampled slots at the copy. True when it did.
         var drawScissor: MetalScissorRect?
+        // A draw that samples a color attachment of this pass reads a copy
+        // of it made just before the draw (Metal's texture barrier: the
+        // draw sees the earlier draws' results). Sampling the attachment
+        // itself while rendering to it is a feedback loop Vulkan leaves
+        // undefined; on the Thor it hung the GPU (§15.6). Ends the
+        // rendering, copies, begins it again with every attachment loaded,
+        // and points the sampled slots at the copy. True when it did.
         func snapshotFeedback(_ p: VKRenderPipeline) throws -> Bool {
             var hits: [(MetalHandle, VKTexture)] = []
             for (stage, shader) in [(fs, p.fragment), (vs, p.vertex)] {
@@ -674,6 +709,7 @@ extension VulkanMetalBackend {
                 if !textureOverride.isEmpty { textureOverride.removeAll(); return true }
                 return false
             }
+            if vis != nil { endVisibilityQuery(&vis!, cb) }
             fn.vkCmdEndRendering!(cb)
             barrier(cb)
             var done: Set<ObjectIdentifier> = []
@@ -715,6 +751,14 @@ extension VulkanMetalBackend {
             return true
         }
 
+        // The most bytes any vertex-stage buffer binding offers from its
+        // offset on (for the base-instance check).
+        func vertexRoom() -> Int {
+            var room = 0
+            for (h, off) in vs.buffers { if let h, let b = buffers[h] { room = max(room, b.length - off) } }
+            return room
+        }
+
         func prepareDraw(_ primitive: UInt32, indexed: Bool) throws -> Bool {
             let tp = profileClock()
             defer { profiled(.drawPrepare, since: tp) }
@@ -723,6 +767,7 @@ extension VulkanMetalBackend {
                 noteSkip()
                 return false
             }
+            if !options.skipShaders.isEmpty, skippedByName(p) { noteSkip(); return false }
             if vkp != bound {
                 fn.vkCmdBindPipeline!(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, vkp)
                 bound = vkp
@@ -753,6 +798,7 @@ extension VulkanMetalBackend {
             if t != topology { fn.vkCmdSetPrimitiveTopology!(cb, t); topology = t }
             let wantRestart = indexed && (primitive == MetalPrimitiveType.lineStrip || primitive == MetalPrimitiveType.triangleStrip)
             if wantRestart != restart { fn.vkCmdSetPrimitiveRestartEnable!(cb, wantRestart ? 1 : 0); restart = wantRestart }
+            if vis != nil { beginVisibilityQuery(&vis!, cb) }
             statistics.draws += 1
             return true
         }
@@ -765,6 +811,12 @@ extension VulkanMetalBackend {
                 switch command {
                 case .draw, .drawIndexed, .drawIndirect, .drawIndexedIndirect: checkpoint(rec, pass: passIndex, command: commandIndex)
                 default: break
+                }
+            }
+            let skippedBefore = statistics.skipped
+            defer {
+                if probe != nil, statistics.skipped > skippedBefore {
+                    probeNoteSkip(pass: passIndex, command: commandIndex, String("\(command)".prefix(160)))
                 }
             }
             switch command {
@@ -823,16 +875,24 @@ extension VulkanMetalBackend {
             case .setStencilReference(let front, let back):
                 fn.vkCmdSetStencilReference!(cb, VK_STENCIL_FACE_FRONT_BIT.rawValue, front)
                 fn.vkCmdSetStencilReference!(cb, VK_STENCIL_FACE_BACK_BIT.rawValue, back)
-            case .setColorStoreAction:
-                break  // store actions are fixed when the pass begins (Store)
+            case .setStoreAction, .setStoreActionOptions:
+                break  // the decoder folds deferred store actions into the descriptor
+            case .updateFence, .waitForFence:
+                // Fences: encoders run in order with a full barrier between
+                // passes (`replay`), which satisfies every fence wait.
+                break
+            case .setVisibilityResultMode(let mode, let offset):
+                if vis != nil { setVisibilityMode(&vis!, mode, offset: offset, cb) }
             case .draw(let dr):
                 guard dr.vertexCount > 0, dr.instanceCount > 0, saneDraw(dr.vertexCount, dr.instanceCount),
+                      saneBaseInstance(dr.baseInstance, dr.instanceCount, pipeline, vertexRoom()),
                       try prepareDraw(dr.primitiveType, indexed: false) else { continue }
                 rec.noteDraw(dr.vertexCount * dr.instanceCount)
                 fn.vkCmdDraw!(cb, UInt32(dr.vertexCount), UInt32(dr.instanceCount), UInt32(dr.vertexStart), UInt32(dr.baseInstance))
             case .drawIndexed(let dr):
                 // The indices must lie inside the index buffer (an index fetch past it reads whatever follows).
                 guard dr.indexCount > 0, dr.instanceCount > 0, saneDraw(dr.indexCount, dr.instanceCount),
+                      saneBaseInstance(dr.baseInstance, dr.instanceCount, pipeline, vertexRoom()),
                       let ih = dr.indexBuffer, let ib = buffers[ih], dr.indexBufferOffset >= 0,
                       ib.offset + dr.indexBufferOffset + dr.indexCount * (dr.indexType == MetalIndexType.uint32 ? 4 : 2)
                           <= Int(ib.allocation.buffer.size) else {
@@ -859,7 +919,7 @@ extension VulkanMetalBackend {
                                          indexType == MetalIndexType.uint32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16)
                 rec.indirectDraws += 1
                 fn.vkCmdDrawIndexedIndirect!(cb, b.vkBuffer, VkDeviceSize(b.offset + off), 1, 20)
-            case .memoryBarrier, .useResources:
+            case .memoryBarrier, .memoryBarrierResources, .useResources, .useHeaps:
                 break
             case .unknown:
                 noteSkip()
@@ -868,7 +928,9 @@ extension VulkanMetalBackend {
         profiled(.renderCommands, since: tCommands)
         textureOverride.removeAll()
         let tEnd = profileClock()
+        if vis != nil { endVisibilityQuery(&vis!, cb) }
         fn.vkCmdEndRendering!(cb)
+        if let v = vis { writeVisibilityResults(v, cb) }
         profiled(.passEnd, since: tEnd)
         _ = colorCount
     }
@@ -878,6 +940,32 @@ extension VulkanMetalBackend {
     /// wrongly, and the GPU would run the draw for minutes (on the Thor the
     /// driver then reports a context-switch timeout and every later
     /// submission is lost).
+    /// A draw whose base instance lies past every vertex-stage buffer is
+    /// skipped: a Metal instance ID includes the base instance, so a vertex
+    /// function that indexes per-instance data with it (even 4 bytes per
+    /// instance) reads beyond whatever buffer it indexes, and on the Thor a
+    /// read outside mapped memory stalls the GPU (stage8-contract.md §15.6).
+    /// Applies to vertex functions that read `instance_id` or
+    /// `base_instance`, and to any draw whose instances reach past 2^20.
+    /// Such base instances come from records decoded with the wrong layout
+    /// (visionos.md §10.13, §9 Q23); the first few are logged.
+    func saneBaseInstance(_ base: Int, _ instances: Int, _ pipeline: VKRenderPipeline?, _ room: Int) -> Bool {
+        let (end, overflow) = base.addingReportingOverflow(instances)
+        var bad = overflow || base < 0 || end > Self.largeBaseInstance
+        if !bad, base > 0, let b = pipeline?.vertex?.reflection.builtins,
+           b.contains("instance_id") || b.contains("base_instance") {
+            bad = base.multipliedReportingOverflow(by: 4).partialValue >= max(room, 0) || base.multipliedReportingOverflow(by: 4).overflow
+        }
+        guard bad else { return true }
+        noteSkip()
+        if badBaseInstanceLogs < 8 {
+            badBaseInstanceLogs += 1
+            log("draw skipped: base instance \(base) (\(instances) instances) with \(pipeline.map { shaderName($0.vertex) } ?? "no pipeline"); largest vertex buffer room \(room) B")
+        }
+        return false
+    }
+    static let largeBaseInstance = 1 << 20
+
     func saneDraw(_ count: Int, _ instances: Int) -> Bool {
         let (work, overflow) = count.multipliedReportingOverflow(by: instances)
         guard overflow || work > MetalCommandDecoder.largeDraw else { return true }
@@ -921,6 +1009,7 @@ extension VulkanMetalBackend {
         var pipeline: VKComputePipeline?
         var bound: VkPipeline?
         var tgMemory: [Int: Int] = [:]
+        var currentCommand: Int?  // for the marker after a dispatch
 
         func dispatch(groups: (Int, Int, Int), group: (Int, Int, Int), threads: (Int, Int, Int)?) throws {
             guard let p = pipeline else { noteSkip(); return }
@@ -936,8 +1025,13 @@ extension VulkanMetalBackend {
             if vkp != bound { fn.vkCmdBindPipeline!(cb, VK_PIPELINE_BIND_POINT_COMPUTE, vkp); bound = vkp }
             let table = try writeTable(b, p.statics, rec)
             pushTables(cb, table, 0, grid: t)
+            if writesWithoutUsageLogged < 16 { noteWritesWithoutUsage(p, b) }
             fn.vkCmdDispatch!(cb, UInt32(groups.0), UInt32(groups.1), UInt32(groups.2))
             yvk_cmd_memory_barrier(cb, allCommands, memoryWrite, allCommands, memoryReadWrite)
+            if let c = currentCommand { checkpoint(rec, pass: passIndex, command: c | Self.checkpointAfter) }
+            if options.hangReportSeconds > 0, rec.dispatchTables.count < 64, let t = rec.lastTable {
+                rec.dispatchTables.append((passIndex, currentCommand ?? -1, t))
+            }
             statistics.dispatches += 1
             if !options.recordFast, rec.dispatchNotes.count < 4 {
                 rec.dispatchNotes.append(dispatchNote(b, groups: groups, group: group, threads: t))
@@ -946,6 +1040,7 @@ extension VulkanMetalBackend {
 
         let marks = checkpointsOn
         for (commandIndex, command) in commands.enumerated() {
+            currentCommand = marks ? commandIndex : nil
             if marks {
                 switch command {
                 case .dispatchThreadgroups, .dispatchThreads, .dispatchThreadgroupsIndirect:
@@ -993,8 +1088,8 @@ extension VulkanMetalBackend {
                 fn.vkCmdDispatchIndirect!(cb, buf.vkBuffer, VkDeviceSize(buf.offset + offset))
                 yvk_cmd_memory_barrier(cb, allCommands, memoryWrite, allCommands, memoryReadWrite)
                 statistics.dispatches += 1
-            case .memoryBarrier, .memoryBarrierResources, .useResources:
-                break  // every dispatch is followed by a full barrier
+            case .memoryBarrier, .memoryBarrierResources, .useResources, .useHeaps, .updateFence, .waitForFence:
+                break  // every dispatch is followed by a full barrier, every pass by another
             case .unknown:
                 noteSkip()
             }

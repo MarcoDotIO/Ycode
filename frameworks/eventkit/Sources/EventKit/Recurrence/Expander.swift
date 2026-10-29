@@ -17,8 +17,8 @@ struct WeekdayNum: Hashable {
 struct RuleSpec: Hashable {
     var frequency: EKRecurrenceFrequency
     var interval: Int = 1
-    var count: Int? = nil
-    var until: Date? = nil
+    var count: Int?
+    var until: Date?
     var byDay: [WeekdayNum] = []
     var byMonthDay: [Int] = []
     var byMonth: [Int] = []
@@ -190,7 +190,7 @@ enum Expander {
             return jan4 - ((Civil.weekday(jan4) - wkst + 7) % 7)
         }
         let a = week1(y), b = week1(y + 1)
-        return stride(from: a, to: b, by: 7).map { $0 }
+        return Array(stride(from: a, to: b, by: 7))
     }
 
     private static func expandWeekdays(_ list: [WeekdayNum], from first: Int, length: Int) -> [Int] {

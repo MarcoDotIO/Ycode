@@ -74,7 +74,7 @@ public struct ProjectEditorModel {
     public func settingRows(target: String?, configuration: String, filter: Filter, search: String = "") -> [SettingRow] {
         guard let r = resolve(target: target, configuration: configuration) else { return [] }
         let s = r.settings
-        let defaults = defaultsProvider?(target, configuration) ?? nil
+        let defaults = defaultsProvider?(target, configuration)
         let names: [String]
         switch filter {
         case .basic: names = Self.basicSettings
@@ -90,7 +90,7 @@ public struct ProjectEditorModel {
     /// Rows for the given setting names, in the given order.
     public func settingRows(names: [String], target: String?, configuration: String) -> [SettingRow] {
         guard let r = resolve(target: target, configuration: configuration) else { return [] }
-        return rows(names, resolved: r, defaults: defaultsProvider?(target, configuration) ?? nil, target: target)
+        return rows(names, resolved: r, defaults: defaultsProvider?(target, configuration), target: target)
     }
 
     private func rows(_ names: [String], resolved r: ProjectSettingsBuilder.Resolved, defaults: [String: String]?, target: String?) -> [SettingRow] {

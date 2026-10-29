@@ -426,7 +426,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     /// at once, or, on a fast path, once this thread holds no lock.
     func releasePayload(_ release: @escaping () -> Void) {
         guard let l0 = lock.root else { release(); return }
-        lock.deferIfFast(.kernelLock(l0), release)
+        lock.deferIfFast(.kernelLock(l0), tag: "port payload release", release)
     }
 
     // MARK: Rights

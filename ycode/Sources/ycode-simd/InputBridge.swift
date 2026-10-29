@@ -13,11 +13,13 @@ import YcodeDarwinKernel
 import YcodeDisplayStream
 import YcodeHostServices
 
-/// The HID bundle directory for this run, or nil (no input).
-func hidBundlePath(_ options: Options) -> String? {
+/// The HID bundle directory for this run, or nil (no input). A foldable
+/// device type has it by default, display server or not: its hinge is HID
+/// input (foldable.md §5, §8.2), and every boot starts closed.
+func hidBundlePath(_ options: Options, foldable: Bool = false) -> String? {
     if options.hidBundle == "none" { return nil }
     if let explicit = options.hidBundle { return absolutePath(explicit) }
-    guard options.displayServer != nil, let shim = options.shimPath else { return nil }
+    guard options.displayServer != nil || foldable, let shim = options.shimPath else { return nil }
     let simShim = ((absolutePath(shim) as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
     let built = ((simShim as NSString).deletingLastPathComponent as NSString)
         .appendingPathComponent("SimGuestFrameworks/out/SimHID.framework")
@@ -44,10 +46,15 @@ func startHIDService(config: ExecConfiguration, session: DeviceSession, host: Ma
     }
 }
 
-/// Display-stream input → HID transport messages.
+/// Display-stream input → HID transport messages. Touches go to the panel
+/// the viewer shows (`panel`; foldable.md §8.2 I1), in that panel's points.
 final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
     let hid: HIDHostService
-    let pointWidth: Double, pointHeight: Double
+    /// The panel touches are for: its touch-message display index and its
+    /// size in points (native portrait orientation).
+    var panel: () -> (display: UInt32, pointWidth: Double, pointHeight: Double)
+    private var pointWidth: Double { panel().pointWidth }
+    private var pointHeight: Double { panel().pointHeight }
     /// §8.2: a contact that begins within this many points of an edge is an edge contact.
     static let edgePoints = 10.0
     static let maxContacts = 5
@@ -65,8 +72,7 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
 
     init(hid: HIDHostService, pointWidth: Double, pointHeight: Double) {
         self.hid = hid
-        self.pointWidth = pointWidth
-        self.pointHeight = pointHeight
+        panel = { (0, pointWidth, pointHeight) }
     }
 
     var acceptsTouch: Bool { true }
@@ -185,7 +191,7 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
 
     private func sendTouch(_ records: [HIDHostService.Contact]) -> Bool {
         lock.withLock { lastTouchSend = Self.monotonicNanos() }
-        return hid.send(.touch(display: 0, contacts: records))
+        return hid.send(.touch(display: panel().display, contacts: records))
     }
 
     static func monotonicNanos() -> UInt64 {

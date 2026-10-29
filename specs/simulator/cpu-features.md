@@ -1,6 +1,6 @@
 # CPU feature publication (sysctl `hw.*` / `machdep.cpu.*` and commpage capabilities)
 
-Status: spec, 2026-10-23. Dirty-room source: `research/notes/cpufeat-observations.md`
+Status: implemented 2026-10-23 (§9; switch `YCODE_CPU_FEATURES`, default on). Dirty-room source: `research/notes/cpufeat-observations.md`
 (lead L1 of a private note from an outside practitioner, kept off the public repository).
 Related: `stage3-contract.md` (sysctl table), `darwin-process-start.md` §3
 (commpage layout and guest CPU count N), `fast-traps.md` (timebase),
@@ -322,7 +322,7 @@ does not, the derived value (normally 0) wins.
 | 6 | LSE | 1 | atomics | 1 |
 | 7, 8, 9 | SHA256, SHA512, SHA1 | 1 | sha2, sha512, sha1 | 1 |
 | 10, 11 | AES, PMULL | 1 | aes, pmull | 1 |
-| 12 | SPECRES | 0 | absent | 0 |
+| 12 | SPECRES | 0 | absent (no hwcap); the guest view shows 1 (§9.2) | 0 (denied) |
 | 13 | SB | 1 | sb | 1 |
 | 14 | FRINTTS | 1 | frint | 1 |
 | 15, 16 | LRCPC, LRCPC2 | 1 | lrcpc, ilrcpc | 1 |
@@ -492,10 +492,11 @@ boot time moves outside the run-to-run noise.
 
 ## 8. Open questions
 
-- Q1. What exactly does KVM 6.8 on the Thor expose to a PSCI-only vCPU for
-  CSV2, CSV3, AFP, BTI, ECV and WFxT? Answer by reading the registers
-  (§4.1 step 1). The table in §4.4 assumes CSV2, CSV3, AFP and BTI are
-  visible.
+- Q1 (answered, §9.2). What exactly does KVM 6.8 on the Thor expose to a
+  PSCI-only vCPU for CSV2, CSV3, AFP, BTI, ECV and WFxT? All six are
+  visible: CSV2 = 1, CSV3 = 1, AFP = 1, BT = 1, ECV = 2, WFxT = 2. SPECRES
+  is visible too (1). The §4.4 assumptions hold; ECV and WFxT stay
+  unpublished by the deny list.
 - Q2. Should ECV be published once the shim decodes CNTVCTSS/CNTPCTSS? It
   is only useful if the guest reads the counter directly, which the
   default timebase mode does not allow.
@@ -512,6 +513,155 @@ boot time moves outside the run-to-run noise.
 - Q6. Would writable ID registers (KVM 6.7+) be useful to **hide** features
   (WFxT, ECV, SVE fields) at the hardware level as well, so that the guest
   ID view and the published view are identical by construction?
+
+## 9. Implementation (agent CPUFEAT-IMPL, 2026-10-23)
+
+### 9.1 Where
+
+- `YcodeDarwinKernel/CPUFeatures.swift`: the register model, the §4.2
+  derivation, the deny list, the caps bytes, the commpage bits, the
+  profile (`GuestCPUProfile`) and the sysctl entries it adds. The
+  sysctl table (`SysctlTable.standard`) and `CommpageBuilder` read the
+  installed profile, so all three outputs come from one feature set.
+- `ycode-simd/CPUFeatureSetup.swift` and `CKVM/ckvm_cpufeat.c`: at the start
+  of `--exec`/`--device` runs, before the first VM, a scratch VM with one
+  vCPU initialized as every Ycode vCPU (preferred target, PSCI 0.2 only)
+  is read with KVM_GET_ONE_REG and destroyed. ID registers are VM-wide in
+  KVM, so this equals reading the first vCPU of the first image (§4.1) and
+  keeps the image build path unchanged. One log line gives the mode, the
+  published, allowed and derived sets, and every register value.
+- The FPCR probe runs at EL0 of the VMM process, not in the guest: the
+  same cores run the guest, KVM does not trap FPCR, and nothing has to
+  run in a VM before the first image. The guest probe (§9.3) repeats it
+  inside the guest.
+- `YCODE_CPU_FEATURES=off` publishes nothing optional (caps 13 zero bytes,
+  no `hw.optional.*` entries, so every such name reads 0 as before; the
+  base commpage bits TLS, VFP, event, FMA only). The other corrected
+  values (timebase, caches, machdep, perflevel0) do not depend on the
+  switch. Default: on.
+- Cache sizes come from the host's sysfs cache description (cpu0 index
+  entries; Thor: L1I 64 KiB, L1D 64 KiB, L2 1 MiB, one CPU per L2);
+  `hw.cachelinesize` from CTR_EL0.CWG (Thor: 64). The brand string is
+  built from MIDR (Thor: `"Ycode VM (Arm Neoverse V3AE)"`).
+- `kern.grade_cputype` stays ENOENT, as §4.5 says: a grading answer would
+  change how dyld grades slices, for no gain.
+- sysctl reads that do not fit the caller's buffer now copy what fits and
+  fail with ENOMEM (§4.5), for every name.
+
+### 9.2 The guest's ID registers on the Thor (Q1)
+
+KVM 6.8, vCPU with only the PSCI 0.2 feature, read 2026-10-23:
+
+| Register | Value | Fields that matter |
+|---|---|---|
+| MIDR_EL1 | `0x410fd830` | Arm, part 0xD83 (Neoverse V3AE) |
+| ID_AA64PFR0_EL1 | `0x1101001021111111` | CSV3 1, CSV2 1, DIT 1, SVE **0** (hidden), AdvSIMD 1, FP 1 (FP16) |
+| ID_AA64PFR1_EL1 | `0x21` | SSBS 2, BT 1, MTE **0** (hidden), SME 0 |
+| ID_AA64ISAR0_EL1 | `0x0221111110212120` | TS 2, FHM 1, DP 1, SHA3 1, RDM 1, Atomic 2, CRC32 1, SHA2 2, SHA1 1, AES 2 |
+| ID_AA64ISAR1_EL1 | `0x0011111100211002` | I8MM 1, BF16 1, **SPECRES 1**, SB 1, FRINTTS 1, GPI/GPA/API/APA **0** (hidden), LRCPC 2, FCMA 1, JSCVT 1, DPB 2 |
+| ID_AA64ISAR2_EL1 | `0x2` | WFxT 2, RPRES 0, no CSSC/BC |
+| ID_AA64MMFR0_EL1 | `0x2100022200101125` | ECV 2 |
+| ID_AA64MMFR1_EL1 | `0x0000111010312122` | AFP 1 |
+| ID_AA64MMFR2_EL1 | `0x1221011112001011` | AT 1 (LSE2) |
+| ID_AA64ZFR0_EL1, ID_AA64SMFR0_EL1 | 0 | — |
+| CTR_EL0 (EL0) | `0xb444c004` | CWG 4 (64 bytes), DminLine 4 |
+| DCZID_EL0 (EL0) | `0x4` | 64-byte block, allowed |
+| FPCR trap-enable probe | 0 | FP_SyncExceptions 0 |
+
+Derived (before the deny list): `ff ff c7 f7 1f 00 0e 00 00 00 00 00 00`
+(adds SPECRES, WFxT, ECV to the published set). Published, equal to the
+§4.4 oracle: caps `ff ef c7 e3 1f 00 0e 00 00 00 00 00 00`; commpage
+capabilities64 `0x03f76f078701ffa8` with N = 1 (the guest reads exactly
+this at 0x010, `0x8701ffa8` at 0x020, line 64 at 0x026, CPU family 0).
+
+### 9.3 Guest probe (`SimShim/guest-tests/stageperf/p_cpufeat.c`)
+
+Built with `build-stageperf.sh`, run with `ycode-simd --exec`. Results with
+the switch on (`cpufeat ok`):
+
+- Every published feature executed in a child process: FlagM, FlagM2,
+  FHM, DotProd, SHA3, RDM, LSE (CAS, LDADD), SHA1, SHA256, SHA512, AES,
+  PMULL, SB, FRINTTS, LRCPC, LRCPC2, FCMA, JSCVT, DPB, DPB2, BF16, I8MM,
+  FP16, AdvSIMD, HPFPCvt, CRC32, DIT, SSBS, AFP (FPCR.AH reads back): 29
+  of 29.
+- Hidden features that raise SIGILL: PACGA, SMSTART, RDVL (SVE), CFP RCTX.
+  The last two arrive at EL1 as EC 0x19 (SVE trap: the shim leaves
+  CPACR_EL1.ZEN clear) and EC 0x18 (system instruction trap: SCTLR_EL1.EnRCTX
+  clear). They used to end the process with SIGSEGV; the kernel now
+  maps EC 0x18, 0x19, 0x1D (SME), 0x07 and 0x09 from EL0 to SIGILL
+  (EXC_BAD_INSTRUCTION), as for an undefined instruction.
+- Hidden features that execute (the hardware has them; the guest is
+  simply not told, which is safe): AUTIA (a NOP: SCTLR_EL1.EnIA = 0), WFET,
+  `MRS CNTVCTSS_EL0` (CNTKCTL_EL1.EL0VCTEN = 1 for the direct clock), IRG
+  (MTE instructions without tag checking). The FPCR probe executes and
+  reads back 0. §7.1 expected these to SIGILL; that is only possible by
+  trapping them (Q6), and nothing is published for them.
+- Invariants 1–6 and 8 hold (names, commpage, legacy names, cache line,
+  CPU counts, deny list, `hw.tbfrequency` 24 000 000 × 125 / 3 = 10⁹).
+  The caps size query returns 13; an 8-byte buffer gets the first 8 bytes
+  and ENOMEM.
+- DIT, SSBS and FPCR (FZ, DN, FIZ, AH, NEP) survive a BSD trap, a Mach
+  trap, the in-place `mach_absolute_time`, a page fault, `sched_yield`, a
+  20 ms sleep and another thread's run and join (DIT and SSBS are in
+  SPSR_EL1, which the shim saves in the frame; FPCR stays in the thread's
+  own vCPU). **A new thread used to inherit FPCR from the previous thread
+  of a reused (parked) vCPU** (main line: `0x3c00000` in 4 of 4 rounds);
+  `VCPUPool` now sets FPCR = FPSR = 0 when a parked vCPU starts a new
+  thread, and new threads start with DIT 0, SSBS 0, FPCR 0 in 4 of 4
+  rounds.
+- `bzero` and `memset` at 77 offsets × 27 lengths (0 … 65 537), with 256
+  guard bytes on each side: 4 158 cases, 0 wrong; DC ZVA zeroes exactly
+  the 64-byte DCZID block.
+- With the switch off the probe also passes (caps 13 zero bytes, commpage
+  `0x1b4a0`, invariants hold, nothing published, so no instruction is
+  required to execute).
+
+### 9.4 Snapshots and prebuilt VMs
+
+- A snapshot's system record stores the published set (`snapshot.md`
+  §6.1, field 17). `KernelSnapshotRestore` refuses a snapshot whose set is
+  not a subset of this host's allowed set (derived minus deny list),
+  naming the missing features; the warm-boot launcher then boots cold.
+  A snapshot without the field (older builds) restores as before. The
+  check uses the allowed set, not the published one, so switching
+  `YCODE_CPU_FEATURES` between save and restore does not force a cold
+  boot; the restored images get a commpage built from the current
+  setting and keep the snapshot's sysctl tables.
+- Prebuilt VMs (`PrebuiltVMs`, `YCODE_VM_PREBUILD`) live only inside one
+  `ycode-simd` process. The profile is installed once, before the first
+  VM of the process is built, and never changes, so every prebuilt VM
+  shares the process's feature set; no per-VM record is needed.
+
+### 9.5 Speed: micro-benchmarks (A/B)
+
+`p_cpufeat_bench` (original Ycode probe over public APIs), `--exec`, same
+build, `YCODE_CPU_FEATURES=on` and `off` interleaved, 5 runs each under
+`timed.sh` (machine to itself). Each run reports the median of 7 timed
+repetitions after a warm-up; the table gives the median of the 5 run
+medians and their range.
+
+| Benchmark | on | off | on/off |
+|---|---|---|---|
+| JSC: double→int32 loop, 10⁷ iterations (ms) | 20.44 [20.43–20.46] | 20.44 [20.44–20.45] | 1.000 |
+| JSC: `Atomics.add`/`compareExchange`, 5·10⁶ (ms) | 53.52 [53.43–53.57] | 53.42 [53.42–53.46] | 1.002 |
+| JSC: objects, strings, sort (ms) | 49.1 [46.2–51.5] | 51.6 [41.1–52.9] | noise |
+| `cblas_sgemm` 512 (GFLOP/s) | 24.38 [24.34–24.49] | 24.53 [24.27–24.68] | 0.994 |
+| BNNS 3×3 convolution 64×64×32→64 (ms) | 3.815 [3.810–3.838] | 3.816 [3.810–3.865] | 1.000 |
+| CC_SHA256, 32 MiB (MiB/s) | 1580 [1579–1583] | 1583 [1582–1583] | 0.999 |
+| AES-128-CBC, 32 MiB (MiB/s) | 1639 [1637–1645] | 1643 [1640–1644] | 0.997 |
+| `timingsafe_bcmp`, 64 bytes (ns/call) | 30.47 [30.38–32.95] | 30.41 [30.37–30.42] | 1.002 |
+| LZFSE encode / decode, 8 MiB (MiB/s) | 52.2 / 1262 | 51.9 / 1255 | 1.005 / 1.006 |
+| zlib encode / decode (MiB/s) | 48.2 / 754 | 48.2 / 753 | 1.000 / 1.001 |
+| **ImageIO JPEG decode 2048×2048 (ms)** | **57.9 [55.6–58.3]** | **68.3 [67.9–68.9]** | **0.848** |
+
+Only the JPEG decode moves (−15 %, ranges disjoint): ImageIO is among the
+consumers that read `neon_fp16`/`FEAT_FP16` (§3). JavaScriptCore,
+Accelerate, CommonCrypto, libcompression and `timingsafe_bcmp` do not
+change: in this runtime they either do not test these names at run time
+or already use the instructions unconditionally (the apple-m1 compile
+baseline, §3). Their speed is the hardware's either way.
+
+BOOT-AB-PLACEHOLDER
 
 ## Evidence
 
@@ -530,6 +680,10 @@ boot time moves outside the run-to-run noise.
 | Other consumers (Accelerate, audio, WebRTC, ImageIO, …) | 4 | string literals attributed through the cache map; `dyld_info -imports` for `__get_cpu_capabilities` |
 | Simulator compiler baseline apple-m1 | 3 | `clang -###` for `arm64-apple-ios27.1-simulator` |
 | Thor features, MIDR, caches | 3 | `lscpu`, `/proc/cpuinfo`, sysfs (read-only) |
-| What KVM hides from a PSCI-only vCPU | 1 (Linux KVM behaviour, public) for SVE, PAuth, SME and MTE; the rest **unverified** | Q1 |
+| What KVM hides from a PSCI-only vCPU | 1 (Linux KVM behaviour, public) for SVE, PAuth, SME and MTE; 3 for all fields | §9.2: KVM_GET_ONE_REG on the Thor (`ycode-simd` start-up log), 2026-10-23 |
 | Ycode's current values (`hw.tbfrequency` 1e9, caps 8 bytes, commpage bits) | own code | `ycode/Sources/YcodeDarwinKernel/SysctlTable.swift`, `ProcessImage.swift` |
 | Speed effect concentrated in gated libraries, not boot-wide | inference (4) | §3; to be measured (§7.3) |
+| Q1 answer, published set and commpage word on the Thor | 3 | §9.2, `ycode-simd` log and `p_cpufeat` in the guest (Thor, 2026-10-23) |
+| Published features execute, hidden ones SIGILL or execute harmlessly; invariants; DIT/SSBS/FPCR round trips; FPCR leak across reused vCPUs (main line) and its fix; bzero guards | 3 | `p_cpufeat` runs with the switch on and off and against the main-line build (Thor, 2026-10-23) |
+| Snapshot feature record and refusal | own code + unit tests | `CPUFeaturesTests.snapshotRefusesMissingFeatures`, `SnapshotKernelRoundTripTests` |
+| Micro-benchmark A/B (§9.5) | 3 | `p_cpufeat_bench`, 5 + 5 interleaved runs under `timed.sh` (Thor, 2026-10-23) |

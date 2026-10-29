@@ -199,6 +199,15 @@ public final class VirtualMachine: @unchecked Sendable {
     static let capReadOnlyMemory = 81
     static let memoryFlagReadOnly: UInt32 = 1 << 1
 
+    /// Diagnostics: KVM_CREATE_VM calls and their time (the kernel registers
+    /// the VM's MMU notifier on the host process's address space there).
+    public static let createVMCount = Atomic<UInt64>(0)
+    public static let createVMNanoseconds = Atomic<UInt64>(0)
+    /// Diagnostics: VM closes and the time of the VM fd's close (the
+    /// kernel tears the VM down there when it holds the last reference).
+    public static let closeCount = Atomic<UInt64>(0)
+    public static let closeNanoseconds = Atomic<UInt64>(0)
+
     public static let defaultRAMGPA: UInt64 = 0x4000_0000
     public static let defaultRAMSize = 512 << 20
 
@@ -212,7 +221,10 @@ public final class VirtualMachine: @unchecked Sendable {
         do {
             let version = try kvmCheck(ckvm_get_api_version(kvm), "KVM_GET_API_VERSION")
             guard version == 12 else { throw KVMError("KVM_GET_API_VERSION", detail: "unexpected API version \(version)") }
+            let createBegan = monotonicNanoseconds()
             vm = try kvmCheck(ckvm_create_vm(kvm, 0), "KVM_CREATE_VM")
+            Self.createVMNanoseconds.wrappingAdd(monotonicNanoseconds() &- createBegan, ordering: .relaxed)
+            Self.createVMCount.wrappingAdd(1, ordering: .relaxed)
             // The VM-level check reports the per-VM limit; fall back to the system one.
             slotLimit = Int(ckvm_check_extension(vm, Int(CKVM_CAP_NR_MEMSLOTS)))
             if slotLimit <= 0 { slotLimit = Int(ckvm_check_extension(kvm, Int(CKVM_CAP_NR_MEMSLOTS))) }
@@ -279,12 +291,15 @@ public final class VirtualMachine: @unchecked Sendable {
             return taken
         }
         guard let detached else { return }
+        let closeBegan = monotonicNanoseconds()
         detached.vcpus.forEach { $0.close() }
         _ = ckvm_close(vmFD)
         for slot in detached.slots where slot.kind != .shared && slot.kind != .readOnlyFiles {
             releaseHostMemory(UnsafeMutableRawPointer(bitPattern: slot.hostAddress)!, Int(slot.size))
         }
         _ = ckvm_close(kvmFD)
+        Self.closeNanoseconds.wrappingAdd(monotonicNanoseconds() &- closeBegan, ordering: .relaxed)
+        Self.closeCount.wrappingAdd(1, ordering: .relaxed)
     }
 
     /// `KVM_CAP_COUNTER_OFFSET`: `setCounterOffset` is available.
@@ -298,8 +313,16 @@ public final class VirtualMachine: @unchecked Sendable {
     /// `Hypervisor.hostCounter() &- offset`, and creating a vCPU no longer
     /// resets it (fast-traps.md §3.1). Call before any vCPU runs.
     public func setCounterOffset(_ offset: UInt64) throws {
+        // A reused VM (`resetForReuse`) keeps the offset it was given; KVM
+        // refuses a change once a vCPU has run.
+        if lock.withLock({ counterOffsetSet == offset }) { return }
         try kvmCheck(ckvm_set_counter_offset(vmFD, offset), "KVM_ARM_SET_COUNTER_OFFSET")
+        lock.withLock { counterOffsetSet = offset }
     }
+    /// The VM-wide counter offset set so far (nil: none).
+    private var counterOffsetSet: UInt64?
+    /// The HVC doorbell filter is installed (a reused VM keeps it).
+    private var hvcDoorbellInstalled = false
 
     /// The forwarded-HVC doorbell's SMCCC function ID (vm-shim-protocol.md §5.1).
     public static let hvcDoorbellFunction: UInt32 = 0xC600_5943
@@ -308,8 +331,43 @@ public final class VirtualMachine: @unchecked Sendable {
     /// (vm-shim-protocol.md §5.1). Call before any vCPU runs; throws when
     /// the host kernel has no SMCCC filter.
     public func installHVCDoorbell() throws {
+        if lock.withLock({ hvcDoorbellInstalled }) { return }
         try kvmCheck(ckvm_set_smccc_filter(vmFD, Self.hvcDoorbellFunction, 1, UInt8(CKVM_SMCCC_FILTER_FWD_TO_USER)),
                      "KVM_SET_DEVICE_ATTR(KVM_ARM_VM_SMCCC_FILTER)")
+        lock.withLock { hvcDoorbellInstalled = true }
+    }
+
+    // MARK: Reuse (boot-profile.md §9, SP1)
+
+    /// How many times this VM was reset for another image.
+    public private(set) var reuseCount = 0
+
+    /// Makes this VM ready for another image (`YCODE_VM_REUSE`): every vCPU
+    /// is reset to its initial state (`KVM_ARM_VCPU_INIT` again, which KVM
+    /// allows after a vCPU ran) and becomes a spare under its id, and guest
+    /// RAM is returned to the host (it reads as zeros). The memslots, the
+    /// counter offset and the HVC doorbell stay. No vCPU may be running (the
+    /// image's pool threads were joined), and no other thread may use the VM.
+    /// False (nothing usable: close the VM) when a vCPU cannot be reset.
+    public func resetForReuse() -> Bool {
+        let vcpus: [VCPU]? = lock.withLock {
+            guard !isClosed, creationsInFlight == 0, creatingIDs.isEmpty else { return nil }
+            let all = vcpuList + Array(spareVCPUs.values)
+            vcpuList.removeAll()
+            spareVCPUs.removeAll()
+            return all
+        }
+        guard let vcpus else { return false }
+        var ok = true
+        for vcpu in vcpus where ok { ok = vcpu.reset(vmFD: vmFD) }
+        lock.withLock {
+            // On failure the vCPUs stay listed (closed with the VM).
+            if ok { for vcpu in vcpus { spareVCPUs[vcpu.id] = vcpu } } else { vcpuList += vcpus }
+            if ok { reuseCount += 1 }
+        }
+        guard ok else { return false }
+        _ = ckvm_discard_anonymous(ram, ramSize)
+        return true
     }
 
     /// Creates and initializes a vCPU (preferred target, PSCI 0.2). `id`
@@ -535,7 +593,7 @@ public final class VirtualMachine: @unchecked Sendable {
 
     public func write(gpa: UInt64, bytes: [UInt8]) throws {
         let destination = try writableHostPointer(gpa: gpa, count: bytes.count)
-        bytes.withUnsafeBytes { if $0.count > 0 { destination.copyMemory(from: $0.baseAddress!, byteCount: $0.count) } }
+        bytes.withUnsafeBytes { if !$0.isEmpty { destination.copyMemory(from: $0.baseAddress!, byteCount: $0.count) } }
     }
 
     public func readU64(gpa: UInt64) throws -> UInt64 {
@@ -683,6 +741,39 @@ public final class VCPU: @unchecked Sendable {
     }
 
     deinit { close() }
+
+    /// Resets the vCPU to its initial state (`KVM_ARM_VCPU_INIT` with the
+    /// features it was made with) for a reused VM. No thread may run it.
+    func reset(vmFD: Int32) -> Bool {
+        guard !closed else { return false }
+        ckvm_run_set_immediate_exit(runArea, 0)
+        guard ckvm_arm_vcpu_init_preferred(vmFD, fd, UInt32(1) << UInt32(CKVM_ARM_VCPU_FEATURE_PSCI_0_2)) == 0 else { return false }
+        // Diagnostics count from here for the next image.
+        exitCount = 0
+        if VCPUPool.profiling {
+            let names = ["exits", "wfe_exit_stat", "wfi_exit_stat"]
+            statisticsBaseline = Dictionary(uniqueKeysWithValues: zip(names, rawStatistics(names)))
+        }
+        return true
+    }
+    /// KVM statistics at the last reset (subtracted by `kvmStatistics`).
+    private var statisticsBaseline: [String: UInt64] = [:]
+
+    /// Diagnostics: this vCPU's KVM binary statistics by name
+    /// (KVM_GET_STATS_FD; 0 for a name the kernel does not have).
+    public func kvmStatistics(_ names: [String]) -> [UInt64] {
+        let raw = rawStatistics(names)
+        return zip(names, raw).map { $1 &- (statisticsBaseline[$0] ?? 0) }
+    }
+
+    private func rawStatistics(_ names: [String]) -> [UInt64] {
+        var out = [UInt64](repeating: 0, count: names.count)
+        let copies = names.map { strdup($0) }
+        defer { copies.forEach { free($0) } }
+        var pointers: [UnsafePointer<CChar>?] = copies.map { UnsafePointer($0) }
+        _ = ckvm_vcpu_stats(fd, &pointers, Int32(names.count), &out)
+        return out
+    }
 
     func close() {
         guard !closed else { return }

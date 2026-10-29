@@ -88,10 +88,15 @@ private let worktreeYcode = URL(fileURLWithPath: #filePath).deletingLastPathComp
         }
         let all = NavigatorAreaController.symbols + InspectorAreaController.symbols + DebugAreaController.barButtons.map(\.0)
         #expect(all.allSatisfy { !forbidden.contains($0) })
-        let dir = worktreeYcode.appendingPathComponent("Sources/YcodeUI")
-        for case let f as URL in FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)! where f.pathExtension == "swift" {
-            let text = try String(contentsOf: f, encoding: .utf8)
-            for bad in forbidden { #expect(!text.contains("return \"\(bad)\"") && !text.contains("SymbolName: \"\(bad)\""), "\(f.lastPathComponent): \(bad)") }
+        // The device windows too (device-hub.md: Ycode draws its own device glyphs).
+        for sub in ["Sources/YcodeUI", "Sources/YcodeDeviceUI", "Sources/ycode-sim-viewer"] {
+            let dir = worktreeYcode.appendingPathComponent(sub)
+            for case let f as URL in FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)! where f.pathExtension == "swift" {
+                let text = try String(contentsOf: f, encoding: .utf8)
+                for bad in forbidden + ["vision.pro", "ipad.landscape", "iphone.gen3", "ipad.gen2"] {
+                    #expect(!text.contains("return \"\(bad)\"") && !text.contains("SymbolName: \"\(bad)\""), "\(f.lastPathComponent): \(bad)")
+                }
+            }
         }
     }
 
@@ -176,7 +181,8 @@ struct FakeEngine: BuildEngine {
         window.appearance = NSAppearance(named: .aqua)
         wc.applyDefaultLayout()
         #expect(wc.editor.fileURL?.path == main)
-        #expect(wc.editor.pathComponents.map(\.0) == ["Sample", "Sources", "Sample", "main.swift"])
+        // File names without extension (reference-ui-6.md §4.1, E1).
+        #expect(wc.editor.pathComponents.map(\.0) == ["Sample", "Sources", "Sample", "main"])
 
         session.breakpoints.click(file: main, line: 8)
         session.breakpoints.click(file: main, line: 14)

@@ -224,8 +224,23 @@ public enum MetalRenderCommand: Equatable, Sendable {
     case setDepthBias(depthBias: Float, slopeScale: Float, clamp: Float)
     case setBlendColor(red: Float, green: Float, blue: Float, alpha: Float)
     case setStencilReference(front: UInt32, back: UInt32)
-    /// Record 102: two words, order open (both 0 in captures).
-    case setColorStoreAction(first: UInt32, second: UInt32)
+    /// Deferred store actions: record 102 (`setColorStoreAction:atIndex:`,
+    /// u32 action then u32 index), 105 (`setDepthStoreAction:`, index
+    /// `depthAttachment`) and 120 (`setStencilStoreAction:`, index
+    /// `stencilAttachment`). The decoder also writes the action into the
+    /// pass's descriptor, so a back end that fixes store actions when the
+    /// pass begins needs nothing else (metal-sim-protocol.md §8.3).
+    case setStoreAction(index: Int, action: UInt32)
+    /// Records 103, 106, 121 (`set…StoreActionOptions:`): u64 options.
+    case setStoreActionOptions(index: Int, options: UInt64)
+    /// Record 24 (`updateFence:afterStages:`) and 25
+    /// (`waitForFence:beforeStages:`): a fence ref (from `newFence`, refs
+    /// are reused) and `MTLRenderStages` (1 vertex, 2 fragment).
+    case updateFence(MetalHandle?, stages: UInt32)
+    case waitForFence(MetalHandle?, stages: UInt32)
+    /// Record 132 (`setVisibilityResultMode:offset:`): u64 offset, u64 mode
+    /// (0 disabled, 1 boolean, 2 counting).
+    case setVisibilityResultMode(UInt64, offset: Int)
     case draw(MetalDraw)
     case drawIndexed(MetalIndexedDraw)
     case drawIndirect(primitiveType: UInt32, indirectBuffer: MetalHandle?, indirectOffset: Int)
@@ -233,9 +248,17 @@ public enum MetalRenderCommand: Equatable, Sendable {
                              indirectBuffer: MetalHandle?, indirectOffset: Int)
     /// `memoryBarrierWithScope:afterStages:beforeStages:`.
     case memoryBarrier(scope: UInt16, afterStages: UInt8, beforeStages: UInt8)
+    /// Record 22 (`memoryBarrierWithResources:count:afterStages:beforeStages:`).
+    case memoryBarrierResources([MetalHandle], afterStages: UInt16, beforeStages: UInt16)
     /// Records 135/137 (`stages` nil for 135).
     case useResources([MetalHandle], usage: UInt32, stages: UInt16?)
+    /// Records 27 (`useHeap(s):…stages:`) and 134 (`useHeap(s):`, `stages` nil).
+    case useHeaps([MetalHandle], stages: UInt16?)
     case unknown(op: UInt32, body: [UInt8])
+
+    /// `setStoreAction` index of the depth and stencil attachments.
+    public static let depthAttachment = -1
+    public static let stencilAttachment = -2
 }
 
 // MARK: Compute
@@ -259,6 +282,11 @@ public enum MetalComputeCommand: Equatable, Sendable {
     case memoryBarrier(scope: UInt32)
     case memoryBarrierResources([MetalHandle])
     case useResources([MetalHandle], usage: UInt32, stages: UInt16?)
+    /// Record 134 (`useHeap(s):`).
+    case useHeaps([MetalHandle])
+    /// Records 212 (`updateFence:`) and 213 (`waitForFence:`).
+    case updateFence(MetalHandle?)
+    case waitForFence(MetalHandle?)
     case unknown(op: UInt32, body: [UInt8])
 }
 

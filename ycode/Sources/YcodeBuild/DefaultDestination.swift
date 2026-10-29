@@ -33,24 +33,85 @@ extension DestinationCatalog {
         return .orderedSame
     }
 
-    /// The default destination for a product:
-    /// 1. My Mac when the product's platform is macOS (or unknown, as for
-    ///    a package);
-    /// 2. otherwise the first simulator of that platform, in menu order,
-    ///    whose OS version is not below the deployment target;
-    /// 3. otherwise the generic "Any <Platform> Simulator Device".
+    /// The default destination for a product (`reference-ui-6.md` §2.4.2–
+    /// §2.4.3, T3 and T11; refines `reference-ui-5.md` §4.3.5):
+    /// 1. My Mac when the product supports macOS (`supportsMacOS`: a
+    ///    multiplatform app), its platform is macOS, or it is unknown (a
+    ///    package);
+    /// 2. otherwise, of the candidates (simulators of that platform whose
+    ///    runtime is not below the deployment target and whose device
+    ///    family the product supports), the newest-generation Pro iPhone
+    ///    ("iPhone 18 Pro", not "Pro Max", "Air" or "e") on the newest
+    ///    runtime that has one;
+    /// 3. otherwise the first candidate in the Simulators order;
+    /// 4. otherwise the generic "Any <Platform> Simulator Device".
     ///
-    /// My Mac is never chosen for a product whose platform is not macOS.
-    public static func defaultDestination(platform: String?, deploymentTarget: String?, simulators: [Destination]) -> Destination {
-        guard let platform, platform != "macOS" else { return .myMac }
-        let candidates = simulatorsInMenuOrder(simulators.filter { $0.kind == .simulator && $0.platform == platform })
-        if let first = candidates.first(where: { sim in
+    /// My Mac is never chosen for a product that does not support macOS.
+    /// - Parameters:
+    ///   - simulators: the simulator rows (any kind but devices and the
+    ///     Mac; Ycode's remote simulator rows included by the caller).
+    ///   - deviceFamilies: the families the product supports ("iPhone",
+    ///     "iPad"; `deviceFamilies(targetedDeviceFamily:)`); nil = all. A
+    ///     simulator of an unknown family stays a candidate.
+    ///   - order: the Simulators order (the menu's, which also places rows
+    ///     whose runtime version is not known yet).
+    public static func defaultDestination(platform: String?, deploymentTarget: String?, simulators: [Destination],
+                                          supportsMacOS: Bool = false, deviceFamilies: Set<String>? = nil,
+                                          order: ([Destination]) -> [Destination] = simulatorsInMenuOrder) -> Destination {
+        guard let platform, platform != "macOS", !supportsMacOS else { return .myMac }
+        let candidates = order(simulators.filter { $0.platform == platform && $0.kind != .device && $0.kind != .mac }).filter { sim in
+            if let families = deviceFamilies, let family = deviceFamily(of: sim), !families.contains(family) { return false }
             guard let target = deploymentTarget, !target.isEmpty, let v = sim.osVersion else { return true }
             return compareVersions(v, target) != .orderedAscending
-        }) {
-            return first
         }
-        return anySimulator(platform)
+        // Step 2: the Simulators order is newest runtime first, so the
+        // first row of the newest Pro generation is on the newest runtime
+        // that has one.
+        let generations = candidates.map(proIPhoneGeneration(of:))
+        if let newest = generations.compactMap({ $0 }).max(), let i = generations.firstIndex(of: newest) {
+            return candidates[i]
+        }
+        return candidates.first ?? anySimulator(platform)
+    }
+
+    /// The device family of a simulator ("iPhone", "iPad", "Apple Vision"):
+    /// from its device type when the listing names one, else from its
+    /// name. Nil when neither tells.
+    public static func deviceFamily(of d: Destination) -> String? {
+        let words = [deviceTypeName(d.deviceType), d.deviceType == nil ? d.name : nil].compactMap { $0 }
+        for w in words {
+            for family in ["iPhone", "iPad", "Apple Vision"] where w.hasPrefix(family) { return family }
+        }
+        return nil
+    }
+
+    /// The generation of a Pro iPhone device type ("iPhone 18 Pro" → 18);
+    /// nil for any other type ("Pro Max", "Air", "e", the base model). The
+    /// type comes from the device type identifier when known
+    /// ("…SimDeviceType.iPhone-18-Pro"); else from the simulator's name,
+    /// without a trailing parenthesized note ("iPhone 18 Pro (Ycode)").
+    public static func proIPhoneGeneration(of d: Destination) -> Int? {
+        var name = deviceTypeName(d.deviceType) ?? d.name
+        if d.deviceType == nil, name.hasSuffix(")"), let open = name.range(of: " (", options: .backwards) {
+            name = String(name[..<open.lowerBound])
+        }
+        let words = name.split(separator: " ")
+        guard words.count == 3, words[0] == "iPhone", words[2] == "Pro", let n = Int(words[1]) else { return nil }
+        return n
+    }
+
+    /// "com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro" → "iPhone 18 Pro".
+    static func deviceTypeName(_ identifier: String?) -> String? {
+        guard let identifier, let last = identifier.split(separator: ".").last else { return nil }
+        return last.replacingOccurrences(of: "-", with: " ")
+    }
+
+    /// `TARGETED_DEVICE_FAMILY` ("1" iPhone, "2" iPad, "1,2" both) as
+    /// family names; nil when unset or naming neither (no restriction).
+    public static func deviceFamilies(targetedDeviceFamily value: String?) -> Set<String>? {
+        let codes = (value ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let names = Set(codes.compactMap { ["1": "iPhone", "2": "iPad"][$0] })
+        return names.isEmpty ? nil : names
     }
 
     /// "Any <Platform> Simulator Device".

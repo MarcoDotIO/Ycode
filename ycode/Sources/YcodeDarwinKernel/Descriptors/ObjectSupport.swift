@@ -68,11 +68,11 @@ extension DarwinKernel {
                        gid: DarwinFileSystem.guestGID, kernel: self)
     }
 
+    // CONTRACT-REQUEST(M/P): one shared audit-token builder (with the asid
+    // the system picks) for trailers, task_info, and LOCAL_PEERTOKEN.
     /// The 32-byte audit token of this image (`processes.md` §4.5): auid,
     /// euid, egid, ruid, rgid, pid, asid, pid version. The audit session id
     /// is 0, as in the Mach trailers Ycode sends today.
-    // CONTRACT-REQUEST(M/P): one shared audit-token builder (with the asid
-    // the system picks) for trailers, task_info, and LOCAL_PEERTOKEN.
     var descriptorAuditToken: [UInt8] {
         let uid = DarwinFileSystem.guestUID, gid = DarwinFileSystem.guestGID
         var b: [UInt8] = []
@@ -98,6 +98,7 @@ struct ByteQueue {
     private var head = 0
 
     var count: Int { storage.count - head }
+    // swiftlint:disable:next empty_count - this is isEmpty
     var isEmpty: Bool { count == 0 }
 
     mutating func append<C: Collection>(contentsOf bytes: C) where C.Element == UInt8 {

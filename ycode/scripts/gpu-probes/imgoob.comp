@@ -1,0 +1,11 @@
+// imgoob.comp: the shader of imgoob.c (glslangValidator --target-env vulkan1.3 -V imgoob.comp -o imgoob.spv).
+// Writes a W x H rectangle of texels at (OX, OY) of heap storage image INDEX.
+#version 460
+#extension GL_EXT_nonuniform_qualifier : require
+layout(local_size_x = 1) in;
+layout(set = 0, binding = 1) uniform writeonly image2D images[];
+layout(push_constant, std430) uniform PC { uint index; int w; int h; int ox; int oy; } pc;
+void main() {
+    for (int y = 0; y < pc.h; y++)
+        for (int x = 0; x < pc.w; x++) imageStore(images[pc.index], ivec2(pc.ox + x, pc.oy + y), vec4(1.0, 0.5, 0.25, 1.0));
+}

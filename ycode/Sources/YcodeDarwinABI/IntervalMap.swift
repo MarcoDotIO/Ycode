@@ -120,6 +120,7 @@ public enum DebugAccessGuard {
     /// `YCODE_DEBUG_RW_GUARD=1` (full check), `=2` (the check without call
     /// chains), `=3` (no check: only the call-chain walk on every lookup).
     public static let mode = getenv("YCODE_DEBUG_RW_GUARD").flatMap { Int(String(cString: $0)) } ?? 0
+    /// True when `YCODE_DEBUG_RW_GUARD` is set to a nonzero mode.
     public static var enabled: Bool { mode != 0 }
     static let frameCount = 16
     /// Fills up to `count` return addresses of the calling thread (the VMM
@@ -145,7 +146,9 @@ public enum DebugAccessGuard {
 
 /// An element of an `IntervalMap`: [start, end), end > start.
 public protocol IntervalMapElement {
+    /// The first address in the interval.
     var start: UInt64 { get }
+    /// The address one past the last; greater than `start`.
     var end: UInt64 { get }
 }
 
@@ -153,7 +156,10 @@ public protocol IntervalMapElement {
 /// (`IntervalMap(hardwareWatch:)`), so a write from outside the map raises
 /// SIGTRAP in the writing thread. The VMM installs `arm`/`disarm`.
 public enum DebugHardwareWatch {
+    /// Arms watchpoint `slot` on the 8 bytes at `address`; returns > 0 on
+    /// success. Nil: hardware watches are off.
     nonisolated(unsafe) public static var arm: ((_ slot: Int, _ address: UInt64) -> Int32)?
+    /// Disarms watchpoint `slot`.
     nonisolated(unsafe) public static var disarm: ((_ slot: Int) -> Void)?
     static let lock = NSLockLike()
     static let slots = 4
@@ -250,9 +256,11 @@ public final class IntervalMap<Element: IntervalMapElement> {
     private var freeNodes: [Int32] = []
     private var root: Int32 = -1
     private var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
+    /// The number of intervals in the map.
     public private(set) var count = 0
     private let useGuard = ConcurrentUseGuard()
 
+    /// An empty map without diagnostics.
     public init() {}
 
     /// `watch`: see `watched` (diagnostics; trivial element types only).
@@ -295,6 +303,7 @@ public final class IntervalMap<Element: IntervalMapElement> {
 
     private func slot(_ i: Int) -> Element? { watched?.get(i) ?? (watched == nil ? elementTable[i] : nil) }
 
+    // swiftlint:disable:next empty_count - this is isEmpty
     public var isEmpty: Bool { count == 0 }
 
     @inline(__always) private func element(_ t: Int32) -> Element { slot(Int(t))! }
@@ -629,7 +638,9 @@ public final class IntervalMap<Element: IntervalMapElement> {
 /// A first-fit allocator of 16 KiB-aligned ranges inside [base, base+size)
 /// (the backings' anonymous pools): O(log n) per call.
 public final class RangeAllocator {
+    /// The first address of the pool.
     public let base: UInt64
+    /// The pool's length in bytes.
     public let size: UInt64
     private let allocated: IntervalMap<PlainInterval>
     /// Diagnostics: `YCODE_DEBUG_WATCH_MAPS=1` (see `IntervalMap(watch:)`).
@@ -691,4 +702,3 @@ public final class RangeAllocator {
         return freed
     }
 }
-

@@ -93,7 +93,7 @@ extension MachIPC {
                       memory: any KernelGuestMemory) throws -> UInt64? {
         switch n {
         case Self.bsdFileportMakeport:
-            let fd = Int32(truncatingIfNeeded: a.count > 0 ? a[0] : 0)
+            let fd = Int32(truncatingIfNeeded: a.first ?? 0)
             let out = a.count > 1 ? a[1] : 0
             // EBADF for a closed fd comes from the file system; a confined
             // description (kqueue) cannot be sent. The port holds the
@@ -121,7 +121,7 @@ extension MachIPC {
             return 0
 
         case Self.bsdFileportMakefd:
-            let name = UInt32(truncatingIfNeeded: a.count > 0 ? a[0] : 0)
+            let name = UInt32(truncatingIfNeeded: a.first ?? 0)
             guard let (p, object) = kernelObject(named: name), case .fileport = object, p.active,
                   let file = p.fileportFile else {
                 throw DarwinErrnoError(DarwinErrnoCode.EINVAL)

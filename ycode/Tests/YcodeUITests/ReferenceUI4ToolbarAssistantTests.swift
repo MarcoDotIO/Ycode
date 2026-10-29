@@ -18,14 +18,16 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             .write(to: dir.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
         let wc = WorkspaceWindowController(session: WorkspaceSession(model: try WorkspaceModel(url: dir)), loadDestinations: false, startLanguageService: false)
         let ids = wc.toolbarDefaultItemIdentifiers(NSToolbar()).map(\.rawValue)
-        let start = try #require(ids.firstIndex(of: "account"))
-        #expect(Array(ids[start..<(start + 4)]) == EditorOptionsMenu.rightGroup)
+        // reference-ui-6.md §2.1: no Account item; short labels, long tooltips.
+        #expect(!ids.contains("account"))
+        let start = try #require(ids.firstIndex(of: "addEditor"))
+        #expect(Array(ids[start..<(start + 3)]) == EditorOptionsMenu.rightGroup)
         let opts = try #require(wc.toolbar(NSToolbar(), itemForItemIdentifier: .init("editorOptions"), willBeInsertedIntoToolbar: false) as? NSMenuToolbarItem)
-        #expect(opts.label == "Adjust Editor Options")
+        #expect(opts.label == "Editor Options" && opts.toolTip == "Adjust Editor Options")
         #expect(opts.menu.items.map { $0.isSeparatorItem ? "|" : $0.title } == [
             "Layout", "|", "Inline Comparison", "Side By Side Comparison", "|", "Minimap", "Authors", "Code Coverage", "|",
             "Invisibles", "Scope Guides", "Wrap Lines", "|", "Choose Workspace Theme…"])
-        #expect(wc.toolbar(NSToolbar(), itemForItemIdentifier: .init("addEditor"), willBeInsertedIntoToolbar: false)?.label == "Add Editor Tabs or Editor Panes")
+        #expect(wc.toolbar(NSToolbar(), itemForItemIdentifier: .init("addEditor"), willBeInsertedIntoToolbar: false)?.toolTip == "Add Editor Tabs or Editor Panes")
         // §14.3: no Devices and Simulators in the Window menu.
         let window = try #require(CommandTable.menus.first { $0.0 == "Window" }?.1)
         #expect(!window.contains { if case .command(let c) = $0 { c.title == "Devices and Simulators" } else { false } })

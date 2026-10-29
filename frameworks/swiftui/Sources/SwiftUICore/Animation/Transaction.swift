@@ -37,6 +37,7 @@ public struct Transaction {
     public subscript<K: TransactionKey>(key: K.Type) -> K.Value {
         get {
             guard let v = values[ObjectIdentifier(key)] else { return K.defaultValue }
+            // swiftlint:disable:next force_cast - storage is keyed by the key type, so the value has its Value type
             return v as! K.Value
         }
         set { values[ObjectIdentifier(key)] = newValue }

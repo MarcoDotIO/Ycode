@@ -139,11 +139,15 @@ extension DarwinKernel {
             guard length >= 0 else { throw fail(Code.EINVAL) }
             // The host file is kept alive by `guestFile`; the host call runs
             // without the kernel lock (stage6-contract.md §5.2).
+            let watch = guestFile.vnodeWriteWatch()
             let hostError = Self.lockedFileIO ? hostFtruncate(guestFile.hostFD, length)
                 : lock.unlocked { hostFtruncate(guestFile.hostFD, length) }
             guard hostError == 0 else { throw fail(DarwinErrnoCode.fromHost(hostError)) }
             // Shared views of the file follow its new size (service-fidelity.md §10).
             SharedFileViews.sizeMayHaveChanged(hostFD: guestFile.hostFD)
+            WriteGenerations.noteWrite(dev: guestFile.stat.dev, ino: guestFile.stat.ino)
+            FileChangeFeed.note(.modified, .file, guestFile.guestPath, pid: pid)
+            if let watch { VnodeNotes.post(watch.key, VnodeNotes.sizeNotes(from: watch.size, to: length)) }
             return .value(0)
 
         default:

@@ -28,6 +28,7 @@ public struct FoldRegion: Equatable, Hashable, Sendable {
     public func contains(line: Int) -> Bool { line >= startLine && line <= endLine }
 }
 
+/// Finds the foldable regions of a source text (see `FoldRegion`).
 public enum FoldRegions {
     /// The text with comments, strings and preprocessor lines blanked out
     /// (newlines kept), as UTF-16 units.

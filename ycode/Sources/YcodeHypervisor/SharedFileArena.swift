@@ -57,14 +57,48 @@ public final class SharedFileArena: @unchecked Sendable {
     /// the guests' views of it with 2 MiB stage-2 blocks instead of 4 KiB
     /// pages: far fewer stage-2 faults per process, and guest TLB entries
     /// that cover a whole 16 KiB guest page.
-    public static let hugeEnabled = getenv("YCODE_ARENA_HUGE").map { String(cString: $0) == "1" } ?? false
+    public static let hugeEnabled = hugeWholeFile || hugeHotChunks
+    static let hugeWholeFile = getenv("YCODE_ARENA_HUGE").map { String(cString: $0) == "1" } ?? false
+    /// `YCODE_ARENA_HUGE=hot` (boot-profile.md §9, SP4): instead of copying
+    /// the whole file, a background thread promotes each 2 MiB chunk of a
+    /// huge span once part of it is in the host page cache (`mincore`):
+    /// the chunk is copied into its own 2 MiB-aligned anonymous memory
+    /// (a transparent huge page when one is free) and moved over the arena
+    /// chunk with `mremap`. Only the cache's hot set is copied, from the
+    /// page cache, so no promotion waits for the disk for long.
+    static let hugeHotChunks = getenv("YCODE_ARENA_HUGE").map { String(cString: $0) == "hot" } ?? false
+    /// `YCODE_ARENA_HUGE_INTERVAL_MS` (default 1000): the promoter's pass interval.
+    static let hugeInterval = getenv("YCODE_ARENA_HUGE_INTERVAL_MS").flatMap { UInt32(String(cString: $0)) }.map { max(50, $0) } ?? 1000
+    /// `YCODE_ARENA_HUGE_MADVISE` (boot-profile.md §9): whether the copy
+    /// asks for huge pages with `MADV_HUGEPAGE`. With the host's THP mode
+    /// `always` the copy gets huge pages without it, from free 2 MiB blocks
+    /// only (no direct compaction under the `madvise` defrag mode: the
+    /// 74–82 s copies of §3.4 were compaction stalls); a 2 MiB piece that
+    /// finds none stays in 4 KiB pages. Default: only when the mode is not
+    /// `always`; `=1` always, `=0` never.
+    public static let hugeMadvise: Bool = {
+        if let v = getenv("YCODE_ARENA_HUGE_MADVISE") { return String(cString: v) == "1" }
+        let mode = (try? String(contentsOfFile: "/sys/kernel/mm/transparent_hugepage/enabled", encoding: .utf8)) ?? ""
+        return !mode.contains("[always]")
+    }()
+    /// `YCODE_ARENA_HUGE_THREADS=<n>` (default 8): threads that fill the copy.
+    public static let hugeThreads = getenv("YCODE_ARENA_HUGE_THREADS").flatMap { Int(String(cString: $0)) }.map { max(1, min(32, $0)) } ?? 8
     public static let hugeMinimum: UInt64 = 256 << 20
+    /// `YCODE_ARENA_ZERO_TAILS` (default on, `=0` off; boot-profile.md §9, SP3):
+    /// the reservation is readable (untouched pages read as zeros), so the
+    /// rest of a file's last 16 KiB granule needs no zero mapping of its own:
+    /// one host `mmap` less per new file (each takes the host process's
+    /// address-space lock for writing). Off: an inaccessible reservation and
+    /// a read-only zero mapping after each file, as before.
+    static let zeroTails = getenv("YCODE_ARENA_ZERO_TAILS").map { String(cString: $0) != "0" } ?? true
+    static var reserveProtection: Int32 { zeroTails ? PROT_READ : PROT_NONE }
     static let huge: UInt64 = 2 << 20
 
     init?(size: UInt64) {
         // 2 MiB alignment of the base (huge spans need it).
         let slack = Int(Self.huge)
-        guard let raw = mmap(nil, Int(size) + slack, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0), raw != MAP_FAILED else {
+        guard let raw = mmap(nil, Int(size) + slack, Self.reserveProtection, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0),
+              raw != MAP_FAILED else {
             return nil
         }
         let aligned = (UInt(bitPattern: raw) + UInt(slack) - 1) & ~(UInt(slack) - 1)
@@ -73,7 +107,25 @@ public final class SharedFileArena: @unchecked Sendable {
     }
 
     /// Promotions done (diagnostics): spans copied, bytes, milliseconds.
-    public private(set) var promotions: [(bytes: UInt64, milliseconds: UInt64)] = []
+    public private(set) var promotions: [(bytes: UInt64, milliseconds: UInt64, hugeBytes: UInt64)] = []
+
+    /// Diagnostics: `AnonHugePages` of the host mapping that starts at
+    /// `address` (/proc/self/smaps), in bytes.
+    static func anonHugeBytes(at address: UInt) -> UInt64 {
+        guard let text = try? String(contentsOfFile: "/proc/self/smaps", encoding: .utf8) else { return 0 }
+        let prefix = String(address, radix: 16) + "-"
+        var inside = false
+        for line in text.split(separator: "\n") {
+            if let first = line.first, first.isHexDigit, line.contains("-") {
+                if inside { break }
+                inside = line.hasPrefix(prefix)
+            } else if inside, line.hasPrefix("AnonHugePages:") {
+                let kb = line.split(separator: " ", omittingEmptySubsequences: true).dropFirst().first.flatMap { UInt64($0) } ?? 0
+                return kb << 10
+            }
+        }
+        return 0
+    }
 
     /// Copies [at, at+span) of the file (whose first `fileBytes` bytes are
     /// file data, the rest zeros) into fresh anonymous memory that asks for
@@ -93,21 +145,27 @@ public final class SharedFileArena: @unchecked Sendable {
         if head > 0 { munmap(raw, head) }
         let tail = slack - head
         if tail > 0 { munmap(copy + Int(span), tail) }
-        _ = madvise(copy, Int(span), 14 /* MADV_HUGEPAGE */)
-        // Fill with four threads (the file is in the page cache after the
-        // guests' first use; this is a memory copy).
+        if Self.hugeMadvise { _ = madvise(copy, Int(span), 14 /* MADV_HUGEPAGE */) }
+        // Fill with `hugeThreads` threads taking 64 MiB pieces in turn (the
+        // file is in the page cache after the guests' first use; this is a
+        // memory copy).
         let chunk = UInt64(64 << 20)
         let pieces = Int((fileBytes + chunk - 1) / chunk)
         let failed = Atomic<Bool>(false)
+        let nextPiece = Atomic<Int>(0)
         let copyAddress = UInt(bitPattern: copy)
-        DispatchQueue.concurrentPerform(iterations: pieces) { i in
-            var done = UInt64(i) * chunk
-            let end = min(fileBytes, done + chunk)
-            while done < end {
-                let n = pread(fd, UnsafeMutableRawPointer(bitPattern: copyAddress)! + Int(done), Int(end - done), off_t(done))
-                if n < 0 && errno == EINTR { continue }
-                if n <= 0 { failed.store(true, ordering: .relaxed); return }
-                done += UInt64(n)
+        DispatchQueue.concurrentPerform(iterations: min(Self.hugeThreads, max(1, pieces))) { _ in
+            while true {
+                let i = nextPiece.wrappingAdd(1, ordering: .relaxed).oldValue
+                guard i < pieces, !failed.load(ordering: .relaxed) else { return }
+                var done = UInt64(i) * chunk
+                let end = min(fileBytes, done + chunk)
+                while done < end {
+                    let n = pread(fd, UnsafeMutableRawPointer(bitPattern: copyAddress)! + Int(done), Int(end - done), off_t(done))
+                    if n < 0 && errno == EINTR { continue }
+                    if n <= 0 { failed.store(true, ordering: .relaxed); return }
+                    done += UInt64(n)
+                }
             }
         }
         guard !failed.load(ordering: .relaxed) else { munmap(copy, Int(span)); return }
@@ -116,7 +174,93 @@ public final class SharedFileArena: @unchecked Sendable {
         let moved = ckvm_mremap_fixed(copy, Int(span), at)
         guard moved == at else { munmap(copy, Int(span)); return }
         let ms = (monotonicNanosecondsForArena() &- began) / 1_000_000
-        lock.withLock { promotions.append((span, ms)) }
+        let hugeBytes = Self.anonHugeBytes(at: UInt(bitPattern: at))
+        lock.withLock { promotions.append((span, ms, hugeBytes)) }
+    }
+
+    /// Huge spans waiting for chunk promotion (hot mode). Guarded by `lock`.
+    private final class HotSpan {
+        let at: UInt
+        let span: UInt64
+        let fd: Int32
+        let fileBytes: UInt64
+        var promoted: [Bool]
+        init(at: UInt, span: UInt64, fd: Int32, fileBytes: UInt64) {
+            self.at = at; self.span = span; self.fd = fd; self.fileBytes = fileBytes
+            promoted = [Bool](repeating: false, count: Int(span / SharedFileArena.huge))
+        }
+    }
+    private var hotSpans: [HotSpan] = []
+    private var promoterStarted = false
+    /// Hot mode diagnostics: chunks promoted, failed, and the promoter's time.
+    public let hotChunks = Atomic<UInt64>(0)
+    public let hotChunkFailures = Atomic<UInt64>(0)
+    public let hotNanoseconds = Atomic<UInt64>(0)
+
+    /// The promoter (hot mode): every `hugeInterval` ms, promote the chunks
+    /// of every huge span that have a page in the page cache.
+    private func promoterLoop() {
+        var vector: [UInt8] = []
+        while true {
+            usleep(Self.hugeInterval * 1000)
+            let list = lock.withLock { hotSpans }
+            for span in list {
+                let pages = Int((span.fileBytes + 4095) / 4096)
+                if vector.count < pages { vector = [UInt8](repeating: 0, count: pages) }
+                let ok = vector.withUnsafeMutableBufferPointer { v in
+                    mincore(UnsafeMutableRawPointer(bitPattern: span.at)!, Int(span.fileBytes + 4095) & ~4095, v.baseAddress!) == 0
+                }
+                guard ok else { continue }
+                let pagesPerChunk = Int(Self.huge / 4096)
+                for chunk in 0..<span.promoted.count where !lock.withLock({ span.promoted[chunk] }) {
+                    let first = chunk * pagesPerChunk
+                    guard first < pages else { break }
+                    let last = min(pages, first + pagesPerChunk)
+                    var resident = false
+                    for i in first..<last where vector[i] & 1 != 0 { resident = true; break }
+                    guard resident else { continue }
+                    let began = monotonicNanosecondsForArena()
+                    if promoteChunk(span, chunk) {
+                        hotChunks.wrappingAdd(1, ordering: .relaxed)
+                    } else {
+                        hotChunkFailures.wrappingAdd(1, ordering: .relaxed)
+                    }
+                    lock.withLock { span.promoted[chunk] = true }
+                    hotNanoseconds.wrappingAdd(monotonicNanosecondsForArena() &- began, ordering: .relaxed)
+                }
+            }
+        }
+    }
+
+    /// Copies chunk `chunk` (2 MiB) of `span` into fresh 2 MiB-aligned
+    /// anonymous memory (file bytes, zeros past the end of the file), makes
+    /// it read-only and moves it over the arena chunk (one `mremap`, atomic
+    /// for every reader: both hold the same bytes). False (nothing changed)
+    /// on any failure.
+    private func promoteChunk(_ span: HotSpan, _ chunk: Int) -> Bool {
+        let size = Int(Self.huge)
+        guard let raw = mmap(nil, 2 * size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0),
+              raw != MAP_FAILED else { return false }
+        let start = (UInt(bitPattern: raw) + UInt(size) - 1) & ~(UInt(size) - 1)
+        let copy = UnsafeMutableRawPointer(bitPattern: start)!
+        let head = Int(start - UInt(bitPattern: raw))
+        if head > 0 { munmap(raw, head) }
+        if size - head > 0 { munmap(copy + size, size - head) }
+        if Self.hugeMadvise { _ = madvise(copy, size, 14 /* MADV_HUGEPAGE */) }
+        let offset = UInt64(chunk) * Self.huge
+        let fileEnd = min(span.fileBytes, offset + Self.huge)
+        var done = offset
+        while done < fileEnd {
+            let n = pread(span.fd, copy + Int(done - offset), Int(fileEnd - done), off_t(done))
+            if n < 0 && errno == EINTR { continue }
+            if n == 0 { break }   // the end of the file: the rest stays zero
+            if n < 0 { munmap(copy, size); return false }
+            done += UInt64(n)
+        }
+        guard mprotect(copy, size, PROT_READ) == 0 else { munmap(copy, size); return false }
+        let at = UnsafeMutableRawPointer(bitPattern: span.at + UInt(offset))!
+        guard ckvm_mremap_fixed(copy, size, at) == at else { munmap(copy, size); return false }
+        return true
     }
 
     /// Lock held.
@@ -163,21 +307,32 @@ public final class SharedFileArena: @unchecked Sendable {
                 defer { next += span + Self.granule }
                 guard let p = mmap(at, Int(fileBytes), PROT_READ, MAP_SHARED | MAP_FIXED, hostFD, 0), p == at else {
                     // MAP_FIXED may have dropped part of the reservation: put it back.
-                    _ = mmap(at, Int(fileBytes), PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0)
+                    _ = mmap(at, Int(fileBytes), Self.reserveProtection, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0)
                     return nil
                 }
-                if span > fileBytes {
+                if span > fileBytes, !Self.zeroTails {
                     // The rest of the last granule reads as zeros.
                     let tail = mmap(at + Int(fileBytes), Int(span - fileBytes), PROT_READ,
                                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0)
                     guard tail == at + Int(fileBytes) else {
-                        _ = mmap(at, Int(span), PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0)
+                        _ = mmap(at, Int(span), Self.reserveProtection, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0)
                         return nil
                     }
                 }
                 entry = (next, span)
                 spans[key] = entry
-                if huge {
+                if huge, Self.hugeHotChunks {
+                    let copyFD = dup(hostFD)
+                    if copyFD >= 0 {
+                        hotSpans.append(HotSpan(at: UInt(bitPattern: at), span: span, fd: copyFD, fileBytes: fileBytes))
+                        if !promoterStarted {
+                            promoterStarted = true
+                            let thread = Thread { [self] in promoterLoop() }
+                            thread.name = "ycode arena promoter"
+                            thread.start()
+                        }
+                    }
+                } else if huge {
                     let copyFD = dup(hostFD)
                     if copyFD >= 0 {
                         let fileBytesForCopy = fileBytes

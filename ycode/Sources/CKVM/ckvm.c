@@ -76,6 +76,20 @@ void *ckvm_alloc_anonymous(size_t size) {
     return p == MAP_FAILED ? NULL : p;
 }
 
+void *ckvm_alloc_anonymous_aligned(size_t size, size_t alignment, int huge) {
+    size_t total = size + alignment;
+    char *raw = mmap(NULL, total, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    if (raw == MAP_FAILED) return NULL;
+    uintptr_t start = ((uintptr_t)raw + alignment - 1) & ~(uintptr_t)(alignment - 1);
+    size_t head = start - (uintptr_t)raw;
+    if (head) munmap(raw, head);
+    size_t tail = total - head - size;
+    if (tail) munmap((char *)start + size, tail);
+    if (huge > 0) (void)madvise((void *)start, size, MADV_HUGEPAGE);
+    if (huge < 0) (void)madvise((void *)start, size, MADV_NOHUGEPAGE);
+    return (void *)start;
+}
+
 int ckvm_free_anonymous(void *address, size_t size) { return result_or_errno(munmap(address, size)); }
 
 int ckvm_discard_anonymous(void *address, size_t size) {
@@ -869,4 +883,110 @@ int ckvm_signal_on_parent_death(int signo)
     return 0;
 }
 
+#endif
+
+/* ------------------------------------------------------------------ */
+/* Host-side CPU profile of the vCPU threads (diagnostics, guest-cpu.md §5).
+ * YCODE_HOST_PROFILE=<path>: every vCPU host thread gets a CPU-time timer
+ * (timer_create CLOCK_THREAD_CPUTIME_ID, SIGEV_THREAD_ID) that sends
+ * SIGPROF every YCODE_HOST_PROFILE_US (default 200) µs of its CPU time
+ * (guest time included). The handler records the interrupted PC and up to
+ * 6 return addresses from the frame-pointer chain into a fixed buffer. At
+ * exit the samples are written to <path> as lines "pc lr1 lr2 ..." (hex,
+ * absolute), after a copy of /proc/self/maps, for offline symbolization.
+ * Samples taken inside KVM_RUN (the ioctl) are kept: their PC is the
+ * syscall instruction. */
+#if defined(__linux__) && defined(__aarch64__)
+#include <stdatomic.h>
+#define HOSTPROF_DEPTH 7
+#define HOSTPROF_MAX (1u << 20)
+static uint64_t (*hostprof_buf)[HOSTPROF_DEPTH];
+static _Atomic unsigned hostprof_n;
+static const char *hostprof_path;
+static long hostprof_us;
+
+static void hostprof_handler(int signo, siginfo_t *info, void *context)
+{
+    (void)signo; (void)info;
+    int saved = errno;
+    unsigned i = atomic_fetch_add_explicit(&hostprof_n, 1, memory_order_relaxed);
+    if (i < HOSTPROF_MAX) {
+        ucontext_t *uc = context;
+        uint64_t *s = hostprof_buf[i];
+        s[0] = uc->uc_mcontext.pc;
+        s[1] = uc->uc_mcontext.regs[30];
+        uint64_t fp = uc->uc_mcontext.regs[29];
+        for (int d = 2; d < HOSTPROF_DEPTH; d++) {
+            if (fp == 0 || (fp & 7) != 0) { s[d] = 0; continue; }
+            uint64_t *frame = (uint64_t *)(uintptr_t)fp;
+            s[d] = frame[1];
+            uint64_t next = frame[0];
+            fp = next > fp ? next : 0;
+        }
+    }
+    errno = saved;
+}
+
+static void hostprof_dump(void)
+{
+    FILE *out = fopen(hostprof_path, "w");
+    if (!out) return;
+    FILE *maps = fopen("/proc/self/maps", "r");
+    char line[512];
+    if (maps) {
+        while (fgets(line, sizeof line, maps))
+            if (strstr(line, " r-xp ") || strstr(line, " r--p 00000000 ")) fprintf(out, "# map %s", line);
+        fclose(maps);
+    }
+    unsigned n = atomic_load(&hostprof_n);
+    if (n > HOSTPROF_MAX) n = HOSTPROF_MAX;
+    fprintf(out, "# samples %u interval_us %ld\n", n, hostprof_us);
+    for (unsigned i = 0; i < n; i++) {
+        for (int d = 0; d < HOSTPROF_DEPTH; d++) fprintf(out, d ? " %llx" : "%llx", (unsigned long long)hostprof_buf[i][d]);
+        fputc('\n', out);
+    }
+    fclose(out);
+}
+
+int ckvm_hostprof_thread_start(void)
+{
+    static int ready;
+    if (!getenv("YCODE_HOST_PROFILE")) return 0;
+    {
+        static pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
+        pthread_mutex_lock(&m);
+        if (!ready) {
+            hostprof_path = getenv("YCODE_HOST_PROFILE");
+            const char *us = getenv("YCODE_HOST_PROFILE_US");
+            hostprof_us = us ? atol(us) : 200;
+            if (hostprof_us < 20) hostprof_us = 20;
+            hostprof_buf = mmap(NULL, sizeof(*hostprof_buf) * HOSTPROF_MAX, PROT_READ | PROT_WRITE,
+                                MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+            struct sigaction sa;
+            memset(&sa, 0, sizeof sa);
+            sa.sa_sigaction = hostprof_handler;
+            sa.sa_flags = SA_SIGINFO | SA_RESTART;
+            sigemptyset(&sa.sa_mask);
+            if (hostprof_buf != MAP_FAILED && sigaction(SIGPROF, &sa, NULL) == 0) {
+                atexit(hostprof_dump);
+                ready = 1;
+            } else {
+                ready = -1;
+            }
+        }
+        pthread_mutex_unlock(&m);
+    }
+    if (ready != 1) return -1;
+    struct sigevent ev;
+    memset(&ev, 0, sizeof ev);
+    ev.sigev_notify = SIGEV_THREAD_ID;
+    ev.sigev_signo = SIGPROF;
+    ev._sigev_un._tid = (pid_t)syscall(SYS_gettid);
+    timer_t t;
+    if (timer_create(CLOCK_THREAD_CPUTIME_ID, &ev, &t) != 0) return -errno;
+    struct itimerspec it = {{hostprof_us / 1000000, (hostprof_us % 1000000) * 1000}, {hostprof_us / 1000000, (hostprof_us % 1000000) * 1000}};
+    return timer_settime(t, 0, &it, NULL) == 0 ? 0 : -errno;
+}
+#else
+int ckvm_hostprof_thread_start(void) { return 0; }
 #endif

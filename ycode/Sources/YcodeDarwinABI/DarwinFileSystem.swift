@@ -24,6 +24,8 @@ public struct DarwinErrnoError: Error, Equatable, Hashable, Sendable, CustomStri
 }
 
 /// Darwin errno values (stage3-contract.md §8.1, plus a few the VFS reports).
+/// The values are xnu's (`bsd/sys/errno.h`), not the host's; `fromHost`
+/// converts a host errno.
 public enum DarwinErrnoCode {
     public static let EPERM: Int32 = 1
     public static let ENOENT: Int32 = 2
@@ -117,7 +119,8 @@ public enum DarwinErrnoCode {
     }
 }
 
-/// Darwin `open(2)` flag values (stage3-contract.md §8).
+/// Darwin `open(2)` flag values (stage3-contract.md §8; xnu
+/// `bsd/sys/fcntl.h`). They differ from Linux's; the VFS translates them.
 public enum DarwinOpen {
     public static let O_RDONLY: Int32 = 0x0000
     public static let O_WRONLY: Int32 = 0x0001
@@ -278,9 +281,9 @@ public struct DarwinStat: Equatable, Hashable, Sendable {
 
 // MARK: - Host calls (kept outside the types whose members shadow the C names)
 
-private func hostErrno() -> Int32 { DarwinErrnoCode.fromHost(errno) }
+func hostErrno() -> Int32 { DarwinErrnoCode.fromHost(errno) }
 
-private func hostStatCall(_ path: String, follow: Bool) throws -> DarwinStat {
+func hostStatCall(_ path: String, follow: Bool) throws -> DarwinStat {
     #if canImport(Darwin)
     var st = Darwin.stat()
     #elseif canImport(Glibc)
@@ -293,7 +296,7 @@ private func hostStatCall(_ path: String, follow: Bool) throws -> DarwinStat {
     return darwinStat(fromHost: st)
 }
 
-private func hostFStat(_ fd: Int32) throws -> DarwinStat {
+func hostFStat(_ fd: Int32) throws -> DarwinStat {
     #if canImport(Darwin)
     var st = Darwin.stat()
     #elseif canImport(Glibc)
@@ -332,6 +335,7 @@ public enum DarwinInodeMap {
         return map[HostKey(dev: dev, ino: ino)] ?? ino
     }
 
+    /// The number of remapped inodes (0 when no map is installed).
     public static var count: Int { map.count }
 }
 
@@ -369,7 +373,7 @@ private func darwinStat(fromHost st: stat) -> DarwinStat {
 private func guestUID(_ uid: uid_t) -> UInt32 { uid == geteuid() ? DarwinFileSystem.guestUID : UInt32(uid) }
 private func guestGID(_ gid: gid_t) -> UInt32 { gid == getegid() ? DarwinFileSystem.guestGID : UInt32(gid) }
 
-private func hostOpen(_ path: String, _ flags: Int32, _ mode: UInt16) throws -> Int32 {
+func hostOpen(_ path: String, _ flags: Int32, _ mode: UInt16) throws -> Int32 {
     #if os(Linux)
     // Host opens do not update the host file's access time (O_NOATIME,
     // allowed for files the host user owns), whatever the access mode: an
@@ -389,7 +393,7 @@ private func hostOpen(_ path: String, _ flags: Int32, _ mode: UInt16) throws -> 
     return fd
 }
 
-private func hostClose(_ fd: Int32) { _ = close(fd) }
+func hostClose(_ fd: Int32) { _ = close(fd) }
 
 #if os(Linux)
 /// O_NOATIME (Linux, arm64 and x86-64 asm-generic: 0o1000000).
@@ -416,7 +420,7 @@ private func hostPRead(_ fd: Int32, count: Int, offset: UInt64) throws -> [UInt8
     return buffer
 }
 
-private func hostPWrite(_ fd: Int32, _ bytes: [UInt8], offset: UInt64) throws -> Int {
+func hostPWrite(_ fd: Int32, _ bytes: [UInt8], offset: UInt64) throws -> Int {
     guard offset <= UInt64(Int64.max) else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
     var done = 0
     // A write past the end grows the file: shared views of it follow
@@ -435,21 +439,21 @@ private func hostPWrite(_ fd: Int32, _ bytes: [UInt8], offset: UInt64) throws ->
     return done
 }
 
-private func hostUnlink(_ path: String) throws {
+func hostUnlink(_ path: String) throws {
     guard unlink(path) == 0 else { throw DarwinErrnoError(hostErrno()) }
 }
 
-private func hostMkdir(_ path: String, _ mode: UInt16) throws {
+func hostMkdir(_ path: String, _ mode: UInt16) throws {
     guard mkdir(path, mode_t(mode)) == 0 else { throw DarwinErrnoError(hostErrno()) }
     // The host process's own umask must not change the guest's mode.
     _ = chmod(path, mode_t(mode))
 }
 
-private func hostRmdir(_ path: String) throws {
+func hostRmdir(_ path: String) throws {
     guard rmdir(path) == 0 else { throw DarwinErrnoError(hostErrno()) }
 }
 
-private func hostReadLink(_ path: String) throws -> String {
+func hostReadLink(_ path: String) throws -> String {
     var buffer = [CChar](repeating: 0, count: 4097)
     let n = readlink(path, &buffer, 4096)
     guard n >= 0 else { throw DarwinErrnoError(hostErrno()) }
@@ -465,7 +469,10 @@ public final class GuestFile {
     public let guestPath: String
     /// The host path the guest path maps to.
     public let hostPath: String
+    /// The host descriptor, owned by this object and closed in `deinit`.
     public let hostFD: Int32
+    /// The host (st_dev, st_ino), once asked for (`hostKey`, VnodeNotes.swift).
+    let hostKeyStore = Mutex<HostFileKey?>(nil)
     /// The file's current size (the size when it was opened if the host
     /// cannot say). A file mapping reads the bytes the file has when it is
     /// mapped: a file written after it was opened and then mapped (lsd's
@@ -519,6 +526,7 @@ public final class GuestFile {
         }
     }
 
+    /// Whether the file was a directory when it was opened.
     public var isDirectory: Bool { stat.isDirectory }
 
     /// Reads up to `count` bytes at `offset` (short at end of file).
@@ -543,14 +551,18 @@ public final class GuestFile {
 /// message therefore holds the description simply by keeping the
 /// `DarwinOpenFile` it got from `openFile(for:)`.
 public final class DarwinOpenFile {
+    /// What the description refers to.
     public enum Node {
         /// The console; `stream` (0, 1, 2) is what the console sink is told
         /// for writes, whatever descriptor number the write used.
         case console(stream: Int32)
+        /// A host file or directory.
         case file(GuestFile)
+        /// A kernel object: pipe, socket, kqueue and the like.
         case object(any DarwinDescriptorObject)
     }
 
+    /// What the description refers to; fixed for its lifetime.
     public let node: Node
     /// The file offset (host files). Guarded by `ioLock`: a read or write
     /// that runs without the kernel lock (`HostFileIO`) holds it for the
@@ -604,11 +616,14 @@ public final class DarwinOpenFile {
         return nil
     }
 
+    /// The access mode allows reads (O_RDONLY or O_RDWR).
     public var isReadable: Bool { statusFlags & DarwinOpen.O_ACCMODE != DarwinOpen.O_WRONLY }
+    /// The access mode allows writes (O_WRONLY or O_RDWR).
     public var isWritable: Bool {
         let m = statusFlags & DarwinOpen.O_ACCMODE
         return m == DarwinOpen.O_WRONLY || m == DarwinOpen.O_RDWR
     }
+    /// O_NONBLOCK is set.
     public var isNonBlocking: Bool { statusFlags & DarwinOpen.O_NONBLOCK != 0 }
 
     deinit {
@@ -714,9 +729,11 @@ public final class DarwinFileSystem {
 
     /// The uid and gid the guest runs as (`getuid` / `getgid`).
     public static let guestUID: UInt32 = 501
+    /// See `guestUID`.
     public static let guestGID: UInt32 = 20
     /// Darwin `MAXPATHLEN` and `NAME_MAX`.
     public static let maxPathLength = 1024
+    /// See `maxPathLength`.
     public static let maxNameLength = 255
     /// Symbolic links followed in one lookup before ELOOP (Darwin `MAXSYMLINKS`).
     public static let maxSymlinks = 32
@@ -727,20 +744,21 @@ public final class DarwinFileSystem {
     /// Darwin `OPEN_MAX`: the largest table `setrlimit(RLIMIT_NOFILE)` may ask for.
     public static let openMax: Int32 = 10240
 
-    private struct Descriptor {
+    struct Descriptor {
         var file: DarwinOpenFile
         var closeOnExec: Bool
         /// FD_CLOFORK (O_CLOFORK, F_SETFD bit 2). Ycode has no fork; it only
         /// gates F_SETCONFINED (xnu kern_descrip.c).
         var closeOnFork = false
         /// A guarded descriptor (`guarded_open_np` & co., xnu `kern_guarded.c`).
-        var guardState: DescriptorGuard? = nil
+        var guardState: DescriptorGuard?
     }
 
     /// Told about every guard violation (the operation also fails with
     /// EPERM). The kernel logs it; see `checkGuard`.
     public var guardViolation: ((_ fd: Int32, _ flavor: UInt32, _ guard: UInt64) -> Void)?
 
+    /// The allowed directory trees; a path outside all of them is ENOENT.
     public let prefixes: [Prefix]
     private let console: (Int32, [UInt8]) -> Void
     /// The descriptor table. Guarded by `tableLock` (a leaf,
@@ -750,9 +768,21 @@ public final class DarwinFileSystem {
     /// The table's leaf lock. Nothing else is locked while it is held; the
     /// close hook and the release of closed descriptions run after it.
     public let tableLock = DescriptorTableLock()
-    private let sockets: SocketNamespace
+    let sockets: SocketNamespace
     /// The highest descriptor number plus one (Darwin's default soft limit).
     public var maxDescriptors: Int32 = 256
+    /// The guest process this table belongs to (0: the host's own use).
+    /// File changes are reported with it (`FileChangeFeed`).
+    public var ownerPID: Int32 = 0
+    /// The process's document-ID tombstone (VolumeFeatures.swift: a tracked
+    /// file removed or renamed away leaves its ID for the next object made
+    /// under the same name, HFS's safe-save rule), and its leaf lock.
+    var tombstone: (directory: String, name: String, documentID: UInt32)? {
+        get { tombstoneLock.withLock { tombstoneValue } }
+        set { tombstoneLock.withLock { tombstoneValue = newValue } }
+    }
+    private var tombstoneValue: (directory: String, name: String, documentID: UInt32)?
+    private let tombstoneLock = NSLockLike(name: "document tombstone")
     /// Serve the device nodes under `/dev` (stage4c-contract.md §4, agent F):
     /// `null`, `zero`, `random`, `urandom`, `console`, `tty`. `/dev` itself is
     /// a read-only directory listing them; it takes precedence over any
@@ -863,7 +893,7 @@ public final class DarwinFileSystem {
 
     /// The prefix that serves a normalized guest path (the longest match) and
     /// the host path for it.
-    private func lookupPrefix(_ path: String) -> (prefix: Prefix, host: String)? {
+    func lookupPrefix(_ path: String) -> (prefix: Prefix, host: String)? {
         var best: (prefix: Prefix, host: String)?
         for p in prefixes {
             let rest: Substring
@@ -883,17 +913,17 @@ public final class DarwinFileSystem {
         return best
     }
 
-    private struct Resolved {
+    struct Resolved {
         var guestPath: String
         var hostPath: String
         var prefix: Prefix
         /// The `lstat` of the final component, or nil if it does not exist.
         var stat: DarwinStat?
         /// The final component is a device node (`/dev/…`; `hostPath` is empty).
-        var device: DarwinDevice.Kind? = nil
+        var device: DarwinDevice.Kind?
         /// The final component is a guest-namespace symbolic link with this
         /// target (not followed; `hostPath` is empty).
-        var guestLink: String? = nil
+        var guestLink: String?
     }
 
     /// The read-only pseudo prefix of `/dev` and of guest symbolic links.
@@ -945,7 +975,7 @@ public final class DarwinFileSystem {
     /// `noFollowAny` (NAMEI_NOFOLLOW_ANY, `RENAME_NOFOLLOW_ANY`): a symbolic
     /// link that would be followed in any component ends the lookup with
     /// ELOOP; a final component that is not followed is still returned.
-    private func resolve(_ path: String, followFinal: Bool, noFollowAny: Bool = false) throws -> Resolved {
+    func resolve(_ path: String, followFinal: Bool, noFollowAny: Bool = false) throws -> Resolved {
         guard !path.isEmpty else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
         guard path.utf8.count < Self.maxPathLength else { throw DarwinErrnoError(DarwinErrnoCode.ENAMETOOLONG) }
         var current = normalize(path, cwd: cwdStorage)
@@ -1074,7 +1104,7 @@ public final class DarwinFileSystem {
 
     // MARK: Descriptors
 
-    private func entry(_ fd: Int32) throws -> Descriptor {
+    func entry(_ fd: Int32) throws -> Descriptor {
         guard let d = tableLock.withLock({ descriptors[fd] }) else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
         return d
     }
@@ -1227,6 +1257,8 @@ public final class DarwinFileSystem {
         hostFlags |= O_NOFOLLOW
         // A synthetic ancestor directory has no host file behind it.
         if r.hostPath.isEmpty { throw DarwinErrnoError(DarwinErrnoCode.EACCES) }
+        // Vnode notes (VNOP_CREATE: the directory is written; O_TRUNC: a size change).
+        let watched = r.stat == nil || (truncate && (r.stat?.size ?? 0) != 0) ? VnodeNotes.capture(r.hostPath) : nil
         let hostFD = try hostOpen(r.hostPath, hostFlags, mode & 0o7777)
         // O_TRUNC of an existing file: shared views of it follow (§10 of service-fidelity.md).
         if truncate && r.stat != nil { SharedFileViews.sizeMayHaveChanged(hostFD: hostFD) }
@@ -1238,6 +1270,15 @@ public final class DarwinFileSystem {
         } catch {
             hostClose(hostFD)
             throw error
+        }
+        if r.stat == nil {
+            inheritTombstone(guestPath: r.guestPath, hostFD: hostFD)
+            FileChangeFeed.note(.created, .file, r.guestPath, pid: ownerPID)
+            watched?.post(directory: VnodeNote.write)
+        } else if truncate {
+            WriteGenerations.noteWrite(dev: file.stat.dev, ino: file.stat.ino)
+            FileChangeFeed.note(.modified, .file, r.guestPath, pid: ownerPID)
+            watched?.post(object: VnodeNotes.sizeNotes(from: r.stat?.size ?? 0, to: 0))
         }
         return (DarwinOpenFile(node: .file(file), statusFlags: status), closeOnExec)
     }
@@ -1318,7 +1359,7 @@ public final class DarwinFileSystem {
             return bytes.count
         case let .file(f):
             guard d.file.isWritable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
-            return try HostFileIO(description: d.file, file: f).write(bytes)
+            return try HostFileIO(description: d.file, file: f, pid: ownerPID).write(bytes)
         case let .object(o):
             guard let device = o as? DarwinDevice else { throw DarwinErrnoError(DarwinErrnoCode.EOPNOTSUPP) }
             guard d.file.isWritable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
@@ -1342,7 +1383,11 @@ public final class DarwinFileSystem {
         case .console, .object:
             throw DarwinErrnoError(DarwinErrnoCode.ESPIPE)
         case let .file(f):
-            return try hostPWrite(f.hostFD, bytes, offset: offset)
+            let watch = f.vnodeWriteWatch()
+            let n = try hostPWrite(f.hostFD, bytes, offset: offset)
+            f.noteWritten(pid: ownerPID)
+            if let watch { VnodeNotes.post(watch.key, VnodeNotes.writeNotes(offset: offset, count: n, sizeBefore: watch.size)) }
+            return n
         }
     }
 
@@ -1391,10 +1436,37 @@ public final class DarwinFileSystem {
     /// `stat` helper, app-launch.md §3.5).
     public func stat(_ path: String, followSymlinks: Bool, cacheImages: Bool = true) throws -> DarwinStat {
         let r = try resolve(path, followFinal: followSymlinks)
-        guard let st = r.stat else {
+        guard var st = r.stat else {
             if cacheImages, let images = cacheImageFiles, let st = cacheImageStat(images, path: path, resolved: r) { return st }
             throw DarwinErrnoError(DarwinErrnoCode.ENOENT)
         }
+        // File flags live in Ycode's metadata (VolumeFeatures.swift); only
+        // writable prefixes can have any.
+        if r.prefix.writable, !r.hostPath.isEmpty { st.flags = VolumeMetadata.read(hostPath: r.hostPath).flags }
+        return st
+    }
+
+    /// The `lstat` data of the entry `name` of the directory at the
+    /// normalized guest path `directory` (its symbolic links resolved), as
+    /// `stat(directory + "/" + name, followSymlinks: false)` answers, with
+    /// one host `lstat` instead of one per path component when the entry is
+    /// plainly inside the directory's prefix (no guest symbolic link on its
+    /// path, not a prefix root, not under `/dev`); otherwise, and on any
+    /// error, the full resolution (`bsd-locking.md` §14).
+    public func statEntry(inDirectory directory: String, name: String) throws -> DarwinStat {
+        let entry = directory == "/" ? "/" + name : directory + "/" + name
+        guard !name.isEmpty, !name.contains("/"), name != ".", name != "..",
+              !(servesDevices && (entry == "/dev" || entry.hasPrefix("/dev/"))),
+              firstGuestLink(in: entry) == nil,
+              let (prefix, host) = lookupPrefix(entry), entry != prefix.guestPath,
+              lookupPrefix(directory)?.prefix.guestPath == prefix.guestPath,
+              var st = try? hostStatCall(host, follow: false) else {
+            return try stat(entry, followSymlinks: false)
+        }
+        if let device = prefix.device { st.dev = device }
+        if let uid = prefix.ownerUID { st.uid = uid }
+        if let gid = prefix.ownerGID { st.gid = gid }
+        if prefix.writable { st.flags = VolumeMetadata.read(hostPath: host).flags }
         return st
     }
 
@@ -1426,6 +1498,7 @@ public final class DarwinFileSystem {
             if let prefix = lookupPrefix(f.guestPath)?.prefix {
                 if let uid = prefix.ownerUID { st.uid = uid }
                 if let gid = prefix.ownerGID { st.gid = gid }
+                if prefix.writable { st.flags = VolumeMetadata.read(fd: f.hostFD).flags }
             }
             return st
         case let .object(o):
@@ -1696,7 +1769,13 @@ extension DarwinFileSystem {
         guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
         if st.isDirectory { throw DarwinErrnoError(DarwinErrnoCode.EPERM) }
         guard r.prefix.writable else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        let record = VolumeMetadata.read(hostPath: r.hostPath)
+        let watched = VnodeNotes.capture(r.hostPath)
         try hostUnlink(r.hostPath)
+        leaveTombstone(guestPath: r.guestPath, record)
+        FileChangeFeed.note(.removed, FileChange.item(st), r.guestPath, pid: ownerPID)
+        // xnu VNOP_REMOVE.
+        watched?.post(object: VnodeNote.delete | VnodeNote.link, directory: VnodeNote.write)
         return true
     }
 
@@ -1708,7 +1787,11 @@ extension DarwinFileSystem {
         let r = try resolve(path, followFinal: false)
         guard r.stat == nil else { throw DarwinErrnoError(DarwinErrnoCode.EEXIST) }
         guard r.prefix.writable, !r.hostPath.isEmpty else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        let watched = VnodeNotes.capture(r.hostPath)
         try hostMkdir(r.hostPath, mode & ~umask & 0o7777)
+        FileChangeFeed.note(.created, .directory, r.guestPath, pid: ownerPID)
+        // xnu VNOP_MKDIR: a new entry and a new link (its "..") in the parent.
+        watched?.post(directory: VnodeNote.write | VnodeNote.link)
     }
 
     /// `rmdir`: removes an empty directory. Missing: ENOENT; not a directory
@@ -1724,7 +1807,11 @@ extension DarwinFileSystem {
         }
         guard r.prefix.writable else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
         if !socketNames(inDirectory: r.guestPath).isEmpty { throw DarwinErrnoError(DarwinErrnoCode.ENOTEMPTY) }
+        let watched = VnodeNotes.capture(r.hostPath)
         try hostRmdir(r.hostPath)
+        FileChangeFeed.note(.removed, .directory, r.guestPath, pid: ownerPID)
+        // xnu VNOP_RMDIR.
+        watched?.post(object: VnodeNote.delete | VnodeNote.link, directory: VnodeNote.write | VnodeNote.link)
     }
 
     /// `readlink`: the target of a symbolic link (a guest-namespace link or
@@ -1899,7 +1986,9 @@ public struct DescriptorGuard: Equatable, Sendable {
     }
 }
 
-/// Guarded-descriptor values (xnu `sys/guarded.h`, `kern_guarded.c`).
+/// Guarded-descriptor values (xnu `sys/guarded.h`, `kern_guarded.c`): the
+/// GUARD_* flags a guard carries, and the EXC_GUARD flavor reported for each
+/// kind of violation.
 public enum DarwinGuard {
     public static let close: UInt32 = 1 << 0
     public static let dup: UInt32 = 1 << 1
@@ -1922,18 +2011,18 @@ extension DarwinFileSystem {
     /// The guard of `fd` (nil when unguarded). EBADF if not open.
     public func guardState(of fd: Int32) throws -> DescriptorGuard? { try entry(fd).guardState }
 
-    /// Fails with EPERM when `fd` is guarded with all of `flags` (an
-    /// operation the guard forbids). On Darwin this also raises a fatal
-    /// EXC_GUARD exception that ends the process; Ycode only reports it to
-    /// `guardViolation` (the kernel logs it) and returns EPERM, so a guest
-    /// that trips a guard keeps running. A closed `fd` passes (the caller
-    /// reports EBADF).
     /// The guard flags of `fd` (nil: no guard, or no such descriptor); no
     /// report is made.
     public func guardFlags(_ fd: Int32) -> UInt32? {
         tableLock.withLock { descriptors[fd]?.guardState?.flags }
     }
 
+    /// Fails with EPERM when `fd` is guarded with all of `flags` (an
+    /// operation the guard forbids). On Darwin this also raises a fatal
+    /// EXC_GUARD exception that ends the process; Ycode only reports it to
+    /// `guardViolation` (the kernel logs it) and returns EPERM, so a guest
+    /// that trips a guard keeps running. A closed `fd` passes (the caller
+    /// reports EBADF). `flavor` is the `DarwinGuard.exception*` value reported.
     public func checkGuard(_ fd: Int32, _ flags: UInt32, flavor: UInt32) throws {
         guard let g = tableLock.withLock({ descriptors[fd]?.guardState }), g.flags & flags == flags else { return }
         guardViolation?(fd, flavor, g.value)
@@ -2067,16 +2156,84 @@ extension DarwinFileSystem {
             throw DarwinErrnoError(DarwinErrnoCode.EROFS)
         }
         if flags & Self.renameExclusive != 0, b.stat != nil { throw DarwinErrnoError(DarwinErrnoCode.EEXIST) }
+        let item = FileChange.item(a.stat)
+        let watchedA = VnodeNotes.capture(a.hostPath), watchedB = VnodeNotes.capture(b.hostPath)
         if flags & Self.renameSwap != 0 {
             guard b.stat != nil else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
-            let temporary = a.hostPath + ".ycode-swap-\(UInt32.random(in: 0...UInt32.max))"
-            try hostRename(a.hostPath, temporary)
-            do { try hostRename(b.hostPath, a.hostPath) } catch { try? hostRename(temporary, a.hostPath); throw error }
-            try hostRename(temporary, b.hostPath)
+            // Atomic where the host can (Linux renameat2 RENAME_EXCHANGE,
+            // macOS renamex_np RENAME_SWAP); otherwise three renames.
+            if try !hostRenameAtomically(a.hostPath, b.hostPath, swap: true) {
+                let temporary = a.hostPath + ".ycode-swap-\(UInt32.random(in: 0...UInt32.max))"
+                try hostRename(a.hostPath, temporary)
+                do { try hostRename(b.hostPath, a.hostPath) } catch { try? hostRename(temporary, a.hostPath); throw error }
+                try hostRename(temporary, b.hostPath)
+            }
+            FileChangeFeed.note(.renamed, item, a.guestPath, pid: ownerPID)
+            FileChangeFeed.note(.renamed, FileChange.item(b.stat), b.guestPath, pid: ownerPID)
+            postRenameNotes(watchedA, watchedB, sourceIsDirectory: a.stat?.isDirectory ?? false, replaced: false,
+                            swapped: b.stat?.isDirectory ?? false)
             return true
         }
-        try hostRename(a.hostPath, b.hostPath)
+        // Document IDs follow the file, and a safe save keeps the replaced
+        // file's (VolumeFeatures.swift).
+        let source = VolumeMetadata.read(hostPath: a.hostPath)
+        if flags & Self.renameExclusive != 0 {
+            // Atomic where the host can (RENAME_NOREPLACE / RENAME_EXCL): a
+            // name made after the check above is not replaced.
+            if try !hostRenameAtomically(a.hostPath, b.hostPath, swap: false) {
+                try hostRename(a.hostPath, b.hostPath)
+            }
+        } else {
+            let target = b.stat != nil ? VolumeMetadata.read(hostPath: b.hostPath) : VolumeMetadata.Record()
+            if target.documentID != 0, source.documentID == 0, a.hostPath != b.hostPath {
+                var inherited = source
+                inherited.flags |= VolumeMetadata.ufTracked
+                inherited.documentID = target.documentID
+                try? VolumeMetadata.write(inherited, hostPath: a.hostPath)
+            }
+            try hostRename(a.hostPath, b.hostPath)
+        }
+        if b.stat == nil {
+            if source.documentID != 0 {
+                leaveTombstone(guestPath: a.guestPath, source)
+            } else {
+                inheritTombstone(guestPath: b.guestPath, hostPath: b.hostPath)
+            }
+        }
+        FileChangeFeed.note(.renamed, item, a.guestPath, pid: ownerPID)
+        FileChangeFeed.note(.renamed, item, b.guestPath, pid: ownerPID)
+        if a.hostPath != b.hostPath {
+            postRenameNotes(watchedA, watchedB, sourceIsDirectory: a.stat?.isDirectory ?? false, replaced: b.stat != nil,
+                            swapped: nil)
+        }
         return true
+    }
+
+    /// The vnode notes of a rename (xnu VNOP_RENAME): each directory is
+    /// written, with NOTE_LINK when a directory's link counts changed (a
+    /// directory moved to another directory without replacing one, or
+    /// replacing one in the same directory); a replaced target is deleted;
+    /// the moved object is renamed. A swap (`swapped`: whether the target
+    /// was a directory) renames both and deletes neither.
+    private func postRenameNotes(_ a: VnodeNotes.Captured?, _ b: VnodeNotes.Captured?, sourceIsDirectory: Bool,
+                                 replaced: Bool, swapped: Bool?) {
+        guard let a, let b else { return }
+        let sameDirectory = a.directory == b.directory
+        var events = VnodeNote.write
+        if let targetIsDirectory = swapped {
+            if !sameDirectory, sourceIsDirectory != targetIsDirectory { events |= VnodeNote.link }
+        } else if sourceIsDirectory, (!sameDirectory && !replaced) || (sameDirectory && replaced) {
+            events |= VnodeNote.link
+        }
+        VnodeNotes.post(a.directory, events)
+        if !sameDirectory { VnodeNotes.post(b.directory, events) }
+        if swapped != nil {
+            VnodeNotes.post(a.object, VnodeNote.rename)
+            VnodeNotes.post(b.object, VnodeNote.rename)
+            return
+        }
+        if replaced, b.object != a.object { VnodeNotes.post(b.object, VnodeNote.delete) }
+        VnodeNotes.post(a.object, VnodeNote.rename)
     }
 
     /// chmod / lchmod / fchmodat: the permission bits of a host file.
@@ -2086,6 +2243,8 @@ extension DarwinFileSystem {
         guard r.prefix.writable, !r.hostPath.isEmpty else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
         if st.isSymbolicLink { return }  // the host keeps link modes fixed; Darwin's lchmod is accepted
         guard hostChmod(r.hostPath, mode & 0o7777) == 0 else { throw DarwinErrnoError(hostErrno()) }
+        FileChangeFeed.note(.owner, FileChange.item(st), r.guestPath, pid: ownerPID)
+        VnodeNotes.capture(r.hostPath)?.post(object: VnodeNote.attrib)
     }
 
     /// fchmod.
@@ -2093,6 +2252,8 @@ extension DarwinFileSystem {
         guard case let .file(f) = try entry(fd).file.node else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         guard writable(guestPath: f.guestPath) else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
         guard hostFchmod(f.hostFD, mode & 0o7777) == 0 else { throw DarwinErrnoError(hostErrno()) }
+        FileChangeFeed.note(.owner, FileChange.item(f.stat), f.guestPath, pid: ownerPID)
+        if VnodeNotes.isActive { VnodeNotes.post(f.hostKey, VnodeNote.attrib) }
     }
 
     /// chown / lchown / fchownat / fchown. Every guest file belongs to the
@@ -2105,8 +2266,11 @@ extension DarwinFileSystem {
         guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
         try checkOwnerChange(st, uid: uid, gid: gid)
         guard r.prefix.writable else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        FileChangeFeed.note(.owner, FileChange.item(st), r.guestPath, pid: ownerPID)
+        VnodeNotes.capture(r.hostPath)?.post(object: VnodeNote.attrib)
     }
 
+    /// fchown: the same ownership check as `chown`; EBADF if `fd` is not open.
     public func fchown(_ fd: Int32, uid: UInt32, gid: UInt32) throws {
         let st = try fstat(fd)
         try checkOwnerChange(st, uid: uid, gid: gid)
@@ -2127,14 +2291,20 @@ extension DarwinFileSystem {
         guard hostSetTimes(path: r.hostPath, fd: nil, access, modification, follow: followSymlinks) == 0 else {
             throw DarwinErrnoError(hostErrno())
         }
+        FileChangeFeed.note(.inodeMetadata, FileChange.item(r.stat), r.guestPath, pid: ownerPID)
+        VnodeNotes.capture(r.hostPath)?.post(object: VnodeNote.attrib)
     }
 
+    /// futimes: as `setTimes(_:access:modification:followSymlinks:)` for an
+    /// open file. EINVAL if `fd` is not a host file; EROFS on a read-only prefix.
     public func setTimes(_ fd: Int32, access: DarwinTimespec?, modification: DarwinTimespec?) throws {
         guard case let .file(f) = try entry(fd).file.node else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         guard writable(guestPath: f.guestPath) else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
         guard hostSetTimes(path: nil, fd: f.hostFD, access, modification, follow: true) == 0 else {
             throw DarwinErrnoError(hostErrno())
         }
+        FileChangeFeed.note(.inodeMetadata, FileChange.item(f.stat), f.guestPath, pid: ownerPID)
+        if VnodeNotes.isActive { VnodeNotes.post(f.hostKey, VnodeNote.attrib) }
     }
 
     /// truncate(2) by path.
@@ -2144,8 +2314,13 @@ extension DarwinFileSystem {
         guard let st = r.stat else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
         if st.isDirectory { throw DarwinErrnoError(DarwinErrnoCode.EISDIR) }
         guard r.prefix.writable, !r.hostPath.isEmpty else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
+        let watched = VnodeNotes.capture(r.hostPath)
         guard hostTruncate(r.hostPath, length) == 0 else { throw DarwinErrnoError(hostErrno()) }
+        WriteGenerations.noteWrite(dev: st.dev, ino: st.ino)
+        FileChangeFeed.note(.modified, .file, r.guestPath, pid: ownerPID)
+        watched?.post(object: VnodeNotes.sizeNotes(from: st.size, to: length))
         // Shared views of the file follow its new size (service-fidelity.md §10).
+        // swiftlint:disable:next empty_count - a sum of view counts, not a collection
         if SharedFileViews.count > 0, let fd = try? hostOpen(r.hostPath, O_RDONLY | O_CLOEXEC | O_NOFOLLOW, 0) {
             SharedFileViews.sizeMayHaveChanged(hostFD: fd)
             hostClose(fd)
@@ -2156,7 +2331,7 @@ extension DarwinFileSystem {
     public func writable(guestPath: String) -> Bool { lookupPrefix(guestPath)?.prefix.writable ?? false }
 }
 
-private func hostRename(_ from: String, _ to: String) throws {
+func hostRename(_ from: String, _ to: String) throws {
     guard rename(from, to) == 0 else { throw DarwinErrnoError(hostErrno()) }
 }
 
@@ -2164,8 +2339,8 @@ private func hostChmod(_ path: String, _ mode: UInt16) -> Int32 { chmod(path, mo
 private func hostFchmod(_ fd: Int32, _ mode: UInt16) -> Int32 { fchmod(fd, mode_t(mode)) }
 private func hostTruncate(_ path: String, _ length: Int64) -> Int32 { truncate(path, off_t(length)) }
 
-private func hostSetTimes(path: String?, fd: Int32?, _ access: DarwinTimespec?, _ modification: DarwinTimespec?,
-                          follow: Bool) -> Int32 {
+func hostSetTimes(path: String?, fd: Int32?, _ access: DarwinTimespec?, _ modification: DarwinTimespec?,
+                  follow: Bool) -> Int32 {
     func spec(_ t: DarwinTimespec?) -> timespec {
         #if canImport(Darwin)
         let now = -1  // UTIME_NOW
@@ -2185,13 +2360,12 @@ private func hostSetTimes(path: String?, fd: Int32?, _ access: DarwinTimespec?, 
     return utimensat(cwd, path!, &times, follow ? 0 : noFollow)
 }
 
-
 // MARK: - Extended attributes (stage 6)
 
 #if !canImport(Darwin)
 /// glibc's xattr functions (sys/xattr.h is not part of Swift's Glibc
 /// module): looked up once with dlsym.
-private enum LinuxXattr {
+enum LinuxXattr {
     typealias Get = @convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>, UnsafeMutableRawPointer?, Int) -> Int
     typealias FGet = @convention(c) (Int32, UnsafePointer<CChar>, UnsafeMutableRawPointer?, Int) -> Int
     typealias Set = @convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>, UnsafeRawPointer?, Int, Int32) -> Int32
@@ -2219,8 +2393,11 @@ private enum LinuxXattr {
 /// (93), XATTR_CREATE on an existing one EEXIST, XATTR_REPLACE on a missing
 /// one ENOATTR, names of 1…127 bytes, read-only prefixes EROFS.
 extension DarwinFileSystem {
+    /// The object an extended-attribute call acts on.
     public enum XattrTarget {
+        /// A guest path; `followSymlinks: false` acts on a final symbolic link itself.
         case path(String, followSymlinks: Bool)
+        /// An open descriptor; a descriptor that is not a host file has no attributes.
         case descriptor(Int32)
     }
 
@@ -2228,16 +2405,17 @@ extension DarwinFileSystem {
     static let ENOATTR: Int32 = 93
 
     /// The host file behind a target: its path or descriptor, and whether it may be written.
-    private func xattrHost(_ t: XattrTarget) throws -> (path: String?, fd: Int32?, writable: Bool) {
+    func xattrHost(_ t: XattrTarget) throws -> (path: String?, fd: Int32?, writable: Bool, guestPath: String, item: FileChange.Item) {
         switch t {
         case let .path(path, follow):
             let r = try resolve(path, followFinal: follow)
             guard r.stat != nil else { throw DarwinErrnoError(DarwinErrnoCode.ENOENT) }
-            return (r.hostPath.isEmpty ? nil : r.hostPath, nil, r.prefix.writable && !r.hostPath.isEmpty)
+            return (r.hostPath.isEmpty ? nil : r.hostPath, nil, r.prefix.writable && !r.hostPath.isEmpty, r.guestPath,
+                    FileChange.item(r.stat))
         case let .descriptor(fd):
             let d = try entry(fd)
-            guard case let .file(f) = d.file.node else { return (nil, nil, false) }
-            return (nil, f.hostFD, writable(guestPath: f.guestPath))
+            guard case let .file(f) = d.file.node else { return (nil, nil, false, "", .other) }
+            return (nil, f.hostFD, writable(guestPath: f.guestPath), f.guestPath, FileChange.item(f.stat))
         }
     }
 
@@ -2254,6 +2432,7 @@ extension DarwinFileSystem {
         #endif
     }
 
+    /// getxattr / fgetxattr: the attribute's value. ENOATTR when it is missing.
     public func getExtendedAttribute(_ t: XattrTarget, name: String) throws -> [UInt8] {
         try Self.checkName(name)
         let host = try xattrHost(t)
@@ -2297,8 +2476,12 @@ extension DarwinFileSystem {
             #endif
         }
         guard r == 0 else { throw DarwinErrnoError(Self.xattrErrno()) }
+        FileChangeFeed.note(.extendedAttribute, host.item, host.guestPath, pid: ownerPID)
+        VnodeNotes.postAttrib(path: host.path, fd: host.fd)
     }
 
+    /// removexattr / fremovexattr. ENOATTR when it is missing; EROFS on a
+    /// read-only prefix.
     public func removeExtendedAttribute(_ t: XattrTarget, name: String) throws {
         try Self.checkName(name)
         let host = try xattrHost(t)
@@ -2311,6 +2494,8 @@ extension DarwinFileSystem {
         let r = host.fd.map { LinuxXattr.fremove($0, key) } ?? LinuxXattr.lremove(host.path!, key)
         #endif
         guard r == 0 else { throw DarwinErrnoError(Self.xattrErrno()) }
+        FileChangeFeed.note(.extendedAttribute, host.item, host.guestPath, pid: ownerPID)
+        VnodeNotes.postAttrib(path: host.path, fd: host.fd)
     }
 
     /// The guest's attribute names, in host order.
@@ -2436,10 +2621,13 @@ public struct HostFileIO: @unchecked Sendable {
     /// O_APPEND at the time of the check (status flags change under the
     /// kernel lock only).
     let append: Bool
+    /// The writing process (file changes are reported with it).
+    let pid: Int32
 
-    init(description: DarwinOpenFile, file: GuestFile) {
+    init(description: DarwinOpenFile, file: GuestFile, pid: Int32 = 0) {
         self.description = description
         self.file = file
+        self.pid = pid
         append = description.statusFlags & DarwinOpen.O_APPEND != 0
     }
 
@@ -2478,17 +2666,27 @@ public struct HostFileIO: @unchecked Sendable {
     /// Writes at the description's offset (at the end with O_APPEND) and
     /// advances it.
     public func write(_ bytes: [UInt8]) throws -> Int {
-        try description.ioLock.withLock {
+        // Vnode notes go out after the offset lock (a leaf) is let go.
+        let watch = file.vnodeWriteWatch()
+        let (n, offset) = try description.ioLock.withLock { () throws -> (Int, UInt64) in
             if append { description.storedOffset = UInt64(max(0, try hostFStat(file.hostFD).size)) }
-            let n = try hostPWrite(file.hostFD, bytes, offset: description.storedOffset)
+            let at = description.storedOffset
+            let n = try hostPWrite(file.hostFD, bytes, offset: at)
             description.storedOffset += UInt64(n)
-            return n
+            file.noteWritten(pid: pid)
+            return (n, at)
         }
+        if let watch { VnodeNotes.post(watch.key, VnodeNotes.writeNotes(offset: offset, count: n, sizeBefore: watch.size)) }
+        return n
     }
 
     /// Writes at `offset` (the description's offset does not move).
     public func pwrite(_ bytes: [UInt8], offset: UInt64) throws -> Int {
-        try hostPWrite(file.hostFD, bytes, offset: offset)
+        let watch = file.vnodeWriteWatch()
+        let n = try hostPWrite(file.hostFD, bytes, offset: offset)
+        file.noteWritten(pid: pid)
+        if let watch { VnodeNotes.post(watch.key, VnodeNotes.writeNotes(offset: offset, count: n, sizeBefore: watch.size)) }
+        return n
     }
 
     /// A whole read served from the page cache (preadv2 with RWF_NOWAIT;
@@ -2573,7 +2771,7 @@ extension DarwinFileSystem {
             guard d.file.isReadable else { throw DarwinErrnoError(DarwinErrnoCode.EBADF) }
             if f.isDirectory { throw DarwinErrnoError(DarwinErrnoCode.EISDIR) }
         }
-        return HostFileIO(description: d.file, file: f)
+        return HostFileIO(description: d.file, file: f, pid: ownerPID)
     }
 
     /// `rename` for names that are not socket files, safe without the kernel

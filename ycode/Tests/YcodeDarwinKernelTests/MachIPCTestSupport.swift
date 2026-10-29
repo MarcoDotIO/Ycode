@@ -128,7 +128,7 @@ struct TestMessage {
     var id: Int32 = 1000
     var descriptors: [[UInt8]] = []
     var inline: [UInt8] = []
-    var complex: Bool? = nil
+    var complex: Bool?
     var extraBits: UInt32 = 0
 
     var isComplex: Bool { complex ?? !descriptors.isEmpty }

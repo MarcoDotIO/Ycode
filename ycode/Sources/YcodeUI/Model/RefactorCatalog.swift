@@ -46,6 +46,7 @@ public enum RefactorCatalog {
         ],
     ]
 
+    /// Every item, flattened in menu order; item indices refer to this list.
     public static var items: [Item] { groups.flatMap { $0 } }
 
     /// The index in `actions` of the action for item `index`, or nil.

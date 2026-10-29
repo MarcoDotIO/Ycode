@@ -3,6 +3,7 @@
 /// This is the general-purpose writer (tab-indented, one entry per line).
 /// Project files use `PBXProjWriter`, which follows Xcode's exact layout.
 public enum OpenStepWriter {
+    /// Returns `value` as an OpenStep document, followed by a newline.
     public static func write(_ value: PlistValue) -> String {
         var out = ""
         write(value, indent: 0, into: &out)
@@ -48,6 +49,8 @@ public enum OpenStepWriter {
         return s
     }
 
+    /// Whether `quote(_:)` must quote `s`: it is empty, has a character
+    /// outside the unquoted set, or contains `//` or `___`.
     public static func needsQuotes(_ s: String) -> Bool {
         if s.isEmpty { return true }
         for b in s.utf8 {
@@ -63,6 +66,9 @@ public enum OpenStepWriter {
         return s.contains("//") || s.contains("___")
     }
 
+    /// Escapes `s` for use inside double quotes: backslash, quote and the
+    /// C control escapes, and `\Uxxxx` for other control characters.
+    /// See `specs/formats/openstep-plist.md` (Grammar).
     public static func escape(_ s: String) -> String {
         var out = ""
         out.reserveCapacity(s.utf8.count)
@@ -88,9 +94,11 @@ public enum OpenStepWriter {
         return out
     }
 
+    /// `n` tab characters (the writer's indentation unit).
     public static func tabs(_ n: Int) -> String { String(repeating: "\t", count: n) }
 
     private static let digits = Array("0123456789abcdef")
+    /// The two lowercase hex digits of `b`.
     public static func hex(_ b: UInt8) -> String { String([digits[Int(b >> 4)], digits[Int(b & 0xF)]]) }
     static func hex4(_ v: UInt16) -> String { hex(UInt8(v >> 8)) + hex(UInt8(v & 0xFF)) }
 }

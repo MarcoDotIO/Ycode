@@ -518,6 +518,89 @@ holds for the three state-driven loops as well; the refinement proposed
 in §4.6 is not needed for them. The remaining full-boot restart loop that
 is Ycode's own is fileindexerd (FSEvents, `service-fidelity.md` §11).
 
+### 4.8 The full boot of the 2026-10-27 main line, against the Mac (agent SVC-FULL)
+
+IDE runs boot every service since 2026-10-27 (`lean-boot.md` §9; time to
+the home screen there: full 30.1 s, lean 29.1 s, medians of 6 timed boots
+each). The 23 labels' behaviour in a full boot of the main line
+(5f74ef9, default switches: start hold, boot priority), 700 s from the
+boot's first `launchd.log` line, on fresh copies of the golden device
+(`9-J/dev-pristine`, the device whose data the Mac references of §4.6 and
+§4.7 were given). Runs `svcfull/f700a`, `f700b` (in boot slots, the host
+loaded by other agents' boots: load 95–150 at the home screen, home at
+116 and 209 s) and `f700q` (`timed.sh`, the host to itself, home at
+57 s: the first boot of a copy at a new path, which is slower than the
+timed boots of `lean-boot.md` §9). Mac: the
+same-data columns of §4.6 and §4.7 (macOS 27.2, same runtime; measured on
+2026-10-17 and 2026-10-19), and for Group B, which the same-data Mac runs
+did not list, the new-device numbers of §3.2 (first 120 s). "end": alive
+at the end of the window, or how its last process ended.
+
+| Program | Ycode f700a | f700b | f700q | Mac, same data | Test |
+|---|---|---|---|---|---|
+| knowledgeconstructiond | 1, alive | 1, alive | 1, alive | 1, alive | pass |
+| sensorkitd | 1, alive | 1, alive | 1, alive | 0 | pass (≤ +2) |
+| spotlightknowledged | 1, alive | 1, alive | 1, alive | 1, alive | pass |
+| mediaanalysisd | 1, alive | 1, alive | 1, alive | 1, alive | pass |
+| nanoregistrylaunchd | 1, alive | 1, alive | 1, alive | 1, alive | pass |
+| intelligencetasksd | 3, SIGTRAP | 4, SIGTRAP | 5, SIGTRAP | 15–16, SIGTRAP | pass by the rule (≤ +2, same exit); fewer starts: the guest's task scheduler fired its launch event less often (`service-fidelity.md` §13.1) |
+| mlhostd | 61, exit(0) | 61, exit(0) | 65, exit(0) | 68, exit(0) | pass |
+| proactiveeventtrackerd | 67, exit(1) | 63, exit(1) | 68, exit(1) | 69, exit(1) | pass |
+| facetimemessagestored | 66, exit(0) | 62, exit(0) | 67, exit(0) | 68, exit(0) | pass |
+| pairedsyncd | 1, exit(0) | 1, exit(0) | 1, exit(0) | 1, exit(0) | pass |
+| parsec-fbf | 0 | 1, alive | 1, alive | (9/18 new devices, ≤ 1) | pass |
+| parsecd | 1, alive | 1, alive | 1, alive | 1, alive | pass |
+| textunderstandingd | 1, alive | 1, alive | 1, alive | (1) | pass |
+| accessibility.axassetsd | 1, alive | 1, alive | 1, alive | 1, alive | pass |
+| siriknowledged | 1, alive | 1, alive | 1, alive | (1) | pass |
+| spotlightknowledged.updater | 1, alive | 1, alive | 1, alive | (1) | pass |
+| suggestd | 1, alive | 1, alive | 1, alive | (1) | pass |
+| siriinferenced | 1, alive | 1, alive | 1, alive | (1) | pass |
+| searchd | 1, alive | 1, alive | 1, alive | 4 (3 × exit(0), §12.1 of `service-fidelity.md`) | pass |
+| photoanalysisd | 1, alive | 1, alive | 1, alive | (1) | pass |
+| homed | 1, alive | 1, alive | 1, alive | (1) | pass |
+| siriactionsd | 1, alive | 1, alive | 1, alive | (1) | pass |
+| intelligenceplatformd | 1, alive | 1, alive | 1, alive | (0.6) | pass |
+| *replicatord* | 1, alive | 1, alive | 1, alive | 1, alive | pass |
+| *fileindexerd* | 16, SIGTRAP | 16, SIGTRAP | 16, SIGTRAP | 1, alive | **fails** (`service-fidelity.md` §11) |
+| Programs started in 700 s ("Successfully spawned" lines) | 498 | 504 | 506 | 631 | |
+| Fatal guest conditions | 19 | 20 | 21 | | |
+
+Other programs with 3 or more starts: datamigrator 3–4 in f700a and
+f700b, 1 in f700q (exit 0; the Mac 2, §3.3), eligibilityd 3 in f700b
+(two exit(0), one alive; the Mac 1). No other
+program ended with a signal in the window, except one widget renderer
+extension in f700b (SIGKILL; not examined).
+
+Reading:
+
+- **All 23 services pass the behaviour test in a full boot**, as in §4.7;
+  the only restart loop that is Ycode's own is still fileindexerd
+  (FSEvents, `service-fidelity.md` §11, with open questions there).
+- intelligencetasksd starts 3–5 times instead of 16 (§4.7). Its crash and
+  the throttle are unchanged; it gets fewer launch events, which depend on
+  the device's history and the wall clock (`service-fidelity.md` §13.1).
+  The Mac reference was measured eight days earlier; it should be
+  remeasured with the same data on the same day (§4.5, "The Mac changes").
+- Programs started in 700 s: 498–506, as in run h5 (503, §4.7; per
+  program the same within ±3 except intelligencetasksd −11, mlhostd +10 and
+  datamigrator −4), against 631 on the Mac with the same data. The
+  difference to the Mac was not broken down (the Mac's per-program counts
+  of §4.7 were not recorded).
+- The guest's fatal conditions in these boots were fileindexerd and
+  intelligencetasksd only (and in an earlier boot of other agents now and
+  then PosterBoard, `service-fidelity.md` §13.2).
+
+App launches and the warm boot with full boots (runs `svcfull/F-*` and
+`snap/s1`, boot slots, host loaded by other agents: load 17–206): Settings
+and Safari launched through `ylaunch` in all four cold boots, 20 s after
+the home screen (homes 39–235 s; open request 1.2–14.0 s); a cold boot
+(home 72.6 s) with a snapshot at 75 s, then two lazy restores of it (home
+7.1 s; the second restore saw the Settings window first, 40.5 s) that
+launched Safari and Settings (open requests 6.9 and 15.4 s). Guest fatal
+conditions in all of them: fileindexerd and intelligencetasksd only. The
+IDE path (Mac → ssh → launcher) is in `specs/ide/run.md`.
+
 ## Evidence
 
 | Claim | Level |
@@ -533,3 +616,4 @@ is Ycode's own is fileindexerd (FSEvents, `service-fidelity.md` §11).
 | Order, tolerance and pass rules (§4) | design (derived from the measurements above) |
 | Group A and the full boot with the start hold, against the Mac with the same device data (§4.7) | 3 (Thor runs h1a, h3–h5, q8–q11, m1–m5; Mac devices `ycode-test-prio-aged-1`, `-2`, `launchd.log`) |
 | Group A on Ycode and on the Mac with the same device data (§4.5, §4.6) | 3 (Thor runs `lad10a`, `lad10b`; Mac device `ycode-test-svc4-aged-1`, `launchd.log`, `.ips` reports) |
+| The full boot of 2026-10-27 against the Mac references (§4.8) | 3 (Thor runs `svcfull/f700a`, `f700b`, `f700q`: guest `launchd.log` over 700 s, run logs; app runs `svcfull/F-*`, snapshot runs `svcfull/snap/s1`); the Mac columns are those of §3.2, §4.6, §4.7 (not remeasured) |

@@ -8,6 +8,9 @@ import YcodeSubprocess
 public struct Simctl: Sendable {
     /// Runs `xcrun simctl <args>` and returns (status, stdout+stderr).
     public var run: @Sendable ([String]) -> (Int32, String)
+    /// The program and leading arguments of the streamed `launch` (tests
+    /// put a stand-in here).
+    public var launchCommand = ["/usr/bin/xcrun", "simctl"]
 
     public init(run: @escaping @Sendable ([String]) -> (Int32, String) = Simctl.xcrun) { self.run = run }
 
@@ -174,11 +177,15 @@ extension WorkspaceSession {
         guard let app = AppBundle(url: appURL) else { appendConsole("Ycode: \(appURL.lastPathComponent) is not an application bundle.\n"); return }
         let state = SimulatorRunState(target: .mac(udid: udid), app: app)
         simulatorRun = state
-        setActivity(.running("Booting simulator"))
+        // reference-ui-6.md §3.3: "Launching <product>" while the simulator
+        // boots, the app installs and launches; no separate boot text.
+        let device = destination.flatMap { $0.identifier == udid ? $0.name : nil } ?? "Simulator"
+        runningProduct = app.executable
+        runningDeviceName = device
+        setActivity(.running(RunActivityText.launching(app.executable)))
         do {
             try await Task.detached { try simctl.boot(udid) }.value
             appendConsole("Ycode: simulator \(udid) is booted.\n")
-            setActivity(.running("Installing \(appURL.lastPathComponent)"))
             try await Task.detached { try simctl.install(udid, app: appURL) }.value
             appendConsole("Ycode: installed \(app.bundleID).\n")
         } catch {
@@ -187,7 +194,6 @@ extension WorkspaceSession {
             setActivity(.finished("Run failed"))
             return
         }
-        setActivity(.running("Running \(app.executable) on Simulator"))
         // simctl stays attached with the app's output (`--console`); the
         // app's pid comes from the host process list (simulator apps are
         // host processes).
@@ -199,8 +205,8 @@ extension WorkspaceSession {
             env = ProcessInfo.processInfo.environment
             for (k, v) in o.environment { env?["SIMCTL_CHILD_" + k] = v }
         }
-        let proc = StreamingProcess(executable: "/usr/bin/xcrun",
-                                    arguments: ["simctl"] + Simctl.launchArguments(udid: udid, bundleID: app.bundleID, waitForDebugger: debug, arguments: o.arguments),
+        let proc = StreamingProcess(executable: simctl.launchCommand[0],
+                                    arguments: Array(simctl.launchCommand.dropFirst()) + Simctl.launchArguments(udid: udid, bundleID: app.bundleID, waitForDebugger: debug, arguments: o.arguments),
                                     environment: env)
         state.process = proc
         do {
@@ -213,7 +219,7 @@ extension WorkspaceSession {
                 guard let self else { return }
                 self.appendConsole("Program ended with exit code: \(status)\n")
                 if self.simulatorRun === state { self.simulatorRun = nil }
-                if self.debugClient == nil { self.setActivity(.finished("Finished running \(app.executable)")) }
+                if self.debugClient == nil { self.setActivity(.finished(RunActivityText.finished(app.executable, on: device))) }
             })
         } catch {
             appendConsole("Ycode: \(error)\n")
@@ -227,7 +233,17 @@ extension WorkspaceSession {
             if let pid = await Task.detached(operation: { Self.newestProcess(matching: marker) }).value { state.pid = pid; break }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        if debug, let pid = state.pid { await attachToSimulatorApp(pid: pid, executable: app.executableURL.path, adapter: adapter) }
+        // The app is up (or never reported a pid): under the debugger,
+        // "Configuring Debugger Actions" until it is attached and resumed.
+        guard simulatorRun === state, state.exitStatus == nil else { return }
+        if debug, let pid = state.pid {
+            setActivity(.running(RunActivityText.configuringDebugger))
+            await attachToSimulatorApp(pid: pid, executable: app.executableURL.path, adapter: adapter)
+        }
+        // A breakpoint may already have stopped the app.
+        guard simulatorRun === state, state.exitStatus == nil else { return }
+        if case .paused = activity { return }
+        setActivity(.running(RunActivityText.running(app.executable, on: device)))
     }
 
     /// The newest host process whose command line contains `marker` (`pgrep -n -f`).
@@ -260,10 +276,13 @@ extension WorkspaceSession {
                 self?.sessionEnded()
             }
             try await client.initialize()
+            attachingSimulatorApp = true
+            defer { attachingSimulatorApp = false }
             try await client.attach(pid: pid, program: executable, waitFor: false, threadFormat: DebugThread.format)
             // Attaching stops the app (it was waiting for the debugger):
             // resume it once so it runs to the breakpoints.
             for _ in 0..<100 where stoppedThread == nil { try? await Task.sleep(for: .milliseconds(100)) }
+            attachingSimulatorApp = false
             if stoppedThread != nil { await continueOrPause() }
         } catch {
             appendConsole("Ycode: attach failed: \(error)\n")

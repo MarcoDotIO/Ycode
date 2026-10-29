@@ -85,6 +85,7 @@ extension VulkanMetalBackend {
     /// Whether render pipelines are linked from library parts.
     var usesPipelineLibraries: Bool { ctx.pointee.features.graphicsPipelineLibrary != 0 }
 
+    /// A copy of the pipeline-library counters, taken under the libraries' lock.
     public var pipelineLibraryStatistics: PipelineLibraryStatistics {
         libraries.lock.lock(); defer { libraries.lock.unlock() }
         return libraries.stats

@@ -192,6 +192,7 @@ public enum EditorDisplayModel {
 
     // MARK: Code structure headers
 
+    // swiftlint:disable:next force_try - a constant pattern
     static let declarationPattern = try! NSRegularExpression(
         pattern: #"\b(class|struct|enum|extension|protocol|actor|func|init|deinit|subscript|var|@interface|@implementation|@protocol)\b"#)
 

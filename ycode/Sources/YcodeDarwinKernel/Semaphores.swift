@@ -47,6 +47,7 @@ public final class KernelSemaphore: @unchecked Sendable {
     /// in the past polls. Returns a `kern_return_t`.
     func wait(lock: KernelLock, deadline: UInt64?, beforeSleeping: (() -> Void)? = nil) -> UInt64 {
         if isDestroyed { return DarwinKernel.KernReturn.terminated }
+        // swiftlint:disable:next empty_count - the semaphore value, not a collection
         if count > 0 {
             count -= 1
             beforeSleeping?()
@@ -70,15 +71,30 @@ extension DarwinKernel {
         machIPC?.semaphore(named: name)
     }
 
+    /// Diagnostics (`YCODE_DEBUG_SEMAPHORES=<process name>`): one stderr line
+    /// per semaphore create, destroy and failed trap in processes of that
+    /// name (the first 5000 per process).
+    static let debugSemaphoresProcess = getenv("YCODE_DEBUG_SEMAPHORES").map { String(cString: $0) }
+
+    func debugSemaphore(_ text: @autoclosure () -> String) {
+        guard let want = Self.debugSemaphoresProcess, let comm = processRecord?.comm, comm == want else { return }
+        let n = debugSemaphoreLines.add(1, ordering: .relaxed).newValue
+        guard n <= 5000 else { return }
+        FileHandle.standardError.write(Data("ycode-semaphore: pid \(pid) (\(comm)) thread \(current.threadID): \(text())\n".utf8))
+    }
+
     /// The semaphore traps −33…−39. Returns nil for other numbers.
     func handleSemaphoreTrap(_ n: Int, _ frame: inout TrapFrame) -> Outcome? {
         guard (Mach.semaphoreTimedwaitSignal...Mach.semaphoreSignal).contains(n) else { return nil }
-        let a = Array(frame.x[0..<8])
+        let a = frame.x.prefixArray(8)
         func port(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i]) }
         var call = CallText(tracing, "")
         func kr(_ value: UInt64, _ extra: String = "") -> Outcome {
             frame.x[0] = value
             trace("trap mach \(n) \(call) -> \(KernReturn.name(value))\(extra)")
+            if value != KernReturn.success, Self.debugSemaphoresProcess != nil {
+                debugSemaphore("trap \(n) (\(hx(port(0))), \(hx(port(1)))) -> \(KernReturn.name(value))")
+            }
             return .resume
         }
         func timeout(_ sec: UInt64, _ nsec: UInt64) -> UInt64 {

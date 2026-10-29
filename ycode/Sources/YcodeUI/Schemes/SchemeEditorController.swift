@@ -365,7 +365,7 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
     /// A row whose control Ycode shows with its default but cannot change
     /// (no scheme attribute for it in Ycode's specs): disabled.
     private func fixed(_ label: String, _ control: NSView) -> NSView {
-        if let c = control as? NSControl, !(control is NSTextField && (control as! NSTextField).isEditable == false && (control as! NSTextField).isBezeled == false) {
+        if let c = control as? NSControl, !((control as? NSTextField).map { $0.isEditable == false && $0.isBezeled == false } ?? false) {
             c.isEnabled = false
         }
         let l = NSTextField(labelWithString: label)

@@ -227,13 +227,15 @@ private func git(_ dir: URL, _ args: String...) throws -> String {
             wc.open(path: dir.appendingPathComponent("Sources/App/c.c").path, line: nil)
             #expect(enabled(wc, "formatFile:").0 == false && enabled(wc, "formatSelection:").0 == false)
 
-            // Minimap: a user setting; its width follows the editor (§6.5).
-            wc.editor.toggleMinimap(nil)
+            // Minimap: a user setting, on in the factory state (reference-ui-6.md
+            // §4.5, E9); its width follows the editor (§6.5).
             #expect(p.showMinimap && wc.editor.showsMinimap)
             wc.editor.view.layoutSubtreeIfNeeded()
             #expect(wc.editor.minimapWidthValue == MinimapView.width(forEditorWidth: wc.editor.view.bounds.width))
             wc.editor.toggleMinimap(nil)
             #expect(!p.showMinimap && !wc.editor.showsMinimap)
+            wc.editor.toggleMinimap(nil)
+            #expect(p.showMinimap && wc.editor.showsMinimap)
         }
     }
 
@@ -412,12 +414,17 @@ private func git(_ dir: URL, _ args: String...) throws -> String {
         wc.jumpToPreviousCounterpartInNextEditorPane(nil)
         #expect(wc.editorArea.tab.editors.count == 2 && wc.editor.fileURL?.path == foo)
 
-        // Layout ▸ is for the canvas: disabled while it is hidden.
-        #expect(enabled(wc, "setCanvasLayout:", tag: 0) == (false, .on))
+        // Layout ▸ is for the canvas: enabled while canvas mode is on, whether
+        // or not the file has previews (reference-ui-6.md §8 item 5, M5).
+        #expect(wc.isCanvasModeOn && wc.canvas == nil)
+        #expect(enabled(wc, "setCanvasLayout:", tag: 0) == (true, .on))
         wc.setCanvasLayout(item(tag: 2))
         #expect(wc.editorArea.canvasLayout == .below && enabled(wc, "setCanvasLayout:", tag: 2).1 == .on)
         wc.setCanvasLayout(item(tag: 0))
         #expect(wc.editorArea.canvasLayout == nil)
+        wc.toggleCanvas(nil)
+        #expect(!wc.isCanvasModeOn && enabled(wc, "setCanvasLayout:", tag: 1).0 == false)
+        wc.toggleCanvas(nil)
 
         // Show / Hide All Issues toggles every editor.
         #expect(MenuTitles.title(generic: "Show All Issues", in: wc.menuContext) == "Hide All Issues")

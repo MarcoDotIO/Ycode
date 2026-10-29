@@ -29,6 +29,7 @@ public struct EnvironmentValues: CustomStringConvertible {
             // (Not `as? K.Value ?? default`: for an optional `Value` a missing
             // entry would cast to `.some(nil)`.)
             guard let v = storage[ObjectIdentifier(key)] else { return K.defaultValue }
+            // swiftlint:disable:next force_cast - storage is keyed by the key type, so the value has its Value type
             return v as! K.Value
         }
         set {

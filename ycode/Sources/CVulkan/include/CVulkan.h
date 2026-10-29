@@ -156,7 +156,10 @@ typedef struct YVKDynamicRenderingLocalReadFeatures {
     X(vkDestroyQueryPool) \
     X(vkCmdResetQueryPool) \
     X(vkCmdWriteTimestamp2) \
-    X(vkGetQueryPoolResults)
+    X(vkGetQueryPoolResults) \
+    X(vkCmdBeginQuery) \
+    X(vkCmdEndQuery) \
+    X(vkCmdCopyQueryPoolResults)
 
 /* Optional device functions (extensions); NULL when not present. */
 #define YVK_OPTIONAL_DEVICE_FUNCTIONS(X) \
@@ -209,6 +212,9 @@ typedef struct yvk_features {
              fragmentShaderPixelInterlock, workgroupMemoryExplicitLayout, formatA8,
              dynamicRenderingLocalRead, fragmentShaderBarycentric, shaderDemoteToHelperInvocation,
              externalMemoryFd,
+             /* Exact sample counts of occlusion queries (Metal's counting
+                visibility-result mode). */
+             occlusionQueryPrecise,
              /* VK_EXT_graphics_pipeline_library with fast linking and
                 independent interpolation decorations. */
              graphicsPipelineLibrary,
@@ -248,7 +254,7 @@ typedef struct yvk_context {
 typedef struct yvk_context_options {
     uint32_t maxSampledImages;    /* 0 = default (65536, capped by the device) */
     uint32_t maxSamplers;         /* 0 = default (4096) */
-    uint32_t maxStorageImages;    /* 0 = default (16384) */
+    uint32_t maxStorageImages;    /* 0 = default (65536, capped by the device) */
     int validation;               /* 1: enable VK_LAYER_KHRONOS_validation when installed */
 } yvk_context_options;
 

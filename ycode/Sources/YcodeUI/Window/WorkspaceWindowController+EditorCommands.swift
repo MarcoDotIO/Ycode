@@ -41,15 +41,17 @@ extension WorkspaceWindowController {
         if let i = editorArea.tab.editors.firstIndex(where: { $0 === e }) { editorArea.tab.focused = i }
         if editor.comparisonStyle != .inline || !editor.isShowingInlineComparison {
             if editor.isShowingComparison || editor.isShowingInlineComparison { endCodeReview() }
+            endEditorModes(except: .codeReview)   // reference-ui-5.md §4.2 (canvas mode off too)
             editor.comparisonStyle = .inline
             guard startCodeReview() else { return }
         }
         editor.selectReviewChange(containing: line)
     }
 
-    // MARK: Layout ▸ (§2.7 item 4)
+    // MARK: Layout ▸ (§2.7 item 4; reference-ui-6.md §8 item 5, M5)
 
-    /// Editor ▸ Layout ▸ Automatic / Editor on Left / Editor on Top.
+    /// Editor ▸ Layout ▸ Automatic / Canvas on Right / Canvas on Bottom:
+    /// where the canvas goes.
     @objc public func setCanvasLayout(_ sender: Any?) {
         let tag = (sender as? NSMenuItem)?.tag ?? (sender as? Int) ?? 0
         editorArea.canvasLayout = tag == 1 ? .beside : (tag == 2 ? .below : nil)
@@ -231,7 +233,7 @@ extension WorkspaceWindowController {
         case #selector(setCanvasLayout(_:)):
             let current = editorArea.canvasLayout
             item.state = (item.tag == 0 && current == nil) || (item.tag == 1 && current == .beside) || (item.tag == 2 && current == .below) ? .on : .off
-            return canvas != nil
+            return canvasAuto.modeOn   // M5: while canvas mode is on, previews or not
         case #selector(toggleInlineIssues(_:)): return hasSourceFile
         case #selector(reindent(_:)), #selector(shiftLeft(_:)), #selector(shiftRight(_:)), #selector(reformatToWidth(_:)),
              #selector(formatToMultipleLines(_:)), #selector(addDocumentation(_:)), #selector(duplicateSelection(_:)):

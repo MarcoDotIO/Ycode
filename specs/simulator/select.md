@@ -61,6 +61,7 @@ carry is set and `x0` is the errno.
 | Pipe, read end | data buffered, or the writer closed (end of file) | never | never |
 | Pipe, write end | never | at least `PIPE_BUF` bytes of space, or the reader closed | never |
 | AF_UNIX socket | as `EVFILT_READ` (data, a pending connection, or end of file) | as `EVFILT_WRITE` (space, or the peer gone) | never |
+| IP socket, PF_ROUTE socket | as `EVFILT_READ`/`EVFILT_WRITE` (`networking-ycode.md` §2.4) | as `EVFILT_WRITE` | never |
 | kqueue | at least one event is pending | never | never |
 | Other kernel objects (POSIX shm, semaphores, …) | never | never | never |
 
@@ -95,6 +96,20 @@ cannot be blocked) and then restores the old mask. If a signal that the new
 mask lets through is already pending when the call would block, the call
 fails with `EINTR`.
 
+## 5a. poll
+
+`poll` (230) and `poll_nocancel` (417) use the same readiness and the same
+wait (readiness observers, the kernel lock released; NET-IMPL,
+`networking-ycode.md` §2.4). Per `struct pollfd` (8 bytes: fd, events,
+revents): a negative fd is skipped (revents 0); a descriptor that is not
+open gets POLLNVAL (0x20); readable sets the asked POLLIN/POLLRDNORM;
+writable the asked POLLOUT/POLLWRBAND unless POLLHUP; end of file sets
+POLLHUP (0x10) (and the asked read bits). A host file or the console is
+always readable and writable. The timeout is in milliseconds (negative:
+no limit; 0: poll). More than 12288 entries: EINVAL. The result is the
+number of entries with a non-zero revents; EINTR when interrupted. Before,
+`poll` was not implemented (ENOSYS).
+
 ## 6. Diagnostics
 
 `YCODE_DEBUG_SELECT_STATS=1` prints a `ycode-select-stats:` line to standard
@@ -113,6 +128,7 @@ which nothing was ready), timeouts, interruptions, errors, the largest
 | `nd` < 0 → EINVAL; clamp of `nd` to the descriptor table; EBADF for a set bit naming a closed descriptor; result = number of set bits; sets written only on success | 1 (select(2) manual page; xnu open source `bsd/kern/sys_generic.c`) |
 | Timeout layouts (64-bit `timeval` with int32 `tv_usec`; `timespec`) and the EINVAL bounds (negative, `tv_sec` > 10⁸, sub-second out of range) | 1 (Darwin `sys/_types/_timeval64.h`/`_timeval.h`, `sys/_types/_timespec.h`; select(2) "too large"; xnu `itimerfix`) |
 | NULL timeout waits with no limit; zero polls; EINTR on a signal | 1 (POSIX `select`/`pselect`; select(2)) |
+| `poll` semantics (§5a): POLLNVAL, POLLHUP at end of file, skipped negative descriptors, the millisecond timeout | 1 (POSIX `poll`; xnu `sys_generic.c` poll callback) |
 | `pselect` replaces the signal mask for the call | 1 (POSIX `pselect`; pselect(2)) |
 | Readiness rules for pipes and sockets, and end of file counts as ready | 1 (POSIX: "a descriptor shall be considered ready for reading when a call to an input function … would not block"); same rules as kevent (`threads-and-events.md` §3.7.7) |
 | Regular files and terminals are always ready | 1 (POSIX `select`: "File descriptors associated with regular files shall always select true") |

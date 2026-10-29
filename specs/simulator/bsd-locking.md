@@ -5,7 +5,9 @@ Status: **implemented, agent SP-L0, 2026-10-19.** Continues
 traps off L0) for the BSD descriptor, path, ulock and VM traps that still
 ran under L0. On by default; `YCODE_BSD_FAST=0` sends every trap of §4
 back to L0 (§6's purgeable call follows `YCODE_TASK_LOCAL_TRAPS`).
-Measurements: §10.
+Measurements: §10. Extended by agent KLOCK (2026-10-23/24): more traps,
+the process table, directory cursors and file locks without L0 (§12–§15),
+measurements §16, open items §17.
 
 This is Ycode's own design for Ycode's own kernel personality. It names
 no Apple internals. The semantics kept are those of the locked paths
@@ -56,7 +58,7 @@ guest memory.
 | 1 | L_P, one per image ("event lock") | as `mach-ipc-locking.md` §4.1, **and the image's ulock table and ulock wait queues** (§5) |
 | 2 | G, the port lock | as before |
 | 3 | L1 per address space | as before |
-| leaf | the descriptor-table lock of each process (§3); the knote-watch table and the purgeable-state table of each image; the system's POSIX-lock user set and protection-class table; the file-lock table's creation lock | their tables only |
+| leaf | the descriptor-table lock of each process (§3); the knote-watch table and the purgeable-state table of each image; the system's POSIX-lock user set and protection-class table; the file-lock table's creation lock; since KLOCK: the process table and each process record (§13), each image's directory cursors (§14) and I/O policies, the time-of-day snapshot publish (§12), the file-lock table (§15) | their tables only |
 
 A thread takes levels 0–3 in strictly increasing order (unchanged). A leaf
 lock is taken last: its holder takes no other lock, waits for nothing and
@@ -230,6 +232,16 @@ never held while another lock is taken or a thread waits, so they add no
 edge to the waits-for graph; a fast path that needs L0 (the close hook)
 takes it holding nothing.
 
+**KLOCK's locks (§12–§15)** are leaves of the same kind: their holders
+take no other lock, wait for nothing and run no callback (a removed
+process record or a replaced image is released after the lock; file-lock
+waiters are woken under L0 after the table lock is let go). They count in
+`LeafLockCheck`, so taking any kernel lock while holding one stops the
+process with `YCODE_LOCK_ORDER_CHECK=1`. The snapshot capture reads, and
+the restore writes, these tables with L0 and every fine lock held, so no
+fast path runs then; the restore marks the descriptions whose OFD locks it
+re-arms (§15).
+
 ## 9. Tests
 
 `BSDFastPathTests` (lock-order check on): fast and locked answers byte for
@@ -246,6 +258,20 @@ task-local against locked; spawn and exec through a two-step launcher
 order in every test helper (`YCODE_IPC_LOCKS_TESTS=1` or
 `YCODE_BSD_FAST_TESTS=1`, about 4,300 BSD fast traps per run, the fast
 paths writing the same trace lines as the locked path).
+
+KLOCK's tests (all with the lock-order check, on both paths where the
+suite is run with `YCODE_IPC_LOCKS_TESTS=1`): `BSDFastPathTests`
+`smallTrapsMatchTheLockedPath`, `processTableReadsMatchTheLockedPath`,
+`processTableReadsRaceSpawnsAndExits`, `directoryReadsMatchTheLockedPath`,
+`fileLocksWithoutL0`, the console and fcntl cases of
+`answersMatchTheLockedPath`; `MachIPCLockSplitTests`
+`portRoutinesOnTheFastPathKeepRightsBalanced`; `ThreadStateRaceTests`
+(half of the `thread_get_state` calls on the routine's fast path);
+`WorkqueueKEventTests.descriptorKnoteIsDeliveredToAParkedWorker`. The
+kernel suite (353 tests) passes on the Mac, the Thor (arm64) and the
+x86-64 workstation with `YCODE_LOCK_ORDER_CHECK=1 YCODE_IPC_LOCKS_TESTS=1`
+and with `YCODE_IPC_LOCKS=0`; the full suite passes on the Mac and the
+workstation.
 
 ## 10. Measurements
 
@@ -295,25 +321,229 @@ guest CPU (`mach-ipc-locking.md` §6.2, `boot-profile.md` §5). A
 measurement on an idle host is still needed before calling it a gain or
 a loss.
 
-## 11. Open items
+## 11. Open items (SP-L0; see §17 for what KLOCK left)
 
-- `proc_info` (103 k calls, 49 s of summed waits per boot), `csops_audittoken`
-  and `kern.proc` sysctls read the process table, which is L0 state; a
-  read-mostly process-table lock would take them off L0.
-- fcntl F_SETFL and the file-lock commands, getdirentries64 (directory
-  cursors) and the Mach port traps outside the IPC fast paths still use L0.
+- ~~`proc_info`, `csops_audittoken` and `kern.proc` sysctls read the process
+  table, which is L0 state~~ (§13).
+- ~~fcntl F_SETFL~~ (§12), ~~getdirentries64~~ (§14) and ~~the Mach port
+  traps outside the IPC fast paths~~ (`mach-ipc-locking.md` §4.10); the
+  ~~non-blocking file-lock commands~~ (§15).
 - A close in an image that ever used POSIX locks takes L0 for the hook
   (sticky per pid).
+
+## 12. More traps without L0 (agent KLOCK, 2026-10-23)
+
+The idle-host trap profile of a cold boot of a device at its own path
+(§15.1) still showed L0 31 % busy with 170 s of summed waits in 41 s, and
+every L0 trap waited 100–500 µs for it. Each change below has a switch;
+the answers are the locked path's (the same functions run on both paths).
+
+| Trap | Without L0 | Switch |
+|---|---|---|
+| BSD 73 `munmap`, 74 `mprotect`; Mach −15 `mach_vm_map` (anonymous memory); Mach −3 `mach_absolute_time`, −4 `mach_continuous_time` | task-local traps (`boot-profile.md` §3.6): one address-space change under L1, as `vm_deallocate`, `vm_protect`, `vm_allocate`; a fixed `mach_vm_map` placement checks and maps as one change; the counter | `YCODE_TASK_LOCAL_MORE=0` |
+| BSD 116 `gettimeofday` | the clocks; the commpage time-of-day snapshot is published under a leaf lock (two threads, on and off L0, may refresh it at once) | `YCODE_BSD_FAST_MORE=0` |
+| BSD 372 `thread_selfid`, 500 `getentropy` | the caller's thread id; host random bytes | the same |
+| BSD 322 `iopolicysys` | the image's I/O policy table, now with a leaf lock of its own (set and get are one section each) | the same |
+| BSD 381 `__mac_syscall`, the Sandbox extension calls (issue, consume, release) | stateless: a token made from the path's `stat`, a form check | the same |
+| BSD 92 `fcntl` F_SETFL of a description without an object (a host file, the console) | one store of the flags word: F_SETFL replaces every settable bit and keeps the access mode, which never changes, so no update is lost without L0; an object's F_SETFL (its readiness may change) stays on L0 | the same |
+| `fcntl` F_SETNOSIGPIPE, F_GETNOSIGPIPE | one word of the description | the same |
+| BSD 95 `fsync`, 187 `fdatasync` (Ycode's writes reach the host file before they return: a descriptor check); 136 `mkdir`, 475 `mkdirat` (the host directory; the umask is one word); 58 `readlink`, 473 `readlinkat`; 345 `statfs64`, 346 `fstatfs64` | path resolution, the descriptor table and host calls | `YCODE_BSD_FAST_MORE=0` |
+| BSD 361 `bsdthread_terminate`: the unmap (or, for the main thread, the protection) of the thread's stack | released L0 for the address-space change (L1; a host mapping change runs every VM's MMU notifier, 360 µs mean L0 hold before); the thread is still alive and in its table meanwhile; the rest under L0 as before | — |
+| Mach −43 `mach_generate_activity_id` | task-local: the image's counter is an atomic | `YCODE_TASK_LOCAL_MORE=0` |
+| BSD 4 `write`, 397 of the console | the host's standard output or error (one host `write`, which the host serializes); on L0 a slow host stream (a full pipe to a log reader, a file on a busy disk) held the kernel lock for the whole write | the same |
+| Ycode's `vm_copy` (0x7963_0004) | task-local: one read and one write of guest memory | `YCODE_TASK_LOCAL_MORE=0` |
+| Ycode's Mach routines `thread_get_state`, `task_threads`, `mach_make_memory_entry_64`, `mach_vm_map` (memory object), `mach_vm_remap`, port context | the event lock and/or G (`mach-ipc-locking.md` §4.10) | `YCODE_PORT_ROUTINES_FAST=0` |
+| `fcntl` F_GETPROTECTIONCLASS, F_GETPROTECTIONLEVEL | the protection-class table's leaf lock (§4.4); setting a class stays on L0 | the same |
+
+**Importance flips without QoS.** A send that changes a process's
+importance count across zero flips its darwin-bg state; the fast `mach_msg`
+deferred a class refresh to L0 for it (`mach-ipc-locking.md` §4.5) even
+when `YCODE_SCHED_QOS` is off, where the refresh does nothing. Only a start
+hold's release (or QoS) now takes L0 there.
+
+## 13. The process table without L0
+
+`proc_info` reads, `csops`/`csops_audittoken` and `kern.proc.pid` read the
+process table and process records (L0 state until now).
+
+- **The table** (`DarwinSystem.processes`) is read and written under a
+  leaf lock of its own (`processTableLock`); every writer still holds L0
+  as well. A write replaces the dictionary (spawn, exit, reap: rare); a
+  record removed from it is released after the lock (its image's deinit
+  may take locks).
+- **A record's fields** that these calls read (parent, group and session
+  ids, state, wait status, image, executable path and names, start and exit
+  times, unique ids, pid version, the zombie's UUID, the exiting flag) are
+  one struct under a per-record leaf lock; each field access is one
+  section, writers hold L0 too, and a reader without L0 takes one
+  consistent copy (`DarwinProcess.view()`), so a reply never mixes a
+  zombie's state with a running process's status. The other members stay
+  L0 state.
+- **Fast calls** (BSD fast path): `proc_info` LISTPIDS, PIDINFO (every
+  served flavor; TASKINFO reads the target's thread count under the target
+  image's event lock, which the trap may take: it holds nothing) and
+  PIDRUSAGE; `proc_info_extended_id` (545) with those calls; `csops` (169)
+  and `csops_audittoken` (170), whose target image's identity, pid version
+  and signature do not change while it runs; `sysctl` `kern.proc.pid.<pid>`
+  (other `kern.proc` names fall back). TERMINATE and DIRTYCONTROL of
+  another process change state: L0.
+
+Switch: `YCODE_PROC_TABLE_FAST=0` (the locks stay; only the calls go back
+to L0). Tests: `BSDFastPathTests.processTableReadsMatchTheLockedPath`
+(every call and flavor, a running process, a zombie, pseudo-init, a pid
+that does not exist; byte for byte) and
+`processTableReadsRaceSpawnsAndExits` (40 spawn–exit–reap cycles under L0
+against fast readers).
+
+## 14. Directory cursors without L0
+
+The image's directory cursors (`getdirentries64`, `getattrlistbulk`) are a
+table with a leaf lock (`ExtendedBSDState.DirectoryCursorTable`). A call
+looks its descriptor up in the descriptor table, makes the cursor when the
+descriptor has none or one of another description (listing the directory
+with no lock held; another thread's cursor made meanwhile wins), then takes
+the records and moves the cursor in one section of the table's lock.
+`getdirentries64` (344) is a BSD fast trap, and a directory's close is a
+fast close that drops the cursor (§4.2). A `getdirentries64` that looked
+the descriptor up before a concurrent close may leave a cursor for the
+number; it names the old description and is replaced at the number's next
+use (as for the fast open, §4.3). `getattrlistbulk` stays on L0. Listing a directory stats each entry with
+one host `lstat` relative to the directory (`DarwinFileSystem.statEntry`)
+instead of a full guest-path resolution (one `lstat` per path component;
+1–2 ms per listing for SpringBoard, `boot-profile.md` §8.6) when the entry
+is plainly inside the directory's prefix; a guest symbolic link, a nested
+prefix root, `/dev` and any error take the full resolution (test
+`DirectoryEntryStatTests`).
+Switch: `YCODE_DIRECTORY_FAST=0`. Test:
+`BSDFastPathTests.directoryReadsMatchTheLockedPath` (the records,
+positions and end flag of both paths read in pieces; readers racing opens
+and closes).
+
+## 15. File locks without L0
+
+The file-lock table (`FileLockTable`: every file's lock list, the waiting
+counts, the POSIX deadlock chain, the descriptions with a release handler)
+has a leaf lock of its own; every table method takes it. The non-blocking
+calls (`fcntl` F_GETLK 7, F_SETLK 8, F_OFD_GETLK 92, F_OFD_SETLK 90) are BSD
+fast traps; the waiting forms (F_SETLKW, F_SETLKWTIMEOUT, the OFD ones) and
+`flock` stay on L0, because their waiters sleep on an L0 queue per file.
+
+No wakeup is lost: a waiter (holding L0) finds the blocker and counts
+itself as waiting in one table section, and holds L0 until it sleeps; a
+change (a set or an unlock, on either path, or a release at close or
+exit) returns the states of files with waiters, and the caller wakes them
+under L0 after the table lock is let go (taking L0 holding nothing on a
+fast path). So a waiter either saw the change, or was counted before it and
+is woken. An OFD lock's first set on a description goes to L0, which
+installs the description's release handler (L0 state); the table records
+which descriptions have one, and the fast set requires it. Switch:
+`YCODE_FILE_LOCK_FAST=0`. Test: `BSDFastPathTests.fileLocksWithoutL0` (a
+fast unlock wakes another process's F_SETLKW waiting on L0; OFD locks;
+F_GETLK on both paths), and the `FileLockTests` suite on both paths.
+
+## 16. Measurements (KLOCK)
+
+Thor, idle host for every timed boot (`timed.sh`: the machine to itself, 1-min
+load below 4 at the start; each series ran inside one `timed.sh` call with
+the arms alternating per round and a wait for load below 4 before each
+boot). Arms differ only in switches on one build: *off* =
+`YCODE_PORT_ROUTINES_FAST=0 YCODE_TASK_LOCAL_MORE=0 YCODE_BSD_FAST_MORE=0
+YCODE_PROC_TABLE_FAST=0 YCODE_DIRECTORY_FAST=0
+YCODE_DESCRIPTOR_ESCALATION=0` (and `YCODE_FILE_LOCK_FAST=0` where it
+existed), *on* = the defaults. What the switches leave on in *off* (the
+process-record and table locks, the fixed importance flip, the stack unmap
+of a thread exit without L0) is small.
+
+### 16.1 Locks (profiled cold boots of a device at its own path)
+
+`YCODE_TRAP_PROFILE`, two pairs (series P), tables copied at the home screen:
+
+| | off (2 boots) | on (2 boots) |
+|---|---|---|
+| time to the home screen (profiled) | 46, 37 s | 35, 44 s |
+| L0 busy | 33.0 %, 32.0 % | 14.2 %, 16.1 % |
+| L0 acquisitions (per trap) | 451 k, 384 k (0.19) | 80 k, 83 k (0.04) |
+| summed L0 waits | 228 s, 162 s | 24 s, 32 s |
+| IPC traps that fell back to L0 | 47.7 k, 39.9 k (descriptor knotes 42 k, 35 k) | 9.9 k, 10.3 k (descriptor knotes 0) |
+| BSD fast traps that fell back | `proc_info` 33 k, fcntl 29 k (F_OFD_SETLK 25 k), close 19 k + 10 k, `__mac_syscall` 6 k | fcntl 3 k (F_SETCONFINED 1.2 k, F_OFD_SETLKWTIMEOUT 1.0 k), close 0.4 k |
+| work deferred to L0 from fast paths | 7.7 k, 8.4 k (descriptor kqueue re-evaluations 5.8 k, 6.8 k) | 3.0 k, 2.9 k (new workqueue threads, payload releases) |
+| escalations to L0 for descriptor readiness | — | 1.1 k, 1.0 k |
+| port lock G: held, summed waits | 5.9 s, 26 s; 4.8 s, 21 s | 5.3 s, 41 s; 6.9 s, 61 s |
+| event locks (all images): held, summed waits | 24.8 s, 23.6 s; 20.7 s, 23.4 s | 28.2 s, 35.1 s; 39.5 s, 36.9 s |
+
+L0 is no longer contended (its waits fell by 85–90 %), but the waits
+moved: the port lock's summed waits doubled or tripled and the event locks'
+rose by half. The traps that left L0 now meet on G (the port routines,
+mach_msg) and on each image's event lock (the kevent and workqueue traps of
+images with descriptor knotes, which ran one at a time under L0 before).
+P-on-2 also had one 403 ms hold of G by a `mach_msg2` (every other
+maximum: under 50 ms).
+
+### 16.2 Time to the home screen (no profiling)
+
+| Series | Device | off | on | paired on − off |
+|---|---|---|---|---|
+| C (4 rounds) | the same device, booted again at its own path (1 s resolution) | 42, 34, 34, 36 (mean 36.5) | 42, 37, 33, 39 (mean 37.8) | 0, +3, −1, +3 (mean +1.3 s) |
+| B (4 rounds, main line 3aeaa9c merged) | `bench.sh` copies of the pristine device in RAM (5 s resolution) | 70, 60, 65, 65 (mean 65) | 75, 70, 70, 75 (mean 72.5) | +5, +10, +5, +10 (mean +7.5 s) |
+
+**Result: removing L0 contention does not make the boot faster.** In
+place the difference is within the spread; on copies the changes cost
+5–10 s in every pair (the bench harness's 5 s steps; small n). The likely
+cause is §16.1: the boot's critical path is a chain of Mach IPC round
+trips, and the IPC locks it uses (G, the event locks) are now busier; L0
+had serialized the port routines and the descriptor-knote images' kevent
+traps away from them. This cause is not confirmed: the ablations that
+would test it (§17) were not run.
+
+### 16.3 Home-screen interaction (restored device)
+
+Series J (3 rounds, one warm-up session; restore, 25 s, a 40 s
+frame-profile window over home-screen drags outside the dock column, Home,
+a drag to the Today view and back, Spotlight; `ycode-display-probe`):
+
+| | off | on |
+|---|---|---|
+| presents per second over the window | 17.3, 15.0, 15.9 | 15.8, 15.5, 16.6 |
+| present interval p50 / p90 (ms) | 9.6/18.0, 9.7/18.4, 10.1/18.0 | 9.5/18.0, 10.6/18.2, 9.0/17.7 |
+| swipe frames received p50 / p90 (ms) | 20.6/26.8, 20.6/30.3, 20.6/23.1 | 20.6/22.7, 20.6/25.6, 20.7/23.6 |
+| input → first frame: swipes (p50), Today, back, Spotlight (ms) | 91/213/41/212, 100/201/89/246, 92/219/33/258 | 93/212/84/247, 98/188/35/210, 139/204/84/245 |
+
+No difference beyond the session-to-session spread: the frame path no
+longer waited for L0 after FPS-PROF and FPS-2.
+
+## 17. Open items (KLOCK)
+
+- The waiting file-lock forms (F_OFD_SETLKWTIMEOUT 93 is sqlite's busy
+  wait, about 1,000 a boot) and `flock` stay on L0 (§15).
+- The close of an object (pipe end, socket, kqueue) and its I/O stay on L0
+  (their buffers and readiness are L0 state): `sendto`, `recvfrom`,
+  `write`/`writev` to pipes and sockets. A lock per object would move them
+  and descriptor readiness off L0 (then the escalation of
+  `mach-ipc-locking.md` §4.11 is not needed).
+- F_SETCONFINED (95), `getrlimit` (the limits table), `persona`, `socket`,
+  `sigaction`, Ycode's `task_info` (0x7963_0006) and the image-list
+  notification (0x7963_0010), `posix_spawn`'s second half, thread
+  creation and exit: small or rare, still on L0.
+- Tracing turns every fast path off (by design).
+- Ablations for §16.2 (not run): turn the fast-path groups back onto L0
+  one at a time (the port routines, the descriptor-knote kevent and
+  workqueue traps, the file and directory paths) and time each against
+  the all-on and all-off trees, to find which move makes the boot
+  slower.
 
 ## Evidence
 
 | Claim | Level | Source |
 |---|---|---|
 | A descriptor is resolved once per call; a concurrent close does not affect a call in progress | 1 | POSIX `close(2)`, `read(2)`; xnu `fp_lookup`/`fp_drop` |
+| F_SETFL sets the settable status flags and keeps the access mode | 1 | POSIX `fcntl(2)`; xnu `kern_descrip.c` (via §12) |
+| `proc_info`, `csops` and `kern.proc` answers kept (§13) | 1 | as the locked path, `processes.md` §2.11 (its evidence there) |
 | Any close of a file by a process releases its POSIX record locks | 1 | POSIX `fcntl(2)`; xnu `closef` |
 | ulock wait/wake semantics kept | 1 | xnu `bsd/kern/sys_ulock.c` (via `threads-and-events.md` §4.1) |
 | Recursive and plain pthread mutexes; Swift `Mutex` | 1 | POSIX, Swift Synchronization documentation |
 | L0 profile (§1) and measurements (§10) | 3 | Thor harness boots `SX/SPL0/prof/*`, `SX/{IDE,SPL0}/runs/sp-l0-*` |
+| KLOCK's profiles and measurements (§12, §16) | 3 | Thor timed boots and sessions of Ycode's simulator: `ide-remote/klock/runs/{p0-1,P-*,C-*,X-*,F-*,Y-*}`, `ide-remote/klock/out/{J,K}-*`, `SX/KLOCK/runs/{B,G}-*` |
+| Pipes and sockets notify readiness observers at every change (§12 stale-candidate rule, `mach-ipc-locking.md` §4.11) | — | Ycode's own `Pipe.swift`, `UnixSocket.swift` |
 
 Level 5 was not used. The reference tools folder, `research/` and Ghidra
 were not opened.

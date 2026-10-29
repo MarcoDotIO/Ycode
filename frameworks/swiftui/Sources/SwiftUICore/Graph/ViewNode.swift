@@ -185,6 +185,7 @@ package final class ViewNode {
                 evaluateBody(of: presented ?? self.view)
             }
         case .primitive:
+            // swiftlint:disable:next force_cast - the node kind is .primitive only for primitive views
             let p = view as! any PrimitiveView
             if newView != nil || first {
                 makeChildren(p, old: old, transaction: transaction)
@@ -520,6 +521,7 @@ package final class ViewNode {
     package func lower() -> [LayoutNode] {
         switch kind {
         case .custom: return finishLowering(lowerChildren())
+        // swiftlint:disable:next force_cast - the node kind is .primitive only for primitive views
         case .primitive: return finishLowering((view as! any PrimitiveView)._lower(node: self))
         }
     }
@@ -559,6 +561,7 @@ package final class ViewNode {
     package func preferenceValues() -> PreferenceValues {
         switch kind {
         case .custom: return childPreferences()
+        // swiftlint:disable:next force_cast - the node kind is .primitive only for primitive views
         case .primitive: return (view as! any PrimitiveView)._preferences(node: self)
         }
     }

@@ -376,9 +376,21 @@ extension MachIPC {
             if let deadline, KernelClock.now() >= deadline { return (MachMsgReturn.sendTimedOut, m, "") }
             // SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §4.2): the
             // message a blocked sender holds, so a snapshot can queue it.
-            let waiter = lock.currentContext.map(ObjectIdentifier.init)
+            let caller = lock.callerContext
+            let waiter = caller.map(ObjectIdentifier.init)
             if let waiter { p.snapshotPendingSends.append((waiter, m)) }
+            // The send push (scheduling-policy.md §4.6): while it waits, the
+            // sender's class raises the image that receives the port.
+            var pushed: (DarwinKernel, Int)?
+            if SchedPolicy.qosEnabled, SchedPolicy.sendPushEnabled, let ctx = caller,
+               let target = p.receiver?.kernel {
+                let cls = ctx.schedClass
+                target.addSendPush(cls)
+                pushed = (target, cls)
+                SchedStats.sendPushes.wrappingAdd(1, ordering: .relaxed)
+            }
             let result = p.sendWaiters.wait(on: lock, deadline: deadline)
+            if let (target, cls) = pushed { target.removeSendPush(cls) }
             if let waiter { p.snapshotPendingSends.removeAll { $0.context == waiter } }
             if result == .woken, p.grantedSlots > 0 {
                 // Woken for a freed slot (`dequeue`): it is this sender's.

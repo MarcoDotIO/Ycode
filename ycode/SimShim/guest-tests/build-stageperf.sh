@@ -20,6 +20,12 @@ for probe in "$@"; do
             -o "$out/libp_loadtap.dylib" "$here/stageperf/$probe.c"
         echo "$out/libp_loadtap.dylib: $(wc -c < "$out/libp_loadtap.dylib" | tr -d ' ') bytes"
         continue ;;
+    p_cpufeat_bench)  # links the frameworks it measures (cpu-features.md section 7.3)
+        xcrun --sdk iphonesimulator clang -target arm64-apple-ios27.0-simulator -O2 -Wall -Wextra -Werror \
+            -framework Accelerate -framework JavaScriptCore -framework CoreFoundation -framework CoreGraphics \
+            -framework ImageIO -lcompression -o "$out/$probe" "$here/stageperf/$probe.c"
+        echo "$out/$probe: $(wc -c < "$out/$probe" | tr -d ' ') bytes"
+        continue ;;
     esac
     xcrun --sdk iphonesimulator clang -target arm64-apple-ios27.0-simulator -O2 -Wall -Wextra -Werror \
         -o "$out/$probe" "$here/stageperf/$probe.c"

@@ -1,6 +1,6 @@
 # The functions and data this library imports, by the image that exports
 # them (install name). build.sh writes one .tbd stub per image from this
 # list; the names are public API (libSystem, CoreFoundation).
-/usr/lib/libSystem.B.dylib _calloc _free _getenv _mach_absolute_time _dispatch_queue_create _dispatch_async_f _dispatch_after_f _dispatch_time _dispatch_once_f __Block_copy __Block_release _os_unfair_lock_lock _os_unfair_lock_unlock _open _pwrite
+/usr/lib/libSystem.B.dylib _calloc _free _getenv _mach_absolute_time _dispatch_queue_create _dispatch_async_f _dispatch_after_f _dispatch_time _dispatch_once_f __Block_copy __Block_release _os_unfair_lock_lock _os_unfair_lock_unlock _open _pwrite _getpid
 /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation _CFRetain _CFRelease _CFEqual _CFArrayCreate _kCFTypeArrayCallBacks _CFStringCreateWithCString _CFErrorCreate __CFRuntimeRegisterClass __CFRuntimeCreateInstance
 /System/Library/Frameworks/IOSurface.framework/IOSurface _IOSurfaceGetID

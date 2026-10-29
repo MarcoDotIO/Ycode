@@ -55,6 +55,7 @@ public final class LatencyHistogram: Sendable {
     /// bound, ns); 0 when empty.
     public func percentile(_ fraction: Double) -> Double {
         let s = state.withLock { $0 }
+        // swiftlint:disable:next empty_count - the sample count, not a collection
         guard s.count > 0 else { return 0 }
         let rank = max(1, UInt64((Double(s.count) * fraction).rounded(.up)))
         var seen: UInt64 = 0

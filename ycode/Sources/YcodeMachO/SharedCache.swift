@@ -123,7 +123,7 @@ public struct SharedCache: Sendable {
         var architecture: String {
             ((try? reader.string(0, limit: 16)) ?? "").dropFirst("dyld_v1".count).trimmingCharacters(in: .whitespaces)
         }
-        var uuid: UUID { has(0x58, 16) ? ((try? reader.uuid(0x58)) ?? UUID(uuid: (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0))) : UUID(uuid: (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)) }
+        var uuid: UUID { has(0x58, 16) ? ((try? reader.uuid(0x58)) ?? UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))) : UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) }
         var cacheType: UInt64 { has(0x68, 8) ? ((try? reader.u64(0x68)) ?? 0) : 0 }
         var platform: UInt32 { has(0xD8, 4) ? ((try? reader.u32(0xD8)) ?? 0) : 0 }
         var flags: UInt32 { has(0xDC, 4) ? ((try? reader.u32(0xDC)) ?? 0) : 0 }

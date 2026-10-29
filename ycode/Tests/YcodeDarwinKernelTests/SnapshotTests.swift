@@ -109,6 +109,9 @@ import YcodeDarwinABI
             return capture.records
         }
         let (_, decoded) = try SnapshotManifest.decode(SnapshotManifest.encode(records))
+        // cpu-features.md §9.4: the system record carries the published CPU features.
+        let sys = try #require(decoded.first { $0.kind == SnapshotRecordKind.system.rawValue })
+        #expect(try sys.fields().bytes(ST.System.cpuFeatures) == GuestCPUProfile.current.published.storedBytes)
 
         // Restore into a new system.
         let system = DarwinSystem()

@@ -54,7 +54,9 @@ Raw logs and screenshots: git-ignored `research/dirty/homekit/`.
 6. HomeKit Accessory Simulator is **not installed** on this Mac; no Home
    app exists in either runtime.
 7. Ycode's lean boot disables `homed`; HomeKit needs it running
-   (`open-design.md` S1).
+   (`open-design.md` S1). Since 2026-10-27 IDE runs boot every service
+   by default (`specs/ide/run.md`), so `homed` runs unless Lean boot is
+   turned on.
 
 ## Owner inputs
 

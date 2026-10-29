@@ -2,6 +2,7 @@ import Foundation
 import YcodeBuild
 import YcodeDebug
 import YcodeLanguage
+import YcodeProject
 
 /// The non-visual state of one workspace window: the selected scheme and
 /// destination, the running build or debug session, issues, breakpoints and
@@ -19,7 +20,7 @@ public final class WorkspaceSession {
 
     public enum Change { case activity, issues, breakpoints, console, debugState, reports, tests, process }
 
-    public var model: WorkspaceModel
+    public var model: WorkspaceModel { didSet { issueTargetStore.targets = [:] } }
     public var scheme: String?
     public var destination: RunDestination?
     /// The build engine chosen in Settings ▸ Locations ▸ Build System.
@@ -31,6 +32,11 @@ public final class WorkspaceSession {
     public internal(set) var failedTestCount = 0
     /// The product of the current or last debug run ("Finished running <product>").
     public internal(set) var runningProduct: String?
+    /// The simulator the current or last run is on ("Running <product> on
+    /// <device>", `reference-ui-6.md` §3.3); nil for runs on the Mac.
+    public internal(set) var runningDeviceName: String?
+    /// "Running <product>[ on <device>]" for the current run.
+    var runningActivityTitle: String { DebugPresentation.runningTitle(runningProduct, on: runningDeviceName) }
     /// Settings ▸ General ▸ Issues: show live issues.
     public var includeLiveIssues = true { didSet { notify(.issues) } }
     /// Package resolution failures (shown with the build issues).
@@ -47,15 +53,70 @@ public final class WorkspaceSession {
     /// The language service, once started.
     public internal(set) var language: LanguageService?
 
-    /// Build issues plus live issues from the language server, without
-    /// duplicates; this is what the issue navigator and editor show.
+    /// Project, package and build issues plus the language server's live
+    /// issues, one entry per diagnostic, messages capitalized
+    /// (`reference-ui-6.md` §5.2, N2); this is what the issue navigator,
+    /// the editor and the toolbar capsule show.
     public var displayedIssues: [Diagnostic] {
-        var seen = Set<Diagnostic>()
         let live = includeLiveIssues ? (language?.liveIssues ?? [:]).keys.sorted().flatMap { language!.liveIssues[$0]! } : []
-        return (projectIssues + packageIssues + issues + live).filter { seen.insert(Diagnostic(severity: $0.severity, message: $0.message, location: $0.location)).inserted }
+        return IssueMerge.merge([projectIssues, packageIssues, issues], live: live, liveHiddenFiles: liveIssuesHiddenFiles)
+    }
+
+    /// Files (canonical paths, `IssueMerge.canonicalPath`) whose live issues
+    /// are not shown: the build reported issues for them and they have not
+    /// been edited since (§5.2.2).
+    public var liveIssuesHiddenFiles: Set<String> {
+        Set(issues.compactMap { $0.location.map { IssueMerge.canonicalPath($0.file) } }).subtracting(issueEditState.editedSinceBuild)
+    }
+    final class IssueEditState { var editedSinceBuild = Set<String>() }
+    let issueEditState = IssueEditState()
+
+    /// A file was edited: its live issues show again (§5.2.2).
+    public func noteFileEdited(_ path: String) {
+        let p = IssueMerge.canonicalPath(path)
+        let wasHidden = liveIssuesHiddenFiles.contains(p)
+        issueEditState.editedSinceBuild.insert(p)
+        if wasHidden { notify(.issues) }
     }
 
     func languageIssuesChanged() { notify(.issues) }
+
+    /// How the Issue navigator groups issues (§5.1, N1): by the project's
+    /// targets (every project of a workspace), or for a package by its
+    /// targets' folders under `Sources/` and `Tests/`.
+    public var issueGrouping: IssueGrouping {
+        let model = self.model
+        if model.kind == .package {
+            let root = IssueMerge.canonicalPath(model.url.path)
+            var order: [String] = []
+            for dir in ["Sources", "Tests"] {
+                let names = (try? FileManager.default.contentsOfDirectory(atPath: model.url.appendingPathComponent(dir).path)) ?? []
+                order += names.filter { !$0.hasPrefix(".") }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+            }
+            return IssueGrouping(projectName: model.displayName, targetOrder: order) { file in
+                let p = IssueMerge.canonicalPath(file)
+                guard p.hasPrefix(root + "/") else { return [] }
+                let parts = p.dropFirst(root.count + 1).split(separator: "/")
+                guard parts.count > 2, ["Sources", "Tests"].contains(parts[0]) else { return [] }
+                return [String(parts[1])]
+            }
+        }
+        let projects = model.projects.keys.sorted().compactMap { path in model.projects[path].map { (URL(fileURLWithPath: path), $0) } }
+        let order = projects.flatMap { $0.1.targets.compactMap { $0.string("name") } }
+        let cache = issueTargetStore
+        return IssueGrouping(projectName: model.kind == .project ? model.displayName : (projects.first?.0.deletingPathExtension().lastPathComponent ?? model.displayName),
+                             targetOrder: order) { file in
+            if let hit = cache.targets[file] { return hit }
+            let found = projects.flatMap { url, proj in
+                proj.targetMemberships(ofFile: file, projectDirectory: proj.projectDirectory(xcodeprojURL: url)).filter(\.isMember).map(\.name)
+            }
+            cache.targets[file] = found
+            return found
+        }
+    }
+    /// Targets per file for `issueGrouping`, dropped when the model changes.
+    final class IssueTargetCache { var targets: [String: [String]] = [:] }
+    let issueTargetStore = IssueTargetCache()
     public var breakpoints = BreakpointStore() {
         didSet {
             notify(.breakpoints)
@@ -177,7 +238,11 @@ public final class WorkspaceSession {
         await testsDiscovered()
         resetBuildLog()
         let testStarted = Date()
-        setActivity(.building("Testing \(scheme ?? model.displayName)"))
+        // reference-ui-6.md §3.4: "Test", the build texts, "Configuring
+        // Debugger Actions", then Ycode's "Testing <scheme>".
+        let progress = TestActivityProgress(subject: scheme ?? model.displayName)
+        testActivityProgress = progress
+        setActivity(.building(progress.text))
         let request = model.buildRequest(scheme: scheme, destination: destination, action: withoutBuilding ? .testWithoutBuilding : .test)
         // Code coverage when the scheme's test action gathers it: SwiftPM's
         // own export for packages, ycodebuild's summary for projects.
@@ -187,9 +252,16 @@ public final class WorkspaceSession {
         if runner.coverage { runner.coverageSummaryPath = summary }
         defer { try? FileManager.default.removeItem(atPath: summary) }
         let (code, outcomes) = await runner.run(request, only: only.map(runnerIdentifier)) { line in
-            Task { @MainActor [weak self] in self?.appendBuildLog(line) }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.appendBuildLog(line)
+                // Only while this run lasts: late lines must not replace
+                // the finished text.
+                if self.testActivityProgress === progress, let text = progress.feed(line) { self.setActivity(.building(text)) }
+            }
         }
         try? await Task.sleep(nanoseconds: 50_000_000) // let queued log lines land
+        if testActivityProgress === progress { testActivityProgress = nil }
         for t in (only.isEmpty ? tests : only) {
             testResults[t] = outcomes.first { t.matches($0) }?.status
         }
@@ -210,11 +282,23 @@ public final class WorkspaceSession {
         notify(.reports)
         failedTestCount = outcomes.filter { $0.status == .failed }.count
         notify(.issues)
-        // reference-ui-2.md §2: "Test Completed" whatever the outcome; the
-        // toolbar capsule shows the failures.
-        setActivity(.finished(ok ? "Test Succeeded" : "Test Completed"))
+        // reference-ui-6.md §3.4: a run of selected tests (diamond, Test
+        // navigator, Test Again of such a run) ends in "Test Completed"
+        // (reference-ui-2.md §2: also when a test failed; the toolbar
+        // capsule shows the failures); a whole-scheme run in "Test
+        // Succeeded" or "Test Failed" (testing.md).
+        setActivity(.finished(Self.testFinishedText(selected: !only.isEmpty, passed: ok)))
         return outcomes
     }
+
+    /// The activity text a test run ends with (§3.4).
+    public static func testFinishedText(selected: Bool, passed: Bool) -> String {
+        if selected { return RunActivityText.testCompleted }
+        return passed ? RunActivityText.testSucceeded : RunActivityText.testFailed
+    }
+
+    /// The test run in progress, whose output lines move its activity text.
+    var testActivityProgress: TestActivityProgress?
 
     /// The selected scheme's test action gathers code coverage
     /// (`codeCoverageEnabled="YES"`).
@@ -341,6 +425,47 @@ public final class WorkspaceSession {
         return await performBuild(request, presentation: .init(action: action, subject: scheme ?? model.displayName), start: engine.start)
     }
 
+    /// The activity view's build texts (`reference-ui-6.md` §3.2); "•" is
+    /// U+2022 with one space on each side.
+    public enum BuildActivityText {
+        public static let accepted = "Build"
+        /// The texts of other actions when they are accepted (the action's
+        /// name, §3.2).
+        public static func accepted(_ action: BuildRequest.Action) -> String {
+            switch action {
+            case .test, .testWithoutBuilding: "Test"
+            case .analyze: "Analyze"
+            default: accepted
+            }
+        }
+        public static let planning = "Building \u{2022} Planning deferred tasks"
+        public static func progress(done: Int, total: Int) -> String { "Building \u{2022} \(done)/\(max(done, total))" }
+        /// Whether an activity text is a build's (a build has started).
+        public static func isBuild(_ text: String) -> Bool {
+            [accepted, "Test", "Analyze"].contains(text) || text.hasPrefix("Building ")
+        }
+    }
+
+    /// The activity view's run and test texts (`reference-ui-6.md` §3.3–
+    /// §3.4). A simulator run reads "Launching <product>" (also while the
+    /// simulator boots and the app is installed or uploaded), then, under
+    /// the debugger, "Configuring Debugger Actions", then "Running
+    /// <product> on <device>", and after it ends "Finished running
+    /// <product> on <device>". There are no step counters.
+    public enum RunActivityText {
+        public static func launching(_ product: String) -> String { "Launching \(product)" }
+        public static let configuringDebugger = "Configuring Debugger Actions"
+        public static func running(_ product: String, on device: String?) -> String { DebugPresentation.runningTitle(product, on: device) }
+        public static func finished(_ product: String, on device: String?) -> String { DebugPresentation.finishedTitle(product, on: device) }
+        /// A test action when it is accepted (§3.2: the action's name).
+        public static let testAccepted = "Test"
+        /// A passing run of selected tests (§3.4).
+        public static let testCompleted = "Test Completed"
+        /// A whole-scheme run (`testing.md`).
+        public static let testSucceeded = "Test Succeeded"
+        public static let testFailed = "Test Failed"
+    }
+
     /// How a build-like operation shows in the activity view and the
     /// Report navigator.
     struct BuildPresentation {
@@ -369,7 +494,10 @@ public final class WorkspaceSession {
             let verb = action == .clean ? "Cleaning" : (action == .test ? "Testing" : "Building")
             let noun = action == .clean ? "Clean" : "Build"
             let verbTitle = action == .clean ? "Clean" : (action == .test ? "Test" : "Build")
-            self.init(running: "\(verb) \(subject)", reportAction: verbTitle, title: "\(verbTitle) \(subject)",
+            // A build shows the action's name when it is accepted
+            // (`reference-ui-6.md` §3.2), then its progress.
+            let running = [.build, .test, .analyze].contains(action) ? BuildActivityText.accepted(action) : "\(verb) \(subject)"
+            self.init(running: running, reportAction: verbTitle, title: "\(verbTitle) \(subject)",
                       succeeded: "\(noun) Succeeded", failed: "\(noun) Failed", cancelled: "Build Cancelled", carriesOver: action != .clean)
         }
     }
@@ -382,10 +510,12 @@ public final class WorkspaceSession {
                       start: (BuildRequest) -> BuildOperation) async -> BuildResult {
         if keepsRunningApp { currentBuild?.cancel() } else { stop() }
         issues = []
+        issueEditState.editedSinceBuild = []
         resetBuildLog()
         notify(.issues)
         let started = Date()
         setActivity(.building(p.running))
+        buildProgressState.seen = false
         let op = start(request)
         currentBuild = op
         stoppedOnFirstError = false
@@ -428,7 +558,16 @@ public final class WorkspaceSession {
     private func handle(_ event: BuildEvent) {
         switch event {
         case .output(let line): appendBuildLog(line)
-        case .activity(let text): setActivity(.building(text))
+        case .activity(let text):
+            // The engine's step text shows only for engines that report no
+            // planning or task counts (single-file actions).
+            if !buildProgressState.seen { setActivity(.building(text)) }
+        case .planning:
+            buildProgressState.seen = true
+            setActivity(.building(BuildActivityText.planning))
+        case .progress(let done, let total):
+            buildProgressState.seen = true
+            setActivity(.building(BuildActivityText.progress(done: done, total: total)))
         case .issue(let d):
             issues.append(d)
             notify(.issues)
@@ -439,6 +578,9 @@ public final class WorkspaceSession {
         case .finished: break
         }
     }
+
+    final class BuildProgressState { var seen = false }
+    let buildProgressState = BuildProgressState()
 
     func setActivity(_ a: Activity) {
         activity = a
@@ -502,7 +644,7 @@ public final class WorkspaceSession {
             debugClient = client
             adapterInitialized = false
             beginDebugSession(product: URL(fileURLWithPath: program).lastPathComponent)
-            setActivity(.running(DebugPresentation.runningTitle(runningProduct)))
+            setActivity(.running(runningActivityTitle))
             Task { [weak self] in
                 for await e in client.events { await self?.handle(e) }
                 self?.sessionEnded()
@@ -524,6 +666,10 @@ public final class WorkspaceSession {
             sessionEnded()
         }
     }
+
+    /// True while the debugger attaches to a simulator app, until the app
+    /// is resumed.
+    var attachingSimulatorApp = false
 
     /// The debugged process's ID, from lldb-dap's `process` event.
     public internal(set) var debuggedPID: Int?
@@ -560,10 +706,14 @@ public final class WorkspaceSession {
             // Ordinary stops read "Paused <product>"; others keep their
             // reason ("Paused <product>: watchpoint N", "…: exception").
             let plain = ["breakpoint", "step", "pause", "entry", "goto", "function breakpoint"].contains(reason)
-            setActivity(.paused(DebugPresentation.pausedTitle(runningProduct) + (plain ? "" : ": \(reason)")))
+            // The stop that attaching to a simulator app makes is part of
+            // "Configuring Debugger Actions" (§3.3); the app is resumed.
+            if !attachingSimulatorApp {
+                setActivity(.paused(DebugPresentation.pausedTitle(runningProduct) + (plain ? "" : ": \(reason)")))
+            }
         case "continued":
             clearStopState()
-            setActivity(.running(DebugPresentation.runningTitle(runningProduct)))
+            setActivity(.running(runningActivityTitle))
         case "exited":
             // Its own paragraph after the program's output (reference-ui-2.md §9).
             let lead = console.isEmpty || console.hasSuffix("\n\n") ? "" : (console.hasSuffix("\n") ? "\n" : "\n\n")
@@ -656,7 +806,7 @@ public final class WorkspaceSession {
         temporaryBreakpoint = nil
         clearStopState()
         endDebugSession()
-        if isBusy { setActivity(.finished(DebugPresentation.finishedTitle(runningProduct))) }
+        if isBusy { setActivity(.finished(DebugPresentation.finishedTitle(runningProduct, on: runningDeviceName))) }
     }
 
     /// Files whose breakpoints were sent in this debug session; a file
@@ -882,7 +1032,7 @@ public final class WorkspaceSession {
 
     public func continueOrPause() async {
         guard let c = debugClient else { return }
-        if let t = stoppedThread { try? await c.continue(threadID: t); clearStopState(); setActivity(.running(DebugPresentation.runningTitle(runningProduct))) }
+        if let t = stoppedThread { try? await c.continue(threadID: t); clearStopState(); setActivity(.running(runningActivityTitle)) }
         else if let t = try? await c.threads().first?.id { try? await c.pause(threadID: t) }
     }
 
@@ -903,8 +1053,9 @@ public final class WorkspaceSession {
     public func stop() {
         currentBuild?.cancel()
         if let c = debugClient {
-            // A paused process is killed (SIGKILL, code 9).
-            if stoppedThread != nil && !killReported {
+            // The process is killed (SIGKILL, code 9), paused or running
+            // (reference-ui-6.md §7, D1).
+            if !killReported {
                 killReported = true
                 appendConsole(DebugPresentation.killedLine + "\n", kind: .debugger)
             }

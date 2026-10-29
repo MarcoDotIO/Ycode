@@ -2,6 +2,10 @@
 // Every value here is an interoperability fact restated in the spec.
 
 /// `kern_return_t` values used by the IPC routines (`mach-ipc.md` §1.7, §5.2).
+///
+/// Each constant is the user-space ABI value of the `KERN_*` code its name
+/// spells; the `mig*` group is the negative `MIG_*` codes a MIG reply carries,
+/// stored as their `UInt32` bit pattern.
 public enum MachKern {
     public static let success: UInt32 = 0
     public static let invalidAddress: UInt32 = 1
@@ -37,6 +41,10 @@ public enum MachKern {
 }
 
 /// `mach_msg_return_t` values (`mach-ipc.md` §2.12).
+///
+/// The `send*` constants are the `MACH_SEND_*` codes (`0x1000_00xx`), the
+/// `rcv*` constants the `MACH_RCV_*` codes (`0x1000_40xx`), each the ABI value
+/// of the code its name spells.
 public enum MachMsgReturn {
     public static let success: UInt32 = 0
     public static let sendInvalidData: UInt32 = 0x1000_0002
@@ -108,7 +116,10 @@ public enum MachMsgReturn {
     }
 }
 
-/// `mach_port_right_t` (`mach-ipc.md` §1.1).
+/// `mach_port_right_t` values, one per right kind (`mach-ipc.md` §1.1).
+///
+/// `labelh` is obsolete and always invalid; `number` is the first value that
+/// is not a right.
 public enum MachPortRight {
     public static let send: UInt32 = 0
     public static let receive: UInt32 = 1
@@ -120,6 +131,10 @@ public enum MachPortRight {
 }
 
 /// `mach_port_type_t` bits (`mach-ipc.md` §1.1).
+///
+/// The right bits are `1 << (right + 16)`. `dnRequest` marks an armed
+/// dead-name request; the two `spRequest` bits (send-possible) are masked out
+/// of `mach_port_type` results. The last three are the spec's composite masks.
 public enum MachPortType {
     public static let send: UInt32 = 0x0001_0000
     public static let receive: UInt32 = 0x0002_0000
@@ -138,15 +153,21 @@ public enum MachPortType {
 }
 
 /// Port names (`mach-ipc.md` §1.1, §1.4).
+///
+/// `null` (`MACH_PORT_NULL`) and `dead` (`MACH_PORT_DEAD`) never denote an entry.
 public enum MachPortName {
     public static let null: UInt32 = 0
     public static let dead: UInt32 = 0xFFFF_FFFF
+    /// Whether `name` can denote an entry: neither `null` nor `dead`.
     public static func isValid(_ name: UInt32) -> Bool { name != null && name != dead }
     /// `MACH_PORT_UREFS_MAX`.
     public static let urefsMax: UInt32 = 0xFFFF
 }
 
 /// Message dispositions and received types (`mach-ipc.md` §2.4).
+///
+/// The first six constants are the `MACH_MSG_TYPE_*` dispositions a sender
+/// writes (16…21); the `port*` constants are the types a receiver sees.
 public enum MachMsgType {
     public static let moveReceive: UInt32 = 16
     public static let moveSend: UInt32 = 17
@@ -169,10 +190,15 @@ public enum MachMsgType {
         }
     }
 
+    /// Whether `d` is one of the six port dispositions (16…21).
     public static func isPortDisposition(_ d: UInt32) -> Bool { (16...21).contains(d) }
 }
 
 /// `msgh_bits` fields (`mach-ipc.md` §2.2).
+///
+/// The masks select the remote (destination), local (reply) and voucher
+/// dispositions; `complex` (`MACH_MSGH_BITS_COMPLEX`) says a body with
+/// descriptors follows the header.
 public enum MachMsgBits {
     public static let remoteMask: UInt32 = 0x0000_001F
     public static let localMask: UInt32 = 0x0000_1F00
@@ -181,15 +207,23 @@ public enum MachMsgBits {
     /// `MACH_MSGH_BITS_USER`: what the kernel keeps on send.
     public static let user: UInt32 = 0x801F_1F1F
 
+    /// The remote (destination) disposition in `bits`.
     public static func remote(_ bits: UInt32) -> UInt32 { bits & remoteMask }
+    /// The local (reply) disposition in `bits`.
     public static func local(_ bits: UInt32) -> UInt32 { (bits & localMask) >> 8 }
+    /// The voucher disposition in `bits`.
     public static func voucher(_ bits: UInt32) -> UInt32 { (bits & voucherMask) >> 16 }
+    /// `MACH_MSGH_BITS` with a voucher: packs the three dispositions and ORs in `other`.
     public static func make(remote: UInt32, local: UInt32 = 0, voucher: UInt32 = 0, other: UInt32 = 0) -> UInt32 {
         remote | (local << 8) | (voucher << 16) | other
     }
 }
 
-/// Descriptor kinds (`mach-ipc.md` §2.3).
+/// Descriptor kinds, OOL copy values and guard flags (`mach-ipc.md` §2.3).
+///
+/// The kind is the byte at offset 11 of every descriptor. `physicalCopy` and
+/// `virtualCopy` are the only `copy` values a send accepts. The `guard*`
+/// constants are the guarded-port descriptor flags.
 public enum MachMsgDescriptor {
     public static let port: UInt8 = 0
     public static let ool: UInt8 = 1
@@ -208,7 +242,10 @@ public enum MachMsgDescriptor {
     public static func size(of type: UInt8) -> Int { type == port ? 12 : 16 }
 }
 
-/// `mach_msg` options (`mach-ipc.md` §2.7).
+/// `mach_msg` option bits (`mach-ipc.md` §2.7).
+///
+/// Each constant is the `MACH_SEND_*`/`MACH_RCV_*` option bit its name spells.
+/// The bits at 32 and above are the `MACH64_*` bits that `mach_msg2` takes.
 public enum MachMsgOption {
     public static let sendMsg: UInt64 = 0x1
     public static let rcvMsg: UInt64 = 0x2
@@ -247,7 +284,8 @@ public enum MachMsgOption {
     }
 }
 
-/// Notification message IDs (`mach-ipc.md` §3).
+/// Notification message IDs (`mach-ipc.md` §3), the `msgh_id` of each
+/// `MACH_NOTIFY_*` message the kernel sends (§3.1–§3.5).
 public enum MachNotify {
     public static let portDeleted: Int32 = 65
     public static let sendPossible: Int32 = 66
@@ -257,7 +295,11 @@ public enum MachNotify {
     public static let deadName: Int32 = 72
 }
 
-/// `mach_port_construct` option flags (`mach-ipc.md` §1.7).
+/// `mach_port_construct` option flags (`MPO_*`, `mach-ipc.md` §1.7).
+///
+/// `typeMask` selects the port-type field, which must hold exactly one of
+/// `typeValues`; `known` is every bit Ycode accepts (others fail with
+/// `KERN_INVALID_ARGUMENT`).
 public enum MachPortConstruct {
     public static let contextAsGuard: UInt32 = 0x01
     public static let qlimit: UInt32 = 0x02
@@ -278,11 +320,15 @@ public enum MachPortConstruct {
 }
 
 /// Queue and message limits (`mach-ipc.md` §2.13).
+///
+/// `qlimit*` are message counts (default, user maximum, kernel ceiling);
+/// `maxSendSize` and `maxAuxSize` are bytes.
 public enum MachIPCLimits {
     public static let qlimitDefault = 5
     public static let qlimitMax = 1024
     public static let qlimitKernel = 65_534
     public static let maxSendSize: UInt32 = 50_331_580
+    /// Port rights one message may carry, inline and OOL together.
     public static let maxRightsPerMessage = 16_383
     public static let maxAuxSize = 1024
     /// Ycode's cap on the OOL memory one message may carry (`MACH_MSG_VM_KERNEL` above it).

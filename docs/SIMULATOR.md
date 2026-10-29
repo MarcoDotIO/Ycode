@@ -1,127 +1,75 @@
-# Ycode Simulator: running iOS apps on Linux
+# Ycode Simulator: Apple's simulator runtimes on Linux
 
-> **Update 2026-10-11, direction changed.** The owner's IPSW (iPhone 15 Pro,
-> 27.2 beta 3, 24B5099f) stores the iOS system volume and a second large
-> image as Apple Encrypted Archives (`.aea`). Ycode does not decrypt
-> firmware, so option A below cannot produce a bootable iOS. The track now
-> follows **option B**: run Xcode's simulator runtime on a Darwin
-> compatibility layer. Dynamic observation of the real Simulator is in
-> `research/notes/simulator-observations.md`. Owner decisions recorded:
-> - The SDK-license risk of building on Linux is accepted.
-> - No decryption.
-> - Relaxing code signing in the guest is acceptable.
+The Ycode simulator runs the simulator runtimes that ship with Xcode on arm64
+Linux. It does not emulate a device and it does not use firmware. This page
+explains that choice and lists where the work stands. The design is in
+[SIMULATOR-LINUX.md](SIMULATOR-LINUX.md); the specifications are in
+[`specs/simulator/`](../specs/simulator/).
 
-Goal (from the project owner): with an `.ipsw` for a device on a Linux x86-64
-machine, Ycode can boot it and run the app under development.
+## 1. Where the work stands
 
-## 1. Why this is not a port of Xcode's Simulator
+| Area | State | Spec |
+|---|---|---|
+| Runtimes | iOS 27.1 and iOS 27.0. A device is tied to the runtime it was created with. | `ipad.md` §9.2, `home-apps.md` §9 |
+| Boot | The full service boot is the default. Cold boot to the home screen: median 30.1 s on an idle host; the reference simulator on a Mac: 21.4 s. The first boot of a new device copy takes longer (57–80 s in other timed runs). | `lean-boot.md` §9, `parity-ladder.md` §3.1 and §4.8, `service-fidelity.md` §14 |
+| Service fidelity | All 23 services of the old lean profile pass the behaviour test against the Mac in a full boot. Ycode starts 498–506 programs in 700 s; the Mac starts 631. | `parity-ladder.md` §4.8 |
+| Warm boot | A stop saves a snapshot; the next run restores it. Home screen in 6.4–11.1 s. | `snapshot.md` §12.3 |
+| Display and input | A live display stream (JPEG or zlib) to the Mac viewer or the IDE. Touch, keyboard, Home, Lock, volume. Animations run at the 60 Hz frame clock. | `display-stream.md`, `hid-input.md`, `frame-profile.md` §8.4 |
+| Graphics | Metal calls replayed on Vulkan; Metal shaders (AIR) translated to SPIR-V by `ycode-airc`. A stuck GPU submission stops every client. | `stage8-contract.md`, `metal-shaders.md` |
+| Apps | Install and launch an `.app`; the built-in apps launch. | `app-install-launch.md`, `app-launch.md`, `home-apps.md` |
+| Devices | iPhone 18 Pro; the iPhone Duo foldable with a cover and an inner display; iPad (A16); iPad Pro 13-inch (M5). | `iphone-types.md`, `foldable.md`, `ipad.md` |
+| visionOS | visionOS 27.0 boots to its room (LivingRoomDay) and the home view. Parts of the room are sometimes missing; there is no room selection yet. | `visionos.md` §10.20 |
+| Networking | Guest sockets are host sockets, with a DNS responder in the VMM. No Bonjour. | `networking-ycode.md` |
+| Audio | One 48 kHz stereo output. Output is discarded unless captured to a file; no input device. | `audio-host.md` §13 |
+| Camera | Off by default, as in the reference. Opt in to a host webcam (V4L2) or a synthetic source. | `camera.md` §9, `camera-host.md` |
+| Simulator features | Appearance, Liquid Glass, color filters, text size, accessibility switches, VoiceOver, location, sound, environment overrides. | `simulator-features.md` |
+| File system | File events (FSEvents) from Ycode's own VFS; volume capabilities such as document IDs and `RENAME_SWAP`. | `fsevents-host.md`, `file-system-features.md` |
+| Threads | Real Mach thread and task suspension. | `threads-and-events.md` §1.6, `host-libraries.md` §11.7 |
+| Hosts | arm64 Linux with KVM only. x86-64 Linux needs arm64 translation, which is deferred. | `SIMULATOR-LINUX.md` §4 |
 
-Xcode's Simulator does not use IPSWs.
+## 2. Why not boot an IPSW
 
-- A *simulator runtime* (`iOS 27.simruntime`) contains iOS frameworks
-  compiled for the **Mac's** CPU, as Mach-O for the iOS-simulator platform.
-  They run as ordinary processes on the **macOS kernel**.
-- `CoreSimulator`/`launchd_sim` provide the services. Graphics, audio, and
+The first request was: given an `.ipsw` for a device, boot it on a Linux
+x86-64 machine and run the app under development. We did not take that path.
+
+Xcode's Simulator does not use IPSWs:
+
+- A *simulator runtime* (`iOS 27.simruntime`) holds iOS frameworks compiled
+  for the Mac's CPU, as Mach-O for the iOS-simulator platform. They run as
+  ordinary processes on the macOS kernel.
+- `CoreSimulator` and `launchd_sim` provide the services. Graphics, audio and
   networking go through the host Mac.
-- Nothing is emulated, so there is no device kernel and no firmware.
+- Nothing is emulated: there is no device kernel and no firmware.
 
-An IPSW is the opposite case. It contains firmware for a physical device:
-an ARM64 kernelcache built for one SoC, iBoot, device trees, SEP/SPTM/TXM
-monitors, and the APFS system volume with the arm64e dyld shared cache.
+An IPSW is firmware for a physical device. Booting one needs a full-system
+emulator that models the SoC well enough to run the real kernel (as
+Corellium and the open-source QEMU iOS ports do). The IPSW we had also stores
+its system volume as Apple Encrypted Archives. Ycode does not decrypt
+firmware, so that path could not produce a bootable iOS.
 
-To run it, you must emulate the device: a full-system emulator that
-models the SoC well enough to boot the real kernel. On x86-64 this also means
-translating ARM64 to x86-64. So "Ycode Simulator on Linux + IPSW" is a
-**full-system emulator project** in the same class as Corellium and the
-open-source QEMU iOS ports. It is not a reimplementation of Xcode's
-Simulator. That is the honest scope of the request.
-
-## 2. Options
-
-| | A. Full-system emulation of the IPSW | B. Simulator runtime on a Darwin compatibility layer | C. Ycode-native runtime |
+| | A. Full-system emulation of an IPSW | B. Simulator runtime on a Darwin compatibility layer (chosen) | C. Ycode-native runtime |
 |---|---|---|---|
-| Input | `.ipsw` (as requested) | the `.simruntime` from Xcode, not an IPSW | the app's source |
-| Fidelity | Real iOS kernel and userland | Real iOS userland, our kernel shim | An imitation, not iOS |
-| Hard parts | SoC models (interrupt controller, timers, UART, NVMe/ANS, display), SPTM/TXM/exclaves on A15+-class chips, GPU (none, so software rendering), AMFI/code-signing policy, binary translation | Mach-O loader, XNU syscall and Mach IPC emulation (as Darling does), host services that CoreSimulator normally provides, Metal; iOS 27 runtimes are probably arm64-only, so translation is needed on x86 | Reimplementing UIKit/SwiftUI |
-| Prior art | alephsecurity qemu-t8030 (iPhone 11 / iOS 14 to a shell), ChefKiss Inferno, Corellium (commercial) | Darling (macOS userland on Linux) | OpenSwiftUI, Tokamak, UIKit-cross-platform |
-| Size | Very large, open-ended research | Very large | Large, and does not meet the goal |
+| Input | `.ipsw` | the `.simruntime` from Xcode | the app's source |
+| Fidelity | Real iOS kernel and userland | Real iOS userland, our kernel | An imitation, not iOS |
+| Hard parts | SoC models, secure monitors, no GPU, code-signing policy, binary translation on x86-64 | Mach-O loading, the XNU system-call and Mach IPC surface, the host services CoreSimulator provides, Metal | Reimplementing UIKit and SwiftUI |
+| Prior art | qemu-t8030, Corellium | Darling (macOS userland on Linux) | OpenSwiftUI, Tokamak |
 
-**Original recommendation (superseded, see update above):** use A. It is the only option that meets "IPSW on Linux".
-Run it as a staged research track beside the IDE. Each stage produces
-something useful on its own:
+Option B it is. On arm64 Linux the runtime's arm64 code runs natively, so no
+translation is needed.
 
-1. **IPSW toolkit (now).** IPSW (zip) → `BuildManifest.plist` → IMG4/IM4P
-   containers (DER) → LZFSE/LZSS decompression → kernelcache Mach-O (fileset
-   entries), device tree, APFS system volume, and the dyld shared cache. This
-   is file-format work, and it runs on Linux.
-2. **Feasibility audit (after we have the actual IPSW).** Find out which
-   components are present, which are encrypted, which SoC it targets, and
-   which monitors (SPTM, TXM, exclaves) the kernel expects. This decides
-   whether 24A446 for an A-series chip of that generation can be booted at
-   all with current techniques. The A13/iOS 14 path is proven. Newest-SoC
-   firmware has never been publicly booted in QEMU.
-3. **Boot to kernel log.** A QEMU machine model plus a boot shim that hands
-   the kernel a device tree and boot arguments.
-4. **Userland to a shell.** Then launchd and the system daemons.
-5. **Display and input.** Framebuffer, software rendering, and touch through
-   a virtual HID device. SpringBoard.
-6. **App install and launch from Ycode.** Build → package → install into the
-   guest → launch → console and LLDB over a virtual transport.
+## 3. Owner decisions
 
-If stage 2 shows that iPhone 18 Pro firmware is out of reach, the fallback is
-an older, proven device/IPSW pair for the emulator, while the toolkit and the
-Ycode integration stay the same.
-
-## 3. Constraints to decide on (owner)
-
-- **Building iOS apps on Linux** needs the iOS SDK (headers and `.tbd`
-  stubs). Apple licenses the SDK only for use on Apple-branded hardware. The
-  practical setup: build on the Mac, copy the `.app` to Linux, and run it
-  there. Or the owner decides to accept that license term's risk.
-- **Firmware and encryption.** Ycode reads firmware from a copy the owner
-  supplies. It never redistributes firmware and never decrypts encrypted
-  components. Precedent: *Apple v. Corellium* (S.D. Fla. 2020, aff'd 11th
-  Cir. 2023) found iOS virtualization for security research to be fair
-  use. The DMCA §1201 circumvention questions are separate, and they are why
-  Ycode does not decrypt.
-- **Code signing in the guest.** To run a development build, the emulated
-  device's signature policy must be relaxed (as test devices and jailbreak
-  research do). The owner should confirm that this is acceptable for their
-  use.
+- **Building iOS apps on Linux** needs the iOS SDK. Apple licenses the SDK
+  only for use on Apple-branded hardware. The owner accepts this risk. The
+  usual setup builds on the Mac and runs the `.app` on Linux.
+- **No decryption.** Ycode never decrypts encrypted components and never
+  redistributes Apple software.
+- **Code signing in the guest** may be relaxed to run development builds.
 
 ## 4. Clean-room rules for this track
 
-The same protocol applies. Ycode's emulator and toolkit are original code.
-QEMU (GPL-2.0) is a separate component that we would extend, with its
-license respected. IPSW contents are inputs and are never committed.
-Findings about formats and hardware behavior go into `specs/`.
-
-## 5. Option B work plan (current)
-
-> The detailed design is in `docs/SIMULATOR-LINUX.md`: a KVM micro-VM with a
-> Ycode EL1 shim, chosen after confirming on the Thor that KVM is usable and
-> that 16 KB guest pages are supported.
-
-The observations show that the simulator is host processes rerooted by dyld
-onto the runtime tree. There is no VM. Running it on Linux therefore needs:
-
-1. **A loader:** Mach-O, plus the `dyld_sim` shared cache.
-   (`DYLD_ROOT_PATH`, `DYLD_SHARED_CACHE_DIR`)
-2. **A Darwin ABI layer:** BSD syscalls, Mach traps, Mach ports and
-   messages, kqueue, and a launchd bootstrap for `launchd_sim`. Darling is
-   prior art.
-3. **Host services:** render server, Metal (→ Vulkan), audio, stream,
-   syslog, and test-manager sockets.
-4. **CPU:** every runtime is arm64-only. **arm64 Linux needs no
-   translation.** x86-64 Linux needs user-mode arm64 → x86-64 translation.
-
-Suggested order:
-
-- **First target, arm64 Linux:** a headless boot of `launchd_sim` and a
-  command-line guest binary, then `cfprefsd` and the XPC bootstrap.
-- **Then UIKit:** a headless UIKit app with logging over the syslog socket.
-- **Then display and input.**
-- **Last, x86-64:** add translation once the stack works on arm64.
-
-The runtime itself still comes from the owner's Xcode installation. It is
-used as input, never redistributed.
+The same protocol applies as everywhere else (see [AGENTS.md](../AGENTS.md)).
+The VMM, the shim, the host libraries, the translator and the guest agents
+are original code. The runtime is an input that each user copies from their
+own Xcode installation. It is never committed or redistributed. Findings about
+the runtime's behavior go into `specs/` first.

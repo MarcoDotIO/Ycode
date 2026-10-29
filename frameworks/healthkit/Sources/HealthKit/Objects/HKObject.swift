@@ -88,6 +88,7 @@ public class HKSample: HKObject, @unchecked Sendable {
 /// or an `HKDiscreteQuantitySample` depending on the type's aggregation style.
 public class HKQuantitySample: HKSample, @unchecked Sendable {
     public override class var supportsSecureCoding: Bool { true }
+    // swiftlint:disable:next force_cast - the registry holds the subclass registered for this identifier
     public var quantityType: HKQuantityType { TypeRegistry.type(record.type) as! HKQuantityType }
     public var quantity: HKQuantity { HKQuantity(unit: HKUnit(from: record.unit), doubleValue: record.value) }
     #if canImport(ObjectiveC)
@@ -134,6 +135,7 @@ extension _HKQuantitySampleFactory where Self: HKQuantitySample {
             try HKQuantitySample.makeRecord(type: quantityType, quantity: quantity, start: startDate, end: endDate,
                                             device: device, metadata: metadata)
         }
+        // swiftlint:disable:next force_cast - HKObject.make builds the subclass the record type names
         self = HKObject.make(r) as! Self
     }
     public init(type quantityType: HKQuantityType, quantity: HKQuantity, start startDate: Date, end endDate: Date,
@@ -149,6 +151,7 @@ extension _HKQuantitySampleFactory where Self: HKQuantitySample {
 
 public final class HKCategorySample: HKSample, @unchecked Sendable {
     public override class var supportsSecureCoding: Bool { true }
+    // swiftlint:disable:next force_cast - the registry holds the subclass registered for this identifier
     public var categoryType: HKCategoryType { TypeRegistry.type(record.type) as! HKCategoryType }
     #if canImport(ObjectiveC)
     @objc public var value: Int { record.categoryValue }
@@ -190,11 +193,14 @@ public final class HKCategorySample: HKSample, @unchecked Sendable {
 /// Groups related samples (`interface.md` §3). Saving a correlation saves its members.
 public final class HKCorrelation: HKSample, @unchecked Sendable {
     public override class var supportsSecureCoding: Bool { true }
+    // swiftlint:disable:next force_cast - the registry holds the subclass registered for this identifier
     public var correlationType: HKCorrelationType { TypeRegistry.type(record.type) as! HKCorrelationType }
     public var objects: Set<HKSample> {
+        // swiftlint:disable:next force_cast - correlation members are samples
         Set((record.members ?? []).map { HKObject.make($0) as! HKSample })
     }
     public func objects(for objectType: HKObjectType) -> Set<HKSample> {
+        // swiftlint:disable:next force_cast - correlation members are samples
         Set((record.members ?? []).filter { $0.type == objectType.identifier }.map { HKObject.make($0) as! HKSample })
     }
 

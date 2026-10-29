@@ -112,7 +112,6 @@ struct LeanBootProfile: Equatable {
         return result
     }
 
-
     /// One line for the run log.
     var summary: String {
         var parts: [String] = []

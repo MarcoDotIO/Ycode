@@ -7,6 +7,7 @@ import YcodeDebug
 extension WorkspaceSession {
     func beginDebugSession(product: String) {
         runningProduct = product
+        runningDeviceName = nil
         exitLinePrinted = false
         killReported = false
         breakpointHits = [:]

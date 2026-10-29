@@ -1,7 +1,8 @@
 // dev.ycode.simulator.hid: the host end of Ycode's input transport
 // (specs/simulator/hid-input.md §7). The guest's HID bundle (SimGuestFrameworks/
 // SimHID) registers a port with one message; the host then sends it touch,
-// key, button, keyboard-attach, and orientation messages.
+// key, button, keyboard-attach, and orientation messages, and on a foldable
+// device the hinge angle and the device orientation (foldable.md §8.2 I3).
 
 import Foundation
 import YcodeDarwinKernel
@@ -13,6 +14,12 @@ public final class HIDHostService: @unchecked Sendable {
 
     public enum Kind: UInt32, Sendable {
         case touch = 1, key = 2, button = 3, keyboardAttach = 4, orientation = 5
+        /// foldable.md §8.2 I3: u32 whole degrees 0…180.
+        case hingeAngle = 6
+        /// foldable.md §8.2 I3: u32 orientation code, the relay's own (§5.4):
+        /// 0 ambiguous, 1 portrait, 3 landscape left, 4 landscape right,
+        /// 5 face up, 6 face down.
+        case deviceOrientation = 7
     }
 
     /// §7.3 touch record phase.
@@ -44,6 +51,9 @@ public final class HIDHostService: @unchecked Sendable {
         case button(usagePage: UInt32, usage: UInt32, down: Bool)
         case keyboardAttach(Bool)
         case orientation(UInt32)
+        /// Whole degrees, 0 closed … 180 open flat (clamped).
+        case hingeAngle(UInt32)
+        case deviceOrientation(UInt32)
     }
 
     let host: MachHostTask
@@ -152,6 +162,8 @@ public final class HIDHostService: @unchecked Sendable {
         case .button: kind = .button
         case .keyboardAttach: kind = .keyboardAttach
         case .orientation: kind = .orientation
+        case .hingeAngle: kind = .hingeAngle
+        case .deviceOrientation: kind = .deviceOrientation
         }
         u32(1)
         u32(kind.rawValue)
@@ -177,6 +189,12 @@ public final class HIDHostService: @unchecked Sendable {
             u32(attached ? 1 : 0)
             u32(0)
         case .orientation(let o):
+            u32(o)
+            u32(0)
+        case .hingeAngle(let degrees):
+            u32(min(180, degrees))
+            u32(0)
+        case .deviceOrientation(let o):
             u32(o)
             u32(0)
         }

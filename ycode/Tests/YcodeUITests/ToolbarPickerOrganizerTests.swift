@@ -68,6 +68,7 @@ final class ToolbarPickerOrganizerTests: XCTestCase {
         XCTAssertTrue(views.contains { $0 === o.backButton })
         XCTAssertTrue(views.contains { $0 === o.forwardButton })
         XCTAssertTrue(views.contains { $0 === o.bellButton })
+        // swiftlint:disable:next redundant_nil_coalescing - flattens a double optional
         XCTAssertNil(o.backButton.superview.map { $0.isDescendant(of: o.view) ? $0 : nil } ?? nil)
     }
 }

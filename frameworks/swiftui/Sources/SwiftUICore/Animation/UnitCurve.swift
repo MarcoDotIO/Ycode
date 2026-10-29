@@ -27,9 +27,9 @@ public struct UnitCurve: Hashable, Sendable {
                           CGPoint(x: min(max(endControlPoint.x, 0), 1), y: endControlPoint.y)))
     }
 
-    public static let linear = UnitCurve(.bezier(CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 1)))
+    public static let linear = UnitCurve(.bezier(.zero, CGPoint(x: 1, y: 1)))
     public static let easeIn = UnitCurve(.bezier(CGPoint(x: 0.42, y: 0), CGPoint(x: 1, y: 1)))
-    public static let easeOut = UnitCurve(.bezier(CGPoint(x: 0, y: 0), CGPoint(x: 0.58, y: 1)))
+    public static let easeOut = UnitCurve(.bezier(.zero, CGPoint(x: 0.58, y: 1)))
     public static let easeInOut = UnitCurve(.bezier(CGPoint(x: 0.42, y: 0), CGPoint(x: 0.58, y: 1)))
     @available(*, deprecated, renamed: "easeInOut")
     public static let easeInEaseOut = easeInOut
@@ -86,7 +86,7 @@ private extension UnitCurve.Storage {
     func velocity(_ t: Double) -> Double {
         switch self {
         case .bezier(let p1, let p2):
-            if p1 == CGPoint(x: 0, y: 0) && p2 == CGPoint(x: 1, y: 1) { return 1 }  // linear
+            if p1 == .zero && p2 == CGPoint(x: 1, y: 1) { return 1 }  // linear
             let b = Bezier(p1, p2)
             let s = b.solveX(t)
             let dx = b.dx(s), dy = b.dy(s)

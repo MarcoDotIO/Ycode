@@ -4,7 +4,8 @@ Status: **implemented 2026-10-17 (agent PROF)**. §1 is a diagnostic
 (off by default). §3 lists four changes; each has a switch, and §4 says
 which are on by default and why. Measurements are in §2 and §4. §6
 (agent PROF3, 2026-10-19) compares the Mac and Ycode process by process
-and adds C21.
+and adds C21. §9 (agent SPAWN, 2026-10-23) measures process creation and
+adds SP1–SP4.
 
 This is Ycode's own design. It names no Apple internals. The Linux facts
 (KVM memslots, `mremap`, transparent huge pages, `/proc` accounting) come
@@ -923,7 +924,7 @@ Each behind a switch; timed boots in `scheduling-policy.md` §7.4.
 | Change | Switch | Mechanism, measured | Boot (timed, n = 3) |
 |---|---|---|---|
 | A receive from a full queue wakes only the oldest blocked sender and gives it the slot (`mach-ipc.md` §2.9; was: every blocked sender woke and all but one slept again) | `YCODE_PORT_SLOT_HANDOFF` (default on, `=0` off) | spurious wakeups in a boot 37,186 → 1,400 (profiled r3q → r4q-hand); thread-seconds blocked in log sends 295 → 257 | 35.4 → 36.4 s: no effect on home_s beyond the spread (diagnosticd's throughput, not the wakeups, limits the senders) |
-| Device runs with thread QoS and the cgroup host backend: the UI path gets the host CPUs first (items 2–3 of §8.3) | `YCODE_BOOT_PRIORITY=1` (default off; or `YCODE_SCHED_QOS=1 YCODE_HOST_SCHED=cgroup`) | backbone run queue: SpringBoard 3.9 → 1.4 s, diagnosticd after wakeups 3.8 → 1.9 s; blocked log sends 196 thread-s | series C 35.4 → 32.5 s (−8 %); series D 34.5 → 31.7, 31.7 and one 64.9 s boot (kernel lock held 41 s: an idle-class holder, `scheduling-policy.md` §7.4), so not on by default |
+| Device runs with thread QoS and the cgroup host backend: the UI path gets the host CPUs first (items 2–3 of §8.3) | `YCODE_BOOT_PRIORITY=1` (default off; or `YCODE_SCHED_QOS=1 YCODE_HOST_SCHED=cgroup`) | backbone run queue: SpringBoard 3.9 → 1.4 s, diagnosticd after wakeups 3.8 → 1.9 s; blocked log sends 196 thread-s | series C 35.4 → 32.5 s (−8 %); series D 34.5 → 31.7, 31.7 and one 64.9 s boot (kernel lock held 41 s: an idle-class holder, `scheduling-policy.md` §7.4), so not on by default then. **On by default for device runs since 2026-10-27** (PRIO-3: lock holders raised to their waiters' class, class 0 weighted, the quiet test's CPU condition; `scheduling-policy.md` §7.5) |
 
 With the final defaults (slot hand-off on, boot priority off) a warm-boot
 cycle through the IDE launcher (`ycode-sim.sh`: cold boot, stop with save,
@@ -955,13 +956,12 @@ latency 0.9 s.
   launch (§8.4); `posix_spawn` and memory traps on the backbone 0.2–0.5 s.
 - GPU-2: the first frames of a launched app wait for shader compiles in a
   freshly started `MTLCompilerService` (Settings 0.76 s on the path).
-- BOOT-CP (next): run a holder of L0 at its waiters' class (or give class 0
-  a small weight instead of `cpu.idle`), then make `YCODE_BOOT_PRIORITY`
-  the default; keep the start hold's quiet test from passing in a boot's
-  first seconds (`scheduling-policy.md` §7.4). diagnosticd's own CPU
-  priority (an Interactive daemon: class df) — xnu pushes the priority of senders blocked on a full queue onto
-  the receiver (send turnstiles); Ycode models ulock and sync-IPC pushes
-  only (`scheduling-policy.md` §4.6), not this one.
+- BOOT-CP (next): done by PRIO-3 (2026-10-27, `scheduling-policy.md`
+  §4.2, §4.4, §4.6, §4.7, §7.5): kernel-lock holders are raised to their
+  waiters' class, class 0 has a small weight, the quiet test needs an idle
+  host CPU, senders blocked on a full queue push onto the receiving image
+  (send push), classes are recomputed off L0, and `YCODE_BOOT_PRIORITY`
+  is the default for device runs.
 
 **Questions for the reference** (black-box, for the dirty room):
 
@@ -971,6 +971,250 @@ latency 0.9 s.
    thread-seconds in a 33 s boot).
 2. Messages per second from processes to diagnosticd during the first 30 s
    of a subsequent boot (Ycode: about 3,600).
+
+## 9. Process creation and the host address-space lock (2026-10-23, agent SPAWN)
+
+Main line f97a84f on the Thor. The question: what does creating a guest
+process cost, from the parent's spawn trap to the child's libSystem
+milestone, and which part of it is Ycode's.
+
+### 9.1 Instruments
+
+- Per-image table (§1.1), new columns: `req_to_launch_ms` (the parent's
+  spawn or exec trap to the start of the image build), `vm_ms` (the
+  executable check and taking the VM), `load_ms` (the shim, the executable
+  and `dyld_sim`), `vcpu0_ms` (stack, argument block, host page, commpage,
+  thread block, vCPU pool and vCPU 0), `activate_ms` (build start to the
+  image's registration under the kernel lock), `prebuilt` (0 built by the
+  trap, 1 a prebuilt new VM, 2 a reused VM, §9.4), and at the milestone the
+  main vCPU's exits as KVM counts them (`m_kvm_exits`: the difference to
+  `m_user_exits` is exits KVM handled itself, stage-2 faults and
+  interrupts), its WFx exits and the host thread's minor faults.
+- Header: the prebuilt-VM counters (taken, ready at take, built inline,
+  built by the background builder, reused, refused), the time of
+  `ProcessBuilder`, of the spare vCPUs, of `KVM_CREATE_VM` and of VM
+  closes, and the host process's mapping count (`/proc/self/maps` lines;
+  also every tenth line of `<path>.samples`).
+- Outside the repository (agent area on the host): an `LD_PRELOAD` counter
+  of the host process's `mmap`, `munmap`, `mprotect`, `mremap` and
+  `madvise` calls (count and wall time by size class), and a boot harness
+  that boots a RAM copy of the pristine device whose `ycode-device-path`
+  names the copy (no LaunchServices rebuild, `app-launch.md` §3.3),
+  screenshots every second, and opens Settings as a one-shot 100 s after the
+  bind (`ylaunch open com.apple.Preferences`).
+
+### 9.2 The per-process timeline
+
+Three profiled boots of the main line (home at 62–70 s); the 516–531 images
+launched before the home screen (means; p50 in brackets):
+
+| Step | Time |
+|---|---|
+| parent's spawn or exec trap → image build starts | 1.5–2.5 ms (0.4) |
+| executable check, VM taken (prebuilt: 99 % ready at take) | 3.3–4.2 ms (0.4–0.7) |
+| load: shim, executable, `dyld_sim` | 22.3–23.5 ms (14.4–15.7; p90 53–57) |
+| stack, host page, commpage, vCPU pool, vCPU 0 | 3.9 ms (1.0–1.2) |
+| whole build (to registration) | 29.5–30.9 ms (17.8–20.1; p90 70–76) |
+| registration → first guest instruction (starts not held) | p50 0.5–0.6 ms, p90 4.5–5.9 ms |
+| first instruction → libSystem milestone | p50 480–500 ms, mean 3.5–4.2 s; guest CPU 0.52 s mean |
+| trap handlers before the milestone | 77–86 ms (39–52), of it kernel-lock wait 23–26 ms |
+| host-kernel CPU before the milestone | 10 ms |
+
+The same program started alone (`--exec backboardd --repeat 6`, the last
+start, warm host): build 2.2 ms, milestone 393–395 ms, handlers 25 ms,
+host-kernel CPU 10–30 ms. So the build is 10× slower inside a boot than
+alone, and so are the trap handlers per trap (14 µs alone, 60–70 µs in the
+boot). Settings opened after the boot: `xpcproxy_sim` built in 16–18 ms,
+Settings in 22 ms, then 3.4 s of guest CPU to its libSystem milestone.
+
+### 9.3 Stage-2 faults are not the cost
+
+- Lone starts with the shared cache in 2 MiB host pages (§9.5, SP4; every
+  hot chunk promoted before the measured start): in-kernel exits before
+  the milestone 3,386 → 2,614 (−770, about half of all in-kernel exits),
+  milestone 393–395 ms → 393–404 ms, guest CPU unchanged. A stage-2 fault on
+  a page the host has mapped costs microseconds, and the guest TLB reach
+  (4 KiB host pages under 16 KiB guest pages) does not show in the
+  loader's guest time.
+- In a boot (`p-hot-1` against `p-base-1/2/3`): in-kernel exits −15 %, home
+  69 s (base 62–70), image builds and file copies slower (the promoter's
+  1,805 `mremap`s run during the boot, §9.4). SP4 stays off.
+- `KVM_PRE_FAULT_MEMORY` (`KVM_CAP_PRE_FAULT_MEMORY`) is not offered by the
+  Thor's kernel (6.8.12-tegra: the capability check answers 0), and the
+  kernel has no read-only file huge pages (`CONFIG_READ_ONLY_THP_FOR_FS` is
+  off) and `shmem_enabled = never`, so the only way to block-map the cache
+  is the anonymous copy of SP4.
+
+### 9.4 Finding: every host mapping change waits 1.5–2.5 ms
+
+All VMs live in one host process, so they share one address space and
+its lock (`mmap_lock`). On arm64 Linux 6.8 every stage-2 fault looks up
+the faulting address's mapping with that lock held for reading, and every
+`mmap`, `munmap`, `mprotect`, `mremap` takes it for writing; `madvise
+(MADV_DONTNEED)` for reading. A waiting writer holds new readers back.
+In the first 60 s of a boot the VMM made about 19,600 writing calls
+(`mmap` and `munmap` of every size class), each waiting 1.2–2.5 ms on
+average (maximum 0.54 s), and 13,400 `MADV_DONTNEED` calls waited 0.45–0.86
+ms. The boot samples show 11–17 host threads in uninterruptible sleep on
+average before the home screen and up to 79 in the launchd burst: vCPU
+threads in `KVM_RUN` waiting for the lock in their stage-2 faults.
+
+The heaviest single writer is VM creation: `KVM_CREATE_VM` registers the
+VM's MMU notifier on the host address space, which in Linux takes the
+address-space lock for writing and then the lock of every mapping of the
+process (`mm_take_all_locks`); with 9,000–20,000 mappings in the host
+process it took 10.7 ms per VM (730 VMs per boot), during which no fault
+of any VM proceeds. A VM's close (its memslots' host memory, the vCPU run
+areas, the MMU notifier's removal) took 45 ms on the supervisor thread.
+Per image build the VMM also mapped and unmapped the executable twice and
+`dyld_sim` once (whole-file `Data(contentsOf:, .alwaysMapped)`), mapped a
+zero tail after each new file in the arena, and created 4+ vCPUs (one
+run-area mapping each).
+
+### 9.5 Changes
+
+**SP1: VM reuse (`YCODE_VM_REUSE`, default on; `=0` off).**
+When an image ends, its VM is reset and kept for a later spawn or exec
+instead of being destroyed. Under the kernel lock (`GuestImageInstance
+.destroy`) the image's address space is discarded as before and its
+physical backing is *retired*: from then on every operation of the old
+backing refuses (allocations and mappings throw, releases do nothing,
+physical reads and writes throw), so a late call through the old image's
+objects never reaches memory that a later image owns. A VM qualifies
+when its backing registered no memslot after its start (no per-mapping
+file slot, no per-object shared slot) and no restore overlay is mapped,
+and the image was not traced. The background builder (§7.3) then, with no
+lock held:
+
+1. returns the pool's host memory (`MADV_DONTNEED`: zeros again) and the
+   used part of the private file window (below);
+2. resets every vCPU with `KVM_ARM_VCPU_INIT` (KVM allows it after a vCPU
+   ran; the vCPU returns to its reset state, its exit counters restart)
+   and makes it a spare under its id; returns guest RAM (zeros);
+3. builds a new backing over the same memslots (fresh allocators) and new
+   EL1 tables, and puts the VM in the ready list.
+
+The memslots, the VM-wide counter offset and the HVC doorbell filter stay
+(KVM refuses to change the latter two after a vCPU ran; setting the same
+offset again is skipped). Stage-2 entries of the shared arenas that the
+old image used may stay: they map the same host pages at the same GPAs in
+every VM, and the new image reaches them only through stage-1 tables the
+VMM builds for it. Translations the old image's vCPUs left in the TLBs
+of other physical CPUs (same VMID) are dropped twice: KVM invalidates the
+VM's TLB entries when its MMU notifier unmaps the returned RAM and pool
+pages, and a vCPU's boot now invalidates on every PE (`tlbi vmalle1is`,
+`ic ialluis`; `vm-shim-protocol.md` §4 step 6; before, `tlbi vmalle1` on
+the booting PE only).
+At most `YCODE_VM_REUSE_KEEP` (default 64) VMs wait, ready or being reset;
+more are destroyed as before. A reused VM brings its vCPUs: a new image
+gets as many spares as the old one had, so its thread starts create no
+vCPU until it outgrows them.
+
+*Private window inheritance* (`YCODE_VM_REUSE_WINDOW`, default on with
+SP1): the window's mappings (writable file mappings over 1 MiB: mostly the
+shared cache's data mappings, 84 MiB on average) are not removed; step 1
+returns them with `MADV_DONTNEED`, which on a private file mapping drops
+the copy-on-write pages and shows the file's bytes again. The next image's
+mapping of the same file range (device, inode, size, modification time,
+offset, length) gets the same window range back with no host call.
+
+**SP2: executable headers without a mapping (default on;
+`YCODE_EXEC_HEADER_MAP=1` maps whole files as before).** The executable
+check, the executable's load and `dyld_sim`'s load read the fat header,
+the slice's Mach-O header and its load commands with `pread` (all they
+use), cached by device, inode, size and modification time. The answers
+(ENOENT, EACCES, ENOEXEC, EBADARCH, the segments, the entry point) are
+unchanged.
+
+**SP3: a readable arena reservation (default on;
+`YCODE_ARENA_ZERO_TAILS=0` off).** The shared file arena's reservation is
+readable anonymous memory, so the rest of a file's last 16 KiB granule
+reads as zeros without a zero mapping of its own (one `mmap` less per new
+file). A guest access to an unused arena range now reads zeros instead of
+failing; the VMM maps only file views there.
+
+**SP4: hot-chunk huge pages for the shared cache (`YCODE_ARENA_HUGE=hot`,
+off).** A background thread promotes each 2 MiB chunk of a huge arena
+span that has a page in the host page cache (`mincore`) into its own
+anonymous 2 MiB-aligned memory (a transparent huge page when one is free:
+the Thor's THP mode is `always`, so no `MADV_HUGEPAGE` and no direct
+compaction, `YCODE_ARENA_HUGE_MADVISE`) and moves it over the arena chunk
+with `mremap`. It copies only the hot set from the page cache (1,734 chunks,
+3.4 GiB, in 2.2–2.7 s with a warm page cache). §3.4's whole-file copy also
+no longer asks for `MADV_HUGEPAGE` under THP `always` and fills with
+`YCODE_ARENA_HUGE_THREADS` (default 8) threads. With a cold page cache it
+still reads the part of the cache no process touched from the data drive
+(in a lone start it had not finished after 40 s), which SP4 avoids.
+
+### 9.6 Results
+
+Profiled boots (§9.1 harness, one at a time under `timed.sh`), images
+launched before the home screen:
+
+| | main line (3 boots) | SP1 alone (old binary) | SP1+SP2+SP3 |
+|---|---|---|---|
+| images before home | 516–531 | 526 | 561 |
+| build, mean (p50; p90) | 29.5–30.9 ms (17.8–20.1; 70–76) | 26.7 ms (11.8; 77) | 13.8 ms (6.8; 37) |
+| of it load | 22.3–23.5 ms (14.4–15.7) | 20.7 ms (9.2) | 10.7 ms (4.0) |
+| registration → first instruction, p50 (p90) | 0.5–0.6 ms (4.5–5.9) | 0.7 ms (5.2) | 0.8 ms (6.2) |
+| first instruction p50 (from build start) | 23–26 ms | 18 ms | 13 ms |
+| libSystem milestone p50 (from build start) | 505–526 ms | 413 ms | 397 ms |
+| host threads in D before 60 s, mean | 13.9–15.6 | 11.1 | 9.7 |
+| `KVM_CREATE_VM` / VM closes per boot | 730 / 726 | 299 / 291 | 297 / 265 (437 reused) |
+| writing address-space calls in the first 60–65 s | 19,649 | 16,617 | 11,000 |
+| `munmap` calls | 3,450 | 1,570 | 2 |
+
+Time to the home screen and the Settings launch (the main line merged with
+3aeaa9c; harness boots, device in RAM at its guest path, 1 s frames; four
+pairs under one `timed.sh` each or back to back, the order alternating;
+base = `YCODE_VM_REUSE=0 YCODE_EXEC_HEADER_MAP=1 YCODE_ARENA_ZERO_TAILS=0`,
+new = SP1+SP2+SP3):
+
+| Round | base home_s | new home_s | base Settings frame / open request (s) | new |
+|---|---|---|---|---|
+| 1 | 62 | 61 | 1.3 / 1.0 | 2.5 / 1.2 |
+| 2 | 61 | 59 | 2.4 / 1.2 | 1.3 / 1.0 |
+| 3 | 66 | 59 | 2.4 / 1.2 | 1.3 / 1.0 |
+| 4 | 65 | 62 | 1.6 / 1.2 | 2.3 / 1.0 |
+| mean | 63.5 | 60.3 (−3.3 s, −5 %; every pair −1…−7 s) | 1.9 / 1.15 | 1.85 / 1.05 |
+
+The Settings columns: the first frame of the Settings list after the
+one-shot `ylaunch open` was spawned (1 s frames, so ±1 s), and the open
+request (ylaunch's spawn to its exit after FrontBoard reports the launch).
+The app launch is not measurably shorter at this resolution: its cost is
+the app's own loader work (§9.2, 3.4 s of guest CPU to Settings' libSystem
+milestone; the list is drawn before it finishes loading everything). Every
+boot reached the home screen; no host crash; `guest_fatal` 6–15 (base) and
+5–10 (new). SP1, SP2 and SP3 are on by default.
+
+
+### 9.7 Open items
+
+- About 11,000 writing address-space calls remain in the first minute,
+  each still waiting about 1.2–1.7 ms: shared memory objects made and freed
+  in the shared object arena (`SharedMemory.swift`: one `MAP_FIXED` each
+  way; 5,800 per minute; its run pool recycles only some), new vCPUs' run
+  areas (2,500: thread starts beyond a VM's spares), the private window's
+  first mappings in new VMs, and new VMs (about 270 per boot even with
+  SP1: the keep limit is reached in bursts of exits). Each is a candidate
+  for the same treatment (reuse instead of map and unmap). Owners: the
+  shared object arena (C19, `SharedMemory.swift`) is outside this agent's
+  area.
+- One host process for all VMs is the root cause: every VM's stage-2 faults
+  share one address-space lock with every VMM mapping change. Several host
+  processes (VM groups) would split the lock but not the kernel lock or the
+  shared arenas; not attempted.
+- The loader's guest CPU is unchanged (§5): it is most of a start (p50 about
+  400 ms of 400–520 ms) and of an app launch (Settings: 3.4 s of guest CPU
+  to its libSystem milestone).
+- Stop snapshots at `--timeout-ms` in the first minutes after a cold boot
+  did not settle (2–10 images "ending" for 5–15 s) on the main line
+  (`SX/IDE` tree) and on this branch with SP1 on or off alike; snapshots
+  were checked with `YCODE_SNAPSHOT_AT_MS` instead: with SP1 on, a
+  snapshot 90 s into a cold boot (265 images, quiesced in 396 ms, 3.1 GiB)
+  restored lazily to the home screen in 10 s; the only guest faults after
+  the restore were the known `fileindexerd` and `intelligencetasksd`
+  crashes (`app-launch.md` §7), as in the cold boot.
 
 ## Evidence
 
@@ -994,6 +1238,12 @@ latency 0.9 s.
 | Changes and their timed boots (§8.6) | 3 | `ide-remote/bootcp` series C and D (`timed.sh`), profiled `r4q-hand`, `C-prof-qos` (Ycode's simulator on the Thor) |
 | xnu hands a freed queue slot to one woken sender; send turnstiles push blocked senders' priority onto the receiver (§8.6) | 1 | xnu `osfmk/ipc/ipc_mqueue.c`, `ipc_port.c` (open source) |
 | The log messages' Mach id 0x10000000 and the blocked sends to diagnosticd (§8.3 item 4) | 3 | the same traces (`mach_msg2` arguments: id, send-only options); `launchd-sim.md` §8.1 |
+| Per-image creation timeline, address-space call counts, VM counts and reuse (§9) | 3 | Profiled boots `SX/SPAWN/runs/p-base-1…3`, `p-hot-1`, `p-reuse-1`, `p-new-1` with the `LD_PRELOAD` counter; lone starts `SX/SPAWN/probes` |
+| arm64 KVM looks up the faulting address's mapping under the address-space lock (read) in a stage-2 fault; `KVM_CREATE_VM` registers an MMU notifier, whose registration takes the address-space lock for writing and every mapping's lock (`mm_take_all_locks`) | 1 | Linux 6.8 sources (`arch/arm64/kvm/mmu.c` `user_mem_abort`, `mm/mmu_notifier.c`), Linux KVM API documentation |
+| `KVM_ARM_VCPU_INIT` may be called again after a vCPU ran and resets it; `KVM_ARM_SET_COUNTER_OFFSET` and the SMCCC filter cannot change once a vCPU ran | 1 | Linux KVM API documentation (4.82, 4.141, `KVM_ARM_VM_SMCCC_FILTER`) |
+| `MADV_DONTNEED` on a private file mapping drops the copy-on-write pages and shows the file's bytes again; on anonymous memory, zeros | 1 | madvise(2) |
+| `tlbi vmalle1is` invalidates the stage-1 entries of the current VMID on every PE of the inner shareable domain | 1 | Arm Architecture Reference Manual (TLBI VMALLE1IS) |
+| No `KVM_CAP_PRE_FAULT_MEMORY` on the Thor; THP `always`, `shmem_enabled = never`, no `CONFIG_READ_ONLY_THP_FOR_FS` | 3 | `KVM_CHECK_EXTENSION` on `/dev/kvm`, `/sys/kernel/mm/transparent_hugepage/*`, `/proc/config.gz` |
 | `thread_selfusage` returns mach absolute time; `CLOCK_THREAD_CPUTIME_ID` and `CLOCK_PROCESS_CPUTIME_ID` use it and `getrusage` (§7.5) | 1 | apple-oss-distributions/Libc `gen/clock_gettime.c`; xnu `bsd/kern/kern_resource.c` (getrusage fills `ru_utime`/`ru_stime`) |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/` and Ghidra

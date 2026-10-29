@@ -21,6 +21,8 @@ import YcodeDarwinABI
 enum SelectBSD {
     static let select = 93
     static let pselect = 394
+    /// poll (230; poll_nocancel 417 is an alias).
+    static let poll = 230
     /// `__DARWIN_NFDBITS`: bits per `fd_mask` word (`sys/_types/_fd_def.h`).
     static let wordBits = 32
     /// The largest `tv_sec` a timeout may have (select(2): "too large").
@@ -135,7 +137,9 @@ extension DarwinKernel {
         let deadline = timeoutNs.map { KernelClock.deadline(afterNanoseconds: $0) }
 
         var result = selectScan(given, watched)
+        // swiftlint:disable:next empty_count - the ready-descriptor count, not a collection
         if result.count > 0 || timeoutNs == 0 {
+            // swiftlint:disable:next empty_count - the ready-descriptor count, not a collection
             if stats, result.count > 0 { extended.selectStats.readyAtOnce += 1 }
             return try selectFinish(result, pointers, &call, mem)
         }
@@ -170,6 +174,7 @@ extension DarwinKernel {
                 // A descriptor closed meanwhile is EBADF, as on the first scan.
                 watched = try selectWatchedDescriptors(given, nd: nd)
                 result = selectScan(given, watched)
+                // swiftlint:disable:next empty_count - the ready-descriptor count, not a collection
                 if result.count > 0 { return try selectFinish(result, pointers, &call, mem) }
                 if stats { extended.selectStats.emptyWakeups += 1 }
             }
@@ -263,4 +268,87 @@ extension DarwinKernel {
             + "errors \(s.errors), max nd \(s.maxND), timeout 0/<1ms/<10ms/<100ms/<1s/more/NULL \(h)\n"
         FileHandle.standardError.write(Data(line.utf8))
     }
+
+    // MARK: poll
+
+    /// `poll(fds, nfds, timeout)` (BSD 230): xnu's semantics over the same
+    /// readiness as select (networking-ycode.md §2.4). A negative fd is
+    /// skipped; a closed one gets POLLNVAL; a host file or the console is
+    /// always readable and writable; end of file adds POLLHUP (and the read
+    /// bits asked for). The wait is the select wait (observers, no polling).
+    func pollCall(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
+        let count = Int(UInt32(truncatingIfNeeded: a[1]))
+        let timeout = Int32(truncatingIfNeeded: a[2])
+        call.set("poll(fds=\(hx(a[0])), nfds=\(count), timeout=\(timeout))")
+        guard count <= 12288 else { throw Failure(errno: Errno.EINVAL) }
+        let raw = count == 0 ? [] : try mem.read(va: a[0], count: 8 * count)
+        let entries = (0..<count).map { (fd: raw.readLE(Int32.self, at: 8 * $0), events: raw.readLE(Int16.self, at: 8 * $0 + 4)) }
+        let deadline: UInt64? = timeout < 0 ? nil : KernelClock.deadline(afterNanoseconds: UInt64(timeout) * 1_000_000)
+
+        func scan() -> (Int, [Int16]) {
+            var ready = 0
+            var out = [Int16](repeating: 0, count: count)
+            for (i, e) in entries.enumerated() where e.fd >= 0 {
+                let object: DarwinDescriptorObject?
+                do { object = try fileSystem.object(for: e.fd) } catch {
+                    out[i] = PollBits.nval
+                    ready += 1
+                    continue
+                }
+                var r: Int16 = 0
+                if let object {
+                    guard let o = object as? KernelDescriptorObject else { continue }
+                    let rd = o.readReadiness(), wr = o.writeReadiness()
+                    if rd.eof || (wr.eof && wr.ready) { r |= PollBits.hup }
+                    if rd.ready || rd.eof { r |= e.events & (PollBits.in | PollBits.rdNorm) }
+                    if wr.ready && !(r & PollBits.hup != 0) { r |= e.events & (PollBits.out | PollBits.wrBand) }
+                } else {
+                    r = e.events & (PollBits.in | PollBits.rdNorm | PollBits.out | PollBits.wrBand)
+                }
+                out[i] = r
+                if r != 0 { ready += 1 }
+            }
+            return (ready, out)
+        }
+
+        func finish(_ result: (Int, [Int16])) throws -> BSDResult {
+            if count > 0 {
+                var b = raw
+                for i in 0..<count { b.putLE(result.1[i], at: 8 * i + 6) }
+                try mem.write(va: a[0], bytes: b)
+            }
+            call += " [\(result.0) ready]"
+            return .value(UInt64(result.0))
+        }
+
+        var result = scan()
+        if result.0 > 0 || timeout == 0 { return try finish(result) }
+        let queue = WaitQueue()
+        var tokens: [(KernelDescriptorObject, Int)] = []
+        var seen = Set<ObjectIdentifier>()
+        for e in entries where e.fd >= 0 {
+            guard let o = (try? fileSystem.object(for: e.fd)) as? KernelDescriptorObject,
+                  seen.insert(ObjectIdentifier(o)).inserted else { continue }
+            tokens.append((o, o.addReadinessObserver { queue.wakeAll() }))
+        }
+        defer { for (o, token) in tokens { o.removeReadinessObserver(token) } }
+        while true {
+            switch queue.wait(on: lock, deadline: deadline) {
+            case .interrupted:
+                call += " [interrupted]"
+                throw Failure(errno: Self.EINTR)
+            case .timedOut:
+                return try finish((0, [Int16](repeating: 0, count: count)))
+            case .woken:
+                result = scan()
+                if result.0 > 0 { return try finish(result) }
+            }
+        }
+    }
+}
+
+/// `poll.h` bits.
+enum PollBits {
+    static let `in`: Int16 = 0x1, pri: Int16 = 0x2, out: Int16 = 0x4, err: Int16 = 0x8, hup: Int16 = 0x10,
+               nval: Int16 = 0x20, rdNorm: Int16 = 0x40, rdBand: Int16 = 0x80, wrBand: Int16 = 0x100
 }

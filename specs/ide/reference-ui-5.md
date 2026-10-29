@@ -157,9 +157,9 @@ Debug, Integrate, Window, Help.
 - Ycode's "Show Code Actions" keeps no shortcut. It moves to the source
   editor's context menu and stays reachable through Editor ▸ Show Coding
   Tools ▸ Show Coding Tools… (§2.7).
-- Ycode has no coding assistant, so ⌘0 and Show Coding Assistant switch
-  the left area to the Coding Assistant placeholder, as the toolbar
-  segment does (§4.1).
+- ⌘0 and Show Coding Assistant switch the left area to the Coding
+  Assistant pane, as the toolbar segment does (§4.1;
+  `coding-assistant.md` §4).
 
 ### 2.1 Ycode (application menu)
 
@@ -193,8 +193,8 @@ Debug, Integrate, Window, Help.
    - Editor Pane On Right ⌃⌘T, Editor Pane Below ⌃⌥⌘T, Window Tab, Window
      ⇧⌘T
    - —
-   - Empty File; New File from Clipboard (enabled when the pasteboard holds
-     text); File from Template… ⌘N; Target…
+   - Empty File; File from Clipboard (enabled when the pasteboard holds
+     text; title corrected in `reference-ui-6.md` §8); File from Template… ⌘N; Target…
    - —
    - Project… ⇧⌘N
      - Choose Template… ⌥⇧⌘N *alt(⌥), seen*
@@ -246,6 +246,8 @@ Debug, Integrate, Window, Help.
      Formatting ⌥⇧⌘V.
    - Whether the variants are modifier alternates or a submenu is still
      open (§12). Implement them as alternates of Copy and Paste.
+   - *Pass 6b: they are submenus, "Copy ▸" and "Paste ▸", each holding
+     the plain command first; see `reference-ui-6.md` §8 item 4.*
 4. —
 5. Select All ⌘A
 6. —
@@ -296,7 +298,8 @@ Debug, Integrate, Window, Help.
    - Project ⌘1, Source Control ⌘2, Bookmarks ⌘3, Find ⌘4, Issues ⌘5, Tests
      ⌘6, Debug ⌘7, Breakpoints ⌘8, Reports ⌘9
    - —
-   - Show Coding Assistant ⌘0
+   - Show Coding Assistant ⌘0 (*pass 6b: "Hide Coding Assistant" while
+     the pane is shown, so ⌘0 toggles it; `reference-ui-6.md` §9.5*)
    - Show/Hide Navigator (no shortcut)
    - Filter in Navigator ⌥⌘J (focuses the current navigator's filter
      field)
@@ -429,15 +432,19 @@ and "Package" in a package (§5.4).
 4. Layout ▸: Automatic (checked); —; Editor on Left; Editor on Top. This is
    where the editor sits relative to the canvas. Automatic is the
    width-based rule of `previews.md`. The items are disabled while the
-   canvas is hidden.
+   canvas is hidden. *Pass 6b: the items read "Canvas on Right" and
+   "Canvas on Bottom" and are enabled whenever canvas mode is on;
+   `reference-ui-6.md` §8 item 5.*
 5. —
 6. Show Completions ⌃Space
 7. Show Predictive Completion ⌃⌥Space
 8. Show Coding Tools ▸: Show Coding Tools… ⌥⌘0; —; Explain, Document,
-   Generate a Playground, Generate a Preview. Ycode has no coding
-   assistant, so all of these are disabled except Show Coding Tools…,
-   which shows the code actions at the caret (`refactoring.md`'s former
-   "Show Code Actions").
+   Generate a Playground, Generate a Preview. Show Coding Tools… shows the
+   code actions at the caret (`refactoring.md`'s former "Show Code
+   Actions"). The other four send the selection (or the file) to the
+   coding assistant (`coding-assistant.md` §4, with their enablement).
+   *Pass 6b: the reference's submenu holds the full set, validated as
+   enabled; `reference-ui-6.md` §9.5 (A4).*
 9. Edit All in Scope ⌃⌘E (§6.4)
 10. Show Callers…
 11. Expand Macro; Hide All Macro Expansions
@@ -777,7 +784,8 @@ opens Settings ▸ Components.
    Language (swift.org); Provide Feedback… (the project's issue tracker)
 5. —
 6. Show / Hide Keyboard Hints ⌥⌘? (behavior still to observe, §12; disabled
-   until then)
+   until then). *Pass 6b: the hints are on in the factory state (the
+   item reads "Hide Keyboard Hints").*
 7. Show Quick Help for Selected Item ⌃⌘? (shows the Quick Help popover for
    the symbol at the caret)
 8. Search Documentation for Selected Text ⌃⌥⌘/ (opens a documentation
@@ -807,7 +815,7 @@ Apple services).
      accessibility name). It shows the recent workspaces of §3.2, newest
      first. Each row is the container icon, the name without extension in
      primary text, and the folder path abbreviated from the volume name in
-     secondary text ("MARCUS-PROJECTS/_inbox/…"), with each text as its own
+     secondary text ("External/Samples/…"), with each text as its own
      tooltip. The first row is selected. Double-click or Return opens it.
 3. **Lifetime.** Opening a workspace from the Welcome window closes it.
    Opening one from elsewhere (Finder, command line, Open Recent) leaves it
@@ -859,6 +867,11 @@ and Clear Menu empties the list and the Welcome list.
 
 ### 3.5 Editor at first open (L8; to confirm live)
 
+> **Correction (pass 6, `reference-ui-6.md` §1.3):** confirmed live: the
+> reference shows no Start Page at first open. The editor is empty under a
+> "No Selection" jump bar; the Start Page appears only where the New
+> Editor Tabs / Panes setting opens it.
+
 - The reference shows the editor area's jump bar with "No Selection" and
   an empty editor.
 - Ycode lays its Start Page (Open Quickly + Recent Files) over the whole
@@ -876,7 +889,7 @@ and Clear Menu empties the list and the Welcome list.
    selected:
    - **Navigators** is selected while the left area shows a navigator.
    - **Coding Assistant** is selected while it shows the Coding Assistant
-     pane (Ycode's placeholder).
+     pane (`coding-assistant.md` §4).
 2. Clicking the unselected segment shows that content (opening the area if
    needed). Clicking the selected segment hides the left area, and then
    neither segment is selected.
@@ -916,19 +929,26 @@ and Clear Menu empties the list and the Welcome list.
 2. **Run / Stop.** Tooltips "Build and then run the current scheme" and
    "Stop the running scheme or application". **Go Back / Go Forward**:
    "Show Previous Location in History" and "Show Next Location in History".
-3. **New Conversation button.** A button sits before the scheme pill;
-   Ycode shows it disabled.
+3. **New Conversation button.** A button sits before the scheme pill; it
+   starts a conversation in the Coding Assistant pane
+   (`coding-assistant.md` §4).
 4. **The pill's two pop-ups** have the accessibility names "Active Scheme"
    and "Active Run Destination".
 5. **Default destination (T1).** When a scheme has no remembered
    destination, choose the first entry of this list that applies:
    1. My Mac when the product's platform is macOS;
    2. otherwise the first simulator of the product's platform in §11.4
-      order whose OS version is not below the deployment target;
+      order whose OS version is not below the deployment target
+      (*pass 6b: replaced by `reference-ui-6.md` §2.4.3, which prefers the
+      newest-generation Pro iPhone*);
    3. otherwise the generic "Any <Platform> Simulator Device".
 
    My Mac is never the default for an iOS-only product. Remember the
    choice per scheme in user data.
+
+   *Pass 6 (`reference-ui-6.md` §2.4): "the product's platform is macOS"
+   means the product supports macOS (a multiplatform app defaults to My
+   Mac).*
 
 **Acceptance.** Opening the iOS sample selects an iOS simulator, and ⌘R
 builds for the iOS Simulator SDK.
@@ -1007,6 +1027,9 @@ swift-testing tags, with "Untagged Tests" last.
 
 1. **Issues without a file** are rows directly under the root, after the
    file groups. They are not in a "Build System" group.
+   *Pass 6 (`reference-ui-6.md` §5.1): they are rows directly under the
+   project row, which comes before the target rows; files are grouped by
+   target, one row per file (§5.2.4).*
 2. **Stale issues.** The next build of the same scheme replaces stale
    issues; Clean is not needed. An issue from the previous build that the
    new build does not report is removed when that build finishes. Issues
@@ -1032,7 +1055,8 @@ swift-testing tags, with "Untagged Tests" last.
    buttons** in the jump bar; history is in the toolbar.
 2. **Right end:** Show Previous Issue (tooltip "Show Previous Issue"), an
    "Issues" pull-down listing the file's issues, and Show Next Issue
-   ("Show Next Issue").
+   ("Show Next Issue"). (Refined by `reference-ui-6.md` §4.1.2: three
+   glyph-only controls, "‹", the severity glyph, "›".)
    - The three are present while the workspace has issues.
    - The arrows move through the file's issues and then the next files'
      issues, like ⌘' and ⇧⌘'.
@@ -1110,6 +1134,8 @@ swift-testing tags, with "Untagged Tests" last.
   editor, 73 pt for a 480-pt split), at least 60 pt.
 - It carries labels for the file's declarations ("landmarks", the jump
   bar's symbol list) at their positions.
+- *Pass 6b: on by default (factory default confirmed with no user key);
+  `reference-ui-6.md` §4.5.*
 
 ## 7. Inspectors (I1–I5)
 
@@ -1256,8 +1282,8 @@ The minimap is **not** a Display row; it is the Editor ▸ Minimap toggle
 
 **Behaviors.**
 
-- Add the categories Intelligence (empty; Ycode has no assistant) and
-  Playgrounds.
+- Add the categories Intelligence (empty: the coding assistant has no
+  behavior events yet) and Playgrounds.
 - Action labels read "Navigator: <name>", "Debugger: Show Current Views",
   "Debugger: Hide Debugger If No Output", "Notify with bezel or system
   notification".
@@ -1412,7 +1438,8 @@ The §2.10 items work as follows:
   <runtime version>" and sorts with the newest runtime.
 - Ycode's three-step activity text stays until the reference's simulator
   run strings are observed (§12, item 12). Then it adopts them, keeping a
-  step counter only if the reference has one.
+  step counter only if the reference has one. *Pass 6: observed; the
+  reference has no counter. See `reference-ui-6.md` §3.3.*
 
 ### 11.6 Smaller items
 
@@ -1459,10 +1486,22 @@ The exact steps are in the audit notes, §5.
 
 ## 13. Deliberate deviations (not gaps)
 
-- Ycode has no coding assistant, conversations or cloud CI service. Their
-  menu items, the toolbar segment, the New Conversation button and the
-  Show Coding Tools items are present and disabled, or show a
-  placeholder.
+- **Coding assistant (updated 2026-10-27).** Ycode now has one
+  (`coding-assistant.md`): the toolbar segment, ⌘0, the New Conversation
+  button, File ▸ New ▸ Conversation, Navigate ▸ Jump to Next Active
+  Conversation and Editor ▸ Show Coding Tools ▸ Explain / Document /
+  Generate a Playground / Generate a Preview work. The deviations that
+  remain:
+  - the transcript is in the left area with the conversation list, not in
+    the editor area; Conversation in New Tab and Conversation in Editor
+    Pane stay disabled;
+  - Show Coding Tools… ⌥⌘0 shows the code actions, not a prompt popover;
+  - no conversation groups, history slider, `@` references, issue
+    "Generate Fix" button, reasoning pop-up, MCP tools or ACP agents;
+  - changes are always proposed and reviewed; agent tools run read-only;
+  - the settings pane is "Coding Assistant", with Ycode's own rows
+    (`coding-assistant.md` §6), not "Intelligence".
+- Ycode has no cloud CI service. Its menu items are present and disabled.
 - Apple service names are not used. The Settings pane is "Accounts", not
   "Apple Accounts". The Integrate section label is "Cloud". The Help menu
   leaves out the service help items. The application is named Ycode

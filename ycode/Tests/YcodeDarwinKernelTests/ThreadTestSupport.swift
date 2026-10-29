@@ -30,6 +30,20 @@ final class FakeThreadHost: ThreadHost, @unchecked Sendable {
         startsStorage.append((start, context))
         return startsStorage.count
     }
+
+    private var kickStorage: [ThreadContext] = []
+    /// The threads whose vCPU the kernel kicked (Mach suspension).
+    var kicks: [ThreadContext] {
+        mutex.lock()
+        defer { mutex.unlock() }
+        return kickStorage
+    }
+
+    func kickThread(_ context: ThreadContext) {
+        mutex.lock()
+        kickStorage.append(context)
+        mutex.unlock()
+    }
 }
 
 /// A value written by one host thread and read by another.

@@ -24,6 +24,7 @@ public final class MenuBarDelegate: NSObject, NSMenuDelegate {
 
     public func menuWillOpen(_ menu: NSMenu) {
         // AppKit may add its items after the update; check again on display.
+        removeSystemAdditions(menu)
         if menu.supermenu === NSApp?.mainMenu {
             MainMenu.removeSystemConflicts(in: menu)
             MainMenu.collapseSeparators(in: menu)
@@ -33,6 +34,7 @@ public final class MenuBarDelegate: NSObject, NSMenuDelegate {
     /// Fills, titles, shows or hides and tidies one menu.
     public func update(_ menu: NSMenu, controller wc: WorkspaceWindowController?) {
         let ctx = wc?.menuContext
+        removeSystemAdditions(menu)
         if let m = menu as? CommandMenu { DynamicMenus.fill(m, controller: wc) }
         for item in menu.items {
             guard let c = item as? CommandMenuItem, let spec = c.spec else { continue }
@@ -42,6 +44,18 @@ public final class MenuBarDelegate: NSObject, NSMenuDelegate {
         }
         if menu.supermenu === NSApp?.mainMenu, NSApp?.mainMenu != nil { MainMenu.removeSystemConflicts(in: menu) }
         MainMenu.collapseSeparators(in: menu)
+    }
+}
+
+extension MenuBarDelegate {
+    /// System items Ycode leaves out (`reference-ui-6.md` §8 items 1–2):
+    /// a second Open Recent in File, the feedback item in Help.
+    func removeSystemAdditions(_ menu: NSMenu) {
+        switch (menu as? CommandMenu)?.path {
+        case "File": MainMenu.removeSystemRecentMenus(in: menu)
+        case "Help": MainMenu.removeSystemFeedbackItem(in: menu)
+        default: break
+        }
     }
 }
 

@@ -60,9 +60,13 @@ public enum VMLayout {
     /// (physical address = `va`). For EL0 regions the VMM chooses the backing
     /// pages from the EL0 pool.
     public struct Region: Equatable, Hashable, Sendable {
+        /// A label for logs and lookups (for example "page-tables").
         public var name: String
+        /// The first virtual address; page-aligned.
         public var va: UInt64
+        /// The length in bytes; a multiple of `pageSize`.
         public var size: UInt64
+        /// The access and execute permissions of every page in the region.
         public var attributes: PageAttributes
 
         public init(name: String, va: UInt64, size: UInt64, attributes: PageAttributes) {
@@ -72,6 +76,7 @@ public enum VMLayout {
             self.attributes = attributes
         }
 
+        /// The address one past the last byte.
         public var end: UInt64 { va + size }
     }
 
@@ -235,7 +240,11 @@ extension VMLayout {
     /// Helpers table: `version`, then the slot pointers (544 bytes).
     public static let hostPageHelpersOffset: UInt64 = 0x4000
     public static let hostPageHelpersSize: UInt64 = 544
+    /// The `version` word at the start of the helpers table, and the number
+    /// of slot pointers after it (`stage3-contract.md` §5; slot order in
+    /// `dyld-sim-handoff.md` §3.2).
     public static let helpersTableVersion: UInt64 = 18
+    /// See `helpersTableVersion`.
     public static let helpersSlotCount = 67
     /// The errno cell (an `int` in an 8-byte slot).
     public static let hostPageErrnoOffset: UInt64 = 0x8000
@@ -324,8 +333,10 @@ public enum AArch64 {
         public static let normalIndex: UInt64 = 0
         public static let deviceIndex: UInt64 = 1
 
+        /// `value` placed in the Attr<`index`> byte of the register.
         public static func attr(_ index: UInt64, _ value: UInt8) -> UInt64 { UInt64(value) << (8 * index) }
 
+        /// The §3 value: Attr0 normal write-back memory, Attr1 device memory.
         public static let recommended: UInt64 = attr(normalIndex, normalWriteBack) | attr(deviceIndex, deviceNGnRnE)
     }
 

@@ -134,7 +134,9 @@ All messages are XPC dictionaries. Keys seen:
 | `options`, `bufferIndex`, `length` | uint64 | buffer creation |
 | `bufferRef`, `commandQueueRef` | uint64 | replies to buffer and queue creation |
 | `maxCommandBufferCount` | uint64 | queue creation |
-| `iosurface` | Mach send right | IOSurface texture (§5.4) |
+| `iosurface` | Mach send right | IOSurface texture (§5.4), opening a shared-texture handle (§5.11) |
+| `iosurfaceXPCObject` | Mach send right | reply to a shared texture (§5.10) |
+| `label` | string | opening a shared-texture handle that has a label (§5.11) |
 | `functionIR` | data | function creation (§6) |
 | `segments` | array of data | submission (§8.1) |
 | `commandQueue`, `commandBufferRef` | uint64 | submission, events |
@@ -177,10 +179,18 @@ With our test server, the device was created and worked with any
 | 13 | 1 | `replyData` (u32 ref, u32 0) | texture over an IOSurface (op 47) | §5.4 |
 | 14 | 1 | none | release an object (op 1000–1013) | §3 |
 | 15 | 1 | `replyData` (u32 ref, u32 0) | new function (op 15) | §6 |
+| 17 | 1 | `eventPort` (send right), `labelTraceID` (uint64 0) | `newSharedEventHandle`: request `eventRef` (uint64) | §5.8 |
+| 18 | 1 | `replyData` (u32 ref, u32 0) | `newSharedEventWithHandle:`: request `eventPort` (send right) and `command` (op 40, u32 0) | §5.8 |
+| 19 | 1 | `iosurfaceXPCObject` (send right), `replyData` (u32 ref, u32 0); the driver also reads `fatalError` and `error`, which the reference never sent | `newSharedTextureWithDescriptor:`: request `command` (op 42, the texture descriptor) | §5.10 |
+| 20 | 1 | `replyData` (u32 ref, descriptor words 1–8) | `newSharedTextureWithHandle:`: request `command` (op 43, u32 0), `iosurface` (send right), `label` (optional) | §5.11 |
 | 100 | host → client | — | command buffer scheduled | §8.5 |
 | 101 | host → client | — | command buffer completed | §8.5 |
 
-Message types 2–5 and 11 were never sent. Replies to requests that expect
+Message types 2–5 and 11 were never sent. Types 17 and 18 were added
+from visionos.md §10.6.5 (2026-10-27; RealityKit uses them in backboardd
+and datamigrator). Type 19 was added from visionos.md §10.9 (2026-10-27,
+Ycode's guest; wakeboardd's compositor uses it on visionOS); its reference
+reply and type 20 from visionos.md §10.10 (2026-10-27). Replies to requests that expect
 no data are empty dictionaries.
 
 ## 3. References
@@ -243,25 +253,37 @@ indirect command buffers (`newIndirectCommandBufferWithDescriptor:` aborts
 | 14 | new render pipeline (connection 2) | keyed descriptor (§7) | u32 ref, u32 0 |
 | 16 | argument-buffer layout from a function's reflection (`newArgumentEncoderWithBufferIndex:`) | a serialized structure description (keyed, with magic bytes `MTLPSBIN`) | 16 bytes: u32 ref, u32 0, u32 `0xffff0001`, u32 `0xffffffff` (meaning open) |
 | 17 | argument encoder from a layout | u32 0, u32 layout ref | u32 ref, u32 0, u16 encoded length (24), u16 alignment (8), u32 0 |
-| 19 | argument-encoder set call | u32 encoder ref; u8 kind (0 `setArgumentBuffer:offset:`, 1 buffer, 2 texture, 3 sampler); u8 index; u16 0; four words (0, 0x100, 0, 0 in every capture; open); u32 object ref (0 = nil); u64 offset (the argument-buffer offset for kind 0) | empty. After the calls the argument buffer's shared memory held the data buffer's `gpuAddress` and two small IDs; whether the host or the driver wrote them is open |
+| 19 | argument-encoder set call | u32 encoder ref; u8 kind (0 `setArgumentBuffer:offset:`, 1 buffer, 2 texture, 3 sampler); u8 index; u16 0; four words (0, 0x100, 0, 0 in every capture; open); u32 object ref (0 = nil); u64 offset (the argument-buffer offset for kind 0) | empty. After the calls the argument buffer's shared memory held the data buffer's `gpuAddress` and two small IDs; whether the host or the driver wrote them is open. Under Ycode, which refused the call until R7b, visionOS RealityKit's tier-1 argument buffers stayed zero; a Ycode host now writes each member itself (8 bytes at the offset of kind 0 plus 8 × the index: a buffer's GPU address plus the call's offset, a texture's heap index, a sampler's resource ID; visionos.md §10.20.7, §9 Q25) |
 | 20 | `newHeapWithDescriptor:` | u32 0, u64 size, u16 resource options, u16 0 | u32 ref, u32 0 |
-| 21 | heap `newTextureWithDescriptor:` | u32 0, u32 heap ref, texture descriptor (§5.2), 12 bytes 0 | u32 texture ref, u32 0 |
-| 22 | `heapTextureSizeAndAlignWithDescriptor:` | texture descriptor (§5.2) | u64 size, u64 alignment (352 768, 128 for 256×256 BGRA8 with mipmaps) |
+| 21 | heap `newTextureWithDescriptor:` | u32 0, u32 heap ref, texture descriptor **words 1–8** (§5.2, without word 0), 12 bytes 0: 52 bytes (corrected 2026-10-27, see below) | u32 texture ref, u32 0 |
+| 22 | `heapTextureSizeAndAlignWithDescriptor:` | texture descriptor **words 1–8** (§5.2, without word 0): 32 bytes | u64 size, u64 alignment (352 768, 128 for 256×256 BGRA8 with mipmaps; the reference's answers follow the rule of visionos.md §10.8.3, which a Ycode host uses) |
 | 23 | `heapBufferSizeAndAlignWithLength:options:` | u64 length, u16 options, u16 0 | u64 size, u64 alignment (1000 → 1000, 256) |
 | 24 | heap `newBufferWithLength:options:` | u32 0, u32 heap ref, u64 length, u64 0, u64 options | u32 buffer ref, u32 0 |
 | 25 | (heap resources; one u32 ref) | u32 ref | 1 byte (meaning open) |
 | 27 | texture view with swizzle (from a descriptor with `swizzle`) | as op 8, then u32 swizzle (one byte per channel r, g, b, a, `MTLTextureSwizzle` values) | u32 ref, u32 0 |
 | 28 | `newEvent`, `newSharedEvent` | u32 0 | u32 ref, u32 0 |
 | 30 | shared event `setSignaledValue:` (connection 0) | u32 ref, u64 value | empty |
-| 31 | heap size query | u32 heap ref | u64 size, u64 size, u64 used size (or 8 bytes; open) |
+| 31 | heap size query | u32 heap ref | u64 size, u64 size, u64 used size (or 8 bytes; open). The reference's heap `size` and `currentAllocatedSize` are the requested size rounded up to a multiple of 16 384 (visionos.md §10.8.3); a Ycode host grants heaps (op 20) in those units |
 | 32 | `maxAvailableSizeWithAlignment:` | u32 heap ref, u64 alignment | u64 |
 | 33 | `minimumLinearTextureAlignmentForPixelFormat:` | u32 pixel format | u64 (16 for BGRA8) |
 | 34 | `minimumTextureBufferAlignmentForPixelFormat:` | u32 pixel format | u64 (16) |
 | 35 | (argument encoder; `u32 1, u32 0x99, u64`) | | 8 bytes (open) |
-| 37 | limits (connection 0, once per process) | u32 0 | u64 max threads per threadgroup x, y, z, u64 max threadgroup memory (macOS: 1024, 1024, 1024, 32 768) |
+| 37 | limits (connection 0, once per process) | u32 0 | u64 max threads per threadgroup x, y, z, u64 max threadgroup memory (macOS: 1024, 1024, 1024, 32 768; a Ycode host answers its GPU's limits with z raised to at least 512, so the guest keeps its own cap of 512 as with the reference, visionos.md §10.6.1) |
 | 38 | buffer `gpuAddress` | u32 buffer ref | u64 address (host-chosen, e.g. `0x100000f8000`) |
 | 39 | sampler `gpuResourceID` (when `supportArgumentBuffers`) | u32 sampler ref, u32 8 | u64 resource ID |
 | 41 | shared event `signaledValue` (connection 0) | u32 ref | u64 value |
+
+**Heap texture descriptors (correction, 2026-10-27, level 3).** Ops 21
+and 22 carry the descriptor without its leading zero word. Captured from
+Ycode's own host during a visionOS 27.0 boot (backboardd's RealityKit
+renderer creates heap textures at start; `YCODE_METAL_DUMP_OPS`): op 22
+bodies were 32 bytes, for example word 1 `0x00460042` (2D, GPU-optimized,
+usage 0, RGBA8Unorm 70), then width, height, depth 1, levels and samples
+1, array length 1 with options `0x20`, and a zero u64; op 21 bodies were
+52 bytes (u32 0, u32 heap ref, the same 32 bytes, 12 zero bytes). Read
+with word 0, op 22 ran out of bytes (refused as malformed) and op 21 read
+pixel format 0. iOS boots under Ycode showed the same op-22 refusal. A
+Ycode host accepts both forms (32/36 and 52/56 bytes).
 
 **Op 37 is the only capability query.** The driver takes, for each of the
 four limits, the smaller of the reply and its own cap (512, 512, 512,
@@ -270,7 +292,7 @@ four limits, the smaller of the reply and its own cap (512, 512, 512,
 values and a missing reply both left the caps. No pixel-format, family or
 feature query reaches the host.
 
-Ops 26, 29, 36, 40 and above 41 were not seen. The names of the
+Ops 26, 29, 36 and above 41 were not seen as device operations (op 40 appears only as the `command` of `messageType` 18, §5.8). The names of the
 deserializer's device-level methods (Evidence, level 4) suggest the
 remaining ones: a buffer `didModifyRange`, a shared-event wait, a
 resource-alias test, unique identifiers and shared events with an event
@@ -421,6 +443,34 @@ set, op 41 get); there is no host-initiated notification of signaled
 values in our captures. GPU-side signal, wait and fence records are in
 §8.4.
 
+**Shared-event handles** (`messageType` 17 and 18, visionos.md §10.6.5).
+17 names an event ref (`eventRef`) and gets back `eventPort`, a send right
+that stands for the event, and `labelTraceID` 0. 18 sends such a right
+back (`eventPort`, with a `command` record op 40 holding a zero u32) and
+gets a new event ref (`replyData` u32 ref, u32 0) in the sending process;
+both refs name one event: a value set through one (op 30, or a GPU signal)
+is read through the other (op 41) and waited for by either. A handle with
+port 0 breaks the client later (command-buffer decoding failed in the
+reference), so a host must answer 17 with a real right.
+
+A Ycode host (`MetalHostCore`) makes one port per exported event (a
+receive right of the host task that nothing receives on; replies carry
+MAKE_SEND rights), keeps a table port → event, and answers 18 by
+creating a backend alias of that event (`createEventAlias`; on Vulkan the
+same timeline semaphore under a second handle). The port is destroyed
+with the last ref of the event in any process. An 18 whose port names no
+exported event gets a fresh event (counted as refused). **In the
+reference an 18 whose `eventPort` is MACH_PORT_NULL gets an empty
+dictionary** (no `replyData`, no `error`) and `newSharedEventWithHandle:`
+returns nil; that is what the driver sends for a nil handle, and visionOS
+backboardd and wakeboardd send one right after each real 18 of a layer
+(visionos.md §10.12.2, level 3). A host must answer it that way, not with
+a fresh event. Ycode does so since VISIONOS-R4b (visionos.md §10.14):
+an 18 without a port, or with port 0, gets an empty dictionary, makes no
+event and is not counted as refused (it is counted on its own). While exported
+events exist the Metal service reports itself busy to snapshots (the
+ports cannot be restored).
+
 ### 5.9 Synchronization summary
 
 | Data | Where it lives | How the other side sees it |
@@ -432,6 +482,120 @@ values in our captures. GPU-side signal, wait and fence records are in
 
 There is no flush, invalidate or `didModifyRange` traffic in any
 capture: completion (event 101) is the only synchronization point.
+
+### 5.10 Shared textures (`messageType` 19, op 42)
+
+Used by `newSharedTextureWithDescriptor:`. On visionOS, wakeboardd's
+compositor makes its presentation layers with it, 16 in one boot. Level
+3: the reference and Ycode's guest (visionos.md §10.9, §10.10).
+
+**Request** (connection type 1):
+
+| Key | Value |
+|---|---|
+| `messageType` | 19 |
+| `command` | an op-42 record of 44 bytes: u32 42, u32 44, then the 36-byte texture descriptor (words 0–8, §5.2). wakeboardd's colour layers: word 1 `0x00510543` (2D array, GPU-optimized, usage ShaderRead + RenderTarget, `BGRA8Unorm_sRGB` 81). Its depth layers: word 1 `0x00fc0543` (`Depth32Float` 252). Both are 3840 × 2160, depth 1, one level, one sample, array length 1, options `0x0020` (private) |
+
+**Reply** from the macOS host (16 of 16 in a boot, and in our probes):
+
+| Key | Type | Value |
+|---|---|---|
+| `iosurfaceXPCObject` | Mach send right | the new surface. The guest hands it to `IOSurfaceLookupFromXPCObject`, which makes the surface with the IOSurface service (`iosurface-remote.md`) |
+| `replyData` | data, 8 bytes | u32 texture ref (from the counter that buffers and textures share, §3), u32 0 |
+
+There are no other keys. The driver also asks for `fatalError` and
+`error`, but the reference never sent them. With an empty reply the
+look-up returns NULL, and wakeboardd crashes in `CFRelease`.
+
+**The surface** as the guest sees it: width, height, bytes per row,
+pixel format and plane count are 0, and bytes per element is 1. The
+allocation size is the heap size answer for the same descriptor (op 22,
+`heapTextureSizeAndAlignWithDescriptor:`) plus 16 bytes: 33 947 664 for
+the 3840 × 2160 layers. The values are `CreationProperties`,
+`HorizontalDisparityAdjustment` (0) and `IOSurfaceName` ("Metal").
+Creation properties (all numbers unless noted):
+
+| Key | Value |
+|---|---|
+| `IOSurfaceAllocSize` | the allocation size above |
+| `IOSurfaceName` | "Metal" (string) |
+| `IOSurfacePixelSizeCastingAllowed` | 1 |
+| `IOSurfaceProtectionOptions` | 0 |
+| `kAGXCompressionMode` | 0 |
+| `kMetalRegistryID` | the device's `registryID`, the value in the hand-shake reply (§2.3) |
+| `kMetalTextureType`, `kMetalTexturePixelFormat`, `kMetalTextureWidth`, `kMetalTextureHeight`, `kMetalTextureDepth`, `kMetalTextureArrayLength`, `kMetalTextureMipmapLevelCount`, `kMetalTextureSampleCount` | from the descriptor (wakeboardd: 3, 81 or 252, 3840, 2160, 1, 1, 1, 1) |
+| `kMetalTextureUsage` | `MTLTextureUsage` (5) |
+| `kMetalTextureResourceOptions` | `MTLResourceOptions` (32, private) |
+| `kMetalTextureGPUOptimization` | 1 when `allowGPUOptimizedContents` |
+| `kMetalTextureSwizzleKey` | the four swizzle channels, one byte each, red first (identity: `0x05040302`) |
+| `kMetalTextureRotation`, `kMetalTextureCSCMatrix`, `kMetalTextureFootprint`, `kMetalTextureSparseValue`, `kMetalTextureResourceIndex`, `kMetalTextureWriteAccessPattern` | 0 |
+
+The key `MetalSharedTexture` (`kIOSurfaceMetalSharedTexture`) is not
+present, neither in the creation properties nor in the values.
+
+**Handles.** `newSharedTextureHandle` makes a handle from the texture's
+surface. It reads the surface's `CreationProperties` and selects the
+Metal device whose `registryID` equals `kMetalRegistryID`, read as an
+unsigned 64-bit number. If that key is missing or does not match, no
+handle is made: our probe crashed, and under Ycode the handle was nil.
+Making a handle sends no host message. A handle goes to another process
+only inside an NSXPC message, which carries its surface as an XPC object
+(a Mach send right). Keyed archiving of a handle fails ("may only be
+encoded by an NSXPCCoder").
+
+**Ycode** (visionos.md §10.11.3): the host makes the surface in its
+IOSurface service with exactly the values and creation properties above
+(`kMetalRegistryID` = its hand-shake `registryID`; `IOSurfaceName` is
+added by the service), so every process that looks it up by port or ID
+sees the same properties (Method 10), and replies with the two keys. The
+texture is GPU memory of the host's own: the surface's memory is not
+linked to it (nothing the guest does reads that memory). The host keeps,
+per surface ID, the live refs naming that GPU image, for §5.11. A replay
+after a snapshot makes the texture again without its contents.
+
+### 5.11 Opening a shared-texture handle (`messageType` 20, op 43)
+
+Used by `newSharedTextureWithHandle:`, in the creating process and in any
+other process. On visionOS, backboardd opens wakeboardd's layers (twelve
+in one boot), and wakeboardd opens four of its own. Level 3, visionos.md
+§10.10.2.
+
+**Request** (connection type 1):
+
+| Key | Value |
+|---|---|
+| `messageType` | 20 |
+| `command` | an op-43 record of 12 bytes: u32 43, u32 12, u32 0 |
+| `iosurface` | a Mach send right for the handle's surface (the driver gets it with `IOSurfaceCreateXPCObject`) |
+| `label` | the handle's label (string), sent only when the handle has one. wakeboardd's labels look like "wakeboardd-layer 2 [frame 1/3 protection:0 size:3840x2160 recorder:False]: Color (Layered)" |
+
+**Reply**:
+
+| Key | Value |
+|---|---|
+| `replyData` | 36 bytes: u32 texture ref (from this process's counter), then descriptor words 1–8 of the texture (§5.2). The resource-options half of word 6 includes the hazard-tracking mode: `0x0220` (private, tracked) where the message-19 request had `0x0020` |
+
+The host makes the texture from the surface. For a surface that a guest
+made itself with the full set of `kMetal…` creation properties, the
+reference replied with the descriptor taken from those properties (a
+64 × 64 `BGRA8Unorm` 2D texture: word 1 `0x00500542`). With only
+`kMetalRegistryID`, the reply was an empty dictionary and
+`newSharedTextureWithHandle:` returned nil. The guest builds its texture
+object from the reply, so the descriptor words must be correct.
+
+**Ycode** (visionos.md §10.11.3): the host resolves `iosurface` through its
+IOSurface service (a Method-14 port), reads the surface's numeric
+creation properties and builds the descriptor from the `kMetalTexture…`
+keys (type, pixel format, width and height required; depth, array
+length, mipmap and sample counts default to 1). Without them the reply is
+empty. The new ref names the same GPU image as a live ref of that surface
+in any process (a §5.11 opening or the §5.10 texture: a backend view of
+it); when there is none, it is a texture over the surface's memory (a
+surface a guest made) or a new private texture. Word 6's hazard-tracking
+bits are set to "tracked" (2) when the properties give none. The `label`
+is logged. The right is kept for the ref's life. While refs opened this
+way exist, the service is busy for snapshots (they may name another
+process's image).
 
 ## 6. Functions and the form of shaders
 
@@ -569,13 +733,20 @@ Payload: one field, key 0 = function ref. Reply in §4.2.
 | 8 | `drawIndexedPrimitives:…instanceCount:` (values ≥ 65 536) | u16 primitive type, u16 index type, u32 index buffer ref, u64 index count, u64 index buffer offset, u64 instance count |
 | 9 | `…instanceCount:` (short) | as op 7, then u16 instance count, i16 base vertex (corrected 2026-10-13, agent H: the earlier reading "u32 instance count" held only while the base vertex was 0) |
 | 28 | `…instanceCount:baseVertex:baseInstance:` (values ≥ 65 536) | u16 type, u16 index type, u32 index buffer ref, u64 index buffer offset, u64 index count, u64 instance count, i64 base vertex, u64 base instance |
-| 29 | `…instanceCount:baseVertex:baseInstance:` (short) | u16 type, u16 index type, u32 index buffer ref, u16 index buffer offset, u16 index count, u16 instance count, i16 base vertex (−2 is `0xFFFE`), u32 base instance |
+| 29 | `…instanceCount:baseVertex:baseInstance:` (short) | u16 type, u16 index type, u32 index buffer ref, u16 index buffer offset, u16 index count, u16 instance count, i16 base vertex (−2 is `0xFFFE`), u16 base instance, u16 not written (stale bytes; corrected by visionos.md §10.20.2: read as one u32 it gave base instances such as 0x3FF00000) |
 | 16 | `drawPrimitives:indirectBuffer:` | u64 indirect offset, u32 indirect buffer ref, u32 primitive type |
 | 17 | `drawIndexedPrimitives:…indirectBuffer:` | u16 type, u16 index type, u32 index buffer ref, u32 indirect buffer ref, u64 index buffer offset, u64 indirect offset |
+| 22 | `memoryBarrierWithResources:count:afterStages:beforeStages:` | u32 count, u16 after stages, u16 before stages, u32 ref × count |
 | 23 | `memoryBarrierWithScope:afterStages:beforeStages:` | u16 scope, u8 after stages, u8 before stages |
+| 24 | `updateFence:afterStages:` | u32 fence ref, u32 `MTLRenderStages` (1 vertex, 2 fragment) |
+| 25 | `waitForFence:beforeStages:` | u32 fence ref, u32 `MTLRenderStages` |
+| 27 | `useHeap:stages:`, `useHeaps:count:stages:` | u32 count, u16 stages, then u32 heap ref × count from byte 6 (unaligned), zero-padded to a multiple of 4 |
 | 101 | `setBlendColorRed:…` | 4 × f32 |
-| 102 | `setColorStoreAction:atIndex:` | two u32 (action, index; both 0 in our run, order open) |
+| 102 | `setColorStoreAction:atIndex:` | u32 action, u32 index (order confirmed by VISIONOS-OBS4's probe, visionos.md §10.12.1) |
+| 103 | `setColorStoreActionOptions:atIndex:` | u64 options, u32 index |
 | 104 | `setDepthStencilState:` | u32 ref |
+| 105 | `setDepthStoreAction:` | u64 action |
+| 106 | `setDepthStoreActionOptions:` | u64 options |
 | 107 | `setCullMode:` | u64 |
 | 108 | `setDepthBias:slopeScale:clamp:` | 3 × f32 |
 | 109 | `setDepthClipMode:` | u64 |
@@ -587,13 +758,74 @@ Payload: one field, key 0 = function ref. Reply in §4.2.
 | 115 | `setFrontFacingWinding:` | u64 |
 | 116 | `setRenderPipelineState:` | u32 ref |
 | 117 | `setScissorRect:` | u64 x, y, width, height |
+| 118 | `setScissorRects:count:` | u32 count, u32 0, then per rect u64 x, y, width, height |
 | 119 | `setStencilReferenceValue:` / `…Front…back…` | u32 front, u32 back (the one-value call sends it twice) |
+| 120 | `setStencilStoreAction:` | u64 action |
+| 121 | `setStencilStoreActionOptions:` | u64 options |
 | 124 | `setTriangleFillMode:` | u64 |
 | 125 | `setVertexBuffer:offset:atIndex:` | u32 index, u32 count (1), u32 buffer ref, u64 offset |
 | 126 | `setVertexBufferOffset:atIndex:` | u32 index, u64 offset |
 | 127 | `setVertexSamplerState:atIndex:` | u32 index, u32 count, u32 ref |
 | 129 | `setVertexTexture:atIndex:` | u32 index, u32 count, u32 ref |
 | 130 | `setViewport:` | 6 × f64 (x, y, width, height, znear, zfar) |
+| 132 | `setVisibilityResultMode:offset:` | u64 offset, u64 mode (0 disabled, 1 boolean, 2 counting) |
+| 134 | `useHeap:`, `useHeaps:count:` (render and compute) | u32 count, u32 heap ref × count |
+
+**Range forms** (Ycode's guest, visionos.md §10.11.3, level 3): the
+binding records 110/125 (buffers), 112/127 (samplers) and 114/129
+(textures) also come with a count above 1: u32 first index, u32 count,
+then one u32 ref per slot. **For buffers each slot is a pair, u32 ref
+then its u64 offset** (unaligned), not all refs followed by all offsets
+(VISIONOS-OBS4's probe, visionos.md §10.12.1: buffers a and b with
+offsets 16 and 32 bound to slots 5 and 6 with
+`setVertexBuffers:offsets:withRange:` gave 5, 2, a, 16, b, 32; both
+readings give the same body length, so the length cannot tell them
+apart). The count-1 form is the same pair. wakeboardd's
+compositor sends 114 with count 2. Record **131** is `setViewports:count:`: u32 count, then
+that many viewports of six f64 (backboardd: 1; 0, 0, 3840, 2160, 0, 1).
+Records **24**, **25**, **132** and compute records **212**, **213**,
+which visionOS backboardd sends in every frame, are the fence updates and
+waits and the visibility-result mode (visionos.md §9 Q18, §10.12.1,
+level 3: our probes with separator records, and backboardd's recorded
+encoder calls matched to its records in the same command buffer).
+backboardd's `04 00 00 00 02 00 00 00` is fence 4, fragment stage. Fence
+refs come from `newFence` (op 13); visionOS backboardd creates and
+releases fences continuously, so the refs are reused.
+
+**Ycode** (visionos.md §10.14): the decoder turns every record of this
+table, the range forms and the compute records of §8.4 into commands
+(none of them is left unknown). Deferred store actions (102, 105, 120)
+are also written into the open pass's descriptor, since a Vulkan render
+pass fixes its store operations when it begins; an index the pass has no
+attachment for changes nothing. The Vulkan back end runs a command
+buffer's encoders strictly in order with a full memory barrier between
+encoders, and command buffers of one queue in submission order (a
+command buffer held for an event holds the later ones of its queue), so
+every fence wait (25, 213, 317) is already satisfied when it is reached
+and the fence records need no work of their own; a fence's state is not
+kept, so a reused fence ref needs nothing either. Record 132 with mode 0
+needs nothing. A non-zero mode (1 boolean, 2 counting) makes the
+following draws count passing samples into the 8-byte slot at the offset
+of the render pass's visibility result buffer (descriptor offset 556);
+Ycode counts them with occlusion queries and writes each slot after the
+pass (visionos.md §10.20.8; visionOS backboardd uses boolean mode).
+
+**Inline bytes.** `setVertexBytes:length:atIndex:`,
+`setFragmentBytes:length:atIndex:` and the compute `setBytes:length:atIndex:`
+each make **two** count-1 binding records (125, 110 or 203) naming the
+driver's inline-bytes buffer, the second with an offset 256 bytes past
+the first's (0 and 0x100, then 0x200 and 0x300, …), for 16 and 64 bytes
+alike (level 3, VISIONOS-OBS4's probe).
+
+**Calls without a record** (same probe): `setVertexAmplificationCount:viewMappings:`
+(the simulator device answers `supportsVertexAmplificationCount:` 2 with
+NO), the compute `setImageblockWidth:height:`. The simulator's render
+encoder does not implement `setTileBytes:length:atIndex:` or
+`setThreadgroupMemoryLength:offset:atIndex:` (unrecognized selector). A
+command buffer that set a colour store action and colour store-action
+options on attachment indices 2 and 3 of a pass without those
+attachments killed the macOS host process (the three connections were
+interrupted).
 
 Primitive type and index type are the `MTLPrimitiveType` and
 `MTLIndexType` values. The short forms were used whenever every value fit
@@ -603,7 +835,8 @@ The long forms of the instanced draws are ops 2, 4 and 8 (agent H,
 instances of 0x12345 and 0x23456, recorded with `mslog` on this Mac's
 simulator; level 3). The same capture confirms op 29's field order: u16
 index buffer offset before u16 index count, then u16 instance count, u16
-base vertex, u32 base instance. An instance count of 0x12345 with a
+base vertex, and the base instance in the low half of the last word (the
+high half is not written: visionos.md §10.20.2). An instance count of 0x12345 with a
 16-bit index count and offset takes long form 8, so op 9's instance count
 is 16 bits; RenderBox (iconservicesagent) sends op 9 records whose last
 word is `0x02000019` (25 instances, base vertex 0x200), the same packing as
@@ -626,13 +859,18 @@ Compute (kind 1):
 | 206 | `setTexture:atIndex:` | u32 index, u32 count, u32 ref |
 | 207 | `setBufferOffset:atIndex:` | u32 index, u64 offset |
 | 208 | `setComputePipelineState:` | u32 ref |
-| 209 | `setStageInRegion:` | u64 × 3 origin, u64 × 3 size |
+| 209 | `setStageInRegion:` | u64 × 3 **size**, then u64 × 3 origin (corrected by VISIONOS-OBS4: origin x 2035, size 1, 1, 1 gave 1, 1, 1, 2035, 0, 0) |
 | 211 | `setThreadgroupMemoryLength:atIndex:` | u64 length, u32 index |
+| 212 | `updateFence:` | u32 fence ref |
+| 213 | `waitForFence:` | u32 fence ref |
 | 214 | `memoryBarrierWithResources:count:` | u32 count, u32 ref × count |
 | 215 | `memoryBarrierWithScope:` | u32 scope |
 
 `computeCommandEncoderWithDispatchType:` concurrent produced no extra
-record.
+record. Record 203 has the range form of §8.3 too ((ref, u64 offset) per
+slot, visionos.md §10.12.5 item 2); Ycode reads 204 and 206 with a count
+above 1 as one ref per slot, like 112 and 114 (a Ycode choice by analogy,
+not observed), and 134 as in §8.3.
 
 Blit (kind 2):
 
@@ -878,6 +1116,11 @@ was not applied to its connections.
    them.
 7. Whether `defaultRasterSampleCount`-only passes ever occur in the boot
    (they crashed the macOS host).
+8. *(Answered, §5.10, §5.11, level 3.)* The reference's reply to `messageType` 19
+   (all keys and the `replyData` layout) and the creation properties of
+   the IOSurface it makes, in particular the value under
+   `MetalSharedTexture`; whether opening a handle in another process
+   (`newSharedTextureWithHandle:`) sends a message, and which.
 
 ## Evidence
 
@@ -896,6 +1139,15 @@ was not applied to its connections.
 | Frame order in `backboardd` (§9) | 3 | `mslog.c` with `YC_MS_SFB`: swap functions wrapped at `dlsym` |
 | Host crash on a zero-attachment pass; host frame names | 3 | crash report of our own run (black-box output, frame names only) |
 | Boot usage (§10) | 3 | recorder logs (light mode) of every job of one boot, 107 s, home screen checked by screenshot against a boot without the recorder |
+| Heap ops 21/22 carry descriptor words 1–8 only (§4.2 correction) | 3 | request bodies logged by Ycode's own host (`YCODE_METAL_DUMP_OPS`) during Ycode boots of the visionOS 27.0 runtime on the Thor, 2026-10-27 |
+| `messageType` 17 and 18 (§2.4, §5.8) | 3 | visionos.md §10.6.5 (reference observation with our probe and Metal message recorder) |
+| Ycode's handling of 17/18 and the op-37 z parity (§4.2, §5.8) | — | Ycode design; unit tests `CoreTests.sharedEventHandlesNameOneEventAcrossProcesses`, `MachServiceTests.sharedEventHandleTravelsAsARight` |
+| `messageType` 19: request body, the reply keys the driver reads, the `MetalSharedTexture` creation property the handle needs (§2.4, §5.10) | 3, 4 | Ycode's host log of the refused request; Ycode's `mtlrec.dylib` (XPC dictionary reads, IOSurface calls) in wakeboardd; our probe `shtex`; the key's value read from the exported constant `kIOSurfaceMetalSharedTexture` (level 4: a name) |
+| Ycode's op 22 rule, op 20/31 16 KiB heaps, its `messageType` 19 (§4.2, §5.10) | — | Ycode design from visionos.md §10.8.3; unit tests `CoreTests.heapSizesFollowTheReferenceRule`, `sharedTextureGetsAHostSurface` |
+| `messageType` 19 reply keys and `replyData`, the surface's values and creation properties, no `MetalSharedTexture`, what a handle needs, `messageType` 20 request and reply (§2.2, §2.4, §5.10, §5.11) | 3 | visionos.md §10.10.2: `mslog` in our probes (`shtex2`, `shtex3`, `shtex4`) and in backboardd and wakeboardd during a reference boot of the visionOS 27.0 runtime, 2026-10-27 |
+| Records 22, 24, 25, 27, 103, 105, 106, 118, 120, 121, 132, 134, 212, 213; corrections to 102, 209 and the buffer range form; inline-bytes records; calls without a record (§8.3, §8.4) | 3 | visionos.md §10.12.1: our probes `encprobe`, `encprobe2` with separator records under `mslog`, visionOS 27.0 runtime, 2026-10-27; backboardd's encoder calls (a copy of Ycode's recorder) matched to its records |
+| Null-port 18 answered with an empty dictionary; nil event (§5.8) | 3 | visionos.md §10.12.2: `mslog` with port names in backboardd and wakeboardd; recorder copy in backboardd |
+| Ycode's decoding of those records, deferred store actions in the descriptor, fences satisfied by in-order execution, the null-port 18 reply (§5.8, §8.3, §8.4) | — | Ycode design (visionos.md §10.14.1); unit tests `CommandDecoderTests.fenceVisibilityAndDeferredStoreRecords`, `computeFencesAndRangeBindings`, `rangeBindingsAndViewportArrays`, `computeRecords`, `CoreTests.sharedEventHandlesNameOneEventAcrossProcesses`; no unknown record in visionOS boots r1–r3 |
 | Requirements (§12) | — | derived from the above; Ycode design |
 
 No disassembly or decompilation was used (level 5 not used). No

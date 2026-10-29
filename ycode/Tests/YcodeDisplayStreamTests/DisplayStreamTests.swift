@@ -140,3 +140,46 @@ struct DisplayStreamTests {
         ycodec_free(out)
     }
 }
+
+/// FOLD: the display state and fold messages, and the touch mapping of a
+/// turned panel (display-stream.md §3.4, §5.4).
+struct DisplayStreamFoldTests {
+    func roundTrip(_ m: DisplayMessage) throws -> DisplayMessage? {
+        var p = DisplayMessageParser()
+        p.append(m.encoded())
+        return try p.next()
+    }
+
+    @Test func messages() throws {
+        let st = DisplayPanelState(display: "LCD-1", pixelWidth: 2007, pixelHeight: 2853, scale: 3, rotation: 90, hingeAngle: 180,
+                                   targetAngle: nil, posture: "openFlat", orientation: "portrait")
+        #expect(try roundTrip(.displayState(st)) == .displayState(st))
+        #expect(try roundTrip(.fold(angle: 90, instant: false)) == .fold(angle: 90, instant: false))
+        #expect(try roundTrip(.fold(angle: 180, instant: true)) == .fold(angle: 180, instant: true))
+        #expect(DisplayMessage.fold(angle: 1, instant: false).encoded() == [4, 0, 0, 0, 0x89, 1, 0, 0])
+        // Device commands and their answers (simulator-features.md "Ycode implementation").
+        #expect(try roundTrip(.command(token: 7, text: "ui appearance dark")) == .command(token: 7, text: "ui appearance dark"))
+        #expect(try roundTrip(.commandReply(token: 7, text: "ok\nline")) == .commandReply(token: 7, text: "ok\nline"))
+        #expect(DisplayMessage.command(token: 1, text: "a").encoded() == [6, 0, 0, 0, 0x90, 1, 0, 0, 0, 0x61])
+        #expect(DisplayMessage.commandReply(token: 2, text: "").encoded() == [5, 0, 0, 0, 0x10, 2, 0, 0, 0])
+        // An old hello (no foldable keys) still decodes.
+        let old = #"{"buttons":[],"deviceName":"Ycode","encodings":["jpeg"],"keyboard":true,"model":"iPhone19,4","orientation":"portrait","pixelHeight":2034,"pixelWidth":1398,"pointHeight":678,"pointWidth":466,"protocol":"ycode-display/1","rotation":false,"scale":3,"touch":true}"#
+        let h = try JSONDecoder().decode(DisplayServerHello.self, from: Data(old.utf8))
+        #expect(h.foldable == nil && h.displays == nil)
+    }
+
+    @Test func turnedPanelTouches() {
+        var st = DisplayPanelState(display: "LCD-1", pixelWidth: 2007, pixelHeight: 2853, scale: 3, rotation: 90, hingeAngle: 180,
+                                   targetAngle: nil, posture: "openFlat", orientation: "portrait")
+        #expect(st.shownPointSize.width == 951 && st.shownPointSize.height == 669)
+        // Turned 90° clockwise: the shown top-left corner is the panel's bottom-left.
+        #expect(st.nativePoint(shownX: 0, shownY: 0) == (0, 951))
+        #expect(st.nativePoint(shownX: 951, shownY: 669) == (669, 0))
+        st.rotation = 270
+        #expect(st.nativePoint(shownX: 0, shownY: 0) == (669, 0))
+        st.rotation = 180
+        #expect(st.nativePoint(shownX: 0, shownY: 0) == (669, 951))
+        st.rotation = 0
+        #expect(st.nativePoint(shownX: 5, shownY: 6) == (5, 6))
+    }
+}

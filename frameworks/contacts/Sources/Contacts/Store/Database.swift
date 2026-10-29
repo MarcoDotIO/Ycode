@@ -77,6 +77,7 @@ enum Codec {
         let o = object(text)
         let a = CNMutablePostalAddress()
         for k in CNPostalAddress.fieldKeys { a.setField(k, o[k] as? String ?? "") }
+        // swiftlint:disable:next force_cast - copy() of a CNMutablePostalAddress is a CNPostalAddress
         return a.copy() as! CNPostalAddress
     }
 }

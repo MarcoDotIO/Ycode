@@ -197,6 +197,7 @@ struct Bordered: ViewModifier {
     let log: Log
     @State var width: CGFloat = 4
     func body(content: Content) -> some View {
+        // swiftlint:disable:next redundant_discardable_let - a side effect inside a view builder
         let _ = log("modifier body")
         content.padding(width)
     }
@@ -299,6 +300,7 @@ struct GeometryProbe: View {
     let log: Log
     var body: some View {
         GeometryReader { proxy in
+            // swiftlint:disable:next redundant_discardable_let - a side effect inside a view builder
             let _ = log("size \(Int(proxy.size.width))x\(Int(proxy.size.height))")
             Color.red
         }

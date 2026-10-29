@@ -24,6 +24,7 @@ public final class WorkspaceDocument: NSDocument {
         addWindowController(wc)
         wc.window?.center()
         wc.applyDefaultLayout()
+        DeviceHubLaunch.openIfAsked(wc)
     }
 
     /// Saving goes through the window controller (editor files + projects),
@@ -37,9 +38,68 @@ public final class WorkspaceDocument: NSDocument {
 /// not depend on Info.plist document types when run unbundled.
 @MainActor
 public final class YcodeDocumentController: NSDocumentController {
-    public override func typeForContents(of url: URL) throws -> String { WorkspaceDocument.typeName }
-    public override func documentClass(forType typeName: String) -> AnyClass? { WorkspaceDocument.self }
+    /// Projects, workspaces and packages open as workspaces; any other file
+    /// as a single file (reference-ui-6.md §1.2.2, W3).
+    public override func typeForContents(of url: URL) throws -> String {
+        Self.isWorkspaceContainer(url) ? WorkspaceDocument.typeName : SourceFileDocument.typeName
+    }
+    public override func documentClass(forType typeName: String) -> AnyClass? {
+        typeName == SourceFileDocument.typeName ? SourceFileDocument.self : WorkspaceDocument.self
+    }
     public override var defaultType: String? { WorkspaceDocument.typeName }
+
+    /// A project, a workspace, a `Package.swift` or a folder (a package
+    /// folder; another folder still fails as a workspace).
+    public static func isWorkspaceContainer(_ url: URL) -> Bool {
+        if ["xcodeproj", "xcworkspace"].contains(url.pathExtension) || url.lastPathComponent == "Package.swift" { return true }
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+    }
+
+    /// The open workspace window whose workspace contains `file`, the
+    /// frontmost first (`windows` in front-to-back order).
+    public static func workspaceWindow(containing file: URL, among windows: [WorkspaceWindowController]) -> WorkspaceWindowController? {
+        let path = file.standardizedFileURL.resolvingSymlinksInPath().path
+        return windows.first { wc in
+            wc.session.model.root.allFiles.contains { f in
+                f.path.map { URL(fileURLWithPath: $0).standardizedFileURL.resolvingSymlinksInPath().path == path } ?? false
+            }
+        }
+    }
+
+    /// The open workspace windows, frontmost first.
+    var workspaceWindows: [WorkspaceWindowController] {
+        let byOrder = NSApp.orderedWindows.compactMap { $0.windowController as? WorkspaceWindowController }
+        let all = documents.flatMap(\.windowControllers).compactMap { $0 as? WorkspaceWindowController }
+        return byOrder + all.filter { wc in !byOrder.contains { $0 === wc } }
+    }
+
+    /// Every open request (Finder, `open`, the Open panel, recents, launch
+    /// arguments). A file that an open workspace contains opens in that
+    /// workspace's focused editor; other files get a window of their own
+    /// (§1.2.2). Requests made while launching hold back the Welcome
+    /// window (§1.2.1, W2).
+    public override func openDocument(withContentsOf url: URL, display displayDocument: Bool,
+                                      completionHandler: @escaping (NSDocument?, Bool, (any Error)?) -> Void) {
+        if !Self.isWorkspaceContainer(url), let wc = Self.workspaceWindow(containing: url, among: workspaceWindows) {
+            if displayDocument { wc.showWindow(nil) }
+            wc.open(path: url.path, line: nil)
+            completionHandler(wc.document as? NSDocument, true, nil)
+            return
+        }
+        Self.launchGate.openRequested()
+        super.openDocument(withContentsOf: url, display: displayDocument) { [weak self] doc, wasOpen, error in
+            completionHandler(doc, wasOpen, error)
+            MainActor.assumeIsolated {
+                if Self.launchGate.openFinished(openDocuments: self?.documents.count ?? 0) { Self.showWelcome?() }
+            }
+        }
+    }
+
+    /// Launch-time bookkeeping for the Welcome window (§1.2.1).
+    public static var launchGate = WelcomeLaunchGate()
+    /// Shows the Welcome window (set by the app delegate).
+    public static var showWelcome: (() -> Void)?
 
     /// File ▸ Open… (⌘O) is always available: unbundled (no Info.plist
     /// document types) AppKit would otherwise disable it.
@@ -53,6 +113,15 @@ public final class YcodeDocumentController: NSDocumentController {
         openPanel.allowedContentTypes = []
         return super.runModalOpenPanel(openPanel, forTypes: nil)
     }
+
+    /// File ▸ Open Recent is Ycode's own (`RecentProjectsMenuDelegate`).
+    /// A bundle that declares document types gets a second, AppKit-made
+    /// "Open Recent" after Open… unless the document controller allows no
+    /// recent documents; 0 is AppKit's documented way to say so
+    /// (`reference-ui-6.md` §8 item 1, M1).
+    /// Nonisolated: AppKit reads it on a background queue when it notes a
+    /// recent document (a main-actor getter traps there).
+    public nonisolated override var maximumRecentDocumentCount: Int { 0 }
 
     /// Every opened workspace is also recorded for File ▸ Open Recent and
     /// the Welcome window (`reference-ui-5.md` §3.2).
@@ -214,6 +283,36 @@ public enum MainMenu {
         }
     }
 
+    /// Removes an "Open Recent" submenu the system added to the File menu
+    /// (`reference-ui-6.md` §8 item 1, M1): the table's is a `CommandMenu`.
+    /// `YcodeDocumentController.maximumRecentDocumentCount` keeps AppKit
+    /// from adding one; this catches one that shows up anyway.
+    static func removeSystemRecentMenus(in menu: NSMenu) {
+        let clear = NSSelectorFromString("clearRecentDocuments:")
+        for i in menu.items.reversed() where !(i is CommandMenuItem) {
+            guard let sub = i.submenu, !(sub is CommandMenu) else { continue }
+            if i.title == "Open Recent" || sub.items.contains(where: { $0.action == clear }) { menu.removeItem(i) }
+        }
+    }
+
+    /// Whether an item is the system's "Send <app> Feedback to Apple"
+    /// item, which AppKit puts at the top of the Help menu when the menu
+    /// is first read or shown.
+    static func isSystemFeedbackItem(_ i: NSMenuItem) -> Bool {
+        guard !(i is CommandMenuItem), !i.isSeparatorItem else { return false }
+        let action = i.action.map(NSStringFromSelector) ?? ""
+        return action.localizedCaseInsensitiveContains("feedback") || (i.title.hasPrefix("Send ") && i.title.hasSuffix(" Feedback to Apple"))
+    }
+
+    /// Removes the system feedback item and the separator AppKit puts
+    /// under it (`reference-ui-6.md` §8 item 2, M2). The table's Help
+    /// menu starts with Developer Documentation, never a separator.
+    static func removeSystemFeedbackItem(in menu: NSMenu) {
+        guard menu.items.contains(where: isSystemFeedbackItem) else { return }
+        for i in menu.items.reversed() where isSystemFeedbackItem(i) { menu.removeItem(i) }
+        while let first = menu.items.first, first.isSeparatorItem, !(first is CommandMenuItem) { menu.removeItem(first) }
+    }
+
     /// Shows only the separators that still divide visible items (§1.5).
     static func collapseSeparators(in menu: NSMenu) {
         let items = menu.items
@@ -310,6 +409,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         MainThreadWatchdog.startIfRequested()
         DeveloperTools.prefetch()
         NSApp.mainMenu = MainMenu.make()
+        // swiftlint:disable:next discarded_notification_center_observer - lives as long as the app
         NotificationCenter.default.addObserver(forName: Preferences.didChange, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
                 NSApp.mainMenu = MainMenu.make()
@@ -320,18 +420,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     }
 
     public func applicationDidFinishLaunching(_ n: Notification) {
+        YcodeDocumentController.showWelcome = { [weak self] in self?.showWelcomeWindow(nil) }
         if case .open(let paths) = LaunchAction.decide(arguments: Array(CommandLine.arguments.dropFirst()), openDocumentCount: 0) {
             for a in paths {
                 NSDocumentController.shared.openDocument(withContentsOf: URL(fileURLWithPath: a), display: true) { _, _, error in
                     if let error { NSApp.presentError(error) }
                 }
             }
-            return
         }
-        // After restored windows (if any) have reopened.
+        // After restored windows (if any) have reopened. A document being
+        // opened at launch (Finder, `open`, arguments) holds the Welcome
+        // window back; it shows only if, in the end, nothing is open
+        // (reference-ui-6.md §1.2.1, W2).
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
-                if LaunchAction.decide(arguments: [], openDocumentCount: NSDocumentController.shared.documents.count) == .welcome {
+                if YcodeDocumentController.launchGate.launchCheck(openDocuments: NSDocumentController.shared.documents.count) {
                     self.showWelcomeWindow(nil)
                 }
             }
@@ -378,6 +481,42 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     }
 
     public func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
+}
+
+/// Whether launching shows the Welcome window (`reference-ui-6.md`
+/// §1.2.1, W2): only when, after launch, state restoration and the opens
+/// requested while launching, no document is open. The decision is made
+/// once; later opens never bring the Welcome window up.
+public struct WelcomeLaunchGate: Equatable, Sendable {
+    /// Opens requested and not finished.
+    public private(set) var pending = 0
+    /// The launch check ran (after restoration).
+    public private(set) var launchChecked = false
+    /// The Welcome decision was made.
+    public private(set) var decided = false
+
+    public init() {}
+
+    public mutating func openRequested() { pending += 1 }
+
+    /// An open finished (or failed). True: show the Welcome window now
+    /// (the launch check was waiting for it and nothing is open).
+    public mutating func openFinished(openDocuments: Int) -> Bool {
+        pending = max(0, pending - 1)
+        return decide(openDocuments: openDocuments)
+    }
+
+    /// After launch and restoration. True: show the Welcome window now.
+    public mutating func launchCheck(openDocuments: Int) -> Bool {
+        launchChecked = true
+        return decide(openDocuments: openDocuments)
+    }
+
+    private mutating func decide(openDocuments: Int) -> Bool {
+        guard launchChecked, !decided, pending == 0 else { return false }
+        decided = true
+        return openDocuments == 0
+    }
 }
 
 /// Launch arguments: document paths and NSArgumentDomain pairs.

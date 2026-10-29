@@ -3,9 +3,11 @@
 /// overrides. Each rule here comes from a black-box experiment against the
 /// reference Xcode. See `specs/build-settings.md` §4.
 public enum DerivedSettings {
+    /// What the derived rules need beyond the resolved settings.
     public struct Inputs {
         /// `PBXNativeTarget`, `PBXAggregateTarget`, …, or nil at project level.
         public var targetClass: String?
+        /// The target's `productType` identifier, or nil.
         public var productType: String?
         /// Platform of the resolved SDK (`MacOSX`, `iPhoneOS`, `iPhoneSimulator`, …).
         public var platform: String?

@@ -119,8 +119,11 @@ extension DEnv {
 @Suite(.serialized) struct DescriptorSocketTests {
     @Test func socketDomainsAndTypes() throws {
         let e = try DEnv()
-        #expect(e.call(97, [2, 1, 0]).errno == 47)   // AF_INET: EAFNOSUPPORT
-        #expect(e.call(97, [30, 2, 0]).errno == 47)  // AF_INET6
+        // AF_INET/AF_INET6 are host-backed IP sockets (networking-ycode.md §2);
+        // another domain is EAFNOSUPPORT.
+        #expect(e.call(97, [2, 1, 0]).value != nil)
+        #expect(e.call(97, [30, 2, 0]).value != nil)
+        #expect(e.call(97, [27, 1, 0]).errno == 47)  // AF_NDRV
         #expect(e.call(97, [1, 5, 0]).errno == 43)   // SEQPACKET: EPROTONOSUPPORT
         #expect(e.call(97, [1, 1, 6]).errno == 43)
         let s = e.socket()

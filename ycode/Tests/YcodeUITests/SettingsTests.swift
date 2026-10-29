@@ -71,10 +71,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(c.noteLabel.stringValue == "Builds use xcodebuild." && c.effectiveEngineName == "xcodebuild")
     }
 
-    /// Run (⌘R) with swift-build: build the tool project, find the product
-    /// through the engine, and run it under lldb-dap to exit.
     // The limit includes waiting for the shared debugger lock, which other
     // heavy suites hold for minutes when the full suite runs.
+    /// Run (⌘R) with swift-build: build the tool project, find the product
+    /// through the engine, and run it under lldb-dap to exit.
     @Test(.timeLimit(.minutes(15))) func runWithSwiftBuild() async throws {
         _ = NSApplication.shared
         let probe = ycodeDir.appendingPathComponent("Tools/ycode-swb/.build/debug/swbuild").path

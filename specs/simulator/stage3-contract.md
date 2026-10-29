@@ -344,13 +344,23 @@ Port names are managed in a name table:
 
 | Name | Value |
 |---|---|
-| `hw.optional.arm.caps` | 0 (8 bytes) |
+| `hw.optional.arm.caps` | 13 bytes, from the guest vCPU's ID registers (`cpu-features.md`; 0 until 2026-10-23, 8 bytes) |
 | `kern.grade_cputype` | ENOENT |
 | `hw.pagesize` | 16384 |
 | `hw.ncpu` | N (1 until 2026-10-17; `darwin-process-start.md`, guest CPU count) |
 | `hw.activecpu` | N |
 | `kern.osproductversion` | `"27.1"` |
 | anything else | ENOENT, logged |
+
+Integers are answered at their natural width whatever the buffer
+(visionos.md §10.10.1, §10.11.1; xnu `sysctl_io_number`): a 4-byte
+integer is written as 4 bytes with length 4 into any buffer of 4 or more
+bytes (the rest untouched); an 8-byte value as 8 bytes into 8 or more, and
+narrowed into a buffer of exactly 4 bytes when it fits an `int` (ERANGE,
+nothing written, otherwise); the cache sizes are never narrowed; any
+other short buffer is ENOMEM with nothing written and length 0.
+HW_PAGESIZE by number (`{6, 7}`) is a 4-byte integer, while the name
+`hw.pagesize` translates to its own MIB and answers 8 bytes.
 
 Any other trap logs `unimplemented <class> <number> <name from the JSON
 tables>` together with the frame. In `--trace` mode the VMM then exits with

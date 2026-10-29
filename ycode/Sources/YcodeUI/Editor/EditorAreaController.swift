@@ -100,7 +100,7 @@ public final class EditorAreaController: NSViewController {
     }
 
     /// Editor ▸ Layout (`reference-ui-5.md` §2.7): nil = Automatic (the
-    /// width rule), `.beside` = Editor on Left, `.below` = Editor on Top.
+    /// width rule), `.beside` = Canvas on Right, `.below` = Canvas on Bottom.
     public var canvasLayout: CanvasPlacement? {
         didSet {
             guard oldValue != canvasLayout, isViewLoaded else { return }

@@ -504,6 +504,27 @@ Design notes (not observations):
   Metal service understands its own surfaces (§7.3); with them absent,
   `backboardd` renders without Metal (`simframebuffer.md` §7 item 11).
 
+### Surfaces made by a Ycode host (2026-10-27)
+
+Ycode's Metal host answers `metal-sim-protocol.md` §5.10 (`messageType`
+19, shared textures) with a surface it makes itself in the IOSurface
+service (`IOSurfaceHostService.makeSharedTextureSurface`), shaped as the
+reference's (visionos.md §10.10.2, §10.11.3): width, height, bytes per
+row, pixel format and plane count 0, bytes per element 1, the allocation
+size the Metal host gives (op 22's size + 16; the memory is rounded up to
+16 KiB), name "Metal", and the Metal host's creation properties (numbers,
+64-bit when the value needs it; `kMetalRegistryID` and the `kMetal…`
+texture description) with `IOSurfaceName` added. Method 10 returns them
+under `CreationProperties`, with `IOSurfaceName` and
+`HorizontalDisparityAdjustment` 0, to every process. It gets a Method-14
+port (a host-task receive right in the service's port set, with a
+no-senders request) whose send right the Metal reply carries; the guest
+looks the surface up by it (Method 2 with `MachPort`) as any other. The
+surface lives while a port has senders or a connection references it.
+For `messageType` 20 the Metal host asks the service for the surface ID
+and numeric creation properties behind a Method-14 port
+(`creationNumbers(forPort:)`).
+
 ## 9. Open questions
 
 1. Methods 1, 7, 8, 18, 19 and above 21: never sent in a boot, a Safari
@@ -524,6 +545,7 @@ Design notes (not observations):
 6. Large property blobs (data above 16 KiB, OOL payloads): not seen.
 7. Whether apps that use Metal, video, or the camera add calls not seen
    here.
+
 
 ## Evidence
 

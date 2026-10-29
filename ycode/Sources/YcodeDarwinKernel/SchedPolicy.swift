@@ -32,6 +32,14 @@ public enum SchedPolicy {
     /// `YCODE_LOCK_ADMISSION=1` (with `qosEnabled`): the admission gate of
     /// §4.5. Off by default: measured to stall the boot (§7).
     nonisolated(unsafe) public static var admissionEnabled = flag("YCODE_LOCK_ADMISSION", false)
+    /// `YCODE_SEND_PUSH` (default on; with `qosEnabled`): senders blocked on a
+    /// full queue push their class onto the image that receives it (§4.6).
+    nonisolated(unsafe) public static var sendPushEnabled = flag("YCODE_SEND_PUSH", true)
+    /// `YCODE_SCHED_CLASS_OFF_L0` (default on): classes are recomputed on
+    /// fast paths without L0, and the ulock calls stay on their fast path
+    /// with QoS on (§4.4); `=0` defers every recomputation to L0 and keeps
+    /// the ulock calls on L0, as before 2026-10-27.
+    nonisolated(unsafe) public static var classOffL0 = flag("YCODE_SCHED_CLASS_OFF_L0", true)
     /// Importance bookkeeping runs when either switch is on.
     public static var importanceEnabled: Bool { holdEnabled || qosEnabled }
 
@@ -48,7 +56,14 @@ public enum SchedPolicy {
     /// … and the kernel lock was busy less than `YCODE_ADAPTIVE_HOLD_BUSY_PERCENT`
     /// (default 25) of the last `YCODE_ADAPTIVE_HOLD_WINDOW_MS` (default 2000).
     nonisolated(unsafe) public static var holdBusyFraction = number("YCODE_ADAPTIVE_HOLD_BUSY_PERCENT", 25) / 100
+    /// The window, in ns, over which the busy and CPU fractions are measured.
     nonisolated(unsafe) public static var holdWindowNanoseconds = UInt64(number("YCODE_ADAPTIVE_HOLD_WINDOW_MS", 2000) * 1e6)
+    /// … and the VMM used less than `YCODE_ADAPTIVE_HOLD_CPU_PERCENT` (default
+    /// 25) of the host's online CPUs over the same window (process CPU time;
+    /// 0 turns the test off). Added 2026-10-27: the kernel lock alone looked
+    /// quiet in a boot's first seconds, while ~190 daemons' loaders kept the
+    /// host's CPUs busy (§7.4, §7.5).
+    nonisolated(unsafe) public static var holdCPUFraction = number("YCODE_ADAPTIVE_HOLD_CPU_PERCENT", 25) / 100
     /// `YCODE_ADAPTIVE_HOLD_TRACE=1`: one line per second with the quiet inputs.
     nonisolated(unsafe) public static var holdTrace = flag("YCODE_ADAPTIVE_HOLD_TRACE", false)
     /// `YCODE_LOCK_ADMISSION_BOUND_MS="bg,ut,df"` (default "250,150,75"): the
@@ -65,6 +80,9 @@ public enum SchedPolicy {
 }
 
 /// Ycode's scheduling classes (§4.4): what the kernel lock and the host see.
+///
+/// The classes are ordered integers, lowest first; `count` is the number of
+/// classes.
 public enum SchedClass {
     public static let background = 0
     public static let utility = 1
@@ -85,12 +103,14 @@ public enum SchedClass {
         }
     }
 
+    /// The short name of class `c` for trace lines (`bg`, `ut`, `df`, `ui`); out-of-range values clamp.
     public static func name(_ c: Int) -> String {
         ["bg", "ut", "df", "ui"][max(0, min(3, c))]
     }
 }
 
-/// `psa_apptype & 0xF00` (`processes.md` §1.6).
+/// `psa_apptype & 0xF00` (`processes.md` §1.6): the launchd process types,
+/// one constant per type its name spells.
 public enum ProcessTypeCode {
     public static let appDefault: UInt32 = 0x100
     public static let appNonUI: UInt32 = 0x200
@@ -109,6 +129,7 @@ public enum ProcessTypeCode {
         }
     }
 
+    /// The process type's name for trace lines.
     public static func name(_ apptype: UInt32) -> String {
         switch apptype & 0xF00 {
         case appDefault: "App"
@@ -175,11 +196,13 @@ extension DarwinProcess {
         let wasBG = isDarwinBG
         importanceBoosts = max(0, importanceBoosts + delta)
         let release = importanceBoosts > 0 && holdActive.load(ordering: .acquiring)
-        let flipped = wasBG != isDarwinBG
+        // A darwin-bg flip changes classes only with QoS on (`refreshSchedClasses`);
+        // without it there is nothing to do under L0 (`bsd-locking.md` §12).
+        let flipped = wasBG != isDarwinBG && SchedPolicy.qosEnabled
         guard release || flipped, let k = kernel else { return }
         // The count changes at once (under G on a fast path); the hold and
         // the classes are process state, done under L0 (`mach-ipc-locking.md` §4.5).
-        k.lock.deferIfFast(.kernelLock(k.lock)) { [weak self] in
+        k.lock.deferIfFast(.kernelLock(k.lock), tag: "importance hold/class") { [weak self] in
             guard let self, let k = self.kernel else { return }
             if self.importanceBoosts > 0, self.holdStart != nil { k.system.releaseStartHold(self, reason: "boost") }
             if flipped { k.refreshSchedClasses() }
@@ -204,10 +227,14 @@ extension ThreadContext {
         max(dispatchOverrideQoS, maxExplicitOverride)
     }
 
-    /// The highest inheritance push (ulock owner, sync IPC), as a class; −1 none.
-    var pushClass: Int {
-        max(ipcPushClass, ulockPushes.values.max() ?? -1)
+    /// The class the host runs this thread at (§4.6, §4.7): its class, raised
+    /// to its image's send push.
+    public var hostClass: Int {
+        let c = schedClass
+        guard let k = kernel else { return c }
+        return max(c, k.sendPushClass)
     }
+
 }
 
 /// The pure class computation of §4.4 (tested directly).
@@ -236,20 +263,53 @@ public struct SchedInputs: Equatable, Sendable {
 }
 
 extension DarwinKernel {
-    /// Recomputes `t`'s class from its inputs. Lock held.
+    /// The highest class of the senders blocked on a full queue of a port
+    /// this image receives (§4.6); −1 none.
+    @inline(__always) public var sendPushClass: Int {
+        let w = sendPushCounts.load(ordering: .relaxed)
+        if w == 0 { return -1 }
+        if w >> 48 != 0 { return 3 }
+        if w >> 32 != 0 { return 2 }
+        if w >> 16 != 0 { return 1 }
+        return 0
+    }
+
+    /// A sender of class `cls` blocks on a full queue this image receives.
+    func addSendPush(_ cls: Int) {
+        sendPushCounts.wrappingAdd(KernelLock.unit(cls), ordering: .relaxed)
+    }
+
+    /// That sender stopped waiting.
+    func removeSendPush(_ cls: Int) {
+        sendPushCounts.wrappingSubtract(KernelLock.unit(cls), ordering: .relaxed)
+    }
+
+    /// Recomputes `t`'s class from its inputs (§4.4), under the thread's
+    /// push lock. With L0 held, or on a fast path once the image's process
+    /// record is cached (every image after its spawn policy; changes to the
+    /// process's inputs are followed by a recomputation under L0, which the
+    /// push lock orders after any fast one). A fast path without the cached
+    /// record defers to L0.
     func refreshSchedClass(_ t: ThreadContext) {
         guard SchedPolicy.qosEnabled else { return }
-        // Process and thread inputs are L0 state (`mach-ipc-locking.md` §4.5).
+        let p: DarwinProcess?
         if lock.callerIsFast {
-            lock.deferIfFast(.kernelLock(lock)) { [weak self] in self?.refreshSchedClass(t) }
-            return
+            guard SchedPolicy.classOffL0, let cached = schedProcessCache, cached.kernel === self else {
+                lock.deferIfFast(.kernelLock(lock), tag: "class refresh") { [weak self] in self?.refreshSchedClass(t) }
+                return
+            }
+            p = cached
+            SchedStats.fastRefreshes.wrappingAdd(1, ordering: .relaxed)
+        } else {
+            p = schedProcess
         }
-        let p = schedProcess
-        let inputs = SchedInputs(baseQoS: t.baseQoS, overrideQoS: t.overrideQoS, clampQoS: p?.clampQoS ?? 0,
-                                 darwinBG: (p?.isDarwinBG ?? false) || t.threadDarwinBG, push: t.pushClass)
-        let c = inputs.schedClass
-        if t.schedClassStore.exchange(c, ordering: .relaxed) != c {
-            system.schedStats.classChanges &+= 1
+        t.schedPushes.withLock { pushes in
+            let inputs = SchedInputs(baseQoS: t.baseQoS, overrideQoS: t.overrideQoS, clampQoS: p?.clampQoS ?? 0,
+                                     darwinBG: (p?.isDarwinBG ?? false) || t.threadDarwinBG, push: pushes.maxClass)
+            let c = inputs.schedClass
+            if t.schedClassStore.exchange(c, ordering: .relaxed) != c {
+                SchedStats.classChanges.wrappingAdd(1, ordering: .relaxed)
+            }
         }
     }
 
@@ -307,14 +367,13 @@ extension DarwinKernel {
         let waiters = queue.waiters.waitingContexts
         let target = waiters.isEmpty ? nil : queue.owner
         if let old = queue.pushedOwner, old !== target {
-            old.ulockPushes[addr] = nil
+            _ = old.setULockPush(-1, for: addr)
             old.kernel?.refreshSchedClass(old)
             queue.pushedOwner = nil
         }
         guard let target, target.isAlive else { return }
         let push = waiters.map(\.schedClass).max() ?? -1
-        if target.ulockPushes[addr] != push {
-            target.ulockPushes[addr] = push
+        if target.setULockPush(push, for: addr) {
             target.kernel?.refreshSchedClass(target)
         }
         queue.pushedOwner = target
@@ -347,7 +406,9 @@ extension MachIPC {
 
     /// Marks a user message at send time (§4.3, §4.6). Lock held.
     func annotateForScheduling(_ m: inout KMessage, options: UInt64) {
-        let ctx = lock.currentContext
+        // On a fast path L0 is not held: the trap's thread is the fast path's
+        // (L0's own context belongs to whichever thread holds L0).
+        let ctx = SchedPolicy.qosEnabled ? lock.callerContext : nil
         if SchedPolicy.importanceEnabled, options & MachMsgOption.sendNoImportance == 0,
            let proc = kernel?.schedProcess, proc.isImportanceDonor, let p = m.destination.port, !p.isKernelObject {
             if p.importanceDonation {
@@ -388,7 +449,7 @@ extension MachIPC {
         }
         if m.pushClass >= 0, SchedPolicy.qosEnabled {
             context.ipcPushClass = Int(m.pushClass)
-            k.lock.deferIfFast(.kernelLock(k.lock)) { [weak k] in k?.refreshSchedClass(context) }
+            k.refreshSchedClass(context)
         }
     }
 
@@ -424,7 +485,13 @@ public struct SchedStats: Sendable {
     /// Holdable spawns not held because a client had already sent to them.
     public var demandStarts = 0
     public var heldNanoseconds: UInt64 = 0
-    public var classChanges: UInt64 = 0
+    /// Class changes; atomic: classes are recomputed on fast paths too.
+    public static let classChanges = Atomic<UInt64>(0)
+    /// Recomputations done on a fast path without L0 (§4.4).
+    public static let fastRefreshes = Atomic<UInt64>(0)
+    /// Blocked sends that pushed onto the receiving image (§4.6); the
+    /// counter is atomic: senders count without L0.
+    public static let sendPushes = Atomic<UInt64>(0)
     /// Importance diagnostics: ports marked as accepting importance or as
     /// temporary owners, user messages that carried importance, and sends
     /// from a donor to a port that does not accept it.
@@ -473,29 +540,37 @@ extension DarwinSystem {
     /// reaches its bound (boosts release at once, `changeImportance`).
     private func holdLoop() {
         lock.withLock {
-            // (time, lock held total) every pass, for the busy fraction.
-            var samples: [(UInt64, UInt64)] = []
+            // (time, lock held total, process CPU time) every pass, for the
+            // busy fractions.
+            var samples: [(UInt64, UInt64, UInt64)] = []
+            let cpus = Double(max(1, ProcessInfo.processInfo.activeProcessorCount))
             var lastTrace: UInt64 = 0
             while true {
                 for p in heldProcesses where p.state == .zombie || p.exiting { releaseStartHold(p, reason: "exit") }
                 let now = KernelClock.now()
-                samples.append((now, lock.totalHeldNanoseconds))
+                samples.append((now, lock.totalHeldNanoseconds, Self.processCPUNanoseconds()))
                 // Keep one sample at or beyond the window's start.
                 while samples.count > 1, now &- samples[1].0 >= SchedPolicy.holdWindowNanoseconds { samples.removeFirst() }
                 let span = now &- samples[0].0
                 let busy = span == 0 ? 1 : Double(lock.totalHeldNanoseconds &- samples[0].1) / Double(span)
+                // CPUs the VMM used over the span, as a fraction of the host's.
+                let cpuBusy = span == 0 ? 1 : Double(samples[samples.count - 1].2 &- samples[0].2) / Double(span) / cpus
+                let cpuQuiet = SchedPolicy.holdCPUFraction <= 0 || cpuBusy < SchedPolicy.holdCPUFraction
                 // A full window is needed before the system counts as quiet.
                 let windowFull = span >= SchedPolicy.holdWindowNanoseconds
-                let contentionAge = now &- lock.lastHighContention
+                // A contention stamped after `now` was read is 0 ms old (the
+                // wrapping difference counted it as ages ago before 2026-10-27).
+                let lastContention = lock.lastHighContention
+                let contentionAge = now > lastContention ? now - lastContention : 0
                 if SchedPolicy.holdTrace, now &- lastTrace >= 1_000_000_000 {
                     lastTrace = now
-                    holdLog?("hold inputs: lock busy \(Int(busy * 100))% over \(span / 1_000_000) ms, "
+                    holdLog?("hold inputs: lock busy \(Int(busy * 100))%, CPU \(Int(cpuBusy * 100))% of \(Int(cpus)) over \(span / 1_000_000) ms, "
                         + "last contention \(contentionAge / 1_000_000) ms ago, \(heldProcesses.count) held")
                 }
                 for p in heldProcesses where now &- (p.holdStart ?? now) >= SchedPolicy.holdMaxNanoseconds {
                     releaseStartHold(p, reason: "timeout")
                 }
-                if windowFull, busy < SchedPolicy.holdBusyFraction, contentionAge >= SchedPolicy.holdQuietNanoseconds {
+                if windowFull, busy < SchedPolicy.holdBusyFraction, cpuQuiet, contentionAge >= SchedPolicy.holdQuietNanoseconds {
                     for p in heldProcesses where now &- (p.holdStart ?? now) >= SchedPolicy.holdQuietNanoseconds {
                         releaseStartHold(p, reason: "quiet")
                     }
@@ -507,15 +582,24 @@ extension DarwinSystem {
         }
     }
 
+    /// The CPU time of this whole host process (every thread), ns.
+    static func processCPUNanoseconds() -> UInt64 {
+        var ts = timespec()
+        guard clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts) == 0 else { return 0 }
+        return UInt64(ts.tv_sec) &* 1_000_000_000 &+ UInt64(ts.tv_nsec)
+    }
+
     /// One line for the exit report.
     public var schedReport: String {
         lock.withLock {
             let s = schedStats
             var line = "start holds \(s.holds) (boost \(s.releasedByBoost), quiet \(s.releasedQuiet), "
                 + "timeout \(s.releasedTimeout), exit \(s.releasedExit), still held \(heldProcesses.count); not held on demand \(s.demandStarts)), "
-                + "\(s.heldNanoseconds / 1_000_000) ms held in all; class changes \(s.classChanges); "
+                + "\(s.heldNanoseconds / 1_000_000) ms held in all; class changes \(SchedStats.classChanges.load(ordering: .relaxed)) "
+                + "(\(SchedStats.fastRefreshes.load(ordering: .relaxed)) recomputations without L0); "
                 + "importance: \(s.donationPorts) receiving ports, \(s.tempOwnerPorts) temporary owners, "
-                + "\(s.importanceMessages) messages, \(s.refusedByPort) donor sends to other ports"
+                + "\(s.importanceMessages) messages, \(s.refusedByPort) donor sends to other ports; "
+                + "send pushes \(SchedStats.sendPushes.load(ordering: .relaxed))"
             line += "; " + lock.admissionReport
             return line
         }

@@ -182,6 +182,34 @@ std::string Translator::castInt(const std::string &v, Type *from, unsigned toBit
 // ---------------------------------------------------------------------------
 // Memory (section 4.3)
 
+// Whether a device or constant load through P gets the null guard: P is
+// not derived from a bound buffer argument, a table entry, a global or a
+// private allocation (it was loaded from memory, made from an integer, or
+// merged from such values). `all`: every such load (bisection).
+bool Translator::nullGuardLoad(Value *P, bool all) const {
+    static const bool off = getenv("AIRC_NULL_GUARD") && std::string(getenv("AIRC_NULL_GUARD")) == "0";
+    if (all) return true;
+    if (off) return false;
+    const Value *O = getUnderlyingObject(P, 64);
+    if (isa<Argument>(O) || isa<GlobalValue>(O) || isa<AllocaInst>(O) || isa<ConstantPointerNull>(O)) return false;
+    if (auto *CI = dyn_cast<CallInst>(O))
+        if (CI->getCalledFunction() && CI->getCalledFunction()->getName().starts_with("airc.table_entry")) return false;
+    return true;
+}
+
+// The argument table's address in the function being emitted (always
+// mapped: a safe address for guarded loads).
+std::string Translator::tableAddrHere() { return tableAddr; }
+
+bool Translator::experiment(const char *what) const {
+    const char *e = getenv("AIRC_EXP");
+    if (!e || !*e) return false;
+    std::string list = std::string(",") + e + ",";
+    if (list.find(std::string(",") + what + ",") == std::string::npos) return false;
+    const char *fn = getenv("AIRC_EXP_FN");
+    return !fn || !*fn || F.getName() == fn;
+}
+
 std::string Translator::psbPointer(const std::string &addr, const std::string &pointee, unsigned bits) {
     if (bits == 8) E.caps.insert("StorageBuffer8BitAccess");
     if (bits == 16) E.caps.insert("StorageBuffer16BitAccess");
@@ -276,6 +304,7 @@ std::string Translator::scalarLoad(const std::string &addr, unsigned as, Type *T
     }
     unsigned bits = bitsOf(T);
     if (as == kDevice || as == kConstant) {
+        if (experiment("psb")) return E.null(t);
         std::string p = psbPointer(addr, t, bits);
         std::string r = E.fresh();
         E.body << r << " = OpLoad " << t << " " << p << " Aligned " << std::min<uint64_t>(align, 65536) << "\n";
@@ -371,6 +400,7 @@ std::string Translator::load(const std::string &addr, unsigned as, Type *T, uint
     if (auto *V = dyn_cast<FixedVectorType>(T)) {
         Type *el = V->getElementType();
         if ((as == kDevice || as == kConstant) && !el->isIntegerTy(1)) {
+            if (experiment("psb")) return E.null(type(T));
             std::string p = psbPointer(addr, type(T), bitsOf(el));
             std::string r = E.fresh();
             E.body << r << " = OpLoad " << type(T) << " " << p << " Aligned " << std::min<uint64_t>(align, 65536) << "\n";
@@ -695,10 +725,26 @@ void Translator::setupInterface() {
             out.var = ioVar("Output", out.ioType, "BuiltIn Layer");
             jBuiltins.push("render_target_array_index");
         } else if (o.kind == "air.viewport_array_index") {
+            jBuiltins.push("viewport_array_index");
+            // Ycode's render passes have one viewport and one scissor (the
+            // host keeps the first of a setViewports: array), so every
+            // primitive uses viewport 0: the output is not written. An index
+            // of 1 or more would select a Vulkan viewport and scissor that
+            // were never set; with the stereo pipelines of visionOS (an
+            // instance per eye, the index from the instance) that hung the
+            // Thor's GPU (visionos.md section 10.13). AIRC_VIEWPORT_INDEX=1
+            // writes it as before (experiments).
+            static const bool keep = getenv("AIRC_VIEWPORT_INDEX") && std::string(getenv("AIRC_VIEWPORT_INDEX")) == "1";
+            if (!keep) {
+                out.ioType = "";
+                out.var = "";
+                uses.insert("viewport_index_dropped");
+                outputs.push_back(out);
+                continue;
+            }
             E.caps.insert("ShaderViewportIndex");
             out.ioType = E.tInt(32);
             out.var = ioVar("Output", out.ioType, "BuiltIn ViewportIndex");
-            jBuiltins.push("viewport_array_index");
         } else if (o.kind == "air.vertex_output") {
             IOType io = ioTypeOf(*this, T, o.typeName());
             unsigned loc = (unsigned)jVaryings.arr.size();
@@ -740,6 +786,16 @@ void Translator::setupInterface() {
             out.ioType = E.tSInt(32);
             out.var = ioVar("Output", out.ioType, "BuiltIn FragStencilRefEXT");
             jBuiltins.push("stencil");
+        } else if (o.kind == "air.imageblock_data" && EI.stage == Stage::Fragment) {
+            // A fragment function's explicit imageblock result goes to tile
+            // memory, which only tile functions and later imageblock reads
+            // of the same pass see. Ycode has neither in render passes
+            // (metal-shaders.md section 4.9), so the value has no reader:
+            // it is not written anywhere (no Vulkan output); the function's
+            // other outputs and side effects are kept.
+            out.ioType = "";
+            out.var = "";
+            uses.insert("imageblock_output_dropped");
         } else {
             fail("unsupported-feature", "output kind " + o.kind);
         }
@@ -895,6 +951,21 @@ void Translator::prologue() {
             if (used) r = tableEntry(abi::kTableSampler0 + loc);
         } else if (k == "air.vertex_input" && dynamicIndex) {
             fail("unsupported-feature", "vertex attribute index set by a function constant (needs the specialized function)");
+        } else if (k == "air.vertex_input" && !used && !getenv("AIRC_UNUSED_VERTEX_INPUTS")) {
+            // A stage-in attribute the function never reads gets no input
+            // variable: the pipeline's vertex descriptor need not describe
+            // it (Metal's does not), and a Vulkan vertex shader input with
+            // no vertex attribute behind it is undefined (visionOS
+            // RealityKit's vsUnlit declares 15 and reads 2; visionos.md
+            // §10.13). AIRC_UNUSED_VERTEX_INPUTS=1 declares them as before.
+            Json j = Json::object();
+            j.set("location", loc);
+            j.set("type", n.typeName());
+            j.set("name", n.argName());
+            j.set("used", false);
+            j.set("declared", false);
+            jVertexInputs.push(j);
+            continue;
         } else if (k == "air.vertex_input") {
             IOType io = ioTypeOf(*this, T, n.typeName());
             if (loc < 0) fail("unsupported-feature", "vertex attribute index " + std::to_string(loc));
@@ -907,6 +978,18 @@ void Translator::prologue() {
             j.set("used", used);
             jVertexInputs.push(j);
             r = readIO(*this, var, io, T);
+        } else if (k == "air.fragment_input" && opts.haveVaryings && !used && !opts.varyings.count(n.ident)) {
+            // An input the function never reads and the linked vertex
+            // function does not write: no interface variable (Vulkan would
+            // reject an input without a matching output); the argument has
+            // no uses, so its value is irrelevant (metal-shaders.md 4.5).
+            Json j = Json::object();
+            j.set("name", n.ident);
+            j.set("type", n.typeName());
+            j.set("used", false);
+            j.set("linked", false);
+            jVaryings.push(j);
+            continue;
         } else if (k == "air.fragment_input" && n.has("air.interpolation_function")) {
             // interpolant<T, ...>: the shader interpolates explicitly.
             std::string tn = n.typeName();
@@ -970,6 +1053,12 @@ void Translator::prologue() {
             r = E.op("OpLoad", E.tVec(E.tFloat(32), 4), {builtin("FragCoord", E.tVec(E.tFloat(32), 4))});
             if (T->getScalarType()->isHalfTy()) r = E.op("OpFConvert", type(T), {r});
             jBuiltins.push("position");
+        } else if (k == "air.imageblock_data" && EI.stage == Stage::Fragment && !T->isPointerTy()) {
+            // The pixel's explicit imageblock as a fragment input. Ycode keeps
+            // no tile memory between draws (fragment imageblock results are
+            // dropped, see the outputs), so the value read is all zeros.
+            if (used) r = E.null(type(T));
+            uses.insert("imageblock_input_zero");
         } else if (k == "air.imageblock") {
             r = E.u64(0);  // accessed through the imageblock intrinsics only
             uses.insert(n.intAt("air.imageblock_data_size", 0, -1) > 0 ? "imageblock_explicit" : "imageblock_implicit");
@@ -1385,6 +1474,56 @@ void Translator::instruction(Instruction &I) {
             bind(&I, E.undef(type(L->getType())));
             return;
         }
+        if ((as == kDevice || as == kConstant) && experiment("psbslot") && getenv("AIRC_EXP_SLOTS")) {
+            // Bisection: loads through buffer arguments of the listed indices.
+            if (auto *A = dyn_cast<Argument>(getUnderlyingObject(P, 64))) {
+                auto it = EI.args.find(A->getArgNo());
+                std::string slots = std::string(",") + getenv("AIRC_EXP_SLOTS") + ",";
+                if (it != EI.args.end() && slots.find("," + std::to_string(it->second.location()) + ",") != std::string::npos) {
+                    bind(&I, E.null(type(L->getType())));
+                    return;
+                }
+            }
+        }
+        if ((as == kDevice || as == kConstant) && experiment("psbindslot") && getenv("AIRC_EXP_SLOTS")) {
+            // Bisection: loads through a pointer loaded from a buffer argument of the listed indices.
+            if (auto *L2 = dyn_cast<LoadInst>(getUnderlyingObject(P, 64)))
+                if (auto *A = dyn_cast<Argument>(getUnderlyingObject(L2->getPointerOperand(), 64))) {
+                    auto it = EI.args.find(A->getArgNo());
+                    std::string slots = std::string(",") + getenv("AIRC_EXP_SLOTS") + ",";
+                    if (it != EI.args.end() && slots.find("," + std::to_string(it->second.location()) + ",") != std::string::npos) {
+                        bind(&I, E.null(type(L->getType())));
+                        return;
+                    }
+                }
+        }
+        if ((as == kDevice || as == kConstant) && nullGuardLoad(P, experiment("psbnullall"))) {
+            // A load through a pointer the function took from memory (or
+            // made from an integer): an address below 64 KiB is a null
+            // pointer plus a field offset. Such a read is undefined; on the
+            // Thor a read of unmapped memory does not fault but stalls the
+            // GPU until the driver kills the context (stage8-contract.md
+            // §15.6), which visionOS RealityKit's fsCALayer did in every
+            // boot (visionos.md §10.13). The guarded load reads the
+            // argument table instead and yields zero. AIRC_NULL_GUARD=0
+            // turns it off.
+            std::string a = val(P);
+            std::string ok = E.op("OpUGreaterThanEqual", E.tBool(), {a, E.u64(65536)});
+            std::string safe = E.op("OpSelect", E.tInt(64), {ok, a, tableAddrHere()});
+            std::string v = load(safe, as, L->getType(), L->getAlign().value());
+            bind(&I, E.op("OpSelect", type(L->getType()), {ok, v, E.null(type(L->getType()))}));
+            nullGuardedLoads++;
+            return;
+        }
+        if ((as == kDevice || as == kConstant) && (experiment("psbind") || experiment("psbdir"))) {
+            // Bisection: loads through a pointer that is a bound buffer
+            // (an argument-table entry) or through one loaded from memory.
+            const Value *O = getUnderlyingObject(P, 64);
+            auto *CI = dyn_cast<CallInst>(O);
+            bool direct = isa<Argument>(O) || (CI && CI->getCalledFunction() &&
+                                               CI->getCalledFunction()->getName().starts_with("airc.table_entry"));
+            if (direct ? experiment("psbdir") : experiment("psbind")) { bind(&I, E.null(type(L->getType()))); return; }
+        }
         bind(&I, load(val(P), as, L->getType(), L->getAlign().value()));
         return;
     }
@@ -1491,6 +1630,7 @@ void Translator::terminator(BasicBlock &B) {
             std::string v = val(V);
             for (unsigned i = 0; i < outputs.size(); i++) {
                 Output &o = outputs[i];
+                if (o.var.empty()) continue;  // dropped (imageblock data, viewport index)
                 std::string m = v;
                 if (V->getType()->isStructTy()) m = E.op("OpCompositeExtract", type(o.type), {v, std::to_string(i)});
                 const AirNode &n = EI.outputs[i];
@@ -1718,6 +1858,7 @@ Json Translator::reflection() {
     r.set("function_constants", jFunctionConstants);
     r.set("private_bytes", (unsigned long long)privateBytes);
     if (!loopBudgetVar.empty()) r.set("loop_limit", (unsigned long long)opts.loopLimit);
+    if (nullGuardedLoads) r.set("null_guarded_loads", (unsigned long long)nullGuardedLoads);
     Json u = Json::array();
     for (auto &s : uses) u.push(s);
     r.set("uses", u);

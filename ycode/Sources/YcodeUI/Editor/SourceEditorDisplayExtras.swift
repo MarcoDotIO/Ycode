@@ -60,7 +60,7 @@ final class StructureHeaderView: NSView {
 }
 
 extension SourceTextView {
-    /// MARK separators and #endif conditions, behind the text.
+    /// `MARK` separators and #endif conditions, behind the text.
     func drawDisplayExtras(in rect: NSRect) {
         let d = displayState
         if !d.markLines.isEmpty {

@@ -117,6 +117,26 @@ final class FrameCanvas: @unchecked Sendable {
     }
 
     func image() -> CGImage? { context.makeImage() }
+
+    /// The canvas turned clockwise by `rotation` degrees (0, 90, 180, 270;
+    /// foldable.md: a panel shown as the device is held).
+    func image(rotation: Int) -> CGImage? {
+        let turns = (((rotation % 360) + 360) % 360) / 90
+        guard turns != 0, let data = context.data else { return image() }
+        let (w, h) = turns % 2 == 1 ? (height, width) : (width, height)
+        let out = UnsafeMutableRawPointer.allocate(byteCount: w * h * 4, alignment: 64)
+        var src = vImage_Buffer(data: data, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: context.bytesPerRow)
+        var dst = vImage_Buffer(data: out, height: vImagePixelCount(h), width: vImagePixelCount(w), rowBytes: w * 4)
+        let constant: Int = turns == 1 ? kRotate90DegreesClockwise : turns == 2 ? kRotate180DegreesClockwise : kRotate270DegreesClockwise
+        var black: [UInt8] = [0, 0, 0, 0xFF]
+        guard vImageRotate90_ARGB8888(&src, &dst, UInt8(constant), &black, vImage_Flags(kvImageNoFlags)) == kvImageNoError,
+              let provider = CGDataProvider(dataInfo: nil, data: out, size: w * h * 4, releaseData: { _, p, _ in p.deallocate() })
+        else { out.deallocate(); return nil }
+        return CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                       space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+                       provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
+    }
 }
 
 /// Per-tile results, written by the decoding threads.
@@ -137,7 +157,7 @@ private final class FallbackImages: @unchecked Sendable {
 }
 
 @MainActor
-protocol ViewerConnectionDelegate: AnyObject {
+public protocol ViewerConnectionDelegate: AnyObject {
     func connection(_ c: ViewerConnection, phase: String, detail: String?)
     func connection(_ c: ViewerConnection, hello: DisplayServerHello)
     func connection(_ c: ViewerConnection, status: DisplayStatus)
@@ -145,44 +165,51 @@ protocol ViewerConnectionDelegate: AnyObject {
     func connection(_ c: ViewerConnection, notice: String)
     func connection(_ c: ViewerConnection, screenshot png: [UInt8], token: UInt32)
     func connection(_ c: ViewerConnection, pongToken token: UInt64, rttMilliseconds: Double)
+    /// The panel shown changed (a foldable; display-stream.md §3.4).
+    func connection(_ c: ViewerConnection, displayState: DisplayPanelState)
 }
 
-func nowNanoseconds() -> UInt64 { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
+public func nowNanoseconds() -> UInt64 { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
 
-final class ViewerConnection: @unchecked Sendable {
-    let address: DisplayAddress
-    var settings: DisplayClientHello
-    weak var delegate: ViewerConnectionDelegate?
+public final class ViewerConnection: @unchecked Sendable {
+    public let address: DisplayAddress
+    public private(set) var settings: DisplayClientHello
+    public weak var delegate: ViewerConnectionDelegate?
     private let lock = NSLock()
     private var connection: DisplayConnection?
     private var stopped = false
     private var inputSequence: UInt32 = 0
     private var pings: [UInt64: UInt64] = [:]
+    private var nextCommand: UInt32 = 0
+    private var commandReplies: [UInt32: @MainActor @Sendable (String) -> Void] = [:]
     private var nextPing: UInt64 = 1
     /// The newest decoded image waiting for the main thread (under the lock).
     private var pending: (CGImage, DisplayFrame, UInt64)?
+    /// The panel shown and its turn (display states; lock).
+    private var shownDisplay: String?
+    private var rotation = 0
 
     // Statistics (main thread reads; written under the lock).
     private(set) var bytesReceived = 0
     private(set) var framesReceived = 0
 
-    init(address: DisplayAddress, settings: DisplayClientHello) {
+    public init(address: DisplayAddress, settings: DisplayClientHello) {
         self.address = address
         self.settings = settings
     }
 
-    func start() {
+    public func start() {
         let t = Thread { [self] in run() }
         t.name = "viewer-connection"
         t.start()
     }
 
-    func stop() {
+    public func stop() {
         let c = lock.withLock { () -> DisplayConnection? in stopped = true; return connection }
         c?.close()
     }
 
-    var stats: (bytes: Int, frames: Int) { lock.withLock { (bytesReceived, framesReceived) } }
+    public var stats: (bytes: Int, frames: Int) { lock.withLock { (bytesReceived, framesReceived) } }
 
     private func main(_ body: @escaping @MainActor @Sendable () -> Void) { DispatchQueue.main.async { MainActor.assumeIsolated { body() } } }
 
@@ -233,8 +260,19 @@ final class ViewerConnection: @unchecked Sendable {
             main { self.delegate?.connection(self, status: s) }
         case .notice(let text):
             main { self.delegate?.connection(self, notice: text) }
+        case .displayState(let state):
+            // Another panel (or turn): its frames follow, starting with a full one.
+            if lock.withLock({ () -> Bool in
+                defer { rotation = state.rotation; pending = nil }
+                return shownDisplay != state.display
+            }) { canvas = nil }
+            lock.withLock { shownDisplay = state.display }
+            main { self.delegate?.connection(self, displayState: state) }
         case .screenshot(let token, let png):
             main { self.delegate?.connection(self, screenshot: png, token: token) }
+        case .commandReply(let token, let text):
+            let done = lock.withLock { commandReplies.removeValue(forKey: token) }
+            if let done { main { done(text) } }
         case .pong(let token, _):
             let sent = lock.withLock { pings.removeValue(forKey: token) }
             if let sent {
@@ -250,7 +288,7 @@ final class ViewerConnection: @unchecked Sendable {
             guard let canvas else { return }
             if !canvas.applyAll(f.tiles, encoding: f.encoding) { send(.keyframeRequest) }
             lock.withLock { framesReceived += 1 }
-            guard let image = canvas.image() else { return }
+            guard let image = canvas.image(rotation: lock.withLock { rotation }) else { return }
             // One hand-off to the main thread at a time: frames that arrive
             // while it is busy replace the waiting one (the newest image
             // wins; no queue of stale images builds up behind a slow main thread).
@@ -275,7 +313,7 @@ final class ViewerConnection: @unchecked Sendable {
     // MARK: Sending (any thread)
 
     @discardableResult
-    func send(_ m: DisplayMessage) -> Bool {
+    public func send(_ m: DisplayMessage) -> Bool {
         guard let c = lock.withLock({ connection }) else { return false }
         do { try c.send(m) } catch { return false }
         return true
@@ -283,12 +321,12 @@ final class ViewerConnection: @unchecked Sendable {
 
     /// Sends an input event with the next sequence number; returns it (0: not connected).
     @discardableResult
-    func sendInput(_ make: (UInt32) -> DisplayInput) -> UInt32 {
+    public func sendInput(_ make: (UInt32) -> DisplayInput) -> UInt32 {
         let seq = lock.withLock { () -> UInt32 in inputSequence &+= 1; return inputSequence }
         return send(.input(make(seq))) ? seq : 0
     }
 
-    func ping() {
+    public func ping() {
         let token = lock.withLock { () -> UInt64 in
             nextPing += 1
             pings[nextPing] = nowNanoseconds()
@@ -298,7 +336,22 @@ final class ViewerConnection: @unchecked Sendable {
         send(.ping(token: token))
     }
 
-    func updateSettings(_ s: DisplayClientHello) {
+    /// A device command (0x90; the settings features); `reply` gets the
+    /// answer on the main thread ("error: not connected" at once when there
+    /// is no connection).
+    public func sendCommand(_ text: String, reply: @escaping @MainActor @Sendable (String) -> Void) {
+        let token = lock.withLock { () -> UInt32 in
+            nextCommand &+= 1
+            commandReplies[nextCommand] = reply
+            return nextCommand
+        }
+        if !send(.command(token: token, text: text)) {
+            _ = lock.withLock { commandReplies.removeValue(forKey: token) }
+            main { reply("error: not connected") }
+        }
+    }
+
+    public func updateSettings(_ s: DisplayClientHello) {
         settings = s
         send(.clientHello(s))
     }

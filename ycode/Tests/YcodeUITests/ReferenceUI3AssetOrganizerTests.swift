@@ -45,10 +45,10 @@ final class ReferenceUI3AssetOrganizerTests: XCTestCase {
         let m = AssetCatalog.addMenu()
         XCTAssertEqual(Array(m.prefix(4).compactMap(\.title)), ["Image Set", "Color Set", "Symbol Image Set", "Data Set"])
         XCTAssertEqual(m.compactMap(\.title).suffix(4), ["Folder", "Folder with Namespace", "Folder from Selection", "Import…"])
-        guard case let .submenu(_, ios)? = m.first(where: { $0.title == "iOS" }) else { return XCTFail() }
+        guard case let .submenu(_, ios)? = m.first(where: { $0.title == "iOS" }) else { return XCTFail("no iOS submenu") }
         XCTAssertTrue(ios.contains(.item("Sticker", enabled: false)))
         XCTAssertTrue(ios.contains(.item("Sticker Pack", enabled: true)))
-        guard case let .submenu(_, ios2)? = AssetCatalog.addMenu(insideStickerPack: true).first(where: { $0.title == "iOS" }) else { return XCTFail() }
+        guard case let .submenu(_, ios2)? = AssetCatalog.addMenu(insideStickerPack: true).first(where: { $0.title == "iOS" }) else { return XCTFail("no iOS submenu in a sticker pack") }
         XCTAssertTrue(ios2.contains(.item("Sticker", enabled: true)))
         XCTAssertEqual(m.compactMap(\.title).filter { ["macOS", "watchOS", "tvOS", "visionOS", "AR and Textures"].contains($0) }.count, 5)
     }

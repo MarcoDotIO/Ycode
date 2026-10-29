@@ -49,11 +49,13 @@ extension GitRepository {
         return s?.isEmpty == false ? s : nil
     }
 
+    /// The full hash of HEAD, or nil when the branch is unborn (no commits).
     public func headHash() -> String? {
         let s = (try? git(["rev-parse", "--verify", "--quiet", "HEAD"]))?.trimmingCharacters(in: .whitespacesAndNewlines)
         return s?.isEmpty == false ? s : nil
     }
 
+    /// The value of git config `key` (all scopes), or nil when unset or empty.
     public func config(_ key: String) -> String? {
         let s = (try? git(["config", "--get", key]))?.trimmingCharacters(in: .whitespacesAndNewlines)
         return s?.isEmpty == false ? s : nil
@@ -111,6 +113,7 @@ extension GitRepository {
         return text.components(separatedBy: Self.recordSeparator).compactMap(Self.parseCommit)
     }
 
+    /// The commit `hash` names (any revision git accepts), or nil.
     public func commit(_ hash: String) -> Commit? { log(hash, limit: 1).first }
 
     /// The commits that changed one file, newest first, following renames
@@ -199,15 +202,21 @@ extension GitRepository {
 
     // MARK: Writing
 
+    /// `git add` the given absolute or repository-relative paths. Throws
+    /// `GitError` with git's message when git fails.
     public func stage(_ paths: [String]) throws { guard !paths.isEmpty else { return }; _ = try git(["add", "--"] + paths.map(repoRelative)) }
+    /// Stages every change, including deletions and untracked files.
     public func stageAll() throws { _ = try git(["add", "-A"]) }
 
+    /// Removes paths from the index, keeping the working-tree files. Before
+    /// the first commit this is `git rm --cached`, else `git reset`.
     public func unstage(_ paths: [String]) throws {
         guard !paths.isEmpty else { return }
         if headHash() == nil { _ = try git(["rm", "--cached", "-q", "--"] + paths.map(repoRelative)) }
         else { _ = try git(["reset", "-q", "HEAD", "--"] + paths.map(repoRelative)) }
     }
 
+    /// Unstages everything (works before the first commit too).
     public func unstageAll() throws {
         if headHash() == nil { _ = try git(["rm", "-r", "--cached", "-q", "."]) } else { _ = try git(["reset", "-q"]) }
     }
@@ -238,13 +247,17 @@ extension GitRepository {
         return try git(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Marks conflicted files resolved by staging them.
     public func markResolved(_ paths: [String]) throws { try stage(paths) }
 
+    /// Stashes all changes, untracked files included; an empty message lets
+    /// git name the stash.
     public func stash(message: String) throws {
         let m = message.trimmingCharacters(in: .whitespacesAndNewlines)
         _ = try git(["stash", "push", "--include-untracked"] + (m.isEmpty ? [] : ["-m", m]))
     }
 
+    /// Applies commit `hash` on top of the current branch.
     public func cherryPick(_ hash: String) throws { _ = try git(["cherry-pick", hash]) }
 
     /// Switches to a local branch (`git switch`); refused while the working
@@ -255,8 +268,12 @@ extension GitRepository {
         }
         _ = try git(["switch", "--", name])
     }
+    /// Fetches every remote, pruning deleted remote branches.
     public func fetch() throws { _ = try git(["fetch", "--all", "--prune"]) }
+    /// Pulls the upstream branch; only fast-forwards, otherwise throws.
     public func pull() throws { _ = try git(["pull", "--ff-only"]) }
+    /// Pushes the current branch to its upstream. git never prompts for
+    /// credentials here, so a push that needs them fails with `GitError`.
     public func push() throws { _ = try git(["push"]) }
 
     /// `git init` in a folder, then the repository there.
@@ -265,6 +282,7 @@ extension GitRepository {
         return GitRepository(containing: dir, git: git)
     }
 
+    /// `git clone` of `url` into `dir`. Throws `GitError` on failure.
     public static func clone(_ url: String, into dir: URL, git: String = "/usr/bin/git") throws {
         _ = try run(git, ["clone", "--", url, dir.path])
     }

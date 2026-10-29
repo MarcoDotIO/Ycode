@@ -38,7 +38,9 @@ public struct AssetCatalog {
         public var group: String
     }
 
+    /// The `.xcassets` folder.
     public let url: URL
+    /// Wraps the catalog at `url`; nothing is read until asked.
     public init(url: URL) { self.url = url }
 
     /// All sets, depth-first in name order; plain folders are groups.
@@ -63,6 +65,8 @@ public struct AssetCatalog {
 
     // MARK: Contents.json
 
+    /// The parsed `Contents.json` of folder `dir`; empty when missing or not
+    /// a JSON object.
     public static func readContents(_ dir: URL) -> [String: Any] {
         guard let data = try? Data(contentsOf: dir.appendingPathComponent("Contents.json")),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
@@ -92,7 +96,7 @@ public struct AssetCatalog {
         public var appearance: String?
         public var filename: String?
         /// App icon platform ("ios", "watchos", …) for single-size icons.
-        public var platform: String? = nil
+        public var platform: String?
 
         /// The label drawn inside an empty slot: "1024x1024px" for a
         /// single-size app icon, nil otherwise.
@@ -136,6 +140,8 @@ public struct AssetCatalog {
         return d
     }
 
+    /// The image (or icon) slots of a set, in file order; empty for kinds
+    /// without slots.
     public static func slots(of set: AssetSet) -> [Slot] {
         guard let key = set.kind.slotKey else { return [] }
         return (readContents(set.url)[key] as? [[String: Any]] ?? []).map(slot)
@@ -222,6 +228,7 @@ public struct AssetCatalog {
         return Double(s) ?? 0
     }
 
+    /// The color values of a color set, one per appearance, in file order.
     public static func colors(of set: AssetSet) -> [ColorValue] {
         (readContents(set.url)["colors"] as? [[String: Any]] ?? []).map { d in
             let c = d["color"] as? [String: Any] ?? [:]
@@ -250,6 +257,8 @@ public struct AssetCatalog {
         try writeContents(obj, to: set.url)
     }
 
+    /// Creates `<name>.colorset` in `group` with one white sRGB color. Throws
+    /// if the folder exists or cannot be written.
     @discardableResult
     public func addColorSet(named name: String, in group: String = "") throws -> AssetSet {
         let dir = url.appendingPathComponent(group).appendingPathComponent("\(name).colorset")
@@ -338,6 +347,7 @@ public struct AssetCatalog {
         return dir
     }
 
+    /// Removes the set's folder from disk (not to the Trash).
     public func remove(_ set: AssetSet) throws { try FileManager.default.removeItem(at: set.url) }
 }
 

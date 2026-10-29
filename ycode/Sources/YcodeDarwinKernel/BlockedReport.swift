@@ -2,6 +2,41 @@
 // receives the port it waits on and, for a send-and-receive, the
 // destination's receiving process (stage 6 boot analysis).
 
+import Synchronization
+
+/// A thread's last 16 traps (`ThreadContext.recentTraps`). The thread's own
+/// host thread records every trap, also on the paths that take no kernel
+/// lock, while a report reads the ring from another thread: the storage is
+/// allocated once and never moves, so a read during a write can at worst
+/// show one torn entry, never touch freed or shifted memory (an array's
+/// `removeFirst` under a concurrent `map` trapped with an index out of
+/// range).
+public final class TrapRing: @unchecked Sendable {
+    public static let capacity = 16
+    private let slots = UnsafeMutablePointer<UInt64>.allocate(capacity: capacity * 4)
+    private let written = Atomic<Int>(0)
+
+    public init() { slots.initialize(repeating: 0, count: Self.capacity * 4) }
+    deinit { slots.deallocate() }
+
+    /// Owner thread only.
+    public func record(_ x16: UInt64, _ x0: UInt64, _ x1: UInt64, _ result: UInt64) {
+        let n = written.load(ordering: .relaxed)
+        let s = slots + (n % Self.capacity) * 4
+        s[0] = x16; s[1] = x0; s[2] = x1; s[3] = result
+        written.store(n + 1, ordering: .releasing)
+    }
+
+    /// Oldest first. Any thread.
+    public var entries: [(UInt64, UInt64, UInt64, UInt64)] {
+        let n = written.load(ordering: .acquiring)
+        return (max(0, n - Self.capacity)..<n).map { i in
+            let s = slots + (i % Self.capacity) * 4
+            return (s[0], s[1], s[2], s[3])
+        }
+    }
+}
+
 extension DarwinKernel {
     /// Record each knote's last state changes (set by the VMM for reports).
     nonisolated(unsafe) public static var recordKnoteHistory = false

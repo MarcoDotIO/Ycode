@@ -190,9 +190,14 @@ public struct MetalCommandDecoder {
             guard case var .render(p) = open else { return }
             let held = Self.copyingAppend ? open : nil
             open = nil
-            let c = renderCommand(rec)
-            if case .unknown = c { noteUnknown(rec.op) }
-            p.commands.append(c)
+            if let many = multiSlotRenderCommands(rec) {
+                p.commands.append(contentsOf: many)
+            } else {
+                let c = renderCommand(rec)
+                if case .unknown = c { noteUnknown(rec.op) }
+                if case let .setStoreAction(index, action) = c { Self.applyStoreAction(&p, index: index, action: action) }
+                p.commands.append(c)
+            }
             withExtendedLifetime(held) {}
             open = .render(p)
         case MetalEncoderKind.compute:
@@ -200,9 +205,13 @@ public struct MetalCommandDecoder {
             guard case var .compute(cs) = open else { return }
             let held = Self.copyingAppend ? open : nil
             open = nil
-            let c = computeCommand(rec)
-            if case .unknown = c { noteUnknown(rec.op) }
-            cs.append(c)
+            if let many = multiSlotComputeCommands(rec) {
+                cs.append(contentsOf: many)
+            } else {
+                let c = computeCommand(rec)
+                if case .unknown = c { noteUnknown(rec.op) }
+                cs.append(c)
+            }
             withExtendedLifetime(held) {}
             open = .compute(cs)
         case MetalEncoderKind.blit:
@@ -242,6 +251,38 @@ public struct MetalCommandDecoder {
         var out: [MetalHandle] = []
         for _ in 0..<count { if let h = ref(kind, try r.u32()) { out.append(h) } }
         return out
+    }
+
+    /// Heap refs of record 27: from byte 6 (unaligned), after u32 count and u16 stages.
+    func unalignedRefs(_ body: [UInt8], at start: Int, count: Int, _ kind: MetalRefKind) throws -> [MetalHandle] {
+        guard count >= 0, start + 4 * count <= body.count else {
+            throw MetalDecodeError.truncated(need: start + 4 * max(count, 0), have: body.count)
+        }
+        var out: [MetalHandle] = []
+        for i in 0..<count {
+            let o = start + 4 * i
+            let v = UInt32(body[o]) | UInt32(body[o + 1]) << 8 | UInt32(body[o + 2]) << 16 | UInt32(body[o + 3]) << 24
+            if let h = ref(kind, v) { out.append(h) }
+        }
+        return out
+    }
+
+    /// A deferred store action (records 102, 105, 120) changes the store
+    /// action of the open pass's attachment (Metal: the action given at
+    /// `endEncoding` time is the one that counts; a pass begun with
+    /// `MTLStoreActionUnknown` must set one). Nothing for a pass without a
+    /// descriptor or without that attachment.
+    static func applyStoreAction(_ p: inout MetalRenderPass, index: Int, action: UInt32) {
+        guard var d = p.descriptor else { return }
+        let a = UInt16(truncatingIfNeeded: action)
+        switch index {
+        case MetalRenderCommand.depthAttachment: d.depth?.storeAction = a
+        case MetalRenderCommand.stencilAttachment: d.stencil?.storeAction = a
+        default:
+            guard let i = d.colorAttachments.firstIndex(where: { $0.index == index }) else { return }
+            d.colorAttachments[i].attachment.storeAction = a
+        }
+        p.descriptor = d
     }
 
     // MARK: Render pass descriptor (§8.6)
@@ -293,6 +334,90 @@ public struct MetalCommandDecoder {
         return .unknown(op: rec.op, body: rec.body)
     }
 
+    /// Range forms of the binding records (`setFragmentTextures:withRange:`
+    /// and the like) and `setViewports:count:`: the single-slot record with
+    /// a count above 1 and one ref (and, for buffers, one offset) per slot,
+    /// and op 131 with a count and that many viewports. Seen in Ycode's
+    /// guest (visionos.md §10.11: wakeboardd's compositor binds its layer
+    /// textures with op 114, count 2, 16-byte body); nil when the record is
+    /// not of such a form, so the single-slot decoding applies.
+    func multiSlotRenderCommands(_ rec: MetalRecord) -> [MetalRenderCommand]? {
+        var r = ByteReader(rec.body)
+        switch rec.op {
+        case 114, 129, 112, 127:
+            guard rec.body.count >= 8, let index = try? r.int32(), let count = try? r.u32(), count > 1,
+                  rec.body.count == 8 + 4 * Int(count) else { return nil }
+            var out: [MetalRenderCommand] = []
+            for i in 0..<Int(count) {
+                guard let v = try? r.u32() else { return nil }
+                switch rec.op {
+                case 114, 129:
+                    out.append(.setTexture(stage: rec.op == 129 ? .vertex : .fragment, index: index + i, texture: ref(.resource, v)))
+                default:
+                    out.append(.setSamplerState(stage: rec.op == 127 ? .vertex : .fragment, index: index + i,
+                                                sampler: ref(.sampler, v), lodMinClamp: nil, lodMaxClamp: nil))
+                }
+            }
+            return out
+        case 110, 125:
+            // Per slot a pair: u32 ref, then its u64 offset (unaligned;
+            // VISIONOS-OBS4's probe, metal-sim-protocol.md §8.3).
+            guard let pairs = bufferPairs(rec) else { return nil }
+            return pairs.map { .setBuffer(stage: rec.op == 125 ? .vertex : .fragment, index: $0.index, buffer: $0.buffer, offset: $0.offset) }
+        case 118:
+            // `setScissorRects:count:`: u32 count, u32 0, then per rect four
+            // u64; the first rect (Ycode's pipelines have one viewport).
+            guard let count = try? r.u32(), count >= 1, rec.body.count == 8 + 32 * Int(count), (try? r.u32()) != nil,
+                  let x = try? r.int64(), let y = try? r.int64(), let w = try? r.int64(), let h = try? r.int64() else { return nil }
+            return [.setScissorRect(MetalScissorRect(x: x, y: y, width: w, height: h))]
+        case 131:
+            guard let count = try? r.u32(), count >= 1, rec.body.count == 4 + 48 * Int(count),
+                  let x = try? r.f64(), let y = try? r.f64(), let w = try? r.f64(), let h = try? r.f64(),
+                  let zn = try? r.f64(), let zf = try? r.f64() else { return nil }
+            // The first viewport (Ycode's pipelines have one).
+            return [.setViewport(MetalViewport(x: x, y: y, width: w, height: h, znear: zn, zfar: zf))]
+        default:
+            return nil
+        }
+    }
+
+    /// The buffer bindings of a range record (110, 125, 203): u32 first
+    /// index, u32 count, then per slot u32 ref and u64 offset. Nil when the
+    /// count is 1 (the single-slot decoding applies) or the body does not fit.
+    func bufferPairs(_ rec: MetalRecord) -> [(index: Int, buffer: MetalHandle?, offset: Int)]? {
+        var r = ByteReader(rec.body)
+        guard rec.body.count >= 8, let index = try? r.int32(), let count = try? r.u32(), count > 1,
+              rec.body.count == 8 + 12 * Int(count) else { return nil }
+        var out: [(index: Int, buffer: MetalHandle?, offset: Int)] = []
+        for i in 0..<Int(count) {
+            guard let b = try? r.u32(), let off = try? r.int64() else { return nil }
+            out.append((index + i, ref(.resource, b), off))
+        }
+        return out
+    }
+
+    /// Range forms of the compute binding records: 203 (buffers, pairs as
+    /// 110/125), 204 (samplers) and 206 (textures), one ref per slot.
+    func multiSlotComputeCommands(_ rec: MetalRecord) -> [MetalComputeCommand]? {
+        switch rec.op {
+        case 203:
+            return bufferPairs(rec)?.map { .setBuffer(index: $0.index, buffer: $0.buffer, offset: $0.offset) }
+        case 204, 206:
+            var r = ByteReader(rec.body)
+            guard rec.body.count >= 8, let index = try? r.int32(), let count = try? r.u32(), count > 1,
+                  rec.body.count == 8 + 4 * Int(count) else { return nil }
+            var out: [MetalComputeCommand] = []
+            for i in 0..<Int(count) {
+                guard let v = try? r.u32() else { return nil }
+                out.append(rec.op == 206 ? .setTexture(index: index + i, texture: ref(.resource, v))
+                           : .setSamplerState(index: index + i, sampler: ref(.sampler, v), lodMinClamp: nil, lodMaxClamp: nil))
+            }
+            return out
+        default:
+            return nil
+        }
+    }
+
     /// One binding slot: u32 index, u32 count (1 is the only value seen).
     func slot(_ r: inout ByteReader) throws -> Int? {
         let index = try r.int32(), count = try r.u32()
@@ -303,6 +428,16 @@ public struct MetalCommandDecoder {
     /// reported here with their record (op and body), once per op and size.
     nonisolated(unsafe) public static var anomalyLog: ((String) -> Void)?
     public static let largeDraw = 1 << 26
+
+    /// Diagnostics: op-29 records whose base-instance word has a non-zero
+    /// high half (ignored), the first 8 with their body.
+    nonisolated(unsafe) static var shortBaseInstanceHighLogged = 0
+    func noteShortBaseInstanceHigh(_ rec: MetalRecord) {
+        guard Self.shortBaseInstanceHighLogged < 8, let log = Self.anomalyLog else { return }
+        Self.shortBaseInstanceHighLogged += 1
+        log("metal: render record op 29 with bytes in the high half of its base-instance word (ignored): body "
+            + rec.body.map { String(format: "%02x", $0) }.joined())
+    }
 
     /// Reports a draw record whose size is beyond any plausible draw.
     func checked(_ rec: MetalRecord, _ command: MetalRenderCommand) -> MetalRenderCommand {
@@ -366,11 +501,20 @@ public struct MetalCommandDecoder {
                                                               indexBufferOffset: off, indexCount: n, instanceCount: i,
                                                               baseVertex: bv, baseInstance: bi)))
         case 29:
+            // The short form: every value fits in 16 bits (larger ones take
+            // op 28), the base instance too. Its last word holds the base
+            // instance in the low half; the high half is not written by the
+            // guest driver (visionOS backboardd sends 0x3FF0, 0x40A0, 0x40AE,
+            // 0x24, 0x3 there with base instance 0: stale bytes; read as one
+            // u32 they made base instances of a billion; visionos.md §9 Q24,
+            // §10.20).
             let t = try r.u16(), it = try r.u16(), ib = try r.u32()
-            let off = try r.int16(), n = try r.int16(), i = try r.int16(), bv = Int(Int16(bitPattern: try r.u16())), bi = try r.int32()
+            let off = try r.int16(), n = try r.int16(), i = try r.int16(), bv = Int(Int16(bitPattern: try r.u16()))
+            let word = try r.u32()
+            if word >> 16 != 0 { noteShortBaseInstanceHigh(rec) }
             return .drawIndexed(MetalIndexedDraw(primitiveType: UInt32(t), indexType: UInt32(it), indexBuffer: ref(.resource, ib),
                                                  indexBufferOffset: off, indexCount: n, instanceCount: i, baseVertex: bv,
-                                                 baseInstance: bi))
+                                                 baseInstance: Int(word & 0xFFFF)))
         case 16:
             let off = try r.int64(), b = try r.u32(), t = try r.u32()
             return .drawIndirect(primitiveType: t, indirectBuffer: ref(.resource, b), indirectOffset: off)
@@ -379,13 +523,42 @@ public struct MetalCommandDecoder {
             let ibOff = try r.int64(), indOff = try r.int64()
             return .drawIndexedIndirect(primitiveType: UInt32(t), indexType: UInt32(it), indexBuffer: ref(.resource, ib),
                                         indexBufferOffset: ibOff, indirectBuffer: ref(.resource, indirect), indirectOffset: indOff)
+        case 22:
+            let n = try r.int32(), after = try r.u16(), before = try r.u16()
+            return .memoryBarrierResources(try refs(&r, count: n, .resource), afterStages: after, beforeStages: before)
         case 23:
             let scope = try r.u16(), after = try r.u8(), before = try r.u8()
             return .memoryBarrier(scope: scope, afterStages: after, beforeStages: before)
+        case 24, 25:
+            // u32 fence ref, u32 MTLRenderStages (visionos.md §10.12.1).
+            let f = try r.u32(), stages = try r.u32()
+            return rec.op == 24 ? .updateFence(ref(.fence, f), stages: stages) : .waitForFence(ref(.fence, f), stages: stages)
+        case 27:
+            let n = try r.int32(), stages = try r.u16()
+            return .useHeaps(try unalignedRefs(rec.body, at: 6, count: n, .heap), stages: stages)
+        case 134:
+            let n = try r.int32()
+            return .useHeaps(try refs(&r, count: n, .heap), stages: nil)
+        case 132:
+            let offset = try r.int64(), mode = try r.u64()
+            return .setVisibilityResultMode(mode, offset: offset)
         case 101:
             return .setBlendColor(red: try r.f32(), green: try r.f32(), blue: try r.f32(), alpha: try r.f32())
         case 102:
-            return .setColorStoreAction(first: try r.u32(), second: try r.u32())
+            // u32 action, then u32 index (VISIONOS-OBS4's probe).
+            let action = try r.u32()
+            return .setStoreAction(index: try r.int32(), action: action)
+        case 103:
+            let options = try r.u64()
+            return .setStoreActionOptions(index: try r.int32(), options: options)
+        case 105, 120:
+            let action = UInt32(truncatingIfNeeded: try r.u64())
+            return .setStoreAction(index: rec.op == 105 ? MetalRenderCommand.depthAttachment : MetalRenderCommand.stencilAttachment,
+                                   action: action)
+        case 106, 121:
+            let options = try r.u64()
+            return .setStoreActionOptions(index: rec.op == 106 ? MetalRenderCommand.depthAttachment : MetalRenderCommand.stencilAttachment,
+                                          options: options)
         case 104:
             return .setDepthStencilState(ref(.depthStencil, try r.u32()))
         case 107: return .setCullMode(try r.u64())
@@ -463,8 +636,9 @@ public struct MetalCommandDecoder {
                 return .setBufferOffset(index: index, offset: try r.int64())
             case 208: return .setComputePipelineState(ref(.computePipeline, try r.u32()))
             case 209:
-                let o = try size3(&r)
-                return .setStageInRegion(origin: o, size: try size3(&r))
+                // Size first, then origin (VISIONOS-OBS4's probe, metal-sim-protocol.md §8.4).
+                let size = try size3(&r)
+                return .setStageInRegion(origin: try size3(&r), size: size)
             case 211:
                 let length = try r.int64()
                 return .setThreadgroupMemoryLength(length, index: try r.int32())
@@ -472,6 +646,11 @@ public struct MetalCommandDecoder {
                 let n = try r.int32()
                 return .memoryBarrierResources(try refs(&r, count: n, .resource))
             case 215: return .memoryBarrier(scope: try r.u32())
+            case 212: return .updateFence(ref(.fence, try r.u32()))
+            case 213: return .waitForFence(ref(.fence, try r.u32()))
+            case 134:
+                let n = try r.int32()
+                return .useHeaps(try refs(&r, count: n, .heap))
             case 135:
                 let n = try r.int32(), usage = try r.u32()
                 return .useResources(try refs(&r, count: n, .resource), usage: usage, stages: nil)
@@ -480,7 +659,7 @@ public struct MetalCommandDecoder {
                 return .useResources(try refs(&r, count: n, .resource), usage: UInt32(usage), stages: stages)
             default: return nil
             }
-        }() ?? nil
+        }()
         return c ?? .unknown(op: rec.op, body: rec.body)
     }
 
@@ -530,7 +709,7 @@ public struct MetalCommandDecoder {
                                           sliceCount: sc, levelCount: lc)
             default: return nil
             }
-        }() ?? nil
+        }()
         return c ?? .unknown(op: rec.op, body: rec.body)
     }
 

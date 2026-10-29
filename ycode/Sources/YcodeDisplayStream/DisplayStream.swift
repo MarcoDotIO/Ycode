@@ -20,6 +20,10 @@ public enum DisplayMessageType: UInt8, Sendable {
     case pong = 0x04
     case screenshot = 0x05
     case notice = 0x06
+    /// The panel shown and the fold (foldable.md "Ycode implementation").
+    case displayState = 0x07
+    /// The answer to a command (0x90): u32 token, UTF-8 text ("ok …" or "error: …").
+    case commandReply = 0x10
 
     case clientHello = 0x81
     case touch = 0x82
@@ -29,6 +33,11 @@ public enum DisplayMessageType: UInt8, Sendable {
     case keyframeRequest = 0x86
     case screenshotRequest = 0x87
     case rotate = 0x88
+    /// u16 hinge angle 0…180, u8 flags (bit 0: one message, no sweep).
+    case fold = 0x89
+    /// A device command (simulator-features.md "Ycode implementation"): u32
+    /// token, UTF-8 words of a control-socket command ("ui appearance dark").
+    case command = 0x90
 }
 
 // MARK: - Control messages (JSON)
@@ -51,10 +60,23 @@ public struct DisplayServerHello: Codable, Sendable, Equatable {
     /// The buttons the server delivers (names of `DisplayButton`).
     public var buttons: [String]
     public var rotation: Bool
+    /// The device folds (foldable.md): the server takes fold messages and
+    /// sends display states; nil or false otherwise.
+    public var foldable: Bool?
+    /// The built-in displays (names), display 1 first; nil: just one.
+    public var displays: [String]?
+    /// Ycode's device type id (`ycode-simd --device-type`, e.g. "iphone-duo")
+    /// and the runtime ("iOS 27.1"): the viewer draws the device's frame and
+    /// titles its window with them (device-hub.md "Ycode implementation").
+    /// Optional: older servers send neither.
+    public var deviceType: String?
+    public var osVersion: String?
 
     public init(deviceName: String, model: String, pixelWidth: Int, pixelHeight: Int, scale: Double,
                 orientation: String = "portrait", encodings: [String], touch: Bool, keyboard: Bool,
-                buttons: [String], rotation: Bool) {
+                buttons: [String], rotation: Bool, foldable: Bool? = nil, displays: [String]? = nil) {
+        self.foldable = foldable
+        self.displays = displays
         self.deviceName = deviceName
         self.model = model
         self.pixelWidth = pixelWidth
@@ -68,6 +90,64 @@ public struct DisplayServerHello: Codable, Sendable, Equatable {
         self.keyboard = keyboard
         self.buttons = buttons
         self.rotation = rotation
+    }
+}
+
+/// The panel the server shows and the fold (0x07; foldable.md "Ycode
+/// implementation"). Sent before the first frame and whenever it changes;
+/// the frames that follow are that panel's, starting with a full frame.
+public struct DisplayPanelState: Codable, Sendable, Equatable {
+    /// "LCD" (the cover / only display) or "LCD-1" (the inner panel).
+    public var display: String
+    /// The panel's framebuffer pixels (native portrait) and scale: frames,
+    /// touches (in its points, native orientation) and screenshots use them.
+    public var pixelWidth: Int
+    public var pixelHeight: Int
+    public var scale: Double
+    /// Degrees (0, 90, 180, 270) to turn the framebuffer image clockwise to
+    /// show it as the device is held.
+    public var rotation: Int
+    /// The hinge angle last sent, and the one a sweep is moving to (nil: none).
+    public var hingeAngle: Int
+    public var targetAngle: Int?
+    /// "closed", "halfOpen", "openFlat".
+    public var posture: String
+    /// The device orientation ("portrait", "landscape-left", …).
+    public var orientation: String
+
+    public init(display: String, pixelWidth: Int, pixelHeight: Int, scale: Double, rotation: Int, hingeAngle: Int,
+                targetAngle: Int?, posture: String, orientation: String) {
+        self.display = display
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
+        self.scale = scale
+        self.rotation = rotation
+        self.hingeAngle = hingeAngle
+        self.targetAngle = targetAngle
+        self.posture = posture
+        self.orientation = orientation
+    }
+
+    public var pointWidth: Double { Double(pixelWidth) / scale }
+    public var pointHeight: Double { Double(pixelHeight) / scale }
+
+    /// The rotation, 0, 90, 180 or 270.
+    public var quarterTurns: Int { (((rotation % 360) + 360) % 360) / 90 }
+
+    /// The panel's size in points as shown (turned by `rotation`).
+    public var shownPointSize: (width: Double, height: Double) {
+        quarterTurns % 2 == 1 ? (pointHeight, pointWidth) : (pointWidth, pointHeight)
+    }
+
+    /// A point of the shown (turned) picture → the panel's own points
+    /// (native orientation, origin top-left), the touch space (§5.1).
+    public func nativePoint(shownX x: Double, shownY y: Double) -> (x: Double, y: Double) {
+        switch quarterTurns {
+        case 1: (y, pointHeight - x)
+        case 2: (pointWidth - x, pointHeight - y)
+        case 3: (pointWidth - y, x)
+        default: (x, y)
+        }
     }
 }
 
@@ -222,6 +302,8 @@ public enum DisplayMessage: Sendable, Equatable {
     case pong(token: UInt64, serverNanoseconds: UInt64)
     case screenshot(token: UInt32, png: [UInt8])
     case notice(String)
+    case displayState(DisplayPanelState)
+    case commandReply(token: UInt32, text: String)
 
     case clientHello(DisplayClientHello)
     case input(DisplayInput)
@@ -230,6 +312,10 @@ public enum DisplayMessage: Sendable, Equatable {
     case screenshotRequest(token: UInt32)
     /// 1 portrait, 2 upside down, 3 landscape left, 4 landscape right.
     case rotate(orientation: UInt8)
+    /// Move the hinge to `angle` degrees (a sweep; one message when `instant`).
+    case fold(angle: UInt16, instant: Bool)
+    /// A control-socket command for the device; answered by `commandReply`.
+    case command(token: UInt32, text: String)
 }
 
 public enum DisplayStreamError: Error, Equatable {
@@ -290,6 +376,9 @@ extension DisplayMessage {
         case .pong: .pong
         case .screenshot: .screenshot
         case .notice: .notice
+        case .displayState: .displayState
+        case .commandReply: .commandReply
+        case .command: .command
         case .clientHello: .clientHello
         case .input(.touch): .touch
         case .input(.key): .key
@@ -298,6 +387,7 @@ extension DisplayMessage {
         case .keyframeRequest: .keyframeRequest
         case .screenshotRequest: .screenshotRequest
         case .rotate: .rotate
+        case .fold: .fold
         }
     }
 
@@ -312,6 +402,7 @@ extension DisplayMessage {
         switch self {
         case .hello(let h): json(h)
         case .status(let s): json(s)
+        case .displayState(let d): json(d)
         case .clientHello(let h): json(h)
         case .frame(let f):
             w.u64(f.sequence)
@@ -362,6 +453,12 @@ extension DisplayMessage {
         case .keyframeRequest: break
         case .screenshotRequest(let token): w.u32(token)
         case .rotate(let o): w.u8(o)
+        case .fold(let angle, let instant):
+            w.u16(angle)
+            w.u8(instant ? 1 : 0)
+        case .command(let token, let text), .commandReply(let token, let text):
+            w.u32(token)
+            w.bytes += Array(text.utf8)
         }
         var out = ByteWriter()
         out.u32(UInt32(w.bytes.count + 1))
@@ -380,6 +477,7 @@ extension DisplayMessage {
         switch type {
         case .hello: return .hello(try json(DisplayServerHello.self))
         case .status: return .status(try json(DisplayStatus.self))
+        case .displayState: return .displayState(try json(DisplayPanelState.self))
         case .clientHello: return .clientHello(try json(DisplayClientHello.self))
         case .frame:
             let seq = try r.u64("frame"), guest = try r.u64("frame"), ns = try r.u64("frame"), input = try r.u32("frame")
@@ -427,6 +525,15 @@ extension DisplayMessage {
         case .keyframeRequest: return .keyframeRequest
         case .screenshotRequest: return .screenshotRequest(token: try r.u32("screenshot request"))
         case .rotate: return .rotate(orientation: try r.u8("rotate"))
+        case .fold:
+            let angle = try r.u16("fold")
+            return .fold(angle: angle, instant: try r.u8("fold") & 1 != 0)
+        case .command:
+            let token = try r.u32("command")
+            return .command(token: token, text: String(decoding: r.rest(), as: UTF8.self))
+        case .commandReply:
+            let token = try r.u32("command reply")
+            return .commandReply(token: token, text: String(decoding: r.rest(), as: UTF8.self))
         }
     }
 }

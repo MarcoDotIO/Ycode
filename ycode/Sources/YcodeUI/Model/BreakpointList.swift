@@ -212,8 +212,11 @@ public struct BreakpointExtras: Codable, Equatable, Sendable {
 /// whenever the breakpoint set changes (`reference-ui-5.md` §10.1).
 @MainActor
 public final class BreakpointPersistence {
+    /// The `Breakpoints_v2.xcbkptlist` file this workspace's breakpoints use.
     public let fileURL: URL
+    /// Ycode's `ycode-breakpoints.json` beside it (see `BreakpointList.extrasURL`).
     public let extrasURL: URL
+    /// The folder breakpoint file paths are relative to.
     public let base: URL
     private var list: BreakpointList
     /// "file:line:column" → the proxy uuid in the file.
@@ -224,6 +227,8 @@ public final class BreakpointPersistence {
         SourceSymbolLocator.symbol(file: file, line: line)?.name
     }
 
+    /// Locates the files for `container` (a project, workspace or package
+    /// folder) and reads them; missing or unreadable files give no breakpoints.
     public init(container: URL, isPackage: Bool, user: String = NSUserName()) {
         fileURL = BreakpointList.fileURL(container: container, isPackage: isPackage, user: user)
         extrasURL = BreakpointList.extrasURL(container: container, isPackage: isPackage, user: user)

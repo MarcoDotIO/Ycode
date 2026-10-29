@@ -39,6 +39,14 @@ final class IOSurfacePortResolver: IOSurfaceResolver {
     let service: IOSurfaceHostService
     init(service: IOSurfaceHostService) { self.service = service }
 
+    func makeSharedTextureSurface(allocationSize: Int, name: String, properties: [(key: String, value: UInt64)]) -> UInt32? {
+        service.makeSharedTextureSurface(allocationSize: UInt32(clamping: allocationSize), name: name, properties: properties)
+    }
+
+    func surfaceDescription(forSurfacePort port: UInt32) -> MetalSurfaceDescription? {
+        service.creationNumbers(forPort: port).map { MetalSurfaceDescription(id: $0.id, numbers: $0.numbers) }
+    }
+
     func backing(forSurfacePort port: UInt32, plane: Int) -> IOSurfaceBacking? {
         guard let s = service.surface(forPort: port) else { return nil }
         let object = s.memory

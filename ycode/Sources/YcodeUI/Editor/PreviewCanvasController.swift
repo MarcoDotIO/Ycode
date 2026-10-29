@@ -44,8 +44,10 @@ public final class PreviewCanvasController: NSViewController {
     let zoomPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     let fitButton = NSButton(image: NSImage(systemSymbolName: "camera", accessibilityDescription: "Capture") ?? NSImage(), target: nil, action: nil)
     let deviceButton = NSButton(image: NSImage(systemSymbolName: "rectangle.portrait", accessibilityDescription: "Device") ?? NSImage(), target: nil, action: nil)
-    /// The device menu's content and choice.
-    public var devices = PreviewDeviceMenuModel()
+    /// The device menu's content and choice; the bottom-left pop-up shows
+    /// the choice ("Automatic – <device>", reference-ui-6.md §4.4).
+    public var devices = PreviewDeviceMenuModel() { didSet { if isViewLoaded { updateDevicePopUp() } } }
+    let devicePopUp = NSPopUpButton(frame: .zero, pullsDown: true)
     /// Canvas settings switches.
     public private(set) var settings = PreviewCanvasSettings()
     let settingsButton = NSButton(image: NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Canvas Settings") ?? NSImage(), target: nil, action: nil)
@@ -83,7 +85,12 @@ public final class PreviewCanvasController: NSViewController {
             b.action = sel
             b.toolTip = tip
         }
-        let left = NSStackView(views: modeButtons)
+        devicePopUp.isBordered = false
+        devicePopUp.controlSize = .small
+        devicePopUp.font = .systemFont(ofSize: 11)
+        devicePopUp.setAccessibilityLabel("Preview Device")
+        updateDevicePopUp()
+        let left = NSStackView(views: [devicePopUp] + modeButtons)
         left.spacing = 4
         let right = NSStackView(views: [fitButton, deviceButton, settingsButton])
         right.spacing = 6
@@ -220,6 +227,16 @@ public final class PreviewCanvasController: NSViewController {
     @objc private func deviceItem(_ i: NSMenuItem) { chooseDevice(i.title.hasPrefix("Automatic") ? nil : i.title) }
     public func chooseDevice(_ d: String?) { devices.chosen = d }
 
+    /// The bottom-left device pop-up's title: the chosen device, else
+    /// "Automatic – <device>".
+    public var devicePopUpTitle: String { devicePopUp.itemArray.first?.title ?? "" }
+
+    func updateDevicePopUp() {
+        let menu = deviceMenu()
+        menu.insertItem(NSMenuItem(title: devices.chosen ?? devices.rows.first ?? "", action: nil, keyEquivalent: ""), at: 0)
+        devicePopUp.menu = menu
+    }
+
     /// Canvas settings (§17 item 4): a popover of switches, all off.
     public func setSetting(_ name: String, _ on: Bool) {
         if on { settings.on.insert(name) } else { settings.on.remove(name) }
@@ -284,7 +301,7 @@ public final class PreviewCanvasController: NSViewController {
         let content: NSView
         if isPaused && !names.isEmpty {
             statusLabel.stringValue = ""
-            content = centered(pausedCapsule)
+            content = topCentered(pausedCapsule)
         } else { switch state {
         case .empty(let message):
             statusLabel.stringValue = message
@@ -425,6 +442,18 @@ public final class PreviewCanvasController: NSViewController {
         return scroll
     }
 
+    /// The status pill sits at the top centre of the canvas (§4.4).
+    private func topCentered(_ v: NSView) -> NSView {
+        let box = NSView()
+        v.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(v)
+        NSLayoutConstraint.activate([
+            v.centerXAnchor.constraint(equalTo: box.centerXAnchor), v.topAnchor.constraint(equalTo: box.topAnchor, constant: 12),
+            v.widthAnchor.constraint(lessThanOrEqualTo: box.widthAnchor, constant: -24),
+        ])
+        return box
+    }
+
     private func centered(_ v: NSView) -> NSView {
         let box = NSView()
         v.translatesAutoresizingMaskIntoConstraints = false
@@ -462,4 +491,53 @@ public final class PreviewCanvasController: NSViewController {
 
 final class PreviewCard: NSStackView {
     var index = 0
+}
+
+/// Canvas mode (`reference-ui-6.md` §4.4, E7 / E10). It is on in every new
+/// editor (window); while it is on, the canvas area is drawn for a file
+/// that declares previews and left out for one that does not (the Canvas
+/// segment and Editor ▸ Canvas still show the mode as on). Turning it off,
+/// or turning on Assistant or Code Review, is remembered until the user
+/// turns it on again.
+@MainActor final class CanvasAutoState {
+    var modeOn = true
+}
+
+extension WorkspaceWindowController {
+    /// Canvas mode is on (Editor ▸ Canvas checked, the Canvas segment
+    /// selected), whether or not a canvas is drawn.
+    public var isCanvasModeOn: Bool { canvasAuto.modeOn }
+
+    /// Turns canvas mode on (the other editor modes off) or off. On, the
+    /// canvas is drawn if the focused file has previews.
+    public func setCanvasMode(_ on: Bool) {
+        defer { updateToolbarState() }
+        guard on else {
+            canvasAuto.modeOn = false
+            setCanvasShown(false)
+            return
+        }
+        endEditorModes(except: .canvas)   // reference-ui-5.md §4.2
+        canvasAuto.modeOn = true
+        updateCanvasForOpenedFile()
+    }
+
+    /// After the focused editor opened a file (or canvas mode came on):
+    /// in canvas mode, draws the canvas for a file with previews and
+    /// removes it for one without; otherwise lists the file's previews in
+    /// the shown canvas.
+    func updateCanvasForOpenedFile() {
+        guard editor !== editorArea.tab.assistant else { return }
+        let has = editor.fileURL.map { CanvasAutoShow.hasPreviews(fileName: $0.lastPathComponent, text: editor.text) } ?? false
+        let other = editorArea.tab.assistant != nil || editor.isShowingComparison || editor.isShowingInlineComparison
+        switch CanvasAutoShow.decide(hasPreviews: has, canvasShown: canvas != nil, canvasMode: canvasAuto.modeOn && !other) {
+        case .show: setCanvasShown(true)
+        case .hide: setCanvasShown(false)
+        case .keep: if canvas != nil { refreshPreviews() }
+        }
+    }
+
+    /// A canvas is drawn; in canvas mode it comes and goes with the
+    /// focused file's previews (tests).
+    public var canvasShownAutomatically: Bool { canvas != nil && canvasAuto.modeOn }
 }

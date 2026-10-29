@@ -63,12 +63,34 @@ Twelve fields separated by `;`. Examples seen on the Mac:
 - **Issue (5):** a token in the form of §3. Field 1 is a Ycode digest of
   fields 2–12. Field 12 is the guest `realpath` of the path, or the path as
   given if it cannot be resolved. Fields 8–10 come from `stat` (`00`, 0, 0
-  when it fails). Returns 0. A missing class, path or buffer is EINVAL.
+  when it fails). Returns 0. A missing class or buffer is EINVAL, and so is
+  a missing path when word 1 is 0 (a file extension).
+- **Issue of another kind (5, word 1 nonzero, word 2 null):** `tccd` issues
+  one when it allows `kTCCServiceCamera` (word 1 = 3, class
+  `com.apple.tcc.kTCCServiceCamera`, no path; §5). Ycode answers with a
+  token in the same form whose fields 8–10 are `00`, 0, 0 and whose field
+  12 is empty, and returns 0.
 - **Consume (6):** a token with at least 12 fields whose first field is 64
   hex digits is accepted: handle 0 is written to the word-2 location and
   0 is returned. Anything else is EINVAL.
 - **Release (7):** returns 0.
 - Other Sandbox ops except 2 still get ENOPOLICY.
+
+## 5. `tccd`'s extensions (CAMERA-GUEST, 2026-10-28)
+
+Ycode runs on the Thor with a kernel trace of `tccd` (`--trace-name tccd`)
+and a guest `log stream --process tccd` while an app asked for camera
+access with a granted record (`camera.md` §9.7):
+
+- For `kTCCServiceAddressBook` and `kTCCServicePhotos` (asked by system
+  daemons), `tccd` issues with word 1 = 0, word 2 pointing at the path
+  `/`, a generic file extension that Ycode already answered.
+- For `kTCCServiceCamera` it issues with word 1 = 3 and word 2 = 0.
+  Answered with EINVAL, `tccd` logged "Failed to issue Sandbox Extension
+  for kTCCServiceCamera", put that text in the reply's `auth_error_string`
+  although the record allowed access (`authValue=2`), and the app saw
+  `AVAuthorizationStatusDenied`. With the answer of §4 the app sees
+  "authorized".
 
 ## Evidence
 
@@ -78,6 +100,7 @@ Twelve fields separated by `;`. Examples seen on the Mac:
 | Op numbers and argument words (§2) | 3 | Ycode kernel trace of `sbext` run with `ycode-simd --exec` on the Thor: the `__mac_syscall` lines with argument words and the strings they point to |
 | Output buffer in word 4 and handle location in word 2 (§2) | 3 | Experiments on our own runs: answering op 5 by writing a token into the word-4 buffer made the library return that token, and consume then passed it in word 0 with its length in word 1; answering op 6 by writing 7 to the word-2 location made `sandbox_extension_consume` return 7, and release then passed 7 in word 0 |
 | installd needs the issue to succeed (introduction) | 3 | Ycode install run: IXErrorDomain 2, with the underlying error "Failed to create sandbox extension for path …/PromiseStaging", NSPOSIXErrorDomain 103 |
+| `tccd`'s camera extension and its effect (§5) | 3 | Ycode runs on the Thor: kernel trace of `tccd`'s `__mac_syscall` argument words; guest `log stream --process tccd` (CAMERA-GUEST, 2026-10-28) |
 | Ycode's answer (§4) | — | Ycode decision, shaped by the rows above |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/`, and Ghidra

@@ -34,6 +34,22 @@ import YcodeDarwinABI
         #expect(env.read(k, at + 0x380, 8) == le64(0))
         env.putString(k, "not-a-token", at: at + 0x400)
         #expect(env.bsd(k, 381, [at, 6, at + 0x340]) == -22)
+        // An issue of another kind with no path (tccd's camera extension:
+        // kind 3, path 0): a token with the class and an empty path.
+        env.putString(k, "com.apple.tcc.kTCCServiceCamera", at: at + 0x20)
+        arg = []
+        for w in [at + 0x20, 3, 0, 0, at + 0x400] { arg.appendLE(UInt64(w)) }
+        env.put(k, arg, at: at + 0x300)
+        #expect(env.bsd(k, 381, [at, 5, at + 0x300]) == 0)
+        let other = String(decoding: env.read(k, at + 0x400, 1024).prefix { $0 != 0 }, as: UTF8.self)
+        let otherFields = other.split(separator: ";", omittingEmptySubsequences: false)
+        #expect(otherFields.count == 12 && otherFields[6] == "com.apple.tcc.kTCCServiceCamera" && otherFields[7] == "00")
+        #expect(otherFields[11].isEmpty && DarwinKernel.isWellFormedSandboxToken(other))
+        // A file issue (kind 0) still needs its path.
+        arg = []
+        for w in [at + 0x20, 0, 0, 0, at + 0x400] { arg.appendLE(UInt64(w)) }
+        env.put(k, arg, at: at + 0x300)
+        #expect(env.bsd(k, 381, [at, 5, at + 0x300]) == -22)
         // release: always 0. Other Sandbox calls: no policy.
         env.put(k, le64(999_999), at: at + 0x340)
         #expect(env.bsd(k, 381, [at, 7, at + 0x340]) == 0)
@@ -89,11 +105,12 @@ import YcodeDarwinABI
         }
         #expect(found == ["a": 1, "sub": 2])
         #expect(env.bsd(k, 461, [fd, at + 0x100, at + 0x1000, 0x2000, 0]) == 0)  // the end
-        // ATTR_CMN_ERROR comes first after the returned set (0), then NAME.
+        // With FSOPT_PACK_INVAL_ATTRS, ATTR_CMN_ERROR comes first after the
+        // returned set (0), then NAME (AttributeListBulkTests has the rules).
         let sub = UInt64(env.bsd(k, 5, [at, 0x100000, 0]))
         alist.putLE(UInt32(0x8000_0000 | 0x2000_0000 | 0x1 | 0x8), at: 4)
         env.put(k, alist, at: at + 0x100)
-        #expect(env.bsd(k, 461, [sub, at + 0x100, at + 0x1000, 0x2000, 0]) == 2)
+        #expect(env.bsd(k, 461, [sub, at + 0x100, at + 0x1000, 0x2000, 0x8]) == 2)
         let b2 = env.read(k, at + 0x1000, 64)
         #expect(b2.readLE(UInt32.self, at: 24) == 0 && b2.readLE(Int32.self, at: 28) > 0)
         alist.putLE(UInt32(0x1), at: 4)                                           // no RETURNED_ATTRS

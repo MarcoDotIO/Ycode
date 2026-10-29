@@ -570,7 +570,12 @@ vCPUs an image has (Ycode gives every guest thread its own vCPU). With N:
   `hw.logicalcpu_max`, `hw.physicalcpu`, `hw.physicalcpu_max` = N;
   `hw.nperflevels` = 1 and `hw.perflevel0.logicalcpu`,
   `hw.perflevel0.logicalcpu_max`, `hw.perflevel0.physicalcpu`,
-  `hw.perflevel0.physicalcpu_max` = N;
+  `hw.perflevel0.physicalcpu_max` = N; all of these are 4-byte integers
+  and are written as 4 bytes, with length 4, also to an 8-byte buffer
+  (visionos.md §10.10.1: RealityKit's render manager asks
+  `hw.physicalcpu` with an 8-byte buffer, and an 8-byte answer
+  overwrites two of its flags; Ycode does so since VISIONOS-R3, with the
+  other width rules in `stage3-contract.md` §8);
 - workqueue: the constrained parallelism per QoS, the cooperative pool
   width (`threads-and-events.md` §2.5) and the `QOS_MAX_PARALLELISM` answer
   (`bsdthread_ctl` 0x800) = N;
@@ -678,6 +683,13 @@ correct with either timebase.
 - `EXC_SYSCALL` for invalid Mach traps (until signals exist, treat it as a
   fatal guest error, not a return of 1);
 - the platform call sub-selectors in x3.
+
+**A reused VM** (`boot-profile.md` §9, SP1: Ycode may run a new image in
+the KVM VM of an image that ended): the new image sees exactly the state of
+§1–§3. Its RAM and anonymous memory read as zeros, every vCPU is reset to
+its initial state, its file mappings show the file's current bytes, and no
+translation of the old image survives (TLB invalidated on every PE at the
+first vCPU's boot). Nothing of the old process is visible to it.
 
 ---
 

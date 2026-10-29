@@ -95,6 +95,8 @@ extension PlistValue {
 }
 
 extension PlistDictionary {
+    /// The same dictionary with its keys sorted, recursively. Two
+    /// dictionaries with equal canonical forms differ only in key order.
     public var canonicalized: PlistDictionary {
         PlistDictionary(keys.sorted().map { ($0, self[$0]!.canonicalized) })
     }

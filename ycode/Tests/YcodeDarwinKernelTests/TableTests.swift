@@ -53,13 +53,26 @@ import YcodeDarwinABI
         (_, f) = env.svc(0x7963_0009, [name, old, lenp, 0, 0])
         #expect(f.carry && f.x[0] == 12)
 
-        for (n, expected) in [("hw.ncpu", UInt64(GuestCPUs.count)), ("hw.activecpu", UInt64(GuestCPUs.count)), ("hw.optional.arm.caps", 0)] {
+        for (n, expected) in [("hw.ncpu", UInt64(GuestCPUs.count)), ("hw.activecpu", UInt64(GuestCPUs.count))] {
             try env.putString(n, at: name)
             try env.put(leBytes(0xAAAA_AAAA_AAAA_AAAA), at: old)
             try env.put(leBytes(8), at: lenp)
             (_, f) = env.svc(0x7963_0009, [name, old, lenp, 0, 0])
-            #expect(try !f.carry && env.u64(old) == expected, "\(n)")
+            // 4-byte integers stay 4 bytes in an 8-byte buffer (visionos.md §10.10.1).
+            #expect(try !f.carry && env.u64(old) == 0xAAAA_AAAA_0000_0000 | expected && env.u64(lenp) == 4, "\(n)")
         }
+        // hw.optional.arm.caps: 13 bytes (cpu-features.md §2.3; all 0
+        // without an installed CPU profile); an 8-byte buffer gets the first
+        // 8 and ENOMEM.
+        try env.putString("hw.optional.arm.caps", at: name)
+        try env.put([UInt8](repeating: 0xAA, count: 16), at: old)
+        try env.put(leBytes(16), at: lenp)
+        (_, f) = env.svc(0x7963_0009, [name, old, lenp, 0, 0])
+        #expect(try !f.carry && env.u64(lenp) == 13 && env.space.read(va: old, count: 14) == [UInt8](repeating: 0, count: 13) + [0xAA])
+        try env.put([UInt8](repeating: 0xAA, count: 16), at: old)
+        try env.put(leBytes(8), at: lenp)
+        (_, f) = env.svc(0x7963_0009, [name, old, lenp, 0, 0])
+        #expect(try f.carry && f.x[0] == 12 && env.space.read(va: old, count: 9) == [UInt8](repeating: 0, count: 8) + [0xAA])
         for n in ["kern.grade_cputype", "kern.nonexistent"] {
             try env.putString(n, at: name)
             (_, f) = env.svc(0x7963_0009, [name, old, lenp, 0, 0])
@@ -70,6 +83,90 @@ import YcodeDarwinABI
         try env.put(leBytes(4), at: lenp)
         (_, f) = env.svc(274, [name, 7, old, lenp, 0, 0])
         #expect(try !f.carry && env.u32(old) == UInt32(GuestCPUs.count))
+    }
+
+    /// visionos.md §10.10.1: integers at their natural width whatever the
+    /// buffer size; buffers prefilled with 0xAA.
+    @Test func naturalWidths() throws {
+        let env = try Env()
+        let name = Env.scratch, old = Env.scratch + 0x100, lenp = Env.scratch + 0x200
+        struct Outcome: Equatable { var errno: UInt64?; var length: UInt64; var bytes: [UInt8] }
+        func read(_ n: String, buffer: UInt64) throws -> Outcome {
+            try env.putString(n, at: name)
+            try env.put([UInt8](repeating: 0xAA, count: 16), at: old)
+            try env.put(leBytes(buffer), at: lenp)
+            let (_, f) = env.svc(0x7963_0009, [name, old, lenp, 0, 0])
+            return Outcome(errno: f.carry ? f.x[0] : nil, length: try env.u64(lenp), bytes: try env.space.read(va: old, count: 16))
+        }
+        func le(_ v: UInt64, _ width: Int) -> [UInt8] { (0..<width).map { UInt8(truncatingIfNeeded: v >> (8 * $0)) } }
+        let aa = { (k: Int) in [UInt8](repeating: 0xAA, count: k) }
+        let cpus = UInt64(GuestCPUs.count)
+        // 4-byte integers: 4 bytes and length 4 into 4, 8 and 16 bytes; ENOMEM,
+        // nothing written and length 0 for 2 bytes; size query 4.
+        for n in ["hw.ncpu", "hw.activecpu", "hw.logicalcpu", "hw.logicalcpu_max", "hw.physicalcpu", "hw.physicalcpu_max",
+                  "hw.perflevel0.physicalcpu", "hw.nperflevels", "hw.byteorder", "kern.maxproc", "vm.pagesize", "hw.physmem"] {
+            for buffer: UInt64 in [4, 8, 16] {
+                let o = try read(n, buffer: buffer)
+                #expect(o.errno == nil && o.length == 4 && Array(o.bytes[4...]) == aa(12), "\(n) \(buffer)")
+            }
+            #expect(try read(n, buffer: 2) == Outcome(errno: 12, length: 0, bytes: aa(16)), "\(n)")
+            try env.putString(n, at: name)
+            let (_, f) = env.svc(0x7963_0009, [name, 0, lenp, 0, 0])
+            #expect(try !f.carry && env.u64(lenp) == 4, "\(n)")
+        }
+        #expect(try read("hw.physicalcpu", buffer: 8).bytes == le(cpus, 4) + aa(12))
+        // 8-byte values narrowed for an exactly 4-byte buffer when they fit.
+        #expect(try read("hw.pagesize", buffer: 8) == Outcome(errno: nil, length: 8, bytes: le(16384, 8) + aa(8)))
+        #expect(try read("hw.pagesize", buffer: 16) == Outcome(errno: nil, length: 8, bytes: le(16384, 8) + aa(8)))
+        #expect(try read("hw.pagesize", buffer: 4) == Outcome(errno: nil, length: 4, bytes: le(16384, 4) + aa(12)))
+        #expect(try read("hw.pagesize", buffer: 2) == Outcome(errno: 12, length: 0, bytes: aa(16)))
+        #expect(try read("hw.pagesize", buffer: 6) == Outcome(errno: 12, length: 0, bytes: aa(16)))
+        // A value that does not fit an int: ERANGE, nothing written, length unchanged.
+        #expect(try read("kern.usrstack64", buffer: 4) == Outcome(errno: 34, length: 4, bytes: aa(16)))
+        #expect(try read("kern.usrstack64", buffer: 8).length == 8)
+        // Never narrowed: ENOMEM for 4 bytes.
+        for n in ["hw.cachelinesize", "hw.l2cachesize"] {
+            #expect(try read(n, buffer: 4) == Outcome(errno: 12, length: 0, bytes: aa(16)), "\(n)")
+            let o = try read(n, buffer: 16)
+            #expect(o.errno == nil && o.length == 8 && Array(o.bytes[8...]) == aa(8), "\(n)")
+        }
+    }
+
+    /// HW_PAGESIZE by number is a 4-byte integer; the name `hw.pagesize`
+    /// translates to another MIB that answers 8 bytes (visionos.md §10.10.1).
+    @Test func pagesizeByNumberAndByName() throws {
+        let env = try Env()
+        let mib = Env.scratch, old = Env.scratch + 0x100, lenp = Env.scratch + 0x200, name = Env.scratch + 0x300
+        func putMIB(_ v: [Int32]) throws {
+            try env.put(v.flatMap { x in (0..<4).map { UInt8(truncatingIfNeeded: x >> (8 * $0)) } }, at: mib)
+        }
+        try putMIB([6, 7])
+        try env.put([UInt8](repeating: 0xAA, count: 8), at: old)
+        try env.put(leBytes(8), at: lenp)
+        var (_, f) = env.svc(202, [mib, 2, old, lenp, 0, 0])
+        #expect(try !f.carry && env.u64(lenp) == 4 && env.u64(old) == 0xAAAA_AAAA_0000_4000)
+        try putMIB([6, 3])
+        try env.put([UInt8](repeating: 0xAA, count: 8), at: old)
+        try env.put(leBytes(8), at: lenp)
+        (_, f) = env.svc(202, [mib, 2, old, lenp, 0, 0])
+        #expect(try !f.carry && env.u64(lenp) == 4 && env.u64(old) == 0xAAAA_AAAA_0000_0000 | UInt64(GuestCPUs.count))
+        try putMIB([6, 24])
+        try env.put(leBytes(8), at: lenp)
+        (_, f) = env.svc(202, [mib, 2, old, lenp, 0, 0])
+        #expect(try !f.carry && env.u64(lenp) == 8 && env.u64(old) == Stage3Layout.memorySize)
+        // name2oid of "hw.pagesize", then a read by that OID: 8 bytes.
+        try putMIB([0, 3])
+        try env.putString("hw.pagesize", at: name)
+        try env.put(leBytes(48), at: lenp)
+        (_, f) = env.svc(202, [mib, 2, old, lenp, name, 11])
+        #expect(try !f.carry && env.u64(lenp) == 8)
+        let oid = try env.space.read(va: old, count: 8)
+        #expect(oid != [6, 0, 0, 0, 7, 0, 0, 0])
+        try env.put(oid, at: mib)
+        try env.put([UInt8](repeating: 0xAA, count: 8), at: old)
+        try env.put(leBytes(8), at: lenp)
+        (_, f) = env.svc(202, [mib, 2, old, lenp, 0, 0])
+        #expect(try !f.carry && env.u64(lenp) == 8 && env.u64(old) == 16384)
     }
 
     @Test func mibForm() throws {

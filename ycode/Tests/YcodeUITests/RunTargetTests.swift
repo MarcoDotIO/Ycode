@@ -68,16 +68,28 @@ func writeInfoPlist(_ app: URL, id: String, exe: String) throws {
 
         // Command construction.
         let cmd = remote.runCommand(app: app, bundleID: "dev.ycode.remote")
-        // Warm boot and Lean boot are on by default: the env prefix; Lean boot off: no lean variables.
-        #expect(cmd.hasPrefix("echo YCODE-REMOTE-PID $$; exec env YCODE_WARM_BOOT=1 YCODE_LEAN_BOOT=daemons '\(fakeSimd.path)'"))
-        var full = settings
-        full.leanBoot = false
-        #expect(!RemoteSimulator(settings: full).runCommand(app: app, bundleID: "dev.ycode.remote").contains("YCODE_LEAN_BOOT"))
-        var keep = settings
+        // Warm boot is on and Lean boot off by default: a full boot, no lean variables.
+        let full = settings
+        #expect(!full.leanBoot)
+        #expect(cmd.hasPrefix("echo YCODE-REMOTE-PID $$; exec env YCODE_WARM_BOOT=1 '\(fakeSimd.path)'"))
+        #expect(!cmd.contains("YCODE_LEAN_BOOT"))
+        // Lean boot on (a development option): the lean variables.
+        var lean = settings
+        lean.leanBoot = true
+        #expect(RemoteSimulator(settings: lean).runCommand(app: app, bundleID: "dev.ycode.remote")
+            .hasPrefix("echo YCODE-REMOTE-PID $$; exec env YCODE_WARM_BOOT=1 YCODE_LEAN_BOOT=daemons '\(fakeSimd.path)'"))
+        var keep = lean
         keep.keepServices = "com.a.one, com.b.two"
         #expect(RemoteSimulator(settings: keep).runCommand(app: app, bundleID: "dev.ycode.remote")
             .contains("exec env YCODE_WARM_BOOT=1 YCODE_LEAN_BOOT=daemons YCODE_LEAN_BOOT_KEEP='com.a.one,com.b.two' '\(fakeSimd.path)'"))
-        #expect(RemoteSimulator(settings: full).runCommand(app: app, bundleID: "dev.ycode.remote") == "echo YCODE-REMOTE-PID $$; exec env YCODE_WARM_BOOT=1 '\(fakeSimd.path)' --device '\(data.path)/devices/dev1' --runtime-root '/rr/iOS 27.1' --install-app '\(data.path)/apps/Remote.app' --launch 'dev.ycode.remote'")
+        // Keep services alone does not turn Lean boot on.
+        var keepOnly = settings
+        keepOnly.keepServices = "com.a.one"
+        #expect(!RemoteSimulator(settings: keepOnly).runCommand(app: app, bundleID: "dev.ycode.remote").contains("YCODE_LEAN_BOOT"))
+        #expect(RemoteSimulator(settings: full).runCommand(app: app, bundleID: "dev.ycode.remote") == "echo YCODE-REMOTE-PID $$; exec env YCODE_WARM_BOOT=1 '\(fakeSimd.path)' --device '\(data.path)/devices/dev1' --runtime-root '/rr/iOS 27.1' --install-app '\(data.path)/apps/Remote.app' --launch 'dev.ycode.remote' --environment-overrides '--display-server' 'unix:\(data.path)/display/dev1.sock'")
+        // Device Hub's live screen: every run serves its display on a socket per device.
+        #expect(remote.displaySocketPath == "\(data.path)/display/dev1.sock")
+        #expect(remote.mkdirCommand(app) == "mkdir -p '\(data.path)/apps' '\(data.path)/display'")
         // Warm boot off: every run boots cold.
         var cold = full
         cold.warmBoot = false
@@ -89,11 +101,11 @@ func writeInfoPlist(_ app: URL, id: String, exe: String) throws {
         var extra = settings
         extra.additionalArguments = "--timeout-ms 600000 --host-libs '/a b' --shim=\"x y\""
         #expect(RemoteSimulator.words(extra.additionalArguments) == ["--timeout-ms", "600000", "--host-libs", "/a b", "--shim=x y"])
-        #expect(RemoteSimulator(settings: extra).runCommand(app: app, bundleID: "dev.ycode.remote").hasSuffix("--launch 'dev.ycode.remote' '--timeout-ms' '600000' '--host-libs' '/a b' '--shim=x y'"))
+        #expect(RemoteSimulator(settings: extra).runCommand(app: app, bundleID: "dev.ycode.remote").hasSuffix("--launch 'dev.ycode.remote' --environment-overrides '--display-server' 'unix:\(data.path)/display/dev1.sock' '--timeout-ms' '600000' '--host-libs' '/a b' '--shim=x y'"))
         var ph = RemoteSimulator.Phase.booting
         for l in ["install ok", "open: no completion within 60 s", "open: no completion within 60 s", "launched a.b pid 3"] {
             ph = RemoteSimulator.phase(after: l, current: ph)
-            if l.contains("within") { #expect(RemoteSimulator.status(ph, app: "A").hasPrefix("Launching A… (2 of 3) — retry")) }
+            if l.contains("within") { #expect(RemoteSimulator.status(ph, app: "A") == "Launching A") }
         }
         #expect(ph == .running)
 
@@ -104,9 +116,9 @@ func writeInfoPlist(_ app: URL, id: String, exe: String) throws {
         #expect(await waitUntil(20) { session.console.contains("launch dev.ycode.remote: ok") && session.simulatorRun?.remotePID != nil })
         #expect(await waitUntil(20) { session.console.contains("hello from the remote app") })
         #expect(session.consoleText(.target).contains("hello from the remote app") && !session.consoleText(.target).contains("no completion"))
-        #expect(session.activity == .running("Running Remote on Ycode Simulator (3 of 3)"))
+        #expect(session.activity == .running("Running Remote on \(remote.destination.name)"))
         #expect(session.consoleText(.debugger).contains("simd args: --device \(data.path)/devices/dev1 --runtime-root /rr/iOS 27.1 --install-app \(data.path)/apps/Remote.app --launch dev.ycode.remote"))
-        #expect(session.console.contains("lean: daemons"))
+        #expect(session.console.contains("lean: off"))
         #expect(session.console.contains("warm: 1"))
         let pid = try #require(session.simulatorRun?.remotePID)
         session.stopSimulatorRun(remote: remote)
@@ -123,6 +135,28 @@ func writeInfoPlist(_ app: URL, id: String, exe: String) throws {
         #expect(s2.console.contains("Settings ▸ Simulators"))
     }
 
+    /// Lean boot was on by default until 2026-10-27, and every save stored
+    /// it: a stored `true` under the old key is the old default and gives a
+    /// full boot now, once; the user's later choice is kept (run.md).
+    @Test func leanBootSettingMigratesToFullBoot() throws {
+        let t = TestDefaults("remote-lean")
+        defer { t.remove() }
+        t.defaults.set(true, forKey: RemoteSimulatorSettings.leanBootLegacyKey)
+        var s = RemoteSimulatorSettings.load(t.defaults)
+        #expect(!s.leanBoot)
+        // A save (of any setting) drops the old key and stores the choice.
+        s.deviceName = "other"
+        s.save(t.defaults)
+        #expect(t.defaults.object(forKey: RemoteSimulatorSettings.leanBootLegacyKey) == nil)
+        #expect(t.defaults.object(forKey: RemoteSimulatorSettings.leanBootKey) as? Bool == false)
+        // Turned on again: remembered, and not undone by later loads.
+        s.leanBoot = true
+        s.save(t.defaults)
+        #expect(RemoteSimulatorSettings.load(t.defaults).leanBoot)
+        #expect(RemoteSimulatorSettings.load(t.defaults).leanBoot)
+        #expect(RemoteSimulator(settings: RemoteSimulatorSettings.load(t.defaults)).leanBootVariables == "YCODE_LEAN_BOOT=daemons ")
+    }
+
     @Test func settingsPaneAndDestination() throws {
         let t = TestDefaults("remote")
         defer { t.remove() }
@@ -136,6 +170,12 @@ func writeInfoPlist(_ app: URL, id: String, exe: String) throws {
         #expect(RemoteSimulatorSettings.load(t.defaults).warmBoot)
         pane.update { $0.warmBoot = false }
         #expect(!RemoteSimulatorSettings.load(t.defaults).warmBoot)
+        // Lean boot: off by default (a full boot); a user can turn it on and off again.
+        #expect(!RemoteSimulatorSettings.load(t.defaults).leanBoot)
+        pane.update { $0.leanBoot = true }
+        #expect(RemoteSimulatorSettings.load(t.defaults).leanBoot)
+        pane.update { $0.leanBoot = false }
+        #expect(!RemoteSimulatorSettings.load(t.defaults).leanBoot)
         #expect(WorkspaceWindowController.simulatorAppPath(fromExecutablePath: "/p/.ycode-build/Products/Debug/App.app/Contents/MacOS/App")
                 == "/p/.ycode-build/Products/Debug-iphonesimulator/App.app")
         #expect(Simctl.launchArguments(udid: "U", bundleID: "b.id", waitForDebugger: true)
@@ -200,7 +240,11 @@ func writeInfoPlist(_ app: URL, id: String, exe: String) throws {
         return (app, src.path)
     }
 
-    @Test func runAndDebugOnThrowawayMacSimulator() async throws {
+    /// Boots a throwaway `ycode-test-ide-*` device in the Mac's own simulator,
+    /// so it is opt-in (`YCODE_MAC_SIMULATOR_TESTS=1`): clean-room agents run
+    /// the suite and must not run the reference simulator (AGENTS.md rule 3).
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["YCODE_MAC_SIMULATOR_TESTS"] == "1"))
+    func runAndDebugOnThrowawayMacSimulator() async throws {
         let heavy = await InterprocessLock.acquire(path: InterprocessLock.debuggerTestLockPath)
         defer { heavy.unlock() }
         guard let device = createDevice() else { print("skipping: no installed iOS simulator runtime"); return }

@@ -179,10 +179,42 @@ YC_EXPORT int getiopolicy_np(int iotype, int scope)
     return p.policy;
 }
 
+/* int madvise(void *addr, size_t len, int advice): BSD 75, -1 and errno on
+ * failure. When the commpage's YC_FAST_LOCAL_CALLS bit is set, Ycode's
+ * kernel answers advice 0-10 (MADV_NORMAL ... MADV_PAGEOUT) with success and
+ * no change and any advice but MADV_ZERO (11) with EINVAL, whatever the
+ * range: the library gives those answers itself and only MADV_ZERO traps
+ * (fast-traps.md section 5a). libmalloc's MADV_FREE_REUSABLE / MADV_FREE_REUSE
+ * pairs were 13 % of a boot's traps. */
+YC_EXPORT int madvise(void *addr, yc_size_t len, int advice)
+{
+    if (yc_commpage_u8(YC_COMM_FAST_FLAGS) & YC_FAST_LOCAL_CALLS) {
+        if (advice >= 0 && advice <= 10)
+            return 0;
+        if (advice != 11) {
+            __ycode_set_errno(22); /* EINVAL */
+            return -1;
+        }
+    }
+    register yc_uintptr_t x0 __asm__("x0") = (yc_uintptr_t)addr;
+    register yc_uintptr_t x1 __asm__("x1") = (yc_uintptr_t)len;
+    register yc_uintptr_t x2 __asm__("x2") = (yc_uintptr_t)(long)advice;
+    register long x16 __asm__("x16") = 75;
+    yc_uintptr_t failed;
+    __asm__ volatile("svc #0x80\n\tcset %[f], cs"
+                     : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x16), [f] "=r"(failed)
+                     :
+                     : "memory", "cc");
+    if (failed) {
+        __ycode_set_errno((int)x0);
+        return -1;
+    }
+    return (int)x0;
+}
+
 /* posix_madvise: on Darwin the same call as madvise(2), with the POSIX_
  * advice names for the same values, and -1 and errno on failure (the
  * madvise(2) manual page; level 1). */
-int madvise(void *addr, yc_size_t len, int advice);
 YC_EXPORT int posix_madvise(void *addr, yc_size_t len, int advice)
 {
     return madvise(addr, len, advice);

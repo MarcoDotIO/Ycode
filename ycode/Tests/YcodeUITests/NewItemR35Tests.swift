@@ -36,7 +36,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
                 for entry in section.entries {
                     let dir = try temp("t")
                     defer { try? FileManager.default.removeItem(at: dir) }
-                    var proj: PBXProj? = nil
+                    var proj: PBXProj?
                     let urls = try FileTemplateCatalog.create(entry, name: "My Item", in: dir, platform: platform, project: &proj, xcodeprojURL: nil)
                     #expect(!urls.isEmpty, "\(platform) \(entry.title)")
                     for u in urls {
@@ -73,7 +73,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let dir = try temp("build")
         defer { try? FileManager.default.removeItem(at: dir) }
         for entry in FileTemplateCatalog.sections(platform: "macOS")[0].entries {
-            var proj: PBXProj? = nil
+            var proj: PBXProj?
             let sub = dir.appendingPathComponent(entry.title.replacingOccurrences(of: " ", with: "_"))
             let urls = try FileTemplateCatalog.create(entry, name: "Sample", in: sub, platform: "macOS", project: &proj, xcodeprojURL: nil)
             for u in urls {

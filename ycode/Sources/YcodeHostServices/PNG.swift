@@ -2,6 +2,8 @@
 // and deflate RFC 1951 "stored" blocks): 8-bit RGBA, filter 0, no
 // compression. No external libraries, so it runs wherever ycode-simd does.
 
+/// Encodes RGBA pixels as an uncompressed PNG file: screenshots, camera
+/// snapshots, and the display tiles' fallback when zlib is missing.
 public enum PNG {
     /// An RGBA image (`rgba.count == width * height * 4`) as PNG bytes.
     public static func encode(width: Int, height: Int, rgba: [UInt8]) -> [UInt8] {

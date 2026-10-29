@@ -6,10 +6,14 @@ import YcodeProject
 /// project editor's "+" under the target list, reference-ui-5.md
 /// §11.1.2). Contents are Ycode's own; settings follow `templates.md`.
 public enum TargetTemplateCatalog {
+    /// The template step's heading line.
     public static let heading = "Choose a template for your new target:"
+    /// The options step's heading line.
     public static let optionsHeading = "Choose options for your new target:"
+    /// The platform tabs, in order.
     public static let platforms = ["iOS", "macOS"]
 
+    /// The template sections under a platform tab.
     public static func sections(platform: String) -> [TemplateSection] {
         func e(_ t: String, _ sym: String) -> TemplateEntry { TemplateEntry(t, defaultName: "", symbol: sym) }
         var app = [e("App", "app")]
@@ -19,6 +23,8 @@ public enum TargetTemplateCatalog {
                 TemplateSection(title: "Framework & Library", entries: [e("Framework", "shippingbox"), e("Static Library", "building.columns")])]
     }
 
+    /// The sections whose entries' titles contain `filter` (case-insensitive),
+    /// with empty sections dropped; all of them for a blank filter.
     public static func sections(platform: String, filter: String) -> [TemplateSection] {
         let f = filter.trimmingCharacters(in: .whitespaces)
         guard !f.isEmpty else { return sections(platform: platform) }

@@ -10,7 +10,7 @@ import Testing
         guard case .submenu("New", let items)? = file.1.first else { Issue.record("no New submenu"); return }
         let titles = items.compactMap { i -> String? in if case .command(let c) = i { return c.title } else { return nil } }
         #expect(titles == ["Conversation", "Conversation in New Tab", "Conversation in Editor Pane", "Tab", "Editor Pane On Right",
-                           "Editor Pane Below", "Window Tab", "Window", "Empty File", "New File from Clipboard", "File from Template…",
+                           "Editor Pane Below", "Window Tab", "Window", "Empty File", "File from Clipboard", "File from Template…",
                            "Target…", "Project…", "Choose Template…", "Workspace…", "Group", "Group without Folder",
                            "Group from Selection", "Group from Selection without Folder", "Folder", "Folder from Selection"])
         #expect(CommandTable.command(titled: "File from Template…")?.shortcutText == "⌘N")

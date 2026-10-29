@@ -6,8 +6,9 @@ import YcodeDarwinABI
 // modes, owners, times, truncate, file flags; plus the calls Ycode answers
 // as a kernel without the feature: __mac_syscall (no MAC policy is
 // registered → ENOPOLICY, xnu security/mac_base.c; the Sandbox check call
-// allows, see below), clonefileat /
-// fclonefileat (the volume cannot clone → ENOTSUP).
+// allows, see below); clonefileat / fclonefileat and the file flags
+// (chflags) as the data volume's capabilities promise
+// (file-system-features.md, VolumeFeatures.swift).
 
 enum MetadataBSD {
     static let chmod = 15, chown = 16, chflags = 34, fchflags = 35, mincore = 78, fchown = 123, fchmod = 124,
@@ -130,15 +131,15 @@ extension DarwinKernel {
             return .value(0)
 
         case MetadataBSD.chflags, MetadataBSD.fchflags:
-            // File flags (UF_HIDDEN, …) are not kept: the call succeeds on an
-            // existing file of a writable prefix (Ycode decision).
+            // File flags are kept in Ycode's metadata; UF_TRACKED gives a
+            // document ID (DarwinFileSystem.setFileFlags).
             if n == MetadataBSD.chflags {
                 let path = try readPath(a[0], mem)
                 call.set("chflags(\"\(path)\", \(hx(u32(1))))")
-                _ = try fs.stat(path, followSymlinks: true)
+                try fs.setFileFlags(.path(path, followSymlinks: true), u32(1))
             } else {
                 call.set("fchflags(\(int(0)), \(hx(u32(1))))")
-                _ = try fs.fstat(int(0))
+                try fs.setFileFlags(.descriptor(int(0)), u32(1))
             }
             return .value(0)
 
@@ -187,9 +188,27 @@ extension DarwinKernel {
             if policy == "Sandbox", let value = try sandboxExtensionCall(int(1), arg: a[2], mem) { return .value(value) }
             throw fail(MetadataBSD.enoPolicy)
 
-        default:  // clonefileat, fclonefileat
-            call.set(n == MetadataBSD.clonefileat ? "clonefileat(...)" : "fclonefileat(\(int(0)), ...)")
-            throw fail(Code.ENOTSUP)
+        default:  // clonefileat(src_dirfd, src, dst_dirfd, dst, flags), fclonefileat(src_fd, dst_dirfd, dst, flags)
+            // The copy runs without the kernel lock (a directory clone can be
+            // large), as host renames do (§5.2).
+            if n == MetadataBSD.clonefileat {
+                let from = try resolveAtPath(int(0), a[1], mem)
+                let to = try resolveAtPath(int(2), a[3], mem)
+                let flags = u32(4)
+                call.set("clonefileat(\"\(from)\", \"\(to)\", flags=\(hx(flags)))")
+                if Self.lockedFileIO { try fs.clone(from, to: to, flags: flags) } else {
+                    try lock.unlocked { try fs.clone(from, to: to, flags: flags) }
+                }
+            } else {
+                let source = int(0)
+                let to = try resolveAtPath(int(1), a[2], mem)
+                let flags = u32(3)
+                call.set("fclonefileat(\(source), \"\(to)\", flags=\(hx(flags)))")
+                if Self.lockedFileIO { try fs.clone(fd: source, to: to, flags: flags) } else {
+                    try lock.unlocked { try fs.clone(fd: source, to: to, flags: flags) }
+                }
+            }
+            return .value(0)
         }
     }
 }

@@ -17,6 +17,8 @@ ycode/.swiftpm/
 ycode/.build*/
 ycode/SimShim/out/
 ycode/SimHostLibs/out/
+ycode/SimGuestAgents/out/
+ycode/SimGuestFrameworks/out/
 ycode/Native/out/
 # Helper packages build in place
 ycode/Tools/*/.build/

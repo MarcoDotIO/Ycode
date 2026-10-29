@@ -1,5 +1,6 @@
 import AppKit
 import YcodeDebug
+import YcodeSimFeatures
 
 /// The paused debug bar's extra buttons, path and branch; the variables
 /// view's badges and spinner; the highlighted "killed" console line
@@ -161,18 +162,66 @@ extension DebugAreaController {
     public static let placeholderBarActions: Set<String> = ["debugViewHierarchy:", "debugMemoryGraph:"]
 
     @objc func showEnvironmentOverrides(_ sender: NSButton) {
-        showPopover(text: "Environment overrides (Appearance, Text, Accessibility) apply to simulator runs.", from: sender)
+        syncWithRun()
+        guard applyEnvironmentOverrides != nil, overridesRunKey != nil else {
+            showPopover(text: "Environment overrides (Appearance, Text, Accessibility) apply to an app running on the Ycode simulator.", from: sender)
+            return
+        }
+        guard view.window?.isVisible == true else { return }
+        let p = NSPopover()
+        p.behavior = .transient
+        p.contentViewController = EnvironmentOverridesController(debugArea: self)
+        p.show(relativeTo: sender.bounds, of: sender, preferredEdge: .maxY)
+    }
+
+    /// Simulate Location (`simulator-features.md` §7.1's places, the trips,
+    /// Apple; the debugged app's device): a menu; without a run that takes it,
+    /// "Don't Simulate Location" and a note.
+    public func simulateLocationMenu() -> NSMenu {
+        syncWithRun()
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let on = simulateLocationHandler != nil && overridesRunKey != nil
+        func add(_ title: String, _ words: [String]?) {
+            let item = NSMenuItem(title: title, action: words == nil ? nil : #selector(simulatedLocationChosen(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = words
+            item.isEnabled = on && words != nil
+            item.state = (simulatedLocation ?? "Don't Simulate Location") == title ? .on : .off
+            menu.addItem(item)
+        }
+        add("Don't Simulate Location", ["clear"])
+        menu.addItem(.separator())
+        guard on else {
+            let note = NSMenuItem(title: "Location simulation needs a run on the Ycode simulator", action: nil, keyEquivalent: "")
+            note.isEnabled = false
+            menu.addItem(note)
+            return menu
+        }
+        for p in SimLocation.presets { add(p.name, ["set", p.coordinate.description]) }
+        menu.addItem(.separator())
+        for s in SimLocation.builtInScenarios { add(s, ["run", s]) }
+        return menu
+    }
+
+    /// A new run (or none) starts with no overrides and no simulated location.
+    func syncWithRun() {
+        let key = simulatorRunKey?()
+        if key != overridesRunKey {
+            overridesRunKey = key
+            environmentOverrides = EnvironmentOverrides()
+            simulatedLocation = nil
+        }
     }
 
     @objc func simulateLocation(_ sender: NSButton) {
-        let menu = NSMenu()
-        let none = NSMenuItem(title: "Don't Simulate Location", action: nil, keyEquivalent: "")
-        none.state = .on
-        menu.addItem(none)
-        menu.addItem(.separator())
-        let note = NSMenuItem(title: "Location simulation needs a simulator run", action: nil, keyEquivalent: "")
-        note.isEnabled = false
-        menu.addItem(note)
+        let menu = simulateLocationMenu()
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height), in: sender)
+    }
+
+    @objc func simulatedLocationChosen(_ item: NSMenuItem) {
+        guard let words = item.representedObject as? [String], let handler = simulateLocationHandler else { return }
+        simulatedLocation = item.title == "Don't Simulate Location" ? nil : item.title
+        Task { _ = await handler(words) }
     }
 }

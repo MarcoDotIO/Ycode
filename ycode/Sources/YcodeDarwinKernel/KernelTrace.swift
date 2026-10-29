@@ -8,6 +8,8 @@ import Darwin
 // diagnostics, off by default). The VMM sets them only while a trace window
 // is open; with them nil each site costs one load and a nil check.
 
+/// Optional hooks for the VMM's frame profile (`specs/simulator/frame-profile.md`).
+/// Each is nil unless a trace window is open.
 public enum KernelTrace {
     /// A waiter is being woken: its guest thread (nil: a service waiter).
     /// Called on the waker's host thread, with or without kernel locks held;

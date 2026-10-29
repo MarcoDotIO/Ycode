@@ -54,6 +54,9 @@ public struct XMLReadError: Error, CustomStringConvertible, Equatable {
     public var description: String { "XML error at byte \(offset): \(message)" }
 }
 
+/// Reads and writes Xcode's XML documents in Xcode's layout: 3-space
+/// indent, one attribute per line, explicit end tags. See
+/// `specs/formats/xcode-xml.md` (Serialization layout).
 public enum XcodeXML {
     /// Parses a document and returns its root element. Handles the XML
     /// declaration, comments, CDATA, and the predefined/numeric entities.

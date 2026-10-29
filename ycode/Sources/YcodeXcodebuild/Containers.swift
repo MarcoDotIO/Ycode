@@ -50,7 +50,7 @@ public struct Container: @unchecked Sendable {
     /// the projects it references, recursively).
     public var projects: [LoadedProject]
     /// A name other than the bundle's (a Swift package's own name).
-    public var displayName: String? = nil
+    public var displayName: String?
 
     /// The workspace PIF path: `X.xcworkspace`, or the implicit
     /// `X.xcodeproj/project.xcworkspace`.

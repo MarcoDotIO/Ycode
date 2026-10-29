@@ -93,12 +93,6 @@ public struct Storefront: Identifiable, Hashable, Sendable {
     /// The storefront's currency code (`USD`).
     public let currencyCode: String?
 
-    init(countryCode: String, id: String, currencyCode: String?) {
-        self.countryCode = countryCode
-        self.id = id
-        self.currencyCode = currencyCode
-    }
-
     /// The storefront in force (the configuration's, or the session's override).
     public static var current: Storefront? {
         get async {

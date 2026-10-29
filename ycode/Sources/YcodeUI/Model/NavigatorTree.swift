@@ -48,6 +48,8 @@ public final class NavigatorNode: @unchecked Sendable {
     }
 }
 
+/// Builds the Project navigator's rows from a project, a package or a
+/// folder (`specs/ide/navigators.md` §Project navigator).
 public enum NavigatorTree {
     /// Names the navigator never shows when listing a directory.
     static let hidden: Set<String> = [".DS_Store", ".git", ".build", ".swiftpm", "xcuserdata", "DerivedData"]
@@ -106,9 +108,22 @@ public enum NavigatorTree {
 
     /// The rows expanded at first open, when no expansion was saved
     /// (`reference-ui-5.md` §5.1, N4): the root and its first child that
-    /// can expand (the first group). Expansion keys, see `expansionKey`.
+    /// can expand (the first group). A package opens with both "Sources"
+    /// and "Tests" expanded, their children collapsed
+    /// (`reference-ui-6.md` §5.3, N4). Expansion keys, see `expansionKey`.
     public static func initiallyExpanded(_ root: NavigatorNode) -> [String] {
-        [root.expansionKey] + (root.children.first(where: \.isExpandable).map { [$0.expansionKey] } ?? [])
+        if isPackageRoot(root) {
+            let folders = root.children.filter { $0.kind == .folder && ($0.name == "Sources" || $0.name == "Tests") }
+            if !folders.isEmpty { return [root.expansionKey] + folders.map(\.expansionKey) }
+        }
+        return [root.expansionKey] + (root.children.first(where: \.isExpandable).map { [$0.expansionKey] } ?? [])
+    }
+
+    /// A package's root row: a container that is a folder, not a project
+    /// or workspace file.
+    static func isPackageRoot(_ n: NavigatorNode) -> Bool {
+        guard n.kind == .container, let p = n.path else { return false }
+        return !p.hasSuffix(".xcodeproj") && !p.hasSuffix(".xcworkspace")
     }
 
     /// A package folder: the folder row with its contents. The root's

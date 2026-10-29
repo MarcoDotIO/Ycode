@@ -45,6 +45,13 @@ struct DeviceLayout {
     /// §2), copied into DEV and named by SIMULATOR_HID_SYSTEM_MANAGER. Nil:
     /// the variable is empty (no input).
     var hidBundle: String?
+    /// Ycode's guest settings agent (SimGuestAgents; simulator-features.md
+    /// "Ycode implementation"): host path of the binary, staged into DEV and
+    /// run by launchd_sim from the plist Ycode writes. Nil: no agent.
+    var settingsAgent: String?
+    /// Ycode's Environment Overrides library, staged into DEV for apps
+    /// launched with it (`--environment-overrides`). Nil: none.
+    var overridesLibrary: String?
     /// Record the first-boot data migration as done for this runtime build
     /// before the boot (`--skip-first-boot-migration`).
     var skipFirstBootMigration = false
@@ -110,6 +117,9 @@ struct DeviceLayout {
     /// and has no record is an iPhone Duo (every device made before device
     /// types existed).
     var deviceTypePath: String { dev + "/ycode-device-type" }
+    /// The runtime the device last booted (`<ProductName> <version> <build>`;
+    /// ipad.md §2.2: per-runtime state, `runtimeCheck`).
+    var runtimeRecordPath: String { dev + "/ycode-runtime" }
     /// The device's global preferences (ipad.md §10 Q8): a new device starts
     /// with a US English region before its first boot.
     var globalPreferencesPath: String { data + "/Library/Preferences/.GlobalPreferences.plist" }
@@ -247,6 +257,16 @@ struct DeviceLayout {
         return (plist["ProductVersion"] as? String ?? "", plist["ProductBuildVersion"] as? String ?? "")
     }
 
+    /// The runtime's platform, from `ProductName` of the same file
+    /// (visionos.md V-2): `xrOS` is visionOS, anything else iOS.
+    func runtimePlatform() -> RuntimePlatform {
+        let path = runtimeRoot + "/System/Library/CoreServices/SystemVersion.plist"
+        let plist = FileManager.default.contents(atPath: path).flatMap {
+            try? PropertyListSerialization.propertyList(from: $0, options: [], format: nil) as? [String: Any]
+        }
+        return RuntimePlatform(productName: plist?["ProductName"] as? String)
+    }
+
     // MARK: Environment
 
     /// `Bootstrap.ChildDefaults` (launchd-sim.md §3).
@@ -288,7 +308,7 @@ struct DeviceLayout {
             "SIMULATOR_RUNTIME_VERSION": version,
             "SIMULATOR_RUNTIME_BUILD_VERSION": build,
             "SIMULATOR_ARCHS": "arm64",
-            "SIMULATOR_VERSION_INFO": "Ycode - Device: \(Self.deviceName) (\(udid)) - Runtime: iOS \(version) (\(build)) - DeviceType: \(deviceType.modelIdentifier)",
+            "SIMULATOR_VERSION_INFO": "Ycode - Device: \(Self.deviceName) (\(udid)) - Runtime: \(runtimePlatform().displayName) \(version) (\(build)) - DeviceType: \(deviceType.modelIdentifier)",
             "SIMULATOR_BOOT_TIME": String(bootTime),
             "SIMULATOR_HOST_HOME": guestDev,
             "SIMULATOR_LOG_ROOT": guestPath(logRoot),
@@ -307,8 +327,37 @@ struct DeviceLayout {
             "SIMULATOR_AUDIO_SETTINGS_PATH": guestPath(audioSettingsPath),
             "SIMULATOR_MEMORY_WARNINGS": guestPath(memoryWarningPath),
         ]
+        // A display unique id fixed by the device type (visionos.md §3.3,
+        // V-6): the framebuffer library reports it for its one display.
+        if let uid = deviceType.displayUID { env["YCODE_FRAMEBUFFER_DISPLAY_UID"] = uid }
+        // A foldable (foldable.md §8): the HID bundle publishes the
+        // device-motion service (the hinge, §8.2 I2) and the framebuffer
+        // library its second built-in display (§8.1 D1), by default; the
+        // capabilities plist then carries the type's `displays` list, from
+        // which SpringBoard takes each panel's surface (cover, inner;
+        // foldable.md §9 Q7). YCODE_FOLD_DISPLAYS=0 publishes the cover only
+        // and writes no `displays`.
+        if deviceType.isFoldable {
+            env["YCODE_SIMHID_DEVICE_MOTION"] = "1"
+            if let second = deviceType.publishedSecondDisplay { env["YCODE_FRAMEBUFFER_SECOND_DISPLAY"] = second.environmentValue }
+        }
+        // Diagnostic only (host YCODE_FRAMEBUFFER_CALLS=1): the framebuffer
+        // library logs its state-changing calls per process to
+        // DEV/data/tmp/ycode-framebuffer.calls.<pid> (simframebuffer.c).
+        if ProcessInfo.processInfo.environment["YCODE_FRAMEBUFFER_CALLS"] == "1" {
+            env["YCODE_FRAMEBUFFER_CALLS"] = guestPath(data + "/tmp/ycode-framebuffer.calls")
+        }
+        // Diagnostic only: YCODE_CHILD_ENV="K=V;K=V" adds variables to every
+        // job's environment (for example a recorder library in
+        // DYLD_INSERT_LIBRARIES; SimShim/guest-tests/visionos/mtlwatch.m).
+        if let extra = ProcessInfo.processInfo.environment["YCODE_CHILD_ENV"] {
+            for pair in extra.split(separator: ";") {
+                guard let eq = pair.firstIndex(of: "=") else { continue }
+                env[String(pair[..<eq])] = String(pair[pair.index(after: eq)...])
+            }
+        }
         // The iPhone's environment names the extended-display plist; an
-        // iPad's does not (ipad.md §4.1).
+        // iPad's and the Vision Pro's do not (ipad.md §4.1, visionos.md §3.4).
         if deviceType.extendedDisplayProperties {
             env["SIMULATOR_EXTENDED_DISPLAY_PROPERTIES"] = guestPath(extendedDisplayPath)
             env["IPHONE_TVOUT_EXTENDED_PROPERTIES"] = guestPath(extendedDisplayPath)
@@ -379,6 +428,7 @@ struct DeviceLayout {
             try fm.setAttributes([.posixPermissions: mode], ofItemAtPath: path)
         }
         try checkDeviceType()
+        try checkRuntime()
         // A device that never booted (no type record, no bootstrap plist).
         let isNewDevice = Self.recordedDeviceType(in: dev) == nil
         if restoring {
@@ -391,6 +441,7 @@ struct DeviceLayout {
             // (It is in the memory directory, refilled from the snapshot's copy.)
             try prepareMemoryDirectory()
             try stageApp(dir)
+            try stageOverridesLibrary()
             return
         }
         if let templatePath, !fm.fileExists(atPath: data) {
@@ -441,14 +492,19 @@ struct DeviceLayout {
             try dir((target as NSString).deletingLastPathComponent)
             if fm.fileExists(atPath: target) { try fm.removeItem(atPath: target) }
             try fm.copyItem(atPath: framebufferLibrary, toPath: target)
+            try GuestImagePlatform.adapt(fileAt: target, for: runtimePlatform(), version: runtimeVersion().version)
         }
         if let hidBundle, let target = hidGuestPath {
             try dir((target as NSString).deletingLastPathComponent)
             if fm.fileExists(atPath: target) { try fm.removeItem(atPath: target) }
             try fm.copyItem(atPath: hidBundle, toPath: target)
+            try GuestImagePlatform.adapt(fileAt: target + "/SimHID", for: runtimePlatform(), version: runtimeVersion().version)
             if fm.fileExists(atPath: hidLogPath) { try fm.removeItem(atPath: hidLogPath) }
         }
         try prepareJobsAndPlists()
+        try stageSettingsAgent()
+        try stageOverridesLibrary()
+        DeviceSettingsFiles(dev: dev, guestData: guestData).resetNonPersistentAtColdBoot()
     }
 
     /// Stage 7: the app bundle and ylaunch, copied where the guest can read
@@ -487,16 +543,104 @@ struct DeviceLayout {
                 throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: memoryWarningPath])
             }
         }
-        let audio: [String: Any] = [
-            "sim_input_device_uid": "",
-            "sim_output_device_uid": "",
-            "useHostDefaultInputDevice": true,
-            "useHostDefaultOutputDevice": true,
-        ]
-        try writeXML(audio, to: audioPlistPath)
+        // Audio (audio-host.md §12, "Ycode implementation"): the device list
+        // names the host service's output device; there is no input device.
+        // The settings file is the one the reference's CoreSimulatorBridge (a
+        // host program Ycode does not run) writes from it: written here,
+        // before boot, with the reference's ringer state and volume.
+        // The device's choices (simulator-features.md §4.11–4.13) stay
+        // across boots: the files are rewritten from what they hold (a new
+        // device: System, System, volume 60).
+        try DeviceSettingsFiles(dev: dev, guestData: guestData).writeAudio(DeviceSettingsFiles(dev: dev).audio())
         try writeXML(DeviceCapabilities.plist(for: deviceType), to: capabilitiesPath)
         try writeXML(bootstrapPlist, to: plistPath)
         if recordedDeviceType() == nil { try Data((deviceType.id + "\n").utf8).write(to: URL(fileURLWithPath: deviceTypePath)) }
+        try recordRuntime()
+    }
+
+    // MARK: Runtime of a device (ipad.md §2.2; home-apps.md §4)
+
+    /// A runtime as a device records it: platform name, version, build.
+    struct RuntimeRecord: Equatable {
+        var productName: String
+        var version: String
+        var build: String
+        var line: String { "\(productName) \(version) \(build)\n" }
+        init(productName: String, version: String, build: String) {
+            self.productName = productName.isEmpty ? "iPhone OS" : productName
+            self.version = version
+            self.build = build
+        }
+        /// "<ProductName…> <version> <build>": the last two words are version and build.
+        init?(line: String) {
+            let words = line.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ").map(String.init)
+            guard words.count >= 3 else { return nil }
+            self.init(productName: words.dropLast(2).joined(separator: " "), version: words[words.count - 2], build: words[words.count - 1])
+        }
+        var displayName: String { "\(RuntimePlatform(productName: productName).displayName) \(version) (\(build))" }
+    }
+
+    /// This boot's runtime.
+    func currentRuntimeRecord() -> RuntimeRecord {
+        let path = runtimeRoot + "/System/Library/CoreServices/SystemVersion.plist"
+        let plist = FileManager.default.contents(atPath: path).flatMap {
+            try? PropertyListSerialization.propertyList(from: $0, options: [], format: nil) as? [String: Any]
+        }
+        return RuntimeRecord(productName: plist?["ProductName"] as? String ?? "", version: plist?["ProductVersion"] as? String ?? "",
+                             build: plist?["ProductBuildVersion"] as? String ?? "")
+    }
+
+    static func recordedRuntime(in dev: String) -> RuntimeRecord? {
+        FileManager.default.contents(atPath: dev + "/ycode-runtime").flatMap { RuntimeRecord(line: String(decoding: $0, as: UTF8.self)) }
+    }
+
+    /// The build the guest's data was last migrated to (`LastSystemVersion`
+    /// of `com.apple.migration.plist`, first-boot.md §1), or nil.
+    static func lastSystemBuild(in dev: String) -> String? {
+        let path = dev + "/data/Library/Preferences/com.apple.migration.plist"
+        let plist = FileManager.default.contents(atPath: path).flatMap {
+            try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any]
+        }
+        return plist?["LastSystemVersion"] as? String
+    }
+
+    /// Dotted version order ("27.0" < "27.1" < "27.10").
+    static func compareVersions(_ a: String, _ b: String) -> Int {
+        let pa = a.split(separator: ".").map { Int($0) ?? 0 }, pb = b.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<max(pa.count, pb.count) {
+            let x = i < pa.count ? pa[i] : 0, y = i < pb.count ? pb[i] : 0
+            if x != y { return x < y ? -1 : 1 }
+        }
+        return 0
+    }
+
+    /// A device keeps its runtime, as a CoreSimulator device does: its
+    /// data (LaunchServices store, home-screen layout, migrated databases)
+    /// belongs to the runtime it booted. **Ycode decision:** booting it on an
+    /// older runtime version is refused (simctl only ever moves a device to
+    /// a newer runtime, `simctl upgrade`); a newer version or another build
+    /// of the same version boots with a warning (the guest's data migration
+    /// runs, first-boot.md §1). A device with no record is checked against
+    /// the build its data was migrated to, with a warning only.
+    func checkRuntime() throws {
+        let now = currentRuntimeRecord()
+        guard !now.build.isEmpty else { return }
+        if let was = Self.recordedRuntime(in: dev) {
+            guard was.build != now.build else { return }
+            if !was.version.isEmpty, !now.version.isEmpty, Self.compareVersions(now.version, was.version) < 0 {
+                throw DeviceRuntimeDowngrade(dev: dev, recorded: was, requested: now)
+            }
+            FileHandle.standardError.write(Data("ycode-simd: warning: the device \(dev) last booted \(was.displayName); this boot of \(now.displayName) migrates its data\n".utf8))
+        } else if let last = Self.lastSystemBuild(in: dev), last != now.build {
+            FileHandle.standardError.write(Data("ycode-simd: warning: the device \(dev) was last booted on runtime build \(last), not \(now.build); this boot migrates its data\n".utf8))
+        }
+    }
+
+    /// Records this boot's runtime in DEV (written when it changes).
+    func recordRuntime() throws {
+        let now = currentRuntimeRecord()
+        guard !now.build.isEmpty, Self.recordedRuntime(in: dev) != now else { return }
+        try Data(now.line.utf8).write(to: URL(fileURLWithPath: runtimeRecordPath), options: .atomic)
     }
 
     // MARK: Device type (ipad.md §4.3 R2)
@@ -523,6 +667,18 @@ struct DeviceLayout {
     /// A device keeps its type: its LaunchServices store, home-screen layout
     /// and migrated data are per idiom. Booting it as another type is refused.
     func checkDeviceType() throws {
+        // visionos.md V-1: a type runs only on its platform's runtimes.
+        let platform = runtimePlatform()
+        if deviceType.platform != platform {
+            throw DeviceTypePlatformMismatch(type: deviceType, runtime: platform, runtimeRoot: runtimeRoot)
+        }
+        // iphone-types.md §1, §2: a type older runtimes do not accept (the
+        // iPhone Duo on 27.0) is refused, as CoreSimulator refuses it.
+        // YCODE_ALLOW_ANY_DEVICE_TYPE=1 (diagnostics) boots it anyway.
+        let version = runtimeVersion().version
+        if !deviceType.runs(onVersion: version), ProcessInfo.processInfo.environment["YCODE_ALLOW_ANY_DEVICE_TYPE"] != "1" {
+            throw DeviceTypeRuntimeMismatch(type: deviceType, runtimeVersion: version, runtimeRoot: runtimeRoot)
+        }
         if let recorded = Self.recordedDeviceType(in: dev), recorded != deviceType.id {
             throw DeviceTypeMismatch(what: "the device \(dev)", recorded: recorded, requested: deviceType.id)
         }
@@ -629,9 +785,44 @@ struct DeviceLayout {
         FileHandle.standardError.write(Data("ycode-simd: device data cloned from \(template)\n".utf8))
     }
 
+    /// The host audio service's output device UID (`AudioObjectModel.deviceUID`).
+    static let audioOutputDeviceUID = "dev.ycode.simulator.audio.output"
+
     private func writeXML(_ plist: [String: Any], to path: String) throws {
         let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
         try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+    }
+}
+
+/// A device type on a runtime of another platform (visionos.md V-1).
+struct DeviceTypePlatformMismatch: Error, CustomStringConvertible {
+    let type: DeviceType
+    let runtime: RuntimePlatform
+    let runtimeRoot: String
+    var description: String {
+        let fitting = DeviceType.all.filter { $0.platform == runtime }.map(\.id).joined(separator: ", ")
+        return "the device type \(type.id) (\(type.name)) runs on \(type.platform.displayName) runtimes; \(runtimeRoot) is a \(runtime.displayName) runtime (its device types: \(fitting))"
+    }
+}
+
+/// A device type on a runtime version older than the type's minimum.
+struct DeviceTypeRuntimeMismatch: Error, CustomStringConvertible {
+    let type: DeviceType
+    let runtimeVersion: String
+    let runtimeRoot: String
+    var description: String {
+        let fitting = DeviceType.all.filter { $0.platform == type.platform && $0.runs(onVersion: runtimeVersion) }.map(\.id).joined(separator: ", ")
+        return "the device type \(type.id) (\(type.name)) needs runtime \(type.minRuntimeVersion ?? "?") or later; \(runtimeRoot) is \(runtimeVersion) (its device types: \(fitting))"
+    }
+}
+
+/// A device booted on a runtime older than the one it last booted.
+struct DeviceRuntimeDowngrade: Error, CustomStringConvertible {
+    let dev: String
+    let recorded: DeviceLayout.RuntimeRecord
+    let requested: DeviceLayout.RuntimeRecord
+    var description: String {
+        "the device \(dev) last booted \(recorded.displayName); it cannot boot the older runtime \(requested.displayName) (use another device directory for each runtime)"
     }
 }
 

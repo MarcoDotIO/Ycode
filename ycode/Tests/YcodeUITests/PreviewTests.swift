@@ -106,8 +106,9 @@ func nonBlankPixels(_ png: URL) throws -> Int {
         wc.previewWorkDirectory = ycodeDir.appendingPathComponent(".build-ide/previews/work-canvas")
         wc.canvasRefreshDelay = 0.1
         wc.open(path: file.path, line: nil)
-        wc.toggleCanvas(nil)
+        // Shown by itself for a file with previews (reference-ui-6.md §4.4).
         let canvas = try #require(wc.canvas)
+        #expect(wc.canvasShownAutomatically)
         // Paused until resumed (reference-ui-4.md §10), then building.
         #expect(canvas.isPaused && canvas.names == ["Small", "Preview", "Badge_Previews"])
         #expect(canvas.tabTitles == ["Small", "VStack", "Badge_Previews"])

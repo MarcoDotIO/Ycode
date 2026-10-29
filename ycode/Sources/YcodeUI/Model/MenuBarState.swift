@@ -31,6 +31,9 @@ public struct MenuContext: Equatable, Sendable {
     /// the line has none (Debug ▸ Breakpoints, §2.10).
     public var caretLineBreakpointsEnabled: Bool?
     public var navigatorShown = true
+    /// The left area shows the Coding Assistant pane (View ▸ Navigators ▸
+    /// Hide Coding Assistant, reference-ui-6.md §9.5).
+    public var codingAssistantShown = false
     public var inspectorShown = true
     public var debugAreaShown = false
     public var editorTabBarShown = false
@@ -41,6 +44,21 @@ public struct MenuContext: Equatable, Sendable {
     /// The selected navigator file is untracked (Discard reads "Move
     /// Selected Files to Trash…").
     public var selectedFileIsUntracked = false
+    /// The pasteboard holds text (File ▸ New ▸ New File from Clipboard,
+    /// reference-ui-6.md §8 item 6).
+    public var pasteboardHasText = false
+    /// What is selected in the project navigator (Find ▸ Find in Selected
+    /// File… / Groups…).
+    public var projectSelection: ProjectSelection?
+    /// The project navigator's selection is a folder or inside one (a
+    /// synchronized folder, a package directory): File ▸ New ▸ hides the
+    /// Group items.
+    public var projectSelectionInFolder = false
+    /// An item was cut for moving (Edit ▸ Paste ▸ Move Item Here).
+    public var hasItemToMove = false
+
+    /// A project navigator selection: a file, or a group or folder.
+    public enum ProjectSelection: Equatable, Sendable { case file, group }
 
     public init() {}
 
@@ -59,10 +77,14 @@ public struct MenuContext: Equatable, Sendable {
 public enum MenuTitles {
     static func quoted(_ s: String) -> String { "\u{201C}\(s)\u{201D}" }
 
+    /// The title to show for `c` in context `ctx`.
     public static func title(for c: MenuCommand, in ctx: MenuContext?) -> String {
         title(generic: c.title, in: ctx)
     }
 
+    /// The title to show for an item whose generic title is `g` (for example
+    /// "Add Files…" becomes "Add Files to “App”…"); `g` when there is no context
+    /// or the title does not vary.
     public static func title(generic g: String, in ctx: MenuContext?) -> String {
         guard let ctx else { return g }
         let file = ctx.fileName
@@ -74,6 +96,8 @@ public enum MenuTitles {
         case "Close Window": return ctx.windowTabCount > 1 ? "Close Window Tab" : "Close Window"
         case "Close Workspace": return "Close \(ctx.scopeName)"
         case "Workspace Settings…": return "\(ctx.scopeName) Settings…"
+        // reference-ui-6.md §8 item 6 (M6): the enabled title.
+        case "File from Clipboard": return ctx.pasteboardHasText ? "New File from Clipboard" : g
         // Edit (§2.3)
         case "Bookmark Line":
             if let file, let n = ctx.caretLine { return "Bookmark \(quoted(file)) Line \(n)" }
@@ -87,6 +111,7 @@ public enum MenuTitles {
         case "Show Editor Tab Bar": return ctx.editorTabBarShown ? "Hide Editor Tab Bar" : g
         case "Pin Editor Tab": return ctx.editorTabPinned ? "Unpin Editor Tab" : g
         case "Show Navigator": return ctx.navigatorShown ? "Hide Navigator" : g
+        case "Show Coding Assistant": return ctx.codingAssistantShown ? "Hide Coding Assistant" : g
         case "Show Inspector": return ctx.inspectorShown ? "Hide Inspector" : g
         case "Show Debug Area": return ctx.debugAreaShown ? "Hide Debug Area" : g
         case "Show Window Tab Bar": return ctx.isWindowTabBarVisible ? "Hide Window Tab Bar" : g
@@ -95,6 +120,8 @@ public enum MenuTitles {
         case "Show All Issues": return ctx.inlineIssuesShown ? "Hide All Issues" : g
         case "Format Selection", "Format File":
             if let file, file.hasSuffix(".swift") { return g + " with \u{2018}swift-format\u{2019}" }
+        // Find (reference-ui-6.md §8 item 6, M6)
+        case "Find in Selected Groups…": return ctx.projectSelection == .file ? "Find in Selected File…" : g
         // Navigate (§2.6)
         case "Jump to Line…":
             if let file { return "Jump to Line in \(quoted(file))…" }
@@ -127,6 +154,9 @@ public enum MenuTitles {
 
 /// Conditional items (§1.5).
 public enum MenuConditions {
+    /// Whether an item with condition `c` is shown; items without a
+    /// condition always are. Without a context the separate Close Window
+    /// item and group commands show and the other conditional items hide.
     public static func isShown(_ c: MenuCondition?, in ctx: MenuContext?) -> Bool {
         guard let c else { return true }
         switch c {
@@ -134,6 +164,8 @@ public enum MenuConditions {
         case .repositoryHasRemote: return ctx?.repositoryHasRemote ?? false
         case .debugging: return ctx?.isDebugging ?? false
         case .separateCloseWindow: return ctx.map { CloseShortcutRule.showsSeparateCloseWindow(tabCount: $0.editorTabCount) } ?? true
+        case .groupsAllowed: return !(ctx?.projectSelectionInFolder ?? false)
+        case .itemToMove: return ctx?.hasItemToMove ?? false
         }
     }
 

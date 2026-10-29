@@ -303,7 +303,98 @@ Calendar/News/Photos, Calendar, Photos, Maps, News, Health, Wallet, Siri,
 Settings; page 2 Fitness, Watch, Reminders, Files, Preview, folder
 "Utilities" (Shortcuts, Passwords), Contacts. Notes, Clock, Camera, Mail
 and Calculator are husks there too; no Xcode simulator runtime examined
-ships them.
+ships them. §4.1 has the full layout and launch results.
+
+### 4.1 Reference home screen: iOS 27.0, iPhone 18 Pro
+
+The device type that Ycode adds for 27.0 (`iphone-types.md`). Two fresh
+devices (OBS-IPHONE18, 2026-10-27) gave the same layout apart from the
+generated UUIDs. Device-type values: `iphone-types.md` §3–§4.
+
+**Default file.** `DesiredIconState.plist` is the runtime's
+`SpringBoard.app/DefaultIconState~iphone.plist` (27.0 has no file for this
+phone's 402 × 874 points; 27.0 and 27.1 carry the same generic file) plus
+`metadata.creationDate` and an empty `dockUtilities`. Its contents: dock
+Phone, Safari, Messages, Music; page 1 two small stacks
+(Weather/Maps/Notes, Calendar/News/Photos) and 16 apps; page 2 22 items
+with the folders "Utilities" and "Creativity"; `ignored` Remote; eight
+Today widgets (Calendar, Weather, News, Maps, Tips, Batteries, Stocks,
+Screen Time).
+
+**`IconState.plist` after the first boot** (the default file filtered as
+§3.4):
+
+| Place | Content, in order |
+|---|---|
+| Dock (`buttonBar`) | `com.apple.mobilesafari` (Safari), `com.apple.MobileSMS` (Messages) |
+| Page 1 (`iconLists[0]`) | widget: Maps (`containerBundleIdentifier` `com.apple.Maps`, `bundleIdentifier` `com.apple.Maps.GeneralMapsWidget`, `widgetIdentifier` `com.apple.Maps`, `gridSize` `small`) — the stack Weather/Maps/Notes reduced to one widget; stack (`gridSize` `small`) of Calendar (`com.apple.mobilecal.CalendarWidgetExtension`, kind `com.apple.CalendarWidget.CalendarUpNextWidget`), News (`com.apple.news.widget`, kind `today`), Photos (`com.apple.mobileslideshow.PhotosReliveWidget`, kind `com.apple.mobileslideshow.PhotosReliveWidget`); then the apps `com.apple.mobilecal`, `com.apple.mobileslideshow`, `com.apple.Maps`, `com.apple.news`, `com.apple.Health`, `com.apple.Passbook`, `com.apple.SiriApp`, `com.apple.Preferences` |
+| Page 2 (`iconLists[1]`) | `com.apple.Fitness`, `com.apple.Bridge` (Watch), `com.apple.reminders`, `com.apple.DocumentsApp` (Files), `com.apple.Preview`, folder "Utilities" (`com.apple.shortcuts`, `com.apple.Passwords`), `com.apple.MobileAddressBook` (Contacts) |
+| Folders | "Utilities" only ("Creativity" removed: no apps) |
+| `ignored` | `com.apple.TVRemoteApp` (Remote) |
+| `today` | Calendar Up Next (`small`), Batteries (`BatteriesAvocadoWidget`, `small`), News (kind `today`, **`extraLargePortrait`**; the default file says `newsLargeTall`), Maps (`medium`), Screen Time (`large`); Weather, Tips and Stocks removed (no apps). All with `allowsSuggestions` true, `allowsExternalSuggestions` false |
+| `listUniqueIdentifiers` | the default file's two page UUIDs, kept |
+
+Keys SpringBoard adds when it writes `IconState.plist` (not in the default
+file): at the top level `defaultDisplayName` and `displayName` "Folder" and
+a `uniqueIdentifier` (the root list is stored like a folder); in each
+widget and stack `displayIdentifier` and `uniqueIdentifier` (UUID strings;
+stack members get `uniqueIdentifier` only); every widget loses the default
+file's `widgetSuggestionSource`; in the folder `displayName`, `listType`
+"folder", `listUniqueIdentifiers` and `uniqueIdentifier`. No
+`dockUtilities` and no `listMetadata` in `IconState.plist` (iPhone).
+
+**What the screen shows** (`simctl io screenshot`, 1206 × 2622, portrait,
+the default display): the default wallpaper; status bar with the time at
+the top left and, right of the gap for the island, four grey cellular dots,
+Wi-Fi and battery; page 1 as two rows of widgets and icons — the Maps
+widget (a map of North America) and the Calendar stack (showing
+"TUESDAY 27", "No Events Today") each a 2 × 2 tile with a label below;
+then Calendar, Photos, Maps, News; then Health, Wallet, Siri, Settings,
+all with labels; empty space below; a "Search" pill above the dock; the
+dock a glass tile with Safari and Messages centred, no labels. In the
+first frame drawn on a first boot the two widgets are blank white tiles;
+they fill in seconds later.
+
+**Visible apps** (`listapps`, 39): the 22 of §2.3 plus Calendar, Contacts,
+Files, Fitness, Health, Maps, Messages, News, Passwords, Photos, Preview,
+Reminders, Remote, Shortcuts, Siri, Wallet, Watch — the same set as the
+27.0 iPad (§5). This equals the runtime's 179 registrable bundles minus 134
+`hidden` and 6 launch-prohibited ones.
+
+**Launches** (`simctl launch`, each app terminated before the next;
+screenshot 12 s after the launch):
+
+| App | Bundle identifier | pid returned | Running after 12 s | First screen |
+|---|---|---|---|---|
+| Maps | `com.apple.Maps` | yes, 0.7 s | yes | an onboarding sheet with a lock-screen picture and "Enable Notifications" / "Not Now"; on top the system alert asking to allow Maps to use the location (Allow Once / Allow While Using App / Don't Allow) |
+| Calendar | `com.apple.mobilecal` | yes, 0.2 s | yes | a "What's New in Calendar" sheet with a Continue button |
+| Photos | `com.apple.mobileslideshow` | yes, 0.2 s | yes | a "What's New in Photos" sheet with a Continue button |
+| Messages | `com.apple.MobileSMS` | yes, 0.2 s | yes | the conversation list "Messages" with two sample conversations dated 12/31/00 and a search field at the bottom |
+| News | `com.apple.news` | yes, 0.2 s | yes | "Welcome to Apple News" with a Continue button |
+| Health | `com.apple.Health` | yes, 0.3 s | yes | "Summary": Pinned ("No pinned topics"), "Show All Health Data"; tab bar Summary / Sharing / Browse; on top the alert asking to allow Health to send notifications |
+| Wallet | `com.apple.Passbook` | yes, 0.2 s | yes | "Wallet" with add and more buttons, a "What's New in Wallet" card, a picture of passes |
+| Contacts | `com.apple.MobileAddressBook` | yes, 0.5 s | yes | the contact list with the sample contacts (John Appleseed, Kate Bell, David Taylor, Hank M. Zakroff, …) and an A–Z index |
+| Files | `com.apple.DocumentsApp` | yes, 0.3 s | yes | "Recents", empty, with a search field; tab bar Recents / Shared / Browse |
+| Reminders | `com.apple.reminders` | yes, 0.4 s | yes | a "Welcome to Reminders" sheet with a Continue button |
+| Settings | `com.apple.Preferences` | yes, 1.0 s | yes | as on 27.1 (§2.3) |
+| Safari | `com.apple.mobilesafari` | yes, 0.4 s | yes | the Start Page with a customization card, an iCloud prompt (Not Now / Turn On) and the Privacy Report |
+
+Two behaviors to keep in mind when comparing screenshots with Ycode:
+
+- **A permission alert stays up.** The first permission alert of a fresh
+  device (Maps' location request; after a reboot, Health's notification
+  request) stays on the screen after the app that caused it is
+  terminated. It covered the home screen and every app launched after it
+  until the device was rebooted. The alerts were not answered. A fair
+  comparison launches the apps in the same order on both sides, or one
+  app per fresh boot.
+- **Background relaunch.** Calendar and Photos were running again a few
+  seconds after `simctl terminate` (new instances in `launchctl list`),
+  together with the Spotlight, family and widget-renderer UI services.
+
+Messages and Contacts show sample data: the device directory that
+`simctl create` makes already holds the address-book databases and six
+sample photos (`first-boot.md`), and the 27.0 apps display them.
 
 ## 5. iPad (iOS 27.0 runtime, iPad Pro 11-inch (M5))
 
@@ -352,7 +443,7 @@ Launches on the iPad were not determined (the host was overloaded; §8).
 | 6 | Poster apps | not launchable: `FBSOpenApplicationServiceErrorDomain` 1, reason NotFound ("unknown to FrontBoard"), answered after about 12 s (`app-launch.md` §8 Q5, §8.2) | answered: NotFound after `ylaunch`'s 10 s window, no process; domain code 4, not 1 (`app-launch.md` §2.1, Q7) | not a Ycode fault if they fail the same way; a request that is never answered is a difference |
 | 7 | Displays | cover `LCD` 1398 × 2034 shows the home screen; inner `LCD-1` 2007 × 2853 black | one display, 1398 × 2034 | compare against `--display=LCD` screenshots only |
 | 8 | Home-screen orientation on the cover display | sideways: dock at the right edge, status at the top right | check Ycode screenshots | report if Ycode draws a portrait layout |
-| 9 | iPad | needs a runtime that supports iPads (27.0, 24A434) | Ycode uses 27.1 only | iPadOS work must pick another runtime; its app set is larger (§5) |
+| 9 | iPad | needs a runtime that supports iPads (27.0, 24A434) | Ycode boots 27.0 as a second runtime (§9) | done: iPad and iPhone 18 Pro on 27.0 match §4.1 and §5 |
 | 10 | Husks | copied as plain directories | Ycode uses the same runtime image | nothing; they must not be registered |
 
 If the user wants Maps, Calendar, Photos, Messages and the others, the
@@ -382,10 +473,113 @@ Notes, Clock, Camera, Mail and Calculator are not in either runtime.
 - **Safari's first screen** under normal load (a white page after 15 s
   under heavy load).
 
+## 9. Ycode on the iOS 27.0 runtime (agent IOS27, 2026-10-27)
+
+Clean-room results: Ycode's own simulator on the Thor with a copy of the
+27.0 RuntimeRoot (24A434), the guest's files read after the boot
+(`IconState.plist` with `plistlib`), Ycode screenshots (scratch only),
+`ylaunch` one-shots (`open`, `wait`, `kill`). No Apple simulator, Xcode or
+reference tool was run. The host was shared (load average 5–200), so the
+times outside §9.3 are upper bounds. What Ycode changed for this:
+`ipad.md` §9.2, `iphone-types.md` §9; the IDE's runtime choice:
+`specs/ide/run.md` §Runtimes and device types.
+
+### 9.1 Home screens
+
+| Device (Ycode type) | `IconState.plist` against the reference | Screen |
+|---|---|---|
+| iPhone 18 Pro (`iphone-18-pro`, the default on 27.0) | equal to §4.1 in every list: dock Safari, Messages; page 1 the small Maps widget, the small stack Calendar Up Next/News/Photos, Calendar, Photos, Maps, News, Health, Wallet, Siri, Settings; page 2 Fitness, Watch, Reminders, Files, Preview, folder "Utilities" (Shortcuts, Passwords), Contacts; `ignored` Remote; `today` Calendar (small), Batteries (small), News (`extraLargePortrait`), Maps (medium), Screen Time (large) | 1206 × 2622 portrait: wallpaper; status bar with the time at the left and the cellular dots, Wi-Fi and battery right of the island; the two widget tiles with labels, the eight labelled icons in two rows; the "Search" pill; the dock with Safari and Messages. Icons are drawn grey (placeholders) first and filled about 4 minutes later under load |
+| iPad Pro 13-inch (M5) (`ipad-pro-13-m5`) | equal to §5 in every list (`ipad.md` §9.2) | 2064 × 2752 portrait: wallpaper, the News stack ("Apple News Is Offline"), the Reminders widget ("No Reminders"), the Calendar widget, Files, Reminders, Maps, News, Settings, two page dots, the dock with Messages, Safari, Calendar (the date), Photos, Siri and the App Library tile |
+
+Differences seen on the screens (not in the layout files):
+
+- **Calendar widget.** In Ycode the Calendar "Up Next" widget stays in its
+  redacted placeholder form (grey and pink bars), on the iPhone stack and
+  the iPad medium widget, for the whole run (8 minutes); the reference
+  shows "TUESDAY 27" and "No Events Today". Not investigated (the
+  widget's timeline is rendered by the guest's widget renderer; whether a
+  host service it needs is missing is open, §9.4).
+- **Maps widget.** Ycode draws the map grid without map tiles; the
+  reference shows a map of North America. The Thor has no network for the
+  guest, and whether the reference's tiles come from the network or from
+  data in the runtime is open (§9.4).
+
+### 9.2 App launches
+
+Each app was opened with `ylaunch open` on a booted device; on the iPhone
+each app was killed 25 s later before the next one, as the reference did
+with `simctl terminate`.
+
+| App | Bundle identifier | iPhone 18 Pro: pid; open request | First screen (iPhone, Ycode) | iPad Pro 13 (M5): pid |
+|---|---|---|---|---|
+| Maps | `com.apple.Maps` | yes; 43 s (the first open of the boot, still while the home screen was being built) | the location alert "Allow "Maps" to use your location?" (Allow Once / Allow While Using App / Don't Allow) over a blank map | yes |
+| Calendar | `com.apple.mobilecal` | yes; 2.0 s | "What's New in Calendar" with Continue | yes |
+| Photos | `com.apple.mobileslideshow` | yes; 0.2 s | "What's New in Photos" | yes |
+| Messages | `com.apple.MobileSMS` | yes; 0.2 s | "Messages" with the sample conversation +1 (888) 555-1212 | yes |
+| Contacts | `com.apple.MobileAddressBook` | yes; 0.2 s | "Contacts" with **"No Contacts"** (the reference shows the sample contacts, see below) | yes |
+| Files | `com.apple.DocumentsApp` | yes; 0.2 s | "Recents" with a search field, tab bar | yes |
+| Reminders | `com.apple.reminders` | yes; 0.2 s | "Welcome to Reminders" | yes |
+| News | `com.apple.news` | yes; 0.3 s | "Welcome to Apple News", "Apple News isn't connected to the internet" | yes |
+| Wallet | `com.apple.Passbook` | yes; 1.9 s | "Wallet" with "What's New in Wallet" and the passes picture | yes ("What's New in Wallet", Passes and Tickets) |
+| Health | `com.apple.Health` | yes; 0.2 s | "Summary", Pinned "No pinned topics", tab bar; the alert ""Health" Would Like to Send You Notifications" | not tried |
+| Settings | `com.apple.Preferences` | yes; 0.3 s | the Settings list | not tried |
+| Safari | `com.apple.mobilesafari` | yes; 0.2 s | the Start Page with the customization card, Favorites (Apple, Bing, Google, Yahoo) and the Privacy Report | not tried |
+
+As on the reference: the Maps location alert stays on the screen after
+Maps is killed and covers every later app until the Health alert replaces
+it; Maps, Calendar, Photos, Messages and News were running again in the
+background after a kill (`ylaunch kill` found and killed two or three
+instances of each). Guest crashes in these boots: `fileindexerd` (as on
+every Ycode boot) and `AppIntentsLiveEntityService` (twice per boot; the
+reference reports the same process, `iphone-types.md` §6); no host crash.
+
+**Sample contacts.** The reference's Contacts shows John Appleseed and the
+other sample contacts because `simctl create` writes the address-book
+databases into a new device (`first-boot.md` §2). Ycode's new device has
+none, so Contacts is empty. These databases are CoreSimulator's content,
+not the runtime's; Ycode does not copy them (§9.4).
+
+### 9.3 Boot times on 27.0
+
+Measured with the harness's `timed.sh` (the Thor to itself: no other
+`ycode-simd`, 1-minute load 1.4 and 0.6 at the start), full boot (no lean
+boot), release build of the IOS27 branch, iPhone 18 Pro, frames every 5 s.
+"Home" is `ycode-simd`'s home watch (`YCODE_HOME_WATCH`) and the first lit
+frame (the launcher's criterion, `specs/ide/run.md` §Warm boot).
+
+| Boot | Home watch | First lit frame | What the frames show | Run length |
+|---|---|---|---|---|
+| Cold first boot of a new device (data migration: 35 of 35 migrators) | 77.5 s | 80 s | 80 s: dock, labels and some icons on black; 85 s: wallpaper; 100 s: every icon drawn, the widgets as in §9.1 | 420 s, ended cleanly |
+| Repeat cold boot of the same device | 38.1 s | 40 s | 40 s: wallpaper with grey placeholder icons; 55 s: every icon drawn | 300 s, ended cleanly |
+
+For comparison: the reference iPhone 18 Pro on 27.0 drew its home screen
+45–49 s into a first boot and 18.1 s into a second boot on a busy Mac
+(`iphone-types.md` §6); Ycode's 27.1 iPhone Duo reaches its home screen in
+about 30 s on a repeat boot (main line, `scheduling-policy.md`). The 27.0
+boot has more to draw (17 more apps, 39 visible records, two page-1
+widgets). Under the shared host's load (5–200) the same boots took 90–380 s
+(first) and 250–290 s (repeat).
+
+27.1 regression (same build, a fresh copy of the harness's first-booted
+iPhone Duo device, not timed): the home screen as before (Settings, Safari
+in the dock, sideways cover layout), Settings opened on its list and Safari
+on its Start Page with `ylaunch`; no host crash. The guest crashes were the
+known ones of the main line (`fileindexerd`, `intelligencetasksd`).
+
+### 9.4 Open questions
+
+1. (Dirty side) Where the sample address-book databases and the sample
+   photos of a new device come from (CoreSimulator's bundle or the
+   runtime), and whether a host can create equivalent sample data as its
+   own content; what the reference's Calendar Up Next widget needs to leave
+   its placeholder state; whether the Maps widget's map is drawn from data
+   in the runtime without a network.
+
 ## Evidence
 
 | Claim | Level | Source |
 |---|---|---|
+| Ycode on 27.0: layouts, screens, launches, times (§9) | 3 | Ycode boots on the Thor with the 27.0 RuntimeRoot copy, `IconState.plist` read with `plistlib`, Ycode screenshots, `ylaunch` outputs; `timed.sh` runs |
 | Home screen of a fresh 27.1 iPhone Duo (§2.1) | 2, 3 | `IconState.plist` via `plutil`; `simctl io screenshot --display=LCD` |
 | Two displays, default screenshot display (§2.2) | 3 | `simctl io enumerate`; screenshots of both displays |
 | Visible app records, display names, paths (§2.3) | 3 | `simctl listapps` on the 27.1 iPhone, 27.0 iPhone and 27.0 iPad |
@@ -401,6 +595,7 @@ Notes, Clock, Camera, Mail and Calculator are not in either runtime.
 | Filtering rules (§3.4) | 2, 3 | `DesiredIconState.plist` against `IconState.plist` on three fresh devices |
 | Device capabilities (§5) | 2 | the device types' `capabilities.plist` |
 | 27.0 iPhone and iPad layouts (§4, §5) | 2, 3 | `IconState.plist`, screenshots |
+| 27.0 iPhone 18 Pro layout, keys added by SpringBoard, visible apps, launches and first screens, persistent alert, background relaunch (§4.1) | 2, 3 | two fresh iOS 27.0 iPhone 18 Pro devices, 2026-10-27: `DesiredIconState.plist`/`IconState.plist` against the default file (`plistlib`), `simctl listapps`, `simctl launch`/`terminate`, `launchctl list` via `simctl spawn`, screenshots (scratch only); registrable-bundle count from Info.plist keys (level 4) |
 | Ycode's side (§6) | — | `home-screen.md`, `first-boot.md`, `device-capabilities.md` |
 
 Level 5 was not used. The reference tools folder, `research/dirty/` and

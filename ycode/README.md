@@ -1,17 +1,32 @@
 # Ycode (implementation)
 
-This is clean-room code. Read `../CLAUDE.md` before you make any change here.
+This is clean-room code. Read [`../AGENTS.md`](../AGENTS.md) before you make
+any change here.
+
+Platforms: the libraries and command-line tools build and test on macOS and
+Linux (x86-64 and arm64, Swift 6.4). `YcodeUI`, `YcodeDeviceUI`, `YcodeApp`
+and `ycode-sim-viewer` are macOS only. `ycode-simd` runs only on arm64 Linux
+with KVM.
 
 ```bash
 swift build
 swift test
+scripts/lint.sh                      # SwiftLint over ycode/ and frameworks/
+scripts/make-app.sh                  # macOS: .build-ide/app/Ycode.app
 .build/debug/ycode describe path/to/App.xcodeproj
 .build/debug/ycode roundtrip path/to/App.xcodeproj    # also .xcscheme / contents.xcworkspacedata
 .build/debug/ycode schemes path/to/App.xcworkspace
 .build/debug/ycode macho path/to/binary
 .build/debug/ycode dsc path/to/dyld_sim_shared_cache_arm64 [--images N] [--image /usr/lib/libobjc.A.dylib]
 .build/debug/ycode settings path/to/App.xcodeproj -target App -configuration Debug [--assigned-only] [--json] [NAME=value]
+.build/debug/ycode deps path/to/executable --root path/to/RuntimeRoot [--tree]
+.build/debug/ycode build path/to/App.xcodeproj -scheme App [--test] [--engine xcodebuild|swift-build]
+.build/debug/ycode pif path/to/App.xcodeproj
 ```
+
+`make-app.sh` builds `YcodeApp` in release, wraps it in an app bundle,
+stamps the build SDK so that AppKit uses the current look, and signs it ad
+hoc (`../specs/ide/liquid-glass-ycode.md` §0).
 
 ## ycodebuild
 
@@ -29,7 +44,6 @@ cd ../.. && .build/debug/ycodebuild -project path/to/App.xcodeproj -scheme App b
 YCODE_PBXPROJ_CORPUS=manifest.txt python3 -I scripts/xcodebuild-conformance.py --details
 ```
 
-Supported platforms: macOS and Linux (x86-64 and arm64, tested with Swift 6.4).
 Set `YCODE_SIM_RUNTIME_ROOT` to a simulator `RuntimeRoot` to run the runtime
 tests on Linux.
 
@@ -56,6 +70,19 @@ in `YCODE_PBXPROJ_CORPUS`. The manifest has one path per line:
   lossless and idempotent.
 
 If there is no manifest, the suite is skipped.
+
+Other opt-in test inputs:
+
+- `YCODE_SIM_RUNTIME_ROOT`: a simulator `RuntimeRoot`, for the Mach-O and
+  runtime tests.
+- `YCODE_KEYCHAIN_TESTS=1`, `YCODE_LIVE_ASSISTANT=ollama,claude,codex,agy`:
+  the coding assistant's keychain and live-provider tests.
+- `YCODE_E2E_REMOTE`, `YCODE_E2E_DATA`, `YCODE_E2E_RUNTIME`, `YCODE_E2E_SIMD`,
+  `YCODE_E2E_APP`: an end-to-end run on a remote Ycode simulator.
+- `YCODE_CAMERA_HW_TESTS=1`: tests with a real host webcam.
+
+Tools are found on `PATH` or through overrides: `YCODE_SWB` (the swift-build
+helper), `YCODE_SOURCEKIT_LSP`, `YCODE_LLDB_DAP`, `YCODE_BUILD_TOOL`.
 
 ## Try the simulator from a Mac (`scripts/ycode-sim-try`)
 
@@ -89,9 +116,10 @@ slot; the next session restores it in place, so the home screen (or the
 app you left open) is back and takes input a few seconds after the slot is
 free, with its apps, data and settings as you left them (like Xcode's
 Simulator, a device keeps its state until it is erased). The first session,
-a new simulator build, or `--cold` boot cold: about a minute to the home
-screen, the window shows "Booting…" until the first frame, and the app
-icons come with the wallpaper. A cold-booted device is saved only from 30 s
+a new simulator build, or `--cold` boot cold: about 30 s to the home screen
+on an idle host and longer for a new device
+([`lean-boot.md`](../specs/simulator/lean-boot.md) §9). The window shows
+"Booting…" until the first frame, and the app icons come with the wallpaper. A cold-booted device is saved only from 30 s
 after its home screen showed; closing the window earlier shuts it down
 cleanly and the next session boots it cold again (its data stays).
 
@@ -105,4 +133,7 @@ goes home), Option-drag = pinch/rotate, Option-Shift-drag = two-finger pan,
 scroll wheel or trackpad = drag, typing = hardware keyboard. ⇧⌘H Home,
 ⌘L Lock, ⌥⌘↑/↓ volume, ⌘S screenshot (PNG on the Desktop), ⌘1/⌘2/⌘3 window
 size. Protocol and design:
-`specs/simulator/display-stream.md`; input: `specs/simulator/hid-input.md`.
+[`../specs/simulator/display-stream.md`](../specs/simulator/display-stream.md);
+input: [`../specs/simulator/hid-input.md`](../specs/simulator/hid-input.md).
+To build the simulator on the host, see
+[`../docs/SIMULATOR-LINUX.md`](../docs/SIMULATOR-LINUX.md) §5.

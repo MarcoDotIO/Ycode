@@ -67,6 +67,8 @@ extension IBDocument {
 
     // MARK: User Defined Runtime Attributes
 
+    /// The object's User Defined Runtime Attributes, in file order; empty
+    /// for an unknown ID.
     public func runtimeAttributes(of id: String) -> [RuntimeAttribute] {
         guard let n = byID[id]?.node.child("userDefinedRuntimeAttributes") else { return [] }
         return n.children.filter { $0.name == "userDefinedRuntimeAttribute" }.map {
@@ -99,6 +101,8 @@ extension IBDocument {
         return try edited([XMLEdit(at..<at, "\n" + base + "<userDefinedRuntimeAttributes>\n" + base + "    " + line + "\n" + base + "</userDefinedRuntimeAttributes>")])
     }
 
+    /// Removes the runtime attribute `keyPath`, and the container element when
+    /// it was the last one. Returns `self` when there is nothing to remove.
     public func removingRuntimeAttribute(_ keyPath: String, of id: String) throws -> IBDocument {
         guard let c = byID[id]?.node.child("userDefinedRuntimeAttributes"),
               let n = c.children.first(where: { $0["keyPath"] == keyPath }) else { return self }
@@ -121,6 +125,7 @@ extension IBDocument {
 
     // MARK: Sections
 
+    /// The segue kinds the Attributes inspector offers, in menu order.
     public static let segueKinds = ["Relationship", "Show", "Show Detail", "Present Modally", "Present As Popover", "Embed",
                                     "Push (deprecated)", "Modal (deprecated)", "Custom"]
 
@@ -134,6 +139,7 @@ extension IBDocument {
         return ios[element] ?? "UI" + words(element).replacingOccurrences(of: " ", with: "")
     }
 
+    /// The Identity inspector's sections for object `id`; empty when unknown.
     public func identitySections(_ id: String) -> [IBInspectorSection] {
         guard let o = byID[id] else { return [] }
         var out = [IBInspectorSection("Custom Class", [
@@ -161,6 +167,7 @@ extension IBDocument {
         return out
     }
 
+    /// The Attributes inspector's sections for object `id`; empty when unknown.
     public func attributesSections(_ id: String) -> [IBInspectorSection] {
         guard let o = byID[id] else { return [] }
         func t(_ l: String, _ a: String, _ ph: String = "") -> IBInspectorRow { .text(label: l, target: id, attribute: a, value: o.attribute(a) ?? "", placeholder: ph) }
@@ -260,6 +267,7 @@ extension IBDocument {
         return "\(kind) to: \(name(other))"
     }
 
+    /// The Size inspector's sections for object `id`; empty when unknown.
     public func sizeSections(_ id: String) -> [IBInspectorSection] {
         guard let o = byID[id] else { return [] }
         if isController(o) { return [IBInspectorSection("Simulated Size", [.info(label: "Simulated Size", value: "Fixed")])] }
@@ -302,11 +310,12 @@ extension IBDocument {
         return out
     }
 
+    /// The Connections inspector's sections for object `id`; empty when unknown.
     public func connectionsSections(_ id: String) -> [IBInspectorSection] {
         guard let o = byID[id] else { return [] }
         func rows(_ k: Connection.Kind) -> [IBInspectorRow] { o.connections.filter { $0.kind == k }.map { .connection(name: $0.name, other: name($0.other), id: $0.id) } }
         var out = [IBInspectorSection("Triggered Segues", rows(.segue)), IBInspectorSection("Outlets", rows(.outlet))]
-        if !o.connections.filter({ $0.kind == .action }).isEmpty { out.append(IBInspectorSection("Sent Actions", rows(.action))) }
+        if o.connections.contains(where: { $0.kind == .action }) { out.append(IBInspectorSection("Sent Actions", rows(.action))) }
         if isController(o) {
             let segues = incomingConnections(to: id).filter { $0.connection.kind == .segue }
             out.append(IBInspectorSection("Presenting Segues", Self.segueKinds.map { k in

@@ -410,7 +410,7 @@ registered 27 names:
 |---|---|
 | CoreSimulator | `com.apple.CoreSimulator.host.bootstrap_port` (the host bootstrap port itself), `com.apple.CoreSimulator.SimFramebufferServer`, `com.apple.CoreSimulator.SimCaptureService`, `com.apple.CoreSimulator.SimIdentityService`, `com.apple.CoreSimulator.NearbyInteraction`, `IndigoHIDRegistrationPort` |
 | GPU | `com.apple.metal.simulator`, and one shared port under `com.apple.metal.simulator.SpringBoard`, `.SBRendererService`, `.backboardd`, `.PineBoard`, `.HeadBoard`, `.Carousel`; `com.apple.IOSurface.Remote`; `com.apple.gputools.service.simulator` |
-| Audio | `com.apple.audio.coreaudiod`, `com.apple.audio.audiohald` |
+| Audio | `com.apple.audio.coreaudiod`, `com.apple.audio.audiohald` (guests use only the latter: `audio-host.md`) |
 | System | `com.apple.SystemConfiguration.configd` and `com.apple.SystemConfiguration.configd_host` (one port), `com.apple.SystemConfiguration.PPPController`, `com.apple.PowerManagement.control`, `com.apple.FSEvents` |
 | Other | `com.apple.FileProvider.sim2host`, `com.apple.storekitservice.sim2host`, `com.apple.modelmanager.simulator`, `com.apple.coreservices.lsuseractivity.simulatorsupport`, `com.apple.fpsd.sim` |
 
@@ -418,6 +418,77 @@ Two more names were attempted and skipped (`com.apple.gputools.agent.producer.si
 `com.apple.ist.ds.appleconnect.service.sim2host`). Several of these are
 the host ends of the CoreSimulator I/O bundles (framebuffer, HID, audio,
 GPU).
+For networking only `com.apple.SystemConfiguration.configd` is used (by
+`configd_sim`); name resolution goes to the host's mDNSResponder through
+the UNIX socket `/var/run/mDNSResponder`, not through a Mach name
+(`networking.md`).
+
+**Ycode** registers, besides the GPU, surface and HID names,
+`com.apple.SystemConfiguration.configd` (and `configd_host`),
+`com.apple.PowerManagement.control` (visionos.md §10.11.4: a MIG server of
+IOKitUser's `powermanagement` subsystem that grants every assertion),
+`com.apple.audio.audiohald` (`audio-host.md` §13: Ycode's audio server;
+`com.apple.audio.coreaudiod` stays unregistered, no guest uses it) and
+`com.apple.FSEvents` (`fsevents-host.md` §10: the file-event service, with
+events from Ycode's VFS). The
+host queues its 701 requests on the control channel before launchd_sim
+reads it, and the channel holds five messages: names that do not fit are
+registered by the session thread after the queued replies, and the
+power-management, audio and file-event names are queued last (`lateHostServices`) so
+that the GPU, surface and HID names always fit. Audio clients that look
+the name up before its registration retry about once a second
+(`audio-host.md` §1), so a late registration costs nothing. A name that
+does not fit fails to queue at once (send timeout 0): nobody reads the
+port before the host's reply hands it over, and the 5 s send timeout used
+before delayed that reply, and the whole boot, by 5 s for every name that
+did not fit (visionos.md §10.19.3; also R3's sixth name, the HID name of a
+boot with the HID bundle).
+
+### 6.4 Which guest processes use the host-side names (iOS 27.1 full boot)
+
+Observed on the Mac (agent OBS-FSEVENTS, 2026-10-27): a recorder of ours
+in every guest process of six full boots of four throwaway devices
+(iPhone Duo, iOS 27.1, first and later boots, about 2 h of boot time in
+all) logged each `bootstrap_look_up*` (with its result) and each
+`xpc_connection_create_mach_service` name. "Ycode" is by name only
+(`ycode/Sources/YcodeHostServices/`, `YcodeMetalHost`, the session's
+registration list).
+
+| Name | Guest users seen (how) | Ycode |
+|---|---|---|
+| `com.apple.FSEvents` | fileindexerd, UserEventAgent (`com.apple.fsevents.matching` plug-in), cfprefsd, revisiond, configd_sim, fontservicesd, DockFolderViewService (look-up) | provided (2026-10-27): `fsevents-host.md` §10 |
+| `com.apple.audio.audiohald` | SpringBoard (look-up, at boot) | **missing** |
+| `com.apple.FileProvider.sim2host` | fileindexerd (XPC, when it scans; it then logs "simulator host support level 2") | **missing** |
+| `com.apple.fpsd.sim` | assistantd, amsengagementd (look-up) | **missing** |
+| `com.apple.CoreSimulator.SimIdentityService` | apsd (XPC) | **missing** |
+| `com.apple.CoreSimulator.NearbyInteraction` | sharingd (XPC) | **missing** |
+| `com.apple.modelmanager.simulator` | HostInferenceProviderService (XPC) | **missing** |
+| `com.apple.metal.simulator.SpringBoard`, `.backboardd` | SpringBoard, backboardd (look-up and XPC) | not registered; the clients fall back to `com.apple.metal.simulator` (Ycode registers that one) |
+| `com.apple.metal.simulator` | ≈20 processes: PosterBoard and the poster extensions, widget renderers, chronod, iconservicesagent, assetsd, healthappd, … (XPC) | provided |
+| `com.apple.IOSurface.Remote` | SpringBoard, backboardd, the poster extensions, chronod, iconservicesagent, nsattributedstringagent (XPC) | provided |
+| `com.apple.PowerManagement.control` | SpringBoard, runningboardd, dasd, locationd, nsurlsessiond, apsd, cloudd, geod, sharingd, liveactivitiesd, financed, battery widgets (look-up) | provided |
+| `com.apple.SystemConfiguration.configd` | configd_sim (look-up) | provided |
+| `com.apple.CoreSimulator.SimFramebufferServer` | backboardd, CoreSimulatorBridge (look-up) | replaced: Ycode supplies its own guest SimFramebuffer framework |
+| `IndigoHIDRegistrationPort` | backboardd (look-up) | replaced: Ycode's own guest SimHID framework uses `dev.ycode.simulator.hid` |
+
+Not looked up at all in these boots (needed only by features the boots
+did not use, such as camera capture, audio output through coreaudiod,
+StoreKit, Handoff, GPU tools): `com.apple.CoreSimulator.host.bootstrap_port`,
+`…SimCaptureService`, `com.apple.metal.simulator.SBRendererService`,
+`.PineBoard`, `.HeadBoard`, `.Carousel`, `com.apple.gputools.service.simulator`,
+`com.apple.audio.coreaudiod`, `com.apple.SystemConfiguration.configd_host`,
+`…PPPController`, `com.apple.storekitservice.sim2host`,
+`com.apple.coreservices.lsuseractivity.simulatorsupport`, and the two names
+the Mac skips (`com.apple.gputools.agent.producer.sim`,
+`com.apple.ist.ds.appleconnect.service.sim2host`).
+
+The guest's per-process Metal names (`com.apple.metal.simulator.<process>`
+for PosterBoard, each poster extension, chronod, …) fail with 1102 on the
+Mac too; they are not host names. The failed look-ups that `launchd.log`
+shows on the Mac besides those (for example `com.apple.nehelper`,
+`com.apple.accessibility.AXSpringBoardServer`,
+`com.apple.identityservicesd.desktop.auth`, `com.apple.spaceattributiond`)
+are guest names that the runtime does not provide on the Mac either.
 
 ## 7. What the host must provide (requirements for Ycode)
 
@@ -590,6 +661,7 @@ Consequences for Ycode:
 | Requirements and design §7–§8 | — | derived from the above; Ycode design |
 | Simulator log forwarding: filter file, system-mode client, per-message XPC sends, host socket path and the JSON entry stream on it §8.1 | 2, 3 | plists and diagnosticd.0.log read as formats; Ycode boot traces (`--trace-name`) and Mach traffic counters (`YCODE_DEBUG_MACH_STATS=1`) |
 | Cost of the host end, the retry-then-stop behavior without it, and the default-off choice §8.1 | 3 | paired Ycode boots on the Thor (2026-10-16): per-process trap counts from the exit summary, kernel-lock totals, `diagnosticd.0.log` read as a format |
+| Guest users of the host-side names, and names not used in a full boot §6.4 | 3 | recorder of ours (look-ups with results, XPC connection names) in every guest process of six Mac boots, 2026-10-27 (`research/notes/obs-fsevents-2026-10-27.md`); Ycode's names read from its sources |
 
 No disassembly or decompilation was used (level 5 not used). Dirty-room
 notes: `research/notes/launchd-sim-observations.md`.

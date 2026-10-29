@@ -134,7 +134,7 @@ struct VCardWriter {
         if let label, let t = types[label] {
             lines.append(name + VCardWriter.params(base + t + prefType) + ":" + value)
             lines.append(contentsOf: extra)
-        } else if label == nil || label == "" {
+        } else if label?.isEmpty ?? true {
             lines.append(name + VCardWriter.params(base + prefType) + ":" + value)
             lines.append(contentsOf: extra)
         } else {
@@ -270,7 +270,7 @@ struct VCardLine {
     var value: String
 
     func param(_ n: String) -> String? {
-        params.first { $0.name.caseInsensitiveCompare(n) == .orderedSame }?.value ?? nil
+        params.first { $0.name.caseInsensitiveCompare(n) == .orderedSame }?.value
     }
 
     /// TYPE values (`type=…`, comma lists, quotes) and bare 2.1 tokens, upper case.

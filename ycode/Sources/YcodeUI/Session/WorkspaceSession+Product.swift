@@ -399,3 +399,61 @@ public enum ProjectChecks {
         return out
     }
 }
+
+/// A test run's activity texts (`reference-ui-6.md` §3.4), moved on by
+/// the runner's output: "Test" when the action is accepted, the build
+/// texts while the tests build ("Building • n/m", counted as for a build,
+/// §3.2), "Configuring Debugger Actions" once the build is done, then
+/// "Testing <scheme>" once the first test starts. It only moves forward.
+@MainActor
+public final class TestActivityProgress {
+    public enum Phase: Int, Comparable, Sendable {
+        case accepted, building, configuring, testing
+        public static func < (a: Phase, b: Phase) -> Bool { a.rawValue < b.rawValue }
+    }
+    public private(set) var phase = Phase.accepted
+    public private(set) var text: String
+    let subject: String
+    private var counter = LogTaskCounter()
+
+    public init(subject: String) {
+        self.subject = subject
+        text = WorkspaceSession.RunActivityText.testAccepted
+    }
+
+    /// The new text after an output line, or nil when it stays.
+    public func feed(_ line: String) -> String? {
+        let next: String
+        if Self.startsTesting(line) {
+            guard phase < .testing else { return nil }
+            phase = .testing
+            next = "Testing \(subject)"
+        } else if Self.endsBuilding(line) {
+            guard phase < .configuring else { return nil }
+            phase = .configuring
+            next = WorkspaceSession.RunActivityText.configuringDebugger
+        } else if phase <= .building, let p = counter.feed(line) {
+            phase = .building
+            next = WorkspaceSession.BuildActivityText.progress(done: p.done, total: p.total)
+        } else {
+            return nil
+        }
+        guard next != text else { return nil }
+        text = next
+        return next
+    }
+
+    /// The build part of a test run is done: SwiftPM's "Build complete!",
+    /// xcodebuild's "** TEST BUILD SUCCEEDED **" or "Testing started".
+    static func endsBuilding(_ line: String) -> Bool {
+        let l = line.trimmingCharacters(in: .whitespaces)
+        return l.hasPrefix("Build complete!") || l == "** TEST BUILD SUCCEEDED **" || l == "Testing started"
+    }
+
+    /// The first test starts: an XCTest suite or case line, or
+    /// swift-testing's run start.
+    static func startsTesting(_ line: String) -> Bool {
+        let l = line.trimmingCharacters(in: .whitespaces)
+        return l.hasPrefix("Test Suite '") || l.hasPrefix("Test Case '") || l.contains("Test run started")
+    }
+}

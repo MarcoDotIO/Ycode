@@ -60,7 +60,7 @@ final class ProcEnv: @unchecked Sendable {
         let sink = sink
         let fs = DarwinFileSystem(
             prefixes: [.init(guestPath: root, hostPath: root, writable: true)],
-            console: { fd, bytes in sink.console[fd, default: []] += bytes })
+            console: { fd, bytes in sink.append(fd, bytes) })
         rootKernel = try system.spawnInitialProcess(
             ProcessImageRequest(executablePath: exe, hostExecutablePath: exe, argv: [exe], envp: []), fileSystem: fs)
     }

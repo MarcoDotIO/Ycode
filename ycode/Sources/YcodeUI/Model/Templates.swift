@@ -40,6 +40,8 @@ public enum NewFileError: Error, CustomStringConvertible {
     }
 }
 
+/// Creates new files on disk from templates and, inside a project, adds
+/// them to the matching group and build phases. See `specs/ide/templates.md`.
 public enum FileCreator {
     /// Writes a template's files into `directory`, and (for a project) adds
     /// them to the group of that folder and compiled ones to the first
@@ -297,9 +299,12 @@ public struct TemplateSection: Equatable, Sendable {
 
 /// The new-file sheet's catalog: platform tabs, sections, filter.
 public enum FileTemplateCatalog {
+    /// The sheet's heading line.
     public static let heading = "Choose a template for your new file:"
+    /// The platform tabs, in order.
     public static let platforms = ["iOS", "macOS", "watchOS", "tvOS", "visionOS", "DriverKit"]
 
+    /// The template sections listed under a platform tab.
     public static func sections(platform: String) -> [TemplateSection] {
         func e(_ t: String, _ ext: String, _ name: String = "File", _ sym: String = "doc") -> TemplateEntry {
             TemplateEntry(t, defaultName: name, ext: ext, symbol: sym)
@@ -394,11 +399,13 @@ public struct TemplateSheetSteps: Equatable, Sendable {
 
 /// File ▸ New ▸ Project…'s compact picker.
 public enum NewProjectPicker {
+    /// The picker's title.
     public static let header = "New Project"
     public struct Row: Equatable, Sendable {
         public var title: String
         public var subtitle: String
     }
+    /// The picker rows, in order; see `template(forRow:)`.
     public static let rows: [Row] = [
         Row(title: "App", subtitle: "SwiftUI app for iPhone, iPad, Mac & Vision Pro"),
         Row(title: "Command Line Tool", subtitle: "Terminal program for macOS"),
@@ -406,6 +413,7 @@ public enum NewProjectPicker {
         Row(title: "Playground", subtitle: "Explore previews & playgrounds in a Swift file"),
         Row(title: "Choose Template…", subtitle: "Other apps, libraries, and games…"),
     ]
+    /// The index in `rows` of "Choose Template…", which opens the full sheet.
     public static let chooseTemplateIndex = 4
 
     /// Ycode's own template behind a row (nil: the template sheet).
@@ -421,10 +429,13 @@ public enum NewProjectPicker {
 
 /// The New Project template sheet's catalog.
 public enum ProjectTemplateCatalog {
+    /// The sheet's heading line.
     public static let heading = "Choose a template for your new project:"
+    /// The platform tabs, in order.
     public static let platforms = ["Multiplatform", "iOS", "macOS", "watchOS", "tvOS", "visionOS", "DriverKit", "Other"]
     static let lastKey = "YcodeLastProjectTemplate"
 
+    /// The template sections listed under a platform tab.
     public static func sections(platform: String) -> [TemplateSection] {
         func e(_ t: String) -> TemplateEntry { TemplateEntry(t, defaultName: "", symbol: "app") }
         switch platform {
@@ -462,6 +473,7 @@ public enum ProjectTemplateCatalog {
         guard parts.count == 2, platforms.contains(parts[0]) else { return ("iOS", "App") }
         return (parts[0], parts[1])
     }
+    /// Stores the chosen template for `lastSelection(_:)`.
     public static func setLastSelection(platform: String, title: String, _ d: UserDefaults) {
         d.set("\(platform)/\(title)", forKey: lastKey)
     }
@@ -500,5 +512,171 @@ public struct ProjectOptions: Equatable, Sendable {
     public mutating func setStorage(_ s: Storage) {
         storage = s
         if s == .none { hostInCloudKit = false }
+    }
+}
+
+/// The Welcome window's New Project ▸ App (`specs/ide/reference-ui-6.md`
+/// §1.5, W6): an untitled multiplatform SwiftUI app created at once, with
+/// no sheet, in Ycode's own untitled-projects folder. The file contents
+/// are Ycode's own; the setting names and values are interop facts
+/// (`specs/formats/pbxproj.md`).
+public enum UntitledAppProject {
+    /// The folder's base name ("Untitled Project", then "… 2", "… 3").
+    public static let folderName = "Untitled Project"
+    /// The app target, its synchronized folder and the project's name.
+    public static let targetName = "MyApp"
+    /// The newest SDK major (the deployment targets).
+    public static let deploymentTarget = "27.0"
+    /// A placeholder bundle identifier that needs no team.
+    public static let bundleIdentifier = "com.example.MyApp"
+    /// SDK "auto" builds for every supported platform.
+    public static let supportedPlatforms = "iphoneos iphonesimulator macosx xros xrsimulator"
+    /// iPhone, iPad, Apple Vision (device families 1, 2, 7).
+    public static let deviceFamilies = "1,2,7"
+
+    /// Ycode's untitled-projects folder in the user's Library.
+    public static var defaultLocation: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Developer/Ycode/Untitled Projects", isDirectory: true)
+    }
+
+    /// The first free folder under `base`: "Untitled Project", then
+    /// "Untitled Project 2", …
+    public static func freeFolder(in base: URL) -> URL {
+        var n = 1
+        while true {
+            let name = n == 1 ? folderName : "\(folderName) \(n)"
+            let u = base.appendingPathComponent(name, isDirectory: true)
+            if !FileManager.default.fileExists(atPath: u.path) { return u }
+            n += 1
+        }
+    }
+
+    /// The created project and the file the window opens with.
+    public struct Created: Equatable, Sendable {
+        public var project: URL
+        public var entryFile: URL
+    }
+
+    /// Creates the project in a free folder under `base`.
+    public static func create(in base: URL = defaultLocation) throws -> Created {
+        let root = freeFolder(in: base)
+        let fm = FileManager.default
+        let t = targetName
+        for (rel, text) in files() {
+            let u = root.appendingPathComponent(rel)
+            try fm.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try text.write(to: u, atomically: true, encoding: .utf8)
+        }
+        let projURL = root.appendingPathComponent("\(t).xcodeproj")
+        try fm.createDirectory(at: projURL, withIntermediateDirectories: true)
+        try makeProject().serialized(projectName: t).write(to: projURL.appendingPathComponent("project.pbxproj"), atomically: true, encoding: .utf8)
+        return Created(project: projURL, entryFile: root.appendingPathComponent("\(t)/\(t).swift"))
+    }
+
+    /// The synchronized folder's files (paths under the project folder).
+    static func files() -> [(String, String)] {
+        let t = targetName
+        return [
+            ("\(t)/\(t).swift", """
+            import SwiftUI
+
+            @main
+            struct \(t): App {
+                var body: some Scene {
+                    WindowGroup {
+                        ContentView()
+                    }
+                }
+            }
+
+            """),
+            ("\(t)/ContentView.swift", """
+            import SwiftUI
+
+            struct ContentView: View {
+                var body: some View {
+                    VStack(spacing: 12) {
+                        Image(systemName: "sparkles")
+                            .imageScale(.large)
+                        Text("Hello from \(t)")
+                    }
+                    .padding()
+                }
+            }
+
+            #Preview {
+                ContentView()
+            }
+
+            """),
+            ("\(t)/Assets.xcassets/Contents.json", IOSAppTemplate.json(#""info" : { "author" : "ycode", "version" : 1 }"#)),
+            ("\(t)/Assets.xcassets/AccentColor.colorset/Contents.json",
+             IOSAppTemplate.json(#""colors" : [ { "idiom" : "universal" } ],\#n  "info" : { "author" : "ycode", "version" : 1 }"#)),
+            ("\(t)/Assets.xcassets/AppIcon.appiconset/Contents.json",
+             IOSAppTemplate.json(#""images" : [ { "idiom" : "universal", "platform" : "ios", "size" : "1024x1024" } ],\#n  "info" : { "author" : "ycode", "version" : 1 }"#)),
+        ]
+    }
+
+    /// One app target whose sources are the synchronized folder.
+    static func makeProject() throws -> PBXProj {
+        var p = try PBXProj(parsing: "// !$*UTF8*$!\n{ archiveVersion = 1; classes = {}; objectVersion = 77; objects = {}; rootObject = 000000000000000000000000; }\n")
+        func obj(_ attrs: [(String, PlistValue)]) -> String {
+            let id = p.makeObjectID()
+            p[id] = PBXObject(id: id, attributes: PlistDictionary(attrs))
+            return id
+        }
+        func strings(_ ids: [String]) -> PlistValue { .array(ids.map(PlistValue.string)) }
+        func config(_ n: String, _ settings: [(String, PlistValue)]) -> String {
+            obj([("isa", "XCBuildConfiguration"), ("buildSettings", .dictionary(PlistDictionary(settings.sorted { $0.0 < $1.0 }))), ("name", .string(n))])
+        }
+        func list(_ ids: [String]) -> String {
+            obj([("isa", "XCConfigurationList"), ("buildConfigurations", strings(ids)), ("defaultConfigurationIsVisible", "0"),
+                 ("defaultConfigurationName", "Release")])
+        }
+        func phase(_ isa: String) -> String {
+            obj([("isa", .string(isa)), ("buildActionMask", "2147483647"), ("files", strings([])), ("runOnlyForDeploymentPostprocessing", "0")])
+        }
+        let t = targetName
+        let product = obj([("isa", "PBXFileReference"), ("explicitFileType", "wrapper.application"), ("includeInIndex", "0"),
+                           ("path", .string("\(t).app")), ("sourceTree", "BUILT_PRODUCTS_DIR")])
+        let folder = obj([("isa", "PBXFileSystemSynchronizedRootGroup"), ("path", .string(t)), ("sourceTree", "<group>")])
+        let products = obj([("isa", "PBXGroup"), ("children", strings([product])), ("name", "Products"), ("sourceTree", "<group>")])
+        let main = obj([("isa", "PBXGroup"), ("children", strings([folder, products])), ("sourceTree", "<group>")])
+        let settings: [(String, PlistValue)] = [
+            ("ASSETCATALOG_COMPILER_APPICON_NAME", "AppIcon"), ("ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME", "AccentColor"),
+            ("CODE_SIGN_STYLE", "Automatic"), ("CURRENT_PROJECT_VERSION", "1"), ("ENABLE_PREVIEWS", "YES"),
+            ("GENERATE_INFOPLIST_FILE", "YES"),
+            ("INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]", "YES"),
+            ("INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]", "YES"),
+            ("INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]", "YES"),
+            ("INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]", "YES"),
+            ("IPHONEOS_DEPLOYMENT_TARGET", .string(deploymentTarget)),
+            ("LD_RUNPATH_SEARCH_PATHS", .array(["$(inherited)", "@executable_path/Frameworks"])),
+            ("LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]", .array(["$(inherited)", "@executable_path/../Frameworks"])),
+            ("MACOSX_DEPLOYMENT_TARGET", .string(deploymentTarget)), ("MARKETING_VERSION", "1.0"),
+            ("PRODUCT_BUNDLE_IDENTIFIER", .string(bundleIdentifier)), ("PRODUCT_NAME", "$(TARGET_NAME)"),
+            ("SDKROOT", "auto"), ("SUPPORTED_PLATFORMS", .string(supportedPlatforms)), ("SWIFT_VERSION", "6.0"),
+            ("TARGETED_DEVICE_FAMILY", .string(deviceFamilies)), ("XROS_DEPLOYMENT_TARGET", .string(deploymentTarget)),
+        ]
+        let target = obj([("isa", "PBXNativeTarget"), ("buildConfigurationList", .string(list([config("Debug", settings), config("Release", settings)]))),
+                          ("buildPhases", strings([phase("PBXSourcesBuildPhase"), phase("PBXFrameworksBuildPhase"), phase("PBXResourcesBuildPhase")])),
+                          ("buildRules", strings([])), ("dependencies", strings([])), ("fileSystemSynchronizedGroups", strings([folder])),
+                          ("name", .string(t)), ("packageProductDependencies", strings([])), ("productName", .string(t)),
+                          ("productReference", .string(product)), ("productType", "com.apple.product-type.application")])
+        let common: [(String, PlistValue)] = [("ALWAYS_SEARCH_USER_PATHS", "NO"), ("SWIFT_VERSION", "6.0")]
+        let projectList = list([
+            config("Debug", common + [("DEBUG_INFORMATION_FORMAT", "dwarf"), ("ENABLE_TESTABILITY", "YES"), ("GCC_OPTIMIZATION_LEVEL", "0"),
+                                      ("ONLY_ACTIVE_ARCH", "YES"), ("SWIFT_ACTIVE_COMPILATION_CONDITIONS", "DEBUG $(inherited)"),
+                                      ("SWIFT_OPTIMIZATION_LEVEL", "-Onone")]),
+            config("Release", common + [("DEBUG_INFORMATION_FORMAT", "dwarf-with-dsym"), ("SWIFT_COMPILATION_MODE", "wholemodule")]),
+        ])
+        let project = obj([("isa", "PBXProject"), ("buildConfigurationList", .string(projectList)), ("developmentRegion", "en"),
+                           ("hasScannedForEncodings", "0"), ("knownRegions", .array(["en", "Base"])), ("mainGroup", .string(main)),
+                           ("minimizedProjectReferenceProxies", "1"), ("preferredProjectObjectVersion", "77"),
+                           ("productRefGroup", .string(products)), ("projectDirPath", ""), ("projectRoot", ""),
+                           ("targets", strings([target]))])
+        p.rootObject = project
+        return p
     }
 }

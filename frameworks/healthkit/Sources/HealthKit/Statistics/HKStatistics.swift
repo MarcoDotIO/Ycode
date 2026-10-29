@@ -9,6 +9,7 @@ public final class HKStatistics: NSObject, NSSecureCoding, NSCopying, @unchecked
         super.init()
     }
 
+    // swiftlint:disable:next force_cast - statistics are computed for quantity types only
     public var quantityType: HKQuantityType { TypeRegistry.type(result.type) as! HKQuantityType }
     public var startDate: Date { Date(t: result.start) }
     public var endDate: Date { Date(t: result.end) }

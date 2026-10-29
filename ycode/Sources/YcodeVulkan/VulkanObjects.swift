@@ -154,6 +154,13 @@ final class VKTexture {
     var shaderView: VkImageView?
     var storageView: VkImageView?
     var heapIndex: UInt32 = 0
+    /// Heap slots the texture owns from `heapIndex` on: a texture with a
+    /// storage view and several levels owns one per level, because a kernel
+    /// that reads or writes level L with an explicit level argument uses
+    /// storage slot heapIndex + L (ycode-airc, metal-shaders.md §4.4).
+    var heapCount: UInt32 = 1
+    /// The one-level storage views of levels 1… at heapIndex + 1….
+    var levelStorageViews: [VkImageView] = []
     /// Attachment and copy views by (level, layer).
     var attachmentViews: [Int: VkImageView] = [:]
 
@@ -298,23 +305,33 @@ final class VKEvent {
     init(semaphore: VkSemaphore?) { self.semaphore = semaphore }
 }
 
-/// Free-list index allocator for heap slots. Index 0 is reserved (dummy).
+/// Free-list index allocator for heap slots, single or in runs of
+/// consecutive slots (one per level of a texture with storage, VKTexture).
+/// Index 0 is reserved (dummy). A run is released whole and reused for a
+/// run of the same length. A run released twice (or one never handed out)
+/// is ignored and counted: handing one slot to two live textures would let
+/// one texture's descriptor replace the other's while both are in use.
 struct IndexAllocator {
     let capacity: UInt32
     private var next: UInt32 = 1
-    private var free: [UInt32] = []
+    private var free: [UInt32: [UInt32]] = [:]   // run length → starts
+    private var freeSet: Set<UInt32> = []         // starts of free runs
+    private(set) var badReleases = 0
 
     init(capacity: UInt32) { self.capacity = capacity }
 
-    mutating func allocate() -> UInt32? {
-        if let i = free.popLast() { return i }
-        guard next < capacity else { return nil }
-        defer { next += 1 }
+    mutating func allocate(_ count: UInt32 = 1) -> UInt32? {
+        guard count >= 1 else { return nil }
+        if let i = free[count]?.popLast() { freeSet.remove(i); return i }
+        guard next + count <= capacity else { return nil }
+        defer { next += count }
         return next
     }
 
-    mutating func release(_ i: UInt32) {
-        if i != 0 { free.append(i) }
+    mutating func release(_ i: UInt32, count: UInt32 = 1) {
+        guard i != 0 else { return }
+        guard i + count <= next, freeSet.insert(i).inserted else { badReleases += 1; return }
+        free[count, default: []].append(i)
     }
 }
 
@@ -379,6 +396,18 @@ final class Recording {
 
     /// Names its checkpoint markers (VulkanHangReport.swift).
     var checkpointID: UInt32 = 0
+    /// The argument table of each dispatch (host pointer into this
+    /// recording's transient memory), read back by a hang report: what the
+    /// GPU reads for the dispatch's buffers, constant data and textures.
+    var dispatchTables: [(pass: Int, command: Int, table: UnsafeMutableRawPointer)] = []
+    /// The table `writeTable` wrote last.
+    var lastTable: UnsafeMutableRawPointer?
+    /// Occlusion query pools of visibility results (VulkanVisibility.swift):
+    /// the one being filled and how many of its queries are taken, and all
+    /// this recording took.
+    var visibilityPool: VkQueryPool?
+    var visibilityUsed = 0
+    var visibilityPools: [VkQueryPool] = []
 
     init(cb: VkCommandBuffer?) { self.cb = cb }
 }

@@ -52,7 +52,9 @@ records no colors and copies no assets. Ycode chooses its own icons
    and the number of failed tests.
 3. The activity view subtitle after an action is "`<Result> • Today at
    <time>`". Observed results: "Build Failed", "Test Completed", and
-   "Finished running `<product>`".
+   "Finished running `<product>`". *Pass 6 (`reference-ui-6.md` §3): the
+   progress texts ("Building • n/m"), the simulator run texts, and "Test
+   Completed" for a passing run of selected tests.*
 4. The right end of the editor jump bar has previous/next-issue arrows
    with a severity icon between them. They are present while the file has
    issues.

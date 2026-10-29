@@ -205,7 +205,7 @@ private final class ChromeAdapter: DAPTransport, @unchecked Sendable {
         // reference-ui-5.md §5.2: Modified breakpoints, then Enabled breakpoints.
         wc.navigator.sourceControlToggle.performClick(nil)
         #expect(wc.navigator.breakpointFilter.enabledOnly)
-        #expect(wc.navigator.breakpointGroups.first { $0.title == "Shapes.swift" } == nil)
+        #expect(!wc.navigator.breakpointGroups.contains { $0.title == "Shapes.swift" })
 
         // Stopping while paused: the kill lines, then Finished running.
         session.stop()

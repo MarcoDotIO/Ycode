@@ -22,6 +22,15 @@ import Testing
         #expect(k.count == 32 && u32(k, 4) == 3 && u32(k, 16) == 0x0C && u32(k, 20) == 0x40 && u32(k, 24) == 1)
     }
 
+    /// foldable.md §8.2 I3: hinge angle (kind 6) and device orientation (kind 7).
+    @Test func deviceMotionBodies() {
+        let h = HIDHostService.body(.hingeAngle(90), sequence: 3)
+        #expect(h.count == 24 && u32(h, 4) == 6 && u32(h, 8) == 3 && u32(h, 16) == 90 && u32(h, 20) == 0)
+        #expect(u32(HIDHostService.body(.hingeAngle(400), sequence: 1), 16) == 180)  // clamped
+        let o = HIDHostService.body(.deviceOrientation(3), sequence: 4)
+        #expect(o.count == 24 && u32(o, 4) == 7 && u32(o, 16) == 3)
+    }
+
     @Test func registerSendAndDeadPort() throws {
         let system = DarwinSystem()
         let host = system.hostTask

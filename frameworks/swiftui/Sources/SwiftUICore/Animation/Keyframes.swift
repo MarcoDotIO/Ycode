@@ -156,6 +156,7 @@ public struct _KeyframeTrackStorage<Root> {
             return (curve.duration, { r, t in r.animatableData = curve.value(at: t) })
         }
         s.implicitSegments = segments
+        // swiftlint:disable:next force_cast - segments joined to this track share its value type
         s.join = { more in implicit(segments + more.map { $0 as! _KeyframeSegment<V> }) }
         return s
     }

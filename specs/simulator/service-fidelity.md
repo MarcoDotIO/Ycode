@@ -1,6 +1,6 @@
 # Spec: service fidelity in the full boot
 
-Status: **partly implemented** (agent SVC, 2026-10-17): §3.2 and §4 are implemented; §7 is an observation, not implemented. Agent SVC4 (2026-10-17): §10 implemented; §11 and §12 are findings (no Ycode change: the FSEvents protocol is private; the restart loops follow from the device's state and the start order). The lean boot
+Status: **partly implemented** (agent SVC, 2026-10-17): §3.2 and §4 are implemented; §7 is an observation, not implemented. Agent SVC4 (2026-10-17): §10 implemented; §11 and §12 are findings (no Ycode change: the FSEvents protocol is private; the restart loops follow from the device's state and the start order). Agent SVC-FULL (2026-10-27): §13 (the full boot of the main line, now the IDE default) and the open questions of §11 and §13; no Ycode change. Agent OBS-FSEVENTS (2026-10-27, dirty room): answers to Q11.1–Q11.3 (the protocol is now `fsevents-host.md`), Q13.1 and Q13.2, and new open questions for Ycode in §11 and §13.1. Agent FS-HOST (2026-10-28, clean room): §11 implemented (the data volume's capabilities and the host's `com.apple.FSEvents`; fileindexerd starts once) and the Ycode answer of §13.1. Agent THREAD-SUSPEND (2026-10-28): §14 (amsengagementd and assistantd no longer crash: real Mach thread suspension and a workqueue fix). The lean boot
 (`lean-boot.md`) makes a boot cheaper by not starting 23 services. This spec
 is about the **full** boot (`YCODE_LEAN_BOOT` unset). It compares each
 service that the lean profile disables, and two more (`replicatord`,
@@ -76,8 +76,8 @@ bit and the combination EXCL|SWAP with EINVAL (xnu
 | Flag | Value | Effect | Ycode |
 |---|---|---|---|
 | `RENAME_SECLUDE` | 0x01 | passed to the file system | accepted, no effect |
-| `RENAME_SWAP` | 0x02 | exchange two existing names | yes |
-| `RENAME_EXCL` | 0x04 | EEXIST if the target exists | yes |
+| `RENAME_SWAP` | 0x02 | exchange two existing names | yes (atomic: Linux `renameat2(RENAME_EXCHANGE)`, since 2026-10-27) |
+| `RENAME_EXCL` | 0x04 | EEXIST if the target exists | yes (atomic: `renameat2(RENAME_NOREPLACE)`, since 2026-10-27; `file-system-features.md` §6) |
 | `RENAME_RESERVED1` | 0x08 | — | EINVAL |
 | `RENAME_NOFOLLOW_ANY` | 0x10 | no symbolic link is followed in any component of either name; a link that would be followed → ELOOP (`NAMEI_NOFOLLOW_ANY`) | yes (since 2026-10-17) |
 | `RENAME_RESOLVE_BENEATH` | 0x20 | both names must stay below their directory descriptors (ENOTCAPABLE) | **not implemented: EINVAL** (no caller seen) |
@@ -410,7 +410,218 @@ skips those it lacks (`launchd-sim.md` §6.3), so the guest's lookup fails
 with 1102, as on Ycode. It is safe: one crash costs about 5 k traps and
 one spawn, the throttle bounds the loop, and no other job changes.
 Revisit when the protocol is public or documented by permitted open
-source.
+source. **Superseded (2026-10-27):** the protocol is now specified from
+black-box observation (level 3) in `fsevents-host.md`; see the answers
+below.
+
+**Still the case on 2026-10-27 (agent SVC-FULL).** In full boots of the
+main line (5f74ef9, `parity-ladder.md` §4.8) fileindexerd crashes 16 times
+in 700 s (three runs) (each run lasts 2.6–136 s by `launchd.log`, the first ones the
+longest: held at the start, under host load; from the 12th crash the
+exponential throttle of §5), with the same fatal error and the
+same failed lookup (`launchd.log`: "failed lookup: name =
+com.apple.FSEvents, flags = 0x9, requestor = fileindexerd[…], error = 3: No
+such process"); 9 times in the first 345 s of a boot. On the Mac with the
+same device data it starts once and runs for the whole window. It is the
+only one of the full boot's restart loops that is Ycode's own. The fix
+needs reference facts that the clean room cannot produce; the questions
+for the dirty room:
+
+**Open questions (FSEvents, for a host `com.apple.FSEvents` service)**
+
+- **Q11.1 The wire protocol.** For the FSEvents client library of the
+  iOS 27.1 simulator runtime talking to `com.apple.FSEvents`, as a
+  message-level interface description (no code): the Mach message ids,
+  and the request and reply layouts (header bits, descriptors, body
+  fields with sizes and meanings, the reply's return-code field), of the
+  calls behind the public API that fileindexerd uses:
+  `FSEventsCopyUUIDForDevice`, `FSEventsGetCurrentEventId`,
+  `FSEventStreamCreate`/`FSEventStreamCreateRelativeToDevice` followed by
+  `FSEventStreamStart` (registering a stream: path list, `sinceWhen`,
+  latency, create flags), `FSEventStreamStop`/`Invalidate`, and how events
+  reach the client (which port, which message id, the layout of an event
+  batch: paths, flags, event ids). Is the connection per process (the
+  lookup is per pid, flags 0x9) and does the server hold a send right to
+  a client port?
+- **Q11.2 The minimum that keeps fileindexerd up.** On the Mac: which of
+  these calls fileindexerd makes at its start (a message trace of a
+  simulator device's fileindexerd, ids and sizes only), and whether it
+  stays up when the stream is accepted but never delivers an event. If
+  it does, a host service that answers the UUID and event-id requests
+  (a fixed UUID per device directory and a monotonically increasing id)
+  and accepts subscriptions without events would give the Mac's
+  behaviour (one start, alive) at once; change events from the host file
+  system (inotify on Linux) can follow.
+- **Q11.3 The UUID.** What `FSEventsCopyUUIDForDevice` returns for the
+  device's data volume on the Mac (one UUID per host volume, stable across
+  boots?), and whether fileindexerd stores it (a store keyed by the UUID
+  would be rebuilt when it changes).
+
+**Answers (agent OBS-FSEVENTS, 2026-10-27, Mac, level 3; method and
+details in `fsevents-host.md` §9 and
+`research/notes/obs-fsevents-2026-10-27.md`).**
+
+- **Q11.1** The protocol is now specified in `fsevents-host.md` §2–§5:
+  one service port (66000 register a stream, 66002 device UUID, 66003
+  current id, 66004 last id before a time), one stream port per started
+  stream (66001 FlushSync, 66006 Stop), replies with id + 100, and one-way
+  event messages 67000 from the service to a client port that the client
+  sends in 66000 (offsets, wire flags, ids, path records with optional
+  inode and document id). The connection is per process: one look-up
+  (`bootstrap_look_up2`, flags 8) on the first call, kept for the
+  process's life; the service holds a send right to every stream's
+  client port. Create, SetDispatchQueue, SetExclusionPaths,
+  GetLatestEventId and FlushAsync send nothing; Invalidate destroys the
+  client port.
+- **Q11.2** What fileindexerd sends: at its start two 66002 (dev of the
+  data volume), one 66003, then 66000 for one stream on the
+  `group.com.apple.FileProvider.LocalStorage` group container's
+  `File Provider Storage` directory and the container itself (latency
+  0.2 s, flags 0x1F1, `sinceWhen` = the current id). It never stops the
+  stream. On the Mac it then gets one event (HistoryDone) and nothing
+  more in a quiet boot.
+
+  **Nothing from FSEvents is needed to keep fileindexerd alive.** On the Mac,
+  with the look-up answered 1102 inside fileindexerd (as in Ycode; our
+  recorder, `fsevents-host.md` §9.3), fileindexerd does not crash:
+  device `ycode-test-fsevents-1` (fourth boot, state written earlier with
+  the real service) and a new device (second boot, the fresh path, with
+  `com.apple.FileProvider.sim2host` denied too) both logged "failed to get
+  stream UUID for device 16777230", got `false` from
+  `FSEventStreamStart`, ran their scan and stayed up (one start each,
+  until the shutdown). Neither logged "failed to subscribe to events in
+  …" or "Failed to init after preparing dependencies". With a stand-in
+  that gives the minimal answers of `fsevents-host.md` §7 (fixed UUID,
+  ids from 1000, HistoryDone, never a change event) fileindexerd runs as
+  with the Mac's service (stream started, state file written with the
+  stand-in's UUID). So a host `com.apple.FSEvents` is worth having (file
+  events for seven guest clients), but **Ycode's crash has another cause
+  on the subscription path**.
+
+  **Where to look (level 3, the Mac's answers; the Ycode values read
+  from its sources).** Before it subscribes, fileindexerd's FileProvider
+  change monitor asks the kernel about the watched volume, and the
+  FSEvents client asks about the paths. On the Mac, in order:
+  `fstatfs` on a descriptor of the root → `apfs`, flags 0x04909080, fsid
+  {0x0100000E, 0x1A}, mounted on `/System/Volumes/Data`;
+  `getattrlist` of that mount point with `ATTR_CMN_DEVID` and
+  `ATTR_VOL_INFO | ATTR_VOL_CAPABILITIES` → dev 0x0100000E, format
+  capabilities 0x019B6EDF, interface capabilities 0x01AF6FC7 (valid
+  0x07FFFFFF, 0x01FFFFFF); `FSEventsCopyUUIDForDevice(0x0100000E)`; then
+  `getattrlist` of each watched path with `ATTR_CMN_RETURNED_ATTRS` and
+  `ATTR_CMNEXT_NOFIRMLINKPATH`; then `FSEventStreamCreate` with flags
+  0x1F1, which ask for document ids (`kFSEventStreamCreateWithDocID`).
+  Ycode answers the capability request with format 0x00024F47 and
+  interfaces 0x00004302 (`AttributeList.swift`): among other bits it
+  lacks `VOL_CAP_FMT_DOCUMENT_ID` (0x80000), which a stream that asks for
+  document ids may require.
+
+  **The cause, reproduced on the Mac (level 3).** In a Mac boot with the
+  look-up still answered 1102 inside fileindexerd, our recorder replaced
+  only the two capability words of that `getattrlist` reply with Ycode's
+  (format 0x00024F47, interfaces 0x00004302). fileindexerd then logged,
+  exactly as in Ycode, "failed to subscribe to events in
+  <GroupContainers>/…/F{19}e with NSError: POSIX 19 "… Operation not
+  supported by device"" (twice: "Failed to subscribe to root …,
+  registering it for removal", then again after re-adding the root) and
+  stopped with "FileIndexerDaemon.swift:638: Fatal error: Failed to init
+  after preparing dependencies: Error Domain=NSPOSIXErrorDomain Code=19"
+  (SIGTRAP; launchd: "service has crashed 1 times in a row"). The same
+  set-up without the replacement (two runs, a fresh and a loaded state)
+  ran normally. **So Ycode's fileindexerd loop comes from the volume
+  capabilities Ycode reports for the data volume, not from the missing
+  FSEvents service.**
+
+  **The four capabilities it needs (level 3; names: public `sys/attr.h`,
+  level 1).** The capability words were then read from a file at every
+  fileindexerd start, and launchd's restarts after each crash (or after
+  we killed a surviving one) tried 26 combinations in 35 starts in two
+  more boots (a value that two starts read gave the same result both
+  times). Every refused start called the capability request twice and
+  never reached `FSEventStreamCreate`; every accepted one created its
+  stream.
+  The subscription succeeds, and fileindexerd stays up, only when the
+  volume reports all four of:
+
+  | Word | Bit | Name |
+  |---|---|---|
+  | format | 0x00080000 | `VOL_CAP_FMT_DOCUMENT_ID` |
+  | format | 0x00100000 | `VOL_CAP_FMT_WRITE_GENERATION_COUNT` |
+  | interfaces | 0x00010000 | `VOL_CAP_INT_CLONE` |
+  | interfaces | 0x00080000 | `VOL_CAP_INT_RENAME_EXCL` |
+
+  Ycode's words with these four added (format 0x001A4F47, interfaces
+  0x00094302) → up. Each is necessary: the Mac's words without
+  WRITE_GENERATION_COUNT, or without CLONE → crash; Ycode's words plus
+  the other three but not DOCUMENT_ID → crash; with the Mac's format
+  word, Ycode's interfaces plus CLONE (and the Mac's low interface bits)
+  crash, and adding RENAME_EXCL, not SNAPSHOT or RENAME_SWAP, makes them
+  pass. The other differences do not matter for fileindexerd (journal,
+  zero runs, hidden files, compression, shared space, volume groups,
+  snapshot, rename swap, the three highest interface bits, Ycode's extra
+  `VOL_CAP_FMT_CASE_SENSITIVE`). Every test list:
+  `research/notes/obs-fsevents-2026-10-27.md`.
+
+  **For the clean room:** report these four bits for the device's data
+  volume (and decide which related calls they promise: document ids and
+  write-generation counts in `getattrlist`, `clonefile`, and
+  `renameatx_np` with `RENAME_EXCL`, which §4 already covers); with them
+  fileindexerd should start once, as on the Mac. The FSEvents host of
+  `fsevents-host.md` is independent of this fix.
+- **Q11.3** The UUID is that of the host's event store for the data
+  volume (dev 0x100000e on the Mac, where every guest path lives): the
+  same in both boots in which it was read, and not the volume's APFS
+  UUID. An unknown device gets the text `NO-UUID-UNKNOWN-DEVICE`,
+  which the client turns into NULL. fileindexerd stores it: `streamUUID`
+  and `lastEventID` in its JSON state file
+  (`DEV/data/Containers/Data/InternalDaemon/<its container>/indexingState`),
+  read back at the next start ("successfully loaded state from disk with
+  state: IndexingState(streamUUID: …)"), after which it asks the
+  service for the UUID again. For Ycode: a fixed UUID per device, kept across boots,
+  and ids that never go back (`fsevents-host.md` §7).
+
+**Ycode implementation (agent FS-HOST, clean room, 2026-10-27/28).** Both
+of Ycode's volumes now report format 0x001A4F47 and interfaces 0x000D4302:
+the four bits above plus `VOL_CAP_INT_RENAME_SWAP`, each backed by the
+calls it promises (`file-system-features.md`: document IDs and file flags,
+write generation counts, `clonefileat`/`fclonefileat`, atomic
+`RENAME_EXCL`/`RENAME_SWAP`). The host's `com.apple.FSEvents` is served
+too, with change events from Ycode's VFS (`fsevents-host.md` §10).
+
+Result, 700 s behaviour runs (`parity-ladder.md` §4.8 method: a fresh copy
+of the golden device, home screen + 670 s, `launchd.log` counted over the
+first 700 s), all on the Linux host on 2026-10-28, under the load of other
+agents' boots:
+
+| Run | Tree | fileindexerd | Other differences |
+|---|---|---|---|
+| base | main line (e3982c6) | 16 starts, 16 × SIGTRAP | — |
+| A | capabilities + FSEvents service with events | **1 start, alive at the end** | none |
+| A′ | A merged with the main line (fc308f0) | **1 start, alive** | none |
+| B | A with `YCODE_DEBUG_NO_FSEVENTS=1` (no service) | **1 start, alive** | none |
+| C | A with `YCODE_FSEVENTS_NO_CHANGES=1` (minimal service) | **1 start, alive** | none |
+
+The Mac with the same device data: one start, alive for the whole window
+(above). In run A fileindexerd looked up `com.apple.FSEvents`, got the
+device UUID and started its stream; its only failed look-ups were
+`com.apple.spaceattributiond` and `com.apple.FileProvider.sim2host`
+(host endpoints Ycode lacks, `launchd-sim.md` §6.4). B and C confirm the dirty room's
+finding: the capability bits alone stop the loop. No new guest crash in
+any run: intelligencetasksd (§13.1) in all five, assistantd (one SIGTRAP in
+libdispatch) in base and B, amsengagementd (one or two SIGSEGV in
+JavaScriptCore, at a different place each time) in B, C and A′ and in
+both probe boots — and on 2026-10-28 also in about half of the boots of
+other agents' trees that do not have this work (fold, camera and visionOS
+runs), so it is not caused by this change. managedappdistributiond ran 42–56 times (exit 0, `xpc
+event` relaunched every 10 s from about +250 s) in all five, the base
+included: a property of the golden device on this date, not of this work.
+**fileindexerd's loop is closed; none of the boot's other restart loops
+changes with this work.**
+
+Boot time is unchanged: timed boots of the golden device with the machine
+to itself (`timed.sh`; the home screen detected on 5 s screenshots), main
+line fc308f0 against this work merged on it, in both orders: base 75 s and
+80 s, this work 80 s and 75 s.
 
 ## 12. The four restart loops of the parity ladder (`parity-ladder.md` §3.3)
 
@@ -500,6 +711,212 @@ did not start it again after its exit.
 
 A Ycode defect, fixed (§10).
 
+## 13. The full boot on the 2026-10-27 main line (agent SVC-FULL)
+
+IDE runs boot every service since 2026-10-27 (`lean-boot.md` §9). Full
+boots of the main line (5f74ef9) were checked for crashes and loops that
+are Ycode's own: three 700 s behaviour runs on copies of the golden device
+(`parity-ladder.md` §4.8), a 345 s boot, twelve timed boots and the app
+and warm-boot checks of §4.8 there. The guest's fatal conditions were
+fileindexerd (§11) and intelligencetasksd (§5.1) in every boot, and
+nothing else, except as below.
+
+### 13.1 intelligencetasksd starts fewer times than on 2026-10-19
+
+intelligencetasksd crashed 3, 4 and 5 times in the three 700 s runs (all
+SIGTRAP, "XPC Peer Requirement isn't implemented on simulators yet",
+§5.1), against 16 in run h5 of 2026-10-19 on the same golden device and 15–16
+on the Mac with that device's data (`parity-ladder.md` §4.7). The crash and
+launchd's throttle are unchanged: after the 3rd crash launchd simply gets
+no new launch event. Its launches are `xpc event`s for background system
+tasks (the job's `LaunchEvents`, read as data, level 2: four
+`com.apple.bg.system.task` tasks with `RepeatingTask` interval 86400 s,
+three of which require network connectivity and two external power, and
+one post-install task scheduled 300–3600 s after the install), which the
+guest's task scheduler fires when it judges them due. Whether they are due
+depends on the device's stored history and on the wall clock, and the
+golden device is eight days older than on 2026-10-19 (boots of other
+devices on 2026-10-27 crashed it 4–14 times, in runs of various lengths). So the count is not
+comparable with a Mac reference measured on another day; the behaviour
+(the crash, the exit kind, the throttle) matches. **Open question
+(Q13.1, Mac, black box):** the Mac's intelligencetasksd starts in 700 s
+with a copy of the same golden device's data booted on the same day as a
+Ycode run, and which of the five tasks each start runs (the guest log of
+the task scheduler names the task it launches), to tell whether the
+scheduler's conditions (network, external power: what the simulator
+reports for both) differ between the platforms.
+
+**Answer (agent OBS-FSEVENTS, 2026-10-27, Mac, level 3).** No copy of a
+Ycode run's `DEV/data` was available on the Mac, so new devices were
+used (`ycode-test-fsevents-1` … `-4`, called `-1` … `-4` below; iPhone
+Duo, iOS 27.1, macOS 27.2; the Mac was heavily loaded by other agents, load 90–1000, swap nearly full, so times stretch). dasd's
+log and `launchd.log`:
+
+- **Only one of the five tasks runs in these windows: the post-install
+  task** `com.apple.intelligencetasksd.spotlight-verification-post-install`
+  (Utility, priority 30). dasd submits it at every boot, 34–82 s after
+  launchd_sim starts, with the window [submission + 300 s,
+  submission + 3600 s]. The four interval tasks (`sets.maintenance.A`,
+  `.B`, `.C`, `spotlight-verification-nightly`, interval 86400 s, two of
+  them "CPU Intensive, Require Device Inactivity") were submitted with
+  windows starting the next morning, so no condition on network or power
+  was evaluated for them in these runs.
+- **One dasd launch gives a long launchd loop.** dasd initiates the task
+  (an XPC event to launchd), intelligencetasksd starts and stops at once
+  with SIGTRAP ("XPC Peer Requirement isn't implemented on simulators
+  yet"), and launchd starts it again for the same event: every 10 s
+  ("Pushing respawn out by 10 seconds"), from the 12th crash with the
+  exponential throttle of §5. dasd gives up after 61 s ("BGST client
+  (PID 0) did not acknowledge launch within 61s … Canceling … reason 3")
+  and resubmits the task at a fixed time one hour later. **launchd keeps
+  relaunching after dasd's cancel**: on device `-4` one initiation
+  (+442 s after the boot's start) gave 19 starts in 61 minutes (10 at the
+  10 s rate, then at growing intervals: the exponential throttle, its gaps
+  stretched by the load); on device `-1` (third boot) one
+  initiation at +357 s gave 5 starts until the shutdown at +467 s, one of
+  them after the cancel; device `-3` showed the same timeline as `-4`.
+- Starts in the first 700 s therefore depend on when dasd fires the
+  task: 0 (device `-2`, second boot: not fired by 700 s; device `-1`,
+  fourth boot: the task was due only one hour after the third boot's
+  cancel), 0 (device `-4`: launched at +442 s, but under the load the
+  process was spawned only at +803 s), 5 (device `-1`, third boot, cut by
+  the shutdown), and 15–16 in the Mac references of §5.1 and §12.1 (first crash at +457 s).
+
+**Reading.** The exit kind and the throttle match Ycode. The count does
+not: Ycode's three 700 s runs (3, 4, 5 crashes) stopped getting launch
+events after a few crashes ("after the 3rd crash launchd simply gets no new
+launch event", above), while the Mac's launchd keeps the event and
+relaunches at the 10 s rate for minutes after dasd's cancel. Whether
+Ycode's runs fired the task late (shortly before 700 s) or the event is
+dropped in Ycode is not visible from the counts. **Open question (Ycode,
+for the clean room):** in a Ycode `launchd.log`, the time of the first
+"launching: xpc event" of `com.apple.intelligencetasksd` and whether
+"launching: xpc event" lines continue after dasd's "did not acknowledge
+launch within 61s" (guest log); on the Mac they do, every 10 s.
+
+**Ycode answer (agent FS-HOST, 2026-10-28, run A of §11's table; the base
+run is the same).** The first "launching: xpc event" of
+`com.apple.intelligencetasksd` came 48 s after `launchd.log`'s first line;
+the job crashed (SIGTRAP, as above) and launchd relaunched it for the same
+event at once, then every 9–10 s ("Pushing respawn out by … seconds"),
+with longer gaps (73 s, 81 s, 210 s) after the starts that exited in a
+dirty state ("service exceeded successive crash limit. launch will be
+throttled"). "launching: xpc event" lines continued through the whole
+window: 13 starts in 700 s (12–14 in the other runs of the day),
+against 15–16 on the Mac. So Ycode does not drop the event: the
+relaunches go on as on the Mac, and the 3–5 crashes of 2026-10-27 came
+from when the task was fired, not from a lost event. dasd's "did not
+acknowledge launch within 61s" is in the guest's unified log, which these
+runs did not capture.
+
+### 13.2 PosterBoard: "Invalid condition not satisfying: versionsURL"
+
+**Observation (level 3).** In 3 of 479 Ycode boot logs on the Thor
+(2026-10-19 to 2026-10-27, iPhone and iPad devices, full boots), and in
+the boot reported in `visionos.md` §10.14.5, PosterBoard ends with SIGTRAP from a
+PosterFoundation assertion: "Invalid condition not satisfying:
+versionsURL". It did not occur in the boots of this check. The last
+system calls of the crashing thread (the fatal report's trap ring, which
+records numbers, first arguments and results, not path contents) are,
+in two of the reports: `fstatat64` → 0, `mkdirat` → 0 (both on one path
+buffer), then `chmod(…, 0777)` → ENOENT and six `getattrlist` → ENOENT,
+then the assertion.
+
+**What the same code does normally (trace run `f700t`,
+`--trace-name PosterBoard`, full boot, no crash).** PosterBoard keeps
+poster descriptors and configurations under
+`DEV/data/Library/Application Support/PRBPosterExtensionDataStore/<n>/Extensions/<extension>/{descriptors,configurations}/<UUID>/versions/<k>/{contents,scratch,supplements/<j>}`.
+It creates a version's directories with `mkdirat` of the leaf (ENOENT
+while the parent is missing), `mkdirat` of the parent, `fstatat64`,
+`mkdirat` of the leaf, then `chmod(…, 0777)` of the parent and of the
+leaf, in that order. On other threads it removes whole descriptor trees
+(`unlink` of each name, EPERM for a directory as on Darwin, then
+`rmdir`). So the crashing sequence is the normal creation with the
+parent gone between its `mkdirat` of the leaf and its `chmod` of the
+parent: the tree was removed in between, which a concurrent removal by
+PosterBoard itself explains. No Ycode call in the sequence returned a
+wrong answer in the traced run (`mkdirat`, `chmod`, `unlink` and `rmdir`
+results match Darwin's documented semantics).
+
+**Reading: most likely a race inside PosterBoard (parity), not
+established.** The Mac's simulator also writes PosterBoard crash reports
+now and then (`parity-ladder.md` §3.1), but their reason was not
+recorded. **Open question (Q13.2, Mac, black box):** the exception
+message (`crash annotation` / `abort cause` field) of the Mac's
+PosterBoard `.ips` reports of a simulator device, and whether any of them
+is "Invalid condition not satisfying: versionsURL". If it is, this is
+parity; if the Mac never shows it in many boots, look for a Ycode
+difference in the order of PosterBoard's work (Ycode starts the poster
+extensions' work in a different order and at a different speed than the
+Mac, `scheduling-policy.md`).
+
+**Answer (agent OBS-FSEVENTS, 2026-10-27, Mac, level 3 and 4): the Mac
+has the same crash; parity.** The Mac's crash-report folder held five
+PosterBoard reports of iOS simulator devices (other agents' devices,
+2026-10-20 to 2026-10-27; four devices; the three newest checked to be
+the iOS 27.1 24A94401 runtime by their shared-cache identity, the two
+oldest rotated out of the folder before that check; none in the eight
+boots of this agent's devices). All five are the same crash: SIGTRAP
+(`EXC_BREAKPOINT`) 16–69 s after PosterBoard's launch, on the queue
+`PBFPosterDescriptorStoreCoordinator-accessQueue_<UUID>`, in the assertion
+branch of PosterFoundation's
+`+[NSURL(PosterFoundation) pf_posterPathInstanceURLForVersionsURL:version:]`,
+called while a new descriptor version is set up
+(`-[PBFPosterModelStoreCoordinator addNewVersionWithContents:error:]` →
+`_accessQueue_setupNewVersionWithOptions:contents:error:` →
+`_accessQueue_configureFileSystemForNewContents:atPath:error:`) during the
+reload of an extension's descriptors
+(`-[PBFPosterExtensionDataStore _stateLock_ingestReloadedDescriptorsForExtensionBundleIdentifier:…]`).
+The simulator's reports carry no assertion text (no application-specific
+information), so the message itself cannot be read from them; the
+faulting routine is the one whose versions-URL argument the Ycode message
+names, on the same path (new version → its directories). No other thread
+of the five reports was inside a file removal at the moment of the crash,
+so the Mac reports neither confirm nor rule out the concurrent-removal
+reading above; they show that the crash is PosterBoard's own and happens
+on the Mac at about the same rate (a handful in a week of many boots).
+**Kept as is (parity).** (Symbol names are binary metadata from the crash
+reports, level 4; `research/notes/obs-fsevents-2026-10-27.md`.)
+
+## 14. amsengagementd and assistantd (agent THREAD-SUSPEND, 2026-10-28)
+
+**Before.** On the main line (bfa4c1a) amsengagementd crashed in every
+full boot of the day, in JavaScriptCore (a data abort at a bad address
+almost every time), and assistantd ended once in most boots with
+"BUG IN LIBDISPATCH: Invalid wlh state". Neither crashes on the Mac
+(`app-launch.md` §3.6; assistantd's SIGTRAP was listed as a Ycode
+difference in §11). Causes: JavaScriptCore's collector could not suspend
+the threads whose stacks it scans (`thread_suspend` was a stub), and a
+returning workqueue worker lost the changes after a failed one
+(`threads-and-events.md` §1.6, §2.7 step 3).
+
+**Method.** 700 s behaviour runs as in §11 (`parity-ladder.md` §4.8: a
+fresh copy of the golden device, home screen + 670 s, `launchd.log` over
+the first 700 s), on the Linux host on 2026-10-28, under other agents'
+load. Each pair (main line, this work) was started together on two
+copies of the same device; the order of start alternated. Area
+`ide-remote/tsus`: `ab.sh`, runs `A-*` (suspension alone, tree TSUS) and
+`B-*` (suspension and the workqueue fix, tree TSUS2), against the main
+line (tree TSUSB).
+
+| Runs | Boots | home_s | amsengagementd crashes (boots) | assistantd crashes | Other abnormal exits | Programs started in 700 s |
+|---|---|---|---|---|---|---|
+| main line `A-b1`, `A-b2`, `B-b1`…`B-b8` | 10 | 120–321 | 11 (10): 8 data aborts and 2 BRK in JavaScriptCore, 1 jump to 0 | 8 | none | 474–490 |
+| suspension alone `A-n1`, `A-n2` | 2 | 145, 320 | 3 (2): all "Invalid wlh state" | 2 | none | — |
+| this work `B-n1`…`B-n8` | 8 | 127–167 | **0** | **0** | none | 473–487 |
+
+The restart loops of §12 (managedappdistributiond, fitcore, datamigrator)
+and intelligencetasksd's crashes (§13.1) are the same in both columns. In
+the work's runs amsengagementd runs once for the whole window (one start,
+alive at the end; killed at the shutdown). A visionOS 27.0 boot of the
+work reaches the room (runs `tsus/vruns/v1`, `v2`), with no
+amsengagementd or assistantd crash.
+
+**Boot time unchanged:** timed boots with the machine to itself
+(`timed.sh`), main line against this work, both orders: main line 80 s
+and 80 s, this work 80 s and 75 s (`SX/TSUSB/runs/t1-base`, `t2-base`,
+`SX/TSUS2/runs/t1-tsus`, `t2-tsus`).
+
 ## Evidence
 
 | Claim | Level |
@@ -525,5 +942,22 @@ A Ycode defect, fixed (§10).
 | The FSEvents client protocol is not public (§11) | 1 (Apple open source and documentation searched, 2026-10-17) |
 | Restart counts with the same device data on both platforms (§12) | 3 (`launchd.log` on both); 2 (job plists read as data) |
 | locationd / nanoregistrylaunchd order (§12.3) | 3 (`launchd.log` and guest log on both platforms) |
+| fileindexerd still crashes in full boots of 2026-10-27 (§11) | 3 (Thor runs `svcfull/f700a`, `f700b`, `f700q`, `warm1`: `launchd.log`, fatal reports) |
+| FSEvents API names (§11 questions) | 1 (public FSEvents.h documentation) |
+| intelligencetasksd's starts and launch events (§13.1) | 3 (`launchd.log` of runs `f700a`, `f700b`, `f700q`, PRIO `h5`, other 2026-10-27 runs); 2 (the job plist's `LaunchEvents`, read as data) |
+| PosterBoard's assertion, trap rings, and its normal file operations (§13.2) | 3 (Ycode boot logs on the Thor; trace run `svcfull/f700t`) |
+| unlink of a directory → EPERM (§13.2) | 1 (unlink(2) on Darwin) |
+| FSEvents protocol, UUID semantics, fileindexerd's calls (§11 answers) | 3 (recorder and probe of ours on Mac throwaway devices `ycode-test-fsevents-*`, 2026-10-27; `fsevents-host.md`) |
+| fileindexerd survives without `com.apple.FSEvents` on the Mac; runs with the minimal stand-in (§11 Q11.2) | 3 (look-up answered 1102 or by our in-process stand-in, two device states; guest log, `launchd.log`, state file read as data) |
+| fileindexerd's `fstatfs`/`getattrlist` requests and the Mac's answers before subscribing (§11) | 3 (recorder); the capability bit names 1 (public `sys/attr.h` of the macOS SDK); Ycode's values read from its sources |
+| Ycode's capability words reproduce Ycode's fileindexerd crash on the Mac; the four required bits (§11 Q11.2) | 3 (fault injection by our recorder into fileindexerd's `getattrlist` replies, 36 starts in three boots, guest log and `launchd.log`) |
+| intelligencetasksd: dasd's tasks, windows, the 61 s cancel, launchd's relaunches (§13.1) | 3 (dasd and launchd logs of four Mac devices, crash reports; 2026-10-27) |
+| PosterBoard's Mac crash reports (§13.2) | 3 (`.ips` reports: queue, signal, times, shared-cache identity); 4 (the symbol names in their frames) |
+| Ycode's fileindexerd with the new capability words: one start, alive; no new crash (§11, Ycode implementation) | 3 (Thor runs `fsh/f700a`, `f700b`, `f700c`, `f700n`, `f700m` of 2026-10-28; other agents' boot logs of 2026-10-27/28 for amsengagementd: `launchd.log`, fatal reports, the service's log); the implementation is Ycode design (`file-system-features.md`) |
+| Boot time unchanged (§11, Ycode implementation) | 3 (Thor `timed.sh` runs `FSHBASE/t1-base`, `t2-base`, `FSH/t1-fsh`, `t2-fsh`) |
+| intelligencetasksd's relaunches in Ycode continue through the window (§13.1, Ycode answer) | 3 (`launchd.log` of the same five runs) |
+
+| amsengagementd and assistantd before and after real thread suspension and the workqueue fix; programs started; restart loops (§14) | 3 (Thor runs `ide-remote/tsus/runs/A-*`, `B-*`: `launchd.log`, `beh.txt`, fatal reports with trap rings and crash annotations; visionOS runs `tsus/vruns/v1`, `v2`) |
+| Boot time unchanged (§14) | 3 (Thor `timed.sh` runs `TSUSB/t1-base`, `t2-base`, `TSUS2/t1-tsus`, `t2-tsus`) |
 
 No disassembly or decompilation was used (level 5 not used).

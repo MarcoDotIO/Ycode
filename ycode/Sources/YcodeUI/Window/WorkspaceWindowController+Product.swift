@@ -30,7 +30,7 @@ extension WorkspaceWindowController {
                     return
                 }
                 if d.isYcodeRemoteSimulator {
-                    await session.runOnRemoteSimulator(app: app, remote: RemoteSimulator(settings: RemoteSimulatorSettings.load(Preferences.shared.defaults)))
+                    await session.runOnRemoteSimulator(app: app, remote: RemoteSimulator(settings: RemoteSimulatorSettings.load(Preferences.shared.defaults), destination: d))
                 } else if let udid = d.identifier {
                     await session.runOnSimulator(app: app, udid: udid, debug: true, simctl: simctl)
                 }

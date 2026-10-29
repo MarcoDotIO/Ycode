@@ -72,6 +72,7 @@ struct Recorder: ViewModifier, Animatable {
     let samples: Samples
 
     func body(content: Content) -> some View {
+        // swiftlint:disable:next redundant_discardable_let - a side effect inside a view builder
         let _ = samples.record(animatableData)
         content
     }

@@ -15,7 +15,7 @@ public struct BreakpointStore: Equatable, Sendable {
         public var isEnabled: Bool
         /// A column breakpoint's 1-based column (Debug ▸ Breakpoints ▸
         /// Create Column Breakpoint); nil for a line breakpoint.
-        public var column: Int? = nil
+        public var column: Int?
         /// Stop only when this expression is true.
         public var condition = ""
         /// Skip this many hits before stopping.
@@ -198,6 +198,8 @@ public struct BreakpointStore: Equatable, Sendable {
     }
 }
 
+/// Another name for `YcodeBuild.Destination`. Inside this module it
+/// shadows the unrelated `YcodeXcodebuild.RunDestination`.
 public typealias RunDestination = Destination
 
 /// What a workspace window shows: the opened container, its navigator tree,

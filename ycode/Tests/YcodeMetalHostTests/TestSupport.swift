@@ -43,7 +43,21 @@ final class FakeMemory: MetalGuestMemoryResolver, @unchecked Sendable {
 
 final class FakeSurfaces: IOSurfaceResolver, @unchecked Sendable {
     var known: [UInt32: IOSurfaceBacking] = [:]
+    /// Surfaces made for shared textures (messageType 19): allocation size,
+    /// name, creation properties.
+    var made: [(allocation: Int, name: String, properties: [(key: String, value: UInt64)])] = []
+    /// Port → (surface ID, numeric creation properties), for messageType 20.
+    var described: [UInt32: MetalSurfaceDescription] = [:]
+    private var nextPort: UInt32 = 0x9000
     func backing(forSurfacePort port: UInt32, plane: Int) -> IOSurfaceBacking? { known[port] }
+    func makeSharedTextureSurface(allocationSize: Int, name: String, properties: [(key: String, value: UInt64)]) -> UInt32? {
+        made.append((allocationSize, name, properties))
+        nextPort += 1
+        described[nextPort] = MetalSurfaceDescription(id: nextPort - 0x9000,
+                                                      numbers: Dictionary(properties.map { ($0.key, $0.value) }, uniquingKeysWith: { a, _ in a }))
+        return nextPort
+    }
+    func surfaceDescription(forSurfacePort port: UInt32) -> MetalSurfaceDescription? { described[port] }
 }
 
 final class FakeTransport: MetalHostTransport, @unchecked Sendable {
@@ -54,6 +68,11 @@ final class FakeTransport: MetalHostTransport, @unchecked Sendable {
     var dropped: [UInt32] { lock.withLock { _dropped } }
     func sendEvent(_ event: XPCDict, to port: UInt32) -> Bool { lock.withLock { _events.append((port, event)) }; return true }
     func dropRight(_ name: UInt32) { lock.withLock { _dropped.append(name) } }
+    private var nextEventPort: UInt32 = 0x7000
+    private var _destroyedEventPorts: [UInt32] = []
+    var destroyedEventPorts: [UInt32] { lock.withLock { _destroyedEventPorts } }
+    func makeEventPort() -> UInt32? { lock.withLock { nextEventPort += 1; return nextEventPort } }
+    func destroyEventPort(_ name: UInt32) { lock.withLock { _destroyedEventPorts.append(name) } }
 
     /// (messageType, commandBufferRef, status) of each event.
     var summary: [[UInt64]] {

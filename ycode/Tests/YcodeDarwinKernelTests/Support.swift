@@ -3,11 +3,29 @@ import Synchronization
 import YcodeDarwinABI
 @testable import YcodeDarwinKernel
 
+/// `FileChangeFeed` has one observer for the whole process, and suites run
+/// in parallel: a test that installs an observer holds this lock until it
+/// removes it, so another suite cannot replace it in the meantime.
+let fileChangeFeedLock = NSLock()
+
 /// Collects console output and log lines.
 final class Sink {
-    var console: [Int32: [UInt8]] = [:]
-    var lines: [String] = []
+    // Fast paths without L0 trace from several threads at once in the tests
+    // (`bsdFastForTests`): every access takes the sink's own lock.
+    private let mutex = NSRecursiveLock()
+    private var storedConsole: [Int32: [UInt8]] = [:]
+    private var storedLines: [String] = []
+    var console: [Int32: [UInt8]] {
+        get { mutex.lock(); defer { mutex.unlock() }; return storedConsole }
+        set { mutex.lock(); storedConsole = newValue; mutex.unlock() }
+    }
+    var lines: [String] {
+        get { mutex.lock(); defer { mutex.unlock() }; return storedLines }
+        set { mutex.lock(); storedLines = newValue; mutex.unlock() }
+    }
     func text(_ fd: Int32) -> String { String(decoding: console[fd] ?? [], as: UTF8.self) }
+    func append(_ line: String) { mutex.lock(); storedLines.append(line); mutex.unlock() }
+    func append(_ fd: Int32, _ bytes: [UInt8]) { mutex.lock(); storedConsole[fd, default: []] += bytes; mutex.unlock() }
 }
 
 /// A kernel over a fake physical backing, with a read-only VFS prefix at a
@@ -32,9 +50,9 @@ struct Env {
         root = dir.path
         let fs = DarwinFileSystem(
             prefixes: [.init(guestPath: root, hostPath: root, writable: false, device: device)],
-            console: { fd, bytes in sink.console[fd, default: []] += bytes })
+            console: { fd, bytes in sink.append(fd, bytes) })
         fs.rootDevice = rootDevice
-        kernel = DarwinKernel(fileSystem: fs, pid: 100, log: { sink.lines.append($0) }, counter: counter,
+        kernel = DarwinKernel(fileSystem: fs, pid: 100, log: { sink.append($0) }, counter: counter,
                               counterFrequency: frequency, wallClock: { (1_700_000_000, 250_000_000) })
         space = GuestAddressSpace(backing: FakePhysicalBacking())
         _ = try space.mapAnonymous(at: Self.scratch, size: Self.scratchSize, protection: .readWrite, hint: nil)

@@ -1,4 +1,4 @@
-# Spec: exit-free hot calls (clock, wall clock, credentials)
+# Spec: exit-free hot calls (clock, wall clock, credentials, fixed answers)
 
 Status: **implemented, default on** since 2026-10-17 (`YCODE_FAST_TRAPS=0`
 turns it off; the same for the HVC doorbell, `YCODE_HVC_DOORBELL=0`).
@@ -223,6 +223,72 @@ field; otherwise they make the BSD call.
   same credentials, so the copy is correct.
 - Group lists (`getgroups`) are not in the block and keep trapping.
 
+## 5a. Calls with a fixed kernel answer; the sysctl cache (2026-10-27, agent GUEST-CPU-2)
+
+A boot's trap census (`guest-cpu.md` §6) found three calls whose answer
+Ycode's kernel computes from nothing that can change, made hundreds of
+thousands of times. Two more flag bits let the host library answer them:
+
+| Bit | Name | Switch (default on, `=0` off) | Meaning when set |
+|---|---|---|---|
+| 2 | `LOCAL_CALLS` | `YCODE_LOCAL_CALLS` | `madvise` and `issetugid` are answered in the library |
+| 3 | `SYSCTL_CACHE` | `YCODE_SYSCTL_CACHE` | the library keeps the name-to-OID and `kern.boottime` answers of `sysctl` |
+
+Both need `YCODE_FAST_TRAPS` (the byte is written only with it).
+
+**`madvise(addr, len, advice)` (BSD 75), also `posix_madvise`.** The
+kernel answers advice 0…10 (`MADV_NORMAL` … `MADV_PAGEOUT`, including
+libmalloc's `MADV_FREE_REUSABLE` / `MADV_FREE_REUSE`) with success and no
+change, whatever the range, and any advice other than 0…11 with EINVAL
+(`TaskLocalTraps.swift`, the locked path's answers). With `LOCAL_CALLS`
+the library returns the same: 0, or −1 with errno EINVAL. Only
+`MADV_ZERO` (11), which zeroes the range, still traps. Should the kernel
+ever give advice 0…10 an effect (returning host memory, checking the
+range), it must clear the bit first.
+
+**`issetugid()` (BSD 327).** Always 0 in Ycode's kernel (credentials
+never change, §5): answered 0 with `LOCAL_CALLS`.
+
+**`sysctl` (BSD 202), `__sysctl` in the library.** With `SYSCTL_CACHE`:
+
+- **Name to OID** (`{0, 3}`, the name in `new`, the MIB returned in
+  `old`): libc's `sysctlbyname` makes this query on every call. The MIB of
+  a name never changes while a process runs (the kernel's table is fixed
+  when the image starts; `hw.optional.*` names get MIBs from a hash of the
+  name). The library keeps each successful answer (names of up to 96 bytes,
+  MIBs of up to 12 entries; 256 slots, written once each) keyed by the
+  name bytes without trailing NULs, as the kernel keys it.
+- **`kern.boottime`** (`{1, 21}`, read only: `new` NULL or `newlen` 0):
+  fixed for the life of the simulated system; the library keeps the first
+  successful answer's bytes.
+
+A kept answer is returned with the kernel's copy-out rules: `old` NULL is
+a size query (`*oldlenp` = the length, result 0); `oldlenp` NULL with an
+`old` buffer is EINVAL; a buffer shorter than the answer is ENOMEM
+(`*oldlenp` unchanged); otherwise the bytes, `*oldlenp` = their length,
+result 0. Errors are never kept (the next call traps again). One
+difference: a cache hit reads the caller's name and length pointers
+directly, so a bad pointer faults in the caller where the kernel would
+return EFAULT.
+
+The kept answers are byte strings (MIBs and a `struct timeval`), never
+integer values, so the natural-width rule for integer sysctls
+(`stage3-contract.md` §8, visionos.md §10.11.1) is the kernel's alone;
+the name `hw.pagesize` translates to the MIB `{6, 1025}` since then (the
+kept answer is whatever the kernel returned first).
+
+**Verification.** `p_fasttraps` (§7) compares the library's answers with
+the trapped ones: `madvise` for advice −1, 0…12 and 99 on a mapped, an
+unmapped and an empty range (result, errno, and whether `MADV_ZERO`
+zeroed the range); `sysctl` name-to-OID for five names (a fixed one,
+`hw.ncpu`, `kern.ostype`, an `hw.optional.*` name, an unknown name) and
+`kern.boottime`, twice (the second from the kept copy), each with a full
+buffer, a size query, a 4-byte buffer and no `oldlenp` (result, errno,
+`*oldlenp` and every byte of the buffer); `issetugid` against BSD 327.
+Thor, 2026-10-27: `fasttraps ok flags=0x0f`, and `flags=0x03` with both
+switches off. Cost per call: `madvise` 3 ns (BSD 75: 3.4 µs),
+`sysctlbyname("kern.boottime")` 30 ns (two BSD 202 traps: 10.7 µs).
+
 ## 6. Calls deliberately left as traps
 
 | Call | Why it is not answered in the guest |
@@ -231,6 +297,7 @@ field; otherwise they make the BSD call.
 | `task_self_trap` (−28), `host_self_trap` (−29), `thread_self_trap` (−27) | Not fixed answers: each call adds a user reference to a send right (`copyoutNewSend` in the kernel). Callers deallocate what they get; answering without the trap would let the reference count reach 0 and free a name that is still in use. `mach_task_self()` already reads `mach_task_self_` without a trap |
 | `mach_reply_port` (−26) | Creates a new port on every call |
 | `thread_selfid` (BSD 372) | Fixed per thread, but our `libsystem_pthread` already keeps it in `pthread_t.thread_id` after the first call; the remaining calls are about one per thread start |
+| `proc_info` DIRTYCONTROL SET on the caller (BSD 336, call 8 flavor 2; 217,000 a boot from XPC transactions) | The dirty bit is kernel state other processes read (launchd_sim's GET, TRACK and CLEAR): answering in the library needs the bit in memory both sides share (`guest-cpu.md` §8, open item). It already runs without L0 |
 
 ## 7. Measuring and verifying
 
@@ -356,6 +423,9 @@ With the host timebase homed alone makes 4.8 M traps per boot (the Swift
 | §8: probe results, cost per call, trap counts, lock times and home-screen times in four modes | 3 | `p_fasttraps` (12 runs) and 14 valid harness boots on the Thor, 2026-10-17 (agent EXIT runs `SX/EXIT/runs`, `SX/EXITM/runs`; two later boots were discarded because the data drive was full) |
 | Send-right references from the self-port traps | 3 | Ycode's kernel (`MachIPCTraps.swift`); xnu `osfmk/kern/ipc_tt.c` behavior (level 1) |
 | Credentials fixed in Ycode's kernel | — | Ycode decision (`DarwinFileSystem.guestUID`) |
+| §5a: the kernel's fixed answers for `madvise`, `issetugid`, the sysctl name-to-OID query and `kern.boottime` | — | Ycode's kernel (`TaskLocalTraps.swift`, `DarwinKernel.swift`, `SysctlTable.swift`) |
+| §5a: `sysctl` copy-out rules, `{0, 3}` name-to-OID, `{1, 21}` `kern.boottime`, `madvise` advice values | 1 | xnu `bsd/kern/kern_sysctl.c`, `bsd/sys/sysctl.h`, `bsd/sys/mman.h` (open source) |
+| §5a: equivalence and cost per call | 3 | `p_fasttraps` on the Thor, 2026-10-27 |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/`, and Ghidra
 were not opened.

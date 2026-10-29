@@ -45,6 +45,7 @@ public struct AnimationState<Value: VectorArithmetic> {
     public init() {}
 
     public subscript<K: AnimationStateKey>(key: K.Type) -> K.Value {
+        // swiftlint:disable:next force_cast - storage is keyed by the key type, so the value has its Value type
         get { storage[ObjectIdentifier(key)].map { $0 as! K.Value } ?? K.defaultValue }
         set { storage[ObjectIdentifier(key)] = newValue }
     }

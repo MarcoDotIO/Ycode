@@ -27,6 +27,11 @@
 import CVulkan
 import Foundation
 
+/// The numbers of the binding ABI above ("Ycode Metal ABI 1",
+/// `metal-shaders.md` §4.4); they must match what ycode-airc emits.
+/// `…Entry0` is the first argument-table entry of a group and `…Slots` its
+/// entry count; `tableSize` and the `push…` values are bytes (offsets into
+/// the push-constant block); `spec…` are specialization-constant IDs.
 public enum YcodeMetalABI {
     public static let version = 1
     public static let tableEntries = 192
@@ -89,6 +94,8 @@ public struct ShaderReflection: Codable, Sendable, Equatable {
         public var index: Int
         public var tableEntry: Int?
         public var used: Bool?
+        /// Textures: "read", "write", "read_write" or "sample" (ycode-airc).
+        public var access: String?
         public init(index: Int) { self.index = index }
     }
 

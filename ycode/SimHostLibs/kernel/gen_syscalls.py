@@ -85,6 +85,9 @@ HANDWRITTEN = {
     # answered from the commpage credential block when the VMM allows it
     # (misc.c; fast-traps.md section 5)
     "_getuid", "_geteuid", "_getgid", "_getegid",
+    # answered in the library when the commpage allows it (misc.c;
+    # fast-traps.md section 5a)
+    "_madvise", "_issetugid", "___sysctl",
     # library routine that builds the BSD 244 argument block and returns
     # the error number as its result (spawn.c, processes.md section 1)
     "_posix_spawn",

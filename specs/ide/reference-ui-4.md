@@ -356,7 +356,9 @@ Open Quickly.
 
 ## 14. Toolbar right group and editor options (pass 4b)
 
-1. From left to right:
+1. From left to right (*pass 6, `reference-ui-6.md` §2.1: no account
+   button; the pull-downs' titles are "Add Editor" and "Editor Options",
+   their tooltips the long names below*):
    - an account/cloud button;
    - **Add Editor Tabs or Editor Panes**;
    - **Adjust Editor Options**;

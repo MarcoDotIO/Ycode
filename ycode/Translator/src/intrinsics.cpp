@@ -102,7 +102,8 @@ struct TexName {
 static bool parseTexName(StringRef n, TexName &t) {
     static const char *ops[] = {"sample_compare", "gather_compare", "sample", "gather", "read", "write",
                                 "get_width", "get_height", "get_depth", "get_array_size", "get_num_mip_levels",
-                                "get_num_samples", "is_null", "get_null"};
+                                "get_num_samples", "is_null", "get_null", "calculate_clamped_lod",
+                                "calculate_unclamped_lod"};
     if (!n.consume_front("air.")) return false;
     for (const char *o : ops) {
         StringRef s = n;
@@ -155,6 +156,10 @@ bool Translator::callTexture(CallInst *C, StringRef name) {
 
     if (t.op == "is_null") {
         bind(C, E.op("OpIEqual", E.tBool(), {val(arg(0)), E.u64(0)}));
+        return true;
+    }
+    if (experiment("tex") && (t.op.rfind("sample", 0) == 0 || t.op.rfind("read", 0) == 0 || t.op.rfind("gather", 0) == 0)) {
+        if (!RT->isVoidTy()) bind(C, E.null(type(RT)));
         return true;
     }
     if (t.op == "get_null") {
@@ -266,6 +271,44 @@ bool Translator::callTexture(CallInst *C, StringRef name) {
         return s;
     };
 
+    if (t.op == "calculate_clamped_lod" || t.op == "calculate_unclamped_lod") {
+        // The texture members calculate_clamped_lod(sampler, coord) and
+        // calculate_unclamped_lod(sampler, coord) of the public Metal
+        // Shading Language (level 1). Accepted only in the form
+        // texture, sampler, float coordinate, [i32] -> float (the operand
+        // order and trailing i32 of the sampling intrinsics,
+        // metal-shaders.md section 3.9; the guest's RealityKit materials
+        // send the form with the i32, visionos.md section 10.11), in
+        // fragment functions (implicit derivatives). SPIR-V
+        // OpImageQueryLod returns (level that would be accessed, after
+        // clamping to the mip range; LOD before clamping).
+        bool trailing = C->arg_size() == 4 && arg(3)->getType()->isIntegerTy(32);
+        if ((C->arg_size() != 3 && !trailing) || !arg(1)->getType()->isPointerTy() ||
+            !arg(2)->getType()->getScalarType()->isFloatingPointTy() || !RT->isFloatingPointTy())
+        {
+            // The declared operand and result types, for the spec question.
+            std::string sig;
+            llvm::raw_string_ostream os(sig);
+            os << " (operand form: ";
+            for (unsigned j = 0; j < C->arg_size(); j++) { if (j) os << ", "; C->getArgOperand(j)->getType()->print(os); }
+            os << " -> ";
+            RT->print(os);
+            os << ")";
+            fail("unsupported-intrinsic", name.str() + os.str());
+        }
+        if (EI.stage != Stage::Fragment) fail("unsupported-feature", name.str() + " outside a fragment function");
+        E.caps.insert("ImageQuery");
+        std::string img = heapImage(val(arg(0)), k, false);
+        std::string si = E.op("OpSampledImage", E.global("si" + imageType(k, false), "OpTypeSampledImage " + imageType(k, false)),
+                              {img, heapSampler(val(arg(1)))});
+        E.decorate(si, "NonUniform");
+        std::string coords = coordWithLayer(arg(2), nullptr, true);
+        std::string q = E.op("OpImageQueryLod", E.tVec(f32, 2), {si, coords});
+        std::string r = E.op("OpCompositeExtract", f32, {q, t.op == "calculate_clamped_lod" ? "0" : "1"});
+        if (RT->isHalfTy()) r = E.op("OpFConvert", type(RT), {r});
+        bind(C, r);
+        return true;
+    }
     if (t.op == "sample" || t.op == "sample_compare" || t.op == "gather" || t.op == "gather_compare") {
         // Operands are recognized by type, so forms with or without the
         // observed i1 flags, offsets and trailing i32 all parse:
@@ -507,6 +550,7 @@ bool Translator::callTexture(CallInst *C, StringRef name) {
         else if (el->isIntegerTy() && el->getIntegerBitWidth() != 32) v = E.op(k.sampled == 'i' ? "OpSConvert" : "OpUConvert", E.tVec(u32, n), {v});
         if (n != 4) fail("unsupported-feature", "texture write of " + printType(VT));
         if (k.sampled == 'i') v = E.op("OpBitcast", v4, {v});
+        if (experiment("imgwrite")) return true;  // bisection: texture writes dropped
         E.stmt("OpImageWrite " + img + " " + coords + " " + v);
         return true;
     }
@@ -527,6 +571,10 @@ bool Translator::callSimd(CallInst *C, StringRef name) {
     StringRef rest = n.drop_front(op.size());
     bool isSigned = rest.starts_with(".s."), isUnsigned = rest.starts_with(".u.");
     (void)isUnsigned;
+    if (experiment("simd") && C->arg_size() >= 1 && C->getArgOperand(0)->getType() == C->getType()) {
+        bind(C, val(C->getArgOperand(0)));
+        return true;
+    }
     E.caps.insert("GroupNonUniform");
     uses.insert("subgroup");
     Type *RT = C->getType();
@@ -718,8 +766,8 @@ bool Translator::callAtomic(CallInst *C, StringRef name) {
     StringRef rest = n.drop_front(op.size());
     bool isSigned = rest.starts_with(".s.");
     Value *P = C->getArgOperand(0);
+    if (op == "cmpxchg") return callAtomicCompareExchange(C, name, local);
     Type *VT = op == "store" ? C->getArgOperand(1)->getType() : C->getType();
-    if (op.starts_with("cmpxchg")) fail("unsupported-intrinsic", name.str());
     unsigned bits = VT->getScalarSizeInBits();
     if (VT->isVectorTy() || (bits != 32 && bits != 64)) fail("unsupported-intrinsic", name.str());
     if (bits == 64) E.caps.insert("Int64Atomics");
@@ -773,6 +821,64 @@ bool Translator::callAtomic(CallInst *C, StringRef name) {
     else fail("unsupported-intrinsic", name.str());
     bind(C, E.op(opc, t, {ptr, scope, sem, val(C->getArgOperand(1))}));
     return true;
+}
+
+// Compare-exchange: air.atomic.<global|local>.cmpxchg.<weak|strong>.<T>.
+// Operands (metal-shaders.md section 3.9; the guest's form is
+// i32 (ptr addrspace(1), ptr, i32, i32, i32, i32, i1)): the atomic object,
+// a pointer to the expected value (MSL's `expected` argument, updated with
+// the value found when the exchange fails), the desired value, then i32
+// operands (memory orders, scope) and an i1, which carry nothing Vulkan's
+// relaxed atomics need. Result: success as 1 or 0 (an i1 result: true or
+// false). A strong exchange satisfies the weak form (which may fail
+// spuriously; this one fails only on a mismatch). Forms with the expected
+// value passed by value (result: the value found, or {found, i1}) are
+// accepted too.
+bool Translator::callAtomicCompareExchange(CallInst *C, StringRef name, bool local) {
+    if (C->arg_size() < 3) fail("unsupported-intrinsic", name.str() + " (operand form)");
+    Value *P = C->getArgOperand(0), *Exp = C->getArgOperand(1), *Des = C->getArgOperand(2);
+    if (!P->getType()->isPointerTy()) fail("unsupported-intrinsic", name.str() + " (operand form)");
+    Type *ET = Des->getType();
+    unsigned bits = ET->getScalarSizeInBits();
+    if (ET->isVectorTy() || !(ET->isIntegerTy() || ET->isFloatingPointTy()) || (bits != 32 && bits != 64))
+        fail("unsupported-intrinsic", name.str() + " (value type)");
+    bool byPointer = Exp->getType()->isPointerTy();
+    if (!byPointer && Exp->getType() != ET) fail("unsupported-intrinsic", name.str() + " (operand form)");
+    if (bits == 64) E.caps.insert("Int64Atomics");
+    uses.insert("atomics");
+    std::string it = E.tInt(bits);
+    std::string ptr = local ? workgroupElement(val(P), bits) : psbPointer(val(P), it, bits);
+    std::string scope = E.u32(local ? 2 : 1);  // Workgroup : Device
+    std::string sem = E.u32(0);                  // relaxed
+    unsigned eas = byPointer ? Exp->getType()->getPointerAddressSpace() : 0;
+    std::string expected = byPointer ? scalarLoad(val(Exp), eas, ET, bits / 8) : val(Exp);
+    bool fl = ET->isFloatingPointTy();
+    auto asInt = [&](const std::string &v) { return fl ? E.op("OpBitcast", it, {v}) : v; };
+    std::string expectedInt = asInt(expected);
+    std::string old = E.op("OpAtomicCompareExchange", it, {ptr, scope, sem, sem, asInt(val(Des)), expectedInt});
+    std::string ok = E.op("OpIEqual", E.tBool(), {old, expectedInt});
+    std::string oldT = fl ? E.op("OpBitcast", type(ET), {old}) : old;
+    // On success the value found equals `expected`, so storing it always is
+    // MSL's "expected is updated on failure".
+    if (byPointer) scalarStore(val(Exp), eas, ET, oldT, bits / 8);
+    Type *RT = C->getType();
+    if (RT->isVoidTy()) return true;
+    if (RT->isIntegerTy(1)) { bind(C, ok); return true; }
+    // With `expected` passed by pointer the value found is already in
+    // *expected, so an integer result is MSL's bool: 1 on success, 0 on
+    // failure (the guest's form returns i32). Passed by value, a result of
+    // the value type is the value found.
+    if (RT->isIntegerTy() && (byPointer || RT != ET)) {
+        bind(C, E.op("OpSelect", type(RT), {ok, constant(ConstantInt::get(RT, 1)), constant(ConstantInt::get(RT, 0))}));
+        return true;
+    }
+    if (RT == ET) { bind(C, oldT); return true; }
+    if (auto *ST = dyn_cast<StructType>(RT); ST && ST->getNumElements() == 2 && ST->getElementType(0) == ET &&
+                                              ST->getElementType(1)->isIntegerTy(1)) {
+        bind(C, E.op("OpCompositeConstruct", type(RT), {oldT, ok}));
+        return true;
+    }
+    fail("unsupported-intrinsic", name.str() + " (result type)");
 }
 
 // ---------------------------------------------------------------------------
@@ -1177,6 +1283,7 @@ void Translator::call(CallInst *C) {
             return;
         }
         if (EI.stage != Stage::Fragment) fail("unsupported-feature", "discard_fragment outside a fragment function");
+        if (experiment("demote")) { uses.insert("discard"); return; }
         E.caps.insert("DemoteToHelperInvocation");
         E.stmt("OpDemoteToHelperInvocation");
         uses.insert("discard");
@@ -1203,7 +1310,7 @@ void Translator::call(CallInst *C) {
         bind(C, r);
         return;
     }
-    if (n == "air.get_num_samples") {
+    if (n == "air.get_num_samples" || n.starts_with("air.get_num_samples.")) {
         std::string spec = E.global("specsamples", "OpSpecConstant " + u32 + " 1");
         E.decorate(spec, "SpecId " + std::to_string(abi::kSpecRasterSampleCount));
         uses.insert("raster_sample_count");

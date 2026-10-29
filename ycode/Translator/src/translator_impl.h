@@ -36,6 +36,16 @@ struct ImageKind {
 struct Translator {
     llvm::Module &M;
     llvm::Function &F;
+    // Hang bisection (diagnostics only, never set in production):
+    // AIRC_EXP=psb,tex,demote,simd,imgwrite changes the translation of the
+    // entry point named by AIRC_EXP_FN (every function when unset): device
+    // loads read zero, texture reads and samples return zero, discard is a
+    // no-op, SIMD reductions return the lane's own value, texture writes are
+    // dropped.
+    bool experiment(const char *what) const;
+    bool nullGuardLoad(llvm::Value *P, bool all) const;
+    std::string tableAddrHere();
+    unsigned nullGuardedLoads = 0;
     EntryInfo EI;
     const llvm::DataLayout &DL;
     const TranslateOptions &opts;
@@ -145,6 +155,7 @@ struct Translator {
     bool callTexture(llvm::CallInst *C, llvm::StringRef name);
     bool callSimd(llvm::CallInst *C, llvm::StringRef name);
     bool callAtomic(llvm::CallInst *C, llvm::StringRef name);
+    bool callAtomicCompareExchange(llvm::CallInst *C, llvm::StringRef name, bool local);
     bool callMath(llvm::CallInst *C, llvm::StringRef name);
     std::string imageType(const ImageKind &k, bool storage);
     std::string heapImage(const std::string &handle, const ImageKind &k, bool storage);

@@ -85,7 +85,7 @@ extension MachIPC {
             let o = at - (size - b.count)
             return o >= 0 && o + 4 <= b.count ? b.readLE(UInt32.self, at: o) : 0
         }
-        /// A MIG in string at `at` (offset word, count word, bytes).
+        // A MIG in string at `at` (offset word, count word, bytes).
         func string(_ at: Int) -> String? {
             let count = Int(u32(at + 4))
             let o = at + 8 - (size - b.count)

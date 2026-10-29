@@ -18,14 +18,21 @@ public struct Destination: Equatable, Sendable, Hashable {
     public var kind: Kind
     public var osVersion: String?
     public var identifier: String?
+    /// A simulator's device type identifier
+    /// (`com.apple.CoreSimulator.SimDeviceType.<type>`), when the listing
+    /// names it. The default simulator (`reference-ui-6.md` §2.4.3) goes
+    /// by the type, not by the simulator's own (renamable) name.
+    public var deviceType: String?
 
-    public init(name: String, specifier: String, platform: String, kind: Kind, osVersion: String? = nil, identifier: String? = nil) {
+    public init(name: String, specifier: String, platform: String, kind: Kind, osVersion: String? = nil, identifier: String? = nil,
+                deviceType: String? = nil) {
         self.name = name
         self.specifier = specifier
         self.platform = platform
         self.kind = kind
         self.osVersion = osVersion
         self.identifier = identifier
+        self.deviceType = deviceType
     }
 
     public static let myMac = Destination(name: "My Mac", specifier: "platform=macOS", platform: "macOS", kind: .mac)
@@ -65,7 +72,8 @@ public enum DestinationCatalog {
             for d in devices where (d["isAvailable"] as? Bool) ?? true {
                 guard let name = d["name"] as? String, let udid = d["udid"] as? String else { continue }
                 out.append(Destination(name: name, specifier: "platform=\(Destination.simulatorPlatform(platform)),id=\(udid)",
-                                       platform: platform, kind: .simulator, osVersion: version.isEmpty ? nil : version, identifier: udid))
+                                       platform: platform, kind: .simulator, osVersion: version.isEmpty ? nil : version, identifier: udid,
+                                       deviceType: d["deviceTypeIdentifier"] as? String))
             }
         }
         return out
@@ -100,13 +108,14 @@ public enum DestinationCatalog {
             let generic = Destination(name: "Any \(p) Device (arm64)", specifier: "generic/platform=\(p)", platform: p, kind: .generic)
             let devs = devices.filter { $0.platform == p }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             groups.append(DestinationGroup(title: "\(p) Device", destinations: devs + [generic]))
-            var sims = simulators.filter { $0.platform == p }
-            let counts = Dictionary(grouping: sims, by: \.name).mapValues(\.count)
-            sims = sims.map { s in
-                var s = s
-                if counts[s.name, default: 0] > 1, let v = s.osVersion { s.name += " (\(v))" }
-                return s
-            }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            // Names stay as they are, also when several runtimes have a
+            // simulator of that name: the menu rows carry the OS version
+            // and the pop-up shows the name only (`reference-ui-6.md`
+            // §2.4.1, §2.4.3: "iPhone 18 Pro", row "iPhone 18 Pro 27.0").
+            let sims = simulators.filter { $0.platform == p }.sorted {
+                let n = $0.name.localizedStandardCompare($1.name)
+                return n != .orderedSame ? n == .orderedAscending : compareVersions($0.osVersion ?? "", $1.osVersion ?? "") == .orderedDescending
+            }
             if !sims.isEmpty {
                 let anySim = Destination(name: "Any \(p) Simulator Device", specifier: "generic/platform=\(Destination.simulatorPlatform(p))",
                                          platform: p, kind: .generic)

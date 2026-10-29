@@ -154,6 +154,8 @@ public final class SettingsController: NSViewController {
 @MainActor
 public final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     public static let shared = SettingsWindowController()
+    /// The pane list's width.
+    public static let sidebarWidth: CGFloat = 200
     /// The panes (tabless; the sidebar selects).
     public let tabs = NSTabViewController()
     public let sidebar = NSTableView()
@@ -164,7 +166,7 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
     let history = History()
 
     /// Pane titles in order (Simulators is Ycode's own, before Locations).
-    public static let paneTitles = ["General", "Appearance", "Accounts", "Intelligence", "Behaviors", "Navigation", "Notifications",
+    public static let paneTitles = ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation", "Notifications",
                                     "Editing", "Shortcuts", "Source Control", "Components", "Simulators", "Locations"]
     static let paneSymbols = ["gearshape", "paintpalette", "person.crop.circle", "sparkles", "bolt", "arrow.triangle.turn.up.right.diamond",
                               "bell", "text.cursor", "keyboard", "arrow.triangle.branch", "square.stack.3d.up", "server.rack", "externaldrive"]
@@ -174,7 +176,7 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
         let locations = SettingsController()
         let panes: [NSViewController] = [
             GeneralSettingsPane(prefs: prefs), ThemesSettingsPane(prefs: prefs), AccountsSettingsPane(prefs: prefs),
-            IntelligenceSettingsPane(prefs: prefs), BehaviorsSettingsPane(prefs: prefs), NavigationSettingsPane(prefs: prefs),
+            CodingAssistantSettingsPane(prefs: prefs), BehaviorsSettingsPane(prefs: prefs), NavigationSettingsPane(prefs: prefs),
             NotificationsSettingsPane(prefs: prefs), TextEditingSettingsPane(prefs: prefs), KeyBindingsSettingsPane(prefs: prefs),
             SourceControlSettingsPane(prefs: prefs), ComponentsSettingsPane(prefs: prefs, components: components),
             SimulatorsSettingsPane(prefs: prefs), locations,
@@ -186,7 +188,6 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
             tabs.addTabViewItem(item)
         }
         tabs.selectedTabViewItemIndex = 0
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 860, height: 560))
         let column = NSTableColumn(identifier: .init("pane"))
         sidebar.addTableColumn(column)
         sidebar.headerView = nil
@@ -197,24 +198,48 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
         scroll.drawsBackground = false
         let bar = NSStackView(views: [backButton, forwardButton, titleLabel])
         titleLabel.font = .boldSystemFont(ofSize: 15)
-        for b in [backButton, forwardButton] { b.bezelStyle = .texturedRounded }
-        for v in [scroll, bar, tabs.view] as [NSView] {
+        for b in [backButton, forwardButton] {
+            if #available(macOS 26, *) {
+                // Round glass buttons over the pane (liquid-glass-ycode.md §5).
+                b.bezelStyle = .glass
+                b.borderShape = .circle
+            } else {
+                b.bezelStyle = .texturedRounded
+            }
+        }
+        // The pane list is the system's sidebar (a floating glass sidebar
+        // on macOS 26 and later), 200 points wide; the detail runs under
+        // the transparent title bar (liquid-glass-ycode.md §5).
+        let sidebarVC = NSViewController()
+        sidebarVC.view = scroll
+        let detail = NSView(frame: NSRect(x: 0, y: 0, width: 660, height: 560))
+        for v in [bar, tabs.view] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
-            content.addSubview(v)
+            detail.addSubview(v)
         }
         NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor), scroll.topAnchor.constraint(equalTo: content.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: content.bottomAnchor), scroll.widthAnchor.constraint(equalToConstant: 200),
-            bar.leadingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: 12), bar.topAnchor.constraint(equalTo: content.topAnchor, constant: 10),
-            tabs.view.leadingAnchor.constraint(equalTo: scroll.trailingAnchor), tabs.view.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            tabs.view.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 6), tabs.view.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            bar.leadingAnchor.constraint(equalTo: detail.leadingAnchor, constant: 12), bar.topAnchor.constraint(equalTo: detail.topAnchor, constant: 10),
+            tabs.view.leadingAnchor.constraint(equalTo: detail.leadingAnchor), tabs.view.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
+            tabs.view.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 6), tabs.view.bottomAnchor.constraint(equalTo: detail.bottomAnchor),
         ])
-        let vc = NSViewController()
-        vc.view = content
-        let window = NSWindow(contentViewController: vc)
+        let detailVC = NSViewController()
+        detailVC.view = detail
+        let split = NSSplitViewController()
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarVC)
+        sidebarItem.minimumThickness = Self.sidebarWidth
+        sidebarItem.maximumThickness = Self.sidebarWidth
+        sidebarItem.canCollapse = false
+        split.addSplitViewItem(sidebarItem)
+        split.addSplitViewItem(NSSplitViewItem(viewController: detailVC))
+        split.view.frame = NSRect(x: 0, y: 0, width: 860, height: 560)
+        let window = NSWindow(contentViewController: split)
         window.title = "General"
         window.styleMask = [.titled, .closable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
+        // The pane's title row names it; the window title (Window menu,
+        // accessibility) is not drawn over the detail's title bar section.
+        window.titleVisibility = .hidden
+        window.setContentSize(NSSize(width: 860, height: 560))
         super.init(window: window)
         sidebar.dataSource = self
         sidebar.delegate = self

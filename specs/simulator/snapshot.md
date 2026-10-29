@@ -440,6 +440,11 @@ All integers little-endian.
   25 workqueue, 26 unix socket, 27 POSIX shm segment, 28 POSIX named
   semaphore, 30 clock, `0x801F` host service (optional), `0x8020` census
   (optional).
+- System record (kind 1) field 17: the CPU features the snapshot's guests
+  were told (16 bytes: the `hw.optional.arm.caps` bits 0–127 as two
+  little-endian u64). A restore on a host whose derived feature set lacks
+  one of them is refused (`cpu-features.md` §9.4); the warm-boot launcher
+  then boots cold. A snapshot without the field restores as before.
 - Host-service record fields: 1 the service name (string); for
   `device-session` 2 the control channel and 3 the session port (host-task
   port names, u64); for `metal` 4 the guest pids of the client processes
@@ -889,6 +894,16 @@ data volume, never the system disk):
 | `snapshots/<device>/device-ino` | the inode number of the device directory the snapshot belongs to (a different or missing directory: erased or replaced) |
 | `snapshots/<device>/.lock` | `flock`: held from the start of a run until its save is in place (the launcher, `ycode-simd` and the save job share it) |
 | `runs/<device>/` | the last run's frames; `logs/<time>-<mode>.txt`, the last 10 runs' logs (`log-cold.txt` / `log-restore.txt` link to the latest of each mode); `crashes/`, the last 10 host crash reports with their symbolized copies (§12.5); `ycode-sim.log` |
+
+**Per runtime and device type (IOS27, 2026-10-27).** The IDE gives every
+runtime root and device type its own device directory (`specs/ide/run.md`
+§Runtimes and device types), so snapshots, saves and erases are per
+runtime and type by the device name; the fingerprint also holds the runtime
+root, `--device-type` and the runtime's `ProductName` and
+`ProductBuildVersion`. `ycode-simd` refuses a device on an older runtime
+than the one it last booted (`DEV/ycode-runtime`, `ipad.md` §9.2), so a
+snapshot can never be restored onto another runtime's device data. The GPU
+caches stay shared between runtimes (content-keyed).
 
 ### 12.1 "no vCPU for thread N" (closed)
 

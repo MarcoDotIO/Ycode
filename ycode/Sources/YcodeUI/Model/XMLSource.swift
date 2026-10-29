@@ -4,7 +4,9 @@ import Foundation
 /// sits in the source bytes, so edits can splice only what changes. See
 /// `specs/ide/interface-builder.md` §Editing.
 public final class XMLSourceNode {
+    /// One attribute of a start tag, with the position of its raw value.
     public struct Attribute {
+        /// The attribute name as written.
         public var name: String
         /// Decoded value.
         public var value: String
@@ -12,30 +14,41 @@ public final class XMLSourceNode {
         public var valueRange: Range<Int>
     }
 
+    /// The element name.
     public let name: String
+    /// The start tag's attributes in source order.
     public internal(set) var attributes: [Attribute] = []
     /// `<` … `>` of the start tag (the whole element when self-closing).
     public internal(set) var startTag: Range<Int> = 0..<0
+    /// True for `<name … />`, which has no end tag and no children.
     public internal(set) var selfClosing = false
     /// `</name>` when not self-closing.
     public internal(set) var endTag: Range<Int>?
+    /// Child elements in source order (text and comments are not kept).
     public internal(set) var children: [XMLSourceNode] = []
+    /// The enclosing element; nil for the root.
     public internal(set) weak var parent: XMLSourceNode?
 
     init(name: String) { self.name = name }
 
+    /// The decoded value of attribute `attr`, or nil when absent.
     public subscript(_ attr: String) -> String? { attributes.first { $0.name == attr }?.value }
 
     /// The whole element, start tag through end tag.
     public var range: Range<Int> { startTag.lowerBound..<(endTag?.upperBound ?? startTag.upperBound) }
 
+    /// The first child element named `name`, and with the given `key`
+    /// attribute when `key` is not nil.
     public func child(_ name: String, key: String? = nil) -> XMLSourceNode? {
         children.first { $0.name == name && (key == nil || $0["key"] == key) }
     }
 
+    /// Calls `f` on this element, then on every descendant (pre-order).
     public func walk(_ f: (XMLSourceNode) -> Void) { f(self); children.forEach { $0.walk(f) } }
 }
 
+/// A position-keeping XML reader for Interface Builder documents, plus the
+/// attribute escaping their edits use.
 public enum XMLSource {
     public struct ParseError: Error, CustomStringConvertible {
         public var offset: Int
@@ -153,10 +166,14 @@ public enum XMLSource {
 /// Byte splices on a source buffer, applied from the end so earlier
 /// ranges stay valid.
 public struct XMLEdit {
+    /// Byte range of the source to replace.
     public var range: Range<Int>
+    /// Replacement text, written as UTF-8.
     public var text: String
+    /// Replaces `range` with `text`.
     public init(_ range: Range<Int>, _ text: String) { self.range = range; self.text = text }
 
+    /// Applies `edits` to `bytes`, last range first. Ranges must not overlap.
     public static func apply(_ edits: [XMLEdit], to bytes: [UInt8]) -> [UInt8] {
         var b = bytes
         for e in edits.sorted(by: { $0.range.lowerBound > $1.range.lowerBound }) {

@@ -17,6 +17,7 @@ public enum EditorKind: String, CaseIterable, Sendable {
 /// The Editor menu per editor kind, in `reference-ui-5.md` §2.7 / §2.8
 /// order. Commands Ycode does not perform are listed disabled (§1.1).
 public enum EditorMenu {
+    /// Shorthand for the modifier set in the tables below.
     public typealias M = MenuCommand.Modifiers
 
     /// Items of the source editor's menu shown with a check mark by default.
@@ -32,6 +33,7 @@ public enum EditorMenu {
     /// The source editor's menu (the generic menu bar's Editor menu).
     static var items: [MenuItemSpec] { items(for: .source) }
 
+    /// The Editor menu shown while an editor of `kind` has focus.
     public static func items(for kind: EditorKind) -> [MenuItemSpec] {
         switch kind {
         case .source: sourceItems
@@ -58,8 +60,9 @@ public enum EditorMenu {
             .submenu("Layout", [
                 c("Automatic", "", "setCanvasLayout:", tag: 0),
                 sep,
-                c(source ? "Editor on Left" : "Preview on Right", "", "setCanvasLayout:", tag: 1),
-                c(source ? "Editor on Top" : "Preview on Bottom", "", "setCanvasLayout:", tag: 2),
+                // The items name where the canvas goes (reference-ui-6.md §8 item 5, M5).
+                c(source ? "Canvas on Right" : "Preview on Right", "", "setCanvasLayout:", tag: 1),
+                c(source ? "Canvas on Bottom" : "Preview on Bottom", "", "setCanvasLayout:", tag: 2),
             ]),
         ]
     }
@@ -72,6 +75,8 @@ public enum EditorMenu {
     /// language's index in `SourceTokenizer.Language.allCases`.
     public static let defaultSyntaxTag = -1
 
+    /// The Syntax Coloring item tag for a language: its index in
+    /// `SourceTokenizer.Language.allCases`.
     public static func syntaxTag(_ l: SourceTokenizer.Language) -> Int { SourceTokenizer.Language.allCases.firstIndex(of: l) ?? 0 }
 
     /// §2.7.
@@ -80,15 +85,16 @@ public enum EditorMenu {
             sep,
             c("Show Completions", "⌃Space", "complete:"),
             u("Show Predictive Completion", "⌃⌥Space"),
-            // §2.0: ⌥⌘0 shows the code actions at the caret (Ycode has no
-            // coding assistant; the rest is disabled).
+            // §2.0: ⌥⌘0 shows the code actions at the caret; the four tools
+            // send the selection (or the file) to the coding assistant
+            // (specs/ide/coding-assistant.md §5).
             .submenu("Show Coding Tools", [
                 c("Show Coding Tools…", "⌥⌘0", "showCodeActions:"),
                 sep,
-                u("Explain"),
-                u("Document"),
-                u("Generate a Playground"),
-                u("Generate a Preview"),
+                c("Explain", "", "codingToolExplain:"),
+                c("Document", "", "codingToolDocument:"),
+                c("Generate a Playground", "", "codingToolGeneratePlayground:"),
+                c("Generate a Preview", "", "codingToolGeneratePreview:"),
             ]),
             c("Edit All in Scope", "⌃⌘E", "editAllInScope:"),
             c("Show Callers…", "", "showCallHierarchy:"),

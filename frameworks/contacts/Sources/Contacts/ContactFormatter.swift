@@ -74,6 +74,7 @@ public class CNContactFormatter: Formatter, @unchecked Sendable {
     /// The (key, text) runs of a formatted name and the delimiter; nil when
     /// there is nothing to show.
     static func runs(for contact: CNContact, style: CNContactFormatterStyle) -> (runs: [(String, String)], delimiter: String)? {
+        // swiftlint:disable:next force_cast - the descriptor for a style is always an aggregate
         let required = (descriptorForRequiredKeys(for: style) as! CNAggregateKeyDescriptor).keys
         guard contact.require(required) else { return nil }
         let d = contact.data

@@ -216,7 +216,8 @@ changes anything. It holds no L0.
 | Trap | Locks | Falls back when |
 |---|---|---|
 | `mach_msg_trap` (−31), `mach_msg_overwrite_trap` (−32), `mach_msg2_trap` (−47) | G only (the blocking observer's workqueue work is deferred to L_P, 4.5); the send bytes are read from guest memory before G is taken and the received message is written after it is released (a failed write still answers `MACH_RCV_INVALID_DATA`) | a send whose destination name holds a kernel-object port (served by kernel code that uses process state) |
-| `kevent_id` (375) on a workloop, `kevent_qos` (374) on the workqueue kqueue, `workq_kernreturn` (368: thread returns, thread requests, `SHOULD_NARROW`) | L_P; G inside each Mach receive and importance change | a change names a filter other than EVFILT_MACHPORT, EVFILT_WORKLOOP, EVFILT_USER, EVFILT_TIMER; the image has descriptor knotes; another `workq_kernreturn` operation |
+| `kevent_id` (375) on a workloop, `kevent_qos` (374) on the workqueue kqueue, `workq_kernreturn` (368: thread returns, thread requests, `SHOULD_NARROW`) | L_P; G inside each Mach receive and importance change; L0 for a scan that could report a descriptor knote (§4.11) | a change names a filter other than EVFILT_MACHPORT, EVFILT_WORKLOOP, EVFILT_USER, EVFILT_TIMER; another `workq_kernreturn` operation (the image-level decline for descriptor knotes is gone, §4.11) |
+| the port routine traps (§4.10) | G only | the pid-to-task traps (not fast traps) |
 | all of them | | tracing; the image is ending; the thread is not bound to the image; the host thread holds a kernel lock |
 
 Inside a fast path, work that needs L0, or the event lock of another image,
@@ -327,6 +328,77 @@ only when its locks can be taken in order; posted work is run by the
 holder after it unlocks, under a try-lock. A fast path starts with no lock
 held and never takes L0.
 
+### 4.10 The port routine traps under the port lock (agent KLOCK, 2026-10-23)
+
+The Mach port routine traps ran on the locked path: L0, then G. Their
+state is Mach state only (spaces, ports, port sets, requests: G), and the
+L0 holder waited for G while holding L0 (12.7 % of L0 holder samples were
+in a futex wait on G). They are now IPC fast traps (§4.3) that run the
+locked path's handler under G alone:
+
+| Trap | |
+|---|---|
+| Ycode's `thread_get_state` (0x7963_2011), `task_threads` (0x7963_200D) | the caller's event lock (the thread table changes only with L0 and it held), then G; a target's entry frame under its own lock (§4.2) |
+| Ycode's `mach_make_memory_entry_64` (0x7963_200A), `mach_vm_map` with a memory object (0x7963_200B), `mach_vm_remap` (0x7963_200C), `mach_port_get_context`/`set_context` (0x7963_200E/F) | G; the memory-entry and VM-map routines do their address-space and shared-object work with G released, as before (§4.2), so they now hold no lock for it (on L0 a profiled boot held L0 0.5–2.5 ms per memory entry, mostly in the host `mmap`) |
+| −16 `mach_port_allocate`, −18 `deallocate`, −19 `mod_refs`, −20 `move_member`, −21 `insert_right`, −22 `insert_member`, −23 `extract_member`, −24 `construct`, −25 `destruct`, −26 `mach_reply_port`, −27 `thread_self`, −28 `task_self`, −29 `host_self`, −40 `get_attributes`, −41 `guard`, −42 `unguard`, −50 `thread_get_special_reply_port`, −70 `host_create_mach_voucher`, −72 `mach_voucher_extract_attr_recipe`, −76 `mach_port_type`, −77 `request_notification` | G only |
+
+What they do beyond Mach state is what a fast `mach_msg` already does
+(moving or destroying rights): a dying port's payload (a semaphore, a
+fileport's file, a memory entry) is released under L0 and the
+EVFILT_MACHPORT hooks run under the receiving image's event lock, both as
+deferred work (§4.5); importance counts change under G. The pid-to-task
+traps (−44 … −46) read the process table and stay on L0. A traced image
+uses the locked path (its trace lines). Switch:
+`YCODE_PORT_ROUTINES_FAST=0`. Test:
+`MachIPCLockSplitTests.portRoutinesOnTheFastPathKeepRightsBalanced` (four
+threads make, arm, use and destroy ports with the routines, fast or locked
+at random, while they send to a server on the fast path; every
+no-senders notification is delivered and destroyed with its port; no name,
+right or message is left over).
+
+### 4.11 Descriptor readiness: the scan takes L0 (agent KLOCK, 2026-10-23)
+
+The kevent and workqueue fast paths declined for any image that had an
+EVFILT_READ or EVFILT_WRITE knote (§4.3), because a descriptor's readiness
+is L0 state. In a cold boot that sent 41,000 traps to L0 (most of
+`workq_kernreturn`'s and `kevent_id`'s 20 s of L0 waits). Now:
+
+- Only a descriptor knote that a scan could report needs its readiness:
+  active, enabled (or a synthetic delete), neither suppressed nor dropped
+  (a *candidate*). Its flags are event-lock state, and a descriptor knote
+  becomes active only under L0 and the event lock (its readiness
+  observer). Any other descriptor knote is not deliverable whatever its
+  descriptor's state, and is never read.
+- A delivery scan (`scanForDelivery`: a kevent's scan, a worker's upcall
+  and its return) on a fast path that finds a candidate in its kqueue
+  **escalates**: the thread gives up the event lock (its only lock), takes
+  L0, takes the event lock back (in order), scans under both, then gives L0
+  up and keeps the event lock (`KernelLock.escalateToKernelLock`). The
+  event lock is not held for a moment, as in a wait. The scan reads the
+  kqueue afresh; what another thread changed in that moment is a change it
+  could have made just before the scan (a worker's bucket or workloop stays
+  bound to it; a kevent's own changes were applied before).
+- A request re-evaluation off L0 defers to L0 only when the kqueue holds a
+  candidate (before: any descriptor knote).
+- A pipe's or socket's knote found not ready under L0 stops being active.
+  Both notify their observers at every change, and the observer makes the
+  knote active again when the descriptor becomes ready; without this a
+  level-triggered knote stayed active after its data was read, and every
+  scan of its kqueue took L0 (a profiled boot: 20,000 escalations and
+  31,600 deferred re-evaluations before it). Device nodes (always ready) and
+  kqueue descriptors keep the flag.
+- So the image-level decline is gone. Registering, enabling or deleting a
+  descriptor knote is still a change with another filter: L0.
+
+Without the escalation a worker parked on a fast path, handed a bucket
+whose only event is a ready pipe, could not deliver it off L0 and would be
+woken again by the deferred re-evaluation, forever. Switch:
+`YCODE_DESCRIPTOR_ESCALATION=0` (the old decline). Test:
+`WorkqueueKEventTests.descriptorKnoteIsDeliveredToAParkedWorker` (a pipe's
+EVFILT_READ|EV_DISPATCH knote on the workqueue kqueue, three rounds of
+park, write, delivery, read and EV_ENABLE; with the split on, the scans
+escalated).
+
 ## 5. Tests
 
 - `MachIPCLockSplitTests` (lock-order check on): a request/reply storm
@@ -406,20 +478,42 @@ traps: `mmap`, `getattrlist`, `posix_spawn`, `close`, `sysctl`, `open`), and
 the BSD traps wait longer for it (open 200 → 530 µs) because that work is
 now packed into less time.
 
+### 6.4 KLOCK (2026-10-24): §4.10 and §4.11
+
+Measured with the BSD changes of `bsd-locking.md` §12–§15, arms switched on
+one build (`bsd-locking.md` §16). In profiled cold boots the IPC traps that
+fell back to L0 went from 40–48 k to 10 k (the descriptor-knote declines
+from 35–42 k to 0; 1.0–1.1 k scans escalated to L0), and the port routine
+traps (78–80 k a boot) left L0. The IPC locks took the load: G's summed
+waits rose from 21–26 s to 41–61 s, the event locks' from 23–24 s to
+35–37 s. Time to the home screen did not improve (`bsd-locking.md` §16.2).
+Ablation in place (series X, 4 rounds, `YCODE_PORT_ROUTINES_FAST=0` against
+the defaults): 39, 39, 36, 40 s against 35, 42, 34, 42 s (paired −4, +3,
+−2, +2): no effect.
+
+BOOT-CP's ranking of the boot's critical path (`boot-profile.md` §8.3)
+puts the kernel locks at about 5.5 s of 33 s (L0 waits in SpringBoard's own
+traps 1.5 s: `mach_port_deallocate`, `fcntl`, `munmap`, `thread_get_state`,
+`proc_info`, all now without L0; diagnosticd's event-lock waits and wakeup
+latency 2.9 s), behind host-CPU oversubscription and guest code.
+
 ## 7. Open items
 
-- The kevent and workqueue fast paths decline for an image with
-  EVFILT_READ/EVFILT_WRITE knotes (about 5 % of the IPC traps of a boot,
-  each then waiting for L0 about 0.7 ms): descriptor readiness under a lock
-  of its own would let them stay on the fast path.
-- The port lock is one per system (12 % busy; 33–42 s of summed waits per
-  boot). Per-port locks with per-space name locks are the next step.
-- The event lock is one per image; a busy image's kevent and workqueue
-  calls serialize on it (40 s of summed waits per boot).
-- L0 is now the BSD and VM traps' lock; its holders block in the host
-  kernel for about half their hold time (`mmap_lock`). The frequent BSD and VM
-  traps, the ulock calls and the image build of spawn and exec have since
-  left L0 (`bsd-locking.md`).
+- ~~The kevent and workqueue fast paths decline for an image with
+  EVFILT_READ/EVFILT_WRITE knotes~~ (§4.11). Descriptor readiness under a
+  lock per object (pipes, sockets) would remove the escalation too.
+- The port lock is one per system and is now the busiest IPC lock (41–61 s
+  of summed waits per boot, §6.4); the port stripes of §4.9 were measured
+  neutral when G's other users still ran under L0. With the routines off L0
+  (§4.10) a re-measurement of the stripes is due.
+- The event lock is one per image; diagnosticd's (every log message passes
+  through it, `boot-profile.md` §8.5) is on the boot's critical path: its
+  workloop threads' hand-offs are event-lock waits and wakeup latency on an
+  oversubscribed host. Shorter holds in `workq_kernreturn` (33–53 µs mean,
+  scans with Mach receives and thread binding inside) and a lock per
+  workloop are the candidates.
+- L0's remaining users (`bsd-locking.md` §17) no longer contend much
+  (14–16 % busy, 11–13 % of acquisitions contended).
 
 ## Evidence
 
@@ -435,6 +529,8 @@ now packed into less time.
 | The restore's rebuild under L0 alone and its observers without the event lock (§4.7) | 3 | Host backtraces of restored runs (a dictionary of `KEventState` freed with a bad pointer in `DarwinKernel.deinit`; a bad reference in a capture), the lock-order checker's stop in every restore before the fix, `SnapshotKernelRoundTripTests` (`snapshot.md` §12.5) |
 | Where hold time went (§1, §2) | 3 | Trap profiles and holder stacks of Thor boots (`SX/SPIPC/runs/s1`, `a1`) |
 | Measurements (§6) | 3 | Thor harness boots `SX/SPIPC/{base/,}runs/f*`, `m*`, `x1`, `y5` |
+| §4.10, §4.11 and §6.4: port routines under G, descriptor-readiness escalation, their measurements | — / 3 | Ycode design; Thor timed boots of Ycode's simulator (`ide-remote/klock/runs/{P,X}-*`), kernel tests |
+| Level-triggered EVFILT_READ/WRITE readiness, EV_DISPATCH re-enable | 1 | xnu `bsd/kern/kern_event.c` (via `threads-and-events.md`) |
 
 Level 5 was not used. The reference tools folder, `research/` and Ghidra
 were not opened.

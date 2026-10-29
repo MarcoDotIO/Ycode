@@ -14,11 +14,39 @@
  * A work interval here is a small record from a fixed pool (or from
  * mach_vm_allocate when the pool is used up): the creation flags, a
  * process-unique id, and a port created on first use by _copy_port.
+ *
+ * Work intervals made by someone else and handed over as a port (the host
+ * audio service's workgroup ports, audio-host.md §10, work-intervals.md)
+ * are the kernel's: _get_flags_from_port, _join_port and _leave ask the
+ * kernel first (__work_interval_ctl GET_FLAGS / JOIN, as xnu's wrappers do)
+ * and keep the old answers for any other port.
  */
 #include "yc_kernel.h"
 
 int mach_vm_allocate(yc_port_t task, yc_u64 *address, yc_u64 size, int flags);
 int mach_port_allocate(yc_port_t task, yc_u32 right, yc_port_t *name);
+int __work_interval_ctl(yc_u32 operation, yc_u64 work_interval_id, void *arg, yc_size_t len);
+int *__error(void);
+
+/* <sys/work_interval.h>: WORK_INTERVAL_OPERATION_JOIN, _GET_FLAGS;
+ * struct work_interval_create_params. */
+#define YC_WI_OP_JOIN 5u
+#define YC_WI_OP_GET_FLAGS 9u
+struct yc_wi_create_params {
+    yc_u64 id;
+    yc_u32 port;
+    yc_u32 flags;
+};
+
+/* One kernel call whose failure leaves errno as it was (the callers fall
+ * back to the library's own answer). */
+static int yc_wi_kernel(yc_u32 operation, yc_u64 id, void *arg, yc_size_t len)
+{
+    int saved = *__error();
+    int r = __work_interval_ctl(operation, id, arg, len);
+    if (r != 0) *__error() = saved;
+    return r;
+}
 
 struct yc_work_interval {
     yc_u64 id;
@@ -77,12 +105,13 @@ YC_EXPORT int work_interval_join(struct yc_work_interval *w)
 
 YC_EXPORT int work_interval_leave(void)
 {
+    (void)yc_wi_kernel(YC_WI_OP_JOIN, 0, YC_NULL, 0);
     return 0;
 }
 
 YC_EXPORT int work_interval_join_port(yc_port_t port)
 {
-    (void)port;
+    if (port != YC_MACH_PORT_NULL && port != YC_MACH_PORT_DEAD) (void)yc_wi_kernel(YC_WI_OP_JOIN, port, YC_NULL, 0);
     return 0;
 }
 
@@ -110,8 +139,14 @@ YC_EXPORT int work_interval_copy_port(struct yc_work_interval *w, yc_port_t *por
 
 YC_EXPORT int work_interval_get_flags_from_port(yc_port_t port, yc_u32 *flags)
 {
-    (void)port;
-    if (flags != YC_NULL) *flags = 0;
+    yc_u32 found = 0;
+    if (port != YC_MACH_PORT_NULL && port != YC_MACH_PORT_DEAD) {
+        struct yc_wi_create_params p = {0, 0, 0};
+        /* Any other port (one of this library's, from _copy_port) keeps
+         * the old answer: flags 0, a default workgroup. */
+        if (yc_wi_kernel(YC_WI_OP_GET_FLAGS, port, &p, sizeof p) == 0) found = p.flags;
+    }
+    if (flags != YC_NULL) *flags = found;
     return 0;
 }
 

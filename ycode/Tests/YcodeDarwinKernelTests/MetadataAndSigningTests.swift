@@ -43,11 +43,12 @@ import YcodeDarwinABI
         #expect(env.read(k, At.out + 0xA00, 8) == [UInt8](repeating: 0, count: 8))     // no ACL
         #expect(env.bsd(k, 200, [pb, 1]) == 0)                                   // truncate
         #expect(try String(contentsOfFile: b, encoding: .utf8) == "t")
-        #expect(env.bsd(k, 34, [pb, 0x8000]) == 0)                               // chflags (not kept)
+        #expect(env.bsd(k, 34, [pb, 0x8000]) == 0)                               // chflags (UF_HIDDEN)
         #expect(env.bsd(k, 381, [put(env, k, "Sandbox", At.out + 0x900), 4, 0]) == -103)  // ENOPOLICY
         #expect(env.bsd(k, 381, [put(env, k, "Sandbox", At.out + 0x900), 2, 0]) == 0)     // check: allowed
         #expect(env.bsd(k, 381, [put(env, k, "AMFI", At.out + 0x900), 2, 0]) == -103)
-        #expect(env.bsd(k, 517, [UInt64(fd), UInt64(bitPattern: -2), pa, 0]) == -45)
+        #expect(env.bsd(k, 517, [UInt64(fd), UInt64(bitPattern: -2), pa, 0]) == 0)  // fclonefileat (VolumeFeaturesTests)
+        #expect(try String(contentsOfFile: a, encoding: .utf8) == "t")
     }
 
     /// renameatx_np flags (service-fidelity.md §4): RENAME_NOFOLLOW_ANY (searchd's

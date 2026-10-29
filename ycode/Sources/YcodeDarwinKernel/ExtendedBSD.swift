@@ -24,6 +24,22 @@ struct ExtendedBSDState {
         var next = 0
     }
 
+    /// The directory cursors of one image under a leaf lock.
+    final class DirectoryCursorTable: @unchecked Sendable {
+        private let lock = DescriptorTableLock(name: "directory cursors")
+        nonisolated(unsafe) private var table: [Int32: DirectoryCursor] = [:]
+        subscript(fd: Int32) -> DirectoryCursor? {
+            get { lock.withLock { table[fd] } }
+            set { lock.withLock { table[fd] = newValue } }
+        }
+        /// Every cursor (snapshots).
+        var all: [Int32: DirectoryCursor] { lock.withLock { table } }
+        /// One section of the lock (no other lock is taken inside).
+        func withLock<T>(_ body: (inout [Int32: DirectoryCursor]) throws -> T) rethrows -> T {
+            try lock.withLock { try body(&table) }
+        }
+    }
+
     var signalMask: UInt32 = 0
     /// Signals posted while a guest handler was installed (stage 4b: no
     /// delivery yet, `stage4b-contract.md` §2 item 5).
@@ -39,18 +55,46 @@ struct ExtendedBSDState {
         DarwinKernel.RLimit.core: (0, DarwinKernel.RLimit.infinity),
     ]
     var umask: UInt16 = 0o022
-    var directoryCursors: [Int32: DirectoryCursor] = [:]
+    /// Directory cursors by descriptor: a table with a leaf lock of its own,
+    /// so `getdirentries64` and a directory's close need no L0
+    /// (`bsd-locking.md` §14). One table per image (never shared: the state
+    /// is copied only by the snapshot capture, which reads it).
+    let directoryCursors = DirectoryCursorTable()
     /// select diagnostics (`Select.swift`, `YCODE_DEBUG_SELECT_STATS=1`).
     var selectStats = SelectStats()
     /// I/O policies (iopolicysys): process scope by iotype, thread scope by
     /// thread id and iotype, and the darwin-background scope.
-    var ioPolicies: [Int32: Int32] = [:]
-    var threadIOPolicies: [UInt64: [Int32: Int32]] = [:]
-    var darwinBackgroundIOPolicy: Int32 = 0
+    /// The I/O policies under a leaf lock of their own, so `iopolicysys`
+    /// needs no L0 (`bsd-locking.md` §12).
+    let ioPolicyStore = IOPolicyStore()
+    var ioPolicies: [Int32: Int32] {
+        get { ioPolicyStore.withLock { $0.process } }
+        nonmutating set { ioPolicyStore.withLock { $0.process = newValue } }
+    }
+    var threadIOPolicies: [UInt64: [Int32: Int32]] {
+        get { ioPolicyStore.withLock { $0.thread } }
+        nonmutating set { ioPolicyStore.withLock { $0.thread = newValue } }
+    }
+    var darwinBackgroundIOPolicy: Int32 {
+        get { ioPolicyStore.withLock { $0.background } }
+        nonmutating set { ioPolicyStore.withLock { $0.background = newValue } }
+    }
+
+    final class IOPolicyStore: @unchecked Sendable {
+        struct Policies {
+            var process: [Int32: Int32] = [:]
+            var thread: [UInt64: [Int32: Int32]] = [:]
+            var background: Int32 = 0
+        }
+        private let lock = DescriptorTableLock(name: "I/O policies")
+        nonisolated(unsafe) private var policies = Policies()
+        func withLock<T>(_ body: (inout Policies) throws -> T) rethrows -> T { try lock.withLock { try body(&policies) } }
+    }
 }
 
 extension DarwinKernel {
-    /// Extra BSD numbers handled in this file.
+    /// Extra BSD numbers handled in this file: the low 16 bits of `x16` for
+    /// the Darwin call each name spells (`specs/simulator/data/bsd-syscalls.json`).
     public enum BSD2 {
         public static let getppid = 39, sigaction = 46, sigprocmask = 48, sigaltstack = 53, umask = 60,
                           getrusage = 117, readv = 120, writev = 121, csops = 169, csopsAudittoken = 170,
@@ -80,7 +124,8 @@ extension DarwinKernel {
         ]
     }
 
-    /// `sys/resource.h`.
+    /// `getrlimit`/`setrlimit` resource numbers and `RLIM_INFINITY`, as
+    /// `sys/resource.h` defines them.
     public enum RLimit {
         public static let cpu: Int32 = 0, fsize: Int32 = 1, data: Int32 = 2, stack: Int32 = 3, core: Int32 = 4,
                           rss: Int32 = 5, memlock: Int32 = 6, nproc: Int32 = 7, nofile: Int32 = 8
@@ -89,6 +134,8 @@ extension DarwinKernel {
         static let posixFlag: Int32 = 0x1000
     }
 
+    /// Signal numbers and `how`/flag values for `sigprocmask` and `sigaltstack`, as
+    /// `sys/signal.h` defines them.
     public enum SignalConstant {
         public static let sigBlock: Int32 = 1, sigUnblock: Int32 = 2, sigSetmask: Int32 = 3
         public static let sigkill: Int32 = 9, sigstop: Int32 = 17
@@ -97,7 +144,8 @@ extension DarwinKernel {
         static let unblockable: UInt32 = (1 << 8) | (1 << 16)  // bits of SIGKILL and SIGSTOP
     }
 
-    /// `__ulock_*` operation word.
+    /// `__ulock_*` operation word: an opcode in bits 7–0 (`UL_*`) ORed with
+    /// `ULF_*` flags (`threads-and-events.md` §4.1).
     public enum ULock {
         public static let opMask: UInt32 = 0xFF
         public static let compareAndWait: UInt32 = 1
@@ -109,6 +157,7 @@ extension DarwinKernel {
         public static let noErrno: UInt32 = 0x0100_0000
     }
 
+    /// `AT_FDCWD`: the `*at` calls resolve a relative path against the working directory.
     public static let atFDCWD: Int32 = -2
     static let atSymlinkNofollow: Int32 = 0x20
     static let ETIMEDOUT: Int32 = 60
@@ -196,6 +245,9 @@ extension DarwinKernel {
         case SelectBSD.select, SelectBSD.pselect:
             return try selectCall(n, a, &call, mem)
 
+        case SelectBSD.poll:
+            return try pollCall(a, &call, mem)
+
         case 284:
             // access_extended(entries, size, results, uid) (xnu bsd/kern/
             // vfs_syscalls.c and sys/unistd.h `struct accessx_descriptor`
@@ -272,6 +324,25 @@ extension DarwinKernel {
             }
             return .value(0)
 
+        case 203, 204:
+            // mlock / munlock(addr, len) (the mlock(2) manual page, xnu
+            // bsd/kern/kern_mman.c; level 1): the range, widened to whole
+            // pages, must be mapped (ENOMEM; a wrapping range EINVAL).
+            // Guest memory is host memory that is never paged out, so a
+            // valid call changes nothing and returns 0. CoreAudio's HAL
+            // client wires its IO region with mlock and refuses to start IO
+            // when that fails (audio-host.md, "Ycode implementation").
+            call.set("\(n == 203 ? "mlock" : "munlock")(addr=\(hx(a[0])), len=\(hx(a[1])))")
+            let start = a[0] & ~(VMLayout.pageSize - 1)
+            let end = a[0].addingReportingOverflow(a[1])
+            guard !end.overflow else { throw Failure(errno: Errno.EINVAL) }
+            var va = start
+            while va < end.partialValue {
+                guard let region = mem.region(containing: va) else { throw Failure(errno: Errno.ENOMEM) }
+                va = region.end
+            }
+            return .value(0)
+
         case 322:
             // iopolicysys(cmd, struct _iopol_param_t *) (xnu bsd/kern/
             // kern_resource.c, sys/resource.h; level 1): cmd 0 sets, 1 gets
@@ -280,31 +351,7 @@ extension DarwinKernel {
             // I/O, but a policy that is set reads back (NSFileCoordinator
             // checks the dataless-materialization policy it set). Unset
             // policies read as 0 (IOPOL_DEFAULT).
-            let cmd = int(0)
-            let raw = try mem.read(va: a[1], count: 12)
-            let scope = raw.readLE(Int32.self, at: 0), iotype = raw.readLE(Int32.self, at: 4)
-            let policy = raw.readLE(Int32.self, at: 8)
-            call.set("iopolicysys(cmd=\(cmd), scope=\(scope), iotype=\(iotype), policy=\(policy))")
-            guard (0...1).contains(cmd), (0...2).contains(scope), (0...15).contains(iotype) else {
-                throw Failure(errno: Errno.EINVAL)
-            }
-            let thread = current.threadID
-            if cmd == 0 {
-                switch scope {
-                case 0: extended.ioPolicies[iotype] = policy
-                case 1: extended.threadIOPolicies[thread, default: [:]][iotype] = policy
-                default: extended.darwinBackgroundIOPolicy = policy
-                }
-                return .value(0)
-            }
-            let value: Int32 = switch scope {
-            case 0: extended.ioPolicies[iotype] ?? 0
-            case 1: extended.threadIOPolicies[thread]?[iotype] ?? 0
-            default: extended.darwinBackgroundIOPolicy
-            }
-            try mem.write(va: a[1] + 8, bytes: le32(UInt32(bitPattern: value)))
-            call += " [\(value)]"
-            return .value(0)
+            return .value(try ioPolicyCall(a, thread: current.threadID, &call, mem))
 
         case 89:
             // getdtablesize(): the descriptor-table size, i.e. the soft
@@ -488,6 +535,9 @@ extension DarwinKernel {
         case BSD2.kqueueWorkloopCtl:
             return .value(try withEvents { try kqueueWorkloopCtl(a, &call, mem) })
 
+        case WorkIntervalABI.syscall:
+            return .value(try workIntervalCtl(a, &call, mem))
+
         case BSD2.bsdthreadCreate:
             return try bsdthreadCreate(a, &call, mem)
         case BSD2.bsdthreadTerminate:
@@ -569,17 +619,7 @@ extension DarwinKernel {
             return try withEvents { try workqKernreturn(a, &call, mem) }
 
         case BSD2.statfs64, BSD2.fstatfs64:
-            let path: String
-            if n == BSD2.statfs64 {
-                path = try fileSystem.realpath(try readPath(a[0], mem))
-                call.set("statfs64(\"\(path)\", buf=\(hx(a[1])))")
-            } else {
-                path = try fileSystem.path(for: int(0))
-                call.set("fstatfs64(fd=\(int(0)), buf=\(hx(a[1]))) [\(path)]")
-            }
-            let st = n == BSD2.statfs64 ? try fileSystem.stat(path, followSymlinks: true) : try fileSystem.fstat(int(0))
-            try mem.write(va: a[1], bytes: statfs64Bytes(guestPath: path, dev: st.dev))
-            return .value(0)
+            return .value(try statfsCall(n, a, &call, mem))
 
         case BSD2.threadSelfid:
             call.set("thread_selfid()")
@@ -920,6 +960,61 @@ extension DarwinKernel {
         return base == "/" ? "/" + path : base + "/" + path
     }
 
+    /// `iopolicysys(cmd, struct _iopol_param_t *)` (xnu bsd/kern/
+    /// kern_resource.c, sys/resource.h; level 1): cmd 0 sets, 1 gets {int
+    /// iop_scope; int iop_iotype; int iop_policy}; scope 0 process, 1 thread,
+    /// 2 darwin background. Ycode schedules no I/O, but a policy that is set
+    /// reads back (NSFileCoordinator checks the dataless-materialization
+    /// policy it set). Unset policies read as 0 (IOPOL_DEFAULT). The table
+    /// has its own leaf lock; also a BSD fast path (`bsd-locking.md` §12).
+    func ioPolicyCall(_ a: [UInt64], thread: UInt64, _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        let cmd = Int32(truncatingIfNeeded: a[0])
+        let raw = try mem.read(va: a[1], count: 12)
+        let scope = raw.readLE(Int32.self, at: 0), iotype = raw.readLE(Int32.self, at: 4)
+        let policy = raw.readLE(Int32.self, at: 8)
+        call.set("iopolicysys(cmd=\(cmd), scope=\(scope), iotype=\(iotype), policy=\(policy))")
+        guard (0...1).contains(cmd), (0...2).contains(scope), (0...15).contains(iotype) else {
+            throw Failure(errno: Errno.EINVAL)
+        }
+        if cmd == 0 {
+            extended.ioPolicyStore.withLock { p in
+                switch scope {
+                case 0: p.process[iotype] = policy
+                case 1: p.thread[thread, default: [:]][iotype] = policy
+                default: p.background = policy
+                }
+            }
+            return 0
+        }
+        let value: Int32 = extended.ioPolicyStore.withLock { p in
+            switch scope {
+            case 0: p.process[iotype] ?? 0
+            case 1: p.thread[thread]?[iotype] ?? 0
+            default: p.background
+            }
+        }
+        try mem.write(va: a[1] + 8, bytes: le32(UInt32(bitPattern: value)))
+        call += " [\(value)]"
+        return 0
+    }
+
+    /// `statfs64`, `fstatfs64`: the volume of a path or descriptor (path
+    /// resolution and `stat` need no lock). Also a BSD fast path
+    /// (`bsd-locking.md` §12).
+    func statfsCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        let path: String
+        if n == BSD2.statfs64 {
+            path = try fileSystem.realpath(try readPath(a[0], mem))
+            call.set("statfs64(\"\(path)\", buf=\(hx(a[1])))")
+        } else {
+            path = try fileSystem.path(for: Int32(truncatingIfNeeded: a[0]))
+            call.set("fstatfs64(fd=\(Int32(truncatingIfNeeded: a[0])), buf=\(hx(a[1]))) [\(path)]")
+        }
+        let st = n == BSD2.statfs64 ? try fileSystem.stat(path, followSymlinks: true) : try fileSystem.fstat(Int32(truncatingIfNeeded: a[0]))
+        try mem.write(va: a[1], bytes: statfs64Bytes(guestPath: path, dev: st.dev))
+        return 0
+    }
+
     // MARK: getdirentries64
 
     /// `struct dirent` (64-bit inodes): d_ino u64, d_seekoff u64, d_reclen
@@ -927,51 +1022,69 @@ extension DarwinKernel {
     /// 8-byte aligned. With a buffer of at least 1024 bytes the last 4 bytes
     /// carry the flags word (bit 0 = end of directory), as the libc reader
     /// expects. `*position` receives the offset before the read.
-    private func getdirentries64(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
+    func getdirentries64(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let fd = Int32(truncatingIfNeeded: a[0])
         let bufferSize = Int(min(a[2], 1 << 20))
         call.set("getdirentries64(fd=\(fd), buf=\(hx(a[1])), bufsize=\(a[2]), position=\(hx(a[3])))")
         let file = try fileSystem.file(for: fd)
         guard file.isDirectory else { throw Failure(errno: Errno.ENOTDIR) }
-        if extended.directoryCursors[fd].map({ $0.file !== file }) ?? true {
-            extended.directoryCursors[fd] = .init(file: file, entries: try listDirectory(fd: fd, file: file))
-        }
-        var cursor = extended.directoryCursors[fd]!
         let extendedBuffer = bufferSize >= 1024
         let capacity = extendedBuffer ? bufferSize - 4 : bufferSize
-        let start = cursor.next
-        var out: [UInt8] = []
-        while cursor.next < cursor.entries.count {
-            let e = cursor.entries[cursor.next]
-            let name = Array(e.name.utf8)
-            let length = (21 + name.count + 1 + 7) & ~7
-            if out.count + length > capacity { break }
-            var r: [UInt8] = []
-            r.appendLE(e.ino)
-            r.appendLE(UInt64(cursor.next + 1))
-            r.appendLE(UInt16(length))
-            r.appendLE(UInt16(name.count))
-            r.append(e.type)
-            r += name
-            r += [UInt8](repeating: 0, count: length - r.count)
-            out += r
-            cursor.next += 1
+        // One section of the cursor table's lock takes the records and moves
+        // the cursor (bsd-locking.md §14); the directory is listed outside it.
+        // A cursor that a close removed meanwhile is made again.
+        var taken: (out: [UInt8], start: Int, next: Int, eof: Bool)?
+        for _ in 0..<4 {
+            try ensureDirectoryCursor(fd, file)
+            taken = extended.directoryCursors.withLock { table -> (out: [UInt8], start: Int, next: Int, eof: Bool)? in
+                guard var cursor = table[fd], cursor.file === file else { return nil }
+                let start = cursor.next
+                var out: [UInt8] = []
+                while cursor.next < cursor.entries.count {
+                    let e = cursor.entries[cursor.next]
+                    let name = Array(e.name.utf8)
+                    let length = (21 + name.count + 1 + 7) & ~7
+                    if out.count + length > capacity { break }
+                    var r: [UInt8] = []
+                    r.appendLE(e.ino)
+                    r.appendLE(UInt64(cursor.next + 1))
+                    r.appendLE(UInt16(length))
+                    r.appendLE(UInt16(name.count))
+                    r.append(e.type)
+                    r += name
+                    r += [UInt8](repeating: 0, count: length - r.count)
+                    out += r
+                    cursor.next += 1
+                }
+                if out.isEmpty && cursor.next < cursor.entries.count { return (out, start, -1, false) }
+                table[fd] = cursor
+                return (out, start, cursor.next, cursor.next >= cursor.entries.count)
+            }
+            if taken != nil { break }
         }
-        if out.isEmpty && cursor.next < cursor.entries.count { throw Failure(errno: Errno.EINVAL) }
-        extended.directoryCursors[fd] = cursor
+        guard let (out, start, next, eof) = taken else { throw Failure(errno: Errno.EBADF) }
+        if next < 0 { throw Failure(errno: Errno.EINVAL) }
         if !out.isEmpty { try mem.write(va: a[1], bytes: out) }
         if extendedBuffer {
-            let eof: UInt32 = cursor.next >= cursor.entries.count ? 1 : 0
-            try writeU32(a[1] + UInt64(bufferSize - 4), eof, mem)
+            try writeU32(a[1] + UInt64(bufferSize - 4), eof ? 1 : 0, mem)
         }
         if a[3] != 0 { try writeU64(a[3], UInt64(start), mem) }
-        call += " [\(cursor.next - start) entries]"
+        call += " [\(next - start) entries]"
         return UInt64(out.count)
     }
 
-    /// The entries of an open directory. The descriptor is read with the
-    /// kernel lock; the host listing and the per-entry stats run without it
-    /// (stage6-contract.md §5.1).
+    /// Makes `fd`'s directory cursor for `file` when it has none (or one of
+    /// an older description): the directory is listed with no lock held
+    /// (L0 is released for it on the locked path), then installed unless
+    /// another thread installed one meanwhile.
+    func ensureDirectoryCursor(_ fd: Int32, _ file: GuestFile) throws {
+        if let c = extended.directoryCursors[fd], c.file === file { return }
+        let entries = try listDirectory(fd: fd, file: file)
+        extended.directoryCursors.withLock { table in
+            if table[fd].map({ $0.file !== file }) ?? true { table[fd] = .init(file: file, entries: entries) }
+        }
+    }
+
     func listDirectory(fd: Int32, file: GuestFile) throws -> [(name: String, ino: UInt64, type: UInt8)] {
         let selfStat = try fileSystem.fstat(fd)
         let fileSystem = self.fileSystem
@@ -990,7 +1103,7 @@ extension DarwinKernel {
         let parentIno = (try? fileSystem.stat(parent.isEmpty ? "/" : parent, followSymlinks: true).ino) ?? selfStat.ino
         entries.append(("..", parentIno, 4))
         for name in names.sorted() {
-            guard let st = try? fileSystem.stat(dir == "/" ? "/" + name : dir + "/" + name, followSymlinks: false) else { continue }
+            guard let st = try? fileSystem.statEntry(inDirectory: dir, name: name) else { continue }
             let type: UInt8 = switch st.fileType {
             case DarwinStat.S_IFDIR: 4
             case DarwinStat.S_IFREG: 8

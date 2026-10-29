@@ -66,6 +66,8 @@ public enum WorkspaceSearch {
         return out
     }
 
+    /// The matches of `query` in one text, with `options` applied; empty for an
+    /// empty or invalid query.
     public static func search(_ query: String, inText text: String, options: Options = Options()) -> [Match] {
         guard !query.isEmpty, let regex = options.expression(for: query) else { return [] }
         return search(regex, inText: text)
@@ -129,7 +131,7 @@ public enum SymbolScanner {
                 if w.text == "@interface" || w.text == "@implementation", i + 1 < words.count {
                     out.append(Symbol(kind: w.text == "@interface" ? .interface : .implementation, name: words[i + 1].text,
                                       line: index.line(at: w.offset)))
-                } else if (w.text == "struct" || w.text == "enum"), i + 2 < words.count, words[i + 1].isIdentifier, words[i + 2].text == "{" {
+                } else if w.text == "struct" || w.text == "enum", i + 2 < words.count, words[i + 1].isIdentifier, words[i + 2].text == "{" {
                     out.append(Symbol(kind: w.text == "struct" ? .struct : .enum, name: words[i + 1].text, line: index.line(at: w.offset)))
                 } else if w.isIdentifier, i + 1 < words.count, words[i + 1].text == "(",
                           let close = words[(i + 1)...].firstIndex(where: { $0.text == ")" && $0.depth == 0 }),

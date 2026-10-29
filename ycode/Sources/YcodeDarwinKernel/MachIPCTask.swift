@@ -5,7 +5,9 @@ import YcodeDarwinABI
 // inheritance and spawn port actions; task lookup by port and by pid; and
 // task termination. Callers hold the kernel lock.
 
-/// `task_special_port_t` numbers (`processes.md` §3.2).
+/// `task_special_port_t` numbers (`processes.md` §3.2): the `which` argument
+/// of `task_get_special_port`/`task_set_special_port`, one per `TASK_*_PORT`
+/// its name spells.
 public enum TaskSpecialPort {
     public static let kernel: Int32 = 1
     public static let host: Int32 = 2
@@ -29,6 +31,7 @@ public enum MachException {
     /// Valid base behaviors: DEFAULT … STATE_IDENTITY_PROTECTED.
     public static let behaviors: ClosedRange<UInt32> = 1...5
 
+    /// Whether `b`, with its flag bits removed, is one of the valid base behaviors.
     public static func isValidBehavior(_ b: UInt32) -> Bool { behaviors.contains(b & ~behaviorFlags) }
 }
 

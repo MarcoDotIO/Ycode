@@ -256,6 +256,7 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
     F->logicOp = f2.features.logicOp;
     F->independentBlend = f2.features.independentBlend;
     F->depthClamp = f2.features.depthClamp;
+    F->occlusionQueryPrecise = f2.features.occlusionQueryPrecise;
     F->depthBiasClamp = f2.features.depthBiasClamp;
     F->fillModeNonSolid = f2.features.fillModeNonSolid;
     F->wideLines = f2.features.wideLines;
@@ -353,7 +354,9 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
     const VkPhysicalDeviceLimits *L = &ctx->properties.limits;
     uint32_t wantImages = opts->maxSampledImages ? opts->maxSampledImages : 65536;
     uint32_t wantSamplers = opts->maxSamplers ? opts->maxSamplers : 4096;
-    uint32_t wantStorage = opts->maxStorageImages ? opts->maxStorageImages : 16384;
+    /* As many storage slots as sampled ones: every texture's heap index has
+       an entry in both arrays (a kernel may write any texture). */
+    uint32_t wantStorage = opts->maxStorageImages ? opts->maxStorageImages : 65536;
     ctx->heapSampledImages = min_u32(wantImages, min_u32(p12.maxDescriptorSetUpdateAfterBindSampledImages,
                                                          p12.maxPerStageDescriptorUpdateAfterBindSampledImages));
     ctx->heapSamplers = min_u32(wantSamplers, min_u32(p12.maxDescriptorSetUpdateAfterBindSamplers,

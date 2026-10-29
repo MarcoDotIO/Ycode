@@ -77,6 +77,8 @@ extension AssetCatalog {
         (readContents(folder)["properties"] as? [String: Any])?["provides-namespace"] as? Bool ?? false
     }
 
+    /// Turns "Provides Namespace" on or off for `folder`; off removes the key
+    /// (and an emptied `properties`). Throws if `Contents.json` cannot be written.
     public static func setProvidesNamespace(_ on: Bool, folder: URL) throws {
         var obj = readContents(folder)
         var props = obj["properties"] as? [String: Any] ?? [:]
@@ -130,6 +132,9 @@ extension AssetCatalog {
         ("Top Shelf Image Wide.imageset", "top-shelf-image-wide", "2320x720"), ("Top Shelf Image.imageset", "top-shelf-image", "1920x720"),
     ]
 
+    /// Creates `<name>.brandassets` in `dir` with the tvOS App Icon image
+    /// stacks and the two Top Shelf image sets, all empty. Throws if the
+    /// folder exists or cannot be written.
     @discardableResult
     public func addTVBrandAssets(named name: String, in dir: URL) throws -> AssetSet {
         let u = dir.appendingPathComponent("\(name).brandassets")
@@ -154,6 +159,8 @@ extension AssetCatalog {
         ("ipad", "74x55", ["2x"]), ("universal", "27x20", ["2x", "3x"]), ("universal", "32x24", ["2x", "3x"]), ("ios-marketing", "1024x768", ["1x"]),
     ]
 
+    /// Creates `<name>.stickersiconset` in `dir` with the Messages icon slots,
+    /// all empty. Throws if the folder exists or cannot be written.
     @discardableResult
     public func addMessagesIcon(named name: String, in dir: URL) throws -> AssetSet {
         let u = dir.appendingPathComponent("\(name).stickersiconset")

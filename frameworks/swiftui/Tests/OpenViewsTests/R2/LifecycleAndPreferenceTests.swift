@@ -174,6 +174,7 @@ struct PreferenceOverlay: View {
             Text("A").preference(key: NamesKey.self, value: ["x", "y"])
         }
         .overlayPreferenceValue(NamesKey.self) { names in
+            // swiftlint:disable:next redundant_discardable_let - a side effect inside a view builder
             let _ = log("overlay \(names.count)")
             Color.clear
         }

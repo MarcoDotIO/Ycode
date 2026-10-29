@@ -72,6 +72,99 @@ func absolutePath(_ path: String) -> String {
 /// Mach-O protection bits → VMProtection (same bit values: r 1, w 2, x 4).
 func vmProtection(_ p: Protection) -> VMProtection { VMProtection(rawValue: p.rawValue & 7) }
 
+// MARK: - Executable headers without a host mapping (boot-profile.md §9, SP2)
+
+/// The arm64 slice of an executable: where it starts in the file and its
+/// Mach-O header with the load commands (all an image build reads), read
+/// with `pread`. Mapping the whole file (`Data(contentsOf:, .alwaysMapped)`)
+/// cost an `mmap` and a `munmap` for each of three reads per image build;
+/// each takes the host process's address-space lock for writing, which every
+/// vCPU's stage-2 fault takes for reading.
+struct ExecutableHeader: @unchecked Sendable {
+    enum Failure: Error { case notMachO, noARM64Slice, unreadable(Int32) }
+    /// The slice's offset in the file.
+    let sliceOffset: Int
+    /// The header and load commands; offsets are relative to the slice.
+    let reader: ByteReader
+    let image: MachOImage
+
+    /// `YCODE_EXEC_HEADER_MAP=1`: map whole files as before (A/B).
+    static let mapWholeFile = getenv("YCODE_EXEC_HEADER_MAP").map { String(cString: $0) == "1" } ?? false
+
+    private static let cacheLock = HostMutex(name: "executable headers")
+    nonisolated(unsafe) private static var cache: [String: ExecutableHeader] = [:]
+
+    /// The header of `fd`'s file (the arm64 slice; plain arm64 preferred
+    /// over arm64e variants), from the cache when the file (device, inode,
+    /// size, modification time) was read before.
+    static func read(fd: Int32) throws(Failure) -> ExecutableHeader {
+        var st = stat()
+        guard fstat(fd, &st) == 0 else { throw .unreadable(errno) }
+        let key = "\(st.st_dev):\(st.st_ino):\(st.st_size):\(st.st_mtim.tv_sec).\(st.st_mtim.tv_nsec)"
+        if let hit = cacheLock.withLock({ cache[key] }) { return hit }
+        let fileSize = Int(st.st_size)
+        func bytes(_ offset: Int, _ count: Int) throws(Failure) -> [UInt8] {
+            guard offset >= 0, count >= 0, offset <= fileSize, count <= fileSize - offset else { throw .notMachO }
+            var out = [UInt8](repeating: 0, count: count)
+            var done = 0
+            while done < count {
+                let n = out.withUnsafeMutableBytes { pread(fd, $0.baseAddress! + done, count - done, off_t(offset + done)) }
+                if n < 0 && errno == EINTR { continue }
+                guard n > 0 else { throw .unreadable(n < 0 ? errno : EIO) }
+                done += n
+            }
+            return out
+        }
+        func be32(_ b: [UInt8], _ o: Int) -> UInt32 { UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3]) }
+        func le32(_ b: [UInt8], _ o: Int) -> UInt32 { UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24 }
+        func be64(_ b: [UInt8], _ o: Int) -> UInt64 { UInt64(be32(b, o)) << 32 | UInt64(be32(b, o + 4)) }
+        let first = try bytes(0, min(fileSize, 4096))
+        guard first.count >= 32 else { throw .notMachO }
+        var sliceOffset = 0
+        let magic = be32(first, 0)
+        if magic == MachO.fatMagic || magic == MachO.fatMagic64 {
+            let wide = magic == MachO.fatMagic64
+            let n = Int(be32(first, 4))
+            let entry = wide ? 32 : 20
+            guard n < 64, 8 + n * entry <= first.count else { throw .notMachO }
+            var slices: [(cpu: UInt32, sub: UInt32, offset: Int)] = []
+            for i in 0..<n {
+                let e = 8 + i * entry
+                let off = wide ? Int(be64(first, e + 8)) : Int(be32(first, e + 8))
+                let size = wide ? Int(be64(first, e + 16)) : Int(be32(first, e + 12))
+                guard off >= 0, size >= 0, off <= fileSize, size <= fileSize - off else { throw .notMachO }
+                slices.append((be32(first, e), be32(first, e + 4), off))
+            }
+            guard let slice = slices.first(where: { $0.cpu == MachO.cpuTypeARM64 && $0.sub & 0x00FF_FFFF == 0 })
+                    ?? slices.first(where: { $0.cpu == MachO.cpuTypeARM64 }) else { throw .noARM64Slice }
+            sliceOffset = slice.offset
+        } else {
+            guard le32(first, 0) == MachO.magic64 else { throw .notMachO }
+            guard le32(first, 4) == MachO.cpuTypeARM64 else { throw .noARM64Slice }
+        }
+        let header = try bytes(sliceOffset, 32)
+        guard le32(header, 0) == MachO.magic64 else { throw .notMachO }
+        let commands = Int(le32(header, 20))
+        let all = try bytes(sliceOffset, 32 + commands)
+        let reader = ByteReader(Data(all))
+        guard let image = try? MachOImage(reader, at: 0) else { throw .notMachO }
+        let result = ExecutableHeader(sliceOffset: sliceOffset, reader: reader, image: image)
+        cacheLock.withLock {
+            if cache.count >= 1024 { cache.removeAll() }
+            cache[key] = result
+        }
+        return result
+    }
+
+    /// As `read(fd:)`, for a path.
+    static func read(path: String) throws(Failure) -> ExecutableHeader {
+        let fd = open(path, O_RDONLY | O_CLOEXEC)
+        guard fd >= 0 else { throw .unreadable(errno) }
+        defer { close(fd) }
+        return try read(fd: fd)
+    }
+}
+
 /// The `LC_UNIXTHREAD` PC of an arm64 image (`ARM_THREAD_STATE64`, flavor 6:
 /// the PC is 64-bit word 32 of the register state), or nil.
 func unixThreadPC(_ reader: ByteReader, headerOffset: Int) -> UInt64? {
@@ -394,6 +487,20 @@ final class ProcessBuilder {
         try space.flushPageTables()
     }
 
+    /// A builder over a VM reused from an image that ended (SP1): the VM
+    /// was reset (`VirtualMachine.resetForReuse`) and its old backing
+    /// scrubbed; the backing is made again over the same memslots and the
+    /// EL1 tables are written again into the (zeroed) RAM.
+    init(reusing vm: VirtualMachine, backing old: KVMPhysicalBacking) throws {
+        self.traceLog = nil
+        self.vm = vm
+        backing = KVMPhysicalBacking(reusing: old)
+        var tables = PageTableBuilder(tableArenaGPA: stage4TableArenaGPA, tableArenaSize: Int(VMLayout.stage3PageTableArenaSize))
+        for region in stage4EL1Regions { try tables.mapIdentity(region) }
+        space = GuestAddressSpace(backing: backing, pageTables: tables)
+        try space.flushPageTables()
+    }
+
     func log(_ text: @autoclosure () -> String) { if let traceLog { traceLog(text()) } }
 
     /// Writes into guest memory regardless of page permissions (VMM loads).
@@ -425,12 +532,27 @@ final class ProcessBuilder {
     /// with its initprot; __PAGEZERO (no access, no file data) is skipped.
     func loadMainExecutable(path: String, hostPath: String) throws -> LoadedImage {
         let file = try GuestFile.openReadOnly(hostPath: hostPath, guestPath: path)
-        let fat = try MachOFile(contentsOf: URL(fileURLWithPath: hostPath))
-        guard let slice = fat.slices.first(where: { $0.cpuType == MachO.cpuTypeARM64 && $0.cpuSubtype & 0x00FF_FFFF == 0 })
-                ?? fat.slices.first(where: { $0.cpuType == MachO.cpuTypeARM64 }) else {
-            throw LoaderError.message("\(path) has no arm64 slice")
+        let sliceOffset: Int
+        let image: MachOImage
+        if ExecutableHeader.mapWholeFile {
+            let fat = try MachOFile(contentsOf: URL(fileURLWithPath: hostPath))
+            guard let slice = fat.slices.first(where: { $0.cpuType == MachO.cpuTypeARM64 && $0.cpuSubtype & 0x00FF_FFFF == 0 })
+                    ?? fat.slices.first(where: { $0.cpuType == MachO.cpuTypeARM64 }) else {
+                throw LoaderError.message("\(path) has no arm64 slice")
+            }
+            sliceOffset = slice.offset
+            image = try MachOImage(fat.reader, at: slice.offset)
+        } else {
+            do {
+                let header = try ExecutableHeader.read(fd: file.hostFD)
+                (sliceOffset, image) = (header.sliceOffset, header.image)
+            } catch .noARM64Slice {
+                throw LoaderError.message("\(path) has no arm64 slice")
+            } catch {
+                throw LoaderError.message("\(path) is not a readable arm64 Mach-O (\(error))")
+            }
         }
-        let image = try MachOImage(fat.reader, at: slice.offset)
+        let slice = (offset: sliceOffset, ())
         guard image.fileType == .executable else { throw LoaderError.message("\(path) is not an executable (MH_EXECUTE)") }
         var header: UInt64?
         var low = UInt64.max, high: UInt64 = 0
@@ -457,12 +579,31 @@ final class ProcessBuilder {
     /// LC_UNIXTHREAD PC, plus the slide.
     func loadDyldSim(path: String, guestPath: String, base: UInt64) throws -> LoadedImage {
         let file = try GuestFile.openReadOnly(hostPath: path, guestPath: guestPath)
-        let fat = try MachOFile(contentsOf: URL(fileURLWithPath: path))
-        guard let slice = fat.slices.first(where: { $0.cpuType == MachO.cpuTypeARM64 && $0.cpuSubtype & 0x00FF_FFFF == 0 })
-                ?? fat.slices.first(where: { $0.cpuType == MachO.cpuTypeARM64 }) else {
-            throw LoaderError.message("\(path) has no arm64 slice")
+        let sliceOffset: Int
+        let image: MachOImage
+        let threadReader: ByteReader
+        let threadHeaderOffset: Int
+        if ExecutableHeader.mapWholeFile {
+            let fat = try MachOFile(contentsOf: URL(fileURLWithPath: path))
+            guard let slice = fat.slices.first(where: { $0.cpuType == MachO.cpuTypeARM64 && $0.cpuSubtype & 0x00FF_FFFF == 0 })
+                    ?? fat.slices.first(where: { $0.cpuType == MachO.cpuTypeARM64 }) else {
+                throw LoaderError.message("\(path) has no arm64 slice")
+            }
+            sliceOffset = slice.offset
+            image = try MachOImage(fat.reader, at: slice.offset)
+            (threadReader, threadHeaderOffset) = (fat.reader, slice.offset)
+        } else {
+            do {
+                let header = try ExecutableHeader.read(fd: file.hostFD)
+                (sliceOffset, image) = (header.sliceOffset, header.image)
+                (threadReader, threadHeaderOffset) = (header.reader, 0)
+            } catch .noARM64Slice {
+                throw LoaderError.message("\(path) has no arm64 slice")
+            } catch {
+                throw LoaderError.message("\(path) is not a readable arm64 Mach-O (\(error))")
+            }
         }
-        let image = try MachOImage(fat.reader, at: slice.offset)
+        let slice = (offset: sliceOffset, ())
         let segments = image.segments.filter { $0.vmSize > 0 && !($0.fileSize == 0 && $0.initialProtection.rawValue == 0) }
         guard let text = image.segment(named: "__TEXT"), !segments.isEmpty else {
             throw LoaderError.message("\(path) has no __TEXT segment")
@@ -487,7 +628,7 @@ final class ProcessBuilder {
         let entryOffset: UInt64
         if let main = image.entryOffset {
             entryOffset = main
-        } else if let pc = unixThreadPC(fat.reader, headerOffset: slice.offset) {
+        } else if let pc = unixThreadPC(threadReader, headerOffset: threadHeaderOffset) {
             entryOffset = pc &- preferred
         } else {
             throw LoaderError.message("dyld_sim entry not found (no LC_MAIN or LC_UNIXTHREAD)")
@@ -522,6 +663,35 @@ func dumpKevents(_ space: GuestAddressSpace, list: UInt64, count: Int, label: St
 }
 
 /// A string with one value per host thread (pthread TSD).
+/// A per-host-thread UInt64 (pthread key; diagnostics).
+final class PerThreadNanoseconds: @unchecked Sendable {
+    private final class Box { var value: UInt64 = 0 }
+    private var key = pthread_key_t()
+
+    init() {
+        pthread_key_create(&key) { pointer in
+            if let pointer { Unmanaged<AnyObject>.fromOpaque(pointer).release() }
+        }
+    }
+
+    var value: UInt64 {
+        get {
+            guard let pointer = pthread_getspecific(key) else { return 0 }
+            return Unmanaged<Box>.fromOpaque(pointer).takeUnretainedValue().value
+        }
+        set {
+            if let pointer = pthread_getspecific(key) {
+                Unmanaged<Box>.fromOpaque(pointer).takeUnretainedValue().value = newValue
+                return
+            }
+            guard newValue != 0 else { return }
+            let box = Box()
+            box.value = newValue
+            pthread_setspecific(key, Unmanaged.passRetained(box).toOpaque())
+        }
+    }
+}
+
 final class PerThreadString: @unchecked Sendable {
     private final class Box { var value = "" }
     private var key = pthread_key_t()

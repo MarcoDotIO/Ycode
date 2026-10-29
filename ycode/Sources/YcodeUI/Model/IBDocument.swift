@@ -5,18 +5,26 @@ import Foundation
 public final class IBDocument {
     /// One object of the document (an element with an `id`).
     public final class Object {
+        /// The XML element name (`view`, `button`, `scene`, …).
         public let element: String
+        /// The `id` attribute (`sceneID` for scenes), unique in the document.
         public let id: String
         /// The element's `key` (its role in the parent: `view`, `cell`, …).
         public let key: String?
+        /// The element's attributes in file order.
         public internal(set) var attributes: [(String, String)]
         /// Frame in the parent's coordinates, as written.
         public internal(set) var frame: CGRect?
+        /// Child objects in file order, found through container elements.
         public internal(set) var children: [Object] = []
+        /// Constraints written inside this object.
         public internal(set) var constraints: [Constraint] = []
+        /// Outlets, actions and segues written inside this object (this object
+        /// is the source).
         public internal(set) var connections: [Connection] = []
         /// Value-only child elements (`color`, `fontDescription`, `autoresizingMask`, …).
         public internal(set) var properties: [(String, [(String, String)])] = []
+        /// The enclosing object; nil for a root.
         public internal(set) weak var parent: Object?
         /// For scenes: the canvas location, when written.
         public internal(set) var canvasLocation: CGPoint?
@@ -24,6 +32,7 @@ public final class IBDocument {
         public internal(set) var contentRect: CGRect?
         /// The object's element in the source, and its frame element.
         public internal(set) var node: XMLSourceNode!
+        /// The `<rect key="frame">` element, when the object has one.
         public internal(set) var frameNode: XMLSourceNode?
 
         init(element: String, id: String, key: String?, attributes: [(String, String)]) {
@@ -33,6 +42,7 @@ public final class IBDocument {
             self.attributes = attributes
         }
 
+        /// The value of attribute `name`, or nil when absent.
         public func attribute(_ name: String) -> String? { attributes.first { $0.0 == name }?.1 }
 
         /// What the outline shows: the user label, else a title, else the
@@ -49,6 +59,7 @@ public final class IBDocument {
         /// Whether the object is a view (has a frame or a view role).
         public var isView: Bool { frame != nil }
 
+        /// Calls `f` on this object, then on every descendant (pre-order).
         public func walk(_ f: (Object) -> Void) { f(self); children.forEach { $0.walk(f) } }
     }
 
@@ -86,21 +97,30 @@ public final class IBDocument {
         public var id: String
     }
 
+    /// True for a storyboard, false for a xib (from the root `type`).
     public let isStoryboard: Bool
     /// `targetRuntime` (e.g. `MacOSX.Cocoa`, `iOS.CocoaTouch`).
     public let targetRuntime: String
+    /// The root `toolsVersion` attribute, when written.
     public let toolsVersion: String?
+    /// The ID of the storyboard's initial view controller, when set.
     public let initialViewController: String?
     /// Top-level objects: scenes (storyboards) or the `objects` list (xibs).
     public private(set) var roots: [Object] = []
+    /// Every object by its ID.
     public private(set) var byID: [String: Object] = [:]
 
+    /// True for runtimes with a top-left origin (everything except macOS
+    /// Cocoa); frames of other runtimes have a bottom-left origin.
     public var isFlippedRuntime: Bool { !targetRuntime.hasPrefix("MacOSX") }
 
     /// The file's bytes; edits splice these (see IBEditing.swift).
     public let source: [UInt8]
+    /// The root `<document>` element of the parsed source.
     public let documentNode: XMLSourceNode
 
+    /// Parses a storyboard or xib. Throws `CocoaError(.fileReadCorruptFile)`
+    /// when the XML is malformed or the root is not `<document>`.
     public init(data: Data) throws {
         source = Array(data)
         let root: XMLSourceNode
@@ -119,6 +139,8 @@ public final class IBDocument {
         for r in roots { r.walk { byID[$0.id] = $0 } }
     }
 
+    /// Reads and parses the file at `url`; throws as `init(data:)` does, or
+    /// the read error.
     public convenience init(url: URL) throws { try self.init(data: Data(contentsOf: url)) }
 
     /// `viewController` → `View Controller`.

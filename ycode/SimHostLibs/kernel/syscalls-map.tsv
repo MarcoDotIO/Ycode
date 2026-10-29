@@ -211,7 +211,7 @@ ___stat	table	bsd-syscall-private	-	stub: 32-bit-inode vs 64-bit-inode call is a
 ___stat64_extended	surface	bsd-syscall-private	341	cerror_nocancel
 ___stat_extended	table	bsd-syscall-private	-	stub: 32-bit-inode vs 64-bit-inode call is ambiguous
 ___statfs	table	bsd-syscall-private	-	stub: 32-bit-inode vs 64-bit-inode call is ambiguous
-___sysctl	surface	bsd-syscall-private	202	cerror_nocancel
+___sysctl	surface	bsd-syscall-private	-	hand-written
 ___sysctlbyname	table	bsd-syscall-private	274	cerror_nocancel
 ___telemetry	surface	bsd-syscall-private	451	cerror_nocancel
 ___terminate_with_payload	table	bsd-syscall-private	520	cerror_nocancel
@@ -404,7 +404,7 @@ _host_page_size	surface	mach-routine	-	routine: mach.c
 _host_self	table	mach-routine	-29	routine: mach.c: as mach_host_self
 _host_self_trap	table	mach-trap	-29	mach
 _ioctl	surface	bsd-syscall	-	hand-written
-_issetugid	surface	bsd-syscall	327	cerror_nocancel
+_issetugid	surface	bsd-syscall	-	hand-written
 _kas_info	surface	bsd-syscall	439	cerror_nocancel
 _kdebug_trace	surface	bsd-syscall	-	hand-written
 _kdebug_trace_string	surface	bsd-syscall	178	cerror_nocancel
@@ -481,7 +481,7 @@ _macx_backing_store_suspend	table	mach-trap	-52	mach
 _macx_swapoff	table	mach-trap	-49	mach
 _macx_swapon	table	mach-trap	-48	mach
 _macx_triggers	table	mach-trap	-51	mach
-_madvise	surface	bsd-syscall	75	cerror_nocancel
+_madvise	surface	bsd-syscall	-	hand-written
 _memorystatus_control	surface	bsd-syscall	440	cerror_nocancel
 _memorystatus_get_level	table	bsd-syscall	453	cerror_nocancel
 _mig_dealloc_reply_port	surface	mach-routine	-19	routine: mach.c

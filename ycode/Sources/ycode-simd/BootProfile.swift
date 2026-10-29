@@ -35,6 +35,9 @@ final class BootProfile: @unchecked Sendable {
 
     init(path: String) { self.path = path }
 
+    /// The launcher (for the prebuilt-VM counters in the report).
+    weak var launcherForReport: VMMLauncher?
+
     /// Turns on the counters the profile reads. Call before the first image.
     func enable() {
         VCPUPool.profiling = true
@@ -58,8 +61,63 @@ final class BootProfile: @unchecked Sendable {
     /// "pc-offset lr-offset" -> samples, for the loader (`dyld_sim`).
     private var loaderSamples: [String: UInt64] = [:]
 
+    /// `YCODE_BOOT_PROFILE_PC_RAW=<program>` (with `…_PC_HZ`): instead of
+    /// the by-image table, the samples of that program go to <path>.pcraw as one line, "host-ns pid
+    /// pc lr ra0 ra1 …" (hex guest addresses, the frame-pointer chain as
+    /// read at the sample), for a timeline of what one process ran
+    /// (visionos.md §10.7; symbolized offline in the guest).
+    static let rawProgram: String? = getenv("YCODE_BOOT_PROFILE_PC_RAW").map { String(cString: $0) }.flatMap { $0.isEmpty ? nil : $0 }
+    private lazy var rawFile: FileHandle? = {
+        FileManager.default.createFile(atPath: path + ".pcraw", contents: nil)
+        return FileHandle(forWritingAtPath: path + ".pcraw")
+    }()
+
+    /// The timeline sampler (`YCODE_BOOT_PROFILE_PC_RAW`): kicks only that
+    /// program's vCPUs, waits for each sample (they land within
+    /// microseconds) and writes it at once, so the samples are as dense as
+    /// `…_PC_HZ` allows. It replaces the by-image sampler.
+    private func startRawSampler(launcher: VMMLauncher, program: String) {
+        let thread = Thread { [self] in
+            let interval = UInt32(1_000_000 / max(1, Self.pcHz))
+            var targets: [GuestImageInstance] = []
+            var refreshAt: UInt64 = 0
+            var out = ""
+            while true {
+                let now = monotonicNanoseconds()
+                if now >= refreshAt {
+                    targets = launcher.snapshotLiveImages.filter { ($0.record.executable as NSString).lastPathComponent == program }
+                    refreshAt = now + 20_000_000
+                    if !out.isEmpty { rawFile?.write(Data(out.utf8)); out = "" }
+                }
+                var pending: [(GuestImageInstance, VCPUPool.Worker, UInt64)] = []
+                for image in targets {
+                    for w in image.pool.kickForPCSamples() { pending.append((image, w, w.sampleCount.load(ordering: .relaxed))) }
+                }
+                let deadline = monotonicNanoseconds() + 300_000
+                while !pending.isEmpty && monotonicNanoseconds() < deadline {
+                    pending.removeAll { (image, w, count) in
+                        guard w.sampleCount.load(ordering: .acquiring) != count else { return false }
+                        out += "\(monotonicNanoseconds()) \(image.record.pid) "
+                            + String(format: "%llx %llx", w.samplePC.load(ordering: .relaxed), w.sampleLR.load(ordering: .relaxed))
+                        for ra in w.sampleStack { out += String(format: " %llx", ra) }
+                        out += "\n"
+                        return true
+                    }
+                }
+                if out.utf8.count > 1 << 16 { rawFile?.write(Data(out.utf8)); out = "" }
+                usleep(interval)
+            }
+        }
+        thread.name = "ycode boot profile PC timeline"
+        thread.start()
+    }
+
     func startPCSampler(launcher: VMMLauncher) {
         guard Self.pcHz > 0 else { return }
+        if let program = Self.rawProgram {
+            startRawSampler(launcher: launcher, program: program)
+            return
+        }
         let thread = Thread { [self] in
             let interval = 1_000_000 / max(1, Self.pcHz)
             var pending: [(image: GuestImageInstance, worker: VCPUPool.Worker, count: UInt64)] = []
@@ -148,14 +206,31 @@ final class BootProfile: @unchecked Sendable {
         }
     }
 
+    /// Arguments of chosen traps (`YCODE_BOOT_PROFILE_TRAPS=1`; guest-cpu.md
+    /// §6): how often each distinct key (a sysctl name, a proc_info flavor,
+    /// an madvise advice) was asked for.
+    private var argCounts: [String: UInt64] = [:]
+    func recordTrapArgs(_ key: String) {
+        costLock.withLock { argCounts[key, default: 0] &+= 1 }
+    }
+
+    private func trapArgReport() -> String {
+        let all = costLock.withLock { argCounts }
+        guard !all.isEmpty else { return "" }
+        var out = "# trap arguments: count,key\n"
+        for (k, v) in all.sorted(by: { $0.value > $1.value }).prefix(200) { out += "# arg \(v),\(k)\n" }
+        return out
+    }
+
     private func trapCostReport() -> String {
         let all = costLock.withLock { costs }
         guard !all.isEmpty else { return "" }
         var out = "# trap costs (phase pre = before the image's libSystem milestone): phase,trap,count,wall_ms,user_ms,sys_ms,minflt,wall_us_each\n"
-        for (key, c) in all.sorted(by: { $0.value.wallNs > $1.value.wallNs }).prefix(120) {
+        for (key, c) in all.sorted(by: { $0.value.wallNs > $1.value.wallNs }) {
             let pre = key & 1 == 1
             let number = (key - (pre ? 1 : 0)) / 2
             out += "# \(pre ? "pre" : "post"),\(number),\(c.count),\(c.wallNs / 1_000_000),\(c.userUs / 1000),\(c.sysUs / 1000),\(c.faults),"
+                // swiftlint:disable:next empty_count - a counter, not a collection
                 + "\(c.count == 0 ? 0 : c.wallNs / c.count / 1000)\n"
         }
         return out
@@ -167,7 +242,8 @@ final class BootProfile: @unchecked Sendable {
     func startSampler(launcher: VMMLauncher, lock: KernelLock) {
         let thread = Thread { [self] in
             guard let out = fopen(path + ".samples", "w") else { return }
-            fputs("# t_s cpu_guest cpu_sys cpu_vmm (cores) R D | guest_threads: in_guest in_handler blocked | lock_busy_% | images | top images by CPU (cores)\n", out)
+            fputs("# t_s cpu_guest cpu_sys cpu_vmm (cores) R D | guest_threads: in_guest in_handler blocked | lock_busy_% | images | top images by CPU (cores) [| host mappings (every 10th line)]\n", out)
+            var sampleNumber = 0
             fflush(out)
             var last = processTimes()
             var lastLock: UInt64 = lock.withLock { lock.totalHeldNanoseconds }
@@ -216,9 +292,12 @@ final class BootProfile: @unchecked Sendable {
                 let busy = 100 * Double(held &- lastLock) / 1e9 / wall
                 perImage.sort { $0.cores > $1.cores }
                 let top = perImage.prefix(8).map { "\($0.name):\($0.pid):" + String(format: "%.2f", $0.cores) }.joined(separator: " ")
+                sampleNumber += 1
+                let mappings = sampleNumber % 10 == 1 ? " | host mappings \(Self.hostMappingCount())" : ""
                 let line = String(format: "%.2f %.2f %.2f %.2f %d %d | %d %d %d | %.1f | %d | ", Double(now &- startNs) / 1e9,
                                   guest, system, max(0, user - guest), r, d, inGuest, inHandler, blocked, busy,
-                                  launcher.liveCount) + top + (long.isEmpty ? "" : " | long handlers: " + long.joined(separator: " ")) + "\n"
+                                  launcher.liveCount) + top + (long.isEmpty ? "" : " | long handlers: " + long.joined(separator: " "))
+                    + mappings + "\n"
                 fputs(line, out)
                 fflush(out)
                 (last, lastLock, lastNs) = (times, held, now)
@@ -226,6 +305,20 @@ final class BootProfile: @unchecked Sendable {
         }
         thread.name = "ycode boot profile"
         thread.start()
+    }
+
+    /// The number of host mappings (VMAs) of this process (/proc/self/maps lines).
+    static func hostMappingCount() -> Int {
+        guard let f = fopen("/proc/self/maps", "r") else { return -1 }
+        defer { fclose(f) }
+        var n = 0
+        var buffer = [CChar](repeating: 0, count: 1 << 16)
+        while true {
+            let got = fread(&buffer, 1, buffer.count, f)
+            if got <= 0 { break }
+            for i in 0..<got where buffer[i] == 10 { n += 1 }
+        }
+        return n
     }
 
     /// The whole process's CPU times (clock ticks): user (guest included),
@@ -262,20 +355,26 @@ final class BootProfile: @unchecked Sendable {
         out += "# " + BackingStats.report + "\n"
         // Thread-start and wakeup latency (thread-latency.md §2).
         out += "# latency (YCODE_VCPU_WARM=\(VCPUPool.warmTarget), YCODE_WAKE_AFTER_UNLOCK=\(KernelLock.wakeAfterUnlock ? 1 : 0)): "
+            // swiftlint:disable:next empty_count - sample counts, not collections
             + (VCPUPool.startLatency + VCPUPool.creationPhases + [KernelLock.wakeLatency]).filter { $0.count > 0 }.map(\.summary).joined(separator: " | ") + "\n"
+        out += "# " + (launcherForReport?.prebuilt.report ?? "") + "; host mappings now \(Self.hostMappingCount())\n"
         if let arena = SharedFileArena.shared {
             out += "# file arena: \(arena.fileCount) files, \(arena.bytesUsed >> 20) MiB; huge-page copies: "
-                + arena.promotions.map { "\($0.bytes >> 20) MiB in \($0.milliseconds) ms" }.joined(separator: ", ") + "\n"
+                + arena.promotions.map { "\($0.bytes >> 20) MiB in \($0.milliseconds) ms (\($0.hugeBytes >> 20) MiB in huge pages)" }.joined(separator: ", ")
+                + "; hot chunks \(arena.hotChunks.load(ordering: .relaxed)) (\(arena.hotChunkFailures.load(ordering: .relaxed)) failed, "
+                + "\(arena.hotNanoseconds.load(ordering: .relaxed) / 1_000_000) ms)\n"
         }
         if let rollup = try? String(contentsOfFile: "/proc/self/smaps_rollup", encoding: .utf8) {
             out += "# " + rollup.split(separator: "\n").filter { $0.hasPrefix("Rss:") || $0.hasPrefix("AnonHugePages:") }
                 .map { $0.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ") }.joined(separator: "; ") + "\n"
         }
         out += trapCostReport()
+        out += trapArgReport()
         out += "serial,pid,ppid,name,launch_s,build_ms,first_run_ms,milestone_ms,end_s,life_s,teardown_ms,threads,vcpus,traps,"
             + "cpu_s,user_s,sys_s,guest_s,runqueue_s,kvm_run_s,handler_s,user_exits,kvm_exits,wfx_exits,minflt,majflt,"
             + "lock_held_ms,lock_wait_ms,lock_acq,starts,start_wait_ms,start_wait_max_ms,"
-            + "m_traps,m_lock_wait_ms,m_lock_held_ms,m_cpu_ms,m_guest_s,m_sys_s,m_run_ms,m_handler_ms,m_top_traps,tl_traps,end\n"
+            + "m_traps,m_lock_wait_ms,m_lock_held_ms,m_cpu_ms,m_guest_s,m_sys_s,m_run_ms,m_handler_ms,m_top_traps,tl_traps,"
+            + "req_to_launch_ms,vm_ms,load_ms,vcpu0_ms,activate_ms,prebuilt,m_kvm_exits,m_user_exits,m_wfx_exits,m_minflt,end\n"
         struct Sum { var images = 0; var stats = VCPUPool.HostStats(); var lifeNs: UInt64 = 0; var lockHeld: UInt64 = 0
             var lockWait: UInt64 = 0; var traps = 0; var buildNs: UInt64 = 0; var firstRunNs: UInt64 = 0; var milestoneNs: UInt64 = 0 }
         var sums: [String: Sum] = [:]
@@ -294,7 +393,10 @@ final class BootProfile: @unchecked Sendable {
                 + "\(st.minorFaults),\(st.majorFaults),\(ms(r.lockHeldNs)),\(ms(r.lockWaitNs)),\(r.lockAcquisitions),"
                 + "\(st.starts),\(ms(st.startWaitNanoseconds)),\(ms(st.maxStartWaitNanoseconds)),"
                 + "\(r.milestoneTraps),\(ms(r.milestoneLockWaitNs)),\(ms(r.milestoneLockHeldNs)),\(ms(r.milestoneCPUNs)),"
-                + "\(s(r.milestoneGuestTicks)),\(s(r.milestoneSystemTicks)),\(ms(r.milestoneRunNs)),\(ms(r.milestoneHandlerNs)),\(r.milestoneTopTraps),\(r.taskLocalTraps),\(r.endDescription.replacingOccurrences(of: ",", with: ";"))\n"
+                + "\(s(r.milestoneGuestTicks)),\(s(r.milestoneSystemTicks)),\(ms(r.milestoneRunNs)),\(ms(r.milestoneHandlerNs)),\(r.milestoneTopTraps),\(r.taskLocalTraps),"
+                + "\(span(r.requestNs, r.launchNs)),\(span(r.launchNs, r.vmReadyNs)),\(span(r.vmReadyNs, r.loadedNs)),"
+                + "\(span(r.loadedNs, r.vcpuReadyNs)),\(span(r.launchNs, r.activatedNs)),\(r.prebuiltVM),"
+                + "\(r.milestoneKVMExits),\(r.milestoneUserExits),\(r.milestoneWFxExits),\(r.milestoneMinorFaults),\(r.endDescription.replacingOccurrences(of: ",", with: ";"))\n"
             for key in [name, "(all)"] {
                 var m = key == "(all)" ? total : (sums[key] ?? Sum())
                 m.images += 1

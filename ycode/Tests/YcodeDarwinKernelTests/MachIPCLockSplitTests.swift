@@ -494,4 +494,71 @@ func spawnThread<T: Sendable>(seconds: Double = 60, _ body: @escaping @Sendable 
         release.signal()
         #expect(holder() == 0)
     }
+
+    /// The port routine traps on the fast path (`mach-ipc-locking.md`
+    /// §4.10): client threads make, arm, use and destroy ports with the
+    /// routines (fast or locked at random) while they send to a server on
+    /// the fast path and a server thread receives; the no-senders
+    /// notifications each port sends itself are delivered and destroyed with
+    /// it, and at the end no name, right or message is left over.
+    @Test func portRoutinesOnTheFastPathKeepRightsBalanced() throws {
+        let w = SplitWorld()
+        let server = try w.add(pid: 200), client = try w.add(pid: 201)
+        let service = w.allocate(server)
+        let send = w.give(service, from: server, to: client, disposition: MachMsgType.makeSend)
+        let threads = 4, rounds = 200
+        let total = threads * rounds
+        let received = Atomic<Int>(0)
+        let contexts = (0..<threads).map { _ in w.thread(client) }
+        let namesBefore = client.ipc.nameCount
+        let sctx = w.thread(server)
+        let serverWait = spawnThread { () -> Int in
+            var n = 0
+            while received.load(ordering: .relaxed) < total {
+                let (code, r) = w.machMsg(server, sctx, nil, at: SplitWorld.scratch + 0x1000, rcvName: service,
+                                          rcvTimeoutMs: 20, fast: n % 3 != 0)
+                if code == MachMsgReturn.rcvTimedOut { continue }
+                guard code == 0, r.id == 4242 else { return -1 }
+                n += 1
+                received.wrappingAdd(1, ordering: .relaxed)
+            }
+            return n
+        }
+        var waits: [() -> Int?] = []
+        for j in 0..<threads {
+            let ctx = contexts[j]
+            // Distinct guest words per thread: the fast routines write them without L0.
+            let out = SplitWorld.scratch + 0x20000 + 0x100 * UInt64(j)
+            let buffer = SplitWorld.scratch + 0x30000 + 0x1000 * UInt64(j)
+            waits.append(spawnThread { () -> Int in
+                var ok = 0
+                for r in 0..<rounds {
+                    let fast = (r + j) % 4 != 0
+                    guard w.kr(client, ctx, -16, [0x103, UInt64(MachPortRight.receive), out], fast: fast) == 0 else { return -1 }
+                    let name = w.read(client, out, 4).readLE(UInt32.self, at: 0)
+                    guard w.kr(client, ctx, -21, [0x103, UInt64(name), UInt64(name), UInt64(MachMsgType.makeSend)],
+                               fast: r % 3 != 0) == 0 else { return -2 }
+                    guard w.kr(client, ctx, -77, [0x103, UInt64(name), UInt64(UInt32(bitPattern: MachNotify.noSenders)), 0,
+                                                  UInt64(name), UInt64(MachMsgType.makeSendOnce), out + 8], fast: fast) == 0
+                    else { return -3 }
+                    let m = TestMessage(remote: send, remoteDisposition: MachMsgType.copySend, id: 4242)
+                    guard w.machMsg(client, ctx, m.bytes, at: buffer, fast: true).0 == 0 else { return -4 }
+                    // The last send right: the no-senders notification is queued on the port itself.
+                    guard w.kr(client, ctx, -18, [0x103, UInt64(name)], fast: r % 2 == 0) == 0 else { return -5 }
+                    guard w.counters(client, name)?.msgcount == 1 else { return -6 }
+                    guard w.kr(client, ctx, -76, [0x103, UInt64(name), out + 16], fast: fast) == 0,
+                          w.read(client, out + 16, 4).readLE(UInt32.self, at: 0) & MachPortType.receive != 0 else { return -7 }
+                    guard w.kr(client, ctx, -25, [0x103, UInt64(name), 0, 0], fast: r % 5 != 0) == 0 else { return -8 }
+                    ok += 1
+                }
+                return ok
+            })
+        }
+        for wt in waits { #expect(wt() == rounds) }
+        #expect(serverWait() == total)
+        #expect(client.ipc.nameCount == namesBefore)
+        let c = w.counters(server, service)
+        #expect(c?.srights == 1 && c?.msgcount == 0 && c?.sorights == 0)
+        #expect(DarwinKernel.portRoutineFastServed.load(ordering: .relaxed) > 0)
+    }
 }

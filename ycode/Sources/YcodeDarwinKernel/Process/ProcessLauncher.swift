@@ -10,7 +10,9 @@ public struct ProcessImageRequest {
     public var executablePath: String
     /// The host path that serves it (resolved through the guest VFS).
     public var hostExecutablePath: String
+    /// The argument strings, `argv[0]` first.
     public var argv: [String]
+    /// The environment strings, each `KEY=VALUE`.
     public var envp: [String]
     /// Extra `apple[]` strings the kernel adds (the VMM adds its own,
     /// such as `executable_path=`, first).
@@ -65,9 +67,12 @@ public protocol ProcessLauncher: AnyObject {
 public protocol PreparedImage: AnyObject {}
 
 extension ProcessLauncher {
+    /// Returns nil by default: the launcher supports only `launch`.
     public func prepare(_ request: ProcessImageRequest, kernel: DarwinKernel) throws -> (any PreparedImage)? { nil }
+    /// Never called by default (`prepare` returned nil); traps if it is.
     public func activate(_ prepared: any PreparedImage, startSuspended: Bool) throws -> any LaunchedImage {
         preconditionFailure("activate without prepare")
     }
+    /// Does nothing by default.
     public func discard(_ prepared: any PreparedImage) {}
 }

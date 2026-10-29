@@ -355,7 +355,7 @@ public final class SharedMemoryObject: @unchecked Sendable {
     /// Writes `bytes` at `offset`, which must lie inside the object.
     public func write(offset: UInt64, bytes: [UInt8]) {
         precondition(offset <= size && UInt64(bytes.count) <= size - offset)
-        bytes.withUnsafeBytes { if $0.count > 0 { (host + Int(offset)).copyMemory(from: $0.baseAddress!, byteCount: $0.count) } }
+        bytes.withUnsafeBytes { if !$0.isEmpty { (host + Int(offset)).copyMemory(from: $0.baseAddress!, byteCount: $0.count) } }
     }
 }
 

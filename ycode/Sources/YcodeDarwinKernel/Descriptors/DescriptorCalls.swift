@@ -41,7 +41,8 @@ enum DescriptorBSD {
                readlink = 58, readlinkat = 473, mkdir = 136, rmdir = 137, mkdirat = 475,
                guardedOpen = 441, guardedClose = 442, guardedKqueue = 443, changeFdguard = 444,
                guardedOpenDprotected = 484, guardedWrite = 485, guardedPwrite = 486, guardedWritev = 487,
-               flock = 131, fsync = 95, fdatasync = 187
+               flock = 131, fsync = 95, fdatasync = 187,
+               connectx = 447, disconnectx = 448, socketDelegate = 450, recvmsgX = 480, sendmsgX = 481
     /// `_nocancel` forms → the plain call (those `DarwinKernel.BSD.nocancelAliases` may not list).
     static let nocancel: [Int: Int] = [
         396: read, 397: write, 401: recvmsg, 402: sendmsg, 403: recvfrom, 404: accept, 409: connect,
@@ -137,14 +138,7 @@ extension DarwinKernel {
             return .value(0)
 
         case DescriptorBSD.mkdir, DescriptorBSD.mkdirat:
-            let isAt = n == DescriptorBSD.mkdirat
-            let path = isAt ? try resolveAtPath(int(0), a[1], mem) : try readPath(a[0], mem)
-            let mode = UInt16(truncatingIfNeeded: isAt ? a[2] : a[1])
-            call.set(isAt ? "mkdirat(\(int(0)), \"\(path)\", mode=0o\(String(mode & 0o7777, radix: 8)))"
-                : "mkdir(\"\(path)\", mode=0o\(String(mode & 0o7777, radix: 8)))")
-            let umask = extended.umask
-            try hostFileSystemUnlocked { try $0.mkdir(path, mode: mode, umask: umask) }
-            return .value(0)
+            return .value(try mkdirCall(n, a, &call, mem))
 
         case DescriptorBSD.rmdir:
             let path = try readPath(a[0], mem)
@@ -158,17 +152,7 @@ extension DarwinKernel {
             return try guardedCall(n, a, &call, mem)
 
         case DescriptorBSD.readlink, DescriptorBSD.readlinkat:
-            let isAt = n == DescriptorBSD.readlinkat
-            let path = isAt ? try resolveAtPath(int(0), a[1], mem) : try readPath(a[0], mem)
-            let (buffer, size) = isAt ? (a[2], a[3]) : (a[1], a[2])
-            call.set(isAt ? "readlinkat(\(int(0)), \"\(path)\", buf=\(hx(buffer)), bufsize=\(size))"
-                : "readlink(\"\(path)\", buf=\(hx(buffer)), bufsize=\(size))")
-            let target = Array(try fileSystem.readlink(path).utf8)
-            // No NUL; silently truncated to the buffer (POSIX).
-            let n = min(target.count, Int(min(size, UInt64(Int32.max))))
-            if n > 0 { try mem.write(va: buffer, bytes: Array(target.prefix(n))) }
-            call += " [\(String(decoding: target, as: UTF8.self))]"
-            return .value(UInt64(n))
+            return .value(try readlinkCall(n, a, &call, mem))
 
         case DescriptorBSD.chdir, DescriptorBSD.pthreadChdir:
             let path = try readPath(a[0], mem)
@@ -191,6 +175,10 @@ extension DarwinKernel {
              DescriptorBSD.getpeername, DescriptorBSD.setsockopt, DescriptorBSD.getsockopt:
             return try socketCall(n, a, &call, mem)
 
+        case DescriptorBSD.connectx, DescriptorBSD.disconnectx, DescriptorBSD.socketDelegate, DescriptorBSD.recvmsgX,
+             DescriptorBSD.sendmsgX:
+            return try extendedSocketCall(n, a, &call, mem)
+
         default:
             return nil
         }
@@ -200,6 +188,35 @@ extension DarwinKernel {
     /// kernel lock released (`stage6-contract.md` §5.2): resolution and the
     /// socket-name table are safe to read without it. With
     /// `YCODE_FS_LOCKED_IO=1` it keeps the lock.
+    /// `mkdir`, `mkdirat`: the host directory (without L0; the umask is one
+    /// word of the image). Also a BSD fast path (`bsd-locking.md` §12).
+    func mkdirCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        let isAt = n == DescriptorBSD.mkdirat
+        let path = isAt ? try resolveAtPath(Int32(truncatingIfNeeded: a[0]), a[1], mem) : try readPath(a[0], mem)
+        let mode = UInt16(truncatingIfNeeded: isAt ? a[2] : a[1])
+        call.set(isAt ? "mkdirat(\(Int32(truncatingIfNeeded: a[0])), \"\(path)\", mode=0o\(String(mode & 0o7777, radix: 8)))"
+            : "mkdir(\"\(path)\", mode=0o\(String(mode & 0o7777, radix: 8)))")
+        let umask = extended.umask
+        try hostFileSystemUnlocked { try $0.mkdir(path, mode: mode, umask: umask) }
+        return 0
+    }
+
+    /// `readlink`, `readlinkat`: the host link (path resolution needs no
+    /// lock). Also a BSD fast path (`bsd-locking.md` §12).
+    func readlinkCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        let isAt = n == DescriptorBSD.readlinkat
+        let path = isAt ? try resolveAtPath(Int32(truncatingIfNeeded: a[0]), a[1], mem) : try readPath(a[0], mem)
+        let (buffer, size) = isAt ? (a[2], a[3]) : (a[1], a[2])
+        call.set(isAt ? "readlinkat(\(Int32(truncatingIfNeeded: a[0])), \"\(path)\", buf=\(hx(buffer)), bufsize=\(size))"
+            : "readlink(\"\(path)\", buf=\(hx(buffer)), bufsize=\(size))")
+        let target = Array(try fileSystem.readlink(path).utf8)
+        // No NUL; silently truncated to the buffer (POSIX).
+        let n = min(target.count, Int(min(size, UInt64(Int32.max))))
+        if n > 0 { try mem.write(va: buffer, bytes: Array(target.prefix(n))) }
+        call += " [\(String(decoding: target, as: UTF8.self))]"
+        return UInt64(n)
+    }
+
     func hostFileSystemUnlocked(_ body: (DarwinFileSystem) throws -> Void) throws {
         let fs = fileSystem
         if Self.lockedFileIO { return try body(fs) }
@@ -279,6 +296,13 @@ extension DarwinKernel {
             guard count > 0 else { return [] }
             // A plain read discards rights that arrive with the data.
             return try socketReceive(s, file, max: count, flags: 0).bytes
+        case let s as InetSocket:
+            guard count > 0 else { return [] }
+            return try inetReceive(s, file, max: count, flags: 0, controlRoom: 0).bytes
+        case let s as RouteSocket:
+            return Array(try routeRead(s, file, flags: 0).prefix(count))
+        case let s as KernelControlSocket:
+            return Array(try kernelControlRead(s, file, flags: 0).prefix(count))
         default:
             throw fail(Code.ENXIO)
         }
@@ -290,6 +314,12 @@ extension DarwinKernel {
             return try pipeWrite(p, file, bytes)
         case let s as UnixSocket:
             return try socketSend(s, file, bytes, rights: nil, to: nil, flags: 0)
+        case let s as InetSocket:
+            return try inetSend(s, file, bytes, to: nil, control: [], flags: 0)
+        case let s as RouteSocket:
+            return try routeWrite(s, bytes)
+        case let s as KernelControlSocket:
+            return try kernelControlWrite(s, bytes)
         default:
             throw fail(Code.ENXIO)
         }
@@ -376,7 +406,8 @@ extension DarwinKernel {
             case DescriptorControl.fionread:
                 call.set("ioctl(fd=\(fd), FIONREAD, arg=\(hx(a[2])))")
                 let n = (object as? KernelDescriptorObject)?.readReadiness().data ?? 0
-                let value: Int64 = (object as? UnixSocket)?.isListening == true ? 0 : n
+                let value: Int64 = (object as? UnixSocket)?.isListening == true
+                    || (object as? InetSocket)?.state == .listening ? 0 : n
                 try writeU32(a[2], UInt32(truncatingIfNeeded: value), mem)
             default:
                 let on = try mem.read(va: a[2], count: 4).readLE(Int32.self, at: 0) != 0
@@ -387,6 +418,49 @@ extension DarwinKernel {
             }
             return .value(0)
         default:
+            return try interfaceIoctl(fd, request, a, &call, mem)
+        }
+    }
+
+    /// The interface ioctls (group 'i', `NetworkInterfaces.ioctl`) and
+    /// SIOCATMARK on a socket; nil for any other request or descriptor.
+    private func interfaceIoctl(_ fd: Int32, _ request: UInt32, _ a: [UInt64], _ call: inout CallText,
+                                _ mem: any KernelGuestMemory) throws -> BSDResult? {
+        guard let file = try? fileSystem.openFile(for: fd),
+              file.object is InetSocket || file.object is UnixSocket || file.object is RouteSocket
+                  || file.object is KernelControlSocket else {
+            return nil
+        }
+        if request == KernelControlSocket.ctliocginfo, file.object is KernelControlSocket {
+            call.set("ioctl(fd=\(fd), CTLIOCGINFO, arg=\(hx(a[2])))")
+            return try kernelControlInfo(a, mem)
+        }
+        if request == 0x4004_7307 {  // SIOCATMARK
+            call.set("ioctl(fd=\(fd), SIOCATMARK, arg=\(hx(a[2])))")
+            let mark = (file.object as? InetSocket).map { $0.hostFD >= 0 ? HostSocketCalls.atMark($0.hostFD) : 0 } ?? 0
+            try writeU32(a[2], UInt32(bitPattern: mark), mem)
+            return .value(0)
+        }
+        let size = Int((request >> 16) & 0x1FFF)
+        guard (request >> 8) & 0xFF == 0x69, size >= 12 else { return nil }
+        call.set("ioctl(fd=\(fd), \(hx(request)), arg=\(hx(a[2])))")
+        let argument = try mem.read(va: a[2], count: size)
+        switch NetworkInterfaces.ioctl(request, argument: argument) {
+        case let .reply(bytes):
+            try mem.write(va: a[2], bytes: bytes)
+            return .value(0)
+        case let .failure(e):
+            call += " [\(String(decoding: argument.prefix(16).prefix { $0 != 0 }, as: UTF8.self))]"
+            throw fail(e)
+        case let .configuration(entries):
+            // struct ifconf (packed): int ifc_len; caddr_t ifc_buf.
+            let room = Int(argument.readLE(Int32.self, at: 0)), buffer = argument.readLE(UInt64.self, at: 4)
+            var out: [UInt8] = []
+            for e in entries where out.count + e.count <= room || buffer == 0 { out += e }
+            if buffer != 0, !out.isEmpty { try mem.write(va: buffer, bytes: out) }
+            try writeU32(a[2], UInt32(out.count), mem)
+            return .value(0)
+        case .notMine:
             return nil
         }
     }
@@ -397,6 +471,9 @@ extension DarwinKernel {
         switch object {
         case let p as PipeEnd: p.pipe.changed()
         case let s as UnixSocket: s.signals.fire()
+        case let s as InetSocket: s.signals.fire()
+        case let s as RouteSocket: s.signals.fire()
+        case let s as KernelControlSocket: s.signals.fire()
         default: break
         }
     }

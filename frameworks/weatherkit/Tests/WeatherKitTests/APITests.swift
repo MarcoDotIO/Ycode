@@ -275,6 +275,7 @@ struct APITests {
         let backend = try FixtureWeatherBackend.bundled()
         let service = WeatherService(backend: backend, configuration: .init(language: "en-US", clock: { Date(timeIntervalSince1970: 1_768_478_400) }))
         let _: WeatherService = .shared
+        // swiftlint:disable:next redundant_type_annotation - checks the type name compiles
         let _: WeatherService = WeatherService()
         let location = CLLocation(latitude: 41.5, longitude: -81.5)
 

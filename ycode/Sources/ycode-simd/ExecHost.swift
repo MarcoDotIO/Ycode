@@ -14,6 +14,7 @@ import YcodeDarwinKernel
 import YcodeHypervisor
 import YcodeMachO
 import YcodeHostServices
+import YcodeSimFeatures
 import YcodeMetalHost
 import YcodeVulkan
 
@@ -50,6 +51,8 @@ final class ExecConfiguration: @unchecked Sendable {
     var quietRuns = false
     /// Device mode (stage 4c): the device layout.
     let device: DeviceLayout?
+    /// The device's camera (CameraDevice.swift; nil outside device mode).
+    private(set) var camera: DeviceCamera?
     /// The root program's argv and environment.
     let rootArguments: [String]
     let rootEnvironment: [String]
@@ -72,7 +75,11 @@ final class ExecConfiguration: @unchecked Sendable {
                                       jobPaths: options.jobPaths.map(absolutePath), runtimePaths: options.runtimePaths,
                                       oneshots: options.oneshots, runtimeJobs: options.runtimeJobs)
             layout.plistBoolOverrides = options.plistBoolOverrides
-            layout.deviceType = options.deviceType
+            // Without --device-type: the type the device recorded (it keeps
+            // it, ipad.md R2), else the runtime's default type.
+            let platform = layout.runtimePlatform()
+            let recorded = DeviceLayout.recordedDeviceType(in: layout.dev).flatMap(DeviceType.named).flatMap { $0.platform == platform ? $0 : nil }
+            layout.deviceType = options.deviceType ?? recorded ?? DeviceType.default(for: platform, version: layout.runtimeVersion().version)
             layout.oneshotDelay = options.oneshotDelay
             layout.installApp = options.installApp.map(absolutePath)
             layout.launchBundleID = options.launchBundleID
@@ -88,7 +95,24 @@ final class ExecConfiguration: @unchecked Sendable {
                 layout.framebufferLibrary = options.framebufferLibrary.map(absolutePath)
                     ?? fallback.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             }
-            layout.hidBundle = hidBundlePath(options)
+            layout.hidBundle = hidBundlePath(options, foldable: layout.deviceType.isFoldable)
+            // Ycode's guest agents (simulator-features.md "Ycode implementation").
+            let agentsOut = options.shimPath.map { shim -> String in
+                let simShim = ((absolutePath(shim) as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+                return ((simShim as NSString).deletingLastPathComponent as NSString).appendingPathComponent("SimGuestAgents/out")
+            }
+            func guestAgentFile(_ name: String) -> String? {
+                [options.guestTools.map(absolutePath), agentsOut].compactMap { $0 }.map { $0 + "/" + name }
+                    .first { FileManager.default.fileExists(atPath: $0) }
+            }
+            layout.settingsAgent = options.settingsAgent == "none" ? nil
+                : options.settingsAgent.map(absolutePath) ?? guestAgentFile("ycode-settings-agent")
+            if options.environmentOverrides {
+                layout.overridesLibrary = guestAgentFile("libYcodeEnvironmentOverrides.dylib")
+                if layout.overridesLibrary == nil {
+                    stderrLine("ycode-simd: warning: --environment-overrides: no libYcodeEnvironmentOverrides.dylib in the guest tools")
+                }
+            }
             layout.skipFirstBootMigration = options.skipFirstBootMigration
             // SNAPSHOT (snapshot.md §7): a restore keeps DEV as the snapshot left it.
             layout.restoring = !(ProcessInfo.processInfo.environment["YCODE_RESTORE_DIR"] ?? "").isEmpty
@@ -108,11 +132,19 @@ final class ExecConfiguration: @unchecked Sendable {
                 }
             }
             do { try layout.prepare() } catch { die("cannot prepare the device directory \(layout.dev): \(error)", status: 66) }
+            layout.appEnvironment += layout.overridesEnvironment
             device = layout
+            camera = DeviceCamera(options: options, layout: layout)
             execPath = layout.launchdSimPath
             rootArguments = ["launchd_sim", layout.guestPath(layout.plistPath)] + options.execArguments
             rootEnvironment = layout.launchdEnvironment(overrides: options.environment)
             let t = layout.deviceType
+            // Diagnostics: YCODE_GUEST_MEMSIZE=<bytes> sets the guest's memory
+            // size (hw.memsize, commpage) before the first image builds them.
+            if let bytes = ProcessInfo.processInfo.environment["YCODE_GUEST_MEMSIZE"].flatMap(UInt64.init) {
+                Stage3Layout.memorySize = bytes
+                stderrLine("ycode-simd: guest memory size \(bytes >> 20) MiB")
+            }
             stderrLine("ycode-simd: device type \(t.id) (\(t.name), \(t.modelIdentifier), \(t.screen.width)x\(t.screen.height) @\(Int(t.screen.scale)))")
             stderrLine("ycode-simd: device \(layout.dev)\(layout.guestDev == layout.dev ? "" : " (guest path \(layout.guestDev))"), UDID \(layout.udid); bootstrap plist \(layout.plistPath); TMP \(layout.tmpGuestPath) -> \(layout.tmpHostPath)")
         } else {
@@ -167,9 +199,14 @@ final class ExecConfiguration: @unchecked Sendable {
             prefixes[0].ownerUID = 0
             prefixes[0].ownerGID = 80
             DarwinKernel.setPlatformCodeRoots([root])
+            // proc_info's process platform: the runtime's (visionos.md §2.2).
+            DarwinKernel.simulatorPlatform = device.runtimePlatform().machOPlatform
             // Device mode (stage4c-contract.md §2): DEV, /private/var/tmp (TMP is in it)
             // (and /var/tmp), /tmp and /private/tmp, all writable.
             prefixes.append(DarwinFileSystem.Prefix(guestPath: device.guestDev, hostPath: device.dev, writable: true))
+            // The data volume's document-ID counter lives with its data
+            // (VolumeFeatures.swift).
+            VolumeMetadata.documentIDStateDirectory = device.data
             // On macOS a simulator process sees the host's /System, and the
             // runtime opens some framework bundles at their unrooted install
             // paths (CoreFoundation's own bundle: CFBundleGetInfoDictionary
@@ -186,15 +223,31 @@ final class ExecConfiguration: @unchecked Sendable {
             prefixes.append(DarwinFileSystem.Prefix(guestPath: "/private/tmp", hostPath: device.data + "/tmp", writable: true))
             // The memory directory (frame record, timing rings; DeviceMemoryFiles.swift).
             prefixes.append(DarwinFileSystem.Prefix(guestPath: device.memoryGuestPath, hostPath: device.memoryHostPath, writable: true))
+            // The host's resolver configuration at the guest's /etc/resolv.conf
+            // (libresolv's fallback; networking.md §7 item 8), read-only.
+            if GuestNetwork.enabled, let resolv = realpath("/etc/resolv.conf", nil) {
+                prefixes.append(DarwinFileSystem.Prefix(guestPath: "/private/etc/resolv.conf", hostPath: String(cString: resolv),
+                                                        writable: false, ownerUID: 0, ownerGID: 0))
+                free(resolv)
+            }
         }
         // Ycode's host libraries (host-libraries.md §5): three read-only
         // single-file prefixes; every other /usr/lib/system path stays ENOENT.
         var hostLibraryPaths: Set<String> = []
         let (hostLibDir, hostLibTried) = locateHostLibraryDirectory(explicit: options.hostLibsPath)
         if let hostLibDir {
+            // A visionOS runtime: copies built for its platform, in DEV
+            // (GuestImagePlatform.swift; visionos.md §7.2 R1).
+            let platform = device?.runtimePlatform() ?? .iOS
             for name in hostLibraryNames {
-                let file = "\(hostLibDir)/libsystem_\(name).dylib"
+                var file = "\(hostLibDir)/libsystem_\(name).dylib"
                 let guest = hostLibraryGuestPath(name)
+                if let device, platform != .iOS, access(file, R_OK) == 0 {
+                    do {
+                        file = try GuestImagePlatform.adaptedCopy(of: file, to: device.dev + "/ycode-frameworks/host-libs/libsystem_\(name).dylib",
+                                                                  for: platform, version: device.runtimeVersion().version)
+                    } catch { die("cannot adapt the host library \(file) to \(platform.displayName): \(error)", status: 66) }
+                }
                 if access(file, R_OK) == 0 {
                     prefixes.append(DarwinFileSystem.Prefix(guestPath: guest, hostPath: file, writable: false,
                                                             ownerUID: device == nil ? nil : 0, ownerGID: device == nil ? nil : 80))
@@ -294,7 +347,10 @@ struct HostStats: CustomStringConvertible {
         let deferred = VCPUPool.deferredCreations.load(ordering: .relaxed)
         let deferredNs = VCPUPool.deferredCreationNanoseconds.load(ordering: .relaxed)
         return "\(threads) host threads, RSS \(rssKiB / 1024) MiB, \(fds) fds; VMs created \(vms.created), destroyed \(vms.destroyed); "
-            + "vCPUs created off the kernel lock \(deferred) (avg \(deferred == 0 ? 0 : deferredNs / deferred / 1000) us)"
+            + "vCPUs created off the kernel lock \(deferred) (avg \(deferred == 0 ? 0 : deferredNs / deferred / 1000) us); "
+            + "TLB flush resumes \(VCPUPool.tlbFlushResumes.load(ordering: .relaxed)) "
+            + "(\(VCPUPool.tlbFlushByVAResumes.load(ordering: .relaxed)) by VA)"
+            + (VCPUPool.flushKeepsICache ? " (TLB only)" : " (TLB and I-cache)")
     }
 }
 
@@ -338,6 +394,8 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     }
     let launcher = VMMLauncher(config: config)
     system.launcher = launcher
+    // The device's camera layer goes into apps (CameraDevice.swift).
+    config.camera?.install(on: system)
     system.processExited = { [weak launcher] pid, status in launcher?.processExited(pid: pid, status: status) }
 
     // Device mode (stage4c-contract.md §3): every task starts with a send
@@ -429,6 +487,9 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                     }
                 }
             }
+            // The camera endpoint (camera.md "Ycode implementation"): last, when
+            // the device's camera is on.
+            if !config.options.debugNoHostServices { config.camera?.start(host: system.hostTask, surfaces: ioSurfaceService, session: s) }
             session = s
         }
         do { try logger.start() } catch { die("cannot start the host bootstrap service: \(error)", status: 1) }
@@ -475,6 +536,13 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                 g.u64s(ST_HostService.pids, metal.clientPIDs().map { UInt64(max(0, $0)) })
                 out.append(g)
             }
+            // File-event streams (fsevents-host.md, "Ycode implementation").
+            if let events = DefaultHostServices.fsEvents {
+                var g = SnapshotFields()
+                g.string(ST_HostService.name, "fsevents")
+                g.list(ST_HostService.sessions, events.snapshotStreams.map(FSEventsSnapshot.fields))
+                out.append(g)
+            }
             return out
         }
         // IOSurface and Metal (§8 option 2): read with the guest quiesced and
@@ -486,9 +554,17 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         snap.quiescedServiceState = { [weak ioSurfaceService, weak metalService] in
             let inHand = hostTask.messagesInHandLocked
             if inHand > 0 { return .failure(SnapshotError("\(inHand) host-service messages in hand")) }
-            guard saveGPU else { return .success([]) }
-            if let reason = metalService?.snapshotBusyReason { return .failure(SnapshotError(reason)) }
             var out: [SnapshotFields] = []
+            // Audio (audio-host.md, "Ycode implementation"): objects, clients, running IO.
+            if let audio = DefaultHostServices.audio {
+                guard let st = audio.trySnapshotState() else { return .failure(SnapshotError("audio service busy")) }
+                var g = SnapshotFields()
+                g.string(ST_HostService.name, "audio")
+                g.nested(ST_HostService.state, st)
+                out.append(g)
+            }
+            guard saveGPU else { return .success(out) }
+            if let reason = metalService?.snapshotBusyReason { return .failure(SnapshotError(reason)) }
             if let io = ioSurfaceService {
                 guard let st = io.trySnapshotState() else { return .failure(SnapshotError("IOSurface service busy")) }
                 var g = SnapshotFields()
@@ -536,10 +612,24 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                     for line in rep.lines { snapLog("restore: " + line) }
                 }
             }
+            for r in records where r.string(ST_HostService.name) == "audio" {
+                guard let audio = DefaultHostServices.audio, let st = r.nested(ST_HostService.state) else { continue }
+                do {
+                    let n = try audio.restoreState(st)
+                    snapLog("restore: audio: \(n) running IO contexts (resumed once the guest clock is set)")
+                } catch {
+                    snapLog("restore: audio state not restored: \(error)")
+                }
+            }
             for r in records where r.string(ST_HostService.name) == "scdynamicstore" {
                 let list = r.list(ST_HostService.sessions).map { e in (session: e.u32(1), notify: e.u64s(2).map { UInt32(truncatingIfNeeded: $0) }) }
                 DefaultHostServices.scDynamicStore?.restoreSessions(list)
                 snapLog("restore: SCDynamicStore: \(list.count) sessions")
+            }
+            for r in records where r.string(ST_HostService.name) == "fsevents" {
+                let list = r.list(ST_HostService.sessions).map(FSEventsSnapshot.record)
+                DefaultHostServices.fsEvents?.restoreStreams(list)
+                snapLog("restore: file events: \(list.count) streams")
             }
             for r in records where r.string(ST_HostService.name) == "device-session" {
                 session?.reattach(channel: r.u32(ST_HostService.channel), session: r.u32(ST_HostService.session))
@@ -550,6 +640,14 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     // Diagnostics: `YCODE_FRAME_PROFILE_BOOT` opens a frame-profile window
     // before the root process exists (FrameProfile.swift; boot-profile.md §8).
     FrameProfile.shared?.prepareBoot(launcher: launcher, statePath: config.device?.framebufferStatePath, surfaces: ioSurfaceService)
+    // The A/B line at the home screen (scheduling-policy.md §7.5): the kernel
+    // lock's hold so far and the scheduling counters.
+    HomeWatch.atHome = { [weak system] in
+        guard let system else { return "" }
+        let (held, count) = system.lock.withLock { (system.lock.totalHeldNanoseconds, system.lock.acquisitions) }
+        return "kernel lock held \(held / 1_000_000) ms (\(count) acquisitions)"
+            + (SchedPolicy.holdEnabled || SchedPolicy.qosEnabled ? "; sched: " + system.schedReport + "; " + HostSched.report : "")
+    }
     HomeWatch.startIfRequested(statePath: config.device?.framebufferStatePath, surfaces: ioSurfaceService)
     let rootKernel: DarwinKernel
     do {
@@ -628,6 +726,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         #endif
     }
     TrapProfile.shared?.startPeriodicDump()
+    BootProfile.shared?.launcherForReport = launcher
     BootProfile.shared?.startSampler(launcher: launcher, lock: system.lock)
     BootProfile.shared?.startPCSampler(launcher: launcher)
     if config.options.debugThreadReport {
@@ -681,38 +780,97 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         }
     }
 
+    // A foldable's hinge (FoldControl.swift; foldable.md §8): with the HID
+    // service. Every cold boot starts closed; a restore keeps the saved fold.
+    var fold: FoldController?
+    if let device = config.device, let second = device.deviceType.secondDisplay, let hid = hidService {
+        fold = FoldController(hid: hid, second: second, statePath: device.memoryFile("fold.state").host,
+                              restoring: device.restoring, log: { stderrLine("ycode-simd: " + $0) })
+        fold?.innerPublished = device.deviceType.publishedSecondDisplay != nil
+    }
+    // A panel's picture (`--screenshot`, the control socket): "LCD",
+    // "LCD-1" or "active" (the panel shown), turned upright (D4).
+    nonisolated(unsafe) let panelCapture: (String, String) -> String = { [weak ioSurfaceService, weak fold] name, path in
+        guard let device = config.device, let service = ioSurfaceService else { return "no display service" }
+        let panels = device.deviceType.panels
+        let records = panels.map { FrameRecordReader(path: device.framebufferStatePath, slot: $0.slot).read() }
+        let panel: PanelInfo
+        if name == "active" {
+            panel = activePanel(panels, model: fold?.state, records: records, black: records.map { service.presentedFrameIsBlack($0) })
+        } else if let p = panels.first(where: { $0.name == name }) {
+            panel = p
+        } else {
+            return "no display \(name) (this device has \(panels.map(\.name).joined(separator: ", ")))"
+        }
+        let c = ScreenCapture(statePath: device.framebufferStatePath, service: service, slot: panel.slot,
+                              rotation: PanelPicture.uprightRotation(mountRotation: panel.mountRotation), displayName: panel.name)
+        return c.capture(to: path)
+    }
+    var control: DeviceControlServer?
+    if let device = config.device {
+        let server = DeviceControlServer(path: DeviceLayout.controlSocketPath(dev: device.dev), fold: fold,
+                                         summary: { [weak fold, weak ioSurfaceService] in
+                                             guard let fold else { return "\(device.deviceType.name): does not fold" }
+                                             let panels = device.deviceType.panels
+                                             let records = panels.map { FrameRecordReader(path: device.framebufferStatePath, slot: $0.slot).read() }
+                                             let black = records.map { ioSurfaceService?.presentedFrameIsBlack($0) }
+                                             let shown = activePanel(panels, model: fold.state, records: records, black: black)
+                                             return fold.state.summary + "; showing \(shown.name)"
+                                                 + (fold.sweepTarget.map { "; sweeping to \($0)°" } ?? "")
+                                                 + "; backlight " + zip(panels, records).map { "\($0.name) \($1?.backlight.map(String.init) ?? "-")" }.joined(separator: ", ")
+                                                 + "; frames " + zip(panels, black).map { "\($0.name) \($1.map { $0 ? "black" : "lit" } ?? "-")" }.joined(separator: ", ")
+                                         },
+                                         capture: panelCapture)
+        // The settings features (SimSettings.swift): the channel to the guest
+        // agent and its commands on the control socket.
+        let files = DeviceSettingsFiles(dev: device.dev, guestData: device.guestData)
+        let settings = SimSettingsController(files: files, runtimeRoot: config.root, log: { stderrLine("ycode-simd: " + $0) })
+        settings.onAudio = { s in DefaultHostServices.audio?.setOutput(volume: Float(s.volume) / 100, muted: s.output == .none) }
+        settings.onAudio?(files.audio())
+        HostStreamSockets.serve(paths: SettingsChannel.guestPaths, with: settings)
+        if device.settingsAgent != nil {
+            stderrLine("ycode-simd: settings: agent \(device.settingsAgentHostPath) (log \(device.settingsAgentLogPath))")
+        }
+        server.moreCommands = { words in
+            guard let verb = words.first, SimSettingsCommand.verbs.contains(verb) else { return nil }
+            return settings.handle(words)
+        }
+        if server.start() { control = server } else { stderrLine("ycode-simd: warning: no control socket at \(server.path)") }
+    }
+
     // Screenshots at fixed times (a background thread) and at the end.
-    var capture: ScreenCapture?
-    if let device = config.device, let service = ioSurfaceService, let path = config.options.screenshotPath {
-        let c = ScreenCapture(statePath: device.framebufferStatePath, service: service)
-        capture = c
+    let screenshotDisplay = config.options.screenshotDisplay ?? "active"
+    if config.device != nil, ioSurfaceService != nil, let path = config.options.screenshotPath {
         for seconds in config.options.screenshotTimes.sorted() {
             let at = (path as NSString).deletingPathExtension + "-\(seconds)s.png"
             Thread.detachNewThread {
                 Thread.sleep(until: Date(timeIntervalSinceNow: 0).addingTimeInterval(
                     max(0, Double(seconds) - Double(monotonicMilliseconds() - started) / 1000)))
-                stderrLine("ycode-simd: screenshot at \(seconds) s: " + c.capture(to: at))
+                stderrLine("ycode-simd: screenshot at \(seconds) s: " + panelCapture(screenshotDisplay, at))
             }
         }
     }
     // After a restore the display shows the restored frame before any guest
     // thread runs; the first frame the guest presents afterwards is the
-    // display's own sign of life (snapshot.md §12.5).
+    // display's own sign of life (snapshot.md §12.5). A foldable's frame may
+    // come on either built-in panel: a device saved open draws on the inner
+    // panel only (foldable.md §10.4).
     if let device = config.device, SnapshotSupport.shared?.settings.restoreDirectory != nil {
         let statePath = device.framebufferStatePath
+        let slots = device.deviceType.panels.map(\.slot)
         Thread.detachNewThread {
-            let reader = FrameRecordReader(path: statePath)
-            let first = reader.read()
+            let readers = slots.map { FrameRecordReader(path: statePath, slot: $0) }
+            let first = readers.map { $0.read() }
             for _ in 0..<1200 {
                 usleep(250_000)
-                guard let now = reader.read() else { continue }
-                if now != first {
-                    stderrLine("ycode-simd: snapshot: restore: first new frame (frame \(first.map { String($0.frame) } ?? "none") -> "
-                        + "\(now.frame)) \(monotonicMilliseconds() - started) ms after the root started")
+                for (i, reader) in readers.enumerated() {
+                    guard let now = reader.read(), now != first[i] else { continue }
+                    stderrLine("ycode-simd: snapshot: restore: first new frame (frame \(first[i].map { String($0.frame) } ?? "none") -> "
+                        + "\(now.frame)\(slots.count > 1 ? " on display slot \(slots[i])" : "")) \(monotonicMilliseconds() - started) ms after the root started")
                     return
                 }
             }
-            stderrLine("ycode-simd: snapshot: restore: no new frame in 300 s (frame \(first.map { String($0.frame) } ?? "none"))")
+            stderrLine("ycode-simd: snapshot: restore: no new frame in 300 s (frame \(first.first.flatMap { $0.map { String($0.frame) } } ?? "none"))")
         }
     }
 
@@ -726,14 +884,33 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         let scale = GuestTimebase.ClockScale(from: c.frequency, to: GuestTimebase.frequency(hostFrequency: c.frequency))
         return scale.apply(c.guestCounter)
     }
-    let display = startDisplayServer(config: config, surfaces: ioSurfaceService, session: session, hid: hidService, started: started,
-                                     guestClock: guestClock)
-
-    var result = launcher.superviseRoot(timeoutMilliseconds: config.timeout)
-    display?.stop(message: "the device run ended")
-    if let capture, let path = config.options.screenshotPath {
-        stderrLine("ycode-simd: screenshot: " + capture.capture(to: path))
+    let display = startDisplayServer(config: config, surfaces: ioSurfaceService, session: session, hid: hidService, fold: fold,
+                                     started: started, guestClock: guestClock)
+    display?.commands = { [weak control] line in control?.handle(line) ?? "error: no control commands for this device" }
+    // The audio service's host times are guest mach time (audio-host.md §10).
+    DefaultHostServices.audio?.setGuestClock { [weak launcher] in
+        guard let c = launcher?.snapshotSystemClock else { return (MachTimebase.now(), MachTimebase.frequency) }
+        let hz = GuestTimebase.frequency(hostFrequency: c.frequency)
+        return (GuestTimebase.ClockScale(from: c.frequency, to: hz).apply(c.guestCounter), hz)
     }
+
+    // The camera's frame times are guest mach time too.
+    config.camera?.setGuestClock { [weak launcher] in
+        guard let c = launcher?.snapshotSystemClock else { return (MachTimebase.now(), MachTimebase.frequency) }
+        let hz = GuestTimebase.frequency(hostFrequency: c.frequency)
+        return (GuestTimebase.ClockScale(from: c.frequency, to: hz).apply(c.guestCounter), hz)
+    }
+    if let camera = config.camera, camera.optIn.isOn {
+        deviceCameraControl = { [weak session] words in camera.handle(words, session: session) }
+    }
+    var result = launcher.superviseRoot(timeoutMilliseconds: config.timeout)
+    config.camera?.stop()
+    DefaultHostServices.audio?.finishCapture()
+    display?.stop(message: "the device run ended")
+    if config.device != nil, ioSurfaceService != nil, let path = config.options.screenshotPath {
+        stderrLine("ycode-simd: screenshot: " + panelCapture(screenshotDisplay, path))
+    }
+    control?.stop()
     config.device?.finishMemoryDirectory()
     if config.options.debugExtraWait, !result.watchdog {
         let left = launcher.superviseAll(deadline: started + config.timeout)
@@ -861,7 +1038,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     }
     if let device = config.device, !quietSummary {
         let log = device.tmpHostPath + "/launchd.log"
-        let size = (try? FileManager.default.attributesOfItem(atPath: log)[.size] as? Int) ?? nil
+        let size = try? FileManager.default.attributesOfItem(atPath: log)[.size] as? Int
         stderrLine("ycode-simd: TMP/launchd.log (\(log)): " + (size.map { "\($0) bytes" } ?? "absent"))
         for index in device.oneshots.indices {
             for err in [false, true] {
@@ -891,6 +1068,8 @@ func removeRunDirectory(_ config: ExecConfiguration) {
 }
 
 func runExec(_ options: Options) throws -> Never {
+    // cpu-features.md §4.1: the guest's CPU features, before the first VM.
+    CPUFeatureSetup.install()
     let config = try ExecConfiguration(options)
     let count = options.repeatCount
     guard count > 1 else {

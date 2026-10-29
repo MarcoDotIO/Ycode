@@ -114,11 +114,18 @@ public struct DestinationMenuModel: Equatable, Sendable {
     /// (§11.5).
     public static func orderedSimulators(_ sims: [Destination]) -> [Destination] {
         let newest = sims.compactMap(\.osVersion).max { DestinationCatalog.compareVersions($0, $1) == .orderedAscending }
-        let unversioned = sims.firstIndex { $0.isYcodeRemoteSimulator && $0.osVersion == nil }
-        guard let i = unversioned, let newest else { return DestinationCatalog.simulatorsInMenuOrder(sims) }
+        let unversioned = sims.indices.filter { sims[$0].isYcodeRemoteSimulator && sims[$0].osVersion == nil }
+        guard !unversioned.isEmpty, let newest else { return DestinationCatalog.simulatorsInMenuOrder(sims) }
+        // Sort them as the newest runtime, then show them without a version.
         var keyed = sims
-        keyed[i].osVersion = newest
-        return DestinationCatalog.simulatorsInMenuOrder(keyed).map { $0.isYcodeRemoteSimulator ? sims[i] : $0 }
+        for i in unversioned { keyed[i].osVersion = newest }
+        let unknown = Set(unversioned.compactMap { sims[$0].identifier })
+        return DestinationCatalog.simulatorsInMenuOrder(keyed).map { d in
+            guard d.isYcodeRemoteSimulator, let id = d.identifier, unknown.contains(id) else { return d }
+            var o = d
+            o.osVersion = nil
+            return o
+        }
     }
 
     /// The platforms a build setting set supports, from
@@ -162,5 +169,20 @@ public struct DestinationMenuModel: Equatable, Sendable {
             : ["watchOS", "tvOS", "visionOS"].first(where: supported.contains))
         let target = platform.flatMap(DestinationCatalog.deploymentTargetSetting).flatMap(setting)
         return (platform, target)
+    }
+
+    /// What the default destination needs to know of the first target
+    /// beyond its platform (`reference-ui-6.md` §2.4.2–§2.4.3): whether it
+    /// supports macOS (`SUPPORTED_PLATFORMS` includes `macosx`, or with no
+    /// list `SDKROOT` is `macosx`: a multiplatform app defaults to My Mac),
+    /// and the device families it targets (`TARGETED_DEVICE_FAMILY`; nil =
+    /// no restriction).
+    public static func defaultDestinationTraits(of proj: PBXProj) -> (supportsMacOS: Bool, deviceFamilies: Set<String>?) {
+        func value(_ listID: String?, _ key: String) -> String? {
+            proj.buildConfigurations(listID: listID).lazy.compactMap { $0.attributes["buildSettings"]?.dictionary?[key]?.string }.first
+        }
+        let tl = proj.targets.first?.string("buildConfigurationList"), pl = proj.project?.string("buildConfigurationList")
+        let families = DestinationCatalog.deviceFamilies(targetedDeviceFamily: value(tl, "TARGETED_DEVICE_FAMILY") ?? value(pl, "TARGETED_DEVICE_FAMILY"))
+        return (platforms(of: proj).platforms.contains("macOS"), families)
     }
 }

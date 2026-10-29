@@ -193,7 +193,7 @@ private struct Builder {
         var closure = DependencyClosure(root: root, cache: cache)
         try closure.resolve(executable: root + "/sbin/launchd_sim")
         #expect(closure.order.count > 40)
-        #expect(closure.missing.filter(\.isFatal).isEmpty)
+        #expect(!closure.missing.contains { $0.isFatal })
         #expect(closure.nodes["/usr/lib/system/libsystem_kernel.dylib"] != nil)
         #expect(closure.nodes["/usr/lib/libobjc.A.dylib"] != nil)
     }

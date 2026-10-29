@@ -1,0 +1,18 @@
+// pinprobe.comp: the shader of pinprobe.c (glslangValidator --target-env vulkan1.3 -V pinprobe.comp -o pinprobe.spv).
+// One invocation per workgroup of 64 reads the source buffer word by word,
+// ROUNDS times over, and writes the sum and its progress.
+#version 460
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+layout(local_size_x = 64) in;
+layout(buffer_reference, std430, buffer_reference_align = 4) buffer U32 { uint v[]; };
+layout(push_constant, std430) uniform PC { uint64_t src; uint64_t dst; uint words; uint rounds; } pc;
+void main() {
+    uint sum = 0u;
+    uint lane = gl_GlobalInvocationID.x;
+    for (uint r = 0u; r < pc.rounds; r++) {
+        for (uint i = lane; i < pc.words; i += 64u * gl_NumWorkGroups.x) sum += U32(pc.src).v[i];
+        if (lane == 0u) U32(pc.dst).v[1] = r + 1u;
+    }
+    atomicAdd(U32(pc.dst).v[0], sum);
+}

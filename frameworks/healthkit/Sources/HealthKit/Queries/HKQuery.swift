@@ -180,6 +180,7 @@ public final class HKSampleQuery: HKQuery, @unchecked Sendable {
             let r = store.daemon.samples(types: types, node: node, limit: limit, sort: keys, client: client)
             deliver { [self] in
                 switch r {
+                // swiftlint:disable:next force_cast - sample queries return sample records
                 case .success(let recs): resultsHandler(self, recs.map { HKObject.make($0) as! HKSample }, nil)
                 case .failure(let e): resultsHandler(self, nil, e)
                 }
@@ -233,6 +234,7 @@ public final class HKAnchoredObjectQuery: HKQuery, @unchecked Sendable {
                 deliver { [self] in resultsHandler(self, nil, nil, nil, e) }
             case .success(let r):
                 deliver { [self] in
+                    // swiftlint:disable:next force_cast - anchored queries return sample records
                     resultsHandler(self, r.added.map { HKObject.make($0) as! HKSample },
                                    r.deleted.map { HKDeletedObject(record: $0) }, HKQueryAnchor(value: r.anchor), nil)
                 }
@@ -246,6 +248,7 @@ public final class HKAnchoredObjectQuery: HKQuery, @unchecked Sendable {
                     last = d.anchor
                     guard !(d.added.isEmpty && d.deleted.isEmpty), let h = updateHandler else { return }
                     deliver { [self] in
+                        // swiftlint:disable:next force_cast - anchored queries return sample records
                         h(self, d.added.map { HKObject.make($0) as! HKSample }, d.deleted.map { HKDeletedObject(record: $0) },
                           HKQueryAnchor(value: d.anchor), nil)
                     }
@@ -301,6 +304,7 @@ public final class HKObserverQuery: HKQuery, @unchecked Sendable {
 // MARK: - Correlation query
 
 public final class HKCorrelationQuery: HKQuery, @unchecked Sendable {
+    // swiftlint:disable:next force_cast - the query was created with a correlation type
     public var correlationType: HKCorrelationType { objectType as! HKCorrelationType }
     public let samplePredicates: [HKSampleType: NSPredicate]?
     let completion: @Sendable (HKCorrelationQuery, [HKCorrelation]?, (any Error)?) -> Void
@@ -321,6 +325,7 @@ public final class HKCorrelationQuery: HKQuery, @unchecked Sendable {
                                               client: client)
             deliver { [self] in
                 switch r {
+                // swiftlint:disable:next force_cast - correlation queries return correlation records
                 case .success(let recs): completion(self, recs.map { HKObject.make($0) as! HKCorrelation }, nil)
                 case .failure(let e): completion(self, nil, e)
                 }
@@ -371,6 +376,7 @@ public final class HKStatisticsQuery: HKQuery, @unchecked Sendable {
 
     override func run(on store: HKHealthStore) {
         let client = store.ycodeClient.bundleIdentifier
+        // swiftlint:disable:next force_cast - the query was created with a quantity type
         let type = objectType as! HKQuantityType
         store.daemon.queue.async { [self] in
             let r = store.daemon.statisticsInput(type: type.identifier, node: node, client: client)
@@ -426,6 +432,7 @@ public final class HKStatisticsCollectionQuery: HKQuery, @unchecked Sendable {
 
     override func run(on store: HKHealthStore) {
         let client = store.ycodeClient.bundleIdentifier
+        // swiftlint:disable:next force_cast - the query was created with a quantity type
         let type = objectType as! HKQuantityType
         let daemon = store.daemon
         let calendar = ycodeCalendar

@@ -17,11 +17,14 @@ public enum ReportKind: String, Sendable {
 extension BuildReport {
     /// The scheme the report belongs to (the container name without one).
     public var schemeName: String { context.scheme ?? context.containerName }
+    /// What the report records (build, test, package operation, …).
     public var kind: ReportKind { context.kind }
 }
 
 // MARK: - Report navigator (§4)
 
+/// The Report navigator's rows, grouping and filters
+/// (`specs/ide/reference-ui-2.md` §4).
 public enum ReportNavigatorModel {
     /// The pages under a test run, in order.
     public static let testPages = ["Insights", "Coverage", "Tests", "Log", "Build"]
@@ -129,6 +132,8 @@ public struct BuildLogSection: Equatable, Sendable {
     public var title: String { "Build target \(target)" }
 }
 
+/// The build log page: sections per target, nested steps, the message
+/// filter and the footer (`specs/ide/reference-ui-2.md` §5).
 public enum BuildLogModel {
     public enum Messages: Int, Sendable { case all = 0, issues = 1, errors = 2 }
 
@@ -179,7 +184,7 @@ public enum BuildLogModel {
             if let d = DiagnosticParser.parseLine(line), d.severity != .note {
                 let file = d.location.map { URL(fileURLWithPath: $0.file).lastPathComponent }
                 // The task that compiled the file, else the current one.
-                var at: (Int, Int)? = nil
+                var at: (Int, Int)?
                 if let file {
                     outer: for (si, s) in sections.enumerated() {
                         for (ti, t) in s.steps.enumerated() where t.children.first?.title.split(separator: " ").contains(Substring(file)) == true { at = (si, ti); break outer }
@@ -347,7 +352,9 @@ public struct CoverageItem: Equatable, Sendable {
     public var isTestBundle: Bool { name.hasSuffix("Tests") || name.hasSuffix(".xctest") }
 }
 
+/// The Coverage page of a test report: totals and per-target rows.
 public enum CoverageModel {
+    /// A coverage fraction (0...1) as "NN.N%".
     public static func percent(_ f: Double) -> String { String(format: "%.1f%%", f * 100) }
 
     /// The whole run's line coverage (test bundles excluded), nil without data.
@@ -414,6 +421,7 @@ extension CoverageModel {
 
 // MARK: - Test report (§6.3, §6.4)
 
+/// The test report's summary page (`specs/ide/reference-ui-2.md` §6).
 public enum TestReportModel {
     public struct Summary: Equatable, Sendable {
         public var title: String
@@ -443,8 +451,10 @@ public enum TestReportModel {
         (c.tests.filter { $0.status == .passed }.count, c.tests.filter { $0.status == .failed }.count)
     }
 
+    /// "<scheme>/<test plan>", using the scheme name when there is no plan.
     public static func title(_ r: BuildReport) -> String { "\(r.schemeName)/\(r.context.plan ?? r.schemeName)" }
 
+    /// The summary page's header, counts, configuration rows and failures.
     public static func summary(_ r: BuildReport) -> Summary {
         let c = r.context
         let (p, f) = counts(c)

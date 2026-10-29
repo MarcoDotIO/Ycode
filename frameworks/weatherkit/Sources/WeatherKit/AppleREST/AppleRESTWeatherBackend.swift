@@ -138,9 +138,11 @@ public struct AppleRESTWeatherBackend: WeatherBackend {
                     batch.append(product)
                 }
             }
+            // swiftlint:disable redundant_nil_coalescing - the ranges are double optionals
             let response = try await fetchWeather(
                 request: request, products: batch, context: context, hourlyRange: hourlyRange ?? nil,
                 dailyRange: dailyRange ?? nil)
+            // swiftlint:enable redundant_nil_coalescing
             let mapper = RESTMapper(requestDate: request.requestDate, language: request.language, baseURL: baseURL)
             for product in batch {
                 results[product] = try mapper.result(for: product.product, in: response)

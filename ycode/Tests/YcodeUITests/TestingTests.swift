@@ -149,7 +149,8 @@ func writeTestPackage(at dir: URL) throws {
 
         wc.navigator.select(5)
         let plan = try #require(wc.navigator.rows(5).first)
-        #expect(plan.detail?.hasSuffix("Failing") == true)
+        // reference-ui-6.md §5.4 (R45): "<n> Tests" only.
+        #expect(plan.detail?.hasSuffix("Tests") == true && plan.detail?.contains("Failing") == false)
         let suite = try #require(plan.children.first?.children.first)
         #expect(suite.title == "CalcTests" && suite.trailingSymbol == "xmark.diamond.fill")
         _ = try WindowSnapshotTests().render(wc.window!.contentView!.superview!, to: "test-navigator.png")

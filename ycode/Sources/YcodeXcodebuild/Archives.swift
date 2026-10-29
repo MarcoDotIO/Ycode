@@ -77,7 +77,7 @@ enum Archives {
         return props
     }
 
-    // MARK: -exportArchive
+    // MARK: - The -exportArchive action
 
     /// `-exportArchive`: limited to archives of applications signed ad hoc,
     /// exported with method `mac-application` (a copy of the application).

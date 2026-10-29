@@ -145,7 +145,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         edit.addItem(NSMenuItem(title: "Start Dictation…", action: NSSelectorFromString("startDictation:"), keyEquivalent: ""))
         for m in [file, view, edit] { MainMenu.removeSystemConflicts(in: m) }
         #expect(file.item(withTitle: "Close All") == nil)
-        #expect(view.items.filter { $0.action == #selector(NSWindow.toggleFullScreen(_:)) }.isEmpty)
+        #expect(!view.items.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) })
         #expect(view.items.filter { $0.title == "Enter Full Screen" }.map { MainMenu.canonicalShortcut($0) } == ["⌃⌘F"])
         #expect(edit.item(withTitle: "Start Dictation…") != nil)
     }
@@ -160,7 +160,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let tools = try #require(bar.item(withTitle: "Ycode")?.submenu?.item(withTitle: "Open Developer Tool")?.submenu)
         DynamicMenus.fillDeveloperTools(tools, tools: found)
         DynamicMenus.fillDeveloperTools(tools, tools: found)
-        #expect(visible(tools) == ["Instruments", "FileMerge", "—", "More Developer Tools…"])
+        // Ycode's own Device Hub follows the tools found (device-hub.md "Ycode implementation").
+        #expect(visible(tools) == ["Instruments", "FileMerge", "Device Hub", "—", "More Developer Tools…"])
         #expect(tools.items.first?.target === AppCommands.shared)
         // View ▸ Inspectors follows the focused editor's tabs.
         let insp = try #require(bar.item(withTitle: "View")?.submenu?.item(withTitle: "Inspectors")?.submenu)

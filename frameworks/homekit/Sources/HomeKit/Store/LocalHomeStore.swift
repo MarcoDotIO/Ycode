@@ -419,7 +419,7 @@ public final class YcodeLocalHomeStore: YcodeHomeStore, YcodeAccessoryEndpointDe
     /// Runs `body` on a copy of home `id`; on success stores it, broadcasts the
     /// change (originator tagged) and replies.
     func mutateReturning(_ id: UUID, _ session: Session, _ reply: Reply,
-                _ body: (inout YcodeHomeRecord) throws -> (YcodeHomeChange, YcodeHomeResponse)) {
+                         _ body: (inout YcodeHomeRecord) throws -> (YcodeHomeChange, YcodeHomeResponse)) {
         guard let i = state.homes.firstIndex(where: { $0.id == id }) else {
             reply(.failure(YcodeHomeStoreError(.notFound))); return
         }

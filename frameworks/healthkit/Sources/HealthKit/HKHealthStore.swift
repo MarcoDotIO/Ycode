@@ -306,7 +306,7 @@ enum PreferredUnits {
 extension HKHealthStore {
     public func requestAuthorization(toShare typesToShare: Set<HKSampleType>, read typesToRead: Set<HKObjectType>) async throws {
         try await withCheckedThrowingContinuation { (k: CheckedContinuation<Void, any Error>) in
-            requestAuthorization(toShare: typesToShare, read: typesToRead) { ok, e in
+            requestAuthorization(toShare: typesToShare, read: typesToRead) { _, e in
                 if let e { k.resume(throwing: e) } else { k.resume() }
             }
         }

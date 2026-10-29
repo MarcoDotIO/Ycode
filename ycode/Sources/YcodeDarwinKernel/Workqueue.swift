@@ -22,6 +22,9 @@ import YcodeDarwinABI
 //   with no work for 5 s is restarted with x5 = −1 and exits.
 
 /// `pthread_priority_t` helpers (§2.4).
+///
+/// The constants are the flag bits (bits 31–24) of the same names in the
+/// §2.4 table that the kernel reads or writes.
 public enum PthreadPriority {
     public static let overcommit: UInt32 = 0x8000_0000
     public static let schedPri: UInt32 = 0x2000_0000
@@ -158,7 +161,8 @@ extension DarwinKernel {
         static let setupDispatch: UInt32 = 0x400
     }
 
-    /// `start_wqthread` upcall flags (x4).
+    /// `start_wqthread` upcall flags (x4; `threads-and-events.md` §2.6). Each
+    /// constant is the upcall flag of the same name in the §2.6 table.
     public enum WorkqUpcall {
         public static let prioQoS: UInt64 = 0x0000_4000
         public static let prioSched: UInt64 = 0x0000_8000
@@ -382,7 +386,7 @@ extension DarwinKernel {
             // no lock (before it returns or sleeps).
             if lock.callerIsFast {
                 returnWorkRequest(request)
-                lock.deferIfFast(.kernelLock(lock)) { [weak self] in self?.retryPendingWorkqueue() }
+                lock.deferIfFast(.kernelLock(lock), tag: "new workqueue thread") { [weak self] in self?.retryPendingWorkqueue() }
                 return
             }
             guard workqueue.workers.count < WorkqueueState.maxThreads, threadHost != nil else {
@@ -608,6 +612,10 @@ extension DarwinKernel {
 
     // MARK: Return, park, exit
 
+    /// The events a returning worker's next upcall carries at most (the
+    /// scan's limit; change errors count first).
+    static let returnEventCapacity = 16
+
     private func workerReturn(op: UInt32, changes: UInt64, count: Int, _ call: inout CallText,
                               _ mem: any KernelGuestMemory) throws -> BSDResult {
         let ctx = current
@@ -621,14 +629,25 @@ extension DarwinKernel {
                 endServicing(ctx)
             }
         }
+        // Per-change errors (§2.7 step 3): as libpthread's kernel side
+        // applies a returning worker's list (stack data, immediate,
+        // parking; no ERROR_EVENTS), every change is applied, and a failed
+        // one comes back as an EV_ERROR event, first in the thread's next
+        // upcall. Before, the first failure stopped the list and was
+        // returned as the call's errno: the changes after it were lost and
+        // the library gave the thread back without them, which libdispatch
+        // later found as an inconsistent workloop ("Invalid wlh state").
+        var errors: [KEventRecord] = []
         if op != WorkqOp.threadReturn {
             guard count >= 0, count == 0 || w.keventRun else { throw Failure(errno: Errno.EINVAL) }
             if count > 0, let kq = w.boundQueue ?? (op == WorkqOp.keventReturn ? kevents.workq : nil) {
                 let list = try readKEvents(changes, count: count, format: .qos, mem)
-                var discard: [KEventRecord] = []
-                if let e = applyChanges(list, to: kq, outputCapacity: 0, output: &discard, context: ctx,
+                if let e = applyChanges(list, to: kq, outputCapacity: Self.returnEventCapacity, output: &errors, context: ctx,
                                         flags: KEventFlag.stackData | KEventFlag.immediate, mem) {
                     throw Failure(errno: e)
+                }
+                if !errors.isEmpty {
+                    call += " [\(errors.count) change errors: " + errors.map { "filter \($0.filter) ident \(hx($0.ident)) errno \($0.data)" }.joined(separator: ", ") + "]"
                 }
             }
             let released = releaseDelivered(w)
@@ -636,7 +655,8 @@ extension DarwinKernel {
             if let kq = w.boundQueue {
                 var area = KEventDataArea(base: w.eventList - 32768, size: 32768 - (w.boundBucket == nil ? 8 : 0),
                                           stackData: true)
-                let again = scanForDelivery(kq, bucket: w.boundBucket, max: 16, area: &area, context: ctx, mem)
+                let room = Self.returnEventCapacity - errors.count
+                let again = errors + (room > 0 ? scanForDelivery(kq, bucket: w.boundBucket, max: room, area: &area, context: ctx, mem) : [])
                 if !again.isEmpty {
                     var flags = WorkqUpcall.newSPI | WorkqUpcall.kevent | WorkqUpcall.reuse
                     if let b = w.boundBucket {

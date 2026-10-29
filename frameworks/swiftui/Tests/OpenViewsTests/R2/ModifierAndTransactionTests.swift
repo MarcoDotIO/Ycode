@@ -118,6 +118,7 @@ struct TransactionTests {
         seen.b = []
         change()
         g.update()
+        // swiftlint:disable:next redundant_nil_coalescing - flattens a double optional
         return (seen.a.last ?? nil, seen.b.last ?? nil)
     }
 

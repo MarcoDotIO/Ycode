@@ -7,17 +7,18 @@ issue to discuss a change before you invest a lot of time in it.
 ## 1. The clean-room rules (mandatory)
 
 Ycode can only stay independent and releasable if every contribution follows
-the clean-room protocol in [CLAUDE.md](CLAUDE.md). In short:
+the clean-room protocol in [AGENTS.md](AGENTS.md). In short:
 
 1. **Never contribute Apple material.** That covers code, decompiler
    pseudo-code, disassembly, method bodies, binaries, resources (icons, nibs,
    templates, strings files, artwork), and files copied from Xcode or from a
    simulator runtime. This applies to every directory, including `research/`.
-2. **Implementation (`ycode/`) comes from specs.** When you write or change
-   code in `ycode/`, work only from `specs/`, public documentation, and open
-   source whose license allows it (for example Apple's open-source projects:
-   swift-build, SwiftPM, sourcekit-lsp, LLDB, XNU headers). Do not open
-   Xcode's binaries or a disassembler while you write Ycode code.
+2. **Implementation (`ycode/`, `frameworks/`) comes from specs.** When you
+   write or change code there, work only from `specs/`, public
+   documentation, and open source whose license allows it (for example
+   Apple's open-source projects: swift-build, SwiftPM, sourcekit-lsp, LLDB,
+   XNU headers). Do not open Xcode's binaries or a disassembler while you
+   write Ycode code.
 3. **New behavior is specified first.** If the code needs a fact about Xcode's
    behavior or file formats that no spec states yet, add or extend a spec in
    `specs/` first. Then implement from the spec.
@@ -25,7 +26,7 @@ the clean-room protocol in [CLAUDE.md](CLAUDE.md). In short:
    tables, grammars, key names and wire layouts. Interop identifiers are fine:
    `isa` names, build-setting names, plist keys, XML element names, Mach trap
    numbers. Every spec ends with an **Evidence** section that gives the
-   evidence level (1–5, defined in CLAUDE.md, rule 4) for each claim. Prefer
+   evidence level (1–5, defined in AGENTS.md, rule 4) for each claim. Prefer
    the lowest level that works: open source and documentation, then file
    formats, then black-box behavior. Binary metadata comes after that, and
    disassembly only as a documented last resort for interop.
@@ -41,6 +42,14 @@ Pull requests that break these rules will be closed.
 
 - Swift 6.4. `cd ycode && swift build && swift test` must pass on macOS. If
   you touch shared code, it must also pass on Linux.
+- Each package in `frameworks/` builds and tests on its own, on macOS and on
+  Linux (`frameworks/README.md`).
+- Lint with `ycode/scripts/lint.sh` (needs [SwiftLint](https://github.com/realm/SwiftLint)).
+  It checks `ycode/` and `frameworks/` against `.swiftlint.yml` and must
+  report no violations. If a rule is wrong for one line, disable it for that line
+  with a reason: `// swiftlint:disable:next force_cast - <why it is safe>`.
+- Public declarations in shared libraries carry `///` doc comments: what
+  and why, not the name again, with the spec section they implement.
 - Simulator work needs arm64 Linux with KVM and a Vulkan driver. Read
   [docs/SIMULATOR-LINUX.md](docs/SIMULATOR-LINUX.md) and the stage contracts
   in `specs/simulator/` before you start.

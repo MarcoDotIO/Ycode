@@ -68,9 +68,10 @@ file, edits last-to-first:
   Generate Missing Function Definitions, the three localized-string items)
   are always disabled.
 - Fix-its: inline `codeActions` of a diagnostic whose edits stay in the
-  file become the issue's fix-its. The gutter shows a lightbulb (in the
-  issue's color) instead of the issue dot; clicking it applies the
-  line's fix-its.
+  file become the issue's fix-its. Clicking the issue's annotation (right
+  of the code) opens a menu with the message and "Fix", which applies the
+  line's fix-its. (Corrected by `reference-ui-6.md` §4.3.2: the gutter
+  draws no issue dot or lightbulb.)
 - Editor ▸ Fix All Issues: every distinct fix-it of the focused file, as
   one undo group.
 

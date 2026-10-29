@@ -749,7 +749,7 @@ final class SnapshotSupport: @unchecked Sendable {
                     // A copy in pool memory: pages that differ from the file.
                     for i in 0..<pageCount {
                         let p = UnsafeRawPointer(host + i * Int(page))
-                        let bytes = (try? file?.read(count: Int(page), offset: offset + UInt64(i) * page)) ?? nil
+                        let bytes = try? file?.read(count: Int(page), offset: offset + UInt64(i) * page)
                         let same = bytes.map { b in
                             b.withUnsafeBytes { memcmp(p, $0.baseAddress!, b.count) == 0 } && isZero(p + b.count, Int(page) - b.count)
                         } ?? false
@@ -1308,7 +1308,7 @@ enum ST_HostService {
     static let name: UInt16 = 1, channel: UInt16 = 2, session: UInt16 = 3, pids: UInt16 = 4
     /// `scdynamicstore`: the open sessions (nested: 1 session port, 2 notify rights).
     static let sessions: UInt16 = 5
-    /// `iosurface`, `metal`: the service's own state (nested payload, the service's tags).
+    /// `iosurface`, `metal`, `audio`: the service's own state (nested payload, the service's tags).
     static let state: UInt16 = 6
     /// `hid`: the host-task name of the send right to the guest HID bundle's
     /// port (hid-input.md §7 item 6); absent while no bundle has registered.

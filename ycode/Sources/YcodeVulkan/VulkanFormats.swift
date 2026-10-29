@@ -368,6 +368,15 @@ func vkSwizzle(_ metal: UInt8) -> VkComponentSwizzle {
 }
 
 /// Composes a view swizzle on top of a format's own swizzle (A8 stored as R8).
+/// Whether a mapping leaves every channel where it is: each component is
+/// IDENTITY or names its own channel (`composeSwizzle` spells an identity
+/// composition out as R, G, B, A). Storage views need this (Vulkan).
+func isIdentitySwizzle(_ m: VkComponentMapping) -> Bool {
+    func same(_ s: VkComponentSwizzle, _ own: VkComponentSwizzle) -> Bool { s == VK_COMPONENT_SWIZZLE_IDENTITY || s == own }
+    return same(m.r, VK_COMPONENT_SWIZZLE_R) && same(m.g, VK_COMPONENT_SWIZZLE_G) && same(m.b, VK_COMPONENT_SWIZZLE_B)
+        && same(m.a, VK_COMPONENT_SWIZZLE_A)
+}
+
 func composeSwizzle(_ outer: VkComponentMapping, over inner: VkComponentMapping) -> VkComponentMapping {
     func resolve(_ s: VkComponentSwizzle, identity: VkComponentSwizzle) -> VkComponentSwizzle {
         s == VK_COMPONENT_SWIZZLE_IDENTITY ? identity : s

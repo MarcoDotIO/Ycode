@@ -181,12 +181,15 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             let buildHeader = try #require(titles.firstIndex(of: "Build"))
             let remoteIndex = try #require(menu.items.firstIndex { ($0.representedObject as? String) == RemoteSimulator.identifier })
             #expect(remoteIndex > simsHeader && remoteIndex < buildHeader)
-            // The pop-up row: the name, then the version right-aligned.
-            #expect(menu.items[remoteIndex].title.hasPrefix("Ycode Simulator"))
-            #expect(menu.items[remoteIndex].attributedTitle?.string == "Ycode Simulator\t27.1")
-            // Newest runtime first: iPhone 18 (27.1), the remote (27.1), iPhone 17 (26.4).
+            // The menu row (while the menu is open, reference-ui-6.md §2.4):
+            // the name, then the version right-aligned.
+            #expect(menu.items[remoteIndex].title.hasPrefix("iPhone Duo (Ycode)"))
+            menu.delegate?.menuNeedsUpdate?(menu)
+            #expect(menu.items[remoteIndex].attributedTitle?.string == "iPhone Duo (Ycode)\t27.1")
+            // Newest runtime first: iPhone 18 (27.1), the remote's rows (27.1: its
+            // device types, phones before iPads), iPhone 17 (26.4).
             let rowTitles = menu.items[(simsHeader + 1)..<buildHeader].filter { !$0.isSeparatorItem }.map { $0.title.components(separatedBy: "\t")[0] }
-            #expect(rowTitles == ["iPhone 18", "Ycode Simulator", "iPhone 17"])
+            #expect(rowTitles == ["iPhone 18", "iPhone Duo (Ycode)", "iPad (A16) (Ycode)", "iPad Pro 13-inch (M5) (Ycode)", "iPhone 17"])
 
             // Product ▸ Destination: the same row, "<name> <version>", under Simulators.
             let bar = MainMenu.make()
@@ -194,8 +197,9 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             DynamicMenus.fillDestinations(sub, model: wc.destinationMenuModel(), current: wc.session.destination, target: wc)
             let subTitles = sub.items.map { $0.isSeparatorItem ? "—" : $0.title }
             let s = try #require(subTitles.firstIndex(of: "Simulators"))
-            #expect(Array(subTitles[(s + 1)...(s + 3)]) == ["iPhone 18 27.1", "Ycode Simulator 27.1", "iPhone 17 26.4"])
-            #expect(subTitles.filter { $0.hasPrefix("Ycode Simulator") }.count == 1)
+            #expect(Array(subTitles[(s + 1)...(s + 5)]) == ["iPhone 18 27.1", "iPhone Duo (Ycode) 27.1", "iPad (A16) (Ycode) 27.1",
+                                                          "iPad Pro 13-inch (M5) (Ycode) 27.1", "iPhone 17 26.4"])
+            #expect(subTitles.filter { $0.contains("(Ycode)") }.count == 3)
 
             // Choosing it selects the remote simulator (with its version).
             wc.selectDestinationRow(RemoteSimulator.identifier)
@@ -274,20 +278,26 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             wc.configureYcodeRemoteDevice(c, defaults: p.defaults, ssh: r.settings.ssh)
             c.view.frame = NSRect(x: 0, y: 0, width: 820, height: 480)
             c.show(.simulators)
-            #expect(c.simulators.map(\.name) == ["Phone A", "Ycode Simulator"])
-            let row = try #require(c.simulators.last)
+            #expect(c.simulators.map(\.name) == ["Phone A", "iPhone Duo (Ycode)", "iPad (A16) (Ycode)", "iPad Pro 13-inch (M5) (Ycode)"])
+            let row = try #require(c.simulators.dropFirst().first)
             #expect(row.isYcodeRemote && row.osVersion == "27.1" && row.state == "Shutdown" && row.identifier == "tester@fakehost:\(r.data.path)/devices/dev1")
 
             // Only the remote row has the command.
             #expect(c.contextMenu(forRow: 0).items.isEmpty)
             let menu = c.contextMenu(forRow: 1)
-            #expect(menu.items.map(\.title) == ["Erase All Content and Settings…"] && menu.items[0].isEnabled)
+            // The iPhone Duo row also has Start, Open in New Window and the
+            // pose commands (device-hub.md), disabled while it is not running
+            // (Start needs the window's start action).
+            #expect(menu.items.map(\.title) == ["Start", "", "Open in New Window", "", "Closed", "Partially Open", "Open", "Rotate Left",
+                                                "Rotate Right", "", "Erase All Content and Settings…"] && menu.items.last!.isEnabled)
+            #expect(menu.items.filter { ["Closed", "Partially Open", "Open", "Rotate Left", "Rotate Right", "Open in New Window"].contains($0.title) }
+                .allSatisfy { !$0.isEnabled })
 
             // Cancelled: nothing runs.
             var asked: [String] = []
             c.confirmErase = { asked.append($0.name); return false }
             #expect(c.erase(row: 1) == nil)
-            #expect(asked == ["Ycode Simulator"] && !r.log.contains("--erase"))
+            #expect(asked == ["iPhone Duo (Ycode)"] && !r.log.contains("--erase"))
             #expect(c.erase(row: 0) == nil && asked.count == 1)
 
             // Confirmed: the launcher erases the device.
@@ -332,7 +342,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let s = try session()
         await s.runOnRemoteSimulator(app: try app(in: r.root), remote: r.remote)
         #expect(await waitUntil(20) { s.console.contains("hello from the remote app") && s.simulatorRun?.remotePID != nil })
-        #expect(s.activity == .running("Running Remote on Ycode Simulator (3 of 3)"))
+        #expect(s.activity == .running("Running Remote on \(r.remote.destination.name)"))
         // The launcher's own lines are Ycode status, not program output.
         #expect(s.consoleText(.debugger).contains("ycode-sim: warm boot: restoring the device"))
         #expect(!s.consoleText(.target).contains("ycode-sim:") && s.consoleText(.target).contains("hello from the remote app"))
@@ -343,7 +353,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(r.log.contains("tester@fakehost kill -INT \(pid)"))
         #expect(s.consoleText(.debugger).contains("ycode-sim: warm boot: the device was saved"))
         #expect(s.console.contains("Ycode Simulator stopped"))
-        #expect(s.activity == .finished("Finished running Remote"))
+        #expect(s.activity == .finished("Finished running Remote on \(r.remote.destination.name)"))
     }
 
     @Test func stopWithWarmBootOffAndWhenTheSignalFails() async throws {
@@ -367,9 +377,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(s.activity == .running("Stopping Remote…"))
         #expect(await waitUntil(20) { s.simulatorRun == nil })
         #expect(s.console.contains("the stop signal did not reach tester@fakehost (ssh status 255)"))
-        #expect(s.console.contains("stopped by SIGINT"))
+        // The launcher's last line can be read after the run has ended.
+        #expect(await waitUntil(5) { s.console.contains("stopped by SIGINT") })
         // A stopped run is not a failed run.
-        #expect(s.activity == .finished("Finished running Remote"))
+        #expect(s.activity == .finished("Finished running Remote on \(remote.destination.name)"))
     }
 
     @Test func stopAfterTheGraceTimeAndBeforeThePid() async throws {

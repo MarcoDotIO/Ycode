@@ -10,11 +10,14 @@ Ycode module: `YcodeUI` (`SettingsWindowController`, the panes in
 Ycode ▸ Settings… (⌘,) opens one shared sidebar window
 (`specs/ide/reference-ui.md` §4): the pane list at the left, the selected
 pane as a form under its title with back/forward buttons. Panes, in
-order: General, Appearance, Accounts, Intelligence, Behaviors,
+order: General, Appearance, Accounts, Coding Assistant, Behaviors,
 Navigation, Notifications, Editing, Shortcuts, Source Control,
-Components, Simulators (Ycode's own), Locations. Accounts and
-Intelligence are informational only: Ycode stores no credentials and has
-no coding assistant.
+Components, Simulators (Ycode's own), Locations. Accounts is
+informational only. Coding Assistant (the reference's Intelligence
+position, in Ycode's own words) holds the assistant's back ends, the
+OpenAI sign-in or API key, agent-tool paths, context options and the
+privacy note (`coding-assistant.md` §6); its secrets are in the keychain,
+never in user defaults.
 
 Values live in the user defaults under `Ycode.` keys. Every change posts
 one notification; open editors, consoles, workspace windows and the menu

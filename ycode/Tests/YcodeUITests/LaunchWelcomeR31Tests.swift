@@ -58,7 +58,8 @@ import YcodeProject
         #expect(w.nameLabel.stringValue == "Ycode" && w.versionLabel.stringValue.hasPrefix("Version "))
         #expect([w.openButton.title, w.cloneButton.title, w.newProjectButton.itemTitles.first] == ["Open…", "Clone…", "New Project"])
         #expect(w.newProjectButton.pullsDown)
-        #expect(Array(w.newProjectButton.itemTitles.dropFirst()) == NewProjectPicker.rows.map(\.title))
+        // reference-ui-6.md §1.5 (R45, W6): a separator before Choose Template….
+        #expect(Array(w.newProjectButton.itemTitles.dropFirst()) == ["App", "Command Line Tool", "Package…", "Playground", "", "Choose Template…"])
         #expect(w.table.accessibilityLabel() == "Recent Projects")
         #expect(!w.nameLabel.stringValue.contains("Xcode"))
     }
@@ -141,7 +142,7 @@ import YcodeProject
         let pkg = URL(fileURLWithPath: "/Volumes/Data/Obs")
         #expect(RecentProjects.menuTitles([one, two, pkg]) == ["ObsApp.xcodeproj \u{2014}  a", "ObsApp.xcodeproj \u{2014}  b-copy", "Obs"])
         #expect(RecentProjects.displayName(one) == "ObsApp" && RecentProjects.displayName(pkg) == "Obs")
-        #expect(RecentProjects.folderText(URL(fileURLWithPath: "/Volumes/MARCUS-PROJECTS/_inbox/App.xcodeproj")) == "MARCUS-PROJECTS/_inbox")
+        #expect(RecentProjects.folderText(URL(fileURLWithPath: "/Volumes/External/Samples/App.xcodeproj")) == "External/Samples")
 
         // The menu: entries, a separator, Clear Menu.
         let menu = NSMenu()
@@ -170,12 +171,11 @@ import YcodeProject
         #expect(wc.window?.title == "Tour \u{2014} Tour.xcodeproj")
         #expect(wc.window?.frame.size == WorkspaceWindowController.defaultSize)  // toolbar included
         #expect(wc.activityView.status.isEmpty)  // no "Ready" while idle
-        // The Start Page sits below the jump bar ("No Selection").
+        // First open: an empty editor under "No Selection", no Start Page
+        // (reference-ui-6.md §1.3 supersedes pass 5 §3.5; R38 tests).
         wc.applyDefaultLayout()
         wc.window?.contentView?.layoutSubtreeIfNeeded()
-        let empty = try #require(wc.editor.emptyView)
-        #expect(empty.frame.maxY <= wc.editor.jumpBar.frame.minY + 0.5 || empty.frame.minY >= wc.editor.jumpBar.frame.maxY - 0.5)
-        #expect(empty.frame.height < wc.editor.view.bounds.height)
+        #expect(wc.editor.emptyView == nil && wc.editor.jumpBarTitles.last == "No Selection")
 
         let file = try #require(wc.session.model.root.allFiles.first { $0.name == "ContentView.swift" }?.path)
         wc.open(path: file, line: nil)
@@ -192,7 +192,10 @@ import YcodeProject
                 == ["iPhone 18", "iPhone 17", "iPhone 17 Pro", "iPad Air", "iPhone 15"])
         #expect(DestinationCatalog.defaultDestination(platform: "macOS", deploymentTarget: "15.0", simulators: sims) == .myMac)
         #expect(DestinationCatalog.defaultDestination(platform: nil, deploymentTarget: nil, simulators: sims) == .myMac)
-        #expect(DestinationCatalog.defaultDestination(platform: "iOS", deploymentTarget: "18.0", simulators: sims).name == "iPhone 18")
+        // reference-ui-6.md §2.4.3 (T11): a Pro iPhone first, else the first in menu order.
+        #expect(DestinationCatalog.defaultDestination(platform: "iOS", deploymentTarget: "18.0", simulators: sims).name == "iPhone 17 Pro")
+        #expect(DestinationCatalog.defaultDestination(platform: "iOS", deploymentTarget: "18.0",
+                                                      simulators: sims.filter { $0.name != "iPhone 17 Pro" }).name == "iPhone 18")
         // Below the deployment target: skipped.
         #expect(DestinationCatalog.defaultDestination(platform: "iOS", deploymentTarget: "27.1", simulators: sims).name
                 == "Any iOS Simulator Device")

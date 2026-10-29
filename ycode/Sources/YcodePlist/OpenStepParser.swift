@@ -11,6 +11,7 @@
 ///
 /// `//` and `/* */` comments may appear anywhere whitespace may.
 public struct OpenStepParser {
+    /// A syntax error, with the 1-based line it was found on.
     public struct Error: Swift.Error, CustomStringConvertible, Equatable {
         public var message: String
         public var line: Int
@@ -20,19 +21,27 @@ public struct OpenStepParser {
     private let bytes: [UInt8]
     private var pos = 0
 
+    /// Creates a parser over the UTF-8 encoding of `text`.
     public init(_ text: String) { bytes = Array(text.utf8) }
+    /// Creates a parser over raw UTF-8 bytes.
     public init(bytes: [UInt8]) { self.bytes = bytes }
 
+    /// Parses one complete document. Throws `Error` on a syntax error or on
+    /// content after the top-level value.
     public static func parse(_ text: String) throws(Error) -> PlistValue {
         var p = OpenStepParser(text)
         return try p.parseDocument()
     }
 
+    /// Parses one complete document from UTF-8 bytes. Throws `Error` on a
+    /// syntax error or on content after the top-level value.
     public static func parse(bytes: [UInt8]) throws(Error) -> PlistValue {
         var p = OpenStepParser(bytes: bytes)
         return try p.parseDocument()
     }
 
+    /// Parses the whole input as one document: an optional UTF-8 BOM, then
+    /// one value surrounded by trivia. Throws `Error` if anything follows.
     public mutating func parseDocument() throws(Error) -> PlistValue {
         // Skip a UTF-8 byte-order mark.
         if bytes.starts(with: [0xEF, 0xBB, 0xBF]) { pos = 3 }

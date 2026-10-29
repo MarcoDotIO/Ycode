@@ -34,7 +34,7 @@ final class ScriptedAdapter: DAPTransport, @unchecked Sendable {
             guard req["type"]?.string == "request", let cmd = req["command"]?.string else { continue }
             requests.append(req)
             let args = req["arguments"] ?? .null
-            var body: JSON? = nil
+            var body: JSON?
             var after: [(String, JSON)] = []
             let hex = { (n: Int) in JSON.string(String(format: "0x%llx", n)) }
             switch cmd {

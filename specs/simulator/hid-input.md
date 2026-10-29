@@ -631,6 +631,33 @@ outliers of 280–340 ms per session in which the dispatch call itself did
 not return (inside `backboardd`'s event system). The 16 ms move
 coalescing of §7 item 4 is kept (`display-stream.md` §10.4).
 
+## 15. Foldable devices (FOLD-IMPL, 2026-10-27; `foldable.md` §8.2, §10)
+
+- **Services.** A foldable device type (`YCODE_SIMHID_DEVICE_MOTION=1`)
+  gets a fourth service at initialization: **device motion**, ID
+  `0x59434F4400000004`, `PrimaryUsagePage` 0xFF61, `PrimaryUsage` 0x5B,
+  `DeviceUsagePairs` with that pair, `Product` "Ycode Device Motion",
+  `Transport` "Virtual". It never answers `copyEvent`. With a second
+  built-in display (`YCODE_FRAMEBUFFER_SECOND_DISPLAY`, its last word the
+  display's unique id) a second touch screen, ID `0x59434F4400000005`,
+  `Product` "Ycode Touch Screen 2", with that `displayUUID`, is added right
+  after the first.
+- **Transport (§7.3) additions.** Touch: the display field is 0 for the
+  main display, 1 for the second. New kinds, body size 24:
+  **6 hinge angle** (4 whole degrees 0–180, 4 reserved) and **7 device
+  orientation** (4 code, 4 reserved; the relay's codes: 0 ambiguous,
+  1 portrait, 3 landscape left, 4 landscape right, 5 face up, 6 face down).
+- **Events.** Each kind-6/7 message becomes one vendor-defined event from
+  the device-motion service: `IOHIDEventCreateVendorDefinedEvent`
+  (allocator, timestamp, usage page 0xFF61, usage 0x5B, version 0, data,
+  length, options 0; IOHIDFamily's public declaration), its data the text
+  serialization of `{source, type, value}` (`foldable.md` §5.3). The bundle
+  looks up the constructor and `IOCFSerialize` with `dlsym` (so a runtime
+  without them still loads the bundle); when `IOCFSerialize` is missing it
+  writes the same text itself. The iOS 27.1 runtime has both.
+- **Kind 5** (UIDeviceOrientation, §10) stays unimplemented; rotation of a
+  foldable goes through kind 7.
+
 ## Appendix A. Programs (ours)
 
 In `research/experiments/simulator/hid/`; `build.sh <out>` builds them
@@ -707,6 +734,7 @@ for arbitrary usages the usage page. Mapping seen in the guest: source 0 →
 | First tap taken without a Home press; app-launch and Home timings (§14.1) | 3 | driver boots (`ydrive.py` over the display socket) and viewer `--script` sessions on the Thor |
 | The registration is a host-task right whose name a snapshot keeps (§7 item 6) | — | Ycode design (`snapshot.md` §2.6); `HIDHostServiceTests.registrationSurvivesRestore`; restores through the viewer |
 | Delivery timing (§14.2) | 3 | the bundle's event timing log and the display server's trace in Ycode runs on the Thor |
+| Device-motion service and its events reach the guest's relay (§15) | 1, 3 | IOHIDFamily `IOHIDEvent.h` (vendor-defined constructor), IOKitUser `IOCFSerialize.h`; Ycode boots on the Thor (`foldable.md` §10.2) |
 
 Level 5 (disassembly, decompilation) was not used. No Apple binary was
 opened in a disassembler or Ghidra; `research/dirty/` was not used. Level 4

@@ -101,6 +101,7 @@ public struct Certificate: Hashable, Sendable {
 
     public var publicKey: P256.Signing.PublicKey {
         // Validated in init.
+        // swiftlint:disable:next force_try - validated in init
         try! P256.Signing.PublicKey(derRepresentation: publicKeyDER)
     }
 

@@ -353,7 +353,7 @@ extension DarwinKernel {
         if targetPID == pid {
             target = self
         } else {
-            guard let other = system.processes[targetPID]?.kernel else { throw Failure(errno: Errno.ESRCH) }
+            guard let other = system.processRecord(targetPID)?.kernel else { throw Failure(errno: Errno.ESRCH) }
             target = other
         }
         if withToken {
@@ -369,8 +369,8 @@ extension DarwinKernel {
         let valid = (info?.status ?? 0) & 0x1 != 0
         call += " [\(info?.identity ?? "unsigned")]"
         func be32(_ v: UInt32) -> [UInt8] { [UInt8(v >> 24), UInt8(truncatingIfNeeded: v >> 16), UInt8(truncatingIfNeeded: v >> 8), UInt8(truncatingIfNeeded: v)] }
-        /// xnu csops_copy_token: a missing blob is an 8-byte zero header; a
-        /// short buffer gets the blob's length in a header and ERANGE.
+        // xnu csops_copy_token: a missing blob is an 8-byte zero header; a
+        // short buffer gets the blob's length in a header and ERANGE.
         func copyBlob(_ blob: [UInt8]?) throws -> UInt64 {
             guard size >= 8 else { throw Failure(errno: Errno.ERANGE) }
             guard let blob else { try mem.write(va: addr, bytes: [UInt8](repeating: 0, count: 8)); return 0 }

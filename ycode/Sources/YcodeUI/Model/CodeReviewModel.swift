@@ -63,6 +63,8 @@ public struct ReviewChange: Equatable, Sendable {
     public var oldCount: Int
 }
 
+/// Code Review mode's change list and source picker
+/// (`specs/ide/reference-ui-4.md` §15).
 public enum CodeReviewModel {
     /// Groups consecutive non-`same` rows into changes.
     public static func changes(_ rows: [LineDiff.Row]) -> [ReviewChange] {
@@ -113,6 +115,9 @@ public enum CodeReviewModel {
         public var commits: [String]    // fixed rows, then "author · date · hash · subject"
     }
 
+    /// The source picker's two columns: "Recents" and recent branches, then
+    /// all branches (the current one marked); then the fixed working-copy rows
+    /// and one row per commit.
     public static func pickerColumns(branches: [GitRepository.Ref], recents: [String], commits: [GitRepository.CommitSummary]) -> PickerColumns {
         var b: [String] = []
         if !recents.isEmpty { b.append("Recents"); b += recents }

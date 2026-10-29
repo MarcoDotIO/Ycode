@@ -30,8 +30,8 @@ let editorMenuGolden: [EditorKind: String] = [
     Layout ▸
       Automatic
       —
-      Editor on Left
-      Editor on Top
+      Canvas on Right
+      Canvas on Bottom
     —
     Show Completions | ⌃Space
     Show Predictive Completion | ⌃⌥Space

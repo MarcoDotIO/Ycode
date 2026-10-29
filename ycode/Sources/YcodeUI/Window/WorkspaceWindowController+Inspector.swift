@@ -33,6 +33,9 @@ extension WorkspaceWindowController {
         switch session.model.kind {
         case .package:
             let base = session.model.url.standardizedFileURL.path
+            // reference-ui-6.md §6 (I1): a package's files show only
+            // Identity and Type and Text Settings.
+            info.isPackageFile = path.hasPrefix(base + "/")
             for dir in ["Sources", "Tests"] where path.hasPrefix(base + "/\(dir)/") {
                 // Sources/<Target>/…: the folder names the target.
                 let parts = path.dropFirst(base.count + dir.count + 2).split(separator: "/")
@@ -41,8 +44,10 @@ extension WorkspaceWindowController {
                 }
             }
         default:
-            if let (_, proj) = project(holding: path) {
+            if let (projPath, proj) = project(holding: path) {
                 info.memberships = proj.memberships
+                let dir = proj.project.projectDirectory(xcodeprojURL: URL(fileURLWithPath: projPath))
+                if case .synchronized? = proj.project.place(ofFile: path, projectDirectory: dir) { info.inSynchronizedFolder = true }
             }
         }
         return info

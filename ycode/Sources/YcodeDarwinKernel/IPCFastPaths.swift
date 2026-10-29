@@ -10,6 +10,7 @@ import YcodeDarwinABI
 // |---|---|
 // | `mach_msg_trap` (−31), `mach_msg_overwrite_trap` (−32), `mach_msg2_trap` (−47) | the port lock G |
 // | `kevent_id` (375) on a workloop, `kevent_qos` (374) on the workqueue kqueue, `workq_kernreturn` (368) | the image's event lock L_P; G inside for each Mach receive |
+// | the port routine traps (−16 … −29 but −17, −40 … −42, −50, −70, −72, −76, −77) | the port lock G (`mach-ipc-locking.md` §4.10) |
 //
 // The kevent calls fall back when a change names a filter other than
 // EVFILT_MACHPORT, EVFILT_WORKLOOP, EVFILT_USER or EVFILT_TIMER (the others
@@ -35,20 +36,93 @@ extension DarwinKernel {
     public static func isIPCFastTrap(_ number: Int32) -> Bool {
         switch number {
         case -47, -31, -32, 368, 374, 375: true
+        default: portRoutineFastEnabled && (isPortRoutineFastTrap(number) || routineFastLocks(number) != nil)
+        }
+    }
+
+    /// `YCODE_PORT_ROUTINES_FAST=0` keeps the port routine traps on L0
+    /// (`mach-ipc-locking.md` §4.10).
+    nonisolated(unsafe) public static var portRoutineFastEnabled =
+        getenv("YCODE_PORT_ROUTINES_FAST").map { String(cString: $0) != "0" } ?? true
+
+    /// The Mach port routine traps that touch only Mach state (spaces, ports,
+    /// port sets, requests), all of it guarded by the port lock G: allocate,
+    /// deallocate, mod_refs, move_member, insert_right, insert/extract_member,
+    /// construct, destruct, mach_reply_port, thread/task/host_self,
+    /// get_attributes, guard, unguard, thread_get_special_reply_port, the
+    /// voucher traps, mach_port_type, request_notification. Not the
+    /// pid-to-task traps (−44 … −46: the process table).
+    @inline(__always) static func isPortRoutineFastTrap(_ number: Int32) -> Bool {
+        switch number {
+        case -16, -18, -19, -20, -21, -22, -23, -24, -25, -26, -27, -28, -29, -40, -41, -42, -50, -70, -72, -76, -77: true
         default: false
         }
     }
 
+    /// The Ycode-private Mach routines on the fast path and the locks they
+    /// take (`mach-ipc-locking.md` §4.10): G for the memory-entry and VM-map
+    /// routines (their address-space work runs with G released, §4.2) and the
+    /// port context; the event lock, then G, for the two that read the
+    /// thread table (`thread_get_state`, `task_threads`). Nil: not one.
+    enum RoutineLocks { case ports, eventsAndPorts }
+    @inline(__always) static func routineFastLocks(_ number: Int32) -> RoutineLocks? {
+        switch UInt32(bitPattern: number) {
+        case MachIPC.Routine.makeMemoryEntry, MachIPC.Routine.vmMapObject, MachIPC.Routine.vmRemap,
+             MachIPC.Routine.portGetContext, MachIPC.Routine.portSetContext: .ports
+        case MachIPC.Routine.threadGetState, MachIPC.Routine.taskThreads: .eventsAndPorts
+        default: nil
+        }
+    }
+
+    /// Diagnostics: port routine traps served on the fast path.
+    public static let portRoutineFastServed = Atomic<UInt64>(0)
+
     /// Diagnostics: traps served by a fast path, and fast traps that fell
     /// back to the locked path, since the process started.
     public static let ipcFastServed = Atomic<UInt64>(0)
+    /// Diagnostics: fast IPC traps that fell back to the locked path.
     public static let ipcFastDeclined = Atomic<UInt64>(0)
     /// Fallbacks by reason: the image has descriptor knotes; a kevent change
     /// or workqueue operation the fast path does not take; a kernel-object
     /// destination.
     public static let ipcFastDeclinedDescriptors = Atomic<UInt64>(0)
+    /// Diagnostics: fallbacks for a kevent change or workqueue operation the fast path does not take.
     public static let ipcFastDeclinedCall = Atomic<UInt64>(0)
+    /// Diagnostics: fallbacks for a kernel-object destination.
     public static let ipcFastDeclinedKernelObject = Atomic<UInt64>(0)
+
+    /// Diagnostics (`YCODE_DEBUG_DESCRIPTOR_CANDIDATES=1`): for each kevent
+    /// or workqueue trap declined because the image has descriptor knotes,
+    /// whether any of them could be reported now (active and enabled), by
+    /// program.
+    static let debugDescriptorCandidates = getenv("YCODE_DEBUG_DESCRIPTOR_CANDIDATES").map { String(cString: $0) == "1" } ?? false
+    static let descriptorDeclines = Mutex<[String: (declined: UInt64, withCandidate: UInt64)]>([:])
+
+    private func noteDescriptorDecline(_ events: KernelLock) {
+        let candidate = events.withLock { () -> Bool in
+            allKQueues.contains { kq in
+                kq.descriptorKnotes > 0 && kq.knotes.contains {
+                    EVFilter.isReadiness($0.filter) && !$0.dropped && $0.active && !$0.suppressed
+                        && ($0.enabled || $0.syntheticDelete)
+                }
+            }
+        }
+        let name = executableHostPath.map { String($0.split(separator: "/").last ?? "?") } ?? "pid \(pid)"
+        Self.descriptorDeclines.withLock {
+            var e = $0[name] ?? (0, 0)
+            e.declined &+= 1
+            if candidate { e.withCandidate &+= 1 }
+            $0[name] = e
+        }
+    }
+
+    /// One line for the split report.
+    static var descriptorDeclineReport: String {
+        guard debugDescriptorCandidates else { return "" }
+        return "descriptor-knote declines by program (declined/with a reportable descriptor knote): "
+            + descriptorDeclines.withLock { $0 }.sorted { $0.value.declined > $1.value.declined }.prefix(20)
+            .map { "\($0.key) \($0.value.declined)/\($0.value.withCandidate)" }.joined(separator: ", ")
+    }
 
     /// Filters a fast kevent change may name.
     static let fastKEventFilters: Set<Int16> = [EVFilter.machport, EVFilter.workloop, EVFilter.user, EVFilter.timer]
@@ -68,13 +142,17 @@ extension DarwinKernel {
         // Only from a thread that holds no kernel lock (the VMM's trap entry).
         let threadLocks = KernelThreadLocks.current
         guard threadLocks.held.isEmpty, !threadLocks.isFast else { return nil }
+        // The port routines write their trace lines only on the locked path
+        // (the tests trace some images).
+        if tracing, Self.isPortRoutineFastTrap(number) || Self.routineFastLocks(number) != nil { return nil }
         // Descriptor readiness is L0 state (`mach-ipc-locking.md` §4.3).
-        if number >= 0, descriptorKnoteCount.load(ordering: .relaxed) > 0 {
+        if number >= 0, number < 1000, !Self.descriptorEscalation, descriptorKnoteCount.load(ordering: .relaxed) > 0 {
             Self.ipcFastDeclined.wrappingAdd(1, ordering: .relaxed)
             Self.ipcFastDeclinedDescriptors.wrappingAdd(1, ordering: .relaxed)
+            if Self.debugDescriptorCandidates { noteDescriptorDecline(events) }
             return nil
         }
-        let generation = memory.generation
+        let generation = memory.tlbGeneration
         let profile = lock.trapProfile
         let start = profile != nil ? KernelClock.now() : 0
         var outcome: Outcome?
@@ -87,6 +165,29 @@ extension DarwinKernel {
             guard !isTerminating else { return }
             context.entryFrame = frame
             defer { context.entryFrame = nil }
+            if let locks = Self.routineFastLocks(number) {
+                // A private routine (§4.10). The thread-table readers take the
+                // event lock first (the table changes only with L0 and it
+                // held, so it is enough to read the table); a target's entry
+                // frame has its own lock (§4.2).
+                if locks == .eventsAndPorts {
+                    events.withLock(context: context) {
+                        outcome = ipc.handleFastPortRoutine(Int(number), &frame, context: context, memory: memory)
+                    }
+                } else {
+                    outcome = ipc.handleFastPortRoutine(Int(number), &frame, context: context, memory: memory)
+                }
+                Self.portRoutineFastServed.wrappingAdd(1, ordering: .relaxed)
+                return
+            }
+            if number < 0, Self.isPortRoutineFastTrap(number) {
+                // Mach state only: the port lock (§4.10). What needs L0 (a
+                // dying port's payload, a class refresh) or an event lock
+                // (EVFILT_MACHPORT hooks) is deferred work, as for mach_msg.
+                outcome = ipc.handleFastPortRoutine(Int(number), &frame, context: context, memory: memory)
+                Self.portRoutineFastServed.wrappingAdd(1, ordering: .relaxed)
+                return
+            }
             if number < 0 {
                 // Mach state only: the port lock (the blocking observer's
                 // workqueue work is deferred to the event lock, §4.5).
@@ -96,7 +197,7 @@ extension DarwinKernel {
             }
             events.withLock(context: context) {
                 do {
-                    let a = Array(frame.x[0..<8])
+                    let a = frame.x.prefixArray(8)
                     guard fastEventCallAllowed(number, a, memory) else {
                         Self.ipcFastDeclinedCall.wrappingAdd(1, ordering: .relaxed)
                         return
@@ -105,7 +206,7 @@ extension DarwinKernel {
                 }
             }
         }
-        if outcome != nil, memory.generation != generation { frame.flushTLB = true }
+        if outcome != nil, memory.tlbGeneration != generation { frame.requestTLBInvalidation(memory.tlbRange(since: generation)) }
         if outcome != nil {
             Self.ipcFastServed.wrappingAdd(1, ordering: .relaxed)
         } else {
@@ -135,8 +236,9 @@ extension DarwinKernel {
     /// True when the kevent or workqueue call may run on the fast path
     /// (reads its arguments and change list only).
     func fastEventCallAllowed(_ n: Int32, _ a: [UInt64], _ mem: any KernelGuestMemory) -> Bool {
-        // Descriptor readiness is L0 state (`mach-ipc-locking.md` §4.3).
-        guard descriptorKnoteCount.load(ordering: .relaxed) == 0 else { return false }
+        // Descriptor readiness is L0 state (`mach-ipc-locking.md` §4.3); with
+        // the escalation a scan takes L0 when it needs it (§4.11).
+        guard Self.descriptorEscalation || descriptorKnoteCount.load(ordering: .relaxed) == 0 else { return false }
         let flags = UInt32(truncatingIfNeeded: a[7])
         switch n {
         case 375:
@@ -218,6 +320,15 @@ extension MachIPC {
             }
         }
         return outcome
+    }
+
+    /// A port routine trap on the fast path (`mach-ipc-locking.md` §4.10):
+    /// the locked path's handler under the port lock alone. Never blocks.
+    func handleFastPortRoutine(_ n: Int, _ frame: inout TrapFrame, context: ThreadContext,
+                               memory: any GuestVirtualMemory) -> TrapOutcome? {
+        lock.withLock(context: context) {
+            handleTrapLocked(x16: Int64(n), frame: &frame, context: context, memory: memory)
+        }
     }
 
     /// Reads the bytes a fast send will copy in (the same range the trap

@@ -70,6 +70,7 @@ enum MetadataValue: Codable, Hashable, Sendable {
     /// Classify an app-supplied value; nil when its class is not allowed.
     static func from(_ value: Any) -> MetadataValue? {
         let t = type(of: value)
+        // swiftlint:disable force_cast - each line checks `t` first
         if t == Bool.self { return .bool(value as! Bool) }
         if t == Int.self { return .int(Int64(value as! Int)) }
         if t == Int64.self { return .int(value as! Int64) }
@@ -80,6 +81,7 @@ enum MetadataValue: Codable, Hashable, Sendable {
         if t == UInt32.self { return .int(Int64(value as! UInt32)) }
         if t == Double.self { return .double(value as! Double) }
         if t == Float.self { return .double(Double(value as! Float)) }
+        // swiftlint:enable force_cast
         if let q = value as? HKQuantity { return .quantity(value: q.value, unit: q.unit.unitString) }
         if let d = value as? Date { return .date(d.t) }
         if let s = value as? String { return .string(s) }

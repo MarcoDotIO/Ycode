@@ -56,6 +56,10 @@ extension VulkanMetalBackend {
 
     // MARK: - Render pipelines
 
+    /// Registers a render pipeline under `handle` (replacing any earlier one)
+    /// and builds it on the compile queue. With asynchronous pipelines a
+    /// build failure only marks the pipeline broken; otherwise it is thrown.
+    /// Throws at once without a GPU.
     public func createRenderPipeline(_ handle: MetalHandle, _ desc: MetalRenderPipelineDescriptor) throws {
         guard isAvailable else { throw VulkanBackendError("no GPU") }
         let p = VKRenderPipeline(desc: desc)
@@ -80,6 +84,9 @@ extension VulkanMetalBackend {
         }
         if !options.asynchronousPipelines, let e = failure.error { throw e }
     }
+
+    static let dropFragments: Set<String> = Set((ProcessInfo.processInfo.environment["YCODE_GPU_DROP_FRAGMENT"] ?? "")
+        .split(separator: ",").map { String($0) })
 
     func buildRenderPipeline(_ p: VKRenderPipeline, handle: MetalHandle, vf: VKFunction?, ff: VKFunction?) throws {
         var vf = vf, ff = ff
@@ -108,6 +115,13 @@ extension VulkanMetalBackend {
                 _ = try translate(TranslationRequest(metallib: vfn.metallib, affinity: affinity), useCache: false)
                 fs = try translate(request)
             }
+        }
+        // Experiments (`YCODE_GPU_DROP_FRAGMENT`, comma-separated names as in
+        // YCODE_GPU_SKIP_SHADERS): the pipeline is built without its fragment function.
+        if let f = fs, !Self.dropFragments.isEmpty,
+           Self.dropFragments.contains(shaderName(f)) || Self.dropFragments.contains(f.reflection.entryPoint ?? "") {
+            log("render pipeline \(handle): \(shaderName(f)) left out (YCODE_GPU_DROP_FRAGMENT)")
+            fs = nil
         }
         cond.lock()
         let setup = Result { try setUpRenderPipeline(p, vertex: vs, fragment: fs) }
@@ -305,6 +319,10 @@ extension VulkanMetalBackend {
 
     // MARK: - Compute pipelines
 
+    /// Registers a compute pipeline under `handle` and translates its kernel
+    /// on the compile queue (errors as for `createRenderPipeline`). The
+    /// returned limits are the device's (at most 1024 threads per
+    /// threadgroup; execution width = subgroup size).
     public func createComputePipeline(_ handle: MetalHandle, function: MetalHandle) throws -> MetalComputePipelineInfo {
         guard isAvailable else { throw VulkanBackendError("no GPU") }
         let p = VKComputePipeline()

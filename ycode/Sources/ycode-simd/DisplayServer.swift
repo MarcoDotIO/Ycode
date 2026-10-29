@@ -36,10 +36,15 @@ func nameThread(_ name: String) { ycodec_name_thread(name) }
 
 final class FrameRecordReader {
     let path: String
+    /// The display's record: 0 for display 1, 1 for a foldable's second display.
+    let slot: Int
     private var fd: Int32 = -1
     private var reads = 0
 
-    init(path: String) { self.path = path }
+    init(path: String, slot: Int = 0) {
+        self.path = path
+        self.slot = slot
+    }
     deinit { if fd >= 0 { close(fd) } }
 
     func read() -> FrameRecord? {
@@ -53,8 +58,8 @@ final class FrameRecordReader {
             fd = open(path, O_RDONLY | O_CLOEXEC)
             if fd < 0 { return nil }
         }
-        var buf = [UInt8](repeating: 0, count: 128)
-        let n = buf.withUnsafeMutableBytes { pread(fd, $0.baseAddress, 128, 0) }
+        var buf = [UInt8](repeating: 0, count: FrameRecord.size)
+        let n = buf.withUnsafeMutableBytes { pread(fd, $0.baseAddress, FrameRecord.size, off_t(slot * FrameRecord.size)) }
         guard n > 0 else { return nil }
         return FrameRecord.parse(Substring(String(decoding: buf[0..<n], as: UTF8.self)))
     }
@@ -154,11 +159,23 @@ final class DisplayServer: @unchecked Sendable {
     let screen: (width: Int, height: Int, scale: Double)
     /// The device's model identifier (hello `model`; the device type's).
     var model = DeviceType.default.modelIdentifier
+    /// The device type's id and the runtime ("iOS 27.1") for the hello.
+    var deviceTypeID: String?
+    var osVersion: String?
     let log: (String) -> Void
     /// The timing trace (YCODE_DISPLAY_TIMING=1), or nil.
     var trace: DisplayTrace?
     /// The HID service's last sequence number (input trace lines).
     var hidSequence: (() -> UInt64)?
+    /// The built-in displays (display 1 first) and, on a foldable, the
+    /// hinge (foldable.md "Ycode implementation").
+    var panels: [PanelInfo] = []
+    var fold: FoldController?
+    /// A device command from the viewer (0x90; the control socket's
+    /// commands, simulator-features.md "Ycode implementation") → its answer.
+    var commands: (@Sendable (String) -> String)?
+    /// The panel the viewer was last told it is shown (touches go there).
+    private var shown: PanelInfo?
     private let lock = NSLock()
     private var current: DisplayClientSession?
     private var stopping = false
@@ -223,11 +240,33 @@ final class DisplayServer: @unchecked Sendable {
     }
 
     var hello: DisplayServerHello {
-        DisplayServerHello(deviceName: DeviceLayout.deviceName, model: model, pixelWidth: screen.width,
-                           pixelHeight: screen.height, scale: screen.scale, encodings: encodings,
-                           touch: input?.acceptsTouch ?? false, keyboard: input?.acceptsKeyboard ?? false,
-                           buttons: (input?.buttons ?? []).map(\.name), rotation: false)
+        var h = DisplayServerHello(deviceName: DeviceLayout.deviceName, model: model, pixelWidth: screen.width,
+                                   pixelHeight: screen.height, scale: screen.scale, encodings: encodings,
+                                   touch: input?.acceptsTouch ?? false, keyboard: input?.acceptsKeyboard ?? false,
+                                   buttons: (input?.buttons ?? []).map(\.name), rotation: fold != nil,
+                                   foldable: fold != nil ? true : nil, displays: panels.count > 1 ? panels.map(\.name) : nil)
+        h.deviceType = deviceTypeID
+        h.osVersion = osVersion
+        return h
     }
+
+    /// The panel to show for these frame records, and its state message.
+    func panelState(records: [FrameRecord?]) -> (PanelInfo, DisplayPanelState)? {
+        guard !panels.isEmpty else { return nil }
+        let model = fold?.state
+        let black = panels.count > 1 && model != nil ? records.map { surfaces.presentedFrameIsBlack($0) } : []
+        let p = activePanel(panels, model: model, records: records, black: black)
+        let o = model?.orientation ?? .portrait
+        let state = DisplayPanelState(display: p.name, pixelWidth: p.width, pixelHeight: p.height, scale: p.scale,
+                                      rotation: PanelPicture.viewRotation(mountRotation: p.mountRotation, orientation: o),
+                                      hingeAngle: model?.angle ?? 0, targetAngle: fold?.sweepTarget,
+                                      posture: (model?.posture ?? .closed).rawValue, orientation: o.name)
+        return (p, state)
+    }
+
+    /// The panel touches go to (the one shown; display 1 before any state).
+    var touchPanel: PanelInfo? { lock.withLock { shown } }
+    func setShown(_ p: PanelInfo) { lock.withLock { shown = p } }
 
     /// The presented surface (or, before the first frame, nothing).
     func presentedSurface(_ record: FrameRecord?) -> IOSurfaceInfo? {
@@ -249,6 +288,8 @@ final class DisplayClientSession: @unchecked Sendable {
     private var inputUntil: UInt64 = 0
     private var noticeSent = false
     private var recordDirty = false
+    /// The rotation of the panel state last sent (screenshots).
+    private var shownRotation = 0
     // Statistics (logged at the end).
     private var framesSent = 0, bytesSent = 0, encodeNanoseconds: UInt64 = 0, scans = 0
     private let connectedAt = monotonicMilliseconds()
@@ -345,8 +386,26 @@ final class DisplayClientSession: @unchecked Sendable {
         case .screenshotRequest(let token):
             let png = screenshot()
             try? connection.send(.screenshot(token: token, png: png))
-        case .rotate:
-            sendNotice("rotation is not supported yet")
+        case .rotate(let o):
+            guard let fold = server.fold else { sendNotice("rotation is not supported for this device yet"); break }
+            guard let orientation = DeviceMotionOrientation(rawValue: UInt32(o)), orientation != .ambiguous else {
+                sendNotice("this device does not take that orientation"); break
+            }
+            if case .failure(let e) = fold.setOrientation(orientation) { sendNotice("rotate: \(e)") }
+        case .fold(let angle, let instant):
+            guard let fold = server.fold else { sendNotice("this device does not fold"); break }
+            if case .failure(let e) = fold.fold(to: Int(angle), instant: instant) { sendNotice("fold: \(e)") }
+        case .command(let token, let text):
+            guard let commands = server.commands else {
+                try? connection.send(.commandReply(token: token, text: "error: this device takes no commands"))
+                break
+            }
+            // Off the receive thread: a command can wait for the guest.
+            let connection = connection
+            Thread.detachNewThread {
+                let answer = commands(text)
+                try? connection.send(.commandReply(token: token, text: answer))
+            }
         case .input(let event):
             let received = monotonicNanoseconds()
             let delivered = server.input?.deliver(event) ?? false
@@ -375,12 +434,16 @@ final class DisplayClientSession: @unchecked Sendable {
         }
     }
 
+    /// The panel shown, as shown (turned by its rotation).
     private func screenshot() -> [UInt8] {
-        let reader = FrameRecordReader(path: server.statePath)
+        let slot = server.touchPanel?.slot ?? 0
+        let reader = FrameRecordReader(path: server.statePath, slot: slot)
         guard let record = reader.read(), let snap = server.surfaces.snapshot(surfaceID: record.surface),
               snap.bytesPerElement == 4, snap.width > 0, snap.height > 0 else { return [] }
-        let rgba = PNG.rgba(fromBGRA: snap.bytes, width: snap.width, height: snap.height, bytesPerRow: snap.bytesPerRow)
-        return CompressedPNG.encode(width: snap.width, height: snap.height, rgba: rgba)
+        let flat = PNG.rgba(fromBGRA: snap.bytes, width: snap.width, height: snap.height, bytesPerRow: snap.bytesPerRow)
+        let rotation = condition.withLock { shownRotation }
+        let (rgba, w, h) = PanelPicture.rotate(rgba: flat, width: snap.width, height: snap.height, degrees: rotation)
+        return CompressedPNG.encode(width: w, height: h, rgba: rgba)
     }
 
     // MARK: Sending
@@ -395,7 +458,10 @@ final class DisplayClientSession: @unchecked Sendable {
             }
             if settings == nil { settings = DisplayClientHello(client: "unknown", encoding: server.encodings.first ?? "zlib") }
         }
-        let reader = FrameRecordReader(path: server.statePath)
+        let readers = (server.panels.isEmpty ? [PanelInfo(name: "LCD", slot: 0, width: server.screen.width,
+                                                          height: server.screen.height, scale: server.screen.scale, mountRotation: 0)]
+                       : server.panels).map { FrameRecordReader(path: server.statePath, slot: $0.slot) }
+        var lastPanelState: DisplayPanelState?
         let watcher = FrameRecordWatcher(path: server.statePath) { [weak self] in self?.recordChanged() }
         defer { watcher?.stop() }
         var mirror: DisplayMirror?
@@ -411,7 +477,31 @@ final class DisplayClientSession: @unchecked Sendable {
         var sequence: UInt64 = 0
         while !isClosed {
             let now = monotonicMilliseconds()
-            let record = reader.read()
+            // Every panel's record; the one shown is the panel's whose turn it
+            // is (foldable.md §8.1 D3). A change of panel (or of its turn, the
+            // fold) is announced first and the next frame is a full one.
+            let records = readers.map { $0.read() }
+            var slot = 0
+            if let (panel, state) = server.panelState(records: records) {
+                slot = panel.slot
+                if state != lastPanelState {
+                    let switched = lastPanelState?.display != state.display
+                    let turned = lastPanelState?.rotation != state.rotation
+                    lastPanelState = state
+                    server.setShown(panel)
+                    condition.withLock { shownRotation = state.rotation }
+                    do { try connection.send(.displayState(state)) } catch { break }
+                    if switched || turned {
+                        server.log("display server: showing \(state.display) (turned \(state.rotation)°; hinge \(state.hingeAngle)°, \(state.orientation))")
+                    }
+                    if switched {
+                        mirror = nil
+                        lastRecord = nil
+                    }
+                    if switched || turned { condition.withLock { keyframeWanted = true } }
+                }
+            }
+            let record = records.indices.contains(slot) ? records[slot] : nil
             if let record, record != lastRecord {
                 lastRecord = record
                 settleUntil = now + 300
@@ -419,7 +509,8 @@ final class DisplayClientSession: @unchecked Sendable {
                 server.trace?.line("record \(record.frame) \(monotonicNanoseconds())"
                                    + (Self.abTest ? ((monotonicMilliseconds() / 1000) % 2 == 1 ? " poll" : " watch") : ""))
             }
-            let newPhase = server.isStopping ? "stopping" : (record == nil ? "booting" : "live")
+            let anyFrame = records.contains { ($0?.surface ?? 0) != 0 }
+            let newPhase = server.isStopping ? "stopping" : (anyFrame ? "live" : "booting")
             if newPhase != phase || now >= nextStatus {
                 phase = newPhase
                 sendStatus(phase: phase, guestFrames: Int(record?.frame ?? 0))
@@ -501,7 +592,8 @@ final class DisplayClientSession: @unchecked Sendable {
 /// of killing the VMM. A second signal, or a session not bound yet, exits
 /// at once (status 128 + signal).
 func startDisplayServer(config: ExecConfiguration, surfaces: IOSurfaceHostService?, session: DeviceSession?,
-                        hid: HIDHostService?, started: UInt64, guestClock: (() -> UInt64?)? = nil) -> DisplayServer? {
+                        hid: HIDHostService?, fold: FoldController? = nil, started: UInt64,
+                        guestClock: (() -> UInt64?)? = nil) -> DisplayServer? {
     guard let address = config.options.displayServer else { return nil }
     guard let device = config.device, let surfaces else {
         stderrLine("ycode-simd: --display-server needs --device and the IOSurface service; not started")
@@ -510,15 +602,31 @@ func startDisplayServer(config: ExecConfiguration, surfaces: IOSurfaceHostServic
     let server: DisplayServer
     // The display and touch space are the device type's (ipad.md §6).
     let screen = device.deviceType.screen
+    let bridge = hid.map { HIDInputBridge(hid: $0, pointWidth: screen.pointWidth, pointHeight: screen.pointHeight) }
     do {
         server = try DisplayServer(address: address, statePath: device.framebufferStatePath, surfaces: surfaces, started: started,
                                    screen: (screen.width, screen.height, screen.scale),
-                                   input: hid.map { HIDInputBridge(hid: $0, pointWidth: screen.pointWidth, pointHeight: screen.pointHeight) },
+                                   input: bridge,
                                    log: { stderrLine("ycode-simd: " + $0) })
         server.model = device.deviceType.modelIdentifier
+        server.deviceTypeID = device.deviceType.id
+        let version = device.runtimeVersion().version
+        server.osVersion = version.isEmpty ? nil : "\(device.runtimePlatform().displayName) \(version)"
     } catch {
         stderrLine("ycode-simd: cannot start the display server on \(address): \(error)")
         return nil
+    }
+    // A foldable (display-stream.md §11; foldable.md §10.1): its built-in
+    // panels, the hinge, and touches for the panel shown, in that panel's
+    // own points and with its touch-display index.
+    if let fold {
+        let panels = device.deviceType.panels
+        server.panels = panels
+        server.fold = fold
+        bridge?.panel = { [weak server] in
+            let p = server?.touchPanel ?? panels[0]
+            return (p.touchDisplay, Double(p.width) / p.scale, Double(p.height) / p.scale)
+        }
     }
     if DeviceLayout.displayTiming {
         server.trace = DisplayTrace(path: device.displayTracePath, guestClock: guestClock)

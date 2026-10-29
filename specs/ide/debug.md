@@ -171,6 +171,55 @@ with the program counter's line marked as the current line. While it is
 on, Step Over / Step Into send `next` / `stepIn` with `granularity:
 "instruction"`.
 
+## Environment Overrides and Simulate Location (FEAT-IMPL, 2026-10-27)
+
+The debug bar's **Environment Overrides** and **Simulate Location**
+buttons (after Step Out, `reference-ui-4.md` §1.2) act on an app running
+on the Ycode simulator (`run.md` §Remote Ycode simulator). No debugger
+attaches to such a run, so the reference's way — the debugger running code
+in the app (`specs/simulator/simulator-features.md` §7.3) — is not
+available. **Ycode decision:** the remote run launches the app with
+`--environment-overrides`: ycode-simd inserts Ycode's overrides library
+into the app (`DYLD_INSERT_LIBRARIES`) and names a directory of the device
+for its overrides file; changing an override rewrites the app's file and
+the library applies it inside the app at once. Only the app changes; the
+device's settings and other apps stay as they are. A new run of the app
+starts with no overrides (ycode-simd removes the file at the launch).
+
+- **Environment Overrides** opens a pop-over (Ycode's layout; the
+  reference's was not observed, §7.3 Q11): three sections with a switch
+  each — **Appearance** (Light | Dark), **Dynamic Type** (a 12-step
+  slider, X Small … Accessibility 5, with the size's name under it),
+  **Accessibility** (check boxes: Increase Contrast, Reduce Transparency,
+  Bold Text, Reduce Motion, On/Off Labels, Button Shapes, Grayscale, Smart
+  Invert, Differentiate Without Color) — and **Disable All Overrides**. A
+  section that is off is "No Override" for its items; with Accessibility
+  on, each item takes its check box (checked = Enabled, Increased or
+  Reduced; unchecked = Disabled or Default). Every change is sent at once
+  as one control command, `overrides <bundle id> <item>=<value>…` (or
+  `clear`); the line under the sections says "Applied to the running app",
+  "No overrides" or the error. Without a run on the Ycode simulator the
+  button shows a short note instead.
+- **Simulate Location** opens a menu: Don't Simulate Location, the 14
+  places of `simulator-features.md` §7.1, then City Run, City Bicycle
+  Ride, Freeway Drive, Apple; the item last chosen is checked; choosing one
+  sends `location set …`, `location run …` or `location clear` to the
+  run's device. Without such a run the menu says "Location simulation
+  needs a run on the Ycode simulator".
+
+What the library does in the app (`SimGuestAgents/overrides`):
+appearance, Dynamic Type, Increase Contrast and Bold Text become trait
+overrides of every window scene (UIKit's public `traitOverrides`), so the
+trait collection, SwiftUI's environment and Dynamic Type fonts follow; the
+accessibility switches answer UIKit's public status functions
+(`UIAccessibilityIsReduceMotionEnabled` and the others, through dyld
+interposing) and their public change notifications are posted. Code:
+`YcodeUI` `EnvironmentOverridesPanel.swift`, `DebugBarExtras.swift`,
+`WorkspaceWindowController+SimulatorDebugBar.swift`; model
+`YcodeSimFeatures.EnvironmentOverrides`. Tests: `SimulatorSettingsUITests`,
+`SimFeaturesTests`; verified on the Linux host with Ycode's probe app
+(`simulator-features.md` "Ycode implementation" §I.8).
+
 ## Evidence
 
 - Debug menu items and the breakpoint file format: `reference-ui-5.md`
@@ -230,3 +279,7 @@ on, Step Over / Step Into send `next` / `stepIn` with `granularity:
   access type Watch uses by default; the disassembly window size and
   format; queue grouping details (Xcode shows queue labels and thread
   counts).
+- Environment Overrides and Simulate Location (FEAT-IMPL): items, values
+  and categories from `specs/simulator/simulator-features.md` §7.3 (level
+  4 there); the pop-over layout and the in-app library are Ycode design
+  (public UIKit trait overrides and status functions, level 1).

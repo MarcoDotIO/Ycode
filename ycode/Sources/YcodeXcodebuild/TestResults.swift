@@ -61,6 +61,7 @@ public struct TestConsoleParser {
         self.swiftTests = swiftTests
     }
 
+    // swiftlint:disable force_try - constant patterns
     static let caseLine = try! NSRegularExpression(pattern: #"^Test Case '-\[([^ \]]+) ([^\]]+)\]' (passed|failed|skipped) \(([0-9.]+) seconds\)\.$"#)
     static let issueLine = try! NSRegularExpression(pattern: #"^(.*):(\d+): (error: )?-\[([^ \]]+) ([^\]]+)\] : (.*)$"#)
     static let swiftDone = try! NSRegularExpression(pattern: #"^. Test (.+?)(?: with \d+ test cases?)? (passed|failed) after ([0-9.]+) seconds"#)
@@ -70,6 +71,7 @@ public struct TestConsoleParser {
     static let caseStarted = try! NSRegularExpression(pattern: #"^. Test case passing (\d+) arguments? (.+) to (.+) started\.$"#)
 
     static let testStarted = try! NSRegularExpression(pattern: #"^. Test (.+) started\.$"#)
+    // swiftlint:enable force_try
 
     /// Suites in the order they started.
     public private(set) var startedSuites: [String] = []

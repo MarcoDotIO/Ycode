@@ -64,6 +64,12 @@ Invariant (tested): no two commands share a shortcut. The one command
 listed in two menus (Developer Documentation ⇧⌘0, Window and Help;
 `reference-ui-5.md` §2.12, §2.13) counts once.
 
+The coding assistant's items (File ▸ New ▸ Conversation ⌃⌘H, Navigate ▸
+Jump to Next Active Conversation ⌃⌘K, Editor ▸ Show Coding Tools ▸
+Explain / Document / Generate a Playground / Generate a Preview) perform
+their commands (`coding-assistant.md` §4); Conversation in New Tab and in
+Editor Pane stay unavailable.
+
 Item lists and order follow `specs/ide/reference-ui.md` §1 and
 `reference-ui-2.md` §7.8 and §8. Items Ycode cannot perform are listed
 with a unique unimplemented action (`ycodeUnavailable<Name>:`), so AppKit

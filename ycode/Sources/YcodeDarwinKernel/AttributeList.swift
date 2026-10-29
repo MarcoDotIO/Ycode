@@ -36,12 +36,22 @@ extension DarwinKernel {
         /// VOL_CAP_FMT_*: persistent object ids, symbolic links, hard links,
         /// sparse files, case sensitive, case preserving, fast statfs,
         /// 2 TB file size, path from id (fsgetpath, ObjectPaths.swift),
-        /// 64-bit object ids. PATH_FROM_ID matters: LaunchServices reads an
-        /// app's executable only when its file node has a file identifier,
-        /// which needs this capability (home-screen.md §3.3).
+        /// 64-bit object ids, document IDs (0x80000) and write generation
+        /// counts (0x100000) (VolumeFeatures.swift). PATH_FROM_ID matters:
+        /// LaunchServices reads an app's executable only when its file node
+        /// has a file identifier, which needs this capability (home-screen.md
+        /// §3.3); fileindexerd subscribes to its file-provider root only
+        /// with DOCUMENT_ID, WRITE_GENERATION_COUNT, INT_CLONE and
+        /// INT_RENAME_EXCL (service-fidelity.md §11, file-system-features.md).
         static let formatCaps: UInt32 = 0x1 | 0x2 | 0x4 | 0x40 | 0x100 | 0x200 | 0x400 | 0x800 | 0x4000 | 0x20000
-        /// VOL_CAP_INT_*: attrlist, advisory locks, flock, extended attributes.
-        static let interfaceCaps: UInt32 = 0x2 | 0x100 | 0x200 | 0x4000
+            | 0x80000 | 0x100000
+        /// VOL_CAP_INT_*: attrlist, advisory locks, flock, extended
+        /// attributes, clones (0x10000), RENAME_SWAP (0x40000), RENAME_EXCL
+        /// (0x80000).
+        static let interfaceCaps: UInt32 = 0x2 | 0x100 | 0x200 | 0x4000 | 0x10000 | 0x40000 | 0x80000
+        /// ATTR_CMN_GEN_COUNT | ATTR_CMN_DOCUMENT_ID: only with
+        /// FSOPT_ATTR_CMN_EXTENDED (xnu `getattrlist_internal`: EINVAL).
+        static let extendedOnlyCommon: UInt32 = 0x80000 | 0x100000
         static let formatValid: UInt32 = 0x07FF_FFFF
         static let interfaceValid: UInt32 = 0x01FF_7FFF
     }
@@ -130,7 +140,8 @@ extension DarwinKernel {
         let extended = options & AttrList.cmnExtended != 0
         guard raw.readLE(UInt16.self, at: 0) == AttrList.bitmapCount,
               volume & ~AttrList.volValid == 0, dir & ~AttrList.dirValid == 0, file & ~AttrList.fileValid == 0,
-              extended ? fork & ~AttrList.cmnExtValid == 0 : fork == 0
+              extended ? fork & ~AttrList.cmnExtValid == 0 : fork == 0,
+              extended || common & AttrList.extendedOnlyCommon == 0
         else { throw Failure(errno: Errno.EINVAL) }
         if volume != 0 {
             // ATTR_VOL_INFO is documented as required, but the Mac's kernel
@@ -220,14 +231,11 @@ extension DarwinKernel {
         }
     }
 
-    /// ATTR_CMN_GEN_COUNT: nonzero, and different after the object changes
-    /// (APFS starts at 1 and counts modifications; level 3, the Mac's
-    /// getattrlist). Ycode derives it from the change time in tenths of a
-    /// second since 2020-09-13, which changes with every modification.
-    static func generationCount(_ st: DarwinStat) -> UInt32 {
-        let tenths = (st.ctime.sec - 1_600_000_000) &* 10 &+ st.ctime.nsec / 100_000_000
-        return UInt32(truncatingIfNeeded: max(1, tenths))
-    }
+    /// ATTR_CMN_GEN_COUNT, the write generation count: nonzero for files
+    /// and directories, different after their contents change, the same
+    /// otherwise (`WriteGenerations`, VolumeFeatures.swift); 0 for other
+    /// objects (HFS).
+    static func generationCount(_ st: DarwinStat) -> UInt32 { WriteGenerations.count(st) }
 
     /// ATTR_CMN_ADDEDTIME: when the object was added to its directory; the
     /// Mac reports the creation time for objects never moved (level 3).
@@ -268,7 +276,7 @@ extension DarwinKernel {
             case 0x20000: p.u32(UInt32(st.mode))                           // ACCESSMASK
             case 0x40000: p.u32(st.flags)                                  // FLAGS
             case 0x80000: p.u32(Self.generationCount(st))                  // GEN_COUNT
-            case 0x100000: p.u32(0)                                        // DOCUMENT_ID
+            case 0x100000: p.u32(fileSystem.documentID(atCanonicalPath: o.path))  // DOCUMENT_ID
             case 0x200000:                                                 // USERACCESS (R/W/X_OK)
                 var access = UInt32(st.mode >> 6) & 7
                 if !o.writable { access &= ~2 }
@@ -412,8 +420,9 @@ extension DarwinKernel {
 // volumes have fixed names); anything else is EINVAL. Applied: MODTIME and
 // ACCTIME (host times), FNDRINFO (kept as the `com.apple.FinderInfo`
 // extended attribute, as Darwin file systems without native Finder info
-// do), OWNERID/GRPID (chown rules), ACCESSMASK (chmod), DATA_PROTECT_FLAGS
-// (the protection class). SCRIPT, CRTIME, CHGTIME, BKUPTIME, FLAGS,
+// do), OWNERID/GRPID (chown rules), ACCESSMASK (chmod), FLAGS (chflags:
+// file flags and document IDs, VolumeFeatures.swift), DATA_PROTECT_FLAGS
+// (the protection class). SCRIPT, CRTIME, CHGTIME, BKUPTIME,
 // EXTENDED_SECURITY, UUID, GRPUUID and ADDEDTIME are accepted and not kept.
 extension DarwinKernel {
     static let finderInfoName = "com.apple.FinderInfo"
@@ -477,7 +486,7 @@ extension DarwinKernel {
         }
         func u32() throws -> UInt32 { Array(try take(4)).readLE(UInt32.self, at: 0) }
         var modification: DarwinTimespec?, access: DarwinTimespec?
-        var finderInfo: [UInt8]?, owner: UInt32?, group: UInt32?, mode: UInt32?, protection: UInt32?
+        var finderInfo: [UInt8]?, owner: UInt32?, group: UInt32?, mode: UInt32?, protection: UInt32?, flags: UInt32?
         for bit in 8..<31 where common & (1 << UInt32(bit)) != 0 {
             switch UInt32(1) << UInt32(bit) {
             case 0x100: _ = try u32()                                    // SCRIPT
@@ -488,7 +497,7 @@ extension DarwinKernel {
             case 0x8000: owner = try u32()
             case 0x10000: group = try u32()
             case 0x20000: mode = try u32()
-            case 0x40000: _ = try u32()                                  // FLAGS (not kept)
+            case 0x40000: flags = try u32()                              // FLAGS (chflags)
             case 0x400000: _ = try take(8)                               // EXTENDED_SECURITY reference
             case 0x800000, 0x1000000: _ = try take(16)                   // UUID, GRPUUID
             case 0x40000000: protection = try u32()                      // DATA_PROTECT_FLAGS
@@ -523,6 +532,7 @@ extension DarwinKernel {
                 try fs.setExtendedAttribute(target, name: Self.finderInfoName, value: finderInfo, create: false, replace: false)
             }
         }
+        if let flags { try fs.setFileFlags(target, flags) }
         if let protection, case .descriptor(let fd) = target, let f = try? fs.file(for: fd) {
             try setProtectionClass(f, Int32(bitPattern: protection))
         }
@@ -539,10 +549,19 @@ extension DarwinKernel {
 // attributes, variable data), each record a multiple of 8 bytes. "." and
 // ".." are not returned; entries are not followed (a symbolic link reports
 // itself). ATTR_CMN_RETURNED_ATTRS is required; volume attributes are
-// EINVAL; `forkattr` holds the extended common attributes. The read
+// EINVAL; ATTR_CMN_ERROR is packed only with FSOPT_PACK_INVAL_ATTRS;
+// `forkattr` holds the extended common attributes. The read
 // position is the descriptor's directory position (shared with
 // getdirentries64). Returns the number of records, 0 at the end.
 extension DarwinKernel {
+    /// Diagnostics A/B (`YCODE_DEBUG_BULK_ERROR_WORD=1`): the form before
+    /// visionos.md §10.16 (ATTR_CMN_ERROR and its word whenever requested).
+    static let debugBulkErrorWord = getenv("YCODE_DEBUG_BULK_ERROR_WORD").map { String(cString: $0) == "1" } ?? false
+    /// Diagnostics (`YCODE_DEBUG_BULK_LISTINGS=1`): one stderr line per
+    /// listing (first call on a directory) that requests ATTR_CMN_ERROR,
+    /// with the process, directory, options and request.
+    static let debugBulkListings = getenv("YCODE_DEBUG_BULK_LISTINGS").map { String(cString: $0) == "1" } ?? false
+
     func attributeListBulkCall(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
         let fd = Int32(truncatingIfNeeded: a[0])
         let options = a[4]
@@ -556,13 +575,25 @@ extension DarwinKernel {
         else { throw Failure(errno: Errno.EINVAL) }
         let handle = try fileSystem.file(for: fd)
         guard handle.isDirectory else { throw Failure(errno: Errno.ENOTDIR) }
-        if extended.directoryCursors[fd].map({ $0.file !== handle }) ?? true {
-            extended.directoryCursors[fd] = .init(file: handle, entries: try listDirectory(fd: fd, file: handle))
-        }
-        var cursor = extended.directoryCursors[fd]!
+        try ensureDirectoryCursor(fd, handle)
+        guard var cursor = extended.directoryCursors[fd], cursor.file === handle else { throw Failure(errno: Errno.EBADF) }
         let base = handle.guestPath
         let capacity = Int(min(a[3], 1 << 20))
         let packInvalid = options & AttrList.packInvalAttrs != 0
+        // ATTR_CMN_ERROR (and its u32, right after the attribute set) is
+        // packed and returned only with FSOPT_PACK_INVAL_ATTRS, as a zero
+        // word; without it an object without an error gets neither the bit
+        // nor the word, so the name reference follows the attribute set
+        // (visionos.md §10.15.2, level 3; xnu `attr_pack_common`, level 1).
+        // Foundation's depth-first listing reads the records that way and
+        // descends into no directory when the word is there. Entries Ycode
+        // cannot stat (removed since the directory was read) are skipped;
+        // they never carry an error.
+        let packed = packInvalid || Self.debugBulkErrorWord ? common : common & ~AttrList.cmnError
+        if Self.debugBulkListings, cursor.next == 0, common & AttrList.cmnError != 0 {
+            FileHandle.standardError.write(Data(("ycode-bulk: pid \(pid) (\(processRecord?.comm ?? "?")) lists \(base) "
+                + "options=\(hx(options)) attrs=[\(groups.map { hx(UInt64($0)) }.joined(separator: ","))]\n").utf8))
+        }
         var out: [UInt8] = []
         var count = 0
         while cursor.next < cursor.entries.count {
@@ -573,12 +604,12 @@ extension DarwinKernel {
             let isDir = info.stat.isDirectory
             var packer = AttrPacker()
             packer.zeros(20)
-            packCommon(common, info, &packer)
+            packCommon(packed, info, &packer)
             if isDir || packInvalid { packDirectory(dir, info, valid: isDir, &packer) }
             if !isDir || packInvalid { packFile(file, info, valid: !isDir, &packer) }
             packCommonExtended(fork, info, &packer)
             var record = packer.encoded()
-            record.putLE(common, at: 4)
+            record.putLE(packed, at: 4)
             record.putLE(UInt32(0), at: 8)
             record.putLE(isDir ? dir : 0, at: 12)
             record.putLE(isDir ? 0 : file, at: 16)

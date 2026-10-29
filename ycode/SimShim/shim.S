@@ -75,6 +75,8 @@
 #define CNTKCTL_EL0VCT  (1 << 1)
 #define RESUME_FLUSH_TLB_BIT 0
 #define RESUME_FP_TOUCH_BIT  1
+#define RESUME_KEEP_ICACHE_BIT 2  /* with bit 0: TLB only, no I-cache invalidation */
+#define RESUME_BY_VA_BIT     3    /* with bit 0: leaf entries of bits 16-63 (VA >> 14), bits 8-15 + 1 pages */
 /* Contract 5.1: SMCCC fast call, SMC64, vendor hypervisor service, 0x5943. */
 #define HVC_DOORBELL_FN_LO   0x5943
 #define HVC_DOORBELL_FN_HI   0xC600
@@ -127,9 +129,12 @@ _start:
         mov     x2, #CNTKCTL_EL0VCT
         msr     cntkctl_el1, x2
 
-        /* Step 6: drop stale TLB entries (and stale I-cache lines). */
-        tlbi    vmalle1
-        ic      iallu
+        /* Step 6: drop stale TLB entries (and stale I-cache lines), on
+           every PE of the inner shareable domain: a VM reused for another
+           process (boot-profile.md §9, SP1) may have entries of the old
+           process's vCPUs cached on other PEs under the same VMID. */
+        tlbi    vmalle1is
+        ic      ialluis
         dsb     sy
         isb
 
@@ -325,8 +330,35 @@ trap_common:
         mrs     x3, fpcr
 3:
         tbz     x2, #RESUME_FLUSH_TLB_BIT, 2f
+        /*
+         * resumeFlags bit 3: only the leaf entries of the 16 KiB pages that
+         * the trap removed or changed (contract 5.2). The TLBI operand is
+         * VA[55:12]; one 16 KiB page is 4 in it. x3, x4 are restored from
+         * the frame below.
+         */
+        tbz     x2, #RESUME_BY_VA_BIT, 5f
+        ubfx    x3, x2, #8, #8                  /* pages - 1 */
+        lsr     x4, x2, #16                     /* VA >> 14 */
+        lsl     x4, x4, #2                      /* VA >> 12 */
+        dsb     ishst
+6:
+        tlbi    vale1is, x4
+        add     x4, x4, #4
+        subs    x3, x3, #1
+        b.pl    6b
+        b       7f
+5:
         tlbi    vmalle1is
+7:
+        /*
+         * resumeFlags bit 2: the host's CTR_EL0.DIC is 1, so instruction
+         * fetch is coherent with data writes and a reused page needs no
+         * I-cache invalidation; skip the broadcast, which empties the
+         * I-cache of every core (contract 5.2).
+         */
+        tbnz    x2, #RESUME_KEEP_ICACHE_BIT, 4f
         ic      ialluis
+4:
         dsb     ish
         isb
         bic     x2, x2, #(1 << RESUME_FLUSH_TLB_BIT)

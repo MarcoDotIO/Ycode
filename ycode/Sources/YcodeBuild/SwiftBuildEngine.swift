@@ -304,7 +304,22 @@ public struct SwiftBuildMessageReader {
     public private(set) var issues: [Diagnostic] = []
     /// The `buildCompleted` result, once seen (true = ok).
     public private(set) var completed: Bool?
+    /// Task counts for the activity view: tasks finished (completed or up
+    /// to date) and tasks known (started or up to date, or the larger
+    /// total of swift-build's own "Building n of m tasks" progress text).
+    public private(set) var tasksDone = 0
+    public private(set) var tasksPlanned = 0
+    private var startedIDs = Set<Int>()
     public init() {}
+
+    /// "Building 3 of 10 tasks" → 10 (swift-build's progress text).
+    static func plannedTotal(inProgressText text: String) -> Int? {
+        let words = text.split(separator: " ")
+        guard let i = words.firstIndex(of: "of"), i + 1 < words.count, words.last == "tasks" else { return nil }
+        return Int(words[i + 1])
+    }
+
+    private var progress: BuildEvent { .progress(done: tasksDone, total: max(tasksPlanned, tasksDone)) }
 
     public mutating func feed(_ line: String) -> [BuildEvent] {
         if Int(line) != nil { return [] } // length prefix
@@ -314,8 +329,24 @@ public struct SwiftBuildMessageReader {
             return line.isEmpty ? [] : [.output(line)]
         }
         switch kind {
+        case "planningOperationStarted":
+            return [.planning]
         case "taskStarted":
-            return (msg["executionDescription"] as? String).map { [.activity($0)] } ?? []
+            if let id = msg["id"] as? Int { startedIDs.insert(id) }
+            tasksPlanned += 1
+            return [progress] + ((msg["executionDescription"] as? String).map { [.activity($0)] } ?? [])
+        case "taskComplete":
+            if let id = msg["id"] as? Int, startedIDs.remove(id) == nil { return [] }
+            tasksDone += 1
+            return [progress]
+        case "taskUpToDate":
+            tasksDone += 1
+            tasksPlanned += 1
+            return [progress]
+        case "didUpdateProgress":
+            guard let total = (msg["message"] as? String).flatMap(Self.plannedTotal(inProgressText:)), total > tasksPlanned else { return [] }
+            tasksPlanned = total
+            return [progress]
         case "output":
             guard let b64 = msg["data"] as? String, let d = Data(base64Encoded: b64) else { return [] }
             return String(decoding: d, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false)

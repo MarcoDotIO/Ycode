@@ -54,8 +54,9 @@ import YcodeDarwinABI
                 while Date() < deadline {
                     k += 1
                     let i = k % targets.count
+                    // Every other read on the routine's fast path (G under the event lock, mach-ipc-locking.md §4.10).
                     let code = w.kr(t, ctx, Int64(MachIPC.Routine.threadGetState),
-                                    [UInt64(targets[i].portName), flavor, state, count])
+                                    [UInt64(targets[i].portName), flavor, state, count], fast: k % 2 == 0)
                     switch code {
                     case MachKern.success:
                         let s = w.read(t, state, 34 * 8)

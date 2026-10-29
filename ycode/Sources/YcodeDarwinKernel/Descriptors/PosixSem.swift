@@ -104,6 +104,7 @@ extension DarwinKernel {
             let wait = n == PosixSemBSD.wait
             call.set("\(wait ? "sem_wait" : "sem_trywait")(\(int(0)))")
             let sem = try semaphore(int(0))
+            // swiftlint:disable:next empty_count - the semaphore value, not a collection
             while sem.count <= 0 {
                 guard wait else { throw fail(Code.EAGAIN) }
                 if sem.waiters.wait(on: lock, deadline: nil) == .interrupted { throw fail(Code.EINTR) }

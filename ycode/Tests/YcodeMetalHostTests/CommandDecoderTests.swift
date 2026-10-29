@@ -3,7 +3,7 @@ import Testing
 @testable import YcodeMetalHost
 
 /// Segments and records of a submission (spec §8), built from the layouts.
-@Suite struct CommandDecoderTests {
+@Suite(.serialized) struct CommandDecoderTests {
     /// Refs map to handles 1000 × kind index + ref; ref 99 is unknown.
     static func resolve(_ kind: MetalRefKind, _ ref: UInt32) -> MetalHandle? {
         guard ref != 99 else { return nil }
@@ -69,6 +69,112 @@ import Testing
     /// The long instanced draw forms (ops 2, 4, 8; layouts from agent H's
     /// capture of our own mtlvary program, metal-sim-protocol.md §8.3) and the
     /// anomaly report for implausible draws.
+    /// Range forms (visionos.md §10.11): op 114 with count 2 (wakeboardd's
+    /// compositor), op 112 with count 2, op 125 with two (ref, offset)
+    /// pairs (the layout of VISIONOS-OBS4's probe: slots 5 and 6 with
+    /// offsets 16 and 32 gave 5, 2, a, 16, b, 32), and op 131 (one viewport
+    /// after a count).
+    @Test func rangeBindingsAndViewportArrays() {
+        let records = [
+            Build.record(26) { $0.append(Build.renderPass(colors: [(0, 3, 2, 1, [0, 0, 0, 1])], width: 64, height: 64)) },
+            Build.record(114) { $0.u32(0); $0.u32(2); $0.u32(14); $0.u32(6) },
+            Build.record(112) { $0.u32(1); $0.u32(2); $0.u32(3); $0.u32(4) },
+            Build.record(125) { $0.u32(2); $0.u32(2); $0.u32(5); $0.u64(16); $0.u32(6); $0.u64(32) },
+            Build.record(131) { w in w.u32(1); for v in [0.0, 0, 3840, 2160, 0, 1] as [Double] { w.f64(v) } },
+        ]
+        let (cb, ops) = decode([Build.segment(kind: MetalEncoderKind.render, records, size: 0)])
+        #expect(ops.isEmpty)
+        guard case .render(let p)? = cb.passes.first else { Issue.record("no render pass"); return }
+        #expect(p.commands == [
+            .setTexture(stage: .fragment, index: 0, texture: Self.h(.resource, 14)),
+            .setTexture(stage: .fragment, index: 1, texture: Self.h(.resource, 6)),
+            .setSamplerState(stage: .fragment, index: 1, sampler: Self.h(.sampler, 3), lodMinClamp: nil, lodMaxClamp: nil),
+            .setSamplerState(stage: .fragment, index: 2, sampler: Self.h(.sampler, 4), lodMinClamp: nil, lodMaxClamp: nil),
+            .setBuffer(stage: .vertex, index: 2, buffer: Self.h(.resource, 5), offset: 16),
+            .setBuffer(stage: .vertex, index: 3, buffer: Self.h(.resource, 6), offset: 32),
+            .setViewport(MetalViewport(x: 0, y: 0, width: 3840, height: 2160, znear: 0, zfar: 1)),
+        ])
+    }
+
+    /// The records of visionOS backboardd's frames (visionos.md §10.12.1):
+    /// fence update and wait (24, 25) with `MTLRenderStages`, the visibility
+    /// mode (132: offset, then mode), and the further render records the
+    /// probes found (22, 27, 103, 105, 106, 118, 120, 121, 134). Deferred
+    /// store actions (102 action then index, 105, 120) land in the pass's
+    /// descriptor too.
+    @Test func fenceVisibilityAndDeferredStoreRecords() throws {
+        let pass = Build.renderPass(colors: [(0, 3, 2, 4, [0, 0, 0, 0]), (1, 8, 1, 1, [0, 0, 0, 1])], width: 64, height: 64)
+        let records: [[UInt8]] = [
+            Build.record(26) { $0.append(pass) },
+            Build.record(25) { $0.u32(4); $0.u32(2) },  // backboardd: 04 00 00 00 02 00 00 00
+            Build.record(132) { $0.u64(0); $0.u64(0) },
+            Build.record(22) { $0.u32(2); $0.u16(2); $0.u16(1); $0.u32(3); $0.u32(8) },
+            Build.record(27) { w in w.u32(2); w.u16(3); w.u32(5); w.u32(6); w.u16(0) },
+            Build.record(134) { $0.u32(1); $0.u32(7) },
+            Build.record(118) { w in w.u32(2); w.u32(0); for v in [1, 2, 30, 40, 0, 0, 8, 8] as [UInt64] { w.u64(v) } },
+            Build.record(102) { $0.u32(2); $0.u32(0) },  // MultisampleResolve on attachment 0
+            Build.record(103) { $0.u64(1); $0.u32(0) },
+            Build.record(105) { $0.u64(0) },
+            Build.record(106) { $0.u64(0) },
+            Build.record(120) { $0.u64(0) },
+            Build.record(121) { $0.u64(0) },
+            Build.record(102) { $0.u32(0); $0.u32(5) },  // an index the pass does not have: no change
+            Build.record(24) { $0.u32(4); $0.u32(2) },
+        ]
+        let (cb, unknown) = decode([Build.segment(kind: 0, records)])
+        #expect(unknown.isEmpty && cb.diagnostics.isEmpty)
+        guard case let .render(p)? = cb.passes.first else { Issue.record("no pass"); return }
+        let r = Self.h
+        #expect(p.commands == [
+            .waitForFence(r(.fence, 4), stages: 2),
+            .setVisibilityResultMode(0, offset: 0),
+            .memoryBarrierResources([r(.resource, 3), r(.resource, 8)], afterStages: 2, beforeStages: 1),
+            .useHeaps([r(.heap, 5), r(.heap, 6)], stages: 3),
+            .useHeaps([r(.heap, 7)], stages: nil),
+            .setScissorRect(MetalScissorRect(x: 1, y: 2, width: 30, height: 40)),
+            .setStoreAction(index: 0, action: 2),
+            .setStoreActionOptions(index: 0, options: 1),
+            .setStoreAction(index: MetalRenderCommand.depthAttachment, action: 0),
+            .setStoreActionOptions(index: MetalRenderCommand.depthAttachment, options: 0),
+            .setStoreAction(index: MetalRenderCommand.stencilAttachment, action: 0),
+            .setStoreActionOptions(index: MetalRenderCommand.stencilAttachment, options: 0),
+            .setStoreAction(index: 5, action: 0),
+            .updateFence(r(.fence, 4), stages: 2),
+        ])
+        let d = try #require(p.descriptor)
+        #expect(d.colorAttachments.map(\.attachment.storeAction) == [2, 1])
+        #expect(d.depth == nil && d.stencil == nil)
+    }
+
+    /// Compute fence records (212, 213), 134, and the range forms of 203
+    /// ((ref, offset) pairs), 204 and 206.
+    @Test func computeFencesAndRangeBindings() {
+        let records: [[UInt8]] = [
+            Build.record(213) { $0.u32(9) },
+            Build.record(203) { $0.u32(1); $0.u32(2); $0.u32(2); $0.u64(16); $0.u32(4); $0.u64(32) },
+            Build.record(206) { $0.u32(0); $0.u32(3); $0.u32(5); $0.u32(0); $0.u32(6) },
+            Build.record(204) { $0.u32(2); $0.u32(2); $0.u32(1); $0.u32(2) },
+            Build.record(134) { $0.u32(2); $0.u32(1); $0.u32(2) },
+            Build.record(212) { $0.u32(9) },
+        ]
+        let (cb, unknown) = decode([Build.segment(kind: 1, records)])
+        #expect(unknown.isEmpty)
+        guard case let .compute(c)? = cb.passes.first else { Issue.record("no compute pass"); return }
+        let r = Self.h
+        #expect(c == [
+            .waitForFence(r(.fence, 9)),
+            .setBuffer(index: 1, buffer: r(.resource, 2), offset: 16),
+            .setBuffer(index: 2, buffer: r(.resource, 4), offset: 32),
+            .setTexture(index: 0, texture: r(.resource, 5)),
+            .setTexture(index: 1, texture: nil),
+            .setTexture(index: 2, texture: r(.resource, 6)),
+            .setSamplerState(index: 2, sampler: r(.sampler, 1), lodMinClamp: nil, lodMaxClamp: nil),
+            .setSamplerState(index: 3, sampler: r(.sampler, 2), lodMinClamp: nil, lodMaxClamp: nil),
+            .useHeaps([r(.heap, 1), r(.heap, 2)]),
+            .updateFence(r(.fence, 9)),
+        ])
+    }
+
     @Test func longInstancedDraws() throws {
         let records = [
             Build.record(2) { $0.u64(0); $0.u64(4); $0.u64(0x12345); $0.u32(3) },
@@ -101,6 +207,29 @@ import Testing
             .draw(MetalDraw(primitiveType: 3, vertexStart: 0, vertexCount: 0x0C00_0004)),
         ])
         #expect(reports.count == 1 && reports[0].contains("op 0"))
+    }
+
+    /// visionos.md §9 Q24, §10.20: op 29's base instance is the low half of
+    /// its last word. visionOS backboardd's depth-only draws carry stale
+    /// bytes in the high half (0x3FF00000 read as one u32), which made
+    /// base instances of a billion: the back end skipped those draws (parts
+    /// of the room missing) or, below its limit, read far past the
+    /// per-instance data.
+    @Test func shortIndexedDrawBaseInstanceIsSixteenBits() throws {
+        let records = [
+            Build.record(29) { $0.u16(3); $0.u16(0); $0.u32(6); $0.u16(0); $0.u16(36); $0.u16(6); $0.u16(0); $0.u32(0x3FF0_0000) },
+            Build.record(29) { $0.u16(3); $0.u16(0); $0.u32(6); $0.u16(8); $0.u16(36); $0.u16(7); $0.u16(0); $0.u32(0x0024_0005) },
+        ]
+        let (cb, unknown) = decode([Build.segment(kind: 0, records)])
+        #expect(unknown.isEmpty)
+        guard case let .render(pass)? = cb.passes.first else { Issue.record("no pass"); return }
+        let r = Self.h
+        #expect(pass.commands == [
+            .drawIndexed(MetalIndexedDraw(primitiveType: 3, indexType: 0, indexBuffer: r(.resource, 6), indexBufferOffset: 0,
+                                          indexCount: 36, instanceCount: 6, baseVertex: 0, baseInstance: 0)),
+            .drawIndexed(MetalIndexedDraw(primitiveType: 3, indexType: 0, indexBuffer: r(.resource, 6), indexBufferOffset: 8,
+                                          indexCount: 36, instanceCount: 7, baseVertex: 0, baseInstance: 5)),
+        ])
     }
 
     @Test func renderEncoderAsBackboarddUsesIt() throws {
@@ -144,7 +273,7 @@ import Testing
             Build.record(17) { $0.u16(3); $0.u16(1); $0.u32(6); $0.u32(7); $0.u64(8); $0.u64(16) },
             Build.record(23) { $0.u16(1); $0.u8(2); $0.u8(4) },
             Build.record(101) { $0.f32(0.1); $0.f32(0.2); $0.f32(0.3); $0.f32(0.4) },
-            Build.record(102) { $0.u32(0); $0.u32(0) },
+            Build.record(102) { $0.u32(1); $0.u32(0) },
             Build.record(104) { $0.u32(2) },
             Build.record(107) { $0.u64(2) },
             Build.record(108) { $0.f32(1); $0.f32(2); $0.f32(3) },
@@ -176,7 +305,7 @@ import Testing
                                  indirectBuffer: r(.resource, 7), indirectOffset: 16),
             .memoryBarrier(scope: 1, afterStages: 2, beforeStages: 4),
             .setBlendColor(red: 0.1, green: 0.2, blue: 0.3, alpha: 0.4),
-            .setColorStoreAction(first: 0, second: 0),
+            .setStoreAction(index: 0, action: 1),
             .setDepthStencilState(r(.depthStencil, 2)),
             .setCullMode(2),
             .setDepthBias(depthBias: 1, slopeScale: 2, clamp: 3),
@@ -222,7 +351,8 @@ import Testing
             Build.record(204) { $0.u32(0); $0.u32(1); $0.u32(1) },
             Build.record(205) { $0.u32(1); $0.u32(1); $0.u32(1); $0.f32(0); $0.f32(2) },
             Build.record(211) { $0.u64(1024); $0.u32(0) },
-            Build.record(209) { w in for v in [0, 0, 0, 8, 8, 1] as [UInt64] { w.u64(v) } },
+            // Size, then origin (OBS4's probe: origin x 2035, size 1, 1, 1 gave 1, 1, 1, 2035, 0, 0).
+            Build.record(209) { w in for v in [1, 1, 1, 2035, 0, 0] as [UInt64] { w.u64(v) } },
             Build.record(200) { w in for v in [4, 2, 1, 16, 16, 1] as [UInt64] { w.u64(v) } },
             Build.record(202) { w in for v in [100, 1, 1, 32, 1, 1] as [UInt64] { w.u64(v) } },
             Build.record(201) { w in for v in [8, 8, 1, 64] as [UInt64] { w.u64(v) }; w.u32(2) },
@@ -241,7 +371,7 @@ import Testing
             .setSamplerState(index: 0, sampler: r(.sampler, 1), lodMinClamp: nil, lodMaxClamp: nil),
             .setSamplerState(index: 1, sampler: r(.sampler, 1), lodMinClamp: 0, lodMaxClamp: 2),
             .setThreadgroupMemoryLength(1024, index: 0),
-            .setStageInRegion(origin: MetalSize3(0, 0, 0), size: MetalSize3(8, 8, 1)),
+            .setStageInRegion(origin: MetalSize3(2035, 0, 0), size: MetalSize3(1, 1, 1)),
             .dispatchThreadgroups(MetalSize3(4, 2, 1), threadsPerThreadgroup: MetalSize3(16, 16, 1)),
             .dispatchThreads(MetalSize3(100, 1, 1), threadsPerThreadgroup: MetalSize3(32, 1, 1)),
             .dispatchThreadgroupsIndirect(buffer: r(.resource, 2), offset: 64, threadsPerThreadgroup: MetalSize3(8, 8, 1)),

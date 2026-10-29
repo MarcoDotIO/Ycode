@@ -34,10 +34,10 @@ final class DEnv: @unchecked Sendable {
             try FileManager.default.createDirectory(atPath: root + "/w", withIntermediateDirectories: true)
             fs = DarwinFileSystem(prefixes: [.init(guestPath: root, hostPath: root, writable: false),
                                              .init(guestPath: root + "/w", hostPath: root + "/w", writable: true)],
-                                  console: { fd, bytes in sink.console[fd, default: []] += bytes })
+                                  console: { fd, bytes in sink.append(fd, bytes) })
         }
         kernel = DarwinKernel(fileSystem: fs, pid: pid, system: parent?.kernel.system,
-                              log: { sink.lines.append($0) }, counter: { 0x1234 }, counterFrequency: 24_000_000,
+                              log: { sink.append($0) }, counter: { 0x1234 }, counterFrequency: 24_000_000,
                               wallClock: { (1_700_000_000, 0) })
         space = GuestAddressSpace(backing: FakePhysicalBacking())
         _ = try space.mapAnonymous(at: Self.scratch, size: Self.scratchSize, protection: .readWrite, hint: nil)

@@ -59,6 +59,8 @@ An outcome matches a discovered test by name, and by suite when the
 runner names one (swift-testing lines do not). Failures become issues
 (issue navigator, editor annotations). A Test entry is added to the Report
 navigator; the activity view ends with "Test Succeeded" or "Test Failed".
+*Pass 6 (`reference-ui-6.md` §3.4): a passing run of selected tests ends
+in "Test Completed"; the whole-scheme text is still to observe.*
 
 ## Test navigator (⌘6)
 
@@ -69,7 +71,8 @@ if all passed. Selecting a test opens its line.
 
 ## Gutter
 
-Each test's declaration line shows a diamond left of the line number:
+Each test's declaration line shows a diamond in place of the line number
+(`reference-ui-6.md` §4.3.1):
 outlined (not run), filled green (passed), filled red (failed). A suite's
 declaration line shows one too: red if any member failed, green if all
 passed, else outlined.

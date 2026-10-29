@@ -110,6 +110,7 @@ public protocol Animatable {
 extension Animatable where AnimatableData == EmptyAnimatableData {
     public var animatableData: EmptyAnimatableData {
         get { EmptyAnimatableData() }
+        // swiftlint:disable:next unused_setter_value - the API shape has a setter that does nothing here
         set {}
     }
 }

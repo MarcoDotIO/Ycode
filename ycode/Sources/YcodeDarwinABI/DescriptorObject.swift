@@ -30,8 +30,10 @@ public protocol DarwinDescriptorObject: AnyObject {
 }
 
 extension DarwinDescriptorObject {
+    /// Default: not confined.
     public var isConfined: Bool { false }
 
+    /// Default: the object's type bits, mode 0600, owned by the guest user.
     public func descriptorStat() -> DarwinStat {
         DarwinStat(mode: fileType | 0o600, nlink: 1, uid: DarwinFileSystem.guestUID, gid: DarwinFileSystem.guestGID)
     }

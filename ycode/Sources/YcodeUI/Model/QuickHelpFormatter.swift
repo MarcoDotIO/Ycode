@@ -4,6 +4,7 @@ import Foundation
 /// fences are dropped (their contents kept), `---` rules become blank
 /// lines, and inline backticks are removed.
 public enum QuickHelpFormatter {
+    /// The plain text Quick Help shows for hover Markdown.
     public static func plain(_ markdown: String) -> String {
         var out: [String] = []
         for line in markdown.components(separatedBy: "\n") {

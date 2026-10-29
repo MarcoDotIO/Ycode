@@ -82,6 +82,7 @@ extension VulkanMetalBackend {
         }
         lastSubmitted = serial
         statistics.submissions += 1
+        retireVisibilityPools(rec, serial: serial)
         for id in rec.writtenSurfaces { surfaceWriteSerials[id] = serial }
         // Held work's copy-outs were recorded (and their generation raised)
         // before images recorded since then copied the surface in; those
@@ -257,7 +258,8 @@ extension VulkanMetalBackend {
                             break
                         }
                         if waited % 10 == 0 {
-                            log("serial \(serial) still running after \(waited) s\(label.isEmpty ? "" : " (\(label))")")
+                            cond.lock(); let where_ = currentCheckpoints(); cond.unlock()
+                            log("serial \(serial) still running after \(waited) s\(label.isEmpty ? "" : " (\(label))")" + where_)
                         }
                         // A killed context does not always make the wait fail; the counter query says so.
                         var value: UInt64 = 0
@@ -439,6 +441,10 @@ extension VulkanMetalBackend {
         return depth <= 1 ? image : (depth - 1) * max(bytesPerImage, image) + image
     }
 
+    /// Writes pixels into a texture. An IOSurface-backed texture (level 0,
+    /// slice 0) is written directly in surface memory; any other texture
+    /// gets a staged copy recorded into the setup command buffer. Throws
+    /// without a GPU or for an unknown texture.
     public func replaceRegion(texture: MetalHandle, _ region: MetalRegion, level: Int, slice: Int, bytes: [UInt8],
                               bytesPerRow: Int, bytesPerImage: Int) throws {
         guard isAvailable else { throw VulkanBackendError("no GPU") }
@@ -473,6 +479,10 @@ extension VulkanMetalBackend {
         rec.empty = false
     }
 
+    /// Reads pixels into guest memory through a staging copy, and blocks
+    /// until the GPU has run it (after all work submitted before). At most
+    /// `into.length` bytes are written. Throws without a GPU or for an
+    /// unknown texture.
     public func getBytes(texture: MetalHandle, _ region: MetalRegion, level: Int, slice: Int, into: GuestSharedRegion,
                          bytesPerRow: Int, bytesPerImage: Int) throws {
         guard isAvailable else { throw VulkanBackendError("no GPU") }

@@ -19,6 +19,7 @@ public final class HKUnit: NSObject, NSSecureCoding, NSCopying, @unchecked Senda
         var d = Dimension.none
         var s = 1.0
         for f in factors {
+            // swiftlint:disable:next shorthand_operator - Dimension defines + but not +=
             d = d + f.atom.dimension * f.exponent
             s *= pow(f.atom.scale, Double(f.exponent))
         }
@@ -103,6 +104,7 @@ extension HKUnit: _HKUnitInterning {}
 extension _HKUnitInterning where Self: HKUnit {
     /// Parses a unit string (`units.md` §2); raises `NSInvalidArgumentException` when it does not parse.
     public init(from string: String) {
+        // swiftlint:disable:next force_cast - HKUnit.parse returns an HKUnit, and units are not subclassed
         self = hkCheck { () throws(HKRaise) in try HKUnit.parse(string) } as! Self
     }
 }

@@ -26,7 +26,10 @@ Product ▸ Run (⌘R) looks at the destination:
   root>/System/Library/CoreServices/SystemVersion.plist'`, off the main
   thread) and kept in user defaults; until then, a dotted version after
   "iOS" in the runtime root's path, if any. The destination is
-  identified by its identifier, not by its title.
+  identified by its identifier, not by its title. With more than one
+  runtime root or device type there is one such row per runtime and type,
+  titled "<device type> (Ycode) <runtime version>" (§Runtimes and device
+  types; this replaces the single "Ycode Simulator" title).
 
 The app bundle a simulator build makes: the build engine's product path
 with the configuration folder suffixed `-iphonesimulator` and without
@@ -76,7 +79,8 @@ and that pid no longer runs.
 
 Settings ▸ Simulators (user defaults only, never files in a project):
 SSH destination (`user@host`), remote data directory, runtime root,
-`ycode-simd` path, device name (default `ycode-device`), and Additional
+`ycode-simd` path, device name (default `ycode-device`), other runtime
+roots (§Runtimes and device types), and Additional
 arguments (host-side `ycode-simd` options such as `--shim`, `--host-stubs`,
 `--host-libs`, `--runtime-paths`, `--metal-translator`, `--gpu-cache-dir`,
 `--timeout-ms`; split into words as a shell would — quotes group,
@@ -84,18 +88,33 @@ backslash escapes — and appended after the generated options, each
 single-quoted). SSH runs with
 `-o BatchMode=yes`: keys only, never a password prompt.
 
-Settings ▸ Simulators also has **Lean boot** (a checkbox, **on by
-default**) with the help text "Faster boot for development: skips
-background services such as Siri, Spotlight, suggestions and photo
-analysis. Turn off to boot every service, as the reference simulator
-does." and a "Keep services" text field (comma-separated launchd labels,
-empty by default). When Lean boot is on, the remote command sets the
+Settings ▸ Simulators also has **Lean boot** (a checkbox, **off by
+default**) with the help text "Development option: skips background
+services such as Siri, Spotlight, suggestions and photo analysis, so apps
+that use them see them missing. Off (the default), every service boots, as
+the reference simulator does." and a "Keep services" text field
+(comma-separated launchd labels, empty by default; it applies only while
+Lean boot is on). When Lean boot is on, the remote command sets the
 environment of `ycode-simd` through `env`: `exec env
 YCODE_LEAN_BOOT=daemons [YCODE_LEAN_BOOT_KEEP='<labels>'] '<ycode-simd>'
 …` (`specs/simulator/lean-boot.md`). When it is off, neither variable is
-set. Lean boot is a development convenience, not parity: the reference
-simulator boots every service, and benchmarks against it use a full
-boot.
+set and the device boots every service. The reference simulator boots
+every service, so IDE runs do too by default (since 2026-10-27; before,
+Lean boot was on by default). Lean boot stays a development convenience.
+
+The setting is kept in the user defaults under
+`Ycode.remote.leanBootChoice`. Until 2026-10-27 it was on by default and
+kept under `Ycode.remote.leanBoot`, which every save of the pane wrote, so
+a stored `true` there mostly recorded the old default. That key is no
+longer read, and the next save removes it: after the update every user
+runs a full boot once, and a user who wants Lean boot turns it on again
+(it is then remembered). Switching Lean boot on or off changes the warm
+boot's fingerprint (§Warm boot, item 2: the `YCODE_LEAN_BOOT*` variables),
+so the next run discards a snapshot of the other kind and boots cold
+once. The setting applies to every Ycode simulator row (each runtime root
+and device type, §Runtimes and device types); each row has its own device
+directory (the iOS 27.1 iPhone Duo row keeps `ycode-device`) and its own
+snapshot, so each row boots cold once, at its next run, after the switch.
 
 Settings ▸ Simulators also has **Warm boot from snapshot** (a checkbox,
 **on by default**) with the help text "Keeps the device's state between
@@ -104,6 +123,21 @@ from it in seconds instead of booting; apps and their data stay until the
 device is erased. Saves are replaced when the simulator or the runtime
 changes. Turn off to boot from scratch every time." The remote command always passes it: `exec env
 YCODE_WARM_BOOT=1|0 [YCODE_LEAN_BOOT=…] '<ycode-simd>' …` (§Warm boot).
+
+Settings ▸ Simulators also has **Camera** (a pop-up: **Off** (the default),
+Host webcam, Synthetic pattern) with the help text "Gives apps a camera: the
+host's USB webcam (or a test pattern when it has none) appears as the
+device's back camera (an iPad's external camera). The reference simulator
+has no camera, so the default is Off." It is the device's camera setting of
+`specs/simulator/camera.md` ("Ycode implementation"): until the user picks a
+value the remote command passes nothing (the device keeps its own setting,
+off for a new device); once picked (defaults key `Ycode.remote.camera`) every
+run (and Device Hub's Start) passes `--camera off|on|synthetic` at the end of
+the command, and the device keeps
+the last value. The launcher's warm-boot fingerprint includes the option, so
+a change boots cold once. The host's guest tools must hold
+`libYcodeCamera.dylib` (`SimGuestAgents/build-camera.sh`) for apps to see
+the camera.
 
 Run:
 
@@ -127,6 +161,19 @@ Run:
    ends by itself the console prints "Ycode Simulator ended with status N"
    (ycode-simd's exit status) and the activity is "Finished running
    <App>" (status 0) or "Run failed".
+
+   > **Correction (pass 6, `reference-ui-6.md` §3.3):** the reference's
+   > simulator run reads "Launching <App>" (also while booting),
+   > "Configuring Debugger Actions", "Running <App> on <device name>",
+   > "Finished running <App> on <device name>", with no step counter. The
+   > "(1 of 3)" counters and the separate boot text are to be replaced by
+   > that sequence; the console lines above stay.
+   > *Status (R42): done. The activity reads "Launching <App>" from the
+   > upload until the launched line (open retries show in the console
+   > only), then "Running <App> on <device>", and after the run "Finished
+   > running <App> on <device>"; <device> is the destination row's name
+   > ("iPhone Duo (Ycode)"). No debugger attaches to a remote run, so it
+   > has no "Configuring Debugger Actions" step.*
 4. Stop: `ssh <dest> "kill -INT <pid>"`, sent off the main thread; the
    launcher turns it into the save at the stop (§Warm boot item 5). The
    local ssh process is **not** signalled at once: the connection stays
@@ -157,12 +204,103 @@ variables, full boot unless `YCODE_E2E_LEAN_BOOT=1`, warm boot unless
 `YCODE_E2E_WARM_BOOT=0`) runs a real app on a real host and prints the
 times to the home screen and to the launch.
 
+### Runtimes and device types
+
+The host can hold more than one simulator runtime (the reduced iOS 27.1
+runtime with Settings and Safari only, and the iOS 27.0 runtime with Maps,
+Calendar, Photos, Messages and the other apps of
+`specs/simulator/home-apps.md` §4–§5), and `ycode-simd` boots several
+device types (`--device-type`, `specs/simulator/ipad.md` §4).
+**Ycode decision:** the remote simulator offers one run destination per
+runtime root and device type.
+
+- Settings ▸ Simulators keeps **Runtime root** (the primary runtime) and
+  adds **Other runtime roots** (paths separated by commas or new lines;
+  empty by default) with the help text "More simulator runtimes on the
+  host, separated by commas. Each runtime adds a run destination for every
+  device type it supports (for example iOS 27.0 with iPads and its full app
+  set). Every runtime and device type has its own device, so data and saved
+  state are kept apart." User defaults: `Ycode.remote.otherRuntimeRoots`
+  (array of strings).
+- Each root's version is read from the host as for the primary root (§Choosing
+  the run path), once per root, and kept per root in
+  `Ycode.remote.runtimeVersions` (root → version; the primary root's also
+  under the single-runtime keys as before). Until it is known, a version in
+  the root's path is used.
+- Device types and the runtimes they run on (the device type's
+  `minRuntimeVersion`, `ipad.md` §3.2): iPhone Duo (`iphone-duo`, 27.1 and
+  later), iPad (A16) (`ipad-a16`, 18.3 and later), iPad Pro 13-inch (M5)
+  (`ipad-pro-13-m5`, 26.0 and later). A root whose version is unknown offers
+  every type. On 27.1 the iPads are Ycode identities without a reference
+  (CoreSimulator restricts that runtime to the iPhone Duo; `ipad.md` §8 D1).
+- **Rows.** For each root (the primary first) and each type that runs on its
+  version, a row "<device type> (Ycode)" with the runtime version, e.g.
+  "iPhone Duo (Ycode) 27.1", "iPad Pro 13-inch (M5) (Ycode) 27.0". They sort
+  with the simulators by runtime, then iPhone before iPad. The primary root's
+  first type, when it is the iPhone Duo, keeps the identifier
+  `ycode-remote-simulator` and the device directory `<device name>` that
+  Ycode used before runtimes were choosable, so an existing device, its
+  snapshot and a remembered destination stay. Every other row's identifier
+  is `ycode-remote-simulator:<type id>@<runtime root>` and its device
+  directory `<device name>-<type id>-<runtime version>` (the version, or the
+  root's last path component when the version is unknown, as a file name).
+  A remembered identifier that no longer exists selects the primary row.
+- **Run.** The command names the row's runtime root and device directory and
+  adds `--device-type <id>` unless the type is the iPhone Duo (`ycode-simd`'s
+  default, so the primary row's command and its snapshot fingerprint are
+  unchanged):
+  `… --device '<data>/devices/<device name>-ipad-pro-13-m5-27.0'
+  --runtime-root '<27.0 root>' '--device-type' 'ipad-pro-13-m5'
+  --install-app …`.
+- **Per-runtime state.** Device directory, snapshot (the launcher keys
+  snapshots by device directory and fingerprints the arguments, so the
+  runtime root and the type are in it, §Warm boot item 2), erase, and the
+  Devices and Simulators row are per row: the Devices window lists one
+  "<device type> (Ycode)" row per runtime and type with its runtime version,
+  and Erase All Content and Settings… erases that row's device only. The GPU
+  caches (`--gpu-cache-dir`: the Vulkan pipeline cache and `ycode-airc`'s
+  translation cache) stay shared: both are keyed by content (the shader
+  function's hash and the translator version; the driver's own pipeline
+  keys), so two runtimes' shaders do not collide.
+- `ycode-simd` records the runtime a device booted in
+  `DEV/ycode-runtime` and refuses to boot that device on an older runtime
+  version (`specs/simulator/ipad.md` §9.2), so a row whose root was changed
+  to an older runtime reports the device instead of breaking its data.
+
+### Settings and Environment Overrides (FEAT-IMPL, 2026-10-27)
+
+The run command launches the app with `--environment-overrides` after
+`--launch '<bundle id>'` (Ycode's overrides library is inserted into the
+app; `debug.md` §Environment Overrides). The launcher counts it as an app
+option, so it is not part of the warm boot's fingerprint. The settings of
+a running device (`devices.md` §Settings) and the debug bar's overrides and
+location go through the launcher like the fold commands: `ycode-sim
+--device '<dev>' --control ui|accessibility|location|audio|overrides|settings …`,
+answered at once by the running `ycode-simd` (no boot slot). The launcher
+also passes `--ui`, `--accessibility`, `--location`, `--audio`,
+`--overrides` and `--settings` straight to `ycode-simd`, which writes the
+persistent settings of a stopped device into its files for the next boot
+(`specs/simulator/simulator-features.md` "Ycode implementation" §I.4).
+
+### Folding (iPhone Duo rows)
+
+A running iPhone Duo is folded from Devices and Simulators (`devices.md`
+§Folding): each command is one ssh call of the launcher, `ycode-sim
+--device '<dev>' --control fold|rotate|state …`, which the launcher hands
+to `ycode-simd` at once (no boot slot) and which reaches the running
+device through its control socket (`specs/simulator/foldable.md` §10.1).
+A foldable device boots with Ycode's HID bundle, which carries the hinge.
+
 ### Warm boot
 
 The reference IDE's simulator just boots; how long that takes is Ycode's
-choice. A cold boot of the Ycode simulator to the home screen takes
-80–120 s on the reference Linux host (full boot); a restore of a snapshot
-of the booted device (`specs/simulator/snapshot.md`) takes 8–12 s. So the
+choice. A cold boot of the Ycode simulator to the home screen took
+80–120 s on the reference Linux host (full boot, 2026-10-19); on the main
+line of 2026-10-27 it takes about 30 s on an idle host (median of timed
+boots, full boot: `specs/simulator/lean-boot.md` §9,
+`scheduling-policy.md` §7.5) and 40–240 s while other boots load the
+host; a restore of a snapshot of the booted device
+(`specs/simulator/snapshot.md`) takes 5–12 s. So the
 remote "ycode-simd path" is normally a host-side launcher,
 `ycode/scripts/ycode-sim.sh` (installed on the host as `ycode-sim`, with
 host paths in a `ycode-sim.conf` next to it), which runs `ycode-simd` and,
@@ -300,6 +438,26 @@ Every run that followed a saved one found the data of all earlier runs;
 a cold boot after a simulator rebuild found it as well; after
 `ycode-sim --erase` the device was new.
 
+Full boot as the default (2026-10-27, agent SVC-FULL; Mac → ssh →
+launcher through `RemoteRunEndToEndTests`, probe app, warm boot on, one
+device copied from the golden device; the host was shared with other
+agents' boots, load 30–120, which made every boot slower than the timed
+30 s):
+
+| Run | Lean boot | Launcher | Home screen | App launched | Stop → saved |
+|---|---|---|---|---|---|
+| 1 | off (default) | "no snapshot yet; cold boot"; no "lean boot" line, every service runs | 285.5 s | 361.4 s | 14.1 s |
+| 2 | on | "discarding the snapshot (… the boot options changed)"; cold; "lean boot: 23 jobs disabled" | 150.8 s | 228.5 s | 5.1 s |
+| 3 | off | discards run 2's lean snapshot; cold full boot | 140.8 s | 214.5 s | 5.6 s |
+| 4 (after the merge with the per-runtime rows, new build) | off | "the simulator build … changed"; cold full boot | 85.5 s | 161.5 s | 5.6 s |
+
+Times are from the start of `ycode-simd`. All four runs passed the test
+(the app launched, Stop saved the device). Guest fatal conditions in the
+full boots: fileindexerd and intelligencetasksd
+(`specs/simulator/service-fidelity.md` §11, §13); in the lean boot,
+AppIntentsLiveEntityService (which also writes crash reports on the Mac,
+`parity-ladder.md` §3.1; once in run 4 too).
+
 ## Evidence
 
 - `simctl` subcommands and options: `xcrun simctl help` and
@@ -308,6 +466,10 @@ a cold boot after a simulator rebuild found it as well; after
 - lldb attach by pid: lldb-dap's documented attach arguments (level 1).
 - ycode-simd options: Ycode's own `ycode-simd` and
   `specs/simulator/app-install-launch.md`.
+- Lean boot off by default, the settings key and the snapshot switch
+  between lean and full: Ycode design; the full and lean boots through
+  the IDE path above are our runs (level 3), and the reference simulator
+  boots every service (`specs/simulator/parity-ladder.md`, level 3).
 - Warm boot: the reference simulator boots a device and keeps its data
   (observable, level 3); `xcrun simctl help erase` (erase a device's
   contents and settings) and Apple's documentation that an app's data
@@ -315,6 +477,14 @@ a cold boot after a simulator rebuild found it as well; after
   1); the snapshot, restore, save-at-stop and fallback behavior and the
   timings are Ycode's own design and our runs on the reference Linux host
   through the launcher and `RemoteRunEndToEndTests` (level 3).
+- Camera: Ycode design (the reference simulator has no camera,
+  `specs/simulator/camera.md` §1); `CameraSettingTests` (no network).
+- Runtimes and device types: the device types' `minRuntimeVersion` and the
+  runtimes' device-type support (`specs/simulator/ipad.md` §2.1, §3.2, level
+  2); rows, identifiers, device directories, the per-root versions and the
+  shared GPU caches are Ycode decisions, tested by `RemoteRuntimesTests`
+  (no network); the 27.0 boots behind them: `specs/simulator/ipad.md` §9.2
+  (level 3, Ycode on the Thor).
 - Test devices: the profiler's finding that the old sweep deleted other
   agents' `ycode-test-*` devices, and `TestSimulatorDevicesTests` (level 3).
 - OPEN QUESTION: the reference IDE's simulator boot UI (it opens the

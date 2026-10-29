@@ -50,6 +50,8 @@ integers are little-endian; floats are IEEE.
 | 0x04 | pong | u64 token, u64 server monotonic ns |
 | 0x05 | screenshot | u32 token, PNG bytes (empty: none available) |
 | 0x06 | notice | UTF-8 text for the person (e.g. "input not delivered…") |
+| 0x07 | display state | JSON (§11) |
+| 0x10 | command answer | u32 token (the command's), UTF-8 text: the control socket's answer ("ok …" or "error: …") |
 | 0x81 | client hello | JSON (§3.2) |
 | 0x82 | touch | §5.1 |
 | 0x83 | key | §5.2 |
@@ -57,7 +59,9 @@ integers are little-endian; floats are IEEE.
 | 0x85 | ping | u64 token |
 | 0x86 | keyframe request | empty: the next frame covers the whole image |
 | 0x87 | screenshot request | u32 token |
-| 0x88 | rotate | u8 orientation (1 portrait, 2 upside down, 3 landscape left, 4 landscape right) |
+| 0x88 | rotate | u8 orientation (1 portrait, 2 upside down, 3 landscape left, 4 landscape right; 5 face up, 6 face down) |
+| 0x89 | fold | u16 hinge angle 0–180, u8 flags (bit 0: one message, no sweep) (§11) |
+| 0x90 | command | u32 token, UTF-8 words of a control-socket command (`ui appearance dark`, `settings`; `simulator-features.md` §I.4); answered by 0x10, off the receive thread (a command can wait for the guest) |
 
 ## 3. Control messages
 
@@ -69,7 +73,12 @@ JSON object: `protocol` = `"ycode-display/1"`, `deviceName`, `model`,
 `encodings` (the frame encodings this server can produce, from
 `["jpeg", "zlib"]`), `touch`, `keyboard` (booleans: whether input is
 wired to the guest), `buttons` (names from §5.3), `rotation` (false today:
-rotation is not implemented, the viewer disables it).
+rotation is not implemented, the viewer disables it). Optional since
+HUB-UI (2026-10-28): `deviceType` (Ycode's device type id, `ycode-simd
+--device-type`, e.g. `iphone-duo`) and `osVersion` (the runtime,
+"iOS 27.1"): the viewer draws the device's frame from the type and titles
+its window with the OS (`device-hub.md` "Ycode implementation"); a viewer
+without them falls back to the model identifier and the pixel size.
 
 ### 3.2 Client hello
 
@@ -201,6 +210,20 @@ shuts down as above. `scripts/ycode-sim-serve stop` sends SIGTERM to the
 launcher and kills its process group after 150 s.
 
 ## 7. The viewer (`ycode-sim-viewer`, macOS)
+
+*Since HUB-UI (2026-10-28) the window is Ycode's compact device window
+(`device-hub.md` §2.2 and "Ycode implementation"): a unified toolbar with
+the device's name and OS and the Expand │ More Actions capsule, the device
+in Ycode's frame (clickable buttons), the glass control row (Home,
+Screenshot, Record │ Rotate, and the iPhone Duo's poses), no button bar
+and no status line (More Actions ▸ Show Frame Rate shows it); resizing the
+window scales the device; the menus are View, Device and Controls
+(`device-hub.md` I.5: Screenshot is now ⇧⌘S, ⌘1/⌘2/⌘3 are retired).
+Expand switches the window to the hub's canvas layout (zoom segments,
+Capture Keyboard). The window, canvas, frame, controls and the connection
+below live in the `YcodeDeviceUI` module, which the IDE's Device Hub
+uses too. The list below describes the input and decoding, which are
+unchanged.*
 
 - Window: the stream at the device's aspect ratio (resizing keeps it), a
   button bar (Home, Lock, Vol +, Vol −, Rotate — disabled until the server
@@ -377,6 +400,37 @@ are not used as evidence.
 3. How does Simulator.app pace mouse-drag touches into the guest (every
    host event, or coalesced per display frame)?
 
+## 11. Foldable devices (FOLD-IMPL, 2026-10-27; `foldable.md` §8, §10)
+
+- **Hello.** Two optional keys: `foldable` (true for a foldable device type)
+  and `displays` (the built-in panels' names, display 1 first, when more
+  than one is published). `rotation` is true for a foldable. A viewer that
+  does not know them ignores them.
+- **Display state (0x07)**, JSON: `display` ("LCD", "LCD-1"),
+  `pixelWidth`, `pixelHeight`, `scale` (the panel's own, native portrait),
+  `rotation` (0/90/180/270: how far to turn the panel's image clockwise to
+  show it as the device is held: the panel's upright turn — 90 for the
+  inner panel, mounted at 270° — minus the device orientation's turn),
+  `hingeAngle` (last sent), `targetAngle` (a sweep's target, or absent),
+  `posture` (`closed`, `halfOpen`, `openFlat`), `orientation` (the device
+  orientation's name). Sent by the send loop before the first frame and
+  whenever it changes; when the panel or its turn changes, the next frame
+  is a full one of that panel (frames are always in the panel's own
+  pixels). The panel shown is `foldable.md` §10.1's choice, checked
+  against the guest's frames (§10.4: a panel whose latest frame is black
+  is not shown while the other panel's is not).
+- **Fold (0x89)** moves the hinge (a sweep; one message with flag bit 0).
+  **Rotate (0x88)** sets the device orientation of a foldable (1, 3, 4, 5,
+  6; 2 is answered with a notice). A non-foldable device answers both with
+  a notice, as before.
+- **Touches** go to the panel shown, in its own points (native
+  orientation): the viewer maps its turned picture back (`DisplayPanelState.
+  nativePoint`). **Screenshots** (0x87) are of the panel shown, turned as
+  shown.
+- The viewer (§7) adds the fold bar and menu items of `foldable.md` §10.1
+  for a foldable; script commands `fold closed|half|open|<deg>`,
+  `rotate left|right`, `wait-display <name>`.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -387,6 +441,7 @@ are not used as evidence.
 | USB HID usages (§5.2, §5.3) | 1 | USB HID Usage Tables |
 | Input path into the guest | — | `hid-input.md` (normative there) |
 | Everything else (framing, message set, damage scheme, pacing, viewer) | — | Ycode design decisions |
+| Foldable messages and the panel's turn (§11) | — | Ycode design decisions from `foldable.md` §2, §8 |
 | Warm sessions and their timings (§6, §9) | — / 3 | Ycode design; viewer `--script` sessions on the Thor, 2026-10-19 (`snapshot.md` §12.4) |
 | Pacing, record watcher, bands, viewer decode path (§4.2, §4.3, §7, §10.4) | — | Ycode design decisions; Linux inotify(7) and ImageIO/vImage public documentation (level 1) |
 | Timer cadence, mach-time rate (§10.2) | 3 | `p_frameclock` under `ycode-simd --exec` on the Thor |

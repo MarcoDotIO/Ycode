@@ -356,6 +356,7 @@ public final class CommitEditorController: NSViewController, NSTextViewDelegate 
     }
 
     @objc private func commitAndPush() {
+        // swiftlint:disable:next unhandled_throwing_task - run(_:) handles the push error
         Task {
             guard await commit() != nil else { return }
             run { try $0.push() }

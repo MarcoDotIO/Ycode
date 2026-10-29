@@ -10,7 +10,7 @@ import YcodeDarwinABI
 /// One Darwin thread, as the kernel sees it. The hypervisor passes the
 /// thread's context to every `DarwinKernel.handle` call made for that
 /// thread's vCPU. All mutable state is changed only under the kernel lock.
-public final class ThreadContext: @unchecked Sendable, CustomStringConvertible {
+public final class ThreadContext: @unchecked Sendable, CustomStringConvertible, GuestThreadGated {
     public enum Kind: Equatable, Sendable {
         /// The process's first thread.
         case main
@@ -35,8 +35,8 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible {
     /// True while the thread sleeps in a `WaitQueue`.
     public internal(set) var blockedInKernel = false
     /// The trap in progress (diagnostics: the blocked-thread report): x16
-    /// and x0…x7 at entry; nil between traps. Set by the VMM.
-    public var trapInProgress: (x16: UInt64, args: [UInt64])?
+    /// and x0…x30 at entry; nil between traps. Set by the VMM.
+    public var trapInProgress: (x16: UInt64, args: TrapRegisters)?
     /// The user registers at the entry of the trap in progress (nil while
     /// the thread runs guest code): what thread_get_state reports. Written
     /// by the thread's own host thread at the entry and end of every trap,
@@ -65,7 +65,8 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible {
     /// The host thread's CPU time (CLOCK_THREAD_CPUTIME_ID, ns) when this
     /// guest thread started on it; the host sets it (`thread_selfusage`).
     public var hostCPUBaseNanoseconds: UInt64 = 0
-    public var recentTraps: [(UInt64, UInt64, UInt64, UInt64)] = []
+    public let trapRing = TrapRing()
+    public var recentTraps: [(UInt64, UInt64, UInt64, UInt64)] { trapRing.entries }
     /// The process image (kernel) this thread belongs to (stage 4b). Set
     /// when the kernel makes the thread, or at its first trap.
     public internal(set) weak var kernel: DarwinKernel?
@@ -76,6 +77,13 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible {
     var worker: WorkerState?
     /// A thread created with `PTHREAD_START_SUSPENDED` that has not started.
     var suspendedStart: ThreadStartState?
+    /// The run gate (threads-and-events.md §1.6): closed while this
+    /// thread's suspend count or its task's is above zero; the vCPU that
+    /// runs the thread parks at it.
+    public let gate = GuestThreadGate()
+    /// The thread's suspend count (`thread_suspend`/`thread_resume`; 1 for
+    /// a thread created with `PTHREAD_START_SUSPENDED`). Lock held.
+    var suspendCount = 0
     /// SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §4.2): the
     /// process signal mask a `sigsuspend` in progress restores at its end.
     var snapshotSigsuspendSavedMask: UInt32?
@@ -108,10 +116,37 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible {
 
     /// The highest explicit override (0: none).
     var maxExplicitOverride: Int { explicitOverridesStore.withLock { $0.values.max() ?? 0 } }
-    var ulockPushes: [UInt64: Int] = [:]
-    var ipcPushClass = -1
+    /// The inheritance pushes (`scheduling-policy.md` §4.6). Their own leaf
+    /// lock, under which the class is also recomputed and stored: ulock
+    /// pushes change under the image's event lock (the ulock calls run on
+    /// the fast path with QoS on), sync-IPC pushes under the port lock, and
+    /// the other inputs under L0 (§4.4, "where the class is recomputed").
+    struct SchedPushes {
+        var ulock: [UInt64: Int] = [:]
+        var ipc = -1
+        var maxClass: Int { max(ipc, ulock.values.max() ?? -1) }
+    }
+    let schedPushes = Mutex<SchedPushes>(SchedPushes())
+    /// The sync-IPC push (a class; −1 none).
+    var ipcPushClass: Int {
+        get { schedPushes.withLock { $0.ipc } }
+        set { schedPushes.withLock { $0.ipc = newValue } }
+    }
+    /// Sets (or, with −1, removes) the push of the unfair lock at `addr`;
+    /// false when it did not change.
+    func setULockPush(_ cls: Int, for addr: UInt64) -> Bool {
+        schedPushes.withLock {
+            let old = $0.ulock[addr] ?? -1
+            guard old != cls else { return false }
+            $0.ulock[addr] = cls < 0 ? nil : cls
+            return true
+        }
+    }
     var carriedImportance: DarwinProcess?
     var threadDarwinBG = false
+    /// The work interval this thread joined (`WorkInterval.swift`; only the
+    /// thread itself changes it). Not kept by snapshots.
+    var workInterval: KernelWorkInterval?
     let schedClassStore = Atomic<Int>(SchedClass.default)
 
     public init(threadID: UInt64, portName: UInt32, vcpuIndex: Int, kind: Kind, pthreadAddress: UInt64 = 0) {
@@ -156,7 +191,7 @@ public struct ThreadStartState: Equatable, Sendable {
 
     /// Overwrites `frame`'s EL0 state with this one (a restart of the thread).
     public func apply(to frame: inout TrapFrame) {
-        frame.x = x
+        frame.x = TrapRegisters(x)
         frame.spEL0 = sp
         frame.elr = pc
         frame.spsr = 0
@@ -166,6 +201,7 @@ public struct ThreadStartState: Equatable, Sendable {
 }
 
 extension ThreadHost {
+    /// True by default: a host without a vCPU limit can always start a thread.
     public var canStartThread: Bool { true }
 }
 
@@ -192,10 +228,20 @@ public protocol ThreadHost: AnyObject {
     /// sees the process's termination (kill, exit from another thread, exec).
     /// Called with the kernel lock held; must not call back into the kernel.
     func stopAllThreads()
+
+    /// Mach suspension (threads-and-events.md §1.6): `context`'s gate was
+    /// closed; make the vCPU that runs it (if one does) leave guest code
+    /// soon, so that it parks at the gate. Called with the kernel lock
+    /// held; must not call back into the kernel. A thread whose vCPU is not
+    /// running yet checks the gate before its first instruction.
+    func kickThread(_ context: ThreadContext)
 }
 
 extension ThreadHost {
+    /// Does nothing by default.
     public func stopAllThreads() {}
+    /// Does nothing by default.
+    public func kickThread(_ context: ThreadContext) {}
 }
 
 /// What the kernel needs from the in-process Mach IPC (agent I's `MachIPC`
@@ -227,6 +273,7 @@ public protocol MachIPCHandling: AnyObject {
 }
 
 extension MachIPCHandling {
+    /// Returns nil by default: no Mach receive for `EVFILT_MACHPORT` knotes.
     public func receiveForKevent(port: UInt32, options: UInt32, buffer: UInt64, size: UInt64,
                                  context: ThreadContext, memory: any GuestVirtualMemory) -> KeventMachReceive? { nil }
 }
@@ -257,7 +304,8 @@ public struct KeventMachReceive: Equatable, Sendable {
 // MARK: - Kernel side
 
 extension DarwinKernel {
-    /// `bsdthread_create` flag bits.
+    /// `bsdthread_create` flag bits (`x4`, bits 31–24; `threads-and-events.md`
+    /// §1.1), one per `PTHREAD_START_*` flag its name spells.
     public enum PthreadStart {
         public static let custom: UInt32 = 0x0100_0000
         public static let setSched: UInt32 = 0x0200_0000
@@ -288,6 +336,8 @@ extension DarwinKernel {
                                 pthreadAddress: pthread)
         nextThreadID += 1
         ctx.kernel = self
+        // A thread made while the task is suspended starts suspended (§1.6).
+        if taskSuspendCount > 0 { ctx.gate.close() }
         // Read by the fast kevent path (owner discovery) under the event lock.
         withEvents { threadsByPort[ctx.portName] = ctx }
         return ctx
@@ -317,6 +367,8 @@ extension DarwinKernel {
             guard let index = try? host.startThread(start, context: ctx) else { return false }
             ctx.vcpuIndex = index
             ctx.suspendedStart = nil
+            ctx.suspendCount = 0
+            refreshGate(ctx)
             return true
         }
     }
@@ -364,7 +416,9 @@ extension DarwinKernel {
         let start = ThreadStartState(x: [pthread, UInt64(ctx.portName), a[0], a[1], stack, UInt64(outFlags)],
                                      pc: reg.threadStart, sp: stack, tpidrro: tpidrro)
         if flags & PthreadStart.suspended != 0 {
+            // Its suspend count is 1; `thread_resume` to 0 starts it (§1.6).
             ctx.suspendedStart = start
+            ctx.suspendCount = 1
             call += " [\(ctx), suspended]"
             return .value(pthread)
         }
@@ -402,12 +456,17 @@ extension DarwinKernel {
             semaphoreName = 0
         }
         if a[0] != 0, a[1] != 0 {
-            if ctx.kind == .main {
-                let size = (a[1] - 1) & ~Self.pageMask
-                if size > 0 { try? mem.protect(va: a[0] & ~Self.pageMask, size: size, protection: []) }
-            } else {
-                let start = a[0] & ~Self.pageMask
-                try? mem.unmap(va: start, size: roundUp(a[1] + (a[0] - start), to: Self.pageSize))
+            // The address-space change (L1; a host mapping change runs every
+            // VM's MMU notifier) without L0 (`bsd-locking.md` §12): the
+            // thread is still alive and in the table meanwhile.
+            lock.unlocked {
+                if ctx.kind == .main {
+                    let size = (a[1] - 1) & ~Self.pageMask
+                    if size > 0 { try? mem.protect(va: a[0] & ~Self.pageMask, size: size, protection: []) }
+                } else {
+                    let start = a[0] & ~Self.pageMask
+                    try? mem.unmap(va: start, size: roundUp(a[1] + (a[0] - start), to: Self.pageSize))
+                }
             }
         }
         ctx.isAlive = false
@@ -526,9 +585,10 @@ extension DarwinKernel {
     /// thread_get_state for a thread of the caller's task (xnu
     /// `osfmk/arm64/status.c` machine_thread_get_state, `mach/arm/
     /// thread_status.h`; level 1). The state is the thread's user registers
-    /// at the entry of its trap in progress: the caller's own thread, or a
-    /// thread blocked in (or entering) the kernel. A thread executing guest
-    /// code on its vCPU cannot be sampled here and gets KERN_FAILURE —
+    /// where it stopped: parked at its gate when suspended (§1.6), else at
+    /// the entry of its trap in progress (the caller's own thread, or a
+    /// thread blocked in or entering the kernel). A thread executing guest
+    /// code on its vCPU (not suspended) is not sampled and gets KERN_FAILURE —
     /// libobjc then treats it as inside a cache critical section and keeps
     /// the old caches (objc4 `_collecting_in_critical`; level 1). Flavors:
     /// ARM_THREAD_STATE64 (6, 68 words), ARM_EXCEPTION_STATE64 (7, 4 words),
@@ -554,7 +614,24 @@ extension DarwinKernel {
         default: return (MachKern.invalidArgument, " [flavor \(flavor) not kept]")
         }
         guard capacity >= needed else { return (MachKern.invalidArgument, " [count \(capacity) < \(needed)]") }
-        guard let f = thread.entryFrame else { return (MachKern.failure, " [thread \(thread.threadID) is running]") }
+        // The registers where the thread stopped (§1.6): parked at its
+        // gate, at the entry of its trap in progress, or its start state.
+        var f: TrapFrame
+        if let parked = thread.gate.parked?.frame {
+            f = parked
+        } else if let entry = thread.entryFrame {
+            f = entry
+        } else if let start = thread.suspendedStart {
+            f = start.frame
+        } else if thread.gate.isClosed, thread.gate.attached.load(ordering: .acquiring), !isTerminating {
+            // Suspended, between the end of its trap and its gate (a few
+            // microseconds): the library asks again.
+            return (UInt32(truncatingIfNeeded: Self.threadStateRetry), " [thread \(thread.threadID) moving to its gate]")
+        } else {
+            return (MachKern.failure, " [thread \(thread.threadID) is running]")
+        }
+        // thread_set_state while it was in a trap: the new registers.
+        if let r = thread.gate.pendingReplacement { f.takeUserState(of: r) }
         var out: [UInt8] = []
         switch flavor {
         case 7:

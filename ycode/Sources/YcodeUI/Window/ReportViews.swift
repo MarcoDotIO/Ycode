@@ -69,7 +69,6 @@ public enum ReportFormat {
     public static func seconds(_ s: TimeInterval) -> String { String(format: "%.1f", s) }
 }
 
-
 /// A row of the build log outline: a target section, a step, or an issue.
 final class BuildLogNode: NSObject {
     let title: String
@@ -411,7 +410,7 @@ public final class TestReportView: NSView {
             let indent = String(repeating: "    ", count: r.depth)
             let title = label(indent + r.title, bold: r.kind == .target, secondary: r.kind == .expansion, mono: r.kind == .expansion)
             if r.kind == .failure { title.textColor = Theme.errorColor }
-            var mark: NSView = NSView()
+            var mark = NSView()
             if r.kind == .test, let st = r.status {
                 let dia = NSImageView(image: NSImage(systemSymbolName: "diamond.fill", accessibilityDescription: st.rawValue)!)
                 dia.contentTintColor = st == .passed ? .systemGreen : (st == .failed ? Theme.errorColor : .secondaryLabelColor)

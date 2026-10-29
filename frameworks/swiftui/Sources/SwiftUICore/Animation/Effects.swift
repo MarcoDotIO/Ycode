@@ -10,7 +10,7 @@ import Foundation
 /// updated with each new value in the transaction that reached the modifier.
 @MainActor
 package func effectAnimator<D: VectorArithmetic>(_ node: ViewNode, _ data: D, isNew: Bool,
-                                                transaction: Transaction) -> Animator<D> {
+                                                 transaction: Transaction) -> Animator<D> {
     if !isNew, let a = node.primitiveState as? Animator<D> {
         a.update(to: data, transaction: transaction, graph: node.graph)
         return a

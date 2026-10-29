@@ -1,9 +1,12 @@
 # Spec: the lean boot profile, logging off, and the golden device
 
-Status: **implemented, off by default** (agent L, 2026-10-17). It describes how Ycode can make
-the guest do less work while it boots, without losing what a developer
-needs: the home screen, app install, app launch and normal app behavior.
-Everything here is off by default until paired measurements show a gain.
+Status: **implemented, off by default; a development option** (agent L,
+2026-10-17; agent SVC-FULL, 2026-10-27: IDE runs no longer turn it on by
+default, §9). It describes how Ycode can make the guest do less work while
+it boots, without losing what a developer needs: the home screen, app
+install, app launch and normal app behavior. `ycode-simd` and the harness
+boot every service unless `YCODE_LEAN_BOOT` asks otherwise; since
+2026-10-27 the IDE does too (`specs/ide/run.md`, Lean boot off by default).
 
 Facts come from the runtime's job plists read as data files (level 2),
 from black-box runs of the Mac's simulator through `xcrun simctl` on a
@@ -255,7 +258,9 @@ from the DEV path (`DeviceLayout.stableUDID`), so the copy gets a new
 identity, as with `simctl clone`. A DEV that already has `data` is never
 overwritten.
 
-Making a golden device, once per runtime build: boot a new DEV to the home
+A golden device records its runtime build and device type
+(`DEV/ycode-runtime`, `DEV/ycode-device-type`; `ipad.md` §9.2): another
+type is refused, another build warned about. Making a golden device, once per runtime build: boot a new DEV to the home
 screen (the first boot pays the data migration, about 10 minutes on the
 Thor), let it end, and keep that DEV unchanged as the template. Every
 benchmark run already works this way (the harness copies one first-booted
@@ -317,11 +322,54 @@ each comparison, profile switched by `YCODE_LEAN_BOOT` only. `home_s` has a
 
 ## 8. Recommendation
 
-Use `YCODE_LEAN_BOOT=daemons` (or `all`) for benchmark, CI and test
-boots, where Spotlight, Siri, suggestions, HomeKit and a paired watch are
-not needed. It stays off by default because it removes services that an
-app under development may use; `YCODE_LEAN_BOOT_KEEP` brings any of them
-back.
+Boot every service (no profile): that is parity with the Mac, whose
+simulator boots every service, and since the scheduling work
+(`scheduling-policy.md` §4.2, §7.5) and the service fixes
+(`service-fidelity.md`) it costs Ycode about 1 s to the home screen (§9).
+`YCODE_LEAN_BOOT=daemons` (or `all`) stays as a development option for
+boots that do not need Spotlight, Siri, suggestions, HomeKit or a paired
+watch and want less guest work after the home screen (for example a
+profiling run that should not see those services); it removes services
+that an app under development may use, and `YCODE_LEAN_BOOT_KEEP` brings
+any of them back. Benchmarks against the Mac are full boots
+(`parity-ladder.md`).
+
+## 9. Full boot as the IDE default (agent SVC-FULL, 2026-10-27)
+
+From 2026-10-17 to 2026-10-27 IDE runs used `YCODE_LEAN_BOOT=daemons` by
+default (Settings ▸ Simulators ▸ Lean boot, on), because a full boot then
+took 455–560 s to the home screen against 260–325 s lean (§7). On the
+main line of 2026-10-27 (5f74ef9) the difference is about 1 s:
+
+Thor, `SX/bin/timed.sh` around the series (no other `ycode-simd`, load
+under 4 at the start), one copy of the golden device at its own path,
+booted once before the series, cold boots with the default switches
+(start hold, boot priority), arms alternated each round, home from the
+home watch (`YCODE_HOME_WATCH`), 5 s held after home (series
+`svcfull` T, 13:30–13:39):
+
+| Arm | n | home_s each | median | mean ± sd | range | guest fatal by home + 5 s |
+|---|---|---|---|---|---|---|
+| full (no profile) | 6 | 32.29, 29.02, 30.89, 31.29, 29.08, 29.34 | **30.12** | 30.32 ± 1.37 | 29.02–32.29 | 1–3 (intelligencetasksd) |
+| lean (`daemons`, 23 jobs disabled) | 6 | 27.60, 27.89, 31.43, 30.30, 30.88, 27.56 | **29.09** | 29.28 ± 1.79 | 27.56–31.43 | 0 |
+
+- Full against lean: +1.0 s by the median (+3.5 %), +1.0 s by the mean,
+  less than one standard deviation of either arm. The kernel lock was held
+  5.2–6.6 s per full boot against 4.6–5.1 s lean (exit summaries).
+- Against the Mac (`parity-ladder.md` §3.4, subsequent boot, r3): full
+  30.3 s against 21.4 s (1.42 ×), lean 29.3 s against 24.3 s (1.21 ×).
+  Ycode's full ÷ lean is 1.04; the Mac's is 0.88 in r3 and 1.02 pooled
+  over r1–r3 (by the means), so the shape test of `parity-ladder.md`
+  §4.1 (≤ the Mac's + 0.10) passes against the pooled Mac numbers and
+  misses by 0.06 against r3 alone, within the Mac's own spread.
+- The behaviour of the 23 services in a full boot, against the Mac with
+  the same device data: `parity-ladder.md` §4.8.
+
+So the IDE's default is now a full boot (`specs/ide/run.md`): Lean boot is
+a checkbox that is off by default, and a stored `true` from the old
+default is not carried over. Warm-boot snapshots of a lean boot and of a
+full boot are never shared: the launcher's fingerprint includes the
+`YCODE_LEAN_BOOT*` variables (`run.md` §Warm boot, item 2).
 
 ## Evidence
 
@@ -341,3 +389,5 @@ back.
 | `simctl clone` copies data with times, new identity, no TMP (§5.1) | 3 (`xcrun simctl clone`, tree diff) |
 | No closure files in a device (§6) | 3 (Mac device tree after boot and app launch) |
 | Boot times, trap and image counts, crash counts, Mach traffic, app install/launch (§7) | 3 (Ycode boots on the Thor, exit summaries, `YCODE_DEBUG_MACH_STATS`) |
+| Full against lean on the 2026-10-27 main line (§9) | 3 (Thor, `ide-remote/svcfull` series T: run logs' home-watch lines and exit summaries) |
+| The IDE default and the settings migration (§9) | Ycode design (`specs/ide/run.md`) |

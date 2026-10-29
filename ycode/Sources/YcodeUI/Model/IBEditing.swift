@@ -42,6 +42,7 @@ extension IBDocument {
         }
     }
 
+    /// `makeObjectID(using:)` with the system random generator.
     public func makeObjectID() -> String {
         var g = SystemRandomNumberGenerator()
         return makeObjectID(using: &g)
@@ -87,6 +88,8 @@ extension IBDocument {
         return o.node.child("state", key: "normal")?["title"]
     }
 
+    /// Writes the title where `title(of:)` reads it (`text` for labels).
+    /// Returns `self` for an unknown ID; throws if the result does not parse.
     public func settingTitle(_ value: String, of id: String) throws -> IBDocument {
         guard let o = byID[id] else { return self }
         if o.attribute("text") != nil || o.element == "label" { return try edited([XMLEdit.setAttribute("text", value, on: o.node, in: source)]) }
@@ -96,11 +99,15 @@ extension IBDocument {
         return try edited([XMLEdit.setAttribute("title", value, on: o.node, in: source)])
     }
 
+    /// A text field's placeholder: `placeholder`, or the cell's
+    /// `placeholderString` (macOS).
     public func placeholder(of id: String) -> String? {
         guard let o = byID[id] else { return nil }
         return o.attribute("placeholder") ?? cell(of: o)?.attribute("placeholderString")
     }
 
+    /// Writes the placeholder where `placeholder(of:)` reads it; nil or empty
+    /// removes the attribute.
     public func settingPlaceholder(_ value: String?, of id: String) throws -> IBDocument {
         guard let o = byID[id] else { return self }
         let v = value?.isEmpty == true ? nil : value
@@ -111,6 +118,7 @@ extension IBDocument {
     /// `hidden="YES"` on the view; absent means visible.
     public func isHidden(_ id: String) -> Bool { byID[id]?.attribute("hidden") == "YES" }
 
+    /// Writes `hidden="YES"`, or removes it to show the view.
     public func settingHidden(_ hidden: Bool, of id: String) throws -> IBDocument {
         guard let o = byID[id] else { return self }
         return try edited([XMLEdit.setAttribute("hidden", hidden ? "YES" : nil, on: o.node, in: source)])
@@ -122,6 +130,7 @@ extension IBDocument {
         return (cell(of: o)?.attribute("enabled") ?? o.attribute("enabled")) != "NO"
     }
 
+    /// Writes `enabled="NO"`, or removes it to enable the control.
     public func settingEnabled(_ enabled: Bool, of id: String) throws -> IBDocument {
         guard let o = byID[id] else { return self }
         return try edited([XMLEdit.setAttribute("enabled", enabled ? nil : "NO", on: (cell(of: o) ?? o).node, in: source)])
@@ -133,6 +142,7 @@ extension IBDocument {
         return cell(of: o)?.attribute("alignment") ?? o.attribute("textAlignment")
     }
 
+    /// Writes the alignment where `alignment(of:)` reads it.
     public func settingAlignment(_ value: String, of id: String) throws -> IBDocument {
         guard let o = byID[id] else { return self }
         if let c = cell(of: o) { return try edited([XMLEdit.setAttribute("alignment", value, on: c.node, in: source)]) }

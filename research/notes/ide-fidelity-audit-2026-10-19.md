@@ -19,7 +19,7 @@ user's own projects and account panes were not looked at.
 - **Samples.** Copies of our own "ObsApp" (iOS app, objectVersion 77, one
   synchronized folder, git repo with one modified and two untracked
   files) and "Obs" (Swift package), in
-  `/Volumes/MARCUS-PROJECTS/_inbox/ycode-observe-ide-audit/`. Copied
+  `<samples>/ycode-observe-ide-audit/`. Copied
   without `xcuserdata`, so Xcode started with no per-project user state.
 - **Tools.**
   - The workspace window's accessibility tree, read with our own tool that
@@ -1462,7 +1462,7 @@ Row M3 alone stands for the 71 shortcut differences on items both menu bars shar
 ## 5. Observations that still need a live (frontmost) pass
 
 Each needs Xcode frontmost with the sample project
-(`/Volumes/MARCUS-PROJECTS/_inbox/ycode-observe-ide-audit/ObsApp`) in full
+(`<samples>/ycode-observe-ide-audit/ObsApp`) in full
 screen. Steps are given in order.
 
 1. **Context menus.** Right-click, record the item order, separators and

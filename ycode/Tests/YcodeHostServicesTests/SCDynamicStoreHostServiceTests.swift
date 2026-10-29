@@ -80,4 +80,66 @@ import Testing
         let bad = try call(e, to: session, id: 20099, body: Self.ndr)
         #expect(bad.id == 20199 && i32(bad.body, 8) == -303)
     }
+
+    func plist(_ v: Any) -> [UInt8] {
+        [UInt8]((try? PropertyListSerialization.data(fromPropertyList: v, format: .binary, options: 0)) ?? Data())
+    }
+
+    func openSession(_ e: Env) throws -> UInt32 {
+        let name = Array("SimulatorSupport(host)".utf8), options = Array("<dict/>".utf8)
+        let open = try call(e, to: e.server, id: 20000, descriptors: [.ool(data: name), .ool(data: options)],
+                            body: Self.ndr + le(Int32(name.count)) + le(Int32(options.count)))
+        guard case let .port(session, _)? = open.descriptors.first else { throw MachHostError(5) }
+        return session
+    }
+
+    /// The network keys (scdynamicstore-host.md §7): copy multiple by
+    /// pattern, a single value, a key list; and a session that ends does not
+    /// stop the service.
+    @Test func networkStateKeys() throws {
+        SCDynamicStoreHostService.storeOverride = [
+            "State:/Network/Global/IPv4": ["PrimaryInterface": "en0", "Router": "10.0.0.1"],
+            "State:/Network/Interface/en0/IPv4": ["Addresses": ["10.0.0.5"]],
+            "State:/Network/Global/Proxies": ["HTTPEnable": 0],
+        ]
+        defer { SCDynamicStoreHostService.storeOverride = nil }
+        let e = try env()
+        defer { e.service.stop() }
+        let session = try openSession(e)
+        let keys = plist(["Plugin:InterfaceNamer"])
+        let patterns = plist(["State:/Network/Global/(IPv4|IPv6|DNS)", "State:/Network/Interface/[^/]+/IPv4"])
+        let get = try call(e, to: session, id: 20016, descriptors: [.ool(data: keys), .ool(data: patterns)],
+                           body: Self.ndr + le(Int32(keys.count)) + le(Int32(patterns.count)))
+        #expect(get.id == 20116 && i32(get.body, 12) == 0)
+        guard case let .ool(data, _, _)? = get.descriptors.first,
+              let dict = try PropertyListSerialization.propertyList(from: Data(data), options: [], format: nil) as? [String: Data] else {
+            Issue.record("no dictionary")
+            return
+        }
+        #expect(dict.keys.sorted() == ["State:/Network/Global/IPv4", "State:/Network/Interface/en0/IPv4"])
+        let v4 = try PropertyListSerialization.propertyList(from: dict["State:/Network/Global/IPv4"]!, options: [], format: nil)
+            as? [String: String]
+        #expect(v4?["PrimaryInterface"] == "en0")
+        // configget of one key, and of a missing one.
+        let key = plist("State:/Network/Global/Proxies")
+        let one = try call(e, to: session, id: 20010, descriptors: [.ool(data: key)], body: Self.ndr + le(Int32(key.count)))
+        #expect(one.id == 20110 && i32(one.body, 16) == 0 && i32(one.body, 8) > 0)
+        let missing = plist("State:/Network/Global/IPv6")
+        let none = try call(e, to: session, id: 20010, descriptors: [.ool(data: missing)], body: Self.ndr + le(Int32(missing.count)))
+        #expect(i32(none.body, 16) == 1004)
+        // configlist with a pattern.
+        let pattern = plist("State:/Network/Global/.*")
+        let list = try call(e, to: session, id: 20008, descriptors: [.ool(data: pattern)], body: Self.ndr + le(Int32(pattern.count)) + le(1))
+        if case let .ool(data, _, _)? = list.descriptors.first {
+            let keys = try PropertyListSerialization.propertyList(from: Data(data), options: [], format: nil) as? [String]
+            #expect(keys == ["State:/Network/Global/IPv4", "State:/Network/Global/Proxies"])
+        } else {
+            Issue.record("no key list")
+        }
+        // The session ends (its last send right goes); a new one opens.
+        try e.client.deallocate(session)
+        Thread.sleep(forTimeInterval: 0.5)
+        let again = try openSession(e)
+        #expect(MachPortName.isValid(again))
+    }
 }

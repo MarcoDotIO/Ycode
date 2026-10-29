@@ -6,8 +6,12 @@
 // table by table. A range operation costs O(pages + tables touched), with no
 // copy of untouched tables.
 
+/// One address space's stage-1 page tables, kept on the host and written to
+/// the guest's table arena when they change (`vm-shim-protocol.md` §3).
 public final class GuestPageTables {
+    /// The guest physical address of the table arena; the root table is its first slot.
     public let tableArenaGPA: UInt64
+    /// The arena's length in bytes.
     public let tableArenaSize: Int
     /// How many tables fit in the arena.
     public let capacity: Int
@@ -26,6 +30,29 @@ public final class GuestPageTables {
     private var allocatedTables: Int
     private var dirtyFlags: [Bool]
     private var dirtyList: [Int] = []
+    /// Changes that made a valid leaf descriptor invalid or different
+    /// (`unmap`, `protect`): only these can leave stale TLB entries. A `map`
+    /// only fills invalid entries, which a TLB never holds (Arm ARM D8.13:
+    /// translations that fault are not cached), so it needs no TLB
+    /// invalidation (guest-cpu.md §4.2).
+    public private(set) var invalidatingChanges: UInt64 = 0
+    /// The VA span [lo, hi) covering the invalidating changes since the last
+    /// `takeInvalidatedSpan()` (empty when lo >= hi).
+    private var invalidatedLo = UInt64.max
+    private var invalidatedHi: UInt64 = 0
+
+    private func noteInvalidated(_ lo: UInt64, _ hi: UInt64) {
+        invalidatingChanges &+= 1
+        invalidatedLo = min(invalidatedLo, lo)
+        invalidatedHi = max(invalidatedHi, hi)
+    }
+
+    /// The span of the invalidating changes since the last call (nil if
+    /// none), and forgets it.
+    public func takeInvalidatedSpan() -> Range<UInt64>? {
+        defer { invalidatedLo = .max; invalidatedHi = 0 }
+        return invalidatedLo < invalidatedHi ? invalidatedLo..<invalidatedHi : nil
+    }
 
     /// An empty root table (dirty until the first flush).
     public init(tableArenaGPA: UInt64, tableArenaSize: Int) {
@@ -207,7 +234,8 @@ public final class GuestPageTables {
     public func unmap(va: UInt64, size: UInt64) throws -> Int {
         try Self.validate(va: va, size: size)
         var cleared = 0
-        forEachRun(va: va, size: size, allocate: false) { slot, first, count, _ in
+        var lo = UInt64.max, hi: UInt64 = 0
+        forEachRun(va: va, size: size, allocate: false) { slot, first, count, runVA in
             guard let slot else { return }
             let t = table(slot)
             var changed = false
@@ -215,9 +243,13 @@ public final class GuestPageTables {
                 t[i] = 0
                 cleared += 1
                 changed = true
+                let page = runVA + UInt64(i - first) * Self.page
+                lo = min(lo, page)
+                hi = max(hi, page + Self.page)
             }
             if changed { markDirty(slot) }
         }
+        if cleared > 0 { noteInvalidated(lo, hi) }
         return cleared
     }
 
@@ -234,7 +266,8 @@ public final class GuestPageTables {
             }
         }
         let bits = attributes.leafDescriptorBits | Self.valid
-        forEachRun(va: va, size: size, allocate: false) { slot, first, count, _ in
+        var lo = UInt64.max, hi: UInt64 = 0
+        forEachRun(va: va, size: size, allocate: false) { slot, first, count, runVA in
             let t = table(slot!)
             var changed = false
             for i in first..<(first + count) {
@@ -242,10 +275,14 @@ public final class GuestPageTables {
                 if new != t[i] {
                     t[i] = new
                     changed = true
+                    let page = runVA + UInt64(i - first) * Self.page
+                    lo = min(lo, page)
+                    hi = max(hi, page + Self.page)
                 }
             }
             if changed { markDirty(slot!) }
         }
+        if lo < hi { noteInvalidated(lo, hi) }
     }
 
     /// Calls `body` for each L3 table's part of [va, va+size): the slot (nil

@@ -135,6 +135,19 @@ Two Ycode gaps caused the failures (level 3, Ycode traces of `fsprobe`):
    `0xd01f9e0d`, the name reference right after the returned set).
    `getattrlistbulk` does pack it (a zero word) and returns the bit, even
    without an error (our probe `gabulk`).
+   **Corrected 2026-10-27** (`visionos.md` §10.15.2, level 3): only when the
+   options include `FSOPT_PACK_INVAL_ATTRS`. Without that option an object
+   without an error gets neither the bit nor the word; packing them anyway
+   stops Foundation's deep directory listing from descending.
+   **Ycode since 2026-10-27** (VISIONOS-R5, `visionos.md` §10.16):
+   `getattrlistbulk` packs the zero word and returns the bit only with
+   `FSOPT_PACK_INVAL_ATTRS` (then the returned common set is the requested
+   set); without it a requested `ATTR_CMN_ERROR` is dropped from both, so
+   the next attribute (usually the `ATTR_CMN_NAME` reference) follows the
+   20-byte attribute set. Records stay multiples of 8 bytes. An entry that
+   Ycode cannot `lstat` (removed after the directory was read) is skipped
+   rather than returned with an error. `getattrlist` is unchanged (never
+   packs the field).
 
 **Superseded 2026-10-13** (`home-screen.md` §6 item 1): only the runtime
 root is a volume of its own; the other directory prefixes belong to "/"'s
@@ -288,6 +301,7 @@ report).
 | Volume values, listing results (§3 table) | 3 | `fsprobe` on the Mac's simulator and under Ycode on the Thor |
 | getfsstat and getattrlist calls that Foundation makes (§3 items 1–2) | 3 | Ycode `--exec --trace` of `fsprobe` |
 | `ATTR_CMN_ERROR` in getattrlist vs getattrlistbulk (§3 item 2) | 3 | `gadump`, `gabulk` on the Mac's simulator |
+| `getattrlistbulk` packs `ATTR_CMN_ERROR` only with `FSOPT_PACK_INVAL_ATTRS` (§3 item 2 correction) | 1, 3 | `visionos.md` §10.15.2 (`bulkprobe`, `fsrec`); xnu `bsd/vfs/vfs_attrlist.c` (`attr_pack_common`, `get_error_attributes`) |
 | Attribute and option bit meanings, `struct statfs` layout | 1 | xnu `sys/attr.h`, `sys/mount.h`; getattrlist(2), getattrlistbulk(2), getfsstat(2) |
 | lsd registration status before and after (§3, §6) | 3 | `log stream` one-shot inside Ycode runs (TransactionLog lines) |
 | Zero-filled store mapping, msync assertion, SpringBoard's wait chain, home screen (§6) | 3 | Ycode runs on the Thor: `log stream` one-shots, `--trace-name` traces of lsd and SpringBoard, blocked-thread reports, screenshots |

@@ -452,17 +452,8 @@ public final class BehaviorsSettingsPane: SettingsPane {
     }
 }
 
-// MARK: Intelligence, Notifications
-
-/// Informational: Ycode has no coding assistant and stores no accounts.
-@MainActor
-public final class IntelligenceSettingsPane: SettingsPane {
-    public init(prefs: Preferences = .shared) { super.init("Intelligence", prefs: prefs) }
-    override func build() {
-        heading("Intelligence")
-        note("Ycode does not include a coding assistant or model providers. Nothing is configured or stored here.")
-    }
-}
+// MARK: Notifications
+// (Settings ▸ Coding Assistant is CodingAssistantSettingsPane.swift.)
 
 /// Which events notify (the Behaviors "Notify" action), per event.
 @MainActor
@@ -972,6 +963,7 @@ public final class SourceControlSettingsPane: SettingsPane {
     private func value(_ key: String, _ loaded: String??) -> String {
         if let readConfig { return readConfig(key) ?? "Not set" }
         guard loadedAuthor != nil else { return "" }   // still reading
+        // swiftlint:disable:next redundant_nil_coalescing - flattens a double optional
         return (loaded ?? nil) ?? "Not set"
     }
 
@@ -1111,7 +1103,22 @@ public final class SimulatorsSettingsPane: SettingsPane {
             }
             row(label, f)
         }
-        // Lean boot (on by default) with its help text (run.md).
+        // More runtimes (run.md §Runtimes and device types): each root adds
+        // a destination per device type that runs on it.
+        let others = ClosureField(string: s.otherRuntimeRoots.joined(separator: ", "))
+        others.placeholderString = "/data/ycode/runtimes/iOS-27.0, …"
+        others.widthAnchor.constraint(equalToConstant: 320).isActive = true
+        others.onCommit = { [weak self] field in
+            let roots = RemoteSimulatorSettings.runtimeRoots(fromText: field.stringValue)
+            self?.update { $0.otherRuntimeRoots = roots }
+        }
+        row("Other runtime roots:", others)
+        let rootsHelp = NSTextField(wrappingLabelWithString: RemoteSimulatorSettings.runtimesHelp)
+        rootsHelp.font = .systemFont(ofSize: 11)
+        rootsHelp.textColor = .secondaryLabelColor
+        rootsHelp.preferredMaxLayoutWidth = 420
+        row("", rootsHelp)
+        // Lean boot (off by default: a full boot, as the reference simulator) with its help text (run.md).
         let lean = check("Lean boot", s.leanBoot) { [weak self] on in self?.update { $0.leanBoot = on } }
         row("", lean)
         let help = NSTextField(wrappingLabelWithString: RemoteSimulatorSettings.leanBootHelp)
@@ -1119,6 +1126,21 @@ public final class SimulatorsSettingsPane: SettingsPane {
         help.textColor = .secondaryLabelColor
         help.preferredMaxLayoutWidth = 420
         row("", help)
+        // The device's camera (off by default, as the reference; camera.md "Ycode implementation").
+        let camera = popUp(["Off", "Host webcam", "Synthetic pattern"],
+                           selected: ["off": "Off", "on": "Host webcam", "synthetic": "Synthetic pattern"][s.camera] ?? "Off") { [weak self] title in
+            let mode = ["Off": "off", "Host webcam": "on", "Synthetic pattern": "synthetic"][title] ?? "off"
+            self?.update {
+                $0.camera = mode
+                $0.cameraChosen = true
+            }
+        }
+        row("Camera:", camera)
+        let cameraHelp = NSTextField(wrappingLabelWithString: RemoteSimulatorSettings.cameraHelp)
+        cameraHelp.font = .systemFont(ofSize: 11)
+        cameraHelp.textColor = .secondaryLabelColor
+        cameraHelp.preferredMaxLayoutWidth = 420
+        row("", cameraHelp)
         // Warm boot (on by default): restore a snapshot of the booted device (run.md §Warm boot).
         let warm = check("Warm boot from snapshot", s.warmBoot) { [weak self] on in self?.update { $0.warmBoot = on } }
         row("", warm)

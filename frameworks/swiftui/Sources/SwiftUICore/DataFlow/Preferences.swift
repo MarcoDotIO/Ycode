@@ -26,13 +26,16 @@ package struct PreferenceValues {
     package init() {}
 
     package subscript<K: PreferenceKey>(key: K.Type) -> K.Value? {
+        // swiftlint:disable:next force_cast - storage is keyed by the key type, so the value has its Value type
         entries[ObjectIdentifier(key)].map { $0.value as! K.Value }
     }
 
     package mutating func set<K: PreferenceKey>(_ key: K.Type, _ value: K.Value) {
         entries[ObjectIdentifier(key)] = Entry(value: value) { acc, next in
+            // swiftlint:disable force_cast - storage is keyed by the key type, so the value has its Value type
             var v = acc as! K.Value
             K.reduce(value: &v) { next as! K.Value }
+            // swiftlint:enable force_cast
             acc = v
         }
     }

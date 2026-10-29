@@ -82,14 +82,20 @@ public typealias ConditionContext = [String: String]
 /// Resolves settings over a stack of levels, lowest first.
 /// See `specs/build-settings.md` §3.
 public final class BuildSettings {
+    /// The levels, lowest precedence first.
     public let levels: [SettingsLevel]
+    /// The condition values that decide which conditional assignments apply.
     public let context: ConditionContext
     /// Assignment chain per name, highest precedence first.
     private var chains: [String: [SettingAssignment]] = [:]
     private var cache: [String: String] = [:]
     private var inProgress: Set<String> = []
+    /// Problems found while evaluating, such as a reference cycle (which
+    /// evaluates to empty). Grows as values are evaluated.
     public private(set) var diagnostics: [String] = []
 
+    /// Keeps only the assignments whose conditions match `context`.
+    /// Values are evaluated lazily and cached.
     public init(levels: [SettingsLevel], context: ConditionContext) {
         self.levels = levels
         self.context = context
@@ -116,6 +122,7 @@ public final class BuildSettings {
         return v
     }
 
+    /// Same as `value(_:)`.
     public subscript(name: String) -> String { value(name) }
 
     /// All settings, evaluated.

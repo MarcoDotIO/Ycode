@@ -58,7 +58,7 @@ public struct SnapshotBlockedThread: Sendable {
     /// as running and not idle.
     public var idleWorker: Bool
     /// `sigsuspend`: the process signal mask from before the call (§4.2).
-    public var savedSignalMask: UInt32? = nil
+    public var savedSignalMask: UInt32?
     /// A send blocked on a full queue: its message is queued in the image.
     public var queuedSend = false
     /// The trap is complete (`frame` is the state after it): resume, do not re-trap.
@@ -79,6 +79,8 @@ public struct SnapshotClassification: Sendable {
     public var counts: [String: Int] = [:]
 }
 
+/// Decides whether the kernel personality can be snapshotted now: the thread
+/// classification of the quiesce protocol (`specs/simulator/snapshot.md` §3).
 public enum KernelSnapshotQuiesce {
     /// Classifies every live thread of `kernels` (lock held). `parked`: the
     /// contexts the VMM's gates hold; `unstarted`: main threads of images
@@ -201,6 +203,10 @@ public enum KernelSnapshotQuiesce {
             return plain("read/recv")
         case 7, 400, 173, 416:
             return plain("wait4/waitid")
+        case 30, 404, 98, 409:
+            // An IP or local socket's accept/connect restarts (a connecting
+            // IP socket is reset at restore: networking-ycode.md §6).
+            return plain("accept/connect")
         case 93, 407, 394, 395, 230, 417:
             return plain("select/poll")
         case 131, 271, 420:

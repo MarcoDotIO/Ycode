@@ -7,6 +7,7 @@ import Foundation
 /// Documentation Preview; the rest are listed disabled (no data). Manual
 /// (Ycode's own) follows.
 public enum AssistantModeCatalog {
+    /// The pop-up's mode titles, in reference order.
     public static let titles = [
         "Counterparts",
         "Superclasses", "Subclasses", "Siblings", "Extensions", "Categories", "Protocols",
@@ -32,6 +33,7 @@ public enum AssistantModeCatalog {
         }
     }
 
+    /// The pop-up title of an `AssistantMode`.
     public static func title(of mode: AssistantMode) -> String {
         switch mode {
         case .counterparts: "Counterparts"

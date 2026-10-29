@@ -1,24 +1,24 @@
-# Design: running the iOS simulator runtime on arm64 Linux
+# Design: Apple's simulator runtimes on arm64 Linux
 
-Status: **design, agreed direction (option B in `docs/SIMULATOR.md`)**.
-First host: the Thor (Neoverse V3-class, Ubuntu 24.04, KVM available to the
-build user).
+Status: **implemented and in use** (option B in [SIMULATOR.md](SIMULATOR.md)).
+Development host: an NVIDIA Jetson Thor (arm64, Ubuntu 24.04, KVM, Vulkan).
+What works today is listed in [SIMULATOR.md](SIMULATOR.md) §1.
 
 ## 1. What has to be provided
 
-On macOS the simulator is ordinary host processes, rerooted by dyld
-(`research/notes/simulator-observations.md`). On Linux, Ycode must provide
-everything that macOS provides for free:
+On macOS the simulator is ordinary host processes, rerooted by dyld. On
+Linux, Ycode must provide everything that macOS provides for free:
 
 | macOS provides | Ycode on Linux |
 |---|---|
-| The XNU kernel ABI (`specs/simulator/darwin-arm64-abi.md`) | **Darwin personality layer** (§3) |
-| dyld + `DYLD_ROOT_PATH` → `dyld_sim` | **Loader**: `YcodeMachO` for parsing (done); mapping and fixups to come |
+| The XNU kernel ABI (`specs/simulator/darwin-arm64-abi.md`) | The **Darwin personality layer** (`YcodeDarwinABI`, `YcodeDarwinKernel`) |
+| dyld + `DYLD_ROOT_PATH` → `dyld_sim` | `YcodeMachO` parses images and the shared cache; `dyld_sim` maps itself (stage 3) |
+| `libsystem_kernel`, `libsystem_platform`, `libsystem_pthread` | Our own clean-room host libraries (`ycode/SimHostLibs`, `specs/simulator/host-libraries.md`) |
 | The commpage | Filled in by the personality layer |
-| launchd bootstrap for `launchd_sim` | Bootstrap and Mach-port server in the personality layer |
-| CoreSimulator host services (render, Metal, audio, stream, syslog, test manager) | Ycode host services, added in stages |
+| launchd bootstrap for `launchd_sim` | A bootstrap and Mach-port server in the VMM (`specs/simulator/bootstrap-wire.md`) |
+| CoreSimulator host services | Ycode host services: IOSurface, Metal (on Vulkan), audio, camera, HID, FSEvents, SCDynamicStore, power, syslog. No test-manager service yet. |
 
-## 2. Execution model: why a micro-VM
+## 2. Execution model: a micro-VM per process
 
 Three facts make a plain Linux process a poor fit:
 
@@ -27,142 +27,126 @@ Three facts make a plain Linux process a poor fit:
    system call would run as a random Linux system call. Catching them would
    need seccomp traps, which cost one signal per call.
 2. **TLS.** Darwin code reads its thread pointer from `TPIDRRO_EL0`, which a
-   Linux process cannot set. The alternative is rewriting every
-   `mrs …, TPIDRRO_EL0` in a 4 GB cache and swapping `TPIDR_EL0` around
-   host code.
-3. **Pages.** The guest is laid out for 16 KB pages, and the Thor's host
-   kernel uses 4 KB pages.
+   Linux process cannot set.
+3. **Pages.** The guest is laid out for 16 KB pages, and the host kernel uses
+   4 KB pages.
 
-A **KVM micro-VM** removes all three. The probe
-`research/experiments/linux-host/kvm_probe.py` confirmed on the Thor that:
-
-- `/dev/kvm` is usable by the build user (through an ACL);
-- the **16 KB translation granule** is supported in a guest;
-- the guest has 48-bit VA and 48-bit PA, and AArch64 only at EL0;
-- pointer authentication is not exposed to the guest by default. That is
-  fine, because the simulator cache is arm64, not arm64e.
+A **KVM micro-VM** removes all three. The guest supports the 16 KB
+translation granule, 48-bit VA and PA, and AArch64 at EL0. Pointer
+authentication is not exposed, which is fine: the simulator cache is arm64,
+not arm64e.
 
 The guest's processes run at **EL0** with 16 KB pages. A small **EL1 shim**
-written by Ycode (a few hundred lines of assembly and C, not Darwin code)
-does four things:
+written by Ycode (`ycode/SimShim`, assembly, not Darwin code):
 
 - installs page tables;
 - sets `TPIDRRO_EL0` for each guest thread;
-- turns every `svc #0x80` into a VM exit (an `hvc`) that carries the
-  register file;
+- turns every `svc #0x80` into a VM exit that carries the register file;
 - handles faults the same way.
 
-The **VMM** is a Ycode Swift process on the host. It owns guest memory and
-implements the Darwin ABI on top of Linux.
+The **VMM**, `ycode-simd`, is a Ycode Swift process on the host. It owns
+guest memory and implements the Darwin ABI on top of Linux.
 
 ```
- guest EL0:  dyld_sim / launchd_sim / app  (unmodified runtime code)
- guest EL1:  Ycode shim  — page tables, TPIDRRO_EL0, svc→hvc, faults
+ guest EL0:  dyld_sim / launchd_sim / apps  (unmodified runtime code)
+ guest EL1:  Ycode shim  — page tables, TPIDRRO_EL0, svc → exit, faults
  ─────────────────────────── KVM ───────────────────────────
- host:       ycode-simd (Swift VMM)
-               ├─ Mach-O/cache mapper (YcodeMachO)
-               ├─ BSD syscall emulation → Linux syscalls
-               ├─ Mach traps: ports, messages, VM, tasks/threads
-               ├─ bootstrap/launchd and XPC routing
-               └─ host services (syslog, later render/Metal/audio)
+ host:       ycode-simd (Swift VMM), one host process for the device
+               ├─ Mach-O and shared-cache mapping (YcodeMachO)
+               ├─ BSD system calls → Linux system calls
+               ├─ Mach traps: ports, messages, VM, tasks and threads
+               ├─ bootstrap, launchd and XPC routing
+               ├─ host services (IOSurface, audio, camera, HID, FSEvents, …)
+               ├─ Metal → Vulkan (YcodeMetalHost, YcodeVulkan, ycode-airc)
+               └─ display stream and snapshots
 ```
 
-Each guest process is an address space in the VM. Each guest thread is a
-vCPU, or vCPUs are multiplexed when the thread count grows.
+One host process runs every guest process of a device. Each process image
+gets its own KVM VM. Each guest thread gets its own vCPU on its own host
+thread. Mach IPC, kevent, workqueues and most BSD calls run outside the
+global kernel lock (`specs/simulator/mach-ipc-locking.md`,
+`specs/simulator/bsd-locking.md`).
 
-## 3. Stages and exit criteria
+## 3. Stages
 
-1. **Format layer.** *(Done.)* Parse Mach-O and the shared cache. The
-   dependency closure of `launchd_sim` is 57 cache images, all present.
-2. **VM bring-up.** The shim boots in KVM, maps a 16 KB-page EL0 address
-   space, and runs a hand-assembled EL0 test that makes `svc #0x80` calls
-   and gets results back. Exit criterion: a round trip for `getpid` (BSD
-   20) and `mach_absolute_time` (−3). *(Done 2026-10-11.)*
-   - The EL0 self-test passes every check: TPIDRRO_EL0, getpid,
-     mach_absolute_time ×2, ENOSYS with carry, write, a read across the
-     16 KB page split, and exit(0).
-   - One trap round trip (EL0 → shim → KVM exit → Swift dispatcher → back)
-     measured about 32 µs, which is a baseline to improve later.
-   - The work was built by three parallel agents against
-     `specs/simulator/vm-shim-protocol.md`.
-3. **Static-image runner.** *(Done, 2026-10-11.)* The iOS 27.1 simulator
-   runtime runs a command-line iOS-simulator program to completion on arm64
-   Linux:
-   - `ycode-simd --exec hello` prints `hello from the iOS simulator runtime
-     on Linux` and exits 0;
-   - 740 traps, all 11 shared-cache mappings, and no unimplemented call on
-     the path;
-   - it rests on Ycode's own clean-room `libsystem_kernel`,
-     `libsystem_platform`, and `libsystem_pthread` (`ycode/SimHostLibs`).
-   - `dyld_sim` boots in the VM and maps all 11 cache mappings itself.
-   - It stops at the three host libraries (`libsystem_kernel`,
-     `libsystem_platform`, `libsystem_pthread`), which Ycode must now
-     supply (stage 3a-ii, `specs/simulator/host-libraries.md`).
-   - The original stage-3 plan: Map an executable plus the shared cache at
-   `0x1C0000000`, apply chained fixups, provide the commpage and the
-   initial stack (argc/argv/envp/apple), and start `dyld_sim`. Exit
-   criterion: a command-line guest tool reaches `main` and writes to
-   stdout through `write` (BSD 4).
-4. **Syscall coverage driven by traces.** Run guest tools and log every
-   unimplemented trap. Implement the most frequent first.
-4a. **Threads, dispatch, and in-process Mach IPC.** *(Done 2026-10-12.)*
-   - One KVM VM per process and one vCPU per thread, each vCPU on its own
-     host thread.
-   - Real `pthread_create`/join, workqueue worker threads, kevent (user
-     events, timers, workloops, Mach-port receive), multi-thread ulock and
-     semaphores, and a full in-process Mach IPC engine.
-   - On the Thor, `p_threads`, `p_machmsg`, `p_dispatch`, and
-     `p_dispatch_main` all pass, along with `hello` and the stage-2
-     self-test (18 of 18 runs over three rounds).
-   - Contract: `specs/simulator/stage4a-contract.md`.
-4b. **Multiple processes.** *(Done 2026-10-12.)*
-   - One host process runs every guest process, one VM per image; all
-     share one kernel lock and one Mach system.
-   - `posix_spawn` (incl. SETEXEC), `execve`, exit/zombies/`wait4`/
-     `waitid`, `kill`, `EVFILT_PROC`/`EVFILT_SIGNAL`, `proc_info`, task
-     special and registered ports with inheritance and spawn port actions,
-     cross-task Mach IPC with sender audit tokens and teardown
-     notifications, pipes, AF_UNIX sockets with `SCM_RIGHTS`, fileports.
-   - On the Thor all six 4b probes plus the 4a set pass (36 of 36 over
-     three rounds); 150 VMs in sequence leak nothing.
-   - Contract: `specs/simulator/stage4b-contract.md`; reference:
-     `specs/simulator/processes.md`.
-4c. **Booting `launchd_sim`.** *(Done 2026-10-12.)*
-   - `ycode-simd --device` builds a device directory and bootstrap plist
-     and starts the runtime's `launchd_sim` with a VMM host task serving
-     its bootstrap port (`specs/simulator/bootstrap-wire.md`).
-   - `launchd_sim` creates the `system` and `user/501` domains and keeps
-     running; `TMP/launchd.log` records them.
-   - Jobs start through `xpcproxy_sim`: a `launchctl print system`
-     one-shot prints the domain; logd and notifyd start and stay up.
-     Contract: `specs/simulator/stage4c-contract.md`.
-5. **Mach IPC and bootstrap.** Ports, rights, `mach_msg`, and bootstrap
-   lookup, enough to run `launchd_sim` with no daemons.
-6. **launchd_sim plus the core daemons.** *(Done 2026-10-12: the full
-   job set boots headless on the Thor; the core daemons stay up; only
-   `configd_sim` waits for a host service. `specs/simulator/stage6-contract.md`.)* `cfprefsd`, `notifyd`,
-   `logd`-equivalents. A headless boot.
-7. **UIKit app, headless.** The probe app (`research/experiments/simulator/ProbeApp`)
-   prints its report.
-8. **Display, input, GPU.** A render service, Metal → Vulkan (the Thor's
-   GPU), and HID.
+Each stage has a contract or spec in `specs/simulator/`.
 
-## 4. Risks
+1. **Format layer.** *(Done.)* Parse Mach-O and the shared cache.
+2. **VM bring-up.** *(Done 2026-10-11.)* The shim boots in KVM and an EL0
+   self-test makes `svc #0x80` calls and gets results back
+   (`vm-shim-protocol.md`). A trap round trip now costs about 4.1 µs, against
+   0.09 µs for a native system call (`guest-cpu.md` §7.1).
+3. **Static-image runner.** *(Done 2026-10-11.)* A command-line program from
+   the runtime runs to completion on our host libraries (`stage3-contract.md`,
+   `host-libraries.md`).
+4. **Threads, processes, `launchd_sim`.** *(Done 2026-10-12.)* Threads,
+   dispatch and in-process Mach IPC (4a); multiple processes, `posix_spawn`,
+   signals and cross-task IPC (4b); `launchd_sim` with its `system` and
+   `user/501` domains (4c) (`stage4a-contract.md` to `stage4c-contract.md`).
+5. **Core daemons, headless.** *(Done 2026-10-12.)* The full job set boots
+   (`stage6-contract.md`).
+6. **UIKit and the home screen.** *(Done.)* SpringBoard reaches the home
+   screen through Metal on Vulkan (`stage7-contract.md`, `stage8-contract.md`,
+   `home-screen.md`).
+7. **Display, input, apps.** *(Done.)* The display stream and viewer, HID
+   input, app install and launch (`display-stream.md`, `hid-input.md`,
+   `app-install-launch.md`).
+8. **Fidelity and speed.** *(In progress.)* The full service boot
+   (`service-fidelity.md`, `parity-ladder.md`), snapshots and warm boot
+   (`snapshot.md`), the lock split, guest CPU work (`guest-cpu.md`), frame
+   rate (`frame-profile.md`).
+9. **More devices and services.** *(In progress.)* iPhone types, the
+   foldable, iPads, visionOS; networking, audio, camera, simulator features,
+   FSEvents (see [SIMULATOR.md](SIMULATOR.md) §1).
 
-- **Scale of the Mach/XPC surface.** This is the bulk of the work. Darling
-  is a reference point for scope, not for code.
-- **Undocumented runtime expectations:** commpage fields, host-service
-  sockets, and `launchd_sim`'s bootstrap protocol. These will be learned by
-  black-box tracing on the Mac and recorded as specs.
+## 4. Risks and open problems
+
+- **Speed.** A cold boot takes about 1.4 times as long as on a Mac
+  (`lean-boot.md` §9). A trap costs about 44 times a native system call.
+- **One process per device.** Every VM of a device shares one host address
+  space and its lock (`boot-profile.md` §9.7).
+- **GPU faults.** A stuck GPU submission stops every client
+  (`stage8-contract.md` §15.8).
 - **x86-64 hosts** need user-mode arm64 translation on top of all this. That
-  is deferred.
+  is deferred. `native-mode.md` is a feasibility study only.
+- **Host kernels** without upstream commit `fbc7e61195e2` can corrupt host
+  SVE state; see [postmortem-kvm-sve.md](postmortem-kvm-sve.md).
 
-## 5. Clean-room status
+## 5. Building and running
+
+You need arm64 Linux with `/dev/kvm`, a Vulkan driver, Swift 6.4, LLVM 18 and
+SPIRV-Tools, and your own copy of the simulator runtime (`RuntimeRoot`) from
+your own Xcode installation. Keep devices, snapshots and run output on a
+separate data volume, called `$YCODE_DATA` in specs and scripts.
+
+On the Linux host, from `ycode/`:
+
+```sh
+swift build -c release
+sh SimShim/build.sh                                   # the EL1 shim
+YCODE=$PWD/.build/release/ycode sh SimHostLibs/build.sh   # the host libraries
+sh SimGuestFrameworks/build.sh                        # SimFramebuffer, SimHID
+sh Translator/build.sh                                # ycode-airc
+```
+
+`scripts/ycode-sim-serve build` runs the first four steps. The guest agents
+(`SimGuestAgents/build.sh`, `build-camera.sh`) build on macOS only, because
+they need the iOS simulator SDK; copy their `out/` into the host's
+guest-tools directory.
+
+To boot a device and see it from a Mac, use `scripts/ycode-sim-try`
+([ycode/README.md](../ycode/README.md)). The IDE runs the same launcher,
+`scripts/ycode-sim.sh`, over ssh (`specs/ide/run.md`). `ycode-simd --help`
+lists the device types, the feature flags (`--ui`, `--accessibility`,
+`--location`, `--audio`, `--overrides`, `--camera`) and the app options
+(`--install-app`, `--launch`).
+
+## 6. Clean-room status
 
 The design uses only:
 
 - level-1 sources (xnu and dyld headers, public documentation);
 - level-3/4 observations of the runtime.
 
-The guest runtime itself is an input, copied by the owner and never
+The guest runtime itself is an input, copied by each user and never
 redistributed.

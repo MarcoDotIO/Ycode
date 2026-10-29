@@ -1,0 +1,20 @@
+// pollute.comp: leaves a pattern in the private (local) memory of many
+// invocations, for areplay's POLLUTE option
+// (glslangValidator --target-env vulkan1.3 -V pollute.comp -o pollute.spv).
+// Push constants: the address of a 4 KiB result buffer, a seed, and the
+// pattern (0: pseudo-random words, otherwise that word everywhere).
+#version 460
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+layout(local_size_x = 64) in;
+layout(buffer_reference, std430, buffer_reference_align = 4) buffer U32 { uint v[]; };
+layout(push_constant, std430) uniform PC { uint64_t result; uint seed; uint pattern; } pc;
+void main() {
+    uint a[2048];
+    uint s = pc.seed ^ (gl_GlobalInvocationID.x * 2654435761u);
+    for (int i = 0; i < 2048; i++) {
+        s = s * 1664525u + 1013904223u;
+        a[i] = pc.pattern == 0u ? s : pc.pattern;
+    }
+    U32(pc.result).v[gl_GlobalInvocationID.x & 1023u] = a[s & 2047u];
+}

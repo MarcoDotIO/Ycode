@@ -23,9 +23,9 @@ enum Localization {
         /// For synthesized catalogs: the catalog object.
         var synthesized: [String: Any]?
         /// The target the file belongs to, and the group holding its sources.
-        var targetID: String? = nil
-        var targetName: String? = nil
-        var groupID: String? = nil
+        var targetID: String?
+        var targetName: String?
+        var groupID: String?
     }
 
     /// The localizable resources of the project's targets, and an Info.plist

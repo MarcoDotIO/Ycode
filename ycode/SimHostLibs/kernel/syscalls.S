@@ -1407,13 +1407,6 @@ Lyc_cerror_nocancel:
     svc #0x80
     b.cs Lyc_cerror_nocancel
     ret
-    .globl "___sysctl"
-    .p2align 2
-"___sysctl":
-    mov x16, #202
-    svc #0x80
-    b.cs Lyc_cerror_nocancel
-    ret
     .globl "___sysctlbyname"
     .p2align 2
 "___sysctlbyname":
@@ -2445,13 +2438,6 @@ Lyc_cerror_nocancel:
     mov x16, #-29
     svc #0x80
     ret
-    .globl "_issetugid"
-    .p2align 2
-"_issetugid":
-    mov x16, #327
-    svc #0x80
-    b.cs Lyc_cerror_nocancel
-    ret
     .globl "_kas_info"
     .p2align 2
 "_kas_info":
@@ -2648,13 +2634,6 @@ Lyc_cerror_nocancel:
 "_macx_triggers":
     mov x16, #-51
     svc #0x80
-    ret
-    .globl "_madvise"
-    .p2align 2
-"_madvise":
-    mov x16, #75
-    svc #0x80
-    b.cs Lyc_cerror_nocancel
     ret
     .globl "_memorystatus_control"
     .p2align 2

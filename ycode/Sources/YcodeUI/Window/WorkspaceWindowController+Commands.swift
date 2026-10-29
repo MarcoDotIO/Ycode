@@ -52,7 +52,9 @@ extension WorkspaceWindowController {
     /// Xcode ▸ Behaviors ▸ Edit Behaviors…: Settings ▸ Behaviors.
     @objc public func showBehaviorsSettings(_ sender: Any?) { SettingsWindowController.shared.show(pane: "Behaviors") }
 
-    /// View ▸ Navigators ▸ Show Coding Assistant: the placeholder pane.
+    /// View ▸ Navigators ▸ Show / Hide Coding Assistant (⌘0): shows the
+    /// assistant pane, or, while it is shown, hides the left area as
+    /// clicking the selected toolbar segment does (reference-ui-6.md §9.5, A7).
     @objc public func showCodingAssistant(_ sender: Any?) { setLeftPane(codingAssistant: true) }
 
     /// View ▸ Navigators ▸ Filter in Navigator: focuses the filter field.

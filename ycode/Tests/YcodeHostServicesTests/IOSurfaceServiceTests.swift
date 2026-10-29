@@ -56,6 +56,42 @@ import YcodeXPC
         #expect(calls.lock.withLock { calls.ids } == [id, id, id, id])
     }
 
+    /// A shared texture's surface (metal-sim-protocol.md §5.10): width,
+    /// height, bytes per row and format 0, bytes per element 1, the given
+    /// allocation size; looked up by its port, it shows the creation
+    /// properties (with `IOSurfaceName`) to every process.
+    @Test func sharedTextureSurface() throws {
+        let s = try service()
+        let conn: UInt32 = 0x1236
+        s.addTestConnection(conn)
+        let port = try #require(s.makeSharedTextureSurface(allocationSize: 33_947_664, name: "Metal", properties: [
+            ("IOSurfaceAllocSize", 33_947_664), ("kMetalRegistryID", 0x1_0000_0059), ("kMetalTextureWidth", 3840),
+        ]))
+        let r = reply(s.perform(["Method": .uint64(2), "MachPort": .sendRight(XPCPort(name: port, disposition: 17))], connection: conn).0)
+        #expect(r["ErrorCode"]?.uint64Value == 0)
+        guard case let .data(state)? = r["SurfaceState"], case let .sharedMemory(size, _)? = r["MemoryObject"] else {
+            Issue.record("no state")
+            return
+        }
+        #expect(size == 33_947_648 + 16_384)
+        #expect(u32(state, 2) == 33_947_664 && u32(state, 3) == 0 && u32(state, 4) == 0 && u32(state, 5) == 0
+                && u32(state, 7) == 0 && u32(state, 9) == 0 && u32(state, 10) == 1)
+        let id = u32(state, 1)
+        let values = reply(s.perform(["Method": .uint64(10), "SurfaceID": .uint64(UInt64(id))], connection: conn).0)
+        guard case let .data(blob)? = values["PropertiesDictionary"], let v = try? OSSerialize.decode(blob) else {
+            Issue.record("no values")
+            return
+        }
+        #expect(v["IOSurfaceName"]?.stringValue == "Metal" && v["HorizontalDisparityAdjustment"]?.numberValue == 0)
+        let creation = try #require(v["CreationProperties"])
+        #expect(creation["kMetalRegistryID"]?.numberValue == 0x1_0000_0059 && creation["kMetalTextureWidth"]?.numberValue == 3840)
+        #expect(creation["IOSurfaceName"]?.stringValue == "Metal" && creation["IOSurfaceAllocSize"]?.numberValue == 33_947_664)
+        #expect(creation["MetalSharedTexture"] == nil)
+        let numbers = try #require(s.creationNumbers(forPort: port))
+        #expect(numbers.id == id && numbers.numbers["kMetalRegistryID"] == 0x1_0000_0059 && numbers.numbers["IOSurfaceName"] == nil)
+        #expect(s.creationNumbers(forPort: 0x4321) == nil)
+    }
+
     @Test func createLookUpLockValuesPorts() throws {
         let s = try service()
         let conn: UInt32 = 0x1234

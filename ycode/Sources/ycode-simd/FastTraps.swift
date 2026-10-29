@@ -27,6 +27,12 @@ enum FastTraps {
     static let hvcDoorbell = flag("YCODE_HVC_DOORBELL")
     /// `YCODE_FAST_TRAPS` (fast-traps.md; 0 = every call traps).
     static let enabled = flag("YCODE_FAST_TRAPS")
+    /// `YCODE_LOCAL_CALLS` (fast-traps.md §5a, with `YCODE_FAST_TRAPS`;
+    /// 0 = madvise and issetugid always trap).
+    static let localCalls = flag("YCODE_LOCAL_CALLS")
+    /// `YCODE_SYSCTL_CACHE` (fast-traps.md §5a, with `YCODE_FAST_TRAPS`;
+    /// 0 = every sysctl traps).
+    static let sysctlCache = flag("YCODE_SYSCTL_CACHE")
 
     /// The doorbell address for a new VM's boot info: 0 (the HVC form) when
     /// the switch is on and the host installs the SMCCC filter, otherwise the
@@ -58,6 +64,8 @@ enum FastTraps {
         guard let pa = space.pageTables.translate(VMLayout.commpageVA)?.pa else { return nil }
         let page = try vm.hostPointer(gpa: pa, count: Int(VMLayout.pageSize))
         var flags = CommpageBuilder.FastFlag.credentialBlock
+        if localCalls { flags |= CommpageBuilder.FastFlag.localCalls }
+        if sysctlCache { flags |= CommpageBuilder.FastFlag.sysctlCache }
         let creds = page + CommpageBuilder.Offset.credentials
         for (i, v) in [DarwinFileSystem.guestUID, DarwinFileSystem.guestUID,
                        DarwinFileSystem.guestGID, DarwinFileSystem.guestGID].enumerated() {

@@ -163,6 +163,7 @@ public enum XPCPipeReply {
     /// without NUL); a NUL in a caller's key falls back to `error` 22.
     static func fixed(_ d: XPCDict) -> XPCPipeMessage {
         if let m = try? dictionary(d) { return m }
+        // swiftlint:disable:next force_try - a constant dictionary always encodes
         return XPCPipeMessage(id: XPCPipe.replyID, body: try! XPCWire.encodePayload(["error": .int64(22)]))
     }
 }

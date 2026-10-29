@@ -185,6 +185,7 @@ public struct Scheme: Sendable {
         children.append(XMLNode("AnalyzeAction", attributes: [("buildConfiguration", "Debug")]))
         children.append(XMLNode("ArchiveAction", attributes: [("buildConfiguration", "Release"), ("revealArchiveInOrganizer", "YES")]))
         let doc = XMLNode("Scheme", attributes: [("version", "1.7")], children: children)
+        // swiftlint:disable:next force_try - parses XML this function just wrote
         var s = try! Scheme(parsing: XcodeXML.write(doc), name: target.blueprintName, isShared: false)
         s.url = nil
         return s

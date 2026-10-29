@@ -15,7 +15,9 @@ extension WorkspaceWindowController {
             self.showEmptyEditor(e)
             self.updateWindowTitle()
         }
-        if e.fileURL == nil && e.auxiliary == nil { showEmptyEditor(e) }
+        // A new editor starts empty under "No Selection"; the Start Page is
+        // shown only where Settings ▸ Navigation's New Editor Tabs / Panes
+        // setting opens it (`newTab`, `split`; reference-ui-6.md §1.3, W4).
         wireChangeGutter(e)  // reference-ui-5.md §6.3
     }
 

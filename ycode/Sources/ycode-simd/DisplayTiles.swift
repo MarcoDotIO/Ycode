@@ -9,17 +9,26 @@ import YcodeDisplayStream
 import YcodeHostServices
 
 /// The frame record of the headless framebuffer library
-/// (SimGuestFrameworks/SimFramebuffer/simframebuffer.c).
+/// (SimGuestFrameworks/SimFramebuffer/simframebuffer.c): one 96-byte record
+/// per display, display 1 at offset 0 and a foldable's second display at
+/// offset 96 (its slot).
 struct FrameRecord: Equatable {
     var surface: UInt32
     var frame: UInt64
+    /// The last backlight state and UI orientation the guest set on the
+    /// display (foldable.md §8.1 D2), nil until it set one.
+    var backlight: UInt64?
+    var uiOrientation: UInt64?
+
+    static let size = 96
 
     static func parse(_ text: Substring) -> FrameRecord? {
         let words = text.split(whereSeparator: { $0 == " " || $0 == "\n" })
         guard let s = words.firstIndex(of: "surface"), s + 1 < words.count, let surface = UInt32(words[s + 1]) else { return nil }
-        var frame: UInt64 = 0
-        if let f = words.firstIndex(of: "frame"), f + 1 < words.count { frame = UInt64(words[f + 1]) ?? 0 }
-        return FrameRecord(surface: surface, frame: frame)
+        func number(_ key: Substring) -> UInt64? {
+            words.firstIndex(of: key).flatMap { $0 + 1 < words.count ? UInt64(words[$0 + 1]) : nil }
+        }
+        return FrameRecord(surface: surface, frame: number("frame") ?? 0, backlight: number("bl"), uiOrientation: number("uio"))
     }
 }
 
@@ -294,4 +303,3 @@ enum CompressedPNG {
         return out
     }
 }
-

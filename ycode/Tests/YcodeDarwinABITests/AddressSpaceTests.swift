@@ -196,6 +196,34 @@ private func errno(of body: () throws -> Void) -> Int32? {
         #expect(space.generation == 3)
     }
 
+    /// guest-cpu.md §4.2: only a change that removes or alters a valid
+    /// descriptor moves `tlbGeneration`; new mappings do not.
+    @Test func tlbGenerationMovesOnlyForInvalidatingChanges() throws {
+        guard !GuestAddressSpace.flushOnAdditions else { return }
+        let (space, _) = makeSpace()
+        let va = try space.mapAnonymous(at: nil, size: 0x8000, protection: .readWrite, hint: nil)
+        #expect(space.generation == 1)
+        #expect(space.tlbGeneration == 0)
+        _ = try space.mapAnonymous(at: nil, size: 0x4000, protection: .read, hint: nil)
+        #expect(space.generation == 2 && space.tlbGeneration == 0)
+        // Adding write access changes a valid descriptor (a TLB may hold the read-only one).
+        try space.protect(va: va, size: 0x4000, protection: .read)
+        #expect(space.generation == 3 && space.tlbGeneration == 1)
+        // A protect that changes nothing moves neither.
+        try space.protect(va: va, size: 0x4000, protection: .read)
+        #expect(space.generation == 3 && space.tlbGeneration == 1)
+        try space.unmap(va: va + 0x4000, size: 0x4000)
+        #expect(space.generation == 4 && space.tlbGeneration == 2)
+        #expect(space.tlbRange(since: 1) == TLBRange(va: va + 0x4000, pages: 1))
+        #expect(space.tlbRange(since: 0) == nil) // two bumps: the whole TLB
+        // Unmapping a hole changes nothing.
+        try space.unmap(va: va + 0x4000, size: 0x4000)
+        #expect(space.generation == 4 && space.tlbGeneration == 2)
+        // A fixed mapping over an existing one replaces valid descriptors.
+        _ = try space.mapAnonymous(at: va, size: 0x4000, protection: .readWrite, hint: nil)
+        #expect(space.tlbGeneration == 3)
+    }
+
     @Test func flushWritesPrebuiltEL1Tables() throws {
         let backing = FakePhysicalBacking()
         var pt = PageTableBuilder.stage3()

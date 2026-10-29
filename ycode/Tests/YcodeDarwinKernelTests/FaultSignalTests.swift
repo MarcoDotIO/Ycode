@@ -15,6 +15,9 @@ struct FaultSignalTests {
         #expect(DarwinKernel.faultSignal(frame(ec: 0x3C, iss: 1)) == S.sigtrap)     // BRK (Swift fatalError, __builtin_trap)
         #expect(DarwinKernel.faultSignal(frame(ec: 0x34)) == S.sigtrap)             // watchpoint
         #expect(DarwinKernel.faultSignal(frame(ec: 0x00)) == S.sigill)              // undefined instruction
+        #expect(DarwinKernel.faultSignal(frame(ec: 0x18)) == S.sigill)              // trapped system instruction (CFP RCTX)
+        #expect(DarwinKernel.faultSignal(frame(ec: 0x19)) == S.sigill)              // SVE, not enabled
+        #expect(DarwinKernel.faultSignal(frame(ec: 0x1D)) == S.sigill)              // SME, not enabled
         #expect(DarwinKernel.faultSignal(frame(ec: 0x2C)) == S.sigfpe)
         #expect(DarwinKernel.faultSignal(frame(ec: 0x24, iss: 0x07)) == S.sigsegv)  // translation fault, level 3
         #expect(DarwinKernel.faultSignal(frame(ec: 0x24, iss: 0x4F)) == S.sigbus)   // permission fault (write)

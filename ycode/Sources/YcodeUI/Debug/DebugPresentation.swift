@@ -9,9 +9,16 @@ import YcodeSubprocess
 public enum DebugPresentation {
     // MARK: Activity
 
-    public static func runningTitle(_ product: String?) -> String { product.map { "Running \($0)" } ?? "Running" }
+    /// "Running <product>", or on a simulator "Running <product> on
+    /// <device>" (`reference-ui-6.md` §3.3).
+    public static func runningTitle(_ product: String?, on device: String? = nil) -> String {
+        (product.map { "Running \($0)" } ?? "Running") + (device.map { " on \($0)" } ?? "")
+    }
     public static func pausedTitle(_ product: String?) -> String { product.map { "Paused \($0)" } ?? "Paused" }
-    public static func finishedTitle(_ product: String?) -> String { "Finished running" + (product.map { " " + $0 } ?? "") }
+    /// "Finished running <product>[ on <device>]" (§3.3).
+    public static func finishedTitle(_ product: String?, on device: String? = nil) -> String {
+        "Finished running" + (product.map { " " + $0 } ?? "") + (device.map { " on \($0)" } ?? "")
+    }
 
     // MARK: Stop annotation
 
@@ -128,7 +135,10 @@ public enum DebugPresentation {
 
     // MARK: Console
 
-    public static let killedLine = "Debug session ended with code 9: killed"
+    /// "Debug session ended with code <n>: <reason>" (reference-ui-6.md §7,
+    /// D1); Stop ends a session with code 9, "killed".
+    public static func sessionEndedLine(code: Int, reason: String) -> String { "Debug session ended with code \(code): \(reason)" }
+    public static let killedLine = sessionEndedLine(code: 9, reason: "killed")
 }
 
 /// One sample of the debugged process's gauges (Debug navigator).

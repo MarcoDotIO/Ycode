@@ -12,7 +12,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 /// revealing modifiers for one without a shortcut) and conditional items
 /// ("when", hidden until their condition holds). System items (§1.6) are
 /// not listed: AppKit adds them. The Editor menu, one per editor kind
-/// (§2.7/§2.8), is in `EditorMenuGoldenTests.swift`.
+/// (§2.7/§2.8), is in `EditorMenuGoldenTests.swift`. `reference-ui-6.md`
+/// §8 (R43) changed File ▸ New, Edit ▸ Copy ▸ / Paste ▸ and Help.
 let menuBarGolden = """
 Ycode ▸
   About Ycode
@@ -25,6 +26,7 @@ Ycode ▸
     Edit Behaviors…
   —
   Open Developer Tool ▸
+    Device Hub
     —
     More Developer Tools…
   Services ▸
@@ -49,7 +51,7 @@ File ▸
     Window | ⇧⌘T
     —
     Empty File
-    New File from Clipboard
+    File from Clipboard
     File from Template… | ⌘N
     Target…
     —
@@ -57,10 +59,10 @@ File ▸
     Choose Template… | ⌥⇧⌘N | alt
     Workspace… | ⌃⌘N
     —
-    Group
-    Group without Folder
-    Group from Selection
-    Group from Selection without Folder
+    Group | when
+    Group without Folder | when
+    Group from Selection | when
+    Group from Selection without Folder | when
     Folder | ⌥⌘N
     Folder from Selection
   —
@@ -112,13 +114,15 @@ Edit ▸
   Redo | ⇧⌘Z
   —
   Cut | ⌘X
-  Copy | ⌘C
-  Copy File and Line | ⌃⌥⌘C | alt
-  Copy Symbol Name | ⌃⇧⌘C | alt
-  Copy Qualified Symbol Name | ⌃⌥⇧⌘C | alt
-  Paste | ⌘V
-  Move Item Here | ⌥⌘V | alt
-  Paste and Preserve Formatting | ⌥⇧⌘V | alt
+  Copy ▸
+    Copy | ⌘C
+    Copy File and Line | ⌃⌥⌘C
+    Copy Symbol Name | ⌃⇧⌘C
+    Copy Qualified Symbol Name | ⌃⌥⇧⌘C
+  Paste ▸
+    Paste | ⌘V
+    Move Item Here | ⌥⌘V | when
+    Paste and Preserve Formatting | ⌥⇧⌘V
   Duplicate | ⌘D
   Delete | ⌘⌫
   —
@@ -174,7 +178,7 @@ Edit ▸
   Convert ▸
     To Group
     To Folder
-    Preflight Conversion To Folder
+    Preflight Conversion to Folder
     To String Catalogs…
 View ▸
   Editor ▸
@@ -583,7 +587,7 @@ Help ▸
   The Swift Programming Language
   Provide Feedback…
   —
-  Show Keyboard Hints | ⌥⌘?
+  Hide Keyboard Hints | ⌥⌘?
   Show Quick Help for Selected Item | ⌃⌘?
   Search Documentation for Selected Text | ⌃⌥⌘/
 """
@@ -726,7 +730,7 @@ func canonicalGolden(_ text: String) -> [String] {
             #expect(find(["Edit", "Format", "Re-Indent"]) == nil)
             #expect(sc("File", "Close Other Window Tabs") == "⌥⇧⌘W")
             #expect(sc("View", "Enter Full Screen") == "⌃⌘F")
-            // Editor ▸ Show Coding Tools: the assistant items are listed disabled.
+            // Editor ▸ Show Coding Tools: Show Coding Tools…, then the four coding tools.
             let tools = find(["Editor", "Show Coding Tools"])?.submenu?.items.map { $0.isSeparatorItem ? "—" : $0.title }
             #expect(tools == ["Show Coding Tools…", "—", "Explain", "Document", "Generate a Playground", "Generate a Preview"])
             // §1.6: the table lists none of the system's items.

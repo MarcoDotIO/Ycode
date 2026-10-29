@@ -37,6 +37,8 @@ extension Scheme {
         }
     }
 
+    /// Sets `buildConfiguration` on the action element named `action` (for
+    /// example `"LaunchAction"`), creating the element if missing.
     public mutating func setConfiguration(_ configuration: String, for action: String) {
         editAction(action) { $0["buildConfiguration"] = configuration }
     }
@@ -67,6 +69,8 @@ extension Scheme {
         return l["customWorkingDirectory"] ?? ""
     }
 
+    /// Sets the Run ▸ Options working directory; nil turns the option off
+    /// and removes both attributes. See `specs/ide/schemes.md`.
     public mutating func setCustomWorkingDirectory(_ path: String?) {
         editAction("LaunchAction") { l in
             if let path {
@@ -129,6 +133,7 @@ extension Scheme {
 }
 
 extension Scheme.Argument {
+    /// A launch argument with its enabled checkbox.
     public init(_ value: String, enabled isEnabled: Bool) {
         self.value = value
         self.isEnabled = isEnabled
@@ -136,6 +141,7 @@ extension Scheme.Argument {
 }
 
 extension Scheme.EnvironmentVariable {
+    /// An environment variable `key=value` with its enabled checkbox.
     public init(_ key: String, _ value: String, enabled isEnabled: Bool) {
         self.key = key
         self.value = value

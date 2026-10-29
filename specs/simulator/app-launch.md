@@ -5,8 +5,8 @@ agent APP-FIX, 2026-10-20). §3.1–§3.5 are implemented (§3.5 still with
 the provisional cache-only image files: Q1 answered against them, but the
 root the loader accepts was not found on Ycode, §3.5 last part, Q6); the
 poster-app open requests are answered (§2.1, §8.2); §3.6
-(`thread_suspend`), §3.7 (a GPU submission that never completes) and §3.8
-(one `dasd` fault) are open, with the questions in §8. Launch times: §9. It records, for every
+(`thread_suspend`) is fixed (agent THREAD-SUSPEND, 2026-10-28); §3.7 (a GPU
+submission that never completes) and §3.8 (one `dasd` fault) are open, with the questions in §8. Launch times: §9. It records, for every
 app that the iOS 27.1 runtime (24A94401) can launch (`home-apps.md` §2.3),
 what happens when Ycode launches it, why, and what Ycode changed.
 
@@ -378,7 +378,7 @@ the accepted root on Ycode is not one of the strings above; the input the
 cache-only image files stay (design as above), with their one known
 difference from the reference (`stat` succeeds).
 
-### 3.6 `thread_suspend` / `thread_resume` (open)
+### 3.6 `thread_suspend` / `thread_resume` (fixed, agent THREAD-SUSPEND, 2026-10-28)
 
 JavaScriptCore's garbage collector suspends each other thread that ran
 JavaScript, reads its registers (`thread_get_state`) and scans its stack.
@@ -392,6 +392,57 @@ vCPU is kicked and parks at its next exit to the VMM in EL0 (or at the end
 of its trap), publishing its registers; `thread_get_state` of a suspended
 thread waits (without the kernel lock) until it is parked or blocked in the
 kernel; `thread_resume` at count 0 releases it.
+
+**A visible failure (agent VNODE-EVENTS, 2026-10-28).** `amsengagementd`
+(AppleMediaServicesUI; it runs JavaScript through JetEngine) ends with
+SIGSEGV in JavaScriptCore in about half of the full boots. Ycode's own
+fault reports and exit summaries of the FS-HOST and SVC-FULL runs on the
+Linux host (`fsh/runs/*`, `svcfull/runs/*`; 47 amsengagementd processes)
+point at these stubs: every one of the 8 crashed processes had called the
+`thread_suspend` and `thread_resume` stubs (e.g. 35 and 26 times), and
+none of the 30 processes that never called them crashed (9 called them and
+did not crash, or were stopped first). The faults are reads of small or
+odd addresses (0x8, 0x10, 0x5c038, 0x700000008, an unmapped heap page) at
+four different places in JavaScriptCore, reached from JetEngine's script
+thread: the pattern of objects freed while still in use, which is what a
+collector that skips the stacks of threads it could not suspend produces,
+not of one wrong kernel answer (the last traps before each fault are
+ordinary `fstat`, `pread`, `fcntl` calls that succeeded). No other Ycode
+kernel behaviour (the date, `mmap`/JIT, a syscall result) showed up in the
+reports. The fix is the design above, not a small change; until it lands,
+the crash is expected in boots where JetEngine's script runs long enough
+for a collection.
+
+**The fix (agent THREAD-SUSPEND, 2026-10-28).** Mach suspension is real
+(`threads-and-events.md` §1.6): `thread_suspend` returns once the target
+has stopped (parked at its run gate, or inside a kernel call), and
+`thread_get_state` gives the registers where it stopped. Ycode's own guest
+probe `p_jsgc` (four threads of one JavaScriptCore context group keep
+objects referenced only from their stacks while they allocate and collect,
+20 s) crashes on the main line (SIGSEGV in run `tsus/pb1`, SIGTRAP in
+`pb2`; JavaScriptCore logs "Failed to suspend pthread … 46" and "encountered
+an invalid thread") and passes with the fix (0 mismatches in `p1`–`p4`).
+
+Once amsengagementd no longer died in its collector, it lived long enough
+to reach a second, older defect: "BUG IN LIBDISPATCH: Invalid wlh state"
+(SIGTRAP in libdispatch), three times in two boots with suspension alone
+(runs `A-n1`, `A-n2`). The same abort ends assistantd in most main-line
+boots. Its cause was the workqueue: when a kevent or workloop worker
+returned with a change list in which one change failed (an `EV_DELETE`
+of a knote whose socket had just been closed with `guarded_close_np`),
+Ycode stopped at that change and returned ENOENT from `workq_kernreturn`;
+the changes after it were lost. The kernel now applies every change and
+returns a failed one as an EV_ERROR event in the thread's next upcall
+(`threads-and-events.md` §2.7 step 3).
+
+Result: 700 s behaviour runs (`service-fidelity.md` §14), main line bfa4c1a
+against this work, pairs started together on the same day and device:
+
+| | Boots | amsengagementd crashed | assistantd crashed |
+|---|---|---|---|
+| main line | 10 | **10** (11 crashes: 8 data aborts and 2 BRK in JavaScriptCore, 1 jump to 0) | 8 |
+| suspension only | 2 | 2 (3 × "Invalid wlh state", no JavaScriptCore fault) | 2 |
+| suspension and the workqueue fix | 8 | **0** | **0** |
 
 ### 3.7 A GPU submission that never completes (explained; fixed in this agent's boots, `stage8-contract.md` §15.6)
 
@@ -432,9 +483,13 @@ in 13 boots; not reproduced.
 
 ## 4. Networking in the guest
 
-Ycode's guest has **no IP networking**: `socket(AF_INET/AF_INET6, …)` fails
+*Superseded (NET-IMPL, 2026-10-27): the guest has host passthrough
+networking (`networking-ycode.md`); Safari loads public pages and
+URLSession fetches work. The paragraph below records the state before.*
+
+Ycode's guest had **no IP networking**: `socket(AF_INET/AF_INET6, …)` failed
 with EAFNOSUPPORT (only AF_UNIX exists, `stage4b-contract.md` §6). Name
-lookups fail: Safari's App Store bag fetches end with `NSURLErrorDomain`
+lookups failed: Safari's App Store bag fetches end with `NSURLErrorDomain`
 −1003 (host not found). A page from the network cannot load; a `data:` URL
 needs no network but is blocked by §3.5. Giving the guest networking means
 host-backed AF_INET/AF_INET6 sockets in the kernel (connect, poll/kqueue,
@@ -742,6 +797,9 @@ on full boots, none on the restores g1–g4, and once `dasd` (§3.8).
 | §3.7's cause: the stuck draw and its feedback read | 3 | GPU-2 runs `SX/GPU2/runs/sa*`, `sd*`, `se*`, `sg*`, `sh*`, `sj*` (hang reports, checkpoint markers, captures of our own translations and their reflection), host kernel log (Xid 109), `scripts/gpu-probes/rprobe.c` |
 | Launch times (§9) | 3 | runs listed in §9 |
 | `thread_suspend` calls from JavaScriptCore (§3.6) | 3 | unimplemented-function counts in runs r2–r4 |
+| amsengagementd's JavaScriptCore crashes come with `thread_suspend` stub calls (§3.6) | 3 | Ycode's fault reports and exit summaries (unimplemented-function counts) of 47 amsengagementd processes in runs `fsh/runs/*`, `svcfull/runs/*` on the Linux host |
+| JavaScriptCore's collector: suspend, then `thread_get_state` (ARM_THREAD_STATE64), stack copy, resume; a failed suspend skips the thread, a failed state read is fatal (§3.6) | 1 | WebKit `Source/WTF/wtf/posix/ThreadingPOSIX.cpp`, `Source/JavaScriptCore/heap/MachineStackMarker.cpp` |
+| The fix ends amsengagementd's crashes; the "Invalid wlh state" abort and its cause (§3.6) | 3 | Thor runs `ide-remote/tsus/runs/A-*`, `B-*` (fault reports, trap rings, `launchd.log`), probe runs `p1`–`p4`, `pb1`, `pb2` (`p_tsus`, `p_jsgc` output); libpthread `kern/kern_support.c` (level 1) for the return semantics |
 | No AF_INET in the guest; −1003 (§4) | 3 | Ycode source (`SocketCalls.swift`); Safari's log lines in run r2 |
 | `home-apps.md` §6 checks (§6) | 2, 3 | the device's `IconState.plist`/`DesiredIconState.plist` read with `plistlib`; compared with the runtime's SpringBoard default files; Ycode screenshots |
 | Per-app results (§2) | 3 | Ycode warm runs t1 (frames, launch results, crash reports) |

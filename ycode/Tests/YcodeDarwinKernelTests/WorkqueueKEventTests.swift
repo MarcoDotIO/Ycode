@@ -285,6 +285,60 @@ import YcodeDarwinABI
         #expect(o == .resume && f.x[4] & Self.kevent != 0 && f.x[5] >= 1)
     }
 
+    /// An EVFILT_READ knote of a pipe on the workqueue kqueue (bsd-locking
+    /// and mach-ipc-locking.md §4.11): the worker returns and parks (on the
+    /// fast path with the lock split), the pipe becomes readable (under L0),
+    /// and the parked worker is handed the bucket: its scan reads the pipe's
+    /// readiness under L0 (an escalation from the event lock) and delivers
+    /// the event with the byte count. With EV_DISPATCH the knote is then
+    /// disabled until the handler re-arms it.
+    @Test func descriptorKnoteIsDeliveredToAParkedWorker() throws {
+        let t = try T2Env()
+        open(t)
+        let (_, p) = t.svc(42)
+        let r = p.x[0], w = p.x[1]
+        #expect(!p.carry)
+        registerWorkq(t, [KEventRecord(ident: r, filter: -1, flags: 0x81, qos: Self.legacy)])
+        #expect(t.host.starts.isEmpty)
+        t.svc(368, [0x20, 0, 1, UInt64(Self.legacy)])
+        let ctx = t.host.starts[0].context
+        let before = KernelLock.escalations.load(ordering: .relaxed)
+        for round in 0..<3 {
+            let parked = workerReturn(t, ctx, op: round == 0 ? 4 : 0x40)
+            #expect(t.eventually { t.kernel.idleWorkqueueThreads.contains { $0 === ctx } })
+            t.put([1, 2, 3], at: Env.scratch + 0x6000)
+            #expect(t.svc(4, [w, Env.scratch + 0x6000, 3]).1.x[0] == 3)
+            let (o, f) = try #require(parked())
+            #expect(o == .resume && f.x[4] & Self.kevent != 0 && f.x[5] == 1)
+            let e = events(t, at: f.x[3], count: 1)[0]
+            #expect(e.ident == r && e.filter == -1 && e.data == 3)
+            #expect(t.host.starts.count == 1)
+            // The handler reads the data, then re-arms (EV_ENABLE, as
+            // libdispatch does): nothing to report until the next write.
+            #expect(t.svc(3, [r, Env.scratch + 0x6100, 16], context: ctx).1.x[0] == 3)
+            registerWorkq(t, [KEventRecord(ident: r, filter: -1, flags: 0x4, qos: Self.legacy)], context: ctx)
+            #expect(t.host.starts.count == 1)
+        }
+        if DarwinSystem.splitForTests, DarwinKernel.descriptorEscalation {
+            #expect(KernelLock.escalations.load(ordering: .relaxed) > before)
+        }
+        // The pipe is empty and the knote re-armed: it is not a candidate any
+        // more (its active flag went at the re-evaluation under L0), so scans
+        // of this kqueue need no L0 until the next write makes it active again
+        // (the worker still services the bucket).
+        if DarwinKernel.descriptorEscalation {
+            #expect(t.kernel.lock.withLock { t.kernel.withEvents { !t.kernel.hasDescriptorCandidate(t.kernel.kevents.workq!) } })
+            t.put([9], at: Env.scratch + 0x6000)
+            #expect(t.svc(4, [w, Env.scratch + 0x6000, 1]).1.x[0] == 1)
+            // The write made it active again: the worker that still services
+            // the bucket gets it at its return.
+            let (o, f) = t.svc(368, [0x40, 0, 0, 0], context: ctx)
+            let e = events(t, at: f.x[3], count: 1)[0]
+            #expect(o == .resume && f.x[5] == 1 && e.ident == r && e.filter == -1 && e.data == 1)
+        }
+        t.kernel.shutdown()
+    }
+
     @Test func timerFiresIntoAKeventUpcall() throws {
         let t = try T2Env()
         open(t)
@@ -385,6 +439,31 @@ import YcodeDarwinABI
         let (o2, r) = try #require(parked())
         #expect(o2 == .resume && r.x[4] & (Self.workloop | Self.reuse) == Self.workloop | Self.reuse)
         #expect(t.host.starts.count == 1)
+    }
+
+    /// A failed change of a returning workloop worker comes back as an
+    /// EV_ERROR event in its next upcall; the changes after it still apply
+    /// (§2.7 step 3; libpthread's kernel side, no ERROR_EVENTS).
+    @Test func workloopReturnChangeErrorsComeBackAsEvents() throws {
+        let t = try T2Env()
+        open(t)
+        let id: UInt64 = 0x7000_2000
+        let state = Env.scratch + 0x900
+        t.put64(0x55, at: state)
+        _ = workloopCall(t, id, [threadRequest(id, state: state, mask: ~0, value: 0x55)], flags: Self.immediate)
+        let s = try #require(t.host.starts.first)
+        // EV_DELETE of a knote that does not exist, then EV_ADD | EV_CLEAR of
+        // a user event triggered at once.
+        let changes = Env.scratch + 0x6000
+        put(t, [KEventRecord(ident: 99, filter: -10, flags: 0x2),
+                KEventRecord(ident: 7, filter: -10, flags: 0x1 | 0x20, fflags: 0x0100_0000)], at: changes)
+        let back = try #require(workerReturn(t, s.context, op: 0x100, changes: changes, count: 2)())
+        #expect(back.0 == .resume && !back.1.carry)
+        let n = Int(back.1.x[5])
+        #expect(n == 2)
+        let got = events(t, at: back.1.x[3], count: max(n, 1))
+        #expect(got[0].ident == 99 && got[0].flags & 0x4000 != 0 && got[0].data == 2)   // EV_ERROR, ENOENT
+        #expect(n == 2 && got[1].ident == 7 && got[1].filter == -10)
     }
 
     @Test func workloopOwnerHoldsTheRequest() throws {

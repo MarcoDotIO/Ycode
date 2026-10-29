@@ -387,6 +387,7 @@ final class FrameProfile: @unchecked Sendable {
             d.count = r.count &- o.count; d.acquisitions = r.acquisitions &- o.acquisitions
             d.holdNanoseconds = r.holdNanoseconds &- o.holdNanoseconds; d.waitNanoseconds = r.waitNanoseconds &- o.waitNanoseconds
             d.waits = r.waits &- o.waits; d.contended = r.contended &- o.contended
+            // swiftlint:disable:next empty_count - a counter, not a collection
             if d.acquisitions > 0 || d.count > 0 { rows.append((k, d)) }
         }
         rows.sort { $0.1.holdNanoseconds &+ $0.1.waitNanoseconds > $1.1.holdNanoseconds &+ $1.1.waitNanoseconds }
@@ -631,6 +632,8 @@ final class FrameProfile: @unchecked Sendable {
 /// frame profile's boot window), to the nearest ~50 ms, without recording
 /// anything else: the timing instrument for A/B boots.
 enum HomeWatch {
+    /// Counters logged with the home line (set by the host before the boot).
+    nonisolated(unsafe) static var atHome: (() -> String)?
     static func startIfRequested(statePath: String?, surfaces: IOSurfaceHostService?) {
         guard getenv("YCODE_HOME_WATCH").map({ String(cString: $0) == "1" }) ?? false,
               let statePath, let surfaces else { return }
@@ -657,6 +660,7 @@ enum HomeWatch {
                 if lit >= 2 {
                     stderrLine("ycode-simd: home watch: home screen seen \(String(format: "%.2f", Double(firstLit &- min(firstLit, processStart)) / 1e9)) s "
                         + "after ycode-simd started (frame \(r.frame), dark \(c.dark) per mille, mean \(Double(c.mean) / 100))")
+                    if let atHome { stderrLine("ycode-simd: home watch: at home: " + atHome()) }
                     return
                 }
             }

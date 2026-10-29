@@ -262,6 +262,17 @@ import YcodeDarwinABI
         #expect(env.svc(65, [s, Env.scratchSize + 0x4000, 0x10]).1.x[0] == 12)
     }
 
+    /// mlock / munlock: 0 on a mapped range (an unaligned start is widened to
+    /// its page); ENOMEM for an unmapped page; EINVAL for a wrapping range.
+    @Test func mlockChecks() throws {
+        let env = try Env()
+        #expect(!env.svc(203, [s + 0x100, 0x200]).1.carry)
+        #expect(!env.svc(204, [s, Env.scratchSize]).1.carry)
+        #expect(env.svc(203, [s, Env.scratchSize + 0x4000]).1.x[0] == 12)
+        #expect(env.svc(204, [s - 0x4000, 0x10]).1.x[0] == 12)
+        #expect(env.svc(203, [0xFFFF_FFFF_FFFF_F000, 0x2000]).1.x[0] == 22)
+    }
+
     /// getattrlist ignores ATTR_CMN_ERROR (a getattrlistbulk attribute): not
     /// packed and not in the returned set (level 3: the Mac's simulator).
     @Test func attributeListWithoutErrorField() throws {

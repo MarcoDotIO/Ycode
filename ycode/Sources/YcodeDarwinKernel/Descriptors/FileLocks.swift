@@ -33,9 +33,16 @@ struct FileIdentity: Hashable {
     }
 }
 
-/// The device's advisory locks (one per `DarwinSystem`). Lock held for
-/// every call.
-final class FileLockTable {
+/// The device's advisory locks (one per `DarwinSystem`). The lock lists,
+/// the waiting counts and the deadlock chain are guarded by `tableLock`, a
+/// leaf (`bsd-locking.md` §15): every method takes it, so the non-blocking
+/// lock calls run without L0. A file's waiters still wait on an L0 queue:
+/// a change that a waiter may be waiting for returns its file's state, and
+/// the caller wakes the waiters under L0 after the table lock is released
+/// (`wake`). A waiter counts itself (`waiting`) in the same table section
+/// that found the lock blocked, and holds L0 from there until it sleeps, so
+/// no wakeup is lost.
+final class FileLockTable: @unchecked Sendable {
     enum Owner: Hashable {
         case process(Int32)
         case description(ObjectIdentifier)
@@ -57,13 +64,26 @@ final class FileLockTable {
 
     final class FileState {
         var locks: [Lock] = []
+        /// Threads that decided to wait for this file (table lock).
+        var waiting = 0
+        /// Their queue (an L0 queue).
         let waiters = WaitQueue()
     }
 
-    private(set) var files: [FileIdentity: FileState] = [:]
+    let tableLock = DescriptorTableLock(name: "file locks")
+    nonisolated(unsafe) private var storage: [FileIdentity: FileState] = [:]
+    nonisolated(unsafe) private var blockedOnStorage: [Int32: Owner] = [:]
+    /// Descriptions whose last close releases their locks (the handler is installed).
+    nonisolated(unsafe) private var watchedStorage: Set<ObjectIdentifier> = []
+
+    /// Every file's state (snapshots).
+    var files: [FileIdentity: FileState] { tableLock.withLock { storage } }
     /// POSIX owners blocked in F_SETLKW: pid → the owner they wait for
     /// (xnu's deadlock detection follows this chain).
-    var blockedOn: [Int32: Owner] = [:]
+    var blockedOn: [Int32: Owner] {
+        get { tableLock.withLock { blockedOnStorage } }
+        set { tableLock.withLock { blockedOnStorage = newValue } }
+    }
     /// Data-protection classes set on files and directories. Written under
     /// L0; read also without it (getattrlist's fast path,
     /// `bsd-locking.md` §4.4), hence its own leaf lock.
@@ -73,77 +93,134 @@ final class FileLockTable {
     }
     private let classStorage = Mutex<[FileIdentity: Int32]>([:])
 
+    func isWatched(_ key: ObjectIdentifier) -> Bool { tableLock.withLock { watchedStorage.contains(key) } }
+    /// Records that `key`'s release handler is installed; false when it already was.
+    func watch(_ key: ObjectIdentifier) -> Bool { tableLock.withLock { watchedStorage.insert(key).inserted } }
+    func unwatch(_ key: ObjectIdentifier) { tableLock.withLock { _ = watchedStorage.remove(key) } }
+
     func state(_ id: FileIdentity) -> FileState {
-        if let s = files[id] { return s }
-        let s = FileState()
-        files[id] = s
-        return s
+        tableLock.withLock {
+            if let s = storage[id] { return s }
+            let s = FileState()
+            storage[id] = s
+            return s
+        }
     }
 
     /// The first lock of another owner that blocks the request.
     func blocker(_ id: FileIdentity, owner: Owner, exclusive: Bool, start: Int64, end: Int64) -> Lock? {
-        files[id]?.locks.first { $0.owner != owner && $0.overlaps(start, end) && (exclusive || $0.exclusive) }
+        tableLock.withLock { blockerLocked(id, owner: owner, exclusive: exclusive, start: start, end: end) }
+    }
+
+    private func blockerLocked(_ id: FileIdentity, owner: Owner, exclusive: Bool, start: Int64, end: Int64) -> Lock? {
+        storage[id]?.locks.first { $0.owner != owner && $0.overlaps(start, end) && (exclusive || $0.exclusive) }
+    }
+
+    /// One table section for a waiting lock request: the blocker, and when
+    /// there is one, the file's state with this thread counted as waiting
+    /// and `pid` recorded as blocked on it (POSIX).
+    func blockerCountingWaiter(_ id: FileIdentity, owner: Owner, exclusive: Bool, start: Int64, end: Int64,
+                               pid: Int32?) -> (Lock, FileState)? {
+        tableLock.withLock {
+            guard let b = blockerLocked(id, owner: owner, exclusive: exclusive, start: start, end: end) else { return nil }
+            let s = storage[id]!
+            s.waiting += 1
+            if let pid { blockedOnStorage[pid] = b.owner }
+            return (b, s)
+        }
+    }
+
+    /// A waiter of `id` stopped waiting (woken, timed out or interrupted).
+    func stoppedWaiting(_ id: FileIdentity, _ s: FileState, pid: Int32?) {
+        tableLock.withLock {
+            s.waiting -= 1
+            if let pid { blockedOnStorage[pid] = nil }
+            if s.locks.isEmpty, s.waiting == 0, storage[id] === s { storage[id] = nil }
+        }
     }
 
     /// Sets (exclusive true/false) or clears (`exclusive == nil`) the
     /// owner's lock over [start, end]: the owner's overlapping locks are
     /// trimmed or split, the new lock added, and adjacent locks of the same
-    /// type merged. Wakes every waiter of the file.
-    func apply(_ id: FileIdentity, owner: Owner, kind: Kind, exclusive: Bool?, start: Int64, end: Int64) {
-        let s = state(id)
-        var kept: [Lock] = []
-        var mine: [Lock] = []
-        for l in s.locks {
-            guard l.owner == owner else { kept.append(l); continue }
-            guard l.overlaps(start, end) else { mine.append(l); continue }
-            if l.start < start { var left = l; left.end = start - 1; mine.append(left) }
-            if l.end > end { var right = l; right.start = end + 1; mine.append(right) }
-        }
-        if let exclusive { mine.append(Lock(owner: owner, kind: kind, exclusive: exclusive, start: start, end: end)) }
-        mine.sort { $0.start < $1.start }
-        var merged: [Lock] = []
-        for l in mine {
-            if var last = merged.last, last.exclusive == l.exclusive, last.kind == l.kind,
-               last.end == Int64.max || last.end + 1 >= l.start {
-                last.end = max(last.end, l.end)
-                merged[merged.count - 1] = last
-            } else {
-                merged.append(l)
+    /// type merged. Returns the file's state when threads wait for it (the
+    /// caller wakes them under L0, `wake`).
+    @discardableResult
+    func apply(_ id: FileIdentity, owner: Owner, kind: Kind, exclusive: Bool?, start: Int64, end: Int64) -> [FileState] {
+        tableLock.withLock {
+            let s: FileState
+            if let existing = storage[id] { s = existing } else { s = FileState(); storage[id] = s }
+            var kept: [Lock] = []
+            var mine: [Lock] = []
+            for l in s.locks {
+                guard l.owner == owner else { kept.append(l); continue }
+                guard l.overlaps(start, end) else { mine.append(l); continue }
+                if l.start < start { var left = l; left.end = start - 1; mine.append(left) }
+                if l.end > end { var right = l; right.start = end + 1; mine.append(right) }
             }
+            if let exclusive { mine.append(Lock(owner: owner, kind: kind, exclusive: exclusive, start: start, end: end)) }
+            mine.sort { $0.start < $1.start }
+            var merged: [Lock] = []
+            for l in mine {
+                if var last = merged.last, last.exclusive == l.exclusive, last.kind == l.kind,
+                   last.end == Int64.max || last.end + 1 >= l.start {
+                    last.end = max(last.end, l.end)
+                    merged[merged.count - 1] = last
+                } else {
+                    merged.append(l)
+                }
+            }
+            s.locks = kept + merged
+            return changedLocked(id)
         }
-        s.locks = kept + merged
-        changed(id)
     }
 
-    /// Removes every lock of `owner` (on one file, or on all). Wakes waiters.
-    func release(owner: Owner, on id: FileIdentity? = nil) {
-        for (key, s) in files where id == nil || key == id {
-            let before = s.locks.count
-            s.locks.removeAll { $0.owner == owner }
-            if s.locks.count != before { changed(key) }
+    /// Removes every lock of `owner` (on one file, or on all). Returns the
+    /// states whose waiters the caller wakes (`wake`).
+    @discardableResult
+    func release(owner: Owner, on id: FileIdentity? = nil) -> [FileState] {
+        tableLock.withLock {
+            var wake: [FileState] = []
+            for (key, s) in storage where id == nil || key == id {
+                let before = s.locks.count
+                s.locks.removeAll { $0.owner == owner }
+                if s.locks.count != before { wake += changedLocked(key) }
+            }
+            return wake
         }
     }
 
-    private func changed(_ id: FileIdentity) {
-        guard let s = files[id] else { return }
-        _ = s.waiters.wakeAll()
-        if s.locks.isEmpty && s.waiters.isEmpty { files[id] = nil }
+    private func changedLocked(_ id: FileIdentity) -> [FileState] {
+        guard let s = storage[id] else { return [] }
+        if s.locks.isEmpty && s.waiting == 0 { storage[id] = nil }
+        return s.waiting > 0 ? [s] : []
     }
 
     func hasLocks(of owner: Owner, on id: FileIdentity) -> Bool {
-        files[id]?.locks.contains { $0.owner == owner } ?? false
+        tableLock.withLock { storage[id]?.locks.contains { $0.owner == owner } ?? false }
     }
 
     /// True when `pid` waiting for `owner` would close a cycle back to `pid`.
     func wouldDeadlock(_ pid: Int32, waitingFor owner: Owner) -> Bool {
-        var current = owner
-        for _ in 0..<64 {
-            guard case let .process(p) = current else { return false }
-            if p == pid { return true }
-            guard let next = blockedOn[p] else { return false }
-            current = next
+        tableLock.withLock {
+            var current = owner
+            for _ in 0..<64 {
+                guard case let .process(p) = current else { return false }
+                if p == pid { return true }
+                guard let next = blockedOnStorage[p] else { return false }
+                current = next
+            }
+            return false
         }
-        return false
+    }
+}
+
+extension KernelLock {
+    /// Wakes the waiters of file-lock states a table change returned: under
+    /// this kernel lock (taken here when the caller does not hold it; the
+    /// caller holds no other lock then).
+    func wakeFileLockWaiters(_ states: [FileLockTable.FileState]) {
+        guard !states.isEmpty else { return }
+        withLock { for s in states { _ = s.waiters.wakeAll() } }
     }
 }
 
@@ -192,8 +269,11 @@ extension DarwinKernel {
         let system = self.system
         open.lastCloseHandlers["locks"] = { [weak system] in
             guard let system else { return }
-            system.lock.withLock { system.fileLocks.release(owner: .description(key)) }
+            let table = system.fileLocks
+            table.unwatch(key)
+            system.lock.wakeFileLockWaiters(table.release(owner: .description(key)))
         }
+        _ = system.fileLocks.watch(key)
     }
 
     /// fcntl F_GETLK / F_SETLK / F_SETLKW / F_SETLKWTIMEOUT and the F_OFD_*
@@ -201,7 +281,7 @@ extension DarwinKernel {
     /// l_pid @16, l_type @20 (short), l_whence @22 (short); 24 bytes), or a
     /// `struct flocktimeout` (the flock, then a timespec @24).
     func fileLockFcntl(_ fd: Int32, _ cmd: Int32, _ arg: UInt64, _ call: inout CallText,
-                       _ mem: any KernelGuestMemory) throws -> UInt64 {
+                       _ mem: any KernelGuestMemory, fast: Bool = false) throws -> UInt64 {
         call.set("fcntl(fd=\(fd), \(FileLockControl.names[cmd] ?? "cmd \(cmd)"), arg=\(hx(arg)))")
         // Before the descriptor is looked up (bsd-locking.md §4.2).
         if cmd < FileLockControl.ofdSetlk, cmd != FileLockControl.getlk {
@@ -272,7 +352,12 @@ extension DarwinKernel {
         default:
             throw fail(Code.EINVAL)
         }
-        if ofd { watchDescription(open) }
+        if ofd {
+            // A BSD fast path cannot install the description's release
+            // handler (L0 state): its first lock goes to L0 (§15).
+            if fast, !table.isWatched(ObjectIdentifier(open)) { throw BSDFastDecline() }
+            if !fast { watchDescription(open) }
+        }
         let wait = cmd == FileLockControl.setlkw || cmd == FileLockControl.ofdSetlkw
             || cmd == FileLockControl.setlkwTimeout || cmd == FileLockControl.ofdSetlkwTimeout
         var deadline: UInt64?
@@ -297,14 +382,19 @@ extension DarwinKernel {
         if let exclusive {
             while let b = table.blocker(id, owner: owner, exclusive: exclusive, start: start, end: end) {
                 guard wait else { throw fail(Code.EAGAIN) }
+                // Waiting is a locked-path call (an L0 queue).
+                precondition(lock.isHeldByCurrentThread, "a file-lock wait needs the kernel lock")
                 if case let .process(me) = owner, kind == .posix, table.wouldDeadlock(me, waitingFor: b.owner) {
                     throw fail(Code.EDEADLK)
                 }
                 call += " [waits for \(b.owner)]"
-                let state = table.state(id)
-                if case let .process(me) = owner { table.blockedOn[me] = b.owner }
+                var waiterPID: Int32?
+                if case let .process(me) = owner { waiterPID = me }
+                // The blocker again, and the count, in one table section (L0 is held until the wait sleeps).
+                guard let (_, state) = table.blockerCountingWaiter(id, owner: owner, exclusive: exclusive, start: start,
+                                                                     end: end, pid: waiterPID) else { continue }
                 let result = state.waiters.wait(on: lock, deadline: deadline)
-                if case let .process(me) = owner { table.blockedOn[me] = nil }
+                table.stoppedWaiting(id, state, pid: waiterPID)
                 switch result {
                 case .woken: continue
                 case .timedOut: throw fail(Code.ETIMEDOUT)
@@ -312,7 +402,7 @@ extension DarwinKernel {
                 }
             }
         }
-        table.apply(id, owner: owner, kind: kind, exclusive: exclusive, start: start, end: end)
+        lock.wakeFileLockWaiters(table.apply(id, owner: owner, kind: kind, exclusive: exclusive, start: start, end: end))
     }
 
     /// flock(2) (BSD 131): a whole-file lock owned by the open description.
@@ -325,7 +415,10 @@ extension DarwinKernel {
         let id = FileIdentity(file.stat)
         let op = operation & ~FileLockControl.lockNB
         if op & FileLockControl.lockUN != 0 {
-            table.apply(id, owner: owner, kind: .flock, exclusive: nil, start: 0, end: Int64.max)
+            let held = VnodeNotes.isActive && table.hasLocks(of: owner, on: id)
+            lock.wakeFileLockWaiters(table.apply(id, owner: owner, kind: .flock, exclusive: nil, start: 0, end: Int64.max))
+            // NOTE_FUNLOCK: the vnode was unlocked by flock(2) (sys/event.h).
+            if held { VnodeNotes.post(file.hostKey, VnodeNote.funlock) }
             return 0
         }
         let exclusive: Bool
@@ -351,7 +444,7 @@ extension DarwinKernel {
         let table = system.fileLocks
         let id = FileIdentity(f.stat)
         guard table.hasLocks(of: .process(pid), on: id) else { return }
-        table.release(owner: .process(pid), on: id)
+        lock.wakeFileLockWaiters(table.release(owner: .process(pid), on: id))
     }
 
     // MARK: Data-protection classes

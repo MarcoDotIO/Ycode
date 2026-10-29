@@ -51,15 +51,51 @@ extension DarwinKernel {
 
     func socketCall(_ n: Int, _ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> BSDResult {
         func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
+        // An IP socket (networking-ycode.md §2): its own layer.
+        if n != DescriptorBSD.socket, n != DescriptorBSD.socketpair, let file = try? fileSystem.openFile(for: int(0)) {
+            if let s = file.object as? InetSocket {
+                call.set(Self.socketCallText(n, a))
+                return try inetSocketCall(n, a, s, file, &call, mem)
+            }
+            if let s = file.object as? RouteSocket {
+                call.set(Self.socketCallText(n, a) + " [PF_ROUTE]")
+                return try routeSocketCall(n, a, s, file, &call, mem)
+            }
+            if let s = file.object as? KernelControlSocket {
+                call.set(Self.socketCallText(n, a) + " [kernel control]")
+                return try kernelControlCall(n, a, s, file, &call, mem)
+            }
+        }
         switch n {
         case DescriptorBSD.socket:
             call.set("socket(domain=\(int(0)), type=\(int(1)), protocol=\(int(2)))")
+            if int(0) == InetABI.afInet || int(0) == InetABI.afInet6 {
+                let s = try makeInetSocket(domain: int(0), type: int(1), proto: int(2))
+                let fd = try fileSystem.installObject(s, statusFlags: DarwinOpen.O_RDWR, closeOnExec: false)
+                call += " [IP socket, fd \(fd)]"
+                return .value(UInt64(fd))
+            }
+            if int(0) == KernelControlSocket.afSystem, int(2) == KernelControlSocket.sysprotoControl, !InetSocketPolicy.disabled {
+                guard int(1) == InetABI.sockDgram || int(1) == InetABI.sockStream else { throw fail(Code.EPROTOTYPE) }
+                let fd = try fileSystem.installObject(KernelControlSocket(lock: lock), statusFlags: DarwinOpen.O_RDWR,
+                                                      closeOnExec: false)
+                call += " [kernel control, fd \(fd)]"
+                return .value(UInt64(fd))
+            }
+            if int(0) == InetABI.afRoute, !InetSocketPolicy.disabled {
+                guard int(1) == InetABI.sockRaw else { throw fail(Code.EPROTOTYPE) }
+                let fd = try fileSystem.installObject(RouteSocket(proto: int(2), lock: lock), statusFlags: DarwinOpen.O_RDWR,
+                                                      closeOnExec: false)
+                call += " [PF_ROUTE, fd \(fd)]"
+                return .value(UInt64(fd))
+            }
             let s = try makeSocket(domain: int(0), type: int(1), proto: int(2))
             let fd = try fileSystem.installObject(s, statusFlags: DarwinOpen.O_RDWR, closeOnExec: false)
             return .value(UInt64(fd))
 
         case DescriptorBSD.socketpair:
             call.set("socketpair(domain=\(int(0)), type=\(int(1)), protocol=\(int(2)), sv=\(hx(a[3])))")
+            if int(0) == InetABI.afInet || int(0) == InetABI.afInet6 { throw fail(Code.EOPNOTSUPP) }
             let a1 = try makeSocket(domain: int(0), type: int(1), proto: int(2))
             let b1 = try makeSocket(domain: int(0), type: int(1), proto: int(2))
             guard fileSystem.freeDescriptorCount >= 2 else { throw fail(Code.EMFILE) }
@@ -223,8 +259,33 @@ extension DarwinKernel {
         }
     }
 
-    /// `socket(domain, type, protocol)`: AF_UNIX STREAM and DGRAM;
-    /// AF_INET/AF_INET6 and other domains are EAFNOSUPPORT (stage 4b);
+    /// The trace text of a socket call on a descriptor.
+    static func socketCallText(_ n: Int, _ a: [UInt64]) -> String {
+        func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
+        switch n {
+        case DescriptorBSD.bind: return "bind(s=\(int(0)), name=\(hx(a[1])), namelen=\(int(2)))"
+        case DescriptorBSD.listen: return "listen(s=\(int(0)), backlog=\(int(1)))"
+        case DescriptorBSD.accept: return "accept(s=\(int(0)), name=\(hx(a[1])), anamelen=\(hx(a[2])))"
+        case DescriptorBSD.connect: return "connect(s=\(int(0)), name=\(hx(a[1])), namelen=\(int(2)))"
+        case DescriptorBSD.shutdown: return "shutdown(s=\(int(0)), how=\(int(1)))"
+        case DescriptorBSD.getsockname: return "getsockname(fdes=\(int(0)), asa=\(hx(a[1])), alen=\(hx(a[2])))"
+        case DescriptorBSD.getpeername: return "getpeername(fdes=\(int(0)), asa=\(hx(a[1])), alen=\(hx(a[2])))"
+        case DescriptorBSD.sendto:
+            return "sendto(s=\(int(0)), buf=\(hx(a[1])), len=\(a[2]), flags=\(hx(UInt32(bitPattern: int(3)))), to=\(hx(a[4])), tolen=\(int(5)))"
+        case DescriptorBSD.recvfrom:
+            return "recvfrom(s=\(int(0)), buf=\(hx(a[1])), len=\(hx(a[2])), flags=\(hx(a[3])), from=\(hx(a[4])), fromlenaddr=\(hx(a[5])))"
+        case DescriptorBSD.sendmsg: return "sendmsg(s=\(int(0)), msg=\(hx(a[1])), flags=\(hx(UInt32(bitPattern: int(2)))))"
+        case DescriptorBSD.recvmsg: return "recvmsg(s=\(int(0)), msg=\(hx(a[1])), flags=\(hx(UInt32(bitPattern: int(2)))))"
+        case DescriptorBSD.setsockopt:
+            return "setsockopt(s=\(int(0)), level=\(hx(UInt32(bitPattern: int(1)))), name=\(hx(UInt32(bitPattern: int(2)))), val=\(hx(a[3])), valsize=\(int(4)))"
+        case DescriptorBSD.getsockopt:
+            return "getsockopt(s=\(int(0)), level=\(hx(UInt32(bitPattern: int(1)))), name=\(hx(UInt32(bitPattern: int(2)))), val=\(hx(a[3])), avalsize=\(hx(a[4])))"
+        default: return "socket call \(n)(\(int(0)))"
+        }
+    }
+
+    /// `socket(domain, type, protocol)`: AF_UNIX STREAM and DGRAM (AF_INET
+    /// and AF_INET6 are `makeInetSocket`); other domains are EAFNOSUPPORT;
     /// another type is EPROTONOSUPPORT, a protocol other than 0 too.
     func makeSocket(domain: Int32, type: Int32, proto: Int32) throws -> UnixSocket {
         guard domain == SocketABI.afUnix else { throw fail(Code.EAFNOSUPPORT) }

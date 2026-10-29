@@ -20,7 +20,9 @@ extension DarwinKernel {
                           sigurg: Int32 = 16, sigstop: Int32 = 17, sigtstp: Int32 = 18, sigcont: Int32 = 19,
                           sigchld: Int32 = 20, sigttin: Int32 = 21, sigttou: Int32 = 22, sigio: Int32 = 23,
                           sigwinch: Int32 = 28, siginfo: Int32 = 29, sigusr1: Int32 = 30, sigusr2: Int32 = 31
+        /// `SA_NOCLDSTOP`: no SIGCHLD when a child stops (`processes.md` §2.9).
         public static let saNoCldStop: Int32 = 0x8
+        /// `SA_NOCLDWAIT`: exiting children are reaped at once, with no zombie (§2.4).
         public static let saNoCldWait: Int32 = 0x20
         /// Signals whose default action is to ignore them.
         static let ignoredByDefault: Set<Int32> = [sigurg, sigcont, sigchld, sigio, sigwinch, siginfo]
@@ -35,10 +37,12 @@ extension DarwinKernel {
             30: "SIGUSR1", 31: "SIGUSR2",
         ]
 
+        /// The `SIG*` name of `s` for trace lines, or `signal N` when the table lacks it.
         public static func name(_ s: Int32) -> String { names[s] ?? "signal \(s)" }
     }
 
-    /// BSD numbers of the process layer.
+    /// BSD numbers of the process layer: the low 16 bits of `x16` for the
+    /// Darwin call each name spells.
     public enum ProcBSD {
         public static let exit = 1, wait4 = 7, kill = 37, getppid = 39, sigpending = 52, execve = 59, getpgrp = 81,
                           setpgid = 82, setsid = 147, getpgid = 151, waitid = 173, posixSpawn = 244, getsid = 310,
@@ -130,27 +134,33 @@ extension DarwinKernel {
             return try execve(me, n, a, &call, mem)
 
         case ProcBSD.procInfo:
-            return .value(try procInfo(me, a, &call, mem))
+            return .value(try procInfo(a, &call, mem))
         case ProcBSD.procInfoExtendedID:
-            // (callnum, pid, flavor, flags, ext_id, arg, buffer, buffersize):
-            // flag 0x1 compares the pid version, 0x2 the unique id; a
-            // mismatch is ESRCH (`processes.md` §2.11).
-            let target = int(1), flags = UInt32(truncatingIfNeeded: a[3]), ext = a[4]
-            call.set("proc_info_extended_id(callnum=\(int(0)), pid=\(target), flavor=\(int(2)), flags=\(hx(flags)), "
-                + "ext_id=\(hx(ext)))")
-            if flags & 0x3 != 0 {
-                guard let p = system.processes[target] else { throw Failure(errno: Errno.ESRCH) }
-                if flags & 0x1 != 0, UInt64(p.pidVersion) != ext & 0xFFFF_FFFF { throw Failure(errno: Errno.ESRCH) }
-                if flags & 0x2 != 0, p.uniqueID != ext { throw Failure(errno: Errno.ESRCH) }
-            }
-            var inner = CallText(call.enabled)
-            let r = try procInfo(me, [a[0], a[1], a[2], a[5], a[6], a[7]], &inner, mem)
-            call += " " + inner.description
-            return .value(r)
+            return .value(try procInfoExtendedID(a, &call, mem))
 
         default:
             return nil
         }
+    }
+
+    /// `proc_info_extended_id` (callnum, pid, flavor, flags, ext_id, arg,
+    /// buffer, buffersize): flag 0x1 compares the pid version, 0x2 the
+    /// unique id; a mismatch is ESRCH (`processes.md` §2.11). Also on the
+    /// BSD fast path for the read calls (`bsd-locking.md` §13).
+    func procInfoExtendedID(_ a: [UInt64], _ call: inout CallText, _ mem: any KernelGuestMemory) throws -> UInt64 {
+        func int(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
+        let target = int(1), flags = UInt32(truncatingIfNeeded: a[3]), ext = a[4]
+        call.set("proc_info_extended_id(callnum=\(int(0)), pid=\(target), flavor=\(int(2)), flags=\(hx(flags)), "
+            + "ext_id=\(hx(ext)))")
+        if flags & 0x3 != 0 {
+            guard let p = system.processRecord(target) else { throw Failure(errno: Errno.ESRCH) }
+            if flags & 0x1 != 0, UInt64(p.pidVersion) != ext & 0xFFFF_FFFF { throw Failure(errno: Errno.ESRCH) }
+            if flags & 0x2 != 0, p.uniqueID != ext { throw Failure(errno: Errno.ESRCH) }
+        }
+        var inner = CallText(call.enabled)
+        let r = try procInfo([a[0], a[1], a[2], a[5], a[6], a[7]], &inner, mem)
+        call += " " + inner.description
+        return r
     }
 
     // MARK: Signals
@@ -211,13 +221,20 @@ extension DarwinKernel {
         }
     }
 
-    /// SIGCONT: a stopped (start-suspended) process runs.
+    /// SIGCONT: a stopped (start-suspended) process runs: its task is
+    /// resumed once (xnu resumes the task of a stopped process), so a
+    /// process that was also `task_suspend`ed stays suspended
+    /// (threads-and-events.md §1.6).
     private func continueProcess(sender: Int32?) {
         guard let p = processRecord, p.state == .stopped else { return }
         p.state = .running
         p.continuedPending = true
         p.continuedBy = sender ?? pid
-        p.image?.resume()
+        if mainStartPending {
+            taskResumed()
+        } else {
+            p.image?.resume()
+        }
         system.processes[p.ppid]?.childWaiters.wakeAll()
     }
 

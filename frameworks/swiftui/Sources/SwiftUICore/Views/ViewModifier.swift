@@ -181,7 +181,7 @@ extension ModifiedContent: PrimitiveView where Content: View, Modifier: ViewModi
     // MARK: Primitive modifiers
 
     private func primitiveUpdate<M: PrimitiveModifier>(_ m: M, node: ViewNode, oldModifier: Modifier?,
-                                                        transaction: Transaction) {
+                                                       transaction: Transaction) {
         let old = oldModifier as? M
         if let old { m._updated(old: old, node: node) } else { m._inserted(node: node) }
         if m._writesEnvironment {

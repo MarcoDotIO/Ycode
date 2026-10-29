@@ -86,11 +86,34 @@ kept notify right.
 
 ## 5. Not covered
 
-- Values. The store is empty, and `configset` and `configadd` do not store
-  anything.
+- Stored values: `configset` and `configadd` do not store anything. The
+  store's contents are the network state of §7, read-only.
 - Change notifications. Nothing changes, so none is ever sent.
 - Session keys, `configopen` options, and entitlement or audit-token checks.
 - The simulator's own `configd_sim` store, which the guest serves itself.
+
+## 7. The network state (NET-IMPL)
+
+The store holds the guest's network keys (`networking.md` §3.3 and §7 item
+7; built by `SCDynamicStoreNetworkState.swift` from Ycode's interface
+model, `networking-ycode.md` §5): `State:/Network/Interface`,
+`State:/Network/Interface/<if>/IPv4|IPv6|Link`, `State:/Network/Global/
+IPv4|IPv6|DNS|Proxies`, `State:/Network/Service/<id>` and its `IPv4`,
+`IPv6`, `DNS`, `Setup:/Network/Global/IPv4` (ServiceOrder),
+`Setup:/Network/Service/<id>` and its `Interface`, `IPv4`, `IPv6`,
+`Proxies`, `State:/Network/MulticastDNS`, `State:/Network/PrivateDNS`. Empty
+with `YCODE_NO_NETWORK=1`.
+
+| Id | Routine | Ycode's reply with the network state |
+|---|---|---|
+| 20010 | `configget` | the key's value as a binary property list (OOL), `status` 0; a missing key as before (1004) |
+| 20016 | `configget_m` | the keys given and the keys matching the patterns (each pattern anchored, `^(…)$`): a binary-plist dictionary key → binary-plist data of the value (`_SCSerializeMultiple`), `status` 0; nothing matching: as before (1004) |
+| 20008 | `configlist` | the keys matching the pattern (isRegex) or equal to the key, as a binary-plist array |
+
+SimulatorSupport's copy-multiple returns the service and interface
+entities; configd_sim computes `State:/Network/Global/*` and its DNS
+configuration from them (Ycode's guest store, `networking-ycode.md` §5).
+The service logs the keys a copy-multiple returned.
 
 ## 6. Diagnostics
 
@@ -108,3 +131,5 @@ The service logs the first 16 requests (id, session, size) as
 | `kSCStatus*` values | 1 (public SystemConfiguration headers) |
 | The abort and its rate without a host store; 49 of 61 `guest_fatal` | 3 (Ycode boots, 2026-10-13) |
 | The names are registered by the host into the guest (701) | 3 (`launchd-sim.md` §6.3) |
+| §7: `configget`/`configget_m`/`configlist` value encodings (`_SCSerialize`, `_SCSerializeMultiple`, anchored patterns); key and property names | 1 (configd open source; public `SCSchemaDefinitions.h`) |
+| §7: which keys SimulatorSupport copies; configd_sim builds the global keys | 3 (Ycode boots: the service's log, the guest store read by `p_netpath`) |

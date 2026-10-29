@@ -1,8 +1,10 @@
 # Spec: scheduling policy (process types, darwin-bg, importance, thread QoS)
 
 Status: **implemented** (2026-10-17). The start hold (§4.2) is **on by
-default** since 2026-10-19 (§7); thread QoS, lock admission and host
-scheduling stay behind switches (§6). This spec answers
+default** since 2026-10-19 (§7). Thread QoS with the cgroup host backend
+is **on by default for device runs** since 2026-10-27 (`YCODE_BOOT_PRIORITY`,
+§4.7, §7.5); lock admission stays off, and outside device runs QoS and
+host scheduling stay behind switches (§6). This spec answers
 the CONTRACT-REQUEST of `service-fidelity.md` §7: the Mac keeps unboosted
 Adaptive and Background jobs from running while the system is busy, and
 Ycode did not. It also gives guest threads a scheduling class, which the
@@ -159,7 +161,7 @@ process, as on the Mac). The hold ends with the first of these events:
 | Event | Reason logged |
 |---|---|
 | its boosts become > 0 (an Adaptive job only; §4.3) | `boost` |
-| the system is quiet: over the last `YCODE_ADAPTIVE_HOLD_WINDOW_MS` (default 2000 ms; a full window is needed) the kernel lock was held less than `YCODE_ADAPTIVE_HOLD_BUSY_PERCENT` (default 25 %) of the time, no guest thread had to wait for the kernel lock for `YCODE_ADAPTIVE_HOLD_QUIET_MS` (default 250 ms, the BG bucket's WCEL; with the admission gate of §4.5 only threads of class ≥ df count), and the hold is at least `QUIET_MS` old. All quiet holds are released together. | `quiet` |
+| the system is quiet: over the last `YCODE_ADAPTIVE_HOLD_WINDOW_MS` (default 2000 ms; a full window is needed) the kernel lock was held less than `YCODE_ADAPTIVE_HOLD_BUSY_PERCENT` (default 25 %) of the time **and the VMM used less than `YCODE_ADAPTIVE_HOLD_CPU_PERCENT` (default 25 %) of the host's online CPUs** (its process CPU time over the window), no guest thread had to wait for the kernel lock for `YCODE_ADAPTIVE_HOLD_QUIET_MS` (default 250 ms, the BG bucket's WCEL; with the admission gate of §4.5 only threads of class ≥ df count), and the hold is at least `QUIET_MS` old. All quiet holds are released together. | `quiet` |
 | the hold reached `YCODE_ADAPTIVE_HOLD_MAX_S` (default 300 s; the Mac's longest observed delay is 255 s) | `timeout` |
 | the process exits or is killed while it is held (its image never runs) | `exit` |
 
@@ -192,6 +194,16 @@ not hold again.
 The busy fraction (added after the first runs, which used the
 contention test alone) makes "quiet" mean low use of the kernel lock,
 not only the absence of a waiter.
+
+The CPU fraction (added 2026-10-27, §7.5) makes it mean an idle host too.
+Since most traps left the kernel lock (`bsd-locking.md`,
+`mach-ipc-locking.md`), a boot's first seconds hold the lock 10–17 % of
+the time while ~190 daemons' loaders keep 8–11 of the Thor's 14 CPUs busy,
+so the lock tests alone passed about 2 s into a boot and released the
+held jobs into its busiest phase (§7.4). The age of the last contention
+is 0 when the contention was stamped after the sample time was read
+(before, the wrapping difference made such a contention look ages old,
+which also passed the test).
 
 The quiet test is Ycode's stand-in for the Mac's mechanism: a darwin-bg
 `xpcproxy_sim` gets CPU and I/O only when nothing above it needs them. In
@@ -250,6 +262,21 @@ request, a boost that flips darwin-bg (all threads of the process), or a
 push. Host threads with no guest context (timer and hold threads) count as
 ui.
 
+**Where the class is recomputed** (`YCODE_SCHED_CLASS_OFF_L0`, default on
+since 2026-10-27). A thread's pushes (§4.6) and its stored class have a
+leaf lock of their own (nothing is taken under it but the thread's
+override table). A recomputation reads every input and stores the class
+under that lock. It runs where the input changed: under L0, or on a fast
+path (an event lock or the port lock held, L0 not) when the image's
+process record is already cached (every image after its spawn policy;
+otherwise it is deferred to L0 as before). The process inputs (type,
+clamp, role, darwin-bg) change under L0 and are always followed by a
+recomputation under L0; the leaf lock orders it after any fast one, so the
+stored class reflects the last change. With QoS on, the ulock calls now
+stay on their fast path (`bsd-locking.md` §5): their pushes are the
+thread's leaf-lock state, not L0 state. Before this, every sync-IPC push
+and its end, and every ulock call, took L0 when QoS was on.
+
 ### 4.5 Kernel lock admission
 
 Every guest trap takes the one kernel lock (`stage4a-contract.md` §2). With
@@ -299,25 +326,88 @@ consistent. Each wait is also cut into slices of at most 1 ms.
 - **Synchronous IPC**: a message sent with a receive in the same call and a
   send-once reply right carries the sender's class. The thread that
   receives it has that push until the end of its servicing episode (§4.3).
+  The sender's class is that of the trap's own thread (on a fast path, the
+  fast path's thread; before 2026-10-27 it was read from L0's current
+  holder, which on a fast path is another thread or none).
+- **Send push** (`YCODE_SEND_PUSH`, default on with QoS; added
+  2026-10-27). In xnu a sender that blocks because the destination's
+  queue is full waits on the port's send turnstile, whose inheritor is
+  the receiver side (the thread or workloop that services the port), so
+  the blocked senders' priority goes to whoever drains the queue. Ycode:
+  while a sender of class c waits for room on a port, the image that holds
+  the port's receive right (when it blocks) has a *send push* of c: 16-bit
+  counts per class on the image, raised before the wait and lowered after
+  it, without any kernel lock. The image's host class (§4.7) is the
+  highest of its threads' own class and its send push; the push is not a
+  class input (§4.4), so it causes no recomputation. Not modelled: xnu
+  pushes onto the servicing thread or workloop only, Ycode onto every
+  thread of the receiving image (a superset; diagnosticd's threads all
+  serve its log port); a push applies from the receiving thread's next
+  trap end.
 
 ### 4.7 Host scheduling (`YCODE_HOST_SCHED`)
 
 A guest thread runs on its own host thread (one vCPU, `stage4a-contract.md`
-§5). After each trap, outside the lock, the host thread compares its class
-with the class it last applied. If they differ, it applies the new class:
+§5). After each trap, outside the lock, the host thread compares its *host
+class* (its class, raised to its image's send push, §4.6) with the class
+it last applied. A higher class is applied at once. A lower one is
+applied only when it has lasted `YCODE_HOST_SCHED_DEMOTE_MS` (default
+50 ms; checked at the thread's trap ends; 0: at once): classes go up and
+down with every serviced request, and a move is not free (§7.5).
 
 | Backend | bg | ut | df | ui | Needs |
 |---|---|---|---|---|---|
 | `nice` | 19 | 8 | 3 | 0 | RLIMIT_NICE ≥ 20 or CAP_SYS_NICE. A thread must be able to come back to 0. With RLIMIT_NICE 0 (the Thor), the backend reports that it is unavailable and stays off. |
-| `cgroup` | `cpu.idle` 1 | weight 25 | 100 | 400 | A delegated cgroup v2 with the cpu controller. The VMM makes four threaded children `ycode-class0…3` of its own cgroup. Moving a thread is one write of its tid to the child's `cgroup.threads`. Without write access, the VMM first re-executes itself in place with `systemd-run --user --scope -p Delegate=yes`, which keeps the pid. |
-| `none` (default) | — | — | — | — | |
+| `cgroup` | weight `YCODE_HOST_SCHED_BG_WEIGHT` (default 5; `idle`: `cpu.idle` 1, as before 2026-10-27) | weight 25 | 100 | 400 | A delegated cgroup v2 with the cpu controller. The VMM makes four threaded children `ycode-class0…3` of its own cgroup. A thread moves itself with one write of `0` to the child's `cgroup.threads` (Linux moves the writer without the global threadgroup lock that a write of a thread id takes; `YCODE_HOST_SCHED_SELF_ZERO=0` writes the id). Without write access, the VMM first re-executes itself in place with `systemd-run --user --scope -p Delegate=yes`, which keeps the pid. |
+| `none` | — | — | — | — | |
+
+The default backend is `none` for the VMM in general and `cgroup` for a
+device run (§6, `YCODE_BOOT_PRIORITY`).
+
+**Lock holders** (`YCODE_LOCK_HOLDER_PROMOTION`, default on with a
+backend; added 2026-10-27). xnu's turnstiles push the waiters' priority
+onto the owner of a kernel lock (§2.4). Ycode's kernel locks (L0, the
+event locks, the port lock) are host mutexes, and a holder in class bg
+could be left without a CPU while it held one: every other thread then
+waited (the 64.9 s boot of §7.4). Each lock publishes its holder (host
+thread id, applied host class, the class a waiter raised it to, a
+generation) in one atomic word at every acquisition, when a backend is on.
+A thread that finds the lock taken waits up to
+`YCODE_LOCK_PROMOTION_DELAY_US` (default 200 µs; holds are microseconds,
+so a holder that keeps the lock this long is one the host does not run;
+1000 µs left a wider spread, §7.5).
+If it is still waiting and its host class c is above both the holder's
+applied class h and any raise already made, it raises the holder
+(compare-and-exchange on the word, so a later holder is never raised by
+mistake), then waits on:
+
+- `group` (default with the cgroup backend and a weighted class 0): the
+  cgroup of class h gets the weight of class c until the holder lets go
+  (one `cpu.weight` write, microseconds; counted per class, so the weight
+  goes back when no raised holder of that class is left). Every thread of
+  class h gains for the moment, not only the holder.
+- `thread` (`YCODE_LOCK_HOLDER_PROMOTION=thread`, the `nice` backend, or
+  class 0 idle): the holder's host thread is moved to class c. The holder
+  keeps c as its applied class when it lets go, and its next trap end
+  moves it back (after the demotion delay). A move of another thread by
+  id takes Linux's global threadgroup lock: 9 ms on average during a boot
+  (§7.5).
+
+A holder lets go by exchanging the word for 0. If it was raised, it waits
+for waiters still raising it (a counter around their exchange and write)
+before it lowers the weight or records its class, so a raise never
+lands after its undo. Holders that applied no class (host service threads,
+a guest thread before its first trap returned) and raises to class bg are
+skipped. A waiter in a condition wait that takes the mutex back
+(`WaitQueue`) does not raise.
 
 ### 4.8 What is not modelled
 
 - I/O throttling tiers, background sockets, the jetsam bands.
 - Live-donor apps changing with their UI state. Apps are donors.
 - Importance carried by vouchers past the end of the servicing episode.
-- Transitive pushes.
+- Transitive pushes (a sender's own push is not passed on, and a raised
+  lock holder does not raise the holder of a lock it waits for).
 - The clutch scheduler's warp, quanta and per-cluster runqueues. Only the
   WCEL bounds are used.
 - `getpriority` still answers as before.
@@ -338,10 +428,15 @@ with the class it last applied. If they differ, it applies the new class:
   messages), and once a second while a job is held, `hold inputs: lock
   busy P% over N ms, last contention N ms ago, N held`.
 - At exit: `ycode-simd: sched: start holds N (boost, quiet, timeout, exit,
-  still held; not held on demand N), ms held; class changes; importance: receiving ports,
-  temporary owners, importance messages, donor sends to other ports; lock
-  admission: gate waits, ms, at the bound; host scheduling …; moves,
-  failures`.
+  still held; not held on demand N), ms held; class changes (recomputations
+  without L0); importance: receiving ports, temporary owners, importance
+  messages, donor sends to other ports; send pushes; lock admission: gate
+  waits, ms, at the bound; host scheduling …; moves, failures, ms moving
+  (moves of another thread, ms), demotions put off; lock holders promoted
+  (waits past the delay, let go raised; class weight writes, ms)`.
+- With `YCODE_HOME_WATCH=1`, after the home line: `ycode-simd: home watch:
+  at home: kernel lock held N ms (N acquisitions); sched: …` (the exit
+  report's counters at the home screen; the A/B instrument of §7.5).
 
 ## 6. Switches
 
@@ -354,11 +449,19 @@ with the class it last applied. If they differ, it applies the new class:
 | `YCODE_ADAPTIVE_HOLD_TRACE` | 0 | §5 |
 | `YCODE_ADAPTIVE_HOLD_MAX_S` | 300 | §4.2 |
 | `YCODE_ADAPTIVE_HOLD_DEMAND` | 1 | §4.2 on-demand starts are not held; `0` holds them |
+| `YCODE_ADAPTIVE_HOLD_CPU_PERCENT` | 25 | §4.2: the VMM's CPU use over the window, in % of the host's online CPUs; `0` drops the test |
 | `YCODE_SCHED_QOS` | 0 | §4.3–§4.6, and §4.7 when a backend is chosen |
+| `YCODE_SCHED_CLASS_OFF_L0` | 1 | §4.4 recomputation on fast paths, ulock calls on their fast path with QoS; `0` as before |
+| `YCODE_SEND_PUSH` | 1 | §4.6 send push (with QoS); `0` off |
 | `YCODE_LOCK_ADMISSION` | 0 | §4.5 (with `YCODE_SCHED_QOS`) |
 | `YCODE_LOCK_ADMISSION_BOUND_MS` | `250,150,75` | §4.5 bounds for bg, ut, df |
 | `YCODE_HOST_SCHED` | none | `nice`, `cgroup` (§4.7) |
-| `YCODE_BOOT_PRIORITY` | 0 | `1`, device runs only: with `YCODE_SCHED_QOS` unset, set it to 1 and `YCODE_HOST_SCHED` (if unset) to `cgroup` before the VMM starts (§7.4) |
+| `YCODE_HOST_SCHED_BG_WEIGHT` | 5 | class 0's `cpu.weight` (1–10000), or `idle` for `cpu.idle` (§4.7) |
+| `YCODE_HOST_SCHED_DEMOTE_MS` | 50 | §4.7 demotion delay; `0` at once |
+| `YCODE_HOST_SCHED_SELF_ZERO` | 1 | §4.7: a thread moves itself by writing `0`; `0` writes its id |
+| `YCODE_LOCK_HOLDER_PROMOTION` | `group` | §4.7 lock holders: `group`, `thread`, `0` (off) |
+| `YCODE_LOCK_PROMOTION_DELAY_US` | 200 | §4.7: a waiter raises the holder after waiting this long |
+| `YCODE_BOOT_PRIORITY` | 1 for device runs (since 2026-10-27; was 0) | device runs (`--device`) only: with `YCODE_SCHED_QOS` unset, set it to 1 and `YCODE_HOST_SCHED` (if unset) to `cgroup` before the VMM starts (§7.4, §7.5); `0` turns it off. The cgroup backend re-executes the VMM in a delegated user scope only when the user's service manager is reachable (`$XDG_RUNTIME_DIR/systemd/private`); otherwise it reports itself unavailable and the run goes on without host scheduling |
 
 ## 7. Measurements
 
@@ -529,7 +632,97 @@ instead of `cpu.idle`. Early quiet releases also occur without QoS (C-base
 1 and 3, C-hand 3: 35.4–39.5 s, against 32.6–34.8 s without them): the
 quiet test can pass in the first two seconds of a boot, while only
 launchd_sim runs, and then starts the held jobs while the boot's busiest
-phase begins.
+phase begins. Both are addressed in §4.2, §4.7 and measured in §7.5.
+
+### 7.5 Holder promotion, the quiet test's CPU condition, defaults (agent PRIO-3, 2026-10-27)
+
+Thor, `SX/bin/timed.sh` around each series (no other ycode-simd, load
+under 4 at the start), unprofiled cold boots of one device copy booted
+before at its own path (`ide-remote/prio3`, `YCODE_HOME_WATCH`), arms
+rotated each round, 5 s held after home. *main* is the main line 229b8b2
+with the one-line link fix of this branch (the main line did not link on
+arm64 Linux), default switches. *off* is this branch with
+`YCODE_BOOT_PRIORITY=0` (the start hold's new quiet test, no QoS); *new*
+is this branch's defaults (boot priority on: QoS, cgroup backend, class 0
+weight 5, holder promotion by class weight after 200 µs, send push,
+classes off L0). Kernel lock: L0's hold over the whole run (home + 5 s +
+stop), from the exit summary; "at home" from the home-watch line (§5).
+
+**Final series D** (the default build against the main line, n = 9 each):
+
+| Arm | median home_s | range | worst | boots > 33 s | L0 held, median / max | L0 at home |
+|---|---|---|---|---|---|---|
+| main | 35.42 | 31.45–41.10 | 41.10 | 6 | 6.13 / 7.91 s | — |
+| off (`YCODE_BOOT_PRIORITY=0`) | 31.21 | 30.41–34.73 | 34.73 | 2 | 5.92 / 6.32 s | 4.2–5.0 s |
+| **new (defaults)** | **30.14** | **29.62–33.01** | **33.01** | 1 (33.01) | 6.91 / 7.72 s | 5.1–6.0 s |
+
+**All series pooled** (A–D; the arms that ran the same configuration):
+
+| Configuration | n | median | range | > 33 s | L0 held median / p90 / max |
+|---|---|---|---|---|---|
+| main | 27 | 34.24 | 29.77–47.05 | 17 | 6.09 / 7.22 / **22.50** s |
+| main + `YCODE_BOOT_PRIORITY=1` (QoS before this change: class 0 `cpu.idle`, no promotion, ulock on L0; series C) | 9 | 32.65 | 30.44–37.02 | 4 | 9.61 / 10.53 / 12.17 s |
+| off | 32 | 30.95 | 29.77–34.73 | 8 | 5.89 / 6.31 / 6.39 s |
+| new, promotion after 1000 µs (A, B) | 14 | 30.91 | 29.61–32.60 | 0 | 7.30 / 7.77 / 8.22 s |
+| **new, promotion after 200 µs (B, C, D; the default)** | 23 | **30.44** | 29.27–33.01 | 1 | 7.09 / 7.60 / 8.22 s |
+| new with class 0 weight 25 (B) | 5 | 32.66 | 29.52–36.62 | 2 | 7.22 / – / 8.36 s |
+
+Reading:
+
+- **The outlier class is gone.** The main line's slow boots have two
+  causes, both visible in its logs. (1) The quiet test released 14–24
+  held jobs before the home screen in 10 of its 18 boots of series C and
+  D, in two of them 3.2 and 5.1 s after their spawn (homes 39.5 and
+  37.3 s); those 10 boots took 34.5–41.1 s, the other 8 30.3–33.6 s (the
+  two over 33 s with eligibilityd's boost, below). (2) One boot of series
+  A (47.05 s, no QoS) held L0 for 22.5 s. With the CPU condition no boot
+  of this branch released a held job by the quiet test before the home
+  screen (0 of 78, series A–D and four trial boots), and L0's hold stayed
+  within 5.3–8.4 s in every boot of series A–D (QoS or not). The
+  QoS-specific outlier of §7.4 (an idle-class holder) did not recur in 42
+  boots with QoS and promotion; the old QoS
+  arm held L0 9.0–12.2 s per run (380–450 k acquisitions: with QoS every
+  ulock call and every push change took L0) against 6.6–8.2 s
+  (120–180 k) now.
+- **Boot priority helps a little and narrows the tail**: 30.44 s median
+  pooled against 30.95 s off (−0.5 s), 1 boot of 23 over 33 s against 8 of
+  32. The remaining slow mode in both arms is eligibilityd, released by a
+  boost 15–18 s into the boot (it then runs its start-up in the busy
+  phase): every boot over 32.7 s in series D of either arm had it, and
+  only those. Against the main line the change is −5.3 s median in series
+  D (−3.8 s pooled), mostly the quiet test.
+- **The cost of QoS moved**: L0 is held 1.2 s more per run than off, not
+  analysed further (likely: the darwin-bg flips of §4.3 recompute every
+  thread of the image under L0, and a holder in a low class that is
+  preempted before a waiter raises it adds that time to the hold).
+  Promotion after 200 µs: 1,700–2,400 holders raised by the home screen
+  (about 23 k waits past 200 µs and 2,150 raises per run), 4,000
+  `cpu.weight` writes per run, 150–170 ms in all. Class changes 46–50 k per run, 200–210 k recomputations on fast
+  paths without L0; 28 k blocked sends pushed onto their receiver.
+- **Host moves**: the old backend made 9,110 moves in a run (C-oldprio-1).
+  Now about 2,900 per run (the demotion delay puts off 1,500–2,300), 2.6 s
+  in all. Moving another thread by id averaged 8.7 ms during a boot (774
+  holder moves, 6.7 s, in a test run with `YCODE_LOCK_HOLDER_PROMOTION=thread`):
+  Linux takes its global threadgroup lock for it. A thread moving itself
+  (writing `0`) costs about 1 ms during a boot and 4 µs on an idle host;
+  a `cpu.weight` write about 40 µs during a boot. Hence promotion by class
+  weight.
+- Class 0 weight 25 instead of 5 was slower (5 boots, 32.66 s median).
+
+Debug suites with `YCODE_LOCK_ORDER_CHECK=1 YCODE_IPC_LOCKS_TESTS=1` on
+the Thor: kernel 370 tests, simd 43, ABI 154, all passed; full `swift
+build && swift test` on the x86-64 workstation passed.
+
+Functional checks with the defaults (QoS and the cgroup backend on): six
+cold boots that launched Settings (3) and Safari (3) through ylaunch 20 s
+after home, all launched (open request 0.7–2.5 s), on a host that other
+agents' boots loaded to 40–170 (homes 36–119 s); and, in `timed.sh`, a cold
+boot (home 34.5 s) with a snapshot at 75 s, then two lazy restores of it
+(home 6.2 and 5.3 s) that launched Safari and Settings (open requests
+2.0 s each; Settings drawn in the last frame). No host crash, no
+lock-order report; the guest's fatal conditions were the known
+fileindexerd and intelligencetasksd crashes (`service-fidelity.md` §11,
+§7.2 above).
 
 ## Evidence
 
@@ -548,6 +741,9 @@ phase begins.
 | Thor arms (§7.1) | 3 (SX harness runs m1–m5, h1a, h3–h5, q8–q11; exit reports, guest `launchd.log` of h5) |
 | Mac with the same device data (§7.2) | 3 (`ycode-test-prio-aged-1`, `-2`, 2026-10-19: `launchd.log` read as a format, `ps`; deleted afterwards) |
 | Unprivileged cgroup v2 delegation and threaded children on the Thor (§4.7) | Linux cgroup-v2 documentation; tried on the Thor |
+| Boots of §7.5: home times, kernel-lock holds, quiet releases, eligibilityd's boost, promotion and move counters | 3 (Thor, `ide-remote/prio3` series A–D: `ab-*.txt`, run logs' home-watch and exit lines) |
+| Cost of cgroup moves by thread id, by `0`, and of `cpu.weight` writes (§4.7, §7.5) | Linux cgroup-v2 documentation and kernel source (the `cgroup.threads` write path skips the threadgroup lock for the writer itself); timed on the Thor (`prio3/probes/cgcost.py`, idle host) and in boots (exit counters) |
+| Send turnstile: blocked senders push onto the receiver side (§4.6) | 1 (xnu `osfmk/ipc/ipc_port.c` send turnstile and its inheritor, `osfmk/kern/turnstile.c`) |
 | Timed boots with and without QoS and the cgroup backend (§7.4) | 3 (Thor, `ide-remote/bootcp` series C: runs `C-base-*`, `C-hand-*`, `C-qos-*`, `C-prof-qos`; series D: `D-dflt-*`, `D-off-*`; exit reports: kernel-lock hold, start-hold releases) |
 | Everything in §4–§6 | Ycode design |
 

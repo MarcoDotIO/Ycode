@@ -45,25 +45,79 @@ final class DeviceSession: @unchecked Sendable {
         // Host services that need no configuration (YcodeHostServices'
         // own table: the SCDynamicStore host server, scdynamicstore-host.md).
         hostServices += DefaultHostServices.start(host: host, log: { stderrLine("ycode-simd: " + $0) })
+        // The file-event service (fsevents-host.md): one event store for the
+        // guest's data volume ("/", where DEV and the temporary directories
+        // are), its UUID and event ids kept in DEV.
+        let eventsFS = makeFileSystem()
+        let configuration = FSEventsHostService.Configuration(
+            statePath: layout.dev + "/ycode-fsevents.plist",
+            volumes: [ExecConfiguration.rootDevice: "/"],
+            canonicalPath: { path in Self.canonicalGuestPath(path, eventsFS) },
+            identity: { path in eventsFS.identity(atCanonicalPath: path) })
+        if let service = DefaultHostServices.startFileEvents(host: host, configuration: configuration,
+                                                             log: { stderrLine("ycode-simd: " + $0) }) {
+            hostServices.append(service)
+        }
+    }
+
+    /// A path's canonical guest form: its symbolic links resolved; for a
+    /// path that does not exist (yet), its nearest existing ancestor's
+    /// canonical form plus the rest.
+    static func canonicalGuestPath(_ path: String, _ fs: DarwinFileSystem) -> String {
+        if let real = try? fs.realpath(path) { return real }
+        var head = path, tail: [String] = []
+        while head.count > 1, let slash = head.lastIndex(of: "/") {
+            tail.insert(String(head[head.index(after: slash)...]), at: 0)
+            head = slash == head.startIndex ? "/" : String(head[..<slash])
+            if let real = try? fs.realpath(head) {
+                return (real == "/" ? "" : real) + "/" + tail.joined(separator: "/")
+            }
+        }
+        return path
     }
 
     private func emit(_ text: String) { stderrLine("ycode-simd: " + text) }
 
+    /// Queued last: `lateHostServices`, and the camera endpoint, which only
+    /// apps look up (camera.md "Ycode implementation").
+    static func isLate(_ name: String) -> Bool { lateHostServices.contains(name) || name == CameraGuestService.serviceName }
+
     /// The service port exists and is about to be handed over: queue the
     /// host-side names' 701 requests on it (launch-sim-control.md §5.2 step 1).
+    ///
+    /// The channel's queue holds only a few messages (launchd_sim's port
+    /// limit), so names that do not fit are registered by the session
+    /// thread once the queued ones are answered; names needed only later in
+    /// the boot (`lateHostServices`) are queued last, so the GPU, surface
+    /// and HID services always fit.
     func servicePortCreated(_ channel: UInt32) {
         let c = LaunchSimControl(host: host, channel: channel, log: { [weak self] in self?.emit($0) })
         var queued: [(name: String, token: UInt32)] = []
-        for (name, port) in hostServices {
+        var deferred: [(name: String, port: UInt32)] = []
+        let ordered = hostServices.filter { !Self.isLate($0.name) } + hostServices.filter { Self.isLate($0.name) }
+        for (name, port) in ordered {
             do { queued.append((name, try c.queueRegistration(name, port: port))) } catch {
-                emit("control: 701 register \(name) could not be queued: \(error)")
+                deferred.append((name, port))
             }
         }
         lock.withLock {
             control = c
             queuedRegistrations = queued
+            deferredRegistrations = deferred
         }
     }
+
+    /// Host-side names first used well after launchd_sim starts its jobs
+    /// (the power-management server: backboardd's and SurfBoard's
+    /// assertions, visionos.md §10.11).
+    /// The audio server too: its clients look it up again about once a
+    /// second until it exists (audio-host.md §1).
+    /// The file-event service too: a client whose look-up fails goes on
+    /// without events (fsevents-host.md §7), and the first clients
+    /// (fileindexerd, UserEventAgent) start after the session is bound.
+    static let lateHostServices: Set<String> = [PowerManagementHostService.serviceName, AudioHostService.serviceName,
+                                                FSEventsHostService.serviceName]
+    private var deferredRegistrations: [(name: String, port: UInt32)] = []
 
     /// The control channel arrived (service thread): start the session thread.
     func channelArrived(_ channel: UInt32) {
@@ -177,6 +231,14 @@ final class DeviceSession: @unchecked Sendable {
             do {
                 try c.finishRegistration(token, name: name)
                 emit("control: 701 registered \(name)")
+            } catch {
+                emit("control: 701 register \(name) failed: \(error)")
+            }
+        }
+        for (name, port) in lock.withLock({ deferredRegistrations }) {
+            do {
+                try c.registerEndpoint(name, port: port)
+                emit("control: 701 registered \(name) (after the queued ones)")
             } catch {
                 emit("control: 701 register \(name) failed: \(error)")
             }
@@ -317,6 +379,18 @@ final class DeviceSession: @unchecked Sendable {
                    ?? "app launch: failed (" + describe(waitStatus: r.status) + ")")
         } catch {
             record(1001, "app launch: failed: \(error)")
+        }
+    }
+
+    /// Ends a running app (`ylaunch kill`; the privacy command, camera.md §6.2).
+    func killApp(_ bundleID: String) -> String {
+        guard let c = lock.withLock({ control }), c.isBound else { return "the device session is not bound" }
+        guard layout.ylaunchPath != nil else { return "no ylaunch staged (--guest-tools)" }
+        do {
+            let r = try ylaunch(c, step: "kill", ["kill", bundleID])
+            return r.output.split(separator: "\n").last.map(String.init) ?? describe(waitStatus: r.status)
+        } catch {
+            return "ylaunch kill failed: \(error)"
         }
     }
 

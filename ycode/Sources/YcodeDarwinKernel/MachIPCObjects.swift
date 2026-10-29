@@ -34,6 +34,8 @@ public enum MachKernelObject: Equatable, Sendable, CustomStringConvertible {
     case ioMain
     /// An IOKit object: a registry entry, an iterator, a notification.
     case ioObject(serial: UInt64)
+    /// A joinable work interval (xnu `IKOT_WORK_INTERVAL`; `WorkInterval.swift`).
+    case workInterval(serial: UInt64)
 
     /// True for every task flavor (control, name, read, inspect).
     public var isTaskFlavor: Bool {
@@ -58,6 +60,7 @@ public enum MachKernelObject: Equatable, Sendable, CustomStringConvertible {
         case let .semaphore(serial): "semaphore#\(serial)"
         case .ioMain: "iokit-main"
         case let .ioObject(serial): "iokit-object#\(serial)"
+        case let .workInterval(serial): "work-interval#\(serial)"
         }
     }
 }
@@ -78,6 +81,8 @@ final class IPCPort {
     var fileportFile: DarwinOpenFile?
     /// The memory behind a memory-entry port.
     var memoryEntry: MachMemoryEntry?
+    /// The work interval behind a work-interval port.
+    var workInterval: KernelWorkInterval?
     /// The timer of an mk_timer port (`MachTimer.swift`).
     var mkTimer: MachTimer?
     /// False once the port died.
@@ -312,6 +317,7 @@ struct MessageQueue {
     private var head = 0
 
     var count: Int { items.count - head }
+    // swiftlint:disable:next empty_count - this is isEmpty
     var isEmpty: Bool { count == 0 }
     var first: KMessage? { isEmpty ? nil : items[head] }
 

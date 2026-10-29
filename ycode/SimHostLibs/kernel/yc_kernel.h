@@ -123,6 +123,12 @@ extern int vm_page_shift, vm_kernel_page_shift;
 #define YC_COMM_FAST_FLAGS 0x0F8
 #define YC_FAST_DIRECT_CLOCK 0x1
 #define YC_FAST_CRED_BLOCK 0x2
+/* bit 2 = the library answers the calls whose kernel answer is fixed:
+ * madvise advice 0-10 (success, no change), other advice but MADV_ZERO (11)
+ * (EINVAL), issetugid (0) (fast-traps.md section 5a). bit 3 = the library
+ * keeps the name-to-OID and kern.boottime answers of sysctl (sysctl.c). */
+#define YC_FAST_LOCAL_CALLS 0x4
+#define YC_FAST_SYSCTL_CACHE 0x8
 #define YC_COMM_CREDENTIALS 0x1000
 /* Ycode-private clock scale (fast-traps.md section 3.2): mach time =
  * floor(CNTVCT_EL0 * multiplier / 2^shift) + TIMEBASE_OFFSET; u64 each.

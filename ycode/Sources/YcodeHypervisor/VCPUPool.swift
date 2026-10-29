@@ -116,6 +116,10 @@ public final class VCPUPool: @unchecked Sendable {
         /// ycode-simd: the kernel's per-thread context). Set before the
         /// thread first runs; read only on this worker's host thread.
         public internal(set) var context: AnyObject?
+        /// The run gate of the current guest thread (Mach suspension,
+        /// threads-and-events.md §1.6): the context's own when it has one.
+        /// Set with `context` under the pool lock.
+        public internal(set) var gate: GuestThreadGate?
         /// The host thread's CPU time (ns) when its current guest thread
         /// started (set on the host thread; per-thread CPU accounting).
         public internal(set) var threadCPUBaseNanoseconds: UInt64 = 0
@@ -222,6 +226,21 @@ public final class VCPUPool: @unchecked Sendable {
     /// context switch (lost writes in glibc's SVE memcpy). On by default;
     /// `YCODE_SHIM_FP_TOUCH=0` turns it off. See also Sources/CKVM/hostcopy.c.
     static let resumeFPTouch: UInt64 = 1 << 1
+    /// `resumeFlags` bit 2, with bit 0: invalidate the TLB only, not the
+    /// I-cache (vm-shim-protocol.md §5.2). Set when the host's
+    /// CTR_EL0.DIC is 1 (instruction fetches are coherent with data writes,
+    /// so no I-cache invalidation is needed for new code, Arm ARM D7.5) and
+    /// `YCODE_TLB_FLUSH_ICACHE` is not 1. The old `ic ialluis` broadcast
+    /// emptied the I-caches of every host core on every flush
+    /// (guest-cpu.md §4.3).
+    static let resumeKeepICache: UInt64 = 1 << 2
+    public static let hostHasDIC = (ckvm_host_ctr_el0() >> 29) & 1 == 1
+    public static let flushKeepsICache = hostHasDIC
+        && (getenv("YCODE_TLB_FLUSH_ICACHE").map { String(cString: $0) != "1" } ?? true)
+    /// Resumes that flushed the guest TLB, process-wide (diagnostics), and
+    /// how many of them invalidated only the changed pages (by VA).
+    public static let tlbFlushResumes = Atomic<UInt64>(0)
+    public static let tlbFlushByVAResumes = Atomic<UInt64>(0)
     /// `YCODE_TRAP_FRAME_COPY=1`: decode and encode the trap frame through
     /// byte arrays (the old path; frame-profile.md §7 item 6).
     static let trapFrameCopy = getenv("YCODE_TRAP_FRAME_COPY").map { String(cString: $0) == "1" } ?? false
@@ -342,11 +361,7 @@ public final class VCPUPool: @unchecked Sendable {
     private func recordThreadEnd(_ worker: Worker) {
         var t = [UInt64](repeating: 0, count: 8)
         _ = ckvm_task_stats(ckvm_gettid(), &t)
-        var k = [UInt64](repeating: 0, count: Self.kvmStatNames.count)
-        let names = Self.kvmStatNames.map { strdup($0) }
-        defer { names.forEach { free($0) } }
-        var pointers: [UnsafePointer<CChar>?] = names.map { UnsafePointer($0) }
-        _ = ckvm_vcpu_stats(worker.vcpu.fd, &pointers, Int32(k.count), &k)
+        let k = worker.vcpu.kvmStatistics(Self.kvmStatNames)
         var s = HostStats()
         s.threads = 1
         s.userTicks = t[0]; s.systemTicks = t[1]; s.guestTicks = t[2]
@@ -467,6 +482,7 @@ public final class VCPUPool: @unchecked Sendable {
                 // it and runs as soon as its vCPU exists.
                 let f = warming.removeFirst()
                 f.claim = Claim(state: state, context: context, requestedAt: requestedAt, kind: .claimedWarm)
+                (context as? GuestThreadGated)?.gate.attached.store(true, ordering: .releasing)
                 f.urgent.store(true, ordering: .relaxed)
                 activeThreads += 1
                 peakThreads = max(peakThreads, activeThreads)
@@ -484,6 +500,7 @@ public final class VCPUPool: @unchecked Sendable {
             // before the creation ends), and an active thread.
             let f = newCreationLocked()
             f.claim = Claim(state: state, context: context, requestedAt: requestedAt, kind: .created)
+            (context as? GuestThreadGated)?.gate.attached.store(true, ordering: .releasing)
             f.urgent.store(true, ordering: .relaxed)
             activeThreads += 1
             peakThreads = max(peakThreads, activeThreads)
@@ -498,13 +515,45 @@ public final class VCPUPool: @unchecked Sendable {
 
     /// Gives `worker` (parked, not running) its next guest thread. Pool lock held.
     private func activateLocked(_ worker: Worker, _ state: VCPUStartState, context: AnyObject?) {
-        worker.context = context
+        attachLocked(worker, context)
         worker.pending = state
         worker.threadCount += 1
         if Self.profiling { worker.startRequestedAt = max(1, monotonicNanoseconds()) }
         activeThreads += 1
         peakThreads = max(peakThreads, activeThreads)
         worker.wakeup.signal()
+    }
+
+    /// Gives `worker` its guest thread's context and run gate. Pool lock held.
+    private func attachLocked(_ worker: Worker, _ context: AnyObject?) {
+        worker.context = context
+        worker.gate = (context as? GuestThreadGated)?.gate
+        worker.gate?.attached.store(true, ordering: .releasing)
+    }
+
+    /// The thread's run on `worker` ended (or never began): its gate no
+    /// longer belongs to a vCPU. Pool lock held.
+    private func detachLocked(_ worker: Worker) {
+        worker.gate?.attached.store(false, ordering: .releasing)
+        worker.gate = nil
+        worker.context = nil
+    }
+
+    /// Mach suspension (`ThreadHost.kickThread`, threads-and-events.md
+    /// §1.6): the vCPU that runs `context` leaves guest code soon
+    /// (`immediate_exit` and the kick signal) and parks at the thread's
+    /// closed gate. A thread inside its trap handler parks when the trap
+    /// ends; one whose vCPU has not started checks its gate before its first
+    /// instruction. Safe from any host thread, with the kernel lock held.
+    public func kickThread(context: AnyObject) {
+        lock.withLock {
+            guard !ending.load(ordering: .relaxed),
+                  let w = workers.first(where: { $0.context === context }), w.running else { return }
+            w.vcpu.setImmediateExit(true)
+            if !w.inHandler.load(ordering: .relaxed), !Self.debugNoKick, pthread_equal(w.hostThread, pthread_self()) == 0 {
+                _ = ckvm_kick_thread(UInt(w.hostThread), Self.kickSignal)
+            }
+        }
     }
 
     /// True when `start` would find a vCPU now (an idle one, or room for a new one).
@@ -649,9 +698,12 @@ public final class VCPUPool: @unchecked Sendable {
             var parkedNow = false
             if ending.load(ordering: .relaxed) {
                 // It sees the end and returns without running a thread.
-                if claim != nil { activeThreads -= 1 }
+                if let claim {
+                    activeThreads -= 1
+                    (claim.context as? GuestThreadGated)?.gate.attached.store(false, ordering: .releasing)
+                }
             } else if let claim {
-                worker.context = claim.context
+                attachLocked(worker, claim.context)
                 worker.pending = claim.state
                 worker.threadCount = 1
                 worker.startRequestedAt = claim.requestedAt
@@ -679,7 +731,10 @@ public final class VCPUPool: @unchecked Sendable {
             }
         }
         lock.lock()
-        if claim != nil { activeThreads -= 1 }
+        if let claim {
+            activeThreads -= 1
+            (claim.context as? GuestThreadGated)?.gate.attached.store(false, ordering: .releasing)
+        }
         hostThreadReturnedLocked()
     }
 
@@ -741,6 +796,7 @@ public final class VCPUPool: @unchecked Sendable {
     private func threadMain(_ worker: Worker) {
         worker.hostTID.store(UInt64(ckvm_gettid()), ordering: .relaxed)
         PostTrapWork.setCurrentVM(vm)
+        _ = ckvm_hostprof_thread_start()   // diagnostics: YCODE_HOST_PROFILE (guest-cpu.md §5)
         if Self.kickOnlyInRun {
             let r = ckvm_kick_mask_outside_run(worker.vcpu.fd, Self.kickSignal)
             if r != 0 { var t = "ycode-simd: KVM_SET_SIGNAL_MASK failed (\(r))\n"; _ = t.withUTF8 { write(2, $0.baseAddress, $0.count) } }
@@ -753,11 +809,12 @@ public final class VCPUPool: @unchecked Sendable {
                     // Started but never ran: drop it.
                     worker.pending = nil
                     activeThreads -= 1
+                    detachLocked(worker)
                 }
                 lock.unlock()
                 break
             }
-            let state = worker.pending!
+            var state = worker.pending!
             worker.pending = nil
             worker.running = true
             lock.unlock()
@@ -766,15 +823,19 @@ public final class VCPUPool: @unchecked Sendable {
 
             var end = RunEnd.ended
             do {
+                // A thread of a suspended task, or one suspended before its
+                // vCPU ran it, stops before its first instruction.
+                let fresh = !worker.started
+                if let gate = worker.gate, gate.isClosed { state = parkAtStart(worker, gate, state, fresh: fresh) }
                 try begin(worker, state)
-                end = try runLoop(worker)
+                end = try runLoop(worker, slotFrameCurrent: !fresh)
             } catch {
                 terminate(status: 1, message: "vCPU \(worker.index): \(error)", vcpuIndex: worker.index)
             }
 
             lock.lock()
             worker.running = false
-            worker.context = nil
+            detachLocked(worker)
             activeThreads -= 1
             if case .parked = end, !ending.load(ordering: .relaxed) {
                 idle.append(worker)
@@ -842,20 +903,35 @@ public final class VCPUPool: @unchecked Sendable {
             frame.tpidrro = state.tpidrro
             frame.tpidr = cpuNumber(worker, state)
             frame.flushTLB = true
+            if Self.flushKeepsICache { frame.resumeFlags |= Self.resumeKeepICache }
             if Self.shimFPTouch { frame.resumeFlags |= Self.resumeFPTouch }
             try vm.write(gpa: worker.frameGPA, bytes: frame.encoded())
+            // cpu-features.md §4.6: the new thread starts with FPCR = FPSR = 0
+            // (rounding, flush-to-zero, AH/FIZ/NEP), not the previous thread's.
+            var zero: UInt32 = 0
+            let fpcr = ckvm_set_one_reg_bytes(worker.vcpu.fd, ckvm_reg_fpcr(), &zero)
+            let fpsr = ckvm_set_one_reg_bytes(worker.vcpu.fd, ckvm_reg_fpsr(), &zero)
+            if fpcr < 0 || fpsr < 0 { throw KVMError("KVM_SET_ONE_REG FPCR/FPSR", errno: -min(fpcr, fpsr)) }
             log("vCPU \(worker.index): thread #\(worker.threadCount), \(state)")
         }
     }
 
-    /// Runs the vCPU until its guest thread ends (`.parked`) or the pool ends (`.ended`).
-    private func runLoop(_ worker: Worker) throws -> RunEnd {
+    /// Runs the vCPU until its guest thread ends (`.parked`) or the pool ends
+    /// (`.ended`). `slotFrameCurrent`: the vCPU waits at its doorbell with
+    /// the thread's user registers in the slot's frame (a reused vCPU's
+    /// start; then after every handled trap).
+    private func runLoop(_ worker: Worker, slotFrameCurrent startsInSlot: Bool) throws -> RunEnd {
         let vcpu = worker.vcpu
+        let gate = worker.gate
+        var slotFrameCurrent = startsInSlot
         while true {
             if ending.load(ordering: .acquiring) {
                 acknowledgeStop(worker, .interrupted)
                 return .ended
             }
+            // Mach suspension (threads-and-events.md §1.6): one relaxed load
+            // per guest entry while the thread is not suspended.
+            if let gate, gate.needsAttention { try gateBeforeEntry(worker, gate, slotFrameCurrent: slotFrameCurrent) }
             if shouldStop() {
                 endPool(Termination(kind: .stopped, status: 0, message: "stopped", vcpuIndex: nil))
                 return .ended
@@ -875,8 +951,15 @@ public final class VCPUPool: @unchecked Sendable {
             } else {
                 exit = try vcpu.runOnce()
             }
-            worker.lastExitMs.store(monotonicMilliseconds(), ordering: .relaxed)
+            slotFrameCurrent = false
+            // One coarse clock read per exit (guest-cpu.md §5): the two
+            // millisecond stamps are diagnostics (long runs, long handlers).
+            let exitMs = monotonicMillisecondsCoarse()
+            worker.lastExitMs.store(exitMs, ordering: .relaxed)
             if case .interrupted = exit {
+                // A suspension kick's `immediate_exit` has done its work (the
+                // pool's end keeps it set: no vCPU enters the guest again).
+                if !ending.load(ordering: .acquiring) { vcpu.setImmediateExit(false) }
                 if worker.sampleRequested.exchange(false, ordering: .relaxed) {
                     worker.samplePC.store((try? vcpu.get(.pc)) ?? 0, ordering: .relaxed)
                     worker.sampleLR.store((try? vcpu.get(.x(30))) ?? 0, ordering: .relaxed)
@@ -915,15 +998,31 @@ public final class VCPUPool: @unchecked Sendable {
                 // The frame is read and written in place (one slot lookup, no
                 // byte arrays); `YCODE_TRAP_FRAME_COPY=1` copies it as before.
                 let framePointer = Self.trapFrameCopy ? nil : try vm.writableHostPointer(gpa: frameAddress, count: TrapFrame.byteCount)
+                if TrapFrame.peelLevel == 1, let p = framePointer,
+                   TrapFrame.peels(at: 1, x16: p.load(fromByteOffset: TrapFrame.Offset.x0 + 8 * 16, as: UInt64.self)),
+                   p.load(fromByteOffset: TrapFrame.Offset.kind, as: UInt64.self) == TrapFrame.Kind.svc.rawValue {
+                    // Diagnostics (guest-cpu.md §5): the bare exit, no decode.
+                    p.storeBytes(of: UInt64(1), toByteOffset: TrapFrame.Offset.x0, as: UInt64.self)
+                    let spsr = p.load(fromByteOffset: TrapFrame.Offset.spsr, as: UInt64.self)
+                    p.storeBytes(of: spsr & ~(UInt64(1) << 29), toByteOffset: TrapFrame.Offset.spsr, as: UInt64.self)
+                    p.storeBytes(of: Self.shimFPTouch ? Self.resumeFPTouch : 0, toByteOffset: TrapFrame.Offset.resumeFlags, as: UInt64.self)
+                    continue
+                }
                 var frame = try framePointer.map { TrapFrame(decodingFrameAt: $0) }
                     ?? TrapFrame(decoding: vm.read(gpa: frameAddress, count: TrapFrame.byteCount))
+                // A suspended thread stops at the entry of its trap; the trap
+                // runs when it is resumed (§1.6).
+                if let gate, gate.isClosed { _ = gate.park(frame, at: .trapEntry) }
                 worker.lastTrapX16.store(frame.x[16], ordering: .relaxed)
                 worker.lastTrapELR.store(frame.elr, ordering: .relaxed)
                 worker.lastTrapKind.store(UInt64(frame.kind), ordering: .relaxed)
                 worker.lastTrapESR.store(frame.esr, ordering: .relaxed)
-                worker.handlerSince.store(monotonicMilliseconds(), ordering: .relaxed)
+                worker.handlerSince.store(exitMs, ordering: .relaxed)
                 worker.inHandler.store(true, ordering: .relaxed)
-                if Self.profiling {
+                if TrapFrame.peelLevel == 2, frame.kind == TrapFrame.Kind.svc.rawValue, TrapFrame.peels(at: 2, x16: frame.x[16]) {
+                    frame.answerPeeled()   // diagnostics (guest-cpu.md §5)
+                    disposition = .resume
+                } else if Self.profiling {
                     let began = monotonicNanoseconds()
                     disposition = trapHandler(worker, &frame)
                     worker.handlerNanoseconds &+= monotonicNanoseconds() &- began
@@ -935,10 +1034,18 @@ public final class VCPUPool: @unchecked Sendable {
                 PostTrapWork.drain()
                 if case .resume = disposition {
                     if Self.shimFPTouch { frame.resumeFlags |= Self.resumeFPTouch }
+                    if frame.flushTLB {
+                        Self.tlbFlushResumes.wrappingAdd(1, ordering: .relaxed)
+                        if frame.resumeFlags & TrapFrame.ResumeFlag.byVA != 0 {
+                            Self.tlbFlushByVAResumes.wrappingAdd(1, ordering: .relaxed)
+                        }
+                        if Self.flushKeepsICache { frame.resumeFlags |= Self.resumeKeepICache }
+                    }
                     // (Looked up again: the handler may have changed the VM's slots.)
                     if framePointer != nil {
                         frame.encode(into: try vm.writableHostPointer(gpa: frameAddress, count: TrapFrame.byteCount))
                     } else { try vm.write(gpa: frameAddress, bytes: frame.encoded()) }
+                    slotFrameCurrent = true
                 }
             default:
                 disposition = exitHandler(worker, exit)
@@ -956,6 +1063,78 @@ public final class VCPUPool: @unchecked Sendable {
                 return .ended
             }
         }
+    }
+
+    // MARK: Suspension (threads-and-events.md §1.6)
+
+    /// Parks a thread whose gate is closed before its first instruction,
+    /// publishing its start state. Returns the state to start with (changed
+    /// by `thread_set_state` while it was parked). A fresh vCPU starts with
+    /// x0–x7 only (the shim's boot path): other registers set meanwhile are
+    /// dropped.
+    private func parkAtStart(_ worker: Worker, _ gate: GuestThreadGate, _ state: VCPUStartState, fresh: Bool) -> VCPUStartState {
+        var regs = TrapRegisters()
+        for (i, v) in state.registers.prefix(TrapFrame.registerCount).enumerated() { regs[i] = v }
+        let frame = TrapFrame(x: Array(regs), spEL0: state.sp, elr: state.pc, spsr: VMLayout.el0InitialSPSR,
+                              tpidrro: state.tpidrro, tpidr: cpuNumber(worker, state), kind: TrapFrame.Kind.svc.rawValue)
+        guard let changed = gate.park(frame, at: .start) else { return state }
+        var registers = Array(changed.x)
+        if fresh, registers.dropFirst(8).contains(where: { $0 != 0 }) {
+            log("vCPU \(worker.index): thread_set_state before the first instruction of a new vCPU: x8-x30 dropped")
+            for i in 8..<registers.count { registers[i] = 0 }
+        }
+        return VCPUStartState(pc: changed.elr, sp: changed.spEL0, registers: registers, tpidrro: state.tpidrro, tpidr: state.tpidr)
+    }
+
+    /// The gate check before a guest entry: a register replacement waiting
+    /// for the end of the trap, or a closed gate. Parks with the user
+    /// registers: the slot's frame just after a trap, or the vCPU's
+    /// registers when it was kicked out at EL0. Stopped at EL1 (in the shim,
+    /// entering or leaving a trap) it runs on: the suspender kicks again
+    /// and the thread stops at EL0 or at its next trap.
+    private func gateBeforeEntry(_ worker: Worker, _ gate: GuestThreadGate, slotFrameCurrent: Bool) throws {
+        let vcpu = worker.vcpu
+        if slotFrameCurrent {
+            let p = try vm.writableHostPointer(gpa: worker.frameGPA, count: TrapFrame.byteCount)
+            var frame = TrapFrame(decodingFrameAt: p)
+            var dirty = false
+            if let replacement = gate.takeReplacement() {
+                // thread_set_state during the trap: the new registers, with
+                // the trap's results in x0, x1 and carry.
+                let x0 = frame.x[0], x1 = frame.x[1], carry = frame.carry
+                frame.takeUserState(of: replacement)
+                frame.x[0] = x0
+                frame.x[1] = x1
+                frame.carry = carry
+                dirty = true
+            }
+            if gate.isClosed, let changed = gate.park(frame, at: .afterTrap) {
+                frame.takeUserState(of: changed)
+                dirty = true
+            }
+            if dirty { frame.encode(into: try vm.writableHostPointer(gpa: worker.frameGPA, count: TrapFrame.byteCount)) }
+        } else if gate.isClosed {
+            let pstate = try vcpu.get(.pstate)
+            if pstate & 0xF == 0 {
+                // EL0t: the thread's registers are the vCPU's.
+                var frame = TrapFrame()
+                for n in 0..<TrapFrame.registerCount { frame.x[n] = try vcpu.get(.x(n)) }
+                frame.spEL0 = try vcpu.get(.spEL0)
+                frame.elr = try vcpu.get(.pc)
+                frame.spsr = pstate
+                frame.tpidrro = try vcpu.get(SystemRegister.tpidrroEL0)
+                frame.tpidr = try vcpu.get(SystemRegister.tpidrEL0)
+                frame.kind = TrapFrame.Kind.svc.rawValue
+                if let changed = gate.park(frame, at: .guest) {
+                    for n in 0..<TrapFrame.registerCount where changed.x[n] != frame.x[n] { try vcpu.set(.x(n), changed.x[n]) }
+                    if changed.spEL0 != frame.spEL0 { try vcpu.set(.spEL0, changed.spEL0) }
+                    if changed.elr != frame.elr { try vcpu.set(.pc, changed.elr) }
+                    let flags = (pstate & ~UInt64(0xF000_0000)) | (changed.spsr & 0xF000_0000)
+                    if flags != pstate { try vcpu.set(.pstate, flags) }
+                }
+            }
+        }
+        if !ending.load(ordering: .acquiring) { vcpu.setImmediateExit(false) }
     }
 
     /// Ends the pool with this status (the first end wins) and stops every vCPU.
@@ -1024,6 +1203,8 @@ public final class VCPUPool: @unchecked Sendable {
             for worker in workers {
                 worker.vcpu.setImmediateExit(true)
                 worker.wakeup.broadcast()
+                // A thread parked at its run gate continues and sees the end.
+                worker.gate?.release()
                 // A thread inside the trap handler stops when it returns to
                 // its run loop (a blocked one when the kernel wakes it).
                 if worker.running, !worker.inHandler.load(ordering: .relaxed), pthread_equal(worker.hostThread, me) == 0,
@@ -1289,6 +1470,15 @@ public func monotonicNanoseconds() -> UInt64 {
     var now = timespec()
     clock_gettime(CLOCK_MONOTONIC, &now)
     return UInt64(now.tv_sec) * 1_000_000_000 + UInt64(now.tv_nsec)
+}
+
+/// CLOCK_MONOTONIC_COARSE in milliseconds: the same clock as
+/// `monotonicMilliseconds` read without the counter (the last tick's value,
+/// at most one tick behind; a few ns instead of about 60 on the Thor).
+public func monotonicMillisecondsCoarse() -> UInt64 {
+    var now = timespec()
+    clock_gettime(CLOCK_MONOTONIC_COARSE, &now)
+    return UInt64(now.tv_sec) * 1000 + UInt64(now.tv_nsec) / 1_000_000
 }
 
 /// CLOCK_MONOTONIC in milliseconds.

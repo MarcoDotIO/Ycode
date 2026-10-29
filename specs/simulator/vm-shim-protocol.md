@@ -118,7 +118,7 @@ The shim must do the following, in order:
 3. Write `MAIR_EL1`, `TCR_EL1`, `TTBR0_EL1`.
 4. `isb`.
 5. Enable FP/SIMD for EL0 and EL1 (`CPACR_EL1.FPEN = 0b11`).
-6. Invalidate the TLB (`tlbi vmalle1`), `dsb sy`, `isb`.
+6. Invalidate the TLB on every PE of the inner shareable domain (`tlbi vmalle1is`; a VM reused for another process, `boot-profile.md` §9 SP1, may have the old process's entries cached on other PEs), `dsb sy`, `isb`.
 7. Write `SCTLR_EL1`, then `isb`. Execution continues because the shim is
    identity-mapped.
 8. Set `VBAR_EL1` to its vector table (2 KiB-aligned).
@@ -142,7 +142,7 @@ The frame is 320 bytes of little-endian u64 at the frame address:
 | 288 | `tpidrro_el0` (the shim writes it back to the register on resume) |
 | 296 | `tpidr_el0` (written back on resume) |
 | 304 | `kind`: 1 = SVC from EL0 (EC `0x15`); 2 = any other synchronous exception from EL0; 3 = IRQ/FIQ/SError; 4 = synchronous exception taken at EL1 (shim bug) |
-| 312 | reserved (0) |
+| 312 | `resumeFlags` (stage 3 on; §5.2) |
 
 On any exception, the shim's vector entry does the following:
 
@@ -216,6 +216,38 @@ carry the same frame and give the same resume semantics.
 - **Recommendation.** Make this the default doorbell. The gain is small but
   consistent, the cost is nothing, and a host without the SMCCC filter
   falls back to MMIO by itself. Until the default changes, it stays opt-in.
+
+### 5.2 `resumeFlags` (frame word +312): TLB and I-cache maintenance on resume
+
+The VMM sets the word before it resumes a trap; the shim acts on it on the
+restore path and the next trap entry clears it. Bits (2026-10-24, agent
+GUEST-CPU, `guest-cpu.md` §4):
+
+| Bit(s) | Meaning |
+|---|---|
+| 0 | Invalidate stale translations before the `eret`. Alone: `tlbi vmalle1is` (every stage-1 entry of the VM, on every core), then `ic ialluis`, `dsb ish`, `isb` |
+| 1 | Touch FP/SIMD (`stage3-contract.md` §7) |
+| 2 | With bit 0: no `ic ialluis`. The VMM sets it when the host's CTR_EL0.DIC is 1 (instruction fetch is coherent with data writes, so no I-cache invalidation is needed for new code), unless `YCODE_TLB_FLUSH_ICACHE=1` |
+| 3 | With bit 0: invalidate only the last-level entries of `count` 16 KiB pages from `VA` (`dsb ishst`, then one `tlbi vale1is` per page, operand `VA[55:12]`), not the whole TLB |
+| 8–15 | With bit 3: `count − 1` (1–256 pages) |
+| 16–63 | With bit 3: `VA >> 14` |
+
+When the VMM asks for bit 0:
+
+- Only after a change that **removed or altered a valid leaf descriptor**
+  (unmap, protect, a fixed mapping over an existing one). A change that only
+  fills invalid entries (a new mapping, a lazy page given backing) needs no
+  invalidation: a translation that faults is never held in a TLB (Arm ARM,
+  "Translation Lookaside Buffers": only valid translations are cached). On a
+  host whose CTR_EL0.DIC is 0, every change still asks for bit 0 (the
+  I-cache invalidation it carries is what a reused code page needs there).
+  `YCODE_TLB_FLUSH_ADDS=1` restores "every change".
+- With bit 3 when the change was one span of at most 256 pages that only
+  changed leaf descriptors (the VMM's tables never free or replace a table)
+  and no other change of the address space happened during the trap; the
+  whole TLB otherwise. `YCODE_TLB_BY_VA=0` turns bit 3 off.
+- Leaf descriptors are global (nG = 0), so a by-VA invalidation needs no
+  ASID.
 
 The VMM resumes the vCPU only by calling `KVM_RUN` again. To stop the guest
 (for example on `exit`), it simply does not resume.

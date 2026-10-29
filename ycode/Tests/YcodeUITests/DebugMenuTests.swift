@@ -49,7 +49,7 @@ private final class MenuAdapter: DAPTransport, @unchecked Sendable {
             case "stackTrace": body = ["stackFrames": [["id": 1, "name": "main", "line": 4, "source": ["path": .string(source)]]]]
             case "scopes": body = ["scopes": [["name": "Locals", "variablesReference": 10, "expensive": false]]]
             case "variables": body = ["variables": [["name": "x", "value": "1", "variablesReference": 0]]]
-            case "setBreakpoints": body = ["breakpoints": .array((req["arguments"]?["breakpoints"]?.array ?? []).enumerated().map { ["id": .number(Double($0.offset + 1)), "verified": true] })]
+            case "setBreakpoints": body = ["breakpoints": .array((req["arguments"]?["breakpoints"]?.array ?? []).indices.map { ["id": .number(Double($0 + 1)), "verified": true] })]
             case "disconnect": after = [("terminated", [:])]
             default: break
             }

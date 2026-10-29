@@ -133,6 +133,11 @@ extension MetalHostCore {
     var snapshotBusyReason: String? {
         guard lock.try() else { return "metal core busy" }
         defer { lock.unlock() }
+        // Exported shared events name host ports a restore cannot bring back.
+        if !exportedEvents.isEmpty { return "\(exportedEvents.count) shared-event handles exported" }
+        // Opened shared-texture handles name another object's GPU image.
+        let opened = processes.values.reduce(0) { n, p in n + p.objects.values.filter(\.openedHandle).count }
+        if opened > 0 { return "\(opened) shared-texture handles opened" }
         return inFlight > 0 ? "\(inFlight) Metal command buffers in flight" : nil
     }
 
@@ -144,7 +149,7 @@ extension MetalHostCore {
     /// need neither lock.
     func trySnapshotState(log: (String) -> Void) -> SnapshotFields? {
         guard lock.try() else { return nil }
-        guard inFlight == 0 else { lock.unlock(); return nil }
+        guard inFlight == 0, exportedEvents.isEmpty else { lock.unlock(); return nil }
         // Copies of the tables (the back end is read without the lock).
         typealias T = SnapTag
         var g = SnapshotFields()
@@ -227,9 +232,7 @@ extension MetalHostCore {
                     skipped += 1
                 }
             case (8, 1), (12, 21):
-                var r = ByteReader(recipe.body)
-                if recipe.mt == 12 { _ = try? r.u32(); _ = try? r.u32() }
-                guard let desc = try? MetalDescriptorCodec.texture(&r) else { skipped += 1; continue }
+                guard let desc = try? textureDescriptor(recipe) else { skipped += 1; continue }
                 if let bytes = readTexture(h, desc) {
                     contents[h] = (2, bytes)
                     textureBytes += bytes.count
@@ -241,7 +244,7 @@ extension MetalHostCore {
             }
         }
         typealias U = SnapTag
-        g.list(T.processes, encoded.map { p, f, objs in
+        g.list(T.processes, encoded.map { _, f, objs in
             var f = f
             f.list(U.objects, objs.map { h, e in
                 var e = e
@@ -397,7 +400,8 @@ extension MetalHostCore {
     private func textureDescriptor(_ recipe: MetalRecipe) throws -> MetalTextureDescriptor {
         var r = ByteReader(recipe.body)
         if recipe.mt == 12 { _ = try r.u32(); _ = try r.u32() }
-        var desc = try MetalDescriptorCodec.texture(&r)
+        // Op 21 (heap texture): words 1–8 unless the body is the 56-byte form (MetalHostCore).
+        var desc = try MetalDescriptorCodec.texture(&r, leadingWord: !(recipe.mt == 12 && recipe.op == 21 && recipe.body.count < 56))
         if recipe.mt == 12, recipe.op == 21 { desc.resourceOptions = (desc.resourceOptions & ~0xF0) | 0x20 }
         return desc
     }
@@ -447,9 +451,21 @@ extension MetalHostCore {
             try backend.createDepthStencilState(h, try MetalDescriptorCodec.depthStencil(recipe.body))
         case (13, 47):
             var r = ByteReader(recipe.body)
-            let desc = try MetalDescriptorCodec.texture(&r)
+            let desc = try MetalDescriptorCodec.texture(&r, leadingWord: true)
             let backing = surfaces?.backing(forSurfacePort: recipe.right, plane: recipe.plane)
             try backend.createTexture(h, desc, iosurface: backing)
+        case (19, 42):
+            // A shared texture: GPU memory of the host's own; its surface
+            // (restored by the IOSurface service) keeps the creation properties.
+            var r = ByteReader(recipe.body)
+            let desc = try MetalDescriptorCodec.texture(&r, leadingWord: recipe.body.count >= 36)
+            try backend.createTexture(h, desc, iosurface: nil)
+            if let id = surfaces?.surfaceDescription(forSurfacePort: recipe.right)?.id {
+                lock.withLock {
+                    p.objects[h]?.sharedSurface = id
+                    sharedTextures[id, default: []].insert(h)
+                }
+            }
         case (15, _):
             try backend.createFunction(h, metallib: recipe.body)
         case (12, 7), (12, 8), (12, 27):

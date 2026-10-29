@@ -111,6 +111,10 @@ final class UnixSocket: KernelDescriptorObject {
     /// The host end of a host-provided stream socket (`HostStreamSockets`):
     /// bytes the peer sends are handed to it instead of being queued.
     var hostSink: ((ArraySlice<UInt8>) -> Void)?
+    /// The host end of a host-provided socket that answers
+    /// (`HostStreamSockets.endpoint`): it gets what the peer sends, rights
+    /// included, and writes back into the peer's receive queue.
+    var hostEndpoint: HostSocketEndpoint?
     var isConnected = false
     var cantReceiveMore = false
     var cantSendMore = false
@@ -269,6 +273,10 @@ final class UnixSocket: KernelDescriptorObject {
     /// Appends stream bytes (and rights) sent by the peer.
     func appendStream(_ bytes: ArraySlice<UInt8>, rights: [DarwinOpenFile]?) {
         guard !cantReceiveMore else { return }  // shut down for reading: dropped
+        if let hostEndpoint {
+            hostEndpoint.received(bytes, rights: rights)
+            return
+        }
         if let hostSink {
             hostSink(bytes)  // rights are dropped (released with this call)
             return
@@ -291,6 +299,7 @@ final class UnixSocket: KernelDescriptorObject {
     /// more (queued data stays readable), and neither is connected.
     func disconnectStream() {
         guard let p = peer else { return }
+        p.hostEndpoint?.disconnected()
         peer = nil
         isConnected = false
         if p.peer === self { p.peer = nil }
@@ -574,13 +583,17 @@ extension DarwinKernel {
         case .stream:
             if s.isListening { throw fail(Code.EOPNOTSUPP) }
             if s.isConnected || s.peer != nil { throw fail(Code.EISCONN) }
-            if let sink = HostStreamSockets.sink(for: fileSystem.normalize(address.path, cwd: fileSystem.cwd),
-                                                 from: descriptorUser) {
+            let hostPath = fileSystem.normalize(address.path, cwd: fileSystem.cwd)
+            let sink = HostStreamSockets.sink(for: hostPath, from: descriptorUser)
+            let endpoint = sink == nil ? HostStreamSockets.endpoint(for: hostPath) : nil
+            if sink != nil || endpoint != nil {
                 // A host-provided socket (no guest listener): connected at
-                // once to a host end that consumes what is sent.
+                // once to a host end that consumes what is sent (and, for an
+                // endpoint, answers).
                 let host = UnixSocket(kind: .stream, lock: lock, creator: descriptorUser)
                 host.address = address.raw
                 host.hostSink = sink
+                host.hostEndpoint = endpoint?(host, lock, descriptorUser)
                 host.peer = s
                 host.isConnected = true
                 host.peerCredentials = descriptorUser

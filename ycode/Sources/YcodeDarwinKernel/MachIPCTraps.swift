@@ -7,7 +7,8 @@ import YcodeDarwinABI
 // x0 with carry clear.
 
 extension MachIPC {
-    /// Mach trap numbers this type serves.
+    /// Mach trap numbers this type serves (negative `x16`, `mach-ipc.md` §1.8),
+    /// one per trap its name spells.
     public enum Trap {
         public static let portAllocate = -16, portDeallocate = -18, portModRefs = -19, portMoveMember = -20,
                           portInsertRight = -21, portInsertMember = -22, portExtractMember = -23,
@@ -18,11 +19,16 @@ extension MachIPC {
                           threadGetSpecialReplyPort = -50, hostCreateMachVoucher = -70,
                           voucherExtractAttrRecipe = -72, portType = -76, portRequestNotification = -77
 
+        /// Every trap number above, for dispatch.
         public static let all: Set<Int> = [-16, -18, -19, -20, -21, -22, -23, -24, -25, -26, -27, -28, -29,
                                            -31, -32, -40, -41, -42, -44, -45, -46, -47, -50, -70, -72, -76, -77]
     }
 
     /// The Ycode-private Mach routines (`host-libraries.md` §10, contract §7).
+    ///
+    /// Every routine number lies in `rangeStart...rangeEnd` (inclusive); a
+    /// constant without its own comment stands for the Mach routine its name
+    /// spells.
     public enum Routine {
         public static let rangeStart: UInt32 = 0x7963_2000
         public static let rangeEnd: UInt32 = 0x7963_20FF
@@ -78,9 +84,6 @@ extension MachIPC {
     /// Takes the kernel lock (with `context`) when the caller does not hold it.
     public func handleTrap(x16: Int64, frame: inout TrapFrame, context: ThreadContext,
                            memory: any GuestVirtualMemory) -> TrapOutcome? {
-        if frame.x.count < TrapFrame.registerCount {
-            frame.x += [UInt64](repeating: 0, count: TrapFrame.registerCount - frame.x.count)
-        }
         if lock.isHeldByCurrentThread {
             return handleTrapLocked(x16: x16, frame: &frame, context: context, memory: memory)
         }
@@ -109,7 +112,7 @@ extension MachIPC {
 
     private func handleMachTrap(_ n: Int, _ frame: inout TrapFrame, context: ThreadContext,
                                 memory: any GuestVirtualMemory) -> TrapOutcome {
-        let a = Array(frame.x[0..<8])
+        let a = frame.x.prefixArray(8)
         func u32(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i]) }
         func i32(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         var call = CallText(tracesCalls, "mach \(n)")
@@ -338,7 +341,7 @@ extension MachIPC {
     /// is read from memory (§2.7).
     private func machMsgTrap(_ n: Int, _ frame: inout TrapFrame, context: ThreadContext,
                              memory: any GuestVirtualMemory) -> TrapOutcome {
-        let a = Array(frame.x[0..<8])
+        let a = frame.x.prefixArray(8)
         let msg = a[0]
         let options = UInt64(UInt32(truncatingIfNeeded: a[1]))
         let sendSize = Int(UInt32(truncatingIfNeeded: a[2]))
@@ -397,7 +400,7 @@ extension MachIPC {
     /// `mach_msg2_trap` (−47): header fields come from the registers (§2.7).
     private func machMsg2Trap(_ frame: inout TrapFrame, context: ThreadContext,
                               memory: any GuestVirtualMemory) -> TrapOutcome {
-        let a = Array(frame.x[0..<8])
+        let a = frame.x.prefixArray(8)
         func lo(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i]) }
         func hi(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i] >> 32) }
         let data = a[0]
@@ -509,7 +512,7 @@ extension MachIPC {
 
     private func handleRoutine(_ number: UInt32, _ frame: inout TrapFrame, context: ThreadContext,
                                memory: any GuestVirtualMemory) -> TrapOutcome {
-        let a = Array(frame.x[0..<8])
+        let a = frame.x.prefixArray(8)
         func u32(_ i: Int) -> UInt32 { UInt32(truncatingIfNeeded: a[i]) }
         func i32(_ i: Int) -> Int32 { Int32(truncatingIfNeeded: a[i]) }
         let prefix = tracesCalls ? "trap yc \(hx(number & 0xFFFF))" : ""
@@ -566,6 +569,7 @@ extension MachIPC {
                 portDeath(p)
                 return kr(MachKern.invalidAddress)
             }
+            kernel?.debugSemaphore("semaphore_create -> \(hx(name)) value \(value)")
             return kr(0, " [\(hx(name))]")
 
         case Routine.semaphoreDestroy:
@@ -576,6 +580,7 @@ extension MachIPC {
             }
             _ = portDeallocate(name)
             portDeath(p)
+            kernel?.debugSemaphore("semaphore_destroy \(hx(name))")
             return kr(0)
 
         case Routine.taskGetSpecialPort:

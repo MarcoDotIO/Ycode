@@ -96,7 +96,7 @@ sh guest-tests/build.sh       # -> out/guest-tests/hello, checks platform 7
   - Lower EL (AArch64) kinds 2 and 3 are resumable. The shim restores the
     frame and `eret`s if the VMM calls `KVM_RUN` again. Per §6, the stage-2
     VMM exits instead.
-- **Extra boot steps.** Step 6 also runs `ic iallu` (before the MMU and the
+- **Extra boot steps.** Step 6 also runs `ic ialluis` (before the MMU and the
   I-cache are enabled). Step 8 also sets `TPIDR_EL1` (see above). An
   `isb` runs before every `eret`, so the code does not depend on
   `SCTLR_EL1.EOS`.

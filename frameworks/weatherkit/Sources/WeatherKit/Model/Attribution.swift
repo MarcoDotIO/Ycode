@@ -26,7 +26,7 @@ public struct WeatherAttribution: Codable, Equatable, Sendable {
 
     var storage: Storage
     /// Plain-text source list when the provider supplies one; not archived.
-    var legalText: String? = nil
+    var legalText: String?
 
     enum CodingKeys: String, CodingKey {
         case storage

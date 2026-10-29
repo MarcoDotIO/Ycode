@@ -328,6 +328,7 @@ public final class TrapProfile: @unchecked Sendable {
                 let holdMean = r.acquisitions == 0 ? 0 : Double(r.holdNanoseconds) / Double(r.acquisitions) / 1e3
                 let waitMean = r.waits == 0 ? 0 : Double(r.waitNanoseconds) / Double(r.waits) / 1e3
                 let share = totalHold == 0 ? 0 : 100 * Double(r.holdNanoseconds) / Double(totalHold)
+                // swiftlint:disable:next empty_count - a counter, not a collection
                 let perTrap = r.count == 0 ? 0 : Double(r.acquisitions) / Double(r.count)
                 let contendedShare = r.waits == 0 ? 0 : 100 * Double(r.contended) / Double(r.waits)
                 out += line([

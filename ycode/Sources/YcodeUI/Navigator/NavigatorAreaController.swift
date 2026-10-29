@@ -33,6 +33,9 @@ public final class OutlineItem: NSObject {
     /// Project navigator rows: the row's kind and its key for the saved
     /// expansion (`NavigatorNode.expansionKey`).
     public var nodeKind: NavigatorNode.Kind?
+    /// A project-tree row's location on disk, folders and groups included
+    /// (`path` is only set on rows that open something).
+    public var nodePath: String?
     public var expansionKey: String?
     /// A glyph at the row's right end (the Test navigator's status
     /// diamonds, a done bookmark's check).
@@ -97,6 +100,7 @@ public final class OutlineItem: NSObject {
         self.init(title: title.isEmpty ? node.name : title, symbol: Self.symbol(for: node),
                   children: node.children.map { OutlineItem($0, hideExtensions: hideExtensions) }, path: opens ? node.path : nil)
         nodeKind = node.kind
+        nodePath = node.path
         expansionKey = node.kind == .file ? nil : node.expansionKey
     }
 }
@@ -161,21 +165,62 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     private let selector = NSStackView()
     private var buttons: [NSButton] = []
     private let outline = NSOutlineView()
+    /// The outline and the selector (tests: row metrics).
+    var outlineView: NSOutlineView { outline }
+    /// The selector bar as drawn: its glass capsule (macOS 26+), or the
+    /// selector itself.
+    var selectorView: NSView { GlassBars.enabled ? selectorGlass : selector }
+    /// liquid-glass.md §2.3: the selector's glass capsule, the "+" circle,
+    /// the filter capsule and the selected tab's pill.
+    let selectorGlass = GlassBars.capsule()
+    let plusGlass = GlassBars.capsule()
+    let filterGlass = GlassBars.capsule()
+    let selectorPill = SelectionPillView()
+    /// The outline runs under the glass bars (no header shown) or is
+    /// clipped below the header rows (§3.1, §2.7).
+    var clippedScrollConstraints: [NSLayoutConstraint] = []
+    var underBarsScroll: [NSLayoutConstraint] = []
+    var scrollView: NSScrollView { scroll }
+    var scrollClipView: NSView { scrollClip }
+    var selectorButtons: [NSButton] { buttons }
     private let scroll = NSScrollView()
+    /// Clips the outline's scroll view at the header's bottom (N3).
+    private let scrollClip = NSView()
     private let emptyLabel = NSTextField(wrappingLabelWithString: "")
     /// The bottom bar's filter field, its leading options menu, and the
-    /// two in-field toggles (reference-ui.md §2).
-    public let filter = NSSearchField()
-    /// The Coding Assistant pane: Ycode has no assistant, so a placeholder.
-    public let assistantPlaceholder = NSTextField(wrappingLabelWithString: "Coding Assistant\n\nYcode does not include a coding assistant.")
+    /// in-field toggles (reference-ui.md §2). Both sit inside the field
+    /// (reference-ui-6.md §5.6, N7).
+    public let filter: NSSearchField = NavigatorFilterField()
+    /// The Coding Assistant pane's container (coding-assistant.md §4); the
+    /// window puts the assistant's view in it (`assistantContent`).
+    public let assistantContainer = NSView()
+    /// Called the first time the Coding Assistant pane is shown, so the
+    /// window can create the assistant only when it is used.
+    public var onShowCodingAssistant: (() -> Void)?
+    /// The view shown in the Coding Assistant pane.
+    public var assistantContent: NSView? {
+        didSet {
+            oldValue?.removeFromSuperview()
+            guard let v = assistantContent else { return }
+            v.translatesAutoresizingMaskIntoConstraints = false
+            assistantContainer.addSubview(v)
+            NSLayoutConstraint.activate([
+                v.topAnchor.constraint(equalTo: assistantContainer.topAnchor),
+                v.bottomAnchor.constraint(equalTo: assistantContainer.bottomAnchor),
+                v.leadingAnchor.constraint(equalTo: assistantContainer.leadingAnchor),
+                v.trailingAnchor.constraint(equalTo: assistantContainer.trailingAnchor),
+            ])
+        }
+    }
     /// The left area's content changed (navigators ↔ Coding Assistant).
     public var onContentChange: (() -> Void)?
     public var showsCodingAssistant = false {
         didSet {
+            if showsCodingAssistant && assistantContent == nil { onShowCodingAssistant?() }
             if oldValue != showsCodingAssistant { onContentChange?() }
             guard isViewLoaded else { return }
-            for v in view.subviews where v !== assistantPlaceholder { v.isHidden = showsCodingAssistant }
-            assistantPlaceholder.isHidden = !showsCodingAssistant
+            for v in view.subviews where v !== assistantContainer { v.isHidden = showsCodingAssistant }
+            assistantContainer.isHidden = !showsCodingAssistant
             if !showsCodingAssistant { select(selectedIndex) }
         }
     }
@@ -188,8 +233,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     public var toggleButtons: [NSButton] { [recentToggle, sourceControlToggle, thirdToggle] }
     let rowMenu = NSMenu(title: "Row")
     let toggleStack = NSStackView()
-    private var optionsAfterLeftButton: NSLayoutConstraint!
-    private var optionsAtEdge: NSLayoutConstraint!
+    private var filterAfterLeftButton: NSLayoutConstraint!
+    private var filterAtEdge: NSLayoutConstraint!
     /// The Test navigator's header: the test-plan pop-up and the Mode
     /// radio buttons (Group by Test Hierarchy | Group by Tags).
     public let testHeader = NSStackView()
@@ -233,6 +278,11 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     static let supportedKinds: Set<Int> = [0, 2]
     private let findOptions = NSStackView()
     private var scopeHeight: NSLayoutConstraint!
+    private var findOptionsTop: NSLayoutConstraint!
+    private var findFieldTop: NSLayoutConstraint!
+    private var findScopeTop: NSLayoutConstraint!
+    private var reportScopeTop: NSLayoutConstraint!
+    private var scrollTop: NSLayoutConstraint!
     private var reportScopeHeight: NSLayoutConstraint!
     /// The selected scope: the whole workspace, the current results' files,
     /// or one containing group (its path).
@@ -254,14 +304,27 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             findStyle.selectItem(at: newValue.regularExpression ? 2 : 0)
             findMatch.selectItem(at: newValue.wholeWord ? 1 : newValue.anchor == .start ? 2 : newValue.anchor == .end ? 3 : 0)
             findCaseToggle.state = newValue.ignoreCase ? .off : .on
+            updateFindPlaceholder()
         }
+    }
+
+    /// The Find field's placeholder is the current kind ("Text", "Regular
+    /// Expression", …; reference-ui-6.md §5.5, N6).
+    func updateFindPlaceholder() {
+        findField.placeholderString = findStyle.titleOfSelectedItem ?? Self.findKinds[0]
     }
     /// The workspace tree, for find and symbols.
     private var workspaceRoot: NavigatorNode?
     public var onOpenReport: ((Int) -> Void)?
 
+    public override func viewDidLayout() {
+        super.viewDidLayout()
+        updateGlassLayout()
+    }
+
     public override func loadView() {
         let root = NSView()
+        let glass = GlassBars.enabled
         selector.orientation = .horizontal
         selector.distribution = .fillEqually
         selector.spacing = 0
@@ -273,6 +336,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             b.tag = i
             b.toolTip = NavigatorBars.selectorToolTips[i]   // reference-ui-5.md §5.2
             b.setButtonType(.toggle)
+            // reference-ui-6.md §5.6 (N8): the tab keeps its title (and its
+            // glyph) whether or not it is selected.
+            b.alternateImage = img
+            b.setAccessibilityTitle(name)
             buttons.append(b)
             selector.addArrangedSubview(b)
         }
@@ -284,7 +351,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         outline.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         outline.headerView = nil
         outline.style = .sourceList
-        outline.rowSizeStyle = Self.rowSizeStyle
+        applyRowMetrics()
         outline.dataSource = self
         outline.delegate = self
         outline.target = self
@@ -292,7 +359,25 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         rowMenu.delegate = self
         scroll.documentView = outline
         scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
         scroll.drawsBackground = false
+        // reference-ui-6.md §5.3 (N3): the first row sits `firstRowGap`
+        // below the selector. The source-list style pads its first row by
+        // more than that, so the scroll view starts above a clipping
+        // container by the difference; scrolled rows clip at its top.
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsets()
+        scrollClip.clipsToBounds = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scrollClip.addSubview(scroll)
+        clippedScrollConstraints = [
+            scroll.topAnchor.constraint(equalTo: scrollClip.topAnchor, constant: Self.firstRowGap - Self.selectorToContent - Self.sourceListTopPadding),
+            scroll.bottomAnchor.constraint(equalTo: scrollClip.bottomAnchor),
+        ]
+        NSLayoutConstraint.activate(clippedScrollConstraints + [
+            scroll.leadingAnchor.constraint(equalTo: scrollClip.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: scrollClip.trailingAnchor),
+        ])
 
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
@@ -303,7 +388,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         filter.action = #selector(filterChanged)
         filterOptions.isBordered = false
         filterOptions.addItem(withTitle: "")
-        filterOptions.item(at: 0)?.image = NSImage(systemSymbolName: "line.3.horizontal.decrease.circle", accessibilityDescription: "Filter options")
+        // §5.6 (N7): a funnel glyph with a chevron, inside the field.
+        filterOptions.item(at: 0)?.image = NavigatorFilterField.optionsGlyph
+        (filterOptions.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
+        filterOptions.setAccessibilityLabel("Filter options")
         rebuildFilterOptionsMenu()
         for (i, b) in toggleButtons.enumerated() {
             b.setButtonType(.toggle)
@@ -314,6 +402,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             toggleStack.addArrangedSubview(b)
         }
         toggleStack.spacing = 2
+        for b in toggleButtons {
+            b.widthAnchor.constraint(equalToConstant: NavigatorFilterField.toggleWidth).isActive = true
+            b.imageScaling = .scaleProportionallyDown
+        }
 
         let sep = NSBox.hairline()
         findField.placeholderString = "Find"
@@ -329,6 +421,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             p.controlSize = .small
             p.font = .systemFont(ofSize: 10)
             p.isBordered = false
+            // reference-ui-6.md §5.5 (N6): path components, no pop-up arrows.
+            (p.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
             p.target = self
             p.action = #selector(findOptionChanged)
             if i > 0 {
@@ -339,6 +433,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             findOptions.addArrangedSubview(p)
         }
         findMode.item(at: 1)?.isEnabled = false
+        updateFindPlaceholder()
         for i in Self.findKinds.indices where !Self.supportedKinds.contains(i) { findStyle.item(at: i)?.isEnabled = false }
         findCaseToggle.setButtonType(.pushOnPushOff)
         findCaseToggle.bezelStyle = .inline
@@ -362,30 +457,50 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         addBreakpointButton.isBordered = false
         addBreakpointButton.menu?.delegate = self
         rebuildAddMenu()
-        for v in [selector, sep, findField, findOptions, findScope, reportScope, sourceControlMode, testHeader, scroll, emptyLabel, filter, addBreakpointButton, filterOptions, toggleStack] as [NSView] {
+        for v in [selector, sep, findField, findOptions, findScope, reportScope, sourceControlMode, testHeader, scrollClip, emptyLabel, filter, addBreakpointButton, filterOptions, toggleStack] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
-        filterLeading = filter.leadingAnchor.constraint(equalTo: filterOptions.trailingAnchor, constant: 0)
-        optionsAfterLeftButton = filterOptions.leadingAnchor.constraint(equalTo: addBreakpointButton.trailingAnchor, constant: 2)
-        optionsAtEdge = filterOptions.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4)
+        if glass {
+            // Above the outline (which scrolls beneath them), below the
+            // controls they carry.
+            for g in [selectorGlass, plusGlass, filterGlass] {
+                g.translatesAutoresizingMaskIntoConstraints = false
+                root.addSubview(g, positioned: .above, relativeTo: scrollClip)
+            }
+            root.addSubview(selector, positioned: .above, relativeTo: selectorGlass)
+            root.addSubview(selectorPill, positioned: .below, relativeTo: selector)
+            sep.alphaValue = 0   // no line under the floating bar
+        }
+        // The header rows between the selector and the outline; a hidden
+        // one takes no room (N3).
+        findOptionsTop = findOptions.topAnchor.constraint(equalTo: sep.bottomAnchor, constant: 2)
+        findFieldTop = findField.topAnchor.constraint(equalTo: findOptions.bottomAnchor, constant: 2)
+        findScopeTop = findScope.topAnchor.constraint(equalTo: findField.bottomAnchor, constant: 2)
+        reportScopeTop = reportScope.topAnchor.constraint(equalTo: findScope.bottomAnchor, constant: 2)
+        scrollTop = scrollClip.topAnchor.constraint(equalTo: reportScope.bottomAnchor, constant: 4)
+        filterAfterLeftButton = filter.leadingAnchor.constraint(equalTo: addBreakpointButton.trailingAnchor, constant: glass ? 6 + Self.filterInset : 2)
+        filterAtEdge = filter.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: glass ? 6 + Self.filterInset : 6)
         NSLayoutConstraint.activate([
-            selector.topAnchor.constraint(equalTo: root.topAnchor, constant: 2),
-            selector.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
-            selector.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -4),
+            // Below the toolbar: the sidebar runs the window's full height
+            // (liquid-glass-ycode.md §2). liquid-glass.md §2.3: inside a
+            // 30-point glass capsule 6 points from the area's sides.
+            selector.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: glass ? GlassBars.topOffset + 2 : 2),
+            selector.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: glass ? 10 : 4),
+            selector.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: glass ? -10 : -4),
             selector.heightAnchor.constraint(equalToConstant: 26),
-            sep.topAnchor.constraint(equalTo: selector.bottomAnchor, constant: 2),
+            sep.topAnchor.constraint(equalTo: selectorView.bottomAnchor, constant: 2),
             sep.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             sep.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            findOptions.topAnchor.constraint(equalTo: sep.bottomAnchor, constant: 2),
+            findOptionsTop,
             findOptions.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
             findOptions.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -4),
-            findField.topAnchor.constraint(equalTo: findOptions.bottomAnchor, constant: 2),
+            findFieldTop,
             findField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 6),
             findField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -6),
-            findScope.topAnchor.constraint(equalTo: findField.bottomAnchor, constant: 2),
+            findScopeTop,
             findScope.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
-            reportScope.topAnchor.constraint(equalTo: findScope.bottomAnchor, constant: 2),
+            reportScopeTop,
             reportScope.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             sourceControlMode.topAnchor.constraint(equalTo: reportScope.topAnchor),
             sourceControlMode.centerXAnchor.constraint(equalTo: root.centerXAnchor),
@@ -394,25 +509,29 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             testHeader.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
             testHeader.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -4),
             testHeader.heightAnchor.constraint(equalTo: reportScope.heightAnchor),
-            scroll.topAnchor.constraint(equalTo: reportScope.bottomAnchor, constant: 4),
-            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: filter.topAnchor, constant: -4),
-            emptyLabel.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
-            emptyLabel.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
-            emptyLabel.widthAnchor.constraint(lessThanOrEqualTo: scroll.widthAnchor, constant: -24),
-            addBreakpointButton.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
+            scrollTop,
+            scrollClip.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            scrollClip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            scrollClip.bottomAnchor.constraint(equalTo: filter.topAnchor, constant: -4),
+            emptyLabel.centerXAnchor.constraint(equalTo: scrollClip.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: scrollClip.centerYAnchor),
+            emptyLabel.widthAnchor.constraint(lessThanOrEqualTo: scrollClip.widthAnchor, constant: -24),
+            addBreakpointButton.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: glass ? 6 : 4),
             addBreakpointButton.centerYAnchor.constraint(equalTo: filter.centerYAnchor),
-            addBreakpointButton.widthAnchor.constraint(equalToConstant: 34),
-            optionsAfterLeftButton,
+            addBreakpointButton.widthAnchor.constraint(equalToConstant: glass ? Self.plusSize.width : 34),
+            filterAfterLeftButton,
+            // §5.6 (N7): the options pull-down at the field's leading end,
+            // the toggles at its trailing end, both inside it.
+            filterOptions.leadingAnchor.constraint(equalTo: filter.leadingAnchor, constant: 2),
             filterOptions.centerYAnchor.constraint(equalTo: filter.centerYAnchor),
-            filterOptions.widthAnchor.constraint(equalToConstant: 32),
-            filterLeading,
-            toggleStack.leadingAnchor.constraint(equalTo: filter.trailingAnchor, constant: 2),
+            filterOptions.widthAnchor.constraint(equalToConstant: NavigatorFilterField.optionsWidth),
+            filter.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: glass ? -6 - Self.filterInset : -6),
+            toggleStack.trailingAnchor.constraint(equalTo: filter.trailingAnchor, constant: -4),
             toggleStack.centerYAnchor.constraint(equalTo: filter.centerYAnchor),
-            toggleStack.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -6),
-            filter.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -4),
+            glass ? filter.centerYAnchor.constraint(equalTo: root.bottomAnchor, constant: -7 - GlassBars.height / 2)
+                : filter.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -4),
         ])
+        if glass { installGlassBars(root) }
         findHeight = findField.heightAnchor.constraint(equalToConstant: 0)
         findHeight.isActive = true
         optionsHeight = findOptions.heightAnchor.constraint(equalToConstant: 0)
@@ -433,15 +552,14 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         sourceControlMode.isHidden = true
         sourceControlMode.target = self
         sourceControlMode.action = #selector(sourceControlModeChanged)
-        assistantPlaceholder.alignment = .center
-        assistantPlaceholder.textColor = .secondaryLabelColor
-        assistantPlaceholder.isHidden = true
-        assistantPlaceholder.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(assistantPlaceholder)
+        assistantContainer.isHidden = true
+        assistantContainer.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(assistantContainer)
         NSLayoutConstraint.activate([
-            assistantPlaceholder.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            assistantPlaceholder.centerYAnchor.constraint(equalTo: root.centerYAnchor),
-            assistantPlaceholder.widthAnchor.constraint(lessThanOrEqualTo: root.widthAnchor, constant: -24),
+            assistantContainer.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
+            assistantContainer.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            assistantContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            assistantContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
         ])
         view = root
         select(0)
@@ -573,8 +691,13 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         // The left button.
         let left = spec.left
         addBreakpointButton.isHidden = left == .none
-        optionsAfterLeftButton.isActive = left != .none
-        optionsAtEdge.isActive = left == .none
+        plusGlass.isHidden = left == .none || showsCodingAssistant
+        filterAfterLeftButton.isActive = left != .none
+        filterAtEdge.isActive = left == .none
+        // The text and the clear button keep clear of the toggles.
+        let shown = CGFloat(toggleButtons.filter { !$0.isHidden }.count)
+        (filter as? NavigatorFilterField)?.trailingInset = shown == 0
+            ? 0 : shown * NavigatorFilterField.toggleWidth + (shown - 1) * toggleStack.spacing + 4
         let (symbol, tip): (String, String?) = switch left {
         case .add(let t): ("plus", t)
         case .more: ("ellipsis.circle", "More")
@@ -682,19 +805,23 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         if selectedIndex == 2 { outline.expandItem(nil, expandChildren: true) }
     }
 
-    /// The issue navigator lists issues grouped by file; issues without a
-    /// file come last, directly under the root (N9).
-    /// The workspace name (the Issue navigator's root row).
+    /// The workspace name (the Issue navigator's project row when no
+    /// `issueGrouping` is set).
     public var workspaceName = ""
+    /// Where issues are grouped by target (reference-ui-6.md §5.1); nil:
+    /// every issue goes under one project row named `workspaceName`.
+    public var issueGrouping: (() -> IssueGrouping)?
     /// Issue navigator toggles (reference-ui-2.md §1): only issues from
     /// open documents and recently built sources; only errors.
     public var issuesRecentOnly = false { didSet { syncToggleStates(); setIssues(allIssues) } }
     public var issuesErrorsOnly = false { didSet { syncToggleStates(); setIssues(allIssues) } }
     private var allIssues: [Diagnostic] = []
 
-    /// Issue navigator (reference-ui-2.md §1): the workspace root with
-    /// "N issues", one group per file (named without its extension,
-    /// sorted by name), issues in compiler order wrapping to three lines.
+    /// Issue navigator (reference-ui-6.md §5.1, N1): the project row with
+    /// its own issues, then one row per target, each with "n issue(s)" as
+    /// secondary text; under a target one row per file (named without its
+    /// extension, by name), and under it the issues by line, wrapping to
+    /// the Issue navigator detail setting.
     public func setIssues(_ issues: [Diagnostic]) {
         allIssues = issues
         issueModel.errorsOnly = issuesErrorsOnly
@@ -709,18 +836,16 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             row.maxLines = Preferences.shared.issueNavigatorDetail
             return row
         }
-        // File groups, then the issues without a file as rows directly
-        // under the root (reference-ui-5.md §5.3.1, N9).
-        let fileGroups = IssueNavigatorModel.groups(entries).map { g in
-            OutlineItem(title: g.title, symbol: OutlineItem.fileSymbol(g.file), children: g.entries.map(issueRow))   // §5.3.3
-        } + IssueNavigatorModel.rootEntries(entries).map(issueRow)
-        let count = entries.count
-        if count == 0 {
-            roots[4] = []
-        } else {
-            let root = OutlineItem(title: workspaceName.isEmpty ? "Workspace" : workspaceName, symbol: "shippingbox", children: fileGroups)
-            root.detail = "\(count) issue\(count == 1 ? "" : "s")"
-            roots[4] = [root]
+        let name = workspaceName.isEmpty ? "Workspace" : workspaceName
+        let grouping = issueGrouping?() ?? IssueGrouping(projectName: name)
+        roots[4] = IssueNavigatorModel.tree(entries, grouping: grouping).map { g in
+            let files = g.files.map { f in
+                OutlineItem(title: f.title, symbol: OutlineItem.fileSymbol(f.file), children: f.entries.map(issueRow))   // §5.3.3
+            }
+            let row = OutlineItem(title: g.title, symbol: g.kind == .project ? (isPackage ? "shippingbox" : "folder.badge.gearshape") : "app.dashed",
+                                  children: g.entries.map(issueRow) + files)
+            row.detail = g.countText
+            return row
         }
         refilter()
         reloadIfShowing(4)
@@ -792,7 +917,6 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     /// The breakpoint navigator's + menu.
     public var onAddBreakpoint: ((NewBreakpointKind) -> Void)?
     let addBreakpointButton = NSPopUpButton(frame: .zero, pullsDown: true)
-    private var filterLeading: NSLayoutConstraint!
 
     @objc func addBreakpointChosen(_ sender: NSMenuItem) {
         onAddBreakpoint?(DebugNavigatorRows.addKinds[sender.tag].1)
@@ -816,7 +940,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         switch findScopeValue {
         case .workspace: results = WorkspaceSearch.search(query, in: root, options: findOptionsValue)
         case .group(let dir):
-            results = WorkspaceSearch.search(query, in: root, options: findOptionsValue, limit: 100_000).filter { $0.path.hasPrefix(dir + "/") }
+            // A group or folder, or one file (Find ▸ Find in Selected File…).
+            results = WorkspaceSearch.search(query, in: root, options: findOptionsValue, limit: 100_000).filter { $0.path == dir || $0.path.hasPrefix(dir + "/") }
         case .currentResults:
             let keep = Set(lastResultFiles)
             results = WorkspaceSearch.search(query, in: root, options: findOptionsValue, limit: 100_000).filter { keep.contains($0.path) }
@@ -936,7 +1061,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         }
     }
     /// Changing an option re-runs the last search.
-    @objc private func findOptionChanged() { if !lastQuery.isEmpty { find(lastQuery) } }
+    @objc private func findOptionChanged() {
+        updateFindPlaceholder()
+        if !lastQuery.isEmpty { find(lastQuery) }
+    }
 
     /// Collects the workspace's symbols: files with their declarations.
     public func refreshSymbols() {
@@ -1025,9 +1153,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     /// The test target a file belongs to.
     public var testTarget: ((String) -> String)?
 
-    /// Test navigator (reference-ui-2.md §6): the plan, then each test
-    /// target, then suites and test functions with parentheses; plan and
-    /// target rows add "N Tests, M Failing".
+    /// Test navigator (reference-ui-2.md §6, reference-ui-6.md §5.4): the
+    /// project or package, then each test target, then suites and test
+    /// functions with parentheses; the root, target and suite rows add
+    /// "N Tests".
     public func setTests(_ tests: [DiscoveredTest], results: [DiscoveredTest: TestOutcome.Status]) {
         lastTests = (tests, results)
         refreshTests()
@@ -1043,22 +1172,17 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             let open = Set(recentFiles)
             tests = tests.filter { open.contains($0.file) || results[$0] != nil }
         }
-        func diamond(_ s: TestOutcome.Status?) -> (String, NSColor) {
+        // §5.4 (N5): the result glyph shows once a result exists.
+        func diamond(_ s: TestOutcome.Status?) -> (String?, NSColor?) {
             switch s {
             case .passed?: ("checkmark.diamond.fill", .systemGreen)
             case .failed?: ("xmark.diamond.fill", Theme.errorColor)
             case .skipped?: ("arrow.right.circle", .secondaryLabelColor)
-            case nil: ("diamond", .secondaryLabelColor)
+            case nil: (nil, nil)
             }
         }
-        func state(_ list: [DiscoveredTest]) -> TestOutcome.Status? {
-            let all = list.map { results[$0] }
-            return all.contains(.failed) ? .failed : (!all.isEmpty && all.allSatisfy { $0 == .passed } ? .passed : nil)
-        }
-        func counts(_ list: [DiscoveredTest]) -> String {
-            let failing = list.filter { results[$0] == .failed }.count
-            return "\(list.count) Test\(list.count == 1 ? "" : "s"), \(failing) Failing"
-        }
+        func state(_ list: [DiscoveredTest]) -> TestOutcome.Status? { Self.aggregateTestStatus(list.map { results[$0] }) }
+        func counts(_ list: [DiscoveredTest]) -> String { Self.testCountText(list.count) }
         var targets: [(String, [DiscoveredTest])] = []
         for t in tests {
             let name = testTarget?(t.file) ?? URL(fileURLWithPath: t.file).deletingLastPathComponent().lastPathComponent
@@ -1073,7 +1197,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             let rows: [OutlineItem] = suites.flatMap { suite, members -> [OutlineItem] in
                 let leaves = members.map { leaf($0) }
                 if suite.isEmpty { return leaves }
-                return [row(suite, "c.square", members, children: leaves, path: members.first?.file, line: members.first?.suiteLine)]
+                let s = row(suite, "c.square", members, children: leaves, path: members.first?.file, line: members.first?.suiteLine)
+                s.detail = counts(members)
+                return [s]
             }
             let r = row(target, "scope", list, children: rows)
             r.detail = counts(list)
@@ -1104,11 +1230,12 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             }
             var groups = byTag.keys.sorted().map { tag in row(tag, "tag", byTag[tag]!, children: byTag[tag]!.map(leaf)) }
             if !untagged.isEmpty { groups.append(row(NavigatorBars.untaggedTests, "tag.slash", untagged, children: untagged.map(leaf))) }
-            let plan = row(testPlanName, "checklist", tests, children: groups)
+            for g in groups { g.detail = Self.testCountText(g.children.count) }
+            let plan = row(testRootTitle, testRootSymbol, tests, children: groups)
             plan.detail = counts(tests)
             roots[5] = [plan]
         } else {
-            let plan = row(testPlanName, "checklist", tests, children: targetRows)
+            let plan = row(testRootTitle, testRootSymbol, tests, children: targetRows)
             plan.detail = counts(tests)
             roots[5] = [plan]
         }
@@ -1116,6 +1243,24 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         testPlanPopUp.addItem(withTitle: testPlanName)
         reloadIfShowing(5)
         if selectedIndex == 5 { outline.expandItem(nil, expandChildren: true) }
+    }
+
+    /// The Test navigator's root row: the project or package name; the
+    /// plan stays in the header pop-up (reference-ui-6.md §5.4).
+    var testRootTitle: String { workspaceName.isEmpty ? testPlanName : workspaceName }
+    var testRootSymbol: String { isPackage ? "shippingbox" : "folder.badge.gearshape" }
+
+    /// "1 Test", "2 Tests" (§5.4).
+    public static func testCountText(_ n: Int) -> String { "\(n) Test\(n == 1 ? "" : "s")" }
+
+    /// A parent's result: the aggregate of its children's last results —
+    /// failed when any failed, else passed when any passed, else skipped
+    /// when any was skipped; nil while none has a result (§5.4).
+    public static func aggregateTestStatus(_ all: [TestOutcome.Status?]) -> TestOutcome.Status? {
+        let known = all.compactMap { $0 }
+        if known.contains(.failed) { return .failed }
+        if known.contains(.passed) { return .passed }
+        return known.isEmpty ? nil : .skipped
     }
 
     /// Source-control state for badges: absolute path → letter.
@@ -1247,7 +1392,12 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         findHeight?.constant = index == 3 ? 22 : 0
         optionsHeight?.constant = index == 3 ? 18 : 0
         scopeHeight?.constant = index == 3 ? 18 : 0
-        reportScopeHeight?.constant = index == 8 || index == 1 || index == 5 ? 20 : 0
+        let headerBar = index == 8 || index == 1 || index == 5
+        reportScopeHeight?.constant = headerBar ? 20 : 0
+        // Hidden header rows take no spacing either (N3).
+        for c in [findOptionsTop, findFieldTop, findScopeTop] as [NSLayoutConstraint?] { c?.constant = index == 3 ? 2 : 0 }
+        reportScopeTop?.constant = headerBar ? 2 : 0
+        scrollTop?.constant = headerBar || index == 3 ? 4 : 0
         reportScope.isHidden = index != 8
         sourceControlMode.isHidden = index != 1
         testHeader.isHidden = index != 5
@@ -1259,6 +1409,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         rebuildAddMenu()
         configureToggles(index)
         for b in buttons { b.state = b.tag == index ? .on : .off; b.contentTintColor = b.tag == index ? .controlAccentColor : .secondaryLabelColor }
+        setOutlineUnderBars(GlassBars.enabled && !(headerBar || index == 3))
+        view.needsLayout = true
         outline.reloadData()
         if index != 0 { outline.expandItem(nil, expandChildren: true) } else if projectFilterActive { outline.expandItem(nil, expandChildren: true) } else { restoreProjectExpansion() }
         updateEmpty()
@@ -1294,6 +1446,12 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     public var selectedItem: OutlineItem? {
         guard isViewLoaded, outline.selectedRow >= 0 else { return nil }
         return outline.item(atRow: outline.selectedRow) as? OutlineItem
+    }
+
+    /// The row above the selected one (its group or folder), if any.
+    public var selectedItemParent: OutlineItem? {
+        guard let item = selectedItem else { return nil }
+        return outline.parent(forItem: item) as? OutlineItem
     }
 
     @objc private func rowClicked() {
@@ -1468,15 +1626,37 @@ extension NavigatorAreaController {
         switch effectiveSize { case .small: 11; case .large: 15; default: 13 }
     }
 
-    /// The outline's row size style (tests).
-    public var rowSizeStyle: NSTableView.RowSizeStyle { outline.rowSizeStyle }
+    /// The navigator size the rows follow (tests). The outline itself uses
+    /// a custom row height, `rowHeight`.
+    public var rowSizeStyle: NSTableView.RowSizeStyle { Self.rowSizeStyle }
+
+    /// reference-ui-6.md §5.3 (N3): rows are 22 points tall at the medium
+    /// size (the reference's default); Ycode's reading for small and large
+    /// follows the font sizes.
+    public static var rowHeight: CGFloat {
+        switch effectiveSize { case .small: 18; case .large: 26; default: 22 }
+    }
+    /// The gap from the selector's bottom to the first row's top (§5.3).
+    static let firstRowGap: CGFloat = 7
+    /// From the selector's bottom to the outline's scroll view with no
+    /// header shown: 2 points, then the 1-point rule.
+    static let selectorToContent: CGFloat = 3
+    /// The source-list table style's padding above its first row.
+    static let sourceListTopPadding: CGFloat = 10
+
+    /// Row pitch: the custom height and no spacing between rows.
+    func applyRowMetrics() {
+        outline.rowSizeStyle = .custom
+        outline.rowHeight = Self.rowHeight
+        outline.intercellSpacing = NSSize(width: outline.intercellSpacing.width, height: 0)
+    }
 
     /// Re-applies the size and the detail lines to the shown rows.
     public func applyDisplayPreferences() {
         guard isViewLoaded else { return }
         let p = Preferences.shared
-        var changed = outline.rowSizeStyle != Self.rowSizeStyle
-        outline.rowSizeStyle = Self.rowSizeStyle
+        var changed = outline.rowHeight != Self.rowHeight
+        applyRowMetrics()
         for (index, lines) in [(2, p.bookmarkNavigatorDetail), (3, p.findNavigatorDetail), (4, p.issueNavigatorDetail)] {
             func walk(_ items: [OutlineItem]) {
                 for i in items {

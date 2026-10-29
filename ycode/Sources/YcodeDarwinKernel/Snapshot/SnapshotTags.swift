@@ -9,6 +9,9 @@ enum ST {
         static let stampCounter: UInt16 = 8, spaceCounter: UInt16 = 9, hostBootstrapDefault: UInt16 = 10
         static let hostPort: UInt16 = 11, bootstrapPort: UInt16 = 12, ioKit: UInt16 = 13, fileLocks: UInt16 = 14
         static let shmNames: UInt16 = 15, semNames: UInt16 = 16
+        /// The CPU features the snapshot's guests were told (16 bytes,
+        /// `CPUFeatureSet.storedBytes`; cpu-features.md §6).
+        static let cpuFeatures: UInt16 = 17
     }
     enum Clock {
         static let guestCounter: UInt16 = 1, hostNanoseconds: UInt16 = 2, frequency: UInt16 = 3, bootCounter: UInt16 = 4
@@ -99,6 +102,8 @@ enum ST {
         /// Importance (`scheduling-policy.md` §4.3): the port accepts it, is a
         /// temporary owner, and the pid of the job it watches for.
         static let importanceDonation: UInt16 = 31, tempOwner: UInt16 = 32, watchPID: UInt16 = 33
+        /// A work-interval port's interval (`WorkInterval.swift`): ID, flags, creator pid.
+        static let workIntervalID: UInt16 = 34, workIntervalFlags: UInt16 = 35, workIntervalCreator: UInt16 = 36
         // nested
         static let space: UInt16 = 40, name: UInt16 = 41, armed: UInt16 = 42, timerDeadline: UInt16 = 43
         static let timerTicks: UInt16 = 44, timerArmed: UInt16 = 45, port: UInt16 = 46

@@ -247,6 +247,10 @@ public protocol MetalBackend: AnyObject {
     // Optional (defaults below).
     /// `newEvent` / `newSharedEvent` (op 28).
     func createEvent(_ handle: MetalHandle) throws
+    /// A second handle for an existing event (`newSharedEventWithHandle:`,
+    /// messageType 18): signals and values through either are one event,
+    /// and releasing one handle keeps the event for the other.
+    func createEventAlias(_ handle: MetalHandle, of original: MetalHandle) throws
     /// `newFence` (op 13).
     func createFence(_ handle: MetalHandle) throws
     /// CPU `setSignaledValue:` (op 30). Must release GPU waits (record 400) for values ≤ `value`.
@@ -257,6 +261,13 @@ public protocol MetalBackend: AnyObject {
     func gpuAddress(ofBuffer handle: MetalHandle) -> UInt64?
     /// Sampler `gpuResourceID` (op 39); nil: the service answers the handle.
     func gpuResourceID(ofSampler handle: MetalHandle) -> UInt64?
+    /// The 64-bit value a shader uses for a texture (its heap index in the
+    /// Vulkan back end); nil: none.
+    func gpuResourceID(ofTexture handle: MetalHandle) -> UInt64?
+    /// Writes bytes into a buffer's memory as the guest's CPU sees it
+    /// (argument-encoder set calls, `YCODE_METAL_ARGUMENT_ENCODER`); false
+    /// when the buffer has no CPU-visible memory.
+    func writeBuffer(_ handle: MetalHandle, offset: Int, _ bytes: [UInt8]) -> Bool
     /// Diagnostics: a one-line summary of the backend's state (nil: none).
     func diagnosticSummary() -> String?
     /// Snapshots (snapshot.md §8 option 2): finish every queued GPU
@@ -276,11 +287,14 @@ public protocol MetalBackend: AnyObject {
 
 public extension MetalBackend {
     func createEvent(_ handle: MetalHandle) throws {}
+    func createEventAlias(_ handle: MetalHandle, of original: MetalHandle) throws { try createEvent(handle) }
     func createFence(_ handle: MetalHandle) throws {}
     func signalEvent(_ handle: MetalHandle, value: UInt64) {}
     func eventValue(_ handle: MetalHandle) -> UInt64? { nil }
     func gpuAddress(ofBuffer handle: MetalHandle) -> UInt64? { nil }
     func gpuResourceID(ofSampler handle: MetalHandle) -> UInt64? { nil }
+    func gpuResourceID(ofTexture handle: MetalHandle) -> UInt64? { nil }
+    func writeBuffer(_ handle: MetalHandle, offset: Int, _ bytes: [UInt8]) -> Bool { false }
     /// Diagnostics: a one-line summary of the backend's state (nil: none).
     func diagnosticSummary() -> String? { nil }
     func snapshotSettle() {}
@@ -300,6 +314,33 @@ public extension MetalBackend {
 /// I3 implements it with the IOSurface service.
 public protocol IOSurfaceResolver: AnyObject {
     func backing(forSurfacePort port: UInt32, plane: Int) -> IOSurfaceBacking?
+    /// A new surface made by the host for a shared texture (messageType 19,
+    /// metal-sim-protocol.md §5.10): width, height, bytes per row and pixel
+    /// format 0, bytes per element 1, `allocationSize` bytes, the name, and
+    /// these creation properties (numbers; `IOSurfaceName` is added as a
+    /// string). Every process that looks the surface up sees them. Returns
+    /// its port (a host-task receive right; the reply carries a send right
+    /// made from it), or nil.
+    func makeSharedTextureSurface(allocationSize: Int, name: String, properties: [(key: String, value: UInt64)]) -> UInt32?
+    /// The surface behind a port the guest sent (messageType 20): its ID and
+    /// its numeric creation properties, or nil when the port is unknown.
+    func surfaceDescription(forSurfacePort port: UInt32) -> MetalSurfaceDescription?
+}
+
+public extension IOSurfaceResolver {
+    func makeSharedTextureSurface(allocationSize: Int, name: String, properties: [(key: String, value: UInt64)]) -> UInt32? { nil }
+    func surfaceDescription(forSurfacePort port: UInt32) -> MetalSurfaceDescription? { nil }
+}
+
+/// A surface as messageType 20 needs it: its ID (the same in every process)
+/// and its creation properties that are numbers (`kMetal…` keys among them).
+public struct MetalSurfaceDescription: Equatable, Sendable {
+    public var id: UInt32
+    public var numbers: [String: UInt64]
+    public init(id: UInt32, numbers: [String: UInt64]) {
+        self.id = id
+        self.numbers = numbers
+    }
 }
 
 // CONTRACT-REQUEST (I3): MachHostTask has no public way to find what a

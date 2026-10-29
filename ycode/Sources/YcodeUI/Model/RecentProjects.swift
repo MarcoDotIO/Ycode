@@ -7,6 +7,7 @@ import Foundation
 /// dropped when the list is read.
 @MainActor
 public final class RecentProjects {
+    /// Posted after the list changes.
     public static let didChange = Notification.Name("YcodeRecentProjectsDidChange")
     /// The app's list, in the standard user defaults (a test process uses
     /// a throwaway domain so it never writes the user's preferences).
@@ -14,12 +15,14 @@ public final class RecentProjects {
         ? UserDefaults(suiteName: NSTemporaryDirectory() + "ycode-recent-projects-\(ProcessInfo.processInfo.processIdentifier)") ?? .standard
         : .standard)
 
+    /// The defaults key holding the paths, newest first.
     public static let defaultsKey = "Ycode.recentProjects"
     /// The same cap as AppKit's recent-documents default.
     public static let limit = 10
 
     let defaults: UserDefaults
 
+    /// A list stored in `defaults` (tests pass their own domain).
     public init(defaults: UserDefaults) {
         self.defaults = defaults
     }
@@ -75,7 +78,7 @@ public final class RecentProjects {
 
     /// The Welcome list's secondary text: the containing folder's path,
     /// starting at the volume's name ("Data/Users/me/Projects",
-    /// "MARCUS-PROJECTS/_inbox").
+    /// "External/Samples").
     public static func folderText(_ url: URL) -> String {
         let folder = url.deletingLastPathComponent().standardizedFileURL
         let parts = folder.pathComponents  // ["/", "Volumes", "X", …]

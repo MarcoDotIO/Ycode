@@ -7,8 +7,15 @@
 import Foundation
 import YcodeDarwinABI
 
+/// Rebuilds the kernel personality from snapshot records (`snapshot.md` §7).
+/// The VMM calls `makeProcesses`, launches the images suspended, calls
+/// `restoreObjects` once their memory is back, starts the returned threads,
+/// then calls `restoreStartHolds`.
 public final class KernelSnapshotRestore {
+    /// One live image to launch suspended: its restored kernel and process, and
+    /// the guest and host paths of its executable.
     public struct ImagePlan {
+        /// The image's record id in the snapshot.
         public let recordID: UInt64
         public let kernel: DarwinKernel
         public let pid: Int32
@@ -16,15 +23,21 @@ public final class KernelSnapshotRestore {
         public let hostExecutablePath: String
     }
 
+    /// One thread for the VMM to start (§7 step 9): its frame and FP/SIMD state
+    /// go into the vCPU, and `kind` says whether it resumes or re-enters its trap.
     public struct ThreadPlan {
         public let kernel: DarwinKernel
         public let context: ThreadContext
         public let kind: SnapshotThreadKind
         public let frame: TrapFrame
         public let fp: [UInt8]
+        /// What the thread was blocked in, for the restore's report (empty if none).
         public let note: String
     }
 
+    /// The snapshot's clock record (§5). `guestCounter`, `frequency` and
+    /// `bootCounter` are in guest counter units; `hostNanoseconds` is host
+    /// monotonic time at the capture.
     public struct Clock {
         public var guestCounter: UInt64
         public var hostNanoseconds: UInt64
@@ -32,10 +45,12 @@ public final class KernelSnapshotRestore {
         public var bootCounter: UInt64
     }
 
+    /// The system that receives the restored processes and objects.
     public let system: DarwinSystem
     private var records: [UInt64: SnapshotRecord] = [:]
     private var fields: [UInt64: SnapshotFieldReader] = [:]
     private var byKind: [UInt16: [UInt64]] = [:]
+    /// The clock record, read by `init`; the VMM sets the system clock offset from it.
     public private(set) var clock: Clock
     /// Problems found while restoring that did not stop it (one line each).
     public private(set) var warnings: [String] = []
@@ -62,6 +77,7 @@ public final class KernelSnapshotRestore {
     private var reusedPorts = Set<ObjectIdentifier>()
     private var reusedSets = Set<ObjectIdentifier>()
     private var sockets: [UInt64: UnixSocket] = [:]
+    private var inetSockets: [UInt64: InetSocket] = [:]
     private var shmSegments: [UInt64: PosixShmSegment] = [:]
     private var posixSemaphores: [UInt64: PosixSemaphore] = [:]
     /// Processes in a start hold at the snapshot (process, label, ns held).
@@ -82,6 +98,7 @@ public final class KernelSnapshotRestore {
             }
         }
     }
+    /// The number of processes that were in a start hold at the snapshot.
     public var heldProcessCount: Int { heldProcesses.count }
     private let restoreNowNs = KernelClock.now()
     /// Calendar-time EVFILT_TIMER knotes whose deadline was set from the
@@ -91,6 +108,10 @@ public final class KernelSnapshotRestore {
     /// write bit since the guest opened or mapped them (`openWritableAgain`).
     public private(set) var readOnlyReopens = 0
 
+    /// Indexes `list` and reads the clock and system records.
+    /// Throws `SnapshotError` if a record kind is unknown to this build, the clock
+    /// or system record is missing, or the snapshot needs CPU features this host
+    /// does not offer (`cpu-features.md` §9.4).
     public init(records list: [SnapshotRecord], system: DarwinSystem) throws {
         self.system = system
         for r in list {
@@ -104,7 +125,17 @@ public final class KernelSnapshotRestore {
         guard let c = fields[KernelSnapshotCapture.clockID] else { throw SnapshotError("snapshot has no clock record") }
         clock = Clock(guestCounter: c.u64(ST.Clock.guestCounter), hostNanoseconds: c.u64(ST.Clock.hostNanoseconds),
                       frequency: c.u64(ST.Clock.frequency), bootCounter: c.u64(ST.Clock.bootCounter))
-        guard fields[KernelSnapshotCapture.systemID] != nil else { throw SnapshotError("snapshot has no system record") }
+        guard let s = fields[KernelSnapshotCapture.systemID] else { throw SnapshotError("snapshot has no system record") }
+        // cpu-features.md §6: the snapshot's guests may use every feature
+        // they were told about; this host must offer all of them.
+        let recorded = s.bytes(ST.System.cpuFeatures)
+        if !recorded.isEmpty {
+            let missing = CPUFeatureSet(storedBytes: recorded).subtracting(GuestCPUProfile.current.allowed)
+            guard missing.isEmpty else {
+                throw SnapshotError("snapshot was taken on a host with CPU features this host does not offer: "
+                    + missing.names.joined(separator: ", "))
+            }
+        }
     }
 
     private func ids(_ kind: SnapshotRecordKind) -> [UInt64] { byKind[kind.rawValue] ?? [] }
@@ -440,6 +471,11 @@ public final class KernelSnapshotRestore {
             let kind = UnixSocket.Kind(rawValue: r.i32(ST.Socket.kind)) ?? .stream
             sockets[id] = UnixSocket(kind: kind, lock: system.lock, creator: user(r.nested(ST.Socket.creator)))
         }
+        for id in ids(.inetSocket) {
+            let (sock, warning) = InetSocket.restored(f(id), lock: system.lock, user: { user($0) })
+            inetSockets[id] = sock
+            if let warning { warnings.append(warning) }
+        }
         for id in ids(.posixShm) {
             let r = f(id)
             let seg = PosixShmSegment(name: r.string(1) ?? "", mode: UInt16(truncatingIfNeeded: r.u64(2)), uid: r.u32(3), gid: r.u32(4))
@@ -503,6 +539,15 @@ public final class KernelSnapshotRestore {
             case 6:
                 guard let sock = sockets[r.ref(O.object)] else { throw SnapshotError("open file \(id): no socket") }
                 node = .object(sock)
+            case 9:
+                guard let sock = inetSockets[r.ref(O.object)] else { throw SnapshotError("open file \(id): no IP socket") }
+                node = .object(sock)
+            case 10:
+                node = .object(RouteSocket(proto: r.i32(O.stream), lock: system.lock))
+            case 11:
+                let c = KernelControlSocket(lock: system.lock)
+                c.connectedID = r.u32(O.stream)
+                node = .object(c)
             case 7:
                 guard let seg = shmSegments[r.ref(O.object)] else { throw SnapshotError("open file \(id): no shm segment") }
                 node = .object(PosixShmDescriptor(seg))
@@ -608,12 +653,21 @@ public final class KernelSnapshotRestore {
                 case 10: .fileport(serial: v)
                 case 11: .memoryEntry(serial: v)
                 case 12: .ioMain
+                case 14: .workInterval(serial: v)
                 default: .ioObject(serial: v)
                 }
             } else {
                 p.kernelObject = nil
             }
             p.semaphore = semaphores[r.ref(P.semaphore)]
+            if r.has(P.workIntervalID) {
+                let id = r.u64(P.workIntervalID)
+                KernelWorkInterval.noteRestoredID(id)
+                p.workInterval = KernelWorkInterval(id: id, createFlags: r.u32(P.workIntervalFlags),
+                                                    creatorPID: Int32(truncatingIfNeeded: r.i64(P.workIntervalCreator)))
+            } else {
+                p.workInterval = nil
+            }
             p.isSpecialReply = r.bool(P.specialReply)
             p.task = spaces[r.ref(P.task)]
             p.fileportFile = openFiles[r.ref(P.fileport)]
@@ -795,8 +849,11 @@ public final class KernelSnapshotRestore {
             let key = ObjectIdentifier(o)
             o.lastCloseHandlers["locks"] = { [weak system] in
                 guard let system else { return }
-                system.lock.withLock { system.fileLocks.release(owner: .description(key)) }
+                let table = system.fileLocks
+                table.unwatch(key)
+                system.lock.wakeFileLockWaiters(table.release(owner: .description(key)))
             }
+            _ = system.fileLocks.watch(key)
         }
         // Sockets.
         for id in ids(.unixSocket) {
@@ -841,6 +898,12 @@ public final class KernelSnapshotRestore {
                     sock.boundPath = path
                 }
             }
+        }
+        // The host end of a DNS service connection cannot be restored: the
+        // connection is reset (the guest's end reads EOF; the client
+        // connects again).
+        for id in ids(.unixSocket) where f(id).u64(ST.Socket.flags) & (1 << 6) != 0 {
+            sockets[id]?.close()
         }
         // System tables: POSIX names, IOKit, file locks.
         let s = f(KernelSnapshotCapture.systemID)
@@ -1040,6 +1103,7 @@ public final class KernelSnapshotRestore {
         case 1: .integer(g.i64(S.int), size: Int(g.i64(S.size)))
         case 2: .string(String(decoding: g.bytes(S.bytes), as: UTF8.self))
         case 3: .error(g.i32(S.int))
+        case 4: .quad(g.i64(S.int))
         default: .bytes(g.bytes(S.bytes))
         }
         return SysctlTable.Entry(name: g.string(S.name) ?? "", mib: g.u64s(S.mib).map { Int32(truncatingIfNeeded: Int64(bitPattern: $0)) },
@@ -1134,7 +1198,7 @@ public final class KernelSnapshotRestore {
                 kn.requestsVanish = n.bool(N.requestsVanish)
                 kn.syncWoken = n.bool(N.syncWoken)
                 q.knotes.append(kn)
-                if kn.filter == EVFilter.read || kn.filter == EVFilter.write {
+                if EVFilter.isReadiness(kn.filter) {
                     q.descriptorKnotes += 1
                     k.descriptorKnoteCount.wrappingAdd(1, ordering: .relaxed)
                 }
@@ -1152,7 +1216,7 @@ public final class KernelSnapshotRestore {
                     }
                     k.kevents.timers[ObjectIdentifier(kn)] = kn
                 }
-                if kn.filter == EVFilter.read || kn.filter == EVFilter.write,
+                if EVFilter.isReadiness(kn.filter),
                    let file = openFiles[n.ref(N.object)], let o = file.object as? KernelDescriptorObject {
                     kn.object = o
                     // The registration's observer: it takes the image's
@@ -1165,6 +1229,7 @@ public final class KernelSnapshotRestore {
                    let target = system.processes[Int32(truncatingIfNeeded: kn.ident)], target.state != .zombie {
                     target.watchers.append(ProcessWatch(knote: kn, kernel: k))
                 }
+                if kn.filter == EVFilter.vnode { k.reattachVnodeAfterRestore(kn) }
             }
         }
     }

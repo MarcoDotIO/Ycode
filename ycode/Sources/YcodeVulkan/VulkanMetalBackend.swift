@@ -120,6 +120,11 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         /// as before, including a read of the process environment on every
         /// draw (stage8-contract.md §15).
         public var recordFast = ProcessInfo.processInfo.environment["YCODE_METAL_RECORD_FAST"] != "0"
+        /// Experiments: draws whose vertex or fragment shader name (entry
+        /// point, or `entry#hash8`) is in this list are skipped
+        /// (`YCODE_GPU_SKIP_SHADERS`, comma-separated; default none).
+        public var skipShaders: Set<String> = Set((ProcessInfo.processInfo.environment["YCODE_GPU_SKIP_SHADERS"] ?? "")
+            .split(separator: ",").map { String($0) })
         public init() {}
     }
 
@@ -152,6 +157,9 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
     var samplerIndices: IndexAllocator
     var dummyImage: VKImage?
     var dummyView: VkImageView?
+    /// Kernel writes to textures without `shaderWrite` already logged (diagnostics).
+    var writesWithoutUsageSeen: Set<String> = []
+    var writesWithoutUsageLogged = 0
     var defaultSampler: VkSampler?
     /// 64 KiB of zeros that unknown buffer handles point at.
     var dummyBuffer = yvk_buffer()
@@ -168,6 +176,10 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
     var setup: Recording?
     var freeCommandBuffers: [VkCommandBuffer] = []
     var freeChunks: [TransientChunk] = []
+    /// Occlusion query pools for visibility results (VulkanVisibility.swift).
+    var freeVisibilityPools: [VkQueryPool] = []
+    /// The process whose command buffer is being replayed (diagnostics).
+    var debugReplayProcess: MetalProcessID = 0
     var pending: [PendingSubmission] = []
     var graveyard: [(serial: UInt64, action: () -> Void)] = []
     var deviceLost = false
@@ -206,6 +218,8 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         var trace: FrameTraceInfo?
         /// The Metal command buffer (hang and device-loss reports).
         var commandBuffer: MetalCommandBuffer?
+        /// Its dispatches' argument tables (hang reports; Recording.dispatchTables).
+        var dispatchTables: [(pass: Int, command: Int, table: UnsafeMutableRawPointer)] = []
     }
 
     /// Writes to each IOSurface plane's memory (copy-outs, host writes):
@@ -244,6 +258,16 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
 
     // Hang and device-loss reports (VulkanHangReport.swift).
     var checkpointRecords: [CheckpointRecord] = []
+    var badBaseInstanceLogs = 0
+    /// Pass probes (VulkanPassProbe.swift): the probe of the command buffer
+    /// being replayed, how many were started and when the last one was.
+    var probe: PassProbe?
+    var probesStarted = 0
+    var lastProbeAt: UInt64 = 0
+    /// The replay source line of the last skipped command (probe notes).
+    var lastSkipLine = 0
+    /// The last released buffers' device address ranges and handles (diagnostics).
+    var releasedBufferRanges: [(UInt64, UInt64, UInt64)] = []
     var nextCheckpointID: UInt32 = 1
     var deviceLossReported = false
 
@@ -283,7 +307,8 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         deviceName = withUnsafeBytes(of: ctx.pointee.properties.deviceName) { raw in
             String(cString: raw.bindMemory(to: CChar.self).baseAddress!)
         }
-        textureIndices = IndexAllocator(capacity: min(ctx.pointee.heapSampledImages, max(ctx.pointee.heapStorageImages, 1) << 8))
+        // Every slot has an entry in both the sampled and the storage array.
+        textureIndices = IndexAllocator(capacity: min(ctx.pointee.heapSampledImages, ctx.pointee.heapStorageImages))
         samplerIndices = IndexAllocator(capacity: ctx.pointee.heapSamplers)
         timeline = yvk_timeline_create(ctx, 0)
         isAvailable = timeline != nil
@@ -579,11 +604,28 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         if !fmt.isColor && feats & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT.rawValue != 0 {
             usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT.rawValue
         }
-        let wantsStorage = desc.usage & MetalTextureUsage.shaderWrite != 0 || desc.usage == 0
+        // Storage (kernel writes, read_write access) for textures Metal marks
+        // `shaderWrite` (or with no usage). `YCODE_GPU_STORAGE_USAGE=all`:
+        // for every texture whose format allows it (an experiment for guests
+        // that write textures without the flag, which Apple's GPUs carry
+        // out; such writes are logged and go to the dummy image otherwise,
+        // stage8-contract.md §15.9).
+        let wantsStorage = Self.storageForEveryTexture || desc.usage & MetalTextureUsage.shaderWrite != 0 || desc.usage == 0
+        var flags: UInt32 = 0
         if wantsStorage && samples == 1 && feats & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT.rawValue != 0 {
             usage |= VK_IMAGE_USAGE_STORAGE_BIT.rawValue
+        } else if wantsStorage && samples == 1 && fmt.isColor && !fmt.isCompressed, let sibling = Self.storageSibling(fmt.format),
+                  yvk_format_features(ctx, sibling) & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT.rawValue != 0 {
+            // An sRGB format cannot be a storage image, but Metal lets a
+            // kernel write such a texture through a view in the matching
+            // unorm format (`pixelFormatView`): visionOS RealityKit's ASTC
+            // decoder writes every level of the room's sRGB textures through
+            // RGBA8Unorm views (visionos.md §10.20). The image gets storage
+            // usage for those views (extended usage: each view is limited to
+            // the usages its own format supports).
+            usage |= VK_IMAGE_USAGE_STORAGE_BIT.rawValue
+            flags |= VK_IMAGE_CREATE_EXTENDED_USAGE_BIT.rawValue
         }
-        var flags: UInt32 = 0
         if isCube { flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT.rawValue }
         if is3D { flags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT.rawValue }
         if fmt.isColor && !fmt.isCompressed { flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT.rawValue }
@@ -682,7 +724,13 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
             tex.shaderView = yvk_view_create(ctx, &vi, &err, err.count)
             if tex.shaderView == nil { log("sampled view: \(cString(err))") }
         }
-        if image.usage & VK_IMAGE_USAGE_STORAGE_BIT.rawValue != 0, tex.swizzle == identitySwizzle,
+        // Any texture view's mapping is spelled out (composeSwizzle), so an
+        // exact comparison with identitySwizzle failed for every view: no
+        // view had a storage view, and a kernel writing a one-level view
+        // (visionOS RealityKit's ASTC mip chains and cube-map levels) wrote
+        // through the descriptor its heap slot last held, a released
+        // texture's, which stopped the Thor's GPU (stage8-contract.md §15.9).
+        if image.usage & VK_IMAGE_USAGE_STORAGE_BIT.rawValue != 0, isIdentitySwizzle(tex.swizzle),
            yvk_format_features(ctx, tex.format.format) & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT.rawValue != 0 {
             var vi = yvk_view_info(image: image.vkImage, viewType: viewType(for: tex), format: tex.format.format,
                                    aspect: tex.format.viewAspect, baseLevel: UInt32(tex.baseLevel),
@@ -691,11 +739,50 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
                                    usage: VK_IMAGE_USAGE_STORAGE_BIT.rawValue)
             tex.storageView = yvk_view_create(ctx, &vi, &err, err.count)
         }
-        guard tex.shaderView != nil || tex.storageView != nil, let index = textureIndices.allocate() else { return }
+        guard tex.shaderView != nil || tex.storageView != nil else { return }
+        // One slot, or one per level when the texture has a storage view and
+        // several levels (explicit-level storage access, VKTexture.heapCount).
+        let count = tex.storageView != nil && tex.levelCount > 1 ? UInt32(tex.levelCount) : 1
+        var owned = count
+        var slot = textureIndices.allocate(count)
+        if slot == nil && count > 1 { owned = 1; slot = textureIndices.allocate(1) }
+        guard let index = slot else { return }
         tex.heapIndex = index
-        if let v = tex.shaderView { yvk_heap_write_sampled(ctx, index, v) }
-        if let v = tex.storageView { yvk_heap_write_storage(ctx, index, v) }
+        tex.heapCount = owned
+        // Every slot of the texture gets a descriptor in both arrays: a
+        // missing view is the dummy image, never what the slot held before
+        // (a released texture's view: writing through it stops the Thor's GPU).
+        yvk_heap_write_sampled(ctx, index, tex.shaderView ?? dummyView)
+        yvk_heap_write_storage(ctx, index, tex.storageView ?? dummyView)
+        guard tex.heapCount > 1 else { return }
+        for level in 1..<Int(tex.heapCount) {
+            var vi = yvk_view_info(image: image.vkImage, viewType: viewType(for: tex), format: tex.format.format,
+                                   aspect: tex.format.viewAspect, baseLevel: UInt32(tex.baseLevel + level), levelCount: 1,
+                                   baseLayer: UInt32(tex.baseLayer), layerCount: UInt32(tex.layerCount),
+                                   components: identitySwizzle, usage: VK_IMAGE_USAGE_STORAGE_BIT.rawValue)
+            let v = yvk_view_create(ctx, &vi, &err, err.count)
+            if let v { tex.levelStorageViews.append(v) }
+            yvk_heap_write_sampled(ctx, index + UInt32(level), dummyView)
+            yvk_heap_write_storage(ctx, index + UInt32(level), v ?? dummyView)
+        }
     }
+
+    /// The format of the same size class whose views can be storage images
+    /// when `format` itself cannot (the sRGB formats); nil when none.
+    static func storageSibling(_ format: VkFormat) -> VkFormat? {
+        switch format {
+        case VK_FORMAT_R8G8B8A8_SRGB: return VK_FORMAT_R8G8B8A8_UNORM
+        case VK_FORMAT_B8G8R8A8_SRGB: return VK_FORMAT_B8G8R8A8_UNORM
+        case VK_FORMAT_A8B8G8R8_SRGB_PACK32: return VK_FORMAT_A8B8G8R8_UNORM_PACK32
+        case VK_FORMAT_R8_SRGB: return VK_FORMAT_R8_UNORM
+        case VK_FORMAT_R8G8_SRGB: return VK_FORMAT_R8G8_UNORM
+        default: return nil
+        }
+    }
+
+    /// `YCODE_GPU_STORAGE_USAGE=all`: storage usage for every texture whose
+    /// format allows it, not only those Metal marks `shaderWrite`.
+    static let storageForEveryTexture = ProcessInfo.processInfo.environment["YCODE_GPU_STORAGE_USAGE"] == "all"
 
     /// A single-level, single-layer view for rendering into or copying.
     func attachmentView(_ tex: VKTexture, level: Int, slice: Int) -> VkImageView? {
@@ -718,7 +805,8 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
 
     func releaseTexture(_ tex: VKTexture) {
         let views = [tex.shaderView, tex.storageView].compactMap { $0 } + Array(tex.attachmentViews.values.compactMap { $0 })
-        let index = tex.heapIndex
+            + tex.levelStorageViews
+        let index = tex.heapIndex, count = tex.heapCount
         let image = tex.image
         let id = ObjectIdentifier(image)
         imageReferences[id, default: 1] -= 1
@@ -728,8 +816,15 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
             if let s = image.surface { releaseAllocationReference(s.allocation) }
         }
         deferDestroy { [ctx, fn, weak self] in
+            // The slots name the dummy image until they are handed out again.
+            if index != 0, let self {
+                for i in 0..<count {
+                    yvk_heap_write_sampled(ctx, index + i, self.dummyView)
+                    yvk_heap_write_storage(ctx, index + i, self.dummyView)
+                }
+                self.textureIndices.release(index, count: count)
+            }
             for v in views { fn.vkDestroyImageView!(ctx.pointee.device, v, nil) }
-            if index != 0 { self?.textureIndices.release(index) }
             if destroyImage { yvk_image_destroy(ctx, &image.image) }
         }
     }
@@ -800,6 +895,18 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         return samplers[handle].map { UInt64($0.heapIndex) }
     }
 
+    public func gpuResourceID(ofTexture handle: MetalHandle) -> UInt64? {
+        cond.lock(); defer { cond.unlock() }
+        return textures[handle].map { UInt64($0.heapIndex) }
+    }
+
+    public func writeBuffer(_ handle: MetalHandle, offset: Int, _ bytes: [UInt8]) -> Bool {
+        cond.lock(); defer { cond.unlock() }
+        guard let b = buffers[handle], let p = b.hostPointer, offset >= 0, offset + bytes.count <= b.length else { return false }
+        bytes.withUnsafeBytes { (p + offset).copyMemory(from: $0.baseAddress!, byteCount: bytes.count) }
+        return true
+    }
+
     public func createDepthStencilState(_ handle: MetalHandle, _ desc: MetalDepthStencilDescriptor) throws {
         cond.lock(); defer { cond.unlock() }
         depthStencilStates[handle] = desc
@@ -827,6 +934,14 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         events[handle] = VKEvent(semaphore: yvk_timeline_create(ctx, 0))
     }
 
+    /// `newSharedEventWithHandle:` (messageType 18): the same timeline
+    /// semaphore under a second handle.
+    public func createEventAlias(_ handle: MetalHandle, of original: MetalHandle) throws {
+        guard isAvailable else { return }
+        cond.lock(); defer { cond.unlock() }
+        events[handle] = events[original] ?? VKEvent(semaphore: yvk_timeline_create(ctx, 0))
+    }
+
     public func signalEvent(_ handle: MetalHandle, value: UInt64) {
         cond.lock(); defer { cond.unlock() }
         guard let e = events[handle], let s = e.semaphore else { return }
@@ -846,14 +961,21 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
 
     public func release(_ handle: MetalHandle) {
         cond.lock(); defer { cond.unlock() }
-        if let b = buffers.removeValue(forKey: handle) { releaseBuffer(b); return }
+        if let b = buffers.removeValue(forKey: handle) {
+            // Hang reports name addresses of released buffers (VulkanHangReport.swift).
+            releasedBufferRanges.append((b.address, b.address + UInt64(b.length), handle.raw))
+            if releasedBufferRanges.count > 16384 { releasedBufferRanges.removeFirst(4096) }
+            releaseBuffer(b)
+            return
+        }
         if let t = textures.removeValue(forKey: handle) { releaseTexture(t); return }
         if samplers.removeValue(forKey: handle) != nil { return }  // samplers stay cached (deduplicated)
         if depthStencilStates.removeValue(forKey: handle) != nil { return }
         if functions.removeValue(forKey: handle) != nil { return }
         if let p = renderPipelines.removeValue(forKey: handle) { releaseRenderPipeline(p); return }
         if let p = computePipelines.removeValue(forKey: handle) { releaseComputePipeline(p); return }
-        if let e = events.removeValue(forKey: handle), let s = e.semaphore {
+        if let e = events.removeValue(forKey: handle), let s = e.semaphore,
+           !events.values.contains(where: { $0 === e }) {  // aliases (messageType 18) keep it
             deferDestroy { [ctx, fn] in fn.vkDestroySemaphore!(ctx.pointee.device, s, nil) }
         }
     }
@@ -939,6 +1061,8 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         yvk_buffer_destroy(ctx, &dummyBuffer)
         for c in freeChunks { yvk_buffer_destroy(ctx, &c.buffer) }
         freeChunks.removeAll()
+        for p in freeVisibilityPools { fn.vkDestroyQueryPool!(device, p, nil) }
+        freeVisibilityPools.removeAll()
         if let s = setup { for c in s.chunks { yvk_buffer_destroy(ctx, &c.buffer) } }
         setup = nil
         if let t = timeline { fn.vkDestroySemaphore!(device, t, nil) }
@@ -1010,6 +1134,9 @@ public struct VulkanBackendStatistics: Sendable {
     /// Copies of a color attachment made for a draw that samples it (§15.6).
     public var feedbackSnapshots = 0
     public var feedbackTexels = 0
+    /// Render passes with visibility-result queries, their queries, and
+    /// segments whose slot an earlier segment of the pass also counted.
+    public var visibilityPasses = 0, visibilityQueries = 0, visibilitySharedSlots = 0
     /// Queue-to-completion latency of Metal command buffers: counts below
     /// 1, 2, 4, 8, 16, 33 ms and above.
     public var latencyBuckets = [Int](repeating: 0, count: 7)
@@ -1032,6 +1159,7 @@ public struct TimeCounter: Sendable, CustomStringConvertible {
 }
 
 extension VulkanMetalBackend {
+    /// A copy of the backend's counters, taken under the backend lock.
     public var stats: VulkanBackendStatistics {
         cond.lock(); defer { cond.unlock() }
         return statistics
@@ -1050,6 +1178,7 @@ extension VulkanMetalBackend {
         let brokenRender = renderPipelines.values.filter { $0.broken || !$0.failed.isEmpty }.count
         let brokenCompute = computePipelines.values.filter { $0.broken || !$0.failed.isEmpty }.count
         let lost = deviceLost
+        let badIndexReleases = textureIndices.badReleases + samplerIndices.badReleases
         let skips = skipLines.sorted { $0.key < $1.key }.map { "L\($0.key)×\($0.value)" }.joined(separator: " ")
         cond.unlock()
         return "serials \(serials), \(queued) pending, compile queue \(compileQueue.operationCount), "
@@ -1061,6 +1190,7 @@ extension VulkanMetalBackend {
                                                               Double(s.latencyMaxNs) / 1e6))
             + (skips.isEmpty ? "" : " (skips by replay line: \(skips))")
             + (lost ? ", DEVICE LOST" : "")
+            + (badIndexReleases > 0 ? ", \(badIndexReleases) heap indices released twice" : "")
             + "; translations \(s.translations) + \(s.translationHits) cached, render compiles \(s.renderCompiles), "
             + "compute variants \(s.computeCompiles), pipeline waits \(s.pipelineWaits), recording \(s.recording), "
             + String(format: "surface MB up/down %.0f/%.0f (whole surfaces would be down %.0f; %d copy-ins skipped)",
@@ -1081,5 +1211,6 @@ extension VulkanMetalBackend {
     func noteSkip(_ line: Int = #line) {
         statistics.skipped += 1
         skipLines[line, default: 0] += 1
+        lastSkipLine = line
     }
 }

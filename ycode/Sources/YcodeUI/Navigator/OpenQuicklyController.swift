@@ -9,6 +9,9 @@ public final class OpenQuicklyController: NSViewController, NSTableViewDataSourc
     private var candidates: [FuzzyMatch.Candidate]
     public private(set) var results: [FuzzyMatch.Candidate] = []
     public var onOpen: ((FuzzyMatch.Candidate) -> Void)?
+    /// Closes the panel when the controller is not presented as a sheet
+    /// (the glass panel of `liquid-glass-ycode.md` §7).
+    public var onClose: (() -> Void)?
 
     public init(candidates: [FuzzyMatch.Candidate]) {
         self.candidates = candidates
@@ -36,6 +39,12 @@ public final class OpenQuicklyController: NSViewController, NSTableViewDataSourc
         let scroll = NSScrollView()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
+        if #available(macOS 26, *) {
+            // The list sits on the panel's glass (liquid-glass-ycode.md §7).
+            scroll.drawsBackground = false
+            table.backgroundColor = .clear
+            table.style = .inset
+        }
         for v in [field, scroll] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
@@ -83,7 +92,7 @@ public final class OpenQuicklyController: NSViewController, NSTableViewDataSourc
             openSelected()
             return true
         case #selector(NSResponder.cancelOperation(_:)):
-            if presentingViewController != nil { dismiss(nil) }
+            close()
             return true
         default:
             return false
@@ -94,7 +103,11 @@ public final class OpenQuicklyController: NSViewController, NSTableViewDataSourc
         let r = table.selectedRow >= 0 ? table.selectedRow : 0
         guard results.indices.contains(r) else { return }
         onOpen?(results[r])
-        if presentingViewController != nil { dismiss(nil) }
+        close()
+    }
+
+    private func close() {
+        if presentingViewController != nil { dismiss(nil) } else { onClose?() }
     }
 
     public func numberOfRows(in tableView: NSTableView) -> Int { results.count }

@@ -42,14 +42,18 @@ extension Preferences {
 
     /// The detail pop-ups' choices: up to 1–5 lines per row.
     public static let detailLineChoices = Array(1...5)
+    /// The pop-up title for `n` lines ("Up to 1 Line", "Up to 3 Lines").
     public static func detailTitle(_ n: Int) -> String { n == 1 ? "Up to 1 Line" : "Up to \(n) Lines" }
+    /// The line count a pop-up title names; nil for an unknown title.
     public static func detailLines(fromTitle t: String) -> Int? { detailLineChoices.first { detailTitle($0) == t } }
 
     private func lines(_ key: String) -> Int { min(5, max(1, get(key, 3))) }
     /// Bookmark / Find / Issue navigator detail: maximum lines per row
     /// before the ellipsis (default Up to 3 Lines).
     public var bookmarkNavigatorDetail: Int { get { lines("bookmarkNavigatorDetail") } set { set("bookmarkNavigatorDetail", min(5, max(1, newValue))) } }
+    /// Find navigator detail: maximum lines per row (1–5, default 3).
     public var findNavigatorDetail: Int { get { lines("findNavigatorDetail") } set { set("findNavigatorDetail", min(5, max(1, newValue))) } }
+    /// Issue navigator detail: maximum lines per row (1–5, default 3).
     public var issueNavigatorDetail: Int { get { lines("issueNavigatorDetail") } set { set("issueNavigatorDetail", min(5, max(1, newValue))) } }
 
     /// Window tabs have independent sidebar widths (stored: Ycode's
@@ -73,10 +77,13 @@ extension Preferences {
     // MARK: General ▸ Test Parallelization (stored until R36)
 
     public enum TestParallelization: String, CaseIterable, Sendable { case automatic = "Automatic", off = "Off" }
+    /// Test parallelization for Mac destinations (stored; default Automatic).
     public var testParallelizationMac: TestParallelization {
         get { TestParallelization(rawValue: get("testParallelizationMac", "Automatic")) ?? .automatic }
         set { set("testParallelizationMac", newValue.rawValue) }
     }
+    /// Test parallelization for simulator destinations (stored; default
+    /// Automatic).
     public var testParallelizationSimulator: TestParallelization {
         get { TestParallelization(rawValue: get("testParallelizationSimulator", "Automatic")) ?? .automatic }
         set { set("testParallelizationSimulator", newValue.rawValue) }
@@ -84,7 +91,9 @@ extension Preferences {
 
     // MARK: General ▸ Report Navigator
 
+    /// The Report Navigator history pop-up's choices, in reports.
     public static let reportHistoryChoices = [10, 20, 50, 100]
+    /// The pop-up title for a limit of `n` reports.
     public static func reportHistoryTitle(_ n: Int) -> String { "Up to \(n) Reports" }
     /// Local report history: older reports are pruned (default 20).
     public var reportHistoryLimit: Int {
@@ -138,7 +147,9 @@ extension Preferences {
     /// "Don't ask me" warnings: a warning suppressed by its alert's
     /// checkbox is stored as `Ycode.suppress.<id>`.
     public static let suppressionPrefix = "Ycode.suppress."
+    /// Whether the warning `id` was suppressed with "Don't ask me".
     public func isWarningSuppressed(_ id: String) -> Bool { defaults.bool(forKey: Self.suppressionPrefix + id) }
+    /// Suppresses the warning `id` until Reset All; posts `didChange`.
     public func suppressWarning(_ id: String) { defaults.set(true, forKey: Self.suppressionPrefix + id); changed() }
     /// Reset All: every suppressed warning asks again.
     public func resetSuppressedWarnings() {
@@ -159,9 +170,9 @@ extension Preferences {
     static func defaultsValue(_ v: Any) -> Any {
         switch v {
         case let m as [String: Any] where m.count == 1 && m["data"] is String:
-            return Data(base64Encoded: m["data"] as! String) ?? Data()
+            return Data(base64Encoded: m["data"] as? String ?? "") ?? Data()
         case let m as [String: Any] where m.count == 1 && m["date"] is NSNumber:
-            return Date(timeIntervalSinceReferenceDate: (m["date"] as! NSNumber).doubleValue)
+            return Date(timeIntervalSinceReferenceDate: (m["date"] as? NSNumber)?.doubleValue ?? 0)
         case let m as [String: Any]: return m.mapValues(defaultsValue)
         case let a as [Any]: return a.map(defaultsValue)
         case let n as NSNumber where CFGetTypeID(n) == CFBooleanGetTypeID(): return n.boolValue
@@ -194,14 +205,17 @@ extension Preferences {
 
     /// What a modified click on code does.
     public enum CodeClick: String, CaseIterable, Sendable { case quickHelp = "Shows Quick Help", definition = "Jumps to Definition" }
+    /// Click on Code with ⌥ (default: Shows Quick Help).
     public var optionClickOnCode: CodeClick {
         get { CodeClick(rawValue: get("clickOnCodeOption", CodeClick.quickHelp.rawValue)) ?? .quickHelp }
         set { set("clickOnCodeOption", newValue.rawValue) }
     }
+    /// Click on Code with ⌘ (default: Jumps to Definition).
     public var commandClickOnCode: CodeClick {
         get { CodeClick(rawValue: get("clickOnCodeCommand", CodeClick.definition.rawValue)) ?? .definition }
         set { set("clickOnCodeCommand", newValue.rawValue) }
     }
+    /// Click on Code with ⌃⌘ (default: Jumps to Definition).
     public var commandControlClickOnCode: CodeClick {
         get { CodeClick(rawValue: get("clickOnCodeCommandControl", CodeClick.definition.rawValue)) ?? .definition }
         set { set("clickOnCodeCommandControl", newValue.rawValue) }
@@ -219,6 +233,7 @@ extension Preferences {
 
     /// Navigation: where navigator clicks open.
     public enum NavigationDestination: String, CaseIterable, Sendable { case focusedPane = "Focused Editor Pane" }
+    /// Where a plain navigator click opens (only the focused pane so far).
     public var navigationDestination: NavigationDestination {
         get { NavigationDestination(rawValue: get("navigationDestination", NavigationDestination.focusedPane.rawValue)) ?? .focusedPane }
         set { set("navigationDestination", newValue.rawValue) }
@@ -230,14 +245,17 @@ extension Preferences {
         case newUnpinnedTab = "Uses New Unpinned Tab"
         case nextPane = "Uses Next Editor Pane"
     }
+    /// Navigator click with ⌥ (default: a new unpinned tab).
     public var navigationWithOption: NavigationTarget {
         get { NavigationTarget(rawValue: get("navigationOption", NavigationTarget.newUnpinnedTab.rawValue)) ?? .newUnpinnedTab }
         set { set("navigationOption", newValue.rawValue) }
     }
+    /// Navigator click with ⌥⇧ (default: the next editor pane).
     public var navigationWithOptionShift: NavigationTarget {
         get { NavigationTarget(rawValue: get("navigationOptionShift", NavigationTarget.nextPane.rawValue)) ?? .nextPane }
         set { set("navigationOptionShift", newValue.rawValue) }
     }
+    /// Navigator double click (default: same as a click).
     public var navigationWithDoubleClick: NavigationTarget {
         get { NavigationTarget(rawValue: get("navigationDoubleClick", NavigationTarget.sameAsClick.rawValue)) ?? .sameAsClick }
         set { set("navigationDoubleClick", newValue.rawValue) }
@@ -277,6 +295,7 @@ extension Preferences {
     public var showEndifConditions: Bool { get { get("endifConditions", true) } set { set("endifConditions", newValue) } }
     /// Scope guides; only None is observed so far (§12).
     public enum ScopeGuides: String, CaseIterable, Sendable { case none = "None" }
+    /// Editing ▸ Display ▸ Scope guides (None, the only choice so far).
     public var scopeGuides: ScopeGuides {
         get { ScopeGuides(rawValue: get("scopeGuides", "None")) ?? .none }
         set { set("scopeGuides", newValue.rawValue) }
@@ -299,6 +318,7 @@ extension Preferences {
             switch self { case .none: 0; case .small: 0.25; case .medium: 0.5; case .large: 0.75 }
         }
     }
+    /// Blank space below the last line of the source editor (default Medium).
     public var editorOverscroll: EditorOverscroll {
         get { EditorOverscroll(rawValue: get("editorOverscroll", EditorOverscroll.medium.rawValue)) ?? .medium }
         set { set("editorOverscroll", newValue.rawValue) }

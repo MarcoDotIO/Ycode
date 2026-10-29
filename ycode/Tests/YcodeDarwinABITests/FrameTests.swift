@@ -205,3 +205,34 @@ private func u64(_ b: [UInt8], _ o: Int) -> UInt64 {
         #expect(out == short.encoded())
     }
 }
+
+@Suite struct TrapRegistersTests {
+    @Test func inlineRegistersBehaveLikeTheArray() {
+        var r: TrapRegisters = [1, 2, 3]
+        #expect(r.count == 31 && r[0] == 1 && r[2] == 3 && r[3] == 0 && r[30] == 0)
+        r[30] = 0xFFFF_0000_1234
+        #expect(r[30] == 0xFFFF_0000_1234)
+        #expect(Array(r[1...3]) == [2, 3, 0])
+        #expect(r.prefixArray(4) == [1, 2, 3, 0])
+        #expect(r.prefixArray(0).isEmpty)
+        let longer = TrapRegisters((0..<40).map(UInt64.init))
+        #expect(longer[30] == 30 && longer.count == 31)
+        // Value semantics: a copy is independent of the original.
+        var copy = r
+        copy[0] = 99
+        #expect(r[0] == 1 && copy[0] == 99 && copy != r)
+        copy[0] = 1
+        #expect(copy == r)
+    }
+
+    @Test func frameRoundTripsThroughMemory() throws {
+        var f = TrapFrame()
+        for i in 0..<31 { f.x[i] = UInt64(i) &* 0x0101_0101_0101_0101 }
+        f.elr = 0x1234
+        var bytes = [UInt8](repeating: 0, count: TrapFrame.byteCount)
+        bytes.withUnsafeMutableBytes { f.encode(into: $0.baseAddress!) }
+        let back = bytes.withUnsafeBytes { TrapFrame(decodingFrameAt: $0.baseAddress!) }
+        #expect(back.x == f.x && back.elr == 0x1234)
+        #expect(try TrapFrame(decoding: bytes).x == f.x)
+    }
+}

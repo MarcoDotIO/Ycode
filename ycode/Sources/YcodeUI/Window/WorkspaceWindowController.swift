@@ -42,10 +42,22 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
                                                       NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: "Assistant")!,
                                                       NSImage(systemSymbolName: "arrow.left.arrow.right", accessibilityDescription: "Code Review")!],
                                              trackingMode: .selectAny, target: nil, action: nil)
+        /// The editor modes folded into one pull-down when the toolbar is
+        /// short of room (reference-ui-6.md §2.2).
+        let editorModesPullDown = NSPopUpButton(frame: .zero, pullsDown: true)
+        /// The scheme pop-up's width cap while room is short (§2.2.2).
+        var schemeCap: NSLayoutConstraint?
+        /// The fitting state (`ToolbarFit`) and its guards.
+        var fit = ToolbarFit()
+        var fitting = false
+        var fitScheduled = false
         init() {
             // reference-ui-5.md §4.1.4, §4.2.3.
-            for (c, tips) in [(leftPanes, ["Navigators", "Coding Assistant"]), (editorModes, ["Show Canvas", "Show Assistant", "Show Code Review"])] {
-                for (i, t) in tips.enumerated() { c.setToolTip(t, forSegment: i); c.setWidth(38, forSegment: i) }
+            // liquid-glass.md §2.2: the drawn capsules are 78 and 125
+            // points wide (the system adds its padding to the segments).
+            for (c, tips, w) in [(leftPanes, ["Navigators", "Coding Assistant"], ToolbarGlass.leftPanesSegment),
+                                 (editorModes, ["Show Canvas", "Show Assistant", "Show Code Review"], ToolbarGlass.editorModesSegment)] {
+                for (i, t) in tips.enumerated() { c.setToolTip(t, forSegment: i); c.setWidth(w, forSegment: i) }
             }
         }
     }
@@ -56,6 +68,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         deinit { for t in tokens where !(t is NSKeyValueObservation) { NotificationCenter.default.removeObserver(t) } }
     }
     let leftAreaObservation = LeftAreaObservation()
+    /// The coding assistant (WorkspaceWindowController+CodingAssistant.swift).
+    let codingAssistantHolder = CodingAssistantHolder()
     final class BehaviorStore {
         var previous: WorkspaceSession.Activity?
         var last: (event: Preferences.Event, behavior: Preferences.Behavior)?
@@ -93,7 +107,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     var inspectorItem: NSSplitViewItem!
     var debugItem: NSSplitViewItem!
     let schemePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
-    let destinationPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
+    let destinationPopUp: NSPopUpButton = DestinationPopUpButton(frame: .zero, pullsDown: false)
     private var issueCursor = -1
     /// Per-workspace user data (`WorkspaceUserState`): Recent Files, the
     /// navigator's expansion, destinations per scheme. Kept in memory
@@ -119,11 +133,15 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         self.userStateURL = stateURL
         self.userState = stateURL.map(WorkspaceUserState.load(from:)) ?? WorkspaceUserState()
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.defaultSize),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
         window.title = session.model.displayName
         window.titleVisibility = .hidden  // the name shows in the activity view
         window.toolbarStyle = .unified
+        if #available(macOS 26, *) {
+            // No hard line under the glass toolbar (liquid-glass-ycode.md §1).
+            window.titlebarSeparatorStyle = .none
+        }
         window.minSize = NSSize(width: 700, height: 400)
         window.isRestorable = !Self.isTestProcess
         super.init(window: window)
@@ -174,7 +192,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         wireEditorExtras(e)
         e.onSelectionChange = { [weak self] url, p in
             self?.debugArea.setPosition(line: p.line + 1, column: p.character + 1)
-            guard let self,self.inspector.selectedIndex == 2, self.session.language != nil else { return }
+            guard let self, self.inspector.selectedIndex == 2, self.session.language != nil else { return }
             Task {
                 let text = await self.session.hover(url, at: p)
                 self.inspector.showQuickHelp(text, file: text == nil ? nil : await self.session.definition(url, at: p)?.url.path)
@@ -229,11 +247,17 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             v.translatesAutoresizingMaskIntoConstraints = false
             column.addSubview(v)
         }
+        // liquid-glass.md §2.6, §3.2 (macOS 26+): the editor runs under
+        // the debug bar, a translucent bar with a hard edge; the editor's
+        // safe area ends at the bar, so its text scrolls clear of it.
+        let overlayBar = DebugAreaController.translucentBar
+        if overlayBar { editorArea.view.additionalSafeAreaInsets = NSEdgeInsets(top: 0, left: 0, bottom: DebugAreaController.debugBarHeight, right: 0) }
         NSLayoutConstraint.activate([
             editorArea.view.topAnchor.constraint(equalTo: column.topAnchor),
             editorArea.view.leadingAnchor.constraint(equalTo: column.leadingAnchor),
             editorArea.view.trailingAnchor.constraint(equalTo: column.trailingAnchor),
-            bar.topAnchor.constraint(equalTo: editorArea.view.bottomAnchor),
+            overlayBar ? editorArea.view.bottomAnchor.constraint(equalTo: column.bottomAnchor)
+                : bar.topAnchor.constraint(equalTo: editorArea.view.bottomAnchor),
             bar.leadingAnchor.constraint(equalTo: column.leadingAnchor),
             bar.trailingAnchor.constraint(equalTo: column.trailingAnchor),
             bar.bottomAnchor.constraint(equalTo: column.bottomAnchor),
@@ -249,7 +273,23 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         navigatorItem = NSSplitViewItem(sidebarWithViewController: navigator)
         navigatorItem.minimumThickness = 180
         navigatorItem.preferredThicknessFraction = Self.navigatorWidth / Self.defaultSize.width
-        let centerItem = NSSplitViewItem(viewController: centerSplit)
+        // The window's content runs under the toolbar (`.fullSizeContentView`,
+        // liquid-glass-ycode.md §1); the editor and debug area split starts
+        // below it, at the center column's safe area, so its heights are
+        // the ones the specs measure.
+        let centerColumn = NSViewController()
+        centerColumn.view = NSView()
+        centerColumn.addChild(centerSplit)
+        let centerView = centerSplit.view
+        centerView.translatesAutoresizingMaskIntoConstraints = false
+        centerColumn.view.addSubview(centerView)
+        NSLayoutConstraint.activate([
+            centerView.topAnchor.constraint(equalTo: centerColumn.view.safeAreaLayoutGuide.topAnchor),
+            centerView.leadingAnchor.constraint(equalTo: centerColumn.view.leadingAnchor),
+            centerView.trailingAnchor.constraint(equalTo: centerColumn.view.trailingAnchor),
+            centerView.bottomAnchor.constraint(equalTo: centerColumn.view.bottomAnchor),
+        ])
+        let centerItem = NSSplitViewItem(viewController: centerColumn)
         inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
         inspectorItem.minimumThickness = 220
         mainSplit.addSplitViewItem(navigatorItem)
@@ -322,8 +362,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         session.refreshProjectIssues()
         refreshFileStatus(nil)
         activityView.workspaceName = session.model.displayName
+        activityView.isPackage = session.model.kind == .package
         navigator.workspaceName = session.model.displayName
         navigator.isPackage = session.model.kind == .package
+        navigator.issueGrouping = { [weak self] in self?.session.issueGrouping ?? IssueGrouping(projectName: "") }   // reference-ui-6.md §5.1
         navigator.isWorkspace = session.model.kind == .workspace
         navigator.testPlanName = "\(session.scheme ?? session.model.displayName) (Autocreated)"
         navigator.testTarget = { [weak self] file in
@@ -364,14 +406,29 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         let e = editor
         if e.emptyView == nil {
             if let u = e.fileURL { return u.lastPathComponent }
-            if let shown = e.pathComponents.last?.0, !shown.isEmpty, e.auxiliary != nil { return shown }
+            if e.auxiliary != nil {
+                // A file shown in another editor (plist, catalog, project):
+                // its file name with extension, not the jump bar's title.
+                if let u = e.auxiliaryFile { return u.lastPathComponent }
+                if let shown = e.pathComponents.last?.0, !shown.isEmpty { return shown }
+            }
         }
         return session.model.url.lastPathComponent
     }
 
     public var windowTitle: String { Self.windowTitle(workspace: session.model.displayName, document: windowDocumentName) }
 
-    func updateWindowTitle() { window?.title = windowTitle }
+    func updateWindowTitle() {
+        // Through the document machinery when there is a document, so its
+        // own renames (adding the controller, saving, display-name
+        // changes) and ours give the same title (reference-ui-6.md §1.1.3).
+        if document != nil { synchronizeWindowTitleWithDocumentName() } else { window?.title = windowTitle }
+    }
+
+    /// NSDocument renames the window after its display name whenever the
+    /// controller is attached or the document changes; the composed title
+    /// replaces that name (reference-ui-6.md §1.1, W1).
+    public override func windowTitle(forDocumentDisplayName displayName: String) -> String { windowTitle }
 
     let opensFirstFile: Bool
 
@@ -795,7 +852,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         c.onChange = { [weak self] edited in self?.projectChanged(path: path, edited) }
         c.onAddPackage = { [weak self] in self?.addPackageDependencies(nil) }
         projectEditor = c
-        editor.showAuxiliary(c.view, path: [(url.deletingPathExtension().lastPathComponent, "folder.badge.gearshape")])
+        editor.showAuxiliary(c.view, path: [(url.deletingPathExtension().lastPathComponent, "folder.badge.gearshape")], file: url)
         inspector.show(file: nil)
         return c
     }
@@ -1037,15 +1094,27 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     var previewActivityState: PreviewActivityState?
     var previewActivityGeneration = 0
 
+    /// Canvas mode (`CanvasAutoShow`, reference-ui-6.md §4.4, E7 / E10).
+    let canvasAuto = CanvasAutoState()
+
+    /// Editor ▸ Canvas (⌥⌘↩) and the toolbar's Canvas segment: turns canvas
+    /// mode off or on (`setCanvasMode`).
     @objc public func toggleCanvas(_ sender: Any?) {
+        setCanvasMode(!canvasAuto.modeOn)
+    }
+
+    /// Shows or hides the canvas (the toggle and the automatic show).
+    func setCanvasShown(_ show: Bool) {
         defer { updateToolbarState() }
-        if canvas != nil {
+        guard show != (canvas != nil) else { return }
+        if !show {
             canvas = nil
             editorArea.hideCanvas()
             return
         }
         endEditorModes(except: .canvas)   // reference-ui-5.md §4.2
         let c = PreviewCanvasController()
+        c.devices.automatic = session.destination?.name ?? "My Mac"
         c.onRefresh = { [weak self] in self?.refreshPreviews() }
         canvas = c
         editorArea.showCanvas(c)
@@ -1107,7 +1176,9 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
 
     /// After a save: refresh once edits pause.
     func scheduleCanvasRefresh(_ url: URL) {
-        guard canvas != nil, url == editor.fileURL else { return }
+        guard url == editor.fileURL else { return }
+        // Canvas mode with no canvas drawn: a saved preview brings it up (E10).
+        guard canvas != nil else { if canvasAuto.modeOn { updateCanvasForOpenedFile() }; return }
         canvasDebounce?.cancel()
         let delay = canvasRefreshDelay
         canvasDebounce = Task { [weak self] in
@@ -1133,6 +1204,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         if session.reportHistoryLimit != p.reportHistoryLimit { session.reportHistoryLimit = p.reportHistoryLimit }
         navigator.applyDisplayPreferences()
         if session.model.kind != .package || true { navigator.setProjectTree(session.model.root, packages: packageSection()) }
+        // The jump bars follow the file-extension setting too (§4.1, E1).
+        for e in editorArea.allEditors {
+            if let u = e.fileURL { let path = jumpPath(for: u); if path.map(\.0) != e.pathComponents.map(\.0) { e.pathComponents = path } }
+        }
         if sourceControlCache.enabled != p.sourceControlEnabled {
             sourceControlCache.enabled = p.sourceControlEnabled
             refreshFileStatus(nil)
@@ -1349,20 +1424,37 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         return c
     }
 
-    /// Devices and Simulators, from the destination menu's Manage Devices… (reference-ui-4.md §14.3: not in the Window menu).
+    /// Device Hub (`device-hub.md`), from the destination menu's Manage
+    /// Devices… and Product ▸ Destination ▸ Manage Devices… (⇧⌘2;
+    /// reference-ui-4.md §14.3: not in the Window menu).
     @objc public func showDevices(_ sender: Any?) {
         Task { await presentDevices() }
     }
 
     /// Lists devices and simulators (simctl, devicectl) off the main
-    /// thread, then shows the window.
+    /// thread, then shows the hub window (an open one comes forward with
+    /// fresh lists).
     @discardableResult
     public func presentDevices() async -> DevicesController {
         let lists = await Task.detached { DevicesList.load() }.value
+        if let c = devices, let w = devicesWindow, w.isVisible {
+            configureYcodeRemoteDevice(c)
+            w.makeKeyAndOrderFront(nil)
+            return c
+        }
+        devices?.closeLinks()
         let c = DevicesController(devices: lists.devices, simulators: lists.simulators)
         configureYcodeRemoteDevice(c)
         devices = c
-        present(c, title: "Devices and Simulators", in: &devicesWindow)
+        guard window?.isVisible == true else { _ = c.view; return c }
+        let w = c.makeWindow()
+        c.restoreState()
+        devicesWindow = w
+        // swiftlint:disable:next discarded_notification_center_observer - never removed; captures are weak
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak c] _ in
+            MainActor.assumeIsolated { c?.closeLinks() }
+        }
+        w.makeKeyAndOrderFront(nil)
         return c
     }
 
@@ -1415,7 +1507,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             projectEditor = nil
             plistEditor = nil
             assetEditor = c
-            editor.showAuxiliary(c.view, path: jumpPath(for: URL(fileURLWithPath: path)))
+            editor.showAuxiliary(c.view, path: jumpPath(for: URL(fileURLWithPath: path)), file: URL(fileURLWithPath: path))
             inspector.show(file: nil)
             return
         }
@@ -1426,7 +1518,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             projectEditor = nil
             plistEditor = nil
             interfaceEditor = c
-            editor.showAuxiliary(c.view, path: jumpPath(for: URL(fileURLWithPath: path)))
+            editor.showAuxiliary(c.view, path: jumpPath(for: URL(fileURLWithPath: path)), file: URL(fileURLWithPath: path))
             inspector.show(file: URL(fileURLWithPath: path))
             return
         }
@@ -1435,14 +1527,14 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             plistEditor = nil
             stringCatalogEditor = c
             c.onAddLanguage = { [weak self] code in self?.addKnownRegion(code, forFileAt: path) }
-            editor.showAuxiliary(c.view, path: jumpPath(for: URL(fileURLWithPath: path)))
+            editor.showAuxiliary(c.view, path: jumpPath(for: URL(fileURLWithPath: path)), file: URL(fileURLWithPath: path))
             inspector.show(file: URL(fileURLWithPath: path))
             return
         }
         if path.hasSuffix(".plist") || path.hasSuffix(".entitlements"), let c = try? PlistEditorController(url: URL(fileURLWithPath: path)) {
             projectEditor = nil
             plistEditor = c
-            editor.showAuxiliary(c.view, path: jumpPath(for: URL(fileURLWithPath: path)))
+            editor.showAuxiliary(c.view, path: jumpPath(for: URL(fileURLWithPath: path)), file: URL(fileURLWithPath: path))
             inspector.show(file: URL(fileURLWithPath: path))
             return
         }
@@ -1454,6 +1546,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         if editor.fileURL?.path != url.path {
             try? editor.save()
             do { try editor.open(url) } catch { return }
+            updateCanvasForOpenedFile()   // reference-ui-6.md §4.4, E7
         }
         editor.pathComponents = jumpPath(for: url)
         refreshEditorMarks()
@@ -1469,8 +1562,18 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             return n.children.contains { search($0, path + [n]) }
         }
         _ = search(session.model.root, [])
-        if trail.isEmpty { return [(session.model.displayName, "folder.badge.gearshape"), (url.lastPathComponent, "doc.text")] }
-        return trail.map { ($0.name, OutlineItem.symbol(for: $0)) }
+        // File components follow Settings ▸ General ▸ File Extensions, like
+        // the navigator: "Model", not "Model.swift" (reference-ui-6.md §4.1, E1).
+        let hide = Preferences.shared.fileExtensions == .hide
+        if trail.isEmpty { return [(session.model.displayName, "folder.badge.gearshape"), (Self.jumpBarFileTitle(url.lastPathComponent, hideExtension: hide), "doc.text")] }
+        return trail.map { ($0.kind == .file ? Self.jumpBarFileTitle($0.name, hideExtension: hide) : $0.name, OutlineItem.symbol(for: $0)) }
+    }
+
+    /// A file's jump-bar title: without its extension when extensions are hidden.
+    public static func jumpBarFileTitle(_ name: String, hideExtension: Bool) -> String {
+        guard hideExtension else { return name }
+        let bare = (name as NSString).deletingPathExtension
+        return bare.isEmpty ? name : bare
     }
 
     private func refreshEditorMarks() {
@@ -1509,7 +1612,11 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             case .idle: activityView.status = ""
             case .building(let s), .running(let s), .paused(let s):
                 // A build starts (reference-ui-5.md §5.3.2): earlier issues stay, stale, until it ends.
-                if s.hasPrefix("Building "), !navigator.issueModel.isBuilding { navigator.issuesBuildStarted() }
+                // A test run's build texts (reference-ui-6.md §3.4) are not a
+                // build of the Issue navigator's: the run ends with its failures.
+                if WorkspaceSession.BuildActivityText.isBuild(s), session.testActivityProgress == nil, !navigator.issueModel.isBuilding {
+                    navigator.issuesBuildStarted()
+                }
                 activityView.status = s
             case .finished(let s):
                 if s.contains("Build") || s.contains("Clean") {
@@ -1576,15 +1683,23 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     static let issuesID = NSToolbarItem.Identifier("issues")
     static let newConversationID = NSToolbarItem.Identifier("newConversation")
 
-    /// reference-ui.md §2: Navigators / Coding Assistant, Run and Stop,
-    /// Back and Forward, the workspace name over the activity line, New
-    /// Conversation (reference-ui-5.md §4.3.3), the centered scheme ›
-    /// destination pill, Canvas / Assistant / Code Review, Show Inspector.
+    /// reference-ui-6.md §2.1: Navigators / Coding Assistant, Run and
+    /// Stop, Back and Forward, the activity view, New Conversation, the
+    /// scheme › destination pill, the issue capsule, Add Editor and Editor
+    /// Options, Canvas / Assistant / Code Review, and Show Inspector at the
+    /// far right (no Account item, no flexible space after it).
+    ///
+    /// liquid-glass.md §2.2: Run | Stop ends the navigator's section of the
+    /// toolbar (a flexible space before it, the sidebar tracking separator
+    /// after it), Back | Forward starts the editor's; a fixed space keeps
+    /// New Conversation's circle out of the scheme's capsule (adjacent
+    /// bordered items otherwise share one glass shape); Show Inspector sits
+    /// in the inspector's section.
     public func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.leftPanesID, .sidebarTrackingSeparator, Self.runID, Self.historyID, Self.activityID, .flexibleSpace, Self.newConversationID,
-         Self.schemeID, Self.issuesID,
-         .flexibleSpace, EditorOptionsMenu.accountID, EditorOptionsMenu.addEditorID, EditorOptionsMenu.editorOptionsID, Self.editorModesID,
-         .inspectorTrackingSeparator, Self.inspectorToggleID]
+        [Self.leftPanesID, .flexibleSpace, Self.runID, .sidebarTrackingSeparator, Self.historyID, Self.activityID, .flexibleSpace,
+         Self.newConversationID, .space, Self.schemeID, Self.issuesID,
+         .flexibleSpace, EditorOptionsMenu.addEditorID, EditorOptionsMenu.editorOptionsID, Self.editorModesID,
+         .inspectorTrackingSeparator, .flexibleSpace, Self.inspectorToggleID]
     }
 
     /// The toolbar's segmented controls (tests).
@@ -1595,8 +1710,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         setLeftPane(codingAssistant: c.selectedSegment == 1)
     }
 
-    /// Shows the navigators or the Coding Assistant pane (a placeholder:
-    /// Ycode has no assistant) in the left area; choosing the shown one
+    /// Shows the navigators or the Coding Assistant pane in the left area; choosing the shown one
     /// again hides the area (reference-ui-5.md §4.1).
     public func setLeftPane(codingAssistant: Bool) {
         let wasAssistant = navigator.showsCodingAssistant
@@ -1618,9 +1732,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     /// The editor modes of reference-ui-5.md §4.2; at most one is on.
     public enum EditorMode: Int, CaseIterable { case canvas, assistant, codeReview }
     public var activeEditorMode: EditorMode? {
-        if canvas != nil { return .canvas }
         if editorArea.tab.assistant != nil { return .assistant }
         if editor.isShowingComparison || editor.isShowingInlineComparison { return .codeReview }
+        // Canvas mode is on even while no canvas is drawn (reference-ui-6.md §4.4, E10).
+        if canvasAuto.modeOn || canvas != nil { return .canvas }
         return nil
     }
 
@@ -1636,7 +1751,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
 
     /// Turns off every mode other than `keep` (before turning `keep` on).
     func endEditorModes(except keep: EditorMode) {
-        if keep != .canvas, canvas != nil { canvas = nil; editorArea.hideCanvas() }
+        if keep != .canvas {
+            canvasAuto.modeOn = false
+            if canvas != nil { canvas = nil; editorArea.hideCanvas() }
+        }
         if keep != .assistant, editorArea.tab.assistant != nil { editorArea.hideAssistant() }
         if keep != .codeReview { for e in editorArea.tab.editors where e.isShowingComparison || e.isShowingInlineComparison { endCodeReview(in: e) } }
     }
@@ -1659,12 +1777,15 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         let r = toolbarControls.editorModes
         let mode = activeEditorMode
         for m in EditorMode.allCases { r.setSelected(m == mode, forSegment: m.rawValue) }
+        updateEditorModesPullDown()
+        updateAreaToggleTitles()
     }
 
     /// The left segments follow every way the left area changes: menu
     /// items, ⌘0–⌘9, the divider, window restoration (§4.1.3).
     func observeLeftArea() {
         navigator.onContentChange = { [weak self] in self?.updateToolbarState() }
+        navigator.onShowCodingAssistant = { [weak self] in _ = self?.codingAssistant }
         let token = NotificationCenter.default.addObserver(forName: NSSplitView.didResizeSubviewsNotification, object: mainSplit.splitView,
                                                            queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateToolbarState() }
@@ -1673,6 +1794,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             MainActor.assumeIsolated { self?.updateToolbarState() }
         }
         leftAreaObservation.tokens = [token, kvo]
+        observeToolbarRoom()
     }
 
     public func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -1696,7 +1818,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             let c = NSSegmentedControl(images: [NSImage(systemSymbolName: "play.fill", accessibilityDescription: "Run")!,
                                                 NSImage(systemSymbolName: "stop.fill", accessibilityDescription: "Stop")!],
                                        trackingMode: .momentary, target: self, action: #selector(runStopChosen(_:)))
-            for (i, t) in Self.runStopToolTips.enumerated() { c.setToolTip(t, forSegment: i) }
+            for (i, t) in Self.runStopToolTips.enumerated() { c.setToolTip(t, forSegment: i); c.setWidth(ToolbarGlass.pairSegment, forSegment: i) }
             let item = NSToolbarItem(itemIdentifier: id)
             item.view = c
             item.label = "Run"
@@ -1705,20 +1827,21 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             let c = NSSegmentedControl(images: [NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Go Back")!,
                                                 NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Go Forward")!],
                                        trackingMode: .momentary, target: self, action: #selector(historyChosen(_:)))
-            for (i, t) in Self.historyToolTips.enumerated() { c.setToolTip(t, forSegment: i) }
+            for (i, t) in Self.historyToolTips.enumerated() { c.setToolTip(t, forSegment: i); c.setWidth(ToolbarGlass.pairSegment, forSegment: i) }
             let item = NSToolbarItem(itemIdentifier: id)
             item.view = c
             item.label = "Back/Forward"
             return item
         case Self.newConversationID:
-            // §4.3.3: Ycode has no coding assistant; the button is disabled.
+            // §4.3.3: a new conversation in the Coding Assistant pane
+            // (coding-assistant.md §4).
             let item = NSToolbarItem(itemIdentifier: id)
             item.image = NSImage(systemSymbolName: "plus.bubble", accessibilityDescription: "New Conversation")
             item.label = "New Conversation"
             item.toolTip = "New Conversation"
             item.isBordered = true
-            item.autovalidates = false
-            item.isEnabled = false
+            item.target = self
+            item.action = #selector(toggleNewConversationPrompt(_:))   // reference-ui-6.md §9.4
             return item
         case Self.leftPanesID:
             let c = toolbarControls.leftPanes
@@ -1733,12 +1856,17 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             c.target = self
             c.action = #selector(editorModeChosen(_:))
             let item = NSToolbarItem(itemIdentifier: id)
-            item.view = c
+            item.view = toolbarControls.fit.editorModesCollapsed ? toolbarControls.editorModesPullDown : c
             item.label = "Editor Modes"
+            item.visibilityPriority = .high
             return item
         case Self.stopID: return button("stop.fill", "Stop", #selector(stopProduct(_:)))
         case Self.libraryID: return button("plus", "Library", #selector(showLibrary(_:)))
-        case Self.inspectorToggleID: return button("sidebar.right", "Show Inspector", #selector(toggleInspector(_:)))
+        case Self.inspectorToggleID:
+            // reference-ui-6.md §2.5: the title follows the inspector's state.
+            let item = button("sidebar.right", Self.inspectorToggleTitle(shown: inspectorItem.map { !$0.isCollapsed } ?? true), #selector(toggleInspector(_:)))
+            item.visibilityPriority = .user   // §2.2.3: never hidden
+            return item
         case Self.schemeID:
             schemePopUp.target = self
             schemePopUp.action = #selector(schemeChosen(_:))
@@ -1752,19 +1880,38 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             chevron.textColor = .tertiaryLabelColor
             let stack = NSStackView(views: [schemePopUp, chevron, destinationPopUp])
             stack.spacing = 0
+            // The titles keep clear of the glass capsule's rounded ends.
+            if #available(macOS 26, *) { stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 8) }
+            // §2.2.2: the scheme name truncates before the destination does.
+            schemePopUp.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            destinationPopUp.setContentCompressionResistancePriority(.defaultHigh + 1, for: .horizontal)
             let item = NSToolbarItem(itemIdentifier: id)
             item.view = stack
             item.label = "Scheme"
+            item.visibilityPriority = .high
+            item.isBordered = true   // its own glass capsule (liquid-glass.md §2.2)
             return item
         case Self.issuesID:
             let item = NSToolbarItem(itemIdentifier: id)
             item.view = issueCapsule
             item.label = "Issues"
+            item.visibilityPriority = .high
+            item.isBordered = true   // its own glass capsule (liquid-glass.md §2.2)
+            item.isHidden = issueCapsule.isHidden   // no empty capsule
+            // §2.3: each button opens the Issue navigator.
+            issueCapsule.onClick = { [weak self] _ in self?.showNavigator(4) }
+            issueCapsule.onPartsChange = { [weak self] in
+                guard let self else { return }
+                self.window?.toolbar?.items.first { $0.itemIdentifier == Self.issuesID }.map { $0.isHidden = self.issueCapsule.isHidden }
+                self.scheduleToolbarFit()
+            }
             return item
         case Self.activityID:
             let item = NSToolbarItem(itemIdentifier: id)
             item.view = activityView
             item.label = "Activity"
+            item.isBordered = false   // no glass shape (liquid-glass.md §2.2)
+            activityView.onNaturalWidthChange = { [weak self] in self?.scheduleToolbarFit() }
             return item
         default: return nil
         }
@@ -1774,10 +1921,13 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     public static let runStopToolTips = ["Build and then run the current scheme", "Stop the running scheme or application"]
     public static let historyToolTips = ["Show Previous Location in History", "Show Next Location in History"]
 
-    /// §4.3.4: the pill's pop-ups carry these accessibility names.
+    /// §4.3.4, reference-ui-6.md §2.1 (T6): the pill's pop-ups carry these
+    /// accessibility titles (and names).
     func labelSchemePill() {
         schemePopUp.setAccessibilityLabel("Active Scheme")
+        schemePopUp.setAccessibilityTitle("Active Scheme")
         destinationPopUp.setAccessibilityLabel("Active Run Destination")
+        destinationPopUp.setAccessibilityTitle("Active Run Destination")
     }
 
     @objc func runStopChosen(_ c: NSSegmentedControl) {
@@ -1790,6 +1940,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         destinationDefault.applied = session.destination
         chooseDefaultDestination()
         rebuildDestinationMenu()
+        scheduleToolbarFit()
     }
     @objc func destinationChosen(_ p: NSPopUpButton) {
         guard let key = p.selectedItem?.representedObject as? String else { return }
@@ -1808,9 +1959,15 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         // reference-ui-5.md §11.5).
         let settings = RemoteSimulatorSettings.load(Preferences.shared.defaults)
         if settings.isConfigured {
-            let remote = RemoteSimulator(settings: settings).destination
-            groups.append(DestinationGroup(title: "Ycode", destinations: [remote]))
-            if session.destination?.isYcodeRemoteSimulator == true { session.destination = remote }
+            // One row per runtime root and device type (run.md §Runtimes and device types).
+            let rows = RemoteSimulator.destinations(settings)
+            groups.append(DestinationGroup(title: "Ycode", destinations: rows))
+            if let d = session.destination, d.isYcodeRemoteSimulator {
+                session.destination = rows.first { $0.identifier == d.identifier } ?? rows.first
+                // A default stays a default when its row is relisted (with
+                // its runtime version, for example).
+                if destinationDefault.applied == d { destinationDefault.applied = session.destination }
+            }
         }
         session.model.destinationGroups = groups
         reloadSchemes()
@@ -1966,7 +2123,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
                 guard result.status == .succeeded, let exe = await Task.detached(operation: { engine.executablePath(for: request) }).value else { return }
                 let app = URL(fileURLWithPath: Self.simulatorAppPath(fromExecutablePath: exe))
                 if d.isYcodeRemoteSimulator {
-                    await session.runOnRemoteSimulator(app: app, remote: RemoteSimulator(settings: RemoteSimulatorSettings.load(Preferences.shared.defaults)))
+                    await session.runOnRemoteSimulator(app: app, remote: RemoteSimulator(settings: RemoteSimulatorSettings.load(Preferences.shared.defaults), destination: d))
                 } else if let udid = d.identifier {
                     await session.runOnSimulator(app: app, udid: udid, debug: true, simctl: simctl)
                 }
@@ -2144,6 +2301,9 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         reloadSchemes()
     }
 
+    /// The Open Quickly panel's corner radius (liquid-glass-ycode.md §7).
+    static let openQuicklyCornerRadius: CGFloat = 20
+
     /// File ▸ Open Quickly… (Shift-Command-O): fuzzy search over the
     /// workspace's files and symbols.
     @discardableResult
@@ -2152,7 +2312,15 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         let c = OpenQuicklyController(candidates: candidateIndex.value ?? [])
         withWorkspaceCandidates { [weak c] candidates in c?.update(candidates: candidates) }
         c.onOpen = { [weak self] r in self?.open(path: r.path, line: r.line) }
-        if window?.isVisible == true { contentViewController?.presentAsSheet(c) }
+        guard let window, window.isVisible else { return c }
+        if #available(macOS 26, *) {
+            // A floating glass panel over the window (liquid-glass-ycode.md §7).
+            let panel = GlassPanel(content: c, cornerRadius: Self.openQuicklyCornerRadius)
+            c.onClose = { [weak panel] in panel?.close() }
+            panel.show(over: window)
+        } else {
+            contentViewController?.presentAsSheet(c)
+        }
         return c
     }
 
@@ -2311,7 +2479,6 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         }
     }
 
-
     @objc public func revealInProjectNavigator(_ sender: Any?) {
         navigatorItem.isCollapsed = false
         navigator.select(0)
@@ -2322,6 +2489,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         if let generic = Self.menuBarGenericTitle(item) { item.title = MenuTitles.title(generic: generic, in: menuContext) }
         if let r = validateMenuBarItem(item) { return r }
         if let r = validateDebugMenuItem(item) { return r }
+        if let r = validateCodingAssistantItem(item) { return r }
         switch item.action {
         case #selector(closeDocument(_:)): return editor.fileURL != nil
         case #selector(closeEditor(_:)): return EditorCloseCommand.editorPane.isEnabled(paneCount: editorArea.tab.editors.count)

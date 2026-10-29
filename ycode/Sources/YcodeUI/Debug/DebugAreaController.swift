@@ -1,4 +1,5 @@
 import AppKit
+import YcodeSimFeatures
 import YcodeDebug
 
 /// A row of the variables view. Children load lazily on first expansion.
@@ -64,6 +65,11 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
     /// the editor so it stays visible while the debug area is hidden
     /// (reference-ui.md §3, §5).
     public let debugBar = NSView()
+    /// The editor's bottom bar is translucent over the editor (macOS 26+).
+    static var translucentBar: Bool { GlassBars.enabled }
+    /// The debug bar's height with its separator: 36 with the Liquid
+    /// Glass design (liquid-glass.md §2.6), 27 before.
+    static var debugBarHeight: CGFloat { translucentBar ? 36 : 27 }
     /// Debug bar extras (DebugBarExtras.swift): the branch at the right
     /// end, the variables' A/L badges and loading spinner.
     public let branchLabel = NSTextField(labelWithString: "")
@@ -73,10 +79,40 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
     /// The local branches (name, current) for the branch menu, and what
     /// choosing one does (set by the window).
     public var branchesProvider: (() -> [(String, Bool)])?
+    /// Environment Overrides of the running app (EnvironmentOverridesPanel.swift):
+    /// sends the overrides; nil when no run takes them. Set by the window.
+    public var applyEnvironmentOverrides: ((EnvironmentOverrides) async -> (Bool, String))?
+    /// The overrides last applied to the running app.
+    public var environmentOverrides = EnvironmentOverrides()
+    /// The run the overrides and the location belong to (the bundle id and
+    /// the run's pid; nil: no run on the Ycode simulator). A new run starts
+    /// with none (ycode-simd removes the app's overrides at its launch).
+    public var simulatorRunKey: (() -> String?)?
+    var overridesRunKey: String?
+    /// Simulate Location for the running app's device: the words after
+    /// `location` (`set <lat>,<lon>`, `run <scenario>`, `clear`); nil when no
+    /// run takes them. Set by the window.
+    public var simulateLocationHandler: (([String]) async -> (Bool, String))?
+    /// The location item last chosen ("Don't Simulate Location" when nil).
+    public var simulatedLocation: String?
     public var onSwitchBranch: ((String) -> Void)?
     /// The debug bar's row and its far-right show/hide toggle (tests).
     public internal(set) var debugBarStack: NSStackView?
     public internal(set) var debugAreaToggle: NSButton?
+
+    /// The debug-area toggle's title and tooltip name what it does
+    /// (`reference-ui-6.md` §2.5, T7).
+    public static func debugAreaToggleTitle(shown: Bool) -> String { shown ? "hide debug area" : "show debug area" }
+
+    /// Updates the debug-area toggle for the area's state.
+    public func setDebugAreaShown(_ shown: Bool) {
+        guard let b = debugAreaToggle else { return }
+        let t = Self.debugAreaToggleTitle(shown: shown)
+        guard b.toolTip != t else { return }
+        b.toolTip = t
+        b.setAccessibilityTitle(t)
+        b.image?.accessibilityDescription = t
+    }
     /// Holds the Code Review controls while comparing (reference-ui-4 §15.1).
     public let reviewSlot = NSStackView()
     public internal(set) var variableBadges: [String: String] = [:]
@@ -157,8 +193,8 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
         let hide = NSButton(image: NSImage(systemSymbolName: "rectangle.bottomthird.inset.filled", accessibilityDescription: "Hide Debug Area")!,
                             target: nil, action: Selector(("toggleDebugArea:")))
         hide.isBordered = false
-        hide.toolTip = "Show or hide the debug area"
         debugAreaToggle = hide
+        setDebugAreaShown(false)
         bar.addArrangedSubview(hide)
         debugBarStack = bar
 
@@ -220,11 +256,22 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
         icon(outputOptionsButton, "list.bullet.rectangle", "Metadata Options", #selector(showOutputOptions(_:)), toggle: false)
         filterPopUp.toolTip = "Filter options"
         consoleSearch.toolTip = "Filter"
-        let consoleBar = NSStackView(views: [consoleQuickLook, outputOptionsButton, filterPopUp, consoleSearch, clearButton, showVariablesButton, showConsoleButton])
+        // reference-ui-6.md §7 (D1): no output-kind pop-up; output filtering
+        // is the filter field's and Metadata Options' (the toggles keep
+        // `consoleFilter`).
+        let consoleBar = NSStackView(views: [consoleQuickLook, outputOptionsButton, consoleSearch, clearButton, showVariablesButton, showConsoleButton])
         consoleBar.spacing = 6
         consoleBarStack = consoleBar
         consoleBar.edgeInsets = NSEdgeInsets(top: 2, left: 6, bottom: 2, right: 6)
-        let consoleColumn = NSStackView(views: [consoleScroll, NSBox.hairline(), inputRow, NSBox.hairline(), consoleBar])
+        // §7 (D1): the command-entry line shows only during a debug session.
+        let inputRule = NSBox.hairline()
+        consoleInputViews = [inputRule, inputRow]
+        for v in consoleInputViews { v.isHidden = true }
+        // liquid-glass.md §2.6: no separator line above the bottom bars
+        // (macOS 26+).
+        let consoleBarRule = NSBox.hairline()
+        consoleBarRule.isHidden = GlassBars.enabled
+        let consoleColumn = NSStackView(views: [consoleScroll, inputRule, inputRow, consoleBarRule, consoleBar])
         consoleColumn.orientation = .vertical
         consoleColumn.spacing = 0
         consoleScroll.setContentHuggingPriority(.defaultLow, for: .vertical)
@@ -287,7 +334,9 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
         variablesFilter.toolTip = "Filter"
         scopePopUp.toolTip = "Variables scope"
         varsBar.edgeInsets = NSEdgeInsets(top: 2, left: 6, bottom: 2, right: 6)
-        let varsColumn = NSStackView(views: [varsScroll, NSBox.hairline(), varsBar])
+        let varsBarRule = NSBox.hairline()
+        varsBarRule.isHidden = GlassBars.enabled
+        let varsColumn = NSStackView(views: [varsScroll, varsBarRule, varsBar])
         varsColumn.orientation = .vertical
         varsColumn.spacing = 0
         varsScroll.setContentHuggingPriority(.defaultLow, for: .vertical)
@@ -302,6 +351,21 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
         split.addArrangedSubview(consoleColumn)
 
         let topSep = NSBox.hairline()
+        if Self.translucentBar {
+            // liquid-glass.md §2.6, §3.2: a translucent bar over the editor
+            // text scrolled beneath it, strongly blurred, with a hard edge
+            // (the separator above); the system's header material.
+            let material = NSVisualEffectView()
+            material.material = .headerView
+            material.blendingMode = .withinWindow
+            material.state = .active   // blurred in inactive windows too (§3.2 was observed inactive)
+            material.translatesAutoresizingMaskIntoConstraints = false
+            debugBar.addSubview(material)
+            NSLayoutConstraint.activate([
+                material.topAnchor.constraint(equalTo: debugBar.topAnchor), material.bottomAnchor.constraint(equalTo: debugBar.bottomAnchor),
+                material.leadingAnchor.constraint(equalTo: debugBar.leadingAnchor), material.trailingAnchor.constraint(equalTo: debugBar.trailingAnchor),
+            ])
+        }
         for v in [topSep, bar] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             debugBar.addSubview(v)
@@ -316,7 +380,7 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
             bar.leadingAnchor.constraint(equalTo: debugBar.leadingAnchor),
             bar.trailingAnchor.constraint(equalTo: debugBar.trailingAnchor),
             bar.bottomAnchor.constraint(equalTo: debugBar.bottomAnchor),
-            bar.heightAnchor.constraint(equalToConstant: 26),
+            bar.heightAnchor.constraint(equalToConstant: Self.debugBarHeight - 1),
             split.topAnchor.constraint(equalTo: root.topAnchor),
             split.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             split.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -541,11 +605,18 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
     }
 
     /// Continue and the step buttons show only during a debug session;
-    /// the breakpoint toggle is always there (reference-ui.md §2).
+    /// the breakpoint toggle is always there (reference-ui.md §2). So does
+    /// the console's command-entry line (reference-ui-6.md §7, D1).
     public func setDebugging(_ on: Bool) {
         _ = view
         for b in barButtonViews where b.action != Selector(("toggleBreakpointsActive:")) { b.isHidden = !on }
+        for v in consoleInputViews where v.isHidden == on { v.isHidden = !on }
     }
+
+    /// The console's command-entry line and the rule above it.
+    private var consoleInputViews: [NSView] = []
+    /// Whether the command-entry line is shown (tests).
+    public var isConsoleInputShown: Bool { _ = view; return consoleInputViews.contains { !$0.isHidden } }
 
     /// The debug bar's Pause / Continue button.
     public var pauseContinueButton: NSButton? {

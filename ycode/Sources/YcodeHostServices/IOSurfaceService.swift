@@ -261,6 +261,9 @@ public final class IOSurfaceHostService: @unchecked Sendable {
             let object = try XPCWire.decode(body: m.body, descriptors: wire)
             guard case let .dictionary(d) = object else { throw XPCWireError.noPayload }
             (reply, afterReply) = perform(d, connection: m.localPort)
+            if Self.failureLog, let code = reply.first(where: { $0.0 == "ErrorCode" })?.1.uint64Value, code != 0 {
+                logFailure(d, code: code)
+            }
         } catch {
             log("iosurface: undecodable request: \(error)")
             reply = [("ErrorCode", Self.code(IOReturn.badArgument))]
@@ -281,6 +284,22 @@ public final class IOSurfaceHostService: @unchecked Sendable {
         rest.replyPort = 0
         drop(rest)
         afterReply?()
+    }
+
+    /// Diagnostics (`YCODE_IOSURFACE_LOG=1`): each failed request is logged
+    /// (the first 64): method, error, and the creation keys of a create.
+    static let failureLog = ProcessInfo.processInfo.environment["YCODE_IOSURFACE_LOG"] == "1"
+    private var failuresLogged = 0
+
+    private func logFailure(_ d: XPCDict, code: UInt64) {
+        guard failuresLogged < 64 else { return }
+        failuresLogged += 1
+        var text = "iosurface: method \(d["Method"]?.uint64Value ?? .max) failed \(String(format: "0x%08x", UInt32(truncatingIfNeeded: code)))"
+        if case let .data(blob)? = d["PropertiesDictionary"], let props = try? OSSerialize.decode(blob), let pairs = props.dictionaryValue {
+            text += "; properties: " + pairs.map { "\($0.key)=\($0.value.numberValue.map(String.init) ?? $0.value.stringValue ?? "…")" }
+                .sorted().joined(separator: " ")
+        }
+        log(text)
     }
 
     static func code(_ ioReturn: UInt32) -> XPCObject { .uint64(UInt64(bitPattern: Int64(Int32(bitPattern: ioReturn)))) }
@@ -499,6 +518,160 @@ public final class IOSurfaceHostService: @unchecked Sendable {
         guard alloc > 0, alloc <= 1 << 31 else { return nil }
         l.allocationSize = UInt32(alloc)
         return l
+    }
+
+    /// A surface made by the host itself for a shared texture (Ycode's Metal
+    /// host, messageType 19; metal-sim-protocol.md §5.10, visionos.md
+    /// §10.10.2), as the reference host makes it: width, height, bytes per
+    /// row, pixel format and plane count 0, bytes per element 1, the given
+    /// allocation size (the memory is rounded up to 16 KiB), the name, and
+    /// the given creation properties (numbers; 64-bit when the value needs
+    /// it) plus `IOSurfaceName`. Every process that looks the surface up by
+    /// ID or port sees them (Method 10). It has a Method-14 port: a receive
+    /// right of the host task whose send right the caller hands to the
+    /// guest, which looks the surface up by it like any surface port.
+    /// Returns the port name, or nil.
+    public func makeSharedTextureSurface(allocationSize: UInt32, name: String,
+                                         properties: [(key: String, value: UInt64)]) -> UInt32? {
+        guard allocationSize > 0, allocationSize <= 1 << 31 else { return nil }
+        var l = Layout()
+        l.allocationSize = allocationSize
+        let size = (UInt64(allocationSize) + 0x3FFF) & ~0x3FFF
+        guard let memory = try? SharedMemoryObject(size: size),
+              let entry = try? host.makeMemoryEntry(memory), let port = try? host.makePort() else { return nil }
+        var creation: [(key: String, value: OSValue)] = properties.map {
+            ($0.key, .number($0.value, bits: $0.value > UInt64(UInt32.max) ? 64 : 32))
+        }
+        if let i = creation.firstIndex(where: { $0.key == "IOSurfaceAllocSize" }) {
+            creation.insert(("IOSurfaceName", .string(name)), at: i + 1)
+        } else {
+            creation.append(("IOSurfaceName", .string(name)))
+        }
+        lock.withLock {
+            var id: UInt32 = 1
+            while surfaces[id] != nil { id += 1 }
+            let surface = Surface(id: id, memory: memory, entry: entry, serial: nextSurfaceSerial, name: name, creation: creation,
+                                  planes: [], layout: l)
+            nextSurfaceSerial &+= 1
+            surface.ports.insert(port)
+            surfaces[id] = surface
+            surfacePorts[port] = id
+        }
+        try? host.addMember(port, to: portSet)
+        _ = try? host.requestNotification(port, id: MachNotify.noSenders, sync: 1, notifyPort: port)
+        return port
+    }
+
+    /// One plane of a surface the host lays out itself (`makeHostSurface`).
+    public struct HostPlane: Sendable, Equatable {
+        public var offset: Int, width: Int, height: Int, bytesPerRow: Int, bytesPerElement: Int, size: Int
+        public init(offset: Int, width: Int, height: Int, bytesPerRow: Int, bytesPerElement: Int, size: Int) {
+            (self.offset, self.width, self.height) = (offset, width, height)
+            (self.bytesPerRow, self.bytesPerElement, self.size) = (bytesPerRow, bytesPerElement, size)
+        }
+    }
+
+    /// A surface the host makes and fills itself (camera frames,
+    /// camera-host.md §5), with a full layout: width, height, pixel format,
+    /// bytes per element and row, allocation size, and per-plane info for
+    /// planar formats. The creation properties are the public
+    /// `IOSurfaceRef.h` keys a guest client would have passed (so Method 10
+    /// and the plane methods answer as for a guest-made surface), plus
+    /// `IOSurfaceName`. `attachments` preset Method 21's values (known keys
+    /// only). Like a shared texture surface it has a Method-14 port (a
+    /// receive right of the host task) that keeps it alive until
+    /// `releaseHostSurface(port:)`; guests look it up by ID or by a send
+    /// right to that port. Returns the port and the surface, or nil.
+    public func makeHostSurface(width: Int, height: Int, pixelFormat: UInt32, bytesPerElement: Int, bytesPerRow: Int,
+                                allocationSize: Int, planes: [HostPlane], name: String,
+                                attachments: [String: UInt64] = [:]) -> (port: UInt32, surface: IOSurfaceInfo)? {
+        guard width > 0, height > 0, width <= 0x4000, height <= 0x4000, allocationSize > 0, allocationSize <= 1 << 31,
+              planes.allSatisfy({ $0.offset >= 0 && $0.offset + $0.size <= allocationSize }) else { return nil }
+        var l = Layout()
+        l.width = UInt32(width)
+        l.height = UInt32(height)
+        l.pixelFormat = pixelFormat
+        l.bytesPerElement = UInt32(max(bytesPerElement, 1))
+        l.bytesPerRow = UInt32(bytesPerRow)
+        l.allocationSize = UInt32(allocationSize)
+        func n(_ v: Int) -> OSValue { .number(UInt64(v), bits: 32) }
+        let planeInfo: [OSValue] = planes.map {
+            .dictionary([("IOSurfacePlaneWidth", n($0.width)), ("IOSurfacePlaneHeight", n($0.height)),
+                         ("IOSurfacePlaneBytesPerRow", n($0.bytesPerRow)), ("IOSurfacePlaneOffset", n($0.offset)),
+                         ("IOSurfacePlaneSize", n($0.size)), ("IOSurfacePlaneBytesPerElement", n($0.bytesPerElement))])
+        }
+        var creation: [(key: String, value: OSValue)] = [
+            ("IOSurfaceWidth", n(width)), ("IOSurfaceHeight", n(height)), ("IOSurfacePixelFormat", n(Int(pixelFormat))),
+            ("IOSurfaceBytesPerElement", n(Int(l.bytesPerElement))), ("IOSurfaceBytesPerRow", n(bytesPerRow)),
+            ("IOSurfaceAllocSize", n(allocationSize)), ("IOSurfaceName", .string(name)),
+        ]
+        if !planeInfo.isEmpty { creation.append(("IOSurfacePlaneInfo", .array(planeInfo))) }
+        let size = (UInt64(allocationSize) + 0x3FFF) & ~0x3FFF
+        guard let memory = try? SharedMemoryObject(size: size),
+              let entry = try? host.makeMemoryEntry(memory), let port = try? host.makePort() else { return nil }
+        let info: IOSurfaceInfo = lock.withLock {
+            var id: UInt32 = 1
+            while surfaces[id] != nil { id += 1 }
+            let surface = Surface(id: id, memory: memory, entry: entry, serial: nextSurfaceSerial, name: name, creation: creation,
+                                  planes: planeInfo, layout: l)
+            nextSurfaceSerial &+= 1
+            for (k, v) in attachments where Self.attachmentDefaults[k] != nil { surface.attachments[k] = .uint64(v) }
+            surface.ports.insert(port)
+            surfaces[id] = surface
+            surfacePorts[port] = id
+            return self.info(surface)
+        }
+        try? host.addMember(port, to: portSet)
+        _ = try? host.requestNotification(port, id: MachNotify.noSenders, sync: 1, notifyPort: port)
+        return (port, info)
+    }
+
+    /// Ends the host's hold on a surface from `makeHostSurface` (or
+    /// `makeSharedTextureSurface`): its port is destroyed, and the surface
+    /// goes once no guest connection references it (§8 item 8).
+    public func releaseHostSurface(port: UInt32) {
+        var freed: Surface?
+        lock.withLock {
+            guard let id = surfacePorts.removeValue(forKey: port) else { return }
+            try? host.destroyPort(port)
+            surfaces[id]?.ports.remove(port)
+            freed = releaseIfUnused(id)
+        }
+        if let s = freed { try? host.deallocate(s.entry) }
+    }
+
+    /// After the host wrote a surface's pixels: raises its seed, as a guest
+    /// lock for writing does (§3.1), so readers that skip unchanged surfaces
+    /// (the GPU back end) see the new contents. Returns the new seed.
+    @discardableResult
+    public func hostDidWrite(id: UInt32) -> UInt32? {
+        lock.withLock {
+            guard let s = surfaces[id] else { return nil }
+            s.seed &+= 1
+            return s.seed
+        }
+    }
+
+    /// What guests hold on a surface: the use count (Methods 15, 16), the
+    /// lock count (Methods 4, 5), and the connections that reference it
+    /// (Method 2). Nil when there is no such surface.
+    public func guestUsage(id: UInt32) -> (useCount: Int, lockCount: Int, references: Int)? {
+        lock.withLock {
+            guard let s = surfaces[id] else { return nil }
+            let refs = connections.values.reduce(0) { $0 + max(0, $1.references[id] ?? 0) }
+            return (s.useCount, s.lockCount, refs)
+        }
+    }
+
+    /// The surface behind a Method-14 port (a host-task name): its ID and
+    /// its creation properties that are numbers, or nil.
+    public func creationNumbers(forPort port: UInt32) -> (id: UInt32, numbers: [String: UInt64])? {
+        lock.withLock {
+            guard let id = surfacePorts[port], let s = surfaces[id] else { return nil }
+            var numbers: [String: UInt64] = [:]
+            for (k, v) in s.creation { if let n = v.numberValue { numbers[k] = n } }
+            return (id, numbers)
+        }
     }
 
     /// Tests: a connection without a Mach port behind it.

@@ -6,6 +6,7 @@ import YcodeDebug
 /// annotation, the breakpoint navigator's marker and extra "+" kinds.
 extension WorkspaceWindowController {
     func wireDebuggerUI() {
+        wireSimulatorDebugBar()
         navigator.onToggleBreakpointEnabled = { [weak self] file, line in
             self?.session.breakpoints.edit(file: file, line: line) { $0.isEnabled.toggle() }
         }

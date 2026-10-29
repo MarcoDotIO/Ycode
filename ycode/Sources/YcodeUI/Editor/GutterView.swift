@@ -16,7 +16,8 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
         public var currentLine: Int?
         /// Test lines: nil = not run yet.
         public var tests: [Int: TestStatusMark] = [:]
-        /// Issue lines with a fix-it: a lightbulb replaces the issue dot.
+        /// Issue lines with a fix-it (offered from the line's annotation;
+        /// the gutter draws no issue glyph, reference-ui-6.md §4.3.2).
         public var fixable: Set<Int> = []
         /// Issues from before the last edit: drawn grey (reference-ui-4.md §4).
         public var issuesStale = false
@@ -131,16 +132,17 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
                 Theme.currentLineColor.withAlphaComponent(0.9).setFill()
                 NSBezierPath(rect: NSRect(x: inset, y: row.minY, width: 3, height: row.height)).fill()
             }
-            if showsLineNumbers {
+            // A test line shows its diamond in place of the number
+            // (reference-ui-6.md §4.3.1, E6).
+            if let t = marks.tests[line] {
+                drawTestDiamond(t, at: NSPoint(x: testDiamondCenterX(numberWidth: numberWidth), y: row.midY))
+            } else if showsLineNumbers {
                 let isBP = marks.breakpoints[line] != nil
                 var a = attrs
                 if isBP { a[.foregroundColor] = NSColor.white } else if line == caretLine { a[.foregroundColor] = NSColor.labelColor }
                 let s = NSAttributedString(string: "\(line)", attributes: a)
                 let size = s.size()
                 s.draw(at: NSPoint(x: numberWidth - 8 - size.width, y: row.minY + (row.height - size.height) / 2))
-            }
-            if let t = marks.tests[line] {
-                drawTestDiamond(t, at: NSPoint(x: 14 + inset, y: row.midY))
             }
             if showsRibbon, let folded = foldStarts[line] {
                 drawFoldMark(folded: folded, at: NSPoint(x: numberWidth + Self.ribbonWidth / 2, y: row.midY))
@@ -149,16 +151,8 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
                 (k == .added ? NSColor.systemGreen : (k == .removed ? NSColor.systemRed : NSColor.systemBlue)).setFill()
                 NSRect(x: bounds.width - 3, y: k == .removed ? row.minY - 1 : row.minY, width: 3, height: k == .removed ? 3 : row.height).fill()
             }
-            if let sev = marks.issues[line] {
-                let color = InlineIssueLayout.color(sev, stale: marks.issuesStale)
-                if marks.fixable.contains(line), let bulb = NSImage(systemSymbolName: "lightbulb.fill", accessibilityDescription: "Fix-it") {
-                    let tinted = bulb.withSymbolConfiguration(.init(paletteColors: [color])) ?? bulb
-                    tinted.draw(in: NSRect(x: 1 + inset, y: row.midY - 6, width: 12, height: 12))
-                } else {
-                    color.setFill()
-                    NSBezierPath(ovalIn: NSRect(x: 4 + inset, y: row.midY - 3, width: 6, height: 6)).fill()
-                }
-            }
+            // Issues have no gutter glyph: the line tint, underline and
+            // annotation in the text show them (§4.3.2).
         }
     }
 
@@ -192,8 +186,25 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
         p.fill()
     }
 
-    /// A test diamond left of the line number: outlined when not run, green when
-    /// passed, red when failed.
+    /// The diamond's centre: where the line number's digits sit.
+    func testDiamondCenterX(numberWidth: CGFloat) -> CGFloat { numberWidth - 8 - 7 }
+
+    /// A click at `x` (gutter coordinates) hits a test line's diamond: the
+    /// number's area, right of the change column.
+    public func isOnTestDiamond(x: CGFloat) -> Bool {
+        let c = testDiamondCenterX(numberWidth: ruleThickness - Self.ribbonWidth)
+        return x >= leftInset && abs(x - c) <= 12
+    }
+
+    /// What a line shows in the number column: its test diamond, its
+    /// number, or nothing (tests).
+    public func numberColumnContent(line: Int) -> String {
+        if let t = marks.tests[line] { return "diamond:\(t)" }
+        return showsLineNumbers ? "\(line)" : ""
+    }
+
+    /// A test diamond in place of the line number: outlined when not run,
+    /// green when passed, red when failed.
     private func drawTestDiamond(_ t: TestStatusMark, at c: NSPoint) {
         let r: CGFloat = 4.5
         let p = NSBezierPath()
@@ -234,11 +245,7 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
             onRibbonClick?(line)
             return
         }
-        if marks.fixable.contains(line), x < 14 {
-            onFixIt?(line)
-            return
-        }
-        if marks.tests[line] != nil, x >= 7, x <= 21 {
+        if marks.tests[line] != nil, isOnTestDiamond(x: start.x) {
             onRunTest?(line)
             return
         }

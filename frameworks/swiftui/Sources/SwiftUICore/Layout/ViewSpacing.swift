@@ -99,7 +99,7 @@ public struct ViewSpacing: Sendable {
     public func distance(to next: ViewSpacing, along axis: Axis) -> CGFloat {
         let a = axis == .horizontal ? trailing : bottom
         let b = axis == .horizontal ? next.leading : next.top
-        var best: CGFloat? = nil
+        var best: CGFloat?
         for p in a {
             for q in b {
                 let d = SpacingPreference.distance(p, q)

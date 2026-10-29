@@ -449,7 +449,7 @@ data-protection classes and `open_dprotected_np` (216, 218), csops per xnu
 
 | n | Routine | VMM behavior |
 |---|---|---|
-| 17 | `thread_get_state(thread, flavor, state, &count)` | Flavors 1 (unified, 70 words), 6 (68), 7 (4); threads of the caller's task only; the state is the registers at the entry of the thread's current trap. A thread running guest code gives `KERN_FAILURE` (libobjc then keeps its old method caches) |
+| 17 | `thread_get_state(thread, flavor, state, &count)` | Flavors 1 (unified, 70 words), 6 (68), 7 (4); threads of the caller's task only; the state is the registers at the entry of the thread's current trap. A thread running guest code gives `KERN_FAILURE` (libobjc then keeps its old method caches); a suspended thread: where it stopped (§11.7) |
 | 18 | `thread_get_exception_ports` | xnu `ipc_tt.c`: entries grouped by identical (port, behavior, flavor); none set → 0 entries |
 | 19 | `thread_set_exception_ports` | Stored per thread, released with the thread or task; never delivered |
 
@@ -457,6 +457,10 @@ data-protection classes and `open_dprotected_np` (216, 218), csops per xnu
 (not atomic). Library additions: `posix_madvise`, `csr_check`,
 `csr_get_active_config`, `kpersona_*`, `mach_error_string` (the
 "(os/kern)" table only).
+Since VISIONOS-R3 also `task_create_identity_token` and
+`task_identity_token_get_task_port` (the token is a send right to the task
+port; visionos.md §10.11.3): visionOS RealityKit clients abort when the
+first fails.
 
 BSD additions: `setattrlist`/`fsetattrlist`/`setattrlistat` (221/229/524;
 Finder info stored as the xattr `com.apple.FinderInfo`, volume attributes
@@ -552,3 +556,28 @@ Evidence: op numbers and the meaning of the cooperative flag are from
 open-source xnu/libpthread (`workqueue_internal.h`, `qos_private.h`;
 level 1). The worker cycle and trap counts are from Ycode traces and exit
 summaries (level 3). The fallback mapping is a Ycode design.
+
+### 11.7 Mach thread and task suspension (agent THREAD-SUSPEND, 2026-10-28)
+
+Hand-written in `kernel/mach.c`; they were generated stubs
+(KERN_NOT_SUPPORTED). Ycode-private traps in the kernel's own range (not
+the `0x7963_2000` routine range): they run on the locked path under L0
+alone, so the suspender can wait with every lock released
+(`threads-and-events.md` §1.6).
+
+| x16 | Routine | Arguments |
+|---|---|---|
+| `0x7963_0020` | `thread_suspend` | thread |
+| `0x7963_0021` | `thread_resume` | thread |
+| `0x7963_0022` | `thread_abort` (x1 = 0), `thread_abort_safely` (x1 = 1) | thread, flag |
+| `0x7963_0023` | `thread_set_state` | thread, flavor, state, count |
+| `0x7963_0024` | `task_suspend` | task (control or read port) |
+| `0x7963_0025` | `task_resume` | task |
+
+Routine 17 (`thread_get_state`, §11.3) now also reports a suspended thread
+where it stopped (parked at its gate, or at the entry of its trap), and the
+start state of a thread made with `PTHREAD_START_SUSPENDED`. While a
+suspended thread moves from the end of its trap to its gate it answers
+`0x7963_0000` (never a `kern_return_t`); the library calls again. A thread
+running user code that is not suspended still gets KERN_FAILURE.
+`thread_info` reports TH_STATE_STOPPED and the thread's suspend count.

@@ -1,3 +1,9 @@
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
+
 /// The register frame the shim saves on every exception and the VMM reads and
 /// edits while the vCPU is stopped. 320 bytes of little-endian u64.
 /// See `specs/simulator/vm-shim-protocol.md` §5.
@@ -25,9 +31,68 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
 
     /// Bits of `resumeFlags`.
     public enum ResumeFlag {
-        /// Bit 0: the shim runs `tlbi vmalle1; dsb ish; isb` before the
-        /// `eret`, then clears the bit.
+        /// Bit 0: the shim runs `tlbi vmalle1is; ic ialluis; dsb ish; isb`
+        /// before the `eret`, then clears the bit.
         public static let flushTLB: UInt64 = 1 << 0
+        /// Bit 1: touch FP/SIMD before the `eret` (`VCPUPool.resumeFPTouch`).
+        public static let fpTouch: UInt64 = 1 << 1
+        /// Bit 2, with bit 0: invalidate the TLB only, not the I-cache
+        /// (vm-shim-protocol.md §5.2).
+        public static let keepICache: UInt64 = 1 << 2
+        /// Bit 3, with bit 0: invalidate only the leaf entries of the 16 KiB
+        /// pages `[VA, VA + count × 16 KiB)`, with VA >> 14 in bits 16–63 and
+        /// count − 1 in bits 8–15 (vm-shim-protocol.md §5.2).
+        public static let byVA: UInt64 = 1 << 3
+        public static let maxPagesByVA: UInt64 = 256
+    }
+
+    /// Diagnostics (`guest-cpu.md` §5): `YCODE_TRAP_PEEL=<1…4>` answers the
+    /// trap `YCODE_TRAP_PEEL_NUMBER` (default 39, `getppid`) with x0 = 1 and
+    /// carry clear at one fixed point of the VMM's path instead of handling
+    /// it: 1 right after the exit (no decode), 2 after the frame is decoded
+    /// (before the trap handler), 3 at the start of the image's trap handler,
+    /// 4 inside the kernel lock. 0 (the default): off. The difference between
+    /// two levels is the cost of the path between them.
+    public static let peelLevel: Int = getenv("YCODE_TRAP_PEEL").flatMap { Int(String(cString: $0)) } ?? 0
+    public static let peelNumber: UInt64 = getenv("YCODE_TRAP_PEEL_NUMBER").flatMap { UInt64(String(cString: $0)) } ?? 39
+
+    /// True when the peel diagnostics answer this trap at `level`.
+    @inline(__always) public static func peels(at level: Int, x16: UInt64) -> Bool {
+        peelLevel == level && x16 & 0xFFFF_FFFF == peelNumber
+    }
+
+    /// The peel answer: x0 = 1, carry clear.
+    public mutating func answerPeeled() {
+        x[0] = 1
+        carry = false
+    }
+
+    /// `YCODE_TLB_BY_VA=0`: every flush invalidates the whole guest TLB (as before).
+    public static let invalidateByVA = getenv("YCODE_TLB_BY_VA").map { String(cString: $0) != "0" } ?? true
+
+    /// Asks the shim to invalidate stale translations before it resumes: those
+    /// of `range` only when it is given and at most `maxPagesByVA` pages, the
+    /// whole guest TLB otherwise. A second request in the same trap for a
+    /// different range (or the whole TLB) widens it to the whole TLB.
+    public mutating func requestTLBInvalidation(_ range: TLBRange?) {
+        var packed: UInt64 = 0
+        if Self.invalidateByVA, let r = range, r.pages >= 1, r.pages <= ResumeFlag.maxPagesByVA,
+           r.va & (VMLayout.pageSize - 1) == 0, r.va >> 62 == 0 {
+            packed = ResumeFlag.byVA | ((r.pages - 1) << 8) | ((r.va >> VMLayout.pageShift) << 16)
+        }
+        let field = ResumeFlag.byVA | 0xFFFF_FFFF_FFFF_FF00
+        if flushTLB {
+            if packed == 0 || resumeFlags & field != packed { resumeFlags &= ~field }
+            return
+        }
+        flushTLB = true
+        resumeFlags |= packed
+    }
+
+    /// The range a by-VA request carries (nil for a whole-TLB flush or none).
+    public var tlbInvalidationRange: TLBRange? {
+        guard flushTLB, resumeFlags & ResumeFlag.byVA != 0 else { return nil }
+        return TLBRange(va: (resumeFlags >> 16) << VMLayout.pageShift, pages: ((resumeFlags >> 8) & 0xFF) + 1)
     }
 
     /// The `kind` field.
@@ -51,8 +116,8 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
         }
     }
 
-    /// `x0`…`x30`: 31 entries.
-    public var x: [UInt64]
+    /// `x0`…`x30`: 31 entries, stored inline (no heap buffer per trap).
+    public var x: TrapRegisters
     public var spEL0: UInt64
     /// For SVC this is already the address after the `svc`.
     public var elr: UInt64
@@ -75,7 +140,7 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
         spEL0: UInt64 = 0, elr: UInt64 = 0, spsr: UInt64 = 0, esr: UInt64 = 0, far: UInt64 = 0,
         tpidrro: UInt64 = 0, tpidr: UInt64 = 0, kind: UInt64 = 0
     ) {
-        self.x = x
+        self.x = TrapRegisters(x)
         self.spEL0 = spEL0
         self.elr = elr
         self.spsr = spsr
@@ -92,7 +157,8 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
         guard bytes.count >= Self.byteCount else {
             throw DarwinABIError.truncated(what: "trap frame", expected: Self.byteCount, actual: bytes.count)
         }
-        x = (0..<Self.registerCount).map { readLE(bytes, at: Offset.x0 + 8 * $0) }
+        x = TrapRegisters()
+        for i in 0..<Self.registerCount { x[i] = readLE(bytes, at: Offset.x0 + 8 * i) }
         spEL0 = readLE(bytes, at: Offset.spEL0)
         elr = readLE(bytes, at: Offset.elr)
         spsr = readLE(bytes, at: Offset.spsr)
@@ -107,10 +173,7 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
     /// call): as `init(decoding:)` without the intermediate byte array.
     public init(decodingFrameAt p: UnsafeRawPointer) {
         @inline(__always) func word(_ offset: Int) -> UInt64 { UInt64(littleEndian: p.loadUnaligned(fromByteOffset: offset, as: UInt64.self)) }
-        x = [UInt64](unsafeUninitializedCapacity: Self.registerCount) { buffer, count in
-            for i in 0..<Self.registerCount { buffer[i] = word(Offset.x0 + 8 * i) }
-            count = Self.registerCount
-        }
+        x = TrapRegisters(loadingFrom: p + Offset.x0)
         spEL0 = word(Offset.spEL0)
         elr = word(Offset.elr)
         spsr = word(Offset.spsr)
@@ -124,9 +187,7 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
     /// Writes the 320-byte frame to `p`: the same bytes as `encoded()`.
     public func encode(into p: UnsafeMutableRawPointer) {
         @inline(__always) func put(_ v: UInt64, _ offset: Int) { p.storeBytes(of: v.littleEndian, toByteOffset: offset, as: UInt64.self) }
-        let n = min(x.count, Self.registerCount)
-        x.withUnsafeBufferPointer { b in for i in 0..<n { put(b[i], Offset.x0 + 8 * i) } }
-        for i in n..<Self.registerCount { put(0, Offset.x0 + 8 * i) }
+        x.store(to: p + Offset.x0)
         put(spEL0, Offset.spEL0)
         put(elr, Offset.elr)
         put(spsr, Offset.spsr)
@@ -154,10 +215,14 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
         set { spsr = newValue ? spsr | AArch64.SPSR.c : spsr & ~AArch64.SPSR.c }
     }
 
-    /// `resumeFlags` bit 0: flush the TLB before resuming.
+    /// `resumeFlags` bit 0: flush the TLB before resuming. Setting it makes
+    /// the flush a whole-TLB one; clearing it drops a by-VA request too.
     public var flushTLB: Bool {
         get { resumeFlags & ResumeFlag.flushTLB != 0 }
-        set { resumeFlags = newValue ? resumeFlags | ResumeFlag.flushTLB : resumeFlags & ~ResumeFlag.flushTLB }
+        set {
+            resumeFlags = newValue ? resumeFlags | ResumeFlag.flushTLB : resumeFlags & ~ResumeFlag.flushTLB
+            resumeFlags &= ~(ResumeFlag.byVA | 0xFFFF_FFFF_FFFF_FF00)
+        }
     }
 
     public var trapKind: Kind? { Kind(rawValue: kind) }
@@ -175,6 +240,82 @@ public struct TrapFrame: Equatable, Sendable, CustomStringConvertible {
         }
         lines.append(" sp=\(hex16(spEL0)) spsr=\(hex16(spsr)) tpidrro=\(hex16(tpidrro)) tpidr=\(hex16(tpidr))")
         return lines.joined(separator: "\n")
+    }
+}
+
+/// `x0`…`x30` of a trap frame: 31 registers stored inline, so a frame is
+/// decoded, edited and copied without a heap buffer (and without the
+/// copy-on-write copy an array makes when one of two frame copies is
+/// edited). A collection of exactly 31 elements; an array or literal with
+/// fewer elements fills the rest with 0, extra elements are ignored.
+public struct TrapRegisters: RandomAccessCollection, MutableCollection, Equatable, Sendable, ExpressibleByArrayLiteral,
+    CustomStringConvertible {
+    public typealias Element = UInt64
+    public typealias Index = Int
+    private var r: (UInt64, UInt64, UInt64, UInt64, UInt64, UInt64, UInt64, UInt64,
+                    UInt64, UInt64, UInt64, UInt64, UInt64, UInt64, UInt64, UInt64,
+                    UInt64, UInt64, UInt64, UInt64, UInt64, UInt64, UInt64, UInt64,
+                    UInt64, UInt64, UInt64, UInt64, UInt64, UInt64, UInt64)
+        = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+    public init() {}
+    public init<S: Sequence>(_ values: S) where S.Element == UInt64 {
+        var i = 0
+        for v in values {
+            guard i < 31 else { break }
+            self[i] = v
+            i += 1
+        }
+    }
+    public init(arrayLiteral elements: UInt64...) { self.init(elements) }
+
+    /// Loads 31 little-endian words from `p`.
+    @inline(__always) public init(loadingFrom p: UnsafeRawPointer) {
+        withUnsafeMutableBytes(of: &r) { d in
+            for i in 0..<31 { d.storeBytes(of: UInt64(littleEndian: p.loadUnaligned(fromByteOffset: 8 * i, as: UInt64.self)),
+                                           toByteOffset: 8 * i, as: UInt64.self) }
+        }
+    }
+
+    /// Stores the 31 words to `p`, little-endian.
+    @inline(__always) public func store(to p: UnsafeMutableRawPointer) {
+        withUnsafeBytes(of: r) { s in
+            for i in 0..<31 { p.storeBytes(of: s.load(fromByteOffset: 8 * i, as: UInt64.self).littleEndian,
+                                           toByteOffset: 8 * i, as: UInt64.self) }
+        }
+    }
+
+    public var startIndex: Int { 0 }
+    public var endIndex: Int { 31 }
+    @inline(__always) public func index(after i: Int) -> Int { i + 1 }
+    @inline(__always) public func index(before i: Int) -> Int { i - 1 }
+
+    @inline(__always) public subscript(i: Int) -> UInt64 {
+        get {
+            precondition(i >= 0 && i < 31, "register index out of range")
+            return withUnsafeBytes(of: r) { $0.load(fromByteOffset: 8 * i, as: UInt64.self) }
+        }
+        set {
+            precondition(i >= 0 && i < 31, "register index out of range")
+            withUnsafeMutableBytes(of: &r) { $0.storeBytes(of: newValue, toByteOffset: 8 * i, as: UInt64.self) }
+        }
+    }
+
+    public static func == (a: TrapRegisters, b: TrapRegisters) -> Bool {
+        withUnsafeBytes(of: a.r) { x in withUnsafeBytes(of: b.r) { y in x.elementsEqual(y) } }
+    }
+
+    public var description: String { Array(self).description }
+
+    /// x0…x(n−1) as an array (one allocation, no generic slice copy).
+    @inline(__always) public func prefixArray(_ n: Int) -> [UInt64] {
+        precondition(n >= 0 && n <= 31)
+        return withUnsafeBytes(of: r) { s in
+            [UInt64](unsafeUninitializedCapacity: n) { b, count in
+                for i in 0..<n { b[i] = s.load(fromByteOffset: 8 * i, as: UInt64.self) }
+                count = n
+            }
+        }
     }
 }
 
@@ -198,6 +339,7 @@ public enum ExceptionClass: UInt8, Sendable, CaseIterable, CustomStringConvertib
     case trappedSystemRegister = 0x18
     case trappedSVE = 0x19
     case pointerAuthenticationFailure = 0x1C
+    case trappedSME = 0x1D
     case instructionAbortLowerEL = 0x20
     case instructionAbortSameEL = 0x21
     case pcAlignment = 0x22
@@ -227,6 +369,7 @@ public enum ExceptionClass: UInt8, Sendable, CaseIterable, CustomStringConvertib
         case .smc: "SMC (AArch64)"
         case .trappedSystemRegister: "trapped MSR/MRS/system instruction"
         case .trappedSVE: "trapped SVE access"
+        case .trappedSME: "trapped SME access"
         case .pointerAuthenticationFailure: "pointer authentication failure"
         case .instructionAbortLowerEL: "instruction abort from a lower EL"
         case .instructionAbortSameEL: "instruction abort at the same EL"
@@ -312,5 +455,15 @@ public struct ExceptionSyndrome: Equatable, Sendable, CustomStringConvertible {
         }
         if let imm = svcImmediate { s += " [svc #\(hex(imm))]" }
         return s
+    }
+}
+
+/// A run of 16 KiB guest pages whose translations changed.
+public struct TLBRange: Equatable, Sendable {
+    public var va: UInt64
+    public var pages: UInt64
+    public init(va: UInt64, pages: UInt64) {
+        self.va = va
+        self.pages = pages
     }
 }

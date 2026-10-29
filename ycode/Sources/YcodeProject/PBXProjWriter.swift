@@ -28,6 +28,9 @@ public struct PBXProjWriter {
     private var listOfConfiguration: [String: String] = [:]
     private var commentCache: [String: String?] = [:]
 
+    /// Prepares a writer for `proj`. `projectName` is the `.xcodeproj` name
+    /// without the extension; it appears only in the project's
+    /// configuration-list comments.
     public init(_ proj: PBXProj, projectName: String) {
         self.proj = proj
         self.projectName = projectName
@@ -43,11 +46,13 @@ public struct PBXProjWriter {
         }
     }
 
+    /// Serializes `proj` in Xcode's layout. See `init(_:projectName:)`.
     public static func write(_ proj: PBXProj, projectName: String) -> String {
         var w = PBXProjWriter(proj, projectName: projectName)
         return w.write()
     }
 
+    /// Returns the whole file text, starting with the `// !$*UTF8*$!` header.
     public mutating func write() -> String {
         var out = "// !$*UTF8*$!\n{\n"
         var top = proj.extraTopLevel
@@ -166,6 +171,9 @@ public struct PBXProjWriter {
         return id
     }
 
+    /// The reference comment written after object `id`, or nil when the
+    /// object has none (for example the main group). Results are cached.
+    /// See `specs/formats/pbxproj.md` (Reference comments).
     public mutating func comment(for id: String) -> String? {
         if let cached = commentCache[id] { return cached }
         let c = computeComment(for: id)

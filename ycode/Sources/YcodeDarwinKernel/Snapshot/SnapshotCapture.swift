@@ -10,6 +10,7 @@ import YcodeDarwinABI
 
 /// One image's input from the VMM.
 public struct SnapshotImageInput {
+    /// The image's kernel.
     public let kernel: DarwinKernel
     /// Threads held by the VMM's gates, by `ObjectIdentifier` of their context.
     public var parked: [ObjectIdentifier: SnapshotParkedThread]
@@ -18,6 +19,7 @@ public struct SnapshotImageInput {
     /// The image was launched suspended and its main thread has not started.
     public var mainStart: SnapshotMainStart?
 
+    /// Collects one image's input; `mainStart` is nil once the main thread has started.
     public init(kernel: DarwinKernel, parked: [ObjectIdentifier: SnapshotParkedThread],
                 fpState: @escaping (ThreadContext) -> [UInt8]?, mainStart: SnapshotMainStart? = nil) {
         self.kernel = kernel
@@ -29,13 +31,16 @@ public struct SnapshotImageInput {
 
 /// Builds the records of one snapshot.
 public final class KernelSnapshotCapture {
+    /// The system being captured.
     public let system: DarwinSystem
+    /// The quiesce result the capture works from (its blocked threads and refusals).
     public let classification: SnapshotClassification
     /// Census: object counts by kind.
     public private(set) var counts: [String: Int] = [:]
     /// Objects the restore cannot rebuild, by kind (the snapshot is refused
     /// for writing, a census just reports them).
     public private(set) var unsupported: [String: Int] = [:]
+    /// The records built by `capture`, ready for `SnapshotManifest.encode`.
     public private(set) var records: [SnapshotRecord] = []
 
     private var nextID: UInt64 = 100
@@ -55,13 +60,17 @@ public final class KernelSnapshotCapture {
     private var spaces: [MachIPC] = []
     private var objectFiles: [ObjectIdentifier: DarwinOpenFile] = [:]
     private var sockets: [UnixSocket] = []
+    private var inetSockets: [InetSocket] = []
     private var shmSegments: [PosixShmSegment] = []
     private var posixSemaphores: [PosixSemaphore] = []
     private let hostNowNs = KernelClock.now()
 
+    /// The fixed record id of the system record.
     public static let systemID: UInt64 = 1
+    /// The fixed record id of the clock record.
     public static let clockID: UInt64 = 2
 
+    /// Prepares a capture of `system`; `capture` then runs with the kernel lock held.
     public init(system: DarwinSystem, classification: SnapshotClassification) {
         self.system = system
         self.classification = classification
@@ -85,7 +94,9 @@ public final class KernelSnapshotCapture {
         return ids[ObjectIdentifier(object)] ?? 0
     }
 
+    /// The record id of `kernel`'s image record, or 0 if the capture has not seen it.
     public func imageID(of kernel: DarwinKernel) -> UInt64 { existingID(kernel) }
+    /// The record id of the thread record for `context`, or 0 if the capture has not seen it.
     public func threadID(of context: ThreadContext) -> UInt64 { existingID(context) }
 
     // MARK: Discovery
@@ -176,6 +187,10 @@ public final class KernelSnapshotCapture {
             } else if o is DarwinDevice {
             } else if let sock = o as? UnixSocket {
                 see(sock)
+            } else if let sock = o as? InetSocket {
+                if id(of: sock).isNew { inetSockets.append(sock) }
+            } else if o is RouteSocket || o is KernelControlSocket {
+                // Stateless but for unread answers, which are dropped.
             } else if let shm = o as? PosixShmDescriptor {
                 see(shm.segment)
             } else if let sem = o as? PosixSemDescriptor {
@@ -217,7 +232,7 @@ public final class KernelSnapshotCapture {
             case EVFilter.user, EVFilter.timer, EVFilter.machport, EVFilter.proc, EVFilter.signal, EVFilter.workloop,
                  EVFilter.vnode, EVFilter.fs:
                 break
-            case EVFilter.read, EVFilter.write:
+            case EVFilter.read, EVFilter.write, EVFilter.sock:
                 if let o = kn.object, objectFiles[ObjectIdentifier(o)] == nil, !(o is PipeEnd) {
                     refuse("knote on descriptor object \(type(of: o))")
                 }
@@ -257,7 +272,7 @@ public final class KernelSnapshotCapture {
             if let q = k.kevents.workq { see(q, kernel: k) }
             for q in k.kevents.workloops.values { see(q, kernel: k) }
             for q in k.kevents.descriptorQueues.values { see(q, kernel: k) }
-            for c in k.extended.directoryCursors.values { see(c.file) }
+            for c in k.extended.directoryCursors.all.values { see(c.file) }
             for t in k.kevents.mkTimers.values { see(t.port) }
         }
         see(system.mach.hostPort)
@@ -288,6 +303,7 @@ public final class KernelSnapshotCapture {
         sys.u64(ST.System.serialCounter, system.mach.serialCounter)
         sys.u64(ST.System.stampCounter, system.mach.stampCounter)
         sys.u64(ST.System.spaceCounter, system.mach.spaceCounter)
+        sys.bytes(ST.System.cpuFeatures, GuestCPUProfile.current.published.storedBytes)
         sys.bool(ST.System.hostBootstrapDefault, system.mach.hostBootstrapIsDefault)
         sys.ref(ST.System.hostPort, existingID(system.mach.hostPort))
         sys.ref(ST.System.bootstrapPort, existingID(system.mach.bootstrapPort))
@@ -308,6 +324,10 @@ public final class KernelSnapshotCapture {
         records.append(SnapshotRecord(kind: .system, id: Self.systemID, fields: sys))
         for sock in sockets { records.append(encode(sock)) }
         count("unix socket", sockets.count)
+        for sock in inetSockets {
+            records.append(SnapshotRecord(kind: .inetSocket, id: existingID(sock), fields: sock.snapshotFields { encode($0) }))
+        }
+        count("IP socket", inetSockets.count)
         for seg in shmSegments { records.append(encode(seg)) }
         for sem in posixSemaphores { records.append(encode(sem)) }
 
@@ -411,7 +431,10 @@ public final class KernelSnapshotCapture {
         f.ref(U.peer, existingID(s.peer))
         if let l = s.logSink { f.string(U.logSink, l) }
         var flags: UInt64 = 0
-        for (bit, on) in [s.isConnected, s.cantReceiveMore, s.cantSendMore, s.closed, s.isListening, s.noSigPipe].enumerated() where on {
+        // Bit 6: the host end of a host-provided answering socket (the DNS
+        // service); the restore resets that connection.
+        for (bit, on) in [s.isConnected, s.cantReceiveMore, s.cantSendMore, s.closed, s.isListening, s.noSigPipe,
+                          s.hostEndpoint != nil].enumerated() where on {
             flags |= 1 << UInt64(bit)
         }
         f.u64(U.flags, flags)
@@ -681,6 +704,9 @@ public final class KernelSnapshotCapture {
             g.u64(S.kind, 1)
             g.i64(S.int, v)
             g.i64(S.size, Int64(size))
+        case let .quad(v):
+            g.u64(S.kind, 4)
+            g.i64(S.int, v)
         case let .string(s):
             g.u64(S.kind, 2)
             g.bytes(S.bytes, Array(s.utf8))
@@ -718,7 +744,7 @@ public final class KernelSnapshotCapture {
             return h
         })
         g.u64(E.umask, UInt64(x.umask))
-        g.list(E.cursors, x.directoryCursors.sorted { $0.key < $1.key }.map { fd, c in
+        g.list(E.cursors, x.directoryCursors.all.sorted { $0.key < $1.key }.map { fd, c in
             var h = SnapshotFields()
             h.i64(E.key, Int64(fd))
             h.ref(E.file, existingID(c.file))
@@ -876,11 +902,17 @@ public final class KernelSnapshotCapture {
             case let .memoryEntry(serial): (11, serial)
             case .ioMain: (12, 0)
             case let .ioObject(serial): (13, serial)
+            case let .workInterval(serial): (14, serial)
             }
             f.u64(T.kobjectKind, kind)
             f.u64(T.kobjectValue, value)
         }
         if let s = p.semaphore { f.ref(T.semaphore, existingID(s)) }
+        if let wi = p.workInterval {
+            f.u64(T.workIntervalID, wi.id)
+            f.u64(T.workIntervalFlags, UInt64(wi.createFlags))
+            f.i64(T.workIntervalCreator, Int64(wi.creatorPID))
+        }
         f.bool(T.specialReply, p.isSpecialReply)
         f.ref(T.task, existingID(p.task))
         if let file = p.fileportFile { f.ref(T.fileport, existingID(file)) }
@@ -1204,6 +1236,15 @@ public final class KernelSnapshotCapture {
             } else if let sock = obj as? UnixSocket {
                 f.u64(T.nodeKind, 6)
                 f.ref(T.object, existingID(sock))
+            } else if let sock = obj as? InetSocket {
+                f.u64(T.nodeKind, 9)
+                f.ref(T.object, existingID(sock))
+            } else if let r = obj as? RouteSocket {
+                f.u64(T.nodeKind, 10)
+                f.i64(T.stream, Int64(r.proto))
+            } else if let c = obj as? KernelControlSocket {
+                f.u64(T.nodeKind, 11)
+                f.i64(T.stream, Int64(c.connectedID))
             } else if let shm = obj as? PosixShmDescriptor {
                 f.u64(T.nodeKind, 7)
                 f.ref(T.object, existingID(shm.segment))

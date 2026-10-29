@@ -9,6 +9,7 @@
 //              [--env K=V]... [--trace] [--keep-going] [--timeout-ms N] [--exec-args <arg>...]
 //   ycode-simd --shim <shim.bin> --el0 <el0.bin> [--trace] [--timeout-ms N] [--max-exits N]
 //   ycode-simd --kvm-smoke
+//   ycode-simd --camera-list | --camera-probe [options]   (CameraCommand.swift)
 //
 // Stage 2 (`--el0`): boots the EL1 shim in a KVM vCPU with the page tables,
 // boot info, and EL0 image laid out as in specs/simulator/vm-shim-protocol.md,
@@ -80,7 +81,9 @@
 // with 701 before any job starts. `--screenshot <path.png>` writes the
 // presented display buffer as a PNG at the end of the run (before the
 // session ends); `--screenshot-at S` (repeatable) also at S seconds, as
-// <path>-<S>s.png. `--display-server <address>` serves the presented
+// <path>-<S>s.png; `--display LCD|LCD-1|active` (or `--display=…`) picks the
+// panel of a foldable (default: the one shown, foldable.md §8.3 E3).
+// `--display-server <address>` serves the presented
 // display live and takes viewer input (DisplayServer.swift;
 // specs/simulator/display-stream.md); with it, SIGTERM, SIGINT and SIGHUP
 // end the device session cleanly instead of killing the VMM.
@@ -115,6 +118,9 @@
 import YcodeDarwinABI
 import YcodeHypervisor
 
+// Camera diagnostics (CameraCommand.swift) run on every host; no VM starts.
+runCameraCommandIfRequested(CommandLine.arguments)
+
 #if os(Linux) && arch(arm64)
 import CKVM
 import Foundation
@@ -129,11 +135,16 @@ let usage = """
                       [--host-libs <dir>] [--keep-going] [--libfunc-return <name>=<value>[,...]] [--repeat N]
                       [--env K=V]... [--host-bootstrap [--debug-bootstrap-discard]] [--exec-args <arg>...]
            ycode-simd --device <dir> --runtime-root <dir> [--udid <UDID>] [--job-path <dir>]... [--env K=V]...
-                      [--device-type iphone-duo (default) | ipad-a16 | ipad-pro-13-m5] (a device keeps its first type)
+                      [--device-type iphone-duo | iphone-18-pro | ipad-a16 | ipad-pro-13-m5 | vision-pro] (default: iphone-duo on iOS 27.1, iphone-18-pro on iOS 27.0
+                      runtimes, vision-pro on visionOS runtimes; a device keeps its first type)
                       [--runtime-paths] [--oneshot "/guest/program arg..."]... [--oneshot-delay S] [--runtime-job <label>]...
                       [--install-app <host .app>] [--launch <bundle id> [--app-arg A]... [--app-env K=V]... [--app-url U]]
                       [--guest-tools <dir with ylaunch>] [--framebuffer-library <SimFramebuffer binary> | none]
-                      [--screenshot <path.png> [--screenshot-at S]...] [--skip-first-boot-migration]
+                      [--settings-agent <ycode-settings-agent> | none] [--environment-overrides] (simulator-features.md)
+                      [--screenshot <path.png> [--screenshot-at S]... [--display LCD|LCD-1|active]] [--skip-first-boot-migration]
+                      [--camera on|off|synthetic|/dev/videoN|v4l2:<id> [--camera-position back|front|external]]
+                      [--camera-library <libYcodeCamera.dylib>] (the device's camera, kept for later boots; default off;
+                      camera.md "Ycode implementation")
                       [--display-server unix:<path> | [<host>:]<port>] (live display and input; display-stream.md)
                       [--hid-bundle <SimHID.framework dir> | none] (default with --display-server: the built one)
                       [--metal-translator <ycode-airc>] (default: $YCODE_AIRC, next to ycode-simd, $PATH)
@@ -143,9 +154,18 @@ let usage = """
                       [--trace] [--keep-going] [--timeout-ms N] [--host-libs <dir>] [--debug-bootstrap-discard]
                       [--exec-args <arg>...]
                       [--debug-extra-images N [--debug-extra-exec <macho>] [--debug-extra-arg A]... [--debug-extra-wait]]
+           ycode-simd --device <dir> --control <command...> | --fold closed|half|open|<degrees> [--instant]
+                      | --ui appearance|content_size|increase_contrast|liquid-glass|color-filter … | --accessibility <switch> [on|off]
+                      | --location set|preset|start|run|file|clear|list … | --audio volume|output|input|devices …
+                      | --overrides <bundle id> … | --settings   (SimSettings.swift; a stopped device: written for its next boot)
+                      | --orientation <name> | --rotate left|right | --fold-state   (a running device; FoldControl.swift)
+           ycode-simd --device <dir> --privacy grant|revoke|reset camera|microphone <bundle id>   (CameraDevice.swift)
            ycode-simd --shim <shim.bin> --el0 <el0.bin> [--trace] [--timeout-ms N] [--max-exits N]
                       [--vcpus N [--rounds R]]
            ycode-simd --kvm-smoke
+           ycode-simd --camera-list
+           ycode-simd --camera-probe [--camera auto|synthetic|/dev/videoN|<id>] [--frames N] [--size WxH] [--fps F]
+                      [--pixel-format 420v|420f|BGRA] [--source-format YUYV|MJPG|NV12] [--out <frame.png>] [--scale K]
     """
 
 struct Options {
@@ -172,8 +192,9 @@ struct Options {
     var maxExits: Int?
     /// Stage 4c device mode: the device directory, its UDID, job directories.
     var devicePath: String?
-    /// The device type (`--device-type`; ipad.md §4.3 R1).
-    var deviceType: DeviceType = .default
+    /// The device type (`--device-type`; ipad.md §4.3 R1). Nil: the
+    /// runtime platform's default (visionos.md V-1).
+    var deviceType: DeviceType?
     var udid: String?
     var jobPaths: [String] = []
     /// Device mode: one-shot programs (argv split on spaces, run through the
@@ -193,6 +214,8 @@ struct Options {
     /// Record the first-boot data migration as done before the boot.
     var skipFirstBootMigration = false
     var screenshotTimes: [Int] = []
+    /// The panel `--screenshot` captures (`--display`; nil: the one shown).
+    var screenshotDisplay: String?
     /// The display server's address (`--display-server`; display-stream.md).
     var displayServer: DisplayAddress?
     /// Ycode's HID bundle (`--hid-bundle`; hid-input.md): "none" = no input.
@@ -218,8 +241,18 @@ struct Options {
     var appURL: String?
     var appEnvironment: [String] = []
     var guestTools: String?
+    /// Ycode's guest settings agent (`--settings-agent <binary> | none`;
+    /// default: `ycode-settings-agent` in the guest tools, else SimGuestAgents/out).
+    var settingsAgent: String?
+    /// Launch the app with Ycode's Environment Overrides library (`--environment-overrides`).
+    var environmentOverrides = false
     /// The headless SimFramebuffer library (`--framebuffer-library`; "none" = empty variable).
     var framebufferLibrary: String?
+    /// The device's camera (`--camera`, `--camera-position`, `--camera-library`;
+    /// CameraDevice.swift): nil keeps the device's setting.
+    var camera: String?
+    var cameraPosition: String?
+    var cameraLibrary: String?
     /// Debug: the identity (pid, uid, gid) the host task's messages carry.
     var debugHostIdentity: (pid: Int32, uid: UInt32, gid: UInt32)?
     /// Debug: at the end of a device run, report every image's vCPUs
@@ -378,6 +411,8 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--gpu-cache-dir": options.gpuCacheDirectory = value(for: argument)
         case "--no-gpu-cache": options.noGPUCache = true
         case "--screenshot": options.screenshotPath = value(for: argument)
+        case "--display": options.screenshotDisplay = value(for: argument)
+        case let a where a.hasPrefix("--display="): options.screenshotDisplay = String(a.dropFirst("--display=".count))
         case "--display-server":
             guard let address = DisplayAddress(value(for: argument)) else {
                 die("--display-server needs unix:<path>, <host>:<port>, or <port>", status: 64)
@@ -397,7 +432,12 @@ func parseOptions(_ arguments: [String]) -> Options {
             guard let eq = pair.firstIndex(of: "="), eq != pair.startIndex else { die("--app-env needs K=V", status: 64) }
             options.appEnvironment.append(pair)
         case "--guest-tools": options.guestTools = value(for: argument)
+        case "--settings-agent": options.settingsAgent = value(for: argument)
+        case "--environment-overrides": options.environmentOverrides = true
         case "--framebuffer-library": options.framebufferLibrary = value(for: argument)
+        case "--camera": options.camera = value(for: argument)
+        case "--camera-position": options.cameraPosition = value(for: argument)
+        case "--camera-library": options.cameraLibrary = value(for: argument)
         case "--debug-host-identity":
             let parts = value(for: argument).split(separator: ":").compactMap { Int64($0) }
             guard parts.count == 3 else { die("--debug-host-identity needs PID:UID:GID", status: 64) }
@@ -640,23 +680,32 @@ func runStage2Pool(_ options: Options, vm: VirtualMachine, tables: PageTableBuil
     exit(0)
 }
 
-// Boot priority (boot-profile.md §8.6, scheduling-policy.md §7.4):
-// `YCODE_BOOT_PRIORITY=1` makes a device run use thread QoS with the cgroup
-// host backend, so the UI path (SpringBoard, boosted daemons) gets the host
-// CPUs a cold boot saturates. Off by default: one of seven such boots held
-// the kernel lock three times as long and took twice the time (a holder in
-// the idle class, §7.4). An explicit YCODE_SCHED_QOS wins. Without a
-// delegable cgroup the backend reports itself unavailable and stays off.
-if CommandLine.arguments.contains("--device"), getenv("YCODE_BOOT_PRIORITY").map({ String(cString: $0) == "1" }) ?? false,
+// Boot priority (boot-profile.md §8.6, scheduling-policy.md §7.4, §7.5): a
+// device run uses thread QoS with the cgroup host backend, so the UI path
+// (SpringBoard, boosted daemons) gets the host CPUs a cold boot saturates.
+// On by default for device runs since 2026-10-27 (lock holders are raised to
+// their waiters' class, class 0 is weighted, §4.7); `YCODE_BOOT_PRIORITY=0`
+// turns it off. An explicit YCODE_SCHED_QOS wins. Without a delegable cgroup
+// (or a user service manager to make one) the backend reports itself
+// unavailable and stays off.
+if CommandLine.arguments.contains("--device"), getenv("YCODE_BOOT_PRIORITY").map({ String(cString: $0) != "0" }) ?? true,
    getenv("YCODE_SCHED_QOS") == nil {
     setenv("YCODE_SCHED_QOS", "1", 0)
     setenv("YCODE_HOST_SCHED", "cgroup", 0)
     SchedPolicy.qosEnabled = true
 }
+// A command for a running device (FoldControl.swift, SettingsClient.swift): nothing else starts.
+if isSettingsClient(CommandLine.arguments) { runSettingsClient(CommandLine.arguments) }
+if isControlClient(CommandLine.arguments) { runControlClient(CommandLine.arguments) }
+// A privacy change for a device (CameraDevice.swift): nothing else starts.
+if isPrivacyClient(CommandLine.arguments) { runPrivacyClient(CommandLine.arguments) }
 // Scheduling policy (scheduling-policy.md §4.7): with YCODE_HOST_SCHED=cgroup
 // the VMM may re-execute itself in a delegated cgroup before anything starts.
 HostSched.prepareProcess()
 let options = parseOptions(CommandLine.arguments)
+// guest-cpu.md §4.2: without CTR_EL0.DIC a TLB flush also does the I-cache
+// invalidation a reused code page needs, so page-table additions flush too.
+if !VCPUPool.hostHasDIC { GuestAddressSpace.flushOnAdditions = true }
 // The warm-boot launcher (`YCODE_EXIT_WITH_PARENT=1`, snapshot.md §12.5):
 // should it end without stopping this process, SIGTERM (a stop) comes
 // instead, so the device is not left running without its launcher.

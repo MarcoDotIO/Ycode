@@ -224,3 +224,38 @@ YC_EXPORT int proc_setthread_cpupercent(yc_u8 percentage, yc_u32 ms_refill)
     (void)percentage; (void)ms_refill;
     return 0;
 }
+
+/* ------------------------------------------------- task identity tokens */
+
+/* kern_return_t task_create_identity_token(task_t task, task_id_token_t *token)
+ * kern_return_t task_identity_token_get_task_port(task_id_token_t token,
+ *     task_flavor_t flavor, mach_port_t *task_port)
+ * (xnu osfmk/mach/task.defs and task_identity_token.defs; level 1.) In xnu
+ * the token is a port that names the task without granting control, and
+ * the second call turns it back into a task port of the requested flavor
+ * (TASK_FLAVOR_CONTROL 0 ... TASK_FLAVOR_NAME 3). RealityKit (CoreRE)
+ * makes one in every process that starts a render client (visionOS
+ * datamigrator, RealityChrome, RealityEnvironment, pointeruid ...) and
+ * aborts when the call fails (visionos.md section 10.11). Ycode's choice:
+ * the token is a send right to the task port itself (an extra send
+ * reference on the caller's name for it); task ports travel between
+ * processes in Ycode's kernel (processes.md section 3.5), so a receiver
+ * can use it with pid_for_task. Turning it back gives another send
+ * reference on the same name, for every flavor. */
+YC_EXPORT int task_create_identity_token(yc_port_t task, yc_port_t *token)
+{
+    if (token == YC_NULL || task == 0)
+        return YC_KERN_INVALID_ARGUMENT;
+    (void)mach_port_mod_refs(mach_task_self_, task, 0 /* MACH_PORT_RIGHT_SEND */, 1);
+    *token = task;
+    return 0;
+}
+
+YC_EXPORT int task_identity_token_get_task_port(yc_port_t token, int flavor, yc_port_t *task_port)
+{
+    if (task_port == YC_NULL || token == 0 || flavor < 0 || flavor > 3)
+        return YC_KERN_INVALID_ARGUMENT;
+    (void)mach_port_mod_refs(mach_task_self_, token, 0 /* MACH_PORT_RIGHT_SEND */, 1);
+    *task_port = token;
+    return 0;
+}

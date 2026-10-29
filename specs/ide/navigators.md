@@ -34,8 +34,8 @@ stays when a row under it matches. An empty navigator shows a centered
 "No Issues" / "No Breakpoints" / "No Bookmarks" style message.
 
 The left area can instead show the Coding Assistant pane (the toolbar's
-left two-segment control). Ycode has no assistant; the pane is a
-placeholder that says so.
+left two-segment control, ⌘0): the conversation list, transcript and
+message field of `coding-assistant.md` §4.
 
 ## Bookmarks navigator
 

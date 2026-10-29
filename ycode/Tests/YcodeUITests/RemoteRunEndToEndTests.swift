@@ -13,7 +13,7 @@ import Testing
 ///   YCODE_E2E_APP      local iOS-simulator .app to upload
 ///   YCODE_E2E_DEVICE   remote device name (default "e2e")
 ///   YCODE_E2E_MINUTES  how long to wait for the launch (default 30)
-///   YCODE_E2E_LEAN_BOOT  1: Lean boot (default: a full boot, as parity runs use)
+///   YCODE_E2E_LEAN_BOOT  1: Lean boot, 0: off (default: the setting's default, a full boot)
 ///   YCODE_E2E_WARM_BOOT  0: always boot cold (default: warm boot, run.md §Warm boot)
 /// Nothing here is machine-specific; the values come only from the environment.
 @Suite(.serialized, .heavyIntegration) @MainActor struct RemoteRunEndToEndTests {
@@ -27,7 +27,7 @@ import Testing
         _ = NSApplication.shared
         var settings = RemoteSimulatorSettings(destination: destination, dataDirectory: data, runtimeRoot: runtime,
                                                simdPath: simd, deviceName: env["YCODE_E2E_DEVICE"] ?? "e2e")
-        settings.leanBoot = env["YCODE_E2E_LEAN_BOOT"] == "1"
+        if let lean = env["YCODE_E2E_LEAN_BOOT"] { settings.leanBoot = lean == "1" }
         settings.warmBoot = env["YCODE_E2E_WARM_BOOT"] != "0"
         let remote = RemoteSimulator(settings: settings)
         let app = URL(fileURLWithPath: appPath)
@@ -71,7 +71,7 @@ import Testing
         #expect(session.console.contains("Ycode Simulator stopped") || session.console.contains("Ycode Simulator ended with status"))
         #expect(!session.console.contains("the stop signal did not reach"))
         #expect(!session.console.contains("after Stop; closing the connection"))
-        #expect(session.activity == .finished("Finished running \(bundle.executable)"))
+        #expect(session.activity == .finished("Finished running \(bundle.executable) on \(remote.destination.name)"))
     }
 }
 #endif

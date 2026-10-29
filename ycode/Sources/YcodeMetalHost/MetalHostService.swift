@@ -144,12 +144,15 @@ public final class MetalHostService: @unchecked Sendable {
             + (s.refused.isEmpty ? "" : ", refused \(s.refused.sorted { $0.key < $1.key })")]
         lines += core.processSummary().map { "metal:   " + $0 }
         if let b = backend.diagnosticSummary() { lines.append("metal:   backend: " + b) }
+        lines += core.sharedTextureContent()
         return lines
     }
 
     /// True while the receive thread runs (tests).
     var receiving: Bool { lock.withLock { _receiving } }
     private var _receiving = false
+    /// A diagnostic summary is being written (`YCODE_METAL_STATS`).
+    private var summaryRunning = false
 
     private func run() {
         lock.withLock { _receiving = true }
@@ -161,7 +164,22 @@ public final class MetalHostService: @unchecked Sendable {
         while !lock.withLock({ stopping }) {
             if ProcessInfo.processInfo.systemUptime >= nextSummary {
                 nextSummary += Self.statsInterval
-                for line in summaryLines() { log(line) }
+                // On a thread of its own: the shared-content read-back
+                // (`YCODE_METAL_SHARED_CONTENT`) waits for the GPU, and a
+                // GPU that hangs would otherwise stop this receive loop and
+                // with it every Metal client (VISIONOS-R4b, boot r1). One
+                // summary at a time; a period whose predecessor is still
+                // running is skipped.
+                if lock.withLock({ () -> Bool in
+                    if summaryRunning { return false }
+                    summaryRunning = true
+                    return true
+                }) {
+                    Thread.detachNewThread { [self] in
+                        for line in summaryLines() { log(line) }
+                        lock.withLock { summaryRunning = false }
+                    }
+                }
             }
             let m: MachHostReceivedMessage
             do {
@@ -269,7 +287,12 @@ public final class MetalHostService: @unchecked Sendable {
         if let reply = outcome.reply, MachPortName.isValid(m.replyPort) {
             do {
                 let encoded = try XPCWire.encode(.dictionary(reply), magic: XPCWire.sim2hostMagic)
-                try host.reply(to: m, id: Self.replyID, body: encoded.body)
+                // Rights in the reply (an exported event's port, messageType 17).
+                let descriptors: [MachHostDescriptor] = encoded.descriptors.compactMap {
+                    if case let .port(name, disposition) = $0 { return .port(name: name, disposition: disposition) }
+                    return nil
+                }
+                try host.reply(to: m, id: Self.replyID, descriptors: descriptors, body: encoded.body)
                 replied = true
             } catch {
                 log("metal: reply failed: \(error)")
@@ -321,6 +344,13 @@ extension MetalHostService: MetalHostTransport {
         log("metal: event port \(port) stayed full; event dropped")
         return false
     }
+
+    /// A port for an exported shared event (messageType 17): a receive
+    /// right of the host task that nobody receives on; replies carry
+    /// MAKE_SEND rights to it, and messageType 18 brings one back.
+    func makeEventPort() -> UInt32? { try? host.makePort(sendRight: false, qlimit: 1) }
+
+    func destroyEventPort(_ name: UInt32) { try? host.destroyPort(name) }
 
     /// Drops one reference of a right named in the host task. A send right
     /// to one of the host's own ports (an IOSurface port) drops only that

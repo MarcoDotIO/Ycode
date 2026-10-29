@@ -27,6 +27,7 @@ extension WorkspaceWindowController {
         c.breakpointsActive = session.breakpoints.isActive
         if let caret = debugCaret { c.caretLineBreakpointsEnabled = session.breakpoints.lineIsEnabled(file: caret.file, line: caret.line) }
         c.navigatorShown = !navigatorItem.isCollapsed
+        c.codingAssistantShown = shownLeftPane == .codingAssistant
         c.inspectorShown = !inspectorItem.isCollapsed
         c.debugAreaShown = !debugItem.isCollapsed
         c.editorTabBarShown = editorArea.isTabBarVisible
@@ -34,6 +35,7 @@ extension WorkspaceWindowController {
         let selected = navigatorSelectedFile
         c.hasNavigatorFileSelection = selected != nil
         c.selectedFileIsUntracked = selected.map { sourceControl.lastStatus[$0] == .untracked } ?? false
+        fillMenuCleanUpContext(&c)   // +MenuCleanUp.swift
         return c
     }
 
@@ -49,7 +51,7 @@ extension WorkspaceWindowController {
     /// Actions whose title follows state wherever their item is (menu bar,
     /// or a plain item validated directly).
     static let titledActions: Set<String> = [
-        "toggleNavigator:", "toggleInspector:", "toggleDebugArea:", "toggleEditorTabBar:", "togglePinEditorTab:", "closeTab:",
+        "toggleNavigator:", "showCodingAssistant:", "toggleInspector:", "toggleDebugArea:", "toggleEditorTabBar:", "togglePinEditorTab:", "closeTab:",
         "closeDocument:", "closeWorkspace:", "toggleBreakpointsActive:", "pauseOrContinue:", "toggleWindowTabBar:", "toggleWorkspaceFullScreen:",
         "toggleInlineIssues:", "formatSelection:", "formatFile:",
     ]
@@ -64,6 +66,7 @@ extension WorkspaceWindowController {
 
     /// Enablement of the commands in this file; nil = not one of them.
     func validateMenuBarItem(_ item: NSMenuItem) -> Bool? {
+        if let r = validateMenuCleanUpItem(item) { return r }
         switch item.action {
         case #selector(closeOtherTabs(_:)): return editorArea.tabs.count > 1
         case #selector(closeOtherWindowTabs(_:)), #selector(showNextWindowTab(_:)), #selector(showPreviousWindowTab(_:)):

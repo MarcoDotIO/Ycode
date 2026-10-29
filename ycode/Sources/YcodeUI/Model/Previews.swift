@@ -30,6 +30,8 @@ public struct PreviewDeclaration: Equatable, Sendable {
     }
 }
 
+/// Finds the previews a Swift file declares, by scanning its text (no
+/// compiler). See `specs/ide/previews.md`.
 public enum PreviewDiscovery {
     /// Finds `#Preview` macros and `PreviewProvider` types. Unnamed macros
     /// are called `Preview`, `Preview 2`, … in file order.
@@ -199,3 +201,27 @@ public enum PreviewDiscovery {
     }
 }
 
+/// When the canvas area is drawn (`reference-ui-6.md` §4.4, E7 / E10):
+/// canvas mode is on in every new editor, and while it is on the canvas is
+/// drawn for a Swift file that declares a preview and left out for any
+/// other file. With canvas mode off (the user turned it off, or Assistant
+/// or Code Review is on) no canvas is drawn.
+public enum CanvasAutoShow {
+    public enum Decision: Equatable, Sendable { case show, hide, keep }
+
+    /// Whether a file's text declares a preview (`#Preview` or a
+    /// `PreviewProvider`). Only Swift files have previews.
+    public static func hasPreviews(fileName: String, text: String) -> Bool {
+        guard (fileName as NSString).pathExtension == "swift",
+              text.contains("#Preview") || text.contains("PreviewProvider") else { return false }
+        return !PreviewDiscovery.previews(in: text).isEmpty
+    }
+
+    /// What to do with the canvas: show it when canvas mode is on and the file
+    /// has previews, hide it otherwise, or keep it when it already matches.
+    public static func decide(hasPreviews: Bool, canvasShown: Bool, canvasMode: Bool) -> Decision {
+        let draw = canvasMode && hasPreviews
+        if draw == canvasShown { return .keep }
+        return draw ? .show : .hide
+    }
+}

@@ -31,6 +31,8 @@ public struct ArchiveEntry: Equatable, Sendable {
     public var status = "Archived"
 }
 
+/// The Organizer's Archives list: finding, reading and grouping
+/// `.xcarchive` bundles. See `specs/ide/organizer.md` §Archives.
 public enum Organizer {
     /// `~/Library/Developer/Xcode/Archives`.
     public static var defaultArchivesDirectory: URL {

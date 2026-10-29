@@ -25,6 +25,21 @@ import YcodeDarwinABI
         #expect(c.readLE(UInt32.self, at: 159) == 0x0100_000C && c.readLE(UInt32.self, at: 163) == 0xFFFF_FFFF)
     }
 
+    /// Registrations queued before launchd_sim reads its port: the queue
+    /// holds five; the sixth fails at once instead of waiting 5 s
+    /// (visionos.md §10.19.3), so the session registers it later.
+    @Test func aFullQueueFailsAtOnce() throws {
+        let w = TaskWorld()
+        let host = w.system.hostTask
+        let service = try host.makePort(sendRight: true)
+        let control = LaunchSimControl(host: host, channel: service, log: { _ in })
+        let target = try host.makePort(sendRight: true)
+        for i in 0..<5 { _ = try control.queueRegistration("name.\(i)", port: target) }
+        let began = Date()
+        #expect(throws: (any Error).self) { _ = try control.queueRegistration("name.5", port: target) }
+        #expect(Date().timeIntervalSince(began) < 1)
+    }
+
     @Test func requestsAndReplies() throws {
         let w = TaskWorld()
         let host = w.system.hostTask

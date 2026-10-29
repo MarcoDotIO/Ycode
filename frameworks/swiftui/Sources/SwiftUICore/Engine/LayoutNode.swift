@@ -111,7 +111,7 @@ package final class LayoutContext {
     package func uncertain(_ axes: Axis.Set) {
         guard !axes.isEmpty else { return }
         unknownAccumulator.formUnion(axes)
-        if !axes.intersection(interest).isEmpty { uncertainCount += 1 }
+        if !axes.isDisjoint(with: interest) { uncertainCount += 1 }
     }
 
     /// Runs a measurement whose result is only used along `axis` (a stack's

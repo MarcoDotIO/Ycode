@@ -4,6 +4,11 @@ import Testing
 import YcodeDarwinABI
 @testable import YcodeDarwinKernel
 
+/// Held while a test changes the process-wide scheduling switches, and by
+/// tests of other suites whose paths read them (the ulock fast path declines
+/// while `SchedPolicy.qosEnabled`).
+let schedSwitchesTestLock = NSRecursiveLock()
+
 /// The scheduling policy (`specs/simulator/scheduling-policy.md`): classes,
 /// the start hold, importance, the kernel lock's admission gate, inheritance.
 /// Serialized: the switches are process-wide.
@@ -11,6 +16,8 @@ import YcodeDarwinABI
     /// Runs `body` with the given switches, restoring them afterwards.
     func with(hold: Bool = false, qos: Bool = false, bounds: [UInt64]? = nil, holdMax: UInt64? = nil,
               quiet: UInt64? = nil, _ body: () throws -> Void) rethrows {
+        schedSwitchesTestLock.lock()
+        defer { schedSwitchesTestLock.unlock() }
         let saved = (SchedPolicy.holdEnabled, SchedPolicy.qosEnabled, SchedPolicy.admissionBoundNanoseconds,
                      SchedPolicy.holdMaxNanoseconds, SchedPolicy.holdQuietNanoseconds, SchedPolicy.admissionEnabled)
         SchedPolicy.holdEnabled = hold
@@ -178,15 +185,44 @@ import YcodeDarwinABI
 
     @Test func quietSystemReleasesHolds() throws {
         try with(hold: true, holdMax: 60_000_000_000, quiet: 30_000_000) {
-            let window = SchedPolicy.holdWindowNanoseconds
+            let window = SchedPolicy.holdWindowNanoseconds, cpu = SchedPolicy.holdCPUFraction
             SchedPolicy.holdWindowNanoseconds = 100_000_000
-            defer { SchedPolicy.holdWindowNanoseconds = window }
+            // The test process's CPU use depends on the suites running beside it.
+            SchedPolicy.holdCPUFraction = 0
+            defer { (SchedPolicy.holdWindowNanoseconds, SchedPolicy.holdCPUFraction) = (window, cpu) }
             let env = try ProcEnv()
             let (_, _, _) = env.spawn(from: env.rootKernel, flags: 0, apptype: 0x600)
             let deadline = Date().addingTimeInterval(5)
             while env.launcher.launches.last!.image.resumed == 0 && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
             #expect(env.launcher.launches.last!.image.resumed == 1)
             #expect(env.system.schedStats.releasedQuiet == 1)
+        }
+    }
+
+    /// §4.2: while the host process keeps the CPUs busy the system is not
+    /// quiet, however idle the kernel lock is; once the CPU test passes,
+    /// the hold ends.
+    @Test func busyHostCPUKeepsHolds() throws {
+        try with(hold: true, holdMax: 60_000_000_000, quiet: 30_000_000) {
+            let window = SchedPolicy.holdWindowNanoseconds, cpu = SchedPolicy.holdCPUFraction
+            SchedPolicy.holdWindowNanoseconds = 100_000_000
+            // Any CPU use at all counts as busy: a spinning thread keeps it so.
+            SchedPolicy.holdCPUFraction = 1e-9
+            defer { (SchedPolicy.holdWindowNanoseconds, SchedPolicy.holdCPUFraction) = (window, cpu) }
+            let stop = Atomic<Bool>(false)
+            let spinner = spawn { while !stop.load(ordering: .relaxed) {} }
+            let env = try ProcEnv()
+            let (_, _, _) = env.spawn(from: env.rootKernel, flags: 0, apptype: 0x600)
+            Thread.sleep(forTimeInterval: 0.5)
+            #expect(env.launcher.launches.last!.image.resumed == 0)
+            #expect(env.system.lock.withLock { env.system.schedStats.releasedQuiet } == 0)
+            stop.store(true, ordering: .relaxed)
+            #expect(spinner.wait(timeout: .now() + 5) == .success)
+            SchedPolicy.holdCPUFraction = 0
+            let deadline = Date().addingTimeInterval(5)
+            while env.launcher.launches.last!.image.resumed == 0 && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+            #expect(env.launcher.launches.last!.image.resumed == 1)
+            #expect(env.system.lock.withLock { env.system.schedStats.releasedQuiet } == 1)
         }
     }
 
@@ -287,6 +323,126 @@ import YcodeDarwinABI
             for t in threads { #expect(t.wait(timeout: .now() + 60) == .success) }
             #expect(s.counter == 16 * 1500)
             #expect(s.lock.higherContending(-1) == 0)
+        }
+    }
+
+    /// §4.7 (holders): a thread that waits for a kernel lock longer than the
+    /// promotion delay, held by a holder of a lower applied class, raises the
+    /// holder's host thread to its own class; the holder keeps the raised
+    /// class as its applied one when it lets go, so its next `apply` moves
+    /// it back (here with no demotion delay). A waiter of a class the holder
+    /// already has does not move it.
+    @Test func lockHolderIsRaisedToItsWaitersClassAndMovedBack() {
+        with(qos: true) {
+            let moves = Mutex<[(tid: Int32, cls: Int)]>([])
+            let savedTID = HostSched.threadID
+            let nextTID = Atomic<Int>(5000)
+            HostSched.threadID = { nextTID.wrappingAdd(1, ordering: .relaxed).newValue }
+            HostSched.moveHook = { tid, cls in moves.withLock { $0.append((tid, cls)) } }
+            let savedDelays = (HostSched.demoteDelayNanoseconds, KernelLock.promotionDelayNanoseconds)
+            HostSched.demoteDelayNanoseconds = 0
+            KernelLock.promotionDelayNanoseconds = 2_000_000
+            defer {
+                HostSched.moveHook = nil
+                HostSched.threadID = savedTID
+                (HostSched.demoteDelayNanoseconds, KernelLock.promotionDelayNanoseconds) = savedDelays
+            }
+            let promotionsBefore = HostSched.promotions.load(ordering: .relaxed)
+            for (holderClass, waiterClass) in [(SchedClass.background, SchedClass.interactive),
+                                               (SchedClass.default, SchedClass.default)] {
+                moves.withLock { $0.removeAll() }
+                let lock = KernelLock()
+                lock.admission = false
+                let held = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+                let holderTID = Mutex<Int32>(0), appliedAfter = Mutex<Int>(-2)
+                let holder = spawn {
+                    HostSched.apply(holderClass)
+                    holderTID.withLock { $0 = HostSched.currentTID() ?? 0 }
+                    lock.withLock(context: self.context(holderClass)) {
+                        held.signal()
+                        release.wait()
+                    }
+                    appliedAfter.withLock { $0 = HostSched.appliedClass() }
+                    HostSched.apply(holderClass)
+                }
+                held.wait()
+                let waiter = spawn { lock.withLock(context: self.context(waiterClass, 10)) {} }
+                let tid = holderTID.withLock { $0 }
+                let deadline = Date().addingTimeInterval(waiterClass > holderClass ? 5 : 0.2)
+                while Date() < deadline, !moves.withLock({ $0.contains { $0.tid == tid && $0.cls == waiterClass } }) {
+                    Thread.sleep(forTimeInterval: 0.005)
+                }
+                release.signal()
+                #expect(holder.wait(timeout: .now() + 10) == .success)
+                #expect(waiter.wait(timeout: .now() + 10) == .success)
+                let holderMoves = moves.withLock { $0.filter { $0.tid == tid }.map(\.cls) }
+                if waiterClass > holderClass {
+                    // Applied, raised by the waiter, moved back after the release.
+                    #expect(holderMoves == [holderClass, waiterClass, holderClass])
+                    #expect(appliedAfter.withLock { $0 } == waiterClass)
+                } else {
+                    #expect(holderMoves == [holderClass])
+                    #expect(appliedAfter.withLock { $0 } == holderClass)
+                }
+            }
+            #expect(HostSched.promotions.load(ordering: .relaxed) - promotionsBefore == 1)
+        }
+    }
+
+    /// §4.7: a rise of the class is applied at once; a fall only once the
+    /// lower class has lasted the demotion delay (a fall that is undone in
+    /// time costs no move).
+    @Test func demotionWaitsForTheDelay() {
+        with(qos: true) {
+            let moves = Mutex<[Int]>([])
+            let savedTID = HostSched.threadID
+            HostSched.threadID = { 7777 }
+            HostSched.moveHook = { _, cls in moves.withLock { $0.append(cls) } }
+            let saved = HostSched.demoteDelayNanoseconds
+            HostSched.demoteDelayNanoseconds = 30_000_000
+            defer { HostSched.moveHook = nil; HostSched.threadID = savedTID; HostSched.demoteDelayNanoseconds = saved }
+            let done = spawn {
+                HostSched.apply(SchedClass.interactive)
+                HostSched.apply(SchedClass.background)  // put off
+                HostSched.apply(SchedClass.interactive)  // undone: no move
+                HostSched.apply(SchedClass.utility)  // put off
+                Thread.sleep(forTimeInterval: 0.05)
+                HostSched.apply(SchedClass.utility)  // the delay passed
+                HostSched.apply(SchedClass.default)  // a rise: at once
+            }
+            #expect(done.wait(timeout: .now() + 10) == .success)
+            #expect(moves.withLock { $0 } == [SchedClass.interactive, SchedClass.utility, SchedClass.default])
+        }
+    }
+
+    /// §4.6 (send push): a sender blocked on a full queue raises the image
+    /// that receives the port to its class until it stops waiting.
+    @Test func blockedSenderPushesOntoTheReceivingImage() throws {
+        try with(qos: true) {
+            let w = SplitWorld()
+            let rx = try w.add(pid: 200)
+            let port = w.allocate(rx)
+            #expect(w.system.lock.withLock { rx.ipc.portSetAttributes(port, flavor: 1, info: [1]) } == 0)
+            let tx = try w.add(pid: 300)
+            let name = w.give(port, from: rx, to: tx, disposition: MachMsgType.makeSend)
+            let ctx = w.thread(tx)
+            ctx.schedClassStore.store(SchedClass.interactive, ordering: .relaxed)
+            #expect(rx.kernel.sendPushClass == -1)
+            let first = TestMessage(remote: name, remoteDisposition: MachMsgType.copySend, id: 1)
+            #expect(w.machMsg(tx, ctx, first.bytes, at: SplitWorld.scratch + 0x1000, fast: true).0 == 0)
+            let blocked = spawnThread {
+                let m = TestMessage(remote: name, remoteDisposition: MachMsgType.copySend, id: 2)
+                return Int(w.machMsg(tx, ctx, m.bytes, at: SplitWorld.scratch + 0x2000, fast: true).0)
+            }
+            let deadline = Date().addingTimeInterval(5)
+            while Date() < deadline, rx.kernel.sendPushClass != SchedClass.interactive { Thread.sleep(forTimeInterval: 0.005) }
+            #expect(rx.kernel.sendPushClass == SchedClass.interactive)
+            #expect(tx.kernel.sendPushClass == -1)
+            let rctx = w.thread(rx)
+            let (code, r) = w.machMsg(rx, rctx, nil, at: SplitWorld.scratch + 0x8000, rcvName: port, rcvTimeoutMs: 5000, fast: true)
+            #expect(code == 0 && r.id == 1)
+            #expect(blocked() == 0)
+            #expect(rx.kernel.sendPushClass == -1)
         }
     }
 

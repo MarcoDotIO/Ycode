@@ -407,6 +407,9 @@ time (level 3); e.g. 2D textures:
 | `air.gather_texture_2d.<T>` | texture, sampler, coordinate, i1 (true), int2 offset, i32 component, i32 (0) |
 | `air.get_width_texture_2d`, `air.get_height_texture_2d` | texture, u32 LOD |
 | `air.get_num_mip_levels_texture_2d` | texture |
+| `air.calculate_clamped_lod_texture_2d` | texture, sampler, float2 coordinate, i32 → float (the form visionOS RealityKit materials send to Ycode's host, visionos.md §10.11.3; the MSL member `calculate_clamped_lod(sampler, coord)`; ycode-airc: `OpImageQueryLod` component 0, fragment functions only; `calculate_unclamped_lod`: component 1) |
+| `air.get_num_samples.i32` | none → i32 (the fragment function's raster sample count; translated as `air.get_num_samples`) |
+| `air.atomic.global.cmpxchg.weak.i32` (also `.local.`, `.strong.`) | atomic object pointer (address space 1, or 3 for `.local.`), pointer to the expected value (address space 0), i32 desired value, i32, i32, i32, i1 → **i32** (the form visionOS RealityKit's compute functions send to Ycode's host, visionos.md §10.13; operand types reported by ycode-airc's `decls`). The MSL call is `atomic_compare_exchange_weak_explicit(object, &expected, desired, success order, failure order)`, which returns bool and writes the value found into `expected` when it fails; with `expected` passed by pointer the result can only be the success flag, so ycode-airc reads the i32 as success 1 / failure 0 (a Ycode reading, not yet confirmed by a probe of ours; the three i32 operands are taken to be the two orders and the scope, the i1 volatility). ycode-airc: load `*expected`, `OpAtomicCompareExchange` (relaxed, device or workgroup scope), store the value found back into `*expected` (unchanged on success), result = found == expected. The strong form satisfies the weak one |
 
 Ycode's implementation keeps such a catalog (one row per intrinsic
 family, from our own probe shaders) as test data; operands marked "(as
@@ -523,6 +526,20 @@ The PoC (§6) implements steps 1–6 for a subset.
   pointers stored in memory and pointer phis all work. The address of a
   Metal buffer at an offset is the Vulkan buffer's device address plus
   the offset (`VK_KHR_buffer_device_address`).
+- **Null guard** (since visionos.md §10.13). A load from a device or
+  constant pointer that is not derived from a bound buffer, a table
+  entry, a global or a private allocation (a pointer the function read
+  from memory, made from an integer, or merged from such values) is
+  guarded: if the address is below 64 KiB (a null pointer plus a field
+  offset; no Vulkan allocation lies there) the load reads the argument
+  table instead and yields zero. Metal functions do read through such
+  pointers (visionOS RealityKit's `fsCALayer`, 22–58 guarded loads per
+  variant); on the Thor a read of unmapped memory does not fault but
+  stalls the GPU until the driver kills the context (stage8-contract.md
+  §15.6). Cost: a compare and two selects per guarded load. The
+  reflection counts them (`null_guarded_loads`); `AIRC_NULL_GUARD=0`
+  turns the guard off. Stores, atomics and loads through bound buffers
+  are not guarded.
 - **Constant buffers** (AS 2) use the same path (read-only); small ones
   could later move to push constants or uniform buffers.
 - **Threadgroup memory** (AS 3): one `Workgroup` block per kernel with
@@ -554,6 +571,39 @@ mapping, one model for both:
   image dimension aliased on one binding. A texture handle is an index
   into the heap. The argument table holds the handles of the bound
   texture and sampler slots.
+- **Storage slots** (since visionos.md §10.18): every texture slot has an
+  entry in the sampled *and* the storage array (equal sizes, 65,536 on the
+  Thor); a texture without a view of one kind has the dummy image there,
+  and a released texture's slots go back to the dummy image, so a kernel
+  that writes a texture can never reach another texture's (possibly freed)
+  image. Texture views get storage views too (their composed component
+  mapping counts as identity when every component is `IDENTITY` or its
+  own channel). Explicit-level storage access to level L of the texture in
+  slot *h* uses slot *h* + L (ycode-airc, reflection `uses:
+  storage_mip_levels`), so a texture with a storage view and n levels owns
+  n consecutive slots, the later ones holding one-level storage views. On
+  the Thor a write through a descriptor whose image memory was freed never
+  completes (stage8-contract.md §15.9).
+- **sRGB textures written through unorm views** (since visionos.md §10.20):
+  Metal lets a kernel write an sRGB texture through a view in the matching
+  unorm format (`pixelFormatView`), and visionOS RealityKit's ASTC decoder
+  fills the room's `RGBA8Unorm_sRGB` textures that way. The sRGB Vulkan
+  formats cannot be storage images on the Thor, so such an image is
+  created with storage usage and `VK_IMAGE_CREATE_EXTENDED_USAGE_BIT` when
+  its unorm sibling can be one (`R8G8B8A8`, `B8G8R8A8`, `A8B8G8R8`, `R8`,
+  `R8G8`), and every view restricts its usage to what its own format
+  supports. The unorm views get storage views and store the bytes as
+  written. The sRGB texture itself gets no storage view: a kernel that
+  writes it directly (Metal would encode linear to sRGB) writes the dummy
+  image, logged by the back end.
+- **Visibility results** (record 132, since visionos.md §10.20.8): each
+  run of draws with one non-zero mode and slot offset in a render pass is a
+  Vulkan occlusion query (`VK_QUERY_CONTROL_PRECISE_BIT` in counting mode
+  when `occlusionQueryPrecise` is available), ended before any end of
+  dynamic rendering (pass end, feedback snapshot); after the pass
+  `vkCmdCopyQueryPoolResults` writes each slot as a 64-bit value. A slot
+  counted by several segments of one pass gets the last count (Metal sums
+  them).
 - **Argument buffers**: if the host hands the guest real device addresses
   as `gpuAddress` and heap indices as `gpuResourceID` (R7 §4.2 op 39
   returns sampler resource IDs), then argument buffers written by guest
@@ -579,7 +629,9 @@ mapping, one model for both:
 | `air.point_size`, `air.clip_distance` | `PointSize`, `ClipDistance` |
 | `air.front_facing`, `air.primitive_id`, `air.sample_mask(_in)`, `air.barycentric_coord` | `FrontFacing`, `PrimitiveId`, `SampleMask`/`SampleMaskIn`, `BaryCoordKHR` (supported) |
 | `air.depth` + qualifier | `FragDepth` + `DepthReplacing`/`DepthGreater`/`DepthLess` |
-| `air.render_target_array_index`, `air.viewport_array_index` | `Layer`, `ViewportIndex` (`VK_EXT_shader_viewport_index_layer`) |
+| `air.render_target_array_index`, `air.viewport_array_index` | `Layer`, `ViewportIndex` (`VK_EXT_shader_viewport_index_layer`). **A vertex function's `viewport_array_index` output is not written** (since visionos.md §10.13): Ycode's passes have one viewport and one scissor (the host keeps the first of a `setViewports:count:` array), so every primitive uses viewport 0; an index of 1 or more would select a Vulkan viewport and scissor that were never set (undefined). A fragment function that reads the index then reads 0. `AIRC_VIEWPORT_INDEX=1` writes it as before (experiments) |
+| `air.vertex_input` the function never reads | No input variable (reflection: `"declared": false`; since visionos.md §10.13). Metal's vertex descriptor need not describe such attributes, and a Vulkan vertex shader input with no vertex attribute behind it is undefined; visionOS RealityKit's `vsUnlit` declares 15 stage-in attributes and reads 2. `AIRC_UNUSED_VERTEX_INPUTS=1` declares them as before |
+| fragment input without a vertex output of the same match string | A linked fragment function's input that the function never reads and the vertex function does not write gets no interface variable (reflection: `"linked": false`); Metal accepts such pipelines (visionOS RealityKit's `fsSFBStencilBreakthrough` declares ten inputs, its `vsUnlit` writes four; uiCALayer pipelines likewise). An input that is read but not written stays an error (`bad-request`) |
 | `half` at a stage boundary | **widened to 32-bit** with `OpFConvert`: the Thor has `storageInputOutput16` = false |
 
 Front-face winding: Metal's default is clockwise; with the y flip, map
@@ -595,7 +647,7 @@ Front-face winding: Metal's default is clockwise; with the y flip, map
 | SIMD group (32 threads on Apple GPUs) | subgroup: size 32 on the Thor (min = max = 32); require full subgroups (`computeFullSubgroups`); `thread_index_in_simdgroup` → `SubgroupLocalInvocationId`, `simdgroup_index_in_threadgroup` → `SubgroupId` |
 | `air.simd_*` reductions, prefix sums, shuffles, ballot, `simd_is_first`; quad operations | `GroupNonUniform` arithmetic, shuffle, shuffle-relative, ballot, vote, quad (all supported, all stages); `simd_shuffle_and_fill_*` = two shuffles and a select |
 | `air.wg.barrier`, `air.simdgroup.barrier` | `OpControlBarrier` at `Workgroup` / `Subgroup` scope with acquire-release semantics for the memory classes in the flags |
-| atomics (`air.atomic.global.*`, `.local.*`) | `OpAtomic*` on `PhysicalStorageBuffer` or `Workgroup` pointers; relaxed order; 64-bit and float add supported |
+| atomics (`air.atomic.global.*`, `.local.*`) | `OpAtomic*` on `PhysicalStorageBuffer` or `Workgroup` pointers; relaxed order; 64-bit and float add supported; compare-exchange as in §3.9 |
 | `simdgroup_matrix` | `VK_KHR_cooperative_matrix` (supported) or emulation; not in the home-screen set |
 
 ### 4.7 Textures, samplers and math
@@ -648,6 +700,7 @@ rejects anything else, so failures are detected, not silently wrong.
 | Feature | Plan |
 |---|---|
 | Imageblocks and tile functions (QuartzCore uses them) | Preferred: report a device family without tile shading so clients take their portable paths (depends on what the capability queries of R7 §4 steer; to test). Fallback: implicit imageblock fields backed by color attachments read with dynamic-rendering local read; explicit imageblocks as storage images; tile dispatches as compute over the render area between render-pass segments |
+| Explicit imageblocks in fragment functions (visionOS RealityKit's `BreakthroughTechniques`, e.g. `fsBreakthroughMeshClearImageBlock`) | Ycode keeps no tile memory in render passes and runs no tile functions there, so nothing can read what a fragment function puts into its imageblock: a fragment result member of kind `air.imageblock_data` is **not written** (no Vulkan output; reflection `uses`: `imageblock_output_dropped`), and a fragment argument of kind `air.imageblock_data` (the pixel's imageblock, passed by value) **reads as zeros** (`imageblock_input_zero`). The function's colour, depth and other outputs are kept. Compute imageblocks are unchanged (workgroup memory). A faithful version needs per-pixel storage that lives for the pass (the fallback above) |
 | Programmable blending (`[[color(n)]]` inputs) | Input attachments with `VK_KHR_dynamic_rendering_local_read` |
 | Raster order groups | `SPV_EXT_fragment_shader_interlock` around the accesses (pixel and sample interlock supported) |
 | Visible functions, function tables, stitching (RenderBox, IconRendering, CoreMaterial3D) | Metal requires linked functions to be declared at pipeline creation: link every candidate visible function into the pipeline's module and lower `air.get_function_pointer_visible_function_table` calls to a switch on the table index. Stitched graphs are built in the guest (open: what reaches the host) |
@@ -787,6 +840,9 @@ other than sampled 2D).
 | Thor packages, Vulkan features and limits (§4.10, §5) | 3 | `dpkg -l`, `llc-18 --version`, `vulkaninfo`, `vkrun --features` (read-only) |
 | Host-memory import (§5) and the PoC results (§6) | 3 | `vkrun`, `vkdraw`, `airc` on the Thor |
 | Design (§4, §7) | — | Ycode design |
+| Compare-exchange operand form; fragment imageblock members and arguments; partially linked varyings; null-pointer reads in RealityKit functions (§3.9, §4.3, §4.5, §4.9) | 3 | ycode-airc `decls` (operand types only) and reflection of the functions visionOS RealityKit sent to Ycode's host (dumps kept on the Thor), visionos.md §10.13; our AIR test modules `tests/ir/interface-forms.sh`; GPU tests `CompareExchangeGPUTests`, `NullPointerGPUTests` |
+| Compare-exchange semantics (§3.9) | 1 | Metal Shading Language specification (atomic functions); SPIR-V `OpAtomicCompareExchange` |
+| Storage slots (§4.4): writes through a freed image's descriptor never complete on the Thor; texture views lacked storage views; explicit-level storage slots | 3 | `scripts/gpu-probes/imgoob.c` (our GLSL); Ycode boots and tests of stage8-contract.md §15.9; ycode-airc's own reflection (`storage_mip_levels`) |
 
 No disassembly or decompilation was used (level 5 not used). No
 `.claude/Xcode.app`, `research/dirty/`, or Ghidra project was opened. The

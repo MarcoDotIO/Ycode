@@ -106,6 +106,7 @@ public final class YcodeStoreKit: @unchecked Sendable {
         if let made = try? YcodeStoreKit(device: device, bundleID: bundleID, vendorID: vendor, applicationVersion: version, receiptURL: receipt) {
             return made
         }
+        // swiftlint:disable:next force_try - an in-memory device cannot fail
         return try! YcodeStoreKit(device: StoreDevice(), bundleID: bundleID, vendorID: vendor, applicationVersion: version)
     }
 

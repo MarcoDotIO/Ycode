@@ -288,7 +288,8 @@ Implements `processes.md` §5 plus pipes and dup:
    PEERCRED/PEERTOKEN (from the peer kernel's pid and identity at connect
    time). A bound path creates a visible socket node in the guest VFS
    (`stat` shows `S_IFSOCK` is ideal; a placeholder file is acceptable) and
-   `unlink` removes the binding. `AF_INET`/`AF_INET6`: EAFNOSUPPORT for now.
+   `unlink` removes the binding. `AF_INET`/`AF_INET6`: host-backed IP
+   sockets since NET-IMPL (`networking-ycode.md` §2; before: EAFNOSUPPORT).
    `sendto` keeps 4a's log-the-text behavior only for unconnected
    `AF_UNIX` datagrams to `/var/run/syslog`-like paths that have no binder
    (it must not break `hello`).
@@ -400,7 +401,8 @@ Owns: `ycode/SimHostLibs/**`, `ycode/SimShim/guest-tests/stage4b/**`,
   and friends (concurrent independent VMs). All processes share the first
   VM's counter, so `mach_absolute_time` agrees across processes.
 - **Known gaps (later stages):** no handler delivery, no stop signals or
-  WUNTRACED, no `select`/`poll`, no `pid_suspend`/`pid_resume`, no `#!`
+  WUNTRACED, no `select`/`poll` (both implemented since: `select.md`,
+  `networking-ycode.md` §2.4), no `pid_suspend`/`pid_resume`, no `#!`
   scripts, `task_for_pid` of another process fails, exception-port
   routines have no private traps, `task_threads` of another task,
   PIDINFO 1/2/5/6/24/25, socket-cycle garbage collection, and the stub

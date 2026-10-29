@@ -479,7 +479,6 @@ import YcodeProject
     }
 }
 
-
 /// The first line where two texts differ (test messages).
 func firstDifference(_ a: String, _ b: String) -> String {
     let x = a.components(separatedBy: "\n"), y = b.components(separatedBy: "\n")

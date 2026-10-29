@@ -94,7 +94,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             #expect(ids.firstIndex(of: "activity")! < ids.firstIndex(of: "scheme")! && ids.firstIndex(of: "scheme")! < ids.firstIndex(of: "editorModes")!)
             #expect(wc.leftPanesControl.segmentCount == 2 && wc.editorModesControl.segmentCount == 3)
             wc.setLeftPane(codingAssistant: true)
-            #expect(wc.navigator.showsCodingAssistant && !wc.navigator.assistantPlaceholder.isHidden)
+            #expect(wc.navigator.showsCodingAssistant && !wc.navigator.assistantContainer.isHidden)
             #expect(wc.leftPanesControl.isSelected(forSegment: 1) && !wc.leftPanesControl.isSelected(forSegment: 0))
             wc.setLeftPane(codingAssistant: false)
             #expect(!wc.navigator.showsCodingAssistant && wc.leftPanesControl.isSelected(forSegment: 0))

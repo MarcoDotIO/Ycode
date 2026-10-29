@@ -118,7 +118,7 @@ enum BinaryPropertyList {
         var objects: [PropertyListItem] = []
         var shared: [Shared: Int] = [:]
         var firstBool: [Bool: Int] = [:]
-        /// References of each container's children, by object index.
+        // References of each container's children, by object index.
         var children: [Int: [Int]] = [:]
 
         func flatten(_ v: PropertyListItem) -> Int {

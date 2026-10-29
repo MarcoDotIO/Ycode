@@ -6,6 +6,7 @@
 #if os(macOS)
 import AppKit
 import YcodeDisplayStream
+import YcodeDeviceUI
 
 let usage = """
     usage: ycode-sim-viewer [--connect <address>] [--zoom Z] [--fps N] [--encoding jpeg|zlib]
@@ -13,7 +14,7 @@ let usage = """
 
       --connect    the display server: <host>:<port>, <port> (127.0.0.1), or unix:<path>
                    (default 127.0.0.1:47100, or $YCODE_SIM_VIEWER_CONNECT)
-      --zoom       window points per device point (default 1: point accurate)
+      --zoom       window points per device point (default: the saved window size)
       --fps        frames per second at most (default 60)
       --encoding   jpeg (default) or zlib (lossless, more bandwidth)
       --quality    JPEG quality 1–100 (default 80)
@@ -22,14 +23,16 @@ let usage = """
       --verbose    log connection events to stdout
 
     Mouse: click and drag = one finger; option-drag = pinch/rotate about the center;
-    option-shift-drag = two-finger pan; scroll = drag. Keys go to the device while the
-    window is key (command shortcuts stay with the viewer). Shift-Command-H home,
-    Command-L lock, Command-S screenshot, Command-1/2/3 window size.
+    option-shift-drag = two-finger pan; scroll = drag. Click the frame's buttons to press
+    them. Keys go to the device while the window is key (command shortcuts stay with the
+    viewer unless Keyboard Capture is on, Shift-Command-K). Shift-Command-H home, Command-L
+    lock, Shift-Command-S screenshot, Shift-Command-R record, Command-Left/Right rotate.
+    Resize the window to scale the device; Expand shows the zoom controls.
     """
 
 var address = DisplayAddress(ProcessInfo.processInfo.environment["YCODE_SIM_VIEWER_CONNECT"] ?? "") ?? .tcp(host: "127.0.0.1", port: 47100)
 var settings = DisplayClientHello(client: "ycode-sim-viewer", maxFPS: 60, encoding: "jpeg", quality: 80, downscale: 1)
-var zoom: CGFloat = 1
+var zoom: CGFloat?
 var scriptPath: String?
 var verbose = false
 
@@ -84,8 +87,7 @@ if let scriptPath {
 } else if verbose {
     controller.log = { print($0); fflush(stdout) }
 }
-controller.window.makeKeyAndOrderFront(nil)
-controller.window.makeFirstResponder(controller.deviceView)
+controller.windowController.present()
 app.activate(ignoringOtherApps: true)
 connection.start()
 runner?.start()

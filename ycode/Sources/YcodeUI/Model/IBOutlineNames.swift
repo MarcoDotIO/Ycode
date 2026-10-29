@@ -5,6 +5,7 @@ import Foundation
 /// (with a kind badge) or class, then the scene's First Responder, Exit
 /// and Storyboard Entry Point.
 extension IBDocument {
+    /// The outline row for the storyboard's initial-view-controller arrow.
     public static let entryPointTitle = "Storyboard Entry Point"
 
     /// Whether an object is a subview (a view inside another view), not a
@@ -21,6 +22,9 @@ extension IBDocument {
         return nil
     }
 
+    /// The document outline's title for an object: the user label, a fixed
+    /// name (Safe Area, First Responder, Exit), a subview's content or class,
+    /// else `displayName`.
     public func outlineTitle(_ o: Object) -> String {
         if let l = o.attribute("userLabel") { return l }
         if o.element == "viewLayoutGuide", o.key == "safeArea" { return "Safe Area" }

@@ -6,6 +6,18 @@
 #   echo YCODE-REMOTE-PID $$; exec env YCODE_WARM_BOOT=1|0 [YCODE_LEAN_BOOT=…] \
 #       ycode-sim --device DEV --runtime-root RR [--install-app APP --launch ID] [extra options]
 #   ycode-sim --erase --device DEV      erases the device (its directory and its snapshot)
+#   ycode-sim --device DEV --control fold closed|half|open|<degrees> [instant]
+#   ycode-sim --device DEV --fold <state> | --rotate left|right | --fold-state
+#                                       a command for the running device (a foldable's
+#                                       hinge, specs/simulator/foldable.md §8.3); passed
+#                                       straight to ycode-simd, no boot slot
+#   ycode-sim --device DEV --ui|--accessibility|--location|--audio|--overrides <words…> | --settings
+#                                       a settings command (specs/simulator/simulator-features.md
+#                                       "Ycode implementation"): the running device's, else written
+#                                       into the stopped device for its next boot; passed straight
+#                                       to ycode-simd, no boot slot
+#   --environment-overrides             (with --launch) the app is launched with Ycode's Environment
+#                                       Overrides library; an app option (not in the snapshot's fingerprint)
 #
 # It adds ycode-simd's host-side options, takes a boot slot (a flock on
 # $YCODE_SIM_LOCKS/boot.N, shared with benchmark runs so their timings stay
@@ -55,6 +67,11 @@
 # Device types: ycode-simd's --device-type passes through (a device directory
 # keeps its type, specs/simulator/ipad.md §4.3; the option is part of the
 # snapshot fingerprint), so give each type its own --device directory.
+# Runtimes: the same holds for --runtime-root (a device records the runtime it
+# booted and refuses an older one; the root is in the fingerprint). Ycode
+# gives every runtime root and device type its own device directory
+# (<device name>-<type>-<runtime version>, specs/ide/run.md §Runtimes and
+# device types); erase and snapshots follow the device directory.
 #
 # scripts/ycode-sim-serve (the Mac viewer's host side) runs this launcher too,
 # with --display-server and no app options, so a viewer session is saved at
@@ -180,6 +197,12 @@ keep_newest() {
   done
 }
 
+# A command for a running device (FoldControl.swift): ycode-simd answers it at once.
+for a in "$@"; do
+  case "$a" in --control|--fold|--orientation|--rotate|--fold-state|--ui|--accessibility|--location|--audio|--overrides|--settings)
+    exec "$SIMD" "$@" ;; esac
+done
+
 STATUS=1; RESULT=failed
 # The arguments Ycode passed: the device, the runtime root, and the app
 # options (which do not change what a snapshot holds).
@@ -191,7 +214,7 @@ for a in "$@"; do
   esac
   case "$prev" in
     --install-app|--launch|--app-arg|--app-env|--app-url) ;;
-    *) case "$a" in --install-app|--launch|--app-arg|--app-env|--app-url) ;; --erase) ERASE=1 ;; *) BASE_ARGS+=("$a") ;; esac ;;
+    *) case "$a" in --install-app|--launch|--app-arg|--app-env|--app-url|--environment-overrides) ;; --erase) ERASE=1 ;; *) BASE_ARGS+=("$a") ;; esac ;;
   esac
   prev=$a
 done
@@ -262,6 +285,9 @@ fingerprint() {
     stat -L -c '%n %s %Y' "$SIMD" "$Y/SimShim/out/shim.bin" "$Y/SimShim/out/host_stubs.bin" "$Y/Translator/build/ycode-airc" 2>&1
     find "$Y/SimHostLibs/out" "$Y/SimGuestFrameworks/out" -type f -printf '%p %s %T@\n' 2>/dev/null | sort
     stat -L -c '%n %s %Y' "$RR/System/Library/CoreServices/SystemVersion.plist" 2>&1
+    # The runtime's platform and build by value (visionos.md §2.1: two
+    # visionOS 27.0 builds share one identifier; snapshots are per build).
+    grep -A1 -E '<key>Product(Name|BuildVersion)</key>' "$RR/System/Library/CoreServices/SystemVersion.plist" 2>&1
   } | sha256sum | cut -d' ' -f1
 }
 

@@ -1159,11 +1159,75 @@ YC_EXPORT int host_get_io_master(yc_port_t host, yc_port_t *io_master)
 
 /* kern_return_t thread_get_state(thread_read_t target_act, thread_state_flavor_t flavor,
  *     thread_state_t old_state, mach_msg_type_number_t *old_stateCnt)
- * Private routine 17: the VMM reports a thread of the caller's task. */
+ * Private routine 17: the VMM reports a thread of the caller's task. While a
+ * suspended thread moves from the end of its trap to its run gate (a few
+ * microseconds) the VMM answers YC_THREAD_STATE_RETRY, never a kern_return_t,
+ * and the call is made again (threads-and-events.md section 1.6). */
+#define YC_THREAD_STATE_RETRY 0x79630000L
 YC_EXPORT int thread_get_state(yc_port_t thread, int flavor, yc_u32 *state, yc_u32 *count)
 {
-    return (int)yc_mach_trap(YC_PRIV_ROUTINE(17), thread, (yc_uintptr_t)(unsigned)flavor, (yc_uintptr_t)state,
+    for (unsigned tries = 0; tries < 1000000u; tries++) {
+        yc_intptr_t kr = (yc_intptr_t)yc_mach_trap(YC_PRIV_ROUTINE(17), thread, (yc_uintptr_t)(unsigned)flavor,
+                                                   (yc_uintptr_t)state, (yc_uintptr_t)count, 0, 0, 0);
+        if (kr != YC_THREAD_STATE_RETRY)
+            return (int)kr;
+    }
+    return 5; /* KERN_FAILURE */
+}
+
+/* Mach thread and task suspension (threads-and-events.md section 1.6;
+ * mach/thread_act.defs, mach/task.defs): Ycode-private traps served by the
+ * VMM. thread_suspend of another thread returns once it has stopped;
+ * thread_resume and task_resume at count 0 fail with KERN_FAILURE.
+ *   kern_return_t thread_suspend(thread_read_t target_act)
+ *   kern_return_t thread_resume(thread_read_t target_act)
+ *   kern_return_t thread_abort(thread_act_t target_act)
+ *   kern_return_t thread_abort_safely(thread_act_t target_act)
+ *   kern_return_t thread_set_state(thread_act_t target_act, thread_state_flavor_t flavor,
+ *       thread_state_t new_state, mach_msg_type_number_t new_stateCnt)
+ *   kern_return_t task_suspend(task_read_t target_task)
+ *   kern_return_t task_resume(task_read_t target_task) */
+#define YC_PRIV_THREAD_SUSPEND 0x79630020L
+#define YC_PRIV_THREAD_RESUME 0x79630021L
+#define YC_PRIV_THREAD_ABORT 0x79630022L
+#define YC_PRIV_THREAD_SET_STATE 0x79630023L
+#define YC_PRIV_TASK_SUSPEND 0x79630024L
+#define YC_PRIV_TASK_RESUME 0x79630025L
+
+YC_EXPORT int thread_suspend(yc_port_t thread)
+{
+    return (int)YC_MACH3(YC_PRIV_THREAD_SUSPEND, thread, 0, 0);
+}
+
+YC_EXPORT int thread_resume(yc_port_t thread)
+{
+    return (int)YC_MACH3(YC_PRIV_THREAD_RESUME, thread, 0, 0);
+}
+
+YC_EXPORT int thread_abort(yc_port_t thread)
+{
+    return (int)YC_MACH3(YC_PRIV_THREAD_ABORT, thread, 0, 0);
+}
+
+YC_EXPORT int thread_abort_safely(yc_port_t thread)
+{
+    return (int)YC_MACH3(YC_PRIV_THREAD_ABORT, thread, 1, 0);
+}
+
+YC_EXPORT int thread_set_state(yc_port_t thread, int flavor, const yc_u32 *state, yc_u32 count)
+{
+    return (int)yc_mach_trap(YC_PRIV_THREAD_SET_STATE, thread, (yc_uintptr_t)(unsigned)flavor, (yc_uintptr_t)state,
                              (yc_uintptr_t)count, 0, 0, 0);
+}
+
+YC_EXPORT int task_suspend(yc_port_t task)
+{
+    return (int)YC_MACH3(YC_PRIV_TASK_SUSPEND, task, 0, 0);
+}
+
+YC_EXPORT int task_resume(yc_port_t task)
+{
+    return (int)YC_MACH3(YC_PRIV_TASK_RESUME, task, 0, 0);
 }
 
 /* kern_return_t thread_get_exception_ports(thread_t thread, exception_mask_t exception_mask,

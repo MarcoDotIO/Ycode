@@ -100,6 +100,67 @@ import YcodeXPC
         #expect(backend.calls.contains(.submit(commandBufferRef: 5, passes: 1)))
     }
 
+    /// messageType 17 replies carry a real right (visionos.md §10.6.5);
+    /// sending it back with messageType 18 opens the same event.
+    @Test func sharedEventHandleTravelsAsARight() throws {
+        let host = DarwinSystem().hostTask
+        let backend = NullBackend()
+        let service = try MetalHostService(host: host, backend: backend, memory: nil, surfaces: nil, log: { _ in })
+        service.start()
+        defer { service.stop() }
+        let c = Client(host: host, service: service)
+        var processRef: UInt64 = 0
+        var conns: [UInt32] = []
+        for type in 0..<3 as Range<UInt64> {
+            let (conn, _) = try c.open()
+            conns.append(conn)
+            let r = try c.request(conn, ["messageType": .uint64(0), "version": .uint64(1), "connectionType": .uint64(type),
+                                         "processRef": .uint64(processRef)])
+            if type == 0 { processRef = r["processRef"]?.uint64Value ?? 0 }
+        }
+        let c1 = conns[1]
+        _ = try c.request(c1, Build.message(12, Build.record(28) { $0.u32(0) }))
+
+        // 17: the reply is complex, with one port descriptor (a send right).
+        let reply = try host.makePort()
+        defer { try? host.destroyPort(reply) }
+        let body = try XPCWire.encodePayload(.dictionary(["messageType": .uint64(17), "eventRef": .uint64(1)]), magic: XPCWire.sim2hostMagic)
+        try host.send(MachHostOutgoingMessage(remotePort: c1, remoteDisposition: MachMsgType.copySend, localPort: reply,
+                                              localDisposition: MachMsgType.makeSendOnce, id: 0x1000_0000, body: body))
+        let m = try host.receive(on: reply, timeout: 5_000_000_000)
+        guard m.descriptors.count == 1, case let .port(eventPort, type) = m.descriptors[0] else {
+            Issue.record("descriptors \(m.descriptors)")
+            return
+        }
+        #expect(type == MachMsgType.portSend && MachPortName.isValid(eventPort))
+        guard case let .dictionary(r) = try XPCWire.decode(body: m.body, descriptors: [.port(name: eventPort, disposition: type)]) else {
+            Issue.record("undecodable")
+            return
+        }
+        #expect(r["eventPort"]?.port?.name == eventPort && r["labelTraceID"]?.uint64Value == 0)
+
+        // 18 with that right: a new event ref aliasing the first.
+        let open = Build.message(18, Build.record(40) { $0.u32(0) },
+                                 [("eventPort", .sendRight(XPCPort(name: eventPort, disposition: MachMsgType.copySend)))])
+        let enc = try XPCWire.encode(.dictionary(open), magic: XPCWire.sim2hostMagic)
+        let reply2 = try host.makePort()
+        defer { try? host.destroyPort(reply2) }
+        try host.send(MachHostOutgoingMessage(remotePort: c1, remoteDisposition: MachMsgType.copySend, localPort: reply2,
+                                              localDisposition: MachMsgType.makeSendOnce, id: 0x1000_0000,
+                                              descriptors: enc.descriptors.compactMap {
+                                                  if case let .port(name, d) = $0 { return .port(name: name, disposition: d) }
+                                                  return nil
+                                              }, body: enc.body))
+        let m2 = try host.receive(on: reply2, timeout: 5_000_000_000)
+        guard case let .dictionary(r2) = try XPCWire.decode(body: m2.body, descriptors: []) else {
+            Issue.record("undecodable")
+            return
+        }
+        #expect(r2["replyData"]?.dataValue == [2, 0, 0, 0, 0, 0, 0, 0])
+        #expect(backend.calls.contains { if case .createEventAlias = $0 { true } else { false } })
+        for conn in conns { try host.modRefs(conn, right: MachPortRight.send, delta: -1) }
+    }
+
     /// The ordered end before exit (stage8-contract.md §12): the receive
     /// thread has stopped and the connection queues are idle when the
     /// backend is shut down; a second shutdown does nothing.

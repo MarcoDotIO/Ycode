@@ -7,8 +7,9 @@ import YcodeDarwinABI
 // (374), `kevent_id` (375), and `kqueue_workloop_ctl` (530). Supported
 // filters: EVFILT_USER, EVFILT_TIMER, EVFILT_WORKLOOP (thread request, value
 // check, owner, sync wait/wake), and EVFILT_MACHPORT (fires when a message is
-// queued). PROC, SIGNAL, READ, WRITE, VNODE and the other known filters are
-// registered but never fire; EVFILT_MEMORYSTATUS is refused (ENOTSUP).
+// queued). PROC, SIGNAL, READ, WRITE, SOCK and VNODE (VnodeEvents.swift)
+// fire as well; the other known filters are registered but never fire;
+// EVFILT_MEMORYSTATUS is refused (ENOTSUP).
 //
 // There are three kinds of kqueue: kqueue descriptors (only reachable
 // through `kevent`/`kevent64`/`kevent_qos` on a known descriptor), the
@@ -160,6 +161,10 @@ enum EVFilter {
         -12: "EVFILT_VM", -13: "EVFILT_SOCK", -14: "EVFILT_MEMORYSTATUS", -15: "EVFILT_EXCEPT",
         -16: "EVFILT_NW_CHANNEL", -17: "EVFILT_WORKLOOP", -18: "EVFILT_EXCLAVES_NOTIFICATION",
     ]
+
+    /// Filters whose state is a descriptor object's (EVFILT_READ, EVFILT_WRITE,
+    /// EVFILT_SOCK: networking-ycode.md §2.5).
+    @inline(__always) static func isReadiness(_ f: Int16) -> Bool { f == read || f == write || f == sock }
 }
 
 /// EVFILT_USER `fflags`.
@@ -260,6 +265,14 @@ final class Knote {
     weak var object: (any KernelDescriptorObject)?
     var observerToken: Int?
     var hostDescriptor = false
+    // EVFILT_SOCK: the level events already delivered (xnu `kn_hook32`).
+    var sockDelivered: UInt32 = 0
+    // EVFILT_VNODE (VnodeEvents.swift): the notes posted since the last
+    // delivery that `fflags` asks for (xnu `kn_fflags`), whether the vnode
+    // was revoked, and the registration with `VnodeNotes`.
+    var vnodeFired: UInt32 = 0
+    var vnodeRevoked = false
+    var vnodeWatch: VnodeKnoteWatch?
 
     init(_ c: KEventRecord) {
         ident = c.ident
@@ -796,7 +809,7 @@ extension DarwinKernel {
                 kq.knotes.append(new)
                 if new.filter == EVFilter.machport { kevents.machportIndex = nil }
                 if new.filter == EVFilter.signal { signalKnoteCount.wrappingAdd(1, ordering: .relaxed) }
-                if new.filter == EVFilter.read || new.filter == EVFilter.write {
+                if EVFilter.isReadiness(new.filter) {
                     kq.descriptorKnotes += 1
                     descriptorKnoteCount.wrappingAdd(1, ordering: .relaxed)
                 }
@@ -861,6 +874,15 @@ extension DarwinKernel {
             return nil
         case EVFilter.read, EVFilter.write:
             return attachDescriptor(kn, c)
+        case EVFilter.vnode:
+            return attachVnode(kn, c)
+        case EVFilter.sock:
+            // EVFILT_SOCK (xnu `filt_sockattach`): on a socket only.
+            guard let o = try? fileSystem.object(for: Int32(truncatingIfNeeded: c.ident)), o is SocketEventSource else {
+                logFilterOnce(kn.filter, "registered on a descriptor that is no socket; it never fires")
+                return nil
+            }
+            return attachDescriptor(kn, c)
         default:
             logFilterOnce(kn.filter, "registered; it never fires in stage 4a")
             return nil
@@ -883,7 +905,11 @@ extension DarwinKernel {
             kn.active = machPortHasMessage(UInt32(truncatingIfNeeded: c.ident))
             return nil
         default:
+            // EVFILT_SOCK (`filt_socktouch`): a level event whose interest
+            // changed may be reported again.
+            if kn.filter == EVFilter.sock { kn.sockDelivered &= ~((kn.fflags ^ c.fflags) & SocketEvents.levelMask) }
             kn.fflags = c.fflags
+            kn.vnodeWatch?.interest.store(c.fflags, ordering: .relaxed)
             kn.data = c.data
             kn.ext = c.ext
             return nil
@@ -997,7 +1023,7 @@ extension DarwinKernel {
             return
         }
         // The timer thread and its wakeup are L0's (`mach-ipc-locking.md` §4.5).
-        lock.deferIfFast(.kernelLock(lock)) { [weak self] in
+        lock.deferIfFast(.kernelLock(lock), tag: "timer thread") { [weak self] in
             guard let self else { return }
             startTimerThreadIfNeeded()
             kevents.timerWake.wakeAll()
@@ -1090,7 +1116,7 @@ extension DarwinKernel {
             }
         }
         // Discover owner (applied after validation).
-        var newOwner: ThreadContext?? = nil
+        var newOwner: ThreadContext??
         if cmd & NoteWorkloop.discoverOwner != 0 {
             let name = UInt32(truncatingIfNeeded: loaded) & ~3
             if name == 0 {
@@ -1214,9 +1240,10 @@ extension DarwinKernel {
             // ignores a dropped knote meanwhile.
             let object = kn.object
             kn.observerToken = nil
-            lock.deferIfFast(.kernelLock(lock)) { object?.removeReadinessObserver(token) }
+            lock.deferIfFast(.kernelLock(lock), tag: "readiness observer removal") { object?.removeReadinessObserver(token) }
         }
         kevents.timers[ObjectIdentifier(kn)] = nil
+        if kn.vnodeWatch != nil { detachVnode(kn) }
         if kn.isSyncKnote, !kn.syncWaiters.isEmpty {
             kn.syncWoken = true
             kn.syncWaiters.wakeAll()
@@ -1226,7 +1253,7 @@ extension DarwinKernel {
         kq.knotes.removeAll { $0 === kn }
         if kn.filter == EVFilter.machport { kevents.machportIndex = nil }
         if kq.knotes.count < before, kn.filter == EVFilter.signal { signalKnoteCount.wrappingSubtract(1, ordering: .relaxed) }
-        if kq.knotes.count < before, kn.filter == EVFilter.read || kn.filter == EVFilter.write {
+        if kq.knotes.count < before, EVFilter.isReadiness(kn.filter) {
             kq.descriptorKnotes -= 1
             descriptorKnoteCount.wrappingSubtract(1, ordering: .relaxed)
         }
@@ -1243,6 +1270,25 @@ extension DarwinKernel {
         reevaluateRequests(kq, bucket: kq.kind == .workq ? kn.bucket : nil)
     }
 
+    /// On by default; `YCODE_DESCRIPTOR_ESCALATION=0` sends every kevent and
+    /// workqueue trap of an image with descriptor knotes to L0, as before
+    /// (`mach-ipc-locking.md` §4.11).
+    nonisolated(unsafe) public static var descriptorEscalation = getenv("YCODE_DESCRIPTOR_ESCALATION").map { String(cString: $0) != "0" } ?? true
+
+    /// An EVFILT_READ/EVFILT_WRITE knote that a scan could report: active,
+    /// enabled (or a synthetic delete), neither suppressed nor dropped. Only
+    /// such a knote's readiness is read; an image's event lock guards these
+    /// flags, and a knote becomes active only under L0 and that lock.
+    @inline(__always) static func isDescriptorCandidate(_ kn: Knote) -> Bool {
+        EVFilter.isReadiness(kn.filter) && !kn.dropped && kn.active && !kn.suppressed
+            && (kn.enabled || kn.syntheticDelete)
+    }
+
+    /// True when `kq` holds a descriptor knote a scan could report (event lock held).
+    func hasDescriptorCandidate(_ kq: KQueue) -> Bool {
+        kq.descriptorKnotes > 0 && kq.knotes.contains(where: Self.isDescriptorCandidate)
+    }
+
     /// Would `scanForDelivery` report this knote now?
     private func deliverable(_ kn: Knote, in kq: KQueue) -> Bool {
         guard !kn.dropped, kn.active, !kn.suppressed, kn.enabled || kn.syntheticDelete else { return false }
@@ -1254,7 +1300,8 @@ extension DarwinKernel {
         case EVFilter.user: return true
         case EVFilter.proc: return kn.procFired != 0 || kn.procExited
         case EVFilter.signal: return kn.signalCount > 0
-        case EVFilter.read, EVFilter.write:
+        case EVFilter.vnode: return kn.vnodeFired != 0 || kn.vnodeRevoked
+        case EVFilter.read, EVFilter.write, EVFilter.sock:
             // Without the kernel mutex (a fast path that raced a new
             // descriptor knote): reported once L0 re-evaluates the kqueue.
             if eventLock != nil, !lock.isHeldByCurrentThread {
@@ -1263,7 +1310,17 @@ extension DarwinKernel {
                 }
                 return false
             }
-            return descriptorState(kn).ready
+            let ready = descriptorState(kn).ready
+            // A pipe or socket notifies its observers at every change, so a
+            // knote found not ready may stop being active: the observer makes
+            // it active again (under L0 and this lock) when the descriptor
+            // becomes ready. Fewer stale candidates, fewer scans that take L0
+            // (`mach-ipc-locking.md` §4.11).
+            if !ready, Self.descriptorEscalation,
+               kn.object is PipeEnd || kn.object is UnixSocket || kn.object is InetSocket || kn.object is RouteSocket {
+                kn.active = false
+            }
+            return ready
         default: return false
         }
     }
@@ -1273,9 +1330,12 @@ extension DarwinKernel {
     func reevaluateRequests(_ kq: KQueue, bucket: Int?) {
         eventLock?.checkHeld("a kqueue")
         // Descriptor readiness is L0 state: without the kernel mutex the
-        // re-evaluation waits for it (`mach-ipc-locking.md` §4.5).
-        if kq.descriptorKnotes > 0, eventLock != nil, !lock.isHeldByCurrentThread {
-            lock.deferIfFast(.kernelLock(lock)) { [weak self, weak kq] in
+        // re-evaluation waits for it (`mach-ipc-locking.md` §4.5) when a
+        // descriptor knote could be reported; the others are not deliverable
+        // whatever their descriptor's state (§4.11).
+        if kq.descriptorKnotes > 0, eventLock != nil, !lock.isHeldByCurrentThread,
+           !Self.descriptorEscalation || hasDescriptorCandidate(kq) {
+            lock.deferIfFast(.kernelLock(lock), tag: "descriptor kqueue re-evaluation") { [weak self, weak kq] in
                 guard let self, let kq else { return }
                 withEvents { reevaluateRequests(kq, bucket: bucket) }
             }
@@ -1287,7 +1347,7 @@ extension DarwinKernel {
                 kq.waiters.wakeAll()
                 // Observers (select, an outer kqueue) wait under L0.
                 if let object = kq.object {
-                    lock.deferIfFast(.kernelLock(lock)) { object.notifyObservers() }
+                    lock.deferIfFast(.kernelLock(lock), tag: "kqueue observers") { object.notifyObservers() }
                 }
             }
         case .workq:
@@ -1352,6 +1412,18 @@ extension DarwinKernel {
     /// knotes stay suppressed until `context` returns to the kernel.
     func scanForDelivery(_ kq: KQueue, bucket: Int?, max: Int, area: inout KEventDataArea, context: ThreadContext,
                          _ mem: any KernelGuestMemory) -> [KEventRecord] {
+        // A descriptor knote that could be reported needs its descriptor's
+        // readiness, L0 state: a fast path takes L0 for the scan
+        // (`mach-ipc-locking.md` §4.11).
+        if Self.descriptorEscalation, let events = eventLock, !lock.isHeldByCurrentThread, hasDescriptorCandidate(kq) {
+            var escalatedArea = area
+            if let found = events.escalateToKernelLock({
+                scanForDelivery(kq, bucket: bucket, max: max, area: &escalatedArea, context: context, mem)
+            }) {
+                area = escalatedArea
+                return found
+            }
+        }
         var out: [KEventRecord] = []
         for kn in kq.knotes where out.count < max {
             if let bucket, kn.bucket != bucket { continue }
@@ -1410,11 +1482,19 @@ extension DarwinKernel {
                 e.fflags = kn.fflags
                 e.data = kn.signalCount
                 kn.signalCount = 0
+            case EVFilter.vnode:
+                deliverVnode(kn, into: &e)
             case EVFilter.read, EVFilter.write:
                 let state = descriptorState(kn)
                 e.fflags = 0
                 e.data = state.data
                 if state.eof { e.flags |= EV.eof }
+            case EVFilter.sock:
+                let state = socketEventState(kn)
+                e.fflags = state.fired
+                e.data = state.data
+                if state.eof { e.flags |= EV.eof }
+                kn.sockDelivered |= state.fired & SocketEvents.levelMask
             default:
                 continue
             }
@@ -1622,7 +1702,8 @@ final class TimerThreadBox: @unchecked Sendable {
 
 // MARK: - Stage 4b: kqueue descriptors, EVFILT_PROC, EVFILT_SIGNAL, EVFILT_READ/WRITE
 
-/// `NOTE_*` of EVFILT_PROC (`processes.md` §2.8).
+/// `NOTE_*` of EVFILT_PROC (`processes.md` §2.8): the `fflags` bits a
+/// watcher asks for and receives, one per `NOTE_*` its name spells.
 public enum NoteProc {
     public static let exit: UInt32 = 0x8000_0000
     public static let fork: UInt32 = 0x4000_0000
@@ -1692,7 +1773,7 @@ extension DarwinKernel {
     /// The descriptor kqueue behind `fd`: a `kqueue()` object of this
     /// process, or one installed with `installDescriptorKQueue`.
     func descriptorKQueue(_ fd: Int32) -> KQueue? {
-        if let object = ((try? fileSystem.object(for: fd)) ?? nil) as? KQueueObject, object.kernel === self {
+        if let object = (try? fileSystem.object(for: fd)) as? KQueueObject, object.kernel === self {
             return object.queue
         }
         return kevents.descriptorQueues[fd]
@@ -1746,6 +1827,7 @@ extension DarwinKernel {
                     kn.observerToken = nil
                 }
                 if kn.isSyncKnote { kn.syncWaiters.wakeAll() }
+                if kn.vnodeWatch != nil { detachVnode(kn) }
             }
             kq.waiters.wakeAll()
         }
@@ -1783,14 +1865,14 @@ extension DarwinKernel {
 
     /// Filters whose knotes a descriptor's close drops (`closeDescriptorKnotes`).
     static func isDescriptorWatch(_ filter: Int16) -> Bool {
-        filter == EVFilter.read || filter == EVFilter.write || filter == EVFilter.vnode
+        filter == EVFilter.read || filter == EVFilter.write || filter == EVFilter.vnode || filter == EVFilter.sock
     }
 
     private func closeDescriptorKnotes(_ fd: Int32) {
         do {
             for kq in allKQueues {
                 for kn in kq.knotes where kn.ident == UInt64(UInt32(bitPattern: fd))
-                    && (kn.filter == EVFilter.read || kn.filter == EVFilter.write || kn.filter == EVFilter.vnode) {
+                    && (EVFilter.isReadiness(kn.filter) || kn.filter == EVFilter.vnode) {
                     drop(kn)
                 }
             }
@@ -1884,6 +1966,10 @@ extension DarwinKernel {
 
     /// The readiness of a descriptor knote now.
     func descriptorState(_ kn: Knote) -> (ready: Bool, data: Int64, eof: Bool) {
+        if kn.filter == EVFilter.sock {
+            let s = socketEventState(kn)
+            return (s.pending, s.data, s.eof)
+        }
         if kn.hostDescriptor {
             if kn.filter == EVFilter.write { return (true, 65536, false) }
             let size = (try? fileSystem.fstat(Int32(truncatingIfNeeded: kn.ident)).size) ?? 0

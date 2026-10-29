@@ -24,6 +24,9 @@ extension LineIndex {
 public final class LanguageService {
     public let client: LSPClient
     private var versions: [URL: Int] = [:]
+    /// The hash of the text last sent per document (an `open` of an open
+    /// document with the same text is not an edit).
+    private var textHashes: [URL: Int] = [:]
     /// Live issues by file path, from `publishDiagnostics`.
     public private(set) var liveIssues: [String: [Diagnostic]] = [:]
     /// The diagnostics as sent, by file path (for code-action requests).
@@ -31,6 +34,9 @@ public final class LanguageService {
     /// Edits the server asks to apply (`workspace/applyEdit`).
     var onApplyEdit: ((WorkspaceEdit) -> Void)?
     var onIssuesChanged: (() -> Void)?
+    /// A document's text changed (the path, standardized): its build
+    /// issues no longer stand for it (`reference-ui-6.md` §5.2.2).
+    var onEdited: ((String) -> Void)?
 
     public init(transport: DAPTransport, root: URL) async throws {
         client = try LSPClient(transport: transport)
@@ -79,6 +85,7 @@ public final class LanguageService {
     public func open(_ url: URL, text: String) {
         guard versions[url] == nil else { return change(url, text: text) }
         versions[url] = 1
+        textHashes[url] = text.hashValue
         client.didOpen(url, text: text)
     }
 
@@ -86,6 +93,8 @@ public final class LanguageService {
         let v = (versions[url] ?? 0) + 1
         versions[url] = v
         client.didChange(url, text: text, version: v)
+        let h = text.hashValue
+        if textHashes.updateValue(h, forKey: url) != h { onEdited?(url.standardizedFileURL.path) }
     }
 
     /// The file was written (`textDocument/didSave`).
@@ -97,6 +106,7 @@ public final class LanguageService {
     /// No editor shows the file any more (`textDocument/didClose`).
     public func close(_ url: URL) {
         guard versions.removeValue(forKey: url) != nil else { return }
+        textHashes[url] = nil
         client.didClose(url)
     }
 
@@ -124,6 +134,7 @@ extension WorkspaceSession {
         do {
             let service = try await LanguageService(transport: t, root: languageRoot)
             service.onIssuesChanged = { [weak self] in self?.languageIssuesChanged() }
+            service.onEdited = { [weak self] in self?.noteFileEdited($0) }
             language = service
         } catch {
             appendConsole("Ycode: the language server did not start: \(error)\n")

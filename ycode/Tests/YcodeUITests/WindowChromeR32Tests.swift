@@ -99,12 +99,15 @@ import YcodeProject
         wc.open(path: model, line: nil)
         let c = wc.editorModesControl
         #expect((0..<3).map { c.toolTip(forSegment: $0) } == ["Show Canvas", "Show Assistant", "Show Code Review"])
-        #expect(selected(c) == [false, false, false])
+        // Canvas mode is on in a new editor (reference-ui-6.md §4.4, E10).
+        #expect(selected(c) == [true, false, false] && wc.activeEditorMode == .canvas)
+        wc.toggleCanvas(nil)
+        #expect(selected(c) == [false, false, false] && wc.activeEditorMode == nil)
         wc.toggleCanvas(nil)
         #expect(selected(c) == [true, false, false] && wc.activeEditorMode == .canvas)
-        // Turning on the Assistant while the canvas is shown hides the canvas.
+        // Turning on the Assistant ends canvas mode.
         wc.toggleAssistant(nil)
-        #expect(wc.canvas == nil && wc.editorArea.tab.assistant != nil)
+        #expect(wc.canvas == nil && !wc.isCanvasModeOn && wc.editorArea.tab.assistant != nil)
         #expect(selected(c) == [false, true, false])
         // Code Review while the Assistant is shown closes the assistant pane.
         #expect(wc.toggleComparison(nil))
@@ -113,7 +116,8 @@ import YcodeProject
         #expect(selected(c) == [false, false, true] && wc.activeEditorMode == .codeReview)
         // Canvas ends Code Review.
         wc.setEditorMode(.canvas)
-        #expect(!(wc.editor.isShowingComparison || wc.editor.isShowingInlineComparison) && wc.canvas != nil)
+        #expect(!(wc.editor.isShowingComparison || wc.editor.isShowingInlineComparison) && wc.isCanvasModeOn)
+        #expect(wc.activeEditorMode == .canvas && selected(c) == [true, false, false])
         // Clicking the selected segment leaves no mode on.
         wc.setEditorMode(.canvas)
         #expect(wc.activeEditorMode == nil && selected(c) == [false, false, false])
@@ -132,9 +136,12 @@ import YcodeProject
         defer { try? FileManager.default.removeItem(at: dir) }
         let wc = try window(dir)
         let ids = wc.toolbarDefaultItemIdentifiers(NSToolbar()).map(\.rawValue)
-        #expect(ids.firstIndex(of: "newConversation")! + 1 == ids.firstIndex(of: "scheme")!)
+        // Only spacers between them (liquid-glass.md §2.2: a fixed space
+        // keeps New Conversation's circle out of the scheme's capsule).
+        let between = ids[(ids.firstIndex(of: "newConversation")! + 1)..<ids.firstIndex(of: "scheme")!]
+        #expect(between.allSatisfy { WorkspaceWindowController.toolbarSpacers.map(\.rawValue).contains($0) })
         let conv = try #require(wc.toolbar(NSToolbar(), itemForItemIdentifier: .init("newConversation"), willBeInsertedIntoToolbar: false))
-        #expect(!conv.isEnabled && conv.label == "New Conversation")
+        #expect(conv.isEnabled && conv.label == "New Conversation" && conv.action == NSSelectorFromString("toggleNewConversationPrompt:"))   // reference-ui-6.md §9.4
         let run = try #require(wc.toolbar(NSToolbar(), itemForItemIdentifier: .init("run"), willBeInsertedIntoToolbar: false)?.view as? NSSegmentedControl)
         #expect((0..<2).map { run.toolTip(forSegment: $0) } == ["Build and then run the current scheme", "Stop the running scheme or application"])
         let history = try #require(wc.toolbar(NSToolbar(), itemForItemIdentifier: .init("history"), willBeInsertedIntoToolbar: false)?.view as? NSSegmentedControl)
@@ -182,7 +189,8 @@ import YcodeProject
         ]
         let titles = wc.editor.jumpBarTitles
         #expect(Array(titles.suffix(3)) == ["Show Previous Issue", "Issues", "Show Next Issue"])
-        #expect(wc.editor.jumpBarIssueTitles == ["value is never read", "cannot find 'x'"])
+        // Messages start with a capital letter (reference-ui-6.md §5.2.3).
+        #expect(wc.editor.jumpBarIssueTitles == ["Value is never read", "Cannot find 'x'"])
         func at() -> String { "\(wc.editor.fileURL!.lastPathComponent):\(wc.editor.currentLine)" }
         wc.editor.onNextIssue?()
         #expect(at() == "Model.swift:2")
@@ -191,7 +199,7 @@ import YcodeProject
         // Then the next file's issues.
         wc.editor.onNextIssue?()
         #expect(at() == "Helper.swift:1")
-        #expect(wc.editor.jumpBarIssueTitles == ["missing return"])
+        #expect(wc.editor.jumpBarIssueTitles == ["Missing return"])
         // Wraps to the first file.
         wc.jumpToNextIssue(nil)
         #expect(at() == "Model.swift:2")
@@ -424,10 +432,12 @@ import YcodeProject
         nav.setTests(found, results: [found[0]: .passed, found[1]: .failed])
         // Hierarchy: diamonds at the right end, not in the icon slot.
         let plan = try #require(nav.rows(5).first)
+        // reference-ui-6.md §5.4 (R45): the root is the project (no name set
+        // here: the plan's), the result glyph shows once a result exists.
         #expect(plan.title == "Chrome (Autocreated)" && plan.trailingSymbol == "xmark.diamond.fill")
         let leaves = plan.children.flatMap(\.children).flatMap { $0.children.isEmpty ? [$0] : $0.children }
         #expect(leaves.map(\.title) == ["value()", "other()", "loose()"])
-        #expect(leaves.map { $0.trailingSymbol ?? "" } == ["checkmark.diamond.fill", "xmark.diamond.fill", "diamond"])
+        #expect(leaves.map { $0.trailingSymbol ?? "" } == ["checkmark.diamond.fill", "xmark.diamond.fill", ""])
         #expect(!leaves.contains { $0.symbol.contains("diamond") })
         // Group by Tags: one group per tag, Untagged Tests last.
         nav.testModeControl.selectedSegment = 1
@@ -439,16 +449,16 @@ import YcodeProject
         // Recent Tests: tests of open files and of the last run.
         nav.groupTestsByTags = false
         nav.setToggle(5, 1, true)
-        #expect(nav.rows(5).first?.detail == "2 Tests, 1 Failing")
+        #expect(nav.rows(5).first?.detail == "2 Tests")
         nav.recentFiles = [file.path]
         nav.setToggle(5, 1, false)
         nav.setToggle(5, 1, true)
-        #expect(nav.rows(5).first?.detail == "3 Tests, 1 Failing")
+        #expect(nav.rows(5).first?.detail == "3 Tests")
         // Show Only Included Tests hides what the plan skips.
         nav.setToggle(5, 1, false)
         nav.skippedTests = ["loose"]
         nav.setToggle(5, 0, true)
-        #expect(nav.rows(5).first?.detail == "2 Tests, 1 Failing")
+        #expect(nav.rows(5).first?.detail == "2 Tests")
         // Nothing left: the two-line empty state.
         nav.skippedTests = ["ModelTests/value", "ModelTests/other", "loose"]
         #expect(nav.emptyStateLines == ["No Tests", "Click the \u{2295} button to add test targets"])
@@ -506,19 +516,16 @@ import YcodeProject
         wc.open(path: model.path, line: nil)
         let i = wc.inspector
         i.select(0)
-        #expect(i.sectionTitles == ["Identity and Type", "On Demand Resource Tags", "Target Membership", "Text Settings"])
+        // reference-ui-6.md §6 (R45, I1): a package's files show only
+        // Identity and Type and Text Settings (the Target Membership
+        // controls are covered by NavigatorInspectorR45Tests).
+        #expect(i.sectionTitles == ["Identity and Type", "Text Settings"])
         let rows = Dictionary(i.rowValues, uniquingKeysWith: { a, _ in a })
         let root = Self.git(dir, ["rev-parse", "--show-toplevel"]).trimmingCharacters(in: .whitespacesAndNewlines)
         func real(_ p: String?) -> String? { p.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path } }
         #expect(real(rows["Working Copy"]) == real(root) && rows["Relative Path"] == "Sources/Chrome/Model.swift", "\(rows) \(root)")
         #expect(i.rowValues.map(\.0).firstIndex(of: "Full Path")! < i.rowValues.map(\.0).firstIndex(of: "Working Copy")!)
-        let tags = try #require(i.fileControls["On Demand Resource Tags"] as? NSTokenField)
-        #expect(!tags.isEnabled && tags.placeholderString == "Only resources are taggable")
-        #expect(rows["Target"] == "Chrome")
-        #expect((i.fileControls["Add Target"] as? NSButton)?.toolTip == "Choose which targets include this file")
-        #expect((i.fileControls["Remove Target"] as? NSButton)?.toolTip == "Remove this file from selected targets")
-        let pencil = try #require(i.fileControls["Edit Target Membership"] as? NSButton)
-        #expect(pencil.toolTip == "Edit target membership options" && !pencil.isEnabled)
+        #expect(i.fileControls["On Demand Resource Tags"] == nil && rows["Target"] == nil)
     }
 
     @Test func historyInspectorShowsTheFilesCommits() async throws {
@@ -629,7 +636,8 @@ import YcodeProject
         let d = DebugAreaController()
         _ = d.view
         #expect(d.variablesBarTitles == ["Variables scope", "Quick Look", "Print Description", "Filter"])
-        #expect(d.consoleBarTitles == ["Quick Look", "Metadata Options", "Filter options", "Filter", "Clear Console",
+        // reference-ui-6.md §7 (R45, D1): no output-kind pop-up.
+        #expect(d.consoleBarTitles == ["Quick Look", "Metadata Options", "Filter", "Clear Console",
                                        "Show or hide the variables view", "Show or hide the console"])
         #expect(d.printDescriptionButton?.image?.accessibilityDescription == "Print Description")
         var printed: [String] = []

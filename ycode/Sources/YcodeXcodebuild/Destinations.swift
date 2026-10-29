@@ -314,7 +314,7 @@ enum PhysicalDevices {
             let hw = d["hardwareProperties"] as? [String: Any] ?? [:]
             let props = d["deviceProperties"] as? [String: Any] ?? [:]
             let conn = d["connectionProperties"] as? [String: Any] ?? [:]
-            guard hw["reality"] as? String == "physical", conn["transportType"] as? String != nil,
+            guard hw["reality"] as? String == "physical", conn["transportType"] is String,
                   let platform = hw["platform"] as? String, let udid = hw["udid"] as? String,
                   let name = props["name"] as? String else { return nil }
             let cpu = (hw["cpuType"] as? [String: Any])?["name"] as? String ?? "arm64"

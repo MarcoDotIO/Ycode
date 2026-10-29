@@ -21,6 +21,7 @@
 #   button home|lock     down, up 100 ms later
 #   mark <name>          starts a new phase (statistics are per phase)
 #   shot <path.png>      asks the server for a screenshot (full resolution) and writes it
+#   command "<words>"    a device command (0x90, e.g. "ui appearance dark"); prints the answer (0x10)
 # Prints per phase: frames received, received fps, guest frames (counter
 # delta) and guest fps, input → first frame latencies, and, with --timing,
 # the guest's swap cadence (submit intervals, target-time steps).
@@ -55,6 +56,7 @@ class Probe:
         self.phase = "start"
         self.phases = [("start", now())]
         self.shots = {}
+        self.replies = {}
         self.shot_token = 0
         self.json = open(json_path, "w") if json_path else None
         self.send(0x81, json.dumps(hello).encode())
@@ -99,6 +101,10 @@ class Probe:
                         self.cond.notify_all()
                 elif kind == 0x06:
                     print("notice:", payload.decode(errors="replace"), flush=True)
+                elif kind == 0x10 and len(payload) >= 4:
+                    with self.cond:
+                        self.replies[struct.unpack_from("<I", payload)[0]] = payload[4:].decode(errors="replace")
+                        self.cond.notify_all()
 
     def input(self, kind, body, label=None):
         with self.lock:
@@ -131,6 +137,18 @@ class Probe:
             with open(path, "wb") as f:
                 f.write(png)
         print(f"shot {path}: {len(png) if png else 0} bytes", flush=True)
+
+    def command(self, text, timeout=60):
+        self.shot_token += 1
+        token = self.shot_token
+        t0 = now()
+        self.send(0x90, struct.pack("<I", token) + text.encode())
+        end = now() + timeout
+        with self.cond:
+            while token not in self.replies and not self.closed and now() < end:
+                self.cond.wait(0.2)
+            answer = self.replies.pop(token, None)
+        print(f"command {text!r}: {answer!r} ({(now() - t0) * 1000:.0f} ms)", flush=True)
 
     def wait_live(self, timeout=600):
         end = now() + timeout
@@ -365,6 +383,8 @@ def main(argv):
             p.mark(args.pop(0))
         elif c == "shot":
             p.screenshot(args.pop(0))
+        elif c == "command":
+            p.command(args.pop(0))
         elif c == "swipe":
             x0, y0, x1, y1, ms_ = (float(args.pop(0)) for _ in range(5))
             hz = 120.0

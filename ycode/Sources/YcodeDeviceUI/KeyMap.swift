@@ -3,11 +3,11 @@
 // sends usages; the guest applies its own keyboard layout.
 
 #if os(macOS)
-enum KeyMap {
-    static let keyboardPage: UInt16 = 7
+public enum KeyMap {
+    public static let keyboardPage: UInt16 = 7
 
     /// kVK code → HID usage.
-    static let usage: [UInt16: UInt16] = {
+    public static let usage: [UInt16: UInt16] = {
         var m: [UInt16: UInt16] = [:]
         // Letters.
         let letters: [(UInt16, Character)] = [
@@ -63,10 +63,10 @@ enum KeyMap {
         return m
     }()
 
-    static func isModifier(_ usage: UInt16) -> Bool { (0xE0...0xE7).contains(usage) }
+    public static func isModifier(_ usage: UInt16) -> Bool { (0xE0...0xE7).contains(usage) }
 
     /// A character of US text → (kVK code, shift), for scripted typing.
-    static func keyCode(for ch: Character) -> (code: UInt16, shift: Bool)? {
+    public static func keyCode(for ch: Character) -> (code: UInt16, shift: Bool)? {
         if let lower = ch.lowercased().first, lower.isLetter, lower.isASCII {
             guard let code = usage.first(where: { $0.value == UInt16(lower.asciiValue! - 97) + 0x04 })?.key else { return nil }
             return (code, ch.isUppercase)

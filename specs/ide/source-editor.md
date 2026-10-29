@@ -31,7 +31,8 @@ issue buttons at the right end and the ⌃1–⌃6 keyboard menus).
 - A code-folding ribbon on the gutter's right edge with a triangle on each
   fold start (down = open, right = folded); clicking the ribbon on a line
   toggles the region starting there, else the innermost one containing it.
-- Test diamonds sit left of the line number.
+- Test diamonds are drawn in place of the line number
+  (`reference-ui-6.md` §4.3.1). Issues have no gutter glyph (§4.3.2).
 
 ## Annotations
 

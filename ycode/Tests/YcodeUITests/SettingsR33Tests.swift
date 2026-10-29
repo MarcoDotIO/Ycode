@@ -66,20 +66,23 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             // The two rows share a specifier but not a key.
             #expect(RemoteSimulator.destination.specifier == "generic/platform=iOS Simulator")
             let menu = try #require(wc.destinationPopUp.menu)
-            let remoteIndex = try #require(menu.items.firstIndex { $0.title == RemoteSimulator.destination.name })
+            // The primary row (the runtime's default device type) keeps the old identifier.
+            let primary = RemoteSimulator(settings: remote).destination
+            #expect(primary.name == "iPhone Duo (Ycode)")
+            let remoteIndex = try #require(menu.items.firstIndex { $0.title == primary.name })
             let anySimIndex = try #require(menu.items.firstIndex { $0.title.hasPrefix("Any iOS Simulator Device") })
             #expect(menu.items[remoteIndex].representedObject as? String == "ycode-remote-simulator")
             #expect(menu.items[anySimIndex].representedObject as? String == "generic/platform=iOS Simulator")
 
             wc.destinationPopUp.selectItem(at: remoteIndex)
             wc.destinationChosen(wc.destinationPopUp)
-            #expect(wc.session.destination == RemoteSimulator.destination)
-            #expect(wc.destinationPopUp.titleOfSelectedItem == RemoteSimulator.destination.name)
+            #expect(wc.session.destination == primary)
+            #expect(wc.destinationPopUp.titleOfSelectedItem == primary.name)
             #expect(WorkspaceUserState.load(from: stateURL).destinations[wc.session.scheme ?? ""] == "ycode-remote-simulator")
             // Reopening restores the remote simulator, not the generic one.
             let again = try window()
             again.setDestinationGroups(groups)
-            #expect(again.session.destination == RemoteSimulator.destination)
+            #expect(again.session.destination == primary)
 
             // The generic row still selects the generic destination.
             let i = try #require(again.destinationPopUp.menu?.items.firstIndex { $0.title.hasPrefix("Any iOS Simulator Device") })
@@ -261,7 +264,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let t = TestDefaults("r33-window")
         defer { t.remove() }
         let wc = SettingsWindowController(prefs: Preferences(defaults: t.defaults), components: [])
-        #expect(SettingsWindowController.paneTitles == ["General", "Appearance", "Accounts", "Intelligence", "Behaviors", "Navigation",
+        #expect(SettingsWindowController.paneTitles == ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation",
                                                         "Notifications", "Editing", "Shortcuts", "Source Control", "Components",
                                                         "Simulators", "Locations"])
         let sims = wc.pane(SimulatorsSettingsPane.self)!
@@ -575,4 +578,3 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         }
     }
 }
-

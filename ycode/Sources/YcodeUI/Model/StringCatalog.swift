@@ -179,25 +179,32 @@ public indirect enum OrderedJSON: Equatable, Sendable {
 
 /// A String Catalog (`.xcstrings`), per Apple's public format description.
 public struct StringCatalog {
+    /// The whole document, keeping member order and number spelling so an
+    /// unedited catalog saves byte-for-byte. See `specs/ide/string-catalog.md`.
     public var json: OrderedJSON
     /// Whether the file ended with a newline (kept on save).
     public var trailingNewline: Bool
     /// Languages added in the editor that have no strings yet.
     public var extraLanguages: [String] = []
 
+    /// Parses a catalog file. Throws `OrderedJSON.ParseError` on invalid JSON.
     public init(data: Data) throws {
         json = try OrderedJSON.parse(data)
         trailingNewline = data.last == 0x0A
     }
 
+    /// An empty catalog (version 1.0) with the given source language.
     public init(sourceLanguage: String = "en") {
         json = .object([("sourceLanguage", .string(sourceLanguage)), ("strings", .object([])), ("version", .string("1.0"))])
         trailingNewline = true
     }
 
+    /// The file contents to save.
     public func data() -> Data { Data((json.written() + (trailingNewline ? "\n" : "")).utf8) }
 
+    /// The catalog's `sourceLanguage` ("en" when missing).
     public var sourceLanguage: String { json["sourceLanguage"]?.stringValue ?? "en" }
+    /// The string keys, in file order.
     public var keys: [String] { json["strings"]?.objectPairs.map(\.0) ?? [] }
 
     /// Source language first, then every other language with a
@@ -211,6 +218,7 @@ public struct StringCatalog {
         return [sourceLanguage] + set.sorted()
     }
 
+    /// Adds a language column with no translations yet; no-op if present.
     public mutating func addLanguage(_ code: String) {
         if !languages.contains(code) { extraLanguages.append(code) }
     }
@@ -286,6 +294,8 @@ public struct StringCatalog {
         }
     }
 
+    /// Sets the state of an existing translation; no-op when `language` has
+    /// no string unit for `key`.
     public mutating func setState(_ state: State, key: String, language: String) {
         edit(key) { e in
             guard var unit = e["localizations"]?[language]?["stringUnit"] else { return }
@@ -298,6 +308,7 @@ public struct StringCatalog {
         }
     }
 
+    /// Sets the key's comment; empty removes it.
     public mutating func setComment(_ comment: String, key: String) {
         edit(key) { $0["comment"] = comment.isEmpty ? nil : .string(comment) }
     }
@@ -308,6 +319,7 @@ public struct StringCatalog {
         edit(key) { $0["extractionState"] = .string("manual") }
     }
 
+    /// Removes `key` and all its localizations.
     public mutating func removeKey(_ key: String) {
         var strings = json["strings"] ?? .object([])
         strings[key] = nil

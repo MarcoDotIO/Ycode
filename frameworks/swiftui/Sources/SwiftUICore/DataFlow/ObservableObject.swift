@@ -147,6 +147,7 @@ public struct Published<Value> {
     @available(*, unavailable, message: "@Published is only available on properties of classes")
     public var wrappedValue: Value {
         get { fatalError() }
+        // swiftlint:disable:next unused_setter_value - the API shape has a setter that does nothing here
         set { fatalError() }
     }
 
@@ -163,6 +164,7 @@ public struct Published<Value> {
 
     public var projectedValue: Publisher {
         get { Publisher(storage: storage) }
+        // swiftlint:disable:next unused_setter_value - the API shape has a setter that does nothing here
         set {}
     }
 

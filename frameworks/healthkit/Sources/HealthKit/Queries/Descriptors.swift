@@ -152,6 +152,7 @@ public struct HKStatisticsQueryDescriptor: HKAsyncQuery, @unchecked Sendable {
 
     /// nil when no sample matches (the callback API reports code 11).
     public func result(for healthStore: HKHealthStore) async throws -> HKStatistics? {
+        // swiftlint:disable:next force_cast - the query was created with a quantity type
         let type = predicate.sampleType as! HKQuantityType
         let p = predicate.nsPredicate, o = options
         return try await once(healthStore) { done in
@@ -185,6 +186,7 @@ public struct HKStatisticsCollectionQueryDescriptor: HKAsyncQuery, HKAsyncSequen
     }
 
     private func query() -> HKStatisticsCollectionQuery {
+        // swiftlint:disable:next force_cast - the query was created with a quantity type
         let q = HKStatisticsCollectionQuery(quantityType: predicate.sampleType as! HKQuantityType,
                                             quantitySamplePredicate: predicate.nsPredicate, options: options,
                                             anchorDate: anchorDate, intervalComponents: intervalComponents)

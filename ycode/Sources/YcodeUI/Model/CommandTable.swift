@@ -131,10 +131,14 @@ public enum Shortcut {
         return s
     }
 
+    /// Menu notation for a key and modifiers ("⇧⌘K", "⌘↩", "F6"): modifiers
+    /// in ⌃⌥⇧⌘ order, then the key's name or the uppercased character.
     public static func text(key: String, modifiers: MenuCommand.Modifiers) -> String {
         modifierText(modifiers) + (Key.names[key] ?? key.uppercased())
     }
 
+    /// `text(key:modifiers:)` after moving shift into the modifiers (shifted
+    /// punctuation and uppercase letters), so equal keystrokes compare equal.
     public static func canonical(key: String, modifiers: MenuCommand.Modifiers) -> String {
         var k = key, m = modifiers
         if let base = Key.shiftedBase[k] { k = base; m.insert(.shift) }
@@ -160,6 +164,13 @@ public enum MenuCondition: String, Sendable, Equatable {
     /// The separate Close Window ⇧⌘W item: hidden while ⌘W itself reads
     /// Close Window (one editor tab; reference-ui-3.md §5.2).
     case separateCloseWindow
+    /// File ▸ New ▸ Group items: hidden while the project navigator's
+    /// selection is in (or is) a folder, where groups cannot go
+    /// (reference-ui-6.md §8 item 6, M6).
+    case groupsAllowed
+    /// Edit ▸ Paste ▸ Move Item Here: shown only when an item was cut for
+    /// moving (reference-ui-6.md §8 item 4, M4).
+    case itemToMove
 }
 
 public enum MenuItemSpec: Equatable, Sendable {
@@ -172,6 +183,7 @@ public enum MenuItemSpec: Equatable, Sendable {
 
 /// The menu bar, in order. The application menu is first.
 public enum CommandTable {
+    /// Shorthand for the modifier set in the table below.
     public typealias M = MenuCommand.Modifiers
 
     /// Navigators in selector-bar order; ⌘1…⌘9 select them (reference-ui.md §2).
@@ -228,7 +240,8 @@ public enum CommandTable {
             .submenu("Behaviors", [u("No Custom Behaviors"), sep, c("Edit Behaviors…", "", "showBehaviorsSettings:")]),
             sep,
             // The tools found in the developer directory go before the separator.
-            .submenu("Open Developer Tool", [sep, c("More Developer Tools…", "", "openMoreDeveloperTools:")]),
+            // Device Hub (device-hub.md: Xcode ▸ Open Developer Tool ▸ Device Hub opens it).
+            .submenu("Open Developer Tool", [c("Device Hub", "", "showDevices:"), sep, c("More Developer Tools…", "", "openMoreDeveloperTools:")]),
             .submenu("Services", []),
             sep,
             c("Hide Ycode", "⌘H", "hide:"),
@@ -244,9 +257,12 @@ public enum CommandTable {
     static var fileMenu: [MenuItemSpec] {
         [
             .submenu("New", [
-                u("Conversation", "⌃⌘H"),
-                alt("Conversation in New Tab", "⌃⌥⌘H"),
-                alt("Conversation in Editor Pane", "⌃⌥⇧⌘H"),
+                // The coding assistant (coding-assistant.md §4): the prompt
+                // in the pane, a new editor tab, or the next editor pane
+                // (reference-ui-6.md §9.5).
+                c("Conversation", "⌃⌘H", "newConversation:"),
+                alt("Conversation in New Tab", "⌃⌥⌘H", "newConversationInNewTab:"),
+                alt("Conversation in Editor Pane", "⌃⌥⇧⌘H", "newConversationInEditorPane:"),
                 sep,
                 c("Tab", "⌘T", "newTab:"),
                 sep,
@@ -256,7 +272,8 @@ public enum CommandTable {
                 c("Window", "⇧⌘T", "newWorkspaceWindow:"),
                 sep,
                 c("Empty File", "", "newEmptyFile:"),
-                u("New File from Clipboard"),
+                // "New File from Clipboard" while enabled (MenuTitles; §8 item 6).
+                c("File from Clipboard", "", "newFileFromClipboard:"),
                 c("File from Template…", "⌘N", "newFile:"),
                 u("Target…"),
                 sep,
@@ -264,10 +281,10 @@ public enum CommandTable {
                 alt("Choose Template…", "⌥⇧⌘N"),
                 u("Workspace…", "⌃⌘N"),
                 sep,
-                u("Group"),
-                u("Group without Folder"),
-                u("Group from Selection"),
-                u("Group from Selection without Folder"),
+                u("Group", when: .groupsAllowed),
+                u("Group without Folder", when: .groupsAllowed),
+                u("Group from Selection", when: .groupsAllowed),
+                u("Group from Selection without Folder", when: .groupsAllowed),
                 c("Folder", "⌥⌘N", "newFolder:"),
                 u("Folder from Selection"),
             ]),
@@ -320,20 +337,25 @@ public enum CommandTable {
     }
 
     /// §2.3. AutoFill, Start Dictation… and Emoji & Symbols are the
-    /// system's; AppKit adds them.
+    /// system's; AppKit adds them. Copy ▸ and Paste ▸ are submenus
+    /// (reference-ui-6.md §8 item 4, M4).
     static var editMenu: [MenuItemSpec] {
         [
             c("Undo", "⌘Z", "undo:"),
             c("Redo", "⇧⌘Z", "redo:"),
             sep,
             c("Cut", "⌘X", "cut:"),
-            c("Copy", "⌘C", "copy:"),
-            alt("Copy File and Line", "⌃⌥⌘C", "copyFileAndLine:"),
-            alt("Copy Symbol Name", "⌃⇧⌘C", "copySymbolName:"),
-            alt("Copy Qualified Symbol Name", "⌃⌥⇧⌘C", "copyQualifiedSymbolName:"),
-            c("Paste", "⌘V", "paste:"),
-            alt("Move Item Here", "⌥⌘V"),
-            alt("Paste and Preserve Formatting", "⌥⇧⌘V"),
+            .submenu("Copy", [
+                c("Copy", "⌘C", "copy:"),
+                c("Copy File and Line", "⌃⌥⌘C", "copyFileAndLine:"),
+                c("Copy Symbol Name", "⌃⇧⌘C", "copySymbolName:"),
+                c("Copy Qualified Symbol Name", "⌃⌥⇧⌘C", "copyQualifiedSymbolName:"),
+            ]),
+            .submenu("Paste", [
+                c("Paste", "⌘V", "paste:"),
+                u("Move Item Here", "⌥⌘V", when: .itemToMove),
+                c("Paste and Preserve Formatting", "⌥⇧⌘V", "pasteAndPreserveFormatting:"),
+            ]),
             c("Duplicate", "⌘D", "duplicateSelection:"),
             c("Delete", "⌘⌫", "delete:"),
             sep,
@@ -347,7 +369,7 @@ public enum CommandTable {
             .submenu("Sort", [u("By Name"), u("By Type")]),
             .submenu("Format", formatMenu),
             sep,
-            .submenu("Convert", [u("To Group"), u("To Folder"), u("Preflight Conversion To Folder"), u("To String Catalogs…")]),
+            .submenu("Convert", [u("To Group"), u("To Folder"), u("Preflight Conversion to Folder"), u("To String Catalogs…")]),
         ]
     }
 
@@ -429,6 +451,7 @@ public enum CommandTable {
             sep,
             .submenu("Navigators", navigators.enumerated().map { i, n in c(n, "⌘\(i + 1)", "showNavigator:", tag: i) } + [
                 sep,
+                // "Hide Coding Assistant" while shown (MenuTitles; reference-ui-6.md §9.5, A7).
                 c("Show Coding Assistant", "⌘0", "showCodingAssistant:"),
                 c("Show Navigator", "", "toggleNavigator:"),
                 c("Filter in Navigator", "⌥⌘J", "filterInNavigator:"),
@@ -475,7 +498,8 @@ public enum CommandTable {
             u("Find Ancestor Types"),
             u("Find Descendent Types"),
             u("Find Conforming Types"),
-            u("Find in Selected Groups…"),
+            // "Find in Selected File…" for a file (MenuTitles; §8 item 6).
+            c("Find in Selected Groups…", "", "findInSelectedGroups:"),
             sep,
             c("Find…", "⌘F", "performFindPanelAction:", tag: 1),
             c("Find and Replace…", "⌥⌘F", "performFindPanelAction:", tag: 12),
@@ -527,7 +551,7 @@ public enum CommandTable {
             alt("Show Previous Location in History using Tab", "⌃⌥⌘←"),
             alt("Show Previous Location in History in Next Editor Pane", "⌃⌥⇧⌘←"),
             sep,
-            u("Jump to Next Active Conversation", "⌃⌘K"),
+            c("Jump to Next Active Conversation", "⌃⌘K", "jumpToNextActiveConversation:"),
             sep,
             c("Jump to Selection", "⌥⌘L", "jumpToSelection:"),
             c("Jump to Definition", "⌃⌘J", "jumpToDefinition:"),
@@ -843,7 +867,9 @@ public enum CommandTable {
             c("The Swift Programming Language", "", "showSwiftBook:"),
             u("Provide Feedback…"),
             sep,
-            u("Show Keyboard Hints", "⌥⌘?"),
+            // The hints are on in the factory state (reference-ui-6.md §8
+            // item 6); disabled until their behavior is specified.
+            u("Hide Keyboard Hints", "⌥⌘?"),
             c("Show Quick Help for Selected Item", "⌃⌘?", "showQuickHelpForSelection:"),
             c("Search Documentation for Selected Text", "⌃⌥⌘/", "searchDocumentationForSelection:"),
         ]
@@ -852,6 +878,7 @@ public enum CommandTable {
     /// Every command, flattened, for shortcut lookups and conflict tests.
     public static var allCommands: [MenuCommand] { commands(in: menus.flatMap(\.1)) }
 
+    /// The commands in `items`, depth-first through submenus.
     public static func commands(in items: [MenuItemSpec]) -> [MenuCommand] {
         items.flatMap { item -> [MenuCommand] in
             switch item {
@@ -862,6 +889,7 @@ public enum CommandTable {
         }
     }
 
+    /// The first command with this exact title, in menu order.
     public static func command(titled title: String) -> MenuCommand? {
         allCommands.first { $0.title == title }
     }
@@ -882,6 +910,8 @@ public enum CommandTable {
 /// menu's ⌘W item reads Close Window and the separate ⇧⌘W Close Window
 /// item is hidden; with two or more tabs ⌘W is Close Tab.
 public enum CloseShortcutRule {
+    /// The ⌘W item's title for a window with `tabCount` editor tabs.
     public static func commandWTitle(tabCount: Int) -> String { tabCount <= 1 ? "Close Window" : "Close Tab" }
+    /// Whether the ⇧⌘W Close Window item is shown.
     public static func showsSeparateCloseWindow(tabCount: Int) -> Bool { tabCount > 1 }
 }

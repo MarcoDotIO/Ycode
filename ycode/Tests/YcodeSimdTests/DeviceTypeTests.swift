@@ -111,10 +111,84 @@ struct DeviceTypeTests {
         ]
     }
 
+    /// The legacy file plus, when the inner panel is published, the
+    /// `displays` list (device-capabilities.md §3.1; foldable.md §9 Q7).
+    static func expectedDuoCapabilities(withDisplays: Bool) throws -> Data {
+        var plist = Legacy.plist(width: 1398, height: 2034, scale: 3.0, pitch: 460.0, model: "iPhone19,4")
+        if withDisplays, var c = plist["capabilities"] as? [String: Any] {
+            c["displays"] = DisplayEntry.iPhoneDuo.map(\.capability.propertyList)
+            plist["capabilities"] = c
+        }
+        return try xml(plist)
+    }
+
     @Test func iPhoneCapabilitiesUnchangedByteForByte() throws {
         let legacy = try Self.xml(Legacy.plist(width: 1398, height: 2034, scale: 3.0, pitch: 460.0, model: "iPhone19,4"))
-        #expect(try Self.xml(DeviceCapabilities.plist(for: .iPhoneDuo)) == legacy)
+        // Without the inner panel (YCODE_FOLD_DISPLAYS=0): byte for byte as before.
+        #expect(try Self.xml(DeviceType.iPhoneDuo.capabilitiesPlist(withDisplays: false)) == legacy)
+        // With it (the default): the same plus `displays`.
+        #expect(try Self.xml(DeviceType.iPhoneDuo.capabilitiesPlist(withDisplays: true)) == (try Self.expectedDuoCapabilities(withDisplays: true)))
+        #expect(try Self.xml(DeviceCapabilities.plist(for: .iPhoneDuo))
+            == (try Self.expectedDuoCapabilities(withDisplays: DeviceType.foldDisplaysEnabled)))
         #expect(DeviceType.default == .iPhoneDuo)
+        // No other type has a `displays` list.
+        for t in DeviceType.all where t != .iPhoneDuo {
+            #expect(t.displays == nil && (t.capabilitiesPlist(withDisplays: true)["capabilities"] as? [String: Any])?["displays"] == nil, "\(t.id)")
+        }
+    }
+
+    /// The iPhone Duo's `displays` list key by key with its plist types
+    /// (device-capabilities.md §3.1), and in agreement with the displays
+    /// Ycode publishes (names, ids, sizes; simframebuffer.md §4, §10).
+    @Test func iPhoneDuoDisplaysList() throws {
+        let plist = DeviceType.iPhoneDuo.capabilitiesPlist(withDisplays: true)
+        let data = try Self.xml(plist)
+        let back = try #require(try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+        let caps = try #require(back["capabilities"] as? [String: Any])
+        #expect(back.keys.sorted() == ["capabilities"])
+        let list = try #require(caps["displays"] as? [[String: Any]])
+        #expect(list.map { $0["displayName"] as? String } == ["LCD", "TVOut", "LCD-1", "Wireless", "Resizable"])
+        #expect(list.map { $0["deviceName"] as? String } == ["primary", "external-0", "primary-1", "wireless0", "resizable"])
+        #expect(list.map { $0["displayType"] as? String } == ["integrated", "tvOut", "integrated", "carPlay", "scene"])
+        #expect(list.map { $0["screenID"] as? Int } == [1, 2, 3, 4, 5])
+        #expect(list.map { $0["width"] as? Int } == [1398, 720, 2007, 720, 7680])
+        #expect(list.map { $0["height"] as? Int } == [2034, 480, 2853, 480, 4320])
+        #expect(list.map { $0["scale"] as? Double } == [3, 1, 3, 1, 3])
+        #expect(list.map { $0["hdpi"] as? Double } == [460, 72, 460, 72, 120] && list.map { $0["vdpi"] as? Double } == [460, 72, 460, 72, 120])
+        #expect(list.map { $0["refreshRate"] as? Double } == [60, 60, 60, 60, 60])
+        #expect(list.map { $0["colorspace"] as? String } == ["P3", "sRGB", "sRGB", "sRGB", "sRGB"])
+        #expect(list.map { $0["powerState"] as? Int } == [1, 0, 1, 0, 0])
+        #expect(list.map { $0["hasDigitizer"] as? Bool } == [true, false, true, false, true])
+        #expect(list.map { $0["surfaceType"] as? Int } == [1, nil, 2, nil, nil])
+        #expect(list.map { $0["nativeOrientation"] as? Int } == [0, nil, 270, nil, nil])
+        #expect(list.map { $0["nativeRotation"] as? Int } == [0, nil, 270, nil, nil])
+        #expect(list.map { $0["cornerRadiusUL"] as? Double } == [8, nil, 55, nil, 0])
+        #expect(list.map { $0["cornerRadiusLL"] as? Double } == [8, nil, 55, nil, 0])
+        #expect(list.map { $0["cornerRadiusUR"] as? Double } == [59, nil, 55, nil, 0])
+        #expect(list.map { $0["cornerRadiusLR"] as? Double } == [59, nil, 55, nil, 0])
+        #expect(list.map { $0["chromeIdentifier"] as? String }
+            == ["com.apple.dt.devicekit.chrome.phone15", nil, "com.apple.dt.devicekit.chrome.phone14", nil, nil])
+        #expect(list.map { $0["framebufferMaskIdentifier"] as? String }
+            == ["1C896A2B-F0D7-405C-8D0F-66E4B80AD044", nil, "BF0DC480-5EE2-4EC1-B02B-C75E94759832", nil, nil])
+        #expect(list.map { $0["requiredFeatures"] as? [String] }
+            == [nil, nil, nil, nil, ["com.apple.CoreSimulator.display.resizableScene"]])
+        // Key counts: 22 per built-in panel (the twenty that worked on the
+        // reference plus colorspace and refreshRate), 13 for TV-out and
+        // wireless, 18 for the resizable display.
+        #expect(list.map(\.count) == [22, 13, 22, 13, 18])
+        // The plist types (integer vs real vs boolean) of §3.1.
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(Self.element(text, "surfaceType")?.tag == "integer" && Self.element(text, "screenID")?.tag == "integer")
+        #expect(Self.element(text, "scale")?.tag == "real" && Self.element(text, "hdpi")?.tag == "real"
+            && Self.element(text, "cornerRadiusUL")?.tag == "real" && Self.element(text, "refreshRate")?.tag == "real")
+        #expect(Self.element(text, "hasDigitizer")?.tag == "true" && Self.element(text, "nativeRotation")?.tag == "integer")
+        // Agreement with the published displays: the cover is the main
+        // screen, the inner entry is the second display Ycode publishes.
+        let duo = DeviceType.iPhoneDuo, inner = try #require(duo.secondDisplay)
+        #expect(list[0]["width"] as? Int == duo.screen.width && list[0]["height"] as? Int == duo.screen.height)
+        #expect(list[2]["screenID"] as? Int == inner.id && list[2]["displayName"] as? String == inner.name
+            && list[2]["deviceName"] as? String == inner.deviceName && list[2]["width"] as? Int == inner.width
+            && list[2]["height"] as? Int == inner.height && list[2]["nativeRotation"] as? Int == inner.mountRotation)
     }
 
     @Test func iPhoneDeviceDirectoryUnchanged() throws {
@@ -129,9 +203,8 @@ struct DeviceTypeTests {
         layout.lean = nil
         layout.templatePath = nil
         try layout.prepare()
-        // The capabilities file as before.
-        let legacy = try Self.xml(Legacy.plist(width: 1398, height: 2034, scale: 3.0, pitch: 460.0, model: "iPhone19,4"))
-        #expect(fm.contents(atPath: layout.capabilitiesPath) == legacy)
+        // The capabilities file as before, plus `displays` with the inner panel.
+        #expect(fm.contents(atPath: layout.capabilitiesPath) == (try Self.expectedDuoCapabilities(withDisplays: DeviceType.foldDisplaysEnabled)))
         // The environment: every variable as before, with the same values.
         let child = layout.child
         for (key, value) in Legacy.identity { #expect(child[key] == value, "\(key)") }
@@ -139,7 +212,7 @@ struct DeviceTypeTests {
         #expect(child["IPHONE_TVOUT_EXTENDED_PROPERTIES"] == layout.extendedDisplayPath)
         #expect(child["SIMULATOR_VERSION_INFO"]
             == "Ycode - Device: Ycode (11111111-2222-3333-4444-555555555555) - Runtime: iOS 27.1 (24A94401) - DeviceType: iPhone19,4")
-        let expectedKeys: Set<String> = [
+        let expectedKeys = Set<String>([
             "DYLD_ROOT_PATH", "IPHONE_SIMULATOR_ROOT", "SIMULATOR_ROOT", "DYLD_SHARED_CACHE_DIR", "PATH",
             "IPHONE_SHARED_RESOURCES_DIRECTORY", "SIMULATOR_SHARED_RESOURCES_DIRECTORY", "XPC_SIMULATOR_LAUNCHD_NAME",
             "LS_ENABLE_BUNDLE_LOCALIZATION_CACHING", "SIMULATOR_UDID", "SIMULATOR_DEVICE_NAME",
@@ -151,9 +224,15 @@ struct DeviceTypeTests {
             "YCODE_FRAMEBUFFER_TIMING", "YCODE_SIMHID_TIMING", "YCODE_FRAMEBUFFER_COMPLETION",
             "SIMULATOR_HID_SYSTEM_MANAGER", "YCODE_SIMHID_LOG", "SIMULATOR_AUDIO_DEVICES_PLIST_PATH",
             "SIMULATOR_AUDIO_SETTINGS_PATH", "SIMULATOR_MEMORY_WARNINGS", "SIMULATOR_EXTENDED_DISPLAY_PROPERTIES",
-            "IPHONE_TVOUT_EXTENDED_PROPERTIES",
-        ]
+            "IPHONE_TVOUT_EXTENDED_PROPERTIES", "YCODE_SIMHID_DEVICE_MOTION",
+        ]).union(DeviceType.foldDisplaysEnabled ? ["YCODE_FRAMEBUFFER_SECOND_DISPLAY"] : [])
         #expect(Set(child.keys) == expectedKeys)
+        // The hinge input (foldable.md §8.2 I2); the inner panel by default
+        // (not with YCODE_FOLD_DISPLAYS=0).
+        #expect(child["YCODE_SIMHID_DEVICE_MOTION"] == "1")
+        #expect(child["YCODE_FRAMEBUFFER_SECOND_DISPLAY"]
+            == (DeviceType.foldDisplaysEnabled ? "3 LCD-1 primary-1 2007 2853 3 460 59434F44-4500-4000-8000-000000000003" : nil))
+        #expect(DeviceType.iPhoneDuo.secondDisplay?.environmentValue == "3 LCD-1 primary-1 2007 2853 3 460 59434F44-4500-4000-8000-000000000003")
         // The bootstrap plist is the one these values make.
         #expect(fm.contents(atPath: layout.plistPath) == (try Self.xml(layout.bootstrapPlist)))
         // The type is recorded.
@@ -329,9 +408,12 @@ struct DeviceTypeTests {
         let identity: Set<String> = ["SIMULATOR_MODEL_IDENTIFIER", "SIMULATOR_PRODUCT_CLASS", "SIMULATOR_LEGACY_ASSET_SUFFIX",
                                      "SIMULATOR_MAINSCREEN_WIDTH", "SIMULATOR_MAINSCREEN_HEIGHT", "SIMULATOR_MAINSCREEN_SCALE",
                                      "SIMULATOR_MAINSCREEN_PITCH", "SIMULATOR_VERSION_INFO"]
-        #expect(Set(i.keys).subtracting(p.keys) == ["SIMULATOR_EXTENDED_DISPLAY_PROPERTIES", "IPHONE_TVOUT_EXTENDED_PROPERTIES"])
+        #expect(Set(i.keys).subtracting(p.keys) == Set<String>(["SIMULATOR_EXTENDED_DISPLAY_PROPERTIES", "IPHONE_TVOUT_EXTENDED_PROPERTIES",
+                                                     "YCODE_SIMHID_DEVICE_MOTION"])
+            .union(DeviceType.foldDisplaysEnabled ? ["YCODE_FRAMEBUFFER_SECOND_DISPLAY"] : []))
         #expect(Set(p.keys).subtracting(i.keys).isEmpty)
         for (key, value) in p where !identity.contains(key) { #expect(i[key] == value, "\(key)") }
+        #expect(p["YCODE_SIMHID_DEVICE_MOTION"] == nil)
         // The written files.
         try pad.prepare()
         let written = try #require(fm.contents(atPath: pad.capabilitiesPath))
@@ -345,7 +427,7 @@ struct DeviceTypeTests {
     // MARK: Data
 
     @Test func typesByName() {
-        #expect(DeviceType.all.map(\.id) == ["iphone-duo", "ipad-a16", "ipad-pro-13-m5"])
+        #expect(DeviceType.all.map(\.id) == ["iphone-duo", "iphone-18-pro", "ipad-a16", "ipad-pro-13-m5", "vision-pro"])
         #expect(DeviceType.named("ipad-a16")?.modelIdentifier == "iPad15,7")
         #expect(DeviceType.named("ipad-pro-13-m5")?.screen == DeviceScreen(width: 2064, height: 2752, scale: 2, pitch: 264))
         #expect(DeviceType.named("ipad") == nil)

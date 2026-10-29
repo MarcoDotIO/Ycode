@@ -138,7 +138,7 @@ public enum LineBreaker {
         var out = [LineBreakOpportunity](repeating: .prohibited, count: n + 1)
         guard n > 0 else { out[0] = .mandatory; return out }
         out[n] = .mandatory
-        var lastNonSpace: LineBreakClass? = nil  // before the current run of spaces
+        var lastNonSpace: LineBreakClass?  // before the current run of spaces
         if cls[0] != .SP { lastNonSpace = cls[0] }
         for i in 1..<n {
             let a = cls[i - 1], b = cls[i]

@@ -24,6 +24,8 @@ public struct DiscoveredTest: Equatable, Sendable, Hashable {
     }
 }
 
+/// Finds tests in source text without building (`specs/ide/testing.md`
+/// §Discovery).
 public enum TestDiscovery {
     /// XCTest methods (`func test…` directly in a class that names
     /// `XCTestCase` among its supertypes) and swift-testing functions (a

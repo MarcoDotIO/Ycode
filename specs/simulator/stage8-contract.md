@@ -798,6 +798,9 @@ counter once a second and treats `VK_ERROR_DEVICE_LOST` there as the loss
 | `YCODE_GPU_HANG_CAPTURE=<dir>` | A hang report also saves the command buffer's translated shaders (SPIR-V and reflection) and the bytes of every buffer it binds that the CPU can read (256 MiB at most), for offline replay. |
 | `YCODE_METAL_TRACE_SEGMENTS=1` (with `YCODE_METAL_TRACE`) | A GPU timestamp after the IOSurface copy-ins, after every pass and after the copy-outs; the trace line gets `label=ns` pairs (`in`, `R<w>x<h>[s<samples>]/<draws>/<load L, C, D>[/res]`, `C<dispatches>`, `B<blits>`, `out`). |
 | `YCODE_METAL_RECORD_PROFILE=1` | Host time of the parts of recording a command buffer, in the `YCODE_METAL_STATS` line. |
+| `YCODE_GPU_PROBE=<function names>` (visionos.md §10.20.3) | A command buffer that draws or dispatches with a named function is described and its passes read back: before each pass the textures it binds and the attachments it loads, after it the attachments it stores or resolves, the textures its kernels may write and its blit destinations, and the buffers of compute and blit passes; one line per copy with texels not zero, channel means and ranges, and the texture's slot, views and usage; skipped draws. `YCODE_GPU_PROBE_MAX`, `_INTERVAL_S`, `_AFTER_S`, `_MB`, `_BUFFER_KB`, `_DUMP=<dir>` (raw bytes for `ProbeReplayTests`). |
+| `YCODE_DEBUG_PASS_DRAWS=<w>x<h>` (visionos.md §10.20.3) | Render passes of that size whose draw list changed: host monotonic time, load/store actions, the visibility buffer's first slots, per draw the functions, counts, base instance, index buffer and first fragment texture. `_ALL=<s>` every pass from that many seconds after the first, `_BUFFERS=1` the fragment buffers. |
+| `YCODE_METAL_ARGUMENT_ENCODER=0` | Argument-encoder set calls (op 19) are refused instead of written into the argument buffer (visionos.md §10.20.7). |
 | `scripts/ycode-gpu-trace <trace> [--windows] [--pid P]` | Per Metal client: command buffers, recording (receive → submitted), GPU time, queue latency (submitted → completion seen), receive → handlers, GPU ms per second, IOSurface MB; per segment kind the mean, p90 and per-command-buffer GPU time. Python standard library. |
 
 ### 15.3 Where the host time of a frame went
@@ -900,6 +903,10 @@ reads workgroup-relative built-ins, uses threadgroup memory, barriers or
 subgroup operations is never isolated, and an indirect dispatch keeps its
 shape. Counted as `lane-isolated dispatches` in the stats line. Test:
 `VulkanBackendTests.laneIsolatedKernelRunsOneThreadPerWorkgroup`.
+
+(§15.9: the visionOS `astc` hangs, and possibly this iPad one, had a
+different cause — the decoder writes mip levels through texture views,
+which had no storage descriptors — that lane isolation cannot touch.)
 
 ### 15.6 The Safari hang: Core Animation's `Xgc` samples its own render target
 
@@ -1125,8 +1132,8 @@ Safari boots hang the GPU (§15.6), and a hang stops every client
    all of them (§15.1), with no recovery but a host restart. A device per
    client (contexts are killed one at a time by the driver), or a rebuild
    of the device and its objects after a loss, remain open (§13.5.4).
-3. The `astc` kernel's real trigger data is still unknown (§15.5); the
-   next report on a build with §15.2 saves it.
+3. ~~The `astc` kernel's real trigger data is still unknown (§15.5).~~
+   Found (§15.9): not the data, a stale storage descriptor.
 4. Two captured Safari hangs had no feedback draw (§15.6). If hangs
    continue with the copies, the next device-loss report names the draw.
 5. The feedback copies run on every frame of a render server whose
@@ -1143,6 +1150,125 @@ Safari boots hang the GPU (§15.6), and a hang stops every client
    needs the translator to report which uniform values reach the sample
    (a question for the translator, or for Core Animation's observable
    behaviour: which blend modes read the destination).
+
+### 15.9 The `astc` hang found: kernels wrote through a released texture's heap slot (agent VISIONOS-R6, 2026-10-27)
+
+With visionOS's rooms loading (`visionos.md` §10.16) every boot hung in
+compute work of `backboardd` within 2–3 minutes: the mip chains of
+RealityKit's ASTC decoder `astc` (`acedd39a`; per level a copy of the
+level's blocks into a staging buffer, then `dispatchThreads` over the
+level's blocks in 32 × 16 threadgroups, lane-isolated as in §15.5), and,
+once the decoder was changed for an experiment, the prefiltered
+environment-map kernels.
+
+**What the stuck work was.** Two diagnostics were added: the queue's checkpoints are now read while a submission runs (the
+report at 2 s and every 10 s; NVIDIA's driver answers before a device
+loss too), with a marker after every dispatch, and the report prints each
+dispatch's argument table as the GPU reads it, resolved to live buffers,
+pipeline constant data and textures. In `r3`–`r6` the bottom of the pipe
+stayed at the marker before one `astc` dispatch — a different level each
+time (683², 171², 11², 22², and in earlier rounds 86² and 1² grids) —
+and every table entry named a live object.
+
+**Ruled out.** The captured inputs (§15.2) of four hangs replayed offline
+finish in milliseconds, every level: through CVulkan
+(`scripts/gpu-probes/areplay.c`, lane-isolated or not, each buffer at the
+end of its own host import so that a read past it reaches unmapped
+memory, and with the private memory of 260,000 earlier invocations filled
+with patterns, `pollute.comp`) and through the whole back end
+(`CaptureReplayTests`, the guest's command buffer as captured, 30 rounds,
+and 60 rounds next to a competing GPU process). Storage-image writes
+outside the written level finish (`imgoob.c`); host imports pin their
+pages (`pinprobe.c`: `MADV_COLLAPSE` over a live import fails with
+`EAGAIN`, and `MADV_DONTNEED` or a new mapping over it leaves the GPU
+reading the old pages). Boot experiments on the decoder's translation
+(`AIRC_EXP`, `AIRC_EXP_FN=astc`): with its device loads reading zero
+(`psb`) or its texture writes dropped (new: `imgwrite`) the decoder never
+hung (189 and 385 dispatches), but the next kernel did:
+`generatePrefilteredSpecularMapFast`, writing one cube level per
+dispatch — and the report showed every texture it wrote without a
+storage view.
+
+**Cause.** `makeShaderViews` made a storage view only when the texture's
+component mapping equalled `identitySwizzle` (four `IDENTITY` entries).
+A texture view's mapping is composed (`composeSwizzle`), which spells the
+identity out as R, G, B, A, so the comparison failed for **every texture
+view**: no view had a storage view, and its heap slot's storage entry kept
+the descriptor of the slot's previous owner. Slots are reused once a
+released texture's destruction has run, so that descriptor named a view
+of an image whose memory had been freed. RealityKit writes each mip level
+through a one-level view (`newTextureViewWithPixelFormat:…levels:…`), and
+so does the environment-map code for cube levels; on the Thor such a write
+never completes (`imgoob.c` with `STALE=1`: a write through a released
+texture's descriptor does not finish in 5 s; through a slot never written
+it finishes and is dropped). Whether a given dispatch hung depended on
+which texture had held its slot and whether that one's memory was already
+freed: hence a different level each time, hundreds of good dispatches
+before, and no reproduction from captured data. Lane isolation (§15.5)
+cannot help; it changes nothing about the write. Writes into the view's
+level never happened even when the dispatch finished (they went to the
+previous owner, or nowhere).
+
+**Changes** (`VulkanMetalBackend.swift`, `VulkanObjects.swift`, `CVulkan.c`):
+
+1. The identity test compares by meaning (`isIdentitySwizzle`: each
+   component `IDENTITY` or its own channel). Views get storage views.
+2. Every slot a texture is given has an entry in both arrays: a missing
+   sampled or storage view is the dummy image; when the texture is
+   released its slots go back to the dummy image (after the GPU is done
+   with it, in the same deferred step that frees the slot). A write to a
+   texture without a storage view now lands in the dummy image.
+3. A kernel that reads or writes level L of a storage texture with an
+   explicit level argument uses slot *h* + L (ycode-airc's convention,
+   reflection `uses: storage_mip_levels`; the guest's `SiriBlur`,
+   `generateLatLongMap`, `fsCalculateBlendedSpecularIBL`), and the back end
+   gave those slots to other textures. A texture with a storage view and
+   n levels now owns n consecutive slots, with one-level storage views at
+   *h* + 1 … *h* + n − 1 (and the dummy image in their sampled entries).
+4. The storage array has as many entries as the sampled array (65,536;
+   it had 16,384, and slots past it had no storage entry at all).
+5. A slot released twice (or never handed out) is ignored and counted
+   (`heap indices released twice` in the stats line); none was seen.
+
+Diagnostics added (off unless named): the running checkpoints and
+after-dispatch markers, the dispatch tables (`dispatch tables:` in a hang
+report, with `SHARED`, `no storage view`, `NOT LIVE` notes), a log line
+the first 16 times a kernel writes a texture Metal did not mark
+`shaderWrite` (none in any boot), `YCODE_GPU_STORAGE_USAGE=all` (storage
+usage for every texture whose format allows it, for guests that write
+such textures), ycode-airc `AIRC_EXP=imgwrite`.
+
+**Tests.** `VulkanBackendTests.kernelWritesAViewInAReusedSlot` (a one-level
+view takes the slot of a released, written texture and a kernel writes
+it; on the code before this change the dispatch does not finish in 8 s,
+now it finishes in 0.15 s and the texels land in level 1),
+`kernelWritesTextureWithoutShaderWriteUsage` (the write goes to the dummy
+image and is logged), `mipmappedStorageTextureOwnsOneSlotPerLevel`;
+`CaptureReplayTests` (opt-in, a captured chain through the back end).
+
+**Boots** (visionOS 27.0 with the rooms, full boots, two at a time, load
+average 5–100):
+
+| | Boots | With a GPU hang | Ran |
+|---|---|---|---|
+| before (R4a `c1`–`c4`, R5 `v3`, this round `r1`–`r6`) | 11 | 10, first report 120–180 s after start (this round) | until the hang |
+| decoder experiments `x-psb`, `x-imgwrite` | 2 | 2, in `generatePrefilteredSpecularMapFast` | 120 s |
+| this change (`f1`–`f6`) | 6 | 0 | to their limits (2 × 400 s, 4 × 600 s, 3 200 s in all), 637–919 `astc` dispatches each |
+
+Evidence: level 3 — Ycode boots on the Thor (`ide-remote/visionos8/runs/r1`–`r6`,
+`x-psb`, `x-imgwrite`, `f1`–`f6`; R4a's `visionos5/runs/c1`–`c4`, R5's
+`visionos7/runs/v2`, `v3`): hang reports with running checkpoints and
+dispatch tables, captures of our own translations and of guest buffers
+(`ide-remote/visionos8/cap/`), the host kernel log (Xid 109 only); probes
+over CVulkan (`scripts/gpu-probes/areplay.c`, `pollute.comp`,
+`imgoob.c`/`.comp`, `pinprobe.c`/`.comp`: our own GLSL and ycode-airc's
+own SPIR-V); `CaptureReplayTests`; the new unit tests on the Thor's GPU,
+the window test also against the code before the change. Level 1 —
+Vulkan specification (descriptor indexing, `UPDATE_AFTER_BIND` and
+partially bound arrays, storage image views require the identity
+swizzle), `madvise(2)` (`MADV_COLLAPSE`). No shader logic was read: the
+guest kernels were seen through ycode-airc's reflection and by switching
+classes of their operations off.
 
 Evidence: level 3 — the host kernel log (`journalctl -k`, Xid lines),
 run logs of Ycode's simulator (this agent's `SX/GPU2/runs/sa*`, `sd*`,

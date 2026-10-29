@@ -85,6 +85,12 @@ public enum BuildEvent: Equatable, Sendable {
     case issue(Diagnostic)
     /// The engine's own progress text (for the toolbar activity view).
     case activity(String)
+    /// The engine is planning the build (before any task runs).
+    case planning
+    /// Task counts: build tasks finished, over the tasks planned so far
+    /// (the total may grow while the build runs). The toolbar activity
+    /// view shows them as "Building • done/total" (`specs/ide/reference-ui-6.md` §3.2).
+    case progress(done: Int, total: Int)
     case finished(BuildResult)
 }
 

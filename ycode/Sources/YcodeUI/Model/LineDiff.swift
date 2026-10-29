@@ -37,9 +37,11 @@ public enum LineDiff {
         return ops
     }
 
+    /// Splits text into lines on "\n"; a final newline does not add an empty
+    /// last line.
     public static func lines(_ text: String) -> [String] {
         var l = text.components(separatedBy: "\n")
-        if l.last == "" { l.removeLast() }
+        if l.last?.isEmpty == true { l.removeLast() }
         return l
     }
 

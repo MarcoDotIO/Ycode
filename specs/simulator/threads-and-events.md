@@ -191,6 +191,102 @@ Ycode: with `YCODE_SCHED_QOS=1` the QoS of SET_SELF, the overrides
 scheduling class (`scheduling-policy.md` §4.4). Without the switch they are
 accepted and have no effect.
 
+### 1.6 Mach thread and task suspension (agent THREAD-SUSPEND, 2026-10-28)
+
+`thread_suspend`, `thread_resume`, `thread_abort`, `thread_abort_safely`,
+`thread_get_state`, `thread_set_state`, `task_suspend` and `task_resume`
+are MIG routines of `mach/thread_act.defs` and `mach/task.defs`. Ycode's
+`libsystem_kernel` serves them with Ycode-private traps
+(`host-libraries.md` §11.7). Before this section they were generated stubs
+(KERN_NOT_SUPPORTED), and JavaScriptCore's collector could not stop the
+threads whose stacks it scans (`app-launch.md` §3.6).
+
+**Semantics (xnu `osfmk/kern/thread_act.c`, `task.c`; the Mach manual
+pages; level 1).**
+
+| Call | Rule |
+|---|---|
+| `thread_suspend(t)` | The thread's suspend count goes up by one. While the count is above zero the thread executes no user instruction. For another thread the call returns only once the thread has stopped. A thread may suspend itself: the call returns KERN_SUCCESS and the thread stops when it would return to user code, until another thread resumes it |
+| `thread_resume(t)` | The count goes down by one; at zero the thread runs again. Count already zero: KERN_FAILURE. A thread made with `PTHREAD_START_SUSPENDED` has count 1 and starts at this call |
+| `task_suspend(task)` | The task's suspend count goes up by one; while it is above zero no thread of the task runs user code, including the caller when it is in the task. Waits until every thread but the caller has stopped. A thread made in a suspended task starts suspended |
+| `task_resume(task)` | The task's count goes down by one; count zero: KERN_FAILURE. A thread runs only when its own count and its task's are both zero. A process spawned with `POSIX_SPAWN_START_SUSPENDED` has task count 1: `task_resume` (or SIGCONT, which resumes the task once) starts it |
+| `thread_get_state(t, flavor)` | The user registers where the thread stopped (below). ARM_THREAD_STATE64 (6, 68 words: x0–x28, fp, lr, sp, pc, cpsr, pad), the unified ARM_THREAD_STATE (1, 70 words: {6, 68} first), ARM_EXCEPTION_STATE64 (7, 4 words: FAR, ESR, exception class) |
+| `thread_set_state(t, flavor)` | Flavors 1 and 6 set x0–x30, SP, PC and the condition flags (the mode stays EL0t); flavor 7 is accepted with no effect; exact counts (70, 68, 4) else KERN_INVALID_ARGUMENT. Another thread is held (suspended once) while its state is changed, as xnu does. For a thread inside a kernel call the new registers apply when the call returns, and the call's results (x0, x1, carry) are written over them, as a returning xnu system call writes its results into the saved state |
+| `thread_abort(t)`, `thread_abort_safely(t)` | A thread waiting in the kernel returns from its call as interrupted (`MACH_RCV_INTERRUPTED`, `KERN_ABORTED`, `EINTR`; the library restarts what it restarts after a signal). A thread running user code is not affected |
+| Errors | A name that is not a send right: MACH_SEND_INVALID_DEST; a right to something other than a thread (task): KERN_INVALID_ARGUMENT; a thread that has ended: KERN_TERMINATED |
+
+`thread_info` (THREAD_BASIC_INFO, THREAD_EXTENDED_INFO) reports the run
+state TH_STATE_STOPPED (2) while the thread is suspended and the thread's
+own suspend count.
+
+**What "stopped" means for a thread in the kernel.** As in xnu, a thread
+that is blocked in a kernel call (a Mach message, a wait, a sleep) or
+running one counts as suspended at once: it executes no user instruction,
+and its user registers are those at the entry of its call. When its call
+completes while it is suspended, it does not return to user code: it stops
+with the call's results in its registers.
+
+**Ycode implementation.**
+
+- *The run gate.* Each thread has a gate (`GuestThreadGate`, in
+  `YcodeDarwinABI`), closed while its suspend count or its task's is above
+  zero. The counts change under L0; closing a gate also makes the thread's
+  vCPU leave guest mode (`ThreadHost.kickThread`: `immediate_exit` and the
+  kick signal, `docs/SIMULATOR-LINUX.md`).
+- *Where a thread parks.* The vCPU host thread checks the gate (one relaxed
+  atomic load) before every guest entry and at the entry of every trap. A
+  closed gate parks it on the gate's condition variable, with the thread's
+  user registers published: the vCPU's registers when it was kicked out at
+  EL0 (`guest`); the slot's trap frame just after a handled trap
+  (`afterTrap`; the shim restores it on resume); the arriving frame at a
+  trap's entry, before the kernel handles it (`trapEntry`; the trap runs
+  after the resume); or the start state before a thread's first
+  instruction (`start`). A kick that finds the vCPU at EL1 (the shim,
+  entering or leaving a trap) does not park it; the suspender kicks again
+  every millisecond until the thread stops at EL0 or at its next trap.
+- *Waiting.* `thread_suspend` and `task_suspend` wait with every kernel lock
+  released (L0 is the only lock their trap holds; the port lock G is taken
+  only to resolve the port name) until each target is parked, inside a trap
+  (its entry frame is published, `mach-ipc-locking.md` §4.2), not on a vCPU,
+  gone, or its image is ending. A target therefore never waits for a lock
+  the suspender holds.
+- *State reads.* `thread_get_state` (routine 17, on the IPC fast path,
+  `mach-ipc-locking.md` §4.10) reports, in this order: the parked
+  registers, the entry frame of the trap in progress, a never-started
+  thread's start state. A suspended thread between the end of its trap and
+  its gate (microseconds) gets the private answer 0x7963_0000, and the
+  library asks again. A thread running user code that is **not** suspended
+  still gets KERN_FAILURE: xnu would stop it briefly, but libobjc samples
+  every thread before it frees method caches and treats a failure as "in a
+  critical section" (unchanged from §11.3 of `host-libraries.md`).
+- *State writes.* A parked thread takes the new registers when it is
+  resumed (the vCPU's registers, or the slot frame). A thread inside a trap
+  gets a replacement that the vCPU applies when the trap ends (the trap's
+  x0, x1 and carry kept). A thread parked at a trap's entry is inside its
+  trap: the same rule.
+- *Ending.* A process that ends while a thread is parked releases its
+  gates: the thread continues and sees the end. A suspender whose own image
+  ends stops waiting.
+- *Cost.* A thread that is never suspended pays one relaxed load per guest
+  entry and per trap; no lock, no system call. Timed boots are unchanged
+  (`service-fidelity.md` §14). A suspension of a spinning thread takes
+  70–200 µs on the Linux host under load (mean over 2000
+  suspend/get_state/resume rounds of the guest probe `p_tsus`), of a
+  thread blocked in `semaphore_wait` about 100 µs.
+- *Results.* `p_tsus` (spinning, self-suspending and blocked threads,
+  counts, state reads and writes, `thread_info`, `task_suspend`/`resume`
+  of a child, a start-suspended child resumed by SIGCONT) passes; the
+  JavaScriptCore stress `p_jsgc` crashes on the main line and passes with
+  this work; amsengagementd's collector crashes are gone
+  (`app-launch.md` §3.6).
+- *Not done.* Suspend counts are not saved in snapshots, and a thread
+  parked at its gate is not a settled thread for the snapshot quiesce
+  (`snapshot.md` §3): a snapshot retries until it is resumed. `thread_get_state`
+  and `thread_info` still serve only threads of the caller's task;
+  `thread_suspend`/`resume`/`set_state` take a thread of any task. No
+  NEON or debug-state flavors. `task_suspend2`/`task_resume2` (suspension
+  tokens) and `pid_suspend`/`pid_resume` remain stubs.
+
 ---
 
 ## 2. Workqueues (Q2)
@@ -464,7 +560,18 @@ count as its change list.
    - If none are found, the thread is unbound from the kqueue and goes to
      step 4. Delivered events stay **suppressed** until this return
      (§3.8, rule K4).
-   - If applying the changes fails, the error is returned to the caller.
+   - Every change is applied. A change that fails does **not** fail the
+     call: it is copied out as an `EV_ERROR` event (data = errno) into the
+     thread's event area, ahead of the events the scan finds, and the
+     thread is restarted with them as above (libpthread's kernel side
+     applies the list with `STACK_DATA | IMMEDIATE | PARKING` and no
+     `ERROR_EVENTS`, so errors are output events; level 1). Only an error
+     of the kevent call itself is returned to the caller. (Ycode until
+     2026-10-28: the first failure stopped the list and was returned as
+     the errno; the changes after it were lost, and libdispatch later
+     aborted with "BUG IN LIBDISPATCH: Invalid wlh state": assistantd in
+     about half of the main line's full boots, amsengagementd once its
+     collector no longer crashed, `app-launch.md` §3.6.)
 4. **Next work:** if the workqueue has an admissible request (§2.5), the
    thread takes it and restarts at `start_wqthread` with `REUSE`.
    Otherwise it parks on the idle list. A parked thread is woken for a later
@@ -882,12 +989,14 @@ Output `data` = the count since the last delivery.
   when the reader side is closed.
 - VNODE: `ident` = fd. `fflags` in/out: `NOTE_DELETE` 1, `NOTE_WRITE` 2,
   `NOTE_EXTEND` 4, `NOTE_ATTRIB` 8, `NOTE_LINK` 0x10, `NOTE_RENAME` 0x20,
-  `NOTE_REVOKE` 0x40, `NOTE_NONE` 0x80, `NOTE_FUNLOCK` 0x100.
+  `NOTE_REVOKE` 0x40, `NOTE_NONE` 0x80, `NOTE_FUNLOCK` 0x100. Which change
+  posts which note, and Ycode's implementation: §3.10.
 
 #### 3.7.8 Others libdispatch can register
 
 `EVFILT_FS` (−9), `EVFILT_MEMORYSTATUS` (−14; memory-pressure source at
-startup), `EVFILT_EXCEPT` (−15), `EVFILT_SOCK` (−13), `EVFILT_NW_CHANNEL`
+startup), `EVFILT_EXCEPT` (−15), `EVFILT_SOCK` (−13; implemented for IP
+and local sockets since NET-IMPL, `networking-ycode.md` §2.5), `EVFILT_NW_CHANNEL`
 (−16), `EVFILT_EXCLAVES_NOTIFICATION` (−18). Ycode may refuse them with an
 `EV_ERROR` event (`EINVAL`/`ENOTSUP`) until a client needs them; see Open
 question 4 for `EVFILT_MEMORYSTATUS`.
@@ -940,6 +1049,145 @@ a client bug, `ENOENT` as fine only for `ERROR_EVENTS | MUST_EXIST`, and any
 other errno as a crash. Per-change errors come back as `EV_ERROR` events;
 libdispatch accepts `ENOENT`, `ESTALE`, `EINTR`, `EINPROGRESS`, `EOWNERDEAD`
 only in specific cases.
+
+### 3.10 `EVFILT_VNODE`: notes and Ycode's implementation (agent VNODE-EVENTS, 2026-10-28)
+
+**Semantics (xnu).** A knote watches the vnode its descriptor names, not the
+name: it follows renames and outlives an unlink while the descriptor is
+open. Each file-system operation posts notes to the vnodes it changed
+(`kpi_vfs.c`, the `post_event_if_success` calls after each `VNOP_*`); a
+knote keeps the posted notes that its `fflags` (the interest mask, replaced
+by each `EV_ADD`/touch) asks for, ORed together, until it is delivered
+(`filt_vnode_common`: `kn_fflags |= hint` when `kn_sfflags & hint`). The
+event's `fflags` are those notes, `data` 0. With `EV_CLEAR` delivery
+forgets them; without it the knote stays active and is reported again at
+every scan with the same notes (so clients use `EV_CLEAR`; libdispatch's
+vnode sources do). `EV_ONESHOT` and `EV_DISPATCH` apply as for any filter
+(§3.5). `NOTE_REVOKE` (revoke(2), a forced unmount) ends the knote: the
+event carries `EV_EOF | EV_ONESHOT`, and `NOTE_REVOKE` in `fflags` when it
+was asked for.
+
+| Operation | Notes to the object | Notes to its directory (and the target's, for a move) |
+|---|---|---|
+| `write`, `pwrite`, `writev` (n > 0) | `NOTE_WRITE`; `NOTE_EXTEND` when the end passed the old size | — |
+| `truncate`, `ftruncate`, `open(O_TRUNC)` of a non-empty file (VNOP_SETATTR) | `NOTE_ATTRIB`; `NOTE_EXTEND` when it grew | — |
+| `chmod`, `fchmod`, `chown`, `utimes`, `futimes`, `chflags`, `setattrlist`, `setxattr`, `removexattr` | `NOTE_ATTRIB` | — |
+| create (`open(O_CREAT)` of a new name), `clonefile` of a file | — | `NOTE_WRITE` |
+| `mkdir`, `clonefile` of a directory | — | `NOTE_WRITE \| NOTE_LINK` |
+| `unlink` | `NOTE_DELETE \| NOTE_LINK` | `NOTE_WRITE` |
+| `rmdir` | `NOTE_DELETE \| NOTE_LINK` | `NOTE_WRITE \| NOTE_LINK` |
+| `rename` | moved object `NOTE_RENAME`; a replaced target `NOTE_DELETE` | each directory `NOTE_WRITE`; `\| NOTE_LINK` when a directory moved to another directory without replacing one, or replaced one in the same directory |
+| `renameatx_np(RENAME_SWAP)` | both `NOTE_RENAME` | each directory `NOTE_WRITE` (**Ycode decision**: `\| NOTE_LINK` when a directory and a non-directory swap between two directories) |
+| `flock(LOCK_UN)` of a held lock | `NOTE_FUNLOCK` | — |
+
+`NOTE_EXTEND` for writes and size changes follows kqueue(2)'s meaning
+("the file was extended"); xnu's VNOP_WRITE itself posts only `NOTE_WRITE`
+and leaves `NOTE_EXTEND` to the file system (**Ycode decision**: posted
+whenever the size grew). Ycode has no hard links (`link`), no revoke(2) and
+no unmount, so `NOTE_LINK` on a file comes only with its delete and
+`NOTE_REVOKE` only from a post of the host (nothing posts it today).
+
+**The registry** (`ycode/Sources/YcodeDarwinABI/VnodeNotes.swift`). Knotes
+are registered by the watched object's host key (host `st_dev`, `st_ino`:
+the host keeps an open file's inode, renames and unlinks included), in one
+table for all processes of the host process, so a change made by any guest
+process (or by the host, below) reaches every kqueue watching that object.
+`EV_ADD` on a descriptor of a host file or directory registers the knote
+(`fstat` of the host descriptor, once per open file); a descriptor that is
+not one (the console, a pipe, a socket, a device) is registered as before
+and never fires (xnu answers EINVAL there; **Ycode decision**: kept, so no
+client sees a new error). The knote's drop (EV_DELETE, delivery of a
+oneshot, the descriptor's close, the kqueue's close, the image's end)
+removes the registration. After a snapshot restore each vnode knote is
+registered again on the object its restored descriptor names; notes pending
+at the save are not kept.
+
+**Cost.** While no object is watched every VFS hook is one atomic load
+(`VnodeNotes.isActive`) and makes no system call. A full iOS boot watches
+objects from its first seconds on (UserEventAgent, PosterBoard, every
+process's `memory_warning_simulation` watch), so in practice the second
+case is the boot's. While some are, a path
+operation `lstat`s its object and directory once before it changes them
+(an unlinked or replaced object has no name afterwards), a write or size
+change looks its file's key up in the table (an `fstat` for the old size
+only when that file is watched), and a post takes the table's mutex once.
+A post reaches a knote's image (its event lock) only when the knote asks
+for one of the notes (each registration keeps its interest mask in an
+atomic) or for a revoke. Counted in a full boot (`YCODE_DEBUG_VNODE=1`, run
+`vnode/p2`, 200 s): about 6,000 path-operation captures, 12,900 write
+checks and 6,200 posts to watched objects, of which about 55 were asked
+for. A host micro-benchmark (x86-64 Linux, debug build, 1,000 objects
+watched) put the hooks at about 20 µs on a create + write + rename +
+unlink cycle of 145 µs, so the boot's captures cost well under 0.1 s of
+CPU in all.
+
+**Boot time** (`timed.sh`, `bench.sh` on copies of the pristine device,
+time to the home screen with `YCODE_HOME_WATCH=1`; main line = FS-HOST's
+tree, the branch merged as ecde653; three ABBA sets,
+2026-10-28, other agents' work kept the load at 2–30): main line 71.8,
+72.6, 73.2, 74.7, 74.9, 75.6 s (median 73.9 s); with vnode events 72.9,
+73.7, 73.8, 74.1, 74.4, 81.0 s (median 73.9 s; the 81.0 s boot's
+SpringBoard reached the audio service at the usual time, 37 s). Unchanged
+within the machine's noise. A fourth set without the home watch (5 s
+frames) gave 75, 75 s against 80, 80 s, the coarse steps of the same
+spread.
+
+**Locks.** The table's mutex is a leaf; a post copies the watchers out and
+lets it go before it fires them. Firing a knote takes its image's event
+lock (L0 without the lock split): the VFS posts after its leaf locks (the
+offset lock of a write, the descriptor table's) are let go, from a trap
+that holds L0 or no kernel lock; a thread that holds another image's event
+lock defers the work until its locks allow it (`KernelLock.deferIfFast`).
+Activation then wakes the kqueue's scanners or issues its thread request
+(workqueue kqueue, workloops) as any other filter does.
+
+**Host writes into the data tree.** `HostDataWrites` (same file) is the one
+hook for files that ycode-simd itself writes into a running device's data
+tree: `replace` (written to `.<name>.ycode-<pid>-<random>` in the same
+directory, then renamed over the name, as audio-host.md §12 asks), `remove`
+and `makeDirectories`. Each posts the notes of the table above (replace:
+the old file `NOTE_DELETE`, the directory `NOTE_WRITE`, the new file
+`NOTE_RENAME`; a new directory: its parent `NOTE_WRITE | NOTE_LINK`) and
+feeds the file-event service the same changes a guest process would make,
+with pid 0 (`fsevents-host.md` §10). The settings controller's files go
+through it: the audio settings files, the preference files written for a
+stopped device, the per-app Environment Overrides
+(`ycode-simd/SimSettings.swift`, `DeviceSettingsFiles`). Ycode has no
+privacy (TCC) database writer today; one added later uses the same hook.
+
+**Writes by other host processes** (a user editing a device's files, a
+copy into DEV while the device runs) are not seen. **Ycode decision**: no
+inotify watch. The only writer of a running device's data tree besides the
+guest is ycode-simd, whose writes go through the hook; an inotify watch per
+watched object would cost a host watch per registration (a full boot keeps
+about 1,000 registrations at once and makes about 3,900 in 330 s, runs
+`vnode/p1`, `v1`) and a reader thread, and inotify reports
+names, not the objects a rename replaced, so its notes would be less exact
+than the hook's. Revisit if a host tool that changes a running device's
+files is added outside ycode-simd.
+
+**Tests.** `VnodeEventsTests` (each note type on a file, directories,
+accumulation and the interest mask, EV_CLEAR, EV_ONESHOT, EV_DISPATCH,
+another process's write and the host-write hook including its FSEvents
+feed, NOTE_REVOKE and NOTE_FUNLOCK, registrations ending with their
+knotes, a write on the BSD fast path and a post from a host thread with
+the lock split, the no-registration path); guest probe
+`SimShim/guest-tests/vnode/p_vnode.c` (`build-vnode.sh`).
+
+**Checked on the Linux host (iOS 27.1, full boots, 2026-10-28).** The
+probe passes all 38 checks (run `vnode/v1`): each note of the table above
+for a file and a directory, accumulation in one scan, a child process's
+write, EV_ONESHOT, a knote without EV_CLEAR firing at every scan, and a
+dispatch vnode source (libdispatch's workloop path). In the same boot,
+FeatureProbe's audio session watches `var/run/simulatoraudio` with a
+dispatch vnode source (`NOTE_WRITE`) and follows each volume change
+(`simulator-features.md` I.9; runs `v1`, `v2`). A host write reaches a
+guest watcher quickly: with `p_vnode watch` on `var/run/simulatoraudio`, each
+of five `ycode-simd --audio volume N` commands was printed by the guest
+process 10 ms after the command process started (run `vnode/l1`; the
+command process itself takes about 15 ms). In a whole boot the system's own watchers
+get about 55 vnode events (UserEventAgent, weatherd, routined, locationd,
+geod, parsecd, assistantd, navd and others; run `vnode/p1`).
 
 ---
 
@@ -1437,6 +1685,12 @@ with `dispatch_sync` from two threads (sync wait/wake); one with
 | Arm facts (§6, facts 8–9) | Arm Architecture Reference Manual for A-profile (exclusives, broadcast TLB maintenance) | 1 |
 | Shim facts (§6, facts 10–11) | `specs/simulator/vm-shim-protocol.md` §5, §9 | Ycode design |
 | Cooperative pool trap counts and the timebase cause (§2.5 note) | Ycode boots on the Thor (SX harness, `IA2/si2`, `IA2/x`, `IA2/tb`, exit summaries); swift `DispatchGlobalExecutor.cpp` (`platform_time`) | 3; 1 |
+| EVFILT_VNODE notes per operation, accumulation, EV_CLEAR behaviour, NOTE_REVOKE (§3.10) | xnu `bsd/vfs/kpi_vfs.c` (VNOP_* posts), `bsd/vfs/vfs_subr.c` (`filt_vnode_common`, `filt_vntouch`), `bsd/sys/event.h`; kqueue(2) manual | 1 |
+| Ycode's vnode registry, host-write hook, the inotify decision (§3.10) | Ycode design; `VnodeEventsTests`; guest probe `p_vnode` on the Linux host | Ycode design; 3 |
+| Suspension semantics: counts, KERN_FAILURE at zero, self-suspend, a thread in the kernel counts as stopped, task counts, start-suspended threads and tasks, thread_set_state hold/stop/release, flavors and counts, thread_abort (§1.6) | xnu `osfmk/kern/thread_act.c`, `osfmk/kern/task.c`, `osfmk/arm64/status.c`, `osfmk/mach/thread_act.defs`, `osfmk/mach/task.defs`, `osfmk/mach/arm/thread_status.h`, `bsd/kern/kern_exec.c` (START_SUSPENDED), `bsd/kern/kern_sig.c` (SIGCONT); the Mach `thread_suspend`/`task_suspend` manual pages | 1 |
+| What JavaScriptCore's collector needs: suspend returns only when the thread is stopped; registers including SP/FP/LR from ARM_THREAD_STATE64; a failed suspend skips the thread's stack; a failed `thread_get_state` after a successful suspend is fatal (§1.6) | WebKit `Source/WTF/wtf/posix/ThreadingPOSIX.cpp` (`Thread::suspend`, `getRegisters`), `Source/JavaScriptCore/heap/MachineStackMarker.cpp` | 1 |
+| Ycode's run gate, park points, kicks, waits (§1.6) | Ycode design; `ThreadSuspendTests`; guest probes `p_tsus`, `p_jsgc` on the Linux host (runs `tsus/p2`, `p3`, `pb1`, `pb2`) | Ycode design; 3 |
+| A returning kevent/workloop worker's failed changes are output events, and the call succeeds (§2.7 step 3) | libpthread `kern/kern_support.c` (`workq_handle_stack_events`, `workq_kevent`); xnu `bsd/pthread/pthread_workqueue.c` (`workq_thread_return`) | 1 |
 
 Source tags (fetched with the GitHub API on 2026-10-11, kept outside the
 repository):

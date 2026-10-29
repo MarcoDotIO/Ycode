@@ -38,6 +38,10 @@ int ckvm_set_user_memory_region(int vm_fd, uint32_t slot, uint32_t flags,
 /// Anonymous, private, read/write mapping of `size` bytes (zero-filled).
 /// Returns NULL on failure (errno is set).
 void *ckvm_alloc_anonymous(size_t size);
+/* The same, at an `alignment`-aligned address (a power of two); with `huge`
+ * > 0 also madvise(MADV_HUGEPAGE), < 0 madvise(MADV_NOHUGEPAGE). Freed with
+ * ckvm_free_anonymous(size). */
+void *ckvm_alloc_anonymous_aligned(size_t size, size_t alignment, int huge);
 /// munmap. Returns 0 or -errno.
 int ckvm_free_anonymous(void *address, size_t size);
 /// madvise(MADV_DONTNEED) on part of an anonymous private mapping: the host
@@ -257,6 +261,7 @@ void ckvm_clean_dcache_range(const void *address, size_t size);
 /// ID_AA64MMFR2_EL1 as Linux exposes it to user space (MRS emulation; fields
 /// the kernel hides read as 0), or 0 when HWCAP_CPUID is absent.
 uint64_t ckvm_host_id_aa64mmfr2(void);
+/* CTR_EL0 of the host CPU: `ckvm_host_ctr_el0` in ckvm_cpufeat.h. */
 
 // ---- Watchdog ---------------------------------------------------------------
 
@@ -303,5 +308,10 @@ int ckvm_stack_sample(long tid, void **out, int max, int timeout_us);
 int ckvm_signal_on_parent_death(int signo);
 
 #endif // __linux__ && __aarch64__
+
+/* Diagnostics (guest-cpu.md §5): YCODE_HOST_PROFILE=<path> samples the calling
+ * vCPU host thread's PC and frame-pointer chain every YCODE_HOST_PROFILE_US µs
+ * of its CPU time; the samples are written to <path> at exit. 0 when off. */
+int ckvm_hostprof_thread_start(void);
 
 #endif // CKVM_H

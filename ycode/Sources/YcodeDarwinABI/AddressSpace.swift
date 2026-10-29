@@ -71,7 +71,9 @@ public protocol PhysicalBacking: AnyObject {
 }
 
 extension PhysicalBacking {
+    /// Default: no shared read-only views (callers fall back to `mapFile`).
     public func mapFileReadOnly(_ file: GuestFile, offset: UInt64, size: UInt64) throws -> UInt64? { nil }
+    /// Default: copies the buffer into an array and calls `writePhysical(gpa:bytes:)`.
     public func writePhysical(gpa: UInt64, from bytes: UnsafeRawBufferPointer) throws {
         try writePhysical(gpa: gpa, bytes: Array(bytes))
     }
@@ -159,6 +161,13 @@ public protocol GuestVirtualMemory: GuestMemoryAccess, AnyObject {
     func regions(overlapping range: Range<UInt64>) -> [GuestRegion]
     /// Bumps on every page-table change.
     var generation: UInt64 { get }
+    /// Bumps on every page-table change that can leave a stale TLB entry
+    /// (a valid descriptor removed or changed); a trap that changes it
+    /// resumes with `flushTLB` (guest-cpu.md §4.2).
+    var tlbGeneration: UInt64 { get }
+    /// The pages whose translations the changes after `tlbGeneration` value
+    /// `since` touched, when that is one known span; nil means "flush all".
+    func tlbRange(since: UInt64) -> TLBRange?
     /// A guest translation fault at `va`: gives an untouched page of a lazy
     /// anonymous mapping its backing (when its protection allows any
     /// access) and returns true; false when the fault is a real one.
@@ -174,12 +183,20 @@ extension GuestVirtualMemory {
     /// mutex (L1), which every change takes (`boot-profile.md` §3.6).
     public func atomically<T>(_ body: () throws -> T) rethrows -> T { try body() }
 
+    /// Default: no lazy mappings, so every translation fault is a real one.
     public func resolveTranslationFault(va: UInt64) -> Bool { false }
 
+    /// Conservative default: every change counts.
+    public var tlbGeneration: UInt64 { generation }
+    /// Default: nil, so the caller flushes the whole TLB.
+    public func tlbRange(since: UInt64) -> TLBRange? { nil }
+
+    /// Default: a linear search of `regions`.
     public func region(containing va: UInt64) -> GuestRegion? {
         regions.first { $0.va <= va && va < $0.end }
     }
 
+    /// Default: a linear filter of `regions`.
     public func regions(overlapping range: Range<UInt64>) -> [GuestRegion] {
         regions.filter { $0.va < range.upperBound && range.lowerBound < $0.end }
     }
@@ -247,6 +264,18 @@ public final class GuestAddressSpace: GuestVirtualMemory {
     public let backing: any PhysicalBacking
     public let pageTables: GuestPageTables
     public private(set) var generation: UInt64 = 0
+    /// See `GuestVirtualMemory.tlbGeneration`. With
+    /// `YCODE_TLB_FLUSH_ADDS=1` it follows `generation` (every change
+    /// flushes, as before).
+    public private(set) var tlbGeneration: UInt64 = 0
+    /// `pageTables.invalidatingChanges` at the last table write.
+    private var writtenInvalidations: UInt64 = 0
+    /// The span of the last `tlbGeneration` bump (nil: unknown or too wide).
+    private var lastInvalidatedSpan: Range<UInt64>?
+    /// The VMM sets it before the first VM when the host's CTR_EL0.DIC is 0
+    /// (there a flush also stands for the I-cache invalidation that a page
+    /// reused for new code needs).
+    nonisolated(unsafe) public static var flushOnAdditions = getenv("YCODE_TLB_FLUSH_ADDS").map { String(cString: $0) == "1" } ?? false
     /// When true (the default), `read`/`write` need EL0 access to each page,
     /// as a kernel's copyin/copyout would. The VMM turns it off to fill
     /// read-only pages.
@@ -579,8 +608,23 @@ public final class GuestAddressSpace: GuestVirtualMemory {
     private func flushLocked() throws {
         guard pageTables.hasDirtyTables else { return }
         generation &+= 1
+        // Bumped before the write: a failed write still flushes.
+        let invalidations = pageTables.invalidatingChanges
+        let span = pageTables.takeInvalidatedSpan()
+        if Self.flushOnAdditions || invalidations != writtenInvalidations {
+            tlbGeneration &+= 1
+            writtenInvalidations = invalidations
+            lastInvalidatedSpan = Self.flushOnAdditions ? nil : span
+        }
         let backing = self.backing
         try pageTables.writeDirtyTables { gpa, bytes in try backing.writePhysical(gpa: gpa, from: bytes) }
+    }
+
+    public func tlbRange(since: UInt64) -> TLBRange? {
+        mutex.withLock {
+            guard tlbGeneration == since &+ 1, let span = lastInvalidatedSpan else { return nil }
+            return TLBRange(va: span.lowerBound, pages: (span.upperBound - span.lowerBound) >> VMLayout.pageShift)
+        }
     }
 
     // MARK: Lazy anonymous memory
@@ -678,7 +722,7 @@ public final class GuestAddressSpace: GuestVirtualMemory {
     }
 
     private func mapLocked(file: GuestFile?, shared: SharedMemoryObject? = nil, offset: UInt64, at: UInt64?, size: UInt64,
-                     protection: VMProtection, hint: UInt64?, permanent: Bool) throws -> UInt64 {
+                           protection: VMProtection, hint: UInt64?, permanent: Bool) throws -> UInt64 {
         try checkLive()
         guard size > 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
         guard offset & Self.pageMask == 0 else { throw DarwinErrnoError(DarwinErrnoCode.EINVAL) }
@@ -848,6 +892,7 @@ public final class GuestAddressSpace: GuestVirtualMemory {
 public enum MapFailureLog {
     nonisolated(unsafe) private static var count = 0
     private static let lock = NSLock()
+    /// The most failures written; later ones are counted but not shown.
     public static let limit = 40
     static func note(_ text: String) {
         lock.lock(); count += 1; let n = count; lock.unlock()

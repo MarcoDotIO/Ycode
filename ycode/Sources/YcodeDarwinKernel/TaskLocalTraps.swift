@@ -22,6 +22,11 @@ import YcodeDarwinABI
 // | Mach −12 `vm_deallocate` | the address space (one change) |
 // | Mach −14 `vm_protect` (current protection) | the address space (one change; making a shared read-only file view writable moves it to a private view, under L1) |
 // | BSD 75 `madvise` (C21, `YCODE_TASK_LOCAL_MADVISE`) | the arguments; for `MADV_ZERO` guest memory writes (single L1 sections). Every other advice is a hint Ycode keeps no state for |
+// | BSD 73 `munmap`, 74 `mprotect` (`bsd-locking.md` §12) | the address space (one change), as `vm_deallocate` and `vm_protect` |
+// | Mach −3 `mach_absolute_time`, −4 `mach_continuous_time` | the guest counter |
+// | Mach −43 `mach_generate_activity_id` | the image's activity-id counter (an atomic) |
+// | Ycode's `vm_copy` (0x7963_0004) | one read and one write of guest memory |
+// | Mach −15 `mach_vm_map` (anonymous memory) | the address space, as `vm_allocate` (a fixed placement checks and maps as one change) |
 //
 // Every address-space change takes the space's mutex (L1); every kernel
 // path that reads the address space and then changes it on the result
@@ -44,6 +49,11 @@ extension DarwinKernel {
     /// the locked path (boot-profile.md §6.4, C21).
     nonisolated(unsafe) public static var taskLocalMadviseEnabled = getenv("YCODE_TASK_LOCAL_MADVISE").map { String(cString: $0) != "0" } ?? true
 
+    /// On by default; `YCODE_TASK_LOCAL_MORE=0` sends `munmap`, `mprotect`,
+    /// `mach_absolute_time` and `mach_continuous_time` back to the locked
+    /// path (`bsd-locking.md` §12).
+    nonisolated(unsafe) public static var taskLocalMoreEnabled = getenv("YCODE_TASK_LOCAL_MORE").map { String(cString: $0) != "0" } ?? true
+
     /// True when the trap was issued by a helper stub of the host page
     /// (`dyld-sim-handoff.md` §7.3: the loader's `stat`): such a `stat`
     /// sees no cache-only image files (app-launch.md §3.5), so the loader
@@ -57,6 +67,7 @@ extension DarwinKernel {
         switch number {
         case 338, 340, -10, -12, -14, -11: return true
         case 75: return taskLocalMadviseEnabled
+        case 73, 74, -3, -4, -15, -43, Int32(bitPattern: Private.vmCopy): return taskLocalMoreEnabled
         default: return false
         }
     }
@@ -68,9 +79,9 @@ extension DarwinKernel {
         guard Self.taskLocalTrapsEnabled, !tracing, frame.trapKind == .svc, frame.x.count >= TrapFrame.registerCount,
               context.kernel === self, !isTerminating else { return nil }
         let number = Int32(truncatingIfNeeded: frame.x[16])
-        let a = Array(frame.x[0..<8])
-        let generation = memory.generation
-        defer { if memory.generation != generation { frame.flushTLB = true } }
+        let a = frame.x.prefixArray(8)
+        let generation = memory.tlbGeneration
+        defer { if memory.tlbGeneration != generation { frame.requestTLBInvalidation(memory.tlbRange(since: generation)) } }
         switch number {
         case 338, 340:
             do {
@@ -126,6 +137,61 @@ extension DarwinKernel {
                 }
             }
             frame.x[0] = KernReturn.success
+            return .resume
+
+        case Int32(bitPattern: Private.vmCopy):
+            // Ycode's vm_copy(target, src, size, dst): one read and one write
+            // of the caller's memory (handlePrivate), each an L1 section.
+            guard a[2] <= UInt64(Int32.max) else {
+                frame.x[0] = KernReturn.invalidArgument
+                frame.carry = false
+                return .resume
+            }
+            if let bytes = try? memory.read(va: a[1], count: Int(a[2])), (try? memory.write(va: a[3], bytes: bytes)) != nil {
+                frame.x[0] = KernReturn.success
+            } else {
+                frame.x[0] = KernReturn.invalidAddress
+            }
+            frame.carry = false
+            return .resume
+
+        case -15:
+            // mach_vm_map of anonymous memory (handleMach): address-space changes only.
+            frame.x[0] = vmMapAnonymous(a, memory).0
+            return .resume
+
+        case -43:
+            // mach_generate_activity_id: one atomic add (handleMach).
+            frame.x[0] = generateActivityID(a, memory) != nil ? KernReturn.success : KernReturn.invalidAddress
+            return .resume
+
+        case -3, -4:
+            // mach_absolute_time, mach_continuous_time (handleMach): the counter.
+            frame.x[0] = counter()
+            return .resume
+
+        case 73, 74:
+            // munmap, mprotect: the locked path's answers (DarwinKernel
+            // `BSD.munmap`, `BSD.mprotect`): one address-space change.
+            var failure: Int32 = 0
+            do {
+                if number == 73 {
+                    if a[0] & Self.pageMask != 0 || a[1] == 0 { throw Failure(errno: Errno.EINVAL) }
+                    try memory.unmap(va: a[0], size: roundUp(a[1], to: Self.pageSize))
+                } else {
+                    let start = a[0] & ~Self.pageMask
+                    let size = roundUp(a[1] + (a[0] - start), to: Self.pageSize)
+                    if size > 0 {
+                        try memory.protect(va: start, size: size,
+                                           protection: VMProtection(rawValue: VMProtection.RawValue(truncatingIfNeeded: a[2] & 7)))
+                    }
+                }
+            } catch {
+                failure = errno(of: error, default: Errno.EINVAL)
+            }
+            frame.x[0] = failure == 0 ? 0 : UInt64(UInt32(bitPattern: failure))
+            frame.x[1] = 0
+            frame.carry = failure != 0
             return .resume
 
         case -11:

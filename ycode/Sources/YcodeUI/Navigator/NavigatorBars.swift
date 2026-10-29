@@ -104,6 +104,8 @@ public enum NavigatorBars {
     public static let reportScopeToolTips = ["Show Local Reports", "Show Cloud Reports"]
     /// The Test navigator's Mode radio buttons.
     public static let testModes = ["Group by Test Hierarchy", "Group by Tags"]
+    /// The Test navigator's test-plan pop-up width (reference-ui-6.md §5.4).
+    public static let testPlanPopUpWidth: CGFloat = 194
     /// The group of tests without tags, last in Group by Tags.
     public static let untaggedTests = "Untagged Tests"
 }
@@ -160,7 +162,12 @@ extension NavigatorAreaController {
     func configureTestHeader() {
         testPlanPopUp.controlSize = .small
         testPlanPopUp.font = .systemFont(ofSize: 11)
-        testPlanPopUp.isBordered = false
+        // reference-ui-6.md §5.4 (N5): a bordered pop-up 194 wide (it gives
+        // way in a narrower navigator).
+        testPlanPopUp.isBordered = true
+        let width = testPlanPopUp.widthAnchor.constraint(equalToConstant: NavigatorBars.testPlanPopUpWidth)
+        width.priority = .defaultHigh
+        width.isActive = true
         testPlanPopUp.addItem(withTitle: testPlanName)
         testPlanPopUp.setAccessibilityLabel("Test Plan")
         testModeControl.controlSize = .small
@@ -208,6 +215,98 @@ extension NavigatorAreaController {
     @objc func bookmarkDoneChosen(_ item: NSMenuItem) {
         guard let b = (item.representedObject as? BookmarkBox)?.bookmark else { return }
         onSetBookmarkDone?(b, b.done != true)
+    }
+}
+
+/// A navigator's filter field (reference-ui-6.md §5.6, N7): no magnifier;
+/// the filter-options pull-down sits inside it at the leading end and the
+/// in-field toggles at the trailing end (both are the navigator's views,
+/// laid over the field), so the text and the clear button keep between
+/// them.
+final class NavigatorFilterField: NSSearchField {
+    /// The options pull-down's width and a toggle's width.
+    static let optionsWidth: CGFloat = 28
+    static let toggleWidth: CGFloat = 18
+    /// Room kept at the leading end (the options pull-down).
+    var leadingInset: CGFloat = optionsWidth + 2 { didSet { needsLayout = true; needsDisplay = true } }
+    /// Room kept at the trailing end (the shown toggles).
+    var trailingInset: CGFloat = 0 { didSet { needsLayout = true; needsDisplay = true } }
+
+    override class var cellClass: AnyClass? {
+        get { NavigatorFilterFieldCell.self }
+        set {}
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        (cell as? NSSearchFieldCell)?.searchButtonCell = nil
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// The cancel button's width.
+    static let cancelWidth: CGFloat = 16
+
+    func textRect(_ bounds: NSRect) -> NSRect {
+        var r = bounds
+        r.origin.x += leadingInset
+        r.size.width = max(0, bounds.width - leadingInset - trailingInset - Self.cancelWidth - 2)
+        return r
+    }
+
+    func cancelRect(_ bounds: NSRect) -> NSRect {
+        NSRect(x: bounds.maxX - trailingInset - Self.cancelWidth - 2, y: bounds.midY - Self.cancelWidth / 2,
+               width: Self.cancelWidth, height: Self.cancelWidth)
+    }
+
+    override func rectForSearchText(whenCentered isCentered: Bool) -> NSRect {
+        let r = super.rectForSearchText(whenCentered: isCentered)
+        let t = textRect(bounds)
+        return NSRect(x: t.minX, y: r.minY, width: t.width, height: r.height)
+    }
+    override func rectForSearchButton(whenCentered isCentered: Bool) -> NSRect { .zero }
+    override func rectForCancelButton(whenCentered isCentered: Bool) -> NSRect {
+        let r = super.rectForCancelButton(whenCentered: isCentered)
+        let c = cancelRect(bounds)
+        return NSRect(x: c.minX, y: r.minY, width: r.width, height: r.height)
+    }
+
+    /// The funnel with a chevron, one template image.
+    static let optionsGlyph: NSImage = {
+        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+        let funnel = NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let chevron = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 7, weight: .semibold))
+        let size = NSSize(width: 22, height: 14)
+        let image = NSImage(size: size, flipped: false) { _ in
+            if let f = funnel {
+                f.draw(in: NSRect(x: 0, y: (size.height - f.size.height) / 2, width: f.size.width, height: f.size.height))
+            }
+            if let c = chevron {
+                c.draw(in: NSRect(x: size.width - c.size.width, y: (size.height - c.size.height) / 2, width: c.size.width, height: c.size.height))
+            }
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Filter options"
+        return image
+    }()
+}
+
+/// The cell side of `NavigatorFilterField`'s layout (the field editor's
+/// frame comes from here).
+final class NavigatorFilterFieldCell: NSSearchFieldCell {
+    private var field: NavigatorFilterField? { controlView as? NavigatorFilterField }
+    override func searchTextRect(forBounds rect: NSRect) -> NSRect {
+        let r = super.searchTextRect(forBounds: rect)
+        guard let f = field else { return r }
+        let t = f.textRect(rect)
+        return NSRect(x: t.minX, y: r.minY, width: t.width, height: r.height)
+    }
+    override func searchButtonRect(forBounds rect: NSRect) -> NSRect { .zero }
+    override func cancelButtonRect(forBounds rect: NSRect) -> NSRect {
+        let r = super.cancelButtonRect(forBounds: rect)
+        guard let f = field else { return r }
+        return NSRect(x: f.cancelRect(rect).minX, y: r.minY, width: r.width, height: r.height)
     }
 }
 

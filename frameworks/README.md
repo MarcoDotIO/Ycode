@@ -6,13 +6,20 @@ from the specifications in `specs/frameworks/<name>/` under the protocol in
 
 | Directory | Package | Library module | Spec |
 |---|---|---|---|
-| `eventkit/` | `ycode-eventkit` | `EventKit` | `specs/frameworks/eventkit/` (rounds R2–R4) |
+| `eventkit/` | `ycode-eventkit` | `EventKit` (+ `CLLocation` shim on Linux) | `specs/frameworks/eventkit/` (rounds R2–R4) |
 | `weatherkit/` | `ycode-weatherkit` | `WeatherKit` (+ `CoreLocation` shim on Linux) | `specs/frameworks/weatherkit/` (R2–R4) |
 | `swiftui/` | `ycode-swiftui` | `SwiftUI` (re-exports `SwiftUICore`); built as `OpenViews` / `OpenViewsCore` on Apple hosts | `specs/frameworks/swiftui/` (R1, R2, R3 core, R4, R6); bundles Noto Sans (OFL 1.1) |
-| `healthkit/` | `ycode-healthkit` | `HealthKit` | `specs/frameworks/healthkit/` (rounds R2–R5) |
+| `healthkit/` | `ycode-healthkit` | `HealthKit` | `specs/frameworks/healthkit/` (rounds R2–R5, and R10's query descriptors) |
 | `contacts/` | `ycode-contacts` | `Contacts` | `specs/frameworks/contacts/` (rounds R2–R5) |
 | `homekit/` | `ycode-homekit` | `HomeKit` (+ `CoreLocation` region shim on Linux) | `specs/frameworks/homekit/` (round R3) |
 | `storekit/` | `ycode-storekit` | `StoreKit`, `StoreKitTest` (+ `StoreKitConfiguration`, `StoreKitEngine`, `StoreKitSigning`) | `specs/frameworks/storekit/` (rounds R2, R7–R9) |
+
+The round numbers name the rounds of each spec's plan (`plan.md`, or
+`10-plan.md` for SwiftUI) that are done.
+Each package README lists what is done, deferred and not started.
+
+ARKit, MapKit and RealityKit have specifications in `specs/frameworks/` but
+no package yet.
 
 Conventions:
 
@@ -28,4 +35,7 @@ Conventions:
 - No Apple code, resources, documentation text or SDK declarations. Public
   type and member names come from the spec's API inventory.
 - On macOS a package must not shadow the system framework for other targets:
-  keep each package self-contained and test it in its own build.
+  keep each package self-contained and test it in its own build
+  (`cd frameworks/<name> && swift build && swift test`).
+- `ycode/scripts/lint.sh` lints these packages with the repository's
+  `.swiftlint.yml`.

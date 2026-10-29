@@ -73,6 +73,7 @@ public final class ComparisonView: NSView, NSTextViewDelegate {
         // Scroll both sides together, whichever side scrolls.
         for (from, to) in [(leftScroll, rightScroll), (rightScroll, leftScroll)] {
             from.contentView.postsBoundsChangedNotifications = true
+            // swiftlint:disable:next discarded_notification_center_observer - never removed; captures are weak
             NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: from.contentView, queue: .main) { [weak self, weak from, weak to] _ in
                 MainActor.assumeIsolated {
                     guard let from, let to, to.contentView.bounds.origin != from.contentView.bounds.origin else { return }
@@ -92,7 +93,7 @@ public final class ComparisonView: NSView, NSTextViewDelegate {
     /// number, no text) are dropped; typed new lines keep their text.
     public static func fileText(fromColumn column: String) -> String {
         var lines = column.components(separatedBy: "\n")
-        if lines.last == "" { lines.removeLast() }
+        if lines.last?.isEmpty == true { lines.removeLast() }
         var out: [String] = []
         for l in lines {
             if l == "      " { continue }

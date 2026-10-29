@@ -121,6 +121,9 @@ public struct MacroExpression: Equatable, Sendable {
 
 /// The `$(X:op)` retrieval operators, as observed from `xcodebuild`.
 public enum MacroOperators {
+    /// Applies operator `name` (with its `=argument`, if any) to `value`.
+    /// Unknown operators return `value` unchanged. See
+    /// `specs/build-settings.md` §2 (Operators).
     public static func apply(_ name: String, argument: String?, to value: String) -> String {
         switch name {
         case "quote": return quote(value)
@@ -146,6 +149,8 @@ public enum MacroOperators {
         }
     }
 
+    /// Whether a setting value counts as true: `YES`, `TRUE` or `1`,
+    /// case-insensitive. Everything else, including empty, is false.
     public static func isTrue(_ v: String) -> Bool {
         ["yes", "true", "1"].contains(v.lowercased())
     }

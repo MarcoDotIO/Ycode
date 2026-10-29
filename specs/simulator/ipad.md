@@ -502,7 +502,8 @@ not open the reference tools or `research/dirty/`.
    P1–P4 in the Ycode HID bundle, transport and viewer. Done when P5 holds
    on the Thor.
 5. **RUNTIME-27.0** (Thor): add iOS 27.0 (24A434) as a second runtime (copy
-   plan below); boot an iPhone 18 Pro identity and an iPad on it; re-check
+   plan below); boot an iPhone 18 Pro identity (values in
+   `iphone-types.md`; iPhone Duo is not accepted by 27.0) and an iPad on it; re-check
    the 27.1-derived behaviors (§2.2: `dyld_sim` handoff, `launchd_sim`
    bootstrap routines, host-library imports, Metal compiler load path with
    `libLLVM` in the cache); record differences in the affected specs. Done
@@ -604,6 +605,86 @@ above, `POSIXSpawnType` Adaptive, `EnableTransactions` and
 `com.apple.fileprovider.pushkit`. So in Ycode's `launchctl list` look for
 `com.apple.FileProvider`, not a label containing "fileproviderd".
 
+### 9.2 Round 5 results (RUNTIME-27.0; Ycode, iOS 27.0 runtime 24A434, the Thor)
+
+Agent IOS27, 2026-10-27. Level 3: Ycode's own simulator with the copied
+27.0 RuntimeRoot (`$YCODE_DATA/runtimes/iOS-27.0-24A434/RuntimeRoot`, the
+copy plan of §9), the guest's own files read after the boot
+(`IconState.plist`, `com.apple.migration.plist` with `plistlib`), Ycode
+screenshots, `ylaunch` one-shots. No Apple simulator, Xcode or reference
+tool was run. The Thor was shared (load average 5–200 during these
+boots), so times are upper bounds except the `timed.sh` row of
+`home-apps.md` §9.3.
+
+**Nothing in Ycode was specific to the 27.1 build.** The items of §2.2
+that had to be re-checked all worked unchanged on 27.0: the `dyld_sim`
+handoff (a different `dyld_sim` build, mapped and entered as on 27.1),
+`launchd_sim`'s bootstrap and session bind, the host-library imports
+(Ycode's three host libraries, still tagged iOS simulator minos 27.1, load
+into 27.0 processes), the shared cache (a different build with 1826
+images, opened by name), the Metal compiler service with `libLLVM` inside
+the cache (shaders compiled and translated; icons and widgets drawn), and
+the GPU caches (`--gpu-cache-dir` is keyed by content; the copy used for
+27.1 boots served 27.0 too). Ycode holds no recorded addresses, offsets,
+cache UUIDs or per-build tables for the runtime; the per-runtime state it
+keeps is the device directory, its snapshot and golden devices, which are
+keyed by runtime build already (`lean-boot.md` §5,
+`snapshot.md` §12, the launcher's fingerprint) and now also by the device
+record below. The fixed `kern.osproductversion` "27.1" and
+`kern.osversion` "24A94401" answers stay (the reference answers the host's
+macOS values for both, `cpu-features.md`; the guest takes its version from
+`SystemVersion.plist`). Timings and the 27.1 regression: `home-apps.md`
+§9.3.
+
+| Check (iPad Pro 13-inch (M5), `--device-type ipad-pro-13-m5`) | Result |
+|---|---|
+| First boot of a new DEV | the data migration ran and succeeded: `com.apple.migration.plist` `LastSystemVersion` 24A434, `DMLastMigrationResults` success, all 35 migrator plug-ins with "DidFinishWithSuccess" (the LaunchServices migrator the longest, 30 s); home screen (icons, dock) at 90 s and wallpaper with it, the boot under load average 70–200 |
+| `IconState.plist` | equal to `home-apps.md` §5 item for item: dock Messages, Safari, Calendar, Photos, Siri; page 1 the large News/Maps/Photos stack, the large Reminders/files stack, the medium Calendar widget, Files, Reminders, Maps, News, Settings; page 2 Contacts, Shortcuts, Passwords, Preview, Health, Fitness, Wallet; `ignored` Remote; Watch not placed; `dockUtilities`, `listMetadata` present |
+| Screen | portrait 2064 × 2752; wallpaper, status bar, the three widgets (News "Apple News Is Offline", Reminders "No Reminders", Calendar in its redacted placeholder form), the five page-1 icons, two page dots, the dock with the App Library tile |
+| Apps | Maps, Calendar, Photos, Messages, Contacts, Files, Reminders, News and Wallet each launched with a pid (`home-apps.md` §9.2) |
+| Guest crashes | `fileindexerd` (ENODEV, as on every Ycode type and runtime) and, in a repeat boot, `AppIntentsLiveEntityService` twice (a trap the reference also reports on 27.0, `iphone-types.md` §6) |
+| Host | no `ycode-simd` crash |
+
+**iPhone Duo on 27.0 (diagnostic only).** Before the iPhone 18 Pro type
+existed, a new iPhone Duo device was booted on 27.0 (now refused, see
+below; `YCODE_ALLOW_ANY_DEVICE_TYPE=1` still allows it for diagnostics).
+It reached a home screen (first boot under load, 380 s): SpringBoard chose
+the generic iPhone layout (27.0 has no 466w-678h file) drawn in portrait
+on the 1398 × 2034 display, with the dock Safari, Messages and the page-1
+widgets and apps of `home-apps.md` §4.1; the status bar read "Carrier" with
+no time. This answers `iphone-types.md` §8 Q1 for Ycode; there is no
+reference to compare with.
+
+**Changes made in `ycode-simd`** (Ycode decisions, unit tests in
+`DeviceRuntimeTests`):
+
+1. **Device type `iphone-18-pro`** from `iphone-types.md` §4 (I1).
+2. **Default type per runtime** (I3): without `--device-type`, a device that
+   recorded a type keeps it; a new device gets the newest iPhone that runs
+   on the runtime version: `iphone-duo` on 27.1 and later, `iphone-18-pro`
+   on 27.0 (visionOS: `vision-pro` as before).
+3. **Runtime minimum per type**: each type carries its device type's
+   `minRuntimeVersion` (iPhone Duo 27.1, iPhone 18 Pro 27.0, iPad (A16)
+   18.3, iPad Pro 13-inch (M5) 26.0). A type on an older runtime is refused
+   before anything in DEV is written (exit 66, "the device type iphone-duo
+   (iPhone Duo) needs runtime 27.1 or later; … is 27.0 (its device types:
+   iphone-18-pro, ipad-a16, ipad-pro-13-m5)"), as CoreSimulator refuses it
+   with 403 (`iphone-types.md` §1). This narrows `iphone-types.md` §5 I3
+   ("Ycode does not refuse the other combinations") for the one pairing
+   the reference refuses by the type's own range; `restrictedToDeviceTypes`
+   is still not applied, so iPads and the iPhone 18 Pro boot on 27.1 as
+   Ycode identities (§8 D1).
+4. **A device keeps its runtime**: `DEV/ycode-runtime` records the
+   runtime a device booted (`<ProductName> <version> <build>`, one line).
+   Booting it on an older runtime version is refused (exit 66, "the device
+   … last booted iOS 27.1 (24A94401); it cannot boot the older runtime iOS
+   27.0 (24A434) (use another device directory for each runtime)"); a newer
+   version, or another build of the same version, boots with a warning and
+   the record follows (the guest migrates its data, `first-boot.md` §1, as
+   `simctl upgrade` only ever moves a device forward). A device from before
+   the record boots on any runtime (a warning when its
+   `LastSystemVersion` differs) and gets the record.
+
 ## 10. Open questions
 
 1. Does anything in the 27.1 runtime behave differently for an iPad in ways
@@ -678,6 +759,9 @@ above, `POSIXSpawnType` Adaptive, `EnableTransactions` and
 | fileproviderd's label and job file (§9.1) | 2, 3 | `launchctl list` and host `ps` on a new iPad (A16) on 27.0; the job plist of both runtimes read with `plutil` (2026-10-20) |
 | Status-bar date on first and later boots, preferences before the first boot (§10 Q8) | 2, 3 | screenshots (scratch only) of a new iPad (A16) on 27.0 before and after a reboot; `.GlobalPreferences.plist` of a new, never-booted device and after its first boot |
 | Ycode's first-boot global preferences (§10 Q8) | 3 | unit tests; Ycode run a1 on the Thor (the device's `.GlobalPreferences.plist` read with `plistlib` after the first boot; screenshot, scratch only), 2026-10-20 |
+| Round 5 results (§9.2) | 3 | Ycode boots on the Thor with the 27.0 runtime, 2026-10-27 (screenshots, `IconState.plist`, migration plist, `ylaunch` outputs) |
+| Round 5 on 27.0: boots, layouts, launches, unchanged 27.1-derived behaviors (§9.2) | 3 | Ycode boots on the Thor with the 27.0 RuntimeRoot copy; `IconState.plist` and `com.apple.migration.plist` read with `plistlib`; Ycode screenshots; `ylaunch` outputs (2026-10-27) |
+| Default type per runtime, minimum runtime per type, runtime record and downgrade refusal (§9.2) | 2, — | device types' `minRuntimeVersion` (§3.2, `iphone-types.md` §3.2); the rest Ycode decisions, `DeviceRuntimeTests` |
 | Device-type choice, `--device-type`, pointer service and transport, viewer behavior, rounds, copy plan | — | Ycode decisions |
 
 Level 5 was not used. The reference tools (the Xcode copy, Ghidra, the

@@ -322,6 +322,83 @@ static void test_memory(void)
     CHECK(c[15] == 0xAF && c[16] == 0xA0 && c[34] == 0xA2 && c[35] == 0);
 }
 
+/* Larger sizes, every alignment, both overlap directions, fills against a
+ * reference (guest-cpu.md section 4.4). */
+static void test_memory_large(void)
+{
+    static unsigned char a[8192], b[8192], c[8192], d[8192];
+    for (int iter = 0; iter < 6000; iter++) {
+        size_t n = (iter & 3) == 0 ? rnd() % 4000 : rnd() % 300;
+        size_t so = rnd() % 64, dof = rnd() % 64, gap = rnd() % 40;
+        for (int i = 0; i < 8192; i++) a[i] = b[i] = (unsigned char)rnd();
+        /* overlapping, the source a little above or below the destination */
+        size_t s0 = 1000 + so, d0 = (iter & 1) ? s0 + gap : (s0 > gap ? s0 - gap : 0) + dof % 2;
+        memmove(b + d0, b + s0, n);
+        CHECK(T(_platform_memmove)(a + d0, a + s0, n) == a + d0);
+        CHECK(memcmp(a, b, sizeof a) == 0);
+        /* disjoint */
+        for (int i = 0; i < 8192; i++) c[i] = d[i] = 0x11;
+        memcpy(d + dof, a + 4096 + so, n);
+        T(_platform_memmove)(c + dof, a + 4096 + so, n);
+        CHECK(memcmp(c, d, sizeof c) == 0);
+        /* fills */
+        int v = (int)(rnd() & 0xFF);
+        memset(c + dof, v, n);
+        T(_platform_memset)(d + dof, v, n);
+        CHECK(memcmp(c, d, sizeof c) == 0);
+        memset(c + so, 0, n + 600);
+        T(_platform_bzero)(d + so, n + 600);
+        CHECK(memcmp(c, d, sizeof c) == 0);
+        unsigned char pat[16];
+        for (int i = 0; i < 16; i++) pat[i] = (unsigned char)rnd();
+        size_t plen = (size_t)4 << (rnd() % 3);
+        for (size_t i = 0; i < n; i++) c[dof + i] = pat[i % plen];
+        if (plen == 4) T(_platform_memset_pattern4)(d + dof, pat, n);
+        else if (plen == 8) T(_platform_memset_pattern8)(d + dof, pat, n);
+        else T(_platform_memset_pattern16)(d + dof, pat, n);
+        CHECK(memcmp(c, d, sizeof c) == 0);
+        int ch = (int)(rnd() & 3);
+        for (size_t i = 0; i < 300; i++) a[so + i] = (unsigned char)(4 + (rnd() & 3));
+        if (n < 300) a[so + n] = (unsigned char)ch;
+        CHECK(T(_platform_memchr)(a + so, ch, 300) == memchr(a + so, ch, 300));
+    }
+    /* strings that end at a page boundary, before an inaccessible page */
+    long page = sysconf(_SC_PAGESIZE);
+    unsigned char *m = mmap(NULL, (size_t)page * 2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    CHECK(m != MAP_FAILED);
+    if (m != MAP_FAILED) {
+        CHECK(mprotect(m + page, (size_t)page, PROT_NONE) == 0);
+        char *e = (char *)m + page;
+        for (int len = 0; len < 40; len++) {
+            for (int other = 0; other < 3; other++) {
+                char *x = e - len - 1, *y = (char *)m + 64 + other;
+                memset(x, 'p', (size_t)len);
+                x[len] = 0;
+                memset(y, 'p', (size_t)len);
+                y[len] = 0;
+                if (other == 1 && len > 0) y[len - 1] = 'q';
+                if (other == 2) { y[len] = 'r'; y[len + 1] = 0; }
+                CHECK(sign(T(_platform_strcmp)(x, y)) == sign(strcmp(x, y)));
+                CHECK(sign(T(_platform_strcmp)(y, x)) == sign(strcmp(y, x)));
+                CHECK(T(_platform_strnlen)(x, 100) == (size_t)len);
+                CHECK(T(_platform_strlen)(x) == (size_t)len);
+                CHECK(T(_platform_memchr)(x, 0, (size_t)len + 1) == x + len);
+            }
+        }
+        munmap(m, (size_t)page * 2);
+    }
+    /* strcmp over random strings at every offset pair */
+    char sx[96], sy[96];
+    for (int iter = 0; iter < 20000; iter++) {
+        size_t ox = rnd() % 16, oy = rnd() % 16, len = rnd() % 70;
+        for (size_t i = 0; i < len; i++) sx[ox + i] = sy[oy + i] = (char)(1 + rnd() % 3);
+        sx[ox + len] = sy[oy + len] = 0;
+        if (rnd() & 1) { size_t at = len ? rnd() % (len + 1) : 0; sy[oy + at] = (char)(rnd() % 4); }
+        CHECK(sign(T(_platform_strcmp)(sx + ox, sy + oy)) == sign(strcmp(sx + ox, sy + oy)));
+        CHECK(T(_platform_strnlen)(sx + ox, len / 2) == strnlen(sx + ox, len / 2));
+    }
+}
+
 static void test_strings(void)
 {
     char buf[64], ref[64];
@@ -795,6 +872,7 @@ static void test_setjmp(void)
 int main(void)
 {
     test_memory();
+    test_memory_large();
     test_strings();
     test_atomics();
     test_locks_single();

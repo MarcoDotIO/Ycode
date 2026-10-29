@@ -20,6 +20,18 @@
 //   type <text>                      US-layout text through key events
 //   key <usage>                      press and release a HID usage (hex 0x.. or decimal)
 //   button home|lock|volumeUp|volumeDown|side
+//   fold closed|half|open|<degrees>  a foldable: sweep the hinge (the fold bar's action)
+//   rotate left|right                a foldable: the device's next orientation
+//   wait-display <LCD|LCD-1> [timeout s]  until that panel is the one shown
+//   control <command>                a device command as the controls and menus run it
+//                                    (home, screenshot, recordScreen, rotateLeft, poseOpen,
+//                                    toggleBezels, captureKeyboard, zoomIn, … DeviceCommand)
+//   frame-button <kind> [ms]         click a button of the drawn frame (action, volumeUp,
+//                                    volumeDown, side, top) with the mouse, held ms (default 100)
+//   expand / compact                 the window's expanded or compact form
+//   window-size <width>              the compact window's content width (the device scales)
+//   window-shot <path.png>           the viewer's own window (screencapture -l with its id)
+//   expect-banner <text>             the feedback banner shows that text (within 3 s)
 //   shot <path.png>                  the image the viewer shows
 //   server-shot <path.png>           a full-resolution PNG from the server
 //   log <text>
@@ -29,6 +41,8 @@
 
 #if os(macOS)
 import AppKit
+import YcodeDeviceModel
+import YcodeDeviceUI
 import YcodeDisplayStream
 
 final class ScriptRunner: @unchecked Sendable {
@@ -288,6 +302,83 @@ final class ScriptRunner: @unchecked Sendable {
             }
             onMain { controller.press(b) }
             pause(200)  // the release goes out 100 ms after the press
+        case "fold":
+            let presets = ["closed": 0, "half": 90, "open": 180]
+            guard words.count > 1, let angle = presets[words[1]] ?? Int(words[1]), (0...180).contains(angle) else {
+                throw ScriptError(description: "fold closed|half|open|<degrees>")
+            }
+            onMain { controller.fold(to: angle) }
+        case "rotate":
+            guard words.count > 1, words[1] == "left" || words[1] == "right" else { throw ScriptError(description: "rotate left|right") }
+            onMain { controller.rotate(left: words[1] == "left") }
+        case "wait-display":
+            guard words.count > 1 else { throw ScriptError(description: "wait-display <LCD|LCD-1> [timeout s]") }
+            let deadline = Date().addingTimeInterval(try number(words, 2, default: 30))
+            while onMain({ controller.panelState?.display }) != words[1] {
+                if Date() > deadline { throw ScriptError(description: "\(words[1]) not shown in time") }
+                pause(100)
+            }
+            log("showing \(words[1])")
+        case "control":
+            guard words.count > 1, let c = DeviceCommand(rawValue: words[1]) else {
+                throw ScriptError(description: "control <\(DeviceCommand.allCases.map(\.rawValue).joined(separator: "|"))>")
+            }
+            onMain { controller.perform(c) }
+        case "frame-button":
+            guard words.count > 1, let kind = DeviceFrameGeometry.ButtonKind(rawValue: words[1]) else {
+                throw ScriptError(description: "frame-button action|volumeUp|volumeDown|side|top [ms]")
+            }
+            let hold = try number(words, 2, default: 100)
+            let p: CGPoint? = onMain {
+                let f = controller.canvas.frameView
+                guard let r = f.geometry.buttons.first(where: { $0.kind == kind })?.rect else { return nil }
+                return f.convert(CGPoint(x: r.midX * f.scale, y: r.midY * f.scale), to: nil)
+            }
+            guard let p else { throw ScriptError(description: "this frame has no \(words[1]) button") }
+            func click(_ type: NSEvent.EventType) {
+                onMain {
+                    let f = controller.canvas.frameView
+                    guard let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                     windowNumber: controller.window.windowNumber, context: nil, eventNumber: 0,
+                                                     clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) else { return }
+                    if type == .leftMouseDown { f.mouseDown(with: e) } else { f.mouseUp(with: e) }
+                }
+            }
+            click(.leftMouseDown)
+            pause(hold)
+            click(.leftMouseUp)
+        case "expand", "compact":
+            onMain { controller.windowController.switchKind(to: words[0] == "expand" ? .expanded : .compact) }
+            pause(300)
+        case "window-size":
+            let w = try number(words, 1)
+            onMain {
+                let win = controller.window
+                let proposed = win.frameRect(forContentRect: NSRect(x: 0, y: 0, width: w, height: win.contentLayoutRect.height)).size
+                let size = controller.windowController.windowWillResize(win, to: proposed)
+                var f = win.frame
+                f.origin.y += f.height - size.height
+                f.size = size
+                win.setFrame(f, display: true)
+            }
+            pause(200)
+        case "window-shot":
+            guard words.count > 1 else { throw ScriptError(description: "window-shot <path>") }
+            let id = onMain { controller.window.windowNumber }
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            p.arguments = ["-x", "-o", "-l", String(id), words[1]]
+            try p.run()
+            p.waitUntilExit()
+            log("window \(id) captured to \(words[1]) (status \(p.terminationStatus))")
+        case "expect-banner":
+            let text = line.dropFirst("expect-banner".count).trimmingCharacters(in: .whitespaces)
+            let deadline = Date().addingTimeInterval(3)
+            while onMain({ controller.canvas.bannerText }) != text {
+                if Date() > deadline { throw ScriptError(description: "no banner \(text) (shown: \(onMain { controller.canvas.bannerText } ?? "none"))") }
+                pause(50)
+            }
+            log("banner: \(text)")
         case "shot":
             guard words.count > 1 else { throw ScriptError(description: "shot <path>") }
             try save(onMain { controller.shownPNG() }, words[1])
@@ -322,7 +413,4 @@ extension ScriptRunner {
     }
 }
 
-extension ViewerController {
-    var isLiveWithImage: Bool { deviceView.image != nil && statusIsLive }
-}
 #endif

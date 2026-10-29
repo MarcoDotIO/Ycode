@@ -130,8 +130,10 @@ public struct MetalRecord: Equatable, Sendable {
 
 enum MetalDescriptorCodec {
     /// Texture descriptor words 0–8 (spec §5.2), from the reader's position.
-    static func texture(_ r: inout ByteReader) throws -> MetalTextureDescriptor {
-        _ = try r.u32()  // word 0: 0
+    /// `leadingWord` false: words 1–8 only, the form of the heap device
+    /// ops 21 and 22 (metal-sim-protocol.md §4.2; 32 bytes on the wire).
+    static func texture(_ r: inout ByteReader, leadingWord: Bool = true) throws -> MetalTextureDescriptor {
+        if leadingWord { _ = try r.u32() }  // word 0: 0
         let w1 = try r.u32()
         let width = try r.int32(), height = try r.int32(), depth = try r.int32()
         let levels = try r.int16(), samples = try r.int16()

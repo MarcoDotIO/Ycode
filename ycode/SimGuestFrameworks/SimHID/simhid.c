@@ -8,9 +8,17 @@
  * dev.ycode.simulator.hid (§7), and turns the host's messages into HID
  * events dispatched from those services (§5).
  *
- * Clean-room Ycode code, written from specs/simulator/hid-input.md only,
- * with public C, Mach, CoreFoundation, dispatch, and Objective-C runtime
- * interfaces. Built without SDK headers like the framebuffer library: the
+ * A foldable device (YCODE_SIMHID_DEVICE_MOTION=1; specs/simulator/foldable.md
+ * §8.2) gets the device-motion control service (usage pair 0xFF61/0x5B,
+ * I2), and with a second built-in display (YCODE_FRAMEBUFFER_SECOND_DISPLAY)
+ * a touch screen for that display (I1); from which the host's hinge-angle and device-orientation
+ * messages are dispatched as vendor-defined events whose data is a
+ * dictionary in IOKit's text serialization (I3, §5.3 there).
+ *
+ * Clean-room Ycode code, written from specs/simulator/hid-input.md and
+ * specs/simulator/foldable.md only, with public C, Mach, CoreFoundation,
+ * dispatch, IOKit (IOCFSerialize's text format, IOHIDFamily's event
+ * constructors) and Objective-C runtime interfaces. Built without SDK headers like the framebuffer library: the
  * types and imported functions are declared here, and build.sh links
  * against .tbd stubs (imports.txt).
  */
@@ -69,7 +77,11 @@ extern const CFDictionaryValueCallBacks kCFTypeDictionaryValueCallBacks;
 extern CFNumberRef CFNumberCreate(CFAllocatorRef, CFIndex type, const void *valuePtr);
 extern const CFBooleanRef kCFBooleanTrue;
 extern CFStringRef CFStringCreateWithCString(CFAllocatorRef, const char *, CFStringEncoding);
+extern Boolean CFStringGetCString(CFStringRef, char *buffer, CFIndex size, CFStringEncoding);
 extern CFErrorRef CFErrorCreate(CFAllocatorRef, CFStringRef domain, CFIndex code, CFDictionaryRef userInfo);
+typedef const struct __CFData *CFDataRef;
+extern const uint8_t *CFDataGetBytePtr(CFDataRef);
+extern CFIndex CFDataGetLength(CFDataRef);
 
 /* ---- libSystem (public API) ---- */
 
@@ -99,6 +111,8 @@ extern void dispatch_resume(void *object);
 extern const struct dispatch_source_type_s _dispatch_source_type_mach_recv;
 extern void os_unfair_lock_lock(os_unfair_lock *);
 extern void os_unfair_lock_unlock(os_unfair_lock *);
+extern void *dlsym(void *handle, const char *symbol);
+#define RTLD_DEFAULT ((void *)-2)
 #define O_WRONLY 0x0001
 #define O_APPEND 0x0008
 #define O_CREAT 0x0200
@@ -196,6 +210,12 @@ extern IOHIDEventRef IOHIDEventCreateKeyboardEvent(CFAllocatorRef, uint64_t time
                                                    Boolean down, uint32_t options);
 extern void IOHIDEventAppendEvent(IOHIDEventRef parent, IOHIDEventRef child, uint32_t options);
 extern void IOHIDEventSetIntegerValue(IOHIDEventRef event, uint32_t field, CFIndex value);
+/* Looked up at run time (dlsym), so a runtime without them still loads the
+ * bundle: IOHIDFamily's vendor-defined event constructor and IOKitUser's
+ * IOCFSerialize (both public declarations). */
+typedef IOHIDEventRef (*VendorDefinedEventCreator)(CFAllocatorRef, uint64_t timeStamp, uint32_t usagePage, uint32_t usage,
+                                                   uint32_t version, const uint8_t *data, CFIndex length, uint32_t options);
+typedef CFDataRef (*CFSerializer)(CFTypeRef object, uint32_t options);
 
 #define TRANSDUCER_HAND 3u
 #define FIELD_DIGITIZER_IS_DISPLAY_INTEGRATED 0xB0019u
@@ -264,6 +284,36 @@ static void log_line(const char *text, uint64_t a, uint64_t b) {
         p = put_hex(p, end, a);
         p = put_text(p, end, " ");
         p = put_hex(p, end, b);
+        *p++ = '\n';
+        (void)write(logFD, buf, (size_t)(p - buf));
+    }
+    os_unfair_lock_unlock(&logLock);
+}
+
+/* One log line with a CF string (or a C string when cf is NULL). */
+static void log_text(const char *text, CFStringRef cf, const char *c) {
+    char value[160];
+    value[0] = 0;
+    if (cf && !CFStringGetCString(cf, value, sizeof value, kCFStringEncodingUTF8)) value[0] = 0;
+    if (!cf && c) {
+        size_t i = 0;
+        for (; c[i] && i < sizeof value - 1; i++) value[i] = c[i];
+        value[i] = 0;
+    }
+    os_unfair_lock_lock(&logLock);
+    if (logFD == -2) {
+        const char *path = getenv("YCODE_SIMHID_LOG");
+        logFD = path && *path ? open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644) : -1;
+    }
+    if (logFD >= 0) {
+        char buf[400];
+        char *p = buf, *end = buf + sizeof buf - 1;
+        p = put_text(p, end, "simhid: ");
+        p = put_decimal(p, end, mach_absolute_time() / 24000);
+        p = put_text(p, end, " ms: ");
+        p = put_text(p, end, text);
+        p = put_text(p, end, " ");
+        p = put_text(p, end, value);
         *p++ = '\n';
         (void)write(logFD, buf, (size_t)(p - buf));
     }
@@ -374,6 +424,9 @@ static CFMutableDictionaryRef usage_properties(int64_t page, int64_t usage) {
 static IOHIDEventSystemRef eventSystem;
 static dispatch_queue_t queue;
 static struct service buttons, keyboard, touchscreen;
+/* Foldable devices (foldable.md §8.2): the second display's touch screen
+ * and the device-motion control service. */
+static struct service innerTouchscreen, motion;
 
 static void add_service(struct service *s) {
     if (s->added) return;
@@ -417,15 +470,53 @@ static void make_keyboard(void) {
     set_string(keyboard.properties, "Product", "Ycode Keyboard");
 }
 
+static void make_touch_service(struct service *s, uint64_t number, const char *name, CFStringRef displayUUID, const char *product) {
+    s->id = SERVICE_ID_BASE | number;
+    s->name = name;
+    s->properties = usage_properties(0x0D, 4);
+    set_true(s->properties, "Built-In");
+    set_true(s->properties, "DisplayIntegrated");
+    set_true(s->properties, "Authenticated");
+    set_value(s->properties, "displayUUID", displayUUID);
+    set_string(s->properties, "Product", product);
+}
+
 static void make_touchscreen(CFStringRef displayUUID) {
-    touchscreen.id = SERVICE_ID_BASE | 3;
-    touchscreen.name = "touch screen service";
-    touchscreen.properties = usage_properties(0x0D, 4);
-    set_true(touchscreen.properties, "Built-In");
-    set_true(touchscreen.properties, "DisplayIntegrated");
-    set_true(touchscreen.properties, "Authenticated");
-    set_value(touchscreen.properties, "displayUUID", displayUUID);
-    set_string(touchscreen.properties, "Product", "Ycode Touch Screen");
+    make_touch_service(&touchscreen, 3, "touch screen service", displayUUID, "Ycode Touch Screen");
+}
+
+/* foldable.md §8.2 I2: primary pair 0xFF61/0x5B, DeviceUsagePairs with
+ * that pair, a Product string, transport "Virtual". It never answers
+ * copyEvent (the shared callbacks return NULL). */
+static void make_motion(void) {
+    motion.id = SERVICE_ID_BASE | 4;
+    motion.name = "device motion service";
+    motion.properties = usage_properties(0xFF61, 0x5B);
+    set_string(motion.properties, "Product", "Ycode Device Motion");
+    set_string(motion.properties, "Transport", "Virtual");
+}
+
+/* ---- The second built-in display (foldable.md §8.1 D1) ----
+ * YCODE_FRAMEBUFFER_SECOND_DISPLAY is "<id> <name> <device name> <width>
+ * <height> <scale> <pitch> <uid>" (the framebuffer library's description of
+ * it); its last word is the display's unique id, which QuartzCore reports
+ * as the CADisplay's uniqueId (hid-input.md §6). Empty: not a foldable. */
+static CFStringRef copy_second_display_uid(void) {
+    const char *spec = getenv("YCODE_FRAMEBUFFER_SECOND_DISPLAY");
+    if (!spec || !*spec) return NULL;
+    const char *word = NULL;
+    int words = 0;
+    for (const char *p = spec; *p; p++)
+        if (*p != ' ' && (p == spec || p[-1] == ' ')) {
+            word = p;
+            words++;
+        }
+    if (words < 8 || !word) return NULL;
+    char uid[64];
+    size_t i = 0;
+    for (; word[i] && word[i] != ' ' && i < sizeof uid - 1; i++) uid[i] = word[i];
+    uid[i] = 0;
+    return make_string(uid);
 }
 
 /* ---- Display association (§6) ---- */
@@ -461,6 +552,13 @@ static void find_display(void *unused) {
     make_touchscreen(uid);
     CFRelease(uid);
     add_service(&touchscreen);
+    CFStringRef inner = copy_second_display_uid();
+    if (inner) {
+        log_text("second display, touch screen for uid", inner, NULL);
+        make_touch_service(&innerTouchscreen, 5, "second touch screen service", inner, "Ycode Touch Screen 2");
+        CFRelease(inner);
+        add_service(&innerTouchscreen);
+    }
 }
 
 /* ---- Events (§5) ---- */
@@ -501,8 +599,8 @@ struct touch_record {
     double x, y;
 };
 
-static void touch(const uint8_t *body, uint32_t count) {
-    if (!touchscreen.added) return;
+static void touch(struct service *screen, const uint8_t *body, uint32_t count) {
+    if (!screen->added) return;
     uint64_t ts = timestamp();
     IOHIDEventRef children[MAX_CONTACTS];
     uint32_t parentMask = 0;
@@ -558,11 +656,123 @@ static void touch(const uint8_t *body, uint32_t count) {
         logged++;
         log_line(parent ? "touch dispatched (mask, contacts)" : "touch: no parent event (mask, contacts)", parentMask, n);
     }
-    dispatch_from(&touchscreen, parent);
+    dispatch_from(screen, parent);
 }
 
 static void key(struct service *s, uint32_t page, uint32_t usage, uint32_t down) {
     dispatch_from(s, IOHIDEventCreateKeyboardEvent(NULL, timestamp(), page, usage, down ? 1 : 0, 0));
+}
+
+/* ---- Device motion: hinge angle and device orientation (foldable.md §5.3, §8.2 I3) ----
+ * One vendor-defined event (usage page 0xFF61, usage 0x5B, version 0) per
+ * value, from the device-motion service; its data is a dictionary with the
+ * keys source, type and value in IOKit's text serialization. The runtime's
+ * own IOCFSerialize writes it when the runtime exports it; otherwise the
+ * bundle writes the same format itself (IOKitUser's IOCFSerialize format:
+ * a dict element with alternating key and value elements, strings as
+ * string elements, integers as integer elements with a size attribute and
+ * hexadecimal text). */
+
+static VendorDefinedEventCreator vendorEventCreator;
+static CFSerializer serializer;
+static int motionResolved;
+
+static void resolve_motion_functions(void) {
+    if (motionResolved) return;
+    motionResolved = 1;
+    vendorEventCreator = (VendorDefinedEventCreator)dlsym(RTLD_DEFAULT, "IOHIDEventCreateVendorDefinedEvent");
+    serializer = (CFSerializer)dlsym(RTLD_DEFAULT, "IOCFSerialize");
+    log_line("device motion: vendor event constructor, IOCFSerialize found", vendorEventCreator != NULL, serializer != NULL);
+}
+
+/* The three-key dictionary's text, written by the bundle. */
+static size_t motion_text(char *buf, size_t size, const char *source, const char *type, const char *stringValue,
+                          int64_t integerValue) {
+    char *p = buf, *end = buf + size - 1;
+    p = put_text(p, end, "<dict><key>source</key><string>");
+    p = put_text(p, end, source);
+    p = put_text(p, end, "</string><key>type</key><string>");
+    p = put_text(p, end, type);
+    p = put_text(p, end, "</string><key>value</key>");
+    if (stringValue) {
+        p = put_text(p, end, "<string>");
+        p = put_text(p, end, stringValue);
+        p = put_text(p, end, "</string>");
+    } else {
+        p = put_text(p, end, "<integer size=\"64\">");
+        p = put_hex(p, end, (uint64_t)integerValue);
+        p = put_text(p, end, "</integer>");
+    }
+    p = put_text(p, end, "</dict>");
+    *p = 0;
+    return (size_t)(p - buf);
+}
+
+static void motion_event(const char *source, const char *type, const char *stringValue, int64_t integerValue) {
+    if (!motion.added) {
+        log_line("device motion: no service (not a foldable device); event dropped", 0, 0);
+        return;
+    }
+    resolve_motion_functions();
+    if (!vendorEventCreator) {
+        log_line("device motion: the runtime has no vendor-defined event constructor; event dropped", 0, 0);
+        return;
+    }
+    char text[256];
+    const uint8_t *data = (const uint8_t *)text;
+    CFIndex length = 0;
+    CFDataRef serialized = NULL;
+    if (serializer) {
+        CFMutableDictionaryRef d = CFDictionaryCreateMutable(NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        set_string(d, "source", source);
+        set_string(d, "type", type);
+        if (stringValue) set_string(d, "value", stringValue); else set_number(d, "value", integerValue);
+        serialized = serializer(d, 0);
+        CFRelease(d);
+        if (serialized) {
+            data = CFDataGetBytePtr(serialized);
+            length = CFDataGetLength(serialized);
+        }
+    }
+    if (!serialized || !data || length <= 0) {
+        data = (const uint8_t *)text;
+        length = (CFIndex)motion_text(text, sizeof text, source, type, stringValue, integerValue);
+    }
+    static uint32_t logged;
+    if (logged < 8) {
+        logged++;
+        char shown[256];
+        CFIndex n = length < (CFIndex)sizeof shown - 1 ? length : (CFIndex)sizeof shown - 1;
+        for (CFIndex i = 0; i < n; i++) shown[i] = data[i] ? (char)data[i] : '.';
+        shown[n] = 0;
+        log_text(serialized ? "device motion event (IOCFSerialize):" : "device motion event (own text):", NULL, shown);
+    }
+    IOHIDEventRef e = vendorEventCreator(NULL, timestamp(), 0xFF61, 0x5B, 0, data, length, 0);
+    dispatch_from(&motion, e);
+    if (serialized) CFRelease(serialized);
+}
+
+static void hinge_angle(uint32_t degrees) {
+    if (degrees > 180) degrees = 180;
+    motion_event("hinge-slider-control", "range", NULL, (int64_t)degrees);
+}
+
+/* The host's orientation code (the relay's own codes, foldable.md §5.4)
+ * → the orientation picker's value (§5.3). */
+static void device_orientation(uint32_t code) {
+    const char *name;
+    switch (code) {
+    case 0: name = "ambiguous"; break;
+    case 1: name = "portrait"; break;
+    case 3: name = "landscape-left"; break;
+    case 4: name = "landscape-right"; break;
+    case 5: name = "faceup"; break;
+    case 6: name = "facedown"; break;
+    default:
+        log_line("device motion: unknown orientation code; dropped", code, 0);
+        return;
+    }
+    motion_event("orientation-picker-control", "enum", name, 0);
 }
 
 /* ---- Host transport (§7) ---- */
@@ -620,7 +830,9 @@ static void handle_event(const uint8_t *body, uint32_t size) {
             log_line("malformed touch message (size, count)", size, count);
             return;
         }
-        touch(k + 8, count);
+        /* Display 0: the main display; 1: the second (foldable.md §8.2 I1). */
+        uint32_t display = le32(k);
+        touch(display == 1 ? &innerTouchscreen : &touchscreen, k + 8, count);
         return;
     }
     case 2:
@@ -634,6 +846,14 @@ static void handle_event(const uint8_t *body, uint32_t size) {
         return;
     case 5:
         log_line("orientation not supported", size >= 24 ? le32(k) : 0, 0);
+        return;
+    case 6:
+        if (size < 24) break;
+        hinge_angle(le32(k));
+        return;
+    case 7:
+        if (size < 24) break;
+        device_orientation(le32(k));
         return;
     default:
         return; /* unknown kinds are ignored */
@@ -741,6 +961,17 @@ static id init_using_hid_service(id self, SEL cmd, IOHIDEventSystemRef system, i
     make_keyboard();
     add_service(&buttons);
     add_service(&keyboard);
+    /* A foldable (YCODE_SIMHID_DEVICE_MOTION=1, or a second built-in
+     * display): the device-motion control service from the start (the
+     * relay's defaults are angle 0 and portrait; nothing is sent until the
+     * host changes the fold, foldable.md §8.2 I5). */
+    const char *wantMotion = getenv("YCODE_SIMHID_DEVICE_MOTION");
+    CFStringRef second = copy_second_display_uid();
+    if ((wantMotion && wantMotion[0] == '1') || second) {
+        make_motion();
+        add_service(&motion);
+    }
+    if (second) CFRelease(second);
     dispatch_async_f(queue, NULL, register_with_host);
     dispatch_async_f(queue, NULL, find_display);
     log_line("initialized with event system", (uint64_t)(uintptr_t)system, 0);

@@ -451,6 +451,47 @@ names of `launchd-sim.md` §6.3, denied by our interposer in every process):
    Ycode's guest must provide for §7 item 10: proposed as a separate
    research task before stage 7 continues.
 
+## 10. A foldable's displays (FOLD-IMPL, 2026-10-27; `foldable.md` §8.1, §10)
+
+Ycode's library publishes more than one display when the host sets
+`YCODE_FRAMEBUFFER_SECOND_DISPLAY` to "<id> <name> <device name> <width>
+<height> <scale> <pitch> <uid>" (the iPhone Duo's inner panel: `3 LCD-1
+primary-1 2007 2853 3 460 59434F44-4500-4000-8000-000000000003`; by
+default for a foldable since FOLD2, 2026-10-27, together with the
+`displays` capability; `YCODE_FOLD_DISPLAYS=0` turns it off; `foldable.md`
+§10.4):
+
+- `CopyDisplays` returns the list of §4: `LCD` (1), `TVOut` (2, type 1,
+  `external-0`), the second display, `Wireless` (4, type 2, `wireless0`,
+  the 21 extended-property bytes of §3.4), `Resizable` (5, type 4,
+  `resizable`), with §4's sizes, dot pitches, power and flags (0, 0 and
+  device size 0 × 0 for the three others). `CopyDisplay(id)` and
+  `CopyDisplayByUID` find each. Mode records: mode id = display id, offset
+  24 = 2 for display 1 and 1 for the others, byte 32 = 1 for type 0 only.
+  Under Ycode the CADisplay numbering follows the list's order
+  ("Unknown.main[3]" for the inner panel with the five displays, "[2]"
+  with only two), so the order is kept.
+- Each type-0 display takes one swapchain; `SwapchainGetDisplayID` and
+  `GetFramebufferSize` are the display's.
+- **Frame records:** one 96-byte record per display, display 1 at offset 0,
+  the second display at offset 96, each rewritten on that display's
+  frames; an optional ` bl <n>` and ` uio <n>` carry the last value given to
+  `SFBDisplaySetBacklightState` and `SFBDisplaySetCurrentUIOrientation` on
+  that display (such a call rewrites the record; surface 0 before the
+  display's first frame). The swap timing ring keeps display 1's swaps. With
+  `YCODE_FRAMEBUFFER_CALLS`, those two calls log (display id << 16) | value;
+  the display setters (`SFBDisplaySet*`) and `SFBDisplayGetMaskPath` have a
+  budget of 4096 lines of their own after the first 4096 calls (backboardd
+  calls `GetDisplayUID` and `GetDotPitch` about 1400 times each in a boot,
+  which filled the shared budget before any fold).
+- **Under Ycode the guest makes none of these calls** (FOLD2, iPhone Duo
+  with both panels, several boots with a dozen swaps each): no
+  `SFBDisplaySetBacklightState`, `SetCurrentUIOrientation`,
+  `SetBrightnessFactor`, `SetCurrentMode` or `GetMaskPath`, and no
+  ` bl`/` uio` in either frame record. The guest's backlight switching
+  (`foldable.md` §9 Q4) stays inside the guest; the panel it turns off
+  keeps receiving frames, which are black (`foldable.md` §10.4).
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -469,6 +510,7 @@ names of `launchd-sim.md` §6.3, denied by our interposer in every process):
 | CF object model, ownership convention | 1 | CF open source `CFRuntime.h`; CF Create/Copy/Get naming rule |
 | HID loading and not-needed result (§8) | 3 | `backboardd` log lines; boot with a nonexistent HID path; `hidprobe.m` |
 | Under Ycode, swaps are not held back by completions; SwapBegin's target equals the call time (§7 item 7) | 3 | Ycode runs on the Thor with the library's swap timing log (`display-stream.md` §10.2) |
+| CADisplay numbering by list position under Ycode (§10) | 3 | SpringBoard's display names in Ycode boots with two and with five published displays (`foldable.md` §10.2) |
 
 No disassembly or decompilation was used (level 5 not used); no Xcode
 binary, `research/dirty/`, or Ghidra project was opened. Crash reports and

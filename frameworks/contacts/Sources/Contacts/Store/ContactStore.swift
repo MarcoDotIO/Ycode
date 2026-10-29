@@ -541,6 +541,7 @@ final class ChangeWatcher: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         guard let e = entries[path] else { return }
         e.count -= 1
+        // swiftlint:disable:next empty_count - a counter, not a collection
         if e.count <= 0 {
             e.timer?.cancel()
             entries[path] = nil

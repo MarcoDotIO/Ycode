@@ -162,7 +162,8 @@ public final class KernelLock: @unchecked Sendable {
         let tracking = gate || tracksContention
         let traced = KernelTrace.lockWaited
         let timed = trapProfile != nil || (Self.profileProcesses && root == nil) || traced != nil
-        guard timed || tracking else {
+        let promoting = HostSched.promoting
+        guard timed || tracking || promoting else {
             pthread_mutex_lock(mutex)
             return
         }
@@ -176,7 +177,7 @@ public final class KernelLock: @unchecked Sendable {
                 if cls >= SchedClass.default, context != nil { lastHighContentionStore.store(KernelClock.now(), ordering: .relaxed) }
                 contending.wrappingAdd(Self.unit(cls), ordering: .sequentiallyConsistent)
             }
-            pthread_mutex_lock(mutex)
+            if promoting { lockPromoting(context) } else { pthread_mutex_lock(mutex) }
             if tracking {
                 contending.wrappingSubtract(Self.unit(cls), ordering: .sequentiallyConsistent)
                 if gateWaiters.load(ordering: .sequentiallyConsistent) > 0 { wakeGate() }
@@ -299,6 +300,115 @@ public final class KernelLock: @unchecked Sendable {
     private let holderSequence = Atomic<UInt64>(0)
     public var holdSequence: UInt64 { holderSequence.load(ordering: .acquiring) }
 
+    // MARK: Holder promotion (scheduling-policy.md §4.7)
+
+    /// The holder, for waiters that raise its host priority: bits 0–31 its
+    /// Linux thread id, 32–35 its applied host class + 1 (0: none applied,
+    /// never raised), 36–39 the class a waiter raised it to + 1 (0: not
+    /// raised), 40–63 a generation that changes at every acquisition (so a
+    /// waiter cannot raise a later holder by mistake). 0 while free.
+    private let holderWord = Atomic<UInt64>(0)
+    /// Waiters between their compare-exchange on `holderWord` and the end
+    /// of their move of the holder.
+    private let promotersInFlight = Atomic<Int>(0)
+    /// Changed only by the holder.
+    private var holderGeneration: UInt64 = 0
+
+    @inline(__always) private func publishHolder() {
+        guard let tid = HostSched.currentTID() else { return }
+        holderGeneration &+= 1
+        let applied = UInt64(max(-1, min(SchedClass.interactive, HostSched.appliedClass())) + 1)
+        let word = UInt64(UInt32(bitPattern: tid)) | applied << 32 | (holderGeneration & 0xFF_FFFF) << 40
+        holderWord.store(word, ordering: .sequentiallyConsistent)
+    }
+
+    /// The holder lets go. When a waiter raised it, it waits for every
+    /// waiter still moving it and records the raised class as its applied
+    /// one: `HostSched.apply` (at the end of its trap) moves it back to its
+    /// own class, after the demotion delay.
+    @inline(__always) private func withdrawHolder() {
+        let old = holderWord.exchange(0, ordering: .sequentiallyConsistent)
+        let raised = Int((old >> 36) & 0xF) - 1
+        guard raised >= 0 else { return }
+        var spins = 0
+        while promotersInFlight.load(ordering: .sequentiallyConsistent) > 0 {
+            spins += 1
+            if spins > 64 { sched_yield() }
+        }
+        let applied = Int((old >> 32) & 0xF) - 1
+        if HostSched.raisesGroup(applied) {
+            HostSched.lowerGroup(applied)
+        } else {
+            HostSched.setAppliedClass(raised)
+        }
+        HostSched.promotionRestores.wrappingAdd(1, ordering: .relaxed)
+    }
+
+    /// `YCODE_LOCK_PROMOTION_DELAY_US` (default 200): a waiter raises the
+    /// holder only after waiting this long. Holds are microseconds; a
+    /// holder that keeps the lock this long is one the host does not run
+    /// (scheduling-policy.md §4.7, §7.5: 200 µs boots were steadier than
+    /// 1000 µs ones).
+    nonisolated(unsafe) static var promotionDelayNanoseconds: UInt64 =
+        UInt64(getenv("YCODE_LOCK_PROMOTION_DELAY_US").flatMap { Double(String(cString: $0)) } ?? 200) * 1000
+
+    /// Takes the contended mutex: waits up to the promotion delay, then
+    /// raises the holder (`promoteHolder`) and waits on.
+    private func lockPromoting(_ context: ThreadContext?) {
+        let delay = Self.promotionDelayNanoseconds
+        if delay > 0 {
+            #if os(Linux)
+            var now = timespec()
+            clock_gettime(CLOCK_REALTIME, &now)
+            let total = UInt64(now.tv_nsec) + delay
+            var until = timespec(tv_sec: now.tv_sec + Int(total / 1_000_000_000), tv_nsec: Int(total % 1_000_000_000))
+            if pthread_mutex_timedlock(mutex, &until) == 0 { return }
+            #else
+            // No timed lock: poll (the promotion has a backend on Linux only;
+            // the tests' move hook runs everywhere).
+            let deadline = KernelClock.now() &+ delay
+            while KernelClock.now() < deadline {
+                if pthread_mutex_trylock(mutex) == 0 { return }
+                usleep(50)
+            }
+            #endif
+            HostSched.promotionWaits.wrappingAdd(1, ordering: .relaxed)
+        }
+        promoteHolder(to: context?.hostClass ?? SchedClass.interactive)
+        pthread_mutex_lock(mutex)
+    }
+
+    /// A waiter of class `cls` found the lock taken: raise the holder's
+    /// host thread to `cls` while it holds the lock (xnu's turnstile push
+    /// onto a lock owner, §2.4). Holders that applied no class (host
+    /// service threads, a guest thread before its first trap returned) are
+    /// left alone; so is a holder already at `cls` or above.
+    private func promoteHolder(to cls: Int) {
+        guard cls > SchedClass.background else { return }
+        promotersInFlight.wrappingAdd(1, ordering: .sequentiallyConsistent)
+        defer { promotersInFlight.wrappingSubtract(1, ordering: .sequentiallyConsistent) }
+        var word = holderWord.load(ordering: .sequentiallyConsistent)
+        while word != 0 {
+            let applied = Int((word >> 32) & 0xF) - 1
+            let raised = Int((word >> 36) & 0xF) - 1
+            guard applied >= 0, cls > max(applied, raised) else { return }
+            let new = (word & ~(UInt64(0xF) << 36)) | UInt64(cls + 1) << 36
+            let (exchanged, original) = holderWord.compareExchange(expected: word, desired: new, ordering: .sequentiallyConsistent)
+            if exchanged {
+                if HostSched.raisesGroup(applied) {
+                    // Counted once per holder: a second raise of the same
+                    // holder only lifts the weight further.
+                    if raised < 0 { HostSched.raiseGroup(applied, to: cls) } else { HostSched.raiseGroup(applied, to: cls); HostSched.lowerGroup(applied) }
+                } else {
+                    HostSched.move(Int32(truncatingIfNeeded: word & 0xFFFF_FFFF), to: cls)
+                }
+                HostSched.promotions.wrappingAdd(1, ordering: .relaxed)
+                return
+            }
+            word = original
+        }
+    }
+
     /// `YCODE_FINE_LOCK_SPIN=0`: fine locks are plain mutexes.
     nonisolated(unsafe) public static var fineLockSpin = getenv("YCODE_FINE_LOCK_SPIN").map { String(cString: $0) != "0" } ?? true
 
@@ -315,9 +425,11 @@ public final class KernelLock: @unchecked Sendable {
         }
         holdStart = KernelClock.now()
         acquisitions &+= 1
+        if HostSched.promoting { publishHolder() }
     }
 
     fileprivate func noteReleasing() {
+        if HostSched.promoting { withdrawHolder() }
         let held = KernelClock.now() &- holdStart
         if trapProfile != nil || tracksHolder {
             holderTID.store(0, ordering: .relaxed)
@@ -1085,7 +1197,7 @@ extension KernelLock {
             lockMutex(for: context)
         } else if pthread_mutex_trylock(mutex) != 0 {
             let start = KernelClock.now()
-            pthread_mutex_lock(mutex)
+            if HostSched.promoting { lockPromoting(context) } else { pthread_mutex_lock(mutex) }
             let waited = KernelClock.now() &- start
             fineContended &+= 1
             fineWaitNanoseconds &+= waited
@@ -1148,10 +1260,35 @@ extension KernelLock {
         return try body()
     }
 
+    /// A fast path holding exactly this fine lock (an image's event lock)
+    /// that must read L0 state (descriptor readiness, `mach-ipc-locking.md`
+    /// §4.11): gives the lock up, takes L0, takes the lock back (in order),
+    /// runs `body` under both, then gives L0 up and keeps this lock. The
+    /// lock is not held for a moment, as in a wait. Nil (nothing done) when
+    /// the thread holds anything else.
+    func escalateToKernelLock<T>(_ body: () throws -> T) rethrows -> T? {
+        guard let l0 = root, level == 1, !l0.isHeldByCurrentThread else { return nil }
+        let threadLocks = KernelThreadLocks.current
+        guard threadLocks.held.count == 1, threadLocks.held[0] === self else { return nil }
+        let context = currentContext
+        let saved = threadLocks.releaseAll()
+        if !threadLocks.deferred.isEmpty { threadLocks.runDeferredWork() }
+        defer { threadLocks.reacquireAll(saved) }
+        KernelLock.escalations.wrappingAdd(1, ordering: .relaxed)
+        return try l0.withLock(context: context) { () throws -> T in
+            threadLocks.reacquireAll(saved)
+            defer { _ = threadLocks.releaseAbove(l0) }
+            return try body()
+        }
+    }
+
+    /// Diagnostics: escalations from an event lock to L0.
+    static let escalations = Atomic<UInt64>(0)
+
     /// Runs `work` now if the calling thread's locks allow taking what it
     /// needs (or hold it), else queues it for when they do. Without the
     /// split, runs it now (L0 is held).
-    func deferIfFast(_ need: DeferredKernelWork.Need, _ work: @escaping () -> Void) {
+    func deferIfFast(_ need: DeferredKernelWork.Need, tag: StaticString = "other", _ work: @escaping () -> Void) {
         guard isSplit else { work(); return }
         let threadLocks = KernelThreadLocks.current
         switch need {
@@ -1161,7 +1298,22 @@ extension KernelLock {
             if fine.isHeldByCurrentThread { work(); return }
             if threadLocks.canAcquire(fine) { fine.runOrPost(work); return }
         }
+        if case .kernelLock = need { Self.countDeferredL0(tag) }
         threadLocks.deferred.append(DeferredKernelWork(need: need, run: work))
+    }
+
+    /// Diagnostics: work deferred to L0 from a fast path, by kind.
+    static let deferredL0 = Mutex<[String: UInt64]>([:])
+    static func countDeferredL0(_ tag: StaticString) {
+        deferredL0.withLock { $0["\(tag)", default: 0] &+= 1 }
+    }
+
+    /// The guest thread whose trap the calling host thread runs: this lock's
+    /// context when the caller holds it (or without the split), else the
+    /// context of the caller's fast path or of the fine lock it holds.
+    var callerContext: ThreadContext? {
+        if !isSplit || isHeldByCurrentThread { return currentContext }
+        return KernelThreadLocks.current.inheritedContext
     }
 
     /// True when the calling thread does not hold the kernel mutex of this
@@ -1187,7 +1339,9 @@ extension KernelLock {
             + "\(DarwinKernel.ipcFastDeclined.load(ordering: .relaxed)) fell back (descriptor knotes "
             + "\(DarwinKernel.ipcFastDeclinedDescriptors.load(ordering: .relaxed)), call "
             + "\(DarwinKernel.ipcFastDeclinedCall.load(ordering: .relaxed)), kernel object "
-            + "\(DarwinKernel.ipcFastDeclinedKernelObject.load(ordering: .relaxed)))"]
+            + "\(DarwinKernel.ipcFastDeclinedKernelObject.load(ordering: .relaxed))); port routines without L0 "
+            + "\(DarwinKernel.portRoutineFastServed.load(ordering: .relaxed)); proc_info reads without L0 "
+            + "\(DarwinKernel.procInfoReadFast.load(ordering: .relaxed))"]
         var events = (held: UInt64(0), acq: UInt64(0), cont: UInt64(0), wait: UInt64(0), n: 0)
         for lock in liveFineLocks {
             if lock.level == 2 {
@@ -1205,6 +1359,11 @@ extension KernelLock {
             + "\(DarwinKernel.bsdFastDeclined.load(ordering: .relaxed)) fell back, "
             + "\(DarwinKernel.bsdFastCloseHooks.load(ordering: .relaxed)) closes ran the hook under L0 ("
             + "\(DarwinKernel.bsdFastCloseHooksWatched.load(ordering: .relaxed)) for knotes)")
+        parts.append(DarwinKernel.bsdDeclineReport)
+        parts.append("escalations from an event lock to L0 (descriptor readiness): \(KernelLock.escalations.load(ordering: .relaxed))")
+        if DarwinKernel.debugDescriptorCandidates { parts.append(DarwinKernel.descriptorDeclineReport) }
+        parts.append("work deferred to L0: " + KernelLock.deferredL0.withLock { $0 }.sorted { $0.value > $1.value }
+            .map { "\($0.key) \($0.value)" }.joined(separator: ", "))
         parts.append("event locks (\(events.n) live): held \(events.held / 1_000_000) ms, \(events.acq) acquisitions, "
             + "\(events.cont) contended, \(events.wait / 1_000_000) ms waited")
         return parts.joined(separator: "; ")

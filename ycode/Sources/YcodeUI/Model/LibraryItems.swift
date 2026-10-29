@@ -10,7 +10,9 @@ public struct LibrarySnippet: Equatable, Sendable {
     public var body: String
 }
 
+/// The Library's built-in content (`specs/ide/library.md`).
 public enum LibraryContent {
+    /// Ycode's code snippets, with `<#placeholder#>` tokens in their bodies.
     public static let snippets: [LibrarySnippet] = [
         .init(title: "Guard Let", summary: "Unwrap an optional or leave the scope", language: "Swift",
               body: "guard let <#name#> = <#optional#> else {\n    <#return#>\n}"),

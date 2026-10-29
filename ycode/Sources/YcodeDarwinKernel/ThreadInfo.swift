@@ -11,8 +11,9 @@ import YcodeDarwinABI
 // Ycode keeps no per-thread scheduler accounting: the CPU time is known for
 // the calling thread only (its host thread's time, as thread_selfusage);
 // another thread reports 0. Priorities are the default user ones (31,
-// maximum 63), the policy POLICY_TIMESHARE, the run state RUNNING or
-// WAITING (blocked in the kernel), the suspend count 0.
+// maximum 63), the policy POLICY_TIMESHARE, the run state STOPPED
+// (suspended), WAITING (blocked in the kernel) or RUNNING, and the thread's
+// own suspend count (`thread_suspend`).
 
 extension DarwinKernel {
     static let threadInfoBasic: UInt32 = 3
@@ -24,7 +25,8 @@ extension DarwinKernel {
     /// `selfCPUNanoseconds`: the thread's CPU time when it is the caller.
     static func threadInfoWords(_ thread: ThreadContext, flavor: UInt32, selfCPUNanoseconds: UInt64?) -> [UInt8]? {
         let cpu = selfCPUNanoseconds ?? 0
-        let runState: Int32 = thread.blockedInKernel ? 3 : 1    // TH_STATE_WAITING / RUNNING
+        // TH_STATE_STOPPED (suspended, threads-and-events.md §1.6) / WAITING / RUNNING.
+        let runState: Int32 = thread.gate.isClosed ? 2 : thread.blockedInKernel ? 3 : 1
         var out: [UInt8] = []
         switch flavor {
         case threadInfoBasic:
@@ -35,7 +37,7 @@ extension DarwinKernel {
             out.appendLE(Int32(1))                                                // policy: POLICY_TIMESHARE
             out.appendLE(runState)
             out.appendLE(Int32(0))                                                // flags
-            out.appendLE(Int32(0))                                                // suspend_count
+            out.appendLE(Int32(truncatingIfNeeded: thread.suspendCount))          // suspend_count
             out.appendLE(Int32(0))                                                // sleep_time
         case threadInfoIdentifier:
             out.appendLE(thread.threadID)

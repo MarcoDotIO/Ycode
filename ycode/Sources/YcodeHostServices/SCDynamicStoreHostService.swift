@@ -1,8 +1,9 @@
 // The host's SystemConfiguration dynamic store, reduced to what
 // configd_sim's SimulatorSupport plug-in needs to start
-// (`specs/simulator/scdynamicstore-host.md`). The store is empty and never
-// changes: sessions open, notification requests are accepted, every lookup
-// finds no key. Wire protocol: the MIG subsystem `config` (20000) of Apple's
+// (`specs/simulator/scdynamicstore-host.md`). Sessions open, notification
+// requests are accepted; the store holds the guest's network state
+// (`SCDynamicStoreNetworkState`, §7) and never changes, so no notification
+// is ever sent. Wire protocol: the MIG subsystem `config` (20000) of Apple's
 // open-source configd (`config.defs`).
 
 import Foundation
@@ -137,11 +138,38 @@ public final class SCDynamicStoreHostService: @unchecked Sendable {
             dropRights(m)
             statusReply(m, Status.ok)
         case ID.configget:
-            // OOL data (empty), NDR, dataCnt, newInstance, status.
-            reply(m, descriptors: [.ool(data: [])], body: Self.ndr + le(0) + le(0) + le(Status.noKey))
+            // OOL data, NDR, dataCnt, newInstance, status (§7: the network keys).
+            let key = oolData(m, 0).flatMap { SCDynamicStoreNetworkState.unserialize($0) as? String }
+            if let key, let value = Self.store()[key], let data = SCDynamicStoreNetworkState.serialize(value) {
+                reply(m, descriptors: [.ool(data: data)], body: Self.ndr + le(Int32(data.count)) + le(0) + le(Status.ok))
+            } else {
+                reply(m, descriptors: [.ool(data: [])], body: Self.ndr + le(0) + le(0) + le(Status.noKey))
+            }
         case ID.configgetM:
-            reply(m, descriptors: [.ool(data: [])], body: Self.ndr + le(0) + le(Status.noKey))
-        case ID.configlist, ID.notifychanges:
+            // A dictionary of key → serialized value (`_SCSerializeMultiple`).
+            let keys = oolData(m, 0).flatMap { SCDynamicStoreNetworkState.unserialize($0) as? [String] } ?? []
+            let patterns = oolData(m, 1).flatMap { SCDynamicStoreNetworkState.unserialize($0) as? [String] } ?? []
+            let store = Self.store()
+            var out: [String: Data] = [:]
+            for k in SCDynamicStoreNetworkState.select(store, keys: keys, patterns: patterns) {
+                if let d = SCDynamicStoreNetworkState.serialize(store[k]!) { out[k] = Data(d) }
+            }
+            if !out.isEmpty, let data = SCDynamicStoreNetworkState.serialize(out) {
+                lock.withLock { if logged < 32 { logged += 1; log("scdynamicstore: copy multiple: \(out.keys.sorted().joined(separator: ", "))") } }
+                reply(m, descriptors: [.ool(data: data)], body: Self.ndr + le(Int32(data.count)) + le(Status.ok))
+            } else {
+                reply(m, descriptors: [.ool(data: [])], body: Self.ndr + le(0) + le(Status.noKey))
+            }
+        case ID.configlist:
+            // The keys matching a pattern (isRegex) or equal to the key.
+            let key = oolData(m, 0).flatMap { SCDynamicStoreNetworkState.unserialize($0) as? String }
+            let isRegex = m.body.count >= 16 && m.body[12..<16].contains { $0 != 0 }
+            let store = Self.store()
+            let keys = key.map { isRegex ? SCDynamicStoreNetworkState.select(store, keys: [], patterns: [$0])
+                : SCDynamicStoreNetworkState.select(store, keys: [$0], patterns: []) } ?? []
+            let list = SCDynamicStoreNetworkState.serialize(keys) ?? Self.emptyArrayPlist
+            reply(m, descriptors: [.ool(data: list)], body: Self.ndr + le(Int32(list.count)) + le(Status.ok))
+        case ID.notifychanges:
             let empty = Self.emptyArrayPlist
             reply(m, descriptors: [.ool(data: empty)], body: Self.ndr + le(Int32(empty.count)) + le(Status.ok))
         default:
@@ -190,6 +218,19 @@ public final class SCDynamicStoreHostService: @unchecked Sendable {
         for (session, _) in list { try? host.addMember(session, to: portSet) }
     }
 
+    /// The store's contents (§7). Tests replace it.
+    nonisolated(unsafe) static var storeOverride: [String: Any]?
+    static func store() -> [String: Any] { storeOverride ?? SCDynamicStoreNetworkState.current() }
+
+    /// The bytes of the request's `index`th out-of-line descriptor.
+    private func oolData(_ m: MachHostReceivedMessage, _ index: Int) -> [UInt8]? {
+        let ool = m.descriptors.compactMap { d -> [UInt8]? in
+            if case let .ool(data, _, _) = d { return data }
+            return nil
+        }
+        return index < ool.count ? ool[index] : nil
+    }
+
     // MARK: Replies
 
     private func statusReply(_ m: MachHostReceivedMessage, _ status: Int32) {
@@ -231,6 +272,9 @@ public final class SCDynamicStoreHostService: @unchecked Sendable {
 /// boot and registered into the guest by the control session
 /// (`DeviceSession.hostServices`). Each entry is (name, host send right).
 public enum DefaultHostServices {
+    /// Starts each service that is not disabled (SCDynamicStore, power
+    /// management, audio) and returns its names and send rights. A service
+    /// that cannot start is logged as a warning and left out.
     public static func start(host: MachHostTask, log: @escaping (String) -> Void) -> [(name: String, port: UInt32)] {
         var out: [(name: String, port: UInt32)] = []
         if !SCDynamicStoreHostService.disabled {
@@ -243,10 +287,56 @@ public enum DefaultHostServices {
                 log("warning: cannot start the SCDynamicStore host service: \(error)")
             }
         }
+        if !PowerManagementHostService.disabled {
+            do {
+                let s = try PowerManagementHostService(host: host, log: log)
+                s.start()
+                powerManagement = s
+                out.append((PowerManagementHostService.serviceName, s.servicePort))
+            } catch {
+                log("warning: cannot start the power-management host service: \(error)")
+            }
+        }
+        if !AudioHostService.disabled {
+            do {
+                let s = try AudioHostService(host: host, log: log)
+                s.start()
+                audio = s
+                out.append((AudioHostService.serviceName, s.servicePort))
+            } catch {
+                log("warning: cannot start the audio host service: \(error)")
+            }
+        }
         return out
     }
 
+    /// The audio service of this run, if it started (audio-host.md).
+    nonisolated(unsafe) public private(set) static var audio: AudioHostService?
+
+    /// The file-event service (fsevents-host.md), started by the device
+    /// session with the device's configuration: (name, host send right), or
+    /// nil when it is disabled or cannot start.
+    public static func startFileEvents(host: MachHostTask, configuration: FSEventsHostService.Configuration,
+                                       log: @escaping (String) -> Void) -> (name: String, port: UInt32)? {
+        guard !FSEventsHostService.disabled else { return nil }
+        do {
+            let s = try FSEventsHostService(host: host, configuration: configuration, log: log)
+            s.start()
+            fsEvents = s
+            return (FSEventsHostService.serviceName, s.servicePort)
+        } catch {
+            log("warning: cannot start the file-event host service: \(error)")
+            return nil
+        }
+    }
+
+    /// The file-event service of this run, if it started (snapshots).
+    nonisolated(unsafe) public private(set) static var fsEvents: FSEventsHostService?
+
     nonisolated(unsafe) private static var running: [SCDynamicStoreHostService] = []
+    /// The power-management service of this run, if it started (stateless:
+    /// nothing to snapshot).
+    nonisolated(unsafe) public private(set) static var powerManagement: PowerManagementHostService?
 
     /// The SCDynamicStore service of this run, if it started (snapshots).
     public static var scDynamicStore: SCDynamicStoreHostService? { running.first }

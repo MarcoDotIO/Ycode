@@ -199,8 +199,7 @@ static int relock(struct yc_mutex *m, int type, yc_bool try)
     }
     if (try)
         return YC_EBUSY;
-    /* Errorcheck: EDEADLK by definition. Normal: relocking would deadlock
-     * forever; Ycode reports EDEADLK instead of hanging. */
+    /* Errorcheck: EDEADLK by definition. */
     return YC_EDEADLK;
 }
 
@@ -210,7 +209,11 @@ YC_EXPORT int YC_FN(pthread_mutex_lock)(struct yc_mutex *m)
     if (YC_UNLIKELY(type < 0))
         return YC_EINVAL;
     yc_pthread_t self = __yc_self();
-    if (YC_UNLIKELY(YC_LOAD(&m->owner) == self))
+    /* A normal mutex the caller holds is waited for like any held mutex,
+     * as Darwin does: another thread may unlock it (see unlock), and
+     * CoreAudio's PHASE relocks one that a different thread releases
+     * (audio-host.md 13.5). Ycode used to answer EDEADLK at once. */
+    if (YC_UNLIKELY(YC_LOAD(&m->owner) == self) && type != YC_PTHREAD_MUTEX_NORMAL)
         return relock(m, type, 0);
     __yc_lock(&m->word);
     YC_STORE(&m->owner, self);
@@ -238,8 +241,16 @@ YC_EXPORT int YC_FN(pthread_mutex_unlock)(struct yc_mutex *m)
     int type = mutex_type(m);
     if (YC_UNLIKELY(type < 0))
         return YC_EINVAL;
-    if (YC_UNLIKELY(YC_LOAD(&m->owner) != __yc_self()))
-        return YC_EPERM;
+    if (YC_UNLIKELY(YC_LOAD(&m->owner) != __yc_self())) {
+        /* POSIX leaves unlocking a normal mutex held by another thread
+         * undefined; Darwin's libpthread checks the owner only for
+         * error-checking and recursive mutexes (Apple open source, level 1),
+         * so a normal mutex is released. CoreAudio's caulk relies on it
+         * (audio-host.md 13.5): with EPERM the mutex stayed held and its
+         * owner's next lock found itself the owner (EDEADLK, an abort). */
+        if (type != YC_PTHREAD_MUTEX_NORMAL || YC_LOAD(&m->word) == 0)
+            return YC_EPERM;
+    }
     if (type == YC_PTHREAD_MUTEX_RECURSIVE && m->count > 1) {
         m->count--;
         return 0;
