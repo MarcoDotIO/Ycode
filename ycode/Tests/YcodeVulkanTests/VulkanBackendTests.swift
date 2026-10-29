@@ -590,6 +590,28 @@ struct VulkanBackendTests {
         withExtendedLifetime(pages) {}
     }
 
+    /// A `replaceRegion` body shorter than its region (metal-sim-protocol.md
+    /// §5.3 says the guest sends exactly the region's bytes) uploads the
+    /// bytes it has and zeros for the rest, never what lies past the data.
+    @Test func shortUploadZeroFillsTheTail() throws {
+        let b = VK.backend
+        let t = try VK.texture(MetalPixelFormat.rgba8Unorm, 4, 4, usage: 1)
+        let region = MetalRegion(width: 4, height: 4)
+        try b.replaceRegion(texture: t, region, level: 0, slice: 0, bytes: [UInt8](repeating: 0xEE, count: 64),
+                            bytesPerRow: 16, bytesPerImage: 64)
+        #expect(try VK.read(t, 4, 4) == [UInt8](repeating: 0xEE, count: 64))
+        try b.replaceRegion(texture: t, region, level: 0, slice: 0, bytes: [UInt8](repeating: 0x11, count: 40),
+                            bytesPerRow: 16, bytesPerImage: 64)
+        let px = try VK.read(t, 4, 4)
+        #expect(Array(px[0..<40]) == [UInt8](repeating: 0x11, count: 40))
+        #expect(Array(px[40..<64]) == [UInt8](repeating: 0, count: 24))
+        // A full upload after it is unchanged.
+        let full = (0..<64).map { UInt8($0) }
+        try b.replaceRegion(texture: t, region, level: 0, slice: 0, bytes: full, bytesPerRow: 16, bytesPerImage: 64)
+        #expect(try VK.read(t, 4, 4) == full)
+        b.release(t)
+    }
+
     @Test func sampledTexture() throws {
         let b = VK.backend
         let src = try VK.texture(MetalPixelFormat.rgba8Unorm, 2, 2, usage: 1)
