@@ -29,6 +29,8 @@ public final class ComparisonView: NSView, NSTextViewDelegate {
     /// The column showing the working copy.
     public var workingView: NSTextView { workingCopyOnLeft ? leftView : rightView }
     private var lastOld = "", lastOldTitle = "", lastNewTitle = ""
+    /// The scroll-sync observers, removed when the view goes away.
+    private var scrollObservers: [NSObjectProtocol] = []
 
     public override init(frame: NSRect) {
         super.init(frame: frame)
@@ -73,20 +75,25 @@ public final class ComparisonView: NSView, NSTextViewDelegate {
         // Scroll both sides together, whichever side scrolls.
         for (from, to) in [(leftScroll, rightScroll), (rightScroll, leftScroll)] {
             from.contentView.postsBoundsChangedNotifications = true
-            // swiftlint:disable:next discarded_notification_center_observer - never removed; captures are weak
-            NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: from.contentView, queue: .main) { [weak self, weak from, weak to] _ in
+            scrollObservers.append(NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification, object: from.contentView, queue: .main
+            ) { [weak self, weak from, weak to] _ in
                 MainActor.assumeIsolated {
                     guard let from, let to, to.contentView.bounds.origin != from.contentView.bounds.origin else { return }
                     to.contentView.scroll(to: from.contentView.bounds.origin)
                     to.reflectScrolledClipView(to.contentView)
                     self?.ribbons.needsDisplay = true
                 }
-            }
+            })
         }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    isolated deinit {
+        for o in scrollObservers { NotificationCenter.default.removeObserver(o) }
+    }
 
     /// The file text in an edited working-copy column: each row is a
     /// six-character number column then the line; filler rows (blank

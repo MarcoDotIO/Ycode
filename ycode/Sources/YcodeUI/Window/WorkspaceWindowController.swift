@@ -1410,6 +1410,13 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     private var organizerWindow: NSWindow?
     public private(set) var devices: DevicesController?
     private var devicesWindow: NSWindow?
+    /// The devices window's close observer (one at a time; removed when
+    /// that window closes or a new one replaces it).
+    private var devicesWindowCloseObserver: NSObjectProtocol?
+
+    isolated deinit {
+        if let o = devicesWindowCloseObserver { NotificationCenter.default.removeObserver(o) }
+    }
     /// The last Product ▸ Archive output.
     public private(set) var lastArchiveOutput: String?
 
@@ -1450,9 +1457,17 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         let w = c.makeWindow()
         c.restoreState()
         devicesWindow = w
-        // swiftlint:disable:next discarded_notification_center_observer - never removed; captures are weak
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { [weak c] _ in
-            MainActor.assumeIsolated { c?.closeLinks() }
+        if let old = devicesWindowCloseObserver { NotificationCenter.default.removeObserver(old) }
+        devicesWindowCloseObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: w, queue: .main
+        ) { [weak self, weak c] _ in
+            MainActor.assumeIsolated {
+                c?.closeLinks()
+                if let self, let token = self.devicesWindowCloseObserver {
+                    NotificationCenter.default.removeObserver(token)
+                    self.devicesWindowCloseObserver = nil
+                }
+            }
         }
         w.makeKeyAndOrderFront(nil)
         return c
