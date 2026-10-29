@@ -19,10 +19,12 @@
 #   --cold    boot cold this time (the data stays; the stop saves it again)
 #   --erase   erase the device (data and saved state) and boot a new copy of the pristine device
 #   --fresh   move the device aside (device.old.<time>) and boot a new copy
-#   --device-type ID  the device type (ycode-simd --device-type: iphone-duo, the default,
-#             ipad-a16, ipad-pro-13-m5; specs/simulator/ipad.md). Each type has its own
+#   --device-type ID  the device type: one of the IDs `ycode-simd --list-device-types` of
+#             $YCODE_SIM_TREE prints (ycode-simd --device-type; iphone-duo is the default;
+#             specs/simulator/ipad.md, iphone-types.md, visionos.md). Each type has its own
 #             device (devices/default for iphone-duo, devices/<ID> for the others), its
-#             own saved state (snapshots/<same name>) and its own pristine device
+#             own saved state (snapshots/<same name>), its own pristine device and,
+#             optionally, its own runtime (YCODE_SIM_RUNTIME_<ID>)
 #
 # Configuration: shell assignments in $YCODE_SIM_CONFIG, else
 # ~/.config/ycode/sim-serve.env on this host; variables already set in the
@@ -32,6 +34,8 @@
 #   YCODE_SIM_TREE       a built ycode/ tree: .build/release/ycode-simd, SimShim/out,
 #                        SimHostLibs/out, SimGuestFrameworks/out, Translator/build/ycode-airc   required
 #   YCODE_SIM_RUNTIME    the iOS runtime's RuntimeRoot directory                             required
+#   YCODE_SIM_RUNTIME_<ID>  the runtime for another device type, ID as for YCODE_SIM_PRISTINE_<ID>
+#                        (YCODE_SIM_RUNTIME_VISION_PRO: a visionOS RuntimeRoot); unset: YCODE_SIM_RUNTIME
 #   YCODE_SIM_PRISTINE   a first-booted device directory; copied once to $YCODE_SIM_HOME/devices/default  required
 #   YCODE_SIM_PRISTINE_<ID>  the same for another device type, ID upper case with _ for -
 #                        (YCODE_SIM_PRISTINE_IPAD_A16, YCODE_SIM_PRISTINE_IPAD_PRO_13_M5); unset: the
@@ -135,20 +139,27 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-case "$dtype" in iphone-duo|ipad-a16|ipad-pro-13-m5) ;; *) die "unknown --device-type '$dtype'" ;; esac
-# The device of this type and its pristine copy.
-if [ "$dtype" = iphone-duo ]; then NAME=default; PRISTINE_VAR=YCODE_SIM_PRISTINE
-else NAME=$dtype; PRISTINE_VAR=YCODE_SIM_PRISTINE_$(echo "$dtype" | tr 'a-z-' 'A-Z_'); fi
 for v in YCODE_SIM_TREE YCODE_SIM_RUNTIME; do
     [ -n "${!v:-}" ] || die "$v is not set (see the configuration in $0)"
 done
-[ "$dtype" = iphone-duo ] && { [ -n "${YCODE_SIM_PRISTINE:-}" ] || die "YCODE_SIM_PRISTINE is not set (see the configuration in $0)"; }
-PRISTINE=${!PRISTINE_VAR:-}
 Y=$YCODE_SIM_TREE
 SIMD=$Y/.build/release/ycode-simd
+[ -x "$SIMD" ] || die "missing $SIMD"
+# The device types this build knows (DeviceType.all in Sources/ycode-simd).
+known=$("$SIMD" --list-device-types) && [ -n "$known" ] || die "$SIMD --list-device-types failed (a build older than the option?)"
+grep -qxF -- "$dtype" <<< "$known" || die "unknown --device-type '$dtype' (this build knows: $(paste -sd " " - <<< "$known"))"
+# The device of this type, its pristine copy and its runtime.
+if [ "$dtype" = iphone-duo ]; then NAME=default; PRISTINE_VAR=YCODE_SIM_PRISTINE; RUNTIME_VAR=YCODE_SIM_RUNTIME
+else
+    NAME=$dtype; suffix=$(echo "$dtype" | tr 'a-z-' 'A-Z_')
+    PRISTINE_VAR=YCODE_SIM_PRISTINE_$suffix; RUNTIME_VAR=YCODE_SIM_RUNTIME_$suffix
+fi
+[ "$dtype" = iphone-duo ] && { [ -n "${YCODE_SIM_PRISTINE:-}" ] || die "YCODE_SIM_PRISTINE is not set (see the configuration in $0)"; }
+PRISTINE=${!PRISTINE_VAR:-}
+RUNTIME=${!RUNTIME_VAR:-$YCODE_SIM_RUNTIME}
 LAUNCHER=$(dirname "$0")/ycode-sim
-for f in "$SIMD" "$Y/SimShim/out/shim.bin" "$Y/SimShim/out/host_stubs.bin" "$Y/SimGuestFrameworks/out/SimHID.framework/SimHID" \
-         "$Y/Translator/build/ycode-airc" "$YCODE_SIM_RUNTIME/sbin/launchd_sim" "$LAUNCHER"; do
+for f in "$Y/SimShim/out/shim.bin" "$Y/SimShim/out/host_stubs.bin" "$Y/SimGuestFrameworks/out/SimHID.framework/SimHID" \
+         "$Y/Translator/build/ycode-airc" "$RUNTIME/sbin/launchd_sim" "$LAUNCHER"; do
     [ -e "$f" ] || die "missing $f"
 done
 
@@ -187,7 +198,7 @@ elif [ ! -d "$DEV" ]; then
 fi
 
 [ -f "$LOG" ] && mv "$LOG" "$LOG.1"
-args=(--device "$DEV" --runtime-root "$YCODE_SIM_RUNTIME" --display-server "unix:$SOCK")
+args=(--device "$DEV" --runtime-root "$RUNTIME" --display-server "unix:$SOCK")
 # The iPhone's arguments stay as they were (its saved state still matches).
 [ "$dtype" != iphone-duo ] && args+=(--device-type "$dtype")
 # Warm boot (the launcher's): a stop saves the device, the next start

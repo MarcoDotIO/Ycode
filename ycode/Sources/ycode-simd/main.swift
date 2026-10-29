@@ -135,7 +135,7 @@ let usage = """
                       [--host-libs <dir>] [--keep-going] [--libfunc-return <name>=<value>[,...]] [--repeat N]
                       [--env K=V]... [--host-bootstrap [--debug-bootstrap-discard]] [--exec-args <arg>...]
            ycode-simd --device <dir> --runtime-root <dir> [--udid <UDID>] [--job-path <dir>]... [--env K=V]...
-                      [--device-type iphone-duo | iphone-18-pro | ipad-a16 | ipad-pro-13-m5 | vision-pro] (default: iphone-duo on iOS 27.1, iphone-18-pro on iOS 27.0
+                      [--device-type \(DeviceType.all.map(\.id).joined(separator: " | "))] (default: iphone-duo on iOS 27.1, iphone-18-pro on iOS 27.0
                       runtimes, vision-pro on visionOS runtimes; a device keeps its first type)
                       [--runtime-paths] [--oneshot "/guest/program arg..."]... [--oneshot-delay S] [--runtime-job <label>]...
                       [--install-app <host .app>] [--launch <bundle id> [--app-arg A]... [--app-env K=V]... [--app-url U]]
@@ -154,6 +154,7 @@ let usage = """
                       [--trace] [--keep-going] [--timeout-ms N] [--host-libs <dir>] [--debug-bootstrap-discard]
                       [--exec-args <arg>...]
                       [--debug-extra-images N [--debug-extra-exec <macho>] [--debug-extra-arg A]... [--debug-extra-wait]]
+           ycode-simd --list-device-types   (the --device-type IDs, one per line, the default first)
            ycode-simd --device <dir> --control <command...> | --fold closed|half|open|<degrees> [--instant]
                       | --ui appearance|content_size|increase_contrast|liquid-glass|color-filter … | --accessibility <switch> [on|off]
                       | --location set|preset|start|run|file|clear|list … | --audio volume|output|input|devices …
@@ -464,6 +465,10 @@ func parseOptions(_ arguments: [String]) -> Options {
             options.maxExits = n
         case "-h", "--help":
             print(usage)
+            exit(0)
+        case "--list-device-types":
+            // For scripts (scripts/ycode-sim-serve): the one list of types.
+            for type in DeviceType.all { print(type.id) }
             exit(0)
         default:
             die("unknown argument '\(argument)'\n\(usage)", status: 64)

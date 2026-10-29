@@ -13,8 +13,10 @@
 #   --cold         boot cold this time (the device keeps its data; the session's end saves it again)
 #   --erase        erase the device (its data and saved state) and start from the pristine device
 #   --fresh        start from a fresh copy of the pristine device (the old one is moved aside)
-#   --device-type ID  iphone-duo (default), ipad-a16 or ipad-pro-13-m5 (specs/simulator/ipad.md);
-#                  each type is its own device with its own saved state (see ycode-sim-serve)
+#   --device-type ID  a device type of the host's build (`ycode-simd --list-device-types`:
+#                  iphone-duo, the default, and the iPhone, iPad and Vision types; ycode-sim-serve
+#                  checks the ID); each type is its own device with its own saved state and
+#                  pristine copy, a visionOS type also its own runtime (see ycode-sim-serve)
 #   --sync-build   copy this checkout's ycode/ to the host and build it there first
 #                  (into $YCODE_SIM_HOME/ycode, in a build slot; set YCODE_SIM_TREE to
 #                  that directory in sim-serve.env to boot it)
