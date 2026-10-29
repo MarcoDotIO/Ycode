@@ -1,8 +1,17 @@
 # StoreKit (iOS) — specification index
 
-Status: **round 0 (specification)**, 2026-10-20. Reference: Xcode 27.1
-(27A9269) with the iOS 27.1 SDK and the iOS 27.1 simulator runtime
-(24A94401), on an iPhone Duo simulator named `ycode-test-storekit-1`.
+Status: **round 0 (specification)**, 2026-10-20; implementation status
+below. Reference: Xcode 27.1 (27A9269) with the iOS 27.1 SDK and the iOS
+27.1 simulator runtime (24A94401), on an iPhone Duo simulator named
+`ycode-test-storekit-1`.
+
+Implementation status (2026-10-28): `frameworks/storekit/` (package
+`ycode-storekit`: library products `StoreKit`, `StoreKitTest`,
+`StoreKitConfiguration`, `StoreKitEngine` and `StoreKitSigning`; test
+targets `StoreKitAPITests`, `StoreKitConfigurationTests`,
+`StoreKitEngineTests` and `StoreKitSigningTests`). Rounds R2, R7, R8 and R9
+(headless) of `plan.md` are done; R3–R6 and R10 are not started. The package
+README lists what is done, deferred and not started.
 
 ## Scope
 

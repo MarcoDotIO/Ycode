@@ -9,14 +9,16 @@ Nine navigators, in this order, selected by ⌘1 … ⌘9:
 | # | Navigator | Ycode status |
 |---|---|---|
 | 1 | Project | implemented |
-| 2 | Source Control | empty placeholder |
+| 2 | Source Control | implemented (Changes and Repositories trees; `SourceControlNavigatorModel`) |
 | 3 | Bookmarks | implemented |
-| 4 | Find | implemented (literal text) |
+| 4 | Find | implemented (Text and Regular Expression kinds; Replace and the other kinds are listed disabled) |
 | 5 | Issue | implemented |
-| 6 | Test | empty placeholder |
+| 6 | Test | implemented (discovered tests by target and suite, with result glyphs; `TestDiscovery`) |
 | 7 | Debug | implemented (see debug.md) |
 | 8 | Breakpoint | implemented |
-| 9 | Report | implemented (build logs) |
+| 9 | Report | implemented (build, clean, test, analyze and package reports; `ReportNavigatorModel`) |
+
+Status checked against the code on 2026-10-28.
 
 Order and names follow `specs/ide/reference-ui.md` §2 and §7.
 

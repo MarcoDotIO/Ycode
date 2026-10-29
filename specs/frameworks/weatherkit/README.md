@@ -1,8 +1,16 @@
 # WeatherKit — specification index
 
-Status: **round 0 (specification)**, 2026-10-19. Reference: the iOS 27.1 SDK
-in Xcode 27.1 (27A9269) and the iOS 27.1 simulator runtime (24A94401), whose
-WeatherKit bundle reports version 1454.5.
+Status: **round 0 (specification)**, 2026-10-19; implementation status
+below. Reference: the iOS 27.1 SDK in Xcode 27.1 (27A9269) and the iOS 27.1
+simulator runtime (24A94401), whose WeatherKit bundle reports version
+1454.5.
+
+Implementation status (2026-10-28): `frameworks/weatherkit/` (package
+`ycode-weatherkit`: library product `WeatherKit` (plus a `CoreLocation` shim
+product on Linux), test target `WeatherKitTests`). Rounds R2–R4 of `plan.md`
+are done (the R4 check against a live developer key has not been run); R5–R8
+are not started. The package README lists what is done, deferred and not
+started.
 
 ## Scope
 

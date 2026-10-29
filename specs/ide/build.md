@@ -32,14 +32,22 @@ stream plus a cancel action. Events are:
 - `finished(result)`: status (`succeeded`, `failed`, `cancelled`), exit code
   and all issues. It is always the last event.
 
-Engine 1 (`XcodebuildEngine`, interim) runs `xcrun xcodebuild <args>` with
+Engine 1 (`XcodebuildEngine`) runs `xcrun xcodebuild <args>` with
 stdout and stderr merged, stdin closed. Exit status 0 means success. Cancel
 sends SIGINT (xcodebuild then stops its build and reports failure; Ycode
 reports `cancelled`).
 
-Engine 2 (planned, M3 proper) generates PIF from the project model and
-drives swift-build's build service; it must emit the same events, so the UI
-does not depend on which engine runs.
+Engine 2 (`SwiftBuildEngine`) builds with swift-build from a PIF that Ycode
+generates (`build-pif.md`), by running swift-build's `swbuild`
+command-line client. It emits the same events, so the UI does not depend
+on which engine runs.
+
+Status (2026-10-28): both engines are implemented in `YcodeBuild`. The
+IDE's default is swift-build (Settings ▸ Locations ▸ Build System,
+`settings.md`): it is wrapped in `FallbackEngine`, which uses xcodebuild
+for any request swift-build cannot describe, and the IDE uses xcodebuild
+outright when `swbuild` cannot be found. The `ycode build` command line
+uses xcodebuild unless `--engine swift-build` is given.
 
 Activity text: a log line that starts with a known step verb maps to a
 label plus the last path component on the line — `CompileSwift`,

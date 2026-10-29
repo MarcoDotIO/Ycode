@@ -1,9 +1,16 @@
 # HomeKit (iOS) — specification index
 
-Status: **round 0 (specification)**, 2026-10-19. Reference: the iOS 27.1
-SDK in Xcode 27.1 (27A9269), the iOS 27.1 simulator runtime (24A94401) and
-the iOS 27.0 runtime (24A434). Both runtimes ship HomeKit bundle version
-1493.1.5.1.1 and behaved identically in every probe.
+Status: **round 0 (specification)**, 2026-10-19; implementation status
+below. Reference: the iOS 27.1 SDK in Xcode 27.1 (27A9269), the iOS 27.1
+simulator runtime (24A94401) and the iOS 27.0 runtime (24A434). Both
+runtimes ship HomeKit bundle version 1493.1.5.1.1 and behaved identically in
+every probe.
+
+Implementation status (2026-10-28): `frameworks/homekit/` (package
+`ycode-homekit`: library product `HomeKit`, test target `HomeKitTests`).
+Round R3 of `plan.md` (the model library) is done; R4 (`ycode-homed`) and
+R5–R9 are not started. The package README lists what is done, deferred and
+not started.
 
 ## Scope
 
