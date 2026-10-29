@@ -452,7 +452,14 @@ extension VulkanMetalBackend {
         guard let tex = textures[texture] else { throw VulkanBackendError("replaceRegion of unknown texture \(texture)") }
         let need = regionBytes(tex, width: region.width, height: region.height, depth: region.depth,
                                bytesPerRow: bytesPerRow, bytesPerImage: bytesPerImage)
-        guard bytes.count >= min(need, bytes.count), !bytes.isEmpty else { return }
+        // The guest sends exactly `need` bytes (metal-sim-protocol.md §5.3).
+        // A shorter body is malformed: the IOSurface path below writes only
+        // whole rows it has, and the staged path zero-fills the missing tail
+        // so the GPU copy never reads past the guest's data.
+        guard need > 0, !bytes.isEmpty else { return }
+        if bytes.count < need {
+            log("replaceRegion of texture \(texture): short body, \(bytes.count) bytes for a region of \(need)")
+        }
         if let s = tex.image.surface, level == 0, slice == 0, let base = s.allocation.base {
             // IOSurface texture: the surface memory is the texture's content.
             surfaceChanged(s)
@@ -468,8 +475,11 @@ extension VulkanMetalBackend {
         }
         let rec = try setupRecording()
         let (_, bpb) = copyAspect(tex)
-        let staging = try allocTransient(rec, bytes.count, align: lcm(64, max(bpb, 4)))
+        let staging = try allocTransient(rec, max(need, bytes.count), align: lcm(64, max(bpb, 4)))
         bytes.withUnsafeBytes { staging.pointer.copyMemory(from: $0.baseAddress!, byteCount: bytes.count) }
+        if bytes.count < need {
+            (staging.pointer + bytes.count).initializeMemory(as: UInt8.self, repeating: 0, count: need - bytes.count)
+        }
         var copy = copyRegion(tex, level: level, slice: slice, origin: (region.x, region.y, region.z),
                               size: (region.width, region.height, region.depth), bufferOffset: staging.offset,
                               bytesPerRow: bytesPerRow, bytesPerImage: bytesPerImage)
