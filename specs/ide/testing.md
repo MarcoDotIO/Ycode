@@ -2,7 +2,7 @@
 
 Ycode modules: `YcodeBuild` (`TestResultParser`, `TestOutcome`,
 `TestRunner`), `YcodeUI` (`TestDiscovery`, Test navigator, gutter
-diamonds, `WorkspaceSession.runTests`).
+diamonds, `WorkspaceSession.runTests`, `TestRunnerSelection`).
 
 ## Discovery (lexer-based, until an index exists)
 
@@ -35,12 +35,17 @@ a partial run update only the tests that ran.
 | Container | Command | Filter |
 |---|---|---|
 | package | `swift test` in the package folder (SwiftPM builds and runs both XCTest and swift-testing) | `--filter Suite.name` |
-| project / workspace | `xcodebuild … test` | `-only-testing:<Target>/<Suite>/<name>` |
+| project / workspace | `ycodebuild … test` when the build system is swift-build and `ycodebuild` is found; else `xcodebuild … test` | `-only-testing:<Target>/<Suite>/<name>` |
 
-swift-build is not used to run tests yet: `swbuild` builds test bundles
-but has no test-execution step, so test runs use SwiftPM or xcodebuild
-(OPEN QUESTION: driving `xctest` / the swift-testing entry point on
-swift-build products).
+Status (2026-10-28): `TestRunner` (`YcodeBuild`) builds these commands;
+`TestRunnerSelection` (`YcodeUI`) swaps `xcodebuild` for `ycodebuild`
+when the IDE's build system is swift-build (`build.md` §Engines) and the
+runner's tool was not set explicitly. `ycodebuild` builds the test bundles
+with swift-build and runs them in the platform's `xctest` runner, which
+also runs swift-testing tests (`specs/xcodebuild/test-actions.md`). With
+xcodebuild chosen, or when `ycodebuild` is not found, project and
+workspace tests run through `xcodebuild`. `swbuild` itself still has no
+test-execution step.
 
 ## Results
 

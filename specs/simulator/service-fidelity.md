@@ -916,6 +916,11 @@ amsengagementd or assistantd crash.
 (`timed.sh`), main line against this work, both orders: main line 80 s
 and 80 s, this work 80 s and 75 s (`SX/TSUSB/runs/t1-base`, `t2-base`,
 `SX/TSUS2/runs/t1-tsus`, `t2-tsus`).
+These four boots compare this work with its base only (two each); the
+full-boot median of 30.1 s, measured on a copy of the golden device that
+had already booted once at its own path, with the home screen from the
+home watch, is in `lean-boot.md` §9, and times from different series are
+not comparable.
 
 ## Evidence
 

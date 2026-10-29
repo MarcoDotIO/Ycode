@@ -10,7 +10,7 @@ enum ST {
         static let hostPort: UInt16 = 11, bootstrapPort: UInt16 = 12, ioKit: UInt16 = 13, fileLocks: UInt16 = 14
         static let shmNames: UInt16 = 15, semNames: UInt16 = 16
         /// The CPU features the snapshot's guests were told (16 bytes,
-        /// `CPUFeatureSet.storedBytes`; cpu-features.md §6).
+        /// `CPUFeatureSet.storedBytes`; cpu-features.md §9.4).
         static let cpuFeatures: UInt16 = 17
     }
     enum Clock {

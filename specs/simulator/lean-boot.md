@@ -364,6 +364,14 @@ home watch (`YCODE_HOME_WATCH`), 5 s held after home (series
   misses by 0.06 against r3 alone, within the Mac's own spread.
 - The behaviour of the 23 services in a full boot, against the Mac with
   the same device data: `parity-ladder.md` §4.8.
+- Measurement conditions: cold boots of one copy of the golden device
+  that had already booted once at its own path, with the machine to
+  itself and the home screen from the home watch. The 75–80 s timed boots
+  in `service-fidelity.md` §11 and §14 are two-boot A/B pairs that only
+  compare a change with its base (§11 detects the home screen on 5 s
+  screenshots); compare boot times within one series, not across series.
+  A copy's first boot at a new path is slower (57 s, run `f700q`,
+  `parity-ladder.md` §4.8).
 
 So the IDE's default is now a full boot (`specs/ide/run.md`): Lean boot is
 a checkbox that is off by default, and a stored `true` from the old

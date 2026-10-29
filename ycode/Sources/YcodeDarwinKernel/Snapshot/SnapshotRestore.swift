@@ -126,7 +126,7 @@ public final class KernelSnapshotRestore {
         clock = Clock(guestCounter: c.u64(ST.Clock.guestCounter), hostNanoseconds: c.u64(ST.Clock.hostNanoseconds),
                       frequency: c.u64(ST.Clock.frequency), bootCounter: c.u64(ST.Clock.bootCounter))
         guard let s = fields[KernelSnapshotCapture.systemID] else { throw SnapshotError("snapshot has no system record") }
-        // cpu-features.md §6: the snapshot's guests may use every feature
+        // cpu-features.md §9.4: the snapshot's guests may use every feature
         // they were told about; this host must offer all of them.
         let recorded = s.bytes(ST.System.cpuFeatures)
         if !recorded.isEmpty {

@@ -1,8 +1,15 @@
 # HealthKit (iOS) — specification index
 
-Status: **round 0 (specification)**, 2026-10-19. Reference: the iOS 27.1 SDK in
-Xcode 27.1 (27A9269), the iOS 27.1 simulator runtime (24A94401) and, for
-comparison, the iOS 27.0 runtime (24A434) that still ships the Health app.
+Status: **round 0 (specification)**, 2026-10-19; implementation status
+below. Reference: the iOS 27.1 SDK in Xcode 27.1 (27A9269), the iOS 27.1
+simulator runtime (24A94401) and, for comparison, the iOS 27.0 runtime
+(24A434) that still ships the Health app.
+
+Implementation status (2026-10-28): `frameworks/healthkit/` (package
+`ycode-healthkit`: library product `HealthKit`, test target
+`HealthKitTests`). Rounds R2–R5 of `plan.md` are done, with the Swift query
+descriptors of R10; R6–R9, R11 and the rest of R10 are deferred. The package
+README lists what is done, deferred and not started.
 
 ## Scope
 

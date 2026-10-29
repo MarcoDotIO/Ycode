@@ -1,9 +1,16 @@
 # SwiftUI (iOS) — specification index
 
-Status: **draft, round 0** (agent KIT-SWIFTUI, 2026-10-19). Reference:
-Xcode 27.1 (27A9269), iPhoneSimulator 27.1 SDK, iOS 27.1 simulator runtime
-(24A94401), device type iPhone Duo (466 × 678 pt, scale 3, 60 Hz; the only
-iPhone type the 27.1 runtime accepts on this Mac).
+Status: **draft, round 0** (agent KIT-SWIFTUI, 2026-10-19); implementation
+status below. Reference: Xcode 27.1 (27A9269), iPhoneSimulator 27.1 SDK, iOS
+27.1 simulator runtime (24A94401), device type iPhone Duo (466 × 678 pt,
+scale 3, 60 Hz; the only iPhone type the 27.1 runtime accepts on this Mac).
+
+Implementation status (2026-10-28): `frameworks/swiftui/` (package
+`ycode-swiftui`: library products `SwiftUI` and `SwiftUICore`, built as
+`OpenViews` and `OpenViewsCore` on Apple hosts, and `OVText`; test target
+`OpenViewsTests`). Rounds R1, R2, the core of R3, R4 and R6 of `10-plan.md`
+§2 are done; rendering (R5) and the platform host (R7) are not started. The
+package README lists what is done, deferred and not started.
 
 This set serves two goals of `docs/FUTURE.md`:
 

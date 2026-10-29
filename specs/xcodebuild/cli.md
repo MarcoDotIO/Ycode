@@ -1,7 +1,8 @@
 # xcodebuild: command-line grammar, errors and exit codes
 
-Ycode tool: `ycodebuild` (module `YcodeXcodebuild`, executable
-`ycode/Sources/ycodebuild`). It accepts the same command lines as
+Ycode tool: `ycodebuild` (module `YcodeXcodebuild`; executable product
+`ycodebuild`, built from the executable target `ycodebuild-cli` in
+`ycode/Sources/ycodebuild-cli`). It accepts the same command lines as
 `xcodebuild`, prints the same output formats and returns the same exit
 codes, so that scripts and CI jobs written for `xcodebuild` keep working.
 It never runs `xcodebuild` to do its work.

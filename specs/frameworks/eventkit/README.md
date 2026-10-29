@@ -1,8 +1,15 @@
 # EventKit and EventKitUI (iOS) — specification index
 
-Status: **round 0 (specification)**, 2026-10-20. Reference: the iOS 27.1 SDK in
-Xcode 27.1 (27A9269) and the iOS 27.1 simulator runtime (24A94401); the
-iOS 27.0 (24A434) and 26.5 (23F77) runtimes were inspected as files only.
+Status: **round 0 (specification)**, 2026-10-20; implementation status
+below. Reference: the iOS 27.1 SDK in Xcode 27.1 (27A9269) and the iOS 27.1
+simulator runtime (24A94401); the iOS 27.0 (24A434) and 26.5 (23F77)
+runtimes were inspected as files only.
+
+Implementation status (2026-10-28): `frameworks/eventkit/` (package
+`ycode-eventkit`: library product `EventKit`, test target `EventKitTests`).
+Rounds R2–R4 of `plan.md` are done (R2 as a Linux package, without the guest
+daemon); R5 (authorization) is deferred; R6–R8 are not started. The package
+README lists what is done, deferred and not started.
 
 ## Scope
 
