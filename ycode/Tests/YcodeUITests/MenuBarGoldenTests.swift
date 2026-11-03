@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -27,6 +28,7 @@ Ycode ▸
   —
   Open Developer Tool ▸
     Device Hub
+    Compare Files…
     —
     More Developer Tools…
   Services ▸
@@ -549,6 +551,9 @@ Integrate ▸
   Add
   Cherry-Pick…
   Stash Changes…
+  Resolve Conflicts… | when
+  Continue | when
+  Abort | when
   —
   Create Pull Request… | when
   —
@@ -582,10 +587,9 @@ Help ▸
   Human Interface Guidelines | ⇧⌘H
   —
   Ycode Help
-  What's New in Ycode
   Release Notes
   The Swift Programming Language
-  Provide Feedback…
+  Report a Bug…
   —
   Hide Keyboard Hints | ⌥⌘?
   Show Quick Help for Selected Item | ⌃⌘?

@@ -161,7 +161,9 @@ extension VulkanMetalBackend {
                         log("held command buffer of process \(key.process): \(error)")
                         if let cb = rec.cb { freeCommandBuffers.append(cb) }
                         for c in rec.chunks { recycle(c) }
-                        if let entry {
+                        // Refused because the device was lost: the reset records it again.
+                        if let entry, !(deviceLost && parkForReset(entry.commandBuffer, scheduled: entry.scheduled,
+                                                                   completed: entry.completed)) {
                             enqueueCompletion(status: MetalCommandBufferStatus.error, scheduled: entry.scheduled,
                                               completed: entry.completed)
                         }

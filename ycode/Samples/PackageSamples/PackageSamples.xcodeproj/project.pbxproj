@@ -1,0 +1,778 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		9AC4A6E00000000000000006 /* LocalPackageApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AC4A6E00000000000000005 /* LocalPackageApp.swift */; };
+		9AC4A6E00000000000000009 /* LocalKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9AC4A6E00000000000000008 /* LocalKit */; };
+		9AC4A6E0000000000000000B /* LocalKitDynamic in Frameworks */ = {isa = PBXBuildFile; productRef = 9AC4A6E0000000000000000A /* LocalKitDynamic */; };
+		9AC4A6E00000000000000015 /* RemotePackageApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AC4A6E00000000000000014 /* RemotePackageApp.swift */; };
+		9AC4A6E00000000000000018 /* Algorithms in Frameworks */ = {isa = PBXBuildFile; productRef = 9AC4A6E00000000000000017 /* Algorithms */; };
+		9AC4A6E00000000000000022 /* MacroApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AC4A6E00000000000000021 /* MacroApp.swift */; };
+		9AC4A6E00000000000000025 /* GreetMacros in Frameworks */ = {isa = PBXBuildFile; productRef = 9AC4A6E00000000000000024 /* GreetMacros */; };
+		9AC4A6E0000000000000002F /* PluginApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AC4A6E0000000000000002E /* PluginApp.swift */; };
+		9AC4A6E00000000000000031 /* AppMessages.codegen in Resources */ = {isa = PBXBuildFile; fileRef = 9AC4A6E00000000000000030 /* AppMessages.codegen */; };
+		9AC4A6E00000000000000034 /* Codegen in Frameworks */ = {isa = PBXBuildFile; productRef = 9AC4A6E00000000000000033 /* Codegen */; };
+		9AC4A6E00000000000000040 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AC4A6E0000000000000003F /* main.swift */; };
+		9AC4A6E00000000000000043 /* LocalKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9AC4A6E00000000000000042 /* LocalKit */; };
+		9AC4A6E00000000000000045 /* LocalKitDynamic in Frameworks */ = {isa = PBXBuildFile; productRef = 9AC4A6E00000000000000044 /* LocalKitDynamic */; };
+		9AC4A6E00000000000000047 /* Algorithms in Frameworks */ = {isa = PBXBuildFile; productRef = 9AC4A6E00000000000000046 /* Algorithms */; };
+		9AC4A6E00000000000000049 /* GreetMacros in Frameworks */ = {isa = PBXBuildFile; productRef = 9AC4A6E00000000000000048 /* GreetMacros */; };
+		9AC4A6E0000000000000004B /* Codegen in Frameworks */ = {isa = PBXBuildFile; productRef = 9AC4A6E0000000000000004A /* Codegen */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		9AC4A6E00000000000000005 /* LocalPackageApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPackageApp.swift; sourceTree = "<group>"; };
+		9AC4A6E0000000000000000F /* LocalPackageApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LocalPackageApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9AC4A6E00000000000000014 /* RemotePackageApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePackageApp.swift; sourceTree = "<group>"; };
+		9AC4A6E0000000000000001C /* RemotePackageApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RemotePackageApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9AC4A6E00000000000000021 /* MacroApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacroApp.swift; sourceTree = "<group>"; };
+		9AC4A6E00000000000000029 /* MacroApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacroApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9AC4A6E0000000000000002E /* PluginApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginApp.swift; sourceTree = "<group>"; };
+		9AC4A6E00000000000000030 /* AppMessages.codegen */ = {isa = PBXFileReference; lastKnownFileType = text; path = AppMessages.codegen; sourceTree = "<group>"; };
+		9AC4A6E0000000000000003A /* PluginApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PluginApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9AC4A6E0000000000000003F /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		9AC4A6E0000000000000004E /* PackageSamplesMac */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = PackageSamplesMac; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		9AC4A6E0000000000000000D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AC4A6E00000000000000009 /* LocalKit in Frameworks */,
+				9AC4A6E0000000000000000B /* LocalKitDynamic in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AC4A6E0000000000000001A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AC4A6E00000000000000018 /* Algorithms in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AC4A6E00000000000000027 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AC4A6E00000000000000025 /* GreetMacros in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AC4A6E00000000000000038 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AC4A6E00000000000000034 /* Codegen in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AC4A6E0000000000000004D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AC4A6E00000000000000043 /* LocalKit in Frameworks */,
+				9AC4A6E00000000000000045 /* LocalKitDynamic in Frameworks */,
+				9AC4A6E00000000000000047 /* Algorithms in Frameworks */,
+				9AC4A6E00000000000000049 /* GreetMacros in Frameworks */,
+				9AC4A6E0000000000000004B /* Codegen in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		9AC4A6E00000000000000007 /* LocalPackageApp */ = {
+			isa = PBXGroup;
+			children = (
+				9AC4A6E00000000000000005 /* LocalPackageApp.swift */,
+			);
+			path = LocalPackageApp;
+			sourceTree = "<group>";
+		};
+		9AC4A6E00000000000000016 /* RemotePackageApp */ = {
+			isa = PBXGroup;
+			children = (
+				9AC4A6E00000000000000014 /* RemotePackageApp.swift */,
+			);
+			path = RemotePackageApp;
+			sourceTree = "<group>";
+		};
+		9AC4A6E00000000000000023 /* MacroApp */ = {
+			isa = PBXGroup;
+			children = (
+				9AC4A6E00000000000000021 /* MacroApp.swift */,
+			);
+			path = MacroApp;
+			sourceTree = "<group>";
+		};
+		9AC4A6E00000000000000032 /* PluginApp */ = {
+			isa = PBXGroup;
+			children = (
+				9AC4A6E0000000000000002E /* PluginApp.swift */,
+				9AC4A6E00000000000000030 /* AppMessages.codegen */,
+			);
+			path = PluginApp;
+			sourceTree = "<group>";
+		};
+		9AC4A6E00000000000000041 /* PackageSamplesMac */ = {
+			isa = PBXGroup;
+			children = (
+				9AC4A6E0000000000000003F /* main.swift */,
+			);
+			path = PackageSamplesMac;
+			sourceTree = "<group>";
+		};
+		9AC4A6E00000000000000053 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9AC4A6E0000000000000000F /* LocalPackageApp.app */,
+				9AC4A6E0000000000000001C /* RemotePackageApp.app */,
+				9AC4A6E00000000000000029 /* MacroApp.app */,
+				9AC4A6E0000000000000003A /* PluginApp.app */,
+				9AC4A6E0000000000000004E /* PackageSamplesMac */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9AC4A6E00000000000000054 = {
+			isa = PBXGroup;
+			children = (
+				9AC4A6E00000000000000007 /* LocalPackageApp */,
+				9AC4A6E00000000000000016 /* RemotePackageApp */,
+				9AC4A6E00000000000000023 /* MacroApp */,
+				9AC4A6E00000000000000032 /* PluginApp */,
+				9AC4A6E00000000000000041 /* PackageSamplesMac */,
+				9AC4A6E00000000000000053 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9AC4A6E00000000000000013 /* LocalPackageApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9AC4A6E00000000000000012 /* Build configuration list for PBXNativeTarget "LocalPackageApp" */;
+			buildPhases = (
+				9AC4A6E0000000000000000C /* Sources */,
+				9AC4A6E0000000000000000D /* Frameworks */,
+				9AC4A6E0000000000000000E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LocalPackageApp;
+			packageProductDependencies = (
+				9AC4A6E00000000000000008 /* LocalKit */,
+				9AC4A6E0000000000000000A /* LocalKitDynamic */,
+			);
+			productName = LocalPackageApp;
+			productReference = 9AC4A6E0000000000000000F /* LocalPackageApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9AC4A6E00000000000000020 /* RemotePackageApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9AC4A6E0000000000000001F /* Build configuration list for PBXNativeTarget "RemotePackageApp" */;
+			buildPhases = (
+				9AC4A6E00000000000000019 /* Sources */,
+				9AC4A6E0000000000000001A /* Frameworks */,
+				9AC4A6E0000000000000001B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RemotePackageApp;
+			packageProductDependencies = (
+				9AC4A6E00000000000000017 /* Algorithms */,
+			);
+			productName = RemotePackageApp;
+			productReference = 9AC4A6E0000000000000001C /* RemotePackageApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9AC4A6E0000000000000002D /* MacroApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9AC4A6E0000000000000002C /* Build configuration list for PBXNativeTarget "MacroApp" */;
+			buildPhases = (
+				9AC4A6E00000000000000026 /* Sources */,
+				9AC4A6E00000000000000027 /* Frameworks */,
+				9AC4A6E00000000000000028 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MacroApp;
+			packageProductDependencies = (
+				9AC4A6E00000000000000024 /* GreetMacros */,
+			);
+			productName = MacroApp;
+			productReference = 9AC4A6E00000000000000029 /* MacroApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9AC4A6E0000000000000003E /* PluginApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9AC4A6E0000000000000003D /* Build configuration list for PBXNativeTarget "PluginApp" */;
+			buildPhases = (
+				9AC4A6E00000000000000037 /* Sources */,
+				9AC4A6E00000000000000038 /* Frameworks */,
+				9AC4A6E00000000000000039 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9AC4A6E00000000000000036 /* PBXTargetDependency */,
+			);
+			name = PluginApp;
+			packageProductDependencies = (
+				9AC4A6E00000000000000033 /* Codegen */,
+			);
+			productName = PluginApp;
+			productReference = 9AC4A6E0000000000000003A /* PluginApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9AC4A6E00000000000000052 /* PackageSamplesMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9AC4A6E00000000000000051 /* Build configuration list for PBXNativeTarget "PackageSamplesMac" */;
+			buildPhases = (
+				9AC4A6E0000000000000004C /* Sources */,
+				9AC4A6E0000000000000004D /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PackageSamplesMac;
+			packageProductDependencies = (
+				9AC4A6E00000000000000042 /* LocalKit */,
+				9AC4A6E00000000000000044 /* LocalKitDynamic */,
+				9AC4A6E00000000000000046 /* Algorithms */,
+				9AC4A6E00000000000000048 /* GreetMacros */,
+				9AC4A6E0000000000000004A /* Codegen */,
+			);
+			productName = PackageSamplesMac;
+			productReference = 9AC4A6E0000000000000004E /* PackageSamplesMac */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9AC4A6E00000000000000058 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+			};
+			buildConfigurationList = 9AC4A6E00000000000000057 /* Build configuration list for PBXProject "PackageSamples" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 9AC4A6E00000000000000054;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9AC4A6E00000000000000001 /* XCLocalSwiftPackageReference "Packages/LocalKit" */,
+				9AC4A6E00000000000000002 /* XCLocalSwiftPackageReference "Packages/GreetMacros" */,
+				9AC4A6E00000000000000003 /* XCLocalSwiftPackageReference "Packages/Codegen" */,
+				9AC4A6E00000000000000004 /* XCRemoteSwiftPackageReference "swift-algorithms" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 9AC4A6E00000000000000053 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9AC4A6E00000000000000013 /* LocalPackageApp */,
+				9AC4A6E00000000000000020 /* RemotePackageApp */,
+				9AC4A6E0000000000000002D /* MacroApp */,
+				9AC4A6E0000000000000003E /* PluginApp */,
+				9AC4A6E00000000000000052 /* PackageSamplesMac */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9AC4A6E0000000000000000E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AC4A6E0000000000000001B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AC4A6E00000000000000028 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AC4A6E00000000000000039 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AC4A6E00000000000000031 /* AppMessages.codegen in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9AC4A6E0000000000000000C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AC4A6E00000000000000006 /* LocalPackageApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AC4A6E00000000000000019 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AC4A6E00000000000000015 /* RemotePackageApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AC4A6E00000000000000026 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AC4A6E00000000000000022 /* MacroApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AC4A6E00000000000000037 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AC4A6E0000000000000002F /* PluginApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9AC4A6E0000000000000004C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9AC4A6E00000000000000040 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9AC4A6E00000000000000036 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			productRef = 9AC4A6E00000000000000035 /* CodegenPlugin */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		9AC4A6E00000000000000010 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = LocalPackageApp;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.packages.LocalPackageApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9AC4A6E00000000000000011 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = LocalPackageApp;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.packages.LocalPackageApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9AC4A6E0000000000000001D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = RemotePackageApp;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.packages.RemotePackageApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9AC4A6E0000000000000001E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = RemotePackageApp;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.packages.RemotePackageApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9AC4A6E0000000000000002A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = MacroApp;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.packages.MacroApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9AC4A6E0000000000000002B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = MacroApp;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.packages.MacroApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9AC4A6E0000000000000003B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PluginApp;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.packages.PluginApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9AC4A6E0000000000000003C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PluginApp;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.packages.PluginApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9AC4A6E0000000000000004F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		9AC4A6E00000000000000050 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		9AC4A6E00000000000000055 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		9AC4A6E00000000000000056 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		9AC4A6E00000000000000012 /* Build configuration list for PBXNativeTarget "LocalPackageApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9AC4A6E00000000000000010 /* Debug */,
+				9AC4A6E00000000000000011 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9AC4A6E0000000000000001F /* Build configuration list for PBXNativeTarget "RemotePackageApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9AC4A6E0000000000000001D /* Debug */,
+				9AC4A6E0000000000000001E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9AC4A6E0000000000000002C /* Build configuration list for PBXNativeTarget "MacroApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9AC4A6E0000000000000002A /* Debug */,
+				9AC4A6E0000000000000002B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9AC4A6E0000000000000003D /* Build configuration list for PBXNativeTarget "PluginApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9AC4A6E0000000000000003B /* Debug */,
+				9AC4A6E0000000000000003C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9AC4A6E00000000000000051 /* Build configuration list for PBXNativeTarget "PackageSamplesMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9AC4A6E0000000000000004F /* Debug */,
+				9AC4A6E00000000000000050 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9AC4A6E00000000000000057 /* Build configuration list for PBXProject "PackageSamples" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9AC4A6E00000000000000055 /* Debug */,
+				9AC4A6E00000000000000056 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		9AC4A6E00000000000000001 /* XCLocalSwiftPackageReference "Packages/LocalKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/LocalKit;
+		};
+		9AC4A6E00000000000000002 /* XCLocalSwiftPackageReference "Packages/GreetMacros" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/GreetMacros;
+		};
+		9AC4A6E00000000000000003 /* XCLocalSwiftPackageReference "Packages/Codegen" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/Codegen;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9AC4A6E00000000000000004 /* XCRemoteSwiftPackageReference "swift-algorithms" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-algorithms.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9AC4A6E00000000000000008 /* LocalKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9AC4A6E00000000000000001 /* LocalKit */;
+			productName = LocalKit;
+		};
+		9AC4A6E0000000000000000A /* LocalKitDynamic */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9AC4A6E00000000000000001 /* LocalKit */;
+			productName = LocalKitDynamic;
+		};
+		9AC4A6E00000000000000017 /* Algorithms */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9AC4A6E00000000000000004 /* swift-algorithms */;
+			productName = Algorithms;
+		};
+		9AC4A6E00000000000000024 /* GreetMacros */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9AC4A6E00000000000000002 /* GreetMacros */;
+			productName = GreetMacros;
+		};
+		9AC4A6E00000000000000033 /* Codegen */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9AC4A6E00000000000000003 /* Codegen */;
+			productName = Codegen;
+		};
+		9AC4A6E00000000000000035 /* CodegenPlugin */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = "plugin:CodegenPlugin";
+		};
+		9AC4A6E00000000000000042 /* LocalKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9AC4A6E00000000000000001 /* LocalKit */;
+			productName = LocalKit;
+		};
+		9AC4A6E00000000000000044 /* LocalKitDynamic */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9AC4A6E00000000000000001 /* LocalKit */;
+			productName = LocalKitDynamic;
+		};
+		9AC4A6E00000000000000046 /* Algorithms */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9AC4A6E00000000000000004 /* swift-algorithms */;
+			productName = Algorithms;
+		};
+		9AC4A6E00000000000000048 /* GreetMacros */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9AC4A6E00000000000000002 /* GreetMacros */;
+			productName = GreetMacros;
+		};
+		9AC4A6E0000000000000004A /* Codegen */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9AC4A6E00000000000000003 /* Codegen */;
+			productName = Codegen;
+		};
+/* End XCSwiftPackageProductDependency section */
+
+	};
+	rootObject = 9AC4A6E00000000000000058 /* Project object */;
+}

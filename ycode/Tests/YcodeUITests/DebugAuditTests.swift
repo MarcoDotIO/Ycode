@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import YcodeDebug
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// A minimal in-memory adapter for the debug.md audit items: two frames,

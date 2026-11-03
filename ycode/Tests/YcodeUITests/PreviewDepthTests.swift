@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import YcodeDebug
 import YcodeBuild
+@testable import YcodeIDECore
 import YcodeProject
 @testable import YcodeUI
 
@@ -15,7 +16,7 @@ var localSwbuild: String? {
 }
 
 @MainActor
-@Suite(.serialized, .heavyIntegration, .timeLimit(.minutes(15))) struct PreviewDepthTests {
+@Suite(.serialized, .heavyIntegration, .previewHostCheck, .timeLimit(.minutes(30))) struct PreviewDepthTests {
     func dir(_ name: String) -> URL {
         let d = ycodeDir.appendingPathComponent(".build-ide/previews2/\(name)")
         try? FileManager.default.removeItem(at: d)

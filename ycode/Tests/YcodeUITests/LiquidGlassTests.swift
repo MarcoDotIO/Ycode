@@ -1,5 +1,6 @@
 import AppKit
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// `specs/ide/liquid-glass.md` as `liquid-glass-ycode.md` implements it:
@@ -48,17 +49,20 @@ import Testing
         #expect(!nav.selectorPill.isHidden && nav.selectorPill.frame.size == NavigatorAreaController.selectorPillSize)
         let plus = nav.plusGlass.frame, field = nav.filterGlass.frame
         #expect(plus.size == NavigatorAreaController.plusSize && abs(plus.minX - 6) <= 0.5, "\(plus)")
-        #expect(field.height == 30 && abs(field.minY - 7) <= 0.5 && abs(field.minX - plus.maxX - 6) <= 0.5 && abs(nav.view.bounds.maxX - field.maxX - 6) <= 0.5, "\(field)")
+        #expect(field.height == 30 && abs(field.minY - 7) <= 0.5 && abs(field.minX - plus.maxX - NavigatorAreaController.plusToFilter) <= 0.5 && field.width == 242 && abs(nav.view.bounds.maxX - field.maxX - 6) <= 0.5, "\(field)")
         // Under the bars: the outline's scroll view spans the area's height.
         let scroll = nav.scrollView
         let inRoot = scroll.convert(scroll.bounds, to: nav.view)
         #expect(abs(inRoot.maxY - h) <= 0.5 && abs(inRoot.minY) <= 0.5, "\(inRoot)")
         #expect(scroll.contentInsets.top > 0 && scroll.contentInsets.bottom >= nav.filterGlass.frame.maxY)
         #expect(!nav.scrollClipView.clipsToBounds)
-        // The Find navigator's header: clipped below it.
+        // The Find navigator's header: clipped below it, the scroll view
+        // filling the clip and its inset putting the first row 4 points
+        // below the clip's top (metrics.md §2).
         nav.select(3)
         nav.view.layoutSubtreeIfNeeded()
-        #expect(nav.scrollClipView.clipsToBounds && scroll.contentInsets.top == 0)
+        #expect(nav.scrollClipView.clipsToBounds && abs(scroll.frame.maxY - nav.scrollClipView.bounds.maxY) <= 0.5)
+        #expect(abs(scroll.contentInsets.top - (NavigatorAreaController.clipToFirstRow - nav.outlineTopPadding)) <= 0.25)
         nav.select(0)
         nav.view.layoutSubtreeIfNeeded()
         #expect(!nav.scrollClipView.clipsToBounds)

@@ -93,6 +93,24 @@ public final class DeviceLiveSession: NSObject, ViewerConnectionDelegate, Device
     // MARK: State
 
     public var isLive: Bool { phase == "live" }
+    /// Another viewer has the display (the headset, or another window; display-stream.md §1.1).
+    public var isTakenOver: Bool { phase == DisplayNotice.takenOverPhase }
+    /// The IDE handed the display to the headset (device-hub.md §I.12).
+    public private(set) var isHeldForHeadset = false
+
+    /// View in Headset: keep showing until the headset viewer takes over, then wait.
+    public func holdForHeadset() {
+        isHeldForHeadset = true
+        connection.expectTakeover(true)
+        notify(.phase)
+    }
+
+    /// Back to Desktop, or Take Back: connect again at once (the desktop takes the display back).
+    public func takeBack() {
+        isHeldForHeadset = false
+        connection.takeBack()
+        notify(.phase)
+    }
     public var hasImage: Bool { image != nil }
     public var isFoldable: Bool { hello?.foldable == true || (hello == nil && spec.isFoldable) }
     /// The server turns the device (display-stream.md §11: foldables today).
@@ -116,6 +134,7 @@ public final class DeviceLiveSession: NSObject, ViewerConnectionDelegate, Device
             let s = p.shownPointSize
             return CGSize(width: s.width, height: s.height)
         }
+        if isTallVision { return spec.panels[0].uprightPointSize }
         if let h = hello { return CGSize(width: h.pointWidth, height: h.pointHeight) }
         return spec.panels[0].uprightPointSize
     }
@@ -134,6 +153,7 @@ public final class DeviceLiveSession: NSObject, ViewerConnectionDelegate, Device
         case "booting": "Starting… \(uptimeMilliseconds / 1000) s"
         case "stopping": "The device is shutting down"
         case "live": hasImage ? nil : "Waiting for the first frame"
+        case DisplayNotice.takenOverPhase: isHeldForHeadset ? "In the headset" : "Another viewer has this device"
         default: phase
         }
     }
@@ -199,8 +219,26 @@ public final class DeviceLiveSession: NSObject, ViewerConnectionDelegate, Device
         notify(.phase)
     }
 
+    /// A Vision Pro booted with the headset's tall display (2160 × 3840,
+    /// device-hub.md §I.12): the desktop shows the picture's centre at the
+    /// desktop's 16:9 — the same 90° × 58.7° view as the 3840 × 2160 display,
+    /// at 2160 × 1215 pixels — and the pointer maps onto that crop.
+    public var isTallVision: Bool {
+        guard spec.family == .vision, let h = hello else { return false }
+        return h.pixelHeight > h.pixelWidth
+    }
+
+    /// The centre band of a tall picture at the device type's aspect.
+    public static func desktopCrop(_ image: CGImage, aspect: Double) -> CGImage {
+        let w = image.width, h = Int((Double(w) / aspect).rounded())
+        guard h < image.height, h > 0 else { return image }
+        return image.cropping(to: CGRect(x: 0, y: (image.height - h) / 2, width: w, height: h)) ?? image
+    }
+
     public func connection(_ c: ViewerConnection, image: CGImage, frame: DisplayFrame, receivedAt: UInt64) {
         let first = self.image == nil
+        let panel = spec.panels[0].uprightPointSize
+        let image = isTallVision ? Self.desktopCrop(image, aspect: Double(panel.width / panel.height)) : image
         self.image = image
         if first { log("first frame: \(frame.width)x\(frame.height), \(frame.byteCount) bytes") }
         frameTimes.append(nowNanoseconds())
@@ -257,6 +295,35 @@ public final class DeviceLiveSession: NSObject, ViewerConnectionDelegate, Device
         probe(seq, down ? label : nil)
     }
 
+    /// A watch: scrolling turns the Digital Crown (watchos.md §12).
+    public var scrollsTurnTheCrown: Bool { spec.family == .watch }
+
+    /// The crown's rotation as the device's `crown` command (WatchInput.swift
+    /// in ycode-simd), one per scroll event; replies are not shown.
+    public func rotateCrown(by delta: Double) {
+        guard spec.family == .watch, delta.isFinite, delta != 0 else { return }
+        connection.sendCommand(String(format: "crown %.3f", delta)) { _ in }
+    }
+
+    /// visionOS (visionos.md "Ycode implementation"): only a server whose
+    /// hello says `spatial` gets pose, selection and dial messages.
+    public var isSpatial: Bool { hello?.spatial == true }
+
+    public func sendSelection(_ selection: SpatialSelection, label: String?) {
+        guard isSpatial else { return }
+        probe(connection.sendInput { .selection(sequence: $0, selection: selection) }, label)
+    }
+
+    public func sendPose(_ pose: SpatialPose) {
+        guard isSpatial else { return }
+        connection.sendInput { .pose(sequence: $0, pose: pose) }
+    }
+
+    public func turnDial(by delta: Double) {
+        guard isSpatial, delta.isFinite, delta != 0 else { return }
+        connection.sendInput { .dial(sequence: $0, delta: delta) }
+    }
+
     /// A button: down, then up 100 ms later.
     public func press(_ button: DisplayButton) {
         buttonDown(button)
@@ -280,14 +347,25 @@ public final class DeviceLiveSession: NSObject, ViewerConnectionDelegate, Device
 
     /// The frame button → the display stream's button (Ycode decision: the
     /// side and top buttons are Sleep/Wake (lock), the action button the
-    /// side usage).
-    public static func displayButton(for kind: DeviceFrameGeometry.ButtonKind) -> DisplayButton {
+    /// side usage). On a watch (watchos.md §5.2): the crown is the crown
+    /// press (`home`), the side button `side`, and an Ultra's Action button
+    /// `action` when the server lists it in its hello (`actionOnTheWire`; an
+    /// older server takes `side`, the provisional mapping of §11.3).
+    public static func displayButton(for kind: DeviceFrameGeometry.ButtonKind, watch: Bool = false,
+                                     actionOnTheWire: Bool = false) -> DisplayButton {
         switch kind {
         case .side, .top: .lock
+        case .sideButton: watch ? .side : .lock
         case .volumeUp: .volumeUp
         case .volumeDown: .volumeDown
-        case .action: .side
+        case .action: watch && actionOnTheWire ? .action : .side
+        case .crown: .home
         }
+    }
+
+    /// This device's button for a frame button (above).
+    public func displayButton(for kind: DeviceFrameGeometry.ButtonKind) -> DisplayButton {
+        Self.displayButton(for: kind, watch: spec.family == .watch, actionOnTheWire: hello?.buttons.contains("action") == true)
     }
 
     // MARK: Rotation and the fold

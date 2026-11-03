@@ -99,6 +99,20 @@ extension DAPClient {
         try await request("attach", .object(args))
     }
 
+    /// Attach to a process served by a gdb-remote stub (Ycode's simulator,
+    /// `specs/simulator/debug-stub.md` §8): lldb-dap's `gdb-remote-port` and
+    /// `gdb-remote-hostname` attach arguments, with the local `program` so
+    /// lldb has the build's symbols. `preRunCommands` run before the connect
+    /// (path mappings, settings).
+    public func attachRemote(port: Int, hostname: String = "127.0.0.1", program: String?, threadFormat: String?,
+                             preRunCommands: [String] = []) async throws {
+        var args: [String: JSON] = ["gdb-remote-port": .number(Double(port)), "gdb-remote-hostname": .string(hostname)]
+        if let program { args["program"] = .string(program) }
+        if let threadFormat { args["threadFormat"] = .string(threadFormat) }
+        if !preRunCommands.isEmpty { args["preRunCommands"] = .array(preRunCommands.map { .string($0) }) }
+        try await request("attach", .object(args))
+    }
+
     /// Launch with a thread format (see `attach`).
     public func launch(program: String, cwd: String?, threadFormat: String, arguments: [String] = [], environment: [String: String] = [:]) async throws {
         var args: [String: JSON] = ["program": .string(program), "args": .array(arguments.map { .string($0) }),

@@ -1,4 +1,5 @@
 import XCTest
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// specs/ide/reference-ui-3.md §3 (asset catalog) and §6 (Organizer).

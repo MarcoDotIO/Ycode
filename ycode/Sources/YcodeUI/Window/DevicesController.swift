@@ -1,123 +1,8 @@
 import AppKit
 import YcodeDeviceModel
 import YcodeDeviceUI
+import YcodeIDECore
 import YcodeSubprocess
-
-/// A device or simulator of the hub's sidebar. See `specs/ide/devices.md`
-/// and `specs/ide/device-hub.md`.
-public struct DeviceRow: Equatable, Sendable {
-    public var name: String
-    public var identifier: String
-    public var platform: String
-    public var osVersion: String
-    /// `Booted` / `Shutdown` (simulators); pairing/connection (devices).
-    public var state: String
-    /// Device type / model.
-    public var model: String
-    public var isAvailable: Bool
-    /// Ycode's remote simulator (the only row Ycode can erase).
-    public var isYcodeRemote = false
-    /// The device type folds (`foldable.md` §8.3 E1): the row offers the
-    /// fold controls.
-    public var isFoldable = false
-    /// Ycode's device type id (its frame in the hub's canvas; nil: not a
-    /// Ycode simulator).
-    public var deviceTypeID: String?
-
-    /// Ycode's remote simulator as a Simulators row: "Booted" while a run
-    /// uses it, else "Shutdown" (its state is saved between runs).
-    public static func ycodeRemote(_ remote: RemoteSimulator, running: Bool) -> DeviceRow {
-        let s = remote.settings
-        // One row per runtime and device type (run.md §Runtimes and device types).
-        return DeviceRow(name: remote.target?.name ?? RemoteSimulator.deviceName, identifier: "\(s.destination):\(remote.remoteDevicePath)",
-                         platform: "iOS", osVersion: remote.runtimeVersion ?? "", state: running ? "Booted" : "Shutdown",
-                         model: remote.target.map { "\($0.deviceType.name), Ycode Simulator (Linux)" } ?? "Ycode Simulator (Linux)",
-                         isAvailable: true, isYcodeRemote: true, isFoldable: remote.isFoldable,
-                         deviceTypeID: remote.target?.deviceType.id)
-    }
-}
-
-public enum DevicesList {
-    static let runtimePlatforms = ["iOS": "iOS", "watchOS": "watchOS", "tvOS": "tvOS", "xrOS": "visionOS", "visionOS": "visionOS"]
-
-    /// `xcrun simctl list -j`: devices by runtime; runtime names and model
-    /// names come from the `runtimes` and `devicetypes` lists when present.
-    public static func simulators(simctlJSON data: Data) -> [DeviceRow] {
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let byRuntime = root["devices"] as? [String: [[String: Any]]] else { return [] }
-        var typeNames: [String: String] = [:]
-        for t in root["devicetypes"] as? [[String: Any]] ?? [] {
-            if let id = t["identifier"] as? String, let n = t["name"] as? String { typeNames[id] = n }
-        }
-        var versions: [String: String] = [:]
-        for r in root["runtimes"] as? [[String: Any]] ?? [] {
-            if let id = r["identifier"] as? String, let v = r["version"] as? String { versions[id] = v }
-        }
-        var out: [DeviceRow] = []
-        for (runtime, devices) in byRuntime {
-            let tail = runtime.split(separator: ".").last.map(String.init) ?? runtime
-            let parts = tail.split(separator: "-").map(String.init)
-            guard let first = parts.first, let platform = runtimePlatforms[first] else { continue }
-            let version = versions[runtime] ?? parts.dropFirst().joined(separator: ".")
-            for d in devices {
-                guard let name = d["name"] as? String, let udid = d["udid"] as? String else { continue }
-                let type = d["deviceTypeIdentifier"] as? String ?? ""
-                out.append(DeviceRow(name: name, identifier: udid, platform: platform, osVersion: version,
-                                     state: d["state"] as? String ?? "", model: typeNames[type] ?? type.split(separator: ".").last.map(String.init) ?? "",
-                                     isAvailable: d["isAvailable"] as? Bool ?? true))
-            }
-        }
-        // Versions compare numerically ("17.5" before "17.10").
-        return out.sorted {
-            if $0.platform != $1.platform { return $0.platform < $1.platform }
-            if $0.name != $1.name { return $0.name < $1.name }
-            return $0.osVersion.compare($1.osVersion, options: .numeric) == .orderedAscending
-        }
-    }
-
-    /// `xcrun devicectl list devices --json-output`: physical devices.
-    public static func devices(devicectlJSON data: Data) -> [DeviceRow] {
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let list = (root["result"] as? [String: Any])?["devices"] as? [[String: Any]] else { return [] }
-        return list.compactMap { d in
-            let hw = d["hardwareProperties"] as? [String: Any] ?? [:]
-            let props = d["deviceProperties"] as? [String: Any] ?? [:]
-            let conn = d["connectionProperties"] as? [String: Any] ?? [:]
-            guard (hw["reality"] as? String ?? "physical") == "physical", let name = props["name"] as? String else { return nil }
-            let pairing = conn["pairingState"] as? String ?? ""
-            let tunnel = conn["tunnelState"] as? String ?? ""
-            return DeviceRow(name: name, identifier: d["identifier"] as? String ?? hw["udid"] as? String ?? "",
-                             platform: hw["platform"] as? String ?? "", osVersion: props["osVersionNumber"] as? String ?? "",
-                             state: [pairing, tunnel].filter { !$0.isEmpty }.joined(separator: ", "),
-                             model: hw["marketingName"] as? String ?? hw["productType"] as? String ?? "", isAvailable: true)
-        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-
-    #if os(macOS)
-    /// Runs the two read-only listing commands.
-    public static func load() -> (devices: [DeviceRow], simulators: [DeviceRow]) {
-        func run(_ args: [String]) -> Data? {
-            MainThreadGuard.blockingCall("xcrun \(args.joined(separator: " "))")
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-            p.arguments = args
-            let out = Pipe()
-            p.standardOutput = out
-            p.standardError = FileHandle.nullDevice
-            guard (try? p.run()) != nil else { return nil }
-            let data = out.fileHandleForReading.readDataToEndOfFile()
-            p.waitUntilExit()
-            return p.terminationStatus == 0 ? data : nil
-        }
-        let sims = run(["simctl", "list", "-j"]).map(simulators(simctlJSON:)) ?? []
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-devices-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: file) }
-        _ = run(["devicectl", "list", "devices", "--json-output", file.path, "-q"])
-        let devs = (try? Data(contentsOf: file)).map(devices(devicectlJSON:)) ?? []
-        return (devs, sims)
-    }
-    #endif
-}
 
 /// Device Hub (`specs/ide/device-hub.md` §2.1, §3, §5, §6), opened by
 /// Product ▸ Destination ▸ Manage Devices… (⇧⌘2): a sidebar of devices and
@@ -178,6 +63,10 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     /// The camera setting of Ycode's simulators (DevicesController+Camera.swift):
     /// reads and writes `RemoteSimulatorSettings.camera`. Set by the window.
     public var cameraSetting: (get: () -> String, set: (String) -> Void)?
+    /// Pairs of Ycode's simulators (DevicesController+Pairing.swift).
+    public let pairing = HubPairing()
+    /// A Vision Pro in a headset (DevicesController+Headset.swift).
+    public let headset = HubHeadset()
 
     // MARK: Rows
 
@@ -308,7 +197,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         simulators[i] = row
         rebuildModel()
         reloadSidebar()
-        if row.state != "Booted" { closeLink(row.identifier) }
+        if row.state != "Booted" { headsetDeviceStopped(row.identifier); closeLink(row.identifier) }
         if selected?.identifier == row.identifier {
             selected = row
             if row.state != "Booted" { settingsSnapshot = nil } else if settingsSnapshot == nil, settingsControlsEnabled { refreshSettings() }
@@ -523,7 +412,14 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
             self.view.window?.makeKeyAndOrderFront(nil)
             w?.close()
         }
-        w.extraMoreItems = { [weak self] in self?.lifecycleItems(for: r) ?? [] }
+        w.extraMoreItems = { [weak self] in (self?.lifecycleItems(for: r) ?? []) + (self?.headsetMenuItems(for: r) ?? []) }
+        if isHeadsetRow(r) {
+            w.canvas.headsetCommandEnabled = { [weak self] in self?.canToggleHeadset(r) ?? false }
+            w.canvas.headsetCommandTitle = { [weak self] in self?.headsetCommandTitle(for: r) ?? "View in Headset" }
+            w.canvas.onTakeBack = { [weak self] in self?.backToDesktop(r) }
+            w.canvas.commandFallback = { [weak self] c in c == .viewInHeadset ? self?.toggleHeadset(r) != nil : false }
+            w.headsetToggle = { [weak self] in self?.toggleHeadset(r) }
+        }
         w.onClose = { [weak self] in self?.compactWindows[r.identifier] = nil }
         compactWindows[r.identifier] = w
         w.present()
@@ -556,6 +452,8 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         open.isEnabled = r.state == "Booted" && makeDisplayLink != nil
         menu.addItem(open)
         menu.addItem(.separator())
+        for i in headsetMenuItems(for: r) { menu.addItem(i) }
+        for i in pairingMenuItems(for: r) { menu.addItem(i) }
         if r.isFoldable {
             let on = r.state == "Booted" && foldDevice != nil && foldTask == nil && selected?.identifier == r.identifier
             let current = hingeAngles[r.identifier]
@@ -736,6 +634,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
             if settingsSnapshot == nil, settingsTask == nil, settingsControlsEnabled { refreshSettings() }
             if foldControlsEnabled, hingeAngles[r.identifier] == nil, foldTask == nil { refreshFold() }
         }
+        pollPairs()
         guard let now = currentRemoteRows?() else { return }
         for r in now {
             guard let old = simulators.first(where: { $0.isYcodeRemote && $0.identifier == r.identifier }),
@@ -821,6 +720,10 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         }
         canvas.onCaptureChange = { [weak self] on in self?.toolbarController.updateCapture(on) }
         canvas.commandFallback = { [weak self] c in self?.performWithoutDisplay(c) ?? false }
+        // A Vision Pro: View in Headset / Back to Desktop (§I.12).
+        canvas.headsetCommandEnabled = { [weak self] in self?.canToggleHeadset(self?.selected) ?? false }
+        canvas.headsetCommandTitle = { [weak self] in self?.headsetCommandTitle(for: self?.selected) ?? "View in Headset" }
+        canvas.onTakeBack = { [weak self] in if let r = self?.selected { self?.backToDesktop(r) } }
         return root
     }
 
@@ -833,6 +736,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         case .poseOpen: return fold(to: 180) != nil
         case .rotateLeft: return rotate(left: true) != nil
         case .rotateRight: return rotate(left: false) != nil
+        case .viewInHeadset: return toggleHeadset() != nil
         default: return false
         }
     }
@@ -896,12 +800,11 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     /// The canvas for the selection (§4.1).
     func refreshCanvas() {
         guard isViewLoaded else { return }
-        if multipleSelection.count > 1 { canvas.showMessage("Multiple Devices Selected"); return }
-        guard let r = selected else { canvas.showMessage("No Selection"); return }
+        if multipleSelection.count > 1 { canvas.pairedTitle = nil; canvas.showMessage("Multiple Devices Selected"); return }
+        guard let r = selected else { canvas.showMessage(emptyCanvasMessage); return }
+        updatePairedCapsule(for: r)
         let d = hubDevice(r)
-        let spec = r.deviceTypeID.flatMap(DeviceFrameSpec.named(typeID:))
-            ?? DeviceFrameSpec.matching(pixelWidth: d.family == .pad ? 1640 : 1206, pixelHeight: d.family == .pad ? 2360 : 2622,
-                                        scale: d.family == .pad ? 2 : 3)
+        let spec = r.deviceTypeID.flatMap(DeviceFrameSpec.named(typeID:)) ?? DeviceFrameSpec.placeholder(for: d.family)
         if busyDevices.contains(r.identifier) {
             canvas.showStopped(spec: spec, name: r.name, os: d.osTitle, action: nil, busy: true)
         } else if r.isYcodeRemote, r.state == "Booted", let l = link(for: r) {
@@ -914,11 +817,18 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         }
     }
 
+    /// The canvas with nothing selected; with no devices at all it says what
+    /// a device takes.
+    var emptyCanvasMessage: String {
+        guard devices.isEmpty, simulators.isEmpty else { return "No Selection" }
+        return "No Devices\n\n\(ExperimentalNotice.simulator)\n\(ExperimentalNotice.simulatorSetup)"
+    }
+
     func updateWindowTitle() {
         guard let w = view.window else { return }
         if let r = selected, multipleSelection.count <= 1 {
             w.title = r.name
-            w.subtitle = hubDevice(r).osTitle
+            w.subtitle = hubDevice(r).osTitle + (r.isYcodeRemote ? " — \(ExperimentalNotice.label)" : "")
         } else {
             w.title = "Devices"
             w.subtitle = "No Selection"
@@ -953,6 +863,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
                         ?? (d.state == "Booted" ? "Unknown" : "Closed when it boots")))
             if let foldStatus { out.append(("Fold Status", foldStatus)) }
         }
+        out += pairInfoRows(for: d)
         return out.filter { editingInfoVisibility || !hiddenInfoRows.contains($0.0) }
     }
 
@@ -965,6 +876,10 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
             if let r = selected, r.isYcodeRemote {
                 inspectorContent.addArrangedSubview(settingsControls())
                 if cameraControlsShown { inspectorContent.addArrangedSubview(cameraControls()) }
+                if headsetControlsShown {
+                    inspectorContent.addArrangedSubview(headsetControls())
+                    if headset.report == nil, headset.checkTask == nil { checkHeadset() }
+                }
             } else {
                 let text = selected == nil ? "No Selection"
                     : "No settings are available for the selected device. Ycode changes the settings of its own simulators."
@@ -1149,6 +1064,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
             select(row: 0)
         }
         if isViewLoaded, defaults.object(forKey: Self.sidebarKey) as? Bool == false { sidebarItem?.isCollapsed = true }
+        Task { await refreshPairs() }
     }
 
     /// The hub window (§2.1): 1100 × 800 at first, unified toolbar without
@@ -1228,7 +1144,8 @@ final class DeviceHubRowView: NSView {
             disc.layer?.borderColor = NSColor.separatorColor.cgColor
         }
         // Ycode's own glyph (no product symbols, AGENTS.md rule 5): lit while running.
-        let glyph = NSImageView(image: DeviceGlyph.of(d.family).image(height: d.family == .vision ? 11 : 18, lit: d.isRunning))
+        let glyph = NSImageView(image: DeviceGlyph.of(d.family).image(height: d.family == .vision ? 11 : d.family == .watch ? 17 : 18,
+                                                                      lit: d.isRunning))
         glyph.contentTintColor = d.isRunning ? .controlAccentColor : .secondaryLabelColor
         let name = NSTextField(labelWithString: d.name)
         name.font = .systemFont(ofSize: 13)

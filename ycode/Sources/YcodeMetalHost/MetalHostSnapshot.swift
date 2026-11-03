@@ -77,6 +77,12 @@ public struct MetalReplayReport: Sendable {
     public var processes = 0, objects = 0, ghosts = 0, failures = 0
     public var textureBytes = 0, bufferBytes = 0, contentsSkipped = 0
     public var addressesChanged = 0, samplerIDsChanged = 0
+    /// Heap slots: textures and samplers whose slot the back end kept from
+    /// the snapshot, and those that got another one.
+    public var slotsKept = 0, textureIDsChanged = 0
+    /// Argument-encoder members written again from their objects, and how
+    /// many of them now hold a different value.
+    public var argumentMembers = 0, argumentMembersChanged = 0
     public var lines: [String] = []
 }
 
@@ -95,7 +101,13 @@ extension MetalHostCore {
         static let handle: UInt16 = 40, ref: UInt16 = 41, rights: UInt16 = 42, heap: UInt16 = 43, heapBytes: UInt16 = 44
         static let heapSize: UInt16 = 45, heapUsed: UInt16 = 46, gpuAddress: UInt16 = 47, eventValue: UInt16 = 48
         static let recipe: UInt16 = 49, contents: UInt16 = 50, contentKind: UInt16 = 51, addressQueried: UInt16 = 52
-        static let backendAddress: UInt16 = 53
+        static let backendAddress: UInt16 = 53, heapSlot: UInt16 = 54, heapSlots: UInt16 = 55
+        // an argument encoder's argument buffer and offset (its last kind-0 set call)
+        static let argumentTarget: UInt16 = 56, argumentTargetOffset: UInt16 = 57
+        // argument members (global list 6)
+        static let argumentMembers: UInt16 = 6
+        static let memberTarget: UInt16 = 60, memberAt: UInt16 = 61, memberKind: UInt16 = 62
+        static let memberObject: UInt16 = 63, memberOffset: UInt16 = 64, memberValue: UInt16 = 65
     }
 
     // MARK: Recipes and dependencies
@@ -164,6 +176,18 @@ extension MetalHostCore {
             if let pid = c.process { f.u64(T.process, pid) }
             return f
         })
+        g.list(T.argumentMembers, argumentMembers.sorted { $0.key < $1.key }.flatMap { target, members in
+            members.sorted { $0.key < $1.key }.map { at, m in
+                var e = SnapshotFields()
+                e.u64(T.memberTarget, target.raw)
+                e.i64(T.memberAt, Int64(at))
+                e.u64(T.memberKind, UInt64(m.kind))
+                e.u64(T.memberObject, m.object.raw)
+                e.i64(T.memberOffset, m.offset)
+                e.u64(T.memberValue, m.written)
+                return e
+            }
+        })
         let procs = processes.values.sorted { $0.id < $1.id }
         var objectsToRead: [(MetalHandle, MetalRefKind, MetalRecipe?)] = []
         var encoded: [(Process, SnapshotFields, [(MetalHandle, SnapshotFields)])] = []
@@ -198,6 +222,10 @@ extension MetalHostCore {
                 e.u64(T.eventValue, o.eventValue)
                 e.bool(T.addressQueried, o.addressQueried)
                 if let r = o.recipe { e.nested(T.recipe, r.fields) }
+                if let t = o.argumentTarget {
+                    e.u64(T.argumentTarget, t.buffer.raw)
+                    e.i64(T.argumentTargetOffset, Int64(t.offset))
+                }
                 objs.append((h, e))
                 objectsToRead.append((h, o.kind, o.recipe))
             }
@@ -216,9 +244,11 @@ extension MetalHostCore {
         backend.snapshotSettle()
         var contents: [MetalHandle: (kind: UInt64, bytes: [UInt8])] = [:]
         var addresses: [MetalHandle: UInt64] = [:]
+        var slots: [MetalHandle: (index: UInt32, count: UInt32)] = [:]
         var textureBytes = 0, bufferBytes = 0, skipped = 0
         for (h, kind, recipe) in objectsToRead {
             if kind == .sampler, let id = backend.gpuResourceID(ofSampler: h) { addresses[h] = id }
+            if kind == .resource, let run = backend.heapSlots(ofTexture: h) { slots[h] = run }
             guard kind == .resource, let recipe else { continue }
             switch (recipe.mt, recipe.op) {
             case (1, _), (12, 24):
@@ -253,6 +283,10 @@ extension MetalHostCore {
                     e.bytes(U.contents, c.bytes)
                 }
                 if let a = addresses[h] { e.u64(U.backendAddress, a) }
+                if let run = slots[h] {
+                    e.u64(U.heapSlot, UInt64(run.index))
+                    e.u64(U.heapSlots, UInt64(run.count))
+                }
                 return e
             })
             return f
@@ -306,6 +340,10 @@ extension MetalHostCore {
         }
         // (handle, process, kind, recipe, object record or nil for a ghost)
         var replay: [(MetalHandle, Process, MetalRefKind, MetalRecipe, SnapshotFieldReader?)] = []
+        // Heap slots of the live textures and samplers: the back end keeps
+        // them, so shader-visible IDs the guest holds stay valid.
+        var textureSlots: [MetalHandle: (index: UInt32, count: UInt32)] = [:]
+        var samplerSlots: [MetalHandle: UInt32] = [:]
         for pr in g.list(T.processes) {
             let p = Process(id: pr.u64(T.id))
             p.guestPID = pr.i32(T.guestPID)
@@ -332,7 +370,19 @@ extension MetalHostCore {
                 object.eventValue = o.u64(T.eventValue)
                 object.addressQueried = o.bool(T.addressQueried)
                 object.recipe = o.nested(T.recipe).map(MetalRecipe.init)
+                // Layouts and encoders keep the op-16 description in their
+                // recipe (metal-sim-protocol.md §4.3): their member tables
+                // come back from it; an older snapshot without it falls back
+                // to the 8 × index rule.
+                if kind == .argumentLayout || kind == .argumentEncoder, let body = object.recipe?.body, !body.isEmpty {
+                    object.argumentLayout = try? MetalArgumentLayout.parse(recordBody: body)
+                }
+                if o.has(T.argumentTarget) {
+                    object.argumentTarget = (MetalHandle(o.u64(T.argumentTarget)), Int(o.i64(T.argumentTargetOffset)))
+                }
                 p.objects[h] = object
+                if o.has(T.heapSlot) { textureSlots[h] = (o.u32(T.heapSlot), max(o.u32(T.heapSlots), 1)) }
+                if kind == .sampler, o.has(T.backendAddress) { samplerSlots[h] = UInt32(truncatingIfNeeded: o.u64(T.backendAddress)) }
                 if let r = object.recipe {
                     replay.append((h, p, kind, r, o))
                     for d in r.deps { p.dependents[d, default: 0] += 1 }
@@ -356,6 +406,8 @@ extension MetalHostCore {
             nextHandle = max(nextHandle, g.u64(T.nextHandle))
             nextGPUAddress = max(nextGPUAddress, g.u64(T.nextGPUAddress))
         }
+
+        backend.reserveHeapSlots(textures: textureSlots, samplers: samplerSlots)
 
         // Creation order: dependencies always have lower handles.
         replay.sort { $0.0 < $1.0 }
@@ -381,9 +433,11 @@ extension MetalHostCore {
                     report.contentsSkipped += 1
                 }
             }
-            if kind == .sampler, record.has(T.backendAddress), let id = backend.gpuResourceID(ofSampler: h),
-               id != record.u64(T.backendAddress) {
-                report.samplerIDsChanged += 1
+            if kind == .sampler, record.has(T.backendAddress), let id = backend.gpuResourceID(ofSampler: h) {
+                if id != record.u64(T.backendAddress) { report.samplerIDsChanged += 1 } else { report.slotsKept += 1 }
+            }
+            if record.has(T.heapSlot), let run = backend.heapSlots(ofTexture: h) {
+                if UInt64(run.index) != record.u64(T.heapSlot) { report.textureIDsChanged += 1 } else { report.slotsKept += 1 }
             }
             if kind == .resource, record.has(T.backendAddress), let a = backend.gpuAddress(ofBuffer: h), a != record.u64(T.backendAddress) {
                 report.addressesChanged += 1
@@ -392,9 +446,41 @@ extension MetalHostCore {
                 }
             }
         }
-        // The kept recipes are not live objects.
+        // The kept recipes are not live objects; slots reserved for objects
+        // that were not made again go back.
         for (_, p) in restored { for h in p.ghosts.keys { backend.release(h) } }
+        backend.reserveHeapSlots(textures: [:], samplers: [:])
+        restoreArgumentMembers(g.list(T.argumentMembers), restored, &report)
         return report
+    }
+
+    /// Writes every recorded argument-encoder member again from its object
+    /// (its texture's or sampler's ID, its buffer's GPU address on the new
+    /// back end), so argument buffers in guest memory name the restored
+    /// objects (visionos.md §10.21).
+    private func restoreArgumentMembers(_ list: [SnapshotFieldReader], _ restored: [MetalProcessID: Process],
+                                        _ report: inout MetalReplayReport) {
+        typealias T = SnapTag
+        let live = Set(restored.values.flatMap { $0.objects.keys })
+        var members: [MetalHandle: [Int: ArgumentMember]] = [:]
+        for e in list {
+            let target = MetalHandle(e.u64(T.memberTarget)), object = MetalHandle(e.u64(T.memberObject))
+            guard live.contains(target), live.contains(object) else { continue }
+            let at = Int(e.i64(T.memberAt))
+            var m = ArgumentMember(kind: UInt8(truncatingIfNeeded: e.u64(T.memberKind)), object: object,
+                                   offset: e.i64(T.memberOffset), written: e.u64(T.memberValue))
+            guard let v = argumentMemberValue(kind: m.kind, object: object, offset: m.offset) else { continue }
+            if v != m.written {
+                var w = MetalByteWriter()
+                w.u64(v)
+                guard backend.writeBuffer(target, offset: at, w.bytes) else { continue }
+                report.argumentMembersChanged += 1
+                m.written = v
+            }
+            report.argumentMembers += 1
+            members[target, default: [:]][at] = m
+        }
+        lock.withLock { argumentMembers = members }
     }
 
     private func textureDescriptor(_ recipe: MetalRecipe) throws -> MetalTextureDescriptor {

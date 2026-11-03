@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -79,12 +80,5 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         tv.insertText("let d = 4", replacementRange: tv.selectedRange())
         #expect(wc.editor.textView.string.contains("let d = 4"))
         #expect(c.rows.contains { $0.right?.text == "let d = 4" || $0.left?.text == "let d = 4" })
-    }
-
-    @Test func commitSheetUsesGitDiff() throws {
-        let (dir, main) = try repo("cr28-c")
-        let r = try #require(GitRepository(containing: dir))
-        #expect(r.diff(of: main.path) == r.diff(of: main.path, scope: .all))
-        #expect(r.diff(of: main.path).hasPrefix("@@"))
     }
 }

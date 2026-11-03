@@ -171,14 +171,48 @@ with the program counter's line marked as the current line. While it is
 on, Step Over / Step Into send `next` / `stepIn` with `granularity:
 "instruction"`.
 
+## Remote: apps on the Ycode simulator (SIM-DEBUG, 2026-10-30)
+
+A run on a Ycode simulator destination (`run.md` §Remote Ycode simulator)
+runs under the debugger, as a run on a Mac simulator does. ycode-simd
+serves a gdb-remote stub for the launched app (`--debug-server`,
+`specs/simulator/debug-stub.md`); ssh forwards its socket to a loopback
+port of the Mac; lldb-dap attaches with its `gdb-remote-port` and
+`gdb-remote-hostname` attach arguments and `program` = the local build of
+the app's executable (so the symbols and sources are the build's). From
+then on the session is the ordinary one above: `initialized` →
+breakpoints → `configurationDone`, the app continued once after the
+attach stop, `stopped` events, the variables view, the debug bar.
+
+- The activity reads "Configuring Debugger Actions" from the launched line
+  until the attach, then "Running <app> on <device>".
+- Stop detaches (`disconnect` with `terminateDebuggee: false`): the
+  launcher ends the app at its save.
+- The defaults key `Ycode.remote.debugger` = false runs without the
+  debugger; a Gauge profile run never attaches.
+- What the stub offers (and so what LLDB can do) is in `debug-stub.md`:
+  registers (general purpose and FP/SIMD), software breakpoints, single
+  step, hardware watchpoints (the Watchpoints list and "Watch" on a
+  variable work as on a Mac simulator), images loaded after the attach
+  (breakpoints in a `dlopen`ed library resolve when it loads), and Swift,
+  C and Objective-C expressions in the console (SIM-DEBUG2, 2026-10-31:
+  the stub reports the runtime's OS version and the device OS type, so
+  LLDB's Swift expressions get a valid `@available`, `debug-stub.md`
+  §4.3). The variables view shows Swift values formatted (an `Int` as its
+  digits; a struct as its type, `DebugDemo.Stats @ 0x…`, with its fields as
+  children, as lldb-dap presents it); the opt-in `RemoteDebugEndToEndTests`
+  checks that and a Swift expression at the breakpoint (`expression round *
+  2` → `(Int) $R0 = 4`, SIM-DEBUG2).
+
 ## Environment Overrides and Simulate Location (FEAT-IMPL, 2026-10-27)
 
 The debug bar's **Environment Overrides** and **Simulate Location**
 buttons (after Step Out, `reference-ui-4.md` §1.2) act on an app running
-on the Ycode simulator (`run.md` §Remote Ycode simulator). No debugger
-attaches to such a run, so the reference's way — the debugger running code
-in the app (`specs/simulator/simulator-features.md` §7.3) — is not
-available. **Ycode decision:** the remote run launches the app with
+on the Ycode simulator (`run.md` §Remote Ycode simulator). Until SIM-DEBUG
+no debugger attached to such a run, so the reference's way — the debugger
+running code in the app (`specs/simulator/simulator-features.md` §7.3) —
+was not available, and the library below stays the way (it needs no
+expression evaluation in the app). **Ycode decision:** the remote run launches the app with
 `--environment-overrides`: ycode-simd inserts Ycode's overrides library
 into the app (`DYLD_INSERT_LIBRARIES`) and names a directory of the device
 for its overrides file; changing an override rewrites the app's file and
@@ -206,6 +240,21 @@ starts with no overrides (ycode-simd removes the file at the launch).
   sends `location set …`, `location run …` or `location clear` to the
   run's device. Without such a run the menu says "Location simulation
   needs a run on the Ycode simulator".
+
+**The Debug menu (IDE-QUICKWINS, 2026-10-30).** The same features from the
+menu bar: **Debug ▸ Simulate Location ▸** is filled with the debug bar's
+menu each time it opens (the note alone without a run on the Ycode
+simulator). **View Debugging ▸ Disable All Environment Overrides** sends
+`overrides <id> clear` (enabled while overrides are set). **View Debugging
+▸ Appearance ▸** changes the overrides (Ycode decision): System Appearance
+removes the appearance and Increase Contrast overrides; Light and Dark
+set the appearance and remove Increase Contrast; High Contrast Light and
+High Contrast Dark set the appearance and Increase Contrast. The item
+matching the overrides is checked; all are disabled without a run on the
+Ycode simulator. Code: `YcodeIDECore` `DebugAppearanceMenu`, `YcodeUI`
+`WorkspaceWindowController+SimulatorDebugMenu.swift`. Tests:
+`IDEQuickWinsUITests.simulateLocationSubmenu`,
+`appearanceAndDisableAllOverrides`.
 
 What the library does in the app (`SimGuestAgents/overrides`):
 appearance, Dynamic Type, Increase Contrast and Bold Text become trait
@@ -279,6 +328,9 @@ interposing) and their public change notifications are posted. Code:
   access type Watch uses by default; the disassembly window size and
   format; queue grouping details (Xcode shows queue labels and thread
   counts).
+- Remote debugging (SIM-DEBUG): lldb-dap's `gdb-remote-port` /
+  `gdb-remote-hostname` attach arguments (LLVM's lldb-dap documentation,
+  level 1); the stub and its evidence: `specs/simulator/debug-stub.md`.
 - Environment Overrides and Simulate Location (FEAT-IMPL): items, values
   and categories from `specs/simulator/simulator-features.md` §7.3 (level
   4 there); the pop-over layout and the in-app library are Ycode design

@@ -4,8 +4,10 @@
 // the edges, drawn flat with a slight shade. Clicking a button presses it
 // on the device (down while the mouse is down, so a click is a press and a
 // hold is a long press). For the iPhone Duo, Option-dragging on the frame
-// sets the hinge (the pose slider, §4.4). Without bezels, or for visionOS,
-// only the screen with its rounded corners is drawn.
+// sets the hinge (the pose slider, §4.4). A watch's Digital Crown is drawn
+// as a rounded cylinder with ridges across it (Ycode's own drawing). Without
+// bezels, or for visionOS, only the screen with its rounded corners is
+// drawn.
 
 #if os(macOS)
 import AppKit
@@ -28,6 +30,7 @@ public final class DeviceFrameView: NSView {
 
     private let bodyLayer = CAShapeLayer()
     private let buttonsLayer = CAShapeLayer()
+    private let ridgesLayer = CAShapeLayer()
     private let pressedLayer = CAShapeLayer()
     private let shadeLayer = CAShapeLayer()
     private let hingeLayer = CAShapeLayer()
@@ -40,7 +43,7 @@ public final class DeviceFrameView: NSView {
         super.init(frame: NSRect(origin: .zero, size: geometry.size))
         wantsLayer = true
         layer?.masksToBounds = false
-        for l in [buttonsLayer, pressedLayer, bodyLayer] { layer?.addSublayer(l) }
+        for l in [buttonsLayer, pressedLayer, ridgesLayer, bodyLayer] { layer?.addSublayer(l) }
         addSubview(screen)
         screen.layer?.mask = screenMask
         for l in [shadeLayer, hingeLayer] { l.zPosition = 10; layer?.addSublayer(l) }
@@ -66,6 +69,8 @@ public final class DeviceFrameView: NSView {
         buttonsLayer.strokeColor = NSColor(white: 0.36, alpha: 1).cgColor
         buttonsLayer.lineWidth = 0.5
         pressedLayer.fillColor = NSColor(white: 0.55, alpha: 1).cgColor
+        ridgesLayer.strokeColor = NSColor(white: 0.12, alpha: 1).cgColor
+        ridgesLayer.fillColor = nil
         shadeLayer.fillColor = NSColor.black.withAlphaComponent(0.28).cgColor
         hingeLayer.strokeColor = NSColor(white: 0.45, alpha: 1).cgColor
     }
@@ -80,9 +85,11 @@ public final class DeviceFrameView: NSView {
         let hasBand = g.body != g.screen
         bodyLayer.path = hasBand ? Self.path(r(g.body), radii: g.bodyRadii.scaled(by: s)) : nil
         let buttons = CGMutablePath()
-        for b in g.buttons { buttons.addPath(Self.path(r(b.rect), radii: CornerRadii(all: 1.5 * s))) }
+        for b in g.buttons { buttons.addPath(Self.path(r(b.rect), radii: Self.buttonRadii(b, scale: s))) }
         buttonsLayer.path = buttons
-        pressedLayer.path = g.buttons.first { $0.kind == pressed }.map { Self.path(r($0.rect), radii: CornerRadii(all: 1.5 * s)) }
+        pressedLayer.path = g.buttons.first { $0.kind == pressed }.map { Self.path(r($0.rect), radii: Self.buttonRadii($0, scale: s)) }
+        ridgesLayer.path = g.buttons.first { $0.kind == .crown }.map { Self.ridges(r($0.rect), scale: s) }
+        ridgesLayer.lineWidth = max(0.5, 0.6 * s)
         let screenRect = r(g.screen).integral
         screen.frame = screenRect
         screenMask.frame = screen.bounds
@@ -101,6 +108,33 @@ public final class DeviceFrameView: NSView {
         shadeMask.path = Self.path(screenRect, radii: g.screenRadii.scaled(by: s))
         shadeLayer.mask = g.shadedArea == nil ? nil : shadeMask
         CATransaction.commit()
+    }
+
+    /// A button's corner radii: a bar's are small, the crown's round its
+    /// outer end.
+    static func buttonRadii(_ b: DeviceFrameGeometry.Button, scale s: CGFloat) -> CornerRadii {
+        b.kind == .crown ? CornerRadii(all: 3 * s) : CornerRadii(all: 1.5 * s)
+    }
+
+    /// The crown's ridges: short lines across its long side, on the part
+    /// outside the body (the bar's outer two thirds).
+    static func ridges(_ r: CGRect, scale s: CGFloat) -> CGPath {
+        let p = CGMutablePath()
+        let vertical = r.height >= r.width
+        let count = 7
+        for i in 1...count {
+            let f = CGFloat(i) / CGFloat(count + 1)
+            if vertical {
+                let y = r.minY + f * r.height
+                p.move(to: CGPoint(x: r.minX + r.width * 0.35, y: y))
+                p.addLine(to: CGPoint(x: r.maxX - 1.2 * s, y: y))
+            } else {
+                let x = r.minX + f * r.width
+                p.move(to: CGPoint(x: x, y: r.minY + r.height * 0.35))
+                p.addLine(to: CGPoint(x: x, y: r.maxY - 1.2 * s))
+            }
+        }
+        return p
     }
 
     /// A rounded rectangle with a radius per corner (each limited to half

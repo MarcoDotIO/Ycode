@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// Editing ▸ Display rows drawn by the source editor
 /// (`specs/ide/reference-ui-5.md` §9.3): MARK separators, the condition
@@ -141,7 +142,7 @@ extension SourceEditorController {
         let d = displayState
         d.pending = nil
         let text = textView.string
-        let code = fileURL != nil && displayLanguage != .plain
+        let code = fileURL != nil && displayLanguage.isCode
         d.markLines = code && p.showMarkSeparators ? EditorDisplayModel.markSeparatorLines(in: text) : []
         d.endifConditions = code && p.showEndifConditions ? EditorDisplayModel.endifConditions(in: text) : [:]
         d.inactive = code && p.dimInactiveCode ? EditorDisplayModel.inactiveLines(in: text) : []

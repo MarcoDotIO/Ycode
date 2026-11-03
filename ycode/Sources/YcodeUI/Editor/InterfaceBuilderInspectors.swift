@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The §13 inspector sections (reference-ui-4.md) rendered as controls.
 /// Every edit writes the named XML attribute (see IBInspectorModel.swift).

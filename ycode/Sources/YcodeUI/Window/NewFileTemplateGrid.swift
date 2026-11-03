@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// One template tile: the icon above the title; selected tiles get an
 /// accent background (`specs/ide/reference-ui-3.md` §5.3).
@@ -126,6 +127,8 @@ final class TemplateGridView: NSView {
             let grid = NSGridView(views: rows)
             grid.rowSpacing = 4
             grid.columnSpacing = 4
+            // Fixed columns: a short last row keeps the tiles' positions.
+            for i in 0..<grid.numberOfColumns { grid.column(at: i).width = TemplateTile.size.width }
             content.addArrangedSubview(grid)
         }
         updateStickyHeader()

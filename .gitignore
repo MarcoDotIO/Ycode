@@ -20,8 +20,24 @@ ycode/SimHostLibs/out/
 ycode/SimGuestAgents/out/
 ycode/SimGuestFrameworks/out/
 ycode/Native/out/
+ycode/MacUserland/out/
 # Helper packages build in place
 ycode/Tools/*/.build/
+# Sample packages, when SwiftPM is run in them directly
+ycode/Samples/**/.build/
+ycode/Samples/**/.swiftpm/
+# Ycode's own build folder when the IDE builds a sample project (swift-build engine)
+ycode/Samples/**/.ycode-build/
+ycode/Samples/**/xcuserdata/
 # SwiftPM scratch at the repository root
 /.build/
 *.profraw
+
+# Flatpak build folders
+packaging/flatpak/.work/
+packaging/flatpak/out/
+# Logs from .github/scripts/run-tests.py
+ci-logs/
+.build-ci-logs/
+# A marker the working drive keeps next to a checkout
+.drive-origin

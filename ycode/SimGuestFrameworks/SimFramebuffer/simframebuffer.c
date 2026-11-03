@@ -117,8 +117,11 @@ extern void os_unfair_lock_lock(os_unfair_lock *);
 extern void os_unfair_lock_unlock(os_unfair_lock *);
 extern int open(const char *path, int flags, ...);
 extern long pwrite(int fd, const void *buf, size_t n, int64_t offset);
+extern long pread(int fd, void *buf, size_t n, int64_t offset);
+extern int close(int fd);
 extern int getpid(void);
 extern uint32_t IOSurfaceGetID(const void *surface);
+#define O_RDONLY 0x0000
 #define O_WRONLY 0x0001
 #define O_CREAT 0x0200
 #define O_TRUNC 0x0400
@@ -493,14 +496,84 @@ EXPORT uint64_t SFBConnectionGetID(const void *connection) {
     return 1;
 }
 
+/* ---- A display size changed while the device runs (diagnostic) ----
+ * With YCODE_FRAMEBUFFER_LIVE_SIZE naming a file, the library reads it five
+ * times a second on the queue of the display-updated handler. The file holds
+ * "<sequence> <width> <height> <value> <kind>": for each new sequence display
+ * 1 takes the size and the handler runs: kind 0 updated (display, value);
+ * kind 1 disconnected, then connected 1 s later. This answers whether the
+ * guest takes a live mode change (xr-viewer.md §4.4, device-hub.md §I.12);
+ * nothing else uses it. */
+static uint64_t liveSizeSequence;
+struct LiveSizeWatch { struct SFBConnection *connection; dispatch_queue_t queue; const char *path; };
+
+static uint64_t next_number(const char **s, const char *end) {
+    while (*s < end && (**s < '0' || **s > '9')) (*s)++;
+    uint64_t v = 0;
+    while (*s < end && **s >= '0' && **s <= '9') v = v * 10 + (uint64_t)(*(*s)++ - '0');
+    return v;
+}
+
+static void live_size_reconnect(void *context) {
+    struct SFBConnection *c = context;
+    SFBDisplayHandler connected = (SFBDisplayHandler)c->handlers[0];
+    if (connected && theDisplays[0]) connected(theDisplays[0], 0);
+}
+
+static void live_size_poll(void *context) {
+    struct LiveSizeWatch *w = context;
+    char text[96];
+    int fd = open(w->path, O_RDONLY);
+    if (fd >= 0) {
+        long n = pread(fd, text, sizeof text, 0);
+        close(fd);
+        if (n > 0 && theDisplays[0]) {
+            const char *s = text, *end = text + n;
+            uint64_t sequence = next_number(&s, end), width = next_number(&s, end), height = next_number(&s, end);
+            uint64_t value = next_number(&s, end), kind = next_number(&s, end);
+            if (sequence != liveSizeSequence && width && height) {
+                liveSizeSequence = sequence;
+                struct SFBDisplay *d = theDisplays[0];
+                os_unfair_lock_lock(&callsLock);
+                callsCount = 0;  /* what the guest asks next gets logged */
+                os_unfair_lock_unlock(&callsLock);
+                CALL("liveSize-sequence", sequence);
+                CALL("liveSize-kind", kind);
+                CALL("liveSize-value", value);
+                d->width = d->deviceWidth = (uint32_t)width;
+                d->height = d->deviceHeight = (uint32_t)height;
+                SFBDisplayHandler updated = (SFBDisplayHandler)w->connection->handlers[1];
+                SFBDisplayHandler gone = (SFBDisplayHandler)w->connection->handlers[2];
+                if (kind == 0 && updated) {
+                    updated(d, value);
+                } else if (kind == 1) {
+                    if (gone) gone(d, 0);
+                    dispatch_after_f(dispatch_time(0, 1000000000), w->queue, w->connection, live_size_reconnect);
+                }
+                CALL("liveSize-done", sequence);
+            }
+        }
+    }
+    dispatch_after_f(dispatch_time(0, 200000000), w->queue, w, live_size_poll);
+}
+
 static void set_handler(const void *connection, int which, void *queue, void *block) {
-    (void)queue;
     struct SFBConnection *c = (struct SFBConnection *)connection;
     if (!c) return;
     void *copy = block ? _Block_copy(block) : NULL;
     void *old = c->handlers[which];
     c->handlers[which] = copy;
     if (old) _Block_release(old);
+    const char *path = which == 1 && queue && block ? getenv("YCODE_FRAMEBUFFER_LIVE_SIZE") : NULL;
+    if (path && *path) {
+        struct LiveSizeWatch *w = calloc(1, sizeof *w);
+        if (w) {
+            w->connection = (struct SFBConnection *)CFRetain(c);
+            w->queue = queue;
+            w->path = path;
+            dispatch_after_f(dispatch_time(0, 200000000), queue, w, live_size_poll);
+        }
+    }
 }
 
 EXPORT void SFBConnectionSetDisplayConnectedHandler(const void *c, void *queue, void *block) { CALL("SFBConnectionSetDisplayConnectedHandler", 0); set_handler(c, 0, queue, block); }

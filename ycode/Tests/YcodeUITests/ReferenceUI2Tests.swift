@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeBuild
+@testable import YcodeIDECore
 import YcodeWorkspace
 import YcodeDebug
 @testable import YcodeUI
@@ -94,7 +95,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
     @Test func findNavigatorHeaderAndScopes() throws {
         try withWindow { wc, src, _ in
             #expect(NavigatorAreaController.findKinds.count == 9 && NavigatorAreaController.findMatches == ["Containing", "Matching Word", "Starting With", "Ending With"])
-            #expect(wc.navigator.findStyle.item(at: 1)?.isEnabled == false && wc.navigator.findStyle.item(at: 2)?.isEnabled == true)
+            // Every kind but Asset References works (navigators.md, "Ycode implementation").
+            #expect((0..<8).allSatisfy { wc.navigator.findStyle.item(at: $0)?.isEnabled == true } && wc.navigator.findStyle.item(at: 8)?.isEnabled == false)
             wc.navigator.select(3)
             wc.navigator.findMatch.selectItem(at: 2) // Starting With
             wc.navigator.find("greet")

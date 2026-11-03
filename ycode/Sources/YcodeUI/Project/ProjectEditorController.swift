@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 import YcodePlist
 import YcodeProject
 

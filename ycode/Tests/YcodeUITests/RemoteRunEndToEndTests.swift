@@ -2,6 +2,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// Opt-in end-to-end run on a real remote Ycode simulator (specs/ide/run.md

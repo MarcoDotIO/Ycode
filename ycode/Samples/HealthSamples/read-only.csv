@@ -1,0 +1,6 @@
+# Read-only types: `health import` refuses them; `health seed` (shut-down device) writes them.
+type,start,end,value,unit
+HKQuantityTypeIdentifierHeartRate,-10m,,70,count/min
+HKCategoryTypeIdentifierSleepApneaEvent,-30d,-1m,0,
+HKQuantityTypeIdentifierAppleSleepingBreathingDisturbances,-9h,-1h,6,count
+HKQuantityTypeIdentifierAtrialFibrillationBurden,-7d,-1m,0.03,%

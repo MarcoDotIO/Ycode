@@ -777,6 +777,43 @@ extension DarwinKernel {
 
     // MARK: statfs64
 
+    /// A guest volume's size and free space in 4096-byte blocks, and its
+    /// file counts (`statfs`, getattrlist's volume attributes).
+    struct VolumeSpace: Equatable {
+        var blocks: UInt64
+        var available: UInt64
+        var files: UInt64
+        var freeFiles: UInt64
+        /// Without a host answer (fixed values; 64 GiB, half free).
+        static let fallback = VolumeSpace(blocks: 1 << 24, available: 1 << 23, files: 1 << 20, freeFiles: 1 << 19)
+    }
+
+    /// The host directory whose file system gives the sizes of the guest
+    /// volume mounted at `mountPoint`: of the prefixes on that volume, the
+    /// first writable one (in device mode the device directory, where the
+    /// guest's writes to "/"'s volume go), else the one mounted there, else
+    /// the first; nil when no prefix is on it. Every path of one volume thus
+    /// reports the same sizes, also its read-only parts and "/" itself (an
+    /// APFS volume reports its container's free space). `visionos.md`
+    /// §10.26.2: "/" reported 0 bytes free and Photos refused its library.
+    static func volumeSpaceHostPath(mountPoint: String, prefixes: [DarwinFileSystem.Prefix]) -> String? {
+        let onVolume = prefixes.filter { $0.volumeMountPoint == mountPoint }
+        return (onVolume.first(where: \.writable) ?? onVolume.first(where: { $0.guestPath == mountPoint }) ?? onVolume.first)?.hostPath
+    }
+
+    /// The host volume's real sizes for the guest volume at `mountPoint`
+    /// (Ycode decision: the guest sees the space it can really write).
+    func volumeSpace(mountPoint: String) -> VolumeSpace {
+        let host = Self.volumeSpaceHostPath(mountPoint: mountPoint, prefixes: fileSystem.prefixes) ?? "/"
+        var vfs = statvfs()
+        guard statvfs(host, &vfs) == 0, vfs.f_frsize > 0 else { return .fallback }
+        // In 4096-byte blocks (f_bsize), whatever the host's fragment size.
+        let unit = UInt64(vfs.f_frsize)
+        return VolumeSpace(blocks: UInt64(vfs.f_blocks).multipliedReportingOverflow(by: unit).partialValue / 4096,
+                           available: UInt64(vfs.f_bavail).multipliedReportingOverflow(by: unit).partialValue / 4096,
+                           files: UInt64(vfs.f_files), freeFiles: UInt64(vfs.f_ffree))
+    }
+
     /// `struct statfs` (64-bit inode form, 2168 bytes) for the VFS prefix
     /// that serves `guestPath`: a local file system, read-only unless the
     /// prefix is writable.
@@ -786,20 +823,10 @@ extension DarwinKernel {
             .max { $0.guestPath.count < $1.guestPath.count }
         let mountPoint = prefix?.volumeMountPoint ?? "/"
         let readOnly = !(prefix?.writable ?? false)
-        // Sizes and free space are the host volume's, also for read-only
-        // volumes (an APFS system volume reports its container's free space).
-        // Ycode decision (unverified; a level-3 probe can confirm). Fallback:
-        // fixed values.
-        var blocks: UInt64 = 1 << 24, free: UInt64 = 1 << 23, files: UInt64 = 1 << 20, ffree: UInt64 = 1 << 19
-        var vfs = statvfs()
-        if statvfs(prefix?.hostPath ?? "/", &vfs) == 0, vfs.f_frsize > 0 {
-            // In 4096-byte blocks (f_bsize), whatever the host's fragment size.
-            let unit = UInt64(vfs.f_frsize)
-            blocks = UInt64(vfs.f_blocks).multipliedReportingOverflow(by: unit).partialValue / 4096
-            free = UInt64(vfs.f_bavail).multipliedReportingOverflow(by: unit).partialValue / 4096
-            files = UInt64(vfs.f_files)
-            ffree = UInt64(vfs.f_ffree)
-        }
+        // Sizes and free space are the host volume's, the same for every
+        // path of the guest volume (`volumeSpace`).
+        let space = volumeSpace(mountPoint: mountPoint)
+        let (blocks, free, files, ffree) = (space.blocks, space.available, space.files, space.freeFiles)
         var b = [UInt8](repeating: 0, count: 2168)
         b.putLE(UInt32(4096), at: 0)                // f_bsize
         b.putLE(Int32(1 << 20), at: 4)              // f_iosize

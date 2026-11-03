@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// A source or resource file opened from outside Ycode (Finder, `open`, a
 /// Dock drop) that no open workspace contains: it gets a window of its own

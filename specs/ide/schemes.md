@@ -35,8 +35,9 @@ Rows and defaults follow reference-ui-2.md §7. Rows whose scheme
 attributes are not in Ycode's specs (Build Order, Override
 Architectures, Build Debugging, Debug executable, Debug Process As, LLDB
 Init File, Launch, Expand Variables Based On, the Options rows other than
-the working directory, every Diagnostics row, Instrument, Archive Name
-and options) show their observed default and are disabled.
+the working directory, the Diagnostics rows other than the sanitizers
+(§Diagnostics), Instrument, Archive Name and options) show their observed
+default and are disabled.
 
 Run ▸ Info: Build Configuration pop-up (the container's configuration names,
 read from the project's build configuration list), Executable (the
@@ -59,6 +60,37 @@ Product ▸ Scheme: Choose Scheme (⌃0, opens the toolbar pop-up), Select
 Next / Previous Scheme (⌃⌘] / ⌃⌘[), Edit Scheme… (⌘<), New Scheme…
 (disabled), Manage Schemes…. Not yet: the list of schemes in the
 submenu.
+
+## Diagnostics (IDE-QUICKWINS, 2026-10-30)
+
+Run ▸ Diagnostics' **Runtime Sanitization** rows are editable; the Test
+pane has the same four rows for the test action. Each is an attribute of
+the action element, `"YES"` when on and removed when off:
+
+| Row | Attribute | Build setting (swift-build) | At run time |
+|---|---|---|---|
+| Address Sanitizer | `enableAddressSanitizer` | `ENABLE_ADDRESS_SANITIZER = YES` | – |
+| Detect use of stack after return (enabled only with ASan) | `enableASanStackUseAfterReturn` | – | `ASAN_OPTIONS` gains `detect_stack_use_after_return=1` (appended with `:` to a value the scheme sets) |
+| Thread Sanitizer | `enableThreadSanitizer` | `ENABLE_THREAD_SANITIZER = YES` | – |
+| Undefined Behavior Sanitizer | `enableUBSanitizer` | `ENABLE_UNDEFINED_BEHAVIOR_SANITIZER = YES` | – |
+
+- Address and Thread Sanitizer exclude each other (clang rejects the
+  pair): turning one on turns the other off; turning ASan off clears its
+  option.
+- Builds take the settings as command-line overrides
+  (`BuildRequest.settings`): Build, Run, Analyze and Build For ▸ Running
+  from `LaunchAction`; Test, Build For ▸ Testing and Test Without Building
+  from `TestAction`; Clean none. Project tests pass them to the test tool as
+  `NAME=value`. swift-build adds the `-fsanitize=` options and copies the
+  sanitizer runtime into the product. Packages (no scheme file) get none.
+- Still disabled: Main Thread Checker, Thread Performance Checker, the
+  memory-management, Metal and Core AI rows. They need runtime checkers
+  Ycode does not have.
+
+Code: `YcodeWorkspace` `SchemeDiagnostics`, `YcodeIDECore`
+`SchemeDiagnosticsBuild.swift`, `WorkspaceModel.buildRequest`,
+`WorkspaceSession.launchOptions`; `YcodeUI` `SchemeEditorController`.
+Tests: `IDEQuickWinsTests`, `IDEQuickWinsUITests.schemeDiagnosticsReachTheBuild`.
 
 ## Writing
 
@@ -99,3 +131,15 @@ current user's directory. The file's bytes are unchanged by a move.
   schemes in Manage Schemes (`xcschememanagement.plist`).
 - OPEN QUESTION: where a newly created `CommandLineArguments` element goes
   when a `LaunchAction` has other children (ours: right after the runnable).
+- Sanitizer attributes (`enableAddressSanitizer`,
+  `enableASanStackUseAfterReturn`, `enableThreadSanitizer`,
+  `enableUBSanitizer`, read as `== "YES"`, written only when on): the
+  open-source XcodeProj library (tuist, MIT), `XCScheme+LaunchAction.swift`
+  (level 1). Build settings: open-source swift-build (Apache-2.0),
+  `BuiltinMacros.swift` and `SanitizerTaskProducer.swift` (level 1).
+  `detect_stack_use_after_return`: LLVM's AddressSanitizer documentation
+  (level 1). That ASan and TSan cannot be combined: clang's documentation
+  (level 1).
+- OPEN QUESTION: whether Xcode's Test action uses its own Diagnostics or
+  the Run action's when "Use the Run action's arguments and environment"
+  is on; Ycode uses the test action's own attributes.

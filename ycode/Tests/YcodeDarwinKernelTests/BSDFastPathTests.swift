@@ -262,6 +262,23 @@ import YcodeDarwinABI
         _ = locked(env, k, 6, [UInt64(fdB)])
     }
 
+    /// Two `struct statfs` records of the same volume, read one after the
+    /// other: every field equal except the free-space counters (f_bfree,
+    /// f_bavail, f_files, f_ffree at 16..<48), which are the host volume's
+    /// live values and move whenever anything on the Mac writes a file (the
+    /// rest of the test bundle runs in parallel). Those must still describe
+    /// a volume: free blocks within the total.
+    private func expectSameVolume(_ a: [UInt8], _ b: [UInt8], sourceLocation: SourceLocation = #_sourceLocation) {
+        let live = 16..<48
+        func masked(_ r: [UInt8]) -> [UInt8] { r.enumerated().map { live.contains($0.offset) ? 0 : $0.element } }
+        #expect(a.count == 2168 && b.count == 2168, sourceLocation: sourceLocation)
+        guard a.count == 2168, b.count == 2168 else { return }
+        #expect(masked(a) == masked(b), sourceLocation: sourceLocation)
+        for r in [a, b] {
+            #expect(u64(r, 16) <= u64(r, 8) && u64(r, 24) <= u64(r, 8) && u64(r, 40) <= u64(r, 32), sourceLocation: sourceLocation)
+        }
+    }
+
     /// The small traps that left L0 (bsd-locking.md §12): gettimeofday,
     /// thread_selfid and getentropy on the BSD fast path; munmap, mprotect
     /// and mach_absolute_time as task-local traps. Same answers as the
@@ -308,10 +325,10 @@ import YcodeDarwinABI
         #expect(env.read(k, Self.buf1 + 0x400, 8) == Array("data.bin".utf8) && env.read(k, Self.buf2 + 0x400, 8) == Array("data.bin".utf8))
         #expect(fast(env, k, 58, [Self.pathVA, Self.buf1, 64]) == locked(env, k, 58, [Self.pathVA, Self.buf2, 64]))  // not a link
         #expect(fast(env, k, 345, [Self.pathVA, Self.buf1 + 0x800]) == 0 && locked(env, k, 345, [Self.pathVA, Self.buf2 + 0x800]) == 0)
-        #expect(env.read(k, Self.buf1 + 0x800, 2168) == env.read(k, Self.buf2 + 0x800, 2168))
+        expectSameVolume(env.read(k, Self.buf1 + 0x800, 2168), env.read(k, Self.buf2 + 0x800, 2168))
         let sfd = try #require(fast(env, k, 5, [Self.pathVA, 0, 0]))
         #expect(fast(env, k, 346, [UInt64(sfd), Self.buf1 + 0x800]) == 0 && locked(env, k, 346, [UInt64(sfd), Self.buf2 + 0x800]) == 0)
-        #expect(env.read(k, Self.buf1 + 0x800, 2168) == env.read(k, Self.buf2 + 0x800, 2168))
+        expectSameVolume(env.read(k, Self.buf1 + 0x800, 2168), env.read(k, Self.buf2 + 0x800, 2168))
         #expect(fast(env, k, 95, [UInt64(sfd)]) == 0 && locked(env, k, 95, [UInt64(sfd)]) == 0)
         #expect(fast(env, k, 95, [99]) == locked(env, k, 95, [99]) && fast(env, k, 187, [1]) == locked(env, k, 187, [1]))
         _ = locked(env, k, 6, [UInt64(sfd)])

@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// Editor wiring added with reference-ui-4.md §7/§9: the Quick Help links
 /// and the empty editor's Open Quickly field and Recent Files.
@@ -19,6 +20,7 @@ extension WorkspaceWindowController {
         // shown only where Settings ▸ Navigation's New Editor Tabs / Panes
         // setting opens it (`newTab`, `split`; reference-ui-6.md §1.3, W4).
         wireChangeGutter(e)  // reference-ui-5.md §6.3
+        wirePrediction(e)    // predictive-completion.md §3
     }
 
     /// The empty editor: Recent Files (most recent first) and Open Quickly.

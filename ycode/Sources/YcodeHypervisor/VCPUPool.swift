@@ -3,7 +3,7 @@
 // Contracts: specs/simulator/stage4a-contract.md §2 and §4 (threads),
 // specs/simulator/stage4b-contract.md §3.4 and §7 (stopping, teardown).
 //
-// - vCPUs are created lazily, up to min(KVM_CAP_MAX_VCPUS, 64). KVM cannot
+// - vCPUs are created lazily, up to min(KVM_CAP_MAX_VCPUS, 512). KVM cannot
 //   destroy one vCPU, so a vCPU whose guest thread ended is parked with its
 //   host thread and reused for the next thread.
 // - Each vCPU owns slot i of the vCPU-slot region (boot info, trap frame, EL1
@@ -23,25 +23,46 @@
 
 import YcodeDarwinABI
 
-/// The vCPU-slot region (stage4a-contract.md §4): 64 slots of 64 KiB at GPA
-/// `0x4100_0000`, identity-mapped EL1 RW, UXN, PXN.
+/// The vCPU slots (stage4a-contract.md §4): 512 slots of 64 KiB,
+/// identity-mapped EL1 RW, UXN, PXN, in two regions of guest RAM. Slots
+/// 0–63 lie at GPA `0x4100_0000` (4 MiB, the stage-4a region, also used by
+/// the stage-2 `--vcpus` self-test); slots 64–511 at `0x4600_0000` (28 MiB,
+/// right after the 64 MiB table arena at `0x4200_0000`). 512 is Darwin's
+/// limit of workqueue threads per process (`threads-and-events.md` §2.5):
+/// a process may need that many threads at once (agent ICON-FREEZE: a
+/// PosterBoard whose 63 workers each waited for another workloop's first
+/// servicer found no vCPU for it and stopped for good with 64 slots).
+/// Unused slots cost nothing: RAM is allocated lazily and a vCPU is created
+/// only when a thread needs one.
 public enum VCPUSlots {
     public static let baseGPA: UInt64 = 0x4100_0000
     public static let slotSize: UInt64 = 0x1_0000
-    public static let count = 64
-    public static let regionSize: UInt64 = slotSize * UInt64(count)
+    /// Slots in the first region (`region`).
+    public static let lowCount = 64
+    public static let count = 512
+    public static let regionSize: UInt64 = slotSize * UInt64(lowCount)
+    /// The second region: slots `lowCount..<count`.
+    public static let highBaseGPA: UInt64 = 0x4600_0000
+    public static let highRegionSize: UInt64 = slotSize * UInt64(count - lowCount)
     public static let bootInfoOffset: UInt64 = 0x0000
     public static let frameOffset: UInt64 = 0x4000
     public static let stackOffset: UInt64 = 0x8000
 
-    public static func slotGPA(_ index: Int) -> UInt64 { baseGPA + UInt64(index) * slotSize }
+    public static func slotGPA(_ index: Int) -> UInt64 {
+        index < lowCount ? baseGPA + UInt64(index) * slotSize : highBaseGPA + UInt64(index - lowCount) * slotSize
+    }
     public static func bootInfoGPA(_ index: Int) -> UInt64 { slotGPA(index) + bootInfoOffset }
     public static func frameGPA(_ index: Int) -> UInt64 { slotGPA(index) + frameOffset }
     public static func stackTop(_ index: Int) -> UInt64 { slotGPA(index) + slotSize }
 
-    /// The identity mapping of the whole region.
+    /// The identity mapping of the first region (slots 0–63).
     public static let region = VMLayout.Region(name: "vcpu-slots", va: baseGPA, size: regionSize,
                                                attributes: PageAttributes(access: .el1ReadWrite))
+    /// The identity mapping of the second region (slots 64–511).
+    public static let highRegion = VMLayout.Region(name: "vcpu-slots-2", va: highBaseGPA, size: highRegionSize,
+                                                   attributes: PageAttributes(access: .el1ReadWrite))
+    /// Both regions: what a VM with `count` slots maps.
+    public static let regions = [region, highRegion]
 }
 
 /// The EL0 register state a new guest thread starts with (on a fresh vCPU
@@ -149,6 +170,9 @@ public final class VCPUPool: @unchecked Sendable {
         public let sampleELR1 = Atomic<UInt64>(0)
         public let sampleESR1 = Atomic<UInt64>(0)
         public let sampleCount = Atomic<UInt64>(0)
+        /// The vCPU thread's time for the last sample (registers and stack
+        /// read, ns; Gauge's cost report).
+        public let sampleCostNanoseconds = Atomic<UInt64>(0)
         /// The host (Linux) thread id of this vCPU's thread.
         public let hostTID = Atomic<UInt64>(0)
 
@@ -167,6 +191,19 @@ public final class VCPUPool: @unchecked Sendable {
         fileprivate var hostThread = pthread_t()
         fileprivate var joined = false
         fileprivate let wakeup = HostCondition()
+        /// MDSCR_EL1.SS is set on this vCPU: the debugger is stepping its
+        /// thread one instruction (`debug-stub.md` §6). Host thread only.
+        fileprivate var stepping = false
+        /// The pool's watchpoint generation this vCPU's debug registers
+        /// hold, and whether any watchpoint is on (MDSCR_EL1.MDE). Host
+        /// thread only.
+        fileprivate var watchGeneration = 0
+        fileprivate var watching = false
+        /// A step was asked for before a fresh vCPU's first EL0
+        /// instruction: the shim's entry leaves PSTATE.SS clear, so the
+        /// first software-step exception comes before that instruction and
+        /// only arms the step (debug-stub.md §6). Host thread only.
+        fileprivate var stepAtStart = false
 
         fileprivate init(index: Int, vcpu: VCPU, pool: VCPUPool) {
             self.index = index
@@ -179,7 +216,7 @@ public final class VCPUPool: @unchecked Sendable {
     public typealias ExitHandler = (Worker, VCPUExit) -> Disposition
 
     public let vm: VirtualMachine
-    /// min(KVM_CAP_MAX_VCPUS, 64): the most vCPUs (and guest threads) this process gets.
+    /// min(KVM_CAP_MAX_VCPUS, 512): the most vCPUs (and guest threads) this process gets.
     public let capacity: Int
     /// The boot info every fresh vCPU starts from (TTBR0, TCR, MAIR, SCTLR, doorbell).
     public let bootTemplate: BootInfo
@@ -268,6 +305,13 @@ public final class VCPUPool: @unchecked Sendable {
     private var termination: Termination?
     /// Set once; read without the lock by the run loops.
     private let ending = Atomic<Bool>(false)
+    /// The debugger's hardware watchpoints (`debug-stub.md` §6.2): the
+    /// DBGWVR/DBGWCR values every vCPU of the pool loads before its next
+    /// guest entry, when its `watchGeneration` differs.
+    private var watchRegisters: [HardwareWatchpoint] = []
+    /// The most registers any list used (the ones to clear).
+    private var watchSlotsUsed = 0
+    private let watchGeneration = Atomic<Int>(0)
     /// `stopAll`: stopped threads record where they were.
     private var reportStops = false
     private var stopReports: [Int: String] = [:]
@@ -348,6 +392,20 @@ public final class VCPUPool: @unchecked Sendable {
             kicked.append(w)
         }
         return kicked
+    }
+
+    /// Gauge (specs/ide/profiler.md §3.1): the workers that run a guest
+    /// thread now (in guest code, in a trap handler, or blocked in one).
+    public func activeWorkers() -> [Worker] {
+        lock.withLock { workers.filter { $0.running && $0.context != nil } }
+    }
+
+    /// Gauge: kicks one worker out of KVM_RUN so that it records a sample
+    /// (`samplePC`…`sampleStack`, then `sampleCount` changes). A worker in a
+    /// trap handler records nothing; the caller checks `inHandler` first.
+    public func kickForSample(_ w: Worker) {
+        w.sampleRequested.store(true, ordering: .relaxed)
+        _ = ckvm_kick_thread(UInt(w.hostThread), Self.kickSignal)
     }
 
     /// The host thread ids of the pool's live vCPU threads (the sampler).
@@ -868,6 +926,14 @@ public final class VCPUPool: @unchecked Sendable {
 
     /// Puts the new thread's state into the vCPU.
     private func begin(_ worker: Worker, _ state: VCPUStartState) throws {
+        // A step left over from the vCPU's previous thread. (A step of a
+        // reused vCPU's new thread is applied at its first entry, from the
+        // slot's frame: `gateBeforeEntry`.)
+        if worker.stepping || worker.stepAtStart {
+            worker.stepping = false
+            worker.stepAtStart = false
+            try writeMDSCR(worker)
+        }
         if !worker.started {
             // A fresh vCPU: the shim's reset entry with this slot's boot info.
             worker.started = true
@@ -891,6 +957,12 @@ public final class VCPUPool: @unchecked Sendable {
             try worker.vcpu.set(.pc, VMLayout.shimEntryGPA)
             try worker.vcpu.set(.pstate, VMLayout.el1BootPSTATE)
             try worker.vcpu.set(.x(0), worker.bootInfoGPA)
+            // A debugger step of a thread that has not run yet.
+            if let gate = worker.gate, gate.takeStepRequest() {
+                worker.stepping = true
+                worker.stepAtStart = true
+                try writeMDSCR(worker)
+            }
             log("vCPU \(worker.index): first thread, \(state)")
         } else {
             // A parked vCPU, stopped at its doorbell store: the shim's trap
@@ -932,6 +1004,9 @@ public final class VCPUPool: @unchecked Sendable {
             // Mach suspension (threads-and-events.md §1.6): one relaxed load
             // per guest entry while the thread is not suspended.
             if let gate, gate.needsAttention { try gateBeforeEntry(worker, gate, slotFrameCurrent: slotFrameCurrent) }
+            // The debugger's watchpoints changed (one relaxed load per entry;
+            // after the gate, where a stopped thread waited while they were set).
+            if worker.watchGeneration != watchGeneration.load(ordering: .relaxed) { try loadWatchpoints(worker) }
             if shouldStop() {
                 endPool(Termination(kind: .stopped, status: 0, message: "stopped", vcpuIndex: nil))
                 return .ended
@@ -961,6 +1036,7 @@ public final class VCPUPool: @unchecked Sendable {
                 // pool's end keeps it set: no vCPU enters the guest again).
                 if !ending.load(ordering: .acquiring) { vcpu.setImmediateExit(false) }
                 if worker.sampleRequested.exchange(false, ordering: .relaxed) {
+                    let sampleBegan = monotonicNanoseconds()
                     worker.samplePC.store((try? vcpu.get(.pc)) ?? 0, ordering: .relaxed)
                     worker.sampleLR.store((try? vcpu.get(.x(30))) ?? 0, ordering: .relaxed)
                     worker.sampleFP.store((try? vcpu.get(.x(29))) ?? 0, ordering: .relaxed)
@@ -971,6 +1047,7 @@ public final class VCPUPool: @unchecked Sendable {
                     if let reader = sampleStackReader {
                         worker.sampleStack = reader(worker.sampleFP.load(ordering: .relaxed))
                     }
+                    worker.sampleCostNanoseconds.store(monotonicNanoseconds() &- sampleBegan, ordering: .relaxed)
                     worker.sampleCount.wrappingAdd(1, ordering: .releasing)
                 }
                 continue
@@ -1010,6 +1087,20 @@ public final class VCPUPool: @unchecked Sendable {
                 }
                 var frame = try framePointer.map { TrapFrame(decodingFrameAt: $0) }
                     ?? TrapFrame(decoding: vm.read(gpa: frameAddress, count: TrapFrame.byteCount))
+                // A step asked for before a fresh vCPU's first instruction:
+                // this exception came before that instruction (PSTATE.SS was
+                // clear); the step starts now (debug-stub.md §6).
+                if worker.stepAtStart, frame.syndrome.exceptionClass == .softwareStepLowerEL {
+                    worker.stepAtStart = false
+                    frame.spsr |= Self.spsrSS
+                    if framePointer != nil {
+                        frame.encode(into: try vm.writableHostPointer(gpa: frameAddress, count: TrapFrame.byteCount))
+                    } else { try vm.write(gpa: frameAddress, bytes: frame.encoded()) }
+                    slotFrameCurrent = true
+                    continue
+                }
+                // The debugger's single step ended (debug-stub.md §6): MDSCR_EL1.SS off.
+                if worker.stepping, frame.syndrome.exceptionClass == .softwareStepLowerEL { try endStep(worker, &frame) }
                 // A suspended thread stops at the entry of its trap; the trap
                 // runs when it is resumed (§1.6).
                 if let gate, gate.isClosed { _ = gate.park(frame, at: .trapEntry) }
@@ -1112,6 +1203,14 @@ public final class VCPUPool: @unchecked Sendable {
                 frame.takeUserState(of: changed)
                 dirty = true
             }
+            // The debugger (debug-stub.md §5, §6): a step of one instruction,
+            // and a TLB flush after it wrote code.
+            if try applyStep(worker, gate, spsr: &frame.spsr) { dirty = true }
+            if gate.takeFlushRequest() {
+                frame.requestTLBInvalidation(nil)
+                if Self.flushKeepsICache { frame.resumeFlags |= Self.resumeKeepICache }
+                dirty = true
+            }
             if dirty { frame.encode(into: try vm.writableHostPointer(gpa: worker.frameGPA, count: TrapFrame.byteCount)) }
         } else if gate.isClosed {
             let pstate = try vcpu.get(.pstate)
@@ -1132,9 +1231,119 @@ public final class VCPUPool: @unchecked Sendable {
                     let flags = (pstate & ~UInt64(0xF000_0000)) | (changed.spsr & 0xF000_0000)
                     if flags != pstate { try vcpu.set(.pstate, flags) }
                 }
+                // Stopped at EL0 without the shim: a step sets PSTATE.SS
+                // directly. A flush request waits for the thread's next
+                // trap (debug-stub.md §5: the window this leaves).
+                var now = try vcpu.get(.pstate)
+                if try applyStep(worker, gate, spsr: &now) { try vcpu.set(.pstate, now) }
             }
         }
         if !ending.load(ordering: .acquiring) { vcpu.setImmediateExit(false) }
+    }
+
+    // MARK: Debugger single step (debug-stub.md §6)
+
+    /// MDSCR_EL1 (op0 2, op1 0, CRn 0, CRm 2, op2 2); bit 0 is SS.
+    static let mdscrEL1 = SystemRegister(op0: 2, op1: 0, crn: 0, crm: 2, op2: 2)
+    /// PSTATE.SS / SPSR_EL1.SS.
+    static let spsrSS: UInt64 = 1 << 21
+
+    /// Sets or clears the step state for the next guest entry: with a step
+    /// request, MDSCR_EL1.SS and SPSR.SS are set (the PE executes one EL0
+    /// instruction and takes a software-step exception to the shim); without
+    /// one, a previous step's state is cleared. Returns true when `spsr`
+    /// changed.
+    private func applyStep(_ worker: Worker, _ gate: GuestThreadGate, spsr: inout UInt64) throws -> Bool {
+        if gate.takeStepRequest() {
+            if !worker.stepping {
+                worker.stepping = true
+                try writeMDSCR(worker)
+            }
+            guard spsr & Self.spsrSS == 0 else { return false }
+            spsr |= Self.spsrSS
+            return true
+        }
+        guard worker.stepping else { return false }
+        worker.stepping = false
+        try writeMDSCR(worker)
+        guard spsr & Self.spsrSS != 0 else { return false }
+        spsr &= ~Self.spsrSS
+        return true
+    }
+
+    /// The software-step exception of a debugger step arrived: stepping ends.
+    private func endStep(_ worker: Worker, _ frame: inout TrapFrame) throws {
+        worker.stepping = false
+        try writeMDSCR(worker)
+        frame.spsr &= ~Self.spsrSS
+    }
+
+    /// MDSCR_EL1 from the worker's debug state: SS (bit 0) while stepping,
+    /// MDE (bit 15, monitor debug events: the watchpoints) while watching.
+    private func writeMDSCR(_ worker: Worker) throws {
+        try worker.vcpu.set(Self.mdscrEL1, (worker.stepping ? 1 : 0) | (worker.watching ? Self.mdscrMDE : 0))
+    }
+
+    // MARK: Debugger hardware watchpoints (debug-stub.md §6.2)
+
+    /// One watchpoint register pair: DBGWVRn_EL1 (the doubleword address)
+    /// and DBGWCRn_EL1 (enable, EL0 only, load/store, byte select or mask).
+    public struct HardwareWatchpoint: Equatable, Sendable {
+        public var value: UInt64
+        public var control: UInt64
+        public init(value: UInt64, control: UInt64) {
+            self.value = value
+            self.control = control
+        }
+    }
+
+    /// MDSCR_EL1.MDE.
+    static let mdscrMDE: UInt64 = 1 << 15
+    /// ID_AA64DFR0_EL1 (op0 3, op1 0, CRn 0, CRm 5, op2 0); WRPs, bits 23:20, is the count minus one.
+    static let idAA64DFR0EL1 = SystemRegister(op0: 3, op1: 0, crn: 0, crm: 5, op2: 0)
+    static func dbgwvr(_ n: Int) -> SystemRegister { SystemRegister(op0: 2, op1: 0, crn: 0, crm: UInt32(n), op2: 6) }
+    static func dbgwcr(_ n: Int) -> SystemRegister { SystemRegister(op0: 2, op1: 0, crn: 0, crm: UInt32(n), op2: 7) }
+
+    private var cachedWatchpointCount: Int?
+
+    /// How many watchpoint registers the guest's vCPUs have (ID_AA64DFR0_EL1
+    /// as KVM shows it to the guest); 0 when no vCPU exists yet.
+    public var hardwareWatchpointCount: Int {
+        lock.withLock {
+            if let n = cachedWatchpointCount { return n }
+            guard let v = workers.first?.vcpu, let dfr0 = try? v.get(Self.idAA64DFR0EL1) else { return 0 }
+            let n = Int((dfr0 >> 20) & 0xF) + 1
+            cachedWatchpointCount = n
+            return n
+        }
+    }
+
+    /// Sets the debugger's watchpoints (at most `hardwareWatchpointCount`):
+    /// each vCPU loads them before its next guest entry. Empty: none (MDE off).
+    public func setHardwareWatchpoints(_ list: [HardwareWatchpoint]) {
+        // The debugger sets them while every thread of the process is
+        // stopped, so each vCPU loads them before the thread runs again.
+        lock.withLock {
+            watchRegisters = list
+            watchSlotsUsed = max(watchSlotsUsed, list.count)
+        }
+        watchGeneration.wrappingAdd(1, ordering: .releasing)
+    }
+
+    /// Loads the pool's watchpoints into this vCPU's debug registers.
+    private func loadWatchpoints(_ worker: Worker) throws {
+        let generation = watchGeneration.load(ordering: .acquiring)
+        let (list, slots) = lock.withLock { (watchRegisters, watchSlotsUsed) }
+        for n in 0..<slots {
+            let w = n < list.count ? list[n] : HardwareWatchpoint(value: 0, control: 0)
+            // Disable first, so the pair never matches with a half-written value.
+            try worker.vcpu.set(Self.dbgwcr(n), 0)
+            try worker.vcpu.set(Self.dbgwvr(n), w.value)
+            if w.control != 0 { try worker.vcpu.set(Self.dbgwcr(n), w.control) }
+        }
+        worker.watching = list.contains { $0.control & 1 != 0 }
+        try writeMDSCR(worker)
+        worker.watchGeneration = generation
     }
 
     /// Ends the pool with this status (the first end wins) and stops every vCPU.

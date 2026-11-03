@@ -4,7 +4,9 @@ import Synchronization
 // Font discovery and matching.
 //
 // Sources, in order: faces registered directly, the fonts bundled with this
-// module (Noto Sans Regular and Bold, SIL OFL 1.1; Resources/Fonts/OFL.txt),
+// module (Noto Sans and Noto Sans Mono Regular and Bold, Resources/Fonts/
+// OFL.txt; Inter Regular, Medium, SemiBold and Bold, Inter-OFL.txt; all SIL
+// OFL 1.1),
 // and font directories. Directories are scanned lazily (only the name, head
 // and OS/2 tables are read until a face is used). On Linux the default
 // directories are the XDG / fontconfig ones; on Apple hosts no system
@@ -71,11 +73,22 @@ public final class FontCatalog: @unchecked Sendable {
         var fallbackCache: [UInt32: (any FontFace)?] = [:]
     }
     private let state = Mutex(State())
+    private let familyTable: Mutex<[FontDesignClass: [String]]>
     /// Family names tried per design (see `defaultFamilies`).
-    public let families: [FontDesignClass: [String]]
+    public var families: [FontDesignClass: [String]] { familyTable.withLock { $0 } }
 
     public init(families: [FontDesignClass: [String]] = FontCatalog.defaultFamilies) {
-        self.families = families
+        familyTable = Mutex(families)
+    }
+
+    /// The families a design's system font is looked up in, first match
+    /// wins; an app sets its UI family once at launch, before any text is
+    /// laid out (for example `["Inter 24pt", "Noto Sans"]` for `.default`:
+    /// Inter is bundled for desktop apps whose text should measure close to
+    /// a desktop UI font).
+    public func setFamilies(_ names: [String], for design: FontDesignClass) {
+        familyTable.withLock { $0[design] = names }
+        state.withLock { $0.matchCache = [:] }
     }
 
     /// The shared catalog: bundled fonts, and on Linux the system font
@@ -129,7 +142,11 @@ public final class FontCatalog: @unchecked Sendable {
         guard let dir = Bundle.module.url(forResource: "Fonts", withExtension: nil),
               let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
         else { return }
-        for f in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+        // Noto first: the first registered faces are the fallbacks for
+        // scalars the requested face lacks, and stay what they were before
+        // Inter was bundled.
+        func key(_ u: URL) -> String { (u.lastPathComponent.hasPrefix("Inter") ? "1" : "0") + u.lastPathComponent }
+        for f in files.sorted(by: { key($0) < key($1) })
         where ["ttf", "otf", "ttc"].contains(f.pathExtension.lowercased()) {
             try? addFont(at: f)
         }

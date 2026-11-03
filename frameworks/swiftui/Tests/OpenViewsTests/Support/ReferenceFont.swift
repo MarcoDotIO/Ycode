@@ -40,6 +40,11 @@ enum ReferenceFont {
             for (s, w) in Fixture.bodyWidths { r[TableFace.Run(s, size: 17)] = Double(w) }
             r[TableFace.Run("Big", size: 34)] = Double(Fixture.th(47.67))   // hstack.baseline
             r[TableFace.Run("small", size: 12)] = Double(Fixture.th(29.67)) // hstack.baseline
+            // picker.segmented (R8): 84 = 2 × (widest segment title + 8 + 8)
+            // in the subheadline style (15 pt); any width of "A" below
+            // "Bee"'s gives the same answer.
+            r[TableFace.Run("Bee", size: 15)] = 26
+            r[TableFace.Run("A", size: 15)] = 10
         }
         if weight == 700 {
             r[TableFace.Run("Hello", size: 17, weight: 700)] = 41           // text.bold

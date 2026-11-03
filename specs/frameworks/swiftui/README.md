@@ -5,12 +5,23 @@ status below. Reference: Xcode 27.1 (27A9269), iPhoneSimulator 27.1 SDK, iOS
 27.1 simulator runtime (24A94401), device type iPhone Duo (466 × 678 pt,
 scale 3, 60 Hz; the only iPhone type the 27.1 runtime accepts on this Mac).
 
-Implementation status (2026-10-28): `frameworks/swiftui/` (package
+Implementation status (2026-10-30): `frameworks/swiftui/` (package
 `ycode-swiftui`: library products `SwiftUI` and `SwiftUICore`, built as
-`OpenViews` and `OpenViewsCore` on Apple hosts, and `OVText`; test target
-`OpenViewsTests`). Rounds R1, R2, the core of R3, R4 and R6 of `10-plan.md`
-§2 are done; rendering (R5) and the platform host (R7) are not started. The
-package README lists what is done, deferred and not started.
+`OpenViews` and `OpenViewsCore` on Apple hosts, `OVText`, `OVRender`,
+`OVPlatform`, and the `ov-sample`, `ov-settings` and `ov-mini-ide` apps; test target `OpenViewsTests`).
+Rounds R1, R2, the core of R3, R4, R5 (rendering v1: display list, ThorVG
+rasteriser, software and Vulkan compositors, headless PNG back end, Ycode's
+symbol set), R6 and R7 (app, scenes and input on Linux: SDL3 windows on X11
+and Wayland, run loop, gestures, focus, keyboard) and R8 (controls, menus
+with pop-up windows, the text editing core) and R9 (containers and
+presentation: scroll views, lazy stacks, lists with selection and outlines,
+navigation and split views, tabs, sheets, alerts, dialogs, popovers) and R10
+(live environment from the desktop's settings, `@AppStorage`,
+`@SceneStorage`, the accessibility tree; its AT-SPI export is not done) of
+`10-plan.md` §2 are done, and R11 of `docs/PARITY.md` §5.4 (an in-window menu
+bar from `commands`, focused values, context menus, window toolbars, the
+`Settings` scene).
+The package README lists what is done, deferred and not started.
 
 This set serves two goals of `docs/FUTURE.md`:
 

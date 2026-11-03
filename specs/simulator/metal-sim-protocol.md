@@ -251,9 +251,9 @@ indirect command buffers (`newIndirectCommandBufferWithDescriptor:` aborts
 | 11 | new compute pipeline (connection 2) | keyed descriptor (§7) | 24 bytes: u32 ref, u32 0, u16 1024, u16 32 (the macOS values; the probe then reported `maxTotalThreadsPerThreadgroup` 512 and `threadExecutionWidth` 32), 12 bytes 0 |
 | 13 | `newFence` | u32 0 | u32 ref, u32 0 |
 | 14 | new render pipeline (connection 2) | keyed descriptor (§7) | u32 ref, u32 0 |
-| 16 | argument-buffer layout from a function's reflection (`newArgumentEncoderWithBufferIndex:`) | a serialized structure description (keyed, with magic bytes `MTLPSBIN`) | 16 bytes: u32 ref, u32 0, u32 `0xffff0001`, u32 `0xffffffff` (meaning open) |
-| 17 | argument encoder from a layout | u32 0, u32 layout ref | u32 ref, u32 0, u16 encoded length (24), u16 alignment (8), u32 0 |
-| 19 | argument-encoder set call | u32 encoder ref; u8 kind (0 `setArgumentBuffer:offset:`, 1 buffer, 2 texture, 3 sampler); u8 index; u16 0; four words (0, 0x100, 0, 0 in every capture; open); u32 object ref (0 = nil); u64 offset (the argument-buffer offset for kind 0) | empty. After the calls the argument buffer's shared memory held the data buffer's `gpuAddress` and two small IDs; whether the host or the driver wrote them is open. Under Ycode, which refused the call until R7b, visionOS RealityKit's tier-1 argument buffers stayed zero; a Ycode host now writes each member itself (8 bytes at the offset of kind 0 plus 8 × the index: a buffer's GPU address plus the call's offset, a texture's heap index, a sampler's resource ID; visionos.md §10.20.7, §9 Q25) |
+| 16 | argument-buffer layout (`newArgumentEncoderWithBufferIndex:` on a function, and `newArgumentEncoderWithArguments:`) | u32 0, u32 payload length, u32 0, a layout description (magic `MTLPSBIN`, §4.3.1) | 16 bytes: u32 layout ref, u32 0, u32 `0xffff0001`, u32 `0xffffffff` (the same for every layout; meaning open) |
+| 17 | argument encoder from a layout | u32 0, u32 layout ref | u32 encoder ref, u32 0, **u16 alignment, u16 encoded length** (corrected by OBS-ARGBUF, §4.3.3: the reply word `0x00180008` is alignment 8, length 24), u32 0 |
+| 19 | argument-encoder set call | §4.3.4 (corrected by OBS-ARGBUF: the index is 24 bits, a count follows, range forms) | empty. **The host writes the members** into the argument buffer's shared memory at the offsets of op 16's description (§4.3.2, §4.3.5); the driver writes nothing |
 | 20 | `newHeapWithDescriptor:` | u32 0, u64 size, u16 resource options, u16 0 | u32 ref, u32 0 |
 | 21 | heap `newTextureWithDescriptor:` | u32 0, u32 heap ref, texture descriptor **words 1–8** (§5.2, without word 0), 12 bytes 0: 52 bytes (corrected 2026-10-27, see below) | u32 texture ref, u32 0 |
 | 22 | `heapTextureSizeAndAlignWithDescriptor:` | texture descriptor **words 1–8** (§5.2, without word 0): 32 bytes | u64 size, u64 alignment (352 768, 128 for 256×256 BGRA8 with mipmaps; the reference's answers follow the rule of visionos.md §10.8.3, which a Ycode host uses) |
@@ -267,7 +267,7 @@ indirect command buffers (`newIndirectCommandBufferWithDescriptor:` aborts
 | 32 | `maxAvailableSizeWithAlignment:` | u32 heap ref, u64 alignment | u64 |
 | 33 | `minimumLinearTextureAlignmentForPixelFormat:` | u32 pixel format | u64 (16 for BGRA8) |
 | 34 | `minimumTextureBufferAlignmentForPixelFormat:` | u32 pixel format | u64 (16) |
-| 35 | (argument encoder; `u32 1, u32 0x99, u64`) | | 8 bytes (open) |
+| 35 | `constantDataAtIndex:` | u32 encoder ref, u32 argument-buffer ref (the last kind-0 set call's), u32 argument index, u32 0 | u64: the member's byte offset from the start of the argument buffer (argument-buffer offset plus member offset; §4.3.6) |
 | 37 | limits (connection 0, once per process) | u32 0 | u64 max threads per threadgroup x, y, z, u64 max threadgroup memory (macOS: 1024, 1024, 1024, 32 768; a Ycode host answers its GPU's limits with z raised to at least 512, so the guest keeps its own cap of 512 as with the reference, visionos.md §10.6.1) |
 | 38 | buffer `gpuAddress` | u32 buffer ref | u64 address (host-chosen, e.g. `0x100000f8000`) |
 | 39 | sampler `gpuResourceID` (when `supportArgumentBuffers`) | u32 sampler ref, u32 8 | u64 resource ID |
@@ -297,6 +297,343 @@ deserializer's device-level methods (Evidence, level 4) suggest the
 remaining ones: a buffer `didModifyRange`, a shared-event wait, a
 resource-alias test, unique identifiers and shared events with an event
 port. Their numbers are open.
+
+### 4.3 Argument buffers (ops 16, 17, 19, 35; agent OBS-ARGBUF, 2026-10-30)
+
+Observed on this Mac with the iOS 27.0 runtime (24A434), throwaway device
+`ycode-test-argbuf-ios27` (iPhone 18 Pro), our probe `argprobe.m` run
+with `simctl spawn` under the recorder, and the recorder's test server for
+the "who writes" question. Level 3. The probe made 32 layouts: 25 from our
+own shader structs (`newArgumentEncoderWithBufferIndex:`) and 7 from
+argument descriptors (`newArgumentEncoderWithArguments:`). For each it
+filled a shared buffer with a known byte, set every member to a distinct
+value, and compared the bytes with the function's reflection and with
+`constantDataAtIndex:`. The device reports `argumentBuffersSupport` tier 1.
+
+The sequence for one encoder: op 16 (the layout description) returns a
+layout ref; op 17 (encoder from that layout) returns the encoder ref, its
+alignment and encoded length; then op 19 set calls, the first of kind 0
+naming the argument buffer and offset; op 35 for each `constantDataAtIndex:`.
+Ops 16, 17, 19 and 35 are synchronous device operations (`messageType` 12,
+connection 2). Releases 1010 and 1011 come in pairs when an encoder goes
+away (which ref kind each names is still open, §13).
+
+#### 4.3.1 The layout description (op 16)
+
+Record body: u32 0, u32 payload length *P*, u32 0, then *P* payload bytes,
+zero-padded so the record length is a multiple of 4. All integers are
+little-endian and **unaligned** (names of any length sit between them).
+
+**Payload:**
+
+| Bytes | Field |
+|---|---|
+| 8 | magic `MTLPSBIN` |
+| 4 | u32 2 (every capture; a format version) |
+| … | the top-level **struct** |
+
+**Struct:** u32 serial number, u32 member count, then the members. The top
+level is serial 1; every further struct in the description (a member of
+struct type, the element of a struct array, the pointee of a buffer) takes
+the next number in the order it appears, depth first, even when the type
+repeats (two members of the same type got serials 2 and 3).
+
+**Member:**
+
+| Field | Meaning |
+|---|---|
+| name | NUL-terminated; the field name in the shader (empty for descriptor-built layouts) |
+| u32 offset | **byte offset of the member within its enclosing struct** |
+| u32 argument index | the member's `[[id(n)]]` (relative to the enclosing struct), or `MTLArgumentDescriptor.index` |
+| u32 type code | 57 single argument, 1 struct, 2 array |
+| u64 | 0 |
+| type body | by type code, below |
+
+**Type bodies:**
+
+| Code | Body |
+|---|---|
+| 57 | u32 argument count (always 1), then the argument record |
+| 1 | a struct (serial, count, members), then u64 `0xFFFFFFFFFFFFFFFF` |
+| 2 | u32 element count, u32 element type code (57 or 1), u32 stride in bytes, u32 argument-index stride, u64 0, then the element's type body (for code 57 the argument record names the first element) |
+
+**Argument record:**
+
+| Field | Meaning |
+|---|---|
+| name | NUL-terminated (repeats the member's name) |
+| u8 kind and access | bits 0–4 the kind: **1** buffer in the constant address space, **2** buffer in the device address space, **4** texture, **5** sampler, **8** inline data (a value stored in the argument buffer itself). Bits 5–6 the access (`MTLBindingAccess`: 0 read-only, 1 read-write, 2 write-only). Seen: 0x01 `constant T *`, 0x02 `const device T *` and descriptor buffers with read-only access, 0x22 `device T *`, 0x04 / 0x24 / 0x44 textures with `access::sample`/`read`, `read_write`, `write`, 0x05, 0x08 |
+| u8 | 2 (every capture) |
+| u16 | 0 |
+| u32 argument index | as the member's |
+| u32 array length | *n* for a resource array of the `array<texture2d<float>, n>` / `array<sampler, n>` form, else 1 |
+| kind fields | below |
+| u64 | `0xFFFFFFFFFFFFFFFF` |
+
+Kind fields:
+
+- **Buffer (1, 2) and inline data (8):** u32 data type (`MTLDataType` of
+  the pointee or of the value: 3 float, 6 float4, 15 float4x4, 29 int, 1
+  struct; 0 for descriptor-built buffers), u32 0, u32 0, u32 alignment,
+  u32 size (of the pointee or the value; descriptor-built buffers say 1
+  and 0; `constant` pointees report alignment 256), then u32 pointee
+  struct serial, 0 when there is none. When it is not 0 the pointee
+  struct's member count and members follow (no terminator of their own).
+- **Texture (4):** u32 0, u32 `MTLTextureType`, u32 0. A `depth2d` member
+  is described as type 2 with nothing that marks depth.
+- **Sampler (5):** u32 0.
+
+Every description the probe produced (32 layouts, 90 to 1140 bytes)
+parses exactly to its end with this grammar.
+
+#### 4.3.2 Where each member is: the offset rule
+
+**The description carries each member's offset, and the host writes there.**
+Argument ids are names, not positions. Gaps between ids leave no gap in the
+buffer.
+
+| Layout (our shader structs; `id` in brackets) | Offsets written | Encoded length, alignment |
+|---|---|---|
+| buffer (0), texture (1), sampler (2) | 0, 8, 16 | 24, 8 |
+| buffer (0), texture (5), sampler (9) | 0, 8, 16 | 24, 8 |
+| buffer (200), buffer (201), texture (230), sampler (231) | 0, 8, 16, 24 | 32, 8 |
+| buffer (1) | 0 | 8, 8 |
+| buffer (1000) | 0 | 8, 8 |
+| float (3), buffer (10), float4 (11), sampler (40) | 0, 8, 16, 32 | 48, 16 |
+| buffer (0), float (1), buffer (2), half (3), texture (4) | 0, 8, 16, 24, 32 | 40, 8 |
+| float, float4, int, float3, half, char, float4x4, buffer, packed_float3, float2, uint (0–10) | 0, 16, 32, 48, 64, 66, 80, 144, 152, 168, 176 | 192, 16 |
+| 15 buffers (0–14), visionOS RealityKit's shape | 0, 8, …, 112 | 120, 8 |
+| one float (0) | 0 | 4, 4 |
+| half (3), char (4) | 0, 2 | 4, 2 |
+
+Rules, all consistent with every capture:
+
+1. **Order.** A shader struct's members are laid out in declaration order.
+   The shader compiler requires ids to increase in declaration order (an
+   id below the previous member's id plus its slot count is a compile
+   error, "minimum is *n*"), so declaration order is id order. A
+   descriptor-built layout keeps the **order of the descriptor array**,
+   not index order (texture 5, buffer 0, samplers 2–4 were placed at 0, 8,
+   16, 24, 32).
+2. **Sizes and alignments.** Buffers (any address space, also pointers to
+   structs), textures and samplers take 8 bytes at 8-byte alignment.
+   Inline data takes the Metal shading language size and alignment of its
+   type: char, uchar, bool 1/1; short, half, uchar2 2/2; float, int, uint
+   4/4; float2, half4, ulong 8/8; float3, float4 16/16; packed_float3
+   12/4; float2x3 32/16; float4x4 64/16.
+3. **Arrays.** A resource array of the `array<…, n>` form (argument record
+   array length *n*) has element *k* at the member offset plus 8*k*,
+   argument index plus *k*. An array member (type code 2) has element *e*
+   at the member offset plus *e* × stride, argument index plus *e* × the
+   index stride. Descriptor-built arrays (`arrayLength` 4) arrive as type 2
+   with stride 8 and **index stride 0**, and their elements still take
+   consecutive indices 10, 11, 12, 13, so a host treats index stride 0 as 1.
+   A C array of inline data (`float fa [[id(20)]] [3]`) has stride 4 and
+   indices 20–22.
+4. **Nesting.** A member inside a struct member (or inside an element of a
+   struct array) is at the outer member's offset plus its own, with
+   argument index the outer index plus its own: struct `In { buffer;
+   texture; float; }` at ids 0 and 10 placed members 0–2 at 0, 8, 16 and
+   10–12 at 24, 32, 40. `array<In2, 2>` (In2 = buffer, sampler) has stride
+   16 and index stride 2.
+5. **Length and alignment** (op 17's reply). The alignment is the largest
+   alignment of any member (8 as soon as there is a buffer, texture or
+   sampler); the encoded length is the end of the last member (offset plus
+   size) rounded up to that alignment. The reflection's `bufferDataSize`
+   (from the guest's compiler) is the same number.
+
+The id-to-position rule that a Ycode host has used (member *n* at 8 × *n*)
+matches only dense layouts without inline data: for ids 200, 201, 230 and
+231 it gives 1600–1848 where the reference writes 0–24.
+
+#### 4.3.3 Encoder reply (op 17)
+
+u32 encoder ref, u32 0, **u16 alignment, u16 encoded length**, u32 0. The
+driver returns these as the encoder's `alignment` and `encodedLength`
+without checking them: a test-server reply with the two fields set to 40
+and 8 gave an encoder whose alignment was 40 and length 8. The earlier
+reading of this row (length first) had the two halves swapped.
+
+#### 4.3.4 Set calls (op 19)
+
+| Body bytes | Field |
+|---|---|
+| 0–3 | u32 encoder ref |
+| 4 | u8 kind: 0 `setArgumentBuffer:offset:`, 1 buffers, 2 textures, 3 samplers |
+| 5–7 | u24 first argument index (index 1000 arrived as `0x3e801` in the u32 at bytes 4–7) |
+| 8–11 | u32 0 |
+| 12 | u8 0 |
+| 13–15 | u24 count (1 for the single calls; *n* for `setBuffers:offsets:withRange:`, `setTextures:withRange:`, `setSamplerStates:withRange:`) |
+| 16–23 | u64 0 |
+| 24… | kind 0 and 1: *count* pairs of u32 ref, u64 offset (for kind 0 the argument buffer and its offset). Kinds 2 and 3: *count* u32 refs, then *count* u64 zeros |
+
+A ref of 0 (`nil`) is a request to clear the member. The reply is empty.
+`setArgumentBuffer:offset:` sends kind 0 on every call.
+
+#### 4.3.5 What the host writes
+
+The host writes each set member as 8 bytes into the argument buffer's
+shared memory, at the kind-0 offset plus the member's offset (§4.3.2),
+plus 8 × *k* for the *k*-th element of a range call:
+
+| Kind | Value written |
+|---|---|
+| 1 buffer | the buffer's `gpuAddress` (op 38's answer) plus the call's offset |
+| 2 texture | a texture handle of the host's own choosing (the macOS host wrote small integers such as 2, 7, 0x10–0x2f that are not the guest's texture refs; the guest's `gpuResourceID` of the same textures reads 0) |
+| 3 sampler | the sampler's resource ID (op 39's answer, e.g. 0xd) |
+| any, ref 0 | 0 |
+
+Nothing else in the buffer changes (bytes before the offset and between
+members keep their contents). **The driver writes nothing:** with the
+recorder's test server answering ops 16, 17 and 19 without writing, no byte
+of the argument buffer changed after any set call.
+
+#### 4.3.6 Inline data (op 35)
+
+`constantDataAtIndex:` sends op 35 (body: u32 encoder ref, u32 the
+argument-buffer ref of the last kind-0 call, u32 argument index, u32 0)
+and returns the buffer's `contents` plus the u64 reply. The reply is the
+member's offset **from the start of the buffer**: 0x108 for a member at 8
+of an argument buffer set at offset 256. The guest then stores the value
+itself; the host is not told what was stored. The test server's answer
+(the next ref number) became the pointer offset unchecked.
+
+#### 4.3.7 Other observations
+
+- `newArgumentEncoderForBufferAtIndex:` (a pointer to a nested argument
+  buffer) returns nil on this tier-1 device without a message; the member
+  itself is an ordinary 8-byte address.
+- Asking a function for an encoder at a buffer index that is not an
+  argument buffer aborts in the guest ("does not identify an argument
+  buffer") without a message.
+- The reference's cold boot of iOS 27.0 did not create any argument
+  encoder in `WeatherPoster` (both of its instances drew only RenderBox
+  pipelines; recorder in `WeatherPoster` and `PosterBoard`, boot `w1`), so
+  the layout behind Ycode's ids 200, 201, 230 and 231 (`app-launch.md`
+  §3.9) was not captured from the process itself. The rule above places
+  them by the description that op 16 carries, whatever the struct holds.
+  The function Ycode's hang report names (`fragment_skybox_texture1d`, in
+  the runtime's VFX library, opened by our probe with `newLibraryWithURL:`
+  and given a render pipeline with reflection) binds a texture and a
+  16-byte buffer and no argument buffer, so the encoder belongs to
+  another function of that command buffer.
+
+#### 4.3.8 What a Ycode host must do
+
+1. Parse op 16's description (§4.3.1) into a table from argument index to
+   (offset, kind, size): walk nested structs and arrays with the rules of
+   §4.3.2, adding offsets and indices; treat an array index stride of 0
+   as 1. Keep the table under the layout ref; op 17 copies it to the
+   encoder.
+2. Answer op 17 with u16 alignment then u16 encoded length (§4.3.2 rule 5).
+3. On op 19, write each member at the argument-buffer offset plus the
+   table's offset (plus 8 × *k* for range elements), with the values of
+   §4.3.5, and 8 zero bytes for ref 0. An index that is not in the table:
+   log it and write nothing.
+4. Answer op 35 with the argument-buffer offset plus the member's offset.
+5. Read the u24 index and the count of op 19 (§4.3.4), not a u8 index.
+
+#### 4.3.9 Ycode implementation (agent ARGBUF-IMPL, 2026-10-30)
+
+Clean-room work from §4.3.1–§4.3.8 only (`YcodeMetalHost`,
+`MetalArgumentLayout.swift` and `MetalHostCore.swift`).
+
+- **Op 16.** The record body is parsed with the grammar of §4.3.1 into a
+  table from argument index to (byte offset, kind, size, alignment). Type
+  57 places its argument record (a resource array of length *n* as *n*
+  members 8 bytes apart, indices +*k*; inline data at its own size and
+  alignment; buffers, textures and samplers 8 and 8). Type 1 adds the
+  member's offset and index to its struct's members. Type 2 places element
+  *e* at + *e* × stride and its indices at + *e* × the index stride, with
+  an index stride of 0 taken as 1. A buffer's pointee struct is read and
+  discarded. The alignment is the largest member alignment and the encoded
+  length the furthest member end (or array end) rounded up to it (§4.3.2
+  rule 5). The layout object keeps the table; its recipe keeps the record
+  body. The reply is unchanged (`0xffff0001`, `0xffffffff`). A description
+  that does not parse is refused (statistics key `12:16`) and logged with
+  where it stopped; its encoders use the fallback below.
+- **Unreadable pointee structs (Ycode design).** Under Ycode, iOS 27.0's
+  WeatherPoster (below) sends descriptions (about 11 KB) in which the pointee
+  struct of a top-level buffer member (index 10 at offset 8) holds a member
+  with type code 11, which §4.3.1 does not describe (§13 item 9). The
+  pointee does not change the argument buffer's layout, so the parser keeps
+  that buffer member and looks for the next top-level member after an
+  argument record's terminator (u64 all ones): it takes the first such
+  position from which every remaining top-level member parses and the
+  payload ends exactly. If there is none, the description fails as above.
+  The layout's log line counts the pointee structs skipped this way.
+- **Op 17.** The encoder takes its layout's table and the record body. The
+  reply is u32 ref, u32 0, **u16 alignment, u16 encoded length**, u32 0.
+  (The reply before this change was u16 24 then u16 8. Read in the
+  corrected order, every encoder had alignment 24 and an encoded length of
+  8.) An encoder whose layout ref is unknown or has no table is answered
+  with alignment 8 and length 24.
+- **Op 19.** The body is read as §4.3.4 gives it: u24 first index, u24
+  count, then *count* (ref, u64 offset) pairs for kinds 0 and 1, or *count*
+  refs and *count* zero u64s for kinds 2 and 3. Kind 0 sets the encoder's
+  argument buffer and offset. Element *k* of kinds 1–3 is index first +
+  *k*, written as 8 bytes at the argument-buffer offset plus that index's
+  table offset: a buffer's GPU address plus the call's offset, a texture's
+  `gpuResourceID` (Ycode's heap slot; §4.3.5 leaves the handle to the
+  host), a sampler's op-39 answer, and 0 for ref 0. An index that is not in
+  the table is logged and not written. `YCODE_METAL_ARGUMENT_ENCODER=0`
+  still refuses the set calls.
+- **Op 35.** The answer is the encoder's argument-buffer offset plus the
+  member's table offset. For an index that is not in the table, the host
+  logs it and answers with the argument-buffer offset.
+- **Fallback.** An encoder without a table (no description, or one that
+  did not parse) keeps the earlier rule: member *n* at 8 × *n*, and op 35
+  answers + 8 × *n*. It is logged once per encoder ("has no layout
+  description").
+- **Snapshots** (`snapshot.md` §8). Layouts and encoders keep the op-16
+  record body in their recipe, and a restore parses it again. An encoder's
+  argument buffer and offset are saved too (object tags 56 and 57), so a
+  set call after a restore lands at the table's offset without a new
+  kind-0 call. Recorded members carry their absolute byte offset, so a
+  restore writes them again where they were written. A snapshot made
+  before this change has no description in its recipes, and its encoders
+  use the fallback.
+- **Logs.** For each layout the host logs "argument layout R of process P:
+  N members (index@offset …), length L, alignment A", plus "not 8 × index"
+  for layouts that the old rule would have placed wrongly. The first 24
+  layouts are logged, and after them only the layouts the old rule gets
+  wrong (up to 96). The first 24 set-call writes are logged, and every
+  write that fails.
+- **Tests.** `ArgumentLayoutTests` (Mac, x86 Linux, the Thor). Descriptions
+  are built from the §4.3.1 grammar. The tests cover the spec's example
+  (ids 200, 201, 230, 231 at 0, 8, 16, 24, length 32, alignment 8), inline
+  data (lengths 48/16, 4/4 and 4/2), the 15-buffer layout (120, 8), nested
+  structs, every array form (index stride 0, resource arrays, inline C
+  arrays, struct arrays), pointee structs, a skipped unreadable pointee,
+  malformed descriptions, set calls at sparse ids, the 24-bit index and
+  range forms, op 35, the fallback, and a restore.
+  `CoreTests.argumentEncoderSetCallsWriteTheirMembers` and
+  `SnapshotReplayTests.restoreKeepsSlotsAndRewritesArgumentMembers` cover
+  the fallback.
+
+**Layouts seen under Ycode** (Thor, level 3 under Ycode, the guest's own
+descriptions as parsed). visionOS 27.0 backboardd and its RealityKit
+clients: one layout of 15 buffers, indices 0–14 at 0, 8, …, 112, length
+120, alignment 8. This is the reference's layout in §4.3.2. iOS 27.0: in
+about half of the cold boots, one client process makes all the layouts
+below (one Metal client per boot, ended before the boot's thread report).
+By its members 200, 201, 230 and 231 it is the WeatherPoster encoder of
+`app-launch.md` §3.9, which names WeatherPoster from its GPU-hang reports:
+
+- 17 members: index 0 at 0, 1 at 64, then 2–12 between 68 and 137,
+  **200, 201, 230, 231 at 144, 152, 160, 168**; length 176, alignment 16.
+- 3 members: 30, 31, 32 at 0, 8, 16; length 24.
+- 12 members: 0 at 0, 1 at 4, 10 at 8, 11 at 16, 12 at 24, 20–24 at
+  32–64, 33 at 72, 34 at 80; length 88. In some boots the description of
+  this layout has three of the unreadable pointee structs described above,
+  the first behind member 10. Before the search was added, these
+  descriptions were refused: 13 in `d1a`, and at least 24 (the log's limit)
+  in each of `c1b`, `d2a` and `d4a`. With the search (`e4a`, `e5a`, `e6a`), they
+  parse to the same 12 members and length as the other variant, and none
+  is refused.
+
+So the four members behind `app-launch.md` §3.9 lie at 144–175 of a
+176-byte encoding, not at 0–31 or 1600–1855.
 
 ## 5. Resources and memory
 
@@ -680,6 +1017,17 @@ key 0 buffer index, 1 `stepFunction`, 2 `stepRate`, 3 `stride`; the
 array had one layout element per attribute (duplicates for a shared
 buffer).
 
+**Ycode implementation (ARGBUF-IMPL, 2026-10-30).** A pipeline without
+key 2 (no fragment function) is rasterized for depth and stencil only,
+with colour writes off, when it has a depth or stencil format. Metal's
+`fragmentFunction` may be nil for depth-only rendering, and only
+`rasterizationEnabled` NO turns rasterization off (Metal documentation).
+No key for `rasterizationEnabled` has been seen (§13 item 10), so a
+pipeline with neither a fragment function nor a depth or stencil format is
+treated as not rasterized. Before this change every fragment-less pipeline
+was discarded. visionOS backboardd's occlusion boxes, stencil masks and
+depth-only draws then drew nothing (`visionos.md` §10.22.2).
+
 Reply: u32 pipeline ref, u32 0. QuartzCore's pipelines in `backboardd`
 use keys 0, 1, 2, 3, 8 and color keys 0, 1, 2, 4, 7 (premultiplied
 "over": source factors default One, destination factors
@@ -733,7 +1081,7 @@ Payload: one field, key 0 = function ref. Reply in §4.2.
 | 8 | `drawIndexedPrimitives:…instanceCount:` (values ≥ 65 536) | u16 primitive type, u16 index type, u32 index buffer ref, u64 index count, u64 index buffer offset, u64 instance count |
 | 9 | `…instanceCount:` (short) | as op 7, then u16 instance count, i16 base vertex (corrected 2026-10-13, agent H: the earlier reading "u32 instance count" held only while the base vertex was 0) |
 | 28 | `…instanceCount:baseVertex:baseInstance:` (values ≥ 65 536) | u16 type, u16 index type, u32 index buffer ref, u64 index buffer offset, u64 index count, u64 instance count, i64 base vertex, u64 base instance |
-| 29 | `…instanceCount:baseVertex:baseInstance:` (short) | u16 type, u16 index type, u32 index buffer ref, u16 index buffer offset, u16 index count, u16 instance count, i16 base vertex (−2 is `0xFFFE`), u16 base instance, u16 not written (stale bytes; corrected by visionos.md §10.20.2: read as one u32 it gave base instances such as 0x3FF00000) |
+| 29 | `…instanceCount:baseVertex:baseInstance:` (short) | u16 type, u16 index type, u32 index buffer ref, u16 index buffer offset, u16 index count, u16 instance count, i16 base vertex (−2 is `0xFFFE`), u16 base instance, u16 not written (stale bytes; corrected by visionos.md §10.20.2: read as one u32 it gave base instances such as 0x3FF00000). Confirmed on the reference (OBS-ARGBUF, visionos.md §9 Q24): last word `0x66660005` drew with `base_instance` 5; the host uses the low 16 bits only |
 | 16 | `drawPrimitives:indirectBuffer:` | u64 indirect offset, u32 indirect buffer ref, u32 primitive type |
 | 17 | `drawIndexedPrimitives:…indirectBuffer:` | u16 type, u16 index type, u32 index buffer ref, u32 indirect buffer ref, u64 index buffer offset, u64 indirect offset |
 | 22 | `memoryBarrierWithResources:count:afterStages:beforeStages:` | u32 count, u16 after stages, u16 before stages, u32 ref × count |
@@ -909,6 +1257,11 @@ For each submission the host sends two one-way messages on connection 0:
 | `error` | 1 | 1 |
 | `startTime`, `endTime` | GPU start and end, seconds of the host clock | same values |
 
+Under Ycode the guest's mach clock is not the host's uptime (they differ by
+its offset, about 19 days on the Thor), and the guest compares these times
+with its own media time: Ycode's events carry the guest's mach time in seconds
+(`visionos.md` §10.28.1; `YCODE_METAL_EVENT_CLOCK=host`: the host's uptime).
+
 With our test server:
 
 - Without events, `waitUntilCompleted` never returned.
@@ -956,6 +1309,151 @@ Load actions: 0 DontCare, 1 Load, 2 Clear; store actions: 0 DontCare,
 abort in the host's GPU driver while it built a program for the pass);
 the client's three connections were interrupted and its command buffer
 never completed. `defaultRasterSampleCount` was not found in the record.
+
+### 8.7 GPU hangs: the watchdog and device recovery (Ycode; agent GPU-SIRI, 2026-11-01)
+
+What the protocol gives a host for a command buffer that cannot run is
+event 101 with `status` 5 (§8.5): the client's command buffer ends with
+`MTLCommandBufferStatusError` and its handlers run. A guest render
+server treats any error of its own command buffers as fatal: visionOS
+`backboardd` aborts ("Command buffer SharedEventSignalBuffer failed to
+execute, causing a fatal error in the renderer", `MTLCommandBufferErrorDomain`
+code 1) and is started again by launchd, and every client process of the
+shell ends with it. A host must therefore (1) end GPU work that does not
+end, (2) fail only the command buffer that hung, and (3) be able to serve
+every later command buffer, in particular those of the restarted render
+server.
+
+**What happened before (XR-VIEWER's run `x7`, visionOS 27.0, Siri invoked
+from the home view).** The Siri orb's kernel read unbound buffer slots
+(metal-shaders.md §4.11) and never completed. On the Thor a hung context
+is stopped by the driver only when another context needs the GPU and the
+hung one cannot be switched out (Xid 109, stage8-contract.md §15.1): here
+after 80 s. Ycode then saw `VK_ERROR_DEVICE_LOST`, failed every pending
+and held command buffer, backboardd aborted, and every later submission
+of the new backboardd failed too (the device stays lost): backboardd
+restarted every 50–70 s for the rest of the session.
+
+**A second hang of the same shape (XR-VIEWER's run `x8`): render
+passes with attachments of different sizes.** Changing visionOS's
+immersion (vhmdd `change_immersion_level`) makes backboardd's command
+buffer 7 clear and draw into a 172 × 172 (R16Unorm) and a 16 × 16 (R8Uint)
+colour attachment in one pass (`vertexShaderClearAll` and
+`fragmentShaderClearAll`, two instances, the vertex function writes
+`viewport_array_index`), then dispatch `immersivemask::precomputeMaskTransition`.
+The checkpoints put the GPU in the clear draw, not in the kernel (whose
+one buffer and one texture are bound). Ycode's render area was the first
+attachment's size; Vulkan requires it to lie inside every attachment, and
+the clear and draw wrote past the 16 × 16 image. On the Thor that write
+never completes: `GPURecoveryTests.attachmentsOfDifferentSizesStayInsideTheSmallest`
+with the old rule (`YCODE_GPU_MIXED_SIZE=first`) — two cleared attachments
+of those sizes, no draw — hung until the device was lost. **Rule (Ycode):**
+a pass is rendered at the smallest attachment's size (and the
+`renderTargetWidth`/`Height` of the descriptor, when smaller); the stats
+line counts `passes of mixed sizes`. That Metal does the same (the render
+target is the smallest attachment) is Ycode's reading of the
+`renderTargetWidth` documentation, not an observation (§13 item 12). Both
+hangs had 32 × 16-thread threadgroups in the stuck command buffer, but
+neither was in a kernel's execution: the Siri kernel's loads of address 0
+and the clear's writes past an image were.
+
+**What ends a hung submission on the Thor** (our `hangkick` probe:
+a one-thread kernel that reads address 0, or loops until the host writes
+a word; level 3):
+
+| After 3 s stuck | Result |
+|---|---|
+| nothing | still running (and at 80 s, without another GPU client) |
+| a second device of the same process submits work | it runs; the stuck context is killed (Xid 109) while the second device is created (5.2 s), but the first device's waits and counter reads do not report it |
+| `vkDeviceWaitIdle` on the stuck device | returns `VK_ERROR_DEVICE_LOST` after **1.3 s** (Xid 109), for the address-0 read and the endless loop alike |
+| destroying the device, then creating a new one in the same process | the destroy returns (0.1 s after the wait above, 4.5 s without it); the new device runs work correctly |
+
+**The watchdog (Ycode).** The completion thread waits for each submission
+in slices (stage8-contract.md §14). A submission still running after
+`YCODE_GPU_WATCHDOG_S` seconds (default 10; 0 turns it off) is ended:
+the thread waits the device idle under the back end's lock (the wait
+needs the queue to itself), which returns `VK_ERROR_DEVICE_LOST` once the
+driver has stopped the work, and the loss is handled as any other.
+Before ending it, the hang report of stage8-contract.md §15.2 has
+described the command buffer (at 2 s).
+
+**Device recovery (Ycode; `VulkanDeviceReset.swift`).** After a loss
+(seen by a wait, a counter read, a submission, or made by the watchdog),
+unless `YCODE_GPU_RECOVER=0`:
+
+1. The device gate closes: no pipeline compile, timeline wait outside the
+   lock or pipeline-cache save may use the device until the reset ends
+   (they enter the gate; the reset waits for those inside).
+2. **The stuck command buffer fails** (status 5): the first pending
+   submission at or after the serial that was being waited for that
+   carries a Metal command buffer. **Every other command buffer** —
+   pending on the GPU queue, held behind an event (§5.8, the held-work
+   rule), or refused meanwhile with `VK_ERROR_DEVICE_LOST` — is kept, in
+   that order, and recorded again from its decoded commands on the new
+   device; its client sees it complete normally, late. Completions with no
+   GPU work of their own keep their status; CPU reads waiting on the lost
+   work (`getBytes`) see the failure.
+3. Deferred destroys of released objects run (legal on a lost device);
+   then every Vulkan object of the old device is destroyed and the device
+   (with its instance) is made again.
+4. Every live object is rebuilt **in place**, under its handle:
+   - buffers and IOSurface links: guest-memory imports are imported again
+     (their contents are the guest's pages); owned host memory is copied
+     into the new allocation; private (device) memory comes back zeroed.
+     With `bufferDeviceAddressCaptureReplay` (the Thor has it) every
+     allocation is made with the capture-replay flag and its opaque
+     capture address is kept, so the rebuilt buffer gets **the same device
+     address** (our `car` probe: imports and allocations, rebuilt in
+     reverse order on a new device, all at their old addresses; capture-
+     replay allocations come from their own address range, 0xe0_0000_0000
+     on the Thor, apart from ordinary ones). Addresses the guest holds
+     (op 38 answers, argument buffers) therefore stay valid; a buffer that
+     does move is counted in the report, and the service writes argument-
+     buffer members again whose value changed (`MetalBackend.setDeviceResetHandler`);
+   - textures: the image is created again from its create info and moved
+     to `GENERAL`; its contents are lost (zero), except that an IOSurface
+     texture copies its surface in before its next use. Its sampled,
+     storage and per-level storage views are made again and written into
+     **the same heap slots** (the guest holds them as resource IDs);
+   - samplers into their slots; events as new timeline semaphores at the
+     highest value signaled or scheduled for them (a wait for a value that
+     failed work would have signaled does not hold the queue for ever);
+   - pipelines keep their translated shaders; constant data is copied
+     again and constexpr samplers resolved, and Vulkan pipelines are
+     compiled again on first use (through the pipeline cache);
+   - the dummy resources, the pipeline cache, and the timeline (serials
+     start again at 1); feedback-copy images, transient memory, query
+     pools and library parts are made again when next needed. A frame
+     trace (`YCODE_METAL_TRACE`) stops.
+5. The gate opens, the reset handler runs, and the kept command buffers
+   are submitted again.
+
+The reset logs one line ("device made again in … ms … recorded again")
+and the stats line counts `device resets`. If the device cannot be made
+again, every later command buffer fails as before.
+
+**In a boot (GPU-SIRI's `r1`, visionOS 27.0, the Siri fix turned off
+with `YCODE_GPU_UNBOUND_DUMMY=0`):** Siri's orb kernel hung; the watchdog
+ended it at 10 s, and the device was made again in 2.9 s (gate 0 ms,
+idle 15, the old objects 780, destroy 160, create 1,689, rebuild 241):
+951 buffers and imports, **none at a new device address**, 499 images,
+562 textures, 35 samplers, 30 events, 206 render and 113 compute
+pipelines; campo's command buffer failed and 10 others were recorded
+again. backboardd did not abort; it and the shell kept rendering (windows,
+the Siri panel, the home view's icon discs, the system UI) for the rest of
+the run, and Siri could be invoked again. What the reset cannot bring back
+is the content of textures that only the GPU held: the room
+(environment maps and the ASTC-decoded textures RealityKit made at boot)
+and the icons' images stayed black until their owners draw them again.
+A client restart (the render server's, which restarts the shell) would
+bring them back; Ycode does not force one.
+
+**Open:** which `error` value (§8.5) the reference's event carries for a
+command buffer that timed out (Metal's `MTLCommandBufferErrorTimeout` is
+2; Ycode sends 1 as for every event, §13 item 1). Ycode does not run a
+kept command buffer's parts that had already run before the loss only
+once: a command buffer split at an event wait whose first part completed
+runs that part again.
 
 ## 9. Presentation
 
@@ -1101,19 +1599,22 @@ was not applied to its connections.
 2. Texture descriptor bits 4–5 of word 1 and words 7–8; IOSurface
    texture flag combinations; render pass words marked open;
    `defaultRasterSampleCount` and tile/imageblock fields.
-3. Device ops 25, 31 (two reply sizes), 35, 39's second word; ops 26, 29,
+3. Device ops 25, 31 (two reply sizes), 39's second word; ops 26, 29,
    36, 40 (not seen); which of 1010/1011 is layout and encoder; op 1008
-   (inferred queue).
+   (inferred queue); op 16's reply words `0xffff0001`, `0xffffffff` and the
+   constant byte 2 of its argument records (§4.3.1). Op 35 is
+   `constantDataAtIndex:` (§4.3.6).
 4. Long forms of instanced draws, `setVertexBuffers:offsets:withRange:`
    (the `count` word suggests multi-slot records), tessellation, tile
    shaders, parallel render encoders, `setColorStoreAction` field order,
    visibility result mode, `textureBarrier`, `setLineWidth`.
 5. How a host reports a shader translation failure or a GPU fault to the
    client (a status 5 completion is honored; nothing else observed).
-6. Argument-buffer encoding (op 16 payload, op 19 values, what the host
-   writes into argument buffers): only one probe and, in the heavy boot,
-   WeatherPoster used
-   them.
+6. *(Answered, §4.3, OBS-ARGBUF.)* Argument-buffer encoding: op 16's
+   layout description, op 17's reply, op 19's set calls and what the host
+   writes. Still open: how the macOS host chooses the 8-byte texture
+   handles it writes, and the layout of WeatherPoster's encoder (not made
+   in the reference's cold boot; as Ycode receives it, §4.3.9).
 7. Whether `defaultRasterSampleCount`-only passes ever occur in the boot
    (they crashed the macOS host).
 8. *(Answered, §5.10, §5.11, level 3.)* The reference's reply to `messageType` 19
@@ -1121,6 +1622,36 @@ was not applied to its connections.
    the IOSurface it makes, in particular the value under
    `MetalSharedTexture`; whether opening a handle in another process
    (`newSharedTextureWithHandle:`) sends a message, and which.
+9. *(New, ARGBUF-IMPL, 2026-10-30.)* Op 16's member type codes other
+   than 57, 1 and 2. Under Ycode, iOS 27.0 WeatherPoster's descriptions
+   (11 220 bytes) hold a member with type code 11 inside the pointee
+   struct of a top-level buffer member. Type code 11 is `MTLDataTypeFloat3x3`
+   as a data-type value, so this may be a plain-data member of a pointee
+   struct. On the reference, with a probe whose argument buffer has a
+   `constant S *` member and `S` holds a `float3x3` (and other matrix and
+   vector types, and a nested struct): which type codes appear for the
+   members of a pointee struct, and what follows each code. Ycode skips
+   such pointee structs (§4.3.9) and needs nothing more for the layout. A
+   full grammar would let the parser stop depending on that search.
+   *(VISIONOS-R10b, 2026-10-31: no visionOS boot of round R10 logged a
+   layout it did not parse; still open for the reference.)*
+10. *(New, ARGBUF-IMPL, 2026-10-30.)* Which op-14 key, if any, carries
+   `rasterizationEnabled` NO, and whether a pipeline with it can have a
+   depth or stencil format. Ycode infers "not rasterized" from no fragment
+   function and no depth or stencil format (§7.2). *(VISIONOS-R10b,
+   2026-10-31: the visionOS boots of round R10 logged no render-pipeline
+   key Ycode does not model, only compute-pipeline keys 1 and 2, as
+   before; still open for the reference.)*
+11. *(New, GPU-SIRI, 2026-11-01.)* What the reference sends for a command
+   buffer the host GPU stopped (a GPU timeout or fault): `status` 5 with
+   which `error` value, and whether the driver turns it into
+   `MTLCommandBufferErrorTimeout` (2) or `PageFault`; and what a client's
+   other in-flight command buffers get then. Ycode fails only the stuck
+   one, with `error` 1 (§8.7).
+12. *(New, GPU-SIRI.)* Which area the reference renders when a pass's
+   attachments differ in size (the smallest, Ycode's rule in §8.7, or each
+   attachment clipped to its own size); probe: a pass with a 64 × 64 and a
+   16 × 16 attachment, both cleared, and a full-screen draw writing both.
 
 ## Evidence
 
@@ -1148,6 +1679,15 @@ was not applied to its connections.
 | Records 22, 24, 25, 27, 103, 105, 106, 118, 120, 121, 132, 134, 212, 213; corrections to 102, 209 and the buffer range form; inline-bytes records; calls without a record (§8.3, §8.4) | 3 | visionos.md §10.12.1: our probes `encprobe`, `encprobe2` with separator records under `mslog`, visionOS 27.0 runtime, 2026-10-27; backboardd's encoder calls (a copy of Ycode's recorder) matched to its records |
 | Null-port 18 answered with an empty dictionary; nil event (§5.8) | 3 | visionos.md §10.12.2: `mslog` with port names in backboardd and wakeboardd; recorder copy in backboardd |
 | Ycode's decoding of those records, deferred store actions in the descriptor, fences satisfied by in-order execution, the null-port 18 reply (§5.8, §8.3, §8.4) | — | Ycode design (visionos.md §10.14.1); unit tests `CommandDecoderTests.fenceVisibilityAndDeferredStoreRecords`, `computeFencesAndRangeBindings`, `rangeBindingsAndViewportArrays`, `computeRecords`, `CoreTests.sharedEventHandlesNameOneEventAcrossProcesses`; no unknown record in visionOS boots r1–r3 |
+| Argument buffers: op 16's layout description, the offset rule, op 17's reply order, op 19's index, count and range forms, what the host writes, op 35 (§4.3) | 3 | OBS-ARGBUF, 2026-10-30: our probe `argprobe.m` (32 layouts) under the recorder on the iOS 27.0 reference (24A434), the recorder's test server for the driver-writes check, `msargbuf.py` parsing every description exactly; visionOS 27.0 backboardd's one encoder in a reference boot (recorder in backboardd) |
+| Ycode's argument buffers: the op-16 parser, op 17's order, op 19's forms and writes, op 35, the 8 × *n* fallback, snapshots (§4.3.9) | — | Ycode design from §4.3.1–§4.3.8; unit tests `ArgumentLayoutTests` (11), `CoreTests.argumentEncoderSetCallsWriteTheirMembers`, `SnapshotReplayTests.restoreKeepsSlotsAndRewritesArgumentMembers` |
+| The search past an unreadable pointee struct (§4.3.9) | — | Ycode design; `ArgumentLayoutTests.anUnreadablePointeeIsSkipped` |
+| Fragment-less pipelines rasterize depth and stencil (§7.2) | 1, 3 | Metal documentation (`fragmentFunction`, `rasterizationEnabled`); `visionos.md` §10.22.2 (boots `v6`, `v7`); `VulkanBackendTests.depthOnlyPipelinesRasterize` |
+| Layouts seen under Ycode: visionOS backboardd's 15 buffers; WeatherPoster's 17-, 3- and 12-member layouts; type code 11 in a pointee struct (§4.3.9, §13 item 9) | 3 (under Ycode) | ARGBUF-IMPL boots on the Thor (iOS 27.0 `c1a`–`c8a`, `c1b`, `d1a`–`d6a`, `e1a`–`e6a`; visionOS 27.0 `v1`–`v7`): the host's own "argument layout" and "did not parse" log lines |
+| Op 29's stale high half ignored by the host (§8.3) | 3 | OBS-ARGBUF: `argprobe draw2` (a vertex function reports `base_instance`) on the iOS 27.0 reference; backboardd's op-29 records in a visionOS 27.0 reference boot |
+| What ends a hung submission on the Thor: a second device, `vkDeviceWaitIdle` (1.3 s, `VK_ERROR_DEVICE_LOST`), destroy and re-create; capture-replay addresses survive a new device (§8.7) | 3 | GPU-SIRI's probes `scripts/gpu-probes/hangkick.c`, `loop.comp`, `car.c` (our C and GLSL) on the Thor; the host kernel log (Xid 109); Vulkan specification (`bufferDeviceAddressCaptureReplay`, `vkDeviceWaitIdle`, device loss) level 1 |
+| The render server's abort on a failed command buffer; the loss loop of run `x7` (§8.7) | 3 | XR-VIEWER's run `ide-remote/xr-viewer/runs/x7` (host log, guest crash annotations), Ycode's own boots |
+| Ycode's watchdog and device recovery (§8.7) | — | Ycode design; `GPURecoveryTests` on the Thor's GPU; GPU-SIRI's boots |
 | Requirements (§12) | — | derived from the above; Ycode design |
 
 No disassembly or decompilation was used (level 5 not used). No
@@ -1170,6 +1710,8 @@ Sources (ours) in `research/experiments/simulator/metal-sim/`, built with
 | `shaders.metal` | our test shaders for the metallib case |
 | `msparse.py` | prints a capture as messages and records |
 | `mspso.py` | decodes keyed pipeline descriptors |
+| `argprobe.m` | argument-buffer probe (OBS-ARGBUF): 25 shader-struct and 7 descriptor-built layouts, range set calls, `constantDataAtIndex:`, a public-API look at a library file's functions, and the op-29 checks `draw`, `draw2` |
+| `msargbuf.py` | decodes op-16 layout descriptions into index → offset tables |
 
 Method: a throwaway iPhone Duo device (`R7-metal`) on the 27.1 runtime was
 booted with `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES` pointing at the recorder

@@ -114,6 +114,47 @@ let schedSwitchesTestLock = NSRecursiveLock()
         }
     }
 
+    /// visionos.md §10.26.1: a job listed in `shellReadyHoldLabels` stays
+    /// held through boosts until the shell is ready, then starts; the quiet
+    /// test does not release it either; jobs not listed are unaffected.
+    @Test func shellReadyHoldWaitsForTheShell() throws {
+        try with(hold: true, holdMax: 60_000_000_000, quiet: 60_000_000_000) {
+            let env = try ProcEnv()
+            env.system.shellReadyHoldLabels = ["com.example.assistant"]
+            let (_, _, pid) = env.spawn(from: env.rootKernel, flags: 0, apptype: 0x600)
+            let (_, _, other) = env.spawn(from: env.rootKernel, flags: 0, apptype: 0x600)
+            let child = env.system.process(pid: pid)!, otherChild = env.system.process(pid: other)!
+            let launch = env.launcher.launches[env.launcher.launches.count - 2], otherLaunch = env.launcher.launches.last!
+            env.system.lock.withLock { child.holdLabel = "com.example.assistant" }
+            let p = port(env), q = port(env)
+            let ipc = env.rootKernel.machIPC as! MachIPC
+            env.system.lock.withLock {
+                ipc.bindImportanceWatchPorts([p], to: child)
+                ipc.bindImportanceWatchPorts([q], to: otherChild)
+                ipc.enqueue(message(importance: true), on: p)
+                ipc.enqueue(message(importance: true), on: q)
+            }
+            // Boosted, still held; the other job starts at its boost.
+            #expect(env.system.lock.withLock { child.holdStart != nil && child.importanceBoosts == 1 })
+            #expect(launch.image.resumed == 0 && otherLaunch.image.resumed == 1)
+            #expect(env.system.lock.withLock { child.holdBoostSource.contains("message id 7") })
+            env.system.markShellReady(reason: "test")
+            #expect(launch.image.resumed == 1)
+            #expect(env.system.lock.withLock { child.holdStart == nil && env.system.schedStats.releasedShellReady == 1 })
+            #expect(env.system.schedStats.releasedByBoost == 1)
+            // Later spawns of the job are held as usual and boosts release them.
+            let (_, _, again) = env.spawn(from: env.rootKernel, flags: 0, apptype: 0x600)
+            let next = env.system.process(pid: again)!
+            env.system.lock.withLock { next.holdLabel = "com.example.assistant" }
+            let r = port(env)
+            env.system.lock.withLock {
+                ipc.bindImportanceWatchPorts([r], to: next)
+                ipc.enqueue(message(importance: true), on: r)
+            }
+            #expect(env.launcher.launches.last!.image.resumed == 1)
+        }
+    }
+
     @Test func importanceQueuedBeforeSpawnStartsTheJobBoosted() throws {
         try with(hold: true, holdMax: 60_000_000_000, quiet: 60_000_000_000) {
             let env = try ProcEnv()

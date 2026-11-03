@@ -24,6 +24,22 @@ public enum DisplayMessageType: UInt8, Sendable {
     case displayState = 0x07
     /// The answer to a command (0x90): u32 token, UTF-8 text ("ok …" or "error: …").
     case commandReply = 0x10
+    /// The server's stage times of the frame just sent (§12; only when the
+    /// client hello asked for `timing`).
+    case frameTiming = 0x08
+    /// The device's sound (§15): a packet of audio with its play time.
+    case audio = 0x09
+    /// The headset viewer (xr-viewer.md §4.1): the view and pose of the
+    /// next frame message, sent just before it.
+    case frameView = 0x0A
+    /// Foveated streaming (xr-viewer.md §4.5): the full-resolution inset
+    /// around the gaze for the frame just sent.
+    case inset = 0x0B
+    /// The headset mode's depth of the frame just sent (xr-depth.md §4; only
+    /// when the client hello asked for `xr.depthDownscale`).
+    case frameDepth = 0x0C
+    /// The room's environment cube (xr-depth.md §4.3; when the client hello asked for `xr.environment`).
+    case environment = 0x0D
 
     case clientHello = 0x81
     case touch = 0x82
@@ -35,6 +51,19 @@ public enum DisplayMessageType: UInt8, Sendable {
     case rotate = 0x88
     /// u16 hinge angle 0…180, u8 flags (bit 0: one message, no sweep).
     case fold = 0x89
+    /// visionOS (visionos.md "Ycode implementation"; only when the hello's
+    /// `spatial` is true): the camera pose, a gaze-and-hands selection, and
+    /// a Digital Crown turn, all in the stage frame (§5.5.1).
+    case pose = 0x8A
+    case selection = 0x8B
+    case dial = 0x8C
+    /// The headset viewer: head and eye poses (xr-viewer.md §4.1; latest wins).
+    case views = 0x8D
+    /// Foveated streaming: where the eyes look in the guest's view (latest wins).
+    case fovea = 0x8E
+    /// The newest frame decoded (a viewer with `frameWindow`, §4.2): the server
+    /// keeps at most that many frames unacknowledged, and takes the newest picture when one is free.
+    case frameAck = 0x8F
     /// A device command (simulator-features.md "Ycode implementation"): u32
     /// token, UTF-8 words of a control-socket command ("ui appearance dark").
     case command = 0x90
@@ -71,6 +100,26 @@ public struct DisplayServerHello: Codable, Sendable, Equatable {
     /// Optional: older servers send neither.
     public var deviceType: String?
     public var osVersion: String?
+    /// The audio codecs the server can send (§15); nil: no audio.
+    public var audio: [String]?
+    /// The server takes the visionOS input messages (pose 0x8A, selection
+    /// 0x8B, dial 0x8C; visionos.md "Ycode implementation"). Viewers send
+    /// them only when this is true; nil or false: an older server or a
+    /// device that is not a Vision Pro.
+    public var spatial: Bool?
+    /// The simulated rooms the device offers (keys, e.g. "LivingRoomDay"),
+    /// and the active one, when known at connect time; the `vision rooms`
+    /// command answers later.
+    public var rooms: [String]?
+    /// The server has the headset mode (views 0x8D, frame views 0x0A;
+    /// xr-viewer.md §4.1). Nil or false: an older server or not visionOS.
+    public var xr: Bool?
+    /// The server can send each picture's depth (frame depth 0x0C; xr-depth.md §4).
+    public var xrDepth: Bool?
+    /// The server can send the room's environment (0x0D; xr-depth.md §4.3).
+    public var xrEnvironment: Bool?
+    /// The server honours a client's `frameWindow` (frame acks 0x8F, §4.2).
+    public var frameAcks: Bool?
 
     public init(deviceName: String, model: String, pixelWidth: Int, pixelHeight: Int, scale: Double,
                 orientation: String = "portrait", encodings: [String], touch: Bool, keyboard: Bool,
@@ -152,17 +201,48 @@ public struct DisplayPanelState: Codable, Sendable, Equatable {
 }
 
 /// The client's hello (§3.2): how it wants frames.
+/// The server's notice to a viewer that another one took the display over
+/// (display-stream.md §1). A viewer that gets it does not reconnect by
+/// itself: it waits until its user takes the display back (§1.1).
+public enum DisplayNotice {
+    public static let takenOver = "another viewer connected; this one is closed"
+    /// The phase a viewer reports while another one has the display.
+    public static let takenOverPhase = "takenOver"
+}
+
 public struct DisplayClientHello: Codable, Sendable, Equatable {
     public var `protocol`: String = DisplayStream.protocolName
     public var client: String
     /// Frames per second at most (1...120).
     public var maxFPS: Int
-    /// "jpeg" or "zlib" (lossless BGRA).
+    /// "hevc444", "hevc", "h264", "jpeg" or "zlib" (lossless BGRA).
     public var encoding: String
+    /// Every encoding this client decodes, best first (§14): the server takes
+    /// the first it offers. Nil: `encoding` alone (older clients).
+    public var encodings: [String]?
     /// JPEG quality (1...100).
     public var quality: Int
     /// Integer downscale of the device pixels (1...4).
     public var downscale: Int
+    /// Ask for a frame timing message (0x08) after every frame (§12).
+    /// Optional: older clients and servers leave it out.
+    public var timing: Bool?
+    /// The video bit rate in kbit/s (§14; nil: the server's default).
+    public var videoBitrate: Int?
+    /// Constant QP for video (§14; nil or 0: by bit rate). The stream sends a
+    /// picture only when it changes, so nothing would refine a starved one.
+    public var videoQP: Int?
+    /// By bit rate with this nominal picture rate: CBR with a VBV of one
+    /// picture (§14). Nil: VBR at `maxFPS`, as older clients get.
+    public var videoFPS: Int?
+    /// The audio codecs the client plays, preferred first ("opus", "pcm";
+    /// §15). Nil or empty: no audio is sent.
+    public var audio: [String]?
+    /// The headset viewer's request (xr-viewer.md §4.1); nil: an ordinary viewer.
+    public var xr: XRClientRequest?
+    /// Flow control (§4.2): at most this many frames sent and not yet
+    /// acknowledged (0x8F). Nil or 0: as fast as the transport takes them.
+    public var frameWindow: Int?
 
     public init(client: String, maxFPS: Int = 60, encoding: String = "jpeg", quality: Int = 75, downscale: Int = 1) {
         self.client = client
@@ -170,6 +250,36 @@ public struct DisplayClientHello: Codable, Sendable, Equatable {
         self.encoding = encoding
         self.quality = quality
         self.downscale = downscale
+    }
+}
+
+/// What a headset viewer asks for (xr-viewer.md §4.1).
+public struct XRClientRequest: Codable, Sendable, Equatable {
+    /// "adaptive" (mono while the head moves, the eyes in turn while it is
+    /// still), "alternate" (the eyes in turn) or "mono".
+    public var stereo: String
+    /// Pictures between a pose and the picture rendered with it (nil: the server's default).
+    public var latch: Int?
+    /// Alternate stereo: the least milliseconds a pose has before its picture is taken (nil: the server's default).
+    public var settleMs: Int?
+    /// Foveated streaming (§4.5): the whole picture at the hello's downscale
+    /// plus a full-resolution inset of this fraction of each side around the
+    /// gaze (nil or 0: off).
+    public var foveaFraction: Double?
+    /// Eye pictures (alternate, adaptive when still): each eye's guest
+    /// camera turned outwards by this many degrees (left eye left, right eye
+    /// right), so its symmetric 90° covers most of the headset's asymmetric
+    /// per-eye frustum (xr-viewer.md §4.6). Nil or 0: parallel eyes.
+    public var eyeYawDegrees: Double?
+
+    /// Each picture's depth at the picture's size divided by this (2, 4 or 8;
+    /// nil or 0: no depth; xr-depth.md §4).
+    public var depthDownscale: Int?
+    /// Send the room's environment now and whenever it changes (0x0D; xr-depth.md §4.3).
+    public var environment: Bool?
+
+    public init(stereo: String, latch: Int? = nil, settleMs: Int? = nil, depthDownscale: Int? = nil) {
+        (self.stereo, self.latch, self.settleMs, self.depthDownscale) = (stereo, latch, settleMs, depthDownscale)
     }
 }
 
@@ -195,16 +305,37 @@ public enum DisplayEncoding: UInt8, Sendable {
     case jpeg = 1
     /// zlib (RFC 1950) of packed BGRA rows.
     case zlibBGRA = 2
+    /// H.264 (ITU-T H.264, Annex B byte stream): one tile covering the whole
+    /// image, one access unit; `isFull` marks an IDR picture (§14).
+    case h264 = 3
+    /// HEVC 4:2:0 (ITU-T H.265, Annex B), carried as H.264 is (§14).
+    case hevc = 4
+    /// HEVC 4:4:4 (Range Extensions): chroma at every pixel, for coloured UI text and edges (§14).
+    case hevc444 = 5
 
     public init?(name: String) {
         switch name {
         case "jpeg": self = .jpeg
         case "zlib": self = .zlibBGRA
+        case "h264": self = .h264
+        case "hevc": self = .hevc
+        case "hevc444": self = .hevc444
         default: return nil
         }
     }
 
-    public var name: String { self == .jpeg ? "jpeg" : "zlib" }
+    /// Whole pictures through a video codec (one tile, one access unit), not tiles of pixels.
+    public var isVideo: Bool { self == .h264 || self == .hevc || self == .hevc444 }
+
+    public var name: String {
+        switch self {
+        case .jpeg: "jpeg"
+        case .zlibBGRA: "zlib"
+        case .h264: "h264"
+        case .hevc: "hevc"
+        case .hevc444: "hevc444"
+        }
+    }
 }
 
 /// One rectangle of new pixels, in stream-image coordinates.
@@ -248,6 +379,39 @@ public struct DisplayFrame: Sendable, Equatable {
     public var byteCount: Int { tiles.reduce(0) { $0 + $1.data.count } }
 }
 
+/// The server's times of one frame (0x08, §12), its monotonic ns: when it
+/// saw the guest's frame record change, when it began reading the surface
+/// (scan), when the encoded frame was ready, and when the frame's last byte
+/// was handed to the socket. 0: not known (a speculative scan has no record).
+public struct DisplayFrameTiming: Sendable, Equatable {
+    public var sequence: UInt64
+    public var recordSeen: UInt64
+    public var captureStart: UInt64
+    public var encodeEnd: UInt64
+    public var sendEnd: UInt64
+
+    public init(sequence: UInt64, recordSeen: UInt64, captureStart: UInt64, encodeEnd: UInt64, sendEnd: UInt64) {
+        (self.sequence, self.recordSeen, self.captureStart, self.encodeEnd, self.sendEnd) = (sequence, recordSeen, captureStart, encodeEnd, sendEnd)
+    }
+}
+
+/// One packet of the device's sound (0x09, §15): 48 kHz interleaved
+/// stereo; `playTime` is the server monotonic ns at which the device plays
+/// its first frame (the guest's output time on the host clock).
+public struct DisplayAudio: Sendable, Equatable {
+    public enum Codec: UInt8, Sendable { case pcm16 = 1, opus = 2 }
+    public var playTime: UInt64
+    public var codec: Codec
+    public var channels: Int
+    public var frames: Int
+    public var sampleRate: Int
+    public var data: [UInt8]
+
+    public init(playTime: UInt64, codec: Codec, channels: Int = 2, frames: Int, sampleRate: Int = 48000, data: [UInt8]) {
+        (self.playTime, self.codec, self.channels, self.frames, self.sampleRate, self.data) = (playTime, codec, channels, frames, sampleRate, data)
+    }
+}
+
 // MARK: - Input
 
 public enum TouchPhase: UInt8, Sendable {
@@ -267,6 +431,10 @@ public struct TouchContact: Sendable, Equatable {
 
 public enum DisplayButton: UInt8, Sendable, CaseIterable {
     case home = 1, lock = 2, volumeUp = 3, volumeDown = 4, side = 5
+    /// An Action button (§5.3): a server lists "action" in its hello's
+    /// `buttons` when it takes this value (watchos.md §5.2); viewers send it
+    /// only then (an older server closes the connection on an unknown value).
+    case action = 6
 
     public var name: String {
         switch self {
@@ -275,6 +443,7 @@ public enum DisplayButton: UInt8, Sendable, CaseIterable {
         case .volumeUp: "volumeUp"
         case .volumeDown: "volumeDown"
         case .side: "side"
+        case .action: "action"
         }
     }
 }
@@ -285,10 +454,20 @@ public enum DisplayInput: Sendable, Equatable {
     /// A keyboard key: HID usage page (7 = keyboard) and usage.
     case key(sequence: UInt32, down: Bool, usagePage: UInt16, usage: UInt16)
     case button(sequence: UInt32, button: DisplayButton, down: Bool)
+    /// visionOS: the camera pose (stage frame; identity = the default eye).
+    case pose(sequence: UInt32, pose: SpatialPose)
+    /// visionOS: the gaze ray and, unless selection-only, both hands.
+    case selection(sequence: UInt32, selection: SpatialSelection)
+    /// visionOS: the Digital Crown turned by `delta` (signed).
+    case dial(sequence: UInt32, delta: Double)
+    /// The headset's head and eyes (xr-viewer.md §4.1).
+    case views(sequence: UInt32, views: XRViews)
+    /// Where the eyes look: (u, v) in the guest's view, 0…1 from the top left.
+    case fovea(sequence: UInt32, u: Float, v: Float)
 
     public var sequence: UInt32 {
         switch self {
-        case .touch(let s, _), .key(let s, _, _, _), .button(let s, _, _): s
+        case .touch(let s, _), .key(let s, _, _, _), .button(let s, _, _), .pose(let s, _), .selection(let s, _), .dial(let s, _), .views(let s, _), .fovea(let s, _, _): s
         }
     }
 }
@@ -304,11 +483,19 @@ public enum DisplayMessage: Sendable, Equatable {
     case notice(String)
     case displayState(DisplayPanelState)
     case commandReply(token: UInt32, text: String)
+    case frameTiming(DisplayFrameTiming)
+    case audio(DisplayAudio)
+    case frameView(XRFrameView)
+    case inset(XRInset)
+    case frameDepth(XRFrameDepth)
+    case environment(XREnvironment)
 
     case clientHello(DisplayClientHello)
     case input(DisplayInput)
     case ping(token: UInt64)
     case keyframeRequest
+    /// Every frame up to this sequence is decoded (§4.2).
+    case frameAck(sequence: UInt64)
     case screenshotRequest(token: UInt32)
     /// 1 portrait, 2 upside down, 3 landscape left, 4 landscape right.
     case rotate(orientation: UInt8)
@@ -334,6 +521,8 @@ struct ByteWriter {
     mutating func u32(_ v: UInt32) { for i in 0..<4 { bytes.append(UInt8(truncatingIfNeeded: v >> (8 * UInt32(i)))) } }
     mutating func u64(_ v: UInt64) { for i in 0..<8 { bytes.append(UInt8(truncatingIfNeeded: v >> (8 * UInt64(i)))) } }
     mutating func f32(_ v: Float) { u32(v.bitPattern) }
+    mutating func vector(_ v: SpatialVector) { f32(Float(v.x)); f32(Float(v.y)); f32(Float(v.z)) }
+    mutating func quaternion(_ q: SpatialQuaternion) { f32(Float(q.x)); f32(Float(q.y)); f32(Float(q.z)); f32(Float(q.w)) }
 }
 
 struct ByteReader {
@@ -360,6 +549,12 @@ struct ByteReader {
         return v
     }
     mutating func f32(_ what: String) throws -> Float { Float(bitPattern: try u32(what)) }
+    mutating func vector(_ what: String) throws -> SpatialVector {
+        SpatialVector(Double(try f32(what)), Double(try f32(what)), Double(try f32(what)))
+    }
+    mutating func quaternion(_ what: String) throws -> SpatialQuaternion {
+        SpatialQuaternion(x: Double(try f32(what)), y: Double(try f32(what)), z: Double(try f32(what)), w: Double(try f32(what)))
+    }
     mutating func take(_ n: Int, _ what: String) throws -> [UInt8] {
         try need(n, what); defer { at += n }
         return Array(bytes[at..<(at + n)])
@@ -378,13 +573,25 @@ extension DisplayMessage {
         case .notice: .notice
         case .displayState: .displayState
         case .commandReply: .commandReply
+        case .frameTiming: .frameTiming
+        case .audio: .audio
+        case .frameView: .frameView
+        case .inset: .inset
+        case .frameDepth: .frameDepth
+        case .environment: .environment
         case .command: .command
         case .clientHello: .clientHello
         case .input(.touch): .touch
         case .input(.key): .key
         case .input(.button): .button
+        case .input(.pose): .pose
+        case .input(.selection): .selection
+        case .input(.dial): .dial
+        case .input(.views): .views
+        case .input(.fovea): .fovea
         case .ping: .ping
         case .keyframeRequest: .keyframeRequest
+        case .frameAck: .frameAck
         case .screenshotRequest: .screenshotRequest
         case .rotate: .rotate
         case .fold: .fold
@@ -425,6 +632,15 @@ extension DisplayMessage {
         case .pong(let token, let ns):
             w.u64(token)
             w.u64(ns)
+        case .frameTiming(let t):
+            for v in [t.sequence, t.recordSeen, t.captureStart, t.encodeEnd, t.sendEnd] { w.u64(v) }
+        case .audio(let a):
+            w.u64(a.playTime)
+            w.u8(a.codec.rawValue)
+            w.u8(UInt8(clamping: a.channels))
+            w.u16(UInt16(clamping: a.frames))
+            w.u32(UInt32(clamping: a.sampleRate))
+            w.bytes += a.data
         case .screenshot(let token, let png):
             w.u32(token)
             w.bytes += png
@@ -449,8 +665,71 @@ extension DisplayMessage {
             w.u32(seq)
             w.u8(button.rawValue)
             w.u8(down ? 1 : 0)
+        case .input(.pose(let seq, let pose)):
+            w.u32(seq)
+            w.vector(pose.position)
+            w.quaternion(pose.rotation)
+        case .input(.selection(let seq, let s)):
+            w.u32(seq)
+            w.u8(s.hasHands ? 1 : 0)
+            w.u8(0)
+            w.u16(0)
+            w.vector(s.rayOrigin)
+            w.vector(s.rayDirection)
+            if s.hasHands, let l = s.left, let r = s.right {
+                for h in [l, r] {
+                    w.u8(h.pinching ? 1 : 0)
+                    w.u8(h.allowDirect ? 1 : 0)
+                    w.u16(0)
+                    w.vector(h.position)
+                    w.quaternion(h.rotation)
+                }
+            }
+        case .input(.dial(let seq, let delta)):
+            w.u32(seq)
+            w.f32(Float(delta.isFinite ? delta : 0))
+        case .input(.views(let seq, let v)):
+            w.u32(seq)
+            w.u8(v.stereo ? 1 : 0)
+            w.u8(0)
+            w.u16(0)
+            for p in [v.head, v.left, v.right] {
+                w.vector(p.position)
+                w.quaternion(p.rotation)
+            }
+        case .input(.fovea(let seq, let u, let v)):
+            w.u32(seq)
+            w.f32(u)
+            w.f32(v)
+        case .inset(let i):
+            w.u64(i.frameSequence)
+            w.u8(i.view.rawValue)
+            w.u8(i.encoding.rawValue)
+            w.u16(UInt16(clamping: i.x))
+            w.u16(UInt16(clamping: i.y))
+            w.u16(UInt16(clamping: i.width))
+            w.u16(UInt16(clamping: i.height))
+            w.u16(UInt16(clamping: i.fullWidth))
+            w.u16(UInt16(clamping: i.fullHeight))
+            w.bytes += i.data
+        case .frameView(let f):
+            w.u64(f.frameSequence)
+            w.u8(f.view.rawValue)
+            w.u8(f.estimated ? 1 : 0)
+            w.u16(f.latch)
+            w.u32(f.poseSequence)
+            w.vector(f.pose.position)
+            w.quaternion(f.pose.rotation)
+            let t = f.fov.tangents
+            for v in [t.left, t.right, t.up, t.down] { w.f32(Float(v)) }
+            w.u64(f.guestFrame)
+        case .frameDepth(let d):
+            w.bytes += d.payload()
+        case .environment(let e):
+            w.bytes += e.payload()
         case .ping(let token): w.u64(token)
         case .keyframeRequest: break
+        case .frameAck(let sequence): w.u64(sequence)
         case .screenshotRequest(let token): w.u32(token)
         case .rotate(let o): w.u8(o)
         case .fold(let angle, let instant):
@@ -497,6 +776,15 @@ extension DisplayMessage {
             return .frame(DisplayFrame(sequence: seq, guestFrame: guest, serverNanoseconds: ns, inputSequence: input,
                                        width: w, height: h, encoding: enc, isFull: full, tiles: tiles))
         case .pong: return .pong(token: try r.u64("pong"), serverNanoseconds: try r.u64("pong"))
+        case .audio:
+            let t = try r.u64("audio")
+            let c = try r.u8("audio")
+            guard let codec = DisplayAudio.Codec(rawValue: c) else { throw DisplayStreamError.truncated("audio codec \(c)") }
+            let ch = Int(try r.u8("audio")), frames = Int(try r.u16("audio")), rate = Int(try r.u32("audio"))
+            return .audio(DisplayAudio(playTime: t, codec: codec, channels: ch, frames: frames, sampleRate: rate, data: r.rest()))
+        case .frameTiming:
+            return .frameTiming(DisplayFrameTiming(sequence: try r.u64("timing"), recordSeen: try r.u64("timing"), captureStart: try r.u64("timing"),
+                                                   encodeEnd: try r.u64("timing"), sendEnd: try r.u64("timing")))
         case .screenshot: return .screenshot(token: try r.u32("screenshot"), png: r.rest())
         case .notice: return .notice(String(decoding: payload, as: UTF8.self))
         case .touch:
@@ -521,8 +809,67 @@ extension DisplayMessage {
             let raw = try r.u8("button")
             guard let b = DisplayButton(rawValue: raw) else { throw DisplayStreamError.truncated("button \(raw)") }
             return .input(.button(sequence: seq, button: b, down: try r.u8("button") != 0))
+        case .pose:
+            let seq = try r.u32("pose")
+            return .input(.pose(sequence: seq, pose: SpatialPose(position: try r.vector("pose"), rotation: try r.quaternion("pose"))))
+        case .selection:
+            let seq = try r.u32("selection")
+            let flags = try r.u8("selection")
+            _ = try r.u8("selection")
+            _ = try r.u16("selection")
+            var s = SpatialSelection(rayOrigin: try r.vector("selection"), rayDirection: try r.vector("selection"))
+            if flags & 1 != 0 {
+                var hands: [SpatialHand] = []
+                for _ in 0..<2 {
+                    let pinch = try r.u8("hand") != 0, direct = try r.u8("hand") != 0
+                    _ = try r.u16("hand")
+                    hands.append(SpatialHand(pinching: pinch, allowDirect: direct, position: try r.vector("hand"), rotation: try r.quaternion("hand")))
+                }
+                (s.left, s.right) = (hands[0], hands[1])
+            }
+            return .input(.selection(sequence: seq, selection: s))
+        case .dial:
+            let seq = try r.u32("dial")
+            return .input(.dial(sequence: seq, delta: Double(try r.f32("dial"))))
+        case .views:
+            let seq = try r.u32("views")
+            let flags = try r.u8("views")
+            _ = try r.u8("views")
+            _ = try r.u16("views")
+            var p: [SpatialPose] = []
+            for _ in 0..<3 { p.append(SpatialPose(position: try r.vector("views"), rotation: try r.quaternion("views"))) }
+            return .input(.views(sequence: seq, views: XRViews(sequence: seq, stereo: flags & 1 != 0, head: p[0], left: p[1], right: p[2])))
+        case .fovea:
+            let seq = try r.u32("fovea")
+            return .input(.fovea(sequence: seq, u: try r.f32("fovea"), v: try r.f32("fovea")))
+        case .inset:
+            let seq = try r.u64("inset")
+            let rawView = try r.u8("inset"), rawEnc = try r.u8("inset")
+            guard let view = XRView(rawValue: rawView), let enc = DisplayEncoding(rawValue: rawEnc) else { throw DisplayStreamError.truncated("inset") }
+            let x = Int(try r.u16("inset")), y = Int(try r.u16("inset")), w = Int(try r.u16("inset")), h = Int(try r.u16("inset"))
+            let fw = Int(try r.u16("inset")), fh = Int(try r.u16("inset"))
+            return .inset(XRInset(frameSequence: seq, view: view, encoding: enc, x: x, y: y, width: w, height: h, fullWidth: fw, fullHeight: fh, data: r.rest()))
+        case .frameView:
+            let seq = try r.u64("frame view")
+            let raw = try r.u8("frame view")
+            guard let view = XRView(rawValue: raw) else { throw DisplayStreamError.truncated("view \(raw)") }
+            let flags = try r.u8("frame view")
+            let latch = try r.u16("frame view")
+            let poseSeq = try r.u32("frame view")
+            let pose = SpatialPose(position: try r.vector("frame view"), rotation: try r.quaternion("frame view"))
+            let t = (try r.f32("fov"), try r.f32("fov"), try r.f32("fov"), try r.f32("fov"))
+            let fov = XRFieldOfView(tangentLeft: Double(t.0), right: Double(t.1), up: Double(t.2), down: Double(t.3))
+            return .frameView(XRFrameView(frameSequence: seq, view: view, estimated: flags & 1 != 0, latch: latch, poseSequence: poseSeq,
+                                          pose: pose, fov: fov, guestFrame: try r.u64("frame view")))
+        case .frameDepth:
+            guard let d = XRFrameDepth(payload: Array(payload)) else { throw DisplayStreamError.truncated("frame depth") }
+            return .frameDepth(d)
+        case .environment:
+            guard let e = XREnvironment(payload: Array(payload)) else { throw DisplayStreamError.truncated("environment") }
+            return .environment(e)
         case .ping: return .ping(token: try r.u64("ping"))
         case .keyframeRequest: return .keyframeRequest
+        case .frameAck: return .frameAck(sequence: try r.u64("frame ack"))
         case .screenshotRequest: return .screenshotRequest(token: try r.u32("screenshot request"))
         case .rotate: return .rotate(orientation: try r.u8("rotate"))
         case .fold:

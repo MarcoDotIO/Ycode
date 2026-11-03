@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 import YcodeProject
 @testable import YcodeUI
 
@@ -8,14 +9,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(3))) struct LevelsViewTests {
-    @Test func strippedCopyKeepsOnlyThePlatform() throws {
-        let url = ycodeDir.appendingPathComponent("Tests/YcodeProjectTests/Fixtures/Hello.xcodeproj")
-        let s = DefaultsLevel.stripped(try PBXProj(contentsOf: url))
-        let all = s.objects.values.filter { $0.isa == "XCBuildConfiguration" }.flatMap { $0["buildSettings"]?.dictionary?.keys ?? [] }
-        #expect(Set(all).isSubset(of: ["SDKROOT", "SUPPORTED_PLATFORMS"]))
-    }
-
-    @Test func defaultsColumnAndProvidingLevel() throws {
+    @Test func defaultsColumnAndProvidingLevel() async throws {
         let helper = ycodeDir.appendingPathComponent("Tools/ycode-swb/.build/debug/ycode-swb").path
         guard FileManager.default.isExecutableFile(atPath: helper) else { return }
         setenv("YCODE_SWB", helper, 1)
@@ -39,6 +33,12 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let bundle = try #require(pe.settingRows.first { $0.name == "PRODUCT_BUNDLE_IDENTIFIER" })
         #expect(bundle.providingLevel == "target")
         // A setting the project never assigns resolves from the defaults.
+        // The helper answers in the background (the editor then reloads),
+        // so the Defaults column fills in after the editor opens.
+        let deadline = Date().addingTimeInterval(120)
+        while !pe.settingRows.contains(where: { $0.name == "WRAPPER_EXTENSION" }) && Date() < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
         let wrapper = try #require(pe.settingRows.first { $0.name == "WRAPPER_EXTENSION" })
         #expect(wrapper.defaults == "app" && wrapper.providingLevel == "defaults" && wrapper.resolved == "app")
         // A project-level assignment shadows the default.

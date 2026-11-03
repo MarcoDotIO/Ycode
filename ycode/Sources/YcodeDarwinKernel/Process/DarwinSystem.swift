@@ -172,6 +172,15 @@ public final class DarwinProcess: @unchecked Sendable, CustomStringConvertible {
     /// importance code checks it; `mach-ipc-locking.md` §4.5).
     let holdActive = Atomic<Bool>(false)
     var holdLabel = ""
+    /// While held: the last importance message queued for it (sender pid and
+    /// name, message id), for the release line (`scheduling-policy.md` §5).
+    /// Written under a port lock, read under L0: kept behind its own lock.
+    var holdBoostSource: String {
+        get { holdBoostLock.withLock { holdBoostSourceValue } }
+        set { holdBoostLock.withLock { holdBoostSourceValue = newValue } }
+    }
+    private var holdBoostSourceValue = ""
+    private let holdBoostLock = DescriptorTableLock(name: "hold boost source")
     /// The pid version of the current image (audit token word 7).
     var pidVersion: UInt32 {
         get { fieldsLock.withLock { fields.pidVersion } }
@@ -294,6 +303,12 @@ public final class DarwinSystem: @unchecked Sendable {
     let holdWake = WaitQueue()
     public internal(set) var schedStats = SchedStats()
     public var holdLog: ((String) -> Void)?
+    /// Job labels whose start hold lasts until the shell is ready
+    /// (`markShellReady`), whatever boosts they get (§4.2 "shell-ready
+    /// holds", `visionos.md` §10.26.1); empty: none. Set before the boot.
+    public var shellReadyHoldLabels: Set<String> = []
+    /// `markShellReady` was called.
+    var shellReady = false
     /// The last pid handed out (`processes.md` §2.1, `stage4b-contract.md` §2 item 7).
     var lastPID: Int32 = VMLayout.guestPID
     var nextPIDVersion: UInt32 = 0x100

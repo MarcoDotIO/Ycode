@@ -1,0 +1,11 @@
+# Synthetic samples for `health import` (Ycode; population-norm values only).
+type,start,end,value,unit
+HKQuantityTypeIdentifierHeartRate,-30m,,72,count/min
+HKQuantityTypeIdentifierHeartRate,-25m,,75,count/min
+HKQuantityTypeIdentifierRestingHeartRate,-1d,-1m,61,count/min
+HKQuantityTypeIdentifierHeartRateVariabilitySDNN,-2h,-119m,42.5,ms
+HKQuantityTypeIdentifierActiveEnergyBurned,-60m,-50m,35.2,kcal
+HKQuantityTypeIdentifierDistanceWalkingRunning,-60m,-50m,820,m
+HKQuantityTypeIdentifierBodyTemperature,-3h,,36.7,degC
+HKCategoryTypeIdentifierSleepAnalysis,-9h,-8h,core,
+HKCategoryTypeIdentifierMindfulSession,-4h,-230m,0,

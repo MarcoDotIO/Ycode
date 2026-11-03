@@ -65,6 +65,69 @@ import YcodeXPC
         #expect(g.backend.calls.last == .release(handles[2]))
     }
 
+    /// A restore keeps the textures' heap slots (the back end is asked to
+    /// reserve them before the replay) and writes every argument-encoder
+    /// member again whose object's ID changed on the new back end
+    /// (visionos.md §10.21): the warm boot's argument buffers name the
+    /// restored textures, not the slots the cold boot's had.
+    @Test func restoreKeepsSlotsAndRewritesArgumentMembers() throws {
+        let f = Fixture()
+        f.backend.textureIDBase = 1000
+        f.connect()
+        _ = f.replyData(Build.message(12, Build.record(20) { $0.u32(0); $0.u64(1 << 20); $0.u16(0x20); $0.u16(0) }))
+        let argumentBuffer = Build.u32(f.replyData(Build.message(12, Build.record(24) {
+            $0.u32(0); $0.u32(1); $0.u64(4096); $0.u64(0); $0.u64(0x20)
+        })), 0)
+        let tex = Build.record(1) { $0.append(Build.textureWords(usage: 1, format: 80, width: 8, height: 8, levels: 1)) }
+        let texture = Build.u32(f.replyData(Build.message(8, tex)), 0)
+        let layout = Build.u32(f.replyData(Build.message(12, Build.record(16) { $0.u32(0) })), 0)
+        let encoder = Build.u32(f.replyData(Build.message(12, Build.record(17) { $0.u32(0); $0.u32(layout) })), 0)
+        func set(kind: UInt8, index: UInt8, object: UInt32, offset: UInt64) {
+            _ = f.send(Build.message(12, Build.record(19) {
+                $0.u32(encoder); $0.u8(kind); $0.u8(index); $0.u16(0)
+                $0.u32(0); $0.u32(0x100); $0.u32(0); $0.u32(0)
+                $0.u32(object); $0.u64(offset)
+            }), on: 1)
+        }
+        set(kind: 0, index: 0, object: argumentBuffer, offset: 64)
+        set(kind: 2, index: 2, object: texture, offset: 0)
+        let textureHandle = try #require(f.backend.calls.compactMap { c -> MetalHandle? in
+            if case let .createTexture(h, _, _) = c { return h }
+            return nil
+        }.first)
+        var cold = MetalByteWriter()
+        cold.u64(1000 + textureHandle.raw)
+        #expect(f.backend.calls.last == .writeBuffer(try #require(f.backend.calls.compactMap { c -> MetalHandle? in
+            if case let .createBuffer(h, _, _, _) = c { return h }
+            return nil
+        }.first), offset: 64 + 16, bytes: cold.bytes))
+
+        let state = try #require(f.core.trySnapshotState(log: { _ in }))
+        let g = Fixture()
+        g.backend.textureIDBase = 5000
+        let report = g.core.restoreState(try SnapshotFieldReader(state.bytes))
+        #expect(report.failures == 0)
+        // The slot the texture had is reserved before anything is made, and an empty call ends the restore.
+        let reserved = g.backend.reservations
+        #expect(reserved.count == 2 && reserved.last.map { $0.textures.isEmpty && $0.samplers.isEmpty } == true)
+        #expect(reserved.first?.textures[textureHandle].map { $0.index == 1000 + UInt32(textureHandle.raw) && $0.count == 1 } == true)
+        // This back end gave it another ID: the member is written again with it.
+        var warm = MetalByteWriter()
+        warm.u64(5000 + textureHandle.raw)
+        let writes = g.backend.calls.compactMap { c -> (Int, [UInt8])? in
+            if case let .writeBuffer(_, offset, bytes) = c { return (offset, bytes) }
+            return nil
+        }
+        #expect(writes.count == 1 && writes.first.map { $0.0 == 64 + 16 && $0.1 == warm.bytes } == true, "\(writes)")
+        #expect(report.argumentMembers == 1 && report.argumentMembersChanged == 1 && report.textureIDsChanged == 1, "\(report)")
+        // A snapshot of the restored core keeps the member (now with the new value).
+        let again = try #require(g.core.trySnapshotState(log: { _ in }))
+        let h = Fixture()
+        h.backend.textureIDBase = 5000
+        let second = h.core.restoreState(try SnapshotFieldReader(again.bytes))
+        #expect(second.argumentMembers == 1 && second.argumentMembersChanged == 0 && second.slotsKept == 1)
+    }
+
     @Test func snapshotWaitsForCommandBuffersInFlight() throws {
         let f = Fixture(completesImmediately: false)
         f.connect()

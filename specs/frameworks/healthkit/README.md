@@ -43,6 +43,8 @@ an app; see `interface.md` §8).
 | `identifiers.md` | Generated appendix: every type identifier with string value, aggregation style, unit family and duration limits; metadata keys and other string constants with their values; every enumeration with raw values |
 | `api-inventory.md` | Generated appendix: every class, superclass and member name, with introduction versions |
 
+Simulated health data on the watch and phone simulators (read-only types, the watch's workout generator, sync, the store format, Ycode's health agent and commands): `specs/simulator/health-simulation.md`.
+
 Black-box observations: `research/notes/healthkit-simulator-observations-2026-10-19.md`.
 Probe app (our own code): `research/experiments/healthkit/HealthProbe/`.
 Generators: `research/experiments/healthkit/{extract_names,gen_tables,gen_api}.py`.

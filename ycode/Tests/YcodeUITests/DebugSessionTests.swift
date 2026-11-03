@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeDebug
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

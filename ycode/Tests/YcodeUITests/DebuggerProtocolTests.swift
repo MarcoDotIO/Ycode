@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 @testable import YcodeDebug
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// An in-memory DAP adapter (protocol shapes per the DAP specification),

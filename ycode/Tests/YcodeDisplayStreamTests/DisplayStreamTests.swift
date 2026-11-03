@@ -28,6 +28,11 @@ struct DisplayStreamTests {
         .keyframeRequest,
         .screenshotRequest(token: 9),
         .rotate(orientation: 3),
+        .frameTiming(DisplayFrameTiming(sequence: 7, recordSeen: 1, captureStart: 2, encodeEnd: 3, sendEnd: 1 << 40)),
+        .audio(DisplayAudio(playTime: 123_456_789, codec: .opus, frames: 240, data: [1, 2, 3])),
+        .audio(DisplayAudio(playTime: 9, codec: .pcm16, channels: 2, frames: 2, sampleRate: 48000, data: [0, 1, 2, 3, 4, 5, 6, 7])),
+        .frame(DisplayFrame(sequence: 8, guestFrame: 100, serverNanoseconds: 5, inputSequence: 0, width: 1206, height: 2622,
+                            encoding: .h264, isFull: true, tiles: [DisplayTile(x: 0, y: 0, width: 1206, height: 2622, data: [0, 0, 0, 1, 0x67])])),
     ]
 
     @Test func roundTrip() throws {

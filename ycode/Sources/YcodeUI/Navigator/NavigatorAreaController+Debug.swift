@@ -1,5 +1,6 @@
 import AppKit
 import YcodeDebug
+import YcodeIDECore
 
 /// The Debug and Breakpoint navigators' bottom-bar toggles, the process
 /// row update and the breakpoint enabled marker

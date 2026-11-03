@@ -151,6 +151,7 @@ final class FrameProfile: @unchecked Sendable {
         self.surfaces = surfaces
         VCPUPool.profiling = true
         _ = Self.currentKey
+        installTraceHooks()
         guard let raw = getenv("YCODE_FRAME_PROFILE_BOOT"), let seconds = Double(String(cString: raw)), seconds > 0 else { return }
         let tail = getenv("YCODE_FRAME_PROFILE_BOOT_TAIL").flatMap { Double(String(cString: $0)) } ?? 3
         windowLock.wait()  // taken here, so the window is open before the root spawns
@@ -430,6 +431,28 @@ final class FrameProfile: @unchecked Sendable {
         var seconds: Double
     }
 
+    /// Installs the kernel's trace hooks, once, before any guest thread runs:
+    /// they stay installed and record only while a window is open. Swapping
+    /// them at a window's open or close raced their readers (a closure read
+    /// while it was released: a crash in `WaitQueue.Waiter.finish` at the
+    /// close of a window, visionos.md §10.28).
+    private func installTraceHooks() {
+        KernelTrace.wake = { [unowned self] in
+            if Self.active.load(ordering: .relaxed) { noteWake($0) }
+        }
+        KernelTrace.blocking = { [unowned self] in
+            if Self.active.load(ordering: .relaxed) { noteBlocking($0, $1) }
+        }
+        KernelTrace.timerFired = { [unowned self] pid, late, kind in
+            guard Self.active.load(ordering: .relaxed) else { return }
+            record(FrameEvent(time: monotonicNanoseconds(), arg: late, pid: pid, tid: UInt32(truncatingIfNeeded: ckvmThreadID()), trap: kind,
+                              kind: FrameEventKind.timerFired, threadKind: 0))
+        }
+        KernelTrace.lockWaited = { [unowned self] level, waited in
+            if Self.active.load(ordering: .relaxed) { noteLockWait(level: level, waited: waited) }
+        }
+    }
+
     private func openWindow(seconds: Double) -> OpenWindow {
         windowNumber += 1
         let n = windowNumber
@@ -438,13 +461,6 @@ final class FrameProfile: @unchecked Sendable {
         let load0 = Self.readSmall("/proc/loadavg")?.split(separator: " ").prefix(3).joined(separator: " ") ?? "?"
         next.store(0, ordering: .relaxed)
         launchNames.withLock { $0.removeAll() }
-        KernelTrace.wake = { [unowned self] in noteWake($0) }
-        KernelTrace.blocking = { [unowned self] in noteBlocking($0, $1) }
-        KernelTrace.timerFired = { [unowned self] pid, late, kind in
-            record(FrameEvent(time: monotonicNanoseconds(), arg: late, pid: pid, tid: UInt32(truncatingIfNeeded: ckvmThreadID()), trap: kind,
-                              kind: FrameEventKind.timerFired, threadKind: 0))
-        }
-        KernelTrace.lockWaited = { [unowned self] level, waited in noteLockWait(level: level, waited: waited) }
         let startNs = monotonicNanoseconds()
         Self.active.store(true, ordering: .releasing)
         stderrLine("ycode-simd: frame profile: window \(n) open for \(seconds) s")
@@ -540,10 +556,6 @@ final class FrameProfile: @unchecked Sendable {
             }
         }
         Self.active.store(false, ordering: .releasing)
-        KernelTrace.wake = nil
-        KernelTrace.blocking = nil
-        KernelTrace.timerFired = nil
-        KernelTrace.lockWaited = nil
         let stopNs = monotonicNanoseconds()
         // Let in-flight recorders finish their store.
         usleep(20_000)

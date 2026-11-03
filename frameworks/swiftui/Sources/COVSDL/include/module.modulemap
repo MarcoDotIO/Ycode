@@ -1,0 +1,4 @@
+module COVSDL {
+    header "ov_sdl.h"
+    export *
+}

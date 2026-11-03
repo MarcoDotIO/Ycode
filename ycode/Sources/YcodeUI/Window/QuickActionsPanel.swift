@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// View ▸ Show Quick Actions… (⇧⌘A, `specs/ide/reference-ui-5.md` §2.4
 /// item 5): a command palette listing every enabled menu command by title;

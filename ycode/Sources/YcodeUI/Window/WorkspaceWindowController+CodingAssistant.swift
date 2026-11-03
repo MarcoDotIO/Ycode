@@ -1,6 +1,7 @@
 import AppKit
 import YcodeAssistant
 import YcodeBuild
+import YcodeIDECore
 
 /// The window's coding assistant, made the first time it is shown or used.
 final class CodingAssistantHolder: NSObject, NSPopoverDelegate {
@@ -40,6 +41,7 @@ extension WorkspaceWindowController {
                                          archiveURL: Self.isTestProcess ? nil : CodingAssistantModel.archiveURL(forWorkspace: session.model.url),
                                          prefs: prefs, services: services)
         model.contextProvider = { [weak self] in self?.codingAssistantContext() ?? WorkspaceContext() }
+        installAgentMode(model)
         let c = CodingAssistantViewController(model: model)
         c.onReviewProposal = { [weak self] p, m, conversation in self?.reviewProposal(p, message: m, conversation: conversation) }
         c.onOpenSettings = { SettingsWindowController.shared.show(pane: CodingAssistantSettingsPane.paneTitle) }
@@ -302,9 +304,12 @@ extension WorkspaceWindowController {
             return nil
         }
         let original = currentText(of: url)
+        // An agent's change (agent mode) is shown and applied exactly as
+        // the agent wrote it, and saved: the agent builds from disk next.
+        let agentText = codingAssistant.model.agentProposalText(message: message.id, block: p.blockIndex)
         let proposed: String
         do {
-            proposed = try p.apply(to: original, target: message.target)
+            proposed = try agentText ?? p.apply(to: original, target: message.target)
         } catch {
             presentAssistantAlert(error.localizedDescription)
             return nil
@@ -312,7 +317,13 @@ extension WorkspaceWindowController {
         let review = ProposalReviewController(proposal: p, original: original, proposed: proposed)
         review.onDecision = { [weak self] ok in
             guard let self else { return }
-            let applied = ok && applyProposal(url: url, original: original, proposed: proposed)
+            var applied = ok && applyProposal(url: url, original: original, proposed: proposed)
+            if applied, agentText != nil, let e = editorArea.allEditors.first(where: { $0.fileURL?.standardizedFileURL == url }) {
+                do { try e.save() } catch {
+                    presentAssistantAlert("Ycode could not save \(url.lastPathComponent): \(error.localizedDescription)")
+                    applied = false
+                }
+            }
             codingAssistant.model.resolve(message: message.id, in: conversation, proposal: p.blockIndex, applied ? .accepted : .rejected)
         }
         codingAssistantHolder.review = review

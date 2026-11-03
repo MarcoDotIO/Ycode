@@ -1,6 +1,6 @@
 # Spec: the visionOS simulator (visionOS 27.0, Apple Vision Pro) — what differs from iOS, and what Ycode must add
 
-Status: **draft, round 0** (agent VISIONOS-SPEC, 2026-10-26); round R1 results under Ycode in §10 (VISIONOS-R1/R1b, 2026-10-27); round R2a in §10.7 (VISIONOS-R2a, 2026-10-27); reference observations for R2b's questions in §10.10 (VISIONOS-OBS3, 2026-10-27); round R3 in §10.11 (VISIONOS-R3, 2026-10-27); reference observations for R3's questions Q18–Q20 in §10.12 (VISIONOS-OBS4, 2026-10-27); round R4b in §10.14 (VISIONOS-R4b, 2026-10-27; new Q21); reference observations for Q21 in §10.15 (VISIONOS-OBS5, 2026-10-27); round R5 in §10.16 (VISIONOS-R5, 2026-10-27; new Q22); round R4a (the GPU hang, the broken pipelines) in §10.13 (VISIONOS-R4a, 2026-10-27; new Q23, Q24); reference observations for Q22 in §10.17 (VISIONOS-OBS6, 2026-10-27); guest audio under Ycode in §10.19 (AUDIO-HOST, 2026-10-27). It describes
+Status: **draft, round 0** (agent VISIONOS-SPEC, 2026-10-26); round R1 results under Ycode in §10 (VISIONOS-R1/R1b, 2026-10-27); round R2a in §10.7 (VISIONOS-R2a, 2026-10-27); reference observations for R2b's questions in §10.10 (VISIONOS-OBS3, 2026-10-27); round R3 in §10.11 (VISIONOS-R3, 2026-10-27); reference observations for R3's questions Q18–Q20 in §10.12 (VISIONOS-OBS4, 2026-10-27); round R4b in §10.14 (VISIONOS-R4b, 2026-10-27; new Q21); reference observations for Q21 in §10.15 (VISIONOS-OBS5, 2026-10-27); round R5 in §10.16 (VISIONOS-R5, 2026-10-27; new Q22); round R4a (the GPU hang, the broken pipelines) in §10.13 (VISIONOS-R4a, 2026-10-27; new Q23, Q24); reference observations for Q22 in §10.17 (VISIONOS-OBS6, 2026-10-27); guest audio under Ycode in §10.19 (AUDIO-HOST, 2026-10-27); round R8 (the home view's launch, app compatibility, sRGB storage, snapshot slots) in §10.21 (VISIONOS-R8, 2026-10-29; new Q27); argument buffers by op 16's description and the visibility results behind the missing room parts in §10.22 (ARGBUF-IMPL, 2026-10-30); input formats, the ARKit pose, vhmdd's protocol (§9 Q1–Q3) in §5.5 and the reference's glass and metal in §10.23 (OBS-VISION-INPUT, 2026-10-31); the Digital Crown, immersion and recentering in §5.5.9 (OBS-VISION-CROWN, 2026-11-01); views and stereo in §5.6 (OBS-VISION-STEREO, 2026-11-01); rasterization rate maps and foveation in §5.6.7 (OBS-VISION-RRM, 2026-11-01); round R11 (the home view in every boot, Photos' free space) in §10.26 (VISIONOS-R11, 2026-11-01; new Q28). It describes
 the observable behavior and file formats of Xcode 27.1's visionOS 27.0
 simulator runtime and its Apple Vision Pro device type, as deltas from the
 iOS 27.1 runtime that `ycode-simd` boots today, and it states what Ycode
@@ -33,7 +33,8 @@ Terms as in `launchd-sim.md`: **RR** (a runtime's `RuntimeRoot`), **DEV**
    60 Hz. No stereo, no per-eye rendering, no foveation; the guest's Metal
    device is the same conservative simulator device as on iOS
    (Apple1/Apple2/Common1, vertex amplification count 1 only, no
-   rasterization-rate maps) (§4.5).
+   rasterization-rate maps) (§4.5). Nothing in the guest uses rate maps and
+   no host input enables them (§5.6.7).
 3. **Input** reaches the guest through the same HID bundle path as on iOS
    (`SIMULATOR_HID_SYSTEM_MANAGER`, Indigo messages to
    `IndigoHIDRegistrationPort`), with visionOS-specific vendor services
@@ -42,8 +43,8 @@ Terms as in `launchd-sim.md`: **RR** (a runtime's `RuntimeRoot`), **DEV**
    **DigitalDial** (Digital Crown). The Mac side (a DeviceHub plug-in)
    turns pointer, keyboard, trackpad and game controller into those
    messages and also talks to a guest daemon, **vhmdd**, for camera and
-   simulated-room control (§5). The payload layouts of the new messages
-   are not yet observed (§9).
+   simulated-room control (§5). The payloads, the guest events, the frame
+   they use and vhmdd's protocol are in §5.5.
 4. **Boot** on the Mac: first boot `bootstatus` terminal 18–22 s, room
    visible at 30 s; repeat boot terminal 9–12 s, room visible at 20 s;
    about 160 processes, 6.4 GiB summed footprint at idle (§6).
@@ -515,6 +516,907 @@ constant for 30 s. The app process opened a connection to
 camera pose; how camera movement reaches it (PalomaPose HID events, vhmdd
 `setPose:`, or both) is open (§9).
 
+### 5.5 Input formats and delivery (agent OBS-VISION-INPUT, 2026-10-31)
+
+Answers §9 Q1–Q3. Observed on the reference without Device Hub: our own
+Indigo messages through SimulatorKit's legacy HID client, our own vhmdd
+client, a recorder of the events the HID bundle dispatches inside
+backboardd, and our probe app. Details and raw numbers: §10.23 and
+`research/notes/obs-vision-input-2026-10-31.md`.
+
+#### 5.5.1 One frame for camera, gaze and hands
+
+- **Stage frame**: metres, right-handed, y up, −Z forward, origin at the
+  default eye point. In an app's immersive space that point is ARKit world
+  (0, 1.6, 0) (vhmdd: the app's "stage transform" is a translation by
+  (0, 1.6, 0)).
+- The camera pose, the gaze ray and both hand poses are all given in the
+  stage frame. The guest does **not** apply the camera pose to the gaze ray
+  or the hands: the host must transform a viewer-space ray by the current
+  camera pose (origin = camera position, direction = camera rotation ×
+  view-space direction) and place the hands relative to the camera.
+- View projection (3840 × 2160): horizontal field of view 90°, focal length
+  1920 px, square pixels, principal point at the centre. A viewer pixel
+  (u, v) maps to the view-space direction ((u − 1920)/1920, −(v − 1080)/1920, −1).
+- The camera pose is **absolute**: identity is the default eye looking along
+  −Z; the same pose sent twice gives identical frames.
+
+#### 5.5.2 Events the guest receives (what Ycode's HID bundle must dispatch)
+
+All vendor-defined events below have usage page **0xFF00** and version
+**13**. "Translation", "Orientation" (quaternion, orientation type 3),
+"Rotation" and "Scroll" are the IOHIDFamily event types of those names;
+children are attached with `IOHIDEventAppendEvent`. Flags are the event
+flags as the event prints them (bit 0 = absolute value type).
+An "Orientation (type 3)" child must be **made by the quaternion
+constructor**; an Orientation event made any other way stays type 0 and
+drops the quaternion, and the guest then ignores the rotation. The field
+numbers, values and construction are in §5.5.10.
+
+| Service (§5.3) | Host input | Event |
+|---|---|---|
+| 05 PalomaPose | camera pose | VendorDefined usage **0x72**, no data, flags 0x1; children in this order: Translation (relative, flags 0; x, y, z = camera position, m) and Orientation (relative, flags 0, type 3 from the quaternion constructor; w, x, y, z = camera rotation; §5.5.10) |
+| 06 SelectionStream | gaze, pinch, hands | VendorDefined usage **0x6F**, no data, flags 0x2000003, phase **Changed**; children: left hand, right hand (omitted when the host marks the message selection-only), then gaze — below |
+| — left / right hand | | VendorDefined usage **0x70**, data 3 bytes `{pinching 0/1, chirality (2 left, 1 right), allowDirect 0/1}`, flags `extra << 24 \| 3` (left) and `extra << 24 \| 1` (right) as observed (`extra` is a per-hand 16-bit host value whose meaning is unknown; send 0); children: Translation (relative; hand position, m, stage frame) and Orientation (relative, type 3, made as in §5.5.10) |
+| — gaze | | VendorDefined usage **0x71**, no data, flags 0x3; children: Translation (absolute, flags 0x1; ray origin) and **Rotation** (absolute, flags 0x1; x, y, z = ray direction, need not be unit length) |
+| 07 Manipulator | — | the reference dispatches the same 0x6F event from this service for a target-302 message; nothing in the guest reacted. Ycode need not send it. |
+| 02 DigitalDial | Digital Crown | Scroll (relative, flags 0x10), y = the turn delta |
+| 01 buttons, 03 keyboard | Home, keys | as on iOS (`hid-input.md` §5.4–5.5); Home toggles the home view (SurfBoard "reason: Crown") |
+
+backboardd's hand provider reads the 0x6F event from service 06 only,
+re-runs its hit test with the last ray every frame (hover persists without
+new messages), shows the system hover highlight on the gazed element, and
+turns pinches into contacts: source 2 (left) / 12 (right) for an indirect
+pinch, 11 (right) for a direct touch (the hand inside an element with
+`allowDirect` set, no pinch), 13 (right) for a direct pinch. The Rotation
+fields are carried in 16.16 fixed point (0.05 arrives as 0.049988); the
+other fields arrive as sent.
+
+#### 5.5.3 ARKit's device pose comes from vhmdd, not from HID
+
+`WorldTrackingProvider.queryDeviceAnchor` returns the app's stage transform
+times **vhmdd's pose** (the matrix last given by the host's `set_pose`;
+identity after boot). PalomaPose events move only the rendered view;
+`set_pose` moves only the anchor. The Mac side therefore sends **both** on
+every camera change (Device Hub's plug-in has both paths, level 4: a
+camera HID message and vhmdd's `setPose:`), and the matrices must
+agree: `set_pose` = the camera pose of §5.5.2 as a column-major float4x4 in
+the stage frame. (§5.4's start orientation of 12.5° was Device Hub's
+initial camera; without Device Hub vhmdd's pose stays identity.)
+
+#### 5.5.4 The vhmdd host protocol
+
+- Reachable **only from the host**: CoreSimulator's lookup of the guest
+  name `com.apple.vhmdd`, an XPC endpoint from that send right, the
+  connection marked sim-to-host. Guest clients of `com.apple.vhmdd` or
+  `com.apple.vhmdd-sim` are accepted, but their requests are dropped (the
+  client sees "Connection interrupted").
+- XPC dictionaries; the command is the string under **`cmd`**. vhmdd adds
+  `majorVersion` 1 and `minorVersion` 1 to what it sends; requests without
+  them were accepted.
+
+| `cmd` (host → vhmdd) | Other keys | Reply, then events (vhmdd → host, same connection) |
+|---|---|---|
+| `get_pose` | — | `{pose: data(64)}`: float4x4, column-major |
+| `set_pose` | `pose`: data(64) | empty |
+| `request_environments` | — | empty; event `{cmd: environments_changed, environments_data: string}`: JSON object keyed by room key (`KitchenDay`, `KitchenNight`, `LivingRoomDay`, `LivingRoomNight`, `MuseumDay`, `MuseumNight`), each `{displayName, thumbnailURL}` |
+| `set_active_environment` | `environment_id`: room key | empty; `active_environment_changed {environment_id}` (sent twice), then 1–3 s later `synthetic_environment_did_load {environment_id, load_error}` (`""` on success). The room changes live and `activeSyntheticEnvironment` is written to the preference file |
+| exercised in §5.5.9 (OBS-VISION-CROWN), except `simulate_facetime_session` | | `set_controls_enabled`/`get_controls_enabled` (`controls_enabled`), `observe_hand_mode`/`set_hand_mode` (`hand_mode`; event `hand_mode_changed`), `change_immersion_level` (`immersion_level`, `absolute`), `get_immersion_level`, `set_cursor_visible` (`visible`), `recenter_open_apps`, `simulate_facetime_session` (`standard_participant_count`, `spatial_participant_count`); events `keyboard_editing_active_changed` (`keyboard_editing_active`), `immersion_level_did_change`, `immersion_style_did_change` (`immersion_style`) |
+
+**Room before boot**: writing `activeSyntheticEnvironment` (e.g.
+`MuseumDay`) into `DEV/data/Library/Preferences/com.apple.RealityEnvironment.plist`
+while the device is shut down selects that room at the next boot (V-13).
+
+#### 5.5.5 What an app receives (end-to-end checks)
+
+| Host input (§5.5.2) | SwiftUI / UIKit / RealityKit result |
+|---|---|
+| gaze on the element, right pinch ~100 ms, release | `Button` action; `onTapGesture`; `SpatialTapGesture` with the point in the view (points) and `location3D` z ≈ 0; UIKit `touchesBegan`/`Ended` with touch type 0 (direct), tap count 1 |
+| pinch, hand moved, release | `DragGesture` changes and end (window: 0.1 m of hand → about 70 pt at 2 m; entity in a volume: 0.1 m → 136 pt = 1360 pt/m); `predictedEndTranslation` set |
+| both hands pinched, separation s₀ → s₁ | `MagnifyGesture` s₁/s₀ |
+| both hands pinched, turned by θ counter-clockwise as the user sees it | `RotateGesture` −θ; one hand turning gives nothing |
+| gaze only | the system hover highlight is drawn; no `onContinuousHover`, no UIKit hover callback |
+| keys after focusing a text field | `onKeyPress` and text, as on iOS |
+| gaze + pinch on an entity with `InputTargetComponent` and collision | `SpatialTapGesture().targetedToAnyEntity()` with the hit point (immersive sphere of radius 0.2 at (0, 1.5, −2): (0, 1.51, −1.8)) |
+| hand moved into an entity with `allowDirect`, no pinch | entity tap (direct touch) |
+
+#### 5.5.6 Indigo wire format (reference only; Ycode does not implement Indigo, `hid-input.md` §7)
+
+192-byte message, offsets from its start: 0x18 inner size 0xA0, 0x1C type
+byte 1, record from 0x20: kind (32 bits, 1), host `mach_absolute_time`
+(64 bits, at 0x24), a zero word, **target** (32 bits, 0x30): 300 → service
+05, 301 → 06, 302 → 07; target 0 makes backboardd raise an exception and
+exit. Float3 values occupy 16-byte slots (x, y, z, 0).
+
+| Message | Fields (offset: content) |
+|---|---|
+| pose | 0x54 translation; 0x64 quaternion x, y, z, w |
+| collection | 0x34 3; 0x38 left pinch, 0x39 2, 0x3A left direct (bytes); 0x3B 3; 0x3F right pinch, 0x40 1, 0x41 right direct; 0x42 selection-only byte; 0x43 left extra, 0x45 right extra (16 bits); 0x47 ray origin; 0x57 ray direction; 0x67 left translation; 0x77 left quaternion; 0x87 right translation; 0x97 right quaternion |
+| digital dial | record kind 6, delta as a double at 0x3C, target 200 at 0x4C |
+
+The builders that write them are exported by Xcode's visionOS DeviceKit
+plug-in (`IndigoHIDMessageForPalomaPose`, `…Selection` = a collection with
+the selection-only byte set and identity hands, `…Collection`) and by
+SimulatorKit (`IndigoHIDMessageForDigitalDialEvent`).
+
+#### 5.5.7 What Ycode must do
+
+1. **HID bundle (V-10)**: publish DigitalDial, PalomaPose, SelectionStream
+   and Manipulator with §5.3's usages; dispatch the §5.5.2 events with the
+   runtime's IOKit constructors (vendor-defined, translation, quaternion
+   orientation, rotation, scroll; `IOHIDEventAppendEvent`,
+   `IOHIDEventSetEventFlags`, `IOHIDEventSetPhase`), from service 05 for the
+   pose and service 06 for gaze and hands. Guest timestamps as in
+   `hid-input.md` §5.1.
+2. **Transport (V-11)**: add kinds to `hid-input.md` §7.3 for camera pose
+   (translation, quaternion), selection (ray origin and direction, a
+   hands-present flag, per hand: pinch, allowDirect, translation,
+   quaternion) and dial delta; all values in the stage frame of §5.5.1.
+3. **ARKit pose**: Ycode's guest needs a vhmdd that answers `get_pose`/
+   `set_pose` (the runtime's own vhmdd does, if Ycode's host can open the
+   sim-to-host XPC connection of §5.5.4), and the host sends `set_pose`
+   with every camera pose. Without it `DeviceAnchor` stays at (0, 1.6, 0).
+4. **Viewer (V-12)**: keep the camera pose; map the pointer to a gaze ray
+   with §5.5.1's projection and transform it by the camera pose; click =
+   right-hand pinch with the hands at a fixed offset below the camera
+   (e.g. (±0.15, −0.35, −0.4) in camera space, transformed); drag = the
+   right hand moved with the pointer while pinched; two-hand gestures move
+   both hands; Home = button source 0; send the pose and the selection about
+   once per frame while they change. Never send target 0 or an unknown
+   service.
+5. **Rooms (V-13)**: before boot, write the preference; live, use
+   `set_active_environment` and wait for `synthetic_environment_did_load`.
+
+#### 5.5.8 Ycode implementation (round R9, agent VISIONOS-R9, 2026-10-31)
+
+Results and runs: §10.25. Code: `SpatialInput.swift` (YcodeDisplayStream:
+the stage-frame math and `SpatialInteraction`, shared by every viewer and
+by `ycode-simd`), `HIDHostService.swift` (kinds 10, 11), `simhid.c` (the
+four services and the events), `VisionHMDClient.swift` (the host end of
+vhmdd), `VisionInput.swift` (ycode-simd: delivery, `vision …` commands,
+rooms), `DeviceView+Spatial.swift` (macOS viewer and IDE canvas),
+`RemoteDeviceSession.swift` (Linux viewer).
+
+1. **HID bundle (V-10).** On a visionOS device the bundle publishes
+   DigitalDial, Pose, SelectionStream and Manipulator with §5.3's usage
+   pairs and dispatches §5.5.2's events (`hid-input.md` §17). Only those
+   services are used; a message for a service the device lacks is dropped.
+2. **Transport (V-11).** Display stream: pose 0x8A, selection 0x8B, dial
+   0x8C, negotiated by the hello's `spatial` (`display-stream.md` §17).
+   HID transport: kinds 10 and 11, the crown's kind 8
+   (`hid-input.md` §17). Values are in the stage frame of §5.5.1.
+3. **ARKit pose.** `ycode-simd` opens the host connection to the guest's
+   `com.apple.vhmdd` itself: the name's send right from launchd_sim's
+   control channel (702), the XPC hand-shake of `iosurface-remote.md` §2.2
+   (a receive right for the connection, a send right to an event port of
+   ours), and requests in the sim-to-host encoding (`!CPX`). vhmdd accepts
+   it as a host connection: `get_pose`, `set_pose`, `request_environments`
+   and `set_active_environment` are answered and the events arrive on the
+   event port. Every camera pose goes to the HID bundle **and** to
+   `set_pose` with the same matrix (§5.5.3); `set_pose` is latest-wins on
+   its own thread, so a camera drag never waits for the guest. The
+   connection is opened on first use and again after a failure.
+4. **Ycode's choices for the viewers (V-12).** Hands rest at camera-space
+   (±0.15, −0.35, −0.4) (§5.5.7's example), with the camera's rotation.
+   The hand moves 1/700 m per point of pointer motion (0.1 m ≈ 70 points,
+   the reference's window drag at 2 m, §5.5.5). The gaze stays at the
+   press point while a pinch is held. Selections are coalesced to one per
+   16 ms while the pinch state is unchanged; pinch changes, poses and
+   dials are never dropped. The camera has no roll: yaw about +Y (positive
+   turns left), pitch ±89°. Mapping (macOS viewer, IDE device canvas and
+   live preview tiles, Linux viewer):
+
+   | Input | Effect |
+   |---|---|
+   | pointer moves | the gaze (selection-only) |
+   | click, drag, release | right-hand pinch at the gaze, the hand follows the pointer, release |
+   | Shift-drag | the pinched hand forward (pointer up) / back |
+   | Option-drag (Alt on Linux) | both hands pinch about the press point; spreading = magnify, turning = rotate (counter-clockwise as seen = the right hand up) |
+   | Control-drag | mouse-look (0.2° per point) |
+   | scroll / two-finger swipe | camera left/right, up/down (macOS 0.004 m per point, Linux 0.04 m per line) |
+   | trackpad pinch (macOS) | camera forward/back (1 m per unit of magnification) |
+   | Option-scroll (Alt) | the Digital Crown (the watch's scroll factor) |
+   | Option + W/S, A/D, E/Q, arrows (Alt on Linux) | camera forward/back, left/right, up/down, 0.05 m a press |
+   | Option + R, Controls ▸ Reset Camera | the default eye (identity) |
+   | other keys | the keyboard, as on iOS (text fields) |
+   | Home (frame button, ⇧⌘H) | button home (0x0C/0x40) |
+
+   A camera move sends the pose, then the gaze again (it is in the stage
+   frame and moves with the camera). The keys go to the device unless
+   Option is held, so text fields need no capture mode (the reference's
+   plain W/A/S/D needs Capture Keyboard to type, §5.1; Ycode decision).
+5. **Scripted driver.** The control socket (and `ycode-simd --device DEV
+   --vision …`, `ycode-sim --vision …`) takes `vision state | pose x y z
+   [yaw [pitch]] | move f r [u] | turn yaw [pitch] | reset | gaze x y | tap
+   x y [hold-ms] | pinch x y | drag x y [steps [ms]] [depth] | release |
+   magnify x y factor [steps [ms]] | rotate x y degrees [steps [ms]] | dial
+   delta [count [ms]] | home | type text | get-pose | rooms | room key`
+   (points of the 1920 × 1080 display, metres, degrees). It runs the same
+   `SpatialInteraction`; a pose from a viewer becomes the camera it goes
+   on from.
+6. **Rooms (V-13).** Before the boot: `ycode-simd --room <key>` (also
+   `ycode-sim --room`) writes `activeSyntheticEnvironment` into
+   `DEV/data/Library/Preferences/com.apple.RealityEnvironment.plist`
+   (other keys kept); on a stopped device `--vision room <key>` does the
+   same. Live: `vision room <key>` sends `set_active_environment` and waits
+   up to 15 s for `synthetic_environment_did_load`. A warm start that
+   restores a snapshot switches live once vhmdd answers (the saved run had
+   read the preference). `ycode-sim --room` is not part of the snapshot's
+   fingerprint. Viewers: Device ▸ Room (the six rooms) in the macOS viewer
+   and the IDE's device menus.
+7. **Previews.** The live preview canvas uses the device stream, so a
+   visionOS preview tile forwards the same gaze and pinch as the viewer
+   (the mouse is the gaze; click, drag and Option-drag as above); camera
+   keys and scroll are not offered on tiles.
+
+#### 5.5.9 The Digital Crown, immersion and recentering (agent OBS-VISION-CROWN, 2026-11-01)
+
+Answers why the crown does nothing under R9 (§10.25.4 item 3). Observed on
+the reference with our own vhmdd client, our own Indigo button and dial
+messages, the HID recorder and our probe app `CrownProbe` (a window plus
+progressive, ranged progressive (0.2…0.8, initial 0.5), full and mixed
+immersive spaces; it logs `onImmersionChange`, `onWorldRecenter`, scene
+phases and the ARKit anchor). Run on **visionOS 27.2 (24N120)**: this
+day's CoreSimulator refused to create any 27.0 device ("runtime path not
+found"; two 27.0 builds share one identifier); vhmdd's string list is
+identical in 27.0 (24M362) and 27.2. Details:
+`research/notes/obs-vision-crown-2026-11-01.md`.
+
+**On a device (level 1).** Turn = immersion (an Environment or an app's
+progressive space) or volume; press = Home View; press and hold =
+recenter; double press = view of the surroundings; triple press = the
+Accessibility Shortcut; crown + top button = screenshot, held = Force
+Quit. SwiftUI reports immersion as `ImmersionChangeContext.amount`
+(`onImmersionChange`) and recentering as `onWorldRecenter` (`began`,
+`ended`). Device Hub documents no crown control for visionOS (Home,
+Control Center, volume through Device > Sound).
+
+**Turning: immersion is a vhmdd command, not a HID event.** DigitalDial
+scroll events (§5.5.2) reach the guest and change nothing, with any space
+open, before or after `set_controls_enabled`. Immersion changes only
+through vhmdd (§5.5.4):
+
+| `cmd` (host → vhmdd) | Keys | Reply, then events |
+|---|---|---|
+| `change_immersion_level` | `immersion_level` double, `absolute` bool | empty; then ~28 `immersion_level_did_change {immersion_level}` events, one per ~11 ms over ~0.30 s, easing (slow–fast–slow) from the old to the new level |
+| `get_immersion_level` | — | `{immersion_level: double}` |
+
+Two quantities:
+
+- the **amount** a ∈ [0, 1]: what the app's `onImmersionChange` reports
+  and what an absolute request carries;
+- the **level** L that vhmdd reports (replies and events): **L = a²**.
+
+Rules (level 3):
+
+1. Absolute: a = clamp(value, the open space's range). The progressive
+   style without a range opens at a = 0.5477 (L 0.30) and never goes below
+   it; a ranged style opens at its initial amount and is clamped to its
+   range. A request that clamps to the current amount sends no events. The
+   app's amount follows the same 0.3 s ease (25–28 callbacks) and ends
+   exactly at a.
+2. Relative (`absolute` false): a = clamp(**L** + delta) — the delta is
+   added to the squared level, not to the amount (0.25 + 0.1 → a 0.35, L
+   0.1225; in a 0.2…0.8 space, +0.1 steps from L 0.04 stay at 0.2 for
+   ever). Do not use it for a crown.
+3. With no immersive space the level still moves (the system's level); at
+   1.0 the home view's glass turns dark, the room stays.
+4. Full space: opens at a = 1; lowering a fades the space's content to
+   black (a = 0: black scene, dark-grey window), the room does not return.
+   Mixed space: the app reports nothing; the level moves without a visible
+   change.
+5. Events go only to host connections that have sent vhmdd at least one
+   message. Besides the level events: `immersion_style_did_change
+   {immersion_style: int}` = **2** when a progressive space opens, **−1**
+   when it closes (mixed and full sent none); a full space unloads the
+   room (`active_environment_changed {environment_id: ""}`) and reloads it
+   on exit (`active_environment_changed`, `environments_changed`,
+   `synthetic_environment_did_load`). When the app exits, the level goes
+   back to the system's.
+
+Device Hub's plug-in names increase/decrease and set-to-0/25/50/75/100 %
+immersion actions, an immersion controller fed by the two events, and also
+logs sending dial events of ±1 (level 4); which action uses which path was
+not observed (no GUI). Only the vhmdd path changes anything.
+
+**Presses: the Home button, timed by the guest.** The crown is button
+source 0 (0x0C/0x40, §5.5.2). SurfBoard classifies the raw down/up timing
+itself (level 3):
+
+| Host sends | SurfBoard gesture | Result |
+|---|---|---|
+| down, up after ≤ 400 ms | tap | toggles the home view ("reason: Crown"); with a progressive space open it **closes the space** (the window stays, home view not shown) |
+| two taps, 80 ms down, 150 ms apart | double tap | logged, no visible change (no surroundings view in the simulator) |
+| three taps, 70 ms down, 120 ms apart | double tap, then tap | no triple-press gesture |
+| down, held ≥ 500 ms | long press, recognised **~0.49 s after the down while still held** | **recenter** (below); the release is logged and ignored |
+| source 1 (0x0C/0x30) tap | top-button tap | Capture (refused in the simulator) |
+| sources 1 and 0 down together, up after 150 ms | both tapped | screenshot ("Taking screenshot…") |
+| sources 1 and 0 held | both long-pressed at ~1.5 s | the Force Quit Applications panel |
+
+**Recentering.** vhmdd's `recenter_open_apps` is a no-op in this runtime
+(it logs that recentering moved elsewhere and sends no reply; the client
+gets "Connection interrupted" at once and the connection stays usable).
+The working path is the crown hold: SurfBoard plays its recenter sound and
+asks backboardd's placement to recenter; windows, the home view and the
+immersive content fade and reappear in front of the **rendered camera**
+(the PalomaPose pose — with the render camera and vhmdd's pose made to
+disagree, placement followed the render camera); the app gets
+`onWorldRecenter` `began` then `ended` (window and space); and vhmdd sets
+the app's stage transform to T(0, 1.6, 0) × pose⁻¹, so
+`queryDeviceAnchor` reads (0, 1.6, 0) looking along −Z again (pose =
+(0.5, 0, 0) turned 70° left gave a −70° rotation and translation
+(−0.171, 1.6, −0.470)). The stage transform outlives the app.
+
+**Other vhmdd commands (level 3).** `set_controls_enabled
+{controls_enabled}` / `get_controls_enabled` (false after boot): a stored
+flag with no visible effect. `observe_hand_mode`, `set_hand_mode
+{hand_mode: string}`: any string is echoed as `hand_mode_changed
+{hand_mode}`, nothing visible; a non-string gets no reply.
+`set_cursor_visible {visible: bool}`: draws or removes a grey ring
+(~22 px at 3840 × 2160) at the gaze point (the view centre without gaze).
+Commands vhmdd does not answer produce an immediate "Connection
+interrupted" reply; send them without waiting.
+
+**What Ycode must do.**
+
+1. **Crown turn → vhmdd, not only the dial.** Ycode's host vhmdd client
+   (§5.5.8 item 3) adds `change_immersion_level` and `get_immersion_level`.
+   The viewer keeps an amount a: each crown step (Option-scroll and every
+   other crown input of §5.5.8 item 4) changes a by a fixed step (Ycode
+   choice: 0.05 per wheel notch, clockwise/up = more), clamps it to [0, 1]
+   and sends **absolute** a, latest-wins like `set_pose`. Ycode may keep
+   sending the dial scroll event too; it has no effect in the reference.
+2. **Read back.** Send one message (e.g. `get_immersion_level`) when the
+   connection opens so that vhmdd sends events; on every
+   `immersion_level_did_change` set a = √level, so the viewer follows
+   clamping by the app's range, the space's own open and close, and other
+   sources. Expose the amount (√level) and the style (2 progressive, −1
+   none) as viewer state and in the scripted driver (e.g. `vision
+   immersion [amount]`), and offer set-to-0/25/50/75/100 % as the
+   reference plug-in does.
+3. **Crown press = button source 0 with real timing.** Send down and up as
+   separate events with the hold the user makes: a click is a tap (Home,
+   closes a progressive space); a hold ≥ 0.5 s is the recenter; two clicks
+   within ~150 ms a double press. The viewer must not synthesise a fixed
+   100 ms click for a held button. A "Recenter" control = source 0 held
+   for 0.6–1.0 s.
+4. **Top button.** On a visionOS device the buttons service must accept
+   source 1 (0x0C/0x30). Screenshot = sources 1 and 0 pressed together;
+   Force Quit = both held ≥ 1.5 s (offer it as a menu item).
+5. **Recenter needs the camera.** Placement uses the rendered camera, and
+   the ARKit stage uses the pose; Ycode already sends both with the same
+   matrix (§5.5.3), which keeps them consistent. Do not use
+   `recenter_open_apps`.
+6. Optional: `set_cursor_visible` as a viewer toggle (the plug-in keeps a
+   user-requested cursor visibility, level 4; which menu item drives it
+   was not observed). `set_hand_mode` and `set_controls_enabled` have
+   no observable effect; Ycode need not send them.
+
+#### 5.5.10 The pose's rotation: the Orientation child at the field level (agent OBS-VISION-POSE, 2026-11-01)
+
+Question from the Quest viewer (XR-VIEWER): under Ycode the camera follows
+the pose's translation but not its rotation at the plain home view. Answer
+(run on visionOS 27.2 (24N120), the 27.0 runtime could not create a device;
+details in `research/notes/obs-vision-pose-2026-11-01.md`):
+
+1. **The reference turns the view at the plain home view.** A PalomaPose
+   message (target 300) with yaw +30° (quaternion w 0.965926, y 0.258819)
+   turned the view left: the room and the home view moved right in the
+   frame; −30° turned it right; pitch +20° (w 0.984808, x 0.173648) looked
+   up; identity brought the default view back. The home view stays where it
+   is in the room (it does not follow the head). The same holds with an app
+   window open and inside mixed, progressive and full immersive spaces
+   (level 3). Cause (a) of the question is ruled out.
+2. **Nothing else is needed.** vhmdd was never sent `set_pose` in these
+   runs and `get_pose` still answered identity at the end; the view turned
+   from the HID event alone (level 3). `set_pose` (§5.5.3) moves only
+   ARKit's device anchor; it is still sent for apps, but it does not turn
+   the view.
+3. **The encoding the reference dispatches for a rotated pose** (level 3,
+   our recorder in backboardd, each field read back by number). IOHIDFamily
+   field numbers are `(event type << 16) | index`.
+
+   | Event | Type | Event flags | Fields |
+   |---|---|---|---|
+   | parent | VendorDefined (1) | 0x1 (absolute) | page 0xFF00 (`1<<16\|0`), usage 0x72 (`1<<16\|1`), version 13 (`1<<16\|2`), data length 0 |
+   | child 1 | Translation (4) | 0x0 (relative) | x, y, z = `4<<16\|0`, `\|1`, `\|2` (metres) |
+   | child 2 | Orientation (10) | 0x0 (relative) | orientation type **3** in `10<<16\|3`; **w** `10<<16\|8`, **x** `\|9`, **y** `\|10`, **z** `\|11` (a unit quaternion, the camera's rotation in the stage frame; positive y = turn left, positive x = look up) |
+
+   No other Orientation field is non-zero. The quaternion arrives in 16.16
+   fixed point (0.965926 → 0.965912, 0.258819 → 0.258804). Exactly two
+   children, Translation first.
+4. **Why Ycode's event loses the rotation** (cause (b), level 3). Ycode's
+   field numbers and order were already right; its *construction* is not.
+   An Orientation event made with the generic constructor
+   (`IOHIDEventCreate` with type 10) has orientation type 0 (polar), and
+   the type cannot be changed afterwards: setting `10<<16|3` (as an integer
+   or a float) leaves it 0, and the float setter then ignores fields 8–11
+   (they read back 0, and the event prints "Orientation type: 0"). Only
+   `IOHIDEventCreateQuaternionOrientationEvent(allocator, timestamp, w, x,
+   y, z, options)` makes a type-3 event (argument order checked by reading
+   the fields back; the runtime's IOKit also exports
+   `IOHIDEventCreateOrientationEvent`, `IOHIDEventCreatePolarOrientationEvent`
+   and `IOHIDEventCreateDeviceOrientationEventWithUsage`, level 4). Once
+   made that way, the float setter does change fields 8–11. Replaying the
+   reference's own pose events inside its backboardd with the Orientation
+   child rebuilt Ycode's way (translation kept) gave, at the home view,
+   frames byte-identical to identity for yaw +30° and pitch +20°; inside a
+   mixed immersive space the window and the space's cube stayed centred,
+   and a matching `set_pose` did not turn the view either: exactly
+   XR-VIEWER's symptom. (R9's turned view in a mixed space, §10.25.1, was
+   not reproduced this way; it is not explained by the HID event.) The hands' Orientation children
+   (event 0x70) are built the same way in Ycode and lose their rotation
+   too.
+
+**What Ycode must do.** In the HID bundle, make every Orientation child
+(the pose's and both hands') with the runtime's
+`IOHIDEventCreateQuaternionOrientationEvent` (looked up by name like the
+other constructors), arguments w, x, y, z of a normalised quaternion,
+options 0, then set the event flags to 0; append it after the Translation
+child. Do not build it with the generic constructor plus setters. If the
+constructor is missing, log it and dispatch the pose without rotation
+(that is what the guest would see anyway). No change to vhmdd's
+`set_pose`, the transport, or the host's w, x, y, z order is needed. A
+check: the bundle's log (or a read-back of field `10<<16|3` before
+dispatch) must show orientation type 3, and a yaw pose at the plain home
+view must change the frame.
+
+#### 5.5.11 Ycode implementation: the pose's rotation and the headset viewer (agent XR-VIEWER, 2026-11-01)
+
+- **Rotation.** The HID bundle makes the pose's and both hands'
+  Orientation children with `IOHIDEventCreateQuaternionOrientationEvent`
+  (looked up by name; w, x, y, z of the normalised quaternion, options 0,
+  flags 0, after the Translation child; `SimHID/vision_orientation.h`, host
+  test `SimHID/tests/orientation_test.c`, run by
+  `SimGuestFrameworks/build.sh`). Without the constructor the event goes
+  without its rotation and the bundle logs it once. Checked on the Thor at
+  the plain home view: `vision pose 0 0 0 30 0` turns the view left and
+  `vision pose 0 0 0 0 20` looks up (the frames differ from identity;
+  before the fix they were byte-identical).
+- **The guest's camera is smoothed** (level 3, Ycode's simulator): after a
+  new pose the picture first changes about 170 ms later and converges over
+  about 250 ms more (`xr-viewer.md` §6). Whether the reference does the
+  same is `xr-viewer.md` Q-XR5.
+- **Headset viewing** (`xr-viewer.md`): the head pose drives the camera
+  (the views message, `display-stream.md` §18); the eye gaze, the hands'
+  joints and the controllers become the §5.5.2 selection; the crown is a
+  controller's A/X with real timing and the thumbstick drives
+  `change_immersion_level` (absolute amounts, `vision immersion <a>`,
+  §5.5.9); recentring is the crown hold. Stereo follows §5.6.5 (the eyes'
+  poses in turn, each picture tagged), adapted to the smoothing: mono while
+  the head moves, the eyes in turn while it is still.
+
+#### 5.5.12 Camera smoothing and pose timing (agent OBS-VISION-FOV, 2026-11-01)
+
+Questions from the headset viewer (XR-VIEWER, `xr-viewer.md` Q-XR5): does
+the reference also smooth its camera between PalomaPose events, can a host
+shorten it, and what timestamp does the pose carry? Observed on **visionOS
+27.2 (24N120)** (27.0 could not create a device) with our recorder in
+backboardd (each pose event at dispatch) and wakeboardd (the time of every
+presented surface and three sampled rows of it), and our sender (`vhid`,
+§5.5.6) printing its send times. The camera's yaw in each presented frame
+is measured from the frame's middle row (view-angle resampling, 90°
+horizontal, best match against a reference frame). All times are on the
+host's mach clock, which the guest shares. Details:
+`research/notes/obs-vision-fov-2026-11-01.md`.
+
+1. **The reference smooths its camera too** (level 3). After an isolated
+   pose (no pose for ≥ 1.5 s before) the picture moves by the same fraction
+   of the step in every presented 60 Hz frame, for any step size (5°, 30°)
+   and for translation (0.3 m) alike:
+
+   | Presented frame (0 = first that changed) | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+   |---|---|---|---|---|---|---|---|---|---|
+   | Fraction of the step | 0.274 | 0.548 | 0.822 | 0.871 | 0.919 | 0.968 | 0.977 | 0.985 | 0.994 |
+
+   i.e. three-frame linear segments whose end points close 82.2 % of the
+   remaining distance (the remainder shrinks by 0.178 every 50 ms).
+   Measured from the host's send (27 isolated 30° steps): first changed
+   frame 53–75 ms (mean 62), 50 % at 69–91 ms (79), 90 % at 119–141 ms
+   (128), within 0.1° at 219–241 ms (229). The first changed frame is the
+   pipeline (3–4 presented frames); the smoothing adds about 50 ms to 82 %
+   and 100 ms to 97 %.
+2. **The smoothing runs on time, not on presented frames** (level 3). With
+   wakeboardd's `hmd.compositor.fps` set to 30, and with a test device type
+   whose display runs at 30 Hz, each presented frame (33 ms apart) shows
+   every second value of the 60 Hz sequence (0.548, 0.871, 0.968, 0.985,
+   …); only the first change moves later (113 ms and 159 ms), because the
+   pipeline's frames are longer.
+3. **Continuous motion** (level 3): a 1 Hz ±15° yaw sine is shown as the
+   command delayed by **98–100 ms** with gain 0.95–0.96, at 27 and at 76
+   poses per second alike. A 30° ramp over 0.5 s trails by about 100 ms.
+   The pose rate does not change the delay.
+4. **It is not a linear filter of the poses** (level 3). Repeating an
+   unchanged pose at 30 or 90 Hz after a step makes the step converge
+   **slower** (90 % at 160–180 ms, within 0.1° at 300–390 ms, against
+   about 130 and 230 ms for a single event). A pose replaced within ~16 ms
+   by another has no effect of its own. A second pose 33–150 ms after the
+   first changes the motion from the next three-frame segment on. An
+   overshoot sent first (36.5° then 30° 50 ms later) reaches 30° two frames
+   after the correction but then falls back to 24.7° and settles like a
+   plain step (within 0.1° at 217 ms): pre-compensation gains nothing and
+   shows a bounce.
+5. **Timestamps** (level 3). The record's host time (offset 0x24 of the
+   Indigo message, §5.5.6; written by the builder from
+   `mach_absolute_time` immediately before the send) becomes the
+   IOHIDEvent's timestamp unchanged; backboardd dispatches the event about
+   3 ms after the send. The camera **ignores the timestamp's value**:
+   constant offsets of ±200 ms and ±3 s, and times compressed or stretched
+   by 10× from the first message (up to 30 s in the future), all gave the
+   same trajectory to 0.01°. Only two consecutive events with the *same*
+   timestamp misbehaved: the second did not take effect and the picture
+   jumped about 420 ms later to an intermediate value, where it stayed.
+   No field marks a pose as already predicted: parent flags 0 or 3 and
+   child flags 1 (rewritten before dispatch) changed nothing.
+6. **No host-side input turns it off** (level 3, one boot each): backboardd
+   `SimulatedHeadset` YES; `enableHeadPoseLateLatching` NO (the trajectory
+   is unchanged, the first change came 70 and 82 ms after the send in two
+   boots, perhaps one frame later than normal); `useLegacyHeadPoseLateLatching`
+   YES; wakeboardd `hmd.pov.time-warp.enabled` NO; the timestamps, flags
+   and rates above. None of the ~1 640 preference keys backboardd reads
+   names a head-pose smoothing, filter or prediction time (level 3, the
+   OBS-VISION-STEREO read log). wakeboardd's layer record carries a layer
+   pose of type "invalid" (identity) for backboardd's layers: the motion is
+   rendered in backboardd, not re-projected by wakeboardd. Where the filter
+   sits was not determined (level 4 names only: RealitySimulation asks for
+   "a head pose for time" t at a compositor-predicted time; no level 5).
+7. **Ycode compared** (`xr-viewer.md` §6: first change about 170 ms, settled
+   about 250 ms later, at 23.5 pictures/s). The reference's first change is
+   3–4 presented frames; at Ycode's 44 ms per picture that is 130–175 ms,
+   so Ycode's extra delay is its frame time, and its convergence (about
+   250 ms after the first change) matches the reference's time-based
+   smoothing (about 170 ms after the first change to within 0.1°) seen
+   through coarser frames. Ycode's smoothing is the guest's own, as in the
+   reference.
+
+**What Ycode must do.**
+1. Keep the guest's smoothing: it is the reference's behaviour (parity) and
+   no host input changes it. Do not try overshoot or timestamp tricks.
+2. To cut motion-to-picture time, shorten the pipeline: it is 3–4 of the
+   guest's presented frames, so the guest's frame rate is the lever
+   (60 Hz: ~62 ms to the first change, ~100 ms delay in continuous motion;
+   23.5 Hz: ~170 ms to the first change). The smoothing itself costs about
+   40–50 ms of delay in continuous motion at any rate.
+3. Send a pose only when it changed (beyond a small threshold) and stop
+   when the head is still: repeating an unchanged pose slows the settle
+   from about 230 ms to 300–390 ms. Any rate from 27 to 90 per second gives
+   the same delay in motion.
+4. Event timestamps must strictly increase (Ycode's bundle uses guest
+   ticks: keep it so); their value is otherwise irrelevant. No event field
+   or flag is needed or helps.
+5. For the headset viewer's tags and reprojection: a picture in continuous
+   motion shows the pose sent about 100 ms (60 Hz guest) earlier; after an
+   isolated step it follows item 1's table from the first changed frame.
+   Tagging with "the pose sent one pipeline plus ~40 ms ago", or a host
+   model of item 1, is closer than the latest pose.
+
+### 5.6 Views and stereo (agent OBS-VISION-STEREO, 2026-11-01)
+
+Answers XR-VIEWER's questions (a Quest Pro as a stereo viewer): can the
+reference render two views, and what decides it? Observed on **visionOS
+27.2 (24N120)** (no 27.0 device could be created, as in §5.5.9) with our
+probe app `StereoProbe` (a CompositorServices layer that logs what it is
+given), our recorder `stereopeek` (layer textures, two-slice passes,
+slice read-backs, `SFBSwapchainSwapAddSurface` rectangles, wakeboardd's
+and backboardd's `NSUserDefaults` reads), the runtime's own
+`wakeboardctl status` (run with `simctl spawn`), preference experiments
+(nine boots) and our vhmdd client. Details:
+`research/notes/obs-vision-stereo-2026-11-01.md`.
+
+#### 5.6.1 The reference renders one view, and nothing outside the guest changes that
+
+- **Apps get one view (level 1, 3).** The SDK says so ("you typically
+  render only one view in Simulator"). A `CompositorLayer` in every layout
+  gets: view count 1; one texture topology (array length 1); per frame one
+  drawable, one view, `drawableTargetViewCount` 1; colour and depth
+  textures 3840 × 2160, array length 1; foveation unsupported; layouts
+  dedicated, shared, layered (0, 1, 2) offered.
+- **System layers have one view (level 3).** wakeboardd makes each layer
+  texture as a 2D array of length 1 (3840 × 2160, colour 81, depth 252);
+  in the dedicated layout it makes only "Color (Left)" textures.
+  `wakeboardctl status` shows an HMD of type **Sim** whose per-frame record
+  per chain link has a **Left** and a **Right** block: Left filled (below),
+  **Right all zero** (tangents, projection, viewport 0 × 0), for
+  backboardd's layers (slots Top and Synthetic Passthrough) and for an
+  app's layer (slot Bottom).
+- **The camera of the one view (level 3):** view transform **identity**
+  (the eye is the device origin: no eye offset, no IPD); tangents (left,
+  right, top, bottom) = **(1, 1, 0.5625, 0.5625)**, i.e. 90° × 58.7°;
+  depth range {∞, 0.1}; projection reverse-Z with infinite far plane and
+  near 0.1 (columns (1, 0, 0, 0), (0, 1.7778, 0, 0), (0, 0, 0, −1),
+  (0, 0, 0.1, 0)); viewport (0, 0, 3840, 2160). 0.5625 = 2160 / 3840; the
+  vertical tangent is the display's height / width and the horizontal one
+  stays 1 (tested with test device types of other sizes, §5.6.6).
+- **What decides the layer's configuration (level 3).** wakeboardd reads
+  its settings with `NSUserDefaults` (domain `com.apple.wakeboardd`,
+  `DEV/data/Library/Preferences/com.apple.wakeboardd.plist`, which holds
+  only `hmd.preferred-languages`). The controlled-layer configuration that
+  backboardd receives (colour 81, depth 252, layout 2, §10.10.2) comes from
+  `hmd.input.texture-color-format` (81), `hmd.input.texture-depth-format`
+  (252) and `hmd.input.texture-layout` (2), values read when unset.
+  Setting `hmd.input.texture-layout` before boot changes backboardd's
+  layers: 0 → layout Dedicated (2D textures labelled "Color (Left)"),
+  1 → Shared (2D, still 3840 × 2160). **No key changes the view count:**
+  `hmd.input.texture-layout` 0/1/2, `hmd.display.texture-layout` 0–4,
+  `hmd.display.mode` 0–3, and backboardd's `SimulatedHeadset` YES all
+  left one view (StereoProbe view count 1, Right block zero, second slice
+  empty). None of the ~500 keys wakeboardd reads, nor the ~2 200 reads of
+  backboardd, names a view count, mono/stereo, an eye offset or an IPD.
+- **Other inputs, none of which carries a view count:** wakeboardd reads
+  only the standard simulator environment variables and asks no
+  MobileGestalt question (level 3); of SimFramebuffer it uses only the
+  display list, the display's type, current mode and device size, swapchain
+  creation and the swap calls (level 4, imports) — not layer or swapchain
+  counts or extended properties; the device type's plists have no such key
+  (level 2); vhmdd has no such command (§5.6.3).
+- **So the view count is fixed inside the guest's HMD implementation**
+  (wakeboardd's Sim HMD; names `SimHMD`, "Mono Composite Buffer",
+  CompositorServices' `is_mono` are level 4). **No host-settable input
+  gives the reference two views.** XR-VIEWER keeps alternate-eye stereo.
+  Q-XR2 (what two native views would look like) cannot be observed.
+
+#### 5.6.2 The two-slice passes draw one view (Q-XR3, level 3)
+
+backboardd's RealityKit allocates some targets as two-slice arrays:
+`SyntheticColor`/`SyntheticDepth` 160 × 128 × 2 (`RGBA16Float`,
+`Depth32Float`), 224 × 192 × 2 with `VCADepthStencil`, and 40 × 32 × 2 and
+56 × 48 × 2 compute targets. In the `SyntheticColor` pass: render-target
+array length 2, one viewport (0, 0, 160, 128); the clear is a 4-vertex
+strip drawn with **instance count 2** (one instance per slice, i.e.
+layered rendering with the slice chosen per instance); the room is five
+indexed draws **without an instance count** (one instance). No pass calls
+`setVertexAmplificationCount:`. Read back after the pass (146 read-backs over 15 boots): in 51 slice 0
+holds the room (mean RGBA 0.370, 0.353, 0.313, 1.0), in the rest both
+slices are zero; **slice 1 is all zero (alpha 0) in every one**. The second slice is RealityKit's room
+for a second view, never drawn: there is no second camera and no offset.
+
+#### 5.6.3 vhmdd has no stereo command (Q-XR4)
+
+vhmdd's command strings are exactly those of §5.5.4 and §5.5.9 (level 4);
+its pose is one device matrix. In 27.2 an unknown command gets a reply
+`{error: "Unknown command: <cmd>"}` (level 3: `set_ipd`, `get_ipd`,
+`set_stereo`, `set_view_count`, `get_view_count`, `set_eye_offset`,
+`get_display_info`), so a host can tell that a command does not exist.
+
+#### 5.6.4 Presentation
+
+One `SFBSwapchainSwapAddSurface` per swap, source and destination (0, 0,
+3840, 2160), two surfaces alternating (§10.6.6), in every experiment.
+
+#### 5.6.5 What Ycode must do
+
+1. **Parity is one view.** Ycode runs the reference's wakeboardd,
+   backboardd and CompositorServices unchanged, so the guest decides one
+   view by itself; Ycode must not try to change it, and needs no defaults,
+   environment or SimFramebuffer property for it. Ycode's SimFramebuffer
+   replacement must keep answering the display type (integrated), current
+   mode and device size (3840 × 2160) that wakeboardd asks for.
+2. **Metal for the one-view passes.** The Metal→Vulkan layer must support
+   2D-array textures of length 2 as render targets with render-target
+   array length 2, a vertex shader that selects the slice per instance
+   (Vulkan multiview is not required: no amplification is used), and must
+   write slice 1 with the two-instance clear; slice 1 is otherwise never
+   read for the picture.
+3. **Stereo is a Ycode feature, not parity (XR-VIEWER).** The guest's
+   camera is the device pose with an identity eye transform, so a stereo
+   viewer gets its two eyes by moving the device pose: alternate frames
+   between pose × T(−d/2, 0, 0) and pose × T(+d/2, 0, 0) (d = the viewer's
+   IPD, along the device's x axis) through vhmdd `set_pose` and the
+   rendered camera together (§5.5.3, §5.5.9 item 5), and tag each presented
+   frame with the eye whose pose it was rendered for. Each eye then updates
+   at half the 60 Hz rate. The guest's field of view is 90° × 58.7°
+   (tangents 1, 1, 0.5625, 0.5625); the viewer must map it onto each eye's
+   own projection (crop or scale). The guest takes no FOV request, but
+   the display size Ycode reports sets the vertical FOV (horizontal fixed
+   at 90°, §5.6.6). Ycode must not send vhmdd commands for IPD, stereo or view
+   count: they do not exist (an error reply).
+4. **Diagnostics.** `simctl spawn <dev> wakeboardctl status` (reference)
+   prints the HMD type, each layer's layout, textures and per-eye blocks;
+   use it for parity checks of Ycode boots (Right block zero, layout
+   Layered, 3840 × 2160).
+
+#### 5.6.6 Field of view (agent OBS-VISION-FOV, 2026-11-01)
+
+Question from the headset viewer: what decides the camera's tangents, and
+can a host widen them (up to a fully surrounding view)? Observed on
+visionOS 27.2 with `wakeboardctl status` (the per-eye tangents and
+projection), `StereoProbe` (what an app's CompositorLayer is given),
+screenshots, and **test device types of our own** (copies of the 4K type
+with only the integrated display's width, height and refresh rate
+changed in `capabilities.plist`; CoreSimulator accepts them without a
+restart). The installed 2732 × 2048 type cannot be used: its profile
+limits it to runtimes up to 2.99 and 27.2, 26.5 and 26.4 refuse it
+("Incompatible device"). Details: `research/notes/obs-vision-fov-2026-11-01.md`.
+
+1. **The display's size decides the vertical field of view; the
+   horizontal one is always 90°** (level 3). Tangents (left, right, top,
+   bottom) = (1, 1, h/w, h/w) for a display of w × h pixels:
+
+   | Display w × h | Tangents | Projection y scale | Field of view h × v |
+   |---|---|---|---|
+   | 3840 × 2160 (the 4K type) | 1, 1, 0.5625, 0.5625 | 1.7778 | 90° × 58.7° |
+   | 7680 × 2160 | 1, 1, 0.28125, 0.28125 | 3.5556 | 90° × 31.4° |
+   | 3840 × 3840 | 1, 1, 1, 1 | 1 | 90° × 90° |
+   | 2160 × 3840 | 1, 1, 1.7778, 1.7778 | 0.5625 | 90° × 121.3° |
+   | 1024 × 8192 | 1, 1, 8, 8 | 0.125 | 90° × 165.8° |
+
+   The projection's x scale stays 1; reverse-Z, infinite far, near 0.1 as
+   in §5.6.1. The layer textures, the swapchain and the presented surface
+   take the display's size; one view as before.
+2. **Nothing is cropped, scaled or distorted** (level 3, screenshots): the
+   room and the home view are rendered with a plain pinhole projection at
+   every size (straight lines stay straight; at 165.8° the edges are
+   stretched as any rectilinear projection is); the home view keeps its
+   size relative to the width. **Apps see the same projection**: a
+   CompositorLayer gets the display's tangents, a viewport and textures of
+   the display's size, view count 1. The camera smoothing (§5.5.12) is the
+   same at every size.
+3. **No preference widens it** (level 3, one boot each, tangents from
+   `wakeboardctl status`, screenshots compared with the baseline: no
+   pixel changed): backboardd `CameraScale` 2 (three domains); wakeboardd
+   `hmd.mesh.override-rectilinear-fov` as four numbers ((2, 2, 1, 1) and
+   (60, 60, 45, 45)); `hmd.cvcalibration.field-of-view-degree-delta` as
+   four numbers (30 each); `hmd.input.remote-compositor-extended-fov-delta`
+   0.5, `hmd.display-tap.extra-rendered-fov` 3,
+   `hmd.cvcalibration.use-nominal-mcam-fov` YES. A **single number** in
+   either four-number key makes wakeboardd abort at start, again and
+   again; the boot then waits on BackBoard forever. backboardd's
+   `Fov*AngleThresholdDegrees` keys (80/45, extended 110/65) are window
+   placement thresholds, not the camera.
+4. **The horizontal field of view cannot exceed 90°** through any host
+   input found (display size, device type, preferences, vhmdd, §5.6.3).
+
+**What Ycode must do.**
+1. Ycode's display size *is* its field-of-view control: what Ycode's
+   SimFramebuffer replacement reports as the integrated display's size
+   (in the tests the device type's `ScreenDimensionsCapability` was
+   changed with it) sets the vertical
+   tangent to h/w with the horizontal fixed at 1. Parity for the Apple
+   Vision Pro device is 3840 × 2160 (90° × 58.7°). For the headset viewer,
+   a taller display widens the vertical view: 1:1 gives 90° × 90°,
+   2160 × 3840 gives 90° × 121°; the GPU cost grows with the pixel count,
+   so keep the width and raise only the height, or lower both.
+2. Treat the horizontal 90° as fixed. A view wider than 90° can only be
+   assembled by the viewer from several pictures taken at different camera
+   yaws (for example −90°, 0°, +90°): each turn costs a settle (90 % at
+   about 130 ms, within 0.1° at about 230 ms, §5.5.12), so this suits a
+   still head and a still scene only.
+3. Never write a single number to `hmd.mesh.override-rectilinear-fov` or
+   `hmd.cvcalibration.field-of-view-degree-delta` (wakeboardd aborts); the
+   preferences have no effect anyway.
+
+#### 5.6.7 Rasterization rate maps and foveation (agent OBS-VISION-RRM, 2026-11-01)
+
+Question from the headset viewer (a Quest Pro with eye tracking): does the
+reference ever render with Metal rasterization rate maps (variable
+rasterization rate, the mechanism behind visionOS's foveated rendering),
+what decides it, and can a host turn it on? Observed on **visionOS 27.2
+(24N120)** (no 27.0 device could be created) with our recorder
+`rrmpeek` in every guest job (the device's rate-map calls with their
+answers and calling image, every rate-map creation, every rate map set on
+a render pass, and the foveation and VRR accessors of the compositor and
+RealityKit images), our probe `rrmcli` (the device's answers, the Mach
+messages they cost, map creation), `StereoProbe` with foveation forced
+on, the Metal-protocol recorder and test server of `metal-sim-protocol.md`
+Appendix A, `wakeboardctl status`, the guest log, and six boots with
+preferences. Details: `research/notes/obs-vision-rrm-2026-11-01.md`.
+
+**Answer: nothing in the simulator ever uses rate maps, and no host input
+enables them.**
+
+1. **No guest process makes or uses a rate map** (level 3, five boots,
+   every job recorded). No call to `newRasterizationRateMapWithDescriptor:`
+   except our probe's, no render pass with a non-nil
+   `rasterizationRateMap`, no app drawable with a rate map
+   (`rasterizationRateMaps` count 0), and every layer link in
+   `wakeboardctl status` reads "Layered VRR Not Enabled", with
+   "supports eye tracking: Disabled" and "AX Static Foveation: Disabled".
+   The per-link VRR decoder buffers are absent (read as nil in
+   wakeboardd, backboardd and apps). wakeboardd presents the whole
+   3840 × 2160 image (§5.6.4); no map or warp data leaves the guest.
+2. **Who asks.** RealityKit's engine asks the device
+   `supportsRasterizationRateMapWithLayerCount:` **2** once per process
+   that loads it (backboardd, RealityEnvironment, pointeruid,
+   datamigrator, the system apps and any RealityKit app) and gets NO.
+   wakeboardd never asks it; its compositor's VRR accessors were never
+   called. CompositorServices tells apps **foveation unsupported**
+   (`supportsFoveation` false; with the foveation option the offered
+   layouts are dedicated and layered).
+3. **The Metal device's answers are constants of the guest driver**
+   (level 3, plus level 4 for which class defines them). The simulator
+   device defines the rate-map methods itself
+   (`supportsVariableRateRasterization` comes from Metal's base device
+   class): `supportsRasterizationRateMapWithLayerCount:` NO for 0–4,
+   `maxRasterizationRateLayerCount` 0, `supportsVariableRateRasterization`
+   NO, and `newRasterizationRateMapWithDescriptor:` returns **nil** for a
+   valid one-layer and two-layer descriptor (screen 3840 × 2160, 5 × 3
+   zones); no exception. **None of these sends a message to the host**
+   (Mach messages counted around 1000 calls: only the counter's own;
+   the Metal-protocol recorder shows only the hand-shake and op 37).
+   With our test server as host, `hostFeatureProfile` 0, 1, 5, 10, 11, 12,
+   20 or 100 and `version` 11 changed none of the answers. A host cannot
+   make the device support rate maps.
+4. **Even a device that said yes would not be used** (diagnostic, not a
+   host input: our recorder forced `supportsRasterizationRateMap…` to YES
+   in every process). RealityKit then still made no map and set none,
+   and nothing in the picture changed; its rate maps would come from the
+   compositor's drawables, which carry none.
+5. **The compositor's decision** belongs to wakeboardd's simulator HMD
+   (one view, no eye tracking, §5.6.1). wakeboardd's foveation
+   preferences are read but change nothing (one boot, all at once, level
+   3; screenshot equal to the baseline except the probe's new icon):
+   `hmd.foveation.recommendation-mode` 1, `hmd.foveation.use-constant-cr`,
+   `hmd.foveation.vrr.use-max-ppd-of-clients`, `hmd.foveation.vrr.show`,
+   `hmd.foveation.gaze.show`, `hmd.foveation.eyetracking.show`,
+   `hmd.foveation.pixel-grouping.override-enabled`,
+   `hmd.foveation.enable-static-foveation-detail-enhancement`,
+   `hmd.motion-to-photon-measurements.eye.foveation-enabled` (all YES),
+   and backboardd's `CAREVisualizeVRRRateZones` YES. **Setting
+   `com.apple.compositor.foveation.custom` YES (in wakeboardd's domain,
+   without further keys) makes wakeboardd abort each time a layer is
+   created** (crash loop; `wakeboardctl` shows "HMD State: Configuring…");
+   never set it.
+6. **Apps that ask for foveation anyway** (`isFoveationEnabled` true
+   although unsupported): `LayerRenderer.Properties(configuration:)`
+   throws `variableRasterizationRateIsNotSupported` (C code −16), the
+   layer renderer is never delivered, and our probe's process was gone
+   within 15 s. Apps must keep foveation off when it is unsupported.
+7. **Gaze.** No gaze reaches rendering: backboardd's headset object
+   polls eye tracking about 150 times a second and always gets NO; the
+   layers report eye tracking disabled. The selection gaze of §5.5
+   (SelectionStream) is input only, and vhmdd has no gaze-for-rendering
+   command. Q2's "which gaze source" therefore has no answer in the
+   reference.
+
+**The interface as Metal defines it** (level 1, public headers; for the
+record, since the reference never exercises it): a descriptor has a
+screen size and one `MTLRasterizationRateLayerDescriptor` per layer (a
+zone grid with one horizontal and one vertical rate per column and row,
+rates in (0, 1]); the device turns it into a map whose
+`physicalSizeForLayer:` is smaller than the screen size and which maps
+screen ↔ physical coordinates; a render pass sets `rasterizationRateMap`
+and renders into a physical-size texture; shaders that read such a
+texture decode it with `rasterization_rate_map_data` /
+`rasterization_rate_map_decoder` from a parameter buffer
+(`parameterBufferSizeAndAlign`, `copyParameterDataToBuffer:offset:`);
+CompositorServices hands an app one map per drawable view group
+(`cp_drawable_get_rasterization_rate_map`, flipped variants on request)
+only when foveation is enabled. In the simulator the shading-language
+side compiles (our decoder shader built in the guest), but no map can be
+created, so none reaches the host: the render-pass record
+(`metal-sim-protocol.md` §8.6) has no known field for one.
+
+**What Ycode must do.**
+1. **Parity: nothing.** Ycode runs the reference's guest Metal driver,
+   which answers every rate-map question itself (NO, 0, nil); Ycode's
+   host needs no rate-map support and must not try to advertise any (it
+   cannot: no message carries it). The Metal→Vulkan layer needs no
+   variable-rate feature. Keep the compositor's answers as they are:
+   foveation unsupported, eye tracking disabled.
+2. **Never set `com.apple.compositor.foveation.custom`** in a Ycode
+   device's preferences (wakeboardd crash loop).
+3. **Foveation for the headset viewer is a Ycode feature on the host
+   side, not a guest feature.** Rate maps cannot be used: the guest will
+   not make them. Two host-side options remain, both off by default and
+   off in parity runs:
+   - *Foveated shading in the Metal→Vulkan layer*: Ycode may apply
+     Vulkan fragment shading rate (an attachment-based rate, for example
+     `VK_KHR_fragment_shading_rate`) to the guest's render passes into
+     the 3840 × 2160 layer colour textures (the textures wakeboardd shares
+     with backboardd, §5.6.1), centred on the viewer's gaze. Unlike Metal
+     rate maps this keeps the texture full-size, so the guest's later
+     passes and wakeboardd's composition read it unchanged. The viewer's
+     gaze direction maps to the layer's pixels through the guest camera
+     (tangents 1, 1, h/w, h/w, §5.6.6; identity eye transform); with
+     alternate-eye stereo (§5.6.5 item 3) each frame uses the gaze of the
+     eye it is rendered for. Whether the Thor's GPU and driver offer the
+     extension must be checked there.
+   - *Foveated streaming*: lower the quality of the periphery when the
+     display stream encodes the presented 3840 × 2160 frame, from the
+     viewer's gaze. This saves bandwidth and latency, not guest GPU time.
+   The only host input that lowers the guest's own GPU cost is the
+   display size (§5.6.6), which applies everywhere, not around the gaze.
+
 ## 6. Boot and run (Mac, level 3)
 
 | Measure | visionOS 27.0, Apple Vision Pro | iOS 27.1, iPhone Duo (`first-boot.md`) |
@@ -607,13 +1509,14 @@ Input and camera:
   SelectionStream (0xFF00/0x71) and Manipulator (0xFF00/0x6F), with the
   IDs and properties of §5.3, and one touch screen for the single display.
 - **V-11** Host messages for pose, selection and manipulation (formats:
-  §9 question 1), carried by Ycode's HID host service (`hid-input.md` §7).
+  §5.5.2, §5.5.7), carried by Ycode's HID host service (`hid-input.md` §7);
+  plus vhmdd's `set_pose` for ARKit (§5.5.3).
 - **V-12** Viewer mapping as in §5.1 (interact / pan / dolly / tilt
   modes, WASD/arrows + E/Q, Control-drag, reset camera, pointer and
   keyboard capture with Escape, Home, game controller later).
 - **V-13** Room selection: the six rooms of §2.6 by key; first by the
-  `activeSyntheticEnvironment` preference before boot (to be verified),
-  later live through a vhmdd-equivalent channel (§9 question 3).
+  `activeSyntheticEnvironment` preference before boot (verified, §5.5.4),
+  later live through vhmdd's `set_active_environment` (§5.5.4).
 
 Apps:
 
@@ -673,14 +1576,18 @@ the canvas controls of §5.1 in Ycode's own design.
 
 ## 9. Open questions
 
-1. The Indigo payload layouts of the Paloma pose, selection and collection
+1. *(Answered, §5.5.2, §5.5.6, level 3.)* The Indigo payload layouts of the Paloma pose, selection and collection
    messages, and the HID event types and fields backboardd receives from
    the PalomaPose, SelectionStream and Manipulator services.
-2. Whether camera movement reaches the guest only as PalomaPose HID events,
+2. *(Answered, §5.5.1, §5.5.3, level 3: PalomaPose moves only the view;
+   ARKit's anchor is the app's stage transform times vhmdd's pose, which
+   only the host's `set_pose` changes; the host sends both.)* Whether camera movement reaches the guest only as PalomaPose HID events,
    or also through vhmdd (`setPose:`/`setCamera`), and which component turns
    the pose into the `DeviceAnchor` that ARKit returns (`com.apple.vhmdd-sim`
    was contacted by the app).
-3. The vhmdd host protocol (environment list, selection, pose, reset) and
+3. *(Answered, §5.5.4, level 3: XPC dictionaries keyed by `cmd`, host
+   only; the preference before boot selects the room. Reset is a host-side
+   `set_pose` plus a pose message with the start pose.)* The vhmdd host protocol (environment list, selection, pose, reset) and
    whether writing `activeSyntheticEnvironment` before boot selects a room.
 4. Which host service `com.apple.xrserverd` is, and whether anything
    degrades without it (nothing visible did).
@@ -996,6 +1903,29 @@ the canvas controls of §5.1 in Ycode's own design.
    the reference's backboardd during the room's frames: which record op
    carries these draws, its body bytes, and the base instance the
    encoder call passed.
+   *(OBS-WATCH, 2026-10-29: not observed. The round's reference work went
+   to watchOS and pairing; the Mac's load average stayed at 190–840 from
+   other work, and the round's rule allowed at most one phone and one
+   watch booted, so no reference visionOS boot with `mslog` was made.
+   What Ycode must do meanwhile: keep reading op 29's base instance as the
+   low 16 bits of the last word (§10.20.2); a reference capture remains
+   the only confirmation.)*
+   *(Answered, OBS-ARGBUF, 2026-10-30, level 3, reference.)* In the
+   reference's backboardd (visionOS 27.0, cold first boot, `mslog` in
+   backboardd, 148 s of the room) the 36-index depth-only draws arrive as
+   **op 29**: 7 845 records with 8 instances and 300 with 3, base vertex 0,
+   **low half of the last word 0** (base instance 0), high half `0x0000`
+   in 7 591 records and stale bytes in the rest: `0x3FF0` (280), `0x40AE`
+   (259), `0x40A0` (8), `0x0003` (7), the very values Ycode had decoded as
+   base instances 0x3FF00000, 0x40AE0000 and 0x40A00000. Our probe on the
+   iOS 27.0 reference (`argprobe draw2`) settles what the host does with
+   them: a first command buffer left viewport records (doubles) in the
+   segment, a second sent `drawIndexedPrimitives…instanceCount:2
+   baseVertex:0 baseInstance:5` whose op-29 record landed on them with last
+   word `0x66660005`, and the vertex function saw `base_instance` 5 and
+   `instance_id` 5 and 6 (six invocations). **What Ycode must do:** read
+   op 29's base instance as the low 16 bits and ignore the high half
+   (`metal-sim-protocol.md` §8.3), which it already does since §10.20.2.
 25. *(New, R7.)* Argument encoders (`messageType` 12 ops 16, 17, 19;
    `metal-sim-protocol.md` §4.2). visionOS RealityKit binds its material
    parameters through tier-1 argument buffers (`fsCALayer`'s buffer 13 is
@@ -1018,6 +1948,42 @@ the canvas controls of §5.1 in Ycode's own design.
    what do the four words of op 19 hold (an array index or a member offset)?
    *(R7b, §10.20.7: Ycode now writes the members from the host, member n at
    8n; the icons appear. The questions stand for the exact layout.)*
+   *(OBS-WATCH, 2026-10-29: not observed, for the reason given under Q24.
+   What Ycode must do meanwhile: keep member n at 8 × n (it covers every
+   layout seen so far, all with dense ids) and log any op-16 layout whose
+   member ids are not 0…n−1, so the first sparse layout is found under
+   Ycode before a reference capture exists.)*
+   *(Answered, OBS-ARGBUF, 2026-10-30, level 3, reference;
+   `metal-sim-protocol.md` §4.3.)* (a) **The host writes the members**: the
+   bytes are in the argument buffer when op 19 returns, and with the
+   recorder's test server (which writes nothing) no byte changes. Values: a
+   buffer's `gpuAddress` plus the call's offset; for a texture an 8-byte
+   handle of the host's own choosing; for a sampler its op-39 resource ID;
+   0 for `nil`. (b) Member *n* is at **the offset that op 16's layout
+   description gives for it**, which is its position in the struct (8 bytes
+   per buffer, texture or sampler; inline data at its own size and
+   alignment), not 8 × *n*: our ids 0, 5, 9 landed at 0, 8, 16 and ids 200,
+   201, 230, 231 at 0, 8, 16, 24. (c) Op 17's reply is u32 ref, u32 0,
+   **u16 alignment, u16 encoded length** (the earlier reading had the halves
+   swapped); the alignment is the largest member alignment and the length
+   the end of the last member rounded up to it. (d) The words after the
+   kind are a 24-bit first index, then a 24-bit count for range calls
+   (`setBuffers:offsets:withRange:` and the like) and a zero u64. The
+   reference's home view (backboardd, boot `x1`) makes **one** encoder in
+   the whole boot, from argument descriptors: 15 read-only device buffers
+   with indices 0–14 at offsets 0, 8, …, 112, op-17 reply alignment 8 and
+   length 120, then 60 kind-0 calls and 58 set calls for each of the 15
+   indices in the 3 minutes captured. That layout is dense, so Ycode's
+   8 × *n* happened to be right for it; WeatherPoster's ids 200, 201, 230 and 231 are not (the
+   reference's cold iOS 27.0 boot made no encoder in WeatherPoster, so its
+   own description was not captured). **What Ycode must do:** parse op 16
+   (`metal-sim-protocol.md` §4.3.1) into an index → offset table, answer
+   op 17 with the computed alignment and length in that order, write op-19
+   members at the table's offsets (range forms included), and answer op 35
+   (`constantDataAtIndex:`) with the argument-buffer offset plus the member
+   offset (§4.3.8).
+   *(Implemented, ARGBUF-IMPL, 2026-10-30: §10.22.1,
+   `metal-sim-protocol.md` §4.3.9.)*
 26. *(New, R7b.)* The room's parts left out of some frames (§10.20.9).
    Under Ycode backboardd draws the room 30 times a second and, in a fixed
    cycle of 16 room frames that starts with a 768 × 432
@@ -1027,6 +1993,123 @@ the canvas controls of §5.1 in Ycode's own design.
    room shows: (a) does the room pass ever lack one of its five draws, and
    (b) is there a 768 × 432 linearized-depth pass, how often, and which
    attachments does it write?
+   *(OBS-WATCH, 2026-10-29: not observed, for the reason given under Q24.
+   What Ycode must do meanwhile: no renderer workaround (the parts are
+   left out by the guest's own draw stream, §10.20.9); keep §10.20.11
+   item 1 open and look under Ycode for what the 768 × 432 pass's results
+   feed (the guest's visibility decision) until a reference capture
+   says whether the reference leaves parts out too.)*
+   *(Answered, OBS-ARGBUF, 2026-10-30, level 3, reference.)* (a) **No.**
+   In the reference's backboardd (cold first boot, `mslog` in backboardd,
+   22–170 s after boot) all 10 114 room passes (one cleared colour
+   attachment, store) hold all five draws (41 520, 57 543, 162 624, 20 328
+   and 48 indices); not one lacks a part. The room pass ran at a median
+   interval of 16.5 ms. (b) **Yes**, the same 768 × 432 pass exists: 280
+   passes at a median interval of 517 ms (so it is timed, about twice a
+   second, not every *n* room frames), four colour attachments of
+   768 × 432 (`R16Float`, `RGBA16Float`, `RGBA16Float`, `R16Float`, load
+   don't-care, store) and a 768 × 432 `Depth32Float_Stencil8` depth
+   attachment, with seven draws: one of 6 indices, one of 612, and the five
+   room parts. Four earlier passes of the same attachments with only the
+   five parts ran once a second at 22–25 s. So the reference draws the same
+   linearized-depth pass and still never leaves a room part out. **What
+   Ycode must do:** treat the parts left out under Ycode as a Ycode
+   difference in what the guest reads back, not as guest behavior: the
+   decision is the guest's and its inputs come from the host, most likely
+   the results of this 768 × 432 pass (read back after its blits) or the
+   boolean visibility results (§10.20.8). Compare those values with the
+   reference next (a probe that reads the four targets after the pass, as
+   `v12` did under Ycode).
+   *(Fixed, ARGBUF-IMPL, 2026-10-30, §10.22.2. It was the visibility
+   results. Under Ycode every occlusion result was zero, because the
+   Vulkan back end did not rasterize pipelines without a fragment function,
+   and the occlusion boxes are such pipelines. With these pipelines drawn
+   as depth- and stencil-only, the results are non-zero and no room frame
+   misses a part.)*
+27. *(New, R8.)* The order of Siri's orb pre-warm and the home view's
+   first appearance (§10.21.1). Under Ycode, at the end of a first boot,
+   assistantd logs "finished post launch setup", then `_prewarmOrb` sends
+   SurfBoard an open request for `com.apple.MRSiri` (URL
+   `#orb_graphics_prewarm_orb`). When SurfBoard handles it while the
+   device is still locked, it is refused ("Failed to validate open
+   application request", `RequestDenied`) and assistantd tries again
+   much later; when SurfBoard handles it after "Attempting to unlock system
+   … User presence detected", it is allowed, Siri's pre-warm scene is
+   created in the foreground, and at "Cover sheet child layouts updated to
+   unlocked" SurfBoard logs "HomeUI wants to resume from unlock, but there
+   will be foreground scenes running" and never launches RealityLauncher.
+   In the reference, in a few first boots of a new device (log stream of
+   SurfBoard and assistantd): (a) the times of assistantd's "finished post
+   launch setup" and "Sending request to open \"com.apple.MRSiri\"",
+   SurfBoard's "Received request to open" and its validation result
+   (refused or allowed), "Data migration completed", "Attempting to unlock
+   system", "Cover sheet child layouts updated to unlocked" and "HomeUI
+   wants to resume from unlock, but there are/will be …"; (b) whether the
+   request is ever allowed before the home view resumes, and if so whether
+   the home view appears anyway (and what brings it up); (c) whether
+   assistantd's later retry (Ycode: after "Service loaded:
+   com.apple.siri.applications", 60–90 s later) also happens.
+   *(Answered, OBS-ARGBUF, 2026-10-30, level 3, reference.)* Three first
+   boots of a new Apple Vision Pro device on the reference (visionOS 27.0,
+   `ycode-test-argbuf-xr`, erased before each; `x1` with the recorder in
+   backboardd, `x2` and `x3` without), guest `log stream` of SurfBoard and
+   assistantd from the boot command; seconds from the boot command:
+
+   | Event | `x1` | `x2` | `x3` |
+   |---|---|---|---|
+   | SurfBoard "Data migration completed" | 21.6 | 23.1 | 22.1 |
+   | "Attempting to unlock system … User presence detected" | 22.3 | 24.0 | 22.9 |
+   | "Cover sheet child layouts updated to unlocked" | 22.6 | 24.3 | 23.2 |
+   | "HomeUI wants to resume from unlock, but there are **no** foreground scenes running" | 22.6 | 24.3 | 23.2 |
+   | "Attempting to launch process com.apple.RealityLauncher" | 22.6 | 24.3 | 23.3 |
+   | assistantd "Service loaded: … com.apple.siri.applications" | — | 205.5 | 108.6 |
+   | assistantd "finished post launch setup", `_prewarmOrb`, "Sending request to open \"com.apple.MRSiri\"" | — | — | 111.7 |
+   | SurfBoard "Received request to open" MRSiri (`#orb_graphics_prewarm_orb`), validation | — | — | 111.7, **allowed** ("Allowing application launch") |
+   | end of the capture | 175 | 241 | 241 |
+
+   (a) as in the table. (b) The pre-warm request never came before the
+   unlock: the reference unlocks and resumes the home view about 23 s into
+   the boot, while assistantd finishes its post-launch setup only after
+   its services load, 112 s into `x3` and not within 241 s in `x2`. The
+   request was allowed (the device was unlocked), MRSiri was launched with
+   intent "foreground-support", and the home view stayed on screen
+   (screenshots at 123 s and 227 s of `x3`); the "there will be foreground
+   scenes running" branch never occurred. (c) No retry: the one request of
+   `x3` was allowed at once, and nothing was refused, so there was nothing
+   to retry. In the reference the post-launch setup followed "Service
+   loaded: com.apple.siri.applications" by 3 s. **What decides it** is
+   the order: unlock and home resume depend on data migration (about 22 s
+   on the reference), the pre-warm on assistantd's service loading (110 s
+   or more); under Ycode the slow boot moves the unlock past the pre-warm.
+   **What Ycode must do:** keep the home guard of §10.21.2 (it gives the
+   reference's outcome: the home view up, Siri pre-warmed behind it); the
+   lasting fix is a boot whose unlock comes before assistantd's
+   post-launch setup, as on the reference.
+   *(R11, 2026-11-01: Ycode now holds assistantd's start until the shell
+   is ready, which gives the reference's order, §10.26.1; the guard stays
+   as a logged fallback.)*
+28. *(New, R11.)* Why assistantd's post-launch setup comes so late on the
+   reference (§10.26.1). Under Ycode assistantd is started 2–4 s after its
+   spawn by a boost from apsd (message id 473000, which also starts
+   amsaccountsd, parsecd and remindd), and finishes its post-launch setup
+   about 23 s later; on the iOS 27.1 reference (`scheduling-policy.md` §3)
+   assistantd and amsaccountsd start 4.6–5.4 s in, but parsecd only at
+   255 s and remindd at 19–22 s. In a first boot of a new Apple Vision Pro
+   device on the reference, with the log stream of assistantd and apsd:
+   (a) when assistantd's process starts ("assistantd launched build …")
+   and when its `xpcproxy_sim` waits (priority 4 in `ps`, as in
+   `scheduling-policy.md` §3); (b) the times of its main-thread lines
+   between that and "finished post launch setup" (the BGST submissions
+   "Starting submission of task …speech-audio-sampled." and "Successfully
+   submitted …", "Server posting darwin notification for state transition")
+   and its priority meanwhile; (c) whether apsd's "Delivering
+   connectionStatusChange" reaches assistantd, amsaccountsd, parsecd and
+   remindd early in the boot, and when.
+29. *(New, VISION-FPS, §10.28.)* At the reference's home view with the gaze
+   moving over the icons: pictures per second; IOSurface requests per second
+   by method and process (under Ycode about 1,950 from the home view and 970
+   from backboardd); and whether backboardd stays at 30 pictures/s for a while
+   after missed frames, as it does under Ycode.
 
 ## 10. Round R1 under Ycode (agents VISIONOS-R1 and R1b, 2026-10-26/27)
 
@@ -3887,7 +4970,7 @@ FS-HOST).
 #### 10.20.11 What remains
 
 1. The parts of the room missing in some frames (§10.20.9, §9 Q26).
-1a. RealityLauncher's home view is sometimes not launched before the end of
+1a. *(Fixed in R11, §10.26.1.)* RealityLauncher's home view is sometimes not launched before the end of
    a 300 to 420 s boot (`v5`, `f1`, `f3`; R7's `e1`, `v1`, `v3`), mostly
    under a high load average; why SurfBoard does not create its scene was
    not examined.
@@ -3895,7 +4978,7 @@ FS-HOST).
    writes are lost and logged (§10.20.4 item 1). A faithful version encodes
    linear to sRGB in the translated function, which needs the format of the
    bound texture at run time (none seen in these boots).
-3. §9 Q24 asks the reference to confirm op 29's last word with a non-zero
+3. *(Answered, §9 Q24; R11 §10.26.3.)* §9 Q24 asks the reference to confirm op 29's last word with a non-zero
    base instance (Ycode's reading rests on the short form's 16-bit rule and
    the zero low halves).
 4. The `RGBA16Float` cube of `generateClampedMap` (an environment map,
@@ -3909,10 +4992,1308 @@ FS-HOST).
    stale texture IDs in argument buffers until the guest encodes them
    again.
 
+### 10.21 Round R8 under Ycode (agent VISIONOS-R8, 2026-10-29)
+
+Clean-room work on Ycode's own simulator on the Thor (branch `vis8` on the
+main line 5a127ff; the visionOS device copied from R7b's, booted on 24M362;
+the iPhone 18 Pro device of the iOS 27.0/27.1 rounds). Boots: `b1`, `b2`
+(main line, a guest log stream that adds assistantd and Siri), `h1`–`h3`
+(Home pressed through the display stream), `g1`–`g6` and `k1`–`k4` (the
+home guard), `a1`–`a10` and `a6b` (apps), iOS `s1` (cold boot with a stop
+snapshot, then a restore) and `i1`. Two to four of these boots ran at once and
+other agents' boots ran beside them: load averages of 50 to 240 on the
+Thor's 14 cores, the room's first frame 117–378 s after the start (R7b:
+50–120 s). No Apple simulator, Xcode, Device Hub or reference tool was run
+or opened, nothing under `research/` was read, nothing was disassembled,
+and the guest's shader logic was not read. Level 3 throughout, level 1 for
+the sRGB formulas and the Info.plist keys.
+
+#### 10.21.1 Why the home view is sometimes not launched (§10.20.11 item 1a)
+
+The guest log of every visionOS boot since R7 (27 of R7/R7b, 11 of this
+round; SurfBoard, assistantd, Siri) shows one guest race, decided in
+SurfBoard:
+
+1. When assistantd logs "finished post launch setup" it pre-warms Siri's
+   orb: `_prewarmOrb` sends SurfBoard an open request for `com.apple.MRSiri`
+   (process "Siri", URL `#orb_graphics_prewarm_orb`).
+2. SurfBoard validates the request on its main queue. While the device is
+   still locked it refuses it ("Failed to validate open application
+   request …", assistantd: `RequestDenied`, "Unable to prewarm UI"), and
+   assistantd tries again much later (after "Service loaded:
+   com.apple.siri.applications", 60–90 s on). After "Attempting to unlock
+   system … User presence detected" it allows it ("Allowing open
+   application request due to unlocked device"): Siri launches and its
+   pre-warm scene is made in the foreground.
+3. When the cover sheet is gone ("Cover sheet child layouts updated to
+   unlocked"), SurfBoard decides whether to bring up the home view: "HomeUI
+   wants to resume from unlock, but there are no foreground scenes running"
+   is followed by "Requesting an app launch for com.apple.RealityLauncher";
+   "… but there will be foreground scenes running" by "Home UI will not show
+   since there are still blocking foreground scenes when pressed", and
+   nothing brings the home view up later, also after Siri's pre-warm scene
+   is destroyed (`b2`: 22 s later).
+
+| Boots (R7, R7b, R8 before the guard) | 38 |
+|---|---|
+| home view brought up at the resume | 23 |
+| home view not brought up ("will be foreground scenes running") | 15 (`e1`, `f1`, `f3`, `p1`–`p5` (R7's probe boots, whose runs share one guest log), `v1`, `v3`, `v5`, `v7`, `b2`, `h1`, `h3`) |
+| of these, Siri's pre-warm allowed before the resume | **15 of 15** |
+| Siri's pre-warm allowed before the resume and the home view brought up all the same | 3 (`v6`, `g4`, `h2`: its scene was not in the foreground yet) |
+
+Whether the request is handled before or after the unlock is a matter of
+timing: SurfBoard's main queue runs its own start-up in long stretches
+(`b2`: the request arrived at 32.9 s guest time, during the stretch that
+ends with the unlock at 38.1 s, and was validated at 43.9 s; `b1`: it
+arrived 10 s after it was sent, while SurfBoard waited for data migration,
+and was refused at 39.4 s, before the unlock at 42.5 s). The window
+between the unlock and the resume, in which an allowed request blocks the
+home view, was 2 to 48 s under Ycode (median 18 s), mostly backboardd's
+display reveal (the boot logo's three stages when the shell finishes after
+the unblank, about 10 s) and SurfBoard's work after it. The reference shows
+the room and the home view about 7 s after Run (§10.12.3); whether its
+pre-warm can fall into that window is §9 Q27. In every boot the resume
+decision came 4 to 84 s *before* the room's first presented frame (the
+first lit frame waits for backboardd's first composed room).
+
+What it is not: no guest process crashed or was refused by Ycode, no Metal
+or kernel error is involved, and the start hold (`scheduling-policy.md`
+§4.2) released assistantd by a boost in every boot. It is the shell's own
+decision on an order of events that Ycode's slower, unevenly loaded guest
+produces in about 40 % of boots.
+
+**A Home press brings the home view up.** In `h1` and `h3` (both "will be
+foreground scenes running"), one Home press through the display stream 60 s
+after the room's first frame (`ycode-display-probe … button home`;
+consumer page 0x0C usage 0x40, backboardd: "Home page:0xC usage:0x40")
+made SurfBoard request RealityLauncher at once.
+
+#### 10.21.2 The home guard (change 1)
+
+`ycode-simd` (VisionHomeGuard.swift), visionOS device runs only: from the
+boot on it watches the presented frames; when no RealityLauncher process
+exists 60 s after the first lit frame (the room's), it presses Home through
+the HID service and logs "visionOS home guard: … pressing Home"; when there
+is still none 60 s later it presses once more; it stops as soon as
+RealityLauncher runs. It never presses while RealityLauncher runs (a press
+would close the home view), and it is off in runs that launch an app
+(`--launch`: the app is the foreground) and with
+`YCODE_VISIONOS_HOME_GUARD=0`; `YCODE_VISIONOS_HOME_GUARD_S` sets the delay.
+The delay is safe: the resume decision precedes the room's first frame in
+every boot (§10.21.1). This is Ycode's stand-in for a user who presses Home
+when the home view did not come up, as on the reference a user of Device
+Hub would; it compensates for a race that Ycode's speed loses more often
+than the reference (Q27), and it is logged in every boot where it acts.
+Test `VisionHomeGuardTests`.
+
+| Series | Boots | Load average | Room (first lit frame) | Home view launched | Guard |
+|---|---|---|---|---|---|
+| R7, R7b, R8 before the guard | 38 | 10–240 | 50–378 s | 23 (61 %) | — |
+| `g1`–`g6` (guard, 4 at once, other agents' boots) | 6 | 70–238 | 165–379 s | **6 of 6** (resume "no foreground scenes") | not needed |
+| `k1`–`k3` (guard, 3 at once and other agents' boots) | 3 | 110–150 | 196–274 s | **3 of 3** | not needed |
+| `h1`, `h3` (no guard; Home pressed by hand 60 s after the room) | 2 | 50–70 | 222–237 s | 2 of 2, at the press | — |
+
+So the home view came up in all 9 cold boots with the guard (`g1`–`g6`,
+`k1`–`k3`, under load averages of 70 to 238), against 23 of 38 before;
+in these 9 the race happened to go the shell's way, so the guard did not
+have to press, and its press is the one shown to work in `h1` and `h3`
+(the same HID event, consumer page 0x0C usage 0x40, sent from the host
+instead of the display stream). The home view with its icons and names:
+`.claude/worktrees/vis8-home.png` (outside git; `g5` at 400 s).
+
+#### 10.21.3 App compatibility
+
+**Build.** Ycode's own path: `ycode build <project> -scheme <target>
+-destination 'generic/platform=visionOS Simulator' --engine swift-build`
+(swift-build's `swbuild`, built from `Tools/ycode-swb`). Two gaps were found
+and handled: the swift-build engine sent no simulator SDK for a simulator
+destination, so a project with `SDKROOT = xros` was built for the device;
+it now adds `SDKROOT=xrsimulator` (`iphonesimulator`, …) unless the command
+line sets one (`build-pif.md`, change 2, test
+`simulatorDestinationsChooseTheSimulatorSDK`). Ycode's PIF generator does not
+yet expand Xcode 16's synchronized folders (`PBXFileSystemSynchronizedRootGroup`):
+a target that uses one is built without sources (an app bundle with no
+executable, "BUILD succeeded"); the samples use ordinary groups. The
+samples: `ycode/Samples/VisionSamples` (our own code), three app targets
+with explicit Info.plists (`UIApplicationPreferredDefaultSceneSessionRole`
+`UIWindowSceneSessionRoleApplication`, or
+`UIWindowSceneSessionRoleVolumetricApplication` for the volume;
+`UIApplicationSupportsMultipleScenes`):
+
+- `VisionWindow`: a SwiftUI window (symbol image, text, a button with a
+  counter, a toggle);
+- `VisionVolume`: a volumetric window (0.6 m) with a RealityKit box
+  (`InputTargetComponent`, collision shape, turned by a tap) and a metallic
+  sphere;
+- `VisionImmersive`: a window that opens an `ImmersiveSpace` (mixed) at
+  launch, with a sphere (tap gesture recolours it) and a ring of eight
+  cubes.
+
+They log through `os.Logger` (subsystem `org.ycode.samples`).
+
+**Install and launch.** `ycode-simd --install-app <App.app> --launch <id>
+--guest-tools <dir with ylaunch>` (`app-install-launch.md`) works on the
+visionOS runtime unchanged: ylaunch installs (`installed
+org.ycode.samples.window`) and SurfBoard launches through the open request
+(0.5–9.2 s under load). The app steps were held until 40 s after the
+room's first frame (`YCODE_SNAPSHOT_WHEN_FILE`, as the iOS app runs do).
+
+| App | Launches | Renders | Input | What is missing |
+|---|---|---|---|---|
+| VisionWindow (ours) | yes (`a1`, `a8`; open request 9.2 s under load) | yes: the window at its place in the room, symbol, text, button, toggle (`vis8-window.png`) | no: a touch through the display stream's touch screen on the button (`a8`) was not delivered to the app (no "window tap") | the window's glass is drawn as an opaque dark grey panel; visionOS input (§9 Q1–Q3) |
+| VisionVolume (ours) | yes (`a2`, 4.0 s) | yes: the blue box (`vis8-volume.png`); the metallic sphere is drawn in some frames and not in others, and reflects black | not tried (no visionOS input) | the reflections (environment cube, §10.20.11 item 4); the sphere's missing frames like §10.20.9 |
+| VisionImmersive (ours) | yes (`a3`, `a9`): `openImmersiveSpace` → `opened`, "immersive space appeared", "immersive content made" | yes: the lit sphere and the ring of eight cubes in the room (mixed style), the app's window stays (`vis8-immersive.png`) | not tried | — |
+| Safari | yes (`a4`, 0.5 s) | yes: the window with its toolbar ornament, the start page behind a "what's new" sheet with Continue, and the system keyboard (RealityKeyboard) with some keys drawn without their key cap (`vis8-safari.png`) | not tried | the missing key caps (as single home-view icons, §10.20.7) |
+| Settings | yes (`a6b`, 1.4 s; `a6` did not reach the room in 480 s at a load of 110–190) | yes: sidebar (Apple Account, General, Apps, People, Environments, …) and the General pane (`vis8-settings.png`) | not tried | — |
+| Files | yes (`a7`, 2.7 s) | yes: sidebar (Recents, Shared, On My Apple Vision Pro, Recently Deleted, tags), "No Recents" (`vis8-files.png`) | not tried | — |
+| Photos | starts (`a5`, `a10`; 1.2 s), then ends with a Swift fatal error | no | — | "Volume containing photo library …/data/Media/ has insufficient free space 0", then `PHPhotosErrorDomain` 3305 in `PhotoLibraryManager` (fatal). A trace of Photos (`a10`) shows no local call that could report the 0 (a `getattrlist` walk of the path with common attributes, then the error's logging): the value reaches it in a reply from a daemon. Not fixed |
+
+The guest's other fatal conditions in these boots were the known ones
+(intelligencetasksd, dasd, AppIntentsLiveEntityService).
+
+#### 10.21.4 sRGB storage writes and reads (§10.20.11 item 2; change 3)
+
+The faithful version: the translator allows it cleanly, because a texture's
+64-bit value only needs its low 32 bits for the heap index. An sRGB texture
+with `shaderWrite` (`RGBA8Unorm_sRGB`, `BGRA8Unorm_sRGB`, the packed ABGR,
+`R8`, `RG8` forms) now gets storage views in the unorm format of its layout
+(the image already had storage usage and `VK_IMAGE_CREATE_EXTENDED_USAGE_BIT`
+for R7's unorm views), and bit 32 of its value marks it. ycode-airc's float
+storage writes encode linear to sRGB and its storage reads decode when the
+bit is set, computing both forms and selecting with `OpSelect`
+(`metal-shaders.md` §4.4). Views in another format (R7's `RGBA8Unorm` views
+of the room's textures) are unchanged: their bytes land as written. GPU test
+`SRGBStorageGPUTests` (a kernel of ours from `interface-forms.sh` case 6):
+linear (0.5, 0.25, 2⁻⁹, 0.5) written into an `RGBA8Unorm_sRGB` texture
+stores (188, 137, 6, 128) and reads back (0.503, 0.250, 0.0018, 0.498); into
+an `RGBA8Unorm` texture (128, 64, 0, 128). Without the change the sRGB
+texture had no storage view and kept zeros. No guest kernel that writes an
+sRGB texture directly was seen in R7/R7b (§10.20.4); this round did not look
+for one, so the change is so far exercised by the test only.
+
+#### 10.21.5 Snapshots and argument buffers (§10.20.11 item 6; change 4)
+
+`snapshot.md` §8 (2026-10-29 paragraph): the snapshot records each live
+texture's heap run and each sampler's slot; the restore reserves them on
+the fresh back end before the replay (`IndexAllocator.claim`), so every
+texture, view and sampler gets its old ID in any creation order; it also
+records every argument-encoder member the host wrote (argument buffer,
+offset, kind, object, the call's offset, the value) and after the replay
+writes again each member whose value changed (buffer GPU addresses, which a
+new Vulkan device chooses, cannot be kept). The 8 × index rule is unchanged
+(Q25 not answered). Tests `SnapshotReplayTests.restoreKeepsSlotsAndRewritesArgumentMembers`
+(NullBackend with different IDs before and after),
+`VulkanBackendTests.reservedHeapSlotsGoBackToTheirObjects` (on the Thor's
+GPU: a texture and a sampler of other handles made first get other slots;
+the reserved ones, made in reverse order, get exactly theirs),
+`IndexAllocatorTests`.
+
+A warm boot of the visionOS room is not possible yet for another reason:
+the Metal service refuses a snapshot while shared-event handles are exported
+or shared-texture handles opened (`snapshotBusyReason`), and wakeboardd's
+layers always have both (§10.12.2, §10.11.3). So the visionOS device boots
+cold every time; the change makes the restore's argument buffers right
+once those handles can be saved.
+
+On iOS 27.1 the restore path with the change works (`s1`, iPhone 18 Pro,
+load average about 150): cold boot to the home screen in 358.7 s, stop
+snapshot; the restore reached the home screen in 15.7 s ("restore: Metal: 9
+processes, 167 objects … heap slots 40 kept, 0 texture IDs changed;
+argument-encoder members 0 …"; 50 buffer GPU addresses changed, as before)
+and launched Settings, which drew its list.
+
+#### 10.21.6 iOS 27.1 check
+
+Shared code changed (the Vulkan back end's slots and sRGB views, the
+translator's storage reads and writes, the Metal service's snapshot):
+`s1`/`s1-r` above (cold boot, stop snapshot, restore, Settings launched and
+drawn) and `i1` (cold boot, home screen at 272.2 s under a load average of
+174, Safari launched through ylaunch 20 s later). No GPU hang report, device
+loss or Vulkan error in either; guest fatal conditions intelligencetasksd
+and AppIntentsLiveEntityService only (known).
+
+#### 10.21.7 What remains
+
+1. §9 Q27: whether the reference's order differs; until then the home guard
+   stays on for visionOS device runs. *(Answered by Q27; fixed in R11,
+   §10.26.1: assistantd waits for the shell; the guard is a logged
+   fallback.)*
+2. The window's glass background renders as an opaque dark grey panel (the
+   room does not show through or blur behind it); the reference draws
+   windows as glass panels (§4.1). Not examined. *(Reference appearance:
+   §10.23.3. Done in §10.24.)*
+3. Metallic surfaces reflect black (the volume sample's sphere): most
+   likely the `RGBA16Float` cube of `generateClampedMap` that R7 read as zero
+   (§10.20.11 item 4). Not examined further. *(Reference: §10.23.4. Done
+   in §10.24.)*
+4. Input: visionOS apps cannot be operated yet (pose, selection and
+   manipulation messages, §9 Q1–Q3; V-10 to V-12). A touch on the display
+   stream's touch screen does not reach a visionOS app (`a8`). *(Formats
+   and what Ycode must do: §5.5.)*
+5. Ycode's PIF generator: synchronized folders (Xcode 16 projects) are built
+   without their sources.
+6. Photos ends at start: the free space it is told is 0 (§10.21.3); the
+   next step is a trace of the photo library daemon's answer. *(Fixed in
+   R11, §10.26.2: getattrlist's volume sizes on "/".)*
+7. Shared-event and shared-texture handles in snapshots (§10.21.5): needed
+   for a visionOS warm boot.
+8. §10.20.11 items 1 (parts of the room missing in some frames; seen again
+   in `a2`), 3 and 5 are unchanged; the room's frame rate and pacing and the
+   visionOS canvas controls (`device-hub.md` §I.8) were not worked on.
+
+### 10.22 Round ARGBUF-IMPL: argument buffers by the layout description; the room's missing parts (agent ARGBUF-IMPL, 2026-10-30)
+
+Clean-room work on Ycode's own simulator on the Thor: branch `argbuf-impl`
+on the main line `e27c4e9c`, Ycode's simulator only, no reference tool,
+nothing under `research/`. The visionOS device was a fresh copy of R7b's
+device for each boot. Boots `v1` to `v7` were cold, frames every 5 s, and
+other agents' boots kept the load average at 15 to 100.
+
+#### 10.22.1 Q25: argument encoders by op 16's description
+
+Ycode now builds argument buffers as `metal-sim-protocol.md` §4.3.8 says
+(implementation in §4.3.9). Op 16's description is parsed into a member
+table, op 17 answers alignment then length, op 19 writes each member at
+its table offset (24-bit index, range forms), and op 35 answers the
+member's offset. This replaces R7b's rule (§10.20.7), which put member
+*n* at 8 × *n* and answered op 17 with the halves swapped, so that every
+encoder looked 8 bytes long with an alignment of 24. Under Ycode,
+backboardd's one layout and those of its RealityKit clients parse as the
+reference's: 15 buffers, indices 0–14 at 0–112, length 120, alignment 8.
+That layout is dense, so the members land where R7b's rule put them. The
+home view came up with its icons and names in `v1`, `v2`, `v3`, `v5` and
+`v7`
+(`v4` did not reach the room in its 450 s, at a load average near 100).
+As before, a single icon is missing in some frames (§10.20.10, `f2`). No
+op-19 write failed and no index fell outside a table. §10.20.11 item 6 is
+done. A restore still writes the recorded members again at their byte
+offsets (`snapshot.md` §8). Layouts and encoders now keep their
+description in the snapshot, so encoders keep their tables across a
+restore.
+
+#### 10.22.2 Q26: the room's missing parts follow the visibility results (fixed)
+
+OBS-ARGBUF found that the reference never leaves a room part out (§9 Q26).
+Ycode's argument-buffer change did not change the cycle: `v1` lost parts
+in 5 of 29 room frames. The guest decides from what the host gives back,
+so two diagnostic switches were added to the Vulkan back end
+(`VulkanVisibility.swift`, default off):
+
+- `YCODE_DEBUG_VISIBILITY_FORCE=<u32>` writes this value into both words of
+  every counted visibility slot instead of the query's count.
+- `YCODE_DEBUG_VISIBILITY_STATS=1` reads every segment's query result back
+  after its command buffer completes and logs, every 20 s, how many were
+  zero. The counts are kept per pass (its size, attachments, the depth
+  attachment's actions and clear value, its depth states, its kinds of
+  draws), slot and segment length.
+
+Frames with parts missing were counted from the 240 × 135 thumbnails as
+before (§10.20.9). About 34 % near-black means the walls are missing;
+about 5 % means the furniture is missing.
+
+| Boot | Switch | Room frames | With parts missing |
+|---|---|---|---|
+| `v1` | none | 29 (290–430 s) | 5 (walls 4, furniture 1) |
+| `v2` | force 1 (every slot "visible") | 34 (280–445 s) | **0** |
+| `v3` | force 0 (every slot "not visible") | 36 (270–445 s) | 7 (walls 4, furniture 3) |
+| `v5` | statistics | 83 (185–595 s) | 20 (walls 7, furniture 13) |
+| `v7` | statistics, **with the fix below** | 68 (260–595 s) | **0** |
+
+**Every visibility result Ycode produced was zero.** In `v5`, all counted
+segments were in backboardd's 3840 × 2160 4× pass: one colour attachment
+and a 4× `Depth32Float_Stencil8` depth attachment, cleared to 0.0 and not
+stored. Its depth states compare Greater, GreaterEqual or Equal (reverse
+depth), some with stencil. Each segment was one draw into slots 0 to 32 of
+16- to 40-byte buffers. The last summary listed 7 875 results, and none
+was non-zero. Forcing them to zero changed nothing, because they were
+already zero. Forcing them non-zero removed every missing part. So the
+guest culls a part whose occlusion box it believes hidden. For a few
+frames it leaves that part out, then draws it again. The reference
+reports the boxes visible, because it never leaves a part out. Ycode's
+boxes passed no samples.
+
+**Cause and fix.** `v6` added each draw's depth state, cull mode and
+pipeline formats to the `YCODE_DEBUG_PASS_DRAWS=3840x2160` lines. Every
+counted segment is one draw of 36 indices with `vsOcclusionQuery` and **no
+fragment function**. The draw uses depth compare GreaterEqual with no
+write, back-face culling, and a pipeline with one colour attachment and
+`Depth32Float_Stencil8` at 4 samples. The same pass has other draws
+without a fragment function: stencil masks (`fullScreen2Vert`, depth
+Equal, stencil replace), `vsMeshShadowPatchReceiver`, `vsUnlit` and
+`vsManualInstancing`. Ycode's Vulkan back end built every pipeline without
+a fragment shader with rasterizer discard on. So these draws made no
+fragments: no depth or stencil writes, and no occlusion samples. In Metal,
+a pipeline without a fragment function still rasterizes (`fragmentFunction`
+nil is depth- and stencil-only rendering; only `rasterizationEnabled` NO
+turns rasterization off; Metal documentation, level 1). No render pipeline
+in these boots sent a descriptor key that Ycode does not model (no
+"descriptor key … is not modelled" line), so none turned rasterization
+off. Now a pipeline without a fragment function, and with a depth or stencil
+attachment format, is rasterized with colour writes off. A pipeline
+with neither stays discarded, since it can only be a vertex function that
+writes buffers. This covers monolithic pipelines and pipeline libraries
+(the fragment-shader part then has no stage).
+`YCODE_VULKAN_VERTEX_ONLY_DISCARD=1` restores the old behaviour. GPU test
+`VulkanBackendTests.depthOnlyPipelinesRasterize` checks a depth-only draw:
+its visibility slot is not zero and the colour attachment is unchanged.
+The test fails with the switch. In `v7`, every result in the statistics
+was non-zero (the last summary: 54 non-zero, 0 zero) and no room frame
+missed a part. The stencil masks and depth-only draws now take effect too.
+Their visible effect (shadow receivers, masked regions) was not studied.
+
+#### 10.22.3 What remains
+
+1. §10.20.11 item 1 (the missing parts) is fixed (§10.22.2). Still to
+   check: what the newly drawn stencil masks and depth-only draws change on
+   screen against the reference (shadows under the furniture, masked
+   regions), and how the extra draws affect the frame rate.
+2. `metal-sim-protocol.md` §13 item 9: the member type codes inside a
+   pointee struct (iOS WeatherPoster). Ycode skips such pointees.
+3. `metal-sim-protocol.md` §13 item 10: the pipeline key, if any, for
+   `rasterizationEnabled` NO.
+4. §10.20.11 items 1a–5 are unchanged; items 1 and 6 are done.
+
+### 10.23 The reference answers Q1–Q3: input, ARKit pose, rooms; glass and metal for R10 (agent OBS-VISION-INPUT, 2026-10-31)
+
+Dirty-room work on the Mac: Xcode 27.1, visionOS 27.0 (24M362), one test
+device `ycode-test-vision3-a` (Apple Vision Pro 4K), created with `simctl`,
+booted twice (the second time with our HID recorder inserted and the
+Museum room preset), then deleted. No Device Hub window, no GUI clicks;
+Ghidra, the IPSW and the reference tools folder were not opened; no
+disassembly. The results are in §5.5; this section records how they were
+found and adds the reference appearance of glass and metal.
+
+#### 10.23.1 Method
+
+| Tool (ours) | Where it runs | What it showed |
+|---|---|---|
+| `vhid` | Mac | sends Indigo messages built by the exported builders, through SimulatorKit's legacy HID client; `script` mode for timed sequences |
+| `bprobe` | Mac | the builders' argument order: each builder called in a child process with recognisable values in every argument register, the result hex-dumped |
+| `vhm` | Mac | vhmdd's protocol over a sim-to-host XPC connection |
+| `hidrec.dylib` | guest, inserted at boot | the events the HID bundle dispatches, printed by the events themselves |
+| `InputProbe.app` | guest | every SwiftUI/UIKit/RealityKit input callback and the ARKit device anchor |
+
+Sources: `research/experiments/visionos/input/` and
+`research/experiments/visionos/InputProbe/`.
+
+#### 10.23.2 Findings in order
+
+1. A message with target 0 made backboardd raise an exception listing its
+   known targets (50, 13, 11, 51, 302, 300, 200, 14, 12, 60, 100,
+   0x40000001, 301) and exit; the UI restarted. Targets 300, 301, 302 select
+   services 05, 06, 07.
+2. A pose message moved the view; translation (0, 1.6, 0) lifted the eye
+   1.6 m above the default (above the ceiling); identity gave the default
+   view; repeated messages gave identical frames; the home view was
+   dismissed "out of bounds" after the jump and Home brought it back.
+3. A selection message with the ray along (0.05, 0.04, −1) hovered the home
+   view's window; backboardd logged the ray and both manipulators inactive.
+4. A collection message mapped its flags to "Pinching", "Allow direct
+   interactions" and chirality per hand; a pinch began a contact at the
+   ray's hit point (stage frame, 2 m in front for the app window).
+5. Our app received every gesture of §5.5.5. With the camera at (1, 0.5, 2)
+   turned 30° left, a camera-space ray missed and the stage-frame ray hit
+   (§5.5.1).
+6. ARKit's anchor ignored four pose messages and followed vhmdd's
+   `set_pose` exactly; `set_pose` did not move the view (§5.5.3).
+7. Guest clients of vhmdd are refused; the host connection answered
+   `get_pose`, `request_environments` and `set_active_environment`
+   (Kitchen (Night) loaded live) (§5.5.4).
+8. The room preference set to `MuseumDay` before the second boot gave the
+   Museum (Day) room (§5.5.4).
+9. The recorder printed the events of §5.5.2 for a pose, a selection, a
+   collection with both hands and a dial turn.
+
+#### 10.23.3 Glass: what the reference window looks like (for VISIONOS-R10)
+
+Screenshots of the same camera pose with and without our app's window
+(Living Room (Day)), compared inside the panel:
+
+- The panel is **translucent**, never opaque: inside it each colour channel
+  is ≈ 0.58 × the background blurred with a Gaussian of σ ≈ 128 px (at
+  3840 px width; the window was about 2.6 px per point) + 49 (8-bit sRGB);
+  R² 0.99 on a strip in front of the television, where the background has
+  contrast. Smaller or larger blurs fit worse. The television shows through
+  as a soft dark area; wall edges behind the panel become soft gradients.
+- A thin light rim (2–4 px) follows the panel's rounded edge.
+- The parameters match CoreMaterial's content-glass recipe file
+  (`platformContentGlass.materialrecipe`, a property list, level 2):
+  backdrop **blur radius 45** (points) and a 4 × 5 **colour matrix** whose
+  rows sum to 0.629 with an offset of 0.235 in each colour row (a
+  slightly desaturating darken-and-lift: grey g ↦ 0.629 g + 0.235). 45 pt ≈
+  116 px at the measured scale; 0.629 and 0.235 (= 60/255) agree with the
+  fitted 0.58 and 49 within the sRGB/P3 and blur-shape differences.
+  Variants `…Darker`, `…Lighter`, `…UltraDarker` exist beside it.
+- The glass is made in the guest: the host receives only the composed frame
+  (§4.2). The backdrop it blurs is the rendered room (and anything behind
+  the window). CoreRE also ships a RealityKit glass material
+  (`glass.rematerialdefinition`, JSON: technique "Glass", fragment entry
+  `fsBlurTransparent`, base colour from the render graph's input colour);
+  which of the two paths draws app windows was not determined.
+
+**What R10 should match:** blurred (σ about 45 pt in window points),
+darkened-and-lifted backdrop per the matrix above, thin bright rim; an
+opaque grey panel is wrong.
+
+#### 10.23.4 Metal: what the reference reflects
+
+- In a volume, a white metallic sphere with roughness 0 mirrors a room
+  image (walls, ceiling lights, floor), not black and not the app window
+  beside it; with roughness 0.5 it is a soft white. In Kitchen (Night) the
+  reflections are dark and warm.
+- Each room ships one image-based-lighting probe,
+  `AssetData/0/*_IBL_Linear_Display-P3_envProbeMap.ktx` (level 2): KTX 1,
+  **cube** (6 faces), **256 × 256, 9 mip levels**, `GL_RGBA16F`
+  (= **`MTLPixelFormatRGBA16Float`**), key/value `ToolVersion` "1" and
+  `PositiveZForward` "true"; linear HDR Display-P3 (Living Room (Day):
+  face means 0.39–1.14, maximum 27.2); the file's mips are plain averages.
+  It is the only RGBA16Float cube in a room asset, so it is the expected
+  input of the `generateClampedMap` kernel that R7 saw writing an
+  RGBA16Float cube (§10.20.1), followed by `generateMipmaps`. This was not
+  observed directly (no Metal recorder in the reference this round).
+- Room albedo textures: KTX 1 2D, `GL_COMPRESSED_SRGB8_ALPHA8_ASTC_6x6`
+  (0x93D4), 4096² with 13 levels or 1024² with 11.
+
+**What R10 should check:** that the probe's six faces and nine levels reach
+the RGBA16Float cube (half-float uploads per face and level), and that the
+clamp kernel's output is non-zero; a correct cube makes the mirror sphere
+show the room.
+
+#### 10.23.5 Not answered
+
+1. The meaning of the per-hand 16-bit `extra` value and of the flag bits
+   above bit 0 (send what §5.5.2 lists).
+2. Whether the Manipulator service's events are used by anything.
+3. What the Digital Crown changes (no consumer reacted to a dial event at
+   the home view or with a mixed immersive space).
+4. Device Hub's own message rate and hand placement (not observed; Ycode
+   decides, §5.5.7 item 4).
+5. Which path (Core Animation backdrop or RealityKit glass) draws window
+   glass, and a Metal-level confirmation of the cube's source.
+
+### 10.24 Round R10 under Ycode: glass and metal (agents VISIONOS-R10 and VISIONOS-R10b, 2026-10-31)
+
+Clean-room work on Ycode's own simulator on the Thor (branch `visionos-r10`;
+R10 stopped overnight with one work-in-progress commit, R10b reviewed it,
+merged the main line 117eee37 and finished the round). Boots: R10's `w1`–`w3`
+(the window sample, `org.ycode.samples.window`) and `m1`–`m3` (the volume
+sample, `org.ycode.samples.volume`: a blue box and an orange metallic sphere
+of roughness 0.2), R10b's `b1` (window) and `b2` (volume), each a cold boot
+of a fresh copy of R7b's device with the app installed and launched 40 s
+after the home view; iOS 27.0 `i0`, iOS 27.1 `i1`, watchOS 27.0 `wa1`.
+No Apple simulator, Xcode, Device Hub or reference tool was run or opened,
+nothing under `research/` was read, nothing was disassembled, and the
+guest's shader logic was not read: guest functions were seen through
+ycode-airc's reflection (names, binding types, access, constexpr sampler
+states), the pass probe's read-backs (§10.20.3) and the new frame map.
+The reference's appearance is §10.23.3–§10.23.4. Level 3 throughout.
+
+Screenshots (not committed; beside the worktrees on the Mac):
+`visionos-r10-before-{window,volume}.png` (the main line before R10),
+`visionos-r10-wip-{window,volume}.png` (R10's commit, `w3`, `m3`),
+`visionos-r10-after-{window,volume,home}.png` (`b1`, `b2`).
+
+#### 10.24.1 The glass pipeline under Ycode
+
+A frame map (§10.24.5) of backboardd's frame command buffer with an app
+window gave the glass's data flow (`w1`, `w3`):
+
+| Pass | What it does |
+|---|---|
+| 5 | the room into backboardd's 3840 × 2160 target (§10.20.1) |
+| 8 | `kernelSFBPassthroughDownsample` into a 40 × 32 × 2 `RGBA16Float` array |
+| 11 | the room again, at 160 × 128 × 2 (one layer per eye) |
+| 14 | `kernelSFBBilerpDownsample4xWithPassthrough` (160 × 128 → 40 × 32), `kernelSFBNoReprojectAndNoBlend`, then `kernelSFBBlurAndFilter` into a 40 × 32 × 2 `RGBA16Float` array (and three more of that size) |
+| 17 | the 4× pass: `fsCALayer` draws of the window sample the blurred 40 × 32 array (`passthroughBlurColor`, `vcaBlurColor`, `vcOnlyBlurColor`) |
+
+So the window's glass is a 40 × 32 blur of the room per eye, sampled
+under the window: one texel covers 96 × 67.5 pixels of the 3840 × 2160 view.
+
+#### 10.24.2 Causes and fixes
+
+1. **The blur kernel wrote nothing (R10).** `kernelSFBBlurAndFilter` has a
+   threadgroup argument whose metadata node gives no `air.address_space`
+   (only its pointer is in address space 3) and the location index of a
+   real device buffer. ycode-airc took the node's default (device) and
+   bound it as a second buffer 0, so the kernel's threadgroup strip was a
+   device buffer and its output was never formed: the panel was an opaque
+   dark grey (the `fsCALayer` tint over zeros). A buffer argument whose
+   pointer is in address space 3 is now threadgroup memory whatever its
+   node says (reflection `by_pointer_address_space`). After the fix the
+   probe read the blur's output non-zero (`w3`: means 0.53, 0.51, 0.47 on
+   the left eye's layer) and the panel showed the room, but in visible
+   blocks of 96 × 67 pixels (`visionos-r10-wip-window.png`).
+2. **Every guest constexpr sampler was nearest, clamp to zero, LOD 0
+   (R10b).** The blocks are the 40 × 32 texels sampled without filtering.
+   `fsCALayer`'s samplers are constexpr samplers, and ycode-airc's
+   reflection gave every constexpr sampler of every guest function state
+   0 (818 in R10's translation cache, 404 in an iOS 27.0 cache). The
+   functions the guest sends hold the state as a plain `i64` global, not
+   the `[2 x i64]` of our toolchain, and ycode-airc read element 0 of an
+   aggregate only (`metal-shaders.md` §3.7). Every guest constexpr sampler,
+   on every platform, was therefore nearest, clamp to zero (transparent
+   black outside the texture) and LOD maximum 0 (level 0 only). Now the
+   state is read as bytes through the data layout from any initializer
+   form. Re-translating visionOS RealityKit's dumped functions gives the
+   real states (`fsCALayer`: linear clamp-to-edge `0x807bff0000082a49`,
+   repeat, anisotropic, and bicubic `0x807bff0000081449`; `fsUnlit`: linear
+   repeat). Filter value 2 is `filter::bicubic` (our own shader); Ycode
+   samples it linearly.
+3. **Metal reflected black (R10).** The volume's sphere samples the
+   environment cube that `generateClampedMap` writes from the room's
+   probe (§10.23.4). The kernel reads the probe cube with `read()`, which
+   ycode-airc does through the storage view (Vulkan cannot fetch a cube
+   face from a sampled view). The probe cube is `shaderRead` only, so it had
+   no storage view and the kernel read the dummy image: zeros. Cube
+   textures now always get storage usage and views when their format
+   allows (`YCODE_GPU_CUBE_STORAGE=0`: the old rule). Probe `m3`: the
+   source cube (256², 9 levels, `RGBA16Float`, usage `shaderRead`) has
+   face means 0.39 to 1.14 and a maximum of 27.2, the reference's numbers
+   for Living Room (Day) (§10.23.4); the clamp kernel's output holds them
+   clamped to 16. With R10's fix alone the sphere reflected the room
+   sharply, with saturated green and blue specks at its rim; with the
+   sampler fix (mip levels and filtering now take effect) the reflection
+   is the soft one a roughness of 0.2 gives and the specks are gone.
+
+The first `generateClampedMap` dispatch covers 300 714 threads (its
+constants: 0, 300 714, 256, 3, 0, 16.0) of the 393 216 texels of level 0,
+and in `m3`'s probe of that command buffer faces 0–3 were written, face 4
+in part and face 5 not. The sphere shows the room in every direction a
+few frames later, so the rest is presumably done by later dispatches;
+this was not traced.
+
+#### 10.24.3 Against the reference
+
+| | Reference (§10.23.3–4) | Ycode before | Ycode after (`b1`, `b2`) |
+|---|---|---|---|
+| Window panel | translucent; each channel ≈ 0.58 × Gaussian(σ ≈ 128 px) of the background + 49, R² 0.99 | opaque dark grey, uniform (38, 38, 38) | translucent: on a strip in front of the television stand (x 1100–2700, y 1480–1640 of 3840 × 2160) against `b2`'s frame of the same pose, best fit at σ 128–160 px: 0.50–0.54 × + 50–57 (red), 0.58–0.64 × + 34–44 (green), 0.65–0.74 × + 16–29 (blue), R² 0.97–0.995 |
+| Rim | thin light rim, 2–4 px | none | a light line along the rounded top edge and a 2–3 px brighter band at the sides (≈ +10 over the panel) |
+| Metal sphere (roughness 0.2) | mirrors the room; rough metal soft | black | orange-tinted soft reflection of the room |
+
+The blur width and the darken-and-lift match within the fit's
+uncertainty; Ycode's panel is somewhat warmer (a lower blue offset). The
+recipe's colour matrix is applied in the guest's functions, so the
+difference may come from the P3/sRGB handling of the composed frame or
+from the room's own colours under the fit; it was not pursued.
+
+The stencil masks and depth-only draws that §10.22 enabled: in `b1` and
+`b2` the room, the home view (`visionos-r10-after-home.png`, its tab bar
+now on glass too) and the samples show no masked-out region and no
+artefact; the box and sphere cast no visible shadow on the room. The
+reference facts (§10.23) say nothing about shadows, so whether one is
+missing is not known (§10.24.6 item 2).
+
+#### 10.24.4 Changes
+
+1. Translator: threadgroup buffers by the pointer's address space (R10;
+   `interface-forms.sh` case 7).
+2. Translator: constexpr sampler states read through the data layout from
+   any initializer form; `state_source` and `state_type` in the reflection;
+   filter value 2 named `bicubic` (`interface-forms.sh` case 8: a plain
+   `i64` and a `[2 x i64]` sampler in one kernel). Host: bicubic filtered
+   linearly (`VulkanBackendTests.reflectionDecodes`).
+3. Vulkan back end: storage usage and views for every cube texture whose
+   format allows (R10; `VulkanBackendTests.readOnlyCubesGetStorageViews`).
+4. Diagnostics: the frame map (§10.24.5).
+
+#### 10.24.5 Frame map (off by default)
+
+`YCODE_GPU_FRAME_MAP=<after s>,<count>[,<min commands>]`: from that many
+seconds after the first submission, the next *count* command buffers with
+at least *min commands* (default 1) draws, dispatches and blits are
+described as in a hang report (passes, attachments, functions, bound
+buffers and textures), before their replay. Nothing is copied, so unlike a
+probe it does not delay the guest; use it to find the passes, then probe
+one function by name.
+
+`YCODE_GPU_FRAME_MAP_FILE=<path>` (XR-ICONS, §10.29) asks at any moment: when
+the file appears, its first word is how many command buffers to describe
+(default 40), its second the least commands each must have (default 1); the
+file is removed. A script or a headset run can ask for the frame on screen now.
+
+#### 10.24.6 Other platforms
+
+The sampler change touches every platform's guest functions. Cold boots
+with the round's build, under a load average of 50 to 165 from other
+agents' boots: iOS 27.0 `i0` (iPhone 18 Pro, a copy of `ios27/devices/p18`)
+home screen at 292.9 s; iOS 27.1 `i1` (the `duo271` device) at 270.2 s;
+watchOS 27.0 `wa1` (a new Apple Watch Series 12 46 mm) at 111.7 s. No GPU
+hang report, device loss or Vulkan error; guest fatal conditions in
+intelligencetasksd and SettingsSearchReindexService only (known). The
+iOS dock and search-field glass, the widgets and the watch face render as
+in earlier rounds' frames (iOS 27.0 compared with `ios27`'s `c1-p18-first`
+at the same crop: the dock glass is unchanged, the Maps widget now shows
+its map where the earlier boot still had the placeholder grid).
+
+#### 10.24.7 What remains
+
+1. Ycode's glass is a little warmer than the reference's (§10.24.3), and
+   the rim was compared by eye only.
+2. Shadows: whether the reference's volume content casts shadows on the
+   room (`vsMeshShadowPatchReceiver`, `ksShadowOcclusionReproject` run under
+   Ycode); a dirty-room look at a volume over the floor would settle it.
+3. Whether the reference's `generateClampedMap` covers the cube in one
+   dispatch (§10.24.2, end).
+4. Bicubic samplers are filtered linearly; `VK_EXT_filter_cubic` where the
+   driver has it would match better.
+5. `metal-sim-protocol.md` §13 items 9 and 10 are unchanged: no visionOS
+   boot of this round logged an argument layout it did not parse or a
+   render-pipeline key it does not model (only compute keys 1 and 2, as
+   before).
+6. §10.21.7 items 2 and 3 are done; items 1, 4 (R9b), 5–8 are unchanged.
+
+### 10.25 Round R9 under Ycode: visionOS input, the ARKit pose and the rooms (agent VISIONOS-R9, 2026-10-31)
+
+Clean-room work from §5.5 and §10.23 (implementation: §5.5.8), on Ycode's
+own simulator on the Thor: the Apple Vision Pro device of R11 (24M362),
+the round's build of `ycode-simd` and the HID bundle, and our own probe
+app `VisionInput` (`ycode/Samples/VisionSamples/VisionInput`, built with
+`xcodebuild -sdk xrsimulator`): a window with a Button, `onTapGesture`,
+`SpatialTapGesture`, `DragGesture`, `MagnifyGesture`, `RotateGesture`
+tiles, a `TextField` and a RealityKit box (`InputTargetComponent`,
+collision), and a mixed immersive space opened at launch with a sphere
+(radius 0.2 m at (−1, 1, −1.6)) and an `ARKitSession` with
+`WorldTrackingProvider` that logs `queryDeviceAnchor` every 0.5 s when it
+moves. Each callback logs through `os.Logger` (subsystem
+`org.ycode.samples`); a guest log stream records them. Boots: `r1`
+(Living Room (Day), driven with the control socket's `vision` commands),
+`r2` (`--room MuseumNight`), `r3` (the Linux viewer under a private X
+server, driven with real X pointer and key events). No Apple simulator,
+Xcode GUI, Device Hub or reference tool was run or opened; nothing under
+`research/` was read; nothing was disassembled. Level 3 throughout.
+
+#### 10.25.1 Results (run r1, scripted driver)
+
+| Input (`vision …`, display points) | What the app logged | §5.5.5 expectation |
+|---|---|---|
+| `tap 712 470` (Button) | `button action 1` | Button action |
+| `tap 960 468` (tile) | `onTapGesture` | `onTapGesture` |
+| `tap 1206 468` | `spatialTap location 169.243 97.882 location3D z 0.005` | location in the view, z ≈ 0 |
+| `pinch 712 620`, `drag 782 620` (+70 points ≈ 0.1 m), `release` | `drag ended translation 70.195 0.000 predicted 162.326 0.000` | about 70 pt per 0.1 m at 2 m; predicted set |
+| `magnify 960 620 1.5` | `magnify ended 1.500` | s₁/s₀ |
+| `rotate 1206 620 30` | `rotate ended -30.000 degrees` | −θ |
+| `tap 1195 810` (the box) | `entity tap window-box …` | entity tap |
+| `tap 345 885` (the immersive sphere) | `entity tap space-sphere …` | `targetedToAnyEntity` tap |
+| `tap 744 758`, `type hello` | `text "H"`, … `text "Hello"` (auto-capitalised); the system keyboard appeared | keys as on iOS |
+| `gaze 1206 468` | the tile's hover highlight; no callback | system hover only |
+| `pose 0.3 0 0.2 15 0` | `device anchor position 0.300 1.600 0.200 forward -0.259 0.000 -0.966` (the view turned and moved at the same time); `get-pose` returned the same matrix | anchor = stage transform × `set_pose` |
+| `reset` | `device anchor position 0.000 1.600 0.000 forward 0.000 0.000 -1.000` | identity |
+| `room MuseumDay` | `synthetic_environment_did_load` within 1.6 s; the room changed live; vhmdd logged "bridge changed environments" for `rooms` | §5.5.4 |
+| `home`, `home` | the immersive space closed, then the home view | Home toggles the home view |
+| `dial ±5` ×5 | Scroll events from DigitalDial (bundle log); no consumer reacted | as the reference (§10.23.5 item 3) |
+
+The bundle found every IOHIDFamily function it looks up (vendor-defined,
+generic, scroll, translation, rotation constructors; float, flags and
+phase setters). vhmdd accepted Ycode's host connection on the first try:
+`get_pose` answered identity after boot, as in the reference.
+
+Screenshots: `visionos-r9-gestures-camera-moved.png` (after the gestures,
+camera at (0.3, 0, 0.2) turned 15° left: Button 1, Drag 70 × 0, Magnify
+1.50, Rotate −30°, "Hello" with the system keyboard),
+`visionos-r9-room-museum-live.png` (Museum (Day) after the live switch).
+
+#### 10.25.2 The room before the boot (run r2)
+
+`ycode-simd --room MuseumNight` wrote the preference; the boot came up in
+Museum (Night) (`visionos-r9-room-before-boot.png`), and a tap on the
+Button reached the app. `vision rooms` listed the six rooms.
+On a stopped device, `ycode-simd --device DEV --vision room KitchenNight`
+wrote `{activeSyntheticEnvironment: KitchenNight}` into the preference file
+(checked with `plistlib`).
+
+#### 10.25.3 The Linux viewer with real pointer input (run r3)
+
+The Linux `ycode-sim-viewer` (SDL 3) ran on a private X server on the Thor
+(TigerVNC's `Xtigervnc` with no listening port, our own display), its
+window 1660 × 1000 (scale 0.852), connected to the run's display server.
+`xdotool` sent X pointer motion, button and key events at the targets'
+window points (our `xdrive.py`), so the viewer's own `SpatialInteraction`
+made every message:
+
+| X input | The app |
+|---|---|
+| click Button / tile / SpatialTap tile | `button action 1`, `onTapGesture`, `spatialTap location 169.906 98.481 location3D z 0.005` |
+| drag 70 display points | `drag ended translation 69.435 0.000 predicted 89.663 0.000` |
+| Alt-drag 52.5 points right | `magnify ended 1.503` |
+| Alt-drag along a 30° arc | `rotate ended -30.151 degrees` |
+| click the box | `entity tap window-box …` |
+| click the text field, type "viewer" | `text "Viewer"` |
+| Alt+W twice | anchor z −0.050, then −0.100 |
+| Ctrl-drag 50 points right | anchor forward (0.175, 0, −0.985) (10° right) |
+| wheel up | anchor y 1.640 (0.04 m up) |
+| Alt + wheel down ×2 | two dial events of 20 (bundle log) |
+| Alt+R | anchor back to (0, 1.6, 0), forward −Z |
+
+Input-to-picture latency in the viewer's status line: about 330 ms under a
+load average of 40–60. Screenshot of the viewer window:
+`visionos-r9-linux-viewer.png`. The macOS viewer and the IDE canvas use
+the same `SpatialInteraction` through `DeviceView+Spatial.swift`; they were
+built and unit-tested on the Mac but not driven with a pointer this round
+(no GUI automation on the Mac).
+
+**Tests.** Unit tests for the messages, the stage-frame math, the
+interaction, the HID bodies and the vhmdd client (against a fake vhmdd in
+a second host task): `SpatialInputTests`, `HIDHostServiceTests.visionBodies`,
+`VisionHMDClientTests`. Thor debug suites DarwinABI, DarwinKernel, Simd,
+SimFeatures, HostServices pass; the x86 full suite passes; the Mac full
+suite passes except `RunTestTextsR42Tests.remoteSimulatorRunSequence`
+(the remote destination's name on this Mac; fails alone too, untouched by
+this round); `lint.sh` exits 0. iOS and watchOS input paths are unchanged
+(their HID and button tests pass).
+
+#### 10.25.4 What remains
+
+1. (Fixed after r3: the Linux viewer's control row shows Reset Camera
+   instead of Rotate on a Vision Pro.) The reference's interaction modes, Capture Pointer and Simulated Scenes
+   inspector are not reproduced (Ycode uses modifiers, §5.5.8 item 4).
+2. `extra` and the flag bits above bit 0 are sent as §5.5.2 lists them
+   (meaning unknown, §10.23.5 item 1); the Manipulator service is
+   published and never used.
+3. No consumer of the Digital Crown was found (as in the reference).
+   *(Answered in §5.5.9: crown rotation is vhmdd's
+   `change_immersion_level`; presses are button source 0 with real timing.)*
+4. Hand orientation is the camera's; a hand's own turn (wrist roll) is not
+   offered by any viewer.
+
+### 10.26 Round R11 under Ycode: the home view in every boot; Photos' free space (agent VISIONOS-R11, 2026-11-01)
+
+Clean-room work on Ycode's own simulator on the Thor (branch `visionos-r11`
+on the main line 117eee37; the visionOS device of R10, booted on 24M362;
+the iPhone 18 Pro device of the iOS 27.0 rounds). One of this round's
+devices was booted at a time; other agents' boots ran beside them (load
+averages 2 to 60). Boots: `p1` (Photos), `e1` (background CPUs), `s1`,
+`c1`–`c10` (the series), iOS `i1`, watchOS `w1` and visionOS `m1` (after
+merging the main line). No Apple simulator, Xcode, Device Hub
+or reference tool was run or opened, nothing under `research/` was read
+and no Apple binary was inspected. Level 3 throughout (Ycode's own boots:
+guest `log stream`, Ycode traces, host log), level 1 for `sys/attr.h`.
+
+#### 10.26.1 Why the home view was sometimes not launched, and the fix (§10.20.11 item 1a, §10.21.7 item 1)
+
+R8's guest race (§10.21.1), timed in guest seconds over 15 earlier boots
+(R7b `v*`, `b*`, `e*`, `f*`; R8 `b1`, `b2`, `g1`–`g6`, `h1`–`h3`,
+`k1`–`k3`) with our script `order.py` (SurfBoard's "Data migration
+completed", assistantd's BGST submissions and "finished post launch setup",
+SurfBoard's receipt and validation of the MRSiri request, the unlock, the
+cover sheet, the resume):
+
+1. **What decides it.** SurfBoard's main queue is busy until data
+   migration completes; an open request received before that is validated
+   right after it, before the unlock, and refused (the home view then
+   resumes; assistantd tries again 60–120 s later, harmless). A request
+   received *after* migration waits on the main queue behind the unlock
+   work and is allowed (`b2`: received 2.5 s after migration, validated
+   5.8 s after the unlock), and Siri's pre-warm scene is in the foreground
+   at the resume. In every boot of the table with the request received
+   after migration, Siri was allowed before the resume.
+2. **Which side is late.** The window from migration to the resume is
+   1 s on the reference (§9 Q27: 21.6–23.1 s → 22.6–24.3 s) and 20–60 s
+   under Ycode (`b2` 73.3 → 102.6 s, `p1` 76.1 → 145.5 s): the shell's
+   work after migration (unlock, the display reveal, the cover sheet) runs
+   slowly. assistantd is the early one: under Ycode it is started 2–11 s
+   after its spawn by a boost from apsd (diagnostic below; message id
+   473000) and finishes its post-launch setup about 20–25 s later, at or
+   around data migration (`b2` 74.6 s, `p1` 68.7 s, `e1` 41.2 s); on the
+   reference that setup ends 112 s into the boot or later (none within
+   175 s and 241 s in two of three boots), 90 s after the resume. Why
+   it is so late there is §9 Q28 (on the iOS reference assistantd itself
+   starts 5 s in, `scheduling-policy.md` §3, so the time goes inside its
+   start-up).
+3. **Ruled out.** assistantd's BGST submissions (dasd) are not gated by
+   migration (0.1–36 s, ending before or after it); apsd's connection
+   status reaches assistantd before and after its setup alike. Background
+   CPUs (`scheduling-policy.md` §4.7, `YCODE_HOST_SCHED_BG_CPUS=2`, boot
+   `e1`): class-bg threads on 2 of 14 CPUs did not delay assistantd
+   (setup at 41.2 s, migration 49.6 s); it stays opt-in.
+
+**The fix (Ycode design).** assistantd's start hold lasts until the shell
+is ready (`scheduling-policy.md` §4.2 "shell-ready holds"): boosts and the
+quiet test do not release it; `ycode-simd` marks the shell ready when
+RealityLauncher runs or at the room's first lit frame, whichever comes
+first (the resume precedes the room's first frame in every boot,
+§10.21.1), in every visionOS device run (also with `--launch`). This
+gives the reference's order: the home view resumes first, and Siri's
+pre-warm request comes later and is allowed with the home view on screen,
+as in the reference's `x3` (MRSiri launched with intent
+"foreground-support", the home view stayed). `YCODE_VISIONOS_SHELL_HOLD`
+names other jobs, `0` none (then R8's race returns). The hold's release
+line says which boosts it outlived ("boosted while waiting for the shell,
+last from pid 140 notifyd …").
+
+**The guard** (§10.21.2) stays as a fallback that logs when it acts; the
+same thread (`VisionHomeGuard.swift`, now the visionOS shell watch) marks
+the shell ready. It did not act in any boot of this round.
+
+Guest seconds (from launchd_sim's first line) except the home watch
+(seconds after `ycode-simd` started) and the hold (host seconds):
+
+| Boot | Migration | Unlock | Resume ("no foreground scenes") | RealityLauncher requested | assistantd released (shell ready by) | Siri's request validated | Home watch | Guard presses |
+|---|---|---|---|---|---|---|---|---|
+| `s1` | 45.6 | 51.1 | 66.3 | 69.6 | the home view runs, after 71 s | 79.4, allowed | 72.9 s | 0 |
+| `c1` | 67.4 | 71.8 | 89.5 | 94.6 | the home view runs, after 95 s | 106.5, allowed | 100.4 s | 0 |
+| `c2` | 41.7 | 48.3 | 64.0 | 67.9 | the home view runs, after 69 s | 77.3, allowed | 71.0 s | 0 |
+| `c3` | 39.7 | 42.8 | 58.9 | 61.9 | the home view runs, after 62 s | 72.5, allowed | 66.0 s | 0 |
+| `c4` | 38.5 | 44.8 | 60.5 | 64.7 | the room's first lit frame, after 64 s | 74.3, allowed | 65.0 s | 0 |
+| `c5` | 76.2 | 82.0 | 100.0 | 103.6 | the room's first lit frame, after 103 s | 110.7, allowed | 103.6 s | 0 |
+| `c6` | 44.9 | 50.1 | 67.9 | 70.4 | the room's first lit frame, after 70 s | 77.5, allowed | 70.8 s | 0 |
+| `c7` | 44.1 | 47.5 | 65.7 | 69.4 | the home view runs, after 70 s | 78.3, allowed | 73.2 s | 0 |
+| `c8` | 68.2 | 74.7 | 91.9 | 94.9 | the home view runs, after 95 s | 103.8, allowed | 98.5 s | 0 |
+| `c9` | 47.0 | 49.9 | 63.6 | 65.1 | the home view runs, after 66 s | 74.2, allowed | 69.2 s | 0 |
+| `c10` | 61.9 | 64.3 | 81.1 | 84.7 | the home view runs, after 86 s | 94.7, allowed | 91.7 s | 0 |
+
+**10 consecutive cold boots `c1`–`c10`** (and `s1` before them; 330 s each,
+one at a time, other agents' boots beside them, load averages 2–25): in
+every boot SurfBoard resumed the home view ("no foreground scenes
+running") and launched RealityLauncher, assistantd was released only
+after that or at the room's first frame, Siri's pre-warm request was
+validated and allowed 7–11 s after the resume (the reference's outcome:
+MRSiri launched, the home view stayed), and **the guard never pressed**.
+Before the change the home view came up in 23 of 38 boots (R7–R8); this
+round's two boots without it (`p1`, `e1`) went the shell's way, `e1` by
+1.1 s (request received 48.5 s, migration 49.6 s). The home
+view with its icons: `.claude/worktrees/visionos-r11-home.png` (`c10` at
+300 s; outside git). Warm boots: none for visionOS yet (§10.21.5), not
+checked.
+
+**Diagnostic** (`scheduling-policy.md` §4.2): a hold released by a boost
+logs the sender. In `p1`: runningboardd by vhmdd, biomed by sleepd, tccd
+by securityd, accountsd by locationd (all XPC, 1999646836);
+amsaccountsd, assistantd, parsecd and remindd within 0.2 s by apsd
+(473000); ids_simd by amsaccountsd, healthd and eligibilityd by dasd,
+ManagedSettingsAgent by sharingd, mediaremoted by rapportd, peopled by
+notifyd.
+
+#### 10.26.2 Photos told 0 bytes free (§10.21.7 item 6)
+
+R8 found no local call that could report the 0. There is one: right before
+its error PhotoKit in Photos asks getattrlist on "/" for
+`ATTR_VOL_INFO | SIZE | SPACEAVAIL | FILECOUNT | DIRCOUNT` (volume
+attributes `0x80000614`, 28 bytes; `a10`), after finding the library's
+volume ("/", the device directory being part of "/"'s volume since
+`home-screen.md` §6) by `ATTR_CMN_FSID` and `getfsstat64`. Ycode packed a
+fixed 64 GiB size and **0 bytes free for any read-only path**, "/"
+included, and 32 GiB for a writable one; statfs used the host's sizes of
+the prefix itself. No daemon is involved (no CacheDelete call, no reply).
+
+**Fix.** getattrlist's volume sizes (`SIZE`, `SPACEFREE`, `SPACEAVAIL`,
+`SPACEUSED`) and statfs's `f_blocks`, `f_bfree`, `f_bavail`, `f_files`,
+`f_ffree` are the host file system's real values, the same for every
+path of a guest volume: taken from the host directory of the volume's
+first writable prefix (for "/"'s volume the device directory), else of
+the prefix mounted there; an APFS volume reports its container's free
+space for its read-only parts too. Test `VolumeSpaceTests` (device-like
+prefixes: "/", a path under the device directory and the read-only
+`/System` report the device directory's host sizes; the runtime root its
+own).
+
+**Result.** visionOS (`p1`, Photos launched through ylaunch 40 s after the
+room): no "insufficient free space", Photos stays up and shows its window
+"Library", "No Photos or Videos", the Years/Months/All control and its
+tab ornament (`.claude/worktrees/visionos-r11-photos.png`; the visionOS
+device has no sample photos). iOS 27.0 (`i1`, iPhone 18 Pro, cold
+boot, home screen at 86.8 s, Photos launched through ylaunch 20 s later):
+Photos starts, shows its "What's New in Photos" sheet with Continue and
+stays up until the run's stop (`.claude/worktrees/visionos-r11-ios-photos.png`).
+iOS asks the same "/" volume, so it most likely shared the cause; a boot
+without the fix was not made.
+
+#### 10.26.3 Other items
+
+- §10.20.11 item 3 (Q24, op 29's base instance) is answered by the
+  reference (§9 Q24: base instance 0, stale high halves; Ycode's reading
+  stands); nothing to change.
+- §10.20.11 item 5 (§10.13.5 items 3–5, §10.19.4 items 2–5) was not on
+  this path and is unchanged.
+- The boot is faster with assistantd held: home view 65–104 s after the
+  start in `c1`–`c10` (R8: 117–378 s under heavier load; this round's `p1`
+  152.7 s and `e1` 99.3 s without the hold). Whether that is the hold or
+  the lighter load was not separated.
+
+- Other platforms after merging the main line (fedb2bcf): iOS 27.0 `i1`
+  home screen at 86.8 s; watchOS 27.0 `w1` (a new device) at 48.9 s;
+  visionOS `m1` home view launched, guard idle (64.8 s). Tests: Mac full
+  suite (one failure, `RunTestTextsR42Tests.remoteSimulatorRunSequence`,
+  also before this round's changes and outside them), x86 full suite (the
+  known flaky `BSDFastPathTests.smallTrapsMatchTheLockedPath`, passing
+  alone three times), the Thor's debug suites DarwinABI, DarwinKernel,
+  Simd, SimFeatures and HostServices with the lock-order checks (all
+  pass), lint.
+
+#### 10.26.4 What remains
+
+1. §9 Q28: why the reference's assistantd finishes its start-up so late;
+   if it is a Ycode difference (for example apsd's early message, or
+   darwin-bg I/O throttling, `scheduling-policy.md` §4.8), the shell-ready
+   hold can give way to that.
+2. §10.21.7 items 2–5, 7, 8 are unchanged.
+
+### 10.27 Round GPU-SIRI under Ycode: Siri and immersion stopped the GPU; the watchdog and device recovery (agent GPU-SIRI, 2026-11-01)
+
+Clean-room work on Ycode's own simulator on the Thor (branch `gpu-siri` on
+the main line dbc9ad5c; the visionOS 27.0 device of XR-VIEWER, booted on
+24M362). No Apple simulator, Xcode, Device Hub or reference tool was run
+or opened, nothing under `research/` was read and no Apple binary was
+inspected; the guest's shaders were seen only through ycode-airc's
+reflection and the hang reports. Level 3 throughout (Ycode's boots and
+logs, the host kernel log, our probes), level 1 for the Vulkan
+specification.
+
+#### 10.27.1 What was wrong
+
+1. **Siri (XR-VIEWER's run `x7`, the owner's headset session).** Tapping
+   Siri on the home view starts SiriApp and the orb renderer
+   `com.apple.campo`; campo's first command buffer runs the kernel
+   `affordanceDynamicPointLight` six times (one per cube face, 4 × 8
+   threadgroups of 32 × 16). The kernel reads ten buffers; the command
+   buffer binds one (the face index, by `setBytes`). Ycode left the nine
+   other argument-table entries at 0, the kernel's loads read address 0,
+   and on the Thor such a read never completes (metal-shaders.md §4.11).
+   80 s later another GPU client made the driver kill the context: device
+   lost; every pending and held command buffer failed, backboardd aborted
+   ("Command buffer SharedEventSignalBuffer failed to execute"), and since
+   the Vulkan device stays lost, every new backboardd aborted again every
+   50–70 s.
+2. **Immersion (XR-VIEWER's run `x8`).** `change_immersion_level` starts
+   backboardd's immersion transition, whose command buffer clears and
+   draws into a 172 × 172 and a 16 × 16 attachment in one pass. Ycode's
+   render area was the first attachment's; the writes past the small image
+   never completed (metal-sim-protocol.md §8.7). The threadgroup size both
+   reports shared (32 × 16) was not involved: in both cases the GPU was
+   stopped by a memory access outside any allocation, a host-side mistake.
+
+#### 10.27.2 Fixes
+
+- Unbound buffer slots a function reads point at the dummy buffer (zeros),
+  metal-shaders.md §4.11; a pass is rendered at its smallest attachment's
+  size, metal-sim-protocol.md §8.7.
+- **GPU watchdog** (10 s) and **device recovery**: the stuck command buffer
+  fails, the Vulkan device is made again with every object rebuilt in
+  place (handles, heap slots and — with capture replay — device addresses
+  kept), and every other command buffer is recorded again, so the render
+  server does not see the loss (metal-sim-protocol.md §8.7).
+
+#### 10.27.3 Runs
+
+| Run | Setting | Result |
+|---|---|---|
+| `r2` | as built | Siri tapped 3 times (each time `Home` in between): "Get Started with Siri" shown each time, campo ran, no GPU report; the host log names the kernel's unbound slots 1–9 once (`.claude/worktrees/gpu-siri-visionos-siri*.png`, outside git) |
+| `r1` | `YCODE_GPU_UNBOUND_DUMMY=0` (the old behaviour) | Siri's kernel hung; watchdog at 10 s; device made again in 2.9 s, 0 of 951 buffers at a new address, 1 command buffer failed, 10 recorded again; backboardd kept running and Siri opened again; the room and icon images stayed black (GPU-only contents are lost) |
+| `s1`, `s2` | capture replay off / on | both boot to the room; same GPU statistics |
+| `m-ios270`, `m-ios271`, `i-watch` (and `i-ios27*`, `j-ios270` under load 90–110) | iOS 27.0 (iPhone 18 Pro), iOS 27.1 (iPhone Duo), watchOS 27.0 | each reached its home screen and rendered (iOS 27.0 at 201 s, 27.1 at 168 s, watchOS at 137 s); on iOS 27.0 the Siri app was opened twice from its home-screen icon (its screens came up blank, black then white, in this round's screenshots; a held side button did not start Siri while the boot was still settling); the watch's held crown showed no Siri screen; no GPU report, watchdog or reset in any of them |
+
+The immersion pass itself was not driven in a boot of this round (the
+`vision immersion` command is XR-VIEWER's, not yet on the main line); the
+unit test reproduces its pass and its hang.
+
+Tests: `GPURecoveryTests` (unbound slots read zeros; the watchdog ends a
+spinning kernel, the queued command buffer runs again on the new device
+with the same buffer address and heap slot; recovery off keeps the old
+behaviour; mixed-size attachments) and the Thor's Vulkan and Metal host
+suites (109 tests); the Mac and x86 full suites; lint.
+
+#### 10.27.4 What remains
+
+1. Textures whose contents only the GPU held come back zeroed after a
+   reset (the room, icon images). Restarting the render server after a
+   reset would bring them back at the cost of a shell restart.
+2. metal-shaders.md §8 item 9 and metal-sim-protocol.md §13 items 11 and
+   12 (the reference's behaviour for unbound slots, timed-out command
+   buffers and mixed-size passes) are open for a dirty-room observation.
+3. A command buffer split at an event wait whose first part had already
+   run runs that part again after a reset.
+4. Viewport arrays (the immersion pass's vertex function writes
+   `viewport_array_index`): Ycode's pipelines have one viewport.
+
+### 10.28 Round VISION-FPS under Ycode: the presented frame rate, what limits it, and the numbers for foveation (agents VISION-FPS and VISION-FPS-2, 2026-11-01/02)
+
+Clean-room work on Ycode's own simulator on the Thor (branch `vision-fps`,
+main line d73ad5a3; the visionOS 27.0 base device of `visionos9`, a fresh
+copy for every cold boot; level 3 throughout). No Apple simulator, Xcode,
+Device Hub or reference tool was run or opened, nothing under `research/`
+was read, nothing was disassembled or symbolized. The owner's goal is lower
+latency in the headset viewer: the guest's camera pipeline is 3–4 presented
+frames (§5.5.12), so the frame rate is the main lever.
+
+Words used below: a **present** is the presenter's (wakeboardd's) swap, 60
+a second whether or not the picture changed; a **picture** is a frame the
+render server (backboardd) drew (a command buffer with its 4× pass). Only
+pictures carry new content. "23.5 pictures/s", the rate in `xr-viewer.md` §6
+and `display-stream.md` §18, was measured before item 1 of §10.28.1.
+
+The host is shared and its load matters more than anything else here
+(§10.28.5): each result gives its load average, and only comparisons made
+close together in alternating sessions are treated as differences.
+
+#### 10.28.1 The clock of Metal completion events
+
+Completion events carried the GPU start and end times on the host's uptime;
+the guest compares them with its own media time, its mach time in seconds.
+The two differ by the guest clock's offset (about 19 days here), so every
+frame seemed to end far in the future and backboardd held itself at 30 Hz.
+They now carry the guest's mach time in seconds
+(`metal-sim-protocol.md` §8.5; `YCODE_METAL_EVENT_CLOCK=host`: the old
+clock). Same build, cold boots, alternating:
+
+| Scene, 3840 × 2160 | Measure | Old clock | Guest clock |
+|---|---|---|---|
+| Home view, at rest | pictures/s (`hB3`, `h3`; `s8`) | 30 | 55 at load 30, 60 at load 10 |
+| Window app, at rest | pictures/s (`wB3`, `w3`) | 18–30 (stalls up to 0.9 s) | 59.8 |
+| Window app, head motion | new frames received/s | 20.0 | 54.2 |
+| Window app, an isolated 5° pose step | to the first changed frame received, p50 (min, max) | 142 ms (111, 179) | **75 ms** (71, 91) |
+
+The step latency includes the stream (a few ms, Unix socket, ¼ scale JPEG)
+and agrees with §5.5.12's 3–4 presented frames at 60 Hz.
+
+#### 10.28.2 Frame rates with the guest clock
+
+Pictures per second, at rest and with the camera moving. "Motion": a ±20°
+yaw sine at 0.4 Hz with ±5° pitch and ±5 cm sideways, sent at 90 Hz, each pose
+with a selection (`vision pose`), unless the row says otherwise. Presents were
+60/s in every row except where noted (58–59 under load).
+
+| Scene | Run, load | At rest | GPU busy at rest (ms per present) | Motion |
+|---|---|---|---|---|
+| Home view, 3840 × 2160, poses only (0x8A, no gaze) at 30, 60, 90 Hz | `s1`, 8–17 | 60 | 24.5 % (4.08) | **54–60** (frames received 56–59/s) |
+| Home view, gaze moving over the icons, no head motion | `s7`, `s11`: 6–14 | 60 | | **16–37, mean 28** |
+| Home view, head motion and gaze at 60 Hz | the same sessions | 60 | | **16–39, mean 29** |
+| The same two under another device's boot | `h3` load 30–50, `s2`, `s5` | 30–60 | | 0–30 |
+| Home view, 2160 × 3840 (motion with gaze) | `t3`, 25 | 59.0 | 20.5 % (3.45) | 11–32, mean 22 |
+| Home view, 3840 × 3840 (1.78 × the pixels) | `q2`, 11–18 | 56.8 | 33.7 % (5.79) | 12 |
+| Window app, 3840 × 2160 | `w3`, 17 | 59.8 | 23 % (3.9) | **45–59, mean 55** |
+| Window app, 2160 × 3840 | `v3`, 18–30 | 53 | 21.6 % (3.72) | 30–59, mean 46; presents 54/s |
+| Volume app (box, metal sphere), 3840 × 2160 | `y3`, 10 | 59 | 19.8 % (3.30) | 37–53, mean 46 |
+
+So 60 Hz is sustained at rest, with an app open, on the tall display and
+under head motion, on a quiet host. The display's shape costs nothing beyond
+its pixels. **The exception is a gaze that moves over the home view's icons**:
+about 28 pictures/s (below). A gaze on the empty room or a constant ray does
+not cost this (`sky60`: 58.8/s; `n60`, a constant ray at 60/s: 54.7/s;
+`s2`), and neither does its rate (`s15` at 15/s: as `s60b` at 60/s): it is
+the hover state changing, not the number of events.
+
+After frames are missed backboardd stays at exactly 30 pictures/s for a
+while (`s7`, `s11`: up to about 6 s after the motion; `h3`: about 20 s, with
+isolated pose steps continuing) and then returns to 60. Ycode has no part in that choice that this
+round could find; whether the reference does the same is §9 Q29.
+
+#### 10.28.3 Where the time goes
+
+Per picture, from the frame profile (`frame-profile.md` §10) and the GPU
+timestamps of the frame trace:
+
+| ms per picture | Window app, head motion (`w3`, load 16, 57 pictures/s) | Home view, gaze over the icons (`s7`, `s8`, load 10, 30 pictures/s) |
+|---|---|---|
+| Render thread: guest code | 7.1 | 13.4 |
+| Render thread: trap service | 3.4 | 9.1 |
+| Render thread: asleep (replies, the GPU's completions, locks) | 7.0 | 11.9 |
+| Home view's main thread: guest, trap, asleep | not running | 12.7, 7.0, 14.8 |
+| GPU, union of all clients | 3.9 (22 % busy) | 5.4 (17 % busy) |
+| of it passes that scale with pixels (§10.28.4) | ≈ 3.0 | ≈ 4.3 |
+| Metal host recording (p50, p90) | 0.10, 0.46 | 0.07, 0.66 |
+
+The window app has slack: the render thread is about 60 % busy. Hovering
+over icons doubles the per-picture work on threads that wait for each other.
+One backboardd thread makes about 290 synchronous calls a second into the
+home view's main thread (2 ms on average, up to 27 ms), and the render thread
+is seen waiting (`ulock_wait2`, up to 12 ms) until that thread wakes it. The
+home view makes about 1,950 IOSurface requests a second and backboardd about
+970 (`YCODE_IOSURFACE_STATS`: copy values 700/s, get attachments 490/s, make
+port 240/s, purgeable 240/s, remove value 235/s; backboardd looks up about 240
+surfaces a second, gets their attachments, marks and releases them). Each is a
+round trip through the host service's thread: 120 µs on a quiet host, about
+200 µs at load 25. About 13 ms per picture of guest code on the render thread
+alone is 80 % of a 60 Hz budget; that is the guest's work on this CPU and
+Ycode does not change it.
+
+**A change that did not help (removed).** The round trips looked like the
+biggest cost Ycode owns, so host services were made to run on the caller's
+thread (the trap served the IOSurface service and short Metal device-ops
+inline, after the send). The home view's round trip halved (120 → 60 µs;
+its share of the main thread 38 % → 26 %, and it got through 35 % more
+requests a second). Pictures per second did not move in alternating
+sessions (load 6–14; means per run): gaze sweep 29, 31, 29 with inline
+against 29, 27 without; small gaze moves 32, 49, 27 against 49, 35; head and
+gaze 25, 25 against 27, 30. A kernel path with that complexity needs a gain to pay for it, so it was
+taken out. What came out of the experiment is the diagnostic
+(`YCODE_IOSURFACE_STATS`) and the finding that the render thread, not the
+home view's RPC rate, sets the pace.
+
+#### 10.28.4 Numbers for foveated rendering
+
+**The share of frame time that is GPU fragment work.** Vulkan timestamps per
+pass at three display sizes (home view at rest, ms per present; `d3` 1920 ×
+1080, `s8` 3840 × 2160, `q2` 3840 × 3840):
+
+| Pass | 2.07 Mpx | 8.29 Mpx | 14.75 Mpx |
+|---|---|---|---|
+| Render server's 4× UI pass and resolve | 0.24 | 1.59 | 2.29 |
+| The room (two passes) | 0.22 | 0.98 | 1.24 |
+| Render server's load pass | 0.07 | 0.28 | 0.47 |
+| Presenter's composition | 0.08 | 0.28 | 0.47 |
+| Copy to the host surface (33 MB at 3840 × 2160) | 0.08 | 0.34 | 0.64 |
+| Blits, kernels, small passes | 0.34 | 0.44 | 0.49 |
+| Between passes (barriers) | 0.31 | 0.18 | 0.19 |
+| **Total (union)** | **1.35** | **4.08** | **5.79** |
+
+The first five rows scale with pixels. Fragment shading, MSAA resolve and
+attachment loads together (the first four) are at most **3.1 ms of the 16.67
+ms frame (19 %)** at 3840 × 2160, and the GPU is idle 75–87 % of the time in
+every scene measured at that size. These timestamps do not separate vertex
+from fragment work, or shading from resolve and load; the near-proportional
+growth with pixels says vertex work is small. CPU, guest code and waits are
+the remainder: on the render thread alone 7–13 ms per picture of guest code
+and 3–9 ms of traps. No frame waits for the GPU: its work overlaps the CPU's.
+
+**The driver** (Thor, NVIDIA 580.00, Vulkan 1.4.315, `vulkaninfo`):
+
+| Feature | Offered |
+|---|---|
+| `VK_KHR_fragment_shading_rate`, `attachmentFragmentShadingRate` | **yes** (also pipeline and primitive rates); attachment texel 16 × 16 only; fragment sizes up to 4 × 4, aspect ratio up to 2; up to 16 samples, so the 4× pass qualifies; layered attachments |
+| `VK_EXT_fragment_density_map` | **no** |
+| `VK_NV_shading_rate_image`, `VK_NV_fragment_shading_rate_enums` | yes |
+
+**Reading.** Foveated rendering would not raise the frame rate of these
+scenes: nothing here waits for the GPU. Its best case can be bounded: 2 × 2
+shading over three quarters of the picture saves 56 % of the shading in the
+UI and room passes, about 1.4 ms of 16.67 (9 %), less whatever of those passes
+is resolve and load, and only by putting a rate attachment into render
+passes the guest defines. A guest scene that really loads the GPU would
+change this; the volume sample does not (15–20 % busy). It was not built.
+
+#### 10.28.5 Host load
+
+Another device's boot on the 14 cores (load 30–50) takes the home view with
+gaze from about 28 to 0–30 pictures/s and the window app's presents below 60
+(`v3`, `s5`, `s10`), far more than any difference above. Within the device
+apsd and diagnosticd cost 0.75–1.2 cores and half of all traps at rest (17,000
+of 33,000 a second, `s2`; on watchOS too, `watchos.md` §9 Q14).
+Latency tests in a headset are best run with no other device booting.
+
+#### 10.28.6 Other platforms
+
+Whether the clock change matters elsewhere: cold boots of a fresh device on a
+quiet host (no other device booting), the old clock
+(`YCODE_METAL_EVENT_CLOCK=host`) alternating with the guest clock, the same
+settle time, no trace or profile. Three phases per boot of ten home-screen
+swipes (6 s each); guest frames per second over the phases.
+
+| Platform, settle | Guest clock | Old clock |
+|---|---|---|
+| iOS 27.0, iPhone 18 Pro, 60 s (`cG1`–`cG3`, `cH1`–`cH3`, load 14–30 from the device's own settling) | 51.3, 39.5, 64.2: **mean 51.7** | 50.4, 44.4, 51.0: **mean 48.6** |
+| watchOS 27.0, Series 12 46 mm, 100 s (`wG2`, `wH2`, load 2–3) | 102.6 | 101.0 |
+| watchOS 27.0, 40 s (`wG1`, load 6–7) | 101.1 | not run |
+
+**iOS: no regression, and no gain.** The difference is +3.1 frames/s for the
+guest clock (phase SD 18 and 12; permutation test over the 18 phases p = 0.67,
+though phases of one boot are not independent). Three boots per arm can only
+exclude a large effect: a difference of about 14 frames/s or more, not a small
+one. The earlier pair that favoured the old clock by nearly a factor of two
+(`iA2` 20.2 against `iB2` 38.1) had the guest arm at load 41 against 29, with
+a trace and frame profile on, and did not recur. Both arms vary the same way
+between phases: the first phase of a boot is about 40/s in every run (38–43),
+later ones 36–80/s; `cG1`, `cG3` and `cH1` reached 70–80. That spread was not
+explained. The iOS path needs no different clock. Nothing here shows that iOS
+ever paced on these times as visionOS does.
+
+**watchOS: the same in all three**, with active intervals of 8.4 ms (p50), so
+no sign of the bug there either. `wtA2`'s 39.6 frames/s (one boot, with a trace
+and frame profile, load 14) did not recur with the same settle time; its cause
+was not found. Every boot of this section reached its home screen and none
+crashed ycode-simd (GPU reports were not compared).
+
+#### 10.28.7 A crash in the frame profile
+
+A frame-profile window's close set `KernelTrace.wake` and its siblings to
+nil while other threads called them: a closure released while being read.
+ycode-simd died in `WaitQueue.Waiter.finish` as window 1 closed in `s9`, one
+crash in about 50 profiled sessions, the only one this round. The hooks are
+now installed once before the root process and record only while a window is
+open (`frame-profile.md` §10).
+
+#### 10.28.8 What remains
+
+1. A gaze moving over home-view icons: about 28 pictures/s on a quiet host.
+   Most of it is guest code on the render thread and the home view's main
+   thread; Ycode's own share (trap service, round trips) did not turn out to
+   be the limit.
+2. §9 Q29: the reference's rate and its IOSurface request rate in the same
+   hover, and whether it also falls to and stays at 30 Hz after a miss.
+3. apsd's and diagnosticd's constant traffic (`watchos.md` §9 Q14).
+4. A volume-app stall: one isolated pose step took 2.95 s to change the
+   picture in `y3` (pictures fell to 20–27/s around it); not reproduced or
+   explained.
+5. The 3840 × 3840 home view with gaze motion stays low (12 pictures/s at
+   load 11–18, one run).
+6. Why iOS swipes vary between about 40 and 80 frames/s within one boot
+   (§10.28.6), in both clock arms.
+7. Measured with the display probe (¼ scale JPEG), not the headset viewer;
+   XR-QUALITY's default stream (HEVC 4:4:4) came to the main line after these
+   runs. The guest-side rates do not depend on the viewer's codec except
+   through host load; the end-to-end latency in a headset was not measured.
+
+Tests: Mac full suite (2,597 tests; `MacPreviewHostLifetimeTests`' timing
+limits failed under the full run's load and pass alone), x86 full suite (2,096
+tests), lint. Thor, debug, with the main line merged:
+`YCODE_LOCK_ORDER_CHECK=1 YCODE_IPC_LOCKS_TESTS=1` YcodeDarwinABITests (154),
+YcodeDarwinKernelTests (443), YcodeSimdTests (100), YcodeSimFeaturesTests (67),
+YcodeHostServicesTests (77); YcodeMetalHostTests, YcodeVulkanTests,
+YcodeDisplayStreamTests, YcodeXRViewerTests and YcodeXRReprojectionTests (225
+in all); translator texture forms (17), control flow (7), interface forms (24):
+all pass. `run-thor.sh`'s tests against the Metal oracle were not run (they
+need the Mac's metallibs; the translator did not change in this round).
+
+### 10.29 Round XR-ICONS under Ycode: "a glitchy cylinder from the home icons to the back wall" (agent XR-ICONS, 2026-11-02)
+
+Clean-room work on Ycode's own simulator on the Thor (branch `xr-icons`; visionOS
+27.0, 2160 × 3840). No Apple simulator, Xcode, Device Hub or reference tool was
+run or opened, nothing under `research/` was read and no Apple binary was
+inspected. Level 3 throughout.
+
+**Report.** The owner, in the Quest Pro, run 8: a cylinder from the home icons to
+the back wall, also ticked for the session with `--stereo adaptive --reproject off`.
+
+**Run 8's build.** Its translator was from 2026-10-13: `SX/bin/build.sh` kept a
+prepped tree's copied binary unless asked, and in such a tree the rebuild itself failed
+on the copied CMake cache (seen in this round's tree). r8's log has pipelines failing on
+`calculate_clamped_lod`, `get_num_samples` and unlinked inputs, all fixed since. The
+harness now rebuilds, clears a mismatched cache and fails loudly. Run 7 used the 11-01
+translator.
+
+**The guest's own picture.** No cylinder in any full-resolution capture:
+
+| Arm | Hover | Head offsets | Pinch | Direct hand | Headset views (0x8D) |
+|---|---|---|---|---|---|
+| Stale translator (`s1`) | every icon row, with and without hands | up to 15 cm, yaw 15°, 20 cm nearer | short and long (edit mode) | 5 depths | eye yaw 7°, with sway and roll; Safari had opened by then |
+| Current (`c1`–`c5`) | yes | up to 15 cm, yaw 15°, 20 cm nearer | a tap opens Settings | not run | through the real viewer offscreen: steps, holds, a turn |
+
+So no guest draw was found to fix; the current tree logged 0 translator failures. Settings at full
+resolution draws correctly (its glass, list, tab bar). A large camera jump hides the
+home view, and `vision home` toggles it: captures must allow for both.
+
+**With depth re-projection** the same device shows bands and blocks reaching from
+each icon towards the wall, from any eye offset, including half the eye separation
+with a still head. Cause and fix: `xr-depth.md` §3.1 and §5.6. **The owner confirmed
+these are what they saw**: shown a crop of the bands (`xr-icons-reprojected-icons.png`),
+"Yes, actually". Their tick for the flat session stays unresolved: a flat picture has no
+warp, and no guest picture showed such a shape, and that session had an 11 s queue, so
+the tick may belong to another session.
+
+**Open:** see `xr-viewer.md` §9.3 for what to ask of the owner. Run 7's complaint
+("artifacting and aliasing" on the scene and the UI) was not separately checked: run 7
+had depth 1/4, so the same bands and the depth's stepped edges (`xr-depth.md` §5.6) were
+on screen, but how much of the complaint they explain is not known.
+
+Tests: Mac full suite (2671 tests), x86 full suite (2,169 tests), lint; Thor, debug:
+YcodeVulkanTests (51, with the new `DepthTapGPUTests`) and YcodeMetalHostTests (59). The
+tap's test fails with `YCODE_XR_DEPTH_ALPHA=0`; `theWindowsLayerStaysOutOfTheCache` and
+`aStretchedEdgeIsNotStoredInTheCache` fail against the old viewer code. The environment's
+depth clear (§5.6) has no test of its own. No frame-rate figure comes from this round.
+
 ## Evidence
 
 | Claim | Level | Source |
 |---|---|---|
+| Siri's and immersion's GPU hangs, their causes, the watchdog and recovery in boots (§10.27) | 3 | Ycode's boots on the Thor (`ide-remote/gpu-siri/runs/r1`, `r2`, `s1`, `s2`; XR-VIEWER's `x7`, `x8`), ycode-airc's reflection, hang reports and checkpoints, `GPURecoveryTests`, `scripts/gpu-probes/hangkick.c`, `car.c` |
 | Two runtimes, one identifier, profiles identical; match list (§2.1) | 2, 3 | runtime `Info.plist`/`profile.plist` via `plutil`; `simctl list runtimes -j`; `simctl runtime match list` |
 | `SystemVersion.plist` values | 2 | file read |
 | Profile differences (§2.2) | 2 | `profile.plist` diff against iOS 27.1 |
@@ -3930,6 +6311,13 @@ FS-HOST).
 | Render pipeline (§4.2) | 3, 4 | `lsof` of guest processes (mapped host libraries); backboardd, wakeboardd, vhmdd and VisionProbe logs (`simctl spawn … log show`) |
 | Display (§4.4) | 3 | `simctl io enumerate` |
 | Metal profile (§4.5) | 3 | VisionProbe |
+| One view for apps: SDK statement, layouts (§5.6.1) | 1 | CompositorServices headers in the visionOS simulator SDK (`drawable.h`, `layer_renderer_layout.h`) |
+| One view, identity eye transform, tangents, projection, texture shapes (§5.6.1) | 3 | `StereoProbe` (CompositorLayer, layouts 0, 1, 2); `stereopeek` texture descriptors; `wakeboardctl status` (runtime tool via `simctl spawn`), visionOS 27.2 |
+| Layer configuration from `hmd.input.*` defaults; no key, variable or answer changes the view count (§5.6.1) | 3 | `stereopeek` `NSUserDefaults` log in wakeboardd and backboardd; the look-up recorder (environment, preferences, MobileGestalt); nine boots with preference keys written before boot (`exp.sh`) |
+| wakeboardd's SimFramebuffer calls; `SimHMD`, "Mono Composite", `is_mono` names (§5.6.1) | 4 | `nm -u` of wakeboardd; `strings` of wakeboardd and of CompositorNonUI's image in the shared cache |
+| Two-slice passes: instance counts, no amplification, slice 1 empty (§5.6.2) | 3 | `stereopeek` pass log and slice read-backs in backboardd |
+| vhmdd command list and error reply (§5.6.3) | 3, 4 | `strings` of vhmdd; our vhmdd client (`vhm`) with candidate commands |
+| Presentation rectangles (§5.6.4) | 3 | `stereopeek` interposer of `SFBSwapchainSwapAddSurface` |
 | CPU and memory (§4.6, §6) | 3 | `top`, `footprint` per process (our `simfootprint.sh`) |
 | Device Hub input mapping (§5.1) | 1 | Apple, "Interacting with your visionOS app in Device Hub" (developer.apple.com, Xcode documentation) |
 | DeviceHub plug-in facts (§5.2) | 4 | `otool -L`, `nm -gU`/`nm -u`, `strings` of `VisionDeviceKitExtension` |
@@ -4024,7 +6412,110 @@ FS-HOST).
 | R7b: visibility-result modes used by backboardd; occlusion queries (§10.20.8) | 1, 3 | Vulkan specification (occlusion queries, `vkCmdCopyQueryPoolResults`, queries inside dynamic rendering); Ycode boots `v5`–`v10` (`visibility:` lines, `YCODE_DEBUG_PASS_DRAWS`); `VulkanBackendTests.visibilityResultsCountSamples` |
 | R7b: parts of the room left out by the guest in a 16-frame cycle; the 768 × 432 linearized-depth pass and its attachments (§10.20.9, §9 Q26) | 3 | Ycode boots `v2`, `v4`, `m2`, `e3`, `v5`–`v12`: screenshot thumbnails, `YCODE_DEBUG_PASS_DRAWS(_ALL, _BUFFERS)` logs, `v7`'s Metal trace (`YCODE_METAL_TRACE_SEGMENTS`), a pass probe of `fsLinearizedDepthAsColor` (`v12`); ycode-airc's reflection (render-target indices only) |
 | R7b: merged-build boots and iOS 27.1 (§10.20.10) | 3 | Ycode boots `m1`, `m2`, `f1`, `f2`, iOS `i3`–`i6` on the Thor (home watch, `ylaunch`, host log) |
+| R8: the race between Siri's orb pre-warm and the home view's resume; counts over 38 boots; timings; the resume before the room's first frame (§10.21.1) | 3 | guest `log stream` of SurfBoard, assistantd, Siri, backboardd (R7/R7b boots and R8 `b1`, `b2`, `h1`–`h3`, `g1`–`g6`), our script `race.py` over them; host start times (`/proc/uptime` at the start) and home-watch lines |
+| R8: a Home press brings the home view up (§10.21.1) | 3 | boots `h1`, `h3`: `ycode-display-probe … button home` through the display server; backboardd's button lines and SurfBoard's RealityLauncher request |
+| R8: the home guard and its boots (§10.21.2) | — / 3 | Ycode design; `VisionHomeGuardTests`; boots `g1`–`g6`, `k1`–`k3` (screenshots, guest log, the guard's log lines) |
+| R8: visionOS apps built with Ycode's swift-build engine; the simulator SDK override; synchronized folders not expanded (§10.21.3, `build-pif.md`) | 1, 3 | swift-build (open source) built from `Tools/ycode-swb`; `ycode build` of `Samples/VisionSamples` on the Mac; `SwiftBuildEngineTests.simulatorDestinationsChooseTheSimulatorSDK`; Info.plist keys from Apple's public documentation |
+| R8: install, launch and rendering of the samples and the runtime's apps; the touch that did not reach the window; Photos' abort (§10.21.3) | 3 | Ycode boots `a1`–`a10`, `a6b` on the Thor: ylaunch lines, guest `log stream` (the samples' `org.ycode.samples` lines), Ycode fault reports, screenshots, `--trace-name Photos` |
+| R8: sRGB storage writes and reads (§10.21.4, `metal-shaders.md` §4.4) | 1, 3 | IEC 61966-2-1 transfer functions (as in the Metal Shading Language specification's sRGB conversion); `SRGBStorageGPUTests` and `interface-forms.sh` case 6 on the Thor's GPU |
+| R8: heap slots kept and argument-encoder members written again at a restore; visionOS snapshots refused while shared handles exist (§10.21.5, `snapshot.md` §8) | — / 3 | Ycode design; `SnapshotReplayTests.restoreKeepsSlotsAndRewritesArgumentMembers`, `VulkanBackendTests.reservedHeapSlotsGoBackToTheirObjects`, `IndexAllocatorTests`; `MetalHostCore.snapshotBusyReason`; iOS boot `s1`/`s1-r` (stop snapshot and restore) |
+| R8: iOS 27.1 check (§10.21.6) | 3 | Ycode boots `s1`, `s1-r`, `i1` (home watch, `ylaunch`, host log) |
+| Q24: op 29 carries backboardd's 36-index instanced depth draws with base instance 0 and stale high halves; the host ignores the high half (§9 Q24) | 3 | OBS-ARGBUF, 2026-10-30: `mslog` in backboardd during reference boot `x1` (visionOS 27.0), 8 145 op-29 records; our probe `argprobe draw2` on the iOS 27.0 reference |
+| Q25: argument encoders: host-written members at the offsets op 16 describes, op 17's reply order, op 19's forms; the home view's one descriptor-built encoder (§9 Q25, `metal-sim-protocol.md` §4.3) | 3 | OBS-ARGBUF: `argprobe.m` (32 layouts) under `mslog` and its test server on the iOS 27.0 reference; backboardd's op 16, 17 and 19 records in boot `x1`; `msargbuf.py` |
+| Q26: every reference room pass holds all five draws; the 768 × 432 pass every 0.52 s with its seven draws and attachments (§9 Q26) | 3 | OBS-ARGBUF: backboardd's command-buffer segments in boot `x1` (10 114 room passes, 280 linearized-depth passes, texture creation records for the attachment sizes and formats) |
+| ARGBUF-IMPL: argument encoders by op 16's description; backboardd's layout as parsed; icons in the home view (§10.22.1) | — / 3 | Ycode design from `metal-sim-protocol.md` §4.3; `ArgumentLayoutTests`; Ycode boots `v1`–`v5` on the Thor (host "argument layout" and "argument encoder" lines, screenshots) |
+| ARGBUF-IMPL: the missing parts follow the visibility results; every result zero; the 4× pass's attachments and depth states (§10.22.2) | 3 | Ycode boots `v1` (none), `v2` (`YCODE_DEBUG_VISIBILITY_FORCE=1`), `v3` (`=0`), `v5` (`YCODE_DEBUG_VISIBILITY_STATS=1`) on the Thor: frame thumbnails counted with `dark.py`, the statistics lines |
+| ARGBUF-IMPL: the box draws have no fragment function; Ycode discarded such pipelines; the fix and `v7` (§10.22.2) | 1, 3 | Metal documentation (`MTLRenderPipelineDescriptor.fragmentFunction`, `rasterizationEnabled`); Vulkan specification (rasterizer discard, pipelines without a fragment shader, graphics pipeline libraries); boot `v6` (`YCODE_DEBUG_PASS_DRAWS` lines), boot `v7`; `VulkanBackendTests.depthOnlyPipelinesRasterize` (fails with `YCODE_VULKAN_VERTEX_ONLY_DISCARD=1`) |
+| Q27: unlock, home resume and Siri's pre-warm on the reference (§9 Q27) | 3 | OBS-ARGBUF: guest `log stream` (SurfBoard, assistantd) of first boots `x1`–`x3`; `simctl io` screenshots |
+| Builders' argument order and the Indigo layout of pose, selection, collection and dial messages (§5.5.6) | 3 | OBS-VISION-INPUT, 2026-10-31: our `bprobe` (marker values in every argument register, results hex-dumped) and `vhid` dumps; offsets confirmed by the values backboardd logged |
+| Target word → service; target 0 aborts backboardd (§5.5.6) | 3 | `vhid` messages to `ycode-test-vision3-a`; backboardd's sender IDs and exception text in the guest log |
+| Events dispatched for pose, selection, collection, dial: types, usages, version, data, flags, children (§5.5.2) | 3 | our `hidrec.dylib` in backboardd (event descriptions and vendor-event arguments) |
+| Constructors the HID bundle uses (§5.5.7 item 1) | 4 | `nm -u` of CoreSimulator's xros `SimulatorHID` |
+| Hand provider's reading: pinch, direct, chirality, contacts and their sources, hover (§5.5.2) | 3 | backboardd log (RealitySystemSupport hand provider, remote-effect hit test); screenshots |
+| Stage frame, absolute camera pose, host-side ray transform, 90° field of view (§5.5.1) | 3 | screenshots at known poses; taps with camera-space and stage-space rays at a moved camera; a marker entity at a known position |
+| ARKit anchor = stage transform × vhmdd pose; PalomaPose does not change it; `set_pose` does not move the view (§5.5.3) | 3 | `InputProbe` anchor log under pose messages and `set_pose`; vhmdd's "stage transform" log; whole-screen comparison |
+| vhmdd protocol: host only, `cmd` key, replies and events (§5.5.4) | 3 (names of unexercised commands 4) | our `vhm` (host) and guest client; `strings` of vhmdd and the DeviceKit plug-in |
+| Crown actions on a device; `ImmersionChangeContext`, `onWorldRecenter`, progressive style; Device Hub has no visionOS crown control (§5.5.9) | 1 | Apple Vision Pro User Guide ("Basic gestures and controls", "Digital Crown"); SwiftUI documentation and the xrsimulator SDK's SwiftUI interface; "Interacting with your visionOS app in Device Hub" |
+| Immersion through `change_immersion_level`/`get_immersion_level`: L = a², clamping, relative = L + delta, the 0.3 s eased event stream, events only after a first message, style values (§5.5.9) | 3 | OBS-VISION-CROWN, 2026-11-01: our `vhm` (one connection, timed events) against `CrownProbe`'s `onImmersionChange` log in four space styles; screenshots |
+| DigitalDial scroll changes no immersion (§5.5.9) | 3 | our `vhid dial` with a progressive space open; `hidrec` dispatch log; vhmdd events; app log |
+| Crown press, double, triple, hold thresholds; top button, screenshot and Force Quit chords (§5.5.9) | 3 | our `vhid bdown`/`bup` scripts; SurfBoard's gesture log lines; screenshots; app scene-phase log |
+| Recenter: crown hold, placement follows the rendered camera, `onWorldRecenter`, new stage transform; `recenter_open_apps` a no-op (§5.5.9) | 3 (the sound file name 2) | screenshots with matched and mismatched render camera and vhmdd pose; app log; vhmdd and backboardd log lines; SurfBoard bundle listing |
+| Controls, hand mode, cursor commands (§5.5.9) | 3 | our `vhm`; vhmdd log; screenshot differences |
+| Device Hub plug-in immersion actions and dial log strings; vhmdd's SurfBoard immersion client; vhmdd strings identical in 27.0 and 27.2 (§5.5.9) | 4 | `strings`, `nm -m` of `VisionDeviceKitExtension`; `strings` of both runtimes' `vhmdd` |
+| Room preference before boot selects the room (§5.5.4) | 3 | plist edited while shut down; boot screenshot (Museum (Day)) |
+| App results per input (§5.5.5) | 3 | `InputProbe` logs |
+| R9: the probe's callbacks for each host input, DeviceAnchor following `set_pose`, live and pre-boot rooms, Home, the viewers' mappings (§5.5.8, §10.25) | 3 | Ycode boots r1–r3 on the Thor with our `VisionInput` app (guest log stream, screenshots); IOHIDFamily public sources (APSL 2.0) for the event constructors and field numbers (level 1) |
+| Glass: blur, gain, offset, rim (§10.23.3) | 3 | screenshot pairs with and without the window, least-squares fit against blurred backgrounds |
+| Content-glass recipe values; CoreRE glass material (§10.23.3) | 2 | `plutil -p` of the recipe; JSON keys of the material definition |
+| Mirror and rough metal appearance (§10.23.4) | 3 | screenshots of `InputProbe`'s volume |
+| Environment probe and albedo texture formats (§10.23.4) | 2 | KTX 1 headers, key/value data and level data read with our script |
+| R10: glass data flow, the threadgroup argument known by its pointer, the read-only probe cube without a storage view; probe statistics (§10.24.1–2) | 3 | Ycode boots `w1`–`w3`, `m1`–`m3` on the Thor: frame map (`YCODE_GPU_FRAME_MAP`), pass probes of `kernelSFBBlurAndFilter` and `generateClampedMap`, ycode-airc reflection |
+| Guest constexpr samplers held as a plain `i64`, all read as 0 before (§10.24.2 item 2) | 3 | ycode-airc reflection (`state_type`, `state_source`) of visionOS functions dumped in earlier rounds (`vision5-h6`), translation caches of R10 and an iOS 27.0 area; `tests/ir/interface-forms.sh` case 8 |
+| Glass fit and rim, sphere appearance, home view (§10.24.3) | 3 | frames of `b1`, `b2` (460 s) and `b1` (160 s); our least-squares fit of the panel against a Gaussian blur of `b2`'s frame (numpy, Pillow) |
+| Other platforms unchanged (§10.24.6) | 3 | boots `i0`, `i1`, `wa1`; `ios27` run `c1-p18-first` for comparison |
+| R11: the race decided by the request's arrival before or after data migration; the window from migration to the resume; assistantd's start by apsd's boost and its post-launch timing (§10.26.1) | 3 | guest `log stream` of R7b and R8 boots and R11 `p1`, `e1`, `s1`, `c1`–`c10`, our script `order.py`; the hold release lines with their senders (`p1`) |
+| R11: shell-ready holds, the shell watch, the guard as fallback; the boot series (§10.26.1, `scheduling-policy.md` §4.2) | — / 3 | Ycode design; `SchedPolicyTests.shellReadyHoldWaitsForTheShell`, `VisionHomeGuardTests`; boots `s1`, `c1`–`c10` (hold and guard lines, home watch, screenshots) |
+| R11: PhotoKit's getattrlist on "/" and the 0 bytes free; the fix and Photos' empty library (§10.26.2) | 1, 3 | `sys/attr.h` (volume attribute bits); Ycode traces of Photos (`a10`, `p1`); `VolumeSpaceTests`; screenshots of `p1` and iOS `i1` |
+| Pose rotation turns the reference's view at the plain home view, with a window, in mixed, progressive and full spaces; no `set_pose` needed (§5.5.10 items 1–2) | 3 | `vhid pose` on visionOS 27.2, `simctl io` screenshots, `vhm get_pose`; our `CrownProbe` for the window and spaces |
+| The pose event's fields: parent and child types, flags, child order, Orientation type 3 in field 3, w/x/y/z in fields 8–11, 16.16 values (§5.5.10 item 3) | 3 | our `hidrec2.dylib` in backboardd: each field read back by number |
+| A generic Orientation event stays type 0 and drops fields 8–11; the quaternion constructor's argument order (§5.5.10 item 4) | 3 | our `oprobe` (guest, `simctl spawn`): construct, read back, print |
+| The runtime IOKit's Orientation constructors by name (§5.5.10 item 4) | 4 | `dlsym` presence in our `oprobe` |
+| Ycode's construction reproduces the lost rotation in the reference (§5.5.10 item 4) | 3 | `hidrec2.dylib` with `HIDREC_REWRITE=1`, screenshots |
+| The reference smooths its camera: per-frame fractions, times from the send, translation alike (§5.5.12 item 1) | 3 | our `camrec.dylib` (pose events at dispatch in backboardd; presented surfaces' times and sampled rows in wakeboardd), `vhid` with send times, `camstep.py`/`stepsum.py`; 27 isolated steps on visionOS 27.2 |
+| Smoothing on time, not frames (§5.5.12 item 2) | 3 | `hmd.compositor.fps` 30 before boot; a test device type with a 30 Hz display |
+| Continuous-motion delay and gain, rate independence; repeats, pairs, overshoot (§5.5.12 items 3–4) | 3 | sine, ramp, repeat, pair and overshoot scripts (`posegen.py`, `series1.sh`), `lagfit.py` |
+| The message's host time becomes the event timestamp; offsets and scaling ignored; equal timestamps; flags (§5.5.12 item 5) | 3 | `vhid` `STAMP`/`TS_OFFSET_MS`/`TS_SCALE`/`TS_ABS`; `camrec.dylib` timestamps and flag rewrites |
+| Preferences that do not change the smoothing; layer pose "invalid" (§5.5.12 item 6) | 3 | `pexp.sh` (keys written before boot), `wakeboardctl status` |
+| "head pose for time" and `InputPoseProvider` names (§5.5.12 item 6) | 4 | printable strings of the RealitySimulation and RealitySystemSupport images in the shared cache (file format) |
+| Ycode's own timings for comparison (§5.5.12 item 7) | — | `xr-viewer.md` §6 (Ycode's measurements) |
+| Frame rates, pass costs, per-thread times, the inline experiment, iOS and watchOS comparisons (§10.28) | 3 | Ycode's simulator on the Thor, `ide-remote/vision-fps/runs/` (`h2`–`h3`, `hB3`, `t2`, `t3`, `w2`, `w3`, `wB3`, `v2`, `v3`, `y3`, `q2`, `d3`, `s1`–`s12`, `iA1`–`iB2`, `wtA1`–`wtA2`, `cG1`–`cH3`, `wG1`, `wG2`, `wH2`): frame trace with GPU timestamps, frame profile, `YCODE_IOSURFACE_STATS` |
+| The Thor driver's shading-rate features (§10.28.4) | 1 | `vulkaninfo`, Vulkan 1.4 specification |
+| Tangents = (1, 1, h/w, h/w) for five display sizes; textures and surface sizes; apps' tangents and viewport (§5.6.6 item 1–2) | 3 | test device types (`mktype.py`), `wakeboardctl status`, `StereoProbe`, `camrec` swap log, screenshots |
+| The 2732 × 2048 type is limited to runtimes ≤ 2.99 and refused (§5.6.6) | 2, 3 | its `profile.plist`; `simctl create` on 27.2, 26.5, 26.4 |
+| No preference widens the FOV; the two four-number keys abort wakeboardd when given a number (§5.6.6 item 3) | 3 | `pexp.sh`, screenshot comparison, `wakeboardctl status`, wakeboardd crash reports (exception at start, while reading preferences) |
+| No guest process makes, sets or receives a rate map; layers "VRR Not Enabled", eye tracking disabled; whole image presented (§5.6.7 items 1, 7) | 3 | `rrmpeek` in every job (five boots), `StereoProbe` (`rasterizationRateMaps` count), `wakeboardctl status` |
+| RealityKit asks `supportsRasterizationRateMapWithLayerCount:` 2 once per process; wakeboardd never asks; CompositorServices reports foveation unsupported (§5.6.7 item 2) | 3, 4 | `rrmpeek` (answers and calling image); `StereoProbe` capabilities; class and method names from the Objective-C runtime (level 4) |
+| The device's rate-map answers are guest constants: NO / 0 / nil, no host message, unchanged by the host's hand-shake values (§5.6.7 item 3) | 3, 4 | `rrmcli` (answers, Mach message counts); Metal-protocol recorder and test server (`mslog`, `hostFeatureProfile` 0–100); defining class and image from the runtime (level 4) |
+| A device forced to say yes still gets no rate map used (§5.6.7 item 4) | 3 | `rrmpeek` with `RP_FORCE_RRM` (diagnostic), screenshots |
+| Foveation preferences change nothing; `com.apple.compositor.foveation.custom` YES makes wakeboardd abort at each layer creation (§5.6.7 item 5) | 3, 4 | `exp.sh` boots, `stereopeek` read log (values read), screenshot comparison, `wakeboardctl status`, wakeboardd crash reports (abort while the layer reads its defaults); key names from `strings` (level 4) |
+| Forced foveation in an app fails with `variableRasterizationRateIsNotSupported` (§5.6.7 item 6) | 1, 3 | CompositorServices headers (`cp_error.h`); `StereoProbe -fovforce` |
+| The rate-map interface, the decoder, CompositorServices' per-drawable maps (§5.6.7) | 1, 3 | Metal and CompositorServices headers of the XRSimulator 27.0 SDK; our decoder shader compiled in the guest (`rrmcli`) |
+| Foveated shading or streaming as a host-side Ycode feature (§5.6.7 item 3 of "What Ycode must do") | — | design consequence, not an observation; Vulkan specification for fragment shading rate |
 
+For §5.5.10 (OBS-VISION-POSE, 2026-11-01) only `ycode-test-vision6-pose`
+(visionOS 27.2, 24N120; 27.0 could not create a device: "runtime path not
+found") was used and then deleted; no other simulator was booted or
+touched. Only `simctl`, our sender, vhmdd client, recorder and probes
+drove it: no clicks, no screen takeover, no disassembly, nothing
+decrypted, no level 5. Logs and screenshots stayed in the agent's scratch
+folder.
+For §5.5.12 and §5.6.6 (OBS-VISION-FOV, 2026-11-01) only
+`ycode-test-vision7-*` devices were used, one booted at a time (visionOS
+27.2; 27.0 could not create a device; the 2732 × 2048 type was refused),
+and all were deleted at the end, as were the five test device types in
+`~/Library/Developer/CoreSimulator/Profiles/DeviceTypes/` and the 15
+default devices CoreSimulator had created for them on its own (a copied
+profile must drop `createByDefaultForRuntimeVersions`). Only `simctl`,
+the runtime's `wakeboardctl`, our sender, recorder and probe drove them:
+no clicks, no screen takeover, no disassembly, nothing decrypted, no
+level 5. Level 4 was limited to printable strings of four images of the
+shared cache. Frame samples, logs and screenshots stayed in the agent's
+scratch folder.
+For §5.6.7 (OBS-VISION-RRM, 2026-11-01) only `ycode-test-vision8-rrm`
+(visionOS 27.2; `ycode-test-vision8-rrm27` on 27.0 could not be created)
+was used, one boot at a time, and then deleted; `device_set.plist` was
+identical before and after, and no device type was created. Only
+`simctl`, the runtime's `wakeboardctl` and our own recorders and probes
+drove it: no clicks, no screen takeover. Ghidra, the IPSW and the
+reference tools folder were not opened, nothing was disassembled (level 5
+not used) and nothing was decrypted. Level 4 was limited to `strings` of
+the guest Metal driver, printable strings of six shared-cache images, and
+Objective-C class, method and type-encoding names read from the running
+processes' runtime. One boot (with `com.apple.compositor.foveation.custom`)
+left 18 wakeboardd crash reports in the host's diagnostic-reports folder.
+Tool sources are in `research/experiments/visionos/rrm/` (and the
+`-fovforce` option of `StereoProbe`); raw logs, screenshots and the
+crash report copy stayed in the agent's scratch folder.
 Level 5 was not used. Nothing was decrypted; no Apple resources (images,
 rooms, models, metallibs) were copied into the repository. The test
 devices `ycode-test-visionos-1` and `ycode-test-visionos-2` were deleted. For §10.6 (VISIONOS-OBS) only the test device
@@ -4080,3 +6571,52 @@ For §10.20 (VISIONOS-R7 and R7b) only Ycode's own simulator was booted, on the
 Thor; no Apple simulator, Xcode or reference tool was used, nothing under
 `research/` was read, nothing was disassembled, and the guest's shader
 logic was not read.
+For §10.21 (VISIONOS-R8) only Ycode's own simulator was booted, on the
+Thor; no Apple simulator, Xcode, Device Hub or reference tool was used,
+nothing under `research/` was read, nothing was disassembled, and the
+guest's shader logic was not read.
+For §9 Q24–Q27 (OBS-ARGBUF, 2026-10-30) only `ycode-test-argbuf-ios27`
+(iOS 27.0) and `ycode-test-argbuf-xr` (visionOS 27.0) were used, one
+booted at a time, and both were deleted afterwards. Only `simctl` and the
+guest log were used: no clicks, no screen takeover. Ghidra, the IPSW and
+the reference tools folder were not opened, nothing was disassembled
+(level 5 not used; level 4 only to find which runtime shader library
+names a function) and nothing was decrypted. The probe and recorder
+binaries, scripts and raw captures stay in `research/dirty/argbuf/`; no
+image was committed.
+
+For §5.5 and §10.23 (OBS-VISION-INPUT, 2026-10-31) only
+`ycode-test-vision3-a` was used and then deleted. Ghidra, the IPSW and the
+reference tools folder were not opened, nothing was disassembled (level 5
+not used) and nothing was decrypted. Level 4 was limited to `nm`, `strings`
+and Objective-C type encodings of the DeviceKit plug-in, CoreSimulator's
+xros HID bundle and vhmdd. The sender, client, recorder and probe sources
+are in `research/experiments/visionos/`; binaries, logs, screenshots and
+recorder output stay in `research/dirty/vision3/`; no image was committed.
+
+For §5.5.9 (OBS-VISION-CROWN, 2026-11-01) only `ycode-test-vision4-c`
+(visionOS 27.2, because no 27.0 device could be created that day) was
+used and then deleted; `device_set.plist` was byte-identical before and
+after. Only `simctl` and our own host tools drove it: no clicks, no screen
+takeover, no Device Hub. Ghidra, the IPSW and the reference tools folder
+were not opened, nothing was disassembled (level 5 not used) and nothing
+was decrypted. Level 4 was limited to `strings` and `nm -m` of the
+DeviceKit plug-in, `strings` of vhmdd, DeviceHub, DeviceKit and
+SimulatorKit, and a listing of SurfBoard's bundle. Tool and probe sources
+are in `research/experiments/visionos/`; binaries, raw exchanges, logs and
+screenshots stay in `research/dirty/vision4/`; no image was committed.
+
+For §5.6 (OBS-VISION-STEREO, 2026-11-01) only `ycode-test-vision5-a`
+(visionOS 27.2; no 27.0 device could be created, and a
+`ycode-test-vision5-b` of the 2732 × 2048 type was refused by 27.2 and
+never existed) was used and then deleted; `device_set.plist` was
+byte-identical before and after. Only `simctl`, the runtime's
+`wakeboardctl`, and our own probe, recorder and vhmdd client drove it: no
+clicks, no screen takeover. Ghidra, the IPSW and the reference tools
+folder were not opened, nothing was disassembled (level 5 not used) and
+nothing was decrypted. Level 4 was limited to `strings` of wakeboardd,
+wakeboardctl and vhmdd, printable strings of three images of the shared
+cache, and `nm -u`/`otool -L` of wakeboardd. Probe and recorder sources are
+in `research/experiments/visionos/` (`StereoProbe/`, `stereo/`); raw
+output, read-backs and screenshots stayed in the agent's scratch folder;
+no image was committed.

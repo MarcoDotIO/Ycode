@@ -1,0 +1,11 @@
+# Tests: the root .swiftlint.yml, relaxed where tests differ from library code.
+disabled_rules:
+  # A failing cast or try in a test fails that test, which is what it should do.
+  - force_cast
+  - force_try
+  # `#expect(x == [])` prints the value on failure; `x.isEmpty` prints only false.
+  - empty_collection_literal
+  - empty_count
+  - empty_string
+  # Equality tests compare a value with an equal copy on purpose.
+  - identical_operands

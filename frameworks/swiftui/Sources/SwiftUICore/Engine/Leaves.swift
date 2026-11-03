@@ -132,6 +132,8 @@ package struct ImageLeaf: NodeBehavior {
     package var source: Source
     package var resizable: Bool
     package var font: TextFont
+    /// `imageScale` of symbols (07 §3: small and large boxes).
+    package var imageScale: Image.Scale = .medium
 
     package init(_ source: Source, resizable: Bool = false, font: TextFont = .body) {
         self.source = source
@@ -141,7 +143,16 @@ package struct ImageLeaf: NodeBehavior {
 
     private func metrics(_ node: LayoutNode) -> SymbolMetrics? {
         switch source {
-        case .symbol(let name): return node.context.symbols.symbol(named: name, font: font)
+        case .symbol(let name):
+            guard var m = node.context.symbols.symbol(named: name, font: font) else { return nil }
+            if imageScale != .medium {
+                let (fw, fh) = imageScale.factors
+                let px = node.context.environment.displayScale
+                func ceilPx(_ v: CGFloat) -> CGFloat { (v * px - 1e-6).rounded(.up) / px }
+                m.size = CGSize(width: ceilPx(m.size.width * fw), height: ceilPx(m.size.height * fh))
+                m.baselineOffset = (m.baselineOffset * fh * px).rounded() / px
+            }
+            return m
         case .natural(let s): return SymbolMetrics(size: s, baselineOffset: 0, naturalSize: s)
         }
     }

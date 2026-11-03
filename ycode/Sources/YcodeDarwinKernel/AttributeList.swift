@@ -309,8 +309,12 @@ extension DarwinKernel {
 
     private func packVolume(_ bits: UInt32, _ o: AttrObject, _ p: inout AttrPacker) {
         let blockSize: Int64 = 4096
-        let total: Int64 = 1 << 36
-        let free: Int64 = o.writable ? 1 << 35 : 0
+        // The host volume's real sizes, the same for every path of the guest
+        // volume ("/" included; `volumeSpace`, visionos.md §10.26.2). Before,
+        // a read-only path ("/") reported 0 bytes free.
+        let space = bits & 0x0080_001C != 0 ? volumeSpace(mountPoint: o.mountPoint) : .fallback
+        let total = Int64(clamping: space.blocks) * blockSize
+        let free = Int64(clamping: space.available) * blockSize
         for bit in 0..<31 where bits & (1 << UInt32(bit)) != 0 {
             switch UInt32(1) << UInt32(bit) {
             case 0x1: p.u32(0x1A)                                          // FSTYPE

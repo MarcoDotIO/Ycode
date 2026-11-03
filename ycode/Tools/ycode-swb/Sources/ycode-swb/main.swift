@@ -1,5 +1,7 @@
 import Foundation
 import SwiftBuild
+import YcodeRelease
+import YcodeSigning
 
 // ycode-swb: Ycode's bridge to swift-build's build service (open source,
 // used as a library). See specs/xcodebuild/show-build-settings.md §3 and
@@ -14,7 +16,8 @@ import SwiftBuild
 //     { "pif": path, "parameters": <SWBBuildParameters>, "targets": [guid],
 //       "containerPath": path, "parallel": bool, "implicitDependencies": bool,
 //       "hideShellScriptEnvironment": bool, "continueAfterErrors": bool,
-//       "command": "build" | "cleanBuildFolder", "locationStyle": "regular" | "legacy" }
+//       "command": "build" | "cleanBuildFolder", "locationStyle": "regular" | "legacy",
+//       "targetNames": [name] (instead of "targets"), "debuggable": bool }
 //     → stdout: one swift-build message (SwiftBuildMessage JSON) per line.
 //       Exit status 0 when the build succeeded, 1 when it failed.
 
@@ -32,7 +35,9 @@ struct SettingsRequest: Decodable {
 struct BuildRequestFile: Decodable {
     var pif: String
     var parameters: SWBBuildParameters
-    var targets: [String]
+    var targets: [String]?
+    /// Targets by name (the first target of each name), as `swbuild --target` takes them.
+    var targetNames: [String]?
     var containerPath: String?
     var parallel: Bool?
     var implicitDependencies: Bool?
@@ -104,23 +109,93 @@ func settings(_ path: String) async {
     }
 }
 
-/// Provisioning for local builds: identity `-` (Sign to Run Locally) signs
-/// ad hoc with the project's own entitlements; no profiles, no teams.
-final class LocalSigningDelegate: SWBPlanningOperationDelegate, Sendable {
+/// Answers swift-build's provisioning questions with YcodeSigning
+/// (specs/ide/signing.md): Sign to Run Locally, or an identity from the
+/// user's keychain with an installed provisioning profile. The keychain
+/// and the profile folders are read only when a target asks for an
+/// identity, and only once per build.
+final class SigningDelegate: SWBPlanningOperationDelegate, Sendable {
     let debuggable: Bool
-    init(debuggable: Bool = true) { self.debuggable = debuggable }
+    let environment: SigningEnvironment
+    /// Target names by GUID, for messages.
+    let targetNames: [String: String]
 
-    func provisioningTaskInputs(targetGUID: String, provisioningSourceData: SWBProvisioningTaskInputsSourceData) async -> SWBProvisioningTaskInputs {
-        let identity = provisioningSourceData.signingCertificateIdentifier
-        if identity.isEmpty { return SWBProvisioningTaskInputs() }
-        var entitlements = provisioningSourceData.projectEntitlements ?? [:]
-        // Local development builds are debuggable; products that take no
-        // entitlements (test bundles, libraries) get none.
-        if debuggable && provisioningSourceData.supportsEntitlements { entitlements["com.apple.security.get-task-allow"] = .plBool(true) }
-        if identity == "-" {
-            return SWBProvisioningTaskInputs(identityHash: "-", identityName: "Sign to Run Locally", signedEntitlements: entitlements, simulatedEntitlements: [:])
+    init(debuggable: Bool = true, targetNames: [String: String] = [:]) {
+        self.debuggable = debuggable
+        self.targetNames = targetNames
+        let user = SigningEnvironment.user()
+        let identities = Cache(user.identities)
+        let profiles = Cache(user.profiles)
+        environment = SigningEnvironment(identities: { identities.value }, profiles: { profiles.value })
+    }
+
+    /// A value computed on first use.
+    final class Cache<T: Sendable>: @unchecked Sendable {
+        let lock = NSLock()
+        let make: @Sendable () -> T
+        var stored: T?
+        init(_ make: @escaping @Sendable () -> T) { self.make = make }
+        var value: T {
+            lock.lock()
+            defer { lock.unlock() }
+            if let stored { return stored }
+            let v = make()
+            stored = v
+            return v
         }
-        return SWBProvisioningTaskInputs(identityHash: "-", errors: [["description": "ycodebuild signs only ad hoc (CODE_SIGN_IDENTITY=-); \"\(identity)\" needs provisioning, which is not supported"]])
+    }
+
+    static func value(_ v: SWBPropertyListItem) -> EntitlementValue {
+        switch v {
+        case .plBool(let b): .bool(b)
+        case .plInt(let i): .integer(i)
+        case .plString(let s): .string(s)
+        case .plData(let d): .data(Data(d))
+        case .plDate(let d): .date(d)
+        case .plDouble(let d): .real(d)
+        case .plArray(let a): .array(a.map(value))
+        case .plDict(let d): .dictionary(d.mapValues(value))
+        }
+    }
+
+    static func item(_ v: EntitlementValue) -> SWBPropertyListItem {
+        switch v {
+        case .bool(let b): .plBool(b)
+        case .integer(let i): .plInt(i)
+        case .string(let s): .plString(s)
+        case .data(let d): .plData([UInt8](d))
+        case .date(let d): .plDate(d)
+        case .real(let d): .plDouble(d)
+        case .array(let a): .plArray(a.map(item))
+        case .dictionary(let d): .plDict(d.mapValues(item))
+        }
+    }
+
+    func provisioningTaskInputs(targetGUID: String, provisioningSourceData s: SWBProvisioningTaskInputsSourceData) async -> SWBProvisioningTaskInputs {
+        let support: SigningRequest.ProfileSupport = switch s.provisioningProfileSupport {
+        case .unsupported: .unsupported
+        case .optional: .optional
+        case .required: .required
+        }
+        let request = SigningRequest(
+            targetName: targetNames[targetGUID] ?? targetGUID,
+            identity: s.signingCertificateIdentifier,
+            style: s.provisioningStyle == .automatic ? .automatic : .manual,
+            team: s.teamID, bundleIdentifier: s.bundleIdentifier,
+            profileSpecifier: s.provisioningProfileSpecifier, profileUUID: s.provisioningProfileUUID, profileSupport: support,
+            productTypeEntitlements: s.productTypeEntitlements.mapValues(Self.value),
+            projectEntitlements: s.projectEntitlements?.mapValues(Self.value),
+            sdk: s.sdkRoot, sdkVariant: s.sdkVariant, supportsEntitlements: s.supportsEntitlements,
+            productType: s.productTypeIdentifier, signingRequiresTeam: s.signingRequiresTeam, debuggable: debuggable)
+        let r = ProvisioningResolver.resolve(request, environment: environment)
+        guard r.identityHash != nil else { return SWBProvisioningTaskInputs() }
+        return SWBProvisioningTaskInputs(
+            identityHash: r.identityHash, identityName: r.identityName,
+            profileName: r.profile?.name, profileUUID: r.profile?.uuid, profilePath: r.profile?.path,
+            signedEntitlements: r.signedEntitlements.mapValues(Self.item),
+            simulatedEntitlements: r.simulatedEntitlements.mapValues(Self.item),
+            appIdentifierPrefix: r.appIdentifierPrefix, teamIdentifierPrefix: r.teamIdentifierPrefix,
+            errors: r.errors.map { ["description": $0] }, warnings: r.warnings)
     }
 
     func executeExternalTool(commandLine: [String], workingDirectory: String?, environment: [String: String]) async throws -> SWBExternalToolResult {
@@ -133,7 +208,15 @@ func build(_ path: String) async -> Int32 {
     return await withSession(pif: file.pif) { session, _ in
         var request = SWBBuildRequest()
         request.parameters = file.parameters
-        request.configuredTargets = file.targets.map { SWBConfiguredTarget(guid: $0, parameters: file.parameters) }
+        var guids = file.targets ?? []
+        let infos = try await session.workspaceInfo().targetInfos
+        if let names = file.targetNames {
+            for n in names {
+                guard let t = infos.first(where: { $0.targetName == n }) else { fail("no target named \(n)") }
+                guids.append(t.guid)
+            }
+        }
+        request.configuredTargets = guids.map { SWBConfiguredTarget(guid: $0, parameters: file.parameters) }
         request.useParallelTargets = file.parallel ?? true
         request.useImplicitDependencies = file.implicitDependencies ?? true
         request.hideShellScriptEnvironment = file.hideShellScriptEnvironment ?? false
@@ -146,7 +229,7 @@ func build(_ path: String) async -> Int32 {
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        let operation = try await session.createBuildOperation(request: request, delegate: LocalSigningDelegate(debuggable: file.debuggable ?? true))
+        let operation = try await session.createBuildOperation(request: request, delegate: SigningDelegate(debuggable: file.debuggable ?? true, targetNames: Dictionary(infos.map { ($0.guid, $0.targetName) }) { a, _ in a }))
         var ok = false
         for try await event in try await operation.start() {
             if case .buildCompleted(let info) = event { ok = info.result == .ok }
@@ -159,6 +242,7 @@ func build(_ path: String) async -> Int32 {
     }
 }
 
+YcodeRelease.handleVersionFlag(tool: "ycode-swb")
 let args = CommandLine.arguments
 guard args.count == 3 else {
     FileHandle.standardError.write(Data("usage: ycode-swb settings|build <request.json>\n".utf8))

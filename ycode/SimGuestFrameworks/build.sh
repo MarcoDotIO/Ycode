@@ -109,3 +109,10 @@ write_tbds "$here/SimHID/imports.txt" "$obj"
 cp "$here/SimHID/Info.plist" "$fw/Info.plist"
 "$NM" -m "$fw/SimHID" | grep -q "__mod_init_func\|__init_offsets\|make_class" || say "warning: no initializer section found in SimHID"
 say "$fw: $(wc -c < "$fw/SimHID" | tr -d ' ') bytes"
+# The HID bundle's pure helpers on the host (visionos.md §5.5.10).
+HOSTCC=${HOSTCC:-cc}
+if command -v "$HOSTCC" >/dev/null 2>&1; then
+    "$HOSTCC" -std=c11 -Wall -Wextra -Werror -O1 -o "$out/obj/orientation_test" "$here/SimHID/tests/orientation_test.c" -lm \
+        || die "compiling the orientation test failed"
+    "$out/obj/orientation_test" || die "the orientation test failed"
+fi

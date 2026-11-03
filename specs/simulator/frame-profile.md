@@ -38,9 +38,10 @@ that the person opens, so it can stay on for a whole interactive session.
     1 ms (counter, surface id);
   - every timer firing: the image, Mach timer or `EVFILT_TIMER`, and how
     late it fired after its deadline.
-  Cost with no window open: one relaxed atomic load per trap and one nil
-  check per wait, wakeup and timer. With a window open: about 0.1–0.3 µs
-  per event; a busy device makes 20–90 k events per second.
+  Cost with no window open: one relaxed atomic load per trap, and one call
+  and atomic load per wait, wakeup and timer (the hooks stay installed from
+  before the root process, §10). Unset, one nil check. With a window open:
+  about 0.1–0.3 µs per event; a busy device makes 20–90 k events per second.
 - **When the window closes** it writes:
   - `<path>.<n>.trace`: the events, binary, 32 bytes each, little-endian:
     u64 time, u64 arg, i32 pid, u32 guest thread id, i32 trap, u8 kind
@@ -553,6 +554,45 @@ wakeup recorded after the time being walked is treated as a timed wait;
 a thread started by a host thread (a timer, a service) continues on the
 same process's last trap before the start ("timer: P (thread start)").
 
+## 10. Frame budget of a visionOS device (2026-11-02, agent VISION-FPS-2)
+
+Results are in `visionos.md` §10.28. A visionOS device needs two counts:
+presents (the presenter's swaps, 60/s whatever the picture) and pictures (the
+render server's frames). Sections 1–2 count presents; pictures come from the
+frame trace (command buffers of the render server with its 4× pass).
+
+Tools:
+
+| Tool | What it does |
+|---|---|
+| `scripts/ycode-vision-motion <run> <experiment> [key=value…]` | drives a running device over its display socket for three phases (before, drive, after) and writes `marks.txt` (phase names, CLOCK_MONOTONIC ns, the clock of both traces): poses, gaze selections or `vision pose` commands at a given rate; `fp=1` opens a frame-profile window over the phases |
+| `scripts/ycode-gpu-phases <dir>` | per phase of `marks.txt`, from `YCODE_METAL_TRACE` with `YCODE_METAL_TRACE_SEGMENTS=1`: presents and pictures per second with interval percentiles, GPU busy (union of begin..end), GPU ms per present by pass, the host stages |
+| `YCODE_IOSURFACE_STATS=<s>` | a log line per interval: IOSurface requests per client and method, with their service time |
+
+Method: one device left running, experiments of 28 s one after another, 60 s
+or more after the home view; sessions with an alternative setting alternate
+with the default, as the host's load (other agents' devices) changes results
+more than most settings do. Pass costs at several
+display sizes come from `YCODE_VISION_SCREEN=<w>x<h>` (`xr-viewer.md` §4.4).
+
+**The trace hooks** (`KernelTrace.wake`, `blocking`, `timerFired`,
+`lockWaited`) are installed once, before the root process, and record only
+while a window is open. They used to be set at a window's open and cleared at
+its close, which raced their readers: a closure released while another thread
+retained it. ycode-simd died in `WaitQueue.Waiter.finish` as a window closed,
+once in about 50 profiled sessions.
+
+**Tried and removed: host services on the caller's thread.** The guest's RPC
+to a host service is a send-only `mach_msg2` and then a receive-only one, with
+the host service's thread and two wakeups in between. A `mach_msg2` send to a
+port set with an inline server ran the service on the sender's thread after
+the send (no kernel lock held; a serving lock kept each connection's order);
+the IOSurface service and short Metal device-ops used it. The home view's
+round trip halved (120 → 60 µs) and pictures per second did not change, so it
+is gone: the render thread's own work sets the pace there (`visionos.md`
+§10.28.3). Worth remembering if a thread is ever found limited by these round
+trips; the numbers are the place to start.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -566,6 +606,7 @@ same process's last trap before the start ("timer: P (thread start)").
 | `PROC_INFO_CALL_DIRTYCONTROL` flavors 1–4 (track, set, get, clear) and their checks | — | as Ycode's locked path, `processes.md` §2.11 (its evidence there) |
 | Frame-record write stalls, dirty-control latency, VMM time per exit, first-present latencies (§8.4) | 3 | paired sessions `ide-remote/fps2{,-base}/out/R1–R4`, `T1–T4` (Ycode's simulator on the Thor) |
 | Boot windows, event formats and walk rules (§9) | — | Ycode design |
+| Tools, hooks and the inline experiment (§10) | — / 3 | Ycode design; sessions `ide-remote/vision-fps/runs/s1`–`s13` (Ycode's simulator on the Thor) |
 | Cold boot times and the relocated-device rebuild (§8.6) | 3 | `bench.sh` boots of the trees named there, `SX/FPS2*/runs/` (Ycode's simulator on the Thor) |
 | Cold boots with the guest path, the baseline and the rebuild cases, keeping the system-only store (§8.6) | 3 | harness boots `SX/IDE/runs/bench-ls-base-*`, `bench-ls-e1-*`, `SX/BENCHLS/runs/t1`–`t4`, `reloc-t1`, functional runs `func-settings-1`, `func-safari-2`, `func-reloc-safari-2` (Ycode's simulator on the Thor, 2026-10-23/24) |
 | Drags from the dock do not move the page in Ycode; poster CPU after boots and restores (§8.5) | 3 | sessions `X1`–`X3` with screenshots (Ycode's simulator) |

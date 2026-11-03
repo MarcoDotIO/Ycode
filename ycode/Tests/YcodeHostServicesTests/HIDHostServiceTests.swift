@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import YcodeDarwinKernel
 @testable import YcodeHostServices
+import YcodeDisplayStream
 
 /// dev.ycode.simulator.hid (hid-input.md §7), driven by a second host task
 /// acting as the guest's HID bundle.
@@ -29,6 +30,57 @@ import Testing
         #expect(u32(HIDHostService.body(.hingeAngle(400), sequence: 1), 16) == 180)  // clamped
         let o = HIDHostService.body(.deviceOrientation(3), sequence: 4)
         #expect(o.count == 24 && u32(o, 4) == 7 && u32(o, 16) == 3)
+    }
+
+    /// watchos.md §5.1, §12: crown rotation (kind 8, the signed delta as a
+    /// 64-bit float, unchanged) and a watch gesture (kind 9).
+    @Test func watchInputBodies() {
+        let c = HIDHostService.body(.crownRotation(-20.5), sequence: 9)
+        #expect(c.count == 32 && u32(c, 0) == 1 && u32(c, 4) == 8 && u32(c, 8) == 9 && f64(c, 16) == -20.5 && u32(c, 24) == 0)
+        #expect(f64(HIDHostService.body(.crownRotation(.nan), sequence: 1), 16) == 0)
+        #expect(u32(HIDHostService.body(.crownRotation(1, axis: 3), sequence: 1), 24) == 3)
+        let g = HIDHostService.body(.watchGesture(1), sequence: 2)
+        #expect(g.count == 24 && u32(g, 4) == 9 && u32(g, 16) == 1)
+        #expect(HIDHostService.watchGesture(named: "double-tap") == 0 && HIDHostService.watchGesture(named: "flick") == 1)
+        #expect(HIDHostService.watchGesture(named: "tap") == 2 && HIDHostService.watchGesture(named: "9") == nil)
+    }
+
+    /// watchos.md §5.2: the GenericGesture event the bundle makes, and the
+    /// button message carrying the Action button's vendor pair.
+    @Test func visionBodies() {
+        // visionos.md "Ycode implementation" (V-11): kind 10 pose, kind 11 selection.
+        let pose = SpatialPose(position: SpatialVector(1, 0.5, 2), rotation: SpatialQuaternion(x: 0, y: 1, z: 0, w: 1))
+        let p = HIDHostService.body(.visionPose(pose), sequence: 7)
+        #expect(p.count == 16 + 56 && u32(p, 4) == 10)
+        #expect(f64(p, 16) == 1 && f64(p, 24) == 0.5 && f64(p, 32) == 2)
+        // The quaternion normalized, w first.
+        #expect(abs(f64(p, 40) - 0.5.squareRoot()) < 1e-12 && f64(p, 48) == 0 && abs(f64(p, 56) - 0.5.squareRoot()) < 1e-12)
+        let only = SpatialSelection(rayOrigin: SpatialVector(0, 1.6, 0), rayDirection: SpatialVector(0.05, 0.04, -1))
+        let s = HIDHostService.body(.visionSelection(only), sequence: 8)
+        #expect(s.count == 16 + 200 && u32(s, 4) == 11 && u32(s, 16) == 0)
+        #expect(f64(s, 32) == 1.6 && f64(s, 48) == 0.05 && f64(s, 64) == -1)
+        // Selection-only: the hands are zero-filled and not pinched.
+        #expect(u32(s, 72) == 0 && u32(s, 72 + 72) == 0)
+        var hands = only
+        hands.left = SpatialHand(pinching: false, allowDirect: true, position: SpatialVector(-0.15, -0.35, -0.4))
+        hands.right = SpatialHand(pinching: true, position: SpatialVector(0.15, -0.35, -0.4))
+        let h = HIDHostService.body(.visionSelection(hands), sequence: 9)
+        #expect(u32(h, 16) == 1)
+        #expect(u32(h, 72) == 0 && u32(h, 76) == 1 && f64(h, 88) == -0.15 && f64(h, 112) == 1)  // left: direct, w = 1
+        #expect(u32(h, 144) == 1 && u32(h, 148) == 0 && f64(h, 160) == 0.15)                    // right: pinching
+        #expect(f64(HIDHostService.body(.visionPose(SpatialPose(position: SpatialVector(.nan, 0, 0))), sequence: 1), 16) == 0)
+    }
+
+    @Test func watchGestureEventsAndButtons() {
+        typealias E = HIDHostService.WatchGestureEvent
+        #expect(E.forGesture(0) == E(gestureType: 2, tapCount: 2))   // double tap: HandTap, two taps
+        #expect(E.forGesture(1) == E(gestureType: 8, tapCount: nil)) // flick: HandFlick, no tap count
+        #expect(E.forGesture(2) == nil, "single tap makes no event")
+        for g: UInt32 in [3, 4, 5, 0x400002] { #expect(E.forGesture(g) == nil) }
+        #expect(E.eventType == 39 && E.gestureTypeField == 0x27_0000 && E.tapCountField == 0x27_0001)
+        #expect(E.eventFlags == 0x400_0000)
+        let b = HIDHostService.body(.button(usagePage: 0xFF01, usage: 0x200, down: true), sequence: 4)
+        #expect(b.count == 32 && u32(b, 4) == 3 && u32(b, 16) == 0xFF01 && u32(b, 20) == 0x200 && u32(b, 24) == 1)
     }
 
     @Test func registerSendAndDeadPort() throws {

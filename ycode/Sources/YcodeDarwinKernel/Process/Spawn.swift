@@ -275,8 +275,8 @@ extension DarwinKernel {
 
     /// Checks that `hostPath` is an image this machine can run
     /// (`stage4b-contract.md` §2 item 8): a 64-bit arm64 `MH_EXECUTE`
-    /// Mach-O (thin, or the arm64 slice of a fat file) for a simulator
-    /// platform, honoring the architecture preferences (`processes.md` §1.6).
+    /// Mach-O (thin, or the arm64 slice of a fat file; not arm64e) for a
+    /// simulator platform, honoring the architecture preferences (`processes.md` §1.6).
     /// ENOEXEC for anything that is not Mach-O, EBADARCH for the wrong
     /// architecture or platform.
     static func checkExecutable(hostPath: String, attributes: SpawnAttributes) throws {
@@ -320,7 +320,8 @@ extension DarwinKernel {
                     }
                 }
             }
-            if chosen == nil { chosen = slices.first { $0.cpu == arm64 }?.offset }
+            // Plain arm64 before arm64e (which is refused below).
+            if chosen == nil { chosen = (slices.first { $0.cpu == arm64 && $0.sub & 0x00FF_FFFF <= 1 } ?? slices.first { $0.cpu == arm64 })?.offset }
             guard let chosen else { throw Failure(errno: Self.EBADARCH) }
             sliceOffset = chosen
         }
@@ -331,6 +332,11 @@ extension DarwinKernel {
         guard magic == 0xFEED_FACF else { throw Failure(errno: Self.ENOEXEC) }
         let cpu = header.readLE(UInt32.self, at: 4), sub = header.readLE(UInt32.self, at: 8)
         guard cpu == arm64 else { throw Failure(errno: Self.EBADARCH) }
+        // arm64e (subtype 2) and its variants need pointer authentication,
+        // which the guest CPU does not have (cpu-features.md); the
+        // reference refuses watchOS's arm64e device binary with "Bad CPU
+        // type" too (watchos.md §2.4, W-3). ALL (0) and V8 (1) run.
+        guard sub & 0x00FF_FFFF <= 1 else { throw Failure(errno: Self.EBADARCH) }
         if sliceOffset == 0, attributes.binprefs[0] != 0 {
             var accepted = false
             for (i, pref) in attributes.binprefs.enumerated() {

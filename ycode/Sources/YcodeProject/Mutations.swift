@@ -48,6 +48,24 @@ extension PBXProj {
         case "a": "archive.ar"
         case "dylib": "compiled.mach-o.dylib"
         case "png": "image.png"
+        // The file types below follow CocoaPods Xcodeproj's
+        // `FILE_TYPES_BY_EXTENSION` (MIT), `lib/xcodeproj/constants.rb`.
+        case "jpg", "jpeg": "image.jpeg"
+        case "gif": "image.gif"
+        case "pdf": "image.pdf"
+        case "s": "sourcecode.asm"
+        case "stringsdict": "text.plist.stringsdict"
+        case "sh": "text.script.sh"
+        case "py": "text.script.python"
+        case "html": "text.html"
+        case "xml": "text.xml"
+        case "rtf": "text.rtf"
+        case "xcdatamodel": "wrapper.xcdatamodel"
+        case "xcdatamodeld": "wrapper.xcdatamodeld"
+        case "xcframework": "wrapper.xcframework"
+        case "bundle": "wrapper.plug-in"
+        case "app": "wrapper.application"
+        case "tbd": "sourcecode.text-based-dylib-definition"
         default: "text"
         }
     }

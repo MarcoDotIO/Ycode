@@ -1,0 +1,517 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5C0000000000000000000055 /* Copy Extras */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 12;
+			files = (
+			);
+			name = "Copy Extras";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		5C0000000000000000000030 /* SyncTool */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = SyncTool; sourceTree = BUILT_PRODUCTS_DIR; };
+		5C0000000000000000000031 /* SyncApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SyncApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5C0000000000000000000032 /* SyncKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = SyncKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		5C0000000000000000000033 /* EmptyTool */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = EmptyTool; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5C0000000000000000000020 /* Exceptions for "SyncTool" folder in "SyncTool" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			additionalCompilerFlagsByRelativePath = {
+				Model/flag.c = "-DYCODE_SYNC_FLAG=7";
+			};
+			membershipExceptions = (
+				Excluded,
+			);
+			target = 5C0000000000000000000040 /* SyncTool */;
+		};
+		5C0000000000000000000021 /* Exceptions for "Shared" folder in "SyncTool" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				SharedName.swift,
+			);
+			target = 5C0000000000000000000040 /* SyncTool */;
+		};
+		5C0000000000000000000023 /* Exceptions for "SyncKit" folder in "SyncKit" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			privateHeaders = (
+				Internal/SKPrivate.h,
+			);
+			publicHeaders = (
+				SKGreeter.h,
+				SyncKit.h,
+			);
+			target = 5C0000000000000000000042 /* SyncKit */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		5C0000000000000000000022 /* Exceptions for "SyncApp" folder in "Copy Extras" phase from "SyncApp" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 5C0000000000000000000055 /* Copy Extras */;
+			membershipExceptions = (
+				Extras/extra.txt,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		5C0000000000000000000010 /* SyncTool */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5C0000000000000000000020 /* Exceptions for "SyncTool" folder in "SyncTool" target */,
+			);
+			path = SyncTool;
+			sourceTree = "<group>";
+		};
+		5C0000000000000000000011 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5C0000000000000000000021 /* Exceptions for "Shared" folder in "SyncTool" target */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		5C0000000000000000000012 /* SyncApp */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5C0000000000000000000022 /* Exceptions for "SyncApp" folder in "Copy Extras" phase from "SyncApp" target */,
+			);
+			explicitFileTypes = {
+				Data/note.txt = text;
+			};
+			explicitFolders = (
+				Docs,
+			);
+			path = SyncApp;
+			sourceTree = "<group>";
+		};
+		5C0000000000000000000013 /* SyncKit */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5C0000000000000000000023 /* Exceptions for "SyncKit" folder in "SyncKit" target */,
+			);
+			path = SyncKit;
+			sourceTree = "<group>";
+		};
+		5C0000000000000000000014 /* EmptyTool */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = EmptyTool;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5C0000000000000000000051 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5C0000000000000000000053 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5C0000000000000000000058 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5C0000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				5C0000000000000000000010 /* SyncTool */,
+				5C0000000000000000000011 /* Shared */,
+				5C0000000000000000000012 /* SyncApp */,
+				5C0000000000000000000013 /* SyncKit */,
+				5C0000000000000000000014 /* EmptyTool */,
+				5C0000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5C0000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5C0000000000000000000030 /* SyncTool */,
+				5C0000000000000000000031 /* SyncApp.app */,
+				5C0000000000000000000032 /* SyncKit.framework */,
+				5C0000000000000000000033 /* EmptyTool */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		5C0000000000000000000056 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		5C0000000000000000000040 /* SyncTool */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5C0000000000000000000061 /* Build configuration list for PBXNativeTarget "SyncTool" */;
+			buildPhases = (
+				5C0000000000000000000050 /* Sources */,
+				5C0000000000000000000051 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5C0000000000000000000010 /* SyncTool */,
+			);
+			name = SyncTool;
+			productName = SyncTool;
+			productReference = 5C0000000000000000000030 /* SyncTool */;
+			productType = "com.apple.product-type.tool";
+		};
+		5C0000000000000000000041 /* SyncApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5C0000000000000000000062 /* Build configuration list for PBXNativeTarget "SyncApp" */;
+			buildPhases = (
+				5C0000000000000000000052 /* Sources */,
+				5C0000000000000000000053 /* Frameworks */,
+				5C0000000000000000000054 /* Resources */,
+				5C0000000000000000000055 /* Copy Extras */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5C0000000000000000000012 /* SyncApp */,
+			);
+			name = SyncApp;
+			productName = SyncApp;
+			productReference = 5C0000000000000000000031 /* SyncApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		5C0000000000000000000042 /* SyncKit */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5C0000000000000000000063 /* Build configuration list for PBXNativeTarget "SyncKit" */;
+			buildPhases = (
+				5C0000000000000000000056 /* Headers */,
+				5C0000000000000000000057 /* Sources */,
+				5C0000000000000000000058 /* Frameworks */,
+				5C0000000000000000000059 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5C0000000000000000000013 /* SyncKit */,
+			);
+			name = SyncKit;
+			productName = SyncKit;
+			productReference = 5C0000000000000000000032 /* SyncKit.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		5C0000000000000000000043 /* EmptyTool */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5C0000000000000000000064 /* Build configuration list for PBXNativeTarget "EmptyTool" */;
+			buildPhases = (
+				5C000000000000000000005A /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5C0000000000000000000014 /* EmptyTool */,
+			);
+			name = EmptyTool;
+			productName = EmptyTool;
+			productReference = 5C0000000000000000000033 /* EmptyTool */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5C0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = 5C0000000000000000000060 /* Build configuration list for PBXProject "SyncFolderSamples" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				de,
+				Base,
+			);
+			mainGroup = 5C0000000000000000000002;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 5C0000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5C0000000000000000000040 /* SyncTool */,
+				5C0000000000000000000041 /* SyncApp */,
+				5C0000000000000000000042 /* SyncKit */,
+				5C0000000000000000000043 /* EmptyTool */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5C0000000000000000000054 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5C0000000000000000000059 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5C0000000000000000000050 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5C0000000000000000000052 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5C0000000000000000000057 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5C000000000000000000005A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		5C0000000000000000000070 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		5C0000000000000000000071 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = macosx;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		5C0000000000000000000072 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = SyncTool/Model/flag.h;
+			};
+			name = Debug;
+		};
+		5C0000000000000000000073 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = SyncTool/Model/flag.h;
+			};
+			name = Release;
+		};
+		5C0000000000000000000074 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				MARKETING_VERSION = 1.0;
+				CURRENT_PROJECT_VERSION = 1;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.SyncApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		5C0000000000000000000075 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				MARKETING_VERSION = 1.0;
+				CURRENT_PROJECT_VERSION = 1;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.SyncApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+		5C0000000000000000000076 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.SyncKit;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		5C0000000000000000000077 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.SyncKit;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		5C0000000000000000000078 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		5C0000000000000000000079 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5C0000000000000000000060 /* Build configuration list for PBXProject "SyncFolderSamples" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5C0000000000000000000070 /* Debug */,
+				5C0000000000000000000071 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5C0000000000000000000061 /* Build configuration list for PBXNativeTarget "SyncTool" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5C0000000000000000000072 /* Debug */,
+				5C0000000000000000000073 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5C0000000000000000000062 /* Build configuration list for PBXNativeTarget "SyncApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5C0000000000000000000074 /* Debug */,
+				5C0000000000000000000075 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5C0000000000000000000063 /* Build configuration list for PBXNativeTarget "SyncKit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5C0000000000000000000076 /* Debug */,
+				5C0000000000000000000077 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5C0000000000000000000064 /* Build configuration list for PBXNativeTarget "EmptyTool" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5C0000000000000000000078 /* Debug */,
+				5C0000000000000000000079 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5C0000000000000000000001 /* Project object */;
+}

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 import YcodeSubprocess
 @testable import YcodeUI
 
@@ -40,18 +41,6 @@ import YcodeSubprocess
             if item.action != nil { _ = wc.validateMenuItem(item) }
             if let s = item.submenu { validateAll(s, in: wc) }
         }
-    }
-
-    /// The guard itself: a git call on the main thread is recorded (debug
-    /// builds), with the caller's stack.
-    @Test func guardRecordsGitOnTheMainThread() throws {
-        let dir = try repository("guard")
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let v = MainThreadGuard.violations { _ = GitRepository(containing: dir) }
-        #if DEBUG
-        #expect(v.count == 1 && v[0].operation.contains("rev-parse"))
-        #expect(v[0].stack.contains { $0.contains("GitRepository") })
-        #endif
     }
 
     @Test func windowMenusAndEditingRunNoToolsOnTheMainThread() async throws {
@@ -136,29 +125,6 @@ import YcodeSubprocess
     /// test run and logs its main-thread stalls (diagnosis; off by default).
     @Test func watchdogForTheTestRunWhenRequested() {
         MainThreadWatchdog.startIfRequested()
-    }
-
-    /// Changes outside Ycode reach the source-control refresh through
-    /// FSEvents; git's object store, lock files and build output do not.
-    @Test func fileSystemWatcherReportsChanges() async throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-fsw-\(UUID().uuidString)").resolvingSymlinksInPath()
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-        final class Seen { var paths: [String] = [] }
-        let seen = Seen()
-        let w = FileSystemWatcher { seen.paths += $0 }
-        w.start(path: dir.path, latency: 0.05)
-        defer { w.stop() }
-        try await Task.sleep(nanoseconds: 300_000_000)
-        try "x".write(to: dir.appendingPathComponent("main.swift"), atomically: false, encoding: .utf8)
-        // Generous: other suites may keep the main queue busy for seconds.
-        let deadline = Date().addingTimeInterval(60)
-        while !seen.paths.contains(where: { $0.hasSuffix("main.swift") }) && Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
-        #expect(seen.paths.contains { $0.hasSuffix("main.swift") })
-        #expect(FileSystemWatcher.affectsSourceControl("/r/Sources/main.swift") && FileSystemWatcher.affectsSourceControl("/r/.git/index"))
-        #expect(FileSystemWatcher.affectsSourceControl("/r/.git/HEAD") && FileSystemWatcher.affectsSourceControl("/r/.git/refs/heads/main"))
-        #expect(!FileSystemWatcher.affectsSourceControl("/r/.git/objects/ab/cdef") && !FileSystemWatcher.affectsSourceControl("/r/.git/index.lock"))
-        #expect(!FileSystemWatcher.affectsSourceControl("/r/.build/debug/x.o") && !FileSystemWatcher.affectsSourceControl("/r/DerivedData/a"))
     }
 
     /// The watchdog starts only when asked for.

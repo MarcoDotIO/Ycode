@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// reference-ui-5.md §11.2 (P7) and §7.6 (I6): folders as outline rows,
@@ -96,40 +97,6 @@ import Testing
         let folder = try #require(try e.folderFromSelection())
         #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Logo.imageset").path))
         #expect(e.rows.contains { $0.id == folder.lastPathComponent + "/Logo.imageset" })
-    }
-
-    @Test func platformIconContents() throws {
-        let url = try catalog()
-        let c = AssetCatalog(url: url)
-        let watch = try c.addSingleSizeAppIcon(platform: "watchos", named: "AppIcon", in: url)
-        #expect(try json(watch.url) == """
-        {
-          "images" : [
-            {
-              "idiom" : "universal",
-              "platform" : "watchos",
-              "size" : "1024x1024"
-            }
-          ],
-          "info" : {
-            "author" : "ycode",
-            "version" : 1
-          }
-        }
-
-        """)
-        let vision = try c.addVisionOSAppIcon(named: "Vision", in: url)
-        #expect(try json(vision.url).contains("\"filename\" : \"Front.solidimagestacklayer\""))
-        #expect(try json(vision.url.appendingPathComponent("Back.solidimagestacklayer/Content.imageset")).contains("\"idiom\" : \"vision\""))
-        let tv = try c.addTVBrandAssets(named: "App Icon & Top Shelf Image", in: url)
-        let tvJSON = try json(tv.url)
-        #expect(tvJSON.contains("\"role\" : \"primary-app-icon\"") && tvJSON.contains("\"size\" : \"1920x720\""))
-        #expect(FileManager.default.fileExists(atPath: tv.url.appendingPathComponent("App Icon.imagestack/Middle.imagestacklayer/Content.imageset/Contents.json").path))
-        let msg = try c.addMessagesIcon(named: "iMessage App Icon", in: url)
-        #expect(AssetCatalog.slots(of: msg).count == 12 && AssetCatalog.slots(of: msg).last?.idiom == "ios-marketing")
-        // The new containers list their parts as children.
-        let ids = c.outline().map(\.id)
-        #expect(ids.contains("App Icon & Top Shelf Image.brandassets/App Icon.imagestack/Front.imagestacklayer/Content.imageset"))
     }
 
     @Test func importMakesImageAndDataSets() throws {

@@ -84,6 +84,29 @@ fixit    := 'fix-it:"' file '":{' l1 ':' c1 '-' l2 ':' c2 '}:"' text '"'
 `ycode build --quiet` prints errors and warnings in the same line form plus
 a status line on stderr; exit status 0 on success, 1 otherwise.
 
+## IDE tool actions (IDE-QUICKWINS, 2026-10-30)
+
+Product menu items that run one of ycodebuild's actions inside the IDE
+(`Xcodebuild.run` with a captured console, as Organizer ▸ Archive does),
+off the main thread. The activity view shows "<title>" while it runs and
+"<title> Succeeded" / "<title> Failed" after; the output becomes a report
+"<title> <scheme>" in the Report navigator. A failure shows the last lines
+of the output in a sheet; a success reveals what it made in Finder.
+
+| Item | Command line | Notes |
+|---|---|---|
+| Export Localizations… | `-exportLocalizations -localizationPath <folder> -project <P> -exportLanguage <l>…` | A save panel names the folder ("<project> Localizations"). Languages: the development region, then the other known regions without `Base`. |
+| Import Localizations… | `-importLocalizations -localizationPath <xcloc or xliff> -project <P>` | An open panel picks the `.xcloc` (or `.xliff`). |
+| Build Documentation ⌃⇧⌘D | `[-project P \| -workspace W] -scheme <S> -derivedDataPath <dir>/.ycode-build/Documentation docbuild` | Packages run in the package folder. The archives are `<dd>/Build/Products/<configuration>/*.doccarchive`. Ycode has no documentation viewer: they are revealed in Finder. |
+| Delete Derived Data… | – | Asks first, then deletes the workspace's derived data folder: the build folder (the product path before `/Products/`) for swift-build's layout, its parent for xcodebuild's `<…>/Build`. |
+
+Export and Import act on the project, or a workspace's first project
+(by path); they are disabled in a package workspace (`reference-ui-5.md`
+§2.9 item 17) and while a build runs. Code: `YcodeIDECore`
+`IDEToolActions`, `WorkspaceSession+Tools.swift`; `YcodeUI`
+`WorkspaceWindowController+ToolActions.swift`. Tests:
+`IDEQuickWinsTests`, `IDEQuickWinsUITests`.
+
 ## Evidence
 
 - Request flags and actions: `xcodebuild -help`/`man xcodebuild` (level 1/3).
@@ -98,3 +121,10 @@ a status line on stderr; exit status 0 on success, 1 otherwise.
 - OPEN QUESTION: whether build-system `note:` lines without a location appear in the issue
   navigator. Needs a GUI observation pass.
 - OPEN QUESTION: exact cancel behavior of the IDE's Stop during a build.
+- IDE tool actions: the menu items and shortcuts from `reference-ui-5.md`
+  §2.9; the commands from `specs/xcodebuild/localization.md` and
+  `build-actions.md` §5. The panels, report titles, the documentation
+  derived-data folder and revealing in Finder are Ycode decisions.
+- OPEN QUESTION: the reference's Export Localizations sheet (language
+  choice, screenshots option), its Import review sheet, and what it shows
+  after Build Documentation (its documentation window) were not observed.

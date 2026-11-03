@@ -84,6 +84,13 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible, 
     /// The thread's suspend count (`thread_suspend`/`thread_resume`; 1 for
     /// a thread created with `PTHREAD_START_SUSPENDED`). Lock held.
     var suspendCount = 0
+    /// The debugger holds the thread (a debug stop; `debug-stub.md` §5).
+    var debugHold = false
+    /// What the debugger reports for the thread's last stop. Lock held.
+    public internal(set) var debugStop: KernelDebugStop?
+    /// The debugger resumed the thread with this fault's signal: the fault
+    /// takes its normal course (the process ends) instead of stopping again.
+    var debugDeliversFault = false
     /// SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §4.2): the
     /// process signal mask a `sigsuspend` in progress restores at its end.
     var snapshotSigsuspendSavedMask: UInt32?
@@ -336,8 +343,10 @@ extension DarwinKernel {
                                 pthreadAddress: pthread)
         nextThreadID += 1
         ctx.kernel = self
-        // A thread made while the task is suspended starts suspended (§1.6).
-        if taskSuspendCount > 0 { ctx.gate.close() }
+        // A thread made while the task is suspended starts suspended (§1.6),
+        // and one made during a debug stop starts held (debug-stub.md §5).
+        ctx.debugHold = debugAllHeld
+        if taskSuspendCount > 0 || debugAllHeld { ctx.gate.close() }
         // Read by the fast kevent path (owner discovery) under the event lock.
         withEvents { threadsByPort[ctx.portName] = ctx }
         return ctx

@@ -1,0 +1,203 @@
+# Builds, tests and lints what a change touched, and always scans the repository.
+#
+# Tests that need KVM, a GPU, a simulator runtime or a local corpus skip
+# themselves and say why; each job's summary lists the skips. Known-flaky tests
+# are handled by .github/scripts/run-tests.py: rerun alone, only if listed in
+# .github/ci/known-flaky.txt, and nothing else is ever retried.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  SWIFT_VERSION: "6.4"
+
+jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      ycode: ${{ steps.areas.outputs.ycode }}
+      frameworks: ${{ steps.areas.outputs.frameworks }}
+      lint: ${{ steps.areas.outputs.lint }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - id: areas
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .github/scripts/changed-areas.sh "$BASE" "$HEAD" | tee -a "$GITHUB_OUTPUT"
+
+  scan:
+    name: Public scan and links
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Scan for private names, secrets and files that must not be public
+        run: python3 -I .github/scripts/scan-public.py
+      - name: Check relative links in the documentation
+        run: python3 -I .github/scripts/check-links.py
+      - name: Lint the workflows
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$archive"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+
+  lint:
+    name: SwiftLint
+    needs: changes
+    if: needs.changes.outputs.lint == 'true'
+    # The image with Xcode 27, the same as the build, so SourceKit reads Swift 6.4.
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-swift
+      - name: Install SwiftLint
+        env:
+          SWIFTLINT_VERSION: 0.63.2
+          SWIFTLINT_SHA256: c59a405c85f95b92ced677a500804e081596a4cae4a6a485af76065557d6ed29
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/swiftlint.zip" \
+            "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/portable_swiftlint.zip"
+          echo "$SWIFTLINT_SHA256  $RUNNER_TEMP/swiftlint.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/swiftlint.zip" -d "$RUNNER_TEMP/swiftlint"
+          echo "$RUNNER_TEMP/swiftlint" >> "$GITHUB_PATH"
+      - run: ycode/scripts/lint.sh
+
+  ycode:
+    name: ycode (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.ycode == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS: the only hosted image with Xcode 27 and the macOS 27 SDK
+          # (Swift 6.4, Liquid Glass). GitHub still marks it as a preview.
+          - name: macOS arm64
+            os: xcode-27
+          - name: Linux x86-64
+            os: ubuntu-24.04
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-swift
+        with:
+          swift-version: ${{ env.SWIFT_VERSION }}
+      - name: Restore package dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ycode/.build/repositories
+            ycode/.build/checkouts
+            ~/.cache/org.swift.swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+          key: swiftpm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('ycode/Package.resolved') }}
+          restore-keys: swiftpm-${{ runner.os }}-${{ runner.arch }}-
+      - name: Build
+        working-directory: ycode
+        run: swift build --build-tests
+      - name: Test
+        run: python3 -I .github/scripts/run-tests.py --package ycode --log ci-logs
+      - name: Keep the logs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-ycode-${{ matrix.os }}
+          path: ci-logs
+          retention-days: 7
+
+  frameworks:
+    name: frameworks and composer (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.frameworks == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            os: xcode-27
+          - name: Linux x86-64
+            os: ubuntu-24.04
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-swift
+        with:
+          swift-version: ${{ env.SWIFT_VERSION }}
+      - name: Test each package
+        run: |
+          status=0
+          for package in frameworks/*/ composer/; do
+            package="${package%/}"
+            [ -f "$package/Package.swift" ] || continue
+            echo "::group::$package"
+            python3 -I .github/scripts/run-tests.py --package "$package" --log ci-logs || status=1
+            echo "::endgroup::"
+          done
+          exit "$status"
+      - name: Keep the logs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-frameworks-${{ matrix.os }}
+          path: ci-logs
+          retention-days: 7
+
+  # One check to require in branch protection: skipped jobs count as passed,
+  # failed or cancelled ones do not.
+  ok:
+    name: CI passed
+    if: always()
+    needs: [changes, scan, lint, ycode, frameworks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success | skipped) ;;
+              *) exit 1 ;;
+            esac
+          done

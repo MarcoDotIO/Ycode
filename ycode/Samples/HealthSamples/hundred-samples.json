@@ -1,0 +1,776 @@
+{
+ "version": 1,
+ "device": "watch",
+ "samples": [
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-200m",
+   "value": 68,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-195m",
+   "value": 62,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-190m",
+   "value": 70,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-185m",
+   "value": 78,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-180m",
+   "value": 59,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-175m",
+   "value": 60,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-170m",
+   "value": 75,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-165m",
+   "value": 61,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-160m",
+   "value": 69,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-155m",
+   "value": 76,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-150m",
+   "value": 59,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-145m",
+   "value": 74,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-140m",
+   "value": 64,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-135m",
+   "value": 59,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-130m",
+   "value": 60,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-125m",
+   "value": 71,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-120m",
+   "value": 71,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-115m",
+   "value": 60,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-110m",
+   "value": 65,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-105m",
+   "value": 60,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-100m",
+   "value": 75,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-95m",
+   "value": 71,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-90m",
+   "value": 59,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-85m",
+   "value": 76,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-80m",
+   "value": 61,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-75m",
+   "value": 65,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-70m",
+   "value": 78,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-65m",
+   "value": 78,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-60m",
+   "value": 76,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-55m",
+   "value": 59,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-50m",
+   "value": 76,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-45m",
+   "value": 76,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-40m",
+   "value": 70,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-35m",
+   "value": 59,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-30m",
+   "value": 65,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-25m",
+   "value": 59,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-20m",
+   "value": 75,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-15m",
+   "value": 62,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-10m",
+   "value": 67,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierHeartRate",
+   "start": "-5m",
+   "value": 71,
+   "unit": "count/min",
+   "metadata": {
+    "HKMetadataKeyHeartRateMotionContext": 1
+   }
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-200m",
+   "value": 0.96,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-190m",
+   "value": 0.95,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-180m",
+   "value": 0.96,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-170m",
+   "value": 0.98,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-160m",
+   "value": 0.96,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-150m",
+   "value": 0.97,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-140m",
+   "value": 0.98,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-130m",
+   "value": 0.96,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-120m",
+   "value": 0.97,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-110m",
+   "value": 0.95,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-100m",
+   "value": 0.95,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-90m",
+   "value": 0.96,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-80m",
+   "value": 0.98,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-70m",
+   "value": 0.97,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-60m",
+   "value": 0.96,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-50m",
+   "value": 0.97,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-40m",
+   "value": 0.97,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-30m",
+   "value": 0.96,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-20m",
+   "value": 0.98,
+   "unit": "%"
+  },
+  {
+   "type": "HKQuantityTypeIdentifierOxygenSaturation",
+   "start": "-10m",
+   "value": 0.98,
+   "unit": "%"
+  },
+  {
+   "type": "StepCount",
+   "start": "-200m",
+   "end": "-190m",
+   "value": 329,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-190m",
+   "end": "-180m",
+   "value": 163,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-180m",
+   "end": "-170m",
+   "value": 668,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-170m",
+   "end": "-160m",
+   "value": 387,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-160m",
+   "end": "-150m",
+   "value": 617,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-150m",
+   "end": "-140m",
+   "value": 586,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-140m",
+   "end": "-130m",
+   "value": 431,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-130m",
+   "end": "-120m",
+   "value": 826,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-120m",
+   "end": "-110m",
+   "value": 539,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-110m",
+   "end": "-100m",
+   "value": 374,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-100m",
+   "end": "-90m",
+   "value": 703,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-90m",
+   "end": "-80m",
+   "value": 154,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-80m",
+   "end": "-70m",
+   "value": 200,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-70m",
+   "end": "-60m",
+   "value": 604,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-60m",
+   "end": "-50m",
+   "value": 508,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-50m",
+   "end": "-40m",
+   "value": 248,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-40m",
+   "end": "-30m",
+   "value": 855,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-30m",
+   "end": "-20m",
+   "value": 430,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-20m",
+   "end": "-10m",
+   "value": 235,
+   "unit": "count"
+  },
+  {
+   "type": "StepCount",
+   "start": "-10m",
+   "end": "-0m",
+   "value": 580,
+   "unit": "count"
+  },
+  {
+   "type": "respiratory-rate",
+   "start": "-190m",
+   "value": 14.5,
+   "unit": "count/min"
+  },
+  {
+   "type": "respiratory-rate",
+   "start": "-175m",
+   "value": 13,
+   "unit": "count/min"
+  },
+  {
+   "type": "respiratory-rate",
+   "start": "-160m",
+   "value": 15.5,
+   "unit": "count/min"
+  },
+  {
+   "type": "respiratory-rate",
+   "start": "-145m",
+   "value": 13,
+   "unit": "count/min"
+  },
+  {
+   "type": "respiratory-rate",
+   "start": "-130m",
+   "value": 15,
+   "unit": "count/min"
+  },
+  {
+   "type": "respiratory-rate",
+   "start": "-115m",
+   "value": 15,
+   "unit": "count/min"
+  },
+  {
+   "type": "respiratory-rate",
+   "start": "-100m",
+   "value": 14,
+   "unit": "count/min"
+  },
+  {
+   "type": "respiratory-rate",
+   "start": "-85m",
+   "value": 14,
+   "unit": "count/min"
+  },
+  {
+   "type": "respiratory-rate",
+   "start": "-70m",
+   "value": 15.5,
+   "unit": "count/min"
+  },
+  {
+   "type": "respiratory-rate",
+   "start": "-55m",
+   "value": 14,
+   "unit": "count/min"
+  },
+  {
+   "type": "HKCategoryTypeIdentifierSleepAnalysis",
+   "start": "-960m",
+   "end": "-921m",
+   "value": "AsleepCore",
+   "metadata": {
+    "HKTimeZone": "America/New_York"
+   }
+  },
+  {
+   "type": "HKCategoryTypeIdentifierSleepAnalysis",
+   "start": "-921m",
+   "end": "-884m",
+   "value": "AsleepDeep",
+   "metadata": {
+    "HKTimeZone": "America/New_York"
+   }
+  },
+  {
+   "type": "HKCategoryTypeIdentifierSleepAnalysis",
+   "start": "-884m",
+   "end": "-872m",
+   "value": "AsleepCore",
+   "metadata": {
+    "HKTimeZone": "America/New_York"
+   }
+  },
+  {
+   "type": "HKCategoryTypeIdentifierSleepAnalysis",
+   "start": "-872m",
+   "end": "-859m",
+   "value": "AsleepREM",
+   "metadata": {
+    "HKTimeZone": "America/New_York"
+   }
+  },
+  {
+   "type": "HKCategoryTypeIdentifierSleepAnalysis",
+   "start": "-859m",
+   "end": "-856m",
+   "value": "Awake",
+   "metadata": {
+    "HKTimeZone": "America/New_York"
+   }
+  },
+  {
+   "type": "HKCategoryTypeIdentifierSleepAnalysis",
+   "start": "-856m",
+   "end": "-818m",
+   "value": "AsleepCore",
+   "metadata": {
+    "HKTimeZone": "America/New_York"
+   }
+  },
+  {
+   "type": "HKCategoryTypeIdentifierSleepAnalysis",
+   "start": "-818m",
+   "end": "-806m",
+   "value": "AsleepDeep",
+   "metadata": {
+    "HKTimeZone": "America/New_York"
+   }
+  },
+  {
+   "type": "HKCategoryTypeIdentifierSleepAnalysis",
+   "start": "-806m",
+   "end": "-795m",
+   "value": "AsleepCore",
+   "metadata": {
+    "HKTimeZone": "America/New_York"
+   }
+  },
+  {
+   "type": "HKCategoryTypeIdentifierSleepAnalysis",
+   "start": "-795m",
+   "end": "-768m",
+   "value": "AsleepREM",
+   "metadata": {
+    "HKTimeZone": "America/New_York"
+   }
+  },
+  {
+   "type": "HKCategoryTypeIdentifierSleepAnalysis",
+   "start": "-768m",
+   "end": "-764m",
+   "value": "Awake",
+   "metadata": {
+    "HKTimeZone": "America/New_York"
+   }
+  }
+ ]
+}

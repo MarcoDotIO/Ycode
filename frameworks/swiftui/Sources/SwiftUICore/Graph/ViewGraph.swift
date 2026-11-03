@@ -171,6 +171,15 @@ package final class ViewGraph {
         drivers.contains { d in d.isActive && (d.owner.map { $0.isDescendant(of: node) } ?? false) }
     }
 
+    /// The active drivers in `node`'s subtree whose run started in the
+    /// current pass (the animations a removal started).
+    package func driversStarted(in node: ViewNode) -> [any AnimationDriver] {
+        drivers.filter { d in
+            d.isActive && d.runStart.map { abs($0 - currentTime) < 1e-9 } == true
+                && (d.owner.map { $0.isDescendant(of: node) } ?? false)
+        }
+    }
+
     /// Completion records of transactions seen in this pass (sealed at its end).
     package func noteCompletions(_ records: [AnimationCompletionRecord]) {
         for r in records where passRecordIDs.insert(ObjectIdentifier(r)).inserted { passRecords.append(r) }
@@ -204,7 +213,7 @@ package final class ViewGraph {
             if d.isActive { kept.append(d) } else { driverIDs.remove(ObjectIdentifier(d)) }
         }
         drivers = kept
-        let ended = ghosts.filter { g in !(g.parent?.isAlive ?? false) || !hasActiveDrivers(in: g.node) }
+        let ended = ghosts.filter { g in !(g.parent?.isAlive ?? false) || !g.waitFor.contains { $0.isActive } }
         if !changed.isEmpty || !ended.isEmpty {
             passCount += 1
             passTransaction = Transaction()
@@ -251,6 +260,8 @@ package final class ViewGraph {
         /// Where its layout nodes were last placed (parent transform in root
         /// coordinates, local origin, size, proposal).
         package let placements: [(parent: AffineTransform2D, origin: CGPoint, size: CGSize, proposal: ProposedViewSize)]
+        /// The removal animations it waits for.
+        package let waitFor: [any AnimationDriver]
     }
 
     package func registerMatched(_ state: MatchedGeometryState) { matched.append(state) }
@@ -260,14 +271,14 @@ package final class ViewGraph {
         return matched
     }
 
-    package func addGhost(_ node: ViewNode) {
+    package func addGhost(_ node: ViewNode, waitingFor: [any AnimationDriver]) {
         var placements: [(AffineTransform2D, CGPoint, CGSize, ProposedViewSize)] = []
         for n in node.lastLowered {
             guard let t = n.placedTransform, let o = n.placedLocalOrigin, let s = n.placedSize,
                   let p = n.placedProposal else { continue }
             placements.append((t.concatenating(.translation(-o.x, -o.y)), o, s, p))
         }
-        ghosts.append(Ghost(node: node, parent: node.parent, placements: placements))
+        ghosts.append(Ghost(node: node, parent: node.parent, placements: placements, waitFor: waitingFor))
     }
 
     // MARK: Lifecycle queues
@@ -288,15 +299,17 @@ package final class ViewGraph {
         passTransaction = transaction
         noteCompletions(transaction.completions)
 
-        // 2. Bodies.
+        // 2. Bodies. (A new root value set during the pass — a window's
+        // presentation layer — is applied in the next pass.)
+        let changed = rootViewChanged
+        rootViewChanged = false
         if let root {
-            root.update(rootViewChanged ? rootView : nil, environment: environment, transaction: transaction)
+            root.update(changed ? rootView : nil, environment: environment, transaction: transaction)
         } else {
             let r = ViewNode(graph: self, parent: nil, view: rootView)
             root = r
             r.update(rootView, environment: environment, transaction: transaction)
         }
-        rootViewChanged = false
         // Removed views still transitioning out receive the update walk too.
         for g in ghosts where g.node.isAlive {
             g.node.update(nil, environment: g.node.environment, transaction: transaction)

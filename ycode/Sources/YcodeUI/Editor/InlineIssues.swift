@@ -1,5 +1,6 @@
 import AppKit
 import YcodeBuild
+import YcodeIDECore
 
 /// Inline issue annotations in the source editor
 /// (`specs/ide/reference-ui-4.md` §4): each line with an issue is tinted for

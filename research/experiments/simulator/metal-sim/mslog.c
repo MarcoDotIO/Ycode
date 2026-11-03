@@ -31,6 +31,7 @@
  *                          "mt" or "mt:op" items answered with an empty dictionary,
  *                          YC_FAKE_NOEVENTS=1 (never send events 100/101), YC_FAKE_ONLY101=1,
  *                          YC_FAKE_ERROR=n and YC_FAKE_STATUS=n (values in the events)
+ *      YC_FAKE_ENC=len,align  (test server) encoded length and alignment answered to op 17
  *      YC_MS_REGIONS=n     at each command-buffer submission (messageType 6), print the
  *                          non-zero 16-byte lines of the first n bytes of every region the
  *                          driver shared with xpc_shmem_create (the client's own memory)
@@ -363,6 +364,15 @@ static void fake_msg(xpc_connection_t peer, xpc_object_t m)
             fake_reply_data(r, l, sizeof l);
         } else if (op == 11) {
             uint32_t v[6] = { (uint32_t)ref, 0, 0x200400, 0, 0, 0 };
+            fake_reply_data(r, v, sizeof v);
+        } else if (op == 16) {
+            uint32_t v[4] = { (uint32_t)ref, 0, 0xffff0001u, 0xffffffffu };
+            fake_reply_data(r, v, sizeof v);
+        } else if (op == 17) {
+            /* YC_FAKE_ENC=len,align: the encoded length and alignment the test server answers */
+            unsigned len = 64, al = 8;
+            if (getenv("YC_FAKE_ENC")) sscanf(getenv("YC_FAKE_ENC"), "%u,%u", &len, &al);
+            uint32_t v[4] = { (uint32_t)ref, 0, (al << 16) | (len & 0xffff), 0 };
             fake_reply_data(r, v, sizeof v);
         } else if (op == 38) {
             uint32_t v[2] = { (uint32_t)(ref << 12), 0x100 };

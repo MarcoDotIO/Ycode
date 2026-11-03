@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import YcodeDebug
+import YcodeIDECore
 
 /// The Debug menu's commands (`specs/ide/reference-ui-5.md` §2.10, §10.2)
 /// that act on the focused editor, the breakpoints and the console.

@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// Menu-bar commands and states of `specs/ide/reference-ui-6.md` §8
 /// (R43): File ▸ New ▸ New File from Clipboard, the Group items hidden in
@@ -28,6 +29,7 @@ extension WorkspaceWindowController {
 
     func fillMenuCleanUpContext(_ c: inout MenuContext) {
         c.pasteboardHasText = Self.pasteboardText != nil
+        c.hasItemToMove = navigator.itemsToMove != nil
         if let sel = projectNavigatorSelection {
             c.projectSelection = sel.kind == .file ? .file : .group
             c.projectSelectionInFolder = projectSelectionIsInFolder

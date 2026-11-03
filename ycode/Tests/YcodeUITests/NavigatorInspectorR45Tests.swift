@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import YcodeBuild
 import YcodeDebug
+@testable import YcodeIDECore
 import YcodeProject
 @testable import YcodeUI
 

@@ -1,6 +1,7 @@
 import AppKit
 import YcodeBuild
 import YcodeDebug
+import YcodeIDECore
 import YcodeLanguage
 import YcodeWorkspace
 import YcodeProject
@@ -12,15 +13,11 @@ import YcodeXcodebuild
 @MainActor
 public final class WorkspaceWindowController: NSWindowController, NSToolbarDelegate, NSMenuItemValidation {
     /// The default window frame, toolbar included (reference-ui-5.md §3.3, L5).
-    public static let defaultSize = NSSize(width: 1400, height: 900)
+    public static let defaultSize = NSSize(width: WorkspaceChrome.windowWidth, height: WorkspaceChrome.windowHeight)
     /// Running inside a test process (swift test / xctest).
-    public static let isTestProcess: Bool = {
-        let name = ProcessInfo.processInfo.processName
-        return name.contains("xctest") || name.contains("swiftpm-testing-helper") || name.hasSuffix("PackageTests")
-            || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    }()
-    public static let navigatorWidth: CGFloat = 290  // reference-ui.md §2
-    public static let inspectorWidth: CGFloat = 265  // reference-ui.md §6
+    public static let isTestProcess = IDEProcess.isTestProcess
+    public static let navigatorWidth = CGFloat(WorkspaceChrome.navigatorWidth)  // reference-ui.md §2
+    public static let inspectorWidth = CGFloat(WorkspaceChrome.inspectorWidth)  // reference-ui.md §6
     public static let debugAreaHeight: CGFloat = 135  // reference-ui.md §5
 
     public let session: WorkspaceSession
@@ -35,13 +32,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     }
     let refactoringStore = RefactoringStore()
     @MainActor final class ToolbarControls {
-        let leftPanes = NSSegmentedControl(images: [NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: "Navigators")!,
-                                                    NSImage(systemSymbolName: "text.bubble", accessibilityDescription: "Coding Assistant")!],
-                                           trackingMode: .selectAny, target: nil, action: nil)
-        let editorModes = NSSegmentedControl(images: [NSImage(systemSymbolName: "rectangle.righthalf.inset.filled", accessibilityDescription: "Canvas")!,
-                                                      NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: "Assistant")!,
-                                                      NSImage(systemSymbolName: "arrow.left.arrow.right", accessibilityDescription: "Code Review")!],
-                                             trackingMode: .selectAny, target: nil, action: nil)
+        let leftPanes = NSSegmentedControl(images: WorkspaceChrome.leftPanes.images, trackingMode: .selectAny, target: nil, action: nil)
+        let editorModes = NSSegmentedControl(images: WorkspaceChrome.editorModes.images, trackingMode: .selectAny, target: nil, action: nil)
         /// The editor modes folded into one pull-down when the toolbar is
         /// short of room (reference-ui-6.md §2.2).
         let editorModesPullDown = NSPopUpButton(frame: .zero, pullsDown: true)
@@ -70,12 +62,14 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     let leftAreaObservation = LeftAreaObservation()
     /// The coding assistant (WorkspaceWindowController+CodingAssistant.swift).
     let codingAssistantHolder = CodingAssistantHolder()
+    /// Agent mode's MCP tools and requests (`+AgentMode`).
+    let agentModeHolder = AgentModeHolder()
     final class BehaviorStore {
-        var previous: WorkspaceSession.Activity?
+        /// Activity → Behaviors events (YcodeIDECore, shared with ycode-ide).
+        var tracker = BehaviorEventTracker()
         var last: (event: Preferences.Event, behavior: Preferences.Behavior)?
-        /// Program output seen since the run started.
-        var runOutput = false
-        var seenEntries = 0
+        /// The result bezel (WorkspaceWindowController+BuildBezel.swift).
+        var bezel = BuildBezelState()
     }
     let behaviorStore = BehaviorStore()
     final class SchemeEditorState { var selection: (Int, Int) = (1, 0) }
@@ -127,6 +121,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     public init(session: WorkspaceSession, loadDestinations: Bool = true, startLanguageService: Bool = true,
                 openFirstFile: Bool = WorkspaceWindowController.isTestProcess, userStateURL: URL? = nil) {
         self.session = session
+        session.remoteSimulatorForTests = { d in
+            let settings = RemoteSimulatorSettings.load(Preferences.shared.defaults)
+            return settings.isConfigured ? RemoteSimulator(settings: settings, destination: d) : nil
+        }
         self.opensFirstFile = openFirstFile
         let stateURL = userStateURL ?? (Self.isTestProcess ? nil
             : WorkspaceUserState.fileURL(container: session.model.url, isPackage: session.model.kind == .package))
@@ -167,6 +165,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
                 let groups = await Task.detached { DestinationCatalog.load() }.value
                 self.setDestinationGroups(groups)
                 self.refreshRemoteRuntimeVersion()
+                self.refreshRemotePairs()
             }
         }
     }
@@ -324,10 +323,12 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         navigator.onProjectExpansionChange = { [weak self] keys in self?.updateUserState { $0.expandedRows = keys } }
         navigator.setProjectTree(session.model.root, packages: packageSection())
         navigator.addMenuItems = { [weak self] in self?.navigatorAddMenu($0) ?? [] }
+        wireProjectNavigatorOperations()
         inspector.onRename = { [weak self] u, n in self?.renameFromInspector(u, to: n) }
         wireInspector()
         _ = bookmarks
         navigator.onOpen = { [weak self] path, line in self?.openFromNavigator(path: path, line: line) }
+        installFindHooks()   // +Find.swift
         prefsObserver = NotificationCenter.default.addObserver(forName: Preferences.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.applyPreferences() }
         }
@@ -479,9 +480,11 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
 
     // MARK: New File / New Project
 
-    /// The folder new files go to: the open file's folder, else the
-    /// project directory (projects) or `Sources/<first>` (packages).
+    /// The folder new files go to: the project navigator's selected group
+    /// or folder (or the selected file's), else the open file's folder,
+    /// else the project directory (projects) or `Sources/<first>` (packages).
     public var newFileDirectory: URL {
+        if let dir = navigatorSelectionDirectory { return dir }
         if let f = editor.fileURL { return f.deletingLastPathComponent() }
         switch session.model.kind {
         case .package:
@@ -496,27 +499,13 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     }
 
     /// Creates files from a template in `newFileDirectory`, updates the
-    /// project, refreshes the navigator and opens the first new file.
+    /// project, refreshes the navigator and opens the first new file
+    /// (undoable; `createNavigatorFiles`).
     @discardableResult
     public func createFile(_ template: FileTemplate, name: String) throws -> [URL] {
-        let projPath = session.model.kind == .package ? nil : session.model.projects.keys.sorted().first {
-            newFileDirectory.path.hasPrefix(URL(fileURLWithPath: $0).deletingLastPathComponent().path)
-        }
-        var proj = projPath.flatMap { session.model.projects[$0] }
-        let urls = try FileCreator.create(template, name: name, in: newFileDirectory, project: &proj,
-                                          xcodeprojURL: projPath.map { URL(fileURLWithPath: $0) })
-        if let projPath, let proj, proj.objects != session.model.projects[projPath]?.objects {
-            projectChanged(path: projPath, proj)
-        } else if session.model.kind == .package {
-            session.model.root = NavigatorTree.package(at: session.model.url)
-            navigator.setProjectTree(session.model.root, packages: packageSection())
-        } else if let projPath, let proj {
-            // Synchronized folder: the tree re-reads the directory.
-            session.model.root = NavigatorTree.project(proj, xcodeprojURL: URL(fileURLWithPath: projPath))
-            navigator.setProjectTree(session.model.root, packages: packageSection())
-        }
-        if let first = urls.first { open(path: first.path, line: nil) }
-        return urls
+        let n = name.trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty else { throw NewFileError.emptyName }
+        return try createNavigatorFiles(template.files(named: n), in: newFileDirectory, targets: nil)
     }
 
     /// Creates files from a sheet template in `directory` (default
@@ -524,24 +513,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     @discardableResult
     public func createFile(entry: TemplateEntry, name: String, in directory: URL? = nil, targets: [String]? = nil,
                            platform: String? = nil) throws -> [URL] {
-        let dir = (directory ?? newFileDirectory).standardizedFileURL
-        let projPath = session.model.kind == .package ? nil : session.model.projects.keys.sorted().first {
-            dir.path.hasPrefix(URL(fileURLWithPath: $0).deletingLastPathComponent().path)
-        }
-        var proj = projPath.flatMap { session.model.projects[$0] }
-        let urls = try FileTemplateCatalog.create(entry, name: name, in: dir, platform: platform ?? preferredTemplatePlatform, project: &proj,
-                                                  xcodeprojURL: projPath.map { URL(fileURLWithPath: $0) }, targets: targets)
-        if let projPath, let proj, proj.objects != session.model.projects[projPath]?.objects {
-            projectChanged(path: projPath, proj)
-        } else if session.model.kind == .package {
-            session.model.root = NavigatorTree.package(at: session.model.url)
-            navigator.setProjectTree(session.model.root, packages: packageSection())
-        } else if let projPath, let proj {
-            session.model.root = NavigatorTree.project(proj, xcodeprojURL: URL(fileURLWithPath: projPath))
-            navigator.setProjectTree(session.model.root, packages: packageSection())
-        }
-        if let first = urls.first { open(path: first.path, line: nil) }
-        return urls
+        let files = try FileTemplateCatalog.files(entry, name: name, platform: platform ?? preferredTemplatePlatform)
+        return try createNavigatorFiles(files, in: directory ?? newFileDirectory, targets: targets)
     }
 
     /// The platform tab the sheets open on: the product's platform.
@@ -606,20 +579,16 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         return try? createFile(entry: TemplateEntry("Empty"), name: name, in: dir).first
     }
 
-    /// File ▸ New ▸ Folder (⌥⌘N): "New Folder" (or "New Folder 2", …).
+    /// File ▸ New ▸ Folder (⌥⌘N): "New Folder" (or "New Folder 2", …) at
+    /// the navigator's selection: a synchronized folder in a group, a
+    /// directory in a folder (WorkspaceWindowController+ProjectNavigatorOps.swift).
     @discardableResult
-    @objc public func newFolder(_ sender: Any?) -> URL? {
-        let dir = newFileDirectory
-        var name = "New Folder", n = 1
-        while FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).path) { n += 1; name = "New Folder \(n)" }
-        let u = dir.appendingPathComponent(name)
-        guard (try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: false)) != nil else { return nil }
-        if session.model.kind == .package {
-            session.model.root = NavigatorTree.package(at: session.model.url)
-            navigator.setProjectTree(session.model.root, packages: packageSection())
-        }
-        return u
-    }
+    @objc public func newFolder(_ sender: Any?) -> URL? { newNavigatorFolder() }
+
+    /// The last project navigator operation's error, if it failed.
+    public var lastNavigatorError: String?
+    /// The options the last Add Files… used (dropped files use them too).
+    public var lastAddFilesOptions = AddFilesOptions()
 
     /// File ▸ New ▸ Project… (⇧⌘N): the compact picker. Choose Template…
     /// opens an empty window with the template sheet.
@@ -646,19 +615,49 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         }
     }
 
+    /// The save step's choices when no panel runs (tests, headless).
+    public var newProjectHeadlessSave: NewProjectSaveOptions?
+    /// The last project New Project created.
+    public private(set) var lastCreated: NewProjectCreator.Created?
+
+    /// Where the compact picker's App row makes untitled projects (tests set it).
+    public var untitledProjectsLocation = UntitledAppProject.defaultLocation
+
+    /// A compact-picker row (nil: the full sheet). App makes the untitled
+    /// multiplatform project at once (`templates.md` § Compact picker rows)
+    /// and returns nil.
     @discardableResult
-    func projectPickerChose(_ i: Int) -> NewProjectSheetController {
-        NewProjectFlow.start(row: i, defaults: templateDefaults, location: newProjectLocation, parent: window,
-                             interactive: window?.isVisible == true,
-                             onCreated: { [weak self] url in
+    func projectPickerChose(_ i: Int?) -> NewProjectSheetController? {
+        if i == 0 {
+            NewProjectPicker.remember(row: 0, in: templateDefaults)
+            do {
+                let created = try UntitledAppProject.create(in: untitledProjectsLocation)
+                lastCreatedProject = created.project
+                if window?.isVisible == true {
+                    NSDocumentController.shared.openDocument(withContentsOf: created.project, display: true) { doc, _, _ in
+                        MainActor.assumeIsolated {
+                            for wc in doc?.windowControllers ?? [] { (wc as? WorkspaceWindowController)?.showUntitledProject(entryFile: created.entryFile) }
+                        }
+                    }
+                }
+            } catch { reportNewProjectError("\(error)") }
+            return nil
+        }
+        return NewProjectFlow.start(row: i, defaults: templateDefaults, location: newProjectLocation, parent: window,
+                             interactive: window?.isVisible == true, headlessSave: newProjectHeadlessSave,
+                             workspace: session.model.kind == .package ? nil : session.model.url,
+                             onCreated: { [weak self] created in
                                  guard let self else { return }
-                                 self.lastCreatedProject = url
-                                 if self.window?.isVisible == true {
-                                     NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
-                                 }
+                                 self.lastCreatedProject = created.openURL
+                                 self.lastCreated = created
+                                 if self.window?.isVisible == true { NewProjectFlow.open(created) }
                              },
                              onError: { [weak self] in self?.reportNewProjectError($0) })
     }
+
+    /// File ▸ New ▸ Project…'s Choose Template… directly (the full sheet).
+    @discardableResult
+    public func chooseProjectTemplate() -> NewProjectSheetController { projectPickerChose(nil)! }
 
     // MARK: Package dependencies
 
@@ -1086,6 +1085,11 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     public var previewWorkDirectory = PreviewRenderer.defaultWorkDirectory
     /// Seconds to wait after a save before refreshing.
     public var canvasRefreshDelay: TimeInterval = 0.8
+    /// macOS previews with the SwiftPM-built host for every refresh (the
+    /// path before payloads; also `YCODE_PREVIEWS_BUILT_HOST=1`).
+    public var useBuiltPreviewHost = ProcessInfo.processInfo.environment["YCODE_PREVIEWS_BUILT_HOST"] == "1"
+    /// The same for a live canvas (`previews.md` §Fast updates).
+    public var liveCanvasRefreshDelay: TimeInterval = 0.15
     /// The refresh in flight (tests await it).
     public private(set) var previewTask: Task<Void, Never>?
     private var canvasDebounce: Task<Void, Never>?
@@ -1093,9 +1097,14 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     /// the activity view showed before it.
     var previewActivityState: PreviewActivityState?
     var previewActivityGeneration = 0
+    /// Predictive completion's quiet status in the activity view
+    /// (WorkspaceWindowController+Prediction.swift).
+    var predictionActivity: PredictionActivityState?
 
     /// Canvas mode (`CanvasAutoShow`, reference-ui-6.md §4.4, E7 / E10).
     let canvasAuto = CanvasAutoState()
+    /// Live previews on a Ycode simulator (`previews.md` §Fast updates).
+    let livePreview = LivePreviewState()
 
     /// Editor ▸ Canvas (⌥⌘↩) and the toolbar's Canvas segment: turns canvas
     /// mode off or on (`setCanvasMode`).
@@ -1116,6 +1125,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         let c = PreviewCanvasController()
         c.devices.automatic = session.destination?.name ?? "My Mac"
         c.onRefresh = { [weak self] in self?.refreshPreviews() }
+        c.onLayoutChange = { [weak self] in self?.refreshPreviews() }
+        c.onIssue = { [weak self] i in self?.openPreviewIssue(i) }
+        c.onRevealPreview = { [weak self] i in self?.revealPreview(i) }
+        c.onPin = { [weak self] in self?.togglePin() }
         canvas = c
         editorArea.showCanvas(c)
         refreshPreviews()
@@ -1130,6 +1143,13 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             c.setNames([])
             c.setState(.empty("No Previews"))
             return nil
+        }
+        // iOS-family previews run live on a Ycode simulator.
+        let platform = previewPlatform
+        if platform.usesUIKit {
+            let t = refreshLivePreviews(platform: platform)
+            previewTask = t
+            return t
         }
         try? editor.save()
         let text = editor.text
@@ -1146,6 +1166,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         let activity = beginPreviewActivity()
         let renderer = PreviewRenderer(workDirectory: previewWorkDirectory)
         let tool = PreviewRenderer.engine(for: kind == .package ? .package : .project, swiftBuild: SwiftBuildEngine.locate())
+        let legacy = useBuiltPreviewHost
         previewTask?.cancel()
         let task = Task { [weak self, weak c] in
             let result = await Task.detached { () -> Result<[PreviewRenderer.Rendered], PreviewRenderer.Failure> in
@@ -1161,7 +1182,12 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
                         module = try PreviewRenderer.projectModule(for: url, project: proj, xcodeprojURL: URL(fileURLWithPath: path))
                     }
                 } catch { return .failure(error) }
-                do throws(PreviewRenderer.Failure) { return .success(try renderer.render(module: module, file: url, previews: previews, schemes: [.light, .dark], swiftBuild: tool)) } catch { return .failure(error) }
+                do throws(PreviewRenderer.Failure) {
+                    // Sources modules load a payload into the long-lived Mac host
+                    // (previews.md §The macOS host); linked ones build the SwiftPM host.
+                    if legacy { return .success(try renderer.render(module: module, file: url, previews: previews, schemes: [.light, .dark], swiftBuild: tool)) }
+                    return .success(try renderer.renderWithPayload(module: module, file: url, previews: previews, schemes: [.light, .dark]))
+                } catch { return .failure(error) }
             }.value
             self?.endPreviewActivity(activity)
             guard !Task.isCancelled, let c, self?.canvas === c else { return }
@@ -1180,7 +1206,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         // Canvas mode with no canvas drawn: a saved preview brings it up (E10).
         guard canvas != nil else { if canvasAuto.modeOn { updateCanvasForOpenedFile() }; return }
         canvasDebounce?.cancel()
-        let delay = canvasRefreshDelay
+        // A live canvas updates without a rebuild, so it waits less.
+        let delay = previewPlatform.usesUIKit ? min(canvasRefreshDelay, liveCanvasRefreshDelay) : canvasRefreshDelay
         canvasDebounce = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
@@ -1280,40 +1307,21 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         set { behaviorStore.last = newValue }
     }
 
-    /// Settings ▸ Behaviors on Ycode's own build and run events.
+    /// Settings ▸ Behaviors on Ycode's own build and run events
+    /// (`BehaviorEventTracker`, build-notifications.md §1).
     func applyBehaviors(for a: WorkspaceSession.Activity) {
-        let event: Preferences.Event?
-        switch a {
-        case .building: event = behaviorStore.previous.map { if case .building = $0 { return true }; return false } == true ? nil : .buildStarts
-        case .finished(let s) where s.contains("Build Succeeded") || s.contains("Clean Succeeded"): event = .buildSucceeds
-        case .finished(let s) where s.contains("Run failed") || s.contains("exited unexpectedly"): event = .runExitsUnexpectedly
-        case .finished(let s) where s.hasPrefix("Test"): event = nil
-        case .finished(let s) where s.contains("Failed"):
-            if session.displayedIssues.contains(where: { $0.severity == .error }) { perform(.buildErrors) }
-            event = .buildFails
-        case .running where !(behaviorStore.previous.map { if case .running = $0 { return true }; if case .paused = $0 { return true }; return false } ?? false):
-            behaviorStore.runOutput = false
-            behaviorStore.seenEntries = session.consoleEntries.count
-            event = .runStarts
-        case .running: event = behaviorStore.previous.map { if case .running = $0 { return true }; if case .paused = $0 { return true }; return false } == true ? nil : .runStarts
-        case .paused: event = .runPauses
-        case .finished(let s) where s.contains("Finished running"): event = .runEnds
-        default: event = nil
-        }
-        behaviorStore.previous = a
-        if case .finished(let s) = a, s.contains("Succeeded"), session.displayedIssues.contains(where: { $0.severity == .warning }) { perform(.buildWarnings) }
-        guard let event else { return }
-        perform(event)
+        let shown = session.displayedIssues
+        let events = behaviorStore.tracker.events(for: a, hasErrors: shown.contains { $0.severity == .error },
+                                                  hasWarnings: shown.contains { $0.severity == .warning },
+                                                  consoleEntries: session.consoleEntries.count)
+        for e in events { perform(e) }
     }
 
     /// The program's first output during a run: Running generates output.
     func noteConsoleOutput() {
-        guard behaviorStore.previous.map({ if case .running = $0 { return true }; if case .paused = $0 { return true }; return false }) == true,
-              !behaviorStore.runOutput else { return }
-        let new = session.consoleEntries.dropFirst(behaviorStore.seenEntries)
-        guard new.contains(where: { $0.kind == .target }) else { return }
-        behaviorStore.runOutput = true
-        perform(.runOutput)
+        let new = session.consoleEntries.dropFirst(behaviorStore.tracker.consoleEntriesAtRunStart)
+        guard let e = behaviorStore.tracker.noteConsoleOutput(targetOutput: new.contains { $0.kind == .target }) else { return }
+        perform(e)
     }
 
     func perform(_ event: Preferences.Event) {
@@ -1327,11 +1335,13 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         }
         // reference-ui-5.md §8.2: opened at the remembered height.
         if let d = b.showDebugArea { showDebugArea(d) }
-        if b.hideDebugAreaIfNoOutput && !behaviorStore.runOutput { showDebugArea(false) }
-        // Sounds and notifications only for a window on screen.
+        if b.hideDebugAreaIfNoOutput && !behaviorStore.tracker.runPrintedOutput { showDebugArea(false) }
+        // Notify: the bezel, or a system notification when the window is
+        // not in front (build-notifications.md §3).
+        if b.notify { notify(BuildNotificationPolicy.notice(for: event, activity: finishedActivityText)) }
+        // Sounds only for a window on screen.
         guard window?.isVisible == true else { return }
         if let s = b.sound { NSSound(named: NSSound.Name(s))?.play() }
-        if b.notify { NSApp.requestUserAttention(.informationalRequest) }
     }
 
     // MARK: Debugger depth
@@ -1489,7 +1499,25 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     @objc public func archiveProduct(_ sender: Any?) -> Bool {
         guard session.model.kind != .package, let scheme = session.scheme else { NSSound.beep(); return false }
         let before = Set(Organizer.archives(in: archivesDirectory).map(\.url))
-        let result = archiveRunner(session.model.url, scheme)
+        // An archive takes minutes: on screen it runs off the main thread.
+        guard window?.isVisible == true else {
+            return finishArchive(archiveRunner(session.model.url, scheme), before: before, sender: sender)
+        }
+        nonisolated(unsafe) let runner = archiveRunner
+        let url = session.model.url
+        session.noteToolActivity(.building("Archiving \(scheme)"))
+        Task { [weak self] in
+            let result = await Task.detached { runner(url, scheme) }.value
+            guard let self else { return }
+            let ok = self.finishArchive(result, before: before, sender: sender)
+            self.session.noteToolActivity(.finished(ok ? "Archive Succeeded" : "Archive Failed"))
+        }
+        return true
+    }
+
+    /// Records an archive's result and shows it in the Organizer.
+    @discardableResult
+    private func finishArchive(_ result: (status: Int32, output: String), before: Set<URL>, sender: Any?) -> Bool {
         lastArchiveOutput = result.output
         guard result.status == 0 else {
             session.packageIssues = [Diagnostic(severity: .error, message: "Archive failed: \(result.output.split(separator: "\n").last ?? "")")]
@@ -1542,6 +1570,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             plistEditor = nil
             stringCatalogEditor = c
             c.onAddLanguage = { [weak self] code in self?.addKnownRegion(code, forFileAt: path) }
+            c.sourceFiles = { [weak self] in self?.stringCatalogSourceFiles(forCatalogAt: path) ?? [] }   // +StringCatalogs.swift
             editor.showAuxiliary(c.view, path: jumpPath(for: URL(fileURLWithPath: path)), file: URL(fileURLWithPath: path))
             inspector.show(file: URL(fileURLWithPath: path))
             return
@@ -1571,24 +1600,15 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
 
     /// Workspace › groups › file, from the navigator tree.
     func jumpPath(for url: URL) -> [(String, String)] {
-        var trail: [NavigatorNode] = []
-        func search(_ n: NavigatorNode, _ path: [NavigatorNode]) -> Bool {
-            if n.path == url.path && n.kind == .file { trail = path + [n]; return true }
-            return n.children.contains { search($0, path + [n]) }
-        }
-        _ = search(session.model.root, [])
         // File components follow Settings ▸ General ▸ File Extensions, like
         // the navigator: "Model", not "Model.swift" (reference-ui-6.md §4.1, E1).
         let hide = Preferences.shared.fileExtensions == .hide
-        if trail.isEmpty { return [(session.model.displayName, "folder.badge.gearshape"), (Self.jumpBarFileTitle(url.lastPathComponent, hideExtension: hide), "doc.text")] }
-        return trail.map { ($0.kind == .file ? Self.jumpBarFileTitle($0.name, hideExtension: hide) : $0.name, OutlineItem.symbol(for: $0)) }
+        return WorkspaceChrome.jumpPath(for: url, root: session.model.root, workspaceName: session.model.displayName, hideExtension: hide)
     }
 
     /// A file's jump-bar title: without its extension when extensions are hidden.
     public static func jumpBarFileTitle(_ name: String, hideExtension: Bool) -> String {
-        guard hideExtension else { return name }
-        let bare = (name as NSString).deletingPathExtension
-        return bare.isEmpty ? name : bare
+        WorkspaceChrome.jumpBarFileTitle(name, hideExtension: hideExtension)
     }
 
     private func refreshEditorMarks() {
@@ -1615,6 +1635,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             testMarks[line] = s.contains(.failed) ? .failed : (s.allSatisfy { $0 == .passed } ? .passed : .notRun)
         }
         editor.setTests(testMarks)
+        refreshCodeCoverage()
         if let loc = session.currentLocation, loc.file == path { editor.setCurrentLine(loc.line) } else { editor.setCurrentLine(nil) }
         applyStopAnnotation(path: path)
     }
@@ -1638,7 +1659,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
                     navigator.issuesBuildFinished(session.displayedIssues, full: s.contains("Clean"),
                                                   compiledFiles: IssueNavigatorModel.compiledFiles(inLog: session.buildLog, isPackage: session.model.kind == .package))
                 }
-                activityView.status = "\(s) • Today at \(DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .short))"
+                activityView.status = WorkspaceChrome.activityFinishedText(s, at: Date())
             }
             activityView.isBusy = session.isBusy
             if case .paused = session.activity { debugArea.setPaused(true) } else { debugArea.setPaused(false) }
@@ -1663,6 +1684,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             refreshEditorMarks()
         case .reports:
             navigator.setReports(session.reports)
+            refreshCodeCoverage()
         case .tests:
             navigator.setTests(session.tests, results: session.testResults)
             refreshEditorMarks()
@@ -1830,8 +1852,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         switch id {
         case Self.runID:
             // Run and Stop as one joined pair.
-            let c = NSSegmentedControl(images: [NSImage(systemSymbolName: "play.fill", accessibilityDescription: "Run")!,
-                                                NSImage(systemSymbolName: "stop.fill", accessibilityDescription: "Stop")!],
+            let c = NSSegmentedControl(images: WorkspaceChrome.runStop.images(descriptions: ["Run", "Stop"]),
                                        trackingMode: .momentary, target: self, action: #selector(runStopChosen(_:)))
             for (i, t) in Self.runStopToolTips.enumerated() { c.setToolTip(t, forSegment: i); c.setWidth(ToolbarGlass.pairSegment, forSegment: i) }
             let item = NSToolbarItem(itemIdentifier: id)
@@ -1839,8 +1860,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             item.label = "Run"
             return item
         case Self.historyID:
-            let c = NSSegmentedControl(images: [NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Go Back")!,
-                                                NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Go Forward")!],
+            let c = NSSegmentedControl(images: WorkspaceChrome.history.images(descriptions: ["Go Back", "Go Forward"]),
                                        trackingMode: .momentary, target: self, action: #selector(historyChosen(_:)))
             for (i, t) in Self.historyToolTips.enumerated() { c.setToolTip(t, forSegment: i); c.setWidth(ToolbarGlass.pairSegment, forSegment: i) }
             let item = NSToolbarItem(itemIdentifier: id)
@@ -1851,7 +1871,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             // §4.3.3: a new conversation in the Coding Assistant pane
             // (coding-assistant.md §4).
             let item = NSToolbarItem(itemIdentifier: id)
-            item.image = NSImage(systemSymbolName: "plus.bubble", accessibilityDescription: "New Conversation")
+            item.image = NSImage(systemSymbolName: WorkspaceChrome.newConversation.symbols[0], accessibilityDescription: "New Conversation")
             item.label = "New Conversation"
             item.toolTip = "New Conversation"
             item.isBordered = true
@@ -1879,7 +1899,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         case Self.libraryID: return button("plus", "Library", #selector(showLibrary(_:)))
         case Self.inspectorToggleID:
             // reference-ui-6.md §2.5: the title follows the inspector's state.
-            let item = button("sidebar.right", Self.inspectorToggleTitle(shown: inspectorItem.map { !$0.isCollapsed } ?? true), #selector(toggleInspector(_:)))
+            let item = button(WorkspaceChrome.inspectorToggle.symbols[0], Self.inspectorToggleTitle(shown: inspectorItem.map { !$0.isCollapsed } ?? true), #selector(toggleInspector(_:)))
             item.visibilityPriority = .user   // §2.2.3: never hidden
             return item
         case Self.schemeID:
@@ -1933,8 +1953,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     }
 
     /// reference-ui-5.md §4.3.2.
-    public static let runStopToolTips = ["Build and then run the current scheme", "Stop the running scheme or application"]
-    public static let historyToolTips = ["Show Previous Location in History", "Show Next Location in History"]
+    public static let runStopToolTips = WorkspaceChrome.runStop.toolTips
+    public static let historyToolTips = WorkspaceChrome.history.toolTips
 
     /// §4.3.4, reference-ui-6.md §2.1 (T6): the pill's pop-ups carry these
     /// accessibility titles (and names).
@@ -1975,7 +1995,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         let settings = RemoteSimulatorSettings.load(Preferences.shared.defaults)
         if settings.isConfigured {
             // One row per runtime root and device type (run.md §Runtimes and device types).
-            let rows = RemoteSimulator.destinations(settings)
+            let rows = RemoteSimulator.destinations(settings, pairs: RemotePairsStore.shared.current())
             groups.append(DestinationGroup(title: "Ycode", destinations: rows))
             if let d = session.destination, d.isYcodeRemoteSimulator {
                 session.destination = rows.first { $0.identifier == d.identifier } ?? rows.first
@@ -2102,6 +2122,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         if session.simulatorRun != nil {
             session.stopSimulatorRun(simctl: simctl, remote: RemoteSimulator(settings: RemoteSimulatorSettings.load(Preferences.shared.defaults)))
         }
+        session.cancelRepetition()
         session.stop()
     }
 
@@ -2113,10 +2134,16 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
 
     /// The `.app` a simulator build produces: the macOS product path with
     /// the configuration folder suffixed `-iphonesimulator` (the
-    /// platform's products folder) and without `Contents/MacOS/<exe>`.
+    /// platform's products folder) and without `Contents/MacOS/<exe>` (or
+    /// the flat bundle's `<exe>`).
     public static func simulatorAppPath(fromExecutablePath p: String) -> String {
         var path = p
-        if let r = path.range(of: "/Contents/MacOS/") { path = String(path[..<r.lowerBound]) }
+        if let r = path.range(of: "/Contents/MacOS/") {
+            path = String(path[..<r.lowerBound])
+        } else if let slash = path.lastIndex(of: "/"), path[..<slash].hasSuffix(".app") {
+            // An iOS-style (flat) bundle's executable: `<App>.app/<exe>`.
+            path = String(path[..<slash])
+        }
         if let r = path.range(of: "/Products/") {
             let rest = path[r.upperBound...]
             if let slash = rest.firstIndex(of: "/") {
@@ -2130,6 +2157,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     }
 
     @objc public func runProduct(_ sender: Any?) {
+        // Ycode's remote simulators: phones, watches and phones with a paired watch (WorkspaceWindowController+WatchRun.swift).
+        if let d = session.destination, d.isYcodeRemoteSimulator { Task { await runOnYcodeRemote(d, building: true) }; return }
         let request = session.model.buildRequest(scheme: session.scheme, destination: session.destination, action: .build)
         let engine = session.engine
         if let d = session.destination, d.isYcodeRemoteSimulator || (d.kind == .simulator && d.platform != "macOS") {
@@ -2502,9 +2531,12 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     public func validateMenuItem(_ item: NSMenuItem) -> Bool {
         // Titles in context (reference-ui-5.md §1.3; WorkspaceWindowController+MenuBar.swift).
         if let generic = Self.menuBarGenericTitle(item) { item.title = MenuTitles.title(generic: generic, in: menuContext) }
+        if let r = validateAvailability(item) { return r }
         if let r = validateMenuBarItem(item) { return r }
+        if let r = validateFindMenuItem(item) { return r }   // +Find.swift
         if let r = validateDebugMenuItem(item) { return r }
         if let r = validateCodingAssistantItem(item) { return r }
+        if let r = validateStringCatalogConversion(item) { return r }   // +StringCatalogs.swift
         switch item.action {
         case #selector(closeDocument(_:)): return editor.fileURL != nil
         case #selector(closeEditor(_:)): return EditorCloseCommand.editorPane.isEnabled(paneCount: editorArea.tab.editors.count)

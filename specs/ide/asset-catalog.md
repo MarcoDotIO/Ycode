@@ -49,6 +49,19 @@ and write back unchanged).
   Green, Blue, Alpha fields (0–1); each edit writes the set.
 - App icon slots behave like image slots, titled "16x16pt 1x" etc.
 
+## Compiling (Ycode)
+
+Ycode compiles catalogs itself with `ycode assets compile` (module
+`YcodeAssetCatalog`): image sets with PNG files, colour sets and app icon
+sets, and `.icon` packages next to the catalog, into `Assets.car`, the loose
+iOS icon PNGs or the macOS `.icns`, and the partial `Info.plist`. The car
+format and the compiler's rules are in `specs/formats/assets-car.md` §I;
+`.icon` reading in `specs/formats/icon-format.md` §I. Builds use it in
+place of `actool` with `YCODE_ASSET_COMPILER=ycode` (the default off macOS).
+Not compiled yet: data, symbol, texture, AR, sticker and sprite-atlas sets,
+non-PNG images, high-contrast variants, template-rendering intents, asset
+symbols, and the layered `.icon` tier.
+
 ## Evidence
 
 - Correction 2026-10-19 (folders as rows, inspector tab, Editor menu): `reference-ui-3.md` §3 and `reference-ui-5.md` §2.8, §7.6 (level 3).
@@ -57,6 +70,8 @@ and write back unchanged).
   byte for byte (level 3).
 - Set header, slot captions, the App Icon and Color Set inspectors and the
   "+" menu: `specs/ide/reference-ui-3.md` §3 (level 3).
+- Compiling: `specs/formats/assets-car.md` §I (level 1 spec, level 3 public
+  API checks on our own files).
 - OPEN QUESTION: how it
   names copied files, the attributes inspector for sets (render as,
   compression), and the iOS app icon single-size format.

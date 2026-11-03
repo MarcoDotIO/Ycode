@@ -489,7 +489,13 @@ and Devices controls at the same time; coordinate file ownership.)
   screen until the first picture.
 - Q2. Device controls and frames for Apple Watch and Apple TV (labels,
   symbols). **Ycode decision** (I.6): not built; Ycode has no watch or TV
-  simulator, and Add Device lists them disabled.
+  simulator, and Add Device lists them disabled. *Apple Watch, Ycode
+  decision (WATCH-DISPLAY, `watchos.md` §11.3):* Ycode's watch frame (a
+  16-point band, the Digital Crown as a ridged cylinder and the side
+  button as a long bar on the right edge, the Action button on the left
+  of an Ultra) and the control row [Screenshot · Record]; the crown and
+  side button on the frame are the watch's Home and Sleep/Wake until the
+  watch's input round (`watchos.md` W3). Apple TV: still open.
 - Q3. Whether a Settings window exists (no menu item seen) and its layout.
   **Ycode decision** (I.6): none; Capture Keyboard is the toolbar toggle,
   and devices started in the hub are shut down when Ycode quits.
@@ -559,6 +565,7 @@ no Apple artwork is used: Ycode draws its frames from its own device data.
 | 13 | Inspector content | partial | Settings: FEAT-IMPL's boxes and the Camera box for Ycode's simulators, else "No settings are available for the selected device. …"; Info: Name, OS, Model, State or Connection, Identifier, Available, the Duo's Fold row, Erase status, with Edit Visibility; Apps ("No Apps"), Profiles ("No Profiles") and Reports ("No Diagnostic Reports") are placeholders |
 | 14 | Persistence | done | Ycode's preferences: the hub window's frame (autosave "YcodeDeviceHub") and split widths, the selected device, the inspector tab and Info sub-tab, collapsed sections, the filter, whether the sidebar is shown (View ▸ Hide Sidebar through the hub), zoom, bezels, hidden Info rows; the compact window's scale and position per device type |
 | 15 | Resize mode, pairing | not planned | the resize toggle is left out (§4.7); Pair Nearby Device… is listed disabled |
+| 16 | Add Device ▸ Apple Vision Pro… | done (IDE-SMALL, §I.11) | with a visionOS runtime root set up: the New Simulator form, a created Apple Vision Pro, Start to its room, Delete… |
 
 ### I.3 The hub's toolbar and menus
 
@@ -574,9 +581,9 @@ Capture Keyboard, zoom and More Actions are dimmed with nothing selected;
 Open in New Window needs a running Ycode simulator.
 
 - Add Device: iPhone…, iPad… (they open Settings ▸ Simulators, where
-  Ycode's runtimes and device types are set), Apple Watch…, Apple Vision
-  Pro…, Apple TV… (disabled), —, Pair Nearby Device… (disabled).
-  **Ycode decision.**
+  Ycode's runtimes and device types are set), Apple Watch… and iPhone with
+  Paired Watch… (§I.9), Apple Vision Pro… (§I.11), Apple TV… (disabled),
+  —, Pair Nearby Device… (disabled). **Ycode decision.**
 - Filter: All Devices, Simulators, Physical Devices, —, Sort By ▸ Name, OS
   Version. **Ycode decision (Q10):** no sort is chosen by default: physical
   devices first, then simulators by platform, name and version (`simctl`'s
@@ -702,6 +709,7 @@ domain and the launch options of I.6's `-YcodeOpenDeviceHub` family).
 | Quit | quitting Ycode sent Shut Down to the started device: "stop: the device was saved", the next Start restored it |
 | Sidebar | the Mac's own `simctl` simulators and paired devices listed with Ycode's (Available; a disconnected device under Unavailable), search "Ycode" narrowed the list, the running row's glyph lit on a white disc |
 | visionOS | not run this round (no visionOS device in this data area); the canvas draws it without a frame by `DeviceFrameSpec.visionPro` (unit tests) |
+| Created Apple Vision Pro (IDE-SMALL, §I.11) | the hub's Start command for a device created by Add Device ▸ Apple Vision Pro… (`--device-type vision-pro`, the visionOS 27.0 runtime root, the display server, cold boot) run over ssh with the host's launcher: the device directory was made at boot, `ycode-simd` reported "device type vision-pro (Apple Vision Pro, RealityDevice14,1, 3840x2160 @2)", and the 180 s frame showed the room with the Home View; Shut Down (SIGINT to the printed pid) stopped it in 11 s, and Delete…'s command (`ycode-sim --erase --device …`) erased it |
 
 Before and after (outside the repository): the old viewer (title "Ycode
 Simulator Viewer", stream filling the window, the fold bar, push buttons,
@@ -725,15 +733,500 @@ sources).
 ### I.8 Not done
 
 - Apps, Profiles and Reports content (placeholders); Edit's clipboard
-  items; the New Simulator dialog (Add Device opens Settings ▸
-  Simulators); the paired-watch capsule; watch and TV controls; resize mode.
-- visionOS's own canvas controls (interaction modes, Reset Camera,
-  Capture Pointer, Simulated Scenes; `visionos.md` §5.1): the visionOS
-  canvas shows the screen without a frame and the common controls only.
+  items; the New Simulator dialog for iPhones and iPads (Add Device ▸
+  iPhone… and iPad… open Settings ▸ Simulators; watches and paired phones
+  have their forms since I.9); TV controls; watch input beyond
+  the frame's crown and side button (`watchos.md` W3); resize mode. (The
+  watch frame, row and sidebar glyph: `watchos.md` §11.3.)
+- visionOS's own canvas controls beyond VISIONOS-R9's: the canvas takes
+  gaze, pinch, two-hand gestures, camera moves and the Digital Crown from
+  the mouse, trackpad and keys (`visionos.md` §5.5.8 item 4), Controls ▸
+  Reset Camera and Device ▸ Room (the six rooms, switched live) are
+  there; the reference's segmented interaction modes, Capture Pointer and
+  the Settings inspector's Simulated Scenes are not (Ycode's mapping uses
+  modifiers instead of modes).
 - Physical devices are listed (from `devicectl`) but not shown or operated;
   other `simctl` simulators are listed with their picture and no Start.
 - Rotation of devices other than foldables waits for the stream's rotate
   path (`display-stream.md` §11, `hid-input.md` §10).
+
+### I.9 Pairs of phones and watches (PAIR-IDE, 2026-10-30)
+
+Clean-room work from `specs/simulator/device-pairing.md` (§2, §6, §8.2,
+§11.4, P-8, P-9), `watchos.md` §8, §12 and this spec's §4.1, §5.2. Ycode's
+results and runs are in `device-pairing.md` §13. Every change is one
+`ycode-sim` pairing command over ssh; the hub then reads the host's pairs
+again (`ycode-sim list-pairs --json`). No Apple simulator, Xcode or
+Device Hub was run or observed.
+
+- **Pairs shown.** A Ycode iPhone with an active pair shows the capsule
+  "Paired with <watch row name> ›" between the device and its control row
+  (§4.1; under the picture when it is not running); a paired watch shows
+  "Paired with <phone row name> ›" (**Ycode decision**: §4.1 names the
+  phone's capsule only). Clicking it selects the other device. A glass
+  capsule 28 points tall, a trailing `chevron.right`. Info adds, for an
+  iPhone: Active Watch (its name, or "None"), Paired Watches (each name,
+  "(active)" after the active one), Pair ("(active, connected)" as
+  `list-pairs`); for a watch: Paired With (the phone, or "None") and Pair;
+  and Pairing (the last command's outcome: "Pairing…", "Paired (<UUID>)",
+  "Unpaired; the watch was erased", "Active", "Failed: …"). These rows show
+  only when a watchOS runtime root is set up or a pair exists.
+- **Context menu** (Q6, **Ycode decision**), after Open in New Window: an
+  iPhone's **Pair Watch…**, then per pair **Make “<watch>” Active** (the
+  inactive ones) and **Unpair “<watch>”**; a watch's **Unpair from
+  “<phone>”**; **Delete…** for a device created in the hub (not while it
+  runs; refused while it is paired: "Unpair “<name>” before deleting it.").
+  Unpair asks first ("Unpair “<watch>” from “<phone>”?", "The watch is shut
+  down and erased: its apps, their data and its settings are deleted. The
+  iPhone is kept.", Unpair / Cancel), as `ycode-sim unpair` erases the
+  watch (P-3).
+- **Pair Watch…** (§7's Device ▸ "Pair Apple Watch…" names the command;
+  its form was not observed, §10 Q6 of `device-pairing.md`): a sheet
+  "Pair a Watch with “<phone>”" with **Watch:** (the Ycode watches that have
+  no pair — a watch pairs with one phone, `device-pairing.md` §2.3 — then
+  "New Watch"), and the New Simulator form's rows (§2.3) for a new watch,
+  **Name:** (placeholder: the model), **OS Version:** ("watchOS 27.0", one
+  per watchOS runtime root), **Model:** (the watch types that runtime
+  offers, `watchos.md` §11.3), enabled for New Watch only; Pair / Cancel.
+- **Add Device ▸ Apple Watch…** (now enabled when a watchOS runtime is set
+  up) creates a watch with the same three rows. **Add Device ▸ iPhone
+  with Paired Watch…** (**Ycode decision** for "create an iPhone with a
+  paired watch in one step"; §2.3 lists no such item) creates an iPhone
+  (Name, OS Version "iOS 27.0", Model: the phone that runtime offers,
+  `iphone-types.md` §5 I3) and a watch (under a "Paired Watch" header) and
+  pairs them; the phone's first pair is active (`device-pairing.md` §2.2).
+- **Created devices** (**Ycode decision**): `RemoteCreatedDevice` {name,
+  type id, runtime root, directory} in the defaults key
+  `Ycode.remote.createdDevices` (JSON); the directory is `<device
+  name>-<type id>-<runtime version>-<8 hex digits>` under `<data>/devices`.
+  Each is a hub row with its own name (subtitle "Simulator"), a run
+  destination (identifier `ycode-remote-simulator:device:<directory>`) and
+  the other Ycode-simulator commands. Delete erases it on the host
+  (`ycode-sim --erase`) and forgets it.
+- **Commands.** Pair: the devices that never booted get their type record
+  first (`ycode-device-type`, what a boot writes; `ycode-simd` refuses to
+  pair a directory without one, `device-pairing.md` §8.2), then
+  `exec env YCODE_SIM_DEVICE_SET='<data>/devices' '<launcher>' pair
+  '<watch dir>' '<phone dir>'`; the last line that is a UUID is the pair.
+  Unpair and Make Active: `… unpair <pair>`, `… pair-activate <pair>`.
+  The hub reads the pairs when it opens, after each command and every
+  eighth state poll (about 16 s) while it shows; the listing is kept in the
+  defaults (`Ycode.remote.pairs`) so the run destinations stay put across
+  launches.
+- **The watch's compact window** is the existing one (`watchos.md` §11.3,
+  §12): Open in New Window on a running watch row; the scroll wheel turns
+  the crown.
+
+Code: `YcodeUI` `DevicesController+Pairing.swift` (`HubPairing`,
+`HubDeviceForm`, `HubDeviceFields`), `WorkspaceWindowController+RemotePairing.swift`,
+`DeviceHubToolbar.addItems`; `YcodeDeviceUI` `DeviceCanvasView.pairedTitle`;
+`YcodeIDECore` `RemotePairing.swift` (`RemoteDevicePair`,
+`RemotePairListing`, `RemoteCreatedDevice`, `RemotePairsStore`, the
+commands). Tests: `PairIDEHubTests`, `PairIDETests`, the opt-in
+`PairedRunEndToEndTests`.
+
+### I.10 Make Active and Restart iPhone; a watch's buttons (WATCH-W7, 2026-10-31)
+
+Clean-room work from `specs/simulator/device-pairing.md` §14 (P-14) and
+`watchos.md` §5.2. No Apple simulator, Xcode or Device Hub was run or
+observed.
+
+- **Make “<watch>” Active on a running iPhone** (P-14, **Ycode
+  decision**): the reference's phone apps keep their WatchConnectivity
+  session with the previous watch until the phone restarts
+  (`device-pairing.md` §14.1), and so do Ycode's. After the switch the hub
+  shows an alert "“<watch>” is now the active watch of “<phone>”." with the
+  text "Apps on the iPhone keep using the previous watch until the iPhone
+  restarts. Restart the iPhone now to connect its apps to “<watch>”." and
+  the buttons **Restart iPhone** (the row's Restart: Shut Down, then
+  Start) and **Later**. The Info tab's Pairing row says "Active; apps on
+  the iPhone keep the previous watch until the iPhone restarts" (Later)
+  or "Active; restarting the iPhone". A shut-down iPhone gets no alert
+  (its apps see the new watch when it starts); Pairing says "Active".
+- **A watch's buttons in the device window** (`watchos.md` §5.2, §13): the
+  crown on the frame is the crown press (stream button `home`), the side
+  button `side` (it was Sleep/Wake, `lock`), an Ultra's Action button the
+  stream's new button `action` (value 6, `display-stream.md` §5.3) when the
+  server lists "action" in its hello, else `side` as before. Controls ▸
+  Lock sends the screen toggle (0x0C/0x30). The usage pairs come from one
+  table, `DeviceButtonTable` (YcodeDisplayStream), which the server's
+  input bridge and the `button` command use.
+
+Code: `DevicesController+Pairing.swift` (`HubPairing.offerPhoneRestart`,
+`restartTask`, `DevicesController.activate(_:)`),
+`YcodeDeviceUI` `DeviceLiveSession.displayButton(for:)`. Tests:
+`PairIDEHubTests.makeActiveOffersToRestartARunningIPhone`,
+`WatchWindowTests` (the frame buttons).
+
+### I.11 Add Device ▸ Apple Vision Pro… (IDE-SMALL, 2026-10-31)
+
+Clean-room work from §2.3 (the New Simulator form), §I.9 (created devices)
+and `specs/simulator/visionos.md` §2.1, §3 (V-1: the Apple Vision Pro type,
+`vision-pro` in `ycode-simd`, runs only on visionOS (xrOS) runtimes). No
+Apple simulator, Xcode or Device Hub was run or observed.
+
+- **visionOS runtimes.** A runtime root of Settings ▸ Simulators whose
+  `SystemVersion.plist` names `xrOS` (read from the host), or, before it
+  is read, whose own name (the last path component, past a runtime
+  bundle's `Contents/Resources/RuntimeRoot`; not the directories above it)
+  names `xrOS` or `visionOS`, is a visionOS runtime (the same rule for
+  `watchOS`).
+  It gives one fixed hub row "Apple Vision Pro (Ycode)" (device directory
+  `<device name>-vision-pro-<runtime version>`, `RemoteSimulatorSettings.visionTargets`),
+  and its roots no longer produce iPhone and iPad rows (they did when every
+  root that was not watchOS counted as iOS).
+- **Apple Vision Pro…** is enabled when a visionOS runtime is set up. It
+  opens the New Simulator form (§2.3), "New Apple Vision Pro Simulator":
+  **Name:** (placeholder "Apple Vision Pro"), **OS Version:**
+  ("visionOS 27.0", one per visionOS root), **Model:** ("Apple Vision
+  Pro"); Create / Cancel. Create records a `RemoteCreatedDevice` (type
+  `vision-pro`) as §I.9's forms do and selects its row (platform visionOS,
+  subtitle "Simulator", no frame, `vision.pro` glyph).
+- **Start** sends the hub's start command with `--device-type vision-pro`
+  and the visionOS runtime root; the launcher makes the device directory
+  at its first boot, which ends in the room. **Delete…** (not while it
+  runs) erases it on the host (`ycode-sim --erase`) and forgets it.
+- **Not yet** (**Ycode decision**): Vision Pro rows are not run
+  destinations; visionOS apps run from the command line
+  (`ycode-sim --install-app`, `visionos.md`). Apple TV… stays disabled
+  (no tvOS simulator).
+
+Code: `YcodeIDECore` `RemoteSimulatorTargets.swift`
+(`YcodeSimulatorDeviceType.visionPro`, `visionTargets`,
+`runtimePlatform(forRoot:)`), `RemotePairing.swift`
+(`newDeviceTypes(platform:root:)`); `YcodeUI`
+`DevicesController+Pairing.swift` (`presentNewVisionDevice`,
+`canCreateVisionDevices`, `HubDeviceForm.Kind.newVision`),
+`DeviceHubToolbar.addItems`. Tests: `VisionHubTests` (a stand-in ssh and
+launcher). Thor check: see §I.7's table (IDE-SMALL row).
+
+### I.12 A Vision Pro in a headset: onboarding and switching (XR-HUB, 2026-11-02)
+
+Clean-room work from `specs/simulator/xr-viewer.md` (the headset viewer),
+`display-stream.md` §1 (one viewer at a time), `sim-link.md`,
+`visionos.md` §5.5–§5.6 (pose, gaze, the display's size sets the field of
+view), `simframebuffer.md` (Ycode's framebuffer library), WiVRn's user
+documentation and its running server's D-Bus properties (an external
+program, studied black-box as an interoperation target; no WiVRn code
+read or used), Meta's public Quest documentation and the Khronos OpenXR
+loader's documentation. No Apple binary, Xcode, Device Hub or Simulator was
+opened, run or observed; this is a Ycode feature (the reference has no
+headset view of a simulator).
+
+**What it is.** A running Ycode Vision Pro moves between the hub's canvas
+and an OpenXR headset (a Meta Quest through WiVRn on a Linux PC, the
+**viewer host**), both ways, without restarting the device. A guided
+setup, **Set Up Headset…**, gets a developer from nothing to a working
+headset: what must be on the viewer host and on the headset, each with a
+live check, its reason and its exact fix.
+
+#### I.12.1 Where it shows
+
+- **Settings tab** of a Ycode visionOS simulator: a **Headset** box — the
+  status capsule (**Not Set Up** / **Ready** / **In Headset**), **Set Up
+  Headset…**, **View in Headset** / **Back to Desktop**, the **Display**
+  pop-up (§I.12.5) and a one-line note (what step needs the user, or that
+  View in Headset connects the headset first).
+- **Toolbar**: an item before Capture Keyboard (symbol `eyeglasses`,
+  `macwindow` while in the headset), titled View in Headset / Back to
+  Desktop, hidden for other devices (macOS 15 and later; disabled before).
+- **More Actions** and the row's **context menu**: View in Headset ⌃⌘H
+  (Back to Desktop), Set Up Headset….
+- **Compact window**: the same toggle in its toolbar
+  (`DeviceWindowController.headsetToggle`).
+- **Keys**: ⌃⌘H (`DeviceCommand.viewInHeadset`, also the Controls menu's
+  last item in the viewer's menus, hidden unless the owner offers it).
+- **Canvas while the headset has the device**: the last picture dimmed
+  (to 55 %, so the glass has something to read against) under a real glass
+  capsule (`GlassCapsule`) "In Headset" with **Back to Desktop**, a borderless
+  accent button on the glass; the
+  control row is disabled (input belongs to the headset). If some *other*
+  viewer takes the display (a second window, a script), the capsule says
+  "Another viewer has this device" with **Take Back**.
+
+**The onboarding's look** is `liquid-glass-ycode.md` §11: the steps on a
+floating glass panel, glass buttons with the primary one tinted, the body
+text plain on the window's background.
+
+#### I.12.2 The checklist (`HeadsetChecker`, YcodeIDECore)
+
+Five steps (the onboarding's left column, each with its state): **Viewer
+Host**, **Workstation**, **Headset**, **Tracking**, **Connect**. Every
+check runs read-only commands on the viewer host through a
+`HeadsetCommandRunner` (this machine, or ssh with a key: `BatchMode`, one
+shared connection, `ControlPersist` 60 s). State is ok, missing or unknown;
+each has a reason and at most one fix.
+
+| Check | Command (read-only) | States and fix |
+|---|---|---|
+| Viewer host | `uname -s` | Mac hub without a host: missing, "WiVRn does not run on macOS, so the headset view runs on a Linux PC"; fix: name one (`user@host`, key only). Not Linux: missing. ssh fails: missing, fix `ssh-copy-id <host>`. A Linux hub: this machine |
+| GPU with Vulkan | `vulkaninfo --summary` | discrete (else integrated) GPU's name: ok; only `PHYSICAL_DEVICE_TYPE_CPU`: missing "only a software renderer"; fix `sudo ubuntu-drivers install`; no vulkaninfo: unknown, fix `sudo apt install vulkan-tools` |
+| OpenXR loader | `ldconfig -p \| grep libopenxr_loader.so.1` | fix `sudo apt install libopenxr-loader1` |
+| OpenXR runtime | `$XR_RUNTIME_JSON` or `~/.config/openxr/1/active_runtime.json` (or `/etc/openxr/1/…`), and `/usr/share/openxr/1/openxr_wivrn.json` | names WiVRn: ok. Another or none but WiVRn's manifest is there: ok — WiVRn makes itself the active runtime while a headset is connected (its documentation), and the viewer is started with `XR_RUNTIME_JSON` naming WiVRn's manifest for its own process; nothing in the user's configuration changes. No manifest: missing |
+| WiVRn server installed | `wivrn-server --version` ("WiVRn version 26.9") | fix `sudo apt install wivrn-server wivrn-dashboard` |
+| WiVRn server running | `pgrep -x wivrn-server` | fix `systemctl --user start wivrn` (or start the dashboard) |
+| ycode-xr-viewer | `<viewer> --help` | missing, or "too old for switching" without `--state-file`; fix: build it on the viewer host (`swift build -c release --product ycode-xr-viewer`) or copy it, and name its path |
+| Route to the simulator | `ssh -o BatchMode=yes <simulator host> true` (ssh route) | link route: ok; no device selected: unknown; fails: fix `ssh-copy-id <simulator host>` |
+| adb | `command -v adb` | missing over USB (fix `sudo apt install adb`); unknown over Wi-Fi |
+| Headset on USB | `adb devices -l`, `lsusb -d 2833:` (Meta's USB vendor) | `device`: ok, the model ("Quest Pro"); `unauthorized`: "Put the headset on and accept Allow USB debugging"; `no permissions`: udev rules, fix `sudo apt install android-sdk-platform-tools-common && sudo usermod -aG plugdev $USER`; on USB but not listed: "developer mode is needed" — turn it on in the Meta Horizon app (Devices ▸ the headset ▸ Headset Settings ▸ Developer Mode; a verified Meta developer account is required); neither: "Not connected." A Quest is preferred when several are listed; emulators are ignored; `-s <serial>` from then on |
+| WiVRn app on the headset | `adb shell pm list packages` | the client's package (WiVRn's README: `org.meumeu.wivrn` Meta Store, `org.meumeu.wivrn.github` GitHub releases, `….github.nightly`, `….github.testing`, `….local`); missing: Install on Headset… (below) or the Meta Store |
+| App and server versions | `adb shell dumpsys package <pkg> \| grep -m1 versionName` | they must match (WiVRn's README); the matching package is used when several are installed; mismatch: missing, fix Install on Headset… of the server's version |
+| Hand tracking | D-Bus `HandTracking` once connected; else `dumpsys` runtime permission `com.oculus.permission.HAND_TRACKING` (`horizonos.…`) | instructions: Settings ▸ Movement tracking ▸ Hand and body tracking (the words say the name varies by software version), and allow it for WiVRn. Optional |
+| Eye tracking | D-Bus `EyeGaze`; else the `EYE_TRACKING` permission; the model (a headset other than a Quest Pro has no eye tracking: unknown, "a controller or the head selects instead") | instructions: Settings ▸ Movement tracking ▸ Eye tracking (Settings ▸ Hands and eyes on some software versions); Settings ▸ Privacy and safety ▸ App permissions ▸ Eye Tracking, on for WiVRn. Optional |
+| Headset connected to WiVRn | `busctl --user get-property io.github.wivrn.Server /io/github/wivrn/Server io.github.wivrn.Server HeadsetConnected` (and `SystemName`) | ok: the system's name ("Meta Quest Pro"); not connected over USB: **Connect**; over Wi-Fi: instructions; no answer: unknown. The onboarding re-reads it every 3 s while the Connect step shows |
+
+**Ready** = every check ok except the optional ones (connection, hand
+and eye tracking) and those that may stay unknown (USB items over Wi-Fi, an
+unchecked route, an unreadable GPU). The capsule shows Ready or Not Set
+Up after a check; In Headset while the headset has the device.
+
+**Installs are never silent** (Ycode decision). Nothing runs sudo: system
+packages are shown as commands with a **Copy** button and "Run this
+yourself on <host>". **Install on Headset…** shows first what it is and
+where it comes from — WiVRn's headset app, the server's version, from
+WiVRn's own releases
+(`https://github.com/WiVRn/WiVRn/releases/download/v<version>/WiVRn-release.apk`),
+a separate GPLv3 program that Ycode does not bundle, and the Meta Store as
+the alternative — and only after **Download and Install** runs on the
+viewer host: `curl -fL` into a temporary directory, a check against the
+release's published SHA-256 when Ycode knows it (26.9:
+`1df6649e…11331`, from GitHub's release API; otherwise the dialog says the
+download is not verified), `adb -s <serial> install -r`, and the
+temporary directory removed. **Connect** runs, as WiVRn's documentation
+shows: `adb -s <serial> reverse tcp:9757 tcp:9757 && adb -s <serial> shell
+am start -a android.intent.action.VIEW -d wivrn+tcp://localhost <package>`.
+View in Headset runs Connect itself when the checklist is Ready but the
+headset is not connected (USB).
+
+**Settings** (`HeadsetSettings`, the IDE's defaults, one set): the viewer
+host (ssh destination; empty: this machine on Linux, none on a Mac), the
+viewer's path (default `ycode-xr-viewer`), USB or Wi-Fi, the simulator
+host as the viewer host names it (empty: the hub's own destination), and
+the viewer's options (default `--foveate`).
+
+#### I.12.3 Switching (`HeadsetSwitch`, `HeadsetSwitchController`)
+
+The device keeps running: the display server serves one viewer at a time
+and a new connection takes over (`display-stream.md` §1). Switching only
+starts or stops the headset viewer and lets the desktop's stream wait or
+come back.
+
+| State | Event | Actions → next state |
+|---|---|---|
+| desktop | View in Headset | hold the desktop stream, start the viewer → entering |
+| entering | viewer streaming (its state file) | → in headset |
+| entering | start failed / viewer ended | resume the desktop, notice → desktop |
+| entering | 45 s without the headset | stop the viewer, resume the desktop, notice → returning |
+| entering, in headset | Back to Desktop | resume the desktop (it takes the display back at once), stop the viewer → returning |
+| in headset | viewer ended (wearer quit, runtime ended, another viewer took over) | resume the desktop, notice → desktop |
+| returning | viewer stop confirmed | → desktop |
+| any | the device stopped | stop the viewer → desktop |
+
+- **Hold** (`DeviceLiveSession.holdForHeadset`): the canvas keeps showing
+  the live device until the headset's viewer connects; the server's
+  takeover notice then closes the canvas's connection and, held, it does
+  not reconnect (no banner: the IDE expected it). **Resume**
+  (`takeBack`): it connects at once, which takes the display from the
+  headset.
+- **Not fighting** (`display-stream.md` §1.1, new): every viewer —
+  the hub's canvas, the macOS and Linux `ycode-sim-viewer`, the headset
+  viewer — that receives the takeover notice stops reconnecting (before:
+  each reconnected after 1 s, and two viewers took the display from each
+  other forever). The canvas and the Linux viewer offer Take Back (a click
+  on the screen in the Linux viewer); the headset viewer ends.
+- **The viewer on the viewer host** (`HeadsetViewerPlan`,
+  `ScriptHeadsetViewerLauncher`): one directory per device,
+  `${XDG_RUNTIME_DIR:-/tmp}/ycode-headset/<device>` (mode 0700), holding
+  `viewer.pid`, `forward.pid`, `state.json`, `viewer.log` and, on the ssh
+  route, the forwarded display socket. Start: `setsid nohup ssh -N -L
+  <dir>/display.sock:<device's socket> <simulator host>` (keys only,
+  `ExitOnForwardFailure`), wait for the socket (≤ 5 s), then `setsid nohup
+  ycode-xr-viewer --connect unix:<dir>/display.sock --state-file
+  <dir>/state.json <options>` with `XR_RUNTIME_JSON` naming WiVRn's
+  manifest when it exists (link route: `--link <device> [--host N]`, no
+  forward). A viewer already running for the device is left alone. State:
+  `state.json` while its PID lives, else the last file, else absent. Stop:
+  SIGTERM to the recorded PID only when `/proc/<pid>/comm` is still the
+  viewer, SIGKILL after 5 s, SIGTERM to the forward's PID when it is still
+  `ssh`; no `pkill`. Polled every 0.2 s while entering, once a second in the headset.
+- **Head pose and camera.** Entering: the viewer anchors the stage at the
+  wearer's head (`xr-viewer.md` §3), so the headset starts at the guest's
+  default eye point, as a fresh headset session does. Returning (**Ycode
+  decision**): the desktop sends **its own camera as it was before the
+  switch** (`DeviceView.restoreSpatialCamera`, on the new hello); the
+  wearer's last head pose, tilt included, never stays on the desktop.
+  Reset Camera remains for the start pose.
+- **Input ownership** moves with the stream: while held the canvas has no
+  connection, its controls are disabled and pointer input goes nowhere;
+  the server releases an open pinch when a viewer leaves.
+
+#### I.12.4 The headset viewer's control interface (`xr-viewer.md` §7.2)
+
+`--state-file <path>`: one JSON object rewritten whole (`{"phase":
+"waitingForHeadset" | "streaming" | "stopped", "pid": n, "message": …}`),
+streaming from the first picture received. SIGTERM and SIGINT end it
+cleanly (replay too); a takeover ends it. Nothing in its rendering
+changed.
+
+#### I.12.5 The display's size: set at boot, one size for both
+
+The headset wants a tall display (2160 × 3840: 90° × 121°), the desktop
+3840 × 2160 (90° × 58.7°; `visionos.md` §5.6.6).
+
+**Can Ycode change it live? No (measured, Thor, 2026-11-02).** A
+diagnostic in Ycode's framebuffer library
+(`YCODE_FRAMEBUFFER_LIVE_SIZE=1`: a file the library polls on the
+display-updated handler's queue, giving a new size and calling the
+display-updated handler, or the disconnected-then-connected handlers) and
+its call log (`YCODE_FRAMEBUFFER_CALLS=1`) on a visionOS 27.0 boot: the
+only process that uses the library asks `SFBConnectionCreate`, `Connect`,
+`CopyDisplays`, `DisplayGetType`, `GetCurrentMode`, `GetDeviceSize` (twice)
+and `CreateSwapchain` once at start and then only swaps (1022 swaps
+logged); it **registers no connected, updated or disconnected handler**,
+so the library has no way to tell it of a new size, and five size changes
+during the run changed nothing (every screenshot stayed 3840 × 2160, no
+crash). The size is read once, when the compositor starts.
+
+**So one size for both, chosen at boot** (Ycode decision):
+- **Display ▸ Desktop (3840 × 2160)** (the default, the device type's):
+  the headset shows the guest's 90° × 58.7° (letterboxed vertically in the
+  Quest Pro's 94° × 96°); the box's note says so.
+- **Display ▸ Headset (2160 × 3840)**: `ycode-simd --vision-display
+  2160x3840` at the next start (an argument, so it is in the warm boot's
+  fingerprint: a snapshot of the other size is not restored). The desktop
+  shows **the picture's centre at 16:9**: the same 90° × 58.7° view as the
+  desktop display (rows where |tan| ≤ 0.5625 are the centre 31.6 %, 1215 of
+  3840), at 2160 × 1215 instead of 3840 × 2160 pixels; the pointer maps
+  onto the crop (the shown point size is the device type's 1920 × 1080).
+  Costs: 31 % of the desktop's pixels; the guest renders 8.3 MP of which
+  the desktop shows 2.6 MP; the stream carries the whole tall picture; the
+  guest's picture rate at 2160 × 3840 was 16.7–19.6/s under load against
+  23.5 at 3840 × 2160 (`xr-viewer.md` §4.4, to be measured quietly).
+- Changing it for a running device asks first ("Restart … with the new
+  display?" Restart / Later); never a forced restart.
+
+**Open question for an observation of the reference (Q-HUB-XR1).** On the
+reference Apple Vision Pro simulator (visionOS 27), does any guest process
+register `SFBConnectionSetDisplayUpdatedHandler` (or the connected /
+disconnected handlers) on its framebuffer connection, and does the
+reference ever change that simulator's display mode or size while it runs?
+If so: which process, what does it call after the handler (`GetCurrentMode`,
+`GetDeviceSize`, a new `CreateSwapchain`), and what is the handler's 64-bit
+argument (`simframebuffer.md` §9 Q2)? A yes would let Ycode switch the
+size live on View in Headset.
+
+#### I.12.6 The Linux shell and the command line
+
+The shell has no device surface yet (its device window is
+`ycode-sim-viewer --link`, `sim-link.md` §11). The hook:
+`ShellRemoteRun.headsetArguments(destination:toHeadset:)` /
+`switchHeadset(…)` give a visionOS link destination's switch, carried out
+by `HeadsetCLI` with the viewer on this machine; the shell's device window
+waits while the headset has the display and takes it back on a click.
+
+```
+ycode sim headset check [--viewer-host user@host] [--wifi] [--viewer PATH] [ROUTE]
+ycode sim headset view <device> [--viewer-host …] [--viewer PATH] [--wait S] ROUTE [-- viewer options]
+ycode sim headset desktop <device> | state <device>
+ycode sim remote [--host N] view <device> --xr --background [viewer options]   (= headset view … --link)
+ycode sim remote [--host N] view <device> --desktop [--no-window]             (= headset desktop, then the desktop viewer)
+ROUTE: --link [--host N] | --ssh <user@simhost> --socket <path>
+```
+
+`check` prints the checklist with the commands to run yourself and exits 0
+when Ready.
+
+#### I.12.7 Code and tests
+
+Code: `YcodeIDECore` `HeadsetSetup.swift` (checks, fixes, actions,
+runners), `HeadsetSwitch.swift` (state machine, controller, plan,
+launcher), `HeadsetCLI.swift`; `YcodeUI` `DevicesController+Headset.swift`,
+`HeadsetSetupWindowController.swift`, `DeviceHubToolbar.swift`;
+`YcodeDeviceUI` (`DeviceLiveSession` hold / take back and the tall crop,
+`ViewerConnection`, `DeviceCanvasView` capsule, `DeviceWindowController`
+toggle, `DeviceView.restoreSpatialCamera`); `YcodeRemoteViewer`
+(`DisplayStreamClient`, `RemoteDeviceSession` take back);
+`YcodeDisplayStream` (`DisplayNotice`); `YcodeXRViewer/XRControl.swift`;
+`ycode-simd` `--vision-display`; `SimFramebuffer` live-size diagnostic;
+`YcodeIDEShell/ShellRemoteRun.swift`.
+
+Tests: `HeadsetChecklistTests` (every state above with a stand-in runner:
+host, GPU, loader, runtime, server, viewer, route, adb, USB states,
+packages and versions, tracking, connection, Wi-Fi; checks only look;
+actions' exact commands), `HeadsetSwitchTests` (the machine both ways,
+failures, timeout, device stop; the controller with stand-in launcher and
+desktop; the plan's commands; the plan's shell run for real with a
+stand-in viewer), `HeadsetHubTests` (macOS: the onboarding's steps and
+Re-check, View in Headset → Back to Desktop twice against a stand-in
+display server that hands over as `ycode-simd` does and a stand-in
+launcher; another viewer is not fought), `ShellRemoteRunTests.headsetHook`.
+Also `DeviceWindowTests.aTallVisionProShowsTheCentreAtTheDesktopsView` (the
+crop, its centre, the pointer's tangent at the top edge) and the opt-in
+`HeadsetHubTests.realDeviceThroughTheRealPath` (`YCODE_XR_HUB_LIVE`). Runs:
+§I.12.8.
+
+#### I.12.8 Runs (2026-11-02, Ycode's own device, no headset)
+
+A tall Vision Pro of this branch (visionOS 27.0, `--vision-display 2160x3840`,
+boots `sw1`–`sw3`) on the Thor under other agents' load (load average about
+30), the x86 PC as the viewer host, the Mac as the hub. The viewer ran
+`--replay <script> --foveate`: **no OpenXR session and no headset**, so
+"in headset" here means the viewer's first picture. A real runtime's join is
+not in these numbers, and the live run may enter more slowly.
+
+**Whole switch through the real path** (Mac → ssh x86 → ssh Thor):
+
+| What | Rounds | Result |
+|---|---|---|
+| Hub, enter: click → the canvas loses the display | 10 | 0.32–0.62 s |
+| Hub, enter: click → state In Headset (polling every 0.1 s in this test) | 10 | 0.49–0.90 s |
+| Hub, back: click → a new picture on the real canvas | 10 | 0.11–0.18 s |
+| Hub, back: click → the viewer has stopped (a second's wait at the end of `--replay`) | 10 | 1.13–1.18 s, after the picture is back |
+| CLI from the Mac: its "in headset after" figure | 15 | 0.46–0.75 s; one at 1.42 s |
+| CLI from the Mac: the whole `view` command | 10 | 0.49–0.59 s |
+
+**Stream only** (a stand-in desktop client on the x86, take back → first frame,
+zlib at ¼ scale): 0.030–0.075 s in 10 rounds, 0.070–0.202 s in 4 of an earlier
+5. **One miss:** the fourth of those five took 4.58 s (the hello after 8 ms,
+the status and the first frame 4.5 s later), with the enter of the next round
+at 1.42 s. The cause was not found; it did not recur in the 21 switches back
+after it. The target of about 2 s was met in 24 of 25 switches back and in all
+25 switches in.
+
+**The device kept running:** the same `ycode-simd` throughout, its status
+rising through every switch: uptime 150 → 227 s and `guestFrames` 3404 → 7083
+over 5 rounds, 380 → 525 s and 16005 → 24526 over 10. The headset viewer ended
+by itself each time the desktop took the display back.
+
+**A real tall stream in the hub** (`realDeviceThroughTheRealPath`): hello
+2160 × 3840, the canvas's picture 2160 × 1215, the room and home view in the
+right proportions, the pointer's space 1920 × 1080. Checked by eye in Ycode's
+window, drawn by the window server over the real picture
+(`screencapture -l` of Ycode's own window, placed off the screens): the In
+Headset capsule and the setup window's panel. Those windows are inactive
+(the test host never takes the focus from the desktop), so the system draws
+them flat and Next without its tint; the tint is asserted as a property
+only and has not been seen.
+
+**The real workstation's checklist** (`ycode sim headset check`, read-only,
+owner's x86 PC with the Quest Pro connected): all 15 checks ok, "status: Ready
+(connected)", exit 0: RTX 4060 Ti, WiVRn 26.9 on both sides,
+`org.meumeu.wivrn.github`, hands and eyes offered. Nothing was installed or
+started on the headset. **Connect** and **Install on Headset…** have been run
+only against stand-ins, as asked.
+
+**Found by these runs and the x86 suite, and fixed:** ssh's control path was
+too long on macOS (every ssh command of the runner failed with status 255).
+On Linux, Foundation's `Process` reports a command's exit only once everything
+that inherited its descriptors has closed them, so `view` on this machine hung
+for as long as the viewer it had left detached; the runner now uses
+`posix_spawn` with a close-on-exec pipe. The rounds above ran before that
+change. After it, the same commands were checked with a stand-in viewer
+through real ssh from the Mac (view 0.46 s, stop 0.08 s) and locally on the x86
+(view 0.24 s, stop 0.06 s), and `check` again: not with a device.
+
+**Not yet done:** the live run with a headset; the Linux viewer shows a tall
+picture whole (no crop; only the macOS canvas crops).
 
 ## Evidence
 
@@ -775,6 +1268,12 @@ sources).
 | Gap list (§9) | — | comparison with `ycode-sim-viewer` and `specs/ide/devices.md`; Ycode decisions |
 | Ycode implementation (§I): frame proportions, symbols, steps, banners, lifecycle, persistence, the answers to Q1–Q13 | — | Ycode decisions; public AppKit API (`NSSplitViewController`, `NSToolbarItemGroup`, `NSMenuToolbarItem`, `NSGlassEffectView`, `NSTrackingSeparatorToolbarItem`), public SF Symbols names, AVFoundation (`AVAssetWriter`) and Core Graphics (`CGDisplayScreenSize`) documentation (level 1) |
 | Device panel data (§I.1): pixels, scale, pixels per inch, corner radii | — | Ycode's own device types (`Sources/ycode-simd/DeviceTypes.swift`, `device-capabilities.md`, `foldable.md` §10) |
+| Pairs in the hub (§I.9): capsule on phone and watch, Info rows, menu items, forms, created devices | 1, 3 | §4.1 and §7 for the phone's capsule and Pair Apple Watch…; `device-pairing.md` §2 (level 2–3) for the rules; the rest Ycode decisions; `PairIDEHubTests` |
+| Add Device ▸ Apple Vision Pro… (§I.11) | — | Ycode decisions on §2.3 (level 1) and `visionos.md` §3 V-1 (level 2–3); `VisionHubTests`; the Thor check |
+| Make Active's note and Restart iPhone; the watch's frame buttons (§I.10) | — | Ycode decisions from `device-pairing.md` §14.1 (level 3) and `watchos.md` §5.2 (level 2–3); `PairIDEHubTests`, `WatchWindowTests` |
+| Headset onboarding and switching (§I.12): checks, fixes, states, the switch, the display-size choice | — | Ycode decisions; WiVRn's README (client packages, version match, USB `adb reverse` and `wivrn+tcp://` link, the runtime taken while connected; level 1 for WiVRn as a documented external program), WiVRn 26.9's D-Bus properties read with `busctl` on the owner's workstation (`HeadsetConnected`, `HandTracking`, `EyeGaze`, `SystemName`; black-box), GitHub's release API for WiVRn v26.9 (asset name, size, SHA-256), Ubuntu package names (`libopenxr-loader1`, `wivrn-server`, `adb`, `vulkan-tools`); `HeadsetChecklistTests`, `HeadsetSwitchTests`, `HeadsetHubTests` |
+| Headset menu paths in the instructions (§I.12.2): eye tracking, per-app permission, hand tracking, developer mode, USB debugging | 1, not checked on a headset | Meta's public pages, read 2026-11-02: "Learn about Eye Tracking on Meta Quest Pro" (meta.com/help/quest/8107387169303764: Settings ▸ Hands and eyes ▸ Eye tracking; Settings ▸ Privacy and safety ▸ App permissions), Meta's developer "Eye Tracking Overview" (Settings ▸ Movement Tracking ▸ Eye Tracking), the Hand and Body Privacy Notice (Settings ▸ Movement tracking ▸ Hand and body tracking), "Test your app on your device" (Meta Horizon app ▸ Devices ▸ headset ▸ Headset Settings ▸ Developer Mode; verified account; Always allow from this computer). Meta's pages differ by software version, and the UI says so; nobody has compared them with the owner's headset menus |
+| No live display-size change (§I.12.5) | — | Ycode's own simulator on the Thor with Ycode's own framebuffer library's call log and live-size diagnostic (2026-11-02); Q-HUB-XR1 is for the reference |
 | Verification (§I.7) | — | Ycode's own windows on the Mac (`screencapture -l` with their window ids), Ycode's devices on the Thor |
 
 Level 5 was not used.

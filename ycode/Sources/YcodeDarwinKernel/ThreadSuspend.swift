@@ -60,7 +60,7 @@ extension DarwinKernel {
     /// Closes or opens `t`'s gate from its suspend count and the task's
     /// (this image's). Closing kicks its vCPU out of guest code. Lock held.
     func refreshGate(_ t: ThreadContext) {
-        if t.suspendCount > 0 || taskSuspendCount > 0 {
+        if t.suspendCount > 0 || taskSuspendCount > 0 || t.debugHold {
             if !t.gate.isClosed { t.gate.close() }
             threadHost?.kickThread(t)
         } else if t.gate.isClosed {

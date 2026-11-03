@@ -1,0 +1,80 @@
+// The depth tap's reduction (specs/simulator/xr-depth.md §3). Ycode's own
+// shader, compiled by scripts/xr-depth-shaders.sh into DepthTapShader.swift
+// (it is not part of the Metal translation; it runs on the backend's bindless
+// heap and pipeline layout: set 0 binding 0 = sampled images, push constants).
+//
+// One output texel per `scale` x `scale` block of a depth attachment: the
+// nearest (largest reverse-Z) value of the block, so a surface's edge is never
+// pushed back. A later pass's depth (the windows, multisampled: sample 0)
+// merges into the output by the same rule, counting only texels whose resolved
+// colour is at least `alphaMin` opaque: a layer's transparent parts write depth
+// too, and the picture shows what lies behind them. Output: 16-bit
+// inverse-depth samples, two per word.
+#version 450
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_samplerless_texture_functions : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference_uvec2 : require
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0) uniform texture2D images[];
+layout(set = 0, binding = 0) uniform texture2DMS imagesMS[];
+
+layout(buffer_reference, std430, buffer_reference_align = 4) buffer Words { uint w[]; };
+
+layout(push_constant) uniform Params {
+    uvec2 outAddress;    // the output buffer's device address
+    uint image;          // heap slot of the depth view
+    uint srcW, srcH;     // the depth image's size
+    uint outW, outH;
+    uint scale;
+    uint flags;          // bit 0: standard Z (1 - near / z); bit 1: multisampled (sample 0); bit 2: merge (nearest of this and the output); bit 3: gate by alpha
+    uint alphaImage;     // heap slot of the pass's resolved colour (bit 3; the depth image's size)
+    float alphaMin;      // the least alpha of a texel whose depth counts (bit 3)
+} pc;
+
+float depthAt(ivec2 p) {
+    if ((pc.flags & 8u) != 0u && texelFetch(images[nonuniformEXT(pc.alphaImage)], p, 0).a < pc.alphaMin) return 0.0;
+    float d = (pc.flags & 2u) != 0u ? texelFetch(imagesMS[nonuniformEXT(pc.image)], p, 0).r
+                                    : texelFetch(images[nonuniformEXT(pc.image)], p, 0).r;
+    return (pc.flags & 1u) != 0u ? 1.0 - d : d;
+}
+
+uint sampleAt(uint ox, uint oy) {
+    if (ox >= pc.outW || oy >= pc.outH) return 0u;
+    float best = 0.0;
+    uint x0 = ox * pc.scale, y0 = oy * pc.scale;
+    for (uint y = 0u; y < pc.scale; y++) {
+        uint sy = min(y0 + y, pc.srcH - 1u);
+        for (uint x = 0u; x < pc.scale; x++) {
+            best = max(best, depthAt(ivec2(min(x0 + x, pc.srcW - 1u), sy)));
+        }
+    }
+    best = clamp(best, 0.0, 1.0);
+    return best > 0.0 ? max(1u, uint(round(best * 65535.0))) : 0u;
+}
+
+uint room(uint q) { return q == 0u ? 0u : max(2u, q & 0xFFFEu); }
+
+uint merged(uint q, uint old) { return q != 0u && (q | 1u) > (old | 1u) ? q | 1u : old; }
+
+void main() {
+    uint wx = gl_GlobalInvocationID.x, oy = gl_GlobalInvocationID.y;
+    uint wordsPerRow = (pc.outW + 1u) / 2u;
+    if (wx >= wordsPerRow || oy >= pc.outH) return;
+    uint lo = sampleAt(wx * 2u, oy), hi = sampleAt(wx * 2u + 1u, oy);
+    uint i = oy * wordsPerRow + wx;
+    Words w = Words(pc.outAddress);
+    // The low bit of a sample says whose it is: 1 the windows layer, 0 the room
+    // (xr-depth.md §3.1): the viewer keeps the windows out of its world cache.
+    if ((pc.flags & 4u) != 0u) {
+        uint old = w.w[i];
+        lo = merged(lo, old & 0xFFFFu);
+        hi = merged(hi, old >> 16);
+    } else {
+        lo = room(lo);
+        hi = room(hi);
+    }
+    w.w[i] = lo | (hi << 16);
+}

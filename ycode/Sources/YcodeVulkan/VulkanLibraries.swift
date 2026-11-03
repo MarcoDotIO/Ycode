@@ -63,6 +63,15 @@ final class PipelineLibraryCache: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         return Array(parts.values)
     }
+
+    /// Empties the cache (a device reset); returns the parts to destroy.
+    func removeAll() -> [VkPipeline] {
+        lock.lock(); defer { lock.unlock() }
+        let list = Array(parts.values)
+        parts.removeAll()
+        failed.removeAll()
+        return list
+    }
 }
 
 /// Counters per part kind: 0 vertex input, 1 pre-rasterization, 2 fragment shader, 3 fragment output, 4 link.
@@ -109,7 +118,7 @@ extension VulkanMetalBackend {
             return fail("vertex input")
         }
 
-        let discard = p.fragment == nil
+        let discard = info.rasterizerDiscard != 0
         let vsKey = "vs:\(shaderKey(vertex))/\(discard)"
         let vsEntry = vertex.reflection.entryPoint ?? "main"
         guard let pre = libraries.part(vsKey, kind: 1, {
@@ -123,12 +132,17 @@ extension VulkanMetalBackend {
         }) else { return fail("pre-rasterization") }
 
         var parts: [VkPipeline?] = [vi, pre]
-        if let fragment = p.fragment {
-            let fsKey = "fs:\(shaderKey(fragment))/\(info.samples.rawValue)"
-            let fsEntry = fragment.reflection.entryPoint ?? "main"
+        if !discard {
             let samples = info.samples
+            let fsKey = p.fragment.map { "fs:\(shaderKey($0))/\(info.samples.rawValue)" } ?? "fs:none/\(info.samples.rawValue)"
             guard let fsLib = libraries.part(fsKey, kind: 2, {
-                fragment.spirv.withUnsafeBufferPointer { words in
+                guard let fragment = p.fragment else {
+                    // Depth and stencil only: the part has no shader stage.
+                    var none = yvk_shader_stage()
+                    return yvk_library_fragment_shader(ctx, &none, samples, &err, err.count)
+                }
+                let fsEntry = fragment.reflection.entryPoint ?? "main"
+                return fragment.spirv.withUnsafeBufferPointer { words in
                     fsEntry.withCString { name in
                         var stage = yvk_shader_stage(code: words.baseAddress, wordCount: words.count, entry: name,
                                                      constants: nil, constantCount: 0, flags: 0)

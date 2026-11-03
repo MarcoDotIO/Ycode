@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeBuild
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// Responsiveness probes (opt-in: `YCODE_PERF=1`). They print timings;

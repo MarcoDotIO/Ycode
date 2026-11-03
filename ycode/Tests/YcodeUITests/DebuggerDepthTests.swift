@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeDebug
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -138,13 +139,5 @@ int main(int argc, char **argv) {
         #expect(await session.evaluateInConsole("p counter") != nil)
         session.stop()
         #expect(await waitUntil(30) { session.debugClient == nil })
-    }
-
-    @Test func consoleFilterModel() {
-        #expect(ConsoleEntry.Filter.all.includes(.target) && ConsoleEntry.Filter.debugger.includes(.input))
-        #expect(!ConsoleEntry.Filter.debugger.includes(.target) && !ConsoleEntry.Filter.target.includes(.debugger))
-        let t = DebugThread(id: 1, name: "Thread 1 name = worker queue = com.example.q")
-        #expect(t.queue == "com.example.q")
-        #expect(WorkspaceSession.sameAddress("0x0000000100003F40", "0x100003f40"))
     }
 }

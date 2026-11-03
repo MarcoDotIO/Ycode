@@ -77,7 +77,33 @@ public final class DeviceMenus: NSObject, NSMenuItemValidation {
         let fm = NSMenu(title: "Fold")
         for c in [DeviceCommand.poseClosed, .posePartiallyOpen, .poseOpen] { fm.addItem(item(c)) }
         fold.submenu = fm
-        return [orientation, keyboard, fold]
+        // A Vision Pro's room (visionos.md §2.6, §5.5.4; the reference's
+        // Simulated Scenes): switched live through the device's `vision room`.
+        let room = NSMenuItem(title: "Room", action: nil, keyEquivalent: "")
+        let rm = NSMenu(title: "Room")
+        for (key, title) in Self.rooms {
+            let i = NSMenuItem(title: title, action: #selector(roomChosen(_:)), keyEquivalent: "")
+            i.representedObject = key
+            i.target = self
+            rm.addItem(i)
+        }
+        room.submenu = rm
+        return [orientation, keyboard, fold, room]
+    }
+
+    /// The runtime's rooms by key, with Ycode's titles (visionos.md §2.6).
+    public static let rooms: [(key: String, title: String)] = [
+        ("LivingRoomDay", "Living Room (Day)"), ("LivingRoomNight", "Living Room (Night)"),
+        ("KitchenDay", "Kitchen (Day)"), ("KitchenNight", "Kitchen (Night)"),
+        ("MuseumDay", "Museum (Day)"), ("MuseumNight", "Museum (Night)"),
+    ]
+
+    @objc public func roomChosen(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? String, let canvas = target?.activeCanvas, let s = canvas.session else { return }
+        canvas.showBanner("Loading \(sender.title)…", seconds: 3)
+        s.sendCommand("vision room \(key)") { [weak canvas] reply in
+            canvas?.showBanner(reply.hasPrefix("ok") ? "\(sender.title)" : "Room: \(reply)", seconds: 3)
+        }
     }
 
     @objc public func performCommand(_ sender: NSMenuItem) {
@@ -92,6 +118,10 @@ public final class DeviceMenus: NSObject, NSMenuItemValidation {
 
     public func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard let canvas = target?.activeCanvas else { return false }
+        if item.action == #selector(roomChosen(_:)) {
+            guard let s = canvas.session else { return false }
+            return s.isLive && s.isSpatial
+        }
         if item.action == #selector(orientationChosen(_:)) {
             guard let s = canvas.session, let raw = item.representedObject as? String else { return false }
             item.state = s.orientation.rawValue == raw ? .on : .off
@@ -113,6 +143,12 @@ public final class DeviceMenus: NSObject, NSMenuItemValidation {
         // Items for features the device does not have are hidden (§7).
         switch c {
         case .actionButton: item.isHidden = s?.spec.hasActionButton != true
+        case .volumeUp, .volumeDown: item.isHidden = s.map { !$0.spec.hasVolumeButtons } ?? false
+        case .appSwitcher: item.isHidden = s?.spec.family == .watch
+        case .resetCamera: item.isHidden = s?.isSpatial != true
+        case .viewInHeadset:
+            item.isHidden = canvas.headsetCommandEnabled == nil || (s != nil && s?.isSpatial != true && s?.isTakenOver != true)
+            item.title = canvas.headsetCommandTitle?() ?? c.title
         case .poseClosed, .posePartiallyOpen, .poseOpen: item.isHidden = s?.isFoldable != true
         default: break
         }

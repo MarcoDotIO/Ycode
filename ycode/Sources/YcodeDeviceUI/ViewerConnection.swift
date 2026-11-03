@@ -51,6 +51,8 @@ final class FrameCanvas: @unchecked Sendable {
                 if self.copyPixels(of: image, to: tile) { ok.set(i) } else { fallback.set(i, image) }
             case .zlibBGRA:
                 if self.inflate(tile) { ok.set(i) }
+            case .h264, .hevc, .hevc444:
+                return  // not offered by this viewer (display-stream.md §14)
             }
         }
         if tiles.count == 1 { work(0) } else { DispatchQueue.concurrentPerform(iterations: tiles.count, execute: work) }
@@ -188,6 +190,11 @@ public final class ViewerConnection: @unchecked Sendable {
     /// The panel shown and its turn (display states; lock).
     private var shownDisplay: String?
     private var rotation = 0
+    /// Another viewer took the display over (display-stream.md §1.1): no
+    /// reconnecting until `takeBack()`. `expectingTakeover`: the IDE started
+    /// that viewer itself (the headset), so the server's notice is not shown.
+    private var takenOver = false
+    private var expectingTakeover = false
 
     // Statistics (main thread reads; written under the lock).
     private(set) var bytesReceived = 0
@@ -210,6 +217,14 @@ public final class ViewerConnection: @unchecked Sendable {
     }
 
     public var stats: (bytes: Int, frames: Int) { lock.withLock { (bytesReceived, framesReceived) } }
+
+    /// The next takeover is the IDE's own (the headset view): wait quietly.
+    public func expectTakeover(_ on: Bool) { lock.withLock { expectingTakeover = on } }
+
+    /// Connects again after a takeover, taking the display back.
+    public func takeBack() { lock.withLock { takenOver = false; expectingTakeover = false } }
+
+    public var isTakenOver: Bool { lock.withLock { takenOver } }
 
     private func main(_ body: @escaping @MainActor @Sendable () -> Void) { DispatchQueue.main.async { MainActor.assumeIsolated { body() } } }
 
@@ -247,6 +262,13 @@ public final class ViewerConnection: @unchecked Sendable {
             c.close()
             lock.withLock { connection = nil }
             if lock.withLock({ stopped }) { break }
+            if lock.withLock({ takenOver }) {
+                let quiet = lock.withLock { expectingTakeover }
+                main { self.delegate?.connection(self, phase: DisplayNotice.takenOverPhase, detail: quiet ? "headset" : nil) }
+                while lock.withLock({ takenOver && !stopped }) { Thread.sleep(forTimeInterval: 0.02) }
+                attempt = 0
+                continue
+            }
             main { self.delegate?.connection(self, phase: "disconnected", detail: gotHello ? "the device stopped or the link dropped" : nil) }
             Thread.sleep(forTimeInterval: 1)
         }
@@ -259,6 +281,10 @@ public final class ViewerConnection: @unchecked Sendable {
         case .status(let s):
             main { self.delegate?.connection(self, status: s) }
         case .notice(let text):
+            if text == DisplayNotice.takenOver {
+                let quiet = lock.withLock { () -> Bool in takenOver = true; return expectingTakeover }
+                if quiet { return }
+            }
             main { self.delegate?.connection(self, notice: text) }
         case .displayState(let state):
             // Another panel (or turn): its frames follow, starting with a full one.

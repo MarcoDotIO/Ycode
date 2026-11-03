@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// A branch's history in the editor area (`reference-ui-4.md` §2.5–§2.6):
 /// a scope bar with a filter, one row per commit, and a commit detail pane

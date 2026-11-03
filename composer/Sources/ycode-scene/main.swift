@@ -1,0 +1,2 @@
+import SceneComposerCLI
+SceneComposerCLI.main()

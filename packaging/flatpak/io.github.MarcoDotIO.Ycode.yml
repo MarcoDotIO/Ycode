@@ -1,0 +1,153 @@
+# The Ycode Flatpak (packaging/README.md). Built by build-flatpak.sh, which
+# writes source/ycode-source.tar from the committed tree and, on aarch64,
+# enables the lines marked aarch64-only below. Every download is pinned by
+# SHA-256; the build itself has no network.
+id: io.github.MarcoDotIO.Ycode
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm20
+command: ycode-ide
+finish-args:
+  # The window: Wayland, or X11 where there is no Wayland; the GPU for the renderer.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Sound from a simulator device.
+  - --socket=pulseaudio
+  # Packages, coding assistants and the link to a simulator host.
+  - --share=network
+  - --socket=ssh-auth
+  # Projects. The host's toolchain must see them at the same paths, so this is
+  # the home folder and /tmp rather than a portal's private paths.
+  - --filesystem=home
+  - --filesystem=/tmp
+  # flatpak-spawn --host reaches the host's Swift toolchain. This gives Ycode
+  # the right to run anything on the host as you: the app is not really
+  # sandboxed (packaging/README.md says so plainly).
+  - --talk-name=org.freedesktop.Flatpak
+  # The wrappers for host tools come first (Ycode's tools also arrange this
+  # themselves, relative to where they are: YcodeRelease.adoptBundledHelpers).
+  - --env=PATH=/app/libexec/ycode-host:/app/bin:/usr/bin
+  #aarch64-only: - --device=kvm
+build-options:
+  no-debuginfo: true
+cleanup:
+  - /swift
+  - /include
+  - /bin/spirv-*
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/cmake
+  - '*.a'
+  - '*.la'
+modules:
+  # The Swift toolchain, for this build only (cleaned up above). The app runs
+  # with the host's toolchain; only the runtime libraries it needs are kept.
+  - name: swift-toolchain
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/swift
+      - cp -a usr /app/swift/
+    sources:
+      - type: archive
+        only-arches: [x86_64]
+        url: https://download.swift.org/swift-6.4.2-release/ubuntu2404/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-ubuntu24.04.tar.gz
+        sha256: 2e9ebec040ad459dd89a6d093a02d8314939135104850fae4d5c0f174fb3ba8c
+      - type: archive
+        only-arches: [aarch64]
+        url: https://download.swift.org/swift-6.4.2-release/ubuntu2404-aarch64/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-ubuntu24.04-aarch64.tar.gz
+        sha256: 307772afcc0b9501faa4797eb4197076facf5768593a0d8d2b83615c95b0040e
+
+  # The toolchain's lld and Foundation's XML library need libxml2.so.2; the runtime
+  # has a newer soname. Built next to the toolchain's libraries, where their search
+  # paths find it; build-ycode.sh copies it to the package with the Swift runtime.
+  - name: libxml2-for-toolchain
+    buildsystem: autotools
+    config-opts:
+      - --prefix=/app/swift/usr
+      - --without-python
+      - --without-icu
+      - --without-lzma
+      - --without-zlib
+      - --disable-static
+    post-install:
+      # SwiftPM and Foundation search here.
+      - cp -a /app/swift/usr/lib/libxml2.so* /app/swift/usr/lib/swift/linux/
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libxml2/2.13/libxml2-2.13.9.tar.xz
+        sha256: a2c9ae7b770da34860050c309f903221c67830c86e4a7e760692b803df95143a
+
+  # libcurl with the versioned symbols the Swift toolchain's FoundationNetworking
+  # was linked against (CURL_OPENSSL_4); the runtime's libcurl has none, and the
+  # loader warns on every start.
+  - name: curl
+    buildsystem: autotools
+    config-opts:
+      - --with-openssl
+      - --enable-versioned-symbols
+      - --disable-static
+      - --disable-manual
+      - --disable-docs
+      - --disable-ldap
+      - --without-libpsl
+    cleanup:
+      - /bin/curl
+      - /bin/curl-config
+      - /bin/wcurl
+      - /share/aclocal
+      - /share/man
+    sources:
+      - type: archive
+        url: https://github.com/curl/curl/releases/download/curl-8_23_0/curl-8.23.0.tar.xz
+        sha256: 8dadd7d2536a314f982ad05a651b713f426bf7d02cc2c76cffb9796f2218e6c5
+
+  # SDL 3 for the IDE's windows and the device viewer (loaded at run time).
+  # The version the toolkit was written against; the runtime's is older.
+  - name: sdl3
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DSDL_STATIC=OFF
+      - -DSDL_TESTS=OFF
+      - -DSDL_INSTALL_TESTS=OFF
+      - -DSDL_EXAMPLES=OFF
+    sources:
+      - type: archive
+        url: https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz
+        sha256: f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f
+
+  # The shader translator links SPIRV-Tools statically (aarch64: the simulator's tools).
+  - name: spirv-tools
+    only-arches: [aarch64]
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DSPIRV_SKIP_TESTS=ON
+      - -DSPIRV_WERROR=OFF
+    sources:
+      - type: archive
+        url: https://github.com/KhronosGroup/SPIRV-Tools/archive/refs/tags/vulkan-sdk-1.4.363.0.tar.gz
+        sha256: e6c83a215538fbfd265ccf398d3877985055df1273dbed73912bd05307664688
+      - type: archive
+        url: https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/vulkan-sdk-1.4.363.0.tar.gz
+        sha256: 5b3a0d099f5c7649e29c0938476c462e71d66ad89a0bde42fa1ba3eb476956c9
+        dest: external/spirv-headers
+
+  - name: ycode
+    buildsystem: simple
+    build-options:
+      strip: true
+      append-path: /app/swift/usr/bin
+    build-commands:
+      - sh packaging/flatpak/build-ycode.sh
+    sources:
+      - type: archive
+        path: source/ycode-source.tar
+        strip-components: 0
+      - swift-dependencies.json

@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// Connects the Source Control navigator, the commit editor and branch
 /// history (shown over the editor area), the inspector's Source Control
@@ -28,6 +29,8 @@ public final class SourceControlCoordinator {
     /// The git command running in the background (Integrate menu), if any;
     /// later commands wait for it.
     private var operation: Task<Void, Never>?
+    /// The last merge, rebase, pick or stash apply's result.
+    var integrationResult: GitRepository.IntegrationResult?
     private var operationID = 0
 
     /// Outside changes (FSEvents on the repository) and the app becoming
@@ -41,6 +44,7 @@ public final class SourceControlCoordinator {
         watchesForChanges = !WorkspaceWindowController.isTestProcess
         owner.navigator.onSourceControlRow = { [weak self] key in self?.handleRow(key) }
         owner.navigator.onSourceControlMode = { [weak self] m in self?.setMode(m) }
+        owner.navigator.sourceControlRowMenu = { [weak self] key in self?.rowMenuItems(forKey: key) ?? [] }
         guard watchesForChanges else { return }
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
@@ -85,7 +89,7 @@ public final class SourceControlCoordinator {
         switch mode {
         case .changes:
             owner.navigator.setSourceControlRoots(SourceControlNavigatorModel.changesTree(
-                repository: name, branch: branch, changes: snapshot.changes, root: repo.root))
+                repository: name, branch: branch, changes: snapshot.changes, root: repo.root, integration: snapshot.integration))
         case .repositories:
             owner.navigator.setSourceControlRoots(SourceControlNavigatorModel.repositoriesTree(
                 repository: name, branch: branch, branches: snapshot.branches, recents: snapshot.recentBranches,
@@ -93,6 +97,7 @@ public final class SourceControlCoordinator {
                 remoteBranches: snapshot.remoteBranches))
         }
         if let c = commitEditor, c.isViewLoaded { c.reload() }
+        if let c = conflictEditor, c.isViewLoaded { c.update(integration: snapshot.integration, conflicted: snapshot.changes.filter { $0.status == .conflicted }.map(\.path)) }
     }
 
     /// Re-reads git in the background, then updates the status letters,
@@ -154,6 +159,7 @@ public final class SourceControlCoordinator {
             if let t = refreshTask { await t.value; continue }
             if let c = commitEditor, c.loading != nil || c.working != nil { await c.idle(); continue }
             if let h = history, h.loading != nil || h.inspectorLoading != nil { await h.idle(); continue }
+            if let c = conflictEditor, c.loading != nil { await c.idle(); continue }
             return
         }
     }
@@ -164,7 +170,11 @@ public final class SourceControlCoordinator {
         guard repository != nil else { return }
         if key.hasPrefix("change:") {
             selectedChange = String(key.dropFirst(7))
-            showCommitEditor(focus: selectedChange)
+            if let p = selectedChange, snapshot.changes.contains(where: { $0.path == p && $0.status == .conflicted }) {
+                showConflictEditor(path: p)
+            } else {
+                showCommitEditor(focus: selectedChange)
+            }
         } else if key == "repository" {
             selectedChange = nil
             if mode == .changes { showCommitEditor(focus: nil) } else if let b = snapshot.currentBranch { showHistory(ref: b, branch: b) }
@@ -284,6 +294,8 @@ public final class SourceControlCoordinator {
             if let c = changes.first(where: { $0.path == f }) { s.selectedStatus = c.status; s.selectedIsStaged = c.isStaged }
         }
         s.selectedCommit = history?.selectedCommit?.hash
+        s.integration = snapshot.integration
+        s.conflictCount = changes.filter { $0.status == .conflicted }.count
         return s
     }
 
@@ -296,7 +308,8 @@ public final class SourceControlCoordinator {
 
     /// Runs `body` off the main thread after the previous command; then
     /// presents its error, refreshes, and reloads the history.
-    func runInBackground(body: @escaping @Sendable () throws -> Void, then: (@MainActor () -> Void)? = nil) {
+    func runInBackground(body: @escaping @Sendable () throws -> Void, then: (@MainActor () -> Void)? = nil,
+                         failure handle: (@MainActor (any Error) -> Bool)? = nil) {
         let previous = operation
         operationID += 1
         let id = operationID
@@ -306,7 +319,7 @@ public final class SourceControlCoordinator {
                 do { try body(); return nil } catch { return GitFailure(error: error) }
             }.value
             guard let self else { return }
-            if let failure, self.owner.window?.isVisible == true { self.owner.presentError(failure.error) }
+            if let failure, handle?(failure.error) != true, self.owner.window?.isVisible == true { self.owner.presentError(failure.error) }
             then?()
             self.owner.refreshFileStatus(nil)
             if let h = self.history { h.reload() }
@@ -379,7 +392,7 @@ extension WorkspaceWindowController {
     @objc public func scmCherryPick(_ sender: Any?) {
         guard let c = sourceControl.history?.selectedCommit else { return }
         guard sourceControl.confirm("Cherry-pick \"\(c.subject)\"?", "Applies commit \(c.shortHash) on top of the current branch.", "Cherry-Pick") else { return }
-        sourceControl.perform { try $0.cherryPick(c.hash) }
+        sourceControl.cherryPick(c.hash)
     }
     @objc public func scmStash(_ sender: Any?) {
         let message = window?.isVisible == true ? sourceControl.prompt("Stash Changes", "Saves uncommitted changes and untracked files to a stash.", placeholder: "Description") : ""
@@ -401,11 +414,20 @@ extension WorkspaceWindowController {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
+        panel.canCreateDirectories = true
         panel.prompt = "Clone"
         guard panel.runModal() == .OK, let dir = panel.url else { return }
-        let name = URL(string: url)?.deletingPathExtension().lastPathComponent ?? "Repository"
-        let target = dir.appendingPathComponent(name)
-        sourceControl.runInBackground(body: { try GitRepository.clone(url, into: target) })
+        let target = dir.appendingPathComponent(GitRepository.cloneFolderName(for: url))
+        let progress = CloneProgressSheet.begin(name: target.lastPathComponent, on: window)
+        sourceControl.runInBackground(body: { try GitRepository.clone(url, into: target) }, then: {
+            progress?.end()
+            // The clone opens in its own window, as from the Welcome window.
+            if let ws = WelcomeWindowController.workspace(in: target), FileManager.default.fileExists(atPath: target.path) {
+                NSDocumentController.shared.openDocument(withContentsOf: ws, display: true) { _, _, error in
+                    if let error { NSApp.presentError(error) }
+                }
+            }
+        })
     }
     @objc public func scmNewRepository(_ sender: Any?) {
         let u = session.model.url

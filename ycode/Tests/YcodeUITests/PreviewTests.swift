@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeDebug
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -49,8 +50,10 @@ func nonBlankPixels(_ png: URL) throws -> Int {
     return n
 }
 
+/// The time limit covers the wait for the machine-wide debugger-test lock,
+/// which other test runs may hold for many minutes.
 @MainActor
-@Suite(.serialized, .heavyIntegration, .timeLimit(.minutes(10))) struct PreviewTests {
+@Suite(.serialized, .heavyIntegration, .previewHostCheck, .timeLimit(.minutes(30))) struct PreviewTests {
     @Test func discovery() {
         let p = PreviewDiscovery.previews(in: previewSource)
         #expect(p.map(\.name) == ["Small", "Preview", "Badge_Previews"])
@@ -104,6 +107,8 @@ func nonBlankPixels(_ png: URL) throws -> Int {
         wc.window?.appearance = NSAppearance(named: .aqua)
         wc.applyDefaultLayout()
         wc.previewWorkDirectory = ycodeDir.appendingPathComponent(".build-ide/previews/work-canvas")
+        // The canvas's Mac preview host ends with the test (also on a failure).
+        defer { PreviewRenderer.stopMacHosts() }
         wc.canvasRefreshDelay = 0.1
         wc.open(path: file.path, line: nil)
         // Shown by itself for a file with previews (reference-ui-6.md §4.4).
@@ -163,5 +168,189 @@ func nonBlankPixels(_ png: URL) throws -> Int {
         #expect(throws: PreviewRenderer.Failure.self) {
             try PreviewRenderer.packageModule(for: pkg.appendingPathComponent("Package.swift"), packageDirectory: pkg)
         }
+    }
+}
+
+/// macOS previews through a payload loaded into the long-lived Mac host
+/// (specs/ide/previews.md §The macOS host): same PNGs as the SwiftPM host,
+/// and an edit costs one payload compile.
+/// The time limit covers the wait for the machine-wide debugger-test lock,
+/// which other test runs may hold for many minutes.
+@MainActor
+@Suite(.serialized, .heavyIntegration, .previewHostCheck, .timeLimit(.minutes(30))) struct MacPayloadPreviewTests {
+    @Test func rendersThroughPayloadsAndRefreshesFast() async throws {
+        let heavy = await InterprocessLock.acquire(path: InterprocessLock.debuggerTestLockPath)
+        defer { heavy.unlock() }
+        // Every host this test starts ends with it, whatever happens; no
+        // request waits longer than a minute.
+        MacPreviewHostProcess.requestTimeout = 60
+        defer {
+            PreviewRenderer.stopMacHosts()
+            MacPreviewHostProcess.requestTimeout = 120
+        }
+        let pkg = try PreviewTests().makePackage("payload", source: previewSource)
+        let file = pkg.appendingPathComponent("Sources/Views/Badge.swift")
+        let module = try PreviewRenderer.packageModule(for: file, packageDirectory: pkg)
+        let work = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-mac-payload-\(getpid())")
+        let renderer = PreviewRenderer(workDirectory: work)
+        let t1 = TimingBox(), t2 = TimingBox()
+        let start = Date()
+        let out = try await offMain {
+            try renderer.renderWithPayload(module: module, file: file, previews: PreviewDiscovery.previews(in: previewSource), schemes: [.light, .dark]) { t1.append($0) }
+        }
+        let first = Date().timeIntervalSince(start)
+        #expect(out.map(\.name) == ["Small", "Preview", "Badge_Previews", "Small", "Preview", "Badge_Previews"])
+        for r in out { #expect(try nonBlankPixels(r.png) > 50, "\(r.name) \(r.scheme)") }
+        let small = try #require(NSBitmapImageRep(data: try Data(contentsOf: out[0].png)))
+        #expect(small.size == NSSize(width: 120, height: 60))
+        // An edit of a body: one compile, the host stays.
+        let edited = previewSource.replacingOccurrences(of: "Badge(text: \"Hi\")", with: "Badge(text: \"Hello there\")")
+        try edited.write(to: file, atomically: true, encoding: .utf8)
+        let s2 = Date()
+        let out2 = try await offMain {
+            try renderer.renderWithPayload(module: module, file: file, previews: PreviewDiscovery.previews(in: edited), schemes: [.light]) { t2.append($0) }
+        }
+        let refresh = Date().timeIntervalSince(s2)
+        let wide = try #require(NSBitmapImageRep(data: try Data(contentsOf: out2[0].png)))
+        #expect(wide.size == NSSize(width: 120, height: 60) && out2.count == 3)
+        print(String(format: "mac payload previews: first %.2f s (compile+host build %.2f, render %.2f); refresh after an edit %.2f s (compile %.2f, render %.2f)",
+                     first, t1.values.first?.build ?? -1, t1.values.first?.run ?? -1, refresh, t2.values.first?.build ?? -1, t2.values.first?.run ?? -1))
+        // A compile error maps to the user's file and line.
+        let broken = previewSource.replacingOccurrences(of: "Badge(text: \"Hi\")", with: "Badge(text: nope)")
+        try broken.write(to: file, atomically: true, encoding: .utf8)
+        do {
+            _ = try await offMain { try renderer.renderWithPayload(module: module, file: file, previews: PreviewDiscovery.previews(in: broken)) }
+            Issue.record("expected a build failure")
+        } catch let e as PreviewRenderer.Failure {
+            #expect(e.description.hasPrefix("Badge.swift:15: cannot find 'nope' in scope"), "\(e.description)")
+        }
+        PreviewRenderer.stopMacHosts()
+        #expect(PreviewRenderer.macHostPIDs.isEmpty)
+        #expect(ProcessAudit.leftovers(grace: 5) { $0.name.hasPrefix("YcodePreviewMac") }.isEmpty)
+        try? FileManager.default.removeItem(at: work)
+    }
+}
+
+/// The Mac preview host never outlives its parent and no wait on it is
+/// unbounded (specs/ide/previews.md §The macOS host).
+@MainActor
+@Suite(.serialized, .heavyIntegration, .previewHostCheck, .timeLimit(.minutes(10))) struct MacPreviewHostLifetimeTests {
+    func script(_ body: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-fake-host-\(UUID().uuidString)")
+        try "#!/bin/sh\n\(body)\n".write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        return url
+    }
+
+    func alive(_ pid: pid_t) -> Bool { kill(pid, 0) == 0 }
+
+    nonisolated static let request = PreviewMacHost.Request(generation: 1, payload: "/nonexistent", output: "/tmp", schemes: ["light"], items: [])
+
+    @Test(.timeLimit(.minutes(2))) func aHungHostIsKilledAfterTheRequestTimeout() async throws {
+        // A host that reads nothing, never answers, and ignores SIGTERM.
+        let exe = try script("trap '' TERM\nwhile :; do sleep 1; done")
+        defer { try? FileManager.default.removeItem(at: exe) }
+        let h = try MacPreviewHostProcess(executable: exe)
+        MacPreviewHostProcess.requestTimeout = 1.5
+        defer { MacPreviewHostProcess.requestTimeout = 120; h.stop(grace: 0.2) }
+        let started = Date()
+        let r = try await offMain { h.send(Self.request, newPayload: true) }
+        let took = Date().timeIntervalSince(started)
+        #expect(r == nil)
+        // The timeout, then end of input, SIGTERM and SIGKILL, each with a short grace.
+        #expect(took >= 1.5 && took < 10, "\(took)")
+        #expect(!h.process.isRunning && h.process.terminationReason == .uncaughtSignal)
+    }
+
+    @Test(.timeLimit(.minutes(2))) func aHostThatClosedItsInputFailsTheRequestAtOnce() async throws {
+        // Writing to it fails (EPIPE, no SIGPIPE for this process); it is stopped.
+        // It says when its input is closed (a file next to it), so the request
+        // never races the shell's start.
+        let exe = try script("trap '' TERM\nexec 0</dev/null\ntouch \"$0.closed\"\nwhile :; do sleep 1; done")
+        let marker = exe.path + ".closed"
+        defer { try? FileManager.default.removeItem(at: exe); try? FileManager.default.removeItem(atPath: marker) }
+        let h = try MacPreviewHostProcess(executable: exe)
+        MacPreviewHostProcess.requestTimeout = 20
+        defer { MacPreviewHostProcess.requestTimeout = 120; h.stop(grace: 0.2) }
+        #expect(await waitUntil(30) { FileManager.default.fileExists(atPath: marker) })
+        let started = Date()
+        let r = try await offMain { h.send(Self.request, newPayload: true) }
+        let took = Date().timeIntervalSince(started)
+        #expect(r == nil && !h.process.isRunning)
+        // Well before the request timeout: the write failed.
+        #expect(took < 10, "\(took)")
+    }
+
+    @Test(.timeLimit(.minutes(2))) func stoppingEndsAHostThatIgnoresSIGTERM() async throws {
+        let exe = try script("trap '' TERM\nwhile :; do sleep 1; done")
+        defer { try? FileManager.default.removeItem(at: exe) }
+        let h = try MacPreviewHostProcess(executable: exe)
+        let started = Date()
+        await Task.detached { h.stop(grace: 0.5) }.value
+        #expect(!h.process.isRunning && Date().timeIntervalSince(started) < 5)
+    }
+
+    @Test(.timeLimit(.minutes(5))) func theRealHostEndsWithItsInputAndWithItsParent() async throws {
+        let work = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-host-lifetime-\(getpid())")
+        try? FileManager.default.removeItem(at: work)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let exe = try await offMain { try PreviewMacHost.build(deploymentTarget: PreviewMacHost.deploymentTarget(sdkVersion: PreviewRenderer.macSDKVersion()), workDirectory: work) }
+        // The process audit sees it under its full name.
+        let h = try MacPreviewHostProcess(executable: exe)
+        #expect(ProcessAudit.children().contains { $0.pid == h.pid && $0.name == PreviewMacHost.executableName })
+        // End of input: the host ends by itself (an exit, not a signal).
+        await Task.detached { h.stop(grace: 10) }.value
+        #expect(!h.process.isRunning && h.process.terminationReason == .exit)
+
+        // Its parent goes away while its input stays open: it ends within a few seconds.
+        let fifo = work.appendingPathComponent("in.fifo").path
+        #expect(mkfifo(fifo, 0o600) == 0)
+        let sh = Process()
+        sh.executableURL = URL(fileURLWithPath: "/bin/sh")
+        // The shell becomes `sleep` (same pid), the host's parent, until it is killed.
+        sh.arguments = ["-c", "\"$0\" 3<>\"$1\" <\"$1\" >/dev/null 2>&1 & echo $!; exec sleep 60", exe.path, fifo]
+        let pipe = Pipe()
+        sh.standardOutput = pipe
+        sh.standardInput = FileHandle.nullDevice
+        try sh.run()
+        defer { if sh.isRunning { sh.terminate() } }
+        let reader = pipe.fileHandleForReading
+        let first = try await offMain { () -> String in
+            var text = ""
+            while !text.contains("\n") {
+                let d = reader.availableData
+                if d.isEmpty { break }
+                text += String(decoding: d, as: UTF8.self)
+            }
+            return text
+        }
+        let pid = pid_t(first.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        try #require(pid > 0)
+        defer { if alive(pid) { kill(pid, SIGKILL) } }
+        // Running, with the shell as its parent (it would have ended at once without one).
+        try await Task.sleep(for: .seconds(2))
+        #expect(alive(pid))
+        sh.terminate()
+        let gone = await waitUntil(10) { !alive(pid) }
+        #expect(gone)
+    }
+
+    @Test(.timeLimit(.minutes(5))) func theCheckFailsATestThatLeavesAHostRunning() async throws {
+        let work = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-host-check-\(getpid())")
+        try? FileManager.default.removeItem(at: work)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let exe = try await offMain { try PreviewMacHost.build(deploymentTarget: PreviewMacHost.deploymentTarget(sdkVersion: PreviewRenderer.macSDKVersion()), workDirectory: work) }
+        final class PidBox: @unchecked Sendable { var pid: pid_t = 0 }
+        let box = PidBox()
+        let test = try #require(Test.current)
+        // A test body that starts a host and forgets it: the check records an
+        // issue (expected here) and kills the host.
+        await withKnownIssue("the check reports the host the body left running") {
+            try await PreviewHostCheckTrait().provideScope(for: test, testCase: Test.Case.current) {
+                box.pid = try MacPreviewHostProcess(executable: exe).pid
+            }
+        }
+        #expect(box.pid > 0)
+        #expect(await waitUntil(10) { ProcessAudit.children().allSatisfy { $0.pid != box.pid } })
     }
 }

@@ -175,7 +175,7 @@ It was not built or run, for the reasons in §1.
 
 ### 4.1 Build attempt (follow-up, same day)
 
-The owner installed the prerequisite packages from `debian/control`. All
+The prerequisite packages were installed by hand from `debian/control`. All
 of them are now present except `git-lfs`, and nobody has checked yet
 whether a submodule needs LFS. The build has **not** been done yet.
 Fetching the 151 submodules (shallow, the PR author's forks first, then
@@ -186,7 +186,7 @@ the build:
 
 - **The data volume is mounted `nosuid`.** A setuid-root `darling` placed
   in a prefix on `$YCODE_DATA` would never gain root. The chosen run mode is
-  therefore no setuid file at all: the owner starts each session with
+  therefore no setuid file at all: a person with sudo starts each session with
   `sudo <prefix>/bin/darling shell`. The launcher checks only that the
   effective uid is 0, and `nosuid` does not affect a process that is
   already root. Under `sudo`, the real uid it records is 0, so the prefix
@@ -213,7 +213,7 @@ the build:
     `apparmor_restrict_unprivileged_userns = 1` is set. This does not
     matter here, because Darling creates its namespaces as root;
   - 48-bit VA, 4 KiB pages, and `mmap_min_addr = 32768`.
-- **Prepared benchmark.** A runner script for the owner and a small Darwin
+- **Prepared benchmark.** A runner script for someone with sudo and a small Darwin
   test program (`machrt`, public Mach API only) are staged in the scratch
   tree. The program measures library `getppid`, `mach_absolute_time`, and
   a Mach message round trip between two tasks. On the Mac, under native
@@ -280,7 +280,7 @@ scope and failure modes only.**
      But a private, intimate RPC protocol that passes Mach-internal
      structures is the grey area the FSF FAQ warns about. It would also
      bring the setuid-root and namespace requirements. Not recommended.
-     (This is not legal advice. The owner decides.)
+     (This is not legal advice.)
 3. **What to take from Kakehashi into our own specs** (behaviour, not
    code):
    - An in-process crossing that saves all 32 Q registers and FPCR/FPSR,

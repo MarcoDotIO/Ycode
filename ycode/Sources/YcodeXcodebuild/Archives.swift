@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSigning
 
 /// `archive` (the `.xcarchive` bundle) and `-exportArchive`.
 /// See `specs/xcodebuild/archive.md`.
@@ -117,8 +118,16 @@ enum Archives {
             return fail("exportArchive: ycodebuild exports only with method mac-application (ad hoc signing) yet.", ExitCode.software)
         }
         let certificate = options["signingCertificate"] as? String
+        // Another certificate: an identity from the keychain (a kind such as
+        // "Developer ID Application", a full name or a SHA-1 hash), of the
+        // options' team when given. Read-only; see specs/ide/signing.md §5.
+        var identity: SigningIdentity?
         if let c = certificate, c != "-" {
-            return fail("exportArchive: ycodebuild signs exports only ad hoc (signingCertificate \"-\") yet.", ExitCode.software)
+            let teamID = (options["teamID"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            guard let found = IdentitySelector.candidates(c, team: teamID, in: Keychain.identities(), now: Date()).first else {
+                return fail("exportArchive: No signing certificate \"\(c)\" found\(teamID.map { " for team \"\($0)\"" } ?? "") in the keychain.", ExitCode.software)
+            }
+            identity = found
         }
         let source = archive + "/Products/" + appPath
         let dest = exportPath + "/" + URL(fileURLWithPath: appPath).lastPathComponent
@@ -133,6 +142,10 @@ enum Archives {
         // not signed ad hoc already.
         if certificate == "-", !isAdHocSigned(dest), !resignAdHoc(dest) {
             return fail("exportArchive: codesign failed for \(dest).", ExitCode.software)
+        }
+        // With an identity, every nested item is signed before its container.
+        if let identity, let why = CodesignCommand.resign(bundle: URL(fileURLWithPath: dest), identity: identity.hash) {
+            return fail("exportArchive: \(why).", ExitCode.software)
         }
         console.out("Exported \(name) to: \(PathText.withoutPrivatePrefix(exportPath))")
         console.out("** EXPORT SUCCEEDED **")

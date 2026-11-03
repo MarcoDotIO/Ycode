@@ -7,12 +7,17 @@ extension NavigatorAreaController {
     /// capsule's ends.
     static let plusSize = NSSize(width: 31, height: GlassBars.height)
     static let filterInset: CGFloat = 4
+    /// From the "+" circle's right edge to the filter capsule: the
+    /// reference's circle spans x 6–36 and its capsule x 42–283 (242
+    /// wide), so 5 points (`liquid-glass.md` §2.3; `specs/ide/metrics.md`
+    /// §2). It was 6, which made the capsule 241 wide.
+    static let plusToFilter: CGFloat = 5
     /// The selected icon's recessed pill.
     static let selectorPillSize = NSSize(width: 30, height: 24)
 
     /// Places the capsules around their controls: the selector bar
     /// (278 × 30 at a 290-point width, 6 from each side), the "+" circle
-    /// (31 × 30, 6 from the leading edge) and the filter capsule (6 after
+    /// (31 × 30, 6 from the leading edge) and the filter capsule (5 after
     /// the "+", 6 from the trailing edge, 7 above the window's bottom).
     func installGlassBars(_ root: NSView) {
         let field = filter
@@ -45,9 +50,8 @@ extension NavigatorAreaController {
     }
 
     /// The outline runs under the bars to the window's top and bottom
-    /// edges, its first row where the clipped layout put it; with header
-    /// rows shown (Find, Source Control, Tests, Reports) it is clipped
-    /// below them as before.
+    /// edges; with header rows shown (Find, Source Control, Tests, Reports)
+    /// it is clipped below them as before.
     func setOutlineUnderBars(_ under: Bool) {
         guard GlassBars.enabled, !underBarsScroll.isEmpty else { return }
         if under {
@@ -56,24 +60,47 @@ extension NavigatorAreaController {
         } else {
             NSLayoutConstraint.deactivate(underBarsScroll)
             NSLayoutConstraint.activate(clippedScrollConstraints)
-            setOutlineInsets(NSEdgeInsets())
         }
         scrollClipView.clipsToBounds = !under
+        updateOutlineInsets()
     }
 
-    /// After layout: the content insets that keep the first row and the
-    /// last one where the clipped layout put them, and the pill under the
-    /// selected icon.
+    /// After layout: the pill under the selected icon.
     func updateGlassLayout() {
         guard GlassBars.enabled, isViewLoaded else { return }
         selectorPill.follow(selectorButtons.first { $0.state == .on }, size: Self.selectorPillSize)
-        guard underBarsScroll.first?.isActive == true else { return }
+    }
+
+    /// The outline's own padding above its first row, in the scroll view's
+    /// document coordinates: measured once a row exists (the source-list
+    /// style pads it in a plain window but not in the window's sidebar),
+    /// remembered while the outline is empty.
+    var outlineTopPadding: CGFloat {
+        let o = outlineView
+        guard o.numberOfRows > 0 else { return measuredOutlineTopPadding.value }
+        let pad = scrollView.contentView.convert(o.rect(ofRow: 0), from: o).minY
+        measuredOutlineTopPadding.value = pad
+        return pad
+    }
+
+    /// The content insets that put the first row `firstRowGap` below the
+    /// selector bar (under the bars) or `clipToFirstRow` below the clipping
+    /// container's top (header rows shown, or before macOS 26), and keep
+    /// the last row above the bottom bar's capsules. `reference-ui-6.md`
+    /// §5.3 (N3), `specs/ide/metrics.md` §2.
+    func updateOutlineInsets() {
+        guard isViewLoaded else { return }
         let root = view
-        let clip = scrollClipView.frame
-        let top = root.bounds.maxY - clip.maxY + Self.firstRowGap - Self.selectorToContent - Self.sourceListTopPadding
-        // The last row clears the bottom bar's capsules.
-        let bottom = max(clip.minY, filterGlass.frame.maxY + 2)
-        setOutlineInsets(NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0))
+        let pad = outlineTopPadding
+        if GlassBars.enabled, underBarsScroll.first?.isActive == true {
+            // The scroll view starts at the area's top edge.
+            let selectorBottom = root.bounds.maxY - selectorView.frame.minY
+            let top = selectorBottom + Self.firstRowGap - pad
+            let bottom = max(scrollClipView.frame.minY, filterGlass.frame.maxY + 2)
+            setOutlineInsets(NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0))
+        } else {
+            setOutlineInsets(NSEdgeInsets(top: Self.clipToFirstRow - pad, left: 0, bottom: 0, right: 0))
+        }
     }
 
     private func setOutlineInsets(_ insets: NSEdgeInsets) {
@@ -88,4 +115,10 @@ extension NavigatorAreaController {
             scroll.reflectScrolledClipView(scroll.contentView)
         }
     }
+}
+
+/// The last measured padding above the outline's first row (a class so the
+/// controller's extension can update it from a getter).
+final class OutlinePaddingBox {
+    var value: CGFloat = 0
 }

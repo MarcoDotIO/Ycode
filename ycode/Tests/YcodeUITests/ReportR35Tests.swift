@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeBuild
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// reference-ui-5.md §11.3 (P12): every Tests-page filter pop-up works and

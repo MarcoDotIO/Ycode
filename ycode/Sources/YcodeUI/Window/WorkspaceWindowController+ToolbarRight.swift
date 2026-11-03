@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The toolbar's right group and the Adjust Editor Options menu
 /// (`specs/ide/reference-ui-4.md` §14, `reference-ui-6.md` §2.1).
@@ -23,11 +24,11 @@ public enum EditorOptionsMenu {
             .command(.init("Side By Side Comparison", "", [], "showSideBySideComparison:")),
             .separator,
             .command(.init("Minimap", "", [], "toggleMinimap:")),
-            u("Authors"),
+            .command(.init("Authors", "", [], "toggleAuthors:")),
             u("Code Coverage"),
             .separator,
-            u("Invisibles"),
-            u("Scope Guides"),
+            .command(.init("Invisibles", "", [], "toggleInvisibles:")),
+            .command(.init("Scope Guides", "", [], "toggleScopeGuides:")),
             .command(.init("Wrap Lines", "", [], "toggleWrapLines:")),
             .separator,
             .command(.init("Choose Workspace Theme…", "", [], "chooseTheme:")),
@@ -249,45 +250,11 @@ extension WorkspaceWindowController {
     }
 }
 
-/// How the toolbar recovers room (`reference-ui-6.md` §2.2): each step
-/// adds to the previous one.
-public struct ToolbarFit: Equatable, Sendable {
-    /// The editor-mode capsule is one pull-down.
-    public var editorModesCollapsed = false
-    /// The scheme pop-up's width cap (nil: its whole name).
-    public var schemeWidth: CGFloat?
-    /// The activity view's width cap (nil: its whole subtitle).
-    public var activityWidth: CGFloat?
-    public init(editorModesCollapsed: Bool = false, schemeWidth: CGFloat? = nil, activityWidth: CGFloat? = nil) {
-        self.editorModesCollapsed = editorModesCollapsed
-        self.schemeWidth = schemeWidth
-        self.activityWidth = activityWidth
+extension WorkspaceChrome.ToolbarItem {
+    /// The item's symbols as AppKit images (the tooltips as descriptions,
+    /// or `descriptions`).
+    @MainActor func images(descriptions: [String]? = nil) -> [NSImage] {
+        zip(symbols, descriptions ?? toolTips).map { NSImage(systemSymbolName: $0, accessibilityDescription: $1)! }
     }
-
-    /// The narrowest the scheme pop-up and the activity view get.
-    public static let schemeMinimum: CGFloat = 56
-    public static let activityMinimum: CGFloat = 72
-
-    /// The steps in order, from nothing collapsed to the tightest: fold the
-    /// editor modes; then shorten the scheme name in steps down to
-    /// `schemeMinimum`; then the activity view down to `activityMinimum`.
-    public static func steps(schemeNatural: CGFloat, activityNatural: CGFloat) -> [ToolbarFit] {
-        var out = [ToolbarFit(), ToolbarFit(editorModesCollapsed: true)]
-        func shrink(_ natural: CGFloat, _ minimum: CGFloat) -> [CGFloat] {
-            var widths: [CGFloat] = []
-            var w = natural
-            while w > minimum {
-                w = max(minimum, (w - max(24, natural * 0.15)).rounded(.down))
-                widths.append(w)
-            }
-            return widths
-        }
-        let scheme = shrink(schemeNatural, schemeMinimum)
-        for w in scheme { out.append(ToolbarFit(editorModesCollapsed: true, schemeWidth: w)) }
-        let schemeLast = scheme.last
-        for w in shrink(activityNatural, activityMinimum) {
-            out.append(ToolbarFit(editorModesCollapsed: true, schemeWidth: schemeLast, activityWidth: w))
-        }
-        return out
-    }
+    @MainActor var images: [NSImage] { images() }
 }

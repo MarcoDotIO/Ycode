@@ -1,4 +1,4 @@
-# SwiftLint configuration for ycode/ and frameworks/.
+# SwiftLint configuration for ycode/, frameworks/ and composer/.
 # Run it with ycode/scripts/lint.sh (or `swiftlint lint` from the repository root).
 # Test directories carry a nested .swiftlint.yml that relaxes a few rules.
 #
@@ -16,6 +16,9 @@ included:
   - ycode/Tests
   - ycode/Tools
   - frameworks
+  - composer/Package.swift
+  - composer/Sources
+  - composer/Tests
 
 excluded:
   - "**/.build"

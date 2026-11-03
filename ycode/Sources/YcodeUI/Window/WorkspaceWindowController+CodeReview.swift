@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// Code Review mode (`specs/ide/reference-ui-4.md` §15): inline or side by
 /// side, the change stepper, swapping, and the source picker.

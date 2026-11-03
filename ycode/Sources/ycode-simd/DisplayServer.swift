@@ -26,6 +26,9 @@ protocol GuestInputSink: AnyObject {
     var buttons: [DisplayButton] { get }
     /// Delivers one event to the guest; false when it was dropped.
     func deliver(_ input: DisplayInput) -> Bool
+    /// visionOS, the headset mode (xr-viewer.md §4): the rendered camera
+    /// (an eye, or the head) and vhmdd's device pose (the head) apart.
+    func deliver(viewPose: SpatialPose, devicePose: SpatialPose) -> Bool
     /// The viewer went away: touches still down are cancelled, keys and
     /// buttons still down are released (no stuck state, hid-input.md §7.5).
     func reset()
@@ -174,6 +177,9 @@ final class DisplayServer: @unchecked Sendable {
     /// A device command from the viewer (0x90; the control socket's
     /// commands, simulator-features.md "Ycode implementation") → its answer.
     var commands: (@Sendable (String) -> String)?
+    /// visionOS: the hello's `spatial` and `rooms` (pose, selection and dial accepted).
+    var spatial = false
+    var rooms: [String]?
     /// The panel the viewer was last told it is shown (touches go there).
     private var shown: PanelInfo?
     private let lock = NSLock()
@@ -194,14 +200,40 @@ final class DisplayServer: @unchecked Sendable {
 
     var encodings: [String] {
         (ycodec_jpeg_available() != 0 ? ["jpeg"] : []) + (ycodec_zlib_available() != 0 ? ["zlib"] : [])
+            + (Self.videoOffered ? VideoFrameEncoder.offered.map(\.name) : [])
     }
+
+    /// YCODE_DISPLAY_VIDEO=0 keeps video out of the hello (§14).
+    static let videoOffered = ProcessInfo.processInfo.environment["YCODE_DISPLAY_VIDEO"] != "0"
 
     func start() {
         log("display server: listening on \(listener.address) (encodings: \(encodings.joined(separator: ", ")); "
             + "input: \(input == nil ? "not delivered" : "delivered"))")
+        if Self.videoOffered, VideoFrameEncoder.available { log("display server: NVENC: \(VideoFrameEncoder.capabilityLine)") }
         let t = Thread { [self] in acceptLoop() }
         t.name = "display-accept"
         t.start()
+        // The device's sound (§15): the audio service starts late (after
+        // launchd_sim's first lookups); hook its output once it exists.
+        if !AudioHostService.disabled {
+            let a = Thread { [weak self] in
+                while let self, !self.isStopping {
+                    if let audio = DefaultHostServices.audio {
+                        audio.deliver = { [weak self] samples, at in self?.audioBlock(samples, at: at) }
+                        self.log("display server: the device's sound goes to viewers that ask for it (\(DisplayAudioPipe.serverCodecs.joined(separator: ", ")))")
+                        return
+                    }
+                    Thread.sleep(forTimeInterval: 0.5)
+                }
+            }
+            a.name = "display-audio-hook"
+            a.start()
+        }
+    }
+
+    /// An output block of the audio service, to the viewer if it plays sound.
+    func audioBlock(_ samples: [Float], at: UInt64) {
+        lock.withLock { current }?.pushAudio(samples, at: at)
     }
 
     /// The device is going down: clients get a "stopping" status, then the end.
@@ -228,7 +260,7 @@ final class DisplayServer: @unchecked Sendable {
                 return current
             }
             if let old {
-                old.sendNotice("another viewer connected; this one is closed")
+                old.sendNotice(DisplayNotice.takenOver)
                 old.close()
             }
             session.start()
@@ -247,6 +279,17 @@ final class DisplayServer: @unchecked Sendable {
                                    foldable: fold != nil ? true : nil, displays: panels.count > 1 ? panels.map(\.name) : nil)
         h.deviceType = deviceTypeID
         h.osVersion = osVersion
+        h.audio = AudioHostService.disabled ? nil : DisplayAudioPipe.serverCodecs
+        h.frameAcks = true
+        if spatial {
+            h.spatial = true
+            h.rooms = rooms
+            // The headset mode (xr-viewer.md §4): views in, tagged frames out.
+            h.xr = true
+            // Each picture's depth and the room's environment (xr-depth.md §4).
+            h.xrDepth = true
+            h.xrEnvironment = true
+        }
         return h
     }
 
@@ -290,6 +333,18 @@ final class DisplayClientSession: @unchecked Sendable {
     private var recordDirty = false
     /// The rotation of the panel state last sent (screenshots).
     private var shownRotation = 0
+    /// The sound for this viewer (§15), when its hello asked for it (under `condition`).
+    private var audioPipe: DisplayAudioPipe?
+    /// The headset mode (xr-viewer.md §4), when the hello asked for it (under `condition`).
+    private var xr: DisplayXRState?
+    /// The headset mode's depth and environment (DisplayXRDepth.swift).
+    private var xrDepth: DisplayXRDepthSender?
+
+    func pushAudio(_ samples: [Float], at: UInt64) { condition.withLock { audioPipe }?.push(samples, at: at) }
+    /// Flow control (display-stream.md §4.2) and the gaps (xr-viewer.md §13.1), under `condition`.
+    private var window = XRFrameWindow(window: nil)
+    private var gapLog = XRServerGapLog()
+    private var hover = XRHoverCounter()
     // Statistics (logged at the end).
     private var framesSent = 0, bytesSent = 0, encodeNanoseconds: UInt64 = 0, scans = 0
     private let connectedAt = monotonicMilliseconds()
@@ -319,7 +374,20 @@ final class DisplayClientSession: @unchecked Sendable {
         }
         connection.close()
         if first {
+            if let p = condition.withLock({ audioPipe }) {
+                p.stop()
+                server.log("display server: sound: \(p.packetsSent) packets, \(p.bytesSent / 1000) KB, \(p.silentSkipped) silent packets not sent, \(p.dropped) blocks dropped")
+            }
             server.input?.reset()
+            if let x = condition.withLock({ xr }) { server.log("display server: headset viewer: \(x.summary)") }
+            if let d = condition.withLock({ xrDepth }) { d.stop(); server.log("display server: headset viewer: \(d.summary)") }
+            if condition.withLock({ xr }) != nil {
+                let (w, g, h) = condition.withLock { (window, gapLog, hover) }
+                let total = Double(monotonicMilliseconds() - connectedAt) / 1000
+                let span = max(total, 0.001)
+                server.log("display server: headset viewer: gaps over 250 ms: \(g.gaps) (\(xrFixed(g.gapMilliseconds / 1000, 1)) s, longest \(xrFixed(g.longest)) ms); frame window \(w.window): full \(w.held) times, \(w.timeouts) timeouts; "
+                           + "picture bursts with the camera still \(h.bursts) (\(xrFixed(Double(h.bursts) / span, 2))/s), new places \(h.targetChanges) (\(xrFixed(Double(h.targetChanges) / span, 2))/s, hover target changes)")
+            }
             let seconds = Double(monotonicMilliseconds() - connectedAt) / 1000
             let encodeMs = Double(encodeNanoseconds) / 1e6
             server.log(String(format: "display server: viewer gone after %.0f s: %d frames, %.1f MB, %.1f fps, %.2f MB/s, encode %.1f ms/frame, %d scans",
@@ -370,10 +438,32 @@ final class DisplayClientSession: @unchecked Sendable {
             h.maxFPS = min(120, max(1, h.maxFPS))
             h.quality = min(100, max(1, h.quality))
             h.downscale = min(4, max(1, h.downscale))
-            if DisplayEncoding(name: h.encoding) == nil || !server.encodings.contains(h.encoding) {
-                h.encoding = server.encodings.first ?? "zlib"
+            // The first of the client's list this server offers (§14).
+            h.encoding = DisplayCodecChoice.serverPick(hello: h, offered: server.encodings)
+            if DisplayEncoding(name: h.encoding) == nil { h.encoding = server.encodings.first ?? "zlib" }
+            condition.withLock { window = XRFrameWindow(window: h.frameWindow.map { min(64, max(0, $0)) }) }
+            if let req = h.xr, server.spatial, condition.withLock({ xr == nil }) {
+                let input = server.input
+                let state = DisplayXRState(request: req) { view, device in _ = input?.deliver(viewPose: view, devicePose: device) }
+                condition.withLock { xr = state }
+                let depth = DisplayXRDepthSender(request: req)
+                if depth.active {
+                    condition.withLock { xrDepth = depth }
+                    server.log("display server: headset viewer: depth 1/\(depth.downscale), environment \(depth.environment)")
+                }
+                server.log("display server: headset viewer: \(state.mode.rawValue) views, latch \(state.latch) pictures, settle \(state.settleMilliseconds) ms")
             }
-            server.log("display server: viewer \"\(h.client)\": \(h.encoding) q\(h.quality), downscale \(h.downscale), at most \(h.maxFPS) fps")
+            server.log("display server: viewer \"\(h.client)\": \(h.encoding) "
+                       + (DisplayEncoding(name: h.encoding)?.isVideo == true
+                          ? (h.videoQP.map { "QP \($0)" } ?? "\(h.videoBitrate ?? VideoFrameEncoder.defaultBitrate) kbit/s")
+                          : "q\(h.quality)")
+                       + ", downscale \(h.downscale), at most \(h.maxFPS) fps")
+            if condition.withLock({ audioPipe == nil }), !AudioHostService.disabled, let codec = DisplayAudioPipe.choose(client: h.audio) {
+                let c = connection
+                let pipe = DisplayAudioPipe(codec: codec) { m in (try? c.send(m)) != nil }
+                condition.withLock { audioPipe = pipe }
+                server.log("display server: sound to this viewer as \(codec == .opus ? "Opus" : "16-bit PCM"), 5 ms packets")
+            }
             condition.withLock {
                 settings = h
                 keyframeWanted = true
@@ -381,7 +471,15 @@ final class DisplayClientSession: @unchecked Sendable {
             }
         case .ping(let token):
             try? connection.send(.pong(token: token, serverNanoseconds: monotonicNanoseconds()))
+        case .frameAck(let sequence):
+            // Room for the newest picture: the send loop goes on now.
+            condition.withLock {
+                window.ack(sequence: sequence, at: monotonicNanoseconds())
+                recordDirty = true
+                condition.broadcast()
+            }
         case .keyframeRequest:
+            condition.withLock { xr }?.keyframe()
             condition.withLock { keyframeWanted = true; condition.broadcast() }
         case .screenshotRequest(let token):
             let png = screenshot()
@@ -408,13 +506,33 @@ final class DisplayClientSession: @unchecked Sendable {
             }
         case .input(let event):
             let received = monotonicNanoseconds()
-            let delivered = server.input?.deliver(event) ?? false
+            let delivered: Bool
+            if case .fovea(_, let u, let v) = event {
+                condition.withLock { xr }?.setFovea(u: Double(u), v: Double(v))
+                delivered = true
+            } else if case .views(_, let v) = event {
+                // The headset's views go to the eye scheduler, which sends the guest its camera.
+                condition.withLock { xr }?.update(v)
+                delivered = server.input != nil
+            } else if case .selection(_, let sel) = event, let x = condition.withLock({ xr }) {
+                // A pinch keeps the headset mode in mono (responsive) until it is over.
+                if sel.anyPinch { x.noteInteraction() }
+                condition.withLock { gapLog.selection(pinching: sel.anyPinch, at: monotonicNanoseconds()) }
+                delivered = server.input?.deliver(event) ?? false
+            } else {
+                delivered = server.input?.deliver(event) ?? false
+            }
             if let trace = server.trace {
                 let kind: String
                 switch event {
                 case .touch(_, let c): kind = "touch" + (c.first.map { ".\($0.phase)" } ?? "")
                 case .key: kind = "key"
                 case .button: kind = "button"
+                case .pose: kind = "pose"
+                case .selection(_, let s): kind = s.anyPinch ? "selection.pinch" : "selection"
+                case .dial: kind = "dial"
+                case .fovea: kind = "fovea"   // no coordinates: the gaze is never logged
+                case .views: kind = "views"
                 }
                 trace.line("input \(event.sequence) \(kind) \(received) \(monotonicNanoseconds()) \(server.hidSequence?() ?? 0)")
             }
@@ -446,7 +564,39 @@ final class DisplayClientSession: @unchecked Sendable {
         return CompressedPNG.encode(width: w, height: h, rgba: rgba)
     }
 
+    /// Foveated streaming (xr-viewer.md §4.5): JPEG of the full-resolution
+    /// rectangle around the gaze, straight from the presented surface. False
+    /// when the connection failed.
+    private func sendInset(_ xr: DisplayXRState, surface: IOSurfaceInfo, view: XRView, frame: UInt64, gaze: (u: Double, v: Double)) -> Bool {
+        let t0 = monotonicNanoseconds()
+        let r = XRInset.rect(u: gaze.u, v: gaze.v, width: surface.width, height: surface.height, fraction: xr.foveaFraction)
+        let base = UnsafeRawPointer(surface.memory.host).advanced(by: r.y * surface.bytesPerRow + r.x * 4).assumingMemoryBound(to: UInt8.self)
+        var out: UnsafeMutablePointer<UInt8>?
+        var size = 0
+        let quality = condition.withLock { settings?.quality ?? 80 }
+        guard ycodec_jpeg_encode_bgra(base, Int32(r.width), Int32(r.height), surface.bytesPerRow, Int32(quality), &out, &size) == 0, let out else { return true }
+        defer { ycodec_free(out) }
+        let inset = XRInset(frameSequence: frame, view: view, encoding: .jpeg, x: r.x, y: r.y, width: r.width, height: r.height,
+                            fullWidth: surface.width, fullHeight: surface.height, data: Array(UnsafeBufferPointer(start: out, count: size)))
+        do { try connection.send(.inset(inset)) } catch { return false }
+        xr.lastInset = (gaze.u, gaze.v, t0, frame)
+        xr.insetsSent += 1
+        xr.insetBytes += size
+        xr.insetNs += monotonicNanoseconds() - t0
+        bytesSent += size
+        return true
+    }
+
     // MARK: Sending
+
+    /// YCODE_DISPLAY_PACE=send restores the pacing before REMOTE-X86 (the
+    /// interval measured from the end of the previous send), for A/B runs.
+    /// The system's load, for a gap's log line.
+    static func loadAverage() -> String {
+        (try? String(contentsOfFile: "/proc/loadavg", encoding: .utf8))?.split(separator: " ").first.map(String.init) ?? "?"
+    }
+
+    static let paceFromCapture = ProcessInfo.processInfo.environment["YCODE_DISPLAY_PACE"] != "send"
 
     private func sendLoop() {
         nameThread("display-send")
@@ -466,15 +616,21 @@ final class DisplayClientSession: @unchecked Sendable {
         defer { watcher?.stop() }
         var mirror: DisplayMirror?
         var encoder: TileEncoder?
+        var video: VideoFrameEncoder?
+        var videoFailed = false
+        var videoNeedsKey = true
         var lastRecord: FrameRecord?
         var phase = ""
         var settleUntil: UInt64 = 0
         var lastScan: UInt64 = 0        // ns
-        var lastSent: UInt64 = 0        // ns
+        var lastSent: UInt64 = 0        // ns: when the last frame sent was captured (its scan began)
         var unscanned = false           // a new frame record not scanned yet
+        var recordSeenNs: UInt64 = 0    // when it was seen (frame timing, §12)
         var nextSafetyScan: UInt64 = 0
         var nextStatus: UInt64 = 0
         var sequence: UInt64 = 0
+        var lastXRTag: (tag: XREyeScheduler.Send?, estimated: Bool)?
+        var lastPoseCount = 0, lastPoseAt: UInt64 = 0
         while !isClosed {
             let now = monotonicMilliseconds()
             // Every panel's record; the one shown is the panel's whose turn it
@@ -506,6 +662,7 @@ final class DisplayClientSession: @unchecked Sendable {
                 lastRecord = record
                 settleUntil = now + 300
                 unscanned = true
+                recordSeenNs = monotonicNanoseconds()
                 server.trace?.line("record \(record.frame) \(monotonicNanoseconds())"
                                    + (Self.abTest ? ((monotonicMilliseconds() / 1000) % 2 == 1 ? " poll" : " watch") : ""))
             }
@@ -528,18 +685,167 @@ final class DisplayClientSession: @unchecked Sendable {
             let speculative = now < settleUntil || now < inputUntil || now >= nextSafetyScan
             let wanted = urgent || speculative
             let allowed = nowNs &- lastSent >= intervalNs && (urgent || nowNs &- lastScan >= intervalNs)
-            if wanted, allowed, let surface = server.presentedSurface(record) {
-                let enc = DisplayEncoding(name: s.encoding) ?? .zlibBGRA
+            // The viewer's window (§4.2): while it is full nothing is captured, so what goes next is the newest picture.
+            let flowOpen = condition.withLock { () -> Bool in
+                let open = wanted ? window.open(at: nowNs) : window.isOpen(at: nowNs)
+                if wanted, !open { gapLog.heldBack() }
+                return open
+            }
+            let xrState = condition.withLock { xr }
+            xrState?.idle()
+            if let xrState { condition.withLock { gapLog.poses(total: xrState.posesSent, at: nowNs) } }
+            if let d = condition.withLock({ xrDepth }), !d.sendEnvironment(connection) { break }
+            if let xrState {
+                // The headset mode (xr-viewer.md §4): mono shows each new
+                // picture; alternate shows the picture once it has settled on
+                // the eye's pose, then gives the guest the other eye. Damage
+                // is kept per view; a frame view goes before each frame.
+                var shown: (tag: XREyeScheduler.Send?, estimated: Bool)?
+                var capture: IOSurfaceInfo?
+                var xrSeenNs: UInt64 = 0
+                let t0 = monotonicNanoseconds()
+                if wanted, allowed, flowOpen, let surface = server.presentedSurface(record) {
+                    xrSeenNs = unscanned ? recordSeenNs : 0
+                    lastScan = nowNs
+                    unscanned = false
+                    if now >= nextSafetyScan { nextSafetyScan = now + 1000 }
+                    scans += 1
+                    let signature = XRPictureSignature.of(UnsafeRawPointer(surface.memory.host), width: surface.width,
+                                                          height: surface.height, bytesPerRow: surface.bytesPerRow)
+                    shown = xrState.picture(signature: signature)
+                    capture = surface
+                    let changed = shown != nil
+                    condition.withLock { gapLog.scanned(changed: changed) }
+                }
+                if shown == nil, flowOpen, let d = xrState.due() {
+                    shown = d
+                    if capture == nil { capture = server.presentedSurface(record) }
+                }
+                let keyframe = flowOpen && condition.withLock { () -> Bool in defer { keyframeWanted = false }; return keyframeWanted }
+                if shown == nil && keyframe, let last = lastXRTag {
+                    shown = last
+                    if capture == nil { capture = server.presentedSurface(record) }
+                }
+                if let (tag, estimated) = shown, let surface = capture {
+                    lastXRTag = (tag, estimated)
+                    var enc = DisplayEncoding(name: s.encoding) ?? .zlibBGRA
+                    if enc.isVideo && xrState.videoFailed { enc = server.encodings.contains("jpeg") ? .jpeg : .zlibBGRA }
+                    // Video is at the device's pixel size (§14), one encoder per view.
+                    let downscale = enc.isVideo ? 1 : s.downscale
+                    let base = UnsafeRawPointer(surface.memory.host)
+                    let view = tag?.view ?? .mono
+                    var m = xrState.mirrors[view]
+                    if m == nil || m!.width != surface.width || m!.height != surface.height || m!.tile != 32 * downscale {
+                        m = DisplayMirror(width: surface.width, height: surface.height, tile: 32 * downscale)
+                        xrState.mirrors[view] = m
+                        xrState.needsFull.insert(view)
+                    }
+                    if encoder == nil || encoder!.encoding != enc || encoder!.quality != s.quality || encoder!.downscale != downscale {
+                        encoder = TileEncoder(encoding: enc, quality: s.quality, downscale: downscale)
+                    }
+                    let full = xrState.takeFull(view) || keyframe
+                    let rects = m!.update(from: base, bytesPerRow: surface.bytesPerRow, full: full)
+                    if !rects.isEmpty {
+                        // What the guest drew with the camera still and no pinch: a hover, or an animation in one place.
+                        let posesNow = xrState.posesSent
+                        if posesNow != lastPoseCount { lastPoseCount = posesNow; lastPoseAt = t0 }
+                        if t0 &- lastPoseAt >= 300_000_000, !condition.withLock({ gapLog.isPinching }), let first = rects.first {
+                            var (x0, y0, x1, y1) = (first.x, first.y, first.x + first.width, first.y + first.height)
+                            for r in rects.dropFirst() { (x0, y0, x1, y1) = (min(x0, r.x), min(y0, r.y), max(x1, r.x + r.width), max(y1, r.y + r.height)) }
+                            let (w, h) = (Double(surface.width), Double(surface.height))
+                            condition.withLock { hover.damage(x: Double(x0) / w, y: Double(y0) / h, width: Double(x1 - x0) / w, height: Double(y1 - y0) / h, at: t0) }
+                        }
+                        var tiles: [DisplayTile]
+                        var isFull = full
+                        if enc.isVideo {
+                            var video = xrState.videos[view]
+                            if video == nil || video!.width != surface.width || video!.height != surface.height {
+                                video = VideoFrameEncoder(encoding: enc, width: surface.width, height: surface.height, fps: s.videoFPS ?? s.maxFPS,
+                                                          bitrateKbps: s.videoBitrate ?? VideoFrameEncoder.defaultBitrate, qp: s.videoQP ?? 0,
+                                                          constantBitrate: s.videoFPS != nil, log: server.log)
+                                xrState.videos[view] = video
+                            }
+                            guard let coded = video?.encode(mirror: m!, rects: rects, keyframe: full) else {
+                                let to = server.encodings.contains("jpeg") ? "jpeg" : "zlib"
+                                server.log("display server: WARNING: \(enc.name) failed for the headset viewer, falling back to \(to) tiles")
+                                sendNotice("WARNING: the server's \(enc.name) encoder failed; the stream falls back to \(to), expect \(DisplayCodecChoice.expectation(to))")
+                                xrState.videoFailed = true
+                                xrState.videos = [:]
+                                xrState.keyframe()
+                                continue
+                            }
+                            tiles = [coded.tile]
+                            isFull = coded.idr
+                        } else {
+                            tiles = encoder!.encodeAll(rects, mirror: m!)
+                        }
+                        let t1 = monotonicNanoseconds()
+                        encodeNanoseconds += t1 - t0
+                        sequence += 1
+                        let f = downscale
+                        let (w, h) = ((surface.width + f - 1) / f, (surface.height + f - 1) / f)
+                        let inputSeq = condition.withLock { lastInput }
+                        let fv = XRFrameView(frameSequence: sequence, view: view, estimated: estimated, latch: UInt16(xrState.latch),
+                                             poseSequence: tag?.poseSequence ?? 0, pose: tag?.pose ?? .identity,
+                                             fov: .guest(width: surface.width, height: surface.height), guestFrame: record?.frame ?? 0)
+                        let frame = DisplayFrame(sequence: sequence, guestFrame: record?.frame ?? 0, serverNanoseconds: t1, inputSequence: inputSeq,
+                                                 width: w, height: h, encoding: enc, isFull: isFull, tiles: tiles)
+                        let bytes = DisplayMessage.frame(frame).encoded()
+                        do {
+                            if tag != nil { try connection.send(.frameView(fv)) }
+                            try connection.send(bytes)
+                        } catch { break }
+                        if let d = condition.withLock({ xrDepth }), !d.afterFrame(connection, sequence: sequence, guestFrame: record?.frame ?? 0,
+                                                                                   view: view, fov: fv.fov, surface: surface.id) { break }
+                        if s.timing == true {
+                            let timing = DisplayFrameTiming(sequence: sequence, recordSeen: xrSeenNs, captureStart: t0, encodeEnd: t1, sendEnd: monotonicNanoseconds())
+                            do { try connection.send(.frameTiming(timing)) } catch { break }
+                        }
+                        server.trace?.line("frame \(sequence) \(record?.frame ?? 0) \(t0) \(t1) \(monotonicNanoseconds()) \(bytes.count) \(tiles.count) \(inputSeq) view \(view.rawValue) pose \(fv.poseSequence)")
+                        let sentAt = monotonicNanoseconds()
+                        let gapLine = condition.withLock { () -> String? in
+                            window.didSend(sequence: sequence, at: sentAt)
+                            gapLog.poses(total: xrState.posesSent, at: sentAt)
+                            gapLog.encode(took: t1 - t0)
+                            return gapLog.frameSent(at: sentAt, record: record?.frame ?? 0, load: Self.loadAverage)
+                        }
+                        if let gapLine { server.log("display server: headset viewer: " + gapLine) }
+                        lastSent = t0
+                        framesSent += 1
+                        bytesSent += bytes.count
+                    }
+                    // Foveated streaming: the full-resolution inset at the gaze for this picture.
+                    if xrState.foveaFraction > 0, let g = xrState.fovea {
+                        if !sendInset(xrState, surface: surface, view: view, frame: sequence, gaze: g) { break }
+                    }
+                    continue
+                }
+                // The eyes moved to another part of the same picture: a new inset (at most every 33 ms).
+                if xrState.foveaFraction > 0, let g = xrState.fovea, let last = xrState.lastInset, sequence == last.frame,
+                   abs(g.u - last.u) > 0.05 || abs(g.v - last.v) > 0.05, monotonicNanoseconds() &- last.time > 33_000_000,
+                   let surface = capture ?? server.presentedSurface(record) {
+                    if !sendInset(xrState, surface: surface, view: lastXRTag?.tag?.view ?? .mono, frame: sequence, gaze: g) { break }
+                    continue
+                }
+                if capture != nil { continue }
+            }
+            if xrState == nil, wanted, allowed, flowOpen, let surface = server.presentedSurface(record) {
+                var enc = DisplayEncoding(name: s.encoding) ?? .zlibBGRA
+                if enc.isVideo && videoFailed { enc = server.encodings.contains("jpeg") ? .jpeg : .zlibBGRA }
+                // Video is encoded at the device's pixel size (§14).
+                let downscale = enc.isVideo ? 1 : s.downscale
                 if mirror == nil || mirror!.width != surface.width || mirror!.height != surface.height
-                    || encoder?.downscale != s.downscale {
-                    mirror = DisplayMirror(width: surface.width, height: surface.height, tile: 32 * s.downscale)
+                    || mirror!.tile != 32 * downscale {
+                    mirror = DisplayMirror(width: surface.width, height: surface.height, tile: 32 * downscale)
                     condition.withLock { keyframeWanted = true }
                 }
-                if encoder == nil || encoder!.encoding != enc || encoder!.quality != s.quality || encoder!.downscale != s.downscale {
-                    encoder = TileEncoder(encoding: enc, quality: s.quality, downscale: s.downscale)
+                if encoder == nil || encoder!.encoding != enc || encoder!.quality != s.quality || encoder!.downscale != downscale {
+                    if encoder?.encoding.isVideo == true || enc.isVideo { condition.withLock { keyframeWanted = true } }
+                    encoder = TileEncoder(encoding: enc, quality: s.quality, downscale: downscale)
                 }
                 let full = condition.withLock { () -> Bool in defer { keyframeWanted = false }; return keyframeWanted }
                 let inputSeq = condition.withLock { lastInput }
+                let seenNs = unscanned ? recordSeenNs : 0
                 lastScan = nowNs
                 unscanned = false
                 if now >= nextSafetyScan { nextSafetyScan = now + 1000 }
@@ -548,20 +854,52 @@ final class DisplayClientSession: @unchecked Sendable {
                 let rects = mirror!.update(from: UnsafeRawPointer(surface.memory.host), bytesPerRow: surface.bytesPerRow, full: full)
                 if !rects.isEmpty {
                     let banded = !Self.abTest || sequence % 2 == 0
-                    let tiles = banded ? encoder!.encodeAll(rects, mirror: mirror!)
-                        : rects.compactMap { encoder!.encode($0, mirror: mirror!) }
+                    let tiles: [DisplayTile]
+                    var isFull = full
+                    if enc.isVideo {
+                        if video == nil || video!.width != surface.width || video!.height != surface.height {
+                            video = VideoFrameEncoder(encoding: enc, width: surface.width, height: surface.height, fps: s.videoFPS ?? s.maxFPS,
+                                                      bitrateKbps: s.videoBitrate ?? VideoFrameEncoder.defaultBitrate, qp: s.videoQP ?? 0,
+                                                      constantBitrate: s.videoFPS != nil, log: server.log)
+                            if let video { server.log("display server: \(enc.name) \(video.width)x\(video.height) at \(video.bitrate) kbit/s (NVENC)") }
+                        }
+                        guard let coded = video?.encode(mirror: mirror!, rects: rects, keyframe: full || videoNeedsKey) else {
+                            let to = server.encodings.contains("jpeg") ? "jpeg" : "zlib"
+                            server.log("display server: WARNING: \(enc.name) failed, falling back to \(to) tiles")
+                            sendNotice("WARNING: the server's \(enc.name) encoder failed; the stream falls back to \(to), expect \(DisplayCodecChoice.expectation(to))")
+                            videoFailed = true
+                            video = nil
+                            condition.withLock { keyframeWanted = true }
+                            continue
+                        }
+                        videoNeedsKey = false
+                        tiles = [coded.tile]
+                        isFull = coded.idr
+                    } else {
+                        tiles = banded ? encoder!.encodeAll(rects, mirror: mirror!)
+                            : rects.compactMap { encoder!.encode($0, mirror: mirror!) }
+                    }
                     let t1 = monotonicNanoseconds()
                     encodeNanoseconds += t1 - t0
                     sequence += 1
-                    let f = s.downscale
+                    let f = downscale
                     let frame = DisplayFrame(sequence: sequence, guestFrame: record?.frame ?? 0, serverNanoseconds: t1, inputSequence: inputSeq,
                                              width: (surface.width + f - 1) / f, height: (surface.height + f - 1) / f, encoding: enc,
-                                             isFull: full, tiles: tiles)
+                                             isFull: isFull, tiles: tiles)
                     let bytes = DisplayMessage.frame(frame).encoded()
                     do { try connection.send(bytes) } catch { break }
+                    let sentAt = monotonicNanoseconds()
+                    condition.withLock { window.didSend(sequence: sequence, at: sentAt) }
+                    if s.timing == true {
+                        let timing = DisplayFrameTiming(sequence: sequence, recordSeen: seenNs, captureStart: t0, encodeEnd: t1, sendEnd: monotonicNanoseconds())
+                        do { try connection.send(.frameTiming(timing)) } catch { break }
+                    }
                     server.trace?.line("frame \(sequence) \(record?.frame ?? 0) \(t0) \(t1) \(monotonicNanoseconds()) \(bytes.count) \(tiles.count) \(inputSeq)"
                                       + (Self.abTest ? " ab \(banded ? "banded" : "single") \((monotonicMilliseconds() / 1000) % 2 == 1 ? "poll" : "watch")" : ""))
-                    lastSent = monotonicNanoseconds()
+                    // The interval runs from this frame's capture, not from the end
+                    // of its send: otherwise scan + encode + send (3-6 ms) were added to
+                    // every interval and a 60 fps guest got about 45 fps (§12.4).
+                    lastSent = Self.paceFromCapture ? t0 : monotonicNanoseconds()
                     framesSent += 1
                     bytesSent += bytes.count
                 }
@@ -592,7 +930,7 @@ final class DisplayClientSession: @unchecked Sendable {
 /// of killing the VMM. A second signal, or a session not bound yet, exits
 /// at once (status 128 + signal).
 func startDisplayServer(config: ExecConfiguration, surfaces: IOSurfaceHostService?, session: DeviceSession?,
-                        hid: HIDHostService?, fold: FoldController? = nil, started: UInt64,
+                        hid: HIDHostService?, fold: FoldController? = nil, vision: VisionInputController? = nil, started: UInt64,
                         guestClock: (() -> UInt64?)? = nil) -> DisplayServer? {
     guard let address = config.options.displayServer else { return nil }
     guard let device = config.device, let surfaces else {
@@ -603,6 +941,8 @@ func startDisplayServer(config: ExecConfiguration, surfaces: IOSurfaceHostServic
     // The display and touch space are the device type's (ipad.md §6).
     let screen = device.deviceType.screen
     let bridge = hid.map { HIDInputBridge(hid: $0, pointWidth: screen.pointWidth, pointHeight: screen.pointHeight) }
+    bridge?.family = WatchInputCommand.buttonFamily(device.deviceType)
+    bridge?.vision = vision
     do {
         server = try DisplayServer(address: address, statePath: device.framebufferStatePath, surfaces: surfaces, started: started,
                                    screen: (screen.width, screen.height, screen.scale),
@@ -612,6 +952,12 @@ func startDisplayServer(config: ExecConfiguration, surfaces: IOSurfaceHostServic
         server.deviceTypeID = device.deviceType.id
         let version = device.runtimeVersion().version
         server.osVersion = version.isEmpty ? nil : "\(device.runtimePlatform().displayName) \(version)"
+        // visionOS (visionos.md "Ycode implementation"): the viewer may send
+        // pose, selection and dial messages; the rooms it can offer.
+        if vision != nil {
+            server.spatial = true
+            server.rooms = VisionRooms.known
+        }
     } catch {
         stderrLine("ycode-simd: cannot start the display server on \(address): \(error)")
         return nil

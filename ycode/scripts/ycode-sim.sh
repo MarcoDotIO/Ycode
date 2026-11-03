@@ -11,13 +11,39 @@
 #                                       a command for the running device (a foldable's
 #                                       hinge, specs/simulator/foldable.md §8.3); passed
 #                                       straight to ycode-simd, no boot slot
+#   ycode-sim --device DEV --crown <delta> [count] | --gesture double-tap|flick|tap
+#                                       a watch's Digital Crown rotation (signed: positive
+#                                       scrolls forward, opens the Smart Stack on the face)
+#                                       and watch gestures (specs/simulator/watchos.md §12)
+#   ycode-sim --device DEV --button crown|side|action|screen [hold-ms]
+#                                       a watch's buttons (watchos.md §5.2, §13)
+#   ycode-sim --device DEV --vision tap|gaze|pinch|drag|magnify|rotate|pose|move|turn|dial|home|type|room|rooms|state …
+#                                       a Vision Pro's gaze, hands, camera, Digital Crown and room
+#                                       (specs/simulator/visionos.md "Ycode implementation"); `--vision room <key>`
+#                                       on a stopped device sets the room of its next boot. No boot slot
+#   --room <key>                        (a boot option) the Vision Pro's room for this boot (MuseumDay, …);
+#                                       not in the snapshot's fingerprint: a restored device switches live
 #   ycode-sim --device DEV --ui|--accessibility|--location|--audio|--overrides <words…> | --settings
 #                                       a settings command (specs/simulator/simulator-features.md
 #                                       "Ycode implementation"): the running device's, else written
 #                                       into the stopped device for its next boot; passed straight
 #                                       to ycode-simd, no boot slot
+#   ycode-sim --device DEV --health status|import <file>|scenario <name>|stream …|stop|clear|grant <id>|revoke <id>|seed …
+#                                       synthetic HealthKit data (specs/simulator/health-simulation.md "Ycode
+#                                       implementation"): written by the device's guest health agent while it
+#                                       runs; grant, revoke and seed edit the shut-down device's store. No boot slot
+#   --profile <path> [--profile-rate HZ] [--profile-seconds S] ...  (with --launch) Gauge records the app
+#                                       into a trace (specs/ide/profiler.md §3.1); app options, not in the fingerprint
 #   --environment-overrides             (with --launch) the app is launched with Ycode's Environment
 #                                       Overrides library; an app option (not in the snapshot's fingerprint)
+#   --debug-server unix:<path> [--debug-server-log]  (with --launch) the debug stub for LLDB, attached to the
+#                                       app at each connection (specs/simulator/debug-stub.md); an app option
+#   ycode-sim pair <watch> <phone>      pairs an Apple Watch device with an iPhone device (prints the pair's
+#   ycode-sim unpair <pair>             UUID); unpair shuts the watch down and erases it (the phone is kept);
+#   ycode-sim pair-activate <pair>      list-pairs shows "(active|inactive, connected|disconnected)"
+#   ycode-sim list-pairs [--json]       (specs/simulator/device-pairing.md §8). A device is its directory, its
+#                                       name in the device set, or its UDID; the set is $YCODE_SIM_DEVICE_SET,
+#                                       else the directory holding the devices named by path. No boot slot.
 #
 # It adds ycode-simd's host-side options, takes a boot slot (a flock on
 # $YCODE_SIM_LOCKS/boot.N, shared with benchmark runs so their timings stay
@@ -199,9 +225,29 @@ keep_newest() {
 
 # A command for a running device (FoldControl.swift): ycode-simd answers it at once.
 for a in "$@"; do
-  case "$a" in --control|--fold|--orientation|--rotate|--fold-state|--ui|--accessibility|--location|--audio|--overrides|--settings)
+  case "$a" in --control|--fold|--orientation|--rotate|--fold-state|--crown|--gesture|--button|--vision|--ui|--accessibility|--location|--audio|--overrides|--settings|--health)
     exec "$SIMD" "$@" ;; esac
 done
+
+# Pairing (PairingCommand.swift): the device set's records, and the running devices told.
+case "${1:-}" in
+  pair|unpair|pair-activate|list-pairs)
+    verb=$1; shift
+    SET_ARGS=()
+    [ -n "${YCODE_SIM_DEVICE_SET:-}" ] && SET_ARGS=(--device-set "$YCODE_SIM_DEVICE_SET")
+    [ "$verb" = unpair ] || exec "$SIMD" "${SET_ARGS[@]}" "--$verb" "$@"
+    out=$("$SIMD" "${SET_ARGS[@]}" --unpair "$@"); rc=$?
+    [ -n "$out" ] && printf '%s\n' "$out"
+    # The erased watch's saved state goes too (its next boot is a first boot).
+    erased=$(printf '%s\n' "$out" | sed -n 's/^erased //p')
+    if [ -n "$erased" ] && [ -d "$DATA/snapshots/$(basename "$erased")" ]; then
+      snap=$DATA/snapshots/$(basename "$erased")
+      t="$snap/trash.$(date +%s%N)"
+      [ -e "$snap/current" ] && mv -- "$snap/current" "$t" && rm -rf -- "${t:?}"
+      rm -f -- "$snap/device-sync" "$snap/device-ino"
+    fi
+    exit $rc ;;
+esac
 
 STATUS=1; RESULT=failed
 # The arguments Ycode passed: the device, the runtime root, and the app
@@ -213,8 +259,8 @@ for a in "$@"; do
     --runtime-root) RR=$a ;;
   esac
   case "$prev" in
-    --install-app|--launch|--app-arg|--app-env|--app-url) ;;
-    *) case "$a" in --install-app|--launch|--app-arg|--app-env|--app-url|--environment-overrides) ;; --erase) ERASE=1 ;; *) BASE_ARGS+=("$a") ;; esac ;;
+    --install-app|--launch|--app-arg|--app-env|--app-url|--profile|--profile-rate|--profile-hang-ms|--profile-seconds|--profile-process|--debug-server|--room) ;;
+    *) case "$a" in --install-app|--launch|--app-arg|--app-env|--app-url|--room|--environment-overrides|--profile|--profile-rate|--profile-hang-ms|--profile-seconds|--profile-process|--profile-no-signposts|--debug-server|--debug-server-log) ;; --erase) ERASE=1 ;; *) BASE_ARGS+=("$a") ;; esac ;;
   esac
   prev=$a
 done

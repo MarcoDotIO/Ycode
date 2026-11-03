@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The Welcome window (`specs/ide/reference-ui-5.md` §3.1, L1, L2): shown
 /// at launch when there is no document to open, and by Window ▸ Welcome to
@@ -64,11 +65,7 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
     }
     private var recentsObserver: NSObjectProtocol?
 
-    /// "Version <short version>": the bundle's short version string.
-    public static var versionText: String {
-        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1"
-        return "Version \(v)"
-    }
+    public static var versionText: String { ProductIdentity.versionText }
 
     public init(recents: RecentProjects = .shared) {
         self.recents = recents
@@ -97,7 +94,7 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
 
     private func build() {
         guard let content = window?.contentView else { return }
-        iconView.image = NSApp?.applicationIconImage ?? NSImage(named: NSImage.applicationIconName)
+        iconView.image = ProductIcon.image
         iconView.imageScaling = .scaleProportionallyUpOrDown
         nameLabel.font = .systemFont(ofSize: 34, weight: .bold)
         nameLabel.alignment = .center
@@ -349,13 +346,22 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         panel.canCreateDirectories = true
         panel.prompt = "Clone"
         guard panel.runModal() == .OK, let dir = panel.url else { return }
-        let name = URL(string: f.stringValue)?.deletingPathExtension().lastPathComponent ?? "Repository"
-        let dest = dir.appendingPathComponent(name)
-        do {
-            try GitRepository.clone(f.stringValue, into: dest)
-            if let ws = Self.workspace(in: dest) { open(ws) }
-        } catch {
-            NSApp.presentError(error)
+        clone(f.stringValue, into: dir)
+    }
+
+    /// Clones off the main thread, with a sheet that says so, then opens the
+    /// clone's workspace; a repository with none is shown in Finder.
+    @discardableResult
+    public func clone(_ address: String, into dir: URL) -> Task<Void, Never> {
+        let dest = dir.appendingPathComponent(GitRepository.cloneFolderName(for: address))
+        let progress = CloneProgressSheet.begin(name: dest.lastPathComponent, on: window)
+        return Task { [weak self] in
+            let failure: String? = await Task.detached {
+                do { try GitRepository.clone(address, into: dest); return nil } catch { return error.localizedDescription }
+            }.value
+            progress?.end()
+            if let failure { NSApp.presentError(NSError(domain: "Ycode", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not clone “\(address)”.", NSLocalizedRecoverySuggestionErrorKey: failure])); return }
+            if let ws = Self.workspace(in: dest) { self?.open(ws) } else if NSApp.isRunning { NSWorkspace.shared.activateFileViewerSelecting([dest]) }
         }
     }
 
@@ -380,7 +386,10 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         }
         return NewProjectFlow.start(row: i, defaults: Preferences.shared.defaults, location: newProjectLocation, parent: window,
                                     interactive: window?.isVisible == true,
-                                    onCreated: { [weak self] url in self?.open(url) },
+                                    onCreated: { [weak self] created in
+                                        self?.open(created.openURL)
+                                        if let entry = created.entryFile { NewProjectFlow.openEntry(entry, of: created.openURL) }
+                                    },
                                     onError: { text in
                                         NSApp.presentError(NSError(domain: "Ycode", code: 1, userInfo: [NSLocalizedDescriptionKey: text]))
                                     })
@@ -401,6 +410,39 @@ extension WelcomeWindowController {
             return nil
         }
     }
+}
+
+/// The sheet shown while `git clone` runs.
+@MainActor
+final class CloneProgressSheet {
+    private let sheet: NSWindow
+    private weak var parent: NSWindow?
+
+    private init(sheet: NSWindow, parent: NSWindow) {
+        self.sheet = sheet
+        self.parent = parent
+    }
+
+    /// Nil when there is no visible window to attach it to (tests).
+    static func begin(name: String, on parent: NSWindow?) -> CloneProgressSheet? {
+        guard let parent, parent.isVisible else { return nil }
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 84), styleMask: [.titled], backing: .buffered, defer: false)
+        let label = NSTextField(labelWithString: "Cloning “\(name)”…")
+        let spinner = NSProgressIndicator()
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.startAnimation(nil)
+        let row = NSStackView(views: [spinner, label])
+        row.translatesAutoresizingMaskIntoConstraints = false
+        w.contentView?.addSubview(row)
+        if let c = w.contentView {
+            NSLayoutConstraint.activate([row.centerXAnchor.constraint(equalTo: c.centerXAnchor), row.centerYAnchor.constraint(equalTo: c.centerYAnchor)])
+        }
+        parent.beginSheet(w)
+        return CloneProgressSheet(sheet: w, parent: parent)
+    }
+
+    func end() { parent?.endSheet(sheet) }
 }
 
 extension WorkspaceWindowController {
@@ -487,63 +529,5 @@ public final class RecentProjectsTable: NSTableView {
     var onReturn: (() -> Void)?
     public override func keyDown(with event: NSEvent) {
         if event.keyCode == 36 || event.keyCode == 76 { onReturn?() } else { super.keyDown(with: event) }
-    }
-}
-
-/// New Project from a compact-picker row (`reference-ui-3.md` §5.4): a
-/// direct row skips the template step. Used by File ▸ New ▸ Project… and
-/// the Welcome window's New Project pull-down.
-@MainActor
-enum NewProjectFlow {
-    /// - Parameters:
-    ///   - interactive: present the sheet in its own window and ask for
-    ///     the folder; otherwise (tests, headless) create in `location`.
-    static func start(row i: Int, defaults: UserDefaults, location: URL, parent: NSWindow?, interactive: Bool,
-                      onCreated: @escaping (URL) -> Void, onError: @escaping (String) -> Void) -> NewProjectSheetController {
-        let sheet = NewProjectSheetController(defaults: defaults)
-        if let t = NewProjectPicker.template(forRow: i) {
-            switch t {
-            case .app: sheet.setPlatform("iOS"); sheet.select(title: "App")
-            case .commandLineTool: sheet.setPlatform("macOS"); sheet.select(title: "Command Line Tool")
-            case .swiftPackage: sheet.setPlatform("Other"); sheet.select(title: "Swift Package")
-            }
-            sheet.nextClicked()
-        }
-        var host: NSWindow?
-        var hostController: WorkspaceWindowController?
-        sheet.onCancel = { host?.close(); hostController = nil }
-        sheet.onFinish = { [weak sheet] platform, title, options in
-            guard let t = ProjectTemplateCatalog.template(platform: platform, title: title) else {
-                NSApp.presentError(NSError(domain: "Ycode", code: 1, userInfo: [NSLocalizedDescriptionKey: "Ycode cannot create “\(title)” projects yet."]))
-                return
-            }
-            let finish: (URL) -> Void = { dir in
-                do {
-                    let url = try t.create(platform: platform, options: options, in: dir)
-                    sheet?.dismiss(nil); host?.close(); hostController = nil
-                    onCreated(url)
-                } catch { onError("\(error)") }
-            }
-            if let w = host ?? parent, w.isVisible {
-                let panel = NSOpenPanel()
-                panel.canChooseDirectories = true
-                panel.canChooseFiles = false
-                panel.canCreateDirectories = true
-                panel.prompt = "Create"
-                panel.directoryURL = location
-                panel.beginSheetModal(for: w) { r in if r == .OK, let u = panel.url { finish(u) } }
-            } else {
-                finish(location)
-            }
-        }
-        if interactive {
-            // A real, empty workspace window behind the sheet (§11.3).
-            let wc = emptyWorkspaceWindow()
-            hostController = wc
-            wc.showWindow(nil)
-            host = wc.window
-            wc.contentViewController?.presentAsSheet(sheet)
-        }
-        return sheet
     }
 }

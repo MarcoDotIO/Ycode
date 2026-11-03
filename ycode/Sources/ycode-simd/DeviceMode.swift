@@ -49,9 +49,20 @@ struct DeviceLayout {
     /// "Ycode implementation"): host path of the binary, staged into DEV and
     /// run by launchd_sim from the plist Ycode writes. Nil: no agent.
     var settingsAgent: String?
+    /// Ycode's guest pairing agent (SimGuestAgents/pairing; device-pairing.md
+    /// P-4, §8): host path of the binary, staged into DEV and run by
+    /// launchd_sim like the settings agent. Nil: no agent.
+    var pairingAgent: String?
+    /// Ycode's guest health agent (SimGuestAgents/health; health-simulation.md
+    /// H-1): host path of `YcodeHealth.app`, staged into DEV and run by
+    /// launchd_sim like the settings agent. Nil: no agent.
+    var healthAgent: String?
     /// Ycode's Environment Overrides library, staged into DEV for apps
     /// launched with it (`--environment-overrides`). Nil: none.
     var overridesLibrary: String?
+    /// Gauge's signpost agent (`--profile`; specs/ide/profiler.md §3.1): the
+    /// built `libYcodeGauge.dylib`, inserted into the launched app. Nil: none.
+    var gaugeLibrary: String?
     /// Record the first-boot data migration as done for this runtime build
     /// before the boot (`--skip-first-boot-migration`).
     var skipFirstBootMigration = false
@@ -228,6 +239,26 @@ struct DeviceLayout {
         return runtimeJobDirectories.map { $0 + "/" + file }.first { FileManager.default.fileExists(atPath: $0) }
     }
 
+    /// Display 1's unique id as the framebuffer library reports it (and the
+    /// HID bundle's touch service carries): the device type's fixed one
+    /// (the Vision Pro, visionos.md §3.3); on a watch one of the device's
+    /// own (watchos.md §3.3, W-7: "a per-device unique id"), derived from
+    /// its UDID; otherwise nil (the library's constant, as before; Ycode
+    /// decision: the iOS types keep it so their saved devices stay as they
+    /// are).
+    var displayUID: String? {
+        if let uid = deviceType.displayUID { return uid }
+        return deviceType.family == .watch ? Self.displayUID(forDevice: udid) : nil
+    }
+
+    /// A display unique id derived from a device's UDID: stable across
+    /// boots, different per device, Ycode's "YCOD" mark (0x59434F44) as
+    /// its first group, as the constant ids the library uses elsewhere.
+    static func displayUID(forDevice udid: String) -> String {
+        let h = stableUDID(for: "display-1:" + udid.uppercased())
+        return "59434F44" + h.dropFirst(8)
+    }
+
     /// A UDID derived from the device path: stable across runs, upper case
     /// with dashes (two FNV-1a hashes; version 8 "custom" UUID layout).
     static func stableUDID(for path: String) -> String {
@@ -329,7 +360,7 @@ struct DeviceLayout {
         ]
         // A display unique id fixed by the device type (visionos.md §3.3,
         // V-6): the framebuffer library reports it for its one display.
-        if let uid = deviceType.displayUID { env["YCODE_FRAMEBUFFER_DISPLAY_UID"] = uid }
+        if let uid = displayUID { env["YCODE_FRAMEBUFFER_DISPLAY_UID"] = uid }
         // A foldable (foldable.md §8): the HID bundle publishes the
         // device-motion service (the hinge, §8.2 I2) and the framebuffer
         // library its second built-in display (§8.1 D1), by default; the
@@ -337,6 +368,17 @@ struct DeviceLayout {
         // which SpringBoard takes each panel's surface (cover, inner;
         // foldable.md §9 Q7). YCODE_FOLD_DISPLAYS=0 publishes the cover only
         // and writes no `displays`.
+        // A watch (watchos.md W-9, §5.1, §12): the HID bundle publishes the
+        // Digital Crown service (0xFF0B / 1) for the crown's rotation, the
+        // watch-gestures service, and accepts only the watch's button pairs
+        // (§5.2); on an Ultra also the Action button (0xFF01 / 0x200).
+        if deviceType.features.contains("com.apple.hid.digital-crown") {
+            env["YCODE_SIMHID_DIGITAL_CROWN"] = "1"
+            if deviceType.features.contains(DeviceType.actionButtonFeature) { env["YCODE_SIMHID_ACTION_BUTTON"] = "1" }
+        }
+        // A Vision Pro (visionos.md §5.3, V-10): the HID bundle publishes the
+        // DigitalDial, PalomaPose, SelectionStream and Manipulator services.
+        if runtimePlatform() == .visionOS { env["YCODE_SIMHID_VISION"] = "1" }
         if deviceType.isFoldable {
             env["YCODE_SIMHID_DEVICE_MOTION"] = "1"
             if let second = deviceType.publishedSecondDisplay { env["YCODE_FRAMEBUFFER_SECOND_DISPLAY"] = second.environmentValue }
@@ -346,6 +388,12 @@ struct DeviceLayout {
         // DEV/data/tmp/ycode-framebuffer.calls.<pid> (simframebuffer.c).
         if ProcessInfo.processInfo.environment["YCODE_FRAMEBUFFER_CALLS"] == "1" {
             env["YCODE_FRAMEBUFFER_CALLS"] = guestPath(data + "/tmp/ycode-framebuffer.calls")
+        }
+        // Diagnostic only (host YCODE_FRAMEBUFFER_LIVE_SIZE=1): the framebuffer
+        // library watches DEV/data/tmp/ycode-framebuffer.live-size for a new
+        // display size while the device runs (simframebuffer.c, device-hub.md §I.12).
+        if ProcessInfo.processInfo.environment["YCODE_FRAMEBUFFER_LIVE_SIZE"] == "1" {
+            env["YCODE_FRAMEBUFFER_LIVE_SIZE"] = guestPath(data + "/tmp/ycode-framebuffer.live-size")
         }
         // Diagnostic only: YCODE_CHILD_ENV="K=V;K=V" adds variables to every
         // job's environment (for example a recorder library in
@@ -429,8 +477,10 @@ struct DeviceLayout {
         }
         try checkDeviceType()
         try checkRuntime()
-        // A device that never booted (no type record, no bootstrap plist).
-        let isNewDevice = Self.recordedDeviceType(in: dev) == nil
+        // A device that never booted (no type record, no bootstrap plist), or
+        // whose data was erased (an unpaired watch keeps only its type record
+        // and UDID, device-pairing.md P-3: its data has no bootstrap plist).
+        let isNewDevice = Self.recordedDeviceType(in: dev) == nil || !fm.fileExists(atPath: plistPath)
         if restoring {
             // The framebuffer state file stays: backboardd's framebuffer
             // library keeps it open and rewrites it on every swap. Removed
@@ -442,6 +492,7 @@ struct DeviceLayout {
             try prepareMemoryDirectory()
             try stageApp(dir)
             try stageOverridesLibrary()
+            try stageGaugeLibrary()
             return
         }
         if let templatePath, !fm.fileExists(atPath: data) {
@@ -503,7 +554,10 @@ struct DeviceLayout {
         }
         try prepareJobsAndPlists()
         try stageSettingsAgent()
+        try stagePairingAgent()
+        try stageHealthAgent()
         try stageOverridesLibrary()
+        try stageGaugeLibrary()
         DeviceSettingsFiles(dev: dev, guestData: guestData).resetNonPersistentAtColdBoot()
     }
 

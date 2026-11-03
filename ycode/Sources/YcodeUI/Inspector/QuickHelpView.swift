@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The Quick Help inspector body (`specs/ide/reference-ui-4.md` §7): title
 /// and summary, a wrapped declaration box, the file link, Parameters,

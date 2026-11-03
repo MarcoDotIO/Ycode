@@ -75,13 +75,22 @@ extension DarwinKernel {
                 text += " mach_msg2 options \(hx(options))"
                 if options & 1 != 0 { text += " sent id \(id) to \(hx(remote)) (\(ipc.describePort(remote)))" }
                 if options & 2 != 0 { text += " receiving on \(hx(rcv)) (\(ipc.describePort(rcv)))" }
+                // A receive-only call with MACH_RCV_SYNC_WAIT names the port
+                // its request went to (the low half of x3, §2.7 of mach-ipc.md).
+                if options & 1 == 0, options & MachMsgOption.rcvSyncWait != 0, MachPortName.isValid(remote) {
+                    text += "; its request went to \(hx(remote)) (\(ipc.describePort(remote)))"
+                }
             } else if n == -31 {
                 text += " mach_msg options \(hx(a[1])) rcv_name \(hx(a[4]))"
+            } else if n == 375, let wl = kevents.workloops[a[0]] {
+                text += " kevent_id on workloop \(hx(a[0])) (\(Self.workloopState(wl)))"
             } else {
                 text += " args " + a.prefix(4).map { hx($0) }.joined(separator: " ")
             }
+            if let w = t.worker { text += " [\(Self.workerKind(w))]" }
             lines.append(text)
         }
+        if let summary = workqueueSummary() { lines.append(summary) }
         let lost = lostWorkloopRequests()
         if !lost.isEmpty {
             lines.append("workloops marked as requested that no queue holds: " + lost.map { hx($0.workloopID) }.joined(separator: " ")
@@ -110,6 +119,43 @@ extension DarwinKernel {
             }
         }
         return lines
+    }
+
+    /// A worker's request kind for the report.
+    static func workerKind(_ w: WorkerState) -> String {
+        var s = w.cooperative ? "cooperative" : w.constrained ? "constrained" : "overcommit"
+        s += " qos \(w.qos)"
+        if let kq = w.boundQueue {
+            s += kq.kind == .workloop ? ", servicer of workloop \(hx(kq.workloopID))" : ", bucket \(w.boundBucket ?? -1)"
+        }
+        if w.phase != .running { s += ", \(w.phase)" }
+        return s
+    }
+
+    static func workloopState(_ wl: KQueue) -> String {
+        "servicer \(wl.servicer.map { "t\($0.threadID)" } ?? "none") owner \(wl.owner.map { "t\($0.threadID)" } ?? "none") "
+            + "requested \(wl.requested); requests: \(wl.requestLogText)"
+    }
+
+    /// One line on the process's workqueue (nil without workers): how many
+    /// workers run, block or idle, what is pending, and whether a new worker
+    /// could get a vCPU now.
+    func workqueueSummary() -> String? {
+        let workers = workqueue.workers.values
+        guard !workers.isEmpty || !workqueue.pendingWorkloops.isEmpty else { return nil }
+        var constrained = 0, blocked = 0, overcommit = 0, cooperative = 0
+        for t in workers {
+            guard let w = t.worker, w.phase == .running else { continue }
+            if w.cooperative { cooperative += 1 } else if w.constrained { constrained += 1 } else { overcommit += 1 }
+            if t.blockedInKernel { blocked += 1 }
+        }
+        let plain = workqueue.plainPending.sorted { ($0.key.qos, $0.key.overcommit ? 1 : 0) < ($1.key.qos, $1.key.overcommit ? 1 : 0) }
+            .map { "qos \($0.key.qos)\($0.key.overcommit ? " overcommit" : $0.key.cooperative ? " cooperative" : ""): \($0.value)" }
+        let buckets = kevents.workq?.buckets.filter { $0.value.requested && $0.value.boundWorker == nil }.keys.sorted() ?? []
+        return "workqueue: \(workers.count) workers (running: \(constrained) constrained, \(overcommit) overcommit or kevent, "
+            + "\(cooperative) cooperative; \(blocked) of them blocked in the kernel; \(workqueue.idle.count) idle); "
+            + "pending: plain [\(plain.joined(separator: ", "))], workloops \(workqueue.pendingWorkloops.count), "
+            + "buckets \(buckets); a new worker can start: \(threadHost?.canStartThread ?? false)"
     }
 }
 
@@ -158,13 +204,56 @@ extension MachIPC {
         return "; srights \(p.srights) sorights \(p.sorights); held by " + (holders.isEmpty ? "nobody" : holders.joined(separator: ", "))
     }
 
+    /// Where the receive right of `p` travels (diagnostics): the queued
+    /// message whose body carries it, followed through carrier ports whose
+    /// own receive right is in transit (at most four steps). Lock held.
+    static func transitCarrier(_ p: IPCPort, system: DarwinSystem?, mach: MachIPCSystem) -> String {
+        var spaces = system?.snapshotSpaces() ?? []
+        if let host = mach.hostTask { spaces.append(host.ipc) }
+        // Every port some space names (a port in transit is still named by
+        // the spaces that hold send rights to it).
+        var ports: [ObjectIdentifier: IPCPort] = [:]
+        for space in spaces {
+            for e in space.entries where e.inUse { if let q = e.port { ports[ObjectIdentifier(q)] = q } }
+        }
+        func carrier(of port: IPCPort) -> (port: IPCPort, id: Int32)? {
+            for q in ports.values {
+                for m in q.messages.all {
+                    let found = m.items.contains { item in
+                        switch item {
+                        case let .port(r, _), let .guarded(r, _, _): return r.port === port
+                        case let .oolPorts(list, _, _): return list.contains { $0.port === port }
+                        case .ool: return false
+                        }
+                    }
+                    if found { return (q, m.id) }
+                }
+            }
+            return nil
+        }
+        var text = "", current = p
+        for _ in 0..<4 {
+            guard let (q, id) = carrier(of: current) else { break }
+            if let r = q.receiver {
+                let name = r.entries.indices.first { r.entries[$0].inUse && r.entries[$0].port === q }
+                    .map { "0x" + String(UInt32($0) << 8 | r.entries[$0].generation << 2 | 3, radix: 16) } ?? "?"
+                return text + "; carried by a message (id \(id)) queued for pid \(r.pid) on \(name) (\(q.messages.count) queued there)"
+            }
+            text += "; carried by a message (id \(id)) on a port whose receive right is in transit too"
+            current = q
+        }
+        return text.isEmpty ? "; no queued message carries it" : text
+    }
+
     func describePort(_ name: UInt32) -> String {
         guard MachPortName.isValid(name), let i = lookup(name) else { return "no such name" }
         if entries[i].set != nil { return "port set" }
         guard let p = entries[i].port else { return "dead name" }
         if let k = p.kernelObject { return "kernel object \(k)" }
         if !p.active { return "dead port" }
-        guard let r = p.receiver else { return "receive right in transit, \(p.messages.count) queued" }
+        guard let r = p.receiver else {
+            return "receive right in transit, \(p.messages.count) queued" + Self.transitCarrier(p, system: kernel?.system, mach: system)
+        }
         if r === self { return "own port, \(p.messages.count) queued" + Self.rightHolders(p, system: kernel?.system, mach: system) }
         return "received by pid \(r.pid), \(p.messages.count) queued"
     }

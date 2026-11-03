@@ -1,4 +1,5 @@
 import XCTest
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// Drives the reference-ui-3 controllers: asset catalog filter and Color Set

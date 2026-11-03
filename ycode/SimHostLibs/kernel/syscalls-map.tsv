@@ -442,6 +442,8 @@ _mach_msg_overwrite_trap	table	mach-trap	-32	mach
 _mach_msg_priority_encode	surface	mach-routine	-	routine: machmsg.c: library routine
 _mach_msg_receive	surface	mach-routine	-47	routine: machmsg.c: via mach_msg
 _mach_msg_send	surface	mach-routine	-47	routine: machmsg.c: via mach_msg
+_mach_msg_server	surface	mach-routine	-47,-12,-18,-19	routine: machmsg.c: MIG server loop (mach-ipc.md 5.1)
+_mach_msg_server_once	surface	mach-routine	-47,-12,-18,-19	routine: machmsg.c: one MIG request and its reply (mach-ipc.md 5.1)
 _mach_msg_trap	table	mach-trap	-31	mach
 _mach_port_allocate	surface	mach-routine	-16	routine: mach.c
 _mach_port_construct	surface	mach-routine	-24	routine: mach.c

@@ -52,8 +52,14 @@ final class MetalHostCore: @unchecked Sendable {
     let log: (String) -> Void
     let registryID: UInt64
     weak var transport: MetalHostTransport?
-    /// Clock for event times (host seconds).
+    /// Host seconds (diagnostics: the time since a process's last submission).
     var clock: () -> Double = { ProcessInfo.processInfo.systemUptime }
+    /// Seconds for the `startTime` and `endTime` of completion events (§8.5 of
+    /// metal-sim-protocol.md): what the guest reads as a command buffer's
+    /// GPU start and end time, compared by the guest with its own media
+    /// time (`mach_absolute_time` in seconds). nil: `clock`.
+    var eventClock: (() -> Double)?
+    func eventNow() -> Double { (eventClock ?? clock)() }
 
     // Internal (not private) for the snapshot extension (MetalHostSnapshot.swift).
     let lock = NSLock()
@@ -80,6 +86,26 @@ final class MetalHostCore: @unchecked Sendable {
         self.surfaces = surfaces
         self.registryID = registryID
         self.log = log
+        backend.setDeviceResetHandler { [weak self] in self?.refreshArgumentMembers() }
+    }
+
+    /// After the back end made its device again (metal-sim-protocol.md
+    /// §8.7): every recorded argument-buffer member whose object now has
+    /// another value (a buffer at a new GPU address) is written again.
+    func refreshArgumentMembers() {
+        let members = lock.withLock { argumentMembers }
+        var changed = 0
+        for (target, list) in members {
+            for (at, m) in list {
+                guard let v = argumentMemberValue(kind: m.kind, object: m.object, offset: m.offset), v != m.written else { continue }
+                var w = MetalByteWriter()
+                w.u64(v)
+                guard backend.writeBuffer(target, offset: at, w.bytes) else { continue }
+                changed += 1
+                lock.withLock { argumentMembers[target]?[at]?.written = v }
+            }
+        }
+        if changed > 0 { log("metal: after the device reset, \(changed) argument-buffer members written again") }
     }
 
     // MARK: State
@@ -141,6 +167,15 @@ final class MetalHostCore: @unchecked Sendable {
         /// opened from a handle (it may share its image with another process).
         var sharedLabel: String?
         var openedHandle = false
+        /// An argument layout (op 16) or encoder (op 17): the member table
+        /// parsed from the layout description (metal-sim-protocol.md §4.3);
+        /// nil when none was sent or it did not parse (the 8 × index rule).
+        var argumentLayout: MetalArgumentLayout?
+        /// An argument encoder: the argument buffer and offset of its last
+        /// kind-0 set call (op 19).
+        var argumentTarget: (buffer: MetalHandle, offset: Int)?
+        /// An encoder without a layout logged its first fallback write.
+        var argumentFallbackLogged = false
         init(kind: MetalRefKind, ref: UInt32) { self.kind = kind; self.ref = ref }
     }
 
@@ -256,6 +291,7 @@ final class MetalHostCore: @unchecked Sendable {
             var all: [(key: MetalHandle, value: Object)] = []
             for (h, o) in p.objects.sorted(by: { $0.key > $1.key }) {
                 if o.pendingCreate { p.orphans[h] = o } else { all.append((h, o)) }
+                argumentMembers[h] = nil
             }
             p.objects.removeAll()
             p.ghosts.removeAll()
@@ -840,57 +876,243 @@ final class MetalHostCore: @unchecked Sendable {
         return Outcome(reply: Self.refReply(ref))
     }
 
-    /// Argument-encoder set calls (op 19; visionos.md §10.20.7, §9 Q25)
-    /// write the member into the argument buffer's memory: the guest driver
-    /// leaves that to the host, and the guest's argument buffers stay zero
-    /// otherwise. Kind 0 names the argument buffer and its offset; kinds 1,
-    /// 2, 3 write a buffer's GPU address (plus the call's offset), a
-    /// texture's or a sampler's resource ID as 8 bytes at the member index
-    /// times 8, the layout ycode-airc reads (`metal-shaders.md` §3.6, every
-    /// member 8 bytes, members in id order). `YCODE_METAL_ARGUMENT_ENCODER=0`
-    /// refuses the calls instead (the behaviour before §10.20.7).
-    static let argumentEncoderWrites = ProcessInfo.processInfo.environment["YCODE_METAL_ARGUMENT_ENCODER"] != "0"
-    private var argumentTargets: [String: (MetalHandle, Int)] = [:]
-    private var argumentWritesLogged = 0
+    // MARK: Argument buffers (ops 16, 17, 19, 35; metal-sim-protocol.md §4.3)
 
+    /// Argument-encoder set calls (op 19) write their members into the
+    /// argument buffer's memory: the guest driver leaves that to the host
+    /// (§4.3.5). Kind 0 names the argument buffer and its offset; kinds 1,
+    /// 2, 3 write a buffer's GPU address (plus the call's offset), a
+    /// texture's handle (Ycode's `gpuResourceID`, its heap index) or a
+    /// sampler's resource ID (op 39's answer) as 8 bytes at the argument
+    /// buffer's offset plus the member's offset from op 16's layout
+    /// description; 0 for nil. An encoder whose layout never arrived (or did
+    /// not parse) keeps the old rule, member n at 8 × n, logged once per
+    /// encoder. `YCODE_METAL_ARGUMENT_ENCODER=0` refuses the set calls
+    /// instead (the behaviour before visionos.md §10.20.7).
+    static let argumentEncoderWrites = ProcessInfo.processInfo.environment["YCODE_METAL_ARGUMENT_ENCODER"] != "0"
+    private static let argumentLogLimit = 24
+    private var argumentWritesLogged = 0
+    private var argumentLayoutsLogged = 0
+    private var argumentFailuresLogged = 0
+
+    /// What one argument-encoder set call wrote: the member's kind (1
+    /// buffer, 2 texture, 3 sampler), its object and the call's offset, and
+    /// the value written. A snapshot restore makes textures, samplers and
+    /// buffers again on a fresh back end, where their IDs and GPU addresses
+    /// can differ; it writes every recorded member again from its object
+    /// (visionos.md §10.20.11 item 6, §10.21).
+    struct ArgumentMember: Equatable {
+        var kind: UInt8
+        var object: MetalHandle
+        var offset: Int64
+        var written: UInt64
+    }
+    /// Argument buffer → byte offset → the member last written there (under `lock`).
+    var argumentMembers: [MetalHandle: [Int: ArgumentMember]] = [:]
+
+    /// The value a member of `kind` naming `h` has now (nil: the object is unknown to the back end).
+    func argumentMemberValue(kind: UInt8, object h: MetalHandle, offset: Int64) -> UInt64? {
+        switch kind {
+        case 1:
+            let base = backend.gpuAddress(ofBuffer: h)
+                ?? lock.withLock { processes.values.lazy.compactMap { $0.objects[h]?.gpuAddress }.first } ?? 0
+            return base == 0 ? 0 : base &+ UInt64(bitPattern: offset)
+        case 2:
+            return backend.gpuResourceID(ofTexture: h)
+        case 3:
+            return backend.gpuResourceID(ofSampler: h) ?? h.raw
+        default:
+            return nil
+        }
+    }
+
+    /// Op 16: parses the layout description into the layout's member table.
+    /// The record body is kept as the recipe (a restore parses it again).
+    private func newArgumentLayout(_ body: [UInt8], _ p: Process) -> XPCDict {
+        var layout: MetalArgumentLayout?
+        var failure: Error?
+        do { layout = try MetalArgumentLayout.parse(recordBody: body) } catch { failure = error }
+        let (_, ref) = add(.argumentLayout, p) {
+            $0.recipe = MetalRecipe(mt: 12, op: 16, body: body)
+            $0.argumentLayout = layout
+        }
+        if let failure {
+            refuse("12:16", "argument-buffer layout description did not parse; its encoders place member n at 8 × n")
+            let logIt = lock.withLock { () -> Bool in
+                argumentFailuresLogged += 1
+                return argumentFailuresLogged <= Self.argumentLogLimit
+            }
+            if logIt { log("metal: argument layout \(ref) of process \(p.id) (\(body.count) bytes) did not parse: \(failure)") }
+        } else if let layout {
+            let logIt = lock.withLock { () -> Bool in
+                guard argumentLayoutsLogged < Self.argumentLogLimit || !layout.isDense || layout.skippedPointees > 0 else { return false }
+                argumentLayoutsLogged += 1
+                return argumentLayoutsLogged < 4 * Self.argumentLogLimit
+            }
+            if logIt { log("metal: argument layout \(ref) of process \(p.id): \(Self.describe(layout))") }
+        }
+        var w = MetalByteWriter()
+        w.u32(ref); w.u32(0); w.u32(0xFFFF_0001); w.u32(0xFFFF_FFFF)
+        return ["replyData": .data(w.bytes)]
+    }
+
+    static func describe(_ layout: MetalArgumentLayout) -> String {
+        let sorted = layout.members.sorted { $0.key < $1.key }
+        let shown = sorted.prefix(16).map { "\($0.key)@\($0.value.offset)" }.joined(separator: " ")
+        return "\(layout.members.count) members (\(shown)\(sorted.count > 16 ? " …" : "")), "
+            + "length \(layout.encodedLength), alignment \(layout.alignment)" + (layout.isDense ? "" : ", not 8 × index")
+            + (layout.skippedPointees > 0 ? ", \(layout.skippedPointees) unreadable pointee structs skipped" : "")
+    }
+
+    /// Op 17: an encoder from a layout; the reply carries u16 alignment, then
+    /// u16 encoded length (§4.3.3). The encoder's recipe keeps the layout's
+    /// op-16 record body, so a restore has its table without the layout.
+    private func newArgumentEncoder(_ body: [UInt8], _ p: Process) -> XPCDict {
+        var r = ByteReader(body)
+        _ = try? r.u32()
+        let layoutRef = (try? r.u32()) ?? 0
+        let source: (MetalArgumentLayout?, [UInt8]) = lock.withLock {
+            guard let h = p.handle(.argumentLayout, layoutRef), let o = p.objects[h] else { return (nil, []) }
+            return (o.argumentLayout, o.recipe?.body ?? [])
+        }
+        let (_, ref) = add(.argumentEncoder, p) {
+            $0.recipe = MetalRecipe(mt: 12, op: 17, body: source.1)
+            $0.argumentLayout = source.0
+        }
+        // Without a layout: alignment 8, length 24 (the reference's reply
+        // for a buffer, a texture and a sampler).
+        let alignment = source.0?.alignment ?? 8, length = source.0?.encodedLength ?? 24
+        if source.0 == nil { log("metal: argument encoder \(ref) of process \(p.id) from layout \(layoutRef) without a description") }
+        var w = MetalByteWriter()
+        w.u32(ref); w.u32(0)
+        w.u16(UInt16(clamping: alignment)); w.u16(UInt16(clamping: length))
+        w.u32(0)
+        return ["replyData": .data(w.bytes)]
+    }
+
+    /// The byte offset of member `index` within the encoded argument buffer
+    /// (nil: the layout has no such member). Lock held.
+    private func memberOffset(_ encoder: Object, _ index: UInt32) -> Int? {
+        guard let layout = encoder.argumentLayout else { return 8 * Int(index) }
+        return layout.member(index)?.offset
+    }
+
+    /// Op 35 (`constantDataAtIndex:`): the member's offset from the start of
+    /// the argument buffer, i.e. the encoder's argument-buffer offset plus the
+    /// member's offset (§4.3.6).
+    private func argumentConstantOffset(_ body: [UInt8], _ p: Process) -> XPCDict {
+        var r = ByteReader(body)
+        guard let encoderRef = try? r.u32(), (try? r.u32()) != nil, let index = try? r.u32() else {
+            refuse("12:35", "malformed constantDataAtIndex: request")
+            return Self.u64Reply([0])
+        }
+        let answer: (base: Int, member: Int?)? = lock.withLock {
+            guard let h = p.handle(.argumentEncoder, encoderRef), let o = p.objects[h] else { return nil }
+            return (o.argumentTarget?.offset ?? 0, memberOffset(o, index))
+        }
+        guard let answer else {
+            refuse("12:35", "constantDataAtIndex: of an unknown encoder")
+            return Self.u64Reply([0])
+        }
+        guard let member = answer.member else {
+            log("metal: constantDataAtIndex: \(index) of encoder \(encoderRef) (process \(p.id)): not in its layout; answered its argument-buffer offset")
+            return Self.u64Reply([UInt64(answer.base)])
+        }
+        return Self.u64Reply([UInt64(answer.base + member)])
+    }
+
+    /// Op 19 (§4.3.4): u32 encoder, u8 kind, u24 first index, u32 0, u8 0,
+    /// u24 count, u64 0, then the entries: kinds 0 and 1 *count* pairs of
+    /// u32 ref and u64 offset; kinds 2 and 3 *count* u32 refs, then *count*
+    /// u64 zeros.
     private func argumentEncoderSet(_ body: [UInt8], _ p: Process) {
         var r = ByteReader(body)
-        guard body.count >= 36, let encoder = try? r.u32(), let kind = try? r.u8(), let index = try? r.u8() else {
+        guard body.count >= 28, let encoderRef = try? r.u32(), let kindIndex = try? r.u32(), (try? r.u32()) != nil,
+              let countWord = try? r.u32(), (try? r.u64()) != nil else {
             refuse("12:19", "malformed argument-encoder set call")
             return
         }
-        _ = try? r.u16()
-        for _ in 0..<4 { _ = try? r.u32() }
-        guard let object = try? r.u32(), let offset = try? r.int64() else { return }
-        let key = "\(p.id)/\(encoder)"
-        var value: UInt64?
+        let kind = UInt8(truncatingIfNeeded: kindIndex), first = kindIndex >> 8
+        let count = Int(min(countWord >> 8, 1 << 16))
+        var entries: [(ref: UInt32, offset: Int)] = []
         switch kind {
-        case 0:
-            if let h = lookUp(.resource, object, p) { lock.withLock { argumentTargets[key] = (h, Int(offset)) } }
-            return
-        case 1:
-            if object == 0 { value = 0 } else if let h = lookUp(.resource, object, p) {
-                let base = backend.gpuAddress(ofBuffer: h) ?? lock.withLock { p.objects[h]?.gpuAddress } ?? 0
-                value = base == 0 ? 0 : base &+ UInt64(bitPattern: Int64(offset))
+        case 0, 1:
+            for _ in 0..<max(count, 1) {
+                guard let ref = try? r.u32(), let offset = try? r.int64() else { break }
+                entries.append((ref, offset))
             }
-        case 2:
-            if object == 0 { value = 0 } else if let h = lookUp(.resource, object, p) { value = backend.gpuResourceID(ofTexture: h) }
-        case 3:
-            if object == 0 { value = 0 } else if let h = lookUp(.sampler, object, p) { value = backend.gpuResourceID(ofSampler: h) ?? h.raw }
+        case 2, 3:
+            for _ in 0..<max(count, 1) {
+                guard let ref = try? r.u32() else { break }
+                entries.append((ref, 0))
+            }
         default:
-            break
-        }
-        guard let v = value, let (target, base) = lock.withLock({ argumentTargets[key] }) else {
-            refuse("12:19", "argument-encoder set call without a target or object")
+            refuse("12:19", "argument-encoder set call of kind \(kind)")
             return
         }
-        var w = MetalByteWriter()
-        w.u64(v)
-        let ok = backend.writeBuffer(target, offset: base + 8 * Int(index), w.bytes)
-        if argumentWritesLogged < 24 || !ok {
-            argumentWritesLogged += 1
-            log("metal: argument encoder \(encoder) of process \(p.id): kind \(kind) index \(index) object \(object) -> "
-                + "\(target) +\(base + 8 * Int(index)) = 0x\(String(v, radix: 16))" + (ok ? "" : " (not written: no CPU-visible memory)"))
+        guard !entries.isEmpty else {
+            refuse("12:19", "malformed argument-encoder set call")
+            return
+        }
+        guard let encoder = lock.withLock({ p.handle(.argumentEncoder, encoderRef).flatMap { p.objects[$0] } }) else {
+            refuse("12:19", "argument-encoder set call of an unknown encoder")
+            return
+        }
+        if kind == 0 {
+            let (ref, offset) = entries[0]
+            if let h = lookUp(.resource, ref, p) { lock.withLock { encoder.argumentTarget = (h, offset) } }
+            return
+        }
+        guard let (target, base) = lock.withLock({ encoder.argumentTarget }) else {
+            refuse("12:19", "argument-encoder set call without an argument buffer")
+            return
+        }
+        let fallback: Bool = lock.withLock {
+            guard encoder.argumentLayout == nil, !encoder.argumentFallbackLogged else { return false }
+            encoder.argumentFallbackLogged = true
+            return true
+        }
+        if fallback {
+            log("metal: argument encoder \(encoderRef) of process \(p.id) has no layout description: member n at 8 × n")
+        }
+        for (k, entry) in entries.enumerated() {
+            let index = first &+ UInt32(k)
+            guard let memberAt = lock.withLock({ memberOffset(encoder, index) }) else {
+                log("metal: argument encoder \(encoderRef) of process \(p.id): index \(index) is not in its layout; not written")
+                continue
+            }
+            var value: UInt64?
+            var member: MetalHandle?
+            if entry.ref == 0 {
+                value = 0
+            } else if let h = lookUp(kind == 3 ? .sampler : .resource, entry.ref, p) {
+                member = h
+                value = argumentMemberValue(kind: kind, object: h, offset: Int64(entry.offset))
+            }
+            guard let v = value else {
+                refuse("12:19", "argument-encoder set call naming an unknown object")
+                continue
+            }
+            var w = MetalByteWriter()
+            w.u64(v)
+            let at = base + memberAt
+            let ok = backend.writeBuffer(target, offset: at, w.bytes)
+            let logIt: Bool = lock.withLock {
+                if ok {
+                    if let member {
+                        argumentMembers[target, default: [:]][at] = ArgumentMember(kind: kind, object: member, offset: Int64(entry.offset), written: v)
+                    } else {
+                        argumentMembers[target]?[at] = nil
+                    }
+                }
+                guard argumentWritesLogged < Self.argumentLogLimit || !ok else { return false }
+                argumentWritesLogged += 1
+                return true
+            }
+            if logIt {
+                log("metal: argument encoder \(encoderRef) of process \(p.id): kind \(kind) index \(index) object \(entry.ref) -> "
+                    + "\(target) +\(at) = 0x\(String(v, radix: 16))" + (ok ? "" : " (not written: no CPU-visible memory)"))
+            }
         }
     }
 
@@ -926,6 +1148,7 @@ final class MetalHostCore: @unchecked Sendable {
                 p.tables[k] = t
                 guard let o = p.objects.removeValue(forKey: h) else { return nil }
                 if let heap = o.heap, let ho = p.objects[heap] { ho.heapUsed -= min(ho.heapUsed, o.heapBytes) }
+                argumentMembers[h] = nil
                 retire(h, o, p)
                 return (h, o)
             }
@@ -1279,16 +1502,9 @@ final class MetalHostCore: @unchecked Sendable {
             finishCreate(h, p)
             return Self.refReply(ref)
         case 16:
-            let (_, ref) = add(.argumentLayout, p) { $0.recipe = MetalRecipe(mt: 12, op: 16) }
-            refuse("12:16", "argument-buffer layouts are answered but not modelled")
-            var w = MetalByteWriter()
-            w.u32(ref); w.u32(0); w.u32(0xFFFF_0001); w.u32(0xFFFF_FFFF)
-            return ["replyData": .data(w.bytes)]
+            return newArgumentLayout(rec.body, p)
         case 17:
-            let (_, ref) = add(.argumentEncoder, p) { $0.recipe = MetalRecipe(mt: 12, op: 17) }
-            var w = MetalByteWriter()
-            w.u32(ref); w.u32(0); w.u16(24); w.u16(8); w.u32(0)
-            return ["replyData": .data(w.bytes)]
+            return newArgumentEncoder(rec.body, p)
         case 19:
             guard Self.argumentEncoderWrites else {
                 refuse("12:19", "argument-encoder set calls are not modelled")
@@ -1373,8 +1589,7 @@ final class MetalHostCore: @unchecked Sendable {
         case 33, 34:
             return Self.u64Reply([16])
         case 35:
-            refuse("12:35", "argument-encoder op answered with zero")
-            return Self.u64Reply([0])
+            return argumentConstantOffset(rec.body, p)
         case 37:
             let l = backend.limits()
             var values = [l.maxThreadsPerThreadgroup.x, l.maxThreadsPerThreadgroup.y, l.maxThreadsPerThreadgroup.z,
@@ -1474,7 +1689,7 @@ final class MetalHostCore: @unchecked Sendable {
         for diag in cb.diagnostics { log("metal: submission \(cbRef): \(diag)") }
 
         cb.receivedAtNs = receivedAt
-        let flight = InFlight(start: clock())
+        let flight = InFlight(start: eventNow())
         lock.withLock { inFlight += 1 }
         backend.submit(cb, scheduled: { [weak self] in
             guard let core = self else { return }
@@ -1502,7 +1717,7 @@ final class MetalHostCore: @unchecked Sendable {
     private func sendScheduled(_ p: Process, _ cbRef: UInt64, _ f: InFlight) {
         guard !f.sentScheduled, !f.sentCompleted, let port = eventPort(p) else { return }
         f.sentScheduled = true
-        _ = transport?.sendEvent(event(100, cbRef, status: MetalCommandBufferStatus.scheduled, start: f.start, end: clock()),
+        _ = transport?.sendEvent(event(100, cbRef, status: MetalCommandBufferStatus.scheduled, start: f.start, end: eventNow()),
                                  to: port)
         lock.withLock { stats.scheduledEvents += 1; p.scheduledSent += 1 }
     }
@@ -1510,7 +1725,7 @@ final class MetalHostCore: @unchecked Sendable {
     /// On `p.events`. Sends 100 first when the backend never reported it.
     private func sendCompleted(_ p: Process, _ cbRef: UInt64, _ f: InFlight, status: Int) {
         guard !f.sentCompleted, eventPort(p) != nil else { return }
-        let end = clock()
+        let end = eventNow()
         if !f.sentScheduled { sendScheduled(p, cbRef, f) }
         guard let port = eventPort(p) else { return }
         f.sentCompleted = true

@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeAssistant
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// Round R44 of reference-ui-6.md §9: the Coding Assistant pane's layout
@@ -137,7 +138,7 @@ import YcodeAssistant
         #expect(pane.newConversationMenuTitles.dropFirst().allSatisfy { $0.hasSuffix(" — Checking…") })
         await pane.model.refreshAvailability().value
         #expect(pane.newConversationMenuTitles == ["# Model Providers", "Ollama", "llama.cpp — Set Up", "OpenAI — Set Up",
-                                                   "Claude Code — Set Up", "Codex", "Antigravity — Set Up"])
+                                                   "Claude Code — Set Up", "Codex", "Antigravity — Set Up", "ACP Agent — Set Up"])
         let menu = try #require(pane.newConversationButton.menu)
         #expect(menu.items[0].isSectionHeader)
         // Not set up: the hint, and Set Up opens Settings.

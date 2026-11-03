@@ -14,9 +14,22 @@ import Foundation
 // - `task(id:)`: a changed ID cancels the running task and starts a new one
 //   in the same update.
 
-private final class AppearanceState {
+private final class AppearanceState: VisibilityObserving {
+    var appear: (() -> Void)?
     var disappear: (() -> Void)?
-    init(_ d: (() -> Void)?) { disappear = d }
+    /// False while a suspended subtree hides the view (R9).
+    var visible = true
+    init(_ a: (() -> Void)?, _ d: (() -> Void)?) {
+        appear = a
+        disappear = d
+    }
+
+    func visibilityChanged(_ v: Bool, node: ViewNode) {
+        guard v != visible else { return }
+        visible = v
+        if v, let appear { node.graph.queueAppear(appear) }
+        if !v, let disappear { node.graph.queueDisappear(disappear) }
+    }
 }
 
 package struct AppearanceActionModifier: PrimitiveModifier {
@@ -24,16 +37,20 @@ package struct AppearanceActionModifier: PrimitiveModifier {
     package var disappear: (() -> Void)?
 
     package func _inserted(node: ViewNode) {
-        node.primitiveState = AppearanceState(disappear)
+        node.primitiveState = AppearanceState(appear, disappear)
         if let appear { node.graph.queueAppear(appear) }
     }
 
     package func _updated(old: AppearanceActionModifier, node: ViewNode) {
-        (node.primitiveState as? AppearanceState)?.disappear = disappear
+        guard let s = node.primitiveState as? AppearanceState else { return }
+        s.appear = appear
+        s.disappear = disappear
     }
 
     package func _removed(node: ViewNode) {
-        if let d = (node.primitiveState as? AppearanceState)?.disappear { node.graph.queueDisappear(d) }
+        // A view that already disappeared with its suspended page does not
+        // disappear again when the page goes (06 §2.1).
+        if let s = node.primitiveState as? AppearanceState, s.visible, let d = s.disappear { node.graph.queueDisappear(d) }
     }
 }
 
@@ -63,11 +80,20 @@ package struct ValueActionModifier<V: Equatable>: PrimitiveModifier {
     }
 }
 
-private final class TaskState {
+private final class TaskState: VisibilityObserving {
     var task: Task<Void, Never>?
+    var restart: (() -> Void)?
     func cancel() {
         task?.cancel()
         task = nil
+    }
+
+    func visibilityChanged(_ v: Bool, node: ViewNode) {
+        if v {
+            if let restart { node.graph.queueAppear(restart) }
+        } else {
+            node.graph.queueDisappear { [weak self] in self?.cancel() }
+        }
     }
 }
 
@@ -84,11 +110,14 @@ package struct TaskModifier: PrimitiveModifier {
     package func _inserted(node: ViewNode) {
         let state = TaskState()
         node.primitiveState = state
+        state.restart = { [weak state] in if let state { self.start(state) } }
         node.graph.queueAppear { self.start(state) }
     }
 
     package func _updated(old: TaskModifier, node: ViewNode) {
-        guard old.id != id, let state = node.primitiveState as? TaskState else { return }
+        guard let state = node.primitiveState as? TaskState else { return }
+        state.restart = { [weak state] in if let state { self.start(state) } }
+        guard old.id != id else { return }
         node.graph.queueAppear {
             state.cancel()
             self.start(state)
@@ -208,5 +237,5 @@ extension View {
     }
 
     /// Hides the view; it keeps its place in layout.
-    public func hidden() -> some View { modifier(RenderEffectModifier(name: "hidden", value: true)) }
+    public func hidden() -> some View { modifier(NodeRenderEffectModifier(name: "hidden") { .hidden }) }
 }

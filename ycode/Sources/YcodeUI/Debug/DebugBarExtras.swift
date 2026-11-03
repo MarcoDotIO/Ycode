@@ -1,5 +1,6 @@
 import AppKit
 import YcodeDebug
+import YcodeIDECore
 import YcodeSimFeatures
 
 /// The paused debug bar's extra buttons, path and branch; the variables

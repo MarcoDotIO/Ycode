@@ -1,0 +1,72 @@
+name: Bug report
+description: Something in the IDE or the command-line tools doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. For a simulator problem, use the simulator report instead. For a security problem, please follow SECURITY.md and don't open a public issue.
+
+        **Please don't attach Apple files** (SDKs, runtimes, Xcode resources), and check logs and screenshots for private names and paths.
+  - type: input
+    id: version
+    attributes:
+      label: Ycode version
+      description: From the About window, or `ycode --version`.
+      placeholder: 1.0.0-beta.1
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS (arm64)
+        - Linux x86-64
+        - Linux arm64
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: System version
+      placeholder: macOS 27.1, Ubuntu 24.04
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - Disk image (DMG)
+        - Flatpak
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: toolchain
+    attributes:
+      label: Xcode or Swift version
+      description: The output of `swift --version`, and your Xcode version on macOS.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the steps to reproduce it. A small project that shows the problem helps most.
+      placeholder: |
+        1. Open …
+        2. Choose …
+        3. See …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, crash reports or screenshots
+      render: text

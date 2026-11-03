@@ -321,8 +321,12 @@ package final class ViewNode {
             c.transitionOpacity = fade
             fade.update(to: 0, transaction: transaction, graph: graph)
         }
-        if graph.hasActiveDrivers(in: c) {
-            graph.addGhost(c)
+        // The view stays rendered only while the removal animations started
+        // here run; other animations in the subtree (a spinner repeating
+        // forever) do not keep it (R9 QA: a removed "Syncing…" row stayed).
+        let removal = graph.driversStarted(in: c)
+        if !removal.isEmpty {
+            graph.addGhost(c, waitingFor: removal)
         } else {
             c.teardown()
         }
@@ -458,6 +462,37 @@ package final class ViewNode {
         parent = nil
     }
 
+    // MARK: Suspension (R9)
+
+    /// True while the subtree is kept (with its state) but not shown: a
+    /// covered navigation page, a hidden column. Its container does not lay
+    /// it out; hit testing and focus skip it; its appearance actions ran
+    /// `onDisappear` (and tasks were cancelled) when it was suspended, and run
+    /// `onAppear` again when it is resumed (06 §2.1: the root page disappears
+    /// at the end of a push and appears at the start of the pop).
+    package private(set) var isSuspended = false
+
+    package func setSuspended(_ suspended: Bool) {
+        guard suspended != isSuspended, isAlive else { return }
+        isSuspended = suspended
+        func walk(_ n: ViewNode) {
+            if n !== self && n.isSuspended { return }
+            (n.primitiveState as? any VisibilityObserving)?.visibilityChanged(!suspended, node: n)
+            for c in n.children { walk(c) }
+        }
+        walk(self)
+    }
+
+    /// True if this node or an ancestor is suspended.
+    package var isInSuspendedSubtree: Bool {
+        var n: ViewNode? = self
+        while let m = n {
+            if m.isSuspended { return true }
+            n = m.parent
+        }
+        return false
+    }
+
     // MARK: Invalidation
 
     /// Marks the node for re-evaluation in the next update.
@@ -577,6 +612,13 @@ package final class ViewNode {
         body(self)
         for c in children { c.forEachNode(body) }
     }
+}
+
+/// Primitive state that follows a subtree's suspension (appearance actions,
+/// tasks).
+@MainActor
+package protocol VisibilityObserving: AnyObject {
+    func visibilityChanged(_ visible: Bool, node: ViewNode)
 }
 
 /// Geometry a node received in the last layout pass.

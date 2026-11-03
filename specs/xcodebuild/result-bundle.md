@@ -180,6 +180,27 @@ bundles for the same sample runs, apart from times, UUIDs and the run
 order of concurrent tests (`conformance.md`); `xccov view` reads their
 coverage (`coverage.md`).
 
+## Ycode implementation (TEST-HOST, 2026-10-30)
+
+- **Configurations.** A test plan run with several configurations records
+  one `ActionTestPlanRunSummary` per configuration, named after it, holding
+  that configuration's testables; one configuration (or none) keeps "Test
+  Scheme Action". `ActionTestableSummary` `testLanguage` and `testRegion`
+  are the configuration's `language` and `region`.
+- **Test kinds.** `xctest-tool hosted` (observed); `app hosted` for a
+  bundle run inside its `TEST_HOST` and `UI test` for a UI test bundle are
+  Ycode's words (OPEN QUESTION).
+- **Reader.** `XCResultReader` (`YcodeXcodebuild`) reads the bundles
+  ycodebuild writes: `Info.plist`'s root, `Data/data.<id>` frames of raw
+  and RLE blocks (compressed Zstandard blocks are reported as unsupported,
+  so it does not read the reference tool's bundles), the object encoding of
+  §3 (the inverse of the writer: a type spelled out once and named after;
+  `_v` with `V` text is a scalar), and the tests of every test action
+  (run, target, identifier, name, status, duration, failures, skip
+  message, arguments) and the invocation's metrics. `ycode results
+  <bundle> [--json]` prints them (exit 1 when a test failed). Round trip
+  tested: `ResultBundleReaderTests`.
+
 ## Evidence
 
 - Layout, `Info.plist` keys, store files, identifier digest and refs

@@ -220,8 +220,9 @@ func closedPort() throws -> String {
         #expect(throws: AssistantError.usageLimit("You've reached a usage limit. Check your usage in ChatGPT settings.")) {
             _ = try OpenAIProvider.parseEvent(#"{"type":"response.failed","response":{"error":{"code":"subscription_sharing_usage_limit_exceeded","message":"x"}}}"#, plan: true)
         }
-        #expect(throws: AssistantError.incomplete("max_output_tokens")) {
-            _ = try OpenAIProvider.parseEvent(#"{"type":"response.incomplete","response":{"incomplete_details":{"reason":"max_output_tokens"}}}"#, plan: true)
+        // At the output limit the reply is cut off, not failed (GenerationOptionsTests); other reasons stay errors.
+        #expect(throws: AssistantError.incomplete("content_filter")) {
+            _ = try OpenAIProvider.parseEvent(#"{"type":"response.incomplete","response":{"incomplete_details":{"reason":"content_filter"}}}"#, plan: true)
         }
         #expect(throws: AssistantError.failed("boom")) { _ = try OpenAIProvider.parseEvent(#"{"type":"error","code":"server_error","message":"boom"}"#, plan: false) }
         #expect(OpenAIProvider.mapError(status: 503, body: Data(#"{"detail":"routing unavailable"}"#.utf8), plan: true)

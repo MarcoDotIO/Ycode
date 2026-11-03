@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// Menu-bar state and the commands added with the normative menu bar
 /// (`specs/ide/reference-ui-5.md` §2). Titles and conditional items come
@@ -22,6 +23,8 @@ extension WorkspaceWindowController {
         c.isWindowTabBarVisible = window?.tabGroup?.isTabBarVisible ?? false
         c.isFullScreen = window?.styleMask.contains(.fullScreen) ?? false
         c.repositoryHasRemote = sourceControl.hasRemote
+        c.integrationVerb = sourceControl.snapshot.integration.verb
+        c.hasConflicts = sourceControl.snapshot.changes.contains { $0.status == .conflicted }
         c.isDebugging = session.debugClient != nil
         c.isPaused = session.stoppedThread != nil
         c.breakpointsActive = session.breakpoints.isActive
@@ -66,7 +69,10 @@ extension WorkspaceWindowController {
 
     /// Enablement of the commands in this file; nil = not one of them.
     func validateMenuBarItem(_ item: NSMenuItem) -> Bool? {
+        if let r = validateProjectNavigatorItem(item) { return r }
         if let r = validateMenuCleanUpItem(item) { return r }
+        if let r = validateSimulatorDebugMenuItem(item) { return r }
+        if let r = validateToolActionItem(item) { return r }
         switch item.action {
         case #selector(closeOtherTabs(_:)): return editorArea.tabs.count > 1
         case #selector(closeOtherWindowTabs(_:)), #selector(showNextWindowTab(_:)), #selector(showPreviousWindowTab(_:)):

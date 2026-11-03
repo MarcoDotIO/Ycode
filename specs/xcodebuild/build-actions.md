@@ -111,17 +111,19 @@ Message fields used (swift-build's message encoding): `kind`;
 
 ## 4. Signing
 
-The helper answers swift-build's provisioning questions for local builds:
-identity `-` ("Sign to Run Locally") signs ad hoc with the project's
-entitlements plus `com.apple.security.get-task-allow`; the identity name it
-reports, `Sign to Run Locally`, appears in the `CodeSign` section as in the
-reference log; `archive` builds (`"debuggable": false`) leave the
-debugging entitlement out, as in the reference tool's archived products;
-products that take no entitlements (swift-build's `supportsEntitlements`
-false: test bundles, libraries) get none, so no entitlements file is
-written for them (the reference logs have no such tasks for test bundles).
-Other identities fail with a message naming the gap
-(provisioning profiles and certificates are not supported).
+The helper answers swift-build's provisioning questions with Ycode's
+resolver (`specs/ide/signing.md`): identity `-` ("Sign to Run Locally")
+signs ad hoc with the project's entitlements plus
+`com.apple.security.get-task-allow`; the identity name it reports, `Sign to
+Run Locally`, appears in the `CodeSign` section as in the reference log;
+`archive` builds (`"debuggable": false`) leave the debugging entitlement
+out, as in the reference tool's archived products; products that take no
+entitlements (swift-build's `supportsEntitlements` false: test bundles,
+libraries) get none, so no entitlements file is written for them (the
+reference logs have no such tasks for test bundles). Other identities are
+looked up in the keychain with an installed provisioning profile where
+one is needed; simulator builds link their entitlements into
+`__TEXT,__entitlements` (`signing.md` §2–§4, diagnostics §7).
 
 ## 5. docbuild
 

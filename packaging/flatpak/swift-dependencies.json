@@ -1,0 +1,68 @@
+[
+  {
+    "type": "archive",
+    "url": "https://github.com/apple/swift-argument-parser/archive/6a52f3251125d74daf04fcbd5e6f08a75d074382.tar.gz",
+    "sha256": "23ab82e8be3b82b199a008e0044229ae327a8824734d917b78bcdde64ce81ec1",
+    "dest": "deps/swift-argument-parser"
+  },
+  {
+    "type": "archive",
+    "url": "https://github.com/apple/swift-asn1/archive/3b6410f7dee09eb33cdd26260c5fd47fda19b0e2.tar.gz",
+    "sha256": "90c66e2d1efba093afc1bfee861d2208c43d122340218ce5558b3cebd1252b26",
+    "dest": "deps/swift-asn1"
+  },
+  {
+    "type": "archive",
+    "url": "https://github.com/swiftlang/swift-build/archive/5d44ed6ba16c53d56cac5fc6a2d572635aa4a979.tar.gz",
+    "sha256": "932015be73bd6f15abfefb0a1f8829e9ee1b3cbb1a9b24e4b3d4d766b1ec10f2",
+    "dest": "deps/swift-build"
+  },
+  {
+    "type": "archive",
+    "url": "https://github.com/apple/swift-crypto/archive/da9d28d69ebe3894b18376c8f2395c2f37b8448f.tar.gz",
+    "sha256": "a99226ce0535133ac5b54dc528904c3db7eddfca520853b2c3495b72f4f2b9cb",
+    "dest": "deps/swift-crypto"
+  },
+  {
+    "type": "archive",
+    "url": "https://github.com/swiftlang/swift-driver/archive/174567a5681a9a949bcd52f821deb8fa65105434.tar.gz",
+    "sha256": "39d857fb336ea6d36e55c1a6cb715dfdafa432f8745bc8ef44a05b65bf10d904",
+    "dest": "deps/swift-driver"
+  },
+  {
+    "type": "archive",
+    "url": "https://github.com/swiftlang/swift-llbuild/archive/ab6421207b9e4971c94e97c5832a3d8a4cae9092.tar.gz",
+    "sha256": "5e6fffe629dc64dfb68598ee4fe900d09fdf0a0276e2c474b1c344ce30a0fb30",
+    "dest": "deps/swift-llbuild"
+  },
+  {
+    "type": "archive",
+    "url": "https://github.com/swiftlang/swift-syntax/archive/050f1a346fbbac0ca2cfb15a95274f7bd1cf0ccf.tar.gz",
+    "sha256": "2112986ef9432364bc75f400e501138eadb3719cb43d15fb861c67d8286f0ad6",
+    "dest": "deps/swift-syntax"
+  },
+  {
+    "type": "archive",
+    "url": "https://github.com/apple/swift-system/archive/869129b7bf4ecc57b97d0193ad29690ca2134750.tar.gz",
+    "sha256": "bd18faa740f5bd92856c21bc6928d91511e153965087abbc81639c99491400a9",
+    "dest": "deps/swift-system"
+  },
+  {
+    "type": "archive",
+    "url": "https://github.com/swiftlang/swift-toolchain-sqlite/archive/d9b11cb79071d5ab992ff47dfd2e8d6e19418d97.tar.gz",
+    "sha256": "69b8ecd1f745287ff60aac390c91fbfbcc557e0df99fdb77f22903c39fc5ace4",
+    "dest": "deps/swift-toolchain-sqlite"
+  },
+  {
+    "type": "archive",
+    "url": "https://github.com/swiftlang/swift-tools-protocols/archive/4345e69c5572ec3d1f737fba90bca024b32da5cf.tar.gz",
+    "sha256": "98b32466112f244272287e8c964cc6c26b653d0910e00f3709edf1dca76b5536",
+    "dest": "deps/swift-tools-protocols"
+  },
+  {
+    "type": "archive",
+    "url": "https://github.com/swiftlang/swift-tools-support-core/archive/d45c8b38d2824498b7863d3d5f0227937a53c177.tar.gz",
+    "sha256": "cb6225bf51ec40d1a1db6d45714c8e8c2979169d1c4939526e2afbf969925a3d",
+    "dest": "deps/swift-tools-support-core"
+  }
+]

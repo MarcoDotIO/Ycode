@@ -106,6 +106,13 @@ extension LayoutNode {
         fatalError("font(_:) is only supported directly on a text or image in tests")
     }
 
+    /// `.imageScale(_:)` applied directly to a symbol.
+    func imageScale(_ scale: Image.Scale) -> LayoutNode {
+        guard var i = behavior as? ImageLeaf else { fatalError("imageScale(_:) needs an image") }
+        i.imageScale = scale
+        return LayoutNode(i)
+    }
+
     /// `Image.resizable()`.
     func resizable() -> LayoutNode {
         guard let i = behavior as? ImageLeaf else { fatalError("resizable() needs an image") }

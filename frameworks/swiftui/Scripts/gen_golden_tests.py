@@ -35,31 +35,27 @@ FIT_COLUMNS = ["nil×nil", "0×0", "∞×∞", "100×nil", "nil×100", "100×100
 
 # Cases that need later rounds. Prefix match on the case id.
 SKIP = [
-    ("image.symbol.largeTitle", "R5 symbols: symbol metrics per font"),
-    ("image.symbol.scaleSmall", "R5 symbols: symbol metrics per image scale"),
-    ("image.symbol.scaleLarge", "R5 symbols: symbol metrics per image scale"),
-    ("image.symbol.wide", "R5 symbols: metrics of another symbol"),
-    ("label", "R8 controls: Label"),
-    ("button.", "R8 controls: Button styles"),
-    ("toggle", "R8 controls: Toggle"),
-    ("slider", "R8 controls: Slider"),
-    ("stepper", "R8 controls: Stepper"),
-    ("progress.", "R8 controls: ProgressView"),
-    ("picker.", "R8 controls: Picker"),
-    ("textfield.", "R8 controls: TextField"),
-    ("secureField", "R8 controls: SecureField"),
-    ("datePicker.", "R8 controls: DatePicker"),
-    ("gauge", "R8 controls: Gauge"),
-    ("link", "R8 controls: Link"),
-    ("scrollView", "R9 containers: ScrollView"),
+    ("image.symbol.largeTitle", "R5 symbols: the box scales linearly with the point size (41.33 high at 34 pt; the reference measured 41.67, an optical size step we have no rule for)"),
     ("list.", "R9 containers: List (UIKit-backed, informative only)"),
     ("form.", "R9 containers: Form (UIKit-backed, informative only)"),
     ("navigationStack", "R9 containers: NavigationStack (UIKit-backed, informative only)"),
     ("tabView", "R9 containers: TabView (UIKit-backed, informative only)"),
 ]
+# Controls (round R8, suite T-CTL): no layout-node DSL exists for them, so
+# they run only built from views (GoldenViewLayoutTests).
+VIEW_ONLY = [
+    "label", "button.", "toggle", "slider", "stepper", "progress.", "picker.", "textfield.", "secureField",
+    "datePicker.", "gauge", "link", "scrollView",
+]
+VIEW_ONLY_REASON = "R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"
+
+
+def view_only(case_id):
+    return any(case_id == p.rstrip(".") or case_id.startswith(p) for p in VIEW_ONLY)
+
+
 # Exact-id skips (prefix rules above would be too broad).
 SKIP_EXACT = {
-    "image.symbol": "R5 symbols: the case measures a symbol itself (its size is a stub fixture)",
 }
 
 # Probe sources the mechanical translation cannot handle (the table
@@ -98,6 +94,12 @@ for cat, swift_case in DYN_SIZES.items():
     VIEW_OVERRIDES["dyn." + cat] = "VStack(alignment: .leading, spacing: 0) { " + "; ".join(
         'Text("Ag").font(.%s).probe("%s")' % (st, st) for st in STYLES) + \
         " }.environment(\\.dynamicTypeSize, .%s)" % swift_case
+
+# The compact date picker shows the date in the environment's time zone and
+# locale; the golden run's string is measured for UTC, en_US ("Jan 1, 1970").
+VIEW_OVERRIDES["datePicker.compact"] = (
+    'DatePicker("D", selection: .constant(Date(timeIntervalSince1970: 0)), displayedComponents: .date)'
+    '.environment(\\.timeZone, TimeZone(identifier: "UTC")!).environment(\\.locale, Locale(identifier: "en_US"))')
 
 VIEW_TRANSLATIONS = [
     (r"Text\(longText\)", "Text(Fixture.longText)"),
@@ -223,7 +225,7 @@ def emit_cases(rows, spec_rel):
     out.append("struct GoldenLayoutTests {")
     counts = {"run": 0, "skip": 0}
     for case_id, source, placed, fits, frames_cell in rows:
-        reason = skip_reason(case_id)
+        reason = skip_reason(case_id) or (VIEW_ONLY_REASON if view_only(case_id) else None)
         ident = swift_ident(case_id)
         display = "%s — %s" % (case_id, source)
         if reason:
@@ -336,11 +338,19 @@ SPACING_NODES = {
     "color": "color().frame(width: 10, height: 10)",
     "padded": 'text("A").padding()',
 }
-SPACING_SKIP = {
-    "button": "R8 controls: Button",
-    "toggle": "R8 controls: Toggle",
-    "textField": "R8 controls: TextField",
+SPACING_SKIP = {}
+# Pairs with a control (R8) are built from views on both sides.
+SPACING_VIEWS = {
+    "text": 'Text("A")',
+    "textCaption": 'Text("A").font(.caption)',
+    "image": 'Image(systemName: "star")',
+    "color": "Color.red.frame(width: 10, height: 10)",
+    "padded": 'Text("A").padding()',
+    "button": 'Button("A") {}',
+    "toggle": 'Toggle("", isOn: .constant(true)).labelsHidden()',
+    "textField": 'TextField("", text: .constant(""))',
 }
+SPACING_CONTROLS = {"button", "toggle", "textField"}
 
 
 def parse_spacing(lines):
@@ -389,6 +399,14 @@ def emit_spacing(header, rows, spec_rel):
                 out.append("")
                 continue
             counts["run"] += 1
+            if frm in SPACING_CONTROLS or to in SPACING_CONTROLS:
+                out.append("    @MainActor @Test(%s)" % swift_string(display))
+                out.append("    func %s() {" % ident)
+                out.append("        GoldenSpacing.check(%s, from: { ViewGraph.layoutNode(for: %s) }, to: { ViewGraph.layoutNode(for: %s) }, horizontal: %s, vertical: %s)"
+                           % (swift_string(case_id), SPACING_VIEWS[frm], SPACING_VIEWS[to], h, v))
+                out.append("    }")
+                out.append("")
+                continue
             out.append("    @Test(%s)" % swift_string(display))
             out.append("    func %s() {" % ident)
             out.append("        GoldenSpacing.check(%s, from: { %s }, to: { %s }, horizontal: %s, vertical: %s)"

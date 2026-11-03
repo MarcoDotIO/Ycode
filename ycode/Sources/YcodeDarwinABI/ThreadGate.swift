@@ -50,10 +50,15 @@ public final class GuestThreadGate: @unchecked Sendable {
 
     private static let closedBit: UInt8 = 1
     private static let replacementBit: UInt8 = 2
+    private static let stepBit: UInt8 = 4
+    private static let flushBit: UInt8 = 8
 
     /// Bit 0: closed (the thread must not run guest code). Bit 1: a register
-    /// replacement waits for the end of the thread's trap. Read without a
-    /// lock on every guest entry and trap entry; changed under `mutex`.
+    /// replacement waits for the end of the thread's trap. Bit 2: the
+    /// debugger asked for one instruction step at the next guest entry. Bit
+    /// 3: the debugger changed code: flush the TLB at the next entry through
+    /// the shim (`specs/simulator/debug-stub.md` §5). Read without a lock on
+    /// every guest entry and trap entry; changed under `mutex`.
     private let flags = Atomic<UInt8>(0)
     /// True while a vCPU runs the thread, or is about to (set by the vCPU
     /// pool when it takes the thread, cleared when the thread's run ends).
@@ -203,6 +208,36 @@ public final class GuestThreadGate: @unchecked Sendable {
             parkedChanged = false
             return changed
         }
+    }
+
+    // MARK: Debugger requests (debug-stub.md §5, §6)
+
+    /// The next guest entry executes one instruction and then takes a
+    /// software-step exception (the debugger's `vCont;s`).
+    public func requestStep() {
+        locked { _ = flags.bitwiseOr(Self.stepBit, ordering: .sequentiallyConsistent) }
+    }
+
+    /// Drops a step request that was not used.
+    public func cancelStep() {
+        locked { _ = flags.bitwiseAnd(~Self.stepBit, ordering: .sequentiallyConsistent) }
+    }
+
+    /// True once (and clears it) when a step was requested.
+    public func takeStepRequest() -> Bool {
+        guard flags.load(ordering: .acquiring) & Self.stepBit != 0 else { return false }
+        return locked { flags.bitwiseAnd(~Self.stepBit, ordering: .sequentiallyConsistent).oldValue & Self.stepBit != 0 }
+    }
+
+    /// The thread's next return to guest code through the shim flushes the
+    /// TLB (and the I-cache when the host needs it): the debugger wrote code.
+    public func requestFlush() {
+        locked { _ = flags.bitwiseOr(Self.flushBit, ordering: .sequentiallyConsistent) }
+    }
+
+    public func takeFlushRequest() -> Bool {
+        guard flags.load(ordering: .acquiring) & Self.flushBit != 0 else { return false }
+        return locked { flags.bitwiseAnd(~Self.flushBit, ordering: .sequentiallyConsistent).oldValue & Self.flushBit != 0 }
     }
 
     /// Takes the register replacement waiting for the end of the thread's

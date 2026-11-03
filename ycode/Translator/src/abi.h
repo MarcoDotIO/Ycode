@@ -39,6 +39,12 @@ constexpr unsigned kBindingSamplers = 2;         // VK_DESCRIPTOR_TYPE_SAMPLER, 
 // index h (a view of level 0); a texture written or read-write at mip level
 // L uses storage-heap index h + L, so a texture with N levels that shaders
 // write reserves N consecutive storage-heap indices.
+// The heap index is the low 32 bits of a texture value. Bit 32 marks an sRGB
+// texture whose storage views have the matching unorm format: storage reads
+// and writes of float textures decode or encode sRGB in the shader for such
+// a value (Metal converts on them; Vulkan's sRGB formats are not storage
+// formats). Sampled reads use the sRGB view and convert in hardware.
+constexpr unsigned kTextureSRGBStorageBit = 32;
 
 // Programmable blending ([[color(n)]] fragment inputs): input attachments in
 // descriptor set 1, binding n, InputAttachmentIndex n (Vulkan dynamic

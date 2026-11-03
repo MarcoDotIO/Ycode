@@ -115,14 +115,18 @@ public final class DeviceControlsRow: NSView {
         public var posture: DevicePosture?
         public var enabled = false
         public var showsRotate = true
+        /// Home in the first group (a watch has none: its crown on the
+        /// frame is its Home, and its row is [Screenshot · Record]).
+        public var showsHome = true
         public init(foldable: Bool = false, canRotate: Bool = false, recording: Bool = false, posture: DevicePosture? = nil,
-                    enabled: Bool = false, showsRotate: Bool = true) {
+                    enabled: Bool = false, showsRotate: Bool = true, showsHome: Bool = true) {
             self.foldable = foldable
             self.canRotate = canRotate
             self.recording = recording
             self.posture = posture
             self.enabled = enabled
             self.showsRotate = showsRotate
+            self.showsHome = showsHome
         }
     }
 
@@ -161,7 +165,7 @@ public final class DeviceControlsRow: NSView {
 
     /// The controls shown, by group (tests).
     public var groups: [[DeviceCommand]] {
-        var g: [[DeviceCommand]] = [[.home, .screenshot, .recordScreen]]
+        var g: [[DeviceCommand]] = [(configuration.showsHome ? [.home] : []) + [.screenshot, .recordScreen]]
         var second: [DeviceCommand] = configuration.showsRotate ? [.rotateLeft] : []
         if configuration.foldable { second += [.poseClosed, .posePartiallyOpen, .poseOpen] }
         if !second.isEmpty { g.append(second) }
@@ -171,6 +175,7 @@ public final class DeviceControlsRow: NSView {
     public func configure(_ c: Configuration) {
         guard c != configuration else { return }
         let rebuildNeeded = c.foldable != configuration.foldable || c.showsRotate != configuration.showsRotate
+            || c.showsHome != configuration.showsHome
         configuration = c
         if rebuildNeeded { rebuild() } else { update() }
     }

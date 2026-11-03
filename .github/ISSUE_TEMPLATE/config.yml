@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/MarcoDotIO/Ycode/security/advisories/new
+    about: Please report vulnerabilities privately.
+  - name: Documentation
+    url: https://github.com/MarcoDotIO/Ycode/blob/main/docs/README.md
+    about: The guide to the documentation and the repository.
+  - name: How to get help
+    url: https://github.com/MarcoDotIO/Ycode/blob/main/SUPPORT.md
+    about: Where to ask, and what helps us help you.
+  - name: Problems with Xcode itself
+    url: https://developer.apple.com/bug-reporting/
+    about: Ycode isn't affiliated with Apple. Report problems in Apple's tools to Apple.

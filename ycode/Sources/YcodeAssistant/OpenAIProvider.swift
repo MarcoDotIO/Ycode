@@ -97,7 +97,13 @@ public struct OpenAIProvider: AssistantProvider {
     /// stored, streamed.
     static func responsesBody(_ request: ChatRequest) -> [String: Any] {
         let input: [[String: Any]] = request.messages.map { ["role": $0.role == .system ? "developer" : $0.role.rawValue, "content": $0.content] }
-        return ["model": request.model ?? "", "instructions": request.instructions, "input": input, "store": false, "stream": true]
+        var body: [String: Any] = ["model": request.model ?? "", "instructions": request.instructions, "input": input, "store": false, "stream": true]
+        // The Responses API takes no top_k or repeat penalty.
+        let g = request.generation
+        if let n = g.maxOutputTokens { body["max_output_tokens"] = n }
+        if let t = g.temperature { body["temperature"] = t }
+        if let p = g.topP { body["top_p"] = p }
+        return body
     }
 
     public func send(_ request: ChatRequest) -> AsyncThrowingStream<ChatEvent, Error> {
@@ -162,7 +168,13 @@ public struct OpenAIProvider: AssistantProvider {
             let e = ((o["response"] as? [String: Any])?["error"] as? [String: Any]) ?? [:]
             throw mapCode(e["code"] as? String, message: (e["message"] as? String) ?? "The response failed.", status: nil, plan: plan)
         case "response.incomplete":
-            let reason = (((o["response"] as? [String: Any])?["incomplete_details"] as? [String: Any])?["reason"] as? String) ?? "incomplete"
+            let r = o["response"] as? [String: Any]
+            let reason = ((r?["incomplete_details"] as? [String: Any])?["reason"] as? String) ?? "incomplete"
+            // Stopped at the output limit: a cut-off reply, not an error.
+            if reason == "max_output_tokens" {
+                let u = r?["usage"] as? [String: Any]
+                return [.truncated, .finished(u.map { TokenUsage(inputTokens: JSON.int($0["input_tokens"]), outputTokens: JSON.int($0["output_tokens"])) })]
+            }
             throw AssistantError.incomplete(reason)
         case "error":
             let e = (o["error"] as? [String: Any]) ?? o

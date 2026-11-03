@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeBuild
+@testable import YcodeIDECore
 import YcodeWorkspace
 @testable import YcodeUI
 
@@ -138,33 +139,6 @@ func fakeTool(at url: URL, record: URL, output: String) throws {
         return wc
     }
 
-    /// Build For ▸ Running / Profiling build the scheme with the Run and
-    /// Profile actions' configurations; Build For ▸ Testing builds the
-    /// tests with the test tool.
-    @Test func buildForPurposes() async throws {
-        let dir = scratch("build-for")
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let proj = try writeToolProject(at: dir)
-        let session = WorkspaceSession(model: try WorkspaceModel(url: proj))
-        let box = RecordedRequests()
-        session.engine = RecordingEngine(box: box)
-        #expect(await session.buildFor(.running).status == .succeeded)
-        #expect(await session.buildFor(.profiling).status == .succeeded)
-        #expect(box.all.map(\.configuration) == ["Debug", "Release"] && box.all.allSatisfy { $0.action == .build && $0.scheme == "Tool" })
-        #expect(session.activity == .finished("Build Succeeded"))
-        #expect(session.reports.first?.title == "Build Tool")
-
-        // Testing: the test tool's build-for-testing, its issues shown.
-        let record = dir.appendingPathComponent("args.txt"), tool = dir.appendingPathComponent("xcodebuild.sh")
-        try fakeTool(at: tool, record: record, output: "\(dir.path)/Tool/main.swift:1:1: warning: careful\n** TEST BUILD SUCCEEDED **")
-        session.testRunner.xcodebuild = ["/bin/sh", tool.path]
-        let r = await session.buildFor(.testing)
-        #expect(r.status == .succeeded && box.all.count == 2)
-        let args = try String(contentsOf: record, encoding: .utf8)
-        #expect(args.contains("-scheme Tool") && args.contains("-configuration Debug") && args.hasSuffix("build-for-testing\n"))
-        #expect(session.issues.map(\.message) == ["careful"])
-    }
-
     /// Test Without Building, Test Again, Test Without Building Again,
     /// Clear Test Results, with a stand-in `swift`.
     @Test func testWithoutBuildingAndAgain() async throws {
@@ -276,6 +250,8 @@ func fakeTool(at url: URL, record: URL, output: String) throws {
     /// checked; Select Next / Previous Destination; Show All lists
     /// Incompatible in the pop-up itself.
     @Test func destinationSubmenu() throws {
+        let prefs = IsolatedPreferences("dest")
+        defer { prefs.restore() }
         let dir = scratch("dest")
         defer { try? FileManager.default.removeItem(at: dir) }
         let session = WorkspaceSession(model: try WorkspaceModel(url: try writeToolProject(at: dir)))
@@ -380,22 +356,6 @@ func fakeTool(at url: URL, record: URL, output: String) throws {
         let tool = WorkspaceSession(model: try WorkspaceModel(url: try writeToolProject(at: dir.appendingPathComponent("tool"))))
         tool.refreshProjectIssues()
         #expect(tool.projectIssues.isEmpty)
-    }
-
-    /// The file's module context for a project: the target's module name,
-    /// its Swift files, its settings.
-    @Test func fileContextFromTheProject() throws {
-        let dir = scratch("ctx")
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let session = WorkspaceSession(model: try WorkspaceModel(url: try writeToolProject(at: dir)))
-        session.destination = .myMac
-        let main = dir.appendingPathComponent("Tool/main.swift").standardizedFileURL.path
-        let ctx = session.fileBuildContext(for: main)
-        #expect(ctx.moduleName == "Tool")
-        #expect(ctx.moduleSources.map { URL(fileURLWithPath: $0).lastPathComponent }.sorted() == ["Greeter.swift", "main.swift"])
-        #expect(ctx.swiftVersion == "5.0" && ctx.defines == ["DEBUG"])
-        #expect(ctx.targetTriple == "\(SwiftBuildEngine.hostArchitecture)-apple-macosx15.0")
-        #expect(ctx.sdkPath?.contains("MacOSX") == true)
     }
 }
 

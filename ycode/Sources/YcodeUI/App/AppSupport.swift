@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 import YcodeLanguage
 
 /// One open workspace. Ycode opens `.xcodeproj`, `.xcworkspace` and package
@@ -81,6 +82,13 @@ public final class YcodeDocumentController: NSDocumentController {
     /// window (§1.2.1, W2).
     public override func openDocument(withContentsOf url: URL, display displayDocument: Bool,
                                       completionHandler: @escaping (NSDocument?, Bool, (any Error)?) -> Void) {
+        // A result bundle opens as a test report of the front workspace window.
+        if url.pathExtension == "xcresult", let wc = workspaceWindows.first {
+            if displayDocument { wc.showWindow(nil) }
+            wc.openResultBundle(url)
+            completionHandler(wc.document as? NSDocument, true, nil)
+            return
+        }
         if !Self.isWorkspaceContainer(url), let wc = Self.workspaceWindow(containing: url, among: workspaceWindows) {
             if displayDocument { wc.showWindow(nil) }
             wc.open(path: url.path, line: nil)
@@ -377,22 +385,6 @@ final class RecentProjectsMenuDelegate: NSObject, NSMenuDelegate {
     }
 }
 
-/// What launching does (`reference-ui-5.md` §3.1, L1).
-public enum LaunchAction: Equatable {
-    /// Open these paths.
-    case open([String])
-    /// No document to open: the Welcome window, never an Open panel.
-    case welcome
-    /// Documents are already open (state restoration): nothing more.
-    case none
-
-    public static func decide(arguments: [String], openDocumentCount: Int) -> LaunchAction {
-        let paths = LaunchArguments.documentPaths(arguments)
-        if !paths.isEmpty { return .open(paths) }
-        return openDocumentCount == 0 ? .welcome : .none
-    }
-}
-
 /// App delegate: installs the menu bar, opens the workspaces given at
 /// launch, and otherwise shows the Welcome window.
 @MainActor
@@ -407,6 +399,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
 
     public func applicationWillFinishLaunching(_ n: Notification) {
         MainThreadWatchdog.startIfRequested()
+        // Outside its bundle the app has no .icns (make-app.sh adds it).
+        if Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") == nil { NSApp.applicationIconImage = ProductIcon.image }
         DeveloperTools.prefetch()
         NSApp.mainMenu = MainMenu.make()
         // swiftlint:disable:next discarded_notification_center_observer - lives as long as the app
@@ -421,7 +415,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
 
     public func applicationDidFinishLaunching(_ n: Notification) {
         YcodeDocumentController.showWelcome = { [weak self] in self?.showWelcomeWindow(nil) }
-        if case .open(let paths) = LaunchAction.decide(arguments: Array(CommandLine.arguments.dropFirst()), openDocumentCount: 0) {
+        if case .open(let all) = LaunchAction.decide(arguments: Array(CommandLine.arguments.dropFirst()), openDocumentCount: 0) {
+            // Gauge traces open in a profiler window (specs/ide/profiler.md §6).
+            let (traces, paths) = GaugeSettings.tracePaths(all)
+            for t in traces {
+                do { try GaugeWindowController.show(traceAt: URL(fileURLWithPath: t)) } catch { NSApp.presentError(error) }
+            }
             for a in paths {
                 NSDocumentController.shared.openDocument(withContentsOf: URL(fileURLWithPath: a), display: true) { _, _, error in
                     if let error { NSApp.presentError(error) }
@@ -481,63 +480,4 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     }
 
     public func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
-}
-
-/// Whether launching shows the Welcome window (`reference-ui-6.md`
-/// §1.2.1, W2): only when, after launch, state restoration and the opens
-/// requested while launching, no document is open. The decision is made
-/// once; later opens never bring the Welcome window up.
-public struct WelcomeLaunchGate: Equatable, Sendable {
-    /// Opens requested and not finished.
-    public private(set) var pending = 0
-    /// The launch check ran (after restoration).
-    public private(set) var launchChecked = false
-    /// The Welcome decision was made.
-    public private(set) var decided = false
-
-    public init() {}
-
-    public mutating func openRequested() { pending += 1 }
-
-    /// An open finished (or failed). True: show the Welcome window now
-    /// (the launch check was waiting for it and nothing is open).
-    public mutating func openFinished(openDocuments: Int) -> Bool {
-        pending = max(0, pending - 1)
-        return decide(openDocuments: openDocuments)
-    }
-
-    /// After launch and restoration. True: show the Welcome window now.
-    public mutating func launchCheck(openDocuments: Int) -> Bool {
-        launchChecked = true
-        return decide(openDocuments: openDocuments)
-    }
-
-    private mutating func decide(openDocuments: Int) -> Bool {
-        guard launchChecked, !decided, pending == 0 else { return false }
-        decided = true
-        return openDocuments == 0
-    }
-}
-
-/// Launch arguments: document paths and NSArgumentDomain pairs.
-public enum LaunchArguments {
-    /// The paths to open. A `-Key value` pair (NSArgumentDomain style,
-    /// e.g. `-ApplePersistenceIgnoreState YES`) is skipped as a whole;
-    /// `--` ends option parsing.
-    public static func documentPaths(_ args: [String]) -> [String] {
-        var out: [String] = []
-        var i = 0
-        while i < args.count {
-            let a = args[i]
-            if a == "--" { out += args[(i + 1)...]; break }
-            if a.hasPrefix("-") && a.count > 1 {
-                // The value, when one follows (not another flag).
-                if i + 1 < args.count, !args[i + 1].hasPrefix("-") { i += 1 }
-            } else {
-                out.append(a)
-            }
-            i += 1
-        }
-        return out
-    }
 }

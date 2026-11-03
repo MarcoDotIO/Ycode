@@ -1,4 +1,5 @@
-Noto Sans (NotoSans-Regular.ttf, NotoSans-Bold.ttf), version 2.004.
+Noto Sans (NotoSans-Regular.ttf, NotoSans-Bold.ttf), version 2.004, and
+Noto Sans Mono (NotoSansMono-Regular.ttf, NotoSansMono-Bold.ttf), version 2.006.
 Copyright 2015 Google LLC. All Rights Reserved.
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.

@@ -1,35 +1,12 @@
 import AppKit
-
-/// What the File inspector shows about a file beyond its path: the git
-/// working copy and the project's targets (`specs/ide/reference-ui-5.md` §7.3).
-public struct FileInspectorInfo: Equatable {
-    /// The repository's top-level folder, and the file's path inside it;
-    /// nil outside git.
-    public var workingCopy: String?
-    public var relativePath: String?
-    /// Every target with whether it includes the file (empty: no targets).
-    public var memberships: [TargetMembership]
-    /// The file sits inside a synchronized folder: its location is the
-    /// folder's (reference-ui-6.md §6, I1).
-    public var inSynchronizedFolder: Bool
-    /// A file of a Swift package: only Identity and Type and Text Settings.
-    public var isPackageFile: Bool
-    public init(workingCopy: String? = nil, relativePath: String? = nil, memberships: [TargetMembership] = [],
-                inSynchronizedFolder: Bool = false, isPackageFile: Bool = false) {
-        self.workingCopy = workingCopy
-        self.relativePath = relativePath
-        self.memberships = memberships
-        self.inSynchronizedFolder = inSynchronizedFolder
-        self.isPackageFile = isPackageFile
-    }
-}
+import YcodeIDECore
 
 /// The right inspector area: a tab bar (File, History, Quick Help for
 /// source files) above the selected inspector. See
 /// `specs/ide/workspace-window.md` §Inspector area.
 @MainActor
 public final class InspectorAreaController: NSViewController {
-    public static let symbols = ["doc", "clock", "questionmark.circle"]
+    public static let symbols = WorkspaceChrome.inspectorSymbols
     /// The standard tabs' tooltips, exactly (reference-ui-5.md §7.1).
     public static let toolTips = ["Show the File inspector", "Show the History inspector", "Show Quick Help inspector"]
     /// File inspector: the working copy and targets of a file (set by the window).
@@ -149,7 +126,7 @@ public final class InspectorAreaController: NSViewController {
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = 6
-        content.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        content.edgeInsets = NSEdgeInsets(top: Self.contentTopInset, left: Self.contentInset, bottom: Self.contentTopInset, right: Self.contentInset)
         centerLabel.textColor = .secondaryLabelColor
         centerLabel.alignment = .center
         centerLabel.font = .systemFont(ofSize: 13)
@@ -216,7 +193,7 @@ public final class InspectorAreaController: NSViewController {
         if index >= CommandTable.inspectors.count, let provider = extraProvider {
             let v = provider(index - CommandTable.inspectors.count)
             content.addArrangedSubview(v)
-            v.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -24).isActive = true
+            v.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -2 * Self.contentInset).isActive = true
             return
         }
         switch index {
@@ -241,7 +218,7 @@ public final class InspectorAreaController: NSViewController {
                 centered.alignment = .centerX
                 centered.spacing = 6
                 content.addArrangedSubview(centered)
-                centered.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -24).isActive = true
+                centered.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -2 * Self.contentInset).isActive = true
                 addRule()
             }
         }
@@ -338,7 +315,7 @@ public final class InspectorAreaController: NSViewController {
                 button.topAnchor.constraint(equalTo: rowView.topAnchor), button.bottomAnchor.constraint(equalTo: rowView.bottomAnchor),
             ])
             content.addArrangedSubview(rowView)
-            rowView.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -24).isActive = true
+            rowView.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -2 * Self.contentInset).isActive = true
             top.widthAnchor.constraint(equalTo: rowView.widthAnchor).isActive = true
             rowValues.append((c.authorName, c.subject))
         }
@@ -372,7 +349,7 @@ public final class InspectorAreaController: NSViewController {
         name.font = .systemFont(ofSize: 11)
         name.target = self
         name.action = #selector(nameCommitted(_:))
-        name.widthAnchor.constraint(equalToConstant: 160).isActive = true
+        name.widthAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
         nameField = name
         content.addArrangedSubview(row("Name", name))
         content.addArrangedSubview(row("Type", popUp("Type", ["Default - " + Self.typeName(for: file)])))
@@ -426,8 +403,8 @@ public final class InspectorAreaController: NSViewController {
             targetMembership(file, info)
         }
         content.addArrangedSubview(heading("Text Settings"))
-        content.addArrangedSubview(row("Text Encoding", popUp("Text Encoding", ["No Explicit Encoding", "Unicode (UTF-8)"])))
-        content.addArrangedSubview(row("Line Endings", popUp("Line Endings", ["No Explicit Line Endings", "macOS / Unix (LF)"])))
+        content.addArrangedSubview(row("Text Encoding", popUp("Text Encoding", WorkspaceChrome.textEncodingItems)))
+        content.addArrangedSubview(row("Line Endings", popUp("Line Endings", WorkspaceChrome.lineEndingItems)))
         let p = Preferences.shared
         content.addArrangedSubview(row("Indent Using", popUp("Indent Using", p.indentWithTabs ? ["Tabs", "Spaces"] : ["Spaces", "Tabs"])))
         content.addArrangedSubview(row("Widths", NSStackView(views: [stepper("Tab", p.tabWidth), stepper("Indent", p.indentWidth)])))
@@ -495,17 +472,7 @@ public final class InspectorAreaController: NSViewController {
     }
 
     /// A human-readable file type, from the extension.
-    static func typeName(for url: URL) -> String {
-        switch url.pathExtension {
-        case "swift": "Swift Source"
-        case "m": "Objective-C Source"
-        case "h": "C Header"
-        case "c": "C Source"
-        case "plist": "Property List"
-        case "xcconfig": "Configuration Settings File"
-        default: "Default"
-        }
-    }
+    static func typeName(for url: URL) -> String { WorkspaceChrome.fileTypeName(for: url) }
 
     // MARK: On Demand Resource Tags, Target Membership (§7.3)
 
@@ -518,7 +485,7 @@ public final class InspectorAreaController: NSViewController {
         tags.font = .systemFont(ofSize: 11)
         fileControls["On Demand Resource Tags"] = tags
         content.addArrangedSubview(tags)
-        tags.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -24).isActive = true
+        tags.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -2 * Self.contentInset).isActive = true
     }
 
     private func targetMembership(_ file: URL, _ info: FileInspectorInfo) {
@@ -592,7 +559,7 @@ public final class InspectorAreaController: NSViewController {
         buttons.spacing = 4
         table.addArrangedSubview(buttons)
         content.addArrangedSubview(table)
-        table.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -24).isActive = true
+        table.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -2 * Self.contentInset).isActive = true
     }
 
     @objc private func membershipRowClicked(_ b: NSButton) {
@@ -661,7 +628,7 @@ public final class InspectorAreaController: NSViewController {
     private func addRule() {
         let rule = NSBox.hairline()
         content.addArrangedSubview(rule)
-        rule.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -24).isActive = true
+        rule.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -2 * Self.contentInset).isActive = true
         sectionRuleCount += 1
     }
 
@@ -671,30 +638,71 @@ public final class InspectorAreaController: NSViewController {
         return l
     }
 
+    /// A label and its control. The row spans the content between the two
+    /// `contentInset`s, and fields and pop-ups fill the value column up to
+    /// the right inset (`specs/ide/metrics.md` §5): before, a 160-point
+    /// name field and long pop-up titles ran to within 5 points of the
+    /// window's edge or past it.
     private func row(_ key: String, _ control: NSView) -> NSView {
-        let k = NSTextField(labelWithString: key)
-        k.font = .systemFont(ofSize: 11)
-        k.textColor = .secondaryLabelColor
-        k.alignment = .right
-        k.widthAnchor.constraint(equalToConstant: 80).isActive = true
-        let s = NSStackView(views: [k, control])
+        let s = InspectorRowView(views: [keyLabel(key), control])
         s.alignment = .centerY
+        let fills = control is NSPopUpButton || (control is NSTextField && (control as? NSTextField)?.isEditable == true)
+            || ((control as? NSStackView)?.arrangedSubviews.first is NSPopUpButton)
+        if fills {
+            s.distribution = .fill
+            control.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
+            control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            if let inner = control as? NSStackView, let pop = inner.arrangedSubviews.first {
+                inner.distribution = .fill
+                pop.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
+                pop.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            }
+        }
         return s
     }
 
     private func row(_ key: String, _ value: String) -> NSView {
-        let k = NSTextField(labelWithString: key)
-        k.font = .systemFont(ofSize: 11)
-        k.textColor = .secondaryLabelColor
-        k.alignment = .right
-        k.widthAnchor.constraint(equalToConstant: 80).isActive = true
         let v = NSTextField(wrappingLabelWithString: value)
         v.font = .systemFont(ofSize: 11)
         v.preferredMaxLayoutWidth = 160
-        let s = NSStackView(views: [k, v])
+        let s = InspectorRowView(views: [keyLabel(key), v])
         s.alignment = .firstBaseline
         return s
     }
 
+    private func keyLabel(_ key: String) -> NSTextField {
+        let k = NSTextField(labelWithString: key)
+        k.font = .systemFont(ofSize: 11)
+        k.textColor = .secondaryLabelColor
+        k.alignment = .right
+        k.widthAnchor.constraint(equalToConstant: Self.keyColumnWidth).isActive = true
+        k.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return k
+    }
+
+    /// The content's side insets: headings, rows, rules and tables keep
+    /// 12 points from the divider and from the window's edge.
+    static let contentInset: CGFloat = 12
+    /// The room above the first heading and below the last row.
+    static let contentTopInset: CGFloat = 10
+    /// The right-aligned key column ("Name", "Type", …).
+    static let keyColumnWidth: CGFloat = 80
+
     @objc private func tabClicked(_ b: NSButton) { select(b.tag) }
+}
+
+/// An inspector row: as wide as the inspector's content less its two side
+/// insets, so nothing in it runs past the right inset.
+final class InspectorRowView: NSStackView {
+    private var widthConstraint: NSLayoutConstraint?
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        widthConstraint?.isActive = false
+        widthConstraint = nil
+        guard let sup = superview else { return }
+        let c = widthAnchor.constraint(equalTo: sup.widthAnchor, constant: -2 * InspectorAreaController.contentInset)
+        c.isActive = true
+        widthConstraint = c
+    }
 }

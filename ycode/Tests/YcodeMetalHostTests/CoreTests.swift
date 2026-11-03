@@ -249,7 +249,9 @@ import YcodeXPC
 
     /// Op 19 (visionos.md §10.20.7): a set call of kind 0 names the argument
     /// buffer and offset; a buffer member (kind 1) is written there as the
-    /// buffer's GPU address plus the call's offset, at the member index × 8.
+    /// buffer's GPU address plus the call's offset. This encoder's layout
+    /// sent no description, so the member lands at the index × 8 (the
+    /// fallback; layouts with one: ArgumentLayoutTests).
     @Test func argumentEncoderSetCallsWriteTheirMembers() {
         let f = Fixture()
         f.connect()

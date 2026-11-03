@@ -175,15 +175,32 @@ enum Destinations {
                                               ("error", error(d.name, d.platform))]))
             }
         }
-        for s in Simulators.load() {
-            var pairs = [("platform", s.platform), ("arch", ctx.hostArchitecture), ("id", s.udid)]
+        let sims = Simulators.load()
+        let lines = simulatorLines(sims, phonesWithWatch: Simulators.phonesWithActiveWatch(pairsJSON: xcrun(["simctl", "list", "-j", "pairs"]), simulators: sims),
+                                   supportedPlatforms: supportedPlatforms, arch: ctx.hostArchitecture, error: error)
+        compatible += lines.compatible
+        incompatible += lines.incompatible
+        #endif
+        return (compatible, incompatible)
+    }
+
+    /// The simulators' lines. A phone whose active paired watch is a
+    /// watchOS simulator is a destination of a watchOS scheme, listed as the
+    /// phone itself, with no watch in the entry (`specs/simulator/device-pairing.md`
+    /// §14.2); its watch is listed under its own name, as every watch is.
+    static func simulatorLines(_ sims: [SimulatorEntry], phonesWithWatch: Set<String>, supportedPlatforms: Set<String>, arch: String,
+                               error: (String, String) -> String) -> (compatible: [String], incompatible: [String]) {
+        var compatible: [String] = []
+        var incompatible: [String] = []
+        for s in sims {
+            var pairs = [("platform", s.platform), ("arch", arch), ("id", s.udid)]
             if let os = s.os { pairs.append(("OS", os)) }
             pairs.append(("name", s.name))
-            if supportedPlatforms.contains(platforms[s.platform]?.platform ?? "") { compatible.append(describe(pairs)) } else {
+            let viaWatch = s.platform == "iOS Simulator" && supportedPlatforms.contains("watchsimulator") && phonesWithWatch.contains(s.udid)
+            if viaWatch || supportedPlatforms.contains(platforms[s.platform]?.platform ?? "") { compatible.append(describe(pairs)) } else {
                 incompatible.append(describe(pairs + [("error", error(s.name, s.platform))]))
             }
         }
-        #endif
         return (compatible, incompatible)
     }
 
@@ -283,6 +300,25 @@ enum Simulators {
             if a.name != b.name { return Array(a.name.utf8).lexicographicallyPrecedes(Array(b.name.utf8)) }
             return (a.os ?? "").compare(b.os ?? "", options: .numeric) == .orderedAscending
         }
+    }
+
+    /// The phones (UDIDs) whose active pair's watch is one of `simulators`
+    /// and a watchOS simulator, from `xcrun simctl list -j pairs`
+    /// (`{"pairs": {<pair>: {"watch": {"udid": …}, "phone": {"udid": …},
+    /// "state": "(active, connected)"}}}`).
+    static func phonesWithActiveWatch(pairsJSON: Data?, simulators: [SimulatorEntry]) -> Set<String> {
+        guard let data = pairsJSON, let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let pairs = root["pairs"] as? [String: [String: Any]] else { return [] }
+        let watches = Set(simulators.filter { $0.platform == "watchOS Simulator" }.map(\.udid))
+        var out: Set<String> = []
+        for (_, p) in pairs {
+            let state = (p["state"] as? String ?? "").lowercased()
+            guard state.contains("active"), !state.contains("inactive"),
+                  let watch = (p["watch"] as? [String: Any])?["udid"] as? String, watches.contains(watch),
+                  let phone = (p["phone"] as? [String: Any])?["udid"] as? String else { continue }
+            out.insert(phone)
+        }
+        return out
     }
 
     #if os(macOS)

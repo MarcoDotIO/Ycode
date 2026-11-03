@@ -97,7 +97,10 @@ package struct FlexibleFrameBehavior: NodeBehavior {
             height: p.height.map { Self.clamp($0, minHeight, maxHeight) } ?? idealHeight)
     }
 
-    private static func resolve(proposal: CGFloat?, child: () -> CGFloat, min lo: CGFloat?, max hi: CGFloat?) -> CGFloat {
+    private static func resolve(proposal: CGFloat?, ideal: CGFloat?, child: () -> CGFloat, min lo: CGFloat?, max hi: CGFloat?) -> CGFloat {
+        // An ideal size answers an unspecified proposal (the frame's own
+        // ideal, whatever its content needs at that size).
+        if proposal == nil, let ideal { return clamp(ideal, lo, hi) }
         switch (lo, hi) {
         case (let lo?, let hi?):
             return clamp(proposal ?? child(), lo, hi)
@@ -122,8 +125,8 @@ package struct FlexibleFrameBehavior: NodeBehavior {
             return s
         }
         return CGSize(
-            width: Self.resolve(proposal: p.width, child: { child().width }, min: minWidth, max: maxWidth),
-            height: Self.resolve(proposal: p.height, child: { child().height }, min: minHeight, max: maxHeight))
+            width: Self.resolve(proposal: p.width, ideal: idealWidth, child: { child().width }, min: minWidth, max: maxWidth),
+            height: Self.resolve(proposal: p.height, ideal: idealHeight, child: { child().height }, min: minHeight, max: maxHeight))
     }
 
     package func placeChildren(size: CGSize, proposal: ProposedViewSize, node: LayoutNode) -> [ChildPlacement] {

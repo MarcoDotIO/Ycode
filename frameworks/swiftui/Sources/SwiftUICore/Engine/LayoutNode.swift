@@ -157,6 +157,13 @@ package final class LayoutNode {
     /// effects whose values animate, R6). Read on the main actor.
     package var presentation: PresentationEffect?
 
+    /// What the node draws below its children, in its own coordinates
+    /// (round R5; Render/DisplayListBuilder.swift).
+    package var draw: NodeDraw?
+    /// How the node changes the rendering of its children (clips, masks,
+    /// blend modes, effects; round R5).
+    package var renderEffects: [NodeRenderEffect] = []
+
     private var sizes: [ProposalKey: (size: CGSize, unknown: Axis.Set)] = [:]
     private var dims: [ProposalKey: ViewDimensions] = [:]
     private var placementMemo: [PlacementKey: [ChildPlacement]] = [:]

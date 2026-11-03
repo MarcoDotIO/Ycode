@@ -38,8 +38,13 @@ Header (32 bytes): `magic` = `0xFEEDFACF`, `cputype`, `cpusubtype`,
 | 6 | dylib |
 | 7 | dynamic linker |
 | 8 | bundle |
-| 0xB | dSYM |
-| 0xC | kext bundle |
+| 0xA | dSYM (debug information only) |
+| 0xB | kext bundle |
+| 0xC | file set |
+
+(Corrected 2026-10-29, agent PROFILER: the table listed dSYM as 0xB and
+kext bundle as 0xC; the SDK's public `mach-o/loader.h` has `MH_DSYM` 0xa,
+`MH_KEXT_BUNDLE` 0xb, `MH_FILESET` 0xc. Gauge matches dSYMs by this type.)
 
 The load commands follow the header. Each one starts with `cmd` (u32) and
 `cmdsize` (u32, a multiple of 8). The commands Ycode reads:

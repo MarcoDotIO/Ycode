@@ -113,6 +113,11 @@ extension View {
     }
 
     /// Layers `background` behind the view, in the view's bounds.
+    ///
+    /// Disfavoured, as in the reference API (where this form is deprecated):
+    /// for a value that is both a view and a shape style — a `Color` — the
+    /// `ShapeStyle` overload `background(_:ignoresSafeAreaEdges:)` is chosen.
+    @_disfavoredOverload
     public func background<V: View>(_ background: V, alignment: Alignment = .center) -> some View {
         modifier(SecondaryLayerModifier(secondary: background, alignment: alignment, isBackground: true))
     }
@@ -121,7 +126,9 @@ extension View {
         modifier(SecondaryLayerModifier(secondary: content(), alignment: alignment, isBackground: true))
     }
 
-    /// Layers `overlay` in front of the view, in the view's bounds.
+    /// Layers `overlay` in front of the view, in the view's bounds
+    /// (disfavoured like `background(_:alignment:)`).
+    @_disfavoredOverload
     public func overlay<V: View>(_ overlay: V, alignment: Alignment = .center) -> some View {
         modifier(SecondaryLayerModifier(secondary: overlay, alignment: alignment, isBackground: false))
     }

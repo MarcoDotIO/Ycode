@@ -1,0 +1,16 @@
+# Tests known to fail occasionally under load, mirrored from "Tests in a full
+# run" in ycode/README.md. Keep the two lists in step.
+#
+# Format: <platform> <test>
+#   platform  *, macos, linux, linux-x86_64 or linux-aarch64
+#   test      Suite.test, a bare test name, or a whole Suite
+#
+# A listed test that fails in a full run is run again on its own by
+# .github/scripts/run-tests.py. It must pass alone. A failure of anything not
+# listed here fails the job at once and is never rerun.
+*             SnapshotKernelRoundTripTests.calendarTimersFollowTheWallClockAcrossARestore
+*             CLIAgentTests.cancelInterruptsTheTool
+*             MainThreadResponsivenessTests.fileSystemWatcherReportsChanges
+*             threadSelfusageCountsTheCallingThread
+*             StreamingProcessTests.anInheritedPipeDoesNotHoldTheExitBack
+linux-aarch64 SourceKitLSPEndToEndTests

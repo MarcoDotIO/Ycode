@@ -144,6 +144,27 @@ unsorted sections, unsorted IDs, or unsorted `buildSettings` keys. Ycode loads
 these files without losing data and writes them in canonical order, as Xcode
 does on its next save.
 
+## Synchronized folders
+
+Xcode 16 (objectVersion 77) adds folders whose contents are read from disk
+instead of being listed as references.
+
+| Object | Keys | Meaning |
+|---|---|---|
+| `PBXFileSystemSynchronizedRootGroup` | `path`, `sourceTree`, `name` (optional), `exceptions`, `explicitFileTypes`, `explicitFolders` | A child of a group; every file and folder under `path` is an item of the project. `explicitFileTypes`: relative path → file type, for items whose type is not the one their extension gives. `explicitFolders`: relative paths of folders that are one item (copied whole) instead of being entered. `exceptions`: the exception sets below. |
+| `PBXNativeTarget` (and other targets) | `fileSystemSynchronizedGroups` | The root groups whose items the target takes by default. |
+| `PBXFileSystemSynchronizedBuildFileExceptionSet` | `target`, `membershipExceptions`, `publicHeaders`, `privateHeaders`, `additionalCompilerFlagsByRelativePath`, `attributesByRelativePath`, `platformFiltersByRelativePath` | One per folder and target. `membershipExceptions` lists items (or folders: everything under them) whose membership is the opposite of the default: for a target that lists the folder in `fileSystemSynchronizedGroups` they are left out; for any other target they are its only items from the folder. The header lists change a header's visibility (project by default); the dictionaries map a relative path to compiler flags, build-file attributes (`Weak`, `CodeSignOnCopy`, `RemoveHeadersOnCopy`) and platform filters (`ios`, `macos`, `maccatalyst`, …). |
+| `PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet` | `buildPhase`, `membershipExceptions`, `attributesByRelativePath`, `platformFiltersByRelativePath` | The items it lists belong to that build phase of the phase's target (typically a Copy Files phase), with those attributes. |
+
+Paths in exception sets are relative to the root group's folder. A
+localized item (the files of one name in the folder's `<region>.lproj`
+sub-folders) has one key for all regions: `/Localized: <path without the
+.lproj component>`, for example `Resources/de.lproj/Localizable.strings` →
+`/Localized: Resources/Localizable.strings`.
+
+How Ycode builds from these: `specs/ide/build-pif.md` §Synchronized
+folders.
+
 ## Open questions
 
 - The exact comment format of
@@ -152,6 +173,13 @@ does on its next save.
 - The comment for a `PBXBuildFile` whose phase cannot be found. The current
   implementation writes `(null)`.
 - The meaning of `objectVersion = 110`.
+- Synchronized folders: the reference tool's default build phase for each
+  file type in a synchronized folder (Ycode's table is in `build-pif.md`),
+  whether a file a build-phase exception set names also stays in its
+  default phase, and the sort order of the folder's items in the reference
+  navigator. Samples from a corpus project that use
+  `explicitFolders`, `platformFiltersByRelativePath` and the build-phase
+  exception set are needed.
 
 ## Evidence
 
@@ -160,6 +188,16 @@ does on its next save.
 - The writer-generation split: level 2 (files with the same objectVersion
   but different comment styles).
 - No binary analysis was used.
+- Synchronized folders (§Synchronized folders): key names from the corpus
+  (level 2) and from the open-source project-file libraries (level 1):
+  XcodeProj (MIT; `PBXFileSystemSynchronizedRootGroup.swift`,
+  `PBXFileSystemSynchronizedBuildFileExceptionSet.swift`,
+  `PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet.swift`
+  and their doc comments), CocoaPods Xcodeproj (MIT;
+  `file_system_synchronized_exception_set.rb`). The inversion of
+  `membershipExceptions` for targets that do not list the folder: Tuist's
+  generator documentation (MIT). The `/Localized:` key: XcodeGen (MIT),
+  its pull request 1616 on localized files in synchronized folders.
 - Compatibility table: level 1 and level 2.
   - Public open source: CocoaPods Xcodeproj (MIT),
     `lib/xcodeproj/constants.rb`, `COMPATIBILITY_VERSION_BY_OBJECT_VERSION`

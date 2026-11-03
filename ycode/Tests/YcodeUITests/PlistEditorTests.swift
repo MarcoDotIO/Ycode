@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 import YcodePlist
 @testable import YcodeUI
 
@@ -67,17 +68,5 @@ import YcodePlist
         #expect(written.starts(with: Array("bplist00".utf8)))
         guard case .dictionary(let d) = try PropertyListDocument(data: written).root else { Issue.record("not a dict"); return }
         #expect(d.map(\.key) == ["Zebra", "Apple", "Mango"] && d[1].value == .integer(2))
-    }
-
-    @Test func treeOperations() {
-        var t = PlistTree(root: .dictionary([PropertyListEntry(key: "a", value: .string("x"))]))
-        #expect(t.insert(after: [0]) == [1])
-        #expect(t.insert(after: [0]) == [1]) // second new key gets a distinct name
-        #expect(PlistTree.children(of: t.root).map(\.key) == ["a", "New item - 2", "New item"])
-        t.setKey("a", at: [1]) // duplicate key refused
-        #expect(PlistTree.children(of: t.root)[1].key == "New item - 2")
-        #expect(PlistTree.parse("<00ff>", as: "Data") == .data(Data([0, 255])))
-        #expect(PlistTree.parse("NO", as: "Boolean") == .bool(false))
-        #expect(PlistTree.parse("2.5", as: "Number") == .real(2.5))
     }
 }

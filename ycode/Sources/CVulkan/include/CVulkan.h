@@ -168,7 +168,8 @@ typedef struct YVKDynamicRenderingLocalReadFeatures {
     X(vkCmdSetDepthClampEnableEXT) \
     X(vkCmdSetCheckpointNV) \
     X(vkGetQueueCheckpointDataNV) \
-    X(vkGetQueueCheckpointData2NV)
+    X(vkGetQueueCheckpointData2NV) \
+    X(vkGetDeviceMemoryOpaqueCaptureAddress)
 
 typedef struct yvk_dispatch {
     PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
@@ -220,7 +221,12 @@ typedef struct yvk_features {
              graphicsPipelineLibrary,
              /* VK_NV_device_diagnostic_checkpoints, enabled when present and
                 YCODE_GPU_CHECKPOINTS is not 0 (diagnostics of GPU hangs). */
-             diagnosticCheckpoints;
+             diagnosticCheckpoints,
+             /* bufferDeviceAddressCaptureReplay (unless YCODE_GPU_CAPTURE_REPLAY=0):
+                every buffer's memory is allocated with the capture-replay flag,
+                so that a device made again after a loss can give it the same
+                device address (yvk_buffer_recreate; metal-sim-protocol.md §8.7). */
+             bufferCaptureReplay;
 } yvk_features;
 
 typedef struct yvk_context {
@@ -289,12 +295,20 @@ typedef struct yvk_buffer {
     void *mapped;                 /* host pointer when host-visible or imported, else NULL */
     VkDeviceSize size;
     VkDeviceAddress address;
+    /* The memory's opaque capture address (0 without capture replay). */
+    uint64_t captureAddress;
 } yvk_buffer;
 
 /* hostPointer and size must be multiples of ctx->hostPointerAlignment for
    YVK_MEMORY_IMPORT_HOST. */
 int yvk_buffer_create(yvk_context *ctx, VkDeviceSize size, yvk_memory_kind kind, void *hostPointer,
                       yvk_buffer *out, char *err, size_t errlen);
+/* The same buffer on a device made again after a loss: `captureAddress` is
+   the old buffer's (yvk_buffer.captureAddress); with capture replay the new
+   buffer gets the old device address. 0, or an address the device refuses:
+   a buffer at a new address (compare out->address). */
+int yvk_buffer_recreate(yvk_context *ctx, VkDeviceSize size, yvk_memory_kind kind, void *hostPointer,
+                        uint64_t captureAddress, yvk_buffer *out, char *err, size_t errlen);
 void yvk_buffer_destroy(yvk_context *ctx, yvk_buffer *buffer);
 
 /* ------------------------------------------------------------------ */
@@ -384,7 +398,7 @@ typedef struct yvk_vertex_binding {
 
 typedef struct yvk_graphics_info {
     yvk_shader_stage vertex;
-    yvk_shader_stage fragment;    /* code NULL: rasterization disabled */
+    yvk_shader_stage fragment;    /* code NULL: no fragment shader (see rasterizerDiscard) */
     uint32_t bindingCount;
     yvk_vertex_binding bindings[YVK_MAX_VERTEX_BINDINGS];
     uint32_t attributeCount;
@@ -396,6 +410,9 @@ typedef struct yvk_graphics_info {
     VkFormat colorFormats[YVK_MAX_COLOR_ATTACHMENTS];
     VkPipelineColorBlendAttachmentState blend[YVK_MAX_COLOR_ATTACHMENTS];
     VkFormat depthFormat, stencilFormat;
+    /* 1: no rasterization (no fragments, no depth, stencil or occlusion
+       counts). 0 with no fragment shader: depth- and stencil-only drawing. */
+    int rasterizerDiscard;
 } yvk_graphics_info;
 
 /* Graphics pipeline libraries (VK_EXT_graphics_pipeline_library). Each

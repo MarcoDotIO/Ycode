@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 import YcodePlist
 
 /// One outline row: its index path in the property list.

@@ -13,7 +13,9 @@ import Testing
 enum ProcessAudit {
     /// Tools that are meant to live for one session and must be closed.
     static let sessionTools = ["lldb-dap", "lldb", "debugserver", "sourcekit-lsp", "clangd", "simctl",
-                               "swbuild", "SWBBuildService", "swift-build", "swift-frontend"]
+                               "swbuild", "SWBBuildService", "swift-build", "swift-frontend",
+                               // Preview hosts: the Mac host and built SwiftPM hosts (specs/ide/previews.md §The macOS host)
+                               "YcodePreview"]
 
     struct Child: CustomStringConvertible {
         var pid: pid_t
@@ -46,6 +48,28 @@ enum ProcessAudit {
         }
     }
 
+    /// The child's arguments (`KERN_PROCARGS2`), to name what left it.
+    static func commandLine(_ pid: pid_t) -> String {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 4 else { return "" }
+        var buf = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0 else { return "" }
+        let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
+        // argc, the executable path, padding NULs, then argv.
+        var i = 4
+        while i < size, buf[i] != 0 { i += 1 }
+        while i < size, buf[i] == 0 { i += 1 }
+        var args: [String] = []
+        while args.count < argc, i < size {
+            let start = i
+            while i < size, buf[i] != 0 { i += 1 }
+            args.append(String(decoding: buf[start..<i], as: UTF8.self))
+            i += 1
+        }
+        return "(" + args.joined(separator: " ").prefix(400) + ")"
+    }
+
     static func isSessionTool(_ c: Child) -> Bool { sessionTools.contains { c.name.hasPrefix($0) } }
 
     static func kill(_ list: [Child]) { for c in list { Darwin.kill(c.pid, SIGKILL) } }
@@ -54,7 +78,7 @@ enum ProcessAudit {
         atexit {
             let left = ProcessAudit.leftovers(grace: 10)
             guard !left.isEmpty else { return }
-            let msg = "ProcessAudit: child processes still running at exit: \(left.map(\.description).joined(separator: ", "))\n"
+            let msg = "ProcessAudit: child processes still running at exit: \(left.map { "\($0) \(ProcessAudit.commandLine($0.pid))" }.joined(separator: ", "))\n"
             FileHandle.standardError.write(Data(msg.utf8))
             ProcessAudit.kill(left)
             _exit(1)

@@ -18,7 +18,7 @@
 #   swipes <n> <x0> <y0> <x1> <y1> <ms> <gap ms>   n swipes there and back
 #   tap <x> <y>          touch down, up 80 ms later
 #   key <usage>          page-7 key down/up
-#   button home|lock     down, up 100 ms later
+#   button home|lock|side [hold-ms]   down, up 100 ms (or hold-ms) later (a held lock or side: Siri)
 #   mark <name>          starts a new phase (statistics are per phase)
 #   shot <path.png>      asks the server for a screenshot (full resolution) and writes it
 #   command "<words>"    a device command (0x90, e.g. "ui appearance dark"); prints the answer (0x10)
@@ -409,9 +409,10 @@ def main(argv):
             time.sleep(0.05)
             p.input(0x83, struct.pack("<BBHH", 0, 0, 7, u))
         elif c == "button":
-            b = {"home": 1, "lock": 2}[args.pop(0)]
+            b = {"home": 1, "lock": 2, "side": 5}[args.pop(0)]
+            hold = int(args.pop(0)) / 1000.0 if args and args[0].isdigit() else 0.1
             p.input(0x84, struct.pack("<BB", b, 1), "button")
-            time.sleep(0.1)
+            time.sleep(hold)
             p.input(0x84, struct.pack("<BB", b, 0))
         else:
             sys.exit("unknown command " + c)

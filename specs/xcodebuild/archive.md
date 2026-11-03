@@ -87,9 +87,13 @@ With `method` = `mac-application` the application is copied to
 signature: the reference export is byte-identical). `signingCertificate`
 `-` with `signingStyle` `manual` gives the same result; it re-signs ad hoc
 (`codesign --force --sign - --preserve-metadata=identifier,entitlements,flags`)
-only an application not already signed ad hoc. Other certificates,
-methods with a team, provisioning profiles, upload, notarization: not
-supported (exit 70 naming the gap). Success: `Exported <Name> to: <export
+only an application not already signed ad hoc. Another
+`signingCertificate` (a kind, full name or SHA-1 of an identity in the
+keychain, of `teamID` when given) re-signs the copy, nested code first
+(`signing.md` §5); no such identity: exit 70 `exportArchive: No signing
+certificate "<c>" found[ for team "<t>"] in the keychain.` Methods with a
+team, provisioning profiles, upload, notarization: not supported (exit 70
+naming the gap). Success: `Exported <Name> to: <export
 path, /private prefix removed>`, `** EXPORT SUCCEEDED **`, blank line;
 exit 0. The export folder contains only the application.
 

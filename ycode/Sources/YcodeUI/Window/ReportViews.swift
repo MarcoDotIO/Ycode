@@ -1,73 +1,6 @@
 import AppKit
 import YcodeBuild
-
-/// What a report shows besides its log: the action, where it ran, and
-/// (for test runs) the outcomes. See `specs/ide/reference-ui-2.md` §4–§6.
-public struct ReportContext: Equatable, Sendable {
-    public var action = "Build"
-    public var scheme: String?
-    public var containerKind = "Project"
-    public var containerName = ""
-    public var configuration = "Debug"
-    public var destination = ""
-    public var duration: TimeInterval = 0
-    public var issues: [Diagnostic] = []
-    public var tests: [TestOutcome] = []
-    /// Test plan name (test runs): the scheme's default plan, else
-    /// "<scheme> (Autocreated)".
-    public var plan: String?
-    public var testTargets = 0
-    /// The test target's name, when known.
-    public var testTarget: String?
-    /// Local or Cloud (the Report navigator's switch).
-    public var location: ReportLocation = .local
-    /// SDK name and version ("macOS 27.2"), for the build log subtitle.
-    public var sdk = ""
-    /// Line coverage per target (test runs with coverage enabled).
-    public var coverage: [CoverageItem] = []
-    /// Seconds from the start of the operation at which each `log` line
-    /// arrived (same count as the log when recorded), for step durations.
-    public var logTimes: [TimeInterval] = []
-    /// Build-log steps of earlier builds of the same scheme (since its last
-    /// clean) that this build did not run again: the build log's "All"
-    /// scope adds them; "Recent" shows only this build's steps.
-    public var carriedOver: [BuildLogSection] = []
-    public var kind: ReportKind {
-        switch action {
-        case "Test": .test
-        case "Clean": .clean
-        case "Analyze": .analyze
-        case "Build": .build
-        default: .package
-        }
-    }
-    public init() {}
-}
-
-/// Relative day and time: "Today, 3:46 AM".
-public enum ReportFormat {
-    public static func dayAndTime(_ d: Date) -> String {
-        let day = DateFormatter()
-        day.dateStyle = .medium
-        day.timeStyle = .none
-        day.doesRelativeDateFormatting = true
-        let time = DateFormatter()
-        time.dateStyle = .none
-        time.timeStyle = .short
-        return "\(day.string(from: d)), \(time.string(from: d))"
-    }
-
-    public static func footerDate(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "M/d/yy"
-        let t = DateFormatter()
-        t.dateStyle = .none
-        t.timeStyle = .short
-        return "\(f.string(from: d)), \(t.string(from: d))"
-    }
-
-    public static func seconds(_ s: TimeInterval) -> String { String(format: "%.1f", s) }
-}
+import YcodeIDECore
 
 /// A row of the build log outline: a target section, a step, or an issue.
 final class BuildLogNode: NSObject {
@@ -545,42 +478,5 @@ final class RingView: NSView {
         }
         let t = NSAttributedString(string: "\(passed + failed) Tests", attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor.labelColor])
         t.draw(at: NSPoint(x: c.x - t.size().width / 2, y: c.y - t.size().height / 2))
-    }
-}
-
-/// The Tests page's filter pop-ups besides Failed Tests (reference-ui-2.md
-/// §6.4; reference-ui-5.md §11.3, P12): Failed Runs, the run destination,
-/// the configuration and the tags. A run is one test on one destination in
-/// one configuration; Ycode's runs use a single destination and the scheme's
-/// test action, and its runners report no tags, so every test is untagged.
-public struct TestReportFilters: Equatable, Sendable {
-    public var failedRunsOnly = false
-    /// nil = all destinations.
-    public var device: String?
-    /// nil = all configurations.
-    public var configuration: String?
-    /// nil = all tags.
-    public var tag: String?
-    public init() {}
-
-    public static let untagged = "Untagged Tests"
-    public static let configurationTitle = "Test Scheme Action"
-
-    /// Each pop-up's title and items (the first item means "all").
-    public static func menus(_ r: BuildReport) -> [(title: String, items: [String])] {
-        let titles = TestReportModel.filterTitles(r)
-        let device = r.context.destination.isEmpty ? "My Mac" : r.context.destination
-        return [(titles[0], ["All Tests", "Failed Tests Only"]), (titles[1], ["All Runs", "Failed Runs Only"]),
-                (titles[2], ["All Run Destinations", device]), (titles[3], ["All Configurations", configurationTitle]),
-                (titles[4], ["All Tags", untagged])]
-    }
-
-    /// The Tests page rows under every filter.
-    public func rows(_ r: BuildReport, failedOnly: Bool, text: String) -> [TestReportModel.TestRow] {
-        let device = r.context.destination.isEmpty ? "My Mac" : r.context.destination
-        if let d = self.device, d != device { return [] }
-        if let c = configuration, c != Self.configurationTitle { return [] }
-        if let t = tag, t != Self.untagged { return [] }
-        return TestReportModel.testRows(r, failedOnly: failedOnly || failedRunsOnly, text: text)
     }
 }

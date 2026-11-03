@@ -43,7 +43,7 @@ enum TestActions {
             return TestPlanFile(path: base.appendingPathComponent(rel).path)
         }
         if let wanted = inv.value("-testPlan") {
-            guard let ref = refs.first(where: { URL(fileURLWithPath: $0.reference).deletingPathExtension().lastPathComponent == wanted }) else {
+            guard let ref = refs.first(where: { TestPlanFile.name(ofReference: $0.reference) == wanted }) else {
                 let project = plan.container.mainProject?.name ?? plan.container.name
                 throw XcodebuildFailure("Failed to build project \(project) with scheme \(scheme.name).: Scheme “\(scheme.name)” does not have an associated test plan named “\(wanted)”.",
                                         exitCode: ExitCode.usage)
@@ -51,7 +51,7 @@ enum TestActions {
             return (wanted, load(ref.reference), ref.isDefault)
         }
         if let ref = refs.first(where: \.isDefault) ?? refs.first {
-            return (URL(fileURLWithPath: ref.reference).deletingPathExtension().lastPathComponent, load(ref.reference), true)
+            return (TestPlanFile.name(ofReference: ref.reference), load(ref.reference), true)
         }
         return (scheme.name, nil, true)
     }
@@ -92,12 +92,55 @@ enum TestActions {
                 bundleIdentifier: s["PRODUCT_BUNDLE_IDENTIFIER"] ?? "", bundlePath: bundle,
                 executablePath: dir + "/" + (s["EXECUTABLE_PATH"] ?? ""), productsDirectory: dir,
                 testHost: s["TEST_HOST"].flatMap { $0.isEmpty ? nil : $0 })
+            target.productType = s["PRODUCT_TYPE"] ?? ""
+            target.platform = s["PLATFORM_NAME"] ?? "macosx"
+            target.uiTargetName = s["TEST_TARGET_NAME"].flatMap { $0.isEmpty ? nil : $0 }
             if let e = testPlan?.entries.first(where: { $0.targetName == t.name }) {
                 target.only = e.selected
                 target.skip = e.skipped
             }
             return target
         }
+    }
+
+    /// Each target once per test plan configuration that runs
+    /// (`-only-test-configuration`, `-skip-test-configuration`), with the
+    /// configuration's environment, arguments, repetition, language and
+    /// region. A plan with one configuration does not name it in results.
+    static func expand(_ targets: [TestTarget], plan testPlan: TestPlanFile?, _ inv: Invocation) -> [TestTarget] {
+        var out = expandConfigurations(targets, plan: testPlan, inv)
+        if let r = commandLineRepetition(inv) { for i in out.indices { out[i].repetition = r } }
+        return out
+    }
+
+    /// `-test-iterations N`, `-retry-tests-on-failure` (at most N, else 3
+    /// tries), `-run-tests-until-failure` (at most N, else 100); they replace
+    /// the plan's repetition (`man xcodebuild`).
+    static func commandLineRepetition(_ inv: Invocation) -> TestPlanFile.Repetition? {
+        let n = inv.value("-test-iterations").flatMap(Int.init).map { max(1, $0) }
+        if inv.has("-retry-tests-on-failure") { return .init(mode: .retryOnFailure, count: n ?? 3) }
+        if inv.has("-run-tests-until-failure") { return .init(mode: .untilFailure, count: n ?? 100) }
+        if let n { return .init(mode: .fixedIterations, count: n) }
+        return nil
+    }
+
+    static func expandConfigurations(_ targets: [TestTarget], plan testPlan: TestPlanFile?, _ inv: Invocation) -> [TestTarget] {
+        guard let testPlan else { return targets }
+        let configs = testPlan.configurations(only: inv.all("-only-test-configuration"), skip: inv.all("-skip-test-configuration"))
+        var out: [TestTarget] = []
+        for c in configs {
+            let o = testPlan.options(for: c)
+            for var t in targets {
+                if testPlan.configurations.count > 1 { t.configuration = c.name }
+                for (k, v) in o.enabledEnvironment { t.environment[k] = v }
+                t.arguments += o.enabledArguments
+                t.repetition = o.repetition
+                t.language = o.language
+                t.region = o.region
+                out.append(t)
+            }
+        }
+        return out
     }
 
     /// The test bundles of a package scheme, from their build settings.
@@ -122,6 +165,30 @@ enum TestActions {
                               bundlePath: dir + "/" + (s["FULL_PRODUCT_NAME"] ?? name + ".xctest"),
                               executablePath: dir + "/" + (s["EXECUTABLE_PATH"] ?? ""), productsDirectory: dir, testHost: nil)
         }
+    }
+
+    /// The Ycode simulator a `-destination` names, from the `YCODE_SIM_*`
+    /// variables (`RemoteTestHost.Settings`); nil for other destinations.
+    static func remoteSimulator(_ inv: Invocation, context ctx: XcodebuildContext) throws(XcodebuildFailure) -> RemoteTestHost.Settings? {
+        guard inv.destinations.contains(where: RemoteTestHost.isYcodeSimulator) else { return nil }
+        guard let s = RemoteTestHost.Settings.from(environment: ctx.environment) else {
+            throw XcodebuildFailure("The Ycode simulator destination needs its host: set YCODE_SIM_HOST, YCODE_SIM_DATA, YCODE_SIM_RUNTIME and YCODE_SIM_SIMD (specs/xcodebuild/test-actions.md).",
+                                    exitCode: ExitCode.usage)
+        }
+        return s
+    }
+
+    /// The test plan file a scheme's test action uses (`-testPlan`, else
+    /// the default reference), without a plan.
+    static func testPlanFile(_ inv: Invocation, scheme: Scheme, container: Container) -> TestPlanFile? {
+        let refs = scheme.testPlans
+        let wanted = inv.value("-testPlan")
+        guard let ref = wanted.map({ w in refs.first { TestPlanFile.name(ofReference: $0.reference) == w } })
+                ?? refs.first(where: \.isDefault) ?? refs.first else { return nil }
+        let bundle = scheme.url.map { URL(fileURLWithPath: $0.path.components(separatedBy: "/xcshareddata/").first ?? $0.path) }
+        let rel = ref.reference.hasPrefix("container:") ? String(ref.reference.dropFirst("container:".count)) : ref.reference
+        let base = bundle?.deletingLastPathComponent() ?? container.baseDirectory
+        return TestPlanFile(path: base.appendingPathComponent(rel).path)
     }
 
     // MARK: Selection
@@ -266,9 +333,9 @@ enum TestActions {
     /// With `profileDirectory` (coverage on), each runner writes its raw
     /// profile to `<dir>/<device id>/<UUID>-<pid>.profraw` and the profiles
     /// are merged into `Coverage.profdata` there afterwards.
-    static func execute(_ targets: [TestTarget], quiet: Bool, context ctx: XcodebuildContext, profileDirectory: String? = nil) -> Outcome {
+    static func execute(_ targets: [TestTarget], quiet: Bool, context ctx: XcodebuildContext, profileDirectory: String? = nil,
+                        remoteSimulator: RemoteTestHost.Settings? = nil) -> Outcome {
         var outcome = Outcome()
-        let console = ctx.console
         guard let dev = ctx.developerDirectory else {
             outcome.errors.append("No developer directory: cannot locate the xctest runner.")
             return outcome
@@ -283,35 +350,124 @@ enum TestActions {
             }
         }
         defer { if let profiles { mergeProfiles(in: profiles, developerDirectory: dev) } }
+        // Hosted targets for the Ycode simulator run together, per host app, after the rest.
+        var remote: [TestTarget] = []
         for var t in targets {
             if let profiles { t.environment["LLVM_PROFILE_FILE"] = profiles + "/" + UUID().uuidString + "-%p.profraw" }
-            if let host = t.testHost {
-                outcome.errors.append("\(t.blueprintName) runs inside \(URL(fileURLWithPath: host).lastPathComponent); tests hosted in an application are not supported by ycodebuild yet.")
+            t.arguments += languageArguments(t)
+            if t.testHost != nil || t.isUITest, t.platform != "macosx" {
+                if remoteSimulator != nil { remote.append(t) } else {
+                    outcome.errors.append("\(t.blueprintName) runs inside an app on the \(t.platform) platform: choose the Ycode simulator (-destination 'platform=iOS Simulator,name=Ycode Simulator') and describe its host in the YCODE_SIM_* variables (specs/xcodebuild/test-actions.md).")
+                }
                 continue
             }
-            guard FileManager.default.fileExists(atPath: t.bundlePath) else {
-                outcome.errors.append("The test bundle \(t.bundlePath) does not exist; build it with build-for-testing first.")
+            if t.testHost != nil, !t.isUITest {
+                runHostedLocally(t, quiet: quiet, context: ctx, outcome: &outcome)
                 continue
             }
-            let swiftTests = swiftListing(t, context: ctx)
-            let xctests = (t.only.isEmpty && t.skip.isEmpty) ? [:] : xctestListing(t, context: ctx)
+            // Tool-hosted bundles, and UI test bundles: those run in the
+            // platform's xctest runner too (Ycode has no UI automation
+            // service; tests that drive an app through XCUIApplication fail
+            // with XCTest's own message, testing.md "Ycode implementation").
+            runToolHosted(t, xctest: xctest, quiet: quiet, context: ctx, outcome: &outcome)
+        }
+        if let remoteSimulator, !remote.isEmpty {
+            RemoteTestHost(settings: remoteSimulator, context: ctx).run(remote, quiet: quiet, outcome: &outcome)
+        }
+        outcome.endedAt = Date()
+        return outcome
+    }
+
+    /// A bundle in the platform's `xctest` runner; a plan's repetition
+    /// runs it again (fixed iterations, until a failure, or the failing
+    /// tests again until they pass).
+    static func runToolHosted(_ t: TestTarget, xctest: String, quiet: Bool, context ctx: XcodebuildContext, outcome: inout Outcome) {
+        let console = ctx.console
+        let bundle = t.isUITest ? uiBundlePath(t) : t.bundlePath
+        guard FileManager.default.fileExists(atPath: bundle) else {
+            outcome.errors.append("The test bundle \(bundle) does not exist; build it with build-for-testing first.")
+            return
+        }
+        var t = t
+        t.bundlePath = bundle
+        let swiftTests = swiftListing(t, context: ctx)
+        var xctests = (t.only.isEmpty && t.skip.isEmpty) ? [:] : xctestListing(t, context: ctx)
+        let rounds = t.repetition?.count ?? 1
+        var all: [TestCaseResult] = []
+        var output = ""
+        var starts: [String: Int] = [:]
+        var round = t
+        for i in 0..<rounds {
             var args: [String] = []
-            if let f = filter(t, xctests: xctests, swiftTests: swiftTests) { args = ["-XCTest", f] }
+            if xctests.isEmpty, !round.only.isEmpty { xctests = xctestListing(t, context: ctx) }
+            if let f = filter(round, xctests: xctests, swiftTests: swiftTests) { args = ["-XCTest", f] }
             var parser = TestConsoleParser(module: t.moduleName, swiftTests: swiftTests)
             let r = run(xctest, args + [t.bundlePath], environment: testEnvironment(t, ctx)) { line in
                 if !quiet { console.out(line) }
                 parser.feed(line)
             }
-            outcome.results += parser.results
-            outcome.targets.append(.init(target: t, results: parser.results, selected: !t.only.isEmpty,
-                                         starts: Dictionary(parser.results.map { ($0.name, parser.startIndex(of: $0.name)) }, uniquingKeysWith: { a, _ in a }),
-                                         output: r.output))
+            all += parser.results
+            output += r.output
+            if i == 0 { starts = Dictionary(parser.results.map { ($0.name, parser.startIndex(of: $0.name)) }, uniquingKeysWith: { a, _ in a }) }
             if r.status != 0, parser.results.isEmpty {
                 outcome.errors.append("xctest (\(t.blueprintName)) exited with status \(r.status) without running tests.")
+                break
             }
+            let failing = parser.results.filter { $0.status == .failed }
+            var stop = false
+            switch t.repetition?.mode {
+            case .fixedIterations: break
+            case .untilFailure: stop = !failing.isEmpty
+            case .retryOnFailure:
+                stop = failing.isEmpty
+                round.only = failing.map(\.identifier).uniqued()
+                round.skip = []
+            default: stop = true
+            }
+            if stop { break }
         }
-        outcome.endedAt = Date()
-        return outcome
+        let results = collapseRepetitions(all, mode: t.repetition?.mode)
+        outcome.results += results
+        outcome.targets.append(.init(target: t, results: results, selected: !t.only.isEmpty, starts: starts, output: output))
+    }
+
+    /// One result per test (and test case) after repetitions: a retried
+    /// test has the status of its last try; otherwise a test failed when
+    /// any iteration failed. Durations add up.
+    static func collapseRepetitions(_ results: [TestCaseResult], mode: TestPlanFile.Repetition.Mode?) -> [TestCaseResult] {
+        guard let mode, mode != .none else { return results }
+        var order: [String] = []
+        var merged: [String: TestCaseResult] = [:]
+        for r in results {
+            let key = r.identifier + "|" + r.arguments.map(\.value).joined(separator: ",")
+            guard var m = merged[key] else {
+                order.append(key)
+                merged[key] = r
+                continue
+            }
+            m.duration += r.duration
+            if mode == .retryOnFailure || r.status == .failed || m.status == .skipped {
+                m.status = r.status
+                m.issues = r.status == .failed ? m.issues + r.issues : r.issues
+            }
+            merged[key] = m
+        }
+        return order.compactMap { merged[$0] }
+    }
+
+    /// A UI test bundle: swift-build builds it into
+    /// `<PRODUCT_NAME>-Runner.app/…/PlugIns`; ycodebuild runs it from there.
+    static func uiBundlePath(_ t: TestTarget) -> String { t.bundlePath }
+
+    /// The test plan's language and region as the host's argument-domain
+    /// defaults (`-AppleLanguages (<language>)`, `-AppleLocale
+    /// <language>_<region>`), for runs inside an app.
+    static func languageArguments(_ t: TestTarget) -> [String] {
+        guard t.testHost != nil || t.isUITest else { return [] }
+        var a: [String] = []
+        if let l = t.language, !l.isEmpty { a += ["-AppleLanguages", "(\(l))"] }
+        if let r = t.region, !r.isEmpty { a += ["-AppleLocale", (t.language.map { $0.isEmpty ? "en" : $0 } ?? "en") + "_" + r] }
+        return a
     }
 
     /// `llvm-profdata merge` of the raw profiles into `Coverage.profdata`.

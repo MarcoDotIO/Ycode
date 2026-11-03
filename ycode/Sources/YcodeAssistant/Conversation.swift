@@ -63,6 +63,8 @@ public struct ConversationMessage: Codable, Sendable, Equatable, Identifiable {
     public var target: ProposalTarget?
     /// Indexes of proposals the user accepted or rejected.
     public var resolvedProposals: [Int: ProposalResolution]
+    /// The reply stopped at the output limit (nil in older saves: no).
+    public var isCutOff: Bool?
 
     public init(id: UUID = UUID(), role: ChatRole, text: String, attachments: [Attachment] = [], date: Date = Date(), source: String? = nil,
                 error: String? = nil, isComplete: Bool = true, activity: [String] = [], target: ProposalTarget? = nil) {

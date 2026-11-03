@@ -61,6 +61,12 @@ public struct TestConsoleParser {
         self.swiftTests = swiftTests
     }
 
+    /// A swift-testing test learned during the run (a hosted bundle's
+    /// agent reports them; it cannot be listed beforehand).
+    public mutating func addSwiftTest(_ r: SwiftTestingBridge.TestRecord) {
+        if !swiftTests.contains(where: { $0.id == r.id }) { swiftTests.append(r) }
+    }
+
     // swiftlint:disable force_try - constant patterns
     static let caseLine = try! NSRegularExpression(pattern: #"^Test Case '-\[([^ \]]+) ([^\]]+)\]' (passed|failed|skipped) \(([0-9.]+) seconds\)\.$"#)
     static let issueLine = try! NSRegularExpression(pattern: #"^(.*):(\d+): (error: )?-\[([^ \]]+) ([^\]]+)\] : (.*)$"#)

@@ -79,6 +79,7 @@ public enum HostSched {
             + "lock holders promoted \(promotions.load(ordering: .relaxed)) "
             + "(\(promotionWaits.load(ordering: .relaxed)) waits past the delay, \(promotionRestores.load(ordering: .relaxed)) let go raised; "
             + "\(groupWrites.load(ordering: .relaxed)) class weight writes, \(groupWriteNanoseconds.load(ordering: .relaxed) / 1_000_000) ms)"
+            + (bgCPUMasks == nil ? "" : "; affinity failures \(affinityFailures.load(ordering: .relaxed))")
     }
     /// `YCODE_LOCK_HOLDER_PROMOTION` (default on with a backend; `=0` off):
     /// a thread that finds a kernel lock taken raises the holder's host
@@ -216,6 +217,9 @@ public enum HostSched {
         case .none:
             status = "none"
         }
+        if backend != .none, let bg = bgCPUMasks {
+            status += "; class bg on \(bg.background.reduce(0) { $0 + $1.nonzeroBitCount }) of \(bg.all.reduce(0) { $0 + $1.nonzeroBitCount }) CPUs"
+        }
         #else
         status = "none (not Linux)"
         #endif
@@ -309,6 +313,7 @@ public enum HostSched {
         case .none:
             break
         }
+        if ok, backend != .none, let bg = bgCPUMasks { _ = setAffinity(tid, cls == 0 ? bg.background : bg.all) }
         let took = KernelClock.now() &- start
         moveNanoseconds.wrappingAdd(took, ordering: .relaxed)
         if !isSelf {
@@ -318,6 +323,49 @@ public enum HostSched {
         if ok { moveCount.wrappingAdd(1, ordering: .relaxed) } else { failureCount.wrappingAdd(1, ordering: .relaxed) }
         #endif
     }
+    /// `YCODE_HOST_SCHED_BG_CPUS=N` (§4.7, `visionos.md` §10.26.1): host
+    /// threads of class bg run only on the last N online host CPUs, as the
+    /// Mac runs background work on its efficiency cores; nil (unset or 0):
+    /// on every CPU. Masks of 64-bit words for `sched_setaffinity`.
+    static let bgCPUMasks: (background: [UInt64], all: [UInt64])? = {
+        #if os(Linux)
+        guard let v = getenv("YCODE_HOST_SCHED_BG_CPUS").flatMap({ Int(String(cString: $0)) }), v > 0 else { return nil }
+        let online = Int(sysconf(Int32(_SC_NPROCESSORS_ONLN)))
+        guard online > v else { return nil }
+        let words = (online + 63) / 64
+        var background = [UInt64](repeating: 0, count: words), all = background
+        for cpu in 0..<online {
+            all[cpu / 64] |= 1 << UInt64(cpu % 64)
+            if cpu >= online - v { background[cpu / 64] |= 1 << UInt64(cpu % 64) }
+        }
+        return (background, all)
+        #else
+        return nil
+        #endif
+    }()
+    static let affinityFailures = Atomic<Int>(0)
+    /// glibc's `sched_setaffinity` (declared only with _GNU_SOURCE, so looked up).
+    nonisolated(unsafe) static let schedSetAffinity: (@convention(c) (Int32, Int, UnsafeRawPointer) -> Int32)? = {
+        #if os(Linux)
+        guard let f = dlsym(UnsafeMutableRawPointer(bitPattern: 0), "sched_setaffinity") else { return nil }
+        return unsafeBitCast(f, to: (@convention(c) (Int32, Int, UnsafeRawPointer) -> Int32).self)
+        #else
+        return nil
+        #endif
+    }()
+
+    @discardableResult
+    static func setAffinity(_ tid: Int32, _ mask: [UInt64]) -> Bool {
+        #if os(Linux)
+        guard let call = schedSetAffinity else { return false }
+        let ok = mask.withUnsafeBytes { call(tid, $0.count, $0.baseAddress!) } == 0
+        if !ok { affinityFailures.wrappingAdd(1, ordering: .relaxed) }
+        return ok
+        #else
+        return false
+        #endif
+    }
+
     /// `YCODE_HOST_SCHED_SELF_ZERO=0`: a thread moves itself by its id too.
     nonisolated(unsafe) static var selfMoveByZero = getenv("YCODE_HOST_SCHED_SELF_ZERO").map { String(cString: $0) != "0" } ?? true
     /// Moves of another thread (promotions) and their time.

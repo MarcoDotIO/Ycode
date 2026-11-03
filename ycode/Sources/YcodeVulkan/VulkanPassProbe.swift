@@ -79,6 +79,82 @@ extension VulkanMetalBackend {
     static let probeStartDelay = Double(ProcessInfo.processInfo.environment["YCODE_GPU_PROBE_AFTER_S"] ?? "") ?? 0
     nonisolated(unsafe) static var probeEpoch: UInt64 = 0
 
+    /// `YCODE_GPU_FRAME_MAP=<after s>,<count>[,<min commands>]` (diagnostics,
+    /// visionos.md §10.24): from that many seconds after the first
+    /// submission, the next <count> command buffers with at least <min
+    /// commands> (default 1) draws, dispatches and blits are described as in
+    /// a hang report (passes, attachments, functions, bound textures and
+    /// buffers): one frame's data flow from pass to pass, without copying
+    /// anything.
+    static let frameMap: (after: Double, count: Int, minCommands: Int)? = {
+        guard let v = ProcessInfo.processInfo.environment["YCODE_GPU_FRAME_MAP"] else { return nil }
+        let p = v.split(separator: ",").map { String($0) }
+        guard p.count >= 2, let a = Double(p[0]), let n = Int(p[1]) else { return nil }
+        return (a, n, p.count > 2 ? Int(p[2]) ?? 1 : 1)
+    }()
+    nonisolated(unsafe) static var frameMapEpoch: UInt64 = 0
+    nonisolated(unsafe) static var frameMapLogged = 0
+
+    /// `YCODE_GPU_FRAME_MAP_FILE=<path>` (diagnostics, visionos.md §10.29): a
+    /// frame map on request. When the file appears, its first word is how
+    /// many command buffers to describe (default 40), its second the least
+    /// commands one must have (default 1); the file is removed. A scripted
+    /// driver or a headset run can ask for the frame on screen right now.
+    static let frameMapFile = ProcessInfo.processInfo.environment["YCODE_GPU_FRAME_MAP_FILE"]
+    nonisolated(unsafe) static var frameMapRequested = 0
+    nonisolated(unsafe) static var frameMapRequestedMin = 1
+    nonisolated(unsafe) static var frameMapRequestNumber = 0
+
+    /// Takes a pending request. Under the lock.
+    func frameMapPollFile() {
+        guard let path = Self.frameMapFile, access(path, F_OK) == 0 else { return }
+        let words = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "").split(whereSeparator: { $0.isWhitespace })
+        unlink(path)
+        Self.frameMapRequested = words.first.flatMap { Int($0) } ?? 40
+        Self.frameMapRequestedMin = words.count > 1 ? Int(words[1]) ?? 1 : 1
+        Self.frameMapRequestNumber += 1
+        log("frame map: request \(Self.frameMapRequestNumber): \(Self.frameMapRequested) command buffers")
+    }
+
+    static func commandCount(_ mcb: MetalCommandBuffer) -> Int {
+        var work = 0
+        for pass in mcb.passes {
+            switch pass {
+            case .render(let p):
+                work += p.commands.reduce(0) {
+                    switch $1 { case .draw, .drawIndexed, .drawIndirect, .drawIndexedIndirect: return $0 + 1; default: return $0 }
+                }
+            case .compute(let c):
+                work += c.reduce(0) {
+                    switch $1 { case .dispatchThreads, .dispatchThreadgroups, .dispatchThreadgroupsIndirect: return $0 + 1; default: return $0 }
+                }
+            case .blit(let c): work += c.count
+            default: break
+            }
+        }
+        return work
+    }
+
+    /// Logs `mcb` for `YCODE_GPU_FRAME_MAP` or a request of
+    /// `YCODE_GPU_FRAME_MAP_FILE`. Under the lock, before the replay.
+    func frameMapNote(_ mcb: MetalCommandBuffer) {
+        frameMapPollFile()
+        if Self.frameMapRequested > 0, Self.commandCount(mcb) >= Self.frameMapRequestedMin {
+            Self.frameMapRequested -= 1
+            log("frame map request \(Self.frameMapRequestNumber): process \(mcb.process) command buffer \(mcb.commandBufferRef), \(mcb.passes.count) passes\n    "
+                + describeCommandBuffer(mcb, limit: 800))
+        }
+        guard let m = Self.frameMap, Self.frameMapLogged < m.count else { return }
+        let now = DispatchTime.now().uptimeNanoseconds
+        if Self.frameMapEpoch == 0 { Self.frameMapEpoch = now }
+        guard Double(now &- Self.frameMapEpoch) / 1e9 >= m.after else { return }
+        guard Self.commandCount(mcb) >= m.minCommands else { return }
+        Self.frameMapLogged += 1
+        log("frame map \(Self.frameMapLogged) at \(String(format: "%.3f", Double(now &- Self.frameMapEpoch) / 1e9)) s: "
+            + "process \(mcb.process) command buffer \(mcb.commandBufferRef), \(mcb.passes.count) passes\n    "
+            + describeCommandBuffer(mcb, limit: 400))
+    }
+
     /// Whether a shader's name is one of `YCODE_GPU_PROBE`'s.
     func probeMatches(_ s: TranslatedShader?) -> Bool {
         guard let s else { return false }
@@ -309,6 +385,12 @@ extension VulkanMetalBackend {
         let logger = options.log
         entry.after = { [self] ok in
             earlier?(ok)
+            guard ok else {
+                // Failed (a device reset calls this before it destroys the device).
+                logger?("[vulkan] probe \(p.number): the command buffer failed; no results")
+                yvk_buffer_destroy(self.ctx, &p.buffer)
+                return
+            }
             DispatchQueue.global(qos: .utility).async {
                 if ok {
                     for line in Self.probeReport(p) { logger?("[vulkan] " + line) }

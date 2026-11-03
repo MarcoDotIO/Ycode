@@ -153,6 +153,51 @@ import Testing
         #endif
     }
 
+    /// A copy of a TestHostSamples project (tests do not write into the repository).
+    static func copyHostSample(_ name: String) throws -> URL {
+        let ycode = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-host-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: ycode.appendingPathComponent("Samples/TestHostSamples/" + name), to: dir.appendingPathComponent(name))
+        return dir.appendingPathComponent(name)
+    }
+
+    /// Hosted tests built for a simulator: swift-build embeds the testing
+    /// libraries in the host app (testing.md, "Building"). A UI test bundle
+    /// is signed with entitlements from Ycode's signing (signing.md §4.1),
+    /// not an entitlement set the PIF makes up.
+    @Test func hostedTestBuildsEmbedTestingLibrariesAndSignUITests() throws {
+        #if os(macOS)
+        guard let helper = Self.helper else { return }
+        let fm = FileManager.default
+        let phone = try Self.copyHostSample("HostPhone")
+        defer { try? fm.removeItem(at: phone.deletingLastPathComponent()) }
+        let dd = phone.path + "/DerivedData"
+        let b = run(["-project", "HostPhone.xcodeproj", "-scheme", "HostPhone", "-destination", "platform=iOS Simulator,name=Ycode Simulator,arch=arm64",
+                     "-derivedDataPath", dd, "build-for-testing"], cwd: phone.path, helper: helper)
+        // Without the iOS simulator SDK the build cannot run here.
+        if b.err.contains("SDK") && b.code != 0 { return }
+        #expect(b.code == 0, "\(b.err)")
+        let frameworks = dd + "/Build/Products/Debug-iphonesimulator/HostPhone.app/Frameworks"
+        for f in ["XCTest.framework", "Testing.framework", "libXCTestSwiftSupport.dylib"] {
+            #expect(fm.fileExists(atPath: frameworks + "/" + f), "\(f)")
+        }
+
+        let mac = try Self.copyHostSample("HostMac")
+        defer { try? fm.removeItem(at: mac.deletingLastPathComponent()) }
+        let macDD = mac.path + "/DerivedData"
+        let ui = run(["-project", "HostMac.xcodeproj", "-scheme", "HostMac", "-testPlan", "HostMacUI", "-derivedDataPath", macDD, "build-for-testing"],
+                     cwd: mac.path, helper: helper)
+        #expect(ui.code == 0, "\(ui.out.suffix(2000))\(ui.err)")
+        #expect(!ui.out.contains("Entitlements are required"))
+        let xcent = macDD + "/Build/Intermediates.noindex/HostMac.build/Debug/HostMacUITests.build/HostMacUITests.xctest.xcent"
+        let entitlements = NSDictionary(contentsOfFile: xcent) as? [String: Any]
+        #expect(entitlements?["com.apple.security.get-task-allow"] as? Bool == true)
+        // Mac hosts keep swift-build's default: no copies (DYLD_FRAMEWORK_PATH at run time).
+        #expect(!fm.fileExists(atPath: macDD + "/Build/Products/Debug/HostMac.app/Contents/Frameworks/XCTest.framework"))
+        #endif
+    }
+
     /// A Swift package folder: schemes, the destination requirement, build
     /// and test through SwiftPM's build description.
     @Test func packageFolder() throws {

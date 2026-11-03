@@ -85,7 +85,8 @@ selected tab (a quiet semantic fill set in `updateLayer`).
   side, top one point above the toolbar's bottom; pill 30 × 24. The rule
   under the selector is transparent; the header rows keep their places.
 - Navigator bottom bar: the "+" circle 31 × 30, 6 from the leading edge;
-  the filter capsule 6 after it (or 6 from the edge without "+"), 6 from
+  the filter capsule 5 after it, 242 wide (or 6 from the edge without
+  "+"; `metrics.md` §2), 6 from
   the trailing edge, 7 above the window's bottom. The filter field draws
   no bezel or background (its text keeps clear of the options menu).
 - Outline: with no header row, its scroll view runs from the window's top
@@ -93,7 +94,11 @@ selected tab (a quiet semantic fill set in `updateLayer`).
   keep the first row 7 below the selector bar (`reference-ui-6.md` §5.3)
   and the last row above the filter bar; there is no fade. With a header
   row shown (Find, Source Control, Tests, Reports) it stays clipped below
-  the header (`liquid-glass.md` §2.7).
+  the header (`liquid-glass.md` §2.7), its first row 4 below the clip.
+  Both insets are measured against where the outline draws its first row:
+  the source-list style pads that row in a plain window but not in the
+  window's sidebar, and assuming the padding put the first row under the
+  selector capsule (`metrics.md` §2).
 - Inspector tab bar: 30 tall, 5 from the divider, 6 from the right edge;
   pill 78 × 24. No line below.
 - Coding Assistant header: capsules 150 × 30 and 118 × 30 around the
@@ -104,7 +109,8 @@ selected tab (a quiet semantic fill set in `updateLayer`).
 
 ## 4. Editor chrome (`liquid-glass.md` §2.6, §3)
 
-- Jump bar: unchanged, an opaque band with a separator line.
+- Jump bar: an opaque band, 31 points (y 52–83), with a separator line
+  below it.
 - Debug bar: 36 tall (35 plus its separator), laid over the editor, whose
   view runs to the column's bottom with a 36-point bottom safe-area inset
   (`additionalSafeAreaInsets`) so its text scrolls clear of the bar. The
@@ -169,10 +175,14 @@ the fallback. `.fullSizeContentView`, safe-area layout,
 
 ## 10. Open
 
+Spacing, insets and the measured metrics of every window are in
+`metrics.md` (the spacing audit of 2026-10-30), with its own open
+questions.
+
 - The Welcome rows draw no separators (the reference's start under the
   text).
-- The jump bar's height is the earlier specs' (the reference's band is
-  31 points, y 52–83).
+- ~~The jump bar's height is the earlier specs'.~~ The band is now 31
+  points, y 52–83, then the separator (`metrics.md` §4).
 - The inspector is 265 wide (`workspace-window.md`), 5 more than the
   reference's 260, so its tab bar is 253 wide.
 - Organizer window: hand-built sidebar, not reviewed here. The Devices
@@ -183,6 +193,38 @@ the fallback. `.fullSizeContentView`, safe-area layout,
 - The dark appearance, hover and pressed states, menus, full screen and
   the scrolled navigator in an active window are unobserved in the
   reference (`liquid-glass.md` §5); Ycode keeps the system's behavior.
+
+## 11. Headset setup and the hub's Headset controls (XR-HUB, 2026-11-02)
+
+A Ycode feature with no counterpart in `liquid-glass.md`, so these are Ycode's
+choices, all system materials through public API:
+
+- **Setup window** (`HeadsetSetupWindowController`): a full-size content
+  view with a transparent title bar. The steps are on a floating
+  `NSGlassEffectView` panel (`GlassBars.panel`, radius 18, 8 from the
+  window's edges, the window's buttons on it), not a flush split item: this is
+  a helper window, and §1's flush rule is the workspace's. The selected step
+  sits on `SelectionPillView`; marks are system colours, a different shape per
+  state; titles are the label colour.
+- **What the panel floats over** (`HeadsetBackdropView`): the window's
+  background with the running device's picture fading in from the leading
+  edge, or a quiet accent wash without one (glass over one flat colour reads as
+  a plain rectangle), gone before the text starts. Plain with Reduce
+  Transparency or Increase Contrast. The scroll view runs under the panel.
+- **Buttons** (`GlassBars.style`): the `.glass` bezel, capsule; the primary
+  (Next / Finish, Install on Headset…, Connect, View in Headset) has
+  `tintProminence = .primary`. Push buttons before macOS 26.
+- **Body text** stays plain on the window's background: no glass behind the
+  checks, and no glass on glass.
+- **Headset box** (the Settings tab): the status on a `SelectionPillView`
+  (a quiet semantic fill), glass buttons, the Display pop-up with the `.glass`
+  bezel.
+- **In Headset capsule**: `GlassCapsule` over the dimmed picture; its button is
+  borderless with the accent colour, since it is already on glass (§3).
+- Before macOS 26: `NSVisualEffectView` (`.sidebar`) with the same corners.
+
+Seen in Ycode's own inactive windows over a real device picture
+(`device-hub.md` §I.12.8); the active look and the tint are not yet seen.
 
 ## Evidence
 

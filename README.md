@@ -1,194 +1,323 @@
-# Ycode
+<p align="center">
+  <img src="docs/images/logo.svg" alt="" width="112" height="112">
+</p>
 
-> [!WARNING]
-> **Ycode is extremely experimental.** It is a research project. Nothing here
-> is stable, supported, or ready for real use:
-> - **Interfaces.** APIs, file layouts and command-line flags change without
->   notice.
-> - **The simulator.** The iOS simulator boots to the home screen on arm64
->   Linux and runs apps, with a live display and input. It is still slower
->   than the reference simulator, and parts of it are missing.
-> - **The IDE.** A macOS IDE (`Ycode.app`) covers many Xcode workflows. It is
->   incomplete and rough in places. Most of it is tested through automated
->   offscreen tests, not daily use.
->
-> Expect breakage. Read the [status](#status) section before you try anything.
+<h1 align="center">Ycode</h1>
 
-Ycode is an independent, **clean-room** reimplementation of the Xcode IDE for
-Apple platforms. It matches Xcode's observable behavior and file formats, so
-that real projects open, build and save correctly. **Ycode contains no Apple
-code.** We study Xcode only to learn *what* it does: its file formats,
-protocols and observable behavior. All Ycode code comes from our own
-specifications in `specs/`. See [The clean-room protocol](#the-clean-room-protocol).
+<p align="center">
+  <strong>An independent, open-source IDE for Apple-platform projects, on macOS and Linux.</strong><br>
+  It opens real projects, builds them, and writes files that stay compatible.
+</p>
 
-A second track, the **Ycode simulator**, runs the simulator runtimes that ship
-with Xcode on **arm64 Linux**. Each guest process runs in its own KVM
-micro-VM. A Darwin kernel personality written in Swift serves the guest's
-system calls and Mach traps. Metal rendering is translated to Vulkan.
+<p align="center">
+  <a href="https://github.com/MarcoDotIO/Ycode/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MarcoDotIO/Ycode/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/MarcoDotIO/Ycode/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/MarcoDotIO/Ycode?include_prereleases&label=release"></a>
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
+  <img alt="Platforms: macOS, Linux x86-64 and arm64" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20x86--64%20%7C%20Linux%20arm64-lightgrey">
+</p>
 
-A third track, **open frameworks** (`frameworks/`), reimplements Apple
-frameworks as Swift packages that also build on Linux.
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#what-works-today">What works</a> ·
+  <a href="#build-from-source">Build from source</a> ·
+  <a href="#simulators-experimental">Simulators</a> ·
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-## Status
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/hero-light.png">
+  <img alt="The Ycode workspace window on Linux, showing a Swift package: the project navigator, a highlighted source file, and the file inspector." src="docs/images/hero-light.png">
+</picture>
 
-### The IDE (macOS)
+> [!NOTE]
+> **This is a public beta (1.0.0-beta.1).** The project file formats and command-line tools are the most
+> mature part. The IDE is usable and still has rough edges, and the Linux IDE is well behind the macOS one.
+> Keep your projects under version control, and please [report what you find](https://github.com/MarcoDotIO/Ycode/issues/new/choose).
 
-| Area | State |
+## What is Ycode?
+
+Ycode is a desktop IDE for projects that target Apple platforms. It reads and writes the same files as
+Apple's Xcode (`.xcodeproj`, `.xcworkspace`, `.xcscheme`, `.xcconfig`, Swift packages), so you can move a
+project between the two tools and keep your colleagues' diffs small.
+
+It is written from scratch in Swift under a [clean-room protocol](#clean-room): **it contains no Apple
+code.** It builds with the compilers and SDKs you have installed, and it ships none of Apple's.
+
+**Ycode may suit you if** you want to browse and build Swift projects on Linux, you need `xcodebuild`-style
+tooling or project-file handling you can read and change, or you want to take part in an open IDE.
+
+**It won't suit you yet if** you need a drop-in replacement for Xcode to ship an app. Signing and
+distribution are partial, and physical devices are only listed.
+
+## What works today
+
+**Beta** means usable and tested. **Experimental** means it works in the cases we tried and you should
+expect gaps. **Not yet** means it isn't there. The full audit against Xcode 27.1 is in
+[docs/PARITY.md](docs/PARITY.md).
+
+### Project files and command-line tools
+
+| Feature | macOS | Linux |
+|---|---|---|
+| Read and write `.pbxproj`, `.xcworkspace`, `.xcscheme`. Round trips of Xcode-written files are byte-identical on our test corpus. | Beta | Beta |
+| Resolve build settings (`.xcconfig`, defaults, conditions). [111,310 of 111,310 values](specs/xcodebuild/conformance.md) match `xcodebuild -showBuildSettings` across our corpus. | Beta | Beta |
+| `ycodebuild`, an `xcodebuild`-compatible command line. [363 of 363 checks](specs/xcodebuild/conformance.md) match on our corpus. | Experimental | Experimental: settings and queries; building needs its build helper |
+| `ycode assets` and `ycode strings`: asset catalog and String Catalog compilers | Experimental | Experimental |
+| `ycode mcp`: an MCP server that lets coding agents build, test and search. Read-only unless you pass `--allow-writes`. | Experimental | Experimental |
+| `ycode profile`: Gauge, a sampling profiler | Not yet for Mac processes | Experimental |
+
+### The IDE
+
+<!-- Linux rows below describe the main line. Update them when Linux editing and Settings land. -->
+
+| Feature | macOS | Linux |
+|---|---|---|
+| Open projects, workspaces and Swift packages; Welcome window; New Project | Beta | Experimental |
+| Project navigator, Find in workspace, Issues | Experimental | Experimental |
+| Other navigators (source control, symbols, tests, debug, breakpoints, reports) | Experimental | Not yet |
+| View source with syntax highlighting | Experimental | Experimental |
+| **Edit and save source files** | Experimental | **Not yet:** files open read-only |
+| Build | Experimental: swift-build, with an `xcodebuild` fallback | Experimental: Swift packages, through SwiftPM |
+| Run | Experimental: My Mac and simulators | Experimental: Swift packages, with console output |
+| Debugger (breakpoints, stepping, variables) through `lldb-dap` | Experimental | Not yet |
+| Language features through SourceKit-LSP (completion, definition, rename, live issues) | Experimental | Not yet |
+| Plist, asset catalog and String Catalog editors; Interface Builder documents; SwiftUI previews | Experimental | Not yet |
+| Tests, source control (git), Organizer | Experimental | Not yet |
+| Coding assistant (local models, OpenAI, agent CLIs); you review each proposed change | Experimental | Not yet |
+| Settings, themes and key bindings | Experimental | Not yet |
+| Signing and distribution | Experimental: partial | Not yet |
+| Physical devices | Listed only | Not yet |
+
+### Other parts of this repository
+
+| Part | State |
 |---|---|
-| Project model (`.pbxproj`, OpenStep plists) | Reads and writes. Round trips of Xcode-written projects are byte-identical on our test corpus. |
-| Workspaces and schemes (`.xcworkspace`, `.xcscheme`) | Reads and writes. Byte-identical round trips on our corpus. |
-| Build settings (xcconfig, defaults, conditions) | Matches `xcodebuild -showBuildSettings` on our corpus: 111,310 of 111,310 values across 24 projects ([conformance](specs/xcodebuild/conformance.md)). |
-| `ycodebuild` | An `xcodebuild`-compatible command line: build, test, archive, export, settings and information queries. 363 of 363 build checks match the reference tool on our corpus ([conformance](specs/xcodebuild/conformance.md)). |
-| Building | **Experimental.** A PIF generator drives swift-build for projects, workspaces and packages, with an `xcodebuild` fallback. Swift package dependencies resolve through git and SwiftPM. |
-| Workspace window | **Experimental.** Nine navigators, editor tabs and splits, assistant and counterparts, inspectors, Open Quickly, the scheme editor, the project editor, templates, the Library, and Settings with themes and key bindings. The look follows the system's Liquid Glass materials on macOS 26 and falls back on earlier systems ([liquid-glass-ycode.md](specs/ide/liquid-glass-ycode.md)). |
-| Editors | **Experimental.** A TextKit 2 source editor (incremental highlighting, folding, find and replace, placeholders, minimap). Property-list, asset-catalog and String Catalog editors. Interface Builder documents (outline, canvas, inspectors, byte-minimal edits). SwiftUI previews, rendered offscreen. |
-| Language features | **Experimental.** Through SourceKit-LSP: completion, Quick Help, jump to definition, live issues with fix-its, rename, references, call hierarchy, code actions ([language.md](specs/ide/language.md)). |
-| Run and debug | **Experimental.** Runs on My Mac, on the Mac's simulators, and on the Ycode simulator over ssh ([run.md](specs/ide/run.md)). Debugging through lldb-dap: breakpoints, stepping, variables, watchpoints, console input, attach, disassembly. |
-| Coding assistant | **Experimental.** Local models (Ollama, llama.cpp), OpenAI (ChatGPT sign-in or API key), and agent CLIs run read-only. The assistant proposes changes; you review and apply them ([coding-assistant.md](specs/ide/coding-assistant.md)). |
-| Devices | **Experimental.** A Device Hub-style window and a compact device window. They start, stop and show the Ycode simulator's devices live, with input. Other simulators and physical devices are listed only ([device-hub.md](specs/ide/device-hub.md)). |
-| Testing, source control, distribution | **Experimental.** Test navigator and results. Git status, history, commit and comparison. Organizer archives with Copy App export. |
+| [Simulators](#simulators-experimental) for iOS, iPadOS, watchOS and visionOS, on arm64 Linux with KVM | Experimental |
+| [Open frameworks](frameworks/README.md): Swift packages that also build on Linux. Contacts, EventKit, HealthKit, HomeKit, StoreKit, WeatherKit and SwiftUI (OpenViews, which draws the Linux IDE), plus a USD library | Experimental and partial; each README lists what is done |
+| [Scene Composer](docs/SCENE-COMPOSER.md): `ycode-scene`, a command-line core for USD scenes | Experimental; no editor window yet |
 
-### The simulator (arm64 Linux)
+## Install
 
-Tested on an NVIDIA Jetson Thor (arm64, Ubuntu 24.04, KVM, Vulkan).
+Download from the [Releases page](https://github.com/MarcoDotIO/Ycode/releases). Releases are marked as
+prereleases during the beta, and each one has a `SHA256SUMS.txt`.
 
-What works:
-- **Runtimes.** iOS 27.1 and iOS 27.0. Each device is tied to one runtime
-  ([ipad.md](specs/simulator/ipad.md) §9.2).
-- **The full service boot.** `launchd_sim` starts every system service; no
-  service is switched off. A cold boot of a device that booted before reaches
-  the home screen in a median of 30.1 s on an idle host. The reference
-  simulator on a Mac takes 21.4 s ([lean-boot.md](specs/simulator/lean-boot.md) §9,
-  [parity-ladder.md](specs/simulator/parity-ladder.md) §3.1).
-- **Warm boot.** Stopping a device saves a snapshot. The next run restores it
-  and shows the home screen in 6.4–11.1 s
-  ([snapshot.md](specs/simulator/snapshot.md) §12.3).
-- **Display and input.** A live display stream to a viewer on the Mac or to
-  the IDE, with touch, keyboard, Home, Lock and volume. Animations run at the
-  60 Hz frame clock ([display-stream.md](specs/simulator/display-stream.md),
-  [hid-input.md](specs/simulator/hid-input.md),
-  [frame-profile.md](specs/simulator/frame-profile.md) §8.4).
-- **Graphics.** Metal calls are replayed on Vulkan. Our own translator,
-  `ycode-airc`, turns Metal shaders (AIR) into SPIR-V
-  ([stage8-contract.md](specs/simulator/stage8-contract.md)).
-- **Apps.** Install and launch your own `.app`. The built-in apps launch.
-- **Devices.** iPhone 18 Pro, the iPhone Duo foldable with its two displays
-  ([foldable.md](specs/simulator/foldable.md)), iPad (A16) and iPad Pro
-  13-inch (M5) ([ipad.md](specs/simulator/ipad.md)). visionOS 27.0 boots to
-  its room and home view, with open problems
-  ([visionos.md](specs/simulator/visionos.md) §10.20).
-- **Host services.** Networking ([networking-ycode.md](specs/simulator/networking-ycode.md)),
-  audio output ([audio-host.md](specs/simulator/audio-host.md)), an opt-in
-  host webcam ([camera.md](specs/simulator/camera.md) §9), file events
-  ([fsevents-host.md](specs/simulator/fsevents-host.md)) and volume
-  capabilities ([file-system-features.md](specs/simulator/file-system-features.md)).
-- **Simulator features.** Appearance, accessibility settings, location, sound
-  and environment overrides, set from the IDE, the viewer or the command line
-  ([simulator-features.md](specs/simulator/simulator-features.md)).
-- **Threads.** Real Mach thread and task suspension
-  ([threads-and-events.md](specs/simulator/threads-and-events.md) §1.6).
+### macOS
 
-What doesn't work, or works badly:
-- **Speed.** A cold boot takes about 1.4 times as long as the reference
-  simulator's. The first boot of a new device, and the first launch of an app
-  after a cold boot, are slower still.
-- **Service fidelity.** In the same time window, Ycode starts fewer programs
-  than the reference simulator (498–506 against 631;
-  [parity-ladder.md](specs/simulator/parity-ladder.md) §4.8).
-- **Missing pieces.** No audio input or real playback (output is discarded
-  unless captured to a file). No Bonjour. The camera picker's viewfinder stays
-  grey. One stuck GPU submission stops every client until the host restarts
-  ([stage8-contract.md](specs/simulator/stage8-contract.md) §15.8).
-- **Hosts.** Only arm64 Linux with KVM runs the simulator. x86-64 Linux would
-  need arm64 translation, which is deferred.
-- **Host kernel bug.** Linux kernels without upstream commit `fbc7e61195e2`
-  ("KVM: arm64: Unconditionally save+flush host FPSIMD/SVE/SME state") can
-  corrupt host SVE state after `KVM_RUN`. Ycode works around this, but a fixed
-  host kernel is strongly recommended. See
-  [docs/postmortem-kvm-sve.md](docs/postmortem-kvm-sve.md).
-- **Bring your own runtime.** Ycode does not and will not redistribute any
-  Apple software. To run the simulator you need your own copy of the
-  simulator runtime from your own Xcode installation, used under Apple's
-  license terms.
+**Requires** macOS 15 or later on Apple silicon. The Liquid Glass look needs macOS 26 or later. To build
+anything you also need Xcode from Apple, which provides the compilers and SDKs. Ycode is developed against
+Xcode 27.1.
 
-Design and progress: [docs/SIMULATOR.md](docs/SIMULATOR.md) and
-[docs/SIMULATOR-LINUX.md](docs/SIMULATOR-LINUX.md). The specifications are in
-[specs/simulator/](specs/simulator/).
+1. Download `Ycode-1.0.0-beta.1.dmg` and open it.
+2. Drag **Ycode** to **Applications**.
+3. Open Ycode from Applications.
 
-### Open frameworks
+#### Opening an ad-hoc signed build
 
-Seven packages in [frameworks/](frameworks/): Contacts, EventKit, HealthKit,
-HomeKit, StoreKit, SwiftUI and WeatherKit. Each builds and tests on macOS and
-Linux. Each is partial; its README lists the rounds that are done. ARKit,
-MapKit and RealityKit have specifications in
-[specs/frameworks/](specs/frameworks/) but no code yet.
+The release notes say whether a build is notarized. If it is ad-hoc signed, macOS blocks the first launch.
+Try to open Ycode once, then go to **System Settings ▸ Privacy & Security** and choose **Open Anyway**.
 
-## Repository layout
+### Linux (Flatpak)
 
-| Path | Contents |
-|---|---|
-| `ycode/` | The Swift package: the implementation (clean room). |
-| `ycode/Sources/Ycode{Plist,Project,Workspace,Settings,MachO}` | Project model, file formats, build settings, Mach-O. |
-| `ycode/Sources/Ycode{Build,Language,Debug,Assistant,Subprocess}` | IDE services: build engines and PIF, LSP client, DAP client, coding assistant, subprocess runs. |
-| `ycode/Sources/Ycode{UI,DeviceUI,DeviceModel,App}` | The AppKit IDE, the device windows and their model, the app. |
-| `ycode/Sources/{YcodeXcodebuild,ycodebuild-cli}`, `ycode/Tools/ycode-swb` | `ycodebuild`, the xcodebuild-compatible tool, and the swift-build helper. |
-| `ycode/Sources/Ycode{DarwinABI,DarwinKernel,Hypervisor,XPC,HostServices}`, `ycode/Sources/ycode-simd` | Simulator: the Darwin kernel personality, KVM, XPC, host services, and the VM monitor. |
-| `ycode/Sources/Ycode{MetalHost,Vulkan}`, `ycode/Translator/` | Simulator: the Metal host service, the Vulkan back end, the AIR → SPIR-V translator. |
-| `ycode/Sources/Ycode{DisplayStream,SimFeatures}`, `ycode/Sources/ycode-sim-viewer` | Simulator: the display stream, the settings features, and the Mac viewer. |
-| `ycode/SimShim/`, `ycode/SimHostLibs/`, `ycode/SimGuestFrameworks/`, `ycode/SimGuestAgents/` | Simulator guest side: the EL1 shim, our replacement host libraries, our framebuffer and HID frameworks, our settings and camera agents. |
-| `ycode/scripts/` | App packaging, simulator launchers, conformance and profiling scripts, the lint wrapper. |
-| `frameworks/` | Open framework packages (clean room). |
-| `specs/` | The clean-room boundary: behavior and format specifications. Each one ends with an Evidence section. |
-| `docs/` | Architecture, roadmap, design notes and post-mortems. |
-| `research/` | Our own probes and experiments, and prose observations (dirty room). |
-| `tools/` | Analysis scripts. They record metadata only. |
+**Requires** x86-64 or arm64 (aarch64), Flatpak, and [Swift 6.4 installed on the host](https://www.swift.org/install/linux/).
+Ycode uses your host's Swift toolchain to build.
 
-## Building
-
-The libraries and the `ycode` command-line tool build on macOS and Linux with
-Swift 6.4. The IDE app builds on macOS only:
-
-```bash
-cd ycode
-swift build
-swift test
-.build/debug/ycode describe path/to/App.xcodeproj
-scripts/make-app.sh                 # builds .build-ide/app/Ycode.app
+```sh
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user ./Ycode-1.0.0-beta.1-x86_64.flatpak      # or -aarch64
+flatpak run io.github.MarcoDotIO.Ycode
 ```
 
-More commands, and how to try the simulator from a Mac, are in
-[ycode/README.md](ycode/README.md).
+> [!IMPORTANT]
+> **This Flatpak isn't really sandboxed.** To reach your Swift toolchain it runs commands on the host
+> through `flatpak-spawn --host`, which is what the `org.freedesktop.Flatpak` permission allows. Treat it
+> like any other program you run on your machine. [packaging/README.md](packaging/README.md) lists every
+> permission and why it's there.
 
-To build the simulator (arm64 Linux with KVM and a Vulkan driver), see
+### First steps
+
+1. In the Welcome window, choose **Open…** and pick a project, a workspace or a folder with a
+   `Package.swift`.
+2. Choose a scheme and a destination in the toolbar.
+3. Build with <kbd>⌘B</kbd> and run with <kbd>⌘R</kbd>. On Linux the Command key is <kbd>Ctrl</kbd>.
+
+## Build from source
+
+You need Swift 6.4: Xcode 27 on macOS, or the [swift.org release](https://www.swift.org/install/) on Linux.
+On Ubuntu, also install `libsqlite3-dev`. Clone the whole repository, because `ycode/` uses
+`frameworks/swiftui` by path.
+
+```sh
+git clone https://github.com/MarcoDotIO/Ycode.git
+cd Ycode/ycode
+swift build
+swift test
+```
+
+**On macOS**, build the app, which appears at `.build-ide/app/Ycode.app`:
+
+```sh
+scripts/make-app.sh
+```
+
+**On Linux**, run the IDE directly. It loads SDL3 at run time: install it from your distribution if it has
+SDL3, or point `OV_SDL3_LIBRARY` at your own `libSDL3.so.0`.
+
+```sh
+.build/debug/ycode-ide path/to/Package.swift
+```
+
+**The command-line tools** work on both systems:
+
+```sh
+.build/debug/ycode describe path/to/App.xcodeproj
+.build/debug/ycode roundtrip path/to/App.xcodeproj
+.build/debug/ycodebuild -list -project path/to/App.xcodeproj
+```
+
+[ycode/README.md](ycode/README.md) has the rest: every tool, the tests and the opt-in test inputs.
+
+## Simulators (experimental)
+
+Ycode's simulator runs Apple's simulator runtimes on **arm64 Linux**, with its own Darwin kernel layer in
+KVM micro-VMs and Metal translated to Vulkan. It is the most experimental part of the project: slower than
+Apple's simulator on a Mac, and incomplete.
+
+**Nothing of Apple's ships here.** No runtime, SDK, firmware, artwork or font is in this repository or in
+the packages, and Ycode doesn't download or decrypt any of it. You supply a simulator runtime from your own
+Xcode installation, and you are responsible for following Apple's licence terms for it. Check whether those
+terms allow your setup before you use it.
+
+**What you need**
+
+- An arm64 Linux host with `/dev/kvm` and a Vulkan driver (developed on an NVIDIA Jetson, Ubuntu 24.04).
+- Your own copy of a simulator runtime, and room for devices on a data volume.
+- To watch from elsewhere, a viewer: macOS or x86-64 Linux can show the device over the network. x86-64
+  Linux can't run the simulator itself.
+
+| Platform | Boots | Input | Notes |
+|---|---|---|---|
+| iOS 27.0, 27.1 | Yes | Touch, keyboard, buttons | Cold boot about 1.4× the time on a Mac; apps install and launch |
+| iPadOS | Yes | Partial | Touch works; apps install and launch |
+| watchOS 27.0 | Yes | Partial | Pairing with an iPhone works |
+| visionOS 27.0 | Partly | Partial | Open problems remain in the room and the home view |
+| tvOS | No | | |
+
+The figures and open problems are in [docs/SIMULATOR.md](docs/SIMULATOR.md), and the setup is in
 [docs/SIMULATOR-LINUX.md](docs/SIMULATOR-LINUX.md).
 
-## The clean-room protocol
+## Clean room
 
-Ycode is developed under a two-room protocol. [AGENTS.md](AGENTS.md)
-describes it in full. It applies to every contributor, human or AI.
+Ycode is developed under a two-room protocol, so that it stays independent and can be released:
 
-- **Dirty room.** Analysis of Xcode happens only in `research/`. Decompiler
-  and disassembler output stays in an untracked local directory.
-- **The spec boundary.** Only written specifications in `specs/` go from the
-  dirty room to the clean room. They describe behavior and formats, never
-  Apple's code.
-- **Clean room.** Implementation work in `ycode/` and `frameworks/` reads only
-  the specs, public documentation, and suitably licensed open source.
-- **Never commit Apple's material.** No Apple code, binaries, resources,
-  templates, artwork or runtime files are ever committed.
+- **Dirty room (`research/`).** Xcode is studied only to learn *what* it does: file formats, protocols and
+  observable behaviour. Decompiler and disassembler output never leaves an untracked local folder.
+- **The boundary (`specs/`).** Only written specifications cross over. They describe behaviour and formats,
+  never Apple's code, and each one lists its evidence.
+- **Clean room (`ycode/`, `frameworks/`, `composer/`).** Code is written only from the specs, public
+  documentation and suitably licensed open source.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request.
+Every contribution follows these rules. [CONTRIBUTING.md](CONTRIBUTING.md) explains what they mean in
+practice, and [AGENTS.md](AGENTS.md) is the full protocol.
 
-## Legal
+## Architecture at a glance
 
-Ycode is an independent project. It is not affiliated with, endorsed by, or
-sponsored by Apple Inc. Apple, Xcode, iOS, macOS, Metal and other Apple
-product names are trademarks of Apple Inc. They are used here only to
-describe what Ycode interoperates with.
+```text
+ macOS: Ycode.app (AppKit)            Linux: ycode-ide (SwiftUI on OpenViews, SDL3, Vulkan)
+          │                                     │
+          └──────────────┬──────────────────────┘
+                 YcodeIDECore: the portable IDE model
+                         │
+   Project files          Build                Language and debug
+   YcodePlist             YcodeBuild           YcodeLanguage → sourcekit-lsp
+   YcodeProject           YcodeXcodebuild      YcodeDebug    → lldb-dap
+   YcodeWorkspace         → swift-build
+   YcodeSettings          → SwiftPM
 
-## License
+ Simulator (arm64 Linux): ycode-simd → Darwin kernel layer → KVM; Metal → Vulkan
+```
 
-Ycode is released under the [MIT License](LICENSE). The vendored Vulkan
-headers in `ycode/Sources/CVulkan/vulkan/` are © The Khronos Group Inc.,
-licensed under Apache-2.0, as stated in each file. By contributing, you agree
-that your contributions are licensed under the MIT License.
+Ycode reuses open-source tools where they exist and rebuilds what isn't open. Read
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the modules, and
+[docs/README.md](docs/README.md) for a guide to the documentation and the top-level folders.
+
+## Roadmap
+
+This is the direction of the project, not a set of promises or dates. Items can move between releases.
+The full gap list is in [docs/PARITY.md](docs/PARITY.md) and the longer view in [docs/FUTURE.md](docs/FUTURE.md).
+
+### 1.0 betas: finishing what is here
+
+- **Linux IDE:** editing, then language features through SourceKit-LSP, Settings, and the navigators,
+  debugger interface, Source Control and coding assistant that the macOS IDE already has.
+- **Fixes from beta reports.** Please [file them](https://github.com/MarcoDotIO/Ycode/issues/new/choose).
+- **Distribution:** a listing on a Flatpak repository, alongside the GitHub release.
+
+### Version 2: Xcode 27.2 parity
+
+| Area | What's planned | State |
+|---|---|---|
+| Project files | The JSON `.xcproj` project format that Xcode 27.2 adds as an opt-in, read and written alongside `.pbxproj` | Planned |
+| Platforms | Opening, building and templating projects for the HomeView platform in Xcode 27.2 | Investigating |
+| Device Hub | Shake, memory pressure, slow animations and Standby | Planned |
+| Editor | Rendered Markdown with formatting tools; `#Playground` | Planned |
+| Icons | Icon Composer 2.0 documents, and an `.icon` viewer | Partial: `.icon` files build into app icons today |
+| Command line | `simctl`-style verbs for Ycode's simulators, including reboot | Partial |
+| Coding assistant | Edit history, and the newer agent and plug-in workflows | Partial: chat, proposals, `ycode mcp` |
+
+### Further out
+
+- **Signing, distribution and physical devices,** so an app can go from Ycode to a device and a store.
+- **Simulators:** speed and fidelity first, then tvOS, visionOS input, and wearing the visionOS simulator in a
+  headset (an OpenXR viewer exists and is experimental).
+- **AR on the simulator:** a virtual iPhone inside a room, giving ARKit and RealityKit apps camera, depth and
+  pose data.
+- **Interface Builder** connections and Auto Layout, and the Core Data model editor.
+- **Profiling** of Mac processes, with allocations and leaks.
+- **Scene Composer:** an editor window for USD scenes on top of today's command-line core.
+- **More open frameworks** for code that targets Apple's APIs on Linux.
+
+Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+
+## FAQ
+
+**Is this a fork of Xcode?**
+No. Xcode isn't open source, and no Apple code is in Ycode. Ycode matches its file formats and observable
+behaviour, and reuses Apple's *open-source* projects such as swift-build, SwiftPM and SourceKit-LSP under
+their licences.
+
+**Will Ycode change my project files?**
+It writes the same formats as Xcode. Round trips are byte-identical on our test corpus, but that corpus isn't
+every project, so keep your work under version control and report any unexpected diff.
+
+**Can I edit code on Linux?**
+Not in this build: the Linux IDE opens files read-only. You can browse, search, build and run Swift packages.
+
+**Can I build iOS apps on Linux?**
+That needs Apple's iOS SDK, which Ycode doesn't ship and which Apple licenses for use on Apple-branded
+hardware. The usual setup builds on a Mac. Swift packages for Linux build with no Apple software at all.
+
+**Can I submit an app to the App Store with it?**
+Not yet. Use Xcode for that.
+
+**Does Ycode collect data?**
+It has no telemetry. It uses the network for things you ask for: resolving packages, cloning, a coding
+assistant you set up, and connecting to a simulator host.
+
+**Does it run on Windows or Intel Macs?**
+Not at this time. The packages are built for Apple silicon Macs and for x86-64 and arm64 Linux.
+
+**Where do I get help?**
+See [SUPPORT.md](SUPPORT.md). To report a security problem, follow [SECURITY.md](SECURITY.md).
+
+## Licence
+
+Ycode is released under the [MIT Licence](LICENSE). Third-party components keep their own licences, listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). By contributing, you agree that your contributions are
+licensed under the MIT Licence.
+
+---
+
+Ycode is not affiliated with or endorsed by Apple Inc. Xcode, iOS, visionOS and others are trademarks of
+Apple Inc.

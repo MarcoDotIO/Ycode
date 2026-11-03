@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeDebug
+@testable import YcodeIDECore
 import YcodeLanguage
 @testable import YcodeUI
 

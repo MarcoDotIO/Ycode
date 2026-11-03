@@ -4,12 +4,15 @@
 #include "error.h"
 
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
 #include <cmath>
 
 using namespace llvm;
@@ -137,10 +140,47 @@ EntryInfo entryInfo(Module &M, Function *F) {
     fail("not-an-entry-point", F->getName().str());
 }
 
+// Lays out the integer leaves of a constant at their data-layout offsets
+// (little-endian). False when the constant holds something else.
+static bool constantBytes(const DataLayout &DL, Constant *C, std::vector<uint8_t> &out, uint64_t at) {
+    Type *T = C->getType();
+    uint64_t alloc = DL.getTypeAllocSize(T);
+    if (out.size() < at + alloc) out.resize(at + alloc, 0);
+    if (isa<ConstantAggregateZero>(C) || isa<UndefValue>(C)) return true;
+    if (auto *CI = dyn_cast<ConstantInt>(C)) {
+        const APInt &v = CI->getValue();
+        uint64_t size = DL.getTypeStoreSize(T);
+        for (uint64_t i = 0; i < size && i * 8 < v.getBitWidth(); i++)
+            out[at + i] = (uint8_t)v.extractBitsAsZExtValue(std::min(8u, v.getBitWidth() - (unsigned)i * 8), (unsigned)i * 8);
+        return true;
+    }
+    if (auto *S = dyn_cast<StructType>(T)) {
+        const StructLayout *SL = DL.getStructLayout(S);
+        for (unsigned i = 0; i < S->getNumElements(); i++)
+            if (!constantBytes(DL, C->getAggregateElement(i), out, at + SL->getElementOffset(i))) return false;
+        return true;
+    }
+    if (auto *A = dyn_cast<ArrayType>(T)) {
+        uint64_t sz = DL.getTypeAllocSize(A->getElementType());
+        for (uint64_t i = 0; i < A->getNumElements(); i++)
+            if (!constantBytes(DL, C->getAggregateElement((unsigned)i), out, at + i * sz)) return false;
+        return true;
+    }
+    if (auto *V = dyn_cast<FixedVectorType>(T)) {
+        uint64_t sz = V->getElementType()->getPrimitiveSizeInBits() / 8;
+        if (!sz) return false;
+        for (unsigned i = 0; i < V->getNumElements(); i++)
+            if (!constantBytes(DL, C->getAggregateElement(i), out, at + i * sz)) return false;
+        return true;
+    }
+    return false;
+}
+
 std::vector<ConstexprSampler> constexprSamplers(Module &M) {
     std::vector<ConstexprSampler> out;
     NamedMDNode *S = M.getNamedMetadata("air.sampler_states");
     if (!S) return out;
+    const DataLayout &DL = M.getDataLayout();
     for (MDNode *N : S->operands()) {
         // Operands: a name string and the global (order as observed); find the global.
         for (const MDOperand &O : N->operands()) {
@@ -150,10 +190,25 @@ std::vector<ConstexprSampler> constexprSamplers(Module &M) {
             if (!G) continue;
             ConstexprSampler cs;
             cs.global = G;
-            if (G->hasInitializer()) {
+            if (!G->hasInitializer()) {
+                cs.source = "no initializer";
+            } else {
                 Constant *I = G->getInitializer();
-                if (auto *C = dyn_cast_or_null<ConstantInt>(I->getAggregateElement(0u))) cs.word0 = C->getZExtValue();
-                if (auto *C = dyn_cast_or_null<ConstantInt>(I->getAggregateElement(1u))) cs.word1 = C->getZExtValue();
+                std::string t;
+                raw_string_ostream os(t);
+                I->getType()->print(os);
+                cs.type = os.str();
+                std::vector<uint8_t> bytes;
+                if (isa<ConstantAggregateZero>(I)) {
+                    cs.source = "zero initializer";
+                } else if (!constantBytes(DL, I, bytes, 0) || bytes.size() < 8) {
+                    cs.source = "unreadable initializer";
+                } else {
+                    bytes.resize(std::max<size_t>(bytes.size(), 16), 0);
+                    for (int i = 7; i >= 0; i--) cs.word0 = cs.word0 << 8 | bytes[(size_t)i];
+                    for (int i = 15; i >= 8; i--) cs.word1 = cs.word1 << 8 | bytes[(size_t)i];
+                    cs.source = "initializer";
+                }
             }
             out.push_back(cs);
         }

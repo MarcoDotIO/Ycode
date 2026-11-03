@@ -174,6 +174,11 @@ Run:
    > running <App> on <device>"; <device> is the destination row's name
    > ("iPhone Duo (Ycode)"). No debugger attaches to a remote run, so it
    > has no "Configuring Debugger Actions" step.*
+   > *Status (SIM-DEBUG, 2026-10-30): a remote run now runs under the
+   > debugger (`debug.md` §Remote, `specs/simulator/debug-stub.md` §8): the
+   > command adds `--debug-server unix:<data>/debug/<device>.sock`, and
+   > "Configuring Debugger Actions" shows from the launched line until
+   > lldb-dap is attached.*
 4. Stop: `ssh <dest> "kill -INT <pid>"`, sent off the main thread; the
    launcher turns it into the save at the stop (§Warm boot item 5). The
    local ssh process is **not** signalled at once: the connection stays
@@ -203,6 +208,18 @@ An opt-in end-to-end test (`RemoteRunEndToEndTests`, `YCODE_E2E_*`
 variables, full boot unless `YCODE_E2E_LEAN_BOOT=1`, warm boot unless
 `YCODE_E2E_WARM_BOOT=0`) runs a real app on a real host and prints the
 times to the home screen and to the launch.
+
+### Remote run from Linux over the link (REMOTE-X86, 2026-10-31)
+
+On Linux, the IDE's run destinations include each device of each simulator
+host paired with Ycode's own link ("<device> (<host>)",
+`specs/simulator/sim-link.md` §10). Run builds the scheme for the iOS
+Simulator on the Linux machine (`scripts/ycode-ios-build-linux`, the user's
+SDK), uploads the app over the link, asks the host to install and launch it
+(a running device is saved and restored, as a warm-boot run), and opens the
+device window (`ycode-sim-viewer --link`, with the device's sound); Stop
+closes the window. No ssh. `ycode sim remote run <device> <App.app>` does
+the same from a shell. The macOS IDE's ssh path above is unchanged.
 
 ### Runtimes and device types
 
@@ -290,6 +307,52 @@ A running iPhone Duo is folded from Devices and Simulators (`devices.md`
 to `ycode-simd` at once (no boot slot) and which reaches the running
 device through its control socket (`specs/simulator/foldable.md` §10.1).
 A foldable device boots with Ycode's HID bundle, which carries the hinge.
+
+### Watch apps and paired phones (PAIR-IDE, 2026-10-30)
+
+`specs/simulator/device-pairing.md` P-9 and §13; the destinations are
+`destinations.md` §Ycode's watches. Ycode's launcher installs and launches
+iOS apps with `ylaunch` (an iOS simulator build), so a watch app goes
+through the pairing agent of the watch (`device-pairing.md` §10.2): the
+bundle is copied into `<watch dev>/data/tmp/ycode-apps/` (rsync), then
+`ycode-sim --device <watch dev> --control pairing agent installApp
+"path=<guest path>/data/tmp/ycode-apps/<App>.app"` (the guest path is
+`DEV/ycode-device-path`, else DEV) and `… openApp bundleID=<id>`, each
+retried (installApp every 10 s for 5 minutes, openApp every 5 s for 2
+minutes) while the guest is not ready. The IDE first waits for the watch's
+agent (`--control pairing state` says "agent up"; up to 30 minutes,
+`YCODE_WATCH_AGENT_WAIT_S`). The watch is started like Device Hub's Start
+when it does not run.
+
+- **An iOS scheme on an iPhone with an active paired watch**, whose app
+  embeds a watch app (`<App>.app/Watch/<Watch>.app`): the phone's run as
+  above; once the console has "launched <bundle id>" and the pair is
+  connected (`list-pairs`, up to 10 minutes, `YCODE_PAIR_CONNECT_WAIT_S`;
+  installed anyway after that), the watch app is installed **directly on
+  the watch** (not through the phone, which fails in the reference,
+  §11.4). It is not opened (the chosen app is the iOS app's).
+- **A watch scheme on a phone-with-watch row**: the companion iOS app's
+  scheme is built (the iOS app target that depends on the watch target and
+  copies its product into `$(CONTENTS_FOLDER_PATH)/Watch`;
+  `WatchCompanion`) for the generic iOS Simulator destination, which builds
+  the watch app for the watchOS simulator; the iOS app runs on the phone
+  as above, then the embedded watch app is installed on the phone's active
+  watch and **opened**; the activity then reads "Running <WatchApp> on
+  <watch>". **Ycode decision**: the iOS app is launched too (a phone run
+  launches its app; WatchConnectivity then has its counterpart running);
+  the reference opens the watch app only (§11.4; Xcode's own install call
+  was not observed). Without an active paired watch when the run starts
+  (the pairs are read first): the console and a sheet say "The install is
+  directed to a paired Apple Watch, but there isn't one." / "Select an
+  iPhone Run Destination with a paired Apple Watch." (§11.4) and the
+  activity is "Run failed".
+- **A watch scheme on a watch row**: the watch scheme is built for
+  `generic/platform=watchOS Simulator` (product
+  `…/Products/<config>-watchsimulator/<App>.app`), installed and opened on
+  the watch; the run lasts until Stop, which shuts the watch down (saved
+  with warm boot).
+- **Stop** stops the phone's run as before; a watch the run started is
+  shut down when the phone's run ends (one already running stays).
 
 ### Warm boot
 

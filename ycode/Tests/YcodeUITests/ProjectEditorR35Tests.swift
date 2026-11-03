@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 import YcodePlist
 import YcodeProject
 @testable import YcodeUI
@@ -89,27 +90,6 @@ import YcodeProject
         #expect(pe.sectionViews["Run Build Tool Plug-ins"] != nil)
         pe.select(tab: .buildSettings)
         #expect(!pe.configPopUp.isHidden)
-    }
-
-    // MARK: P5
-
-    @Test func infoShowsGeneratedKeysReadablyWithDefinitions() throws {
-        let m = try Self.model()
-        let items = m.infoItems(target: "App", configuration: "Debug")
-        let keys = items.map(\.key)
-        #expect(Array(keys.prefix(8)) == ["Bundle name", "Bundle identifier", "InfoDictionary version", "Bundle version string (short)",
-                                          "Bundle version", "Executable file", "Application requires iPhone environment", "Application Scene Manifest"])
-        #expect(keys.contains("Bundle display name") && keys.contains("Launch Screen") && keys.contains("Supported interface orientations (iPhone)"))
-        #expect(!keys.contains { $0.contains("INFOPLIST_KEY") || $0.hasSuffix("_Generation") })
-        func item(_ raw: String) -> ProjectEditorModel.InfoItem? { items.first { $0.rawKey == raw } }
-        // Values from build settings stay as $(…).
-        #expect(item("CFBundleIdentifier")?.value == "$(PRODUCT_BUNDLE_IDENTIFIER)")
-        #expect(item("CFBundleDisplayName")?.value == "$(PRODUCT_NAME) Pro")
-        #expect(item("UIApplicationSupportsIndirectInputEvents")?.type == "Boolean")
-        let orient = try #require(item("UISupportedInterfaceOrientations~iphone"))
-        #expect(orient.type == "Array" && orient.value == "(2 items)" && orient.children.map(\.key) == ["Item 0", "Item 1"])
-        #expect(item("UIApplicationSceneManifest")?.type == "Dictionary")
-        #expect(item("UIApplicationSceneManifest")?.children.first?.key == "Enable Multiple Windows")
     }
 
     @Test func infoContainersExpand() throws {
@@ -326,21 +306,6 @@ import YcodeProject
         #expect(row >= 0 && pe.settingsLines[row] == .setting("INFOPLIST_KEY_LSApplicationCategoryType"))
     }
 
-    @Test func identityPlusWritesInfoPlistFile() throws {
-        var m = try Self.model()
-        let dir = m.proj.projectDirectory(xcodeprojURL: m.xcodeprojURL)
-        let plist = dir.appendingPathComponent("App/Info.plist")
-        try PropertyListDocument(root: .dictionary([.init(key: "Zeta", value: .string("z"))])).data().write(to: plist)
-        m.setSetting("INFOPLIST_FILE", "App/Info.plist", target: "App")
-        m.setSetting("GENERATE_INFOPLIST_FILE", "NO", target: "App")
-        let version = try #require(ProjectEditorModel.identityRows.first { $0.title == "Version" })
-        #expect(!m.identityRowInInfo(version, target: "App", configuration: "Debug"))
-        try m.addIdentityKeyToInfo(version, target: "App", configuration: "Debug")
-        guard case .dictionary(let d) = try PropertyListDocument(data: Data(contentsOf: plist)).root else { Issue.record("not a dict"); return }
-        #expect(d.map(\.key) == ["Zeta", "CFBundleShortVersionString"] && d[1].value == .string("$(MARKETING_VERSION)"))
-        #expect(m.identityRowInInfo(version, target: "App", configuration: "Debug"))
-    }
-
     // MARK: P2
 
     @Test func targetListFooterCollapseAndFilter() throws {
@@ -396,31 +361,6 @@ import YcodeProject
         _ = try reparsed(w)
     }
 
-    /// Build rules belong to native targets only.
-    @Test func noBuildRulesOnAggregateTargets() throws {
-        var m = try Self.model()
-        var t = try #require(m.target(named: "AppTests"))
-        t["isa"] = "PBXAggregateTarget"
-        m.proj[t.id] = t
-        #expect(m.addBuildRule(target: "AppTests") == nil && m.copyBuildRule("BR1", toTarget: "AppTests") == nil)
-        #expect(m.proj[t.id]?.references("buildRules") == [])
-    }
-
-    /// An older project (object version 46): the new target's sources go in
-    /// a group with its file in Compile Sources.
-    @Test func addTargetToOlderProject() throws {
-        var m = try Self.model()
-        m.proj.objectVersion = "46"
-        try m.addTarget(template: "Framework", platform: "iOS", name: "Kit", hostTarget: nil)
-        let t = try #require(m.target(named: "Kit"))
-        #expect(t["fileSystemSynchronizedGroups"] == nil)
-        let group = try #require(m.proj.objects.values.first { $0.isa == "PBXGroup" && $0.string("path") == "Kit" })
-        let ref = try #require(group.references("children").first.flatMap { m.proj[$0] })
-        #expect(ref.string("path") == "Kit.swift")
-        let sources = m.proj.buildPhases(ofTarget: t.id).first { $0.isa == "PBXSourcesBuildPhase" }
-        #expect(sources?.references("files").compactMap { m.proj.fileReference(ofBuildFile: $0)?.id } == [ref.id])
-    }
-
     @Test func deleteTarget() throws {
         let pe = try Self.controller()
         var written: PBXProj?
@@ -437,45 +377,6 @@ import YcodeProject
         // The plug-in dependency and its product dependency went with App.
         #expect(w["D1"] == nil && w["PR1"] == nil && w["AP"] == nil)
         _ = try reparsed(w)
-    }
-}
-
-/// Over the local corpus (see README; the manifest of `PBXProjCorpusTests`):
-/// project-editor edits that are undone restore every project byte for byte.
-@Suite struct ProjectEditorR35CorpusTests {
-    static let entries: [String] = {
-        let manifest = ProcessInfo.processInfo.environment["YCODE_PBXPROJ_CORPUS"].map { URL(fileURLWithPath: $0) }
-            ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-                .deletingLastPathComponent().appendingPathComponent("research/dirty/pbxproj-corpus.txt")
-        guard let text = try? String(contentsOf: manifest, encoding: .utf8) else { return [] }
-        return text.split(separator: "\n").map(String.init).filter { $0.count > 2 }
-    }()
-
-    /// The checked-in fixture always runs.
-    @Test func undoneEditsRestoreFixtureBytes() throws {
-        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("YcodeProjectTests/Fixtures/Hello.xcodeproj")
-        try undoneEditsRestoreBytes("= " + fixture.path)
-        // And the fixture's text itself is what the writer produces.
-        let (file, name) = PBXProj.locate(fixture.path)
-        let text = try String(contentsOf: file, encoding: .utf8)
-        #expect(try PBXProj(parsing: text).serialized(projectName: name) == text)
-    }
-
-    @Test(.enabled(if: !entries.isEmpty, "no local corpus manifest"), arguments: entries)
-    func undoneEditsRestoreBytes(_ entry: String) throws {
-        let (file, name) = PBXProj.locate(String(entry.dropFirst(2)))
-        let original = try PBXProj(parsing: try String(contentsOf: file, encoding: .utf8))
-        let before = original.serialized(projectName: name)
-        var m = ProjectEditorModel(proj: original, xcodeprojURL: file.deletingLastPathComponent())
-        if let cfg = m.configurations(of: nil).names.first, let copy = m.duplicateConfiguration(cfg) {
-            m.removeConfiguration(copy)
-        }
-        let tag = m.addResourceTag()
-        m.removeResourceTag(tag)
-        if let t = m.targets.first?.string("name"), let rule = m.addBuildRule(target: t) { m.removeBuildRule(rule) }
-        let after = m.proj.serialized(projectName: name)
-        #expect(after == before, "\(file.path): \(firstDifference(before, after))")
     }
 }
 

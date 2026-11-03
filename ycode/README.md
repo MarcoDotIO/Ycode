@@ -1,7 +1,29 @@
-# Ycode (implementation)
+# Developing Ycode
 
-This is clean-room code. Read [`../AGENTS.md`](../AGENTS.md) before you make
-any change here.
+This is the Swift package with the IDE, the command-line tools and the simulator.
+To install or try Ycode, read the [root README](../README.md) instead.
+
+This is clean-room code. Read [`../CONTRIBUTING.md`](../CONTRIBUTING.md) before you
+make any change here.
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `Sources/Ycode{Plist,Project,Workspace,Settings,MachO}` | Project model, file formats, build settings, Mach-O |
+| `Sources/Ycode{Build,Language,Debug,Assistant,Completion,Subprocess}` | IDE services: build engines and PIF, LSP and DAP clients, coding assistant, subprocess runs |
+| `Sources/YcodeIDECore` | The IDE's portable model, shared by both windows |
+| `Sources/Ycode{UI,DeviceUI,App}` | The macOS IDE (AppKit) and its device windows |
+| `Sources/{YcodeIDEShell,ycode-ide}` | The Linux IDE (SwiftUI on OpenViews, `../frameworks/swiftui`) |
+| `Sources/{YcodeXcodebuild,ycodebuild-cli}`, `Tools/ycode-swb` | `ycodebuild` and its swift-build helper |
+| `Sources/Ycode{DarwinABI,DarwinKernel,Hypervisor,XPC,HostServices}`, `Sources/ycode-simd` | Simulator: the Darwin kernel layer, KVM, XPC, host services, the VM monitor |
+| `Sources/Ycode{MetalHost,Vulkan}`, `Translator/` | Simulator: Metal on Vulkan, and the AIR to SPIR-V translator |
+| `Sources/Ycode{DisplayStream,SimFeatures,SimLink}`, `Sources/ycode-sim-viewer` | Simulator: the display stream, settings features, the remote link, the viewer |
+| `SimShim/`, `SimHostLibs/`, `SimGuestFrameworks/`, `SimGuestAgents/` | Simulator guest side, all our own code |
+| `Samples/` | Small projects used by tests |
+| `scripts/` | App packaging, simulator launchers, conformance and profiling scripts, the lint wrapper |
+
+## Build and test
 
 Platforms: the libraries and command-line tools build and test on macOS and
 Linux (x86-64 and arm64, Swift 6.4). `YcodeUI`, `YcodeDeviceUI`, `YcodeApp`
@@ -22,7 +44,40 @@ scripts/make-app.sh                  # macOS: .build-ide/app/Ycode.app
 .build/debug/ycode deps path/to/executable --root path/to/RuntimeRoot [--tree]
 .build/debug/ycode build path/to/App.xcodeproj -scheme App [--test] [--engine xcodebuild|swift-build]
 .build/debug/ycode pif path/to/App.xcodeproj
+.build/debug/ycode profile record --linux -o out.gaugetrace -- path/to/executable   # Gauge, the profiler
+.build/debug/ycode profile summary|tree|flame|annotate|symbolicate out.gaugetrace ...
+.build/debug/ycode assets compile App/Assets.xcassets App/AppIcon.icon --output out --platform iphonesimulator --app-icon AppIcon
+.build/debug/ycode assets info out/Assets.car
+.build/debug/ycode assets icon info|validate|to-json|from-json|render App/AppIcon.icon ...
+.build/debug/ycode strings compile --output-directory out App/Localizable.xcstrings   # also generate-symbols, extract, convert, info
+.build/debug/ycode mcp [--workspace path/to/Package] [--allow-writes] [--http [PORT]]   # the MCP server for coding agents
+.build/debug/ycode mcp install-skill path/to/Package                                # the Ycode skill for agents
 ```
+
+`ycode mcp` is Ycode's MCP server (`../specs/ide/coding-assistant.md` §10):
+build, test, run (also on the Ycode Simulator, with screenshots), issues,
+search, previews and String Catalogs for Claude Code, Codex and other MCP
+clients, on macOS and Linux. Add it with `claude mcp add ycode -- ycode mcp`
+or `codex mcp add ycode -- ycode mcp`. It is read-only unless started with
+`--allow-writes`; in the IDE's agent mode every change is a proposal the
+user reviews.
+
+`ycode assets` is Ycode's asset catalog compiler (`../specs/formats/assets-car.md`
+"Ycode implementation"). Builds use it instead of Xcode's `actool` with
+`YCODE_ASSET_COMPILER=ycode` (the default off macOS); `Samples/IconSamples`
+is an iOS app built that way.
+
+`ycode strings` is Ycode's String Catalog compiler, extractor and converter
+(`../specs/ide/string-catalog.md` "Ycode implementation"). Builds use it
+instead of Xcode's `xcstringstool` with `YCODE_STRINGS_COMPILER=ycode` (the
+default off macOS, and on a Mac whose Xcode has no `xcstringstool`);
+`Samples/StringsSamples` is an iOS app built that way.
+
+`ycode profile` is Gauge's command line (`../specs/ide/profiler.md` §7). On
+Linux it samples with `perf_event_open`, or, where the kernel forbids it
+(`perf_event_paranoid` above 2), with `libYcodeGaugeAgent.so` from the same
+build directory. Apps on the Ycode simulator are recorded by `ycode-simd
+--profile` (§3.1) and, in the IDE, by Product ▸ Profile (⌘I).
 
 `make-app.sh` builds `YcodeApp` in release, wraps it in an app bundle,
 stamps the build SDK so that AppKit uses the current look, and signs it ad
@@ -44,6 +99,19 @@ cd ../.. && .build/debug/ycodebuild -project path/to/App.xcodeproj -scheme App b
 YCODE_PBXPROJ_CORPUS=manifest.txt python3 -I scripts/xcodebuild-conformance.py --details
 ```
 
+Tests hosted in an app (`TEST_HOST`) run inside it with Ycode's test agent
+next to ycodebuild (`../specs/ide/testing.md`, "Ycode implementation"):
+
+```bash
+swift build --product YcodeTestAgent                    # .build/debug/libYcodeTestAgent.dylib (macOS hosts)
+OUT=.build/debug SimGuestAgents/build-test-agent.sh     # .build/debug/iphonesimulator/ (the Ycode simulator)
+.build/debug/ycodebuild -project Samples/TestHostSamples/HostMac/HostMac.xcodeproj -scheme HostMac test
+# On the Ycode simulator: YCODE_SIM_HOST, YCODE_SIM_DATA, YCODE_SIM_RUNTIME, YCODE_SIM_SIMD (and YCODE_SIM_DEVICE)
+.build/debug/ycodebuild -project Samples/TestHostSamples/HostPhone/HostPhone.xcodeproj -scheme HostPhone \
+    -destination 'platform=iOS Simulator,name=Ycode Simulator,arch=arm64' test
+.build/debug/ycode results path/to/Test-HostPhone-….xcresult
+```
+
 Set `YCODE_SIM_RUNTIME_ROOT` to a simulator `RuntimeRoot` to run the runtime
 tests on Linux.
 
@@ -57,6 +125,51 @@ ssh <user>@<linux-host> 'cd Ycode/ycode && swift build && swift test'
 
 `.build-ide` holds test and IDE scratch output. Tests write into their own
 temporary directories, so it can be deleted at any time.
+
+### Tests in a full run
+
+A full run executes each test bundle's suites in parallel, and other runs may
+share the machine. What made tests pass alone and fail in full runs:
+
+- **The main actor is shared.** UI suites run on it, and synchronous work in
+  one suite (a window build, a toolchain call) holds it from all the others,
+  for 150 s and more at the start of a full UI run. Wait for conditions with
+  `waitUntil` (UI tests), which counts only the time the main actor actually
+  had, never with a wall-clock deadline. Time limits are hang guards.
+- **The cooperative pool is shared.** Never block a pool thread for long
+  (`flock`, `waitUntilExit`, a blocking `read` in a detached task): a dozen
+  such waits leave no thread for streamed replies or other suites, and can
+  deadlock the process. `InterprocessLock.acquire` polls for this reason.
+- **Host state moves.** Volume free space, clocks and the process list
+  change while a test runs; compare only what the code under test decides.
+- **Fixed pauses race.** Wait for the state itself (a thread blocked in the
+  kernel, a line in the console), not for a few milliseconds.
+- **Checkouts differ.** A test's scratch paths contain the checkout's name
+  (`…/visionos-r10b/…`): read meaning only from the part of a
+  path the code owns (a runtime's platform comes from the runtime's own
+  name, not from the directories above it).
+- **Fakes must end.** A stand-in launcher or server answers every command
+  the code under test may send; one that hangs keeps a child process and a
+  thread to the end of the run, and `ProcessAudit` fails the bundle (it
+  names the child and its arguments).
+- Suites that keep a language server on the sample package use their own
+  copy (`samplePackage(directory:)`); others rewrite and build the shared one.
+
+Known flaky tests (rerun alone before reporting one; CI reads the same list from
+`../.github/ci/known-flaky.txt` and retries nothing else):
+`SnapshotKernelRoundTripTests.calendarTimersFollowTheWallClockAcrossARestore`,
+`CLIAgentTests.cancelInterruptsTheTool`,
+`MainThreadResponsivenessTests.fileSystemWatcherReportsChanges`,
+`threadSelfusageCountsTheCallingThread` under load,
+`StreamingProcessTests.anInheritedPipeDoesNotHoldTheExitBack` under load (a
+3.9 s limit, 3.9 and 4.8 s seen in full runs, passes alone), and
+`SourceKitLSPEndToEndTests` timeouts on the arm64 Linux host.
+
+CI runs on macOS and on Linux x86-64 and arm64 (`../.github/workflows/ci.yml`).
+Its hosted machines have no KVM guarantee, GPU, simulator runtime or corpus, so
+those tests skip themselves; each job's summary lists what it skipped. A clean
+checkout on an x86-64 Linux machine with 16 cores builds in under 2 minutes and
+runs all of its 2,216 tests in about 3.
 
 ## Corpus tests
 

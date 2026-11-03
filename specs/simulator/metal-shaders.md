@@ -353,15 +353,24 @@ texture intrinsics. This is what makes the bindless design of §4.4 fit.
 ### 3.7 Constexpr samplers
 
 A `constexpr sampler` becomes an internal address-space-2 global
-`[2 x i64]`, listed in `!air.sampler_states` and passed (cast to a sampler
-handle) to texture intrinsics. Word 0 (word 1 was 0 in all variants),
-learned by changing one argument at a time in our own shaders:
+listed in `!air.sampler_states` and passed (cast to a sampler handle) to
+texture intrinsics. Our toolchain makes it a `[2 x i64]`; the functions
+the guest sends (iOS and visionOS runtimes alike) make it a plain `i64`
+holding word 0 (visionos.md §10.24). A reader takes the initializer's
+bytes through the data layout, whatever aggregate holds them. Until
+§10.24 ycode-airc read only element 0 of an aggregate, so every guest
+sampler read as word 0 = 0: nearest filtering, clamp to zero and a LOD
+maximum of 0 (level 0 only). Reflection names where the words came from
+(`state_source`: `initializer`, `zero initializer`, `no initializer`,
+`unreadable initializer`) and the initializer's type (`state_type`). Word 0
+(word 1 was 0 in all variants), learned by changing one argument at a time
+in our own shaders:
 
 | Bits | Field | Values |
 |---|---|---|
 | 0–2, 3–5, 6–8 | s, t, r address mode | 0 clamp to border (also clamp to zero), 1 clamp to edge (default), 2 repeat, 3 mirrored repeat |
-| 9–10 | mag filter | 0 nearest, 1 linear |
-| 11–12 | min filter | 0 nearest, 1 linear |
+| 9–10 | mag filter | 0 nearest, 1 linear, 2 bicubic (`filter::bicubic`; the compiler requires bicubic min and mag filters with mip filter none) |
+| 11–12 | min filter | 0 nearest, 1 linear, 2 bicubic |
 | 13–14 | mip filter | 0 none, 1 nearest, 2 linear |
 | 15 | coordinates | 0 normalized, 1 pixel |
 | 16–18 | compare function | 0 never/none, 1 less, 2 less-equal, 3 greater, 4 greater-equal, 5 equal, 6 not-equal, 7 always |
@@ -370,6 +379,10 @@ learned by changing one argument at a time in our own shaders:
 | 40–55 | LOD maximum | IEEE half (default 0x7BFF, the largest half) |
 | 56–57 | border color | 0 transparent black, 1 opaque black, 2 opaque white |
 | 58–59 | reduction | 0 weighted average, 1 minimum, 2 maximum |
+| 63 | not known | set in every guest sampler seen (`0x807bff…`), never in ours |
+
+Ycode's host filters bicubic samplers linearly (Vulkan's cubic filter is
+an extension).
 
 `air.get_read_sampler()` supplies the sampler operand of texture reads.
 
@@ -581,7 +594,12 @@ mapping, one model for both:
   own channel). Explicit-level storage access to level L of the texture in
   slot *h* uses slot *h* + L (ycode-airc, reflection `uses:
   storage_mip_levels`), so a texture with a storage view and n levels owns
-  n consecutive slots, the later ones holding one-level storage views. On
+  n consecutive slots, the later ones holding one-level storage views.
+  **Cube textures** get storage usage and views whenever their format
+  allows, even when Metal marks them `shaderRead` only: ycode-airc reads a
+  cube face (`read()`) through the storage view, since Vulkan cannot fetch
+  a face from a sampled cube view (visionos.md §10.24;
+  `YCODE_GPU_CUBE_STORAGE=0` restores the old rule). On
   the Thor a write through a descriptor whose image memory was freed never
   completes (stage8-contract.md §15.9).
 - **sRGB textures written through unorm views** (since visionos.md §10.20):
@@ -593,9 +611,23 @@ mapping, one model for both:
   its unorm sibling can be one (`R8G8B8A8`, `B8G8R8A8`, `A8B8G8R8`, `R8`,
   `R8G8`), and every view restricts its usage to what its own format
   supports. The unorm views get storage views and store the bytes as
-  written. The sRGB texture itself gets no storage view: a kernel that
-  writes it directly (Metal would encode linear to sRGB) writes the dummy
-  image, logged by the back end.
+  written. *(Until visionos.md §10.21: the sRGB texture itself got no
+  storage view, and a kernel that wrote it directly wrote the dummy image.)*
+  Since §10.21 the sRGB texture itself (not a view in another format) gets
+  storage views in the unorm format of its layout, and **bit 32 of its
+  64-bit texture value** (argument tables, argument-buffer members,
+  `gpuResourceID`) marks it; the heap index stays the low 32 bits, which is
+  all `heapImage` uses. For a float texture ycode-airc's storage writes
+  encode linear to sRGB (IEC 61966-2-1: `c ≤ 0.0031308 ? 12.92 c : 1.055
+  c^(1/2.4) − 0.055` on red, green and blue after clamping to [0, 1]; alpha
+  unchanged) and its storage reads decode (`c ≤ 0.04045 ? c / 12.92 : ((c +
+  0.055) / 1.055)^2.4`) when the bit is set, as Metal does on accesses to an
+  sRGB texture (MSL specification, texture functions). Both forms are
+  computed and one is chosen with `OpSelect`: the translator adds no
+  blocks, and a texture without the bit gets its value unchanged.
+  Reflection `uses: srgb_storage` names such functions. Sampled reads keep
+  the sRGB view (hardware decode). `YCODE_GPU_SRGB_STORAGE=0` gives sRGB
+  textures no storage view again.
 - **Visibility results** (record 132, since visionos.md §10.20.8): each
   run of draws with one non-zero mode and slot offset in a render pass is a
   Vulkan occlusion query (`VK_QUERY_CONTROL_PRECISE_BIT` in counting mode
@@ -736,6 +768,51 @@ rejects anything else, so failures are detected, not silently wrong.
 - **MoltenVK** implements Vulkan on top of Metal (SPIR-V → MSL through
   SPIRV-Cross): the opposite direction. It is not a source for this work.
 
+### 4.11 Buffer slots a function reads but the command buffer leaves unbound (agent GPU-SIRI, 2026-11-01)
+
+A Metal function can read a buffer argument that its encoder never bound.
+visionOS's Siri orb renderer (`com.apple.campo`) does this on its first
+command buffer: its kernel `affordanceDynamicPointLight` (`2d634d91`, 3,356
+SPIR-V words) has ten buffer arguments, all `used` in ycode-airc's
+reflection (`faceIndex` and nine scalar parameters, `float` and `float2`)
+and one write-only cube texture; the encoder binds texture 0 and buffer 0
+only (`setBytes` of the face index, the two records of §5.1 of
+metal-sim-protocol.md, once per face) and dispatches six times, 4 × 8
+threadgroups of 32 × 16 threads over a 128 × 128 face. The hang reports
+of the command buffer show nothing else in its records (commands 0–3
+before the first dispatch: pipeline, texture, the two binding records)
+and Ycode's decoder logged no unknown record for it.
+
+Ycode's argument table (§4.4) held 0 for every slot without a binding, so
+the kernel's nine parameter loads read device address 0. On the Thor a
+GPU read of an unmapped address **never completes** (stage8-contract.md
+§15.6; our `hangkick` probe, a one-thread kernel reading address 0, still
+runs after 3 s and until the device is waited idle): the dispatch stopped
+the Thor's GPU for every client, and the device was lost 80 s later
+(metal-sim-protocol.md §8.7). The translation is not at fault: the
+kernel has no loop (no `loop_limit` in its reflection), no barrier, no
+threadgroup memory and no subgroup operation; it reads only
+`thread_position_in_grid`.
+
+**Rule (Ycode).** Every buffer entry (0–30) that the function's reflection
+marks `used` and that the encoder left unbound gets the address of the
+back end's dummy buffer (64 KiB of zeros), so such a load reads zero. The
+reflection's used set is computed once per pipeline stage
+(`StageStatics.usedBuffers`); the argument table is written as before and
+only the unbound used slots are filled, so bound slots cost nothing. An
+unknown (released) buffer handle already pointed at the dummy buffer.
+`YCODE_GPU_UNBOUND_DUMMY=0` restores address 0 (experiments). The first
+16 (function, slots) pairs are logged ("reads buffer slots … that its
+command buffer left unbound"), and the stats line counts the tables
+(`tables with unbound buffers read`).
+
+What Apple's GPUs return for such a load is not known (the reference was
+not observed; §8 item 9). Zero is the value Ycode's null-pointer guard
+(§4.3) gives loads through a null pointer, and the orb renders with its
+parameters at zero (visionos.md §10.27). A kernel that
+*writes* through an unbound slot writes the dummy buffer, which later
+unbound reads then see; none was seen.
+
 ## 5. Vulkan on the Thor
 
 Checked read-only with `vulkaninfo` and our own `vkrun --features`
@@ -819,6 +896,12 @@ other than sampled 2D).
 6. Non-uniform threadgroups at grid edges with barriers (§4.6).
 7. Address spaces 5 and 8 (not in the home-screen set).
 8. How stitched functions (IconRendering, RenderBox) reach the host.
+9. *(New, GPU-SIRI.)* What a function reads through a buffer argument
+   its encoder left unbound on the reference (§4.11): zeros, the value a
+   slot held in an earlier encoder, or a GPU fault (and then which
+   command-buffer error). A probe kernel with two used buffer arguments,
+   dispatched with only one bound, once in a fresh command buffer and once
+   after an encoder that bound the other slot, writing what it read.
 
 ## Evidence
 
@@ -834,6 +917,7 @@ other than sampled 2D).
 | LLVM 18 reads all 34 326 runtime modules | 3 | `air_inventory.py` (llvm-dis-18, no errors) |
 | Triples, data layout, producers, language versions, address-space counts, named metadata, metadata keys, intrinsic names and counts (§3.2–§3.4, §3.10) | 4 | `air_inventory.py`, `addrspace_names.py`, `categorize.py`: names and counts only, text deleted after counting |
 | Address-space meanings, entry metadata structure, argument buffer layout, function constants, sampler-state bits, intrinsic operands (§3.3, §3.5–§3.9) | 3 | our probe shaders (`features.metal`, `kinds.metal`, `tile.metal`, `sampler_bits.py`, the texture probe of Appendix A) compiled with `xcrun -sdk iphonesimulator metal -S -emit-llvm` |
+| Guest constexpr samplers are a plain `i64` (bit 63 set); bicubic is filter value 2; cube textures get storage views for `read()` (§3.7, §4.4) | 3 | ycode-airc's reflection (`state_type`, `state_source`) of the functions visionOS RealityKit and backboardd sent to Ycode's host (dumps kept on the Thor) and of iOS 27 boots' translation cache; our shader `filter::bicubic` compiled with `xcrun -sdk iphonesimulator metal`; `tests/ir/interface-forms.sh` case 8; visionos.md §10.24 |
 | Names of runtime functions and bundles (§1, §3.10) | 4 | function-list `NAME` tags; file names in the runtime |
 | SPIR-V, Vulkan and extension semantics (§4) | 1 | SPIR-V 1.6 specification, GLSL.std.450, Vulkan 1.4 specification and registry, Metal Shading Language specification and Metal API documentation (public) |
 | Translator options and licenses (§4.2, §4.10) | 1 | project documentation and license files of LLVM, SPIRV-LLVM-Translator, SPIRV-Tools, SPIRV-Cross, SPIRV-Headers, MoltenVK |
@@ -843,6 +927,7 @@ other than sampled 2D).
 | Compare-exchange operand form; fragment imageblock members and arguments; partially linked varyings; null-pointer reads in RealityKit functions (§3.9, §4.3, §4.5, §4.9) | 3 | ycode-airc `decls` (operand types only) and reflection of the functions visionOS RealityKit sent to Ycode's host (dumps kept on the Thor), visionos.md §10.13; our AIR test modules `tests/ir/interface-forms.sh`; GPU tests `CompareExchangeGPUTests`, `NullPointerGPUTests` |
 | Compare-exchange semantics (§3.9) | 1 | Metal Shading Language specification (atomic functions); SPIR-V `OpAtomicCompareExchange` |
 | Storage slots (§4.4): writes through a freed image's descriptor never complete on the Thor; texture views lacked storage views; explicit-level storage slots | 3 | `scripts/gpu-probes/imgoob.c` (our GLSL); Ycode boots and tests of stage8-contract.md §15.9; ycode-airc's own reflection (`storage_mip_levels`) |
+| Unbound used buffer slots (§4.11): the Siri orb kernel's ten used buffers and one binding, its loop-free reflection; a read of address 0 never completes on the Thor; the dummy-buffer rule keeps the dispatch short | 3 | ycode-airc's own reflection of the kernel (the GPU cache of the XR-VIEWER run, kept on the Thor); hang reports and dispatch tables of `xr-viewer/runs/x7` and GPU-SIRI's boots; `hangkick.c` (our GLSL); `GPURecoveryTests.unboundBufferReadsZerosInsteadOfHanging` |
 
 No disassembly or decompilation was used (level 5 not used). No
 `.claude/Xcode.app`, `research/dirty/`, or Ghidra project was opened. The

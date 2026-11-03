@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeBuild
+@testable import YcodeIDECore
 import YcodeProject
 @testable import YcodeDebug
 @testable import YcodeUI
@@ -586,47 +587,6 @@ import YcodeProject
         saved = try PBXProj(contentsOf: url.appendingPathComponent("project.pbxproj"))
         #expect(saved.targetMemberships(ofFile: view.path, projectDirectory: projDir).map(\.isMember) == [false, false, false])
         #expect(wc.setTargetMembership(of: view, target: info.memberships[0].targetID, member: true))
-    }
-
-    @Test func synchronizedFolderMembershipWritesExceptionSets() throws {
-        let text = """
-        // !$*UTF8*$!
-        {
-        \tarchiveVersion = 1;
-        \tclasses = {
-        \t};
-        \tobjectVersion = 77;
-        \tobjects = {
-        \t\tAA0000000000000000000001 = {isa = PBXProject; mainGroup = AA0000000000000000000002; targets = (AA0000000000000000000004, AA0000000000000000000005, ); };
-        \t\tAA0000000000000000000002 = {isa = PBXGroup; children = (AA0000000000000000000003, ); sourceTree = "<group>"; };
-        \t\tAA0000000000000000000003 = {isa = PBXFileSystemSynchronizedRootGroup; path = App; sourceTree = "<group>"; };
-        \t\tAA0000000000000000000004 = {isa = PBXNativeTarget; buildPhases = (); fileSystemSynchronizedGroups = (AA0000000000000000000003, ); name = App; };
-        \t\tAA0000000000000000000005 = {isa = PBXNativeTarget; buildPhases = (); name = Other; };
-        \t};
-        \trootObject = AA0000000000000000000001;
-        }
-        """
-        var p = try PBXProj(parsing: text)
-        let dir = URL(fileURLWithPath: "/tmp/proj")
-        let file = "/tmp/proj/App/Views/Main.swift"
-        let app = "AA0000000000000000000004", other = "AA0000000000000000000005", group = "AA0000000000000000000003"
-        #expect(p.targetMemberships(ofFile: file, projectDirectory: dir).map(\.isMember) == [true, false])
-        #expect(p.targetMemberships(ofFile: file, projectDirectory: dir).map(\.isEditable) == [true, false])
-        // Removing writes an exception set for the target.
-        let r1 = p.setMembership(ofFile: file, target: app, member: false, projectDirectory: dir)
-        #expect(r1)
-        let set = try #require(p[group]?.references("exceptions").first.flatMap { p[$0] })
-        #expect(set.isa == "PBXFileSystemSynchronizedBuildFileExceptionSet" && set.string("target") == app)
-        #expect(set.references("membershipExceptions") == ["Views/Main.swift"])
-        #expect(p.targetMemberships(ofFile: file, projectDirectory: dir).map(\.isMember) == [false, false])
-        // A target without the folder cannot take it from here.
-        let r2 = p.setMembership(ofFile: file, target: other, member: true, projectDirectory: dir)
-        #expect(!r2)
-        // Adding back empties the set, which goes away.
-        let r3 = p.setMembership(ofFile: file, target: app, member: true, projectDirectory: dir)
-        #expect(r3)
-        #expect(p[group]?.references("exceptions").isEmpty == true && p.objects(isa: "PBXFileSystemSynchronizedBuildFileExceptionSet").isEmpty)
-        #expect(p.targetMemberships(ofFile: file, projectDirectory: dir).map(\.isMember) == [true, false])
     }
 
     // MARK: D1, D2 — debug area bars and height

@@ -1,10 +1,21 @@
 import Foundation
 import YcodeProject
+import YcodeRelease
 import YcodeWorkspace
 import YcodeSettings
 import YcodePlist
 import YcodeMachO
 import YcodeBuild
+import YcodeProfiler
+import YcodePreviews
+import YcodeBuildServer
+import YcodeXcodebuild
+import YcodeAssetCatalog
+import YcodeStrings
+import YcodeMCP
+import YcodeIDECore
+import YcodeCompletion
+import YcodeSimLink
 
 /// Command-line front end. The GUI will share these libraries.
 func usage() -> Never {
@@ -20,7 +31,21 @@ func usage() -> Never {
                        [-destination D] [-derivedDataPath P] [--clean|--test|--build-for-testing|--test-without-building] [--quiet]
                        [--engine xcodebuild|swift-build] [NAME=value]...
            ycode pif <path.xcodeproj>
+           ycode results <bundle.xcresult> [--json]     the tests a result bundle records (ycodebuild's bundles)
            ycode roundtrip [--print] <path.xcodeproj|.xcscheme|contents.xcworkspacedata>...
+           ycode profile record|summary|tree|flame|annotate|symbolicate ...   (ycode profile for details)
+           ycode preview --list <file.swift>
+           ycode preview --render <out.png> <file.swift> [--name N]
+           ycode bsp [serve|config|targets|args|prepare] <path.xcodeproj|.xcworkspace> ...   (ycode bsp for details)
+           ycode assets compile|info|icon ...   (ycode assets for details)
+           ycode strings compile|generate-symbols|extract|convert|info ...   (ycode strings for details)
+           ycode mcp [--workspace P] [--allow-writes] [--http [PORT]]   the MCP server for coding agents (ycode mcp --help)
+           ycode complete --file F --line L --column C [--backend ollama|llama-server|openai] [--model M] ...   predictive completion (ycode complete --help)
+           ycode compare <left> <right> [--ancestor <base> [--merge <output>]]   unified diff, or a three-way merge
+           ycode sim remote pair|devices|boot|run|view ...   a simulator host over Ycode's own link (ycode sim remote for details)
+           ycode sim headset check|view|desktop|state ...     a visionOS device in a headset and back (ycode sim headset for details)
+           ycode new --template <id> --name N [--org O] [--option key=value]... [--git] <dir>   New Project (ycode new --list)
+           ycode --version
 
     """.utf8))
     exit(2)
@@ -229,6 +254,48 @@ func depsCommand(_ rest: [String]) throws {
     }
 }
 
+/// `ycode results <bundle> [--json]`: one line per test (`<status> <run>
+/// <target>/<identifier> (<seconds> s)`), failures indented below it,
+/// then the counts. Exit status 1 when a test failed, 2 on a read error.
+func resultsCommand(_ args: [String]) -> Int32 {
+    let json = args.contains("--json")
+    guard let path = args.first(where: { $0 != "--json" }) else { usage() }
+    do {
+        let reader = try XCResultReader(URL(fileURLWithPath: path))
+        let tests = try reader.tests()
+        if json {
+            let list: [[String: Any]] = tests.map { t in
+                var o: [String: Any] = ["run": t.run, "target": t.target, "identifier": t.identifier, "name": t.name,
+                                        "status": t.status, "duration": t.duration]
+                if !t.failures.isEmpty {
+                    o["failures"] = t.failures.map { f in
+                        ["message": f.message, "file": f.file ?? "", "line": f.line ?? 0] as [String: Any]
+                    }
+                }
+                if let s = t.skipMessage { o["skipMessage"] = s }
+                if !t.arguments.isEmpty { o["arguments"] = t.arguments }
+                return o
+            }
+            let data = try JSONSerialization.data(withJSONObject: ["tests": list, "metrics": try reader.metrics()], options: [.prettyPrinted, .sortedKeys])
+            FileHandle.standardOutput.write(data + Data("\n".utf8))
+        } else {
+            for t in tests {
+                let args = t.arguments.isEmpty ? "" : " [" + t.arguments.joined(separator: ", ") + "]"
+                print("\(t.status.padding(toLength: 8, withPad: " ", startingAt: 0)) \(t.run) \(t.target)/\(t.identifier)\(args) (\(String(format: "%.3f", t.duration)) s)")
+                for f in t.failures { print("    \(f.file.map { "\($0):\(f.line ?? 0): " } ?? "")\(f.message)") }
+                if let s = t.skipMessage { print("    \(s)") }
+            }
+            let failed = tests.filter { $0.status == "Failure" }.count
+            let skipped = tests.filter { $0.status == "Skipped" }.count
+            print("\(tests.count) tests, \(failed) failed, \(skipped) skipped")
+        }
+        return tests.contains { $0.status == "Failure" } ? 1 : 0
+    } catch {
+        FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
+        return 2
+    }
+}
+
 /// Runs a build through the xcodebuild engine and prints its issues.
 /// Exit status: 0 on success, 1 on failure. See `specs/ide/build.md`.
 func buildCommand(_ args: [String]) -> Int32 {
@@ -269,7 +336,11 @@ func buildCommand(_ args: [String]) -> Int32 {
             FileHandle.standardError.write(Data("ycode: swbuild not found (set YCODE_SWBUILD)\n".utf8))
             return 1
         }
-        engine = SwiftBuildEngine(swbuild: tool)
+        // The PIF of projects and workspaces is XcodePIF's, with the
+        // container's Swift packages (the IDE's PIF source).
+        var e = SwiftBuildEngine(swbuild: tool)
+        e.pifSource = XcodePIFSource()
+        engine = e
     default: usage()
     }
     let op = engine.start(request)
@@ -294,6 +365,50 @@ func buildCommand(_ args: [String]) -> Int32 {
     return result.status == .succeeded ? 0 : 1
 }
 
+/// `ycode preview` (specs/ide/previews.md §Linux): `--list` prints the
+/// file's previews (discovery runs everywhere); `--render` renders one
+/// `#Preview` to a PNG through the open SwiftUI port (frameworks/swiftui,
+/// round R5): a generated package that holds the file and the preview body
+/// is built against the port and run headlessly (PreviewRenderHost).
+func preview(_ args: [String]) -> Int32 {
+    var it = args.makeIterator()
+    var list = false, render: String?, file: String?, name: String?
+    while let a = it.next() {
+        switch a {
+        case "--list": list = true
+        case "--render": render = it.next()
+        case "--name": name = it.next()
+        default: file = a
+        }
+    }
+    guard let file, list || render != nil, let text = try? String(contentsOfFile: file, encoding: .utf8) else { usage() }
+    let previews = PreviewDiscovery.previews(in: text)
+    if list {
+        for p in previews {
+            let kind: String = switch p.kind { case .macro: "#Preview"; case .provider(let t): "PreviewProvider \(t)" }
+            print("\(p.line)\t\(p.name)\t\(kind)\(p.traits.isEmpty ? "" : "\ttraits: " + p.traits.joined(separator: ", "))")
+        }
+        return 0
+    }
+    guard let render else { usage() }
+    let fm = FileManager.default
+    let starts = [URL(fileURLWithPath: fm.currentDirectoryPath), URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()]
+    let result = PreviewRenderRunner.render(file: file, name: name, output: render, starts: starts) {
+        FileHandle.standardError.write(Data("ycode: \($0)\n".utf8))
+    }
+    switch result {
+    case .success(let url):
+        print(url.path)
+        return 0
+    case .failure(let f):
+        if !f.log.isEmpty { FileHandle.standardError.write(Data(f.log.utf8)) }
+        FileHandle.standardError.write(Data("ycode: \(f.description)\n".utf8))
+        return f.status
+    }
+}
+
+YcodeRelease.handleVersionFlag(tool: "ycode")
+YcodeRelease.adoptBundledHelpers()
 var args = Array(CommandLine.arguments.dropFirst())
 guard let command = args.first else { usage() }
 args.removeFirst()
@@ -374,6 +489,9 @@ case "_strip-settings":
     }
 case "build":
     exit(buildCommand(args))
+case "results":
+    // Reads a result bundle ycodebuild wrote (specs/xcodebuild/result-bundle.md, "Ycode implementation").
+    exit(resultsCommand(args))
 case "pif":
     // Prints the Project Interchange Format for swift-build (specs/ide/build-pif.md).
     guard args.count == 1 else { usage() }
@@ -386,6 +504,40 @@ case "pif":
         FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
         exit(1)
     }
+case "profile":
+    // Gauge, the profiler (specs/ide/profiler.md §7).
+    exit(GaugeCLI.run(args))
+case "preview":
+    exit(preview(args))
+case "bsp":
+    // The build server for sourcekit-lsp (specs/ide/language.md §Build server).
+    exit(BuildServerMain.run(args))
+case "assets":
+    // Asset catalogs and .icon documents (specs/formats/assets-car.md, icon-format.md).
+    exit(AssetsCLI.run(args))
+case "strings":
+    // String Catalogs: compile, symbols, extraction, conversion (specs/ide/string-catalog.md).
+    exit(StringsCLI.run(args))
+case "complete":
+    // Predictive code completion at a position (specs/ide/predictive-completion.md §7).
+    exit(CompleteCLI.runBlocking(args))
+case "mcp":
+    // The Ycode MCP server (specs/ide/coding-assistant.md, "Ycode implementation").
+    MCPCommand.run(args)
+case "compare":
+    // Compare Files without a window (specs/ide/comparison.md, "Ycode implementation").
+    exit(FileCompare.run(args))
+case "sim":
+    // A simulator host over Ycode's own link (specs/simulator/sim-link.md §8).
+    // The headset (specs/ide/device-hub.md §I.12): `ycode sim headset …`, and
+    // `ycode sim remote [--host N] view <device> --xr --background | --desktop`.
+    if args.first == "headset" { exit(runHeadset(Array(args.dropFirst()))) }
+    guard args.first == "remote" else { usage() }
+    if let switched = HeadsetCLI.remoteView(Array(args.dropFirst())) { exit(runHeadset(switched.headset, then: switched.viewer)) }
+    exit(SimRemoteCLI.main(Array(args.dropFirst())))
+case "new":
+    // New Project from a template (specs/ide/templates.md, "Ycode implementation").
+    exit(NewProjectCLI.run(args))
 case "roundtrip":
     let printOutput = args.contains("--print")
     let paths = args.filter { $0 != "--print" }
@@ -394,3 +546,18 @@ case "roundtrip":
 default:
     usage()
 }
+
+/// `ycode sim headset …` (blocking), then optionally the desktop viewer (exec).
+func runHeadset(_ args: [String], then viewer: [String]? = nil) -> Int32 {
+    let box = HeadsetExit()
+    let done = DispatchSemaphore(value: 0)
+    Task.detached {
+        box.status = await HeadsetCLI.main(args)
+        done.signal()
+    }
+    done.wait()
+    if box.status == 0, let viewer { return SimRemoteCLI.main(viewer) }
+    return box.status
+}
+
+final class HeadsetExit: @unchecked Sendable { var status: Int32 = 1 }

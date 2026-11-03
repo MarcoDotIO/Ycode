@@ -1,4 +1,5 @@
 import Foundation
+import YcodeRelease
 import YcodeProject
 import YcodeWorkspace
 
@@ -6,8 +7,8 @@ import YcodeWorkspace
 /// two-line format. See `specs/xcodebuild/info-commands.md` §1.
 public enum YcodeVersion {
     public static let product = "Ycode"
-    public static let version = "0.1"
-    public static let build = "0.1.0-dev"
+    public static let version = YcodeRelease.version
+    public static let build = YcodeRelease.version
 }
 
 /// Everything a run depends on besides the arguments.
@@ -319,6 +320,18 @@ struct Plan {
                               let t = p.proj[tt.reference.blueprintIdentifier],
                               !targets.contains(where: { $0.target.id == t.id && $0.project.url == p.url }) else { continue }
                         targets.append(SettingsTarget(project: p, target: t))
+                    }
+                    // A scheme with test plans builds the plan's enabled targets.
+                    if let file = TestActions.testPlanFile(inv, scheme: scheme, container: container) {
+                        for e in file.entries where e.enabled {
+                            for p in container.projects {
+                                guard let t = (e.identifier.isEmpty ? nil : p.proj[e.identifier]) ?? p.target(named: e.targetName) else { continue }
+                                if !targets.contains(where: { $0.target.id == t.id && $0.project.url == p.url }) {
+                                    targets.append(SettingsTarget(project: p, target: t))
+                                }
+                                break
+                            }
+                        }
                     }
                 }
             }

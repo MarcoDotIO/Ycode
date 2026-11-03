@@ -1,0 +1,424 @@
+import Foundation
+import Observation
+import YcodeBuild
+import YcodeIDECore
+import YcodeSyntax
+
+/// The view model of one workspace window of the SwiftUI shell (L1,
+/// `docs/PARITY.md` §5): the navigator, editor, inspector and debug areas'
+/// state over the core's `WorkspaceSession`. It has no toolkit types, so it
+/// runs and is tested headless on macOS and Linux; the views in `ycode-ide`
+/// read it through Observation.
+@MainActor
+@Observable
+public final class WorkspaceShellModel {
+    @ObservationIgnored public let session: WorkspaceSession
+
+    // MARK: Areas (workspace-window.md §Areas)
+
+    public var navigator: ShellNavigator = .project
+    public var isNavigatorShown = true
+    public var isInspectorShown = true
+    /// Hidden at first; a build or run shows it (the build log is in it).
+    public var isDebugAreaShown = false
+    public enum DebugPane: String, CaseIterable, Sendable { case buildLog = "Build Log", console = "Console" }
+    public var debugPane: DebugPane = .buildLog
+
+    // MARK: Project navigator
+
+    public private(set) var root: NavigatorItem
+    public var expanded: Set<String>
+    /// The selected row's id.
+    public var selection: String? {
+        didSet { if selection != oldValue, let id = selection, let item = root.find(id: id), item.isFile, let p = item.path { open(p) } }
+    }
+
+    // MARK: Editor
+
+    public private(set) var document: SourceDocument?
+    /// The line the editor marks and scrolls to (from Find, an issue, or
+    /// Jump), 1-based.
+    public private(set) var markedLine: Int?
+    /// Bumped on every reveal so the editor scrolls even to the same line.
+    public private(set) var revealCount = 0
+    @ObservationIgnored public private(set) var history = NavigationHistory()
+    public private(set) var canGoBack = false
+    public private(set) var canGoForward = false
+
+    // MARK: Find navigator
+
+    public var findText = ""
+    public var findIgnoreCase = true
+    public private(set) var find = FindNavigatorModel()
+    public private(set) var findRows: [FindFileRow] = []
+    public private(set) var isSearching = false
+    /// The selected result row (a match row's id).
+    public var findSelection: String? {
+        didSet { if findSelection != oldValue, let id = findSelection { openFindResult(id) } }
+    }
+    /// Bumped by Find in Workspace so the view focuses its query field.
+    public private(set) var findFocusCount = 0
+    @ObservationIgnored private var findTask: Task<Void, Never>?
+
+    // MARK: Issues, activity, logs
+
+    public private(set) var issueGroups: [IssueGroupRow] = []
+    public private(set) var issueCounts: (errors: Int, warnings: Int) = (0, 0)
+    public var issueSelection: String? {
+        didSet { if issueSelection != oldValue, let id = issueSelection { openIssue(id) } }
+    }
+    public private(set) var activity: WorkspaceSession.Activity = .idle
+    public private(set) var activityFinishedAt: Date?
+    public private(set) var buildLog: [String] = []
+    public private(set) var console = ""
+    public private(set) var buildCount = 0
+    /// Build results: the bezel or a system notification (ShellBuildNotifier.swift).
+    public let notifier = ShellBuildNotifier()
+
+    // MARK: Toolbar
+
+    public private(set) var schemes: [String]
+    public private(set) var destinations: [Destination]
+    public var scheme: String? { didSet { session.scheme = scheme } }
+    public var destination: Destination? { didSet { session.destination = destination } }
+
+    public init(session: WorkspaceSession) {
+        self.session = session
+        let root = NavigatorItem(session.model.root)
+        self.root = root
+        expanded = Set(NavigatorTree.initiallyExpanded(session.model.root))
+        schemes = session.model.schemeNames
+        let groups = ShellBuildSetup.destinationGroups(for: session.model) + Self.remoteGroups(for: session.model)
+        session.model.destinationGroups = groups
+        destinations = groups.flatMap(\.destinations)
+        session.destination = destinations.first
+        scheme = session.scheme
+        destination = session.destination
+        session.observe { [weak self] change in self?.sessionChanged(change) }
+        syncIssues()
+    }
+
+    /// Opens a workspace: an `.xcodeproj`, `.xcworkspace`, `Package.swift`
+    /// or a package folder.
+    public convenience init(url: URL, engine: BuildEngine = ShellBuildSetup.engine()) throws {
+        let session = WorkspaceSession(model: try WorkspaceModel(url: url))
+        session.engine = engine
+        self.init(session: session)
+    }
+
+    public var workspaceName: String { session.model.displayName }
+    public var containerKind: WorkspaceModel.ContainerKind { session.model.kind }
+
+    /// "<workspace> — <document>" (`workspace-window.md` §Areas).
+    public var windowTitle: String {
+        document.map { "\(workspaceName) — \($0.name)" } ?? workspaceName
+    }
+
+    /// What dynamic menu titles depend on.
+    public var menuContext: MenuContext {
+        var c = MenuContext()
+        c.containerKind = containerKind
+        c.workspaceName = workspaceName
+        c.fileName = document?.name
+        c.navigatorShown = isNavigatorShown
+        c.inspectorShown = isInspectorShown
+        c.debugAreaShown = isDebugAreaShown
+        c.isDebugging = session.debugClient != nil
+        return c
+    }
+
+    // MARK: Session changes
+
+    private func sessionChanged(_ change: WorkspaceSession.Change) {
+        switch change {
+        case .activity:
+            activity = session.activity
+            if case .finished = activity { activityFinishedAt = Date() }
+            noteActivityForNotifications()
+            buildLog = session.buildLog
+        case .issues:
+            syncIssues()
+            buildLog = session.buildLog
+        case .console:
+            console = session.console
+            if !console.isEmpty, debugPane == .buildLog, case .running = activity { debugPane = .console }
+        case .reports:
+            buildLog = session.buildLog
+        default:
+            break
+        }
+    }
+
+    private func syncIssues() {
+        let shown = session.displayedIssues
+        issueGroups = IssueRows.tree(shown, grouping: session.issueGrouping)
+        issueCounts = IssueNavigatorModel().capsuleCounts(fresh: shown)
+    }
+
+    public var allIssues: [IssueRow] { IssueRows.flattened(issueGroups) }
+
+    /// The activity view's text (`workspace-window.md` §Toolbar): nothing
+    /// while idle; the build's step; "<Result> • Today at <time>" after it
+    /// (`WorkspaceChrome.activityFinishedText`, as the AppKit IDE shows it).
+    public var activityText: String {
+        switch activity {
+        case .idle: return ""
+        case .building(let s), .running(let s), .paused(let s): return s
+        case .finished(let s):
+            guard let at = activityFinishedAt else { return s }
+            return WorkspaceChrome.activityFinishedText(s, at: at)
+        }
+    }
+
+    /// Reads `activity` so views and menus that ask are updated when it changes.
+    public var isBusy: Bool { _ = activity; return session.isBusy }
+
+    // MARK: Project navigator
+
+    public func isExpanded(_ id: String) -> Bool { expanded.contains(id) }
+
+    public func setExpanded(_ id: String, _ on: Bool) {
+        if on { expanded.insert(id) } else { expanded.remove(id) }
+    }
+
+    /// Navigate ▸ Reveal in Project Navigator: shows the project navigator
+    /// with the open file's row selected and its parents expanded.
+    public func revealInProjectNavigator() {
+        guard let path = document?.path, let ids = root.idPath(to: path) else { return }
+        navigator = .project
+        isNavigatorShown = true
+        expanded.formUnion(ids.dropLast())
+        selection = ids.last
+    }
+
+    // MARK: Editor
+
+    /// Opens a file in the editor (it becomes the current history entry).
+    public func open(_ path: String, line: Int? = nil) {
+        if document?.path != path { document = SourceDocument.load(path: path) }
+        history.visit(path)
+        updateHistoryState()
+        reveal(line)
+    }
+
+    private func reveal(_ line: Int?) {
+        markedLine = line
+        revealCount += 1
+    }
+
+    /// Navigate ▸ Go Back / Go Forward through the opened files.
+    public func goBack() {
+        guard let p = history.back() else { return }
+        showFromHistory(p)
+    }
+
+    public func goForward() {
+        guard let p = history.forward() else { return }
+        showFromHistory(p)
+    }
+
+    private func showFromHistory(_ p: String) {
+        document = SourceDocument.load(path: p)
+        reveal(nil)
+        updateHistoryState()
+    }
+
+    private func updateHistoryState() {
+        canGoBack = history.canGoBack
+        canGoForward = history.canGoForward
+    }
+
+    // MARK: Find navigator
+
+    /// Find ▸ Find in Workspace (⇧⌘F): shows the Find navigator and focuses
+    /// its field.
+    public func showFindInWorkspace() {
+        navigator = .find
+        isNavigatorShown = true
+        findFocusCount += 1
+    }
+
+    /// Searches every file of the workspace (`FindEngine`), up to 1000
+    /// matches; rows fill in as files finish.
+    public func runFind() {
+        findTask?.cancel()
+        let text = findText
+        find.query = FindQuery(text, ignoreCase: findIgnoreCase)
+        find.begin()
+        findRows = []
+        findSelection = nil
+        guard !text.isEmpty else { return }
+        find.noteRecent(text)
+        let files = FindScopeResolver(root: session.model.root).candidates(for: .workspace)
+        let request = FindEngine.Request(query: find.query, files: files)
+        isSearching = true
+        findTask = Task { [weak self] in
+            for await event in FindEngine.stream(request) {
+                guard let self, !Task.isCancelled else { return }
+                switch event {
+                case .file(let f):
+                    self.find.append(f)
+                    self.findRows = FindMatchRow.rows(self.find.results)
+                case .finished(let s):
+                    self.find.finish(s)
+                    self.findRows = FindMatchRow.rows(self.find.results)
+                    self.isSearching = false
+                }
+            }
+        }
+    }
+
+    /// Waits for the running search (tests, drivers).
+    public func waitForFind() async { await findTask?.value }
+
+    public var findCountText: String { find.countText }
+
+    private func openFindResult(_ id: String) {
+        for (fi, f) in findRows.enumerated() {
+            if let m = f.matches.firstIndex(where: { $0.id == id }) {
+                find.select(file: fi, match: m)
+                open(f.path, line: f.matches[m].line)
+                return
+            }
+        }
+    }
+
+    // MARK: Issues
+
+    private func openIssue(_ id: String) {
+        guard let row = allIssues.first(where: { $0.id == id }), let file = row.file else { return }
+        open(file, line: row.line)
+    }
+
+    /// Navigate ▸ Jump to Next / Previous Issue (⌘', ⇧⌘'): the issue after
+    /// (before) the selected one, wrapping; the Issue navigator follows.
+    public func stepIssue(forward: Bool) {
+        let all = allIssues
+        guard !all.isEmpty else { return }
+        let at = issueSelection.flatMap { id in all.firstIndex { $0.id == id } }
+        var next = forward ? 0 : all.count - 1
+        if let at { next = (at + (forward ? 1 : -1) + all.count) % all.count }
+        issueSelection = all[next].id
+    }
+
+    // MARK: Product
+
+    /// The console's trash button: the console and, under it, the build log.
+    public func clearConsole() {
+        session.clearConsole()
+        console = session.console
+        buildLog = []
+    }
+
+    /// Product ▸ Build (⌘B), Test (⌘U), Clean Build Folder (⇧⌘K), through
+    /// the session's engine.
+    @discardableResult
+    public func build(_ action: BuildRequest.Action = .build) async -> BuildResult {
+        isDebugAreaShown = true
+        debugPane = .buildLog
+        buildCount += 1
+        let result = await session.build(action)
+        buildLog = session.buildLog
+        syncIssues()
+        if action == .build, issueCounts.errors > 0 { navigator = .issues }
+        return result
+    }
+
+    /// The Ycode simulator hosts' devices (ShellRemoteRun) for projects on
+    /// Linux; `YCODE_IDE_REMOTE_DESTINATIONS=0` leaves them out.
+    static func remoteGroups(for model: WorkspaceModel) -> [DestinationGroup] {
+        #if os(Linux)
+        guard model.kind != .package, ProcessInfo.processInfo.environment["YCODE_IDE_REMOTE_DESTINATIONS"] != "0" else { return [] }
+        return ShellRemoteRun.destinationGroups()
+        #else
+        return []
+        #endif
+    }
+
+    /// The device window of the last remote run (Stop ends it).
+    @ObservationIgnored private var remoteViewer: Process?
+
+    /// Run on a Ycode simulator host: build here, then upload, install,
+    /// launch and show the device (ShellRemoteRun).
+    private func remoteRun(_ d: Destination) async {
+        isDebugAreaShown = true
+        debugPane = .console
+        remoteViewer?.terminate()
+        let session = session
+        let out: @Sendable (String) -> Void = { text in Task { @MainActor in session.appendConsole(text, kind: .debugger) } }
+        let packageRoot = ShellRemoteRun.toolsRoot()
+        do {
+            remoteViewer = try await ShellRemoteRun.run(project: session.model.url.path, scheme: session.scheme ?? workspaceName,
+                                                        destination: d, packageRoot: packageRoot, output: out)
+        } catch {
+            session.appendConsole("Run on \(d.name) failed: \(error)\n", kind: .debugger)
+        }
+    }
+
+    /// Product ▸ Run (⌘R): build, then launch the scheme's executable under
+    /// the debugger (lldb-dap); its output goes to the console.
+    public func run() async {
+        if let d = destination, ShellRemoteRun.target(of: d) != nil { await remoteRun(d); return }
+        isDebugAreaShown = true
+        let request = session.model.buildRequest(scheme: session.scheme, destination: session.destination, action: .build)
+        let engine = session.engine
+        let program = await Task.detached { engine.executablePath(for: request) }.value
+        await session.run(program: program)
+        buildLog = session.buildLog
+        syncIssues()
+    }
+
+    /// Product ▸ Stop (⌘.).
+    public func stop() {
+        remoteViewer?.terminate()
+        remoteViewer = nil
+        session.stop()
+    }
+
+    // MARK: Commands
+
+    public func isEnabled(_ c: ShellCommand) -> Bool {
+        switch c {
+        case .revealInProjectNavigator: document != nil
+        case .goBack: canGoBack
+        case .goForward: canGoForward
+        case .nextIssue, .previousIssue: !issueGroups.isEmpty
+        case .stop: isBusy
+        case .run, .test, .build, .clean: !isBusy
+        default: true
+        }
+    }
+
+    /// Performs a command (menus, toolbar and drivers all come here).
+    /// Open, Close and Welcome are the app's (`ShellAppModel.perform`).
+    public func perform(_ c: ShellCommand) {
+        switch c {
+        case .open, .closeWorkspace, .welcome, .newProject, .about, .help, .releaseNotes, .reportBug, .swiftBook, .clone: break
+        case .showProjectNavigator: show(.project)
+        case .showFindNavigator: show(.find)
+        case .showIssueNavigator: show(.issues)
+        case .toggleNavigator: isNavigatorShown.toggle()
+        case .toggleInspector: isInspectorShown.toggle()
+        case .toggleDebugArea: isDebugAreaShown.toggle()
+        case .activateConsole:
+            isDebugAreaShown = true
+            debugPane = .console
+        case .findInWorkspace: showFindInWorkspace()
+        case .revealInProjectNavigator: revealInProjectNavigator()
+        case .goBack: goBack()
+        case .goForward: goForward()
+        case .nextIssue: stepIssue(forward: true)
+        case .previousIssue: stepIssue(forward: false)
+        case .run: Task { await run() }
+        case .test: Task { await build(.test) }
+        case .build: Task { await build(.build) }
+        case .clean: Task { await build(.clean) }
+        case .stop: stop()
+        }
+    }
+
+    private func show(_ n: ShellNavigator) {
+        navigator = n
+        isNavigatorShown = true
+    }
+}

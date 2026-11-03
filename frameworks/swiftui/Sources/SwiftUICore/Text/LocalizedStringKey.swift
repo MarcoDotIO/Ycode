@@ -19,6 +19,9 @@ public struct LocalizedStringKey: Equatable, Sendable, ExpressibleByStringInterp
         case integer(Int64)
         case floatingPoint(Double)
         case text(Text)
+        /// A value with an explicit printf-style specifier (`\(x, specifier: "%.1f")`).
+        case specifiedFloat(Double, String)
+        case specifiedInteger(Int64, String)
     }
 
     /// The key as written in a strings table.
@@ -72,6 +75,18 @@ public struct LocalizedStringKey: Equatable, Sendable, ExpressibleByStringInterp
             arguments.append(.text(text))
         }
 
+        /// A number with a printf-style specifier (the key holds the
+        /// specifier, as in a strings table).
+        public mutating func appendInterpolation<T: BinaryFloatingPoint>(_ value: T, specifier: String) {
+            key += specifier
+            arguments.append(.specifiedFloat(Double(value), specifier))
+        }
+
+        public mutating func appendInterpolation<T: BinaryInteger>(_ value: T, specifier: String) {
+            key += specifier
+            arguments.append(.specifiedInteger(Int64(value), specifier))
+        }
+
         public mutating func appendInterpolation<T>(_ value: T) {
             key += "%@"
             arguments.append(.string(String(describing: value)))
@@ -97,7 +112,9 @@ public struct LocalizedStringKey: Equatable, Sendable, ExpressibleByStringInterp
             while k < format.endIndex, format[k].isASCII, format[k].isNumber { digits.append(format[k]); k = format.index(after: k) }
             var index = next
             if k < format.endIndex, format[k] == "$", let n = Int(digits) { index = n - 1; j = format.index(after: k) }
-            // Length modifiers, then the conversion.
+            // Flags, width and precision (used by specified arguments), length
+            // modifiers, then the conversion.
+            while j < format.endIndex, "-+ #0123456789.*'".contains(format[j]) { j = format.index(after: j) }
             while j < format.endIndex, "lhqzjt".contains(format[j]) { j = format.index(after: j) }
             guard j < format.endIndex else { break }
             let conversion = format[j]
@@ -109,6 +126,8 @@ public struct LocalizedStringKey: Equatable, Sendable, ExpressibleByStringInterp
             case (_, .text(let t)?): out += t.string
             case (_, .integer(let v)?): out += LocalizedStringKey.formatInteger(v, locale: locale)
             case (_, .floatingPoint(let v)?): out += LocalizedStringKey.formatDouble(v, locale: locale)
+            case (_, .specifiedFloat(let v, let spec)?): out += String(format: spec, locale: locale, v)
+            case (_, .specifiedInteger(let v, let spec)?): out += String(format: spec, locale: locale, v)
             }
             i = format.index(after: j)
         }

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -9,22 +10,6 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 /// pass-6b editor defaults (§4.5, E9).
 @MainActor
 @Suite(.serialized) struct MenuR43Tests {
-    // MARK: E9 — the minimap is on in the factory state
-
-    @Test func minimapIsOnInTheFactoryState() {
-        let t = TestDefaults("r43-minimap")
-        defer { t.remove() }
-        let p = Preferences(defaults: t.defaults)
-        #expect(p.showMinimap)
-        // Registered, not stored: nothing is written until the user sets it.
-        #expect(t.defaults.persistentDomain(forName: t.suite)?["Ycode.minimap"] == nil)
-        p.showMinimap = false
-        // A user who turned it off keeps it off.
-        #expect(!Preferences(defaults: t.defaults).showMinimap)
-        p.showMinimap = true
-        #expect(Preferences(defaults: t.defaults).showMinimap)
-    }
-
     // MARK: M1 — one Open Recent
 
     @Test func fileMenuHasOneOpenRecent() throws {
@@ -58,8 +43,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             MenuBarDelegate.shared.update(help, controller: nil)
             #expect(help.items.first?.title == "Developer Documentation")
             #expect(!help.items.contains { $0.title.contains("Feedback to Apple") })
-            // The table's own Provide Feedback… stays.
-            #expect(help.items.contains { $0.title == "Provide Feedback…" })
+            // The table's own Report a Bug… stays.
+            #expect(help.items.contains { $0.title == "Report a Bug…" })
             // Also when it arrives just before the menu is shown.
             help.insertItem(NSMenuItem(title: "Send Ycode Feedback to Apple", action: NSSelectorFromString("_openFeedbackAssistant:"), keyEquivalent: ""), at: 0)
             help.insertItem(.separator(), at: 1)

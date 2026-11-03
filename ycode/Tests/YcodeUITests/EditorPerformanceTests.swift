@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -58,25 +59,70 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         e.applyPreferences()
         SourceEditorController.incrementalEditing = true
         #expect(incremental == colors(e))
-        // Typing into a block comment marker falls back to a full pass.
+        // Closing a block comment early stays incremental (the document
+        // re-lexes until the lexer state matches again) and still equals a
+        // full pass.
         let c = (e.textView.string as NSString).range(of: "over two lines").location
         e.textView.setSelectedRange(NSRange(location: c, length: 0))
         e.textView.insertText("*/", replacementRange: e.textView.selectedRange())
-        #expect(!e.lastHighlightWasIncremental)
+        #expect(e.lastHighlightWasIncremental)
+        let afterMarker = colors(e)
+        SourceEditorController.incrementalEditing = false
+        e.textView.insertText("", replacementRange: NSRange(location: 0, length: 0))
+        SourceEditorController.incrementalEditing = true
+        #expect(afterMarker == colors(e))
         e.textView.undoManager?.removeAllActions()
     }
-}
 
-@Suite struct LineIndexEditTests {
-    @Test func incrementalMatchesFull() {
-        var text = "a\nbb\nccc\n"
-        var idx = LineIndex(text)
-        let edits: [(NSRange, String)] = [(NSRange(location: 1, length: 0), "x\ny"), (NSRange(location: 0, length: 4), ""),
-                                           (NSRange(location: 2, length: 3), "\n\n"), (NSRange(location: 0, length: 0), "\n")]
-        for (r, s) in edits {
-            idx.applyEdit(range: r, replacement: s)
-            text = (text as NSString).replacingCharacters(in: r, with: s)
-            #expect(idx == LineIndex(text), "after \(r) \(s)")
+    /// specs/ide/source-editor.md, "Ycode implementation", Performance: a
+    /// 20,000-line Swift file. Full highlight (lexical, then swift-syntax's
+    /// parse), the incremental highlight per keystroke, and keystroke to
+    /// repaint (typed through the typing rules, then drawn).
+    @Test func typingOn20kLines() throws {
+        _ = NSApplication.shared
+        let dir = ycodeDir.appendingPathComponent(".build-ide/perf")
+        try? FileManager.default.removeItem(at: dir)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("Big20k.swift")
+        try SyntaxBenchmark.swiftSource(lines: 20_000).write(to: file, atomically: true, encoding: .utf8)
+        let e = SourceEditorController()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 700), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentViewController = e
+        var t0 = Date()
+        try e.open(file)
+        let openMs = Date().timeIntervalSince(t0) * 1000
+        t0 = Date()
+        e.refineHighlighting()   // the parse the editor runs right after opening
+        let parseMs = Date().timeIntervalSince(t0) * 1000
+        let tv = e.textView
+        let at = (tv.string as NSString).range(of: "var name = \"item 2000\"").location
+        tv.setSelectedRange(NSRange(location: at, length: 0))
+        tv.scrollRangeToVisible(tv.selectedRange())
+        window.displayIfNeeded()
+        let typed = NSRange(location: NSNotFound, length: 0)
+        var total = 0.0
+        for k in 0..<30 {
+            let k0 = Date()
+            tv.insertText(k % 2 == 0 ? "(" : "x", replacementRange: typed)
+            tv.displayIfNeeded()
+            total += Date().timeIntervalSince(k0)
         }
+        #expect(e.lastHighlightWasIncremental)
+        // The highlighter alone, on a copy of the text: the lexical pass,
+        // then the parser pass, per keystroke.
+        let doc = SyntaxDocument(text: tv.string, language: .swift)
+        var lexical = 0.0, parser = 0.0
+        for _ in 0..<30 {
+            let h0 = Date()
+            doc.replace(NSRange(location: at, length: 0), with: "y")
+            let h1 = Date()
+            doc.refine()
+            lexical += h1.timeIntervalSince(h0)
+            parser += Date().timeIntervalSince(h1)
+        }
+        print(String(format: "EDITOR-PERF 20k lines: open %.0f ms (lexical colors), swift-syntax parse %.0f ms, incremental highlight %.2f ms lexical + %.1f ms parser pass per keystroke, keystroke-to-repaint %.1f ms",
+                     openMs, parseMs, lexical / 30 * 1000, parser / 30 * 1000, total / 30 * 1000))
+        #expect(lexical / 30 < 0.02)
+        e.textView.undoManager?.removeAllActions()
     }
 }

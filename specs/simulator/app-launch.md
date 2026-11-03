@@ -6,7 +6,10 @@ the provisional cache-only image files: Q1 answered against them, but the
 root the loader accepts was not found on Ycode, §3.5 last part, Q6); the
 poster-app open requests are answered (§2.1, §8.2); §3.6
 (`thread_suspend`) is fixed (agent THREAD-SUSPEND, 2026-10-28); §3.7 (a GPU
-submission that never completes) and §3.8 (one `dasd` fault) are open, with the questions in §8. Launch times: §9. It records, for every
+submission that never completes) and §3.8 (one `dasd` fault) are open, with the questions in §8;
+§3.9 (a new app's blank icon and the frozen home screen: the vCPU pool) is
+fixed (agent ICON-FREEZE, 2026-10-29; rechecked by ICON-FREEZE2, 2026-10-30,
+which found a poster's GPU hang behind it, open). Launch times: §9. It records, for every
 app that the iOS 27.1 runtime (24A94401) can launch (`home-apps.md` §2.3),
 what happens when Ycode launches it, why, and what Ycode changed.
 
@@ -475,6 +478,237 @@ of the target made just before it: 0 of 10 boots hung with it (6 copying
 the whole target, 4 only the draw's scissor rectangle, the default),
 against 6 of 16 without (§15.6 there).
 
+### 3.9 A new app's blank icon and the frozen home screen (fixed, agent ICON-FREEZE, 2026-10-29)
+
+**Symptom** (found by PREVIEWS, `specs/ide/previews.md`, iOS 27.0 runtime
+24A434, iPhone 18 Pro; once also on 27.1 with the iPhone Duo): a newly
+installed app launches, but the screen stops presenting new frames at the
+launch, input has no effect, and the new app's icon stays blank. A
+snapshot taken then restores frozen.
+
+**Wait chain** (Ycode's thread report, run `r3`: a cold boot of a copy of
+the golden 27.0 device through the warm launcher, YcodeProbe installed and
+launched; the report's new fields are listed below):
+
+1. SpringBoard's main thread waits for the reply to a synchronous request
+   to `iconservicesagent` (the reply's send-once right is in the agent's
+   space).
+2. The agent's only worker waits for the reply to its own synchronous
+   request (`MACH_RCV_SYNC_WAIT`). The request went to a port whose
+   **receive right is in transit**: it travels in a message queued for
+   PosterBoard (an XPC connection to a PosterBoard service, set up but not
+   yet received). That is why the old report found no holder for the
+   reply right: it only searched ports with a receiver.
+3. PosterBoard: 63 workqueue threads, every one a workloop servicer
+   (overcommit, QoS 5) blocked in `kevent_id` in a `NOTE_WL_SYNC_WAIT`
+   on another workloop that had no servicer and no owner but a pending
+   thread request; 96 workloop requests pending; "a new worker can start:
+   false". Each request was taken and put back again and again: the
+   process's vCPU pool (64 vCPUs: the main thread and 63 workers) was
+   full, and a request that finds no vCPU stays pending
+   (`threads-and-events.md`, Addendum stage 7). Nothing could ever free a
+   vCPU, so PosterBoard stopped for good, and everything that waited for
+   it (step 2) with it.
+
+PosterBoard reached that state on every 27.0 boot looked at, frozen or
+not (PREVIEWS' runs with 64 PosterBoard threads; our `r1`, `r2`, `r3`): it
+starts its poster work in a burst of serial queues that wait for each
+other. Whether the screen froze depended on timing: only when the icon
+agent needed PosterBoard after PosterBoard had filled its pool (in `r1`
+and `r2` it did not; their app launches still took 52 s). Nothing in the
+chain is specific to 27.0 or to the icon: 27.1 runs into the same wall
+when its PosterBoard does (the Duo run).
+
+**Cause.** Ycode runs every guest thread on its own vCPU (the 1:1 model,
+`threads-and-events.md` §6), and its pool had 64 slots
+(`stage4a-contract.md` §4), while Darwin admits up to 512 workqueue
+threads per process and starts a new one for an overcommit or workloop
+request however many are blocked (§2.5 there). A guest that relies on
+that (here: workloop servicers waiting for workloops whose first servicer
+has not started) deadlocks under Ycode's limit and not on the reference.
+
+**Fix.**
+
+- The vCPU pool has 512 slots (Darwin's limit; at most
+  `KVM_CAP_MAX_VCPUS`): slots 64–511 lie in a second identity-mapped
+  region of guest RAM after the table arena (`stage4a-contract.md` §4).
+  Slots cost nothing until a thread uses them.
+- Constrained workers keep Darwin's second bound (constrained threads
+  scheduled, blocked or not, below max(64, 5 × CPUs);
+  `threads-and-events.md` §2.5), which Ycode had not implemented, so a
+  constrained request whose workers block cannot spread over all 512
+  vCPUs.
+- The thread report (SIGUSR1, `YCODE_THREAD_REPORT_AT_S`) now names each
+  worker's kind and the workloop it services, the workloop a `kevent_id`
+  waits on (servicer, owner, pending request and its history), one
+  workqueue line per process (workers running, blocked and idle, requests
+  pending, whether a new worker can get a vCPU), the destination of a
+  receive-only `MACH_RCV_SYNC_WAIT` call, and, for a receive right in
+  transit, the queued message that carries it.
+
+**Results** (Thor, release builds, iPhone 18 Pro on 27.0 unless noted;
+other agents' boots in parallel). "Live" means: after the app launched,
+Home, a swipe to the next page and back each produced new frames (input
+to first frame 83–1710 ms), the new app's icon was drawn (YcodeProbe has
+no icon of its own, so the runtime's generic app icon) and the report
+showed SpringBoard's main thread idle in its run loop and PosterBoard and
+`iconservicesagent` idle:
+
+| Run | Build | Boot | App open | Result |
+|---|---|---|---|---|
+| r1, r2 | main line | cold (no warm launcher) | 52.0 s, 52.1 s | not frozen; PosterBoard stuck (r2: 63 workers waiting, 91–94 workloop requests pending, peak 64 threads = the pool) |
+| r3 | main line | cold (warm launcher) | 3.3 s | **frozen** (the chain above) |
+| f1a, f2a, f3a, f4a | fix | cold, fresh copies of the golden device | 2.3, 6.4, 1.6, 4.3 s | live |
+| f2b, f3b, f4b | fix | cold, second boot of the same devices | 2.5, 3.6, 1.1 s | live |
+| f3c, f4c | fix | **restore** of f3b's and f4b's saves (taken after the app launch) | 0.6, 0.5 s | live (home screen 7.8 s and 7.7 s after the start) |
+| d1a | fix | iPhone Duo on 27.1, cold, a copy of the IOS27 Duo device | 3.5 s | live |
+| d1b, d1c | fix | restores of d1a's and d1b's saves | 6.7, 0.4 s | live; in d1b the new icon was still blank 15 s after the launch (its label drawn, its App Library tile empty); in d1c, looked at 60 s after the launch, it was drawn |
+| n1a | fix | iPhone 18 Pro on 27.1, a new device (first boot) | 1.6 s | **not live**: a Vulkan submission of `WeatherPoster` (a poster extension: skybox and particle draws) never completed ("still running after 70 s"); SpringBoard's main thread waited in a request to backboardd that stayed queued (3 messages on that port, one backboardd thread in `semaphore_wait`), and no frame followed the input. The §3.7 kind of GPU hang, not this chain; seen once (none in the other 12 runs). PosterBoard peaked at 96 threads |
+| n1b | fix | n1 again, cold | 4.7 s | live |
+| n2a | fix | another new 27.1 iPhone 18 Pro device | 5.1 s | live |
+
+**Seen with the fix, not explained** (open): in two of the seven cold
+27.0 boots (f1a, f2b) SpringBoard ended once, about 80–95 s into the boot
+and before the home screen, with "BUG IN CLIENT OF RUNNINGBOARD: Dealloc
+called before invalidate for assertion … SNAPSHOTTING
+com.apple.MercuryPoster" (an `NSInternalInconsistencyException` on an
+AnimationKit thread); launchd started it again and the boot went on to
+the home screen and the app as in the other runs. Before the fix
+PosterBoard never got this far, so the poster snapshot path was not
+reached; no Ycode run on record shows the message. A boot with a guest
+`log stream` of SpringBoard (`g1`) did not crash; it shows PaperBoardUI's
+snapshots of the lock and home posters failing with "Poster scene is not
+ready for snapshotting (mid-update)" and FrontBoard's "Send action timed
+out" for chrono's scenes in the same minute, so a slow first-boot poster
+update is the likely trigger. To be checked against the reference: does
+the reference's first boot of a 27.0 device acquire the same assertion,
+and how long does PosterBoard's first poster update take there?
+
+**Recheck after merging the main line** (agent ICON-FREEZE2, 2026-10-30;
+build of `icon-freeze` with the main line merged; the same check as above:
+install and launch YcodeProbe, Home, a swipe, a swipe back, screenshots,
+a thread report; host load average 5 to 56 from other agents' boots):
+
+| Runtime, device | Runs | Live | Not live |
+|---|---|---|---|
+| 27.0, iPhone 18 Pro, cold (fresh copies of the golden device, one second boot) | 8 | 5 (`a1a`, `a3b`, `a5a`, `a6a`, `a7a`; app open 1.8–4.1 s; the new app's icon drawn) | 3, none of them this chain: `a2a`, `a3a` a GPU hang that ended in a Vulkan device loss (`WeatherPoster`, below); `a4a` a GPU submission still running after 2 s, SpringBoard's main thread then waiting in a request to backboardd (as `n1a`) |
+| 27.0, iPhone 18 Pro, restores of saves taken after the launch | 2 | 2 (`a1b`, `a6b`; home screen 12.1 s and 9.1 s after the start) | — |
+| 27.1, iPhone Duo (a copy of the IOS27 Duo device) | 1 cold, 2 restores | 3 (`b1a`, `b1b`, `b1c`); in `b1a` the swipe back from the App Library drew no frame within 3.5 s; in `b1b` (looked at 15 s after the launch) the new icon was blank, label drawn, App Library tile empty, every thread of SpringBoard, PosterBoard and `iconservicesagent` idle; in `b1c` (60 s) it was drawn, as `d1b`/`d1c` | — |
+| 27.1, iPhone 18 Pro, a new device | 1 cold, 1 restore | 2 (`b2a`, `b2b`) | — |
+| visionOS 27.0, Apple Vision Pro (a copy of the visionOS device) | 1 cold | the room and the home view at 270–420 s (`v2a`; also `v1a` with the unmerged build) | — |
+
+None of the 15 iOS runs showed the chain: at the report PosterBoard had
+1 to 11 threads, nothing pending and "a new worker can start: true";
+where its exit summary was printed (`a3a`, `a5a`) it had peaked at 98 and
+96 threads, more than the old pool held; `iconservicesagent` waited for
+nothing, and SpringBoard's main thread only in `a4a` (on backboardd, the
+GPU case). The three main-line boots (no fix) of the cost measurement
+below all had PosterBoard at 64 threads 60 s after the home screen, the
+pool's limit.
+
+What now stops some boots is a GPU hang that the frozen PosterBoard used
+to hide: once PosterBoard runs, it updates its posters, and
+`WeatherPoster` draws its skybox and particles. In `a2a`, `a3a` and
+`fix3` (and `n1a` above) that command buffer did not complete (the
+checkpoints: the first draw, `vertex_skybox_2d` +
+`fragment_skybox_texture1d`, at the bottom of the pipe); in `a2a` and
+`a3a` the guest then killed `WeatherPoster` and the Vulkan device was
+lost, so nothing was presented again. In all four of those runs, and in
+two runs that did not hang (`f2a`, `f3b`), the same four argument-encoder
+set calls of `WeatherPoster` (one encoder, member ids 200, 201, 230 and
+231) were dropped: the host writes member *n* at 8 × *n* past the
+argument buffer's offset (`visionos.md` §10.20.7), here 1600 to 1856 bytes
+past an offset 512 bytes before the end of a 64 KiB buffer, so every write
+fell outside the buffer (logged as "not written: no CPU-visible memory",
+which is the message for any refused write). With sparse ids the guest's
+layout is not 8 × id (`metal-shaders.md` §3.6: members 8 bytes each in id
+order), so the shader reads members the host never wrote. Likely the
+cause, not proven: `b2a` dropped 12 such writes and did not hang. The fix
+needs op 16's layout description (`visionos.md` §9 Q25, open); until then
+this hang can follow any boot whose PosterBoard updates the weather
+poster, on either runtime.
+
+*Pointer (OBS-ARGBUF, 2026-10-30):* op 16's layout description and the
+member-offset rule are now in `metal-sim-protocol.md` §4.3 (answer to
+`visionos.md` §9 Q25). Members sit at the offsets the description gives,
+in declaration order, 8 bytes per buffer, texture or sampler, so four such
+members with ids 200, 201, 230 and 231 occupy bytes 0–31 past the
+argument buffer's offset, not 1600–1855; the encoder's encoded length and
+alignment come from op 17's reply, whose two halves are alignment first.
+The reference's own WeatherPoster encoder was not captured: in a cold
+iOS 27.0 boot of the reference, WeatherPoster drew only RenderBox
+pipelines and made no argument encoder (§4.3.7 there).
+
+**The GPU hang: fixed by argument buffers built from the layout
+description (agent ARGBUF-IMPL, 2026-10-30).** Ycode now parses op 16's
+description into a member table, answers op 17 with alignment and then
+length, and writes each op-19 member at its table offset
+(`metal-sim-protocol.md` §4.3.9). Before this change, op 17's reply also
+had its halves swapped, so every encoder looked 8 bytes long with an
+alignment of 24. Under Ycode, WeatherPoster's encoder with members 200, 201,
+230 and 231 turns out to be a 176-byte layout of 17 members (inline data
+first). Those four members are at 144, 152, 160 and 168, so the writes now
+land inside the argument buffer. Two other layouts (3 and 12 members) come
+from the same process. Some descriptions of the 12-member layout have a
+buffer pointee struct that §4.3.1 does not describe. Until the parser
+learned to skip such a pointee (builds from `d5a` on), those descriptions
+were refused and their encoders fell back to 8 × *n*.
+
+The check was the same as ICON-FREEZE2's above: install and launch
+YcodeProbe, then Home, a swipe and a swipe back, with screenshots and a
+thread report. The runs were on the Thor with release builds of
+`argbuf-impl`, on fresh copies of the golden iPhone 18 Pro 27.0 device, at
+a load average of 15 to 100 from other agents' boots:
+
+| Runs | Boot | WeatherPoster's encoders used | GPU hang | Live |
+|---|---|---|---|---|
+| `c1a`–`c8a`, `d1a`–`d6a`, `e1a`–`e6a` (20) | cold | 9 (`c2a`, `c3a`, `c4a`, `d1a`, `d2a`, `d4a`, `e4a`, `e5a`, `e6a`) | **0** | 18. Not live: `c7a`, where SpringBoard's main thread waited for a reply from `notifyd`, whose request stayed queued while its threads were idle, and the display stream reported the HID bundle not registered. Also not live: `e3a`, where Home drew a frame, the two swipes drew none, and SpringBoard, PosterBoard and `iconservicesagent` were idle. Neither had a GPU hang line or an argument encoder |
+| `c1b` | cold (second boot of `c1`; its save was discarded because the build changed) | yes | 0 | yes (home 60.5 s) |
+| `c1c` | restore of `c1b`'s save | no (WeatherPoster had ended before the save) | 0 | yes (home 9.4 s after the start; app open 3.0 s) |
+| `f1a`, `f2a`, `c1d` (final build, with the depth-only pipelines of `visionos.md` §10.22.2) | cold | no | 0 | yes (home 341, 296, 76 s) |
+| `c1e` (final build) | restore of `c1d`'s save | no | 0 | yes (home 12.0 s after the start; app open 0.6 s; 296 Metal objects made again, 103 heap slots kept) |
+
+Home-screen times of the cold boots were 127–349 s, and the app opened in
+0.9–6.4 s. Before this change, 3 of ICON-FREEZE2's 8 cold boots were not
+live because of the GPU: `a2a` and `a3a` ended in a device loss, and in
+`a4a` a submission was still running. Only the boots that update the
+weather poster use the encoder: 6 of ICON-FREEZE2's 15 runs did (4 of
+them hung), and 10 of these 21 did (the 20 cold boots and `c1b`), with no
+hang. No write fell outside an
+argument buffer, and no set call named an index missing from its table.
+This supports the "likely the cause" above. Once the members are written
+where the layout puts them, no boot that used the encoder hung. The
+mechanism inside the GPU was not traced.
+
+The iOS 27.1 check (`n1a`) used a new iPhone 18 Pro device on 27.1. It
+reached its home screen, the app launched (2.5 s), and Home and both swipes
+each drew frames. The warm launcher did not see the home screen settle
+("has not settled at its home screen yet"), so that run made no save, and
+at the stop the guest did not shut down within 30 s. `n2a` repeated the
+check on another new 27.1 device with the final build: home screen at
+284.6 s, app open 2.7 s, live, saved at the stop.
+
+**Cost of 512 slots** (cold boots to the home screen of fresh copies of
+the golden 27.0 device, no app; the fix's build and a build of the main
+line it was merged with, started in pairs so they share the host's load;
+home screen from frames every 5 s; host memory of `ycode-simd` 60 s after
+the home screen):
+
+| Pair | Home screen, fix / main line | `Pss_Anon`, fix / main line | Host threads, fix / main line | PosterBoard's threads, fix / main line |
+|---|---|---|---|---|
+| 1 (load 4.5) | 135 s / 125 s | 10.89 / 10.81 GiB | 2791 / 2718 | 28 / 64 |
+| 2 (load 26) | 120 s / 140 s | 11.33 / 12.24 GiB | 2747 / 2774 | 94 / 64 |
+| 3 (load 26) | 180 s / 155 s | 13.52 / 12.11 GiB | 3037 / 2778 | 7 / 64 |
+| Mean | 145 s / 140 s | 11.91 / 11.72 GiB | 2858 / 2757 | |
+
+The differences are inside the spread between pairs (fix3 is also the
+run with the GPU hang above). By construction a slot costs nothing until a
+thread uses it; what the change adds is one 16 KiB last-level table per
+process for the second region (guest RAM and the VMM's copy, about 32 KiB,
+some 9 MiB for the 270–316 processes of a boot) and, per thread above 64
+in a process, its 64 KiB slot and a host thread. Those threads exist only
+because the process asked for them (PosterBoard: up to 98).
+
 ### 3.8 One `dasd` fault (open)
 
 Run b1: `dasd` stopped with a write translation fault in
@@ -812,9 +1046,21 @@ on full boots, none on the restores g1–g4, and once `dasd` (§3.8).
 | Ycode's loader inputs all spell the root `<RR>`; the query accepts no rooted prefix on Ycode; a `dyld_sim` image-list entry changes nothing (§3.5, last part) | 3 | `--exec` runs of our `bundleprobe` with `--trace` and with chosen prefixes, `YCODE_CACHE_IMAGE_FILES=0` (APP-FIX runs x1, x2 and prefix runs), 2026-10-20 |
 | Ycode's SpringBoard answers poster opens at once with code 4 NotFound; `ylaunch` retried it (§2.1) | 3 | ylaunch output in run t2; APP-FIX runs a1, c1 |
 | Ycode's `DesiredIconState.plist` keeps the default list identifiers (§6) | 2 | 13 Ycode devices compared with the runtime's default file (`plistlib`) |
+| The frozen screen's wait chain: SpringBoard → `iconservicesagent` → a connection whose receive right is queued for PosterBoard → PosterBoard's 63 workloop servicers in sync waits, 90+ workloop requests without a vCPU (§3.9) | 3 | Ycode thread reports (with the fields §3.9 adds) of runs `r1`–`r3` on the Thor (`ide-remote/icon-freeze/proto`, 2026-10-29); PREVIEWS' reports (`ide-remote/previews/proto/run1`–`run3`); exit summaries (peak threads) |
+| Darwin's limits: 512 workqueue threads, constrained workers below max(64, 5 × CPUs), overcommit and workloop requests admitted whatever blocks (§3.9) | 1 | `threads-and-events.md` §2.5 (xnu `kern_workqueue.c`, libpthread) |
+| The fix: frozen in 1 of 3 main-line boots, live in 12 of 13 boots and restores with it (27.0 iPhone 18 Pro, 27.1 iPhone 18 Pro and iPhone Duo); the one exception a GPU hang (§3.9 table) | 3 | runs `f1a`–`f4c`, `d1a`–`d1c`, `n1a`, `n1b`, `n2a`: launcher logs, our display probe (`scripts/ycode-display-probe`: Home, swipes, input-to-frame times, screenshots), thread reports, Metal back-end hang reports |
+| The vCPU slot layout and the constrained cap | — | Ycode design; `VCPUSlotLayoutTests`, `WorkqueueKEventTests.constrainedWorkersStopAtTheSchedulingCap` (fails without the cap) |
+| SpringBoard's RunningBoard abort at boot with the fix; the poster snapshot failures and FrontBoard timeouts of a boot without it (§3.9) | 3 | crash reports of runs `f1a`, `f2b`; guest `log stream --process SpringBoard` one-shot of run `g1` |
+| The recheck after the merge: 12 of 15 iOS runs live, the 3 others a GPU hang; the chain in none; visionOS reaches its room (§3.9) | 3 | ICON-FREEZE2 runs `a1a`–`a7a`, `a1b`, `a6b`, `b1a`–`b1c`, `b2a`, `b2b`, `v2a` on the Thor (`ide-remote/icon-freeze/proto`, 2026-10-30): launcher logs, display-probe phases and screenshots, thread reports, exit summaries |
+| The GPU hang fixed by argument buffers from the layout description: 0 GPU hangs in 20 cold 27.0 boots (9 with WeatherPoster's encoders), a second boot and a restore; WeatherPoster's layouts as Ycode receives them; the 27.1 check (§3.9) | 3 | ARGBUF-IMPL runs `c1a`–`c8a`, `c1b`–`c1e`, `d1a`–`d6a`, `e1a`–`e6a`, `f1a`, `f2a`, `n1a`, `n2a` on the Thor (`ide-remote/argbuf/proto`, 2026-10-30): launcher logs, display-probe phases and screenshots, thread reports, the host's "argument layout" and "argument encoder" lines; the implementation in `metal-sim-protocol.md` §4.3.9 (Ycode design) |
+| `WeatherPoster`'s skybox command buffer that never completes, the device losses after it, and its dropped argument-encoder writes (ids 200, 201, 230, 231 past the buffer's end) (§3.9) | 3 | Vulkan hang reports and checkpoints, `argument encoder` log lines of runs `a2a`, `a3a`, `fix3`, `n1a` (and `f2a`, `f3b`, `b2a` without a hang); the causal link is not proven |
+| Op 16's layout and the member-offset rule; no argument encoder in the reference's WeatherPoster during a cold iOS 27.0 boot (§3.9 pointer) | 3 | OBS-ARGBUF, 2026-10-30: `metal-sim-protocol.md` §4.3 (our probe under the recorder on the reference); the recorder in WeatherPoster and PosterBoard during reference boot `w1` |
+| Cost of 512 slots: home-screen time and host memory against the main line (§3.9) | 3 | three paired cold boots `fix1`–`fix3`, `base1`–`base3` (`ide-remote/icon-freeze/meas`: frames, `/proc` status and `smaps_rollup` 60 s after the home screen, thread reports); the per-process and per-thread costs follow from Ycode's own layout (`VCPUSlots`, 16 KiB tables) |
 
 Level 5 was not used. The reference tools, `research/` and Ghidra were not
-opened. Sections §1–§7 and §9: the reference simulator was not run or
+opened. ICON-FREEZE (§3.9, 2026-10-29, clean side), ICON-FREEZE2 (2026-10-30, clean side) and ARGBUF-IMPL (2026-10-30, clean side) ran only Ycode's own
+simulator on the Thor with our own app and probes, and did not run or
+observe the reference. Sections §1–§7 and §9: the reference simulator was not run or
 observed. §8 (dirty side, 2026-10-20): the reference simulator was observed
 black-box with our own public-API probes; no decompiling or disassembly; no
 IPSW was opened. APP-FIX (2026-10-20, clean side) ran only Ycode's own

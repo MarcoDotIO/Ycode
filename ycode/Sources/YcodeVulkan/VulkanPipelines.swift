@@ -85,6 +85,11 @@ extension VulkanMetalBackend {
         if !options.asynchronousPipelines, let e = failure.error { throw e }
     }
 
+    /// Diagnostics (`YCODE_VULKAN_VERTEX_ONLY_DISCARD=1`): pipelines
+    /// without a fragment function are not rasterized at all (the
+    /// behaviour before visionos.md §10.22.2).
+    static let discardVertexOnly = ProcessInfo.processInfo.environment["YCODE_VULKAN_VERTEX_ONLY_DISCARD"] == "1"
+
     static let dropFragments: Set<String> = Set((ProcessInfo.processInfo.environment["YCODE_GPU_DROP_FRAGMENT"] ?? "")
         .split(separator: ",").map { String($0) })
 
@@ -129,6 +134,8 @@ extension VulkanMetalBackend {
         try setup.get()
         let cls = p.desc.inputPrimitiveTopology != 0 ? p.desc.inputPrimitiveTopology : 3
         let start = Date()
+        enterDevice()
+        defer { leaveDevice() }
         let pipe = compileRenderVariant(p, topologyClass: cls)
         let seconds = Date().timeIntervalSince(start)
         if seconds > 1 { log("render pipeline \(handle) (\(p.desc.label ?? "unlabelled")): compiled in \(String(format: "%.2f", seconds)) s") }
@@ -221,6 +228,18 @@ extension VulkanMetalBackend {
             : VK_FORMAT_UNDEFINED
         info.depthFormat = depthFormat
         info.stencilFormat = stencilFormat
+        if fs == nil {
+            // No fragment function: Metal draws depth and stencil only and
+            // leaves the colour attachments as they are (a depth pre-pass, a
+            // stencil mask, an occlusion-query box). Only a pipeline with no
+            // depth or stencil attachment is not rasterized (it can only be a
+            // vertex function that writes buffers).
+            withUnsafeMutableBytes(of: &info.blend) { raw in
+                for i in 0..<Int(YVK_MAX_COLOR_ATTACHMENTS) { raw.bindMemory(to: VkPipelineColorBlendAttachmentState.self)[i].colorWriteMask = 0 }
+            }
+            let depthOrStencil = depthFormat != VK_FORMAT_UNDEFINED || stencilFormat != VK_FORMAT_UNDEFINED
+            info.rasterizerDiscard = depthOrStencil && !Self.discardVertexOnly ? 0 : 1
+        }
         p.vertexStatics = try statics(for: vs.reflection)
         if let fs {
             do {
@@ -243,6 +262,11 @@ extension VulkanMetalBackend {
     /// (copied once into GPU-visible memory) and its constexpr samplers. Under the lock.
     func statics(for r: ShaderReflection) throws -> StageStatics {
         var out = StageStatics()
+        out.name = "\(r.entryPoint ?? "?")#\(r.hash.map { String($0.prefix(8)) } ?? "?")"
+        for b in r.buffers ?? [] where b.used != false {
+            let entry = b.tableEntry ?? b.index
+            if entry >= 0 && entry < YcodeMetalABI.constantDataEntry { out.usedBuffers |= 1 << UInt32(entry) }
+        }
         if let c = r.constantData {
             let bytes = c.bytes
             var b = yvk_buffer()
@@ -352,9 +376,12 @@ extension VulkanMetalBackend {
             }
         }
         if !options.asynchronousPipelines, let e = failure.error { throw e }
+        // Under the lock: a device reset rewrites the context.
+        cond.lock()
         let maxInv = Int(min(ctx.pointee.properties.limits.maxComputeWorkGroupInvocations, 1024))
-        return MetalComputePipelineInfo(maxTotalThreadsPerThreadgroup: UInt16(maxInv),
-                                        threadExecutionWidth: UInt16(max(ctx.pointee.subgroupSize, 1)))
+        let width = Int(max(ctx.pointee.subgroupSize, 1))
+        cond.unlock()
+        return MetalComputePipelineInfo(maxTotalThreadsPerThreadgroup: UInt16(maxInv), threadExecutionWidth: UInt16(width))
     }
 
     /// Compiles one compute variant. Needs no lock.
@@ -497,6 +524,10 @@ extension VulkanMetalBackend {
                 && (!isolatedVariant || laneIsolated(shader))
             cond.unlock()
             guard needed, let shader else { continue }
+            // The compile and the store are one device use: a reset between
+            // them would leave a pipeline of the old device in `variants`.
+            enterDevice()
+            defer { leaveDevice() }
             let pipe = compileComputeVariant(shader, key)
             cond.lock()
             if let pipe {
@@ -537,11 +568,7 @@ extension VulkanMetalBackend {
     // MARK: - The persistent pipeline cache
 
     func loadPipelineCache() {
-        var data: Data?
-        if let path = options.pipelineCachePath { data = FileManager.default.contents(atPath: path) }
-        let r: Int32 = data.map { d in d.withUnsafeBytes { yvk_pipeline_cache_create(ctx, $0.baseAddress, d.count) } }
-            ?? yvk_pipeline_cache_create(ctx, nil, 0)
-        if r != 0 { log("pipeline cache: creation failed") }
+        let data = createPipelineCache()
         if let path = options.pipelineCachePath {
             log("pipeline cache \(path): \(data?.count ?? 0) bytes loaded")
             let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
@@ -560,9 +587,23 @@ extension VulkanMetalBackend {
         }
     }
 
+    /// Creates the device's VkPipelineCache from the saved one; returns the
+    /// bytes loaded. Also after a device reset.
+    @discardableResult
+    func createPipelineCache() -> Data? {
+        var data: Data?
+        if let path = options.pipelineCachePath { data = FileManager.default.contents(atPath: path) }
+        let r: Int32 = data.map { d in d.withUnsafeBytes { yvk_pipeline_cache_create(ctx, $0.baseAddress, d.count) } }
+            ?? yvk_pipeline_cache_create(ctx, nil, 0)
+        if r != 0 { log("pipeline cache: creation failed") }
+        return data
+    }
+
     /// Writes the pipeline cache to `Options.pipelineCachePath` (atomically).
     public func savePipelineCache() {
         guard isAvailable, let path = options.pipelineCachePath else { return }
+        enterDevice()
+        defer { leaveDevice() }
         var size = 0
         guard yvk_pipeline_cache_data(ctx, nil, &size) == VK_SUCCESS, size > 0 else { return }
         var bytes = [UInt8](repeating: 0, count: size)

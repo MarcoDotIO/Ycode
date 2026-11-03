@@ -36,6 +36,7 @@ public final class NullBackend: MetalBackend, @unchecked Sendable {
     private var _submitted: [MetalCommandBuffer] = []
     private var _pending: [Pending] = []
     private var events: [MetalHandle: UInt64] = [:]
+    private var textures: Set<MetalHandle> = []
     /// Event aliases (messageType 18) → the handle whose value they share.
     private var eventAliases: [MetalHandle: MetalHandle] = [:]
 
@@ -44,6 +45,11 @@ public final class NullBackend: MetalBackend, @unchecked Sendable {
     /// The value `getBytes` fills the guest region with.
     public var readBackFill: UInt8 = 0
     public var limitsValue = MetalLimits.macOSHost
+    /// When set, every texture's resource ID (and heap slot) is this plus
+    /// its handle; nil: no IDs (the default).
+    public var textureIDBase: UInt64?
+    /// What `reserveHeapSlots` was given, in order.
+    public private(set) var reservations: [(textures: [MetalHandle: (index: UInt32, count: UInt32)], samplers: [MetalHandle: UInt32])] = []
     /// Called by `shutdown()` (ordering tests).
     public var onShutdown: (@Sendable () -> Void)?
     private var _shutdownCount = 0
@@ -71,10 +77,12 @@ public final class NullBackend: MetalBackend, @unchecked Sendable {
     }
 
     public func createTexture(_ handle: MetalHandle, _ desc: MetalTextureDescriptor, iosurface: IOSurfaceBacking?) throws {
+        lock.withLock { textures.insert(handle) }
         record(.createTexture(handle, desc, iosurface: iosurface?.surfaceID))
     }
 
     public func createTextureView(_ handle: MetalHandle, parent: MetalHandle, _ desc: MetalTextureViewDescriptor) throws {
+        lock.withLock { textures.insert(handle) }
         record(.createTextureView(handle, parent: parent, desc))
     }
 
@@ -127,6 +135,19 @@ public final class NullBackend: MetalBackend, @unchecked Sendable {
     }
 
     public func release(_ handle: MetalHandle) { record(.release(handle)) }
+
+    public func gpuResourceID(ofTexture handle: MetalHandle) -> UInt64? {
+        guard lock.withLock({ textures.contains(handle) }) else { return nil }
+        return textureIDBase.map { $0 + handle.raw }
+    }
+
+    public func heapSlots(ofTexture handle: MetalHandle) -> (index: UInt32, count: UInt32)? {
+        gpuResourceID(ofTexture: handle).map { (UInt32(truncatingIfNeeded: $0), 1) }
+    }
+
+    public func reserveHeapSlots(textures: [MetalHandle: (index: UInt32, count: UInt32)], samplers: [MetalHandle: UInt32]) {
+        lock.withLock { reservations.append((textures, samplers)) }
+    }
 
     /// Recorded; reports the bytes written.
     public func writeBuffer(_ handle: MetalHandle, offset: Int, _ bytes: [UInt8]) -> Bool {

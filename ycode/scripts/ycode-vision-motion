@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+# ycode-vision-motion: drives a running visionOS device over its display socket for frame measurements
+# (specs/simulator/frame-profile.md section 10). Run it with `python3 -I`.
+#
+# usage: ycode-vision-motion <run dir> <experiment> [key=value...]
+#   <run dir>/display.sock is the device's display server; <run dir>/e-<experiment>/ receives probe.json and
+#   marks.txt (phase names and CLOCK_MONOTONIC ns), and a link to <run dir>/metal.trace.
+#   Phases: before (pre s, no input), drive (dur s), after (post s).
+#   pose=<hz> binary pose messages (0x8A: yaw sine +-yaw degrees at sine Hz, pitch +-pitch, x +-xm metres)
+#   sel=<hz>  gaze selections (0x8B: the camera's direction, plus a drift of drift x (2.9, 1.7) degrees; rpitch degrees up)
+#   cmd=<hz>  `vision pose` commands (a pose and a selection each)
+#   fp=1      opens a frame-profile window over the three phases (YCODE_FRAME_PROFILE=<run dir>/fp)
+#   maxfps, ds  the stream's client hello
+import importlib.machinery, importlib.util, math, os, struct, sys, time, json
+run, exp = sys.argv[1], sys.argv[2]
+kv = dict(a.split("=") for a in sys.argv[3:])
+g = lambda k, d: type(d)(kv.get(k, d))
+ld = importlib.machinery.SourceFileLoader("probe", os.path.join(os.path.dirname(os.path.abspath(__file__)), "ycode-display-probe"))
+sp = importlib.util.spec_from_loader("probe", ld); m = importlib.util.module_from_spec(sp); ld.exec_module(m)
+E = run + "/e-" + exp
+os.makedirs(E, exist_ok=False)
+if not os.path.exists(E + "/metal.trace"): os.symlink("../metal.trace", E + "/metal.trace")
+hello = {"protocol": "ycode-display/1", "client": "ycode-display-probe", "maxFPS": g("maxfps", 60), "encoding": "jpeg", "quality": 60, "downscale": g("ds", 4)}
+p = m.Probe("unix:" + run + "/display.sock", hello, E + "/probe.json")
+p.wait_live()
+marks = open(E + "/marks.txt", "w")
+def mk(name):
+    p.mark(name); marks.write("%s %d\n" % (name, time.monotonic_ns())); marks.flush()
+yaw, pitch, xm, sine = g("yaw", 20.0), g("pitch", 5.0), g("xm", 0.05), g("sine", 0.4)
+drift, rpitch = g("drift", 1.0), math.radians(g("rpitch", 0.0))
+poseh, selh, cmdh = g("pose", 0.0), g("sel", 0.0), g("cmd", 0.0)
+pre, dur, post = g("pre", 6.0), g("dur", 12.0), g("post", 10.0)
+if g("fp", 0): open(run + "/fp.go", "w").write(str(pre + dur + post + 1)); time.sleep(0.3)
+mk("before"); time.sleep(pre)
+mk("drive")
+def quat(y, pt):
+    # yaw about +Y, then pitch about +X (positive yaw turns left)
+    cy, sy = math.cos(y / 2), math.sin(y / 2); cp, sp_ = math.cos(pt / 2), math.sin(pt / 2)
+    return (cy * sp_, sy * cp, -sy * sp_, cy * cp)
+t0 = time.monotonic(); nextp = nexts = nextc = 0.0; np = ns = nc = 0; token = 1000
+tick = min([1 / h for h in (poseh, selh, cmdh) if h > 0] or [0.05]) / 4
+while True:
+    t = time.monotonic() - t0
+    if t >= dur: break
+    s = math.sin(2 * math.pi * sine * t); c = math.sin(2 * math.pi * sine * 0.5 * t)
+    Y_, P_ = math.radians(yaw) * s, math.radians(pitch) * c
+    if poseh and t >= nextp:
+        q = quat(Y_, P_); p.input(0x8A, struct.pack("<3f4f", xm * s, 0, 0, *q)); np += 1; nextp += 1 / poseh
+    if selh and t >= nexts:
+        # the ray: forward of the camera, drifting a few degrees
+        dy = Y_ + drift * 0.05 * math.sin(2 * math.pi * 0.7 * t); dp = P_ + rpitch + drift * 0.03 * math.sin(2 * math.pi * 0.5 * t)
+        d = (-math.sin(dy) * math.cos(dp), math.sin(dp), -math.cos(dy) * math.cos(dp))
+        p.input(0x8B, struct.pack("<BBH3f3f", 0, 0, 0, xm * s if poseh or cmdh else 0, 0, 0, *d)); ns += 1; nexts += 1 / selh
+    if cmdh and t >= nextc:
+        token += 1
+        p.send(0x90, struct.pack("<I", token) + ("vision pose %.4f 0 0 %.3f %.3f" % (xm * s, yaw * s, pitch * c)).encode()); nc += 1; nextc += 1 / cmdh
+    time.sleep(tick)
+print("sent poses %d selections %d commands %d in %.1f s" % (np, ns, nc, dur))
+mk("after"); time.sleep(post)
+mk("end"); time.sleep(0.2); mk("stop")
+p.report()
+p.json.close()

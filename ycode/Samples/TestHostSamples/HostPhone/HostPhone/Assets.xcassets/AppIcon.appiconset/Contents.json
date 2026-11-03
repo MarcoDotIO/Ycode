@@ -1,0 +1,4 @@
+{
+  "images" : [ { "idiom" : "universal", "platform" : "ios", "size" : "1024x1024" } ],
+  "info" : { "author" : "ycode", "version" : 1 }
+}

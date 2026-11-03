@@ -6,6 +6,7 @@
 
 import Foundation
 import YcodeDarwinKernel
+import YcodeDisplayStream
 
 public final class HIDHostService: @unchecked Sendable {
     public static let serviceName = "dev.ycode.simulator.hid"
@@ -20,6 +21,25 @@ public final class HIDHostService: @unchecked Sendable {
         /// 0 ambiguous, 1 portrait, 3 landscape left, 4 landscape right,
         /// 5 face up, 6 face down.
         case deviceOrientation = 7
+        /// watchos.md §5.1, §12: the Digital Crown's rotation, f64 signed
+        /// delta (positive scrolls a list forward and opens the Smart Stack
+        /// on the face), u32 axis (0: the bundle's own; 1 x, 2 y, 3 z for
+        /// diagnostics), u32 0.
+        case crownRotation = 8
+        /// watchos.md §5.1, §12: a watch gesture, u32 number (0 double tap,
+        /// 1 flick, 2 single tap), u32 0.
+        case watchGesture = 9
+        /// visionos.md "Ycode implementation" (§5.5.2, V-11): the camera pose
+        /// in the stage frame, 7 f64: translation x, y, z, then the rotation
+        /// quaternion w, x, y, z. Body size 72. On a Vision Pro the crown's
+        /// kind 8 turns the Digital Crown (the DigitalDial service).
+        case visionPose = 10
+        /// The gaze ray and the hands: u32 flags (bit 0: hands present; 0 =
+        /// selection-only), u32 0, ray origin 3 f64, ray direction 3 f64, then
+        /// left and right hand, each u32 pinching, u32 allowDirect, u32
+        /// extra (the 16-bit value of §5.5.2, sent 0), u32 0, translation
+        /// 3 f64, quaternion w, x, y, z 4 f64. Body size 216.
+        case visionSelection = 11
     }
 
     /// §7.3 touch record phase.
@@ -54,6 +74,59 @@ public final class HIDHostService: @unchecked Sendable {
         /// Whole degrees, 0 closed … 180 open flat (clamped).
         case hingeAngle(UInt32)
         case deviceOrientation(UInt32)
+        /// The crown's signed delta, unchanged (§5.1: the guest does the detents).
+        case crownRotation(Double, axis: UInt32 = 0)
+        case watchGesture(UInt32)
+        /// The camera pose (stage frame).
+        case visionPose(SpatialPose)
+        /// The gaze ray and, unless selection-only, both hands.
+        case visionSelection(SpatialSelection)
+    }
+
+    /// watchos.md §5.2: the GenericGesture event (IOHIDFamily event type 39)
+    /// that the HID bundle makes for a host gesture message (kind 9) and
+    /// dispatches from its watch-gestures service. The bundle
+    /// (SimGuestFrameworks/SimHID/simhid.c) carries the same values.
+    public struct WatchGestureEvent: Equatable, Sendable {
+        /// IOHIDFamily's GenericGesture event type.
+        public static let eventType: UInt32 = 39
+        /// The gesture-type field, (39 << 16) + 0.
+        public static let gestureTypeField: UInt32 = 39 << 16
+        /// The tap-count field, (39 << 16) + 1.
+        public static let tapCountField: UInt32 = 39 << 16 | 1
+        /// IOHIDEventPhaseBits Ended.
+        public static let phaseEnded: UInt32 = 4
+        /// The event flags the reference's event carries: phase Ended in the
+        /// phase bits (shift 24); relative (no absolute flag).
+        public static let eventFlags: UInt32 = phaseEnded << 24
+
+        /// HandTap 2, HandFlick 8 (§5.2).
+        public var gestureType: UInt32
+        /// 2 for a double tap; nil: the field is not set (flick).
+        public var tapCount: UInt32?
+
+        public init(gestureType: UInt32, tapCount: UInt32?) { (self.gestureType, self.tapCount) = (gestureType, tapCount) }
+
+        /// The event for a host gesture number (0 double tap, 1 flick), or
+        /// nil: single tap (2) makes no event, as in the reference, and other
+        /// numbers are ignored.
+        public static func forGesture(_ gesture: UInt32) -> WatchGestureEvent? {
+            switch gesture {
+            case 0: WatchGestureEvent(gestureType: 2, tapCount: 2)
+            case 1: WatchGestureEvent(gestureType: 8, tapCount: nil)
+            default: nil
+            }
+        }
+    }
+
+    /// The watch gestures by name (§5.1's numbering).
+    public static func watchGesture(named name: String) -> UInt32? {
+        switch name.lowercased() {
+        case "double-tap", "doubletap", "0": 0
+        case "flick", "1": 1
+        case "tap", "single-tap", "2": 2
+        default: UInt32(name).flatMap { $0 <= 5 ? $0 : nil }
+        }
     }
 
     let host: MachHostTask
@@ -164,6 +237,10 @@ public final class HIDHostService: @unchecked Sendable {
         case .orientation: kind = .orientation
         case .hingeAngle: kind = .hingeAngle
         case .deviceOrientation: kind = .deviceOrientation
+        case .crownRotation: kind = .crownRotation
+        case .watchGesture: kind = .watchGesture
+        case .visionPose: kind = .visionPose
+        case .visionSelection: kind = .visionSelection
         }
         u32(1)
         u32(kind.rawValue)
@@ -197,6 +274,31 @@ public final class HIDHostService: @unchecked Sendable {
         case .deviceOrientation(let o):
             u32(o)
             u32(0)
+        case .crownRotation(let delta, let axis):
+            f64(delta.isFinite ? delta : 0)
+            u32(axis <= 3 ? axis : 0)
+            u32(0)
+        case .watchGesture(let g):
+            u32(g)
+            u32(0)
+        case .visionPose(let pose):
+            func finite(_ v: Double) -> Double { v.isFinite ? v : 0 }
+            let q = pose.rotation.normalized
+            for v in [pose.position.x, pose.position.y, pose.position.z, q.w, q.x, q.y, q.z] { f64(finite(v)) }
+        case .visionSelection(let sel):
+            func finite(_ v: Double) -> Double { v.isFinite ? v : 0 }
+            let hands = sel.hasHands
+            u32(hands ? 1 : 0)
+            u32(0)
+            for v in [sel.rayOrigin.x, sel.rayOrigin.y, sel.rayOrigin.z, sel.rayDirection.x, sel.rayDirection.y, sel.rayDirection.z] { f64(finite(v)) }
+            for h in [sel.left ?? SpatialHand(), sel.right ?? SpatialHand()] {
+                let q = h.rotation.normalized
+                u32(hands && h.pinching ? 1 : 0)
+                u32(hands && h.allowDirect ? 1 : 0)
+                u32(0)
+                u32(0)
+                for v in [h.position.x, h.position.y, h.position.z, q.w, q.x, q.y, q.z] { f64(finite(v)) }
+            }
         }
         return b
     }

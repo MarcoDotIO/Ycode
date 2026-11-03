@@ -127,6 +127,7 @@ import Foundation
 import Glibc
 import YcodeDarwinKernel
 import YcodeMachO
+import YcodeRelease
 import YcodeDisplayStream
 
 let usage = """
@@ -135,18 +136,28 @@ let usage = """
                       [--host-libs <dir>] [--keep-going] [--libfunc-return <name>=<value>[,...]] [--repeat N]
                       [--env K=V]... [--host-bootstrap [--debug-bootstrap-discard]] [--exec-args <arg>...]
            ycode-simd --device <dir> --runtime-root <dir> [--udid <UDID>] [--job-path <dir>]... [--env K=V]...
-                      [--device-type \(DeviceType.all.map(\.id).joined(separator: " | "))] (default: iphone-duo on iOS 27.1, iphone-18-pro on iOS 27.0
-                      runtimes, vision-pro on visionOS runtimes; a device keeps its first type)
+                      [--device-type <id>] [--vision-display <w>x<h>] (--list-device-types; default: iphone-duo on iOS 27.1, iphone-18-pro on iOS 27.0
+                      runtimes, vision-pro on visionOS, apple-watch-series-12-46mm on watchOS; a device keeps its first type)
                       [--runtime-paths] [--oneshot "/guest/program arg..."]... [--oneshot-delay S] [--runtime-job <label>]...
                       [--install-app <host .app>] [--launch <bundle id> [--app-arg A]... [--app-env K=V]... [--app-url U]]
                       [--guest-tools <dir with ylaunch>] [--framebuffer-library <SimFramebuffer binary> | none]
                       [--settings-agent <ycode-settings-agent> | none] [--environment-overrides] (simulator-features.md)
+                      [--profile <out.gaugetrace> [--profile-rate HZ] [--profile-hang-ms MS] [--profile-seconds S]
+                       [--profile-process NAME]... [--profile-no-signposts]] (Gauge, the profiler: specs/ide/profiler.md §3.1)
+                      [--debug-server unix:<path>|[<host>:]<port> [--debug-server-log] [--debug-launch-stopped]] (LLDB's
+                       gdb-remote protocol for one guest process; a connection attaches to the --launch app, which
+                       --debug-launch-stopped holds at its first instruction until then: specs/simulator/debug-stub.md)
+                      [--pairing-agent <ycode-pairing-agent> | none] (device-pairing.md §8; the device set holding the
+                      pair records: $YCODE_DEVICE_SET, else the directory holding DEV)
+                      [--health-agent <YcodeHealth.app> | none] (health-simulation.md "Ycode implementation"; the
+                      guest health agent, run on iOS and watchOS devices)
                       [--screenshot <path.png> [--screenshot-at S]... [--display LCD|LCD-1|active]] [--skip-first-boot-migration]
                       [--camera on|off|synthetic|/dev/videoN|v4l2:<id> [--camera-position back|front|external]]
                       [--camera-library <libYcodeCamera.dylib>] (the device's camera, kept for later boots; default off;
                       camera.md "Ycode implementation")
                       [--display-server unix:<path> | [<host>:]<port>] (live display and input; display-stream.md)
                       [--hid-bundle <SimHID.framework dir> | none] (default with --display-server: the built one)
+                      [--room <key>] (visionOS: the room for this boot, e.g. MuseumDay; visionos.md §5.5.4)
                       [--metal-translator <ycode-airc>] (default: $YCODE_AIRC, next to ycode-simd, $PATH)
                       [--gpu-cache-dir <dir> | --no-gpu-cache] (Vulkan pipeline cache and ycode-airc
                       translation cache; default for --device: ${XDG_CACHE_HOME:-~/.cache}/ycode/gpu)
@@ -154,13 +165,20 @@ let usage = """
                       [--trace] [--keep-going] [--timeout-ms N] [--host-libs <dir>] [--debug-bootstrap-discard]
                       [--exec-args <arg>...]
                       [--debug-extra-images N [--debug-extra-exec <macho>] [--debug-extra-arg A]... [--debug-extra-wait]]
+           ycode-simd --macos <macOS arm64 program> [--macos-root <dir>] [--env K=V]... [--trace] [--timeout-ms N]
+                      [--run-dir <dir> | --keep-run-dir] [--exec-args <arg>...]   (specs/macos/macos-apps.md;
+                      the root defaults to MacUserland/out/root, built by sh MacUserland/build.sh)
            ycode-simd --list-device-types   (the --device-type IDs, one per line, the default first)
            ycode-simd --device <dir> --control <command...> | --fold closed|half|open|<degrees> [--instant]
                       | --ui appearance|content_size|increase_contrast|liquid-glass|color-filter … | --accessibility <switch> [on|off]
                       | --location set|preset|start|run|file|clear|list … | --audio volume|output|input|devices …
                       | --overrides <bundle id> … | --settings   (SimSettings.swift; a stopped device: written for its next boot)
                       | --orientation <name> | --rotate left|right | --fold-state   (a running device; FoldControl.swift)
+                      | --health status|import|scenario|stream|stop|clear|grant|revoke|seed …   (HealthHost.swift,
+                      HealthClient.swift; health-simulation.md "Ycode implementation")
            ycode-simd --device <dir> --privacy grant|revoke|reset camera|microphone <bundle id>   (CameraDevice.swift)
+           ycode-simd [--device-set <dir>] --pair <watch> <phone> | --unpair <pair> | --pair-activate <pair>
+                      | --list-pairs [--json]   (PairingCommand.swift; device-pairing.md §2.2, §8)
            ycode-simd --shim <shim.bin> --el0 <el0.bin> [--trace] [--timeout-ms N] [--max-exits N]
                       [--vcpus N [--rounds R]]
            ycode-simd --kvm-smoke
@@ -173,6 +191,10 @@ struct Options {
     var shimPath: String?
     var el0Path: String?
     var execPath: String?
+    /// `--macos <binary>`: a macOS program on Ycode's macOS userland (MacOSMode.swift).
+    var macOSPath: String?
+    /// `--macos-root <dir>`: the macOS userland root (default MacUserland/out/root).
+    var macOSRoot: String?
     var runtimeRoot: String?
     var runDir: String?
     /// Keep the default run directory at exit (it is removed otherwise).
@@ -221,6 +243,8 @@ struct Options {
     var displayServer: DisplayAddress?
     /// Ycode's HID bundle (`--hid-bundle`; hid-input.md): "none" = no input.
     var hidBundle: String?
+    /// visionOS: the room for this boot (`--room <key>`; visionos.md §5.5.4).
+    var visionRoom: String?
     /// Debug: start no Metal host service.
     var debugNoMetal = false
     /// The shader translator (`ycode-airc`) for the Metal back end; nil:
@@ -245,8 +269,18 @@ struct Options {
     /// Ycode's guest settings agent (`--settings-agent <binary> | none`;
     /// default: `ycode-settings-agent` in the guest tools, else SimGuestAgents/out).
     var settingsAgent: String?
+    /// Ycode's guest pairing agent (`--pairing-agent <binary> | none`;
+    /// default: `ycode-pairing-agent` in the guest tools, else SimGuestAgents/out).
+    var pairingAgent: String?
+    /// Ycode's guest health agent (`--health-agent <YcodeHealth.app> | none`;
+    /// default: `YcodeHealth.app` in the guest tools, else SimGuestAgents/out).
+    var healthAgent: String?
     /// Launch the app with Ycode's Environment Overrides library (`--environment-overrides`).
     var environmentOverrides = false
+    /// Gauge (`--profile <path>` and companions; GaugeRecorder.swift, specs/ide/profiler.md §3.1).
+    var profile: GaugeOptions?
+    /// The debug stub (`--debug-server`; DebugStub.swift, specs/simulator/debug-stub.md).
+    var debugServer: DebugServerOptions?
     /// The headless SimFramebuffer library (`--framebuffer-library`; "none" = empty variable).
     var framebufferLibrary: String?
     /// The device's camera (`--camera`, `--camera-position`, `--camera-library`;
@@ -350,6 +384,8 @@ func parseOptions(_ arguments: [String]) -> Options {
         case "--shim": options.shimPath = value(for: argument)
         case "--el0": options.el0Path = value(for: argument)
         case "--exec": options.execPath = value(for: argument)
+        case "--macos": options.macOSPath = value(for: argument)
+        case "--macos-root": options.macOSRoot = value(for: argument)
         case "--runtime-root": options.runtimeRoot = value(for: argument)
         case "--run-dir": options.runDir = value(for: argument)
         case "--keep-run-dir": options.keepRunDir = true
@@ -370,7 +406,7 @@ func parseOptions(_ arguments: [String]) -> Options {
             }
         case "--kvm-smoke": options.kvmSmoke = true
         case "--vcpus":
-            guard let n = Int(value(for: argument)), n > 0, n <= VCPUSlots.count else { die("--vcpus needs 1...\(VCPUSlots.count)", status: 64) }
+            guard let n = Int(value(for: argument)), n > 0, n <= VCPUSlots.lowCount else { die("--vcpus needs 1...\(VCPUSlots.lowCount)", status: 64) }
             options.vcpus = n
         case "--rounds":
             guard let n = Int(value(for: argument)), n > 0 else { die("--rounds needs a positive integer", status: 64) }
@@ -420,6 +456,10 @@ func parseOptions(_ arguments: [String]) -> Options {
             }
             options.displayServer = address
         case "--hid-bundle": options.hidBundle = value(for: argument)
+        case "--room":
+            let room = value(for: argument)
+            guard VisionRooms.isValidKey(room) else { die("--room needs a room key (\(VisionRooms.known.joined(separator: ", ")))", status: 64) }
+            options.visionRoom = room
         case "--skip-first-boot-migration": options.skipFirstBootMigration = true
         case "--screenshot-at":
             guard let n = Int(value(for: argument)), n > 0 else { die("--screenshot-at needs seconds > 0", status: 64) }
@@ -434,9 +474,44 @@ func parseOptions(_ arguments: [String]) -> Options {
             options.appEnvironment.append(pair)
         case "--guest-tools": options.guestTools = value(for: argument)
         case "--settings-agent": options.settingsAgent = value(for: argument)
+        case "--pairing-agent": options.pairingAgent = value(for: argument)
+        case "--health-agent": options.healthAgent = value(for: argument)
         case "--environment-overrides": options.environmentOverrides = true
+        case "--profile": options.profile = GaugeOptions(path: absolutePath(value(for: argument)))
+        case "--debug-server": options.debugServer = DebugServerOptions(address: value(for: argument))
+        case "--debug-server-log":
+            guard options.debugServer != nil else { die("--debug-server-log needs --debug-server first", status: 64) }
+            options.debugServer?.log = true
+        case "--debug-launch-stopped":
+            guard options.debugServer != nil else { die("--debug-launch-stopped needs --debug-server first", status: 64) }
+            options.debugServer?.launchStopped = true
+        case "--profile-rate", "--profile-hang-ms", "--profile-seconds", "--profile-process":
+            let v = value(for: argument)
+            guard options.profile != nil else { die("\(argument) needs --profile first", status: 64) }
+            switch argument {
+            case "--profile-rate":
+                guard let n = Int(v), (10...10_000).contains(n) else { die("--profile-rate needs 10...10000", status: 64) }
+                options.profile?.rate = n
+            case "--profile-hang-ms":
+                guard let n = Int(v), n > 0 else { die("--profile-hang-ms needs a positive integer", status: 64) }
+                options.profile?.hangMilliseconds = n
+            case "--profile-seconds":
+                guard let s = Double(v), s > 0 else { die("--profile-seconds needs a positive number", status: 64) }
+                options.profile?.seconds = s
+            default: options.profile?.processes.append(v)
+            }
+        case "--profile-no-signposts":
+            guard options.profile != nil else { die("--profile-no-signposts needs --profile first", status: 64) }
+            options.profile?.signposts = false
         case "--framebuffer-library": options.framebufferLibrary = value(for: argument)
         case "--camera": options.camera = value(for: argument)
+        case "--vision-display":
+            // A Vision Pro's display size (device-hub.md §I.12; xr-viewer.md §4.4):
+            // 2160x3840 for the headset; read at boot (it is an argument, so a
+            // warm-boot snapshot of another size is not restored).
+            let v = value(for: argument)
+            guard v.split(separator: "x").compactMap({ Int($0) }).count == 2 else { die("--vision-display needs <width>x<height>", status: 64) }
+            setenv("YCODE_VISION_SCREEN", v, 1)
         case "--camera-position": options.cameraPosition = value(for: argument)
         case "--camera-library": options.cameraLibrary = value(for: argument)
         case "--debug-host-identity":
@@ -634,7 +709,9 @@ func runStage2(_ options: Options) throws -> Never {
 /// creation while others run, per-vCPU slots, concurrent traps, and reuse.
 func runStage2Pool(_ options: Options, vm: VirtualMachine, tables: PageTableBuilder, shimSize: Int,
                    count: Int, timeout: UInt64, maxExits: Int) throws -> Never {
-    let pool = try VCPUPool(vm: vm, bootTemplate: BootInfo(ttbr0EL1: tables.rootGPA, el0EntryPC: 0), maxExitsPerVCPU: maxExits)
+    // Only the first slot region is mapped here (stage 2).
+    let pool = try VCPUPool(vm: vm, bootTemplate: BootInfo(ttbr0EL1: tables.rootGPA, el0EntryPC: 0),
+                            limit: VCPUSlots.lowCount, maxExitsPerVCPU: maxExits)
     stderrLine("ycode-simd: KVM_CAP_MAX_VCPUS \(vm.maxVCPUs), KVM_CAP_NR_VCPUS \(vm.recommendedVCPUs); pool capacity \(pool.capacity)")
     guard count <= pool.capacity else { die("--vcpus \(count) exceeds the pool capacity \(pool.capacity)", status: 64) }
     pool.preBootCleanRanges = { [(VMLayout.shimGPA, shimSize), (tables.rootGPA, tables.tables.count * Int(VMLayout.pageSize))] }
@@ -700,14 +777,18 @@ if CommandLine.arguments.contains("--device"), getenv("YCODE_BOOT_PRIORITY").map
     SchedPolicy.qosEnabled = true
 }
 // A command for a running device (FoldControl.swift, SettingsClient.swift): nothing else starts.
+if isHealthClient(CommandLine.arguments) { runHealthClient(CommandLine.arguments) }
 if isSettingsClient(CommandLine.arguments) { runSettingsClient(CommandLine.arguments) }
+// The pairing commands (PairingCommand.swift): nothing else starts.
+if isPairingCommand(CommandLine.arguments) { runPairingCommand(CommandLine.arguments) }
 if isControlClient(CommandLine.arguments) { runControlClient(CommandLine.arguments) }
 // A privacy change for a device (CameraDevice.swift): nothing else starts.
 if isPrivacyClient(CommandLine.arguments) { runPrivacyClient(CommandLine.arguments) }
 // Scheduling policy (scheduling-policy.md §4.7): with YCODE_HOST_SCHED=cgroup
 // the VMM may re-execute itself in a delegated cgroup before anything starts.
 HostSched.prepareProcess()
-let options = parseOptions(CommandLine.arguments)
+YcodeRelease.handleVersionFlag(tool: "ycode-simd")
+var options = parseOptions(CommandLine.arguments)
 // guest-cpu.md §4.2: without CTR_EL0.DIC a TLB flush also does the I-cache
 // invalidation a reused code page needs, so page-table additions flush too.
 if !VCPUPool.hostHasDIC { GuestAddressSpace.flushOnAdditions = true }
@@ -759,6 +840,12 @@ do {
     if options.kvmSmoke {
         try KVMSmokeTest.run { print($0) }
         exit(0)
+    }
+    if let macOS = options.macOSPath {
+        // specs/macos/macos-apps.md §3: an --exec run of a macOS program.
+        guard options.execPath == nil, options.devicePath == nil else { die("--macos excludes --exec and --device", status: 64) }
+        MacOSMode.enabled = true
+        options.execPath = macOS
     }
     if options.execPath != nil || options.devicePath != nil {
         try runExec(options)

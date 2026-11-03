@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 import YcodeSimFeatures
 @testable import YcodeUI
 
@@ -34,15 +35,6 @@ import YcodeSimFeatures
         DeviceRow(name: "iPhone Duo (Ycode)", identifier: "h:/data/ycode/devices/ycode-device", platform: "iOS", osVersion: "27.1",
                   state: booted ? "Booted" : "Shutdown", model: "Ycode Simulator (Linux)", isAvailable: true,
                   isYcodeRemote: true, isFoldable: false)
-    }
-
-    @Test func snapshotFromTheSettingsReply() {
-        let s = DeviceSettingsSnapshot(reply: Self.reply)!
-        #expect(s.state.appearance == .dark && s.state.glassOpacity == 0.4 && s.state.glassLook == .tinted)
-        #expect(s.state.contentSize == .extraLarge && s.state.colorFilter == .deuteranopia && s.state.colorFilterIntensity == 0.5)
-        #expect(s.state.isOn(.reduceMotion) && s.state.isOn(.showBorders) && !s.state.isOn(.voiceOver))
-        #expect(s.volume == 35 && s.output == "none" && s.input == "system")
-        #expect(DeviceSettingsSnapshot(reply: "error: no agent") == nil)
     }
 
     @Test func boxesOfARunningDevice() async {
@@ -149,14 +141,5 @@ import YcodeSimFeatures
         #expect(words == [["set", "48.8566,2.3522"]] && d.simulatedLocation == "Paris, France")
         #expect(d.simulateLocationMenu().items.first { $0.title == "Paris, France" }?.state == .on)
         #expect(menu.items.contains { $0.title == "City Run" })
-    }
-
-    @Test func remoteRunsTakeOverrides() {
-        var s = RemoteSimulatorSettings(destination: "tester@sim-host", dataDirectory: "/data/ycode",
-                                        runtimeRoot: "/rt/iOS-27.1-24A94401/RuntimeRoot", simdPath: "/data/ycode/bin/ycode-sim")
-        s.runtimeVersion = "27.1"
-        let r = RemoteSimulator.all(s).first!
-        #expect(r.runCommand(app: URL(fileURLWithPath: "/tmp/A.app"), bundleID: "dev.a").contains("--launch 'dev.a' --environment-overrides"))
-        #expect(r.controlCommand(["ui", "appearance", "dark"]).hasSuffix("--control 'ui' 'appearance' 'dark'"))
     }
 }

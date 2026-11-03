@@ -1,5 +1,7 @@
 import AppKit
 import YcodeAssistant
+import YcodeIDECore
+import YcodeMCP
 
 /// Settings ▸ Coding Assistant (coding-assistant.md §6): the back end, the
 /// local servers' addresses, the OpenAI sign-in or API key, the agent
@@ -60,7 +62,7 @@ public final class CodingAssistantSettingsPane: SettingsPane {
         row("OpenAI address:", field(s.openAIURL, width: 260) { [weak self] v in self?.settings.openAIURL = v.isEmpty ? OpenAIProvider.defaultBaseURL : v })
 
         heading("Agent Tools")
-        note("Ycode runs these tools read-only in the workspace folder and asks them for proposals; it never reads their sign-in or settings. Sign in to each tool once in Terminal.")
+        note("Ycode runs these tools in the workspace folder with their own editing turned off; in agent mode (below) they change files through Ycode's tools, each change reviewed by you. Ycode never reads their sign-in or settings. Sign in to each tool once in Terminal.")
         for agent in CLIAgentKind.allCases {
             let kind = agent.providerKind
             let found = services.locator.find(agent.executableName, override: s.toolPaths[kind.rawValue])
@@ -84,14 +86,108 @@ public final class CodingAssistantSettingsPane: SettingsPane {
             })
         }
 
+        heading("ACP Agent")
+        note("An agent that speaks the Agent Client Protocol, started with this command line in the workspace folder. Its messages, tool calls, plans and permission requests show in the Coding Assistant pane; its file reads and writes go through Ycode, and each write is a proposal you review.")
+        row("Command:", field(s.acpCommand, width: 260, placeholder: "<agent> <arguments for its ACP mode>") { [weak self] v in
+            self?.settings.acpCommand = v
+            self?.rebuild()
+        })
+        let acp = ACPAgentProvider(command: s.acpCommand, locator: services.locator)
+        let acpStatus = NSTextField(labelWithString: s.acpCommand.isEmpty ? "Not set" : (acp.executable.map { "Found: \($0.path)" } ?? "Not found"))
+        acpStatus.font = .systemFont(ofSize: 11)
+        acpStatus.textColor = acp.executable == nil ? .secondaryLabelColor : .labelColor
+        row("", acpStatus)
+
+        heading("Agent Mode")
+        row("", check("Let agents use Ycode's tools and change files", s.agentMode) { [weak self] on in self?.settings.agentMode = on })
+        note(Self.agentModeText)
+        row("Ycode MCP server:", copyField(Self.mcpCommandLine()))
+        row("Claude Code:", copyField("claude mcp add ycode -- \(Self.mcpCommandLine())"))
+        row("Codex:", copyField("codex mcp add ycode -- \(Self.mcpCommandLine())"))
+        note("Paste one of these into a terminal to give an agent you run yourself Ycode's tools (build, test, run, simulator screenshots, previews, String Catalogs). Add --allow-writes to let it change files; without it the server is read-only.")
+        let install = ClosureButton(title: "Install in Workspace…", target: nil, action: nil)
+        install.bezelStyle = .rounded
+        install.onChange = { _ in
+            let w = NSApp.orderedWindows.lazy.compactMap { $0.windowController as? WorkspaceWindowController }.first
+            if let w { w.installYcodeSkill(nil) } else { NSSound.beep() }
+        }
+        row("Ycode skill:", install)
+        note("Writes a short skill file describing Ycode's tools and the build-and-run workflow into the front workspace (.claude/skills/ycode/SKILL.md and .agents/skills/ycode/SKILL.md), for agents that read skills.")
+
         heading("Context")
         row("Context limit (tokens):", number(s.contextLimit) { [weak self] n in self?.settings.contextLimit = max(1024, n) })
         row("", check("Send the current file", s.context.includeCurrentFile) { [weak self] on in self?.settings.context.includeCurrentFile = on })
         row("", check("Send the other open files", s.context.includeOpenFiles) { [weak self] on in self?.settings.context.includeOpenFiles = on })
         row("", check("Send the workspace's issues", s.context.includeIssues) { [weak self] on in self?.settings.context.includeIssues = on })
 
+        // coding-assistant.md §3.5: the output limit and sampling for the model servers.
+        heading("Output")
+        row("Most output tokens:", optionalField(s.generation.maxOutputTokens.map(String.init), placeholder: "no limit") { [weak self] v in
+            self?.settings.generation.maxOutputTokens = Int(v).flatMap { $0 > 0 ? $0 : nil }
+        })
+        row("Temperature:", optionalField(s.generation.temperature.map { String($0) }, placeholder: "server default") { [weak self] v in
+            self?.settings.generation.temperature = Double(v)
+        })
+        row("Top P:", optionalField(s.generation.topP.map { String($0) }, placeholder: "server default") { [weak self] v in
+            self?.settings.generation.topP = Double(v)
+        })
+        row("Top K:", optionalField(s.generation.topK.map(String.init), placeholder: "server default") { [weak self] v in
+            self?.settings.generation.topK = Int(v)
+        })
+        row("Repeat penalty:", optionalField(s.generation.repeatPenalty.map { String($0) }, placeholder: "server default") { [weak self] v in
+            self?.settings.generation.repeatPenalty = Double(v)
+        })
+        note("Empty fields are not sent: the server's own value applies. Top K and the repeat penalty are for Ollama and llama.cpp only.")
+
         heading("Privacy")
         note(Self.privacyText)
+    }
+
+    /// A text field for an optional number; empty clears it.
+    func optionalField(_ value: String?, placeholder: String, _ commit: @escaping (String) -> Void) -> NSTextField {
+        let f = ClosureField(string: value ?? "")
+        f.placeholderString = placeholder
+        f.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        f.onCommit = { commit($0.stringValue.trimmingCharacters(in: .whitespaces)) }
+        return f
+    }
+
+    static let agentModeText = """
+    On: Claude Code and Codex get Ycode's MCP server (the workspace's build, test, run and project tools) and may change \
+    files only through it; ACP agents get it too when they take MCP servers over HTTP. Each change shows in the \
+    conversation as a proposal; the agent waits until you accept it (the file is saved) or reject it. The server listens \
+    on 127.0.0.1 only, with a new token for each request. Off: agents only read and propose, as before.
+    """
+
+    /// The `ycode mcp` command line: the `ycode` next to Ycode, else on PATH.
+    public static func mcpCommandLine() -> String {
+        let fm = FileManager.default
+        var candidates: [String] = []
+        if let dir = Bundle.main.executableURL?.deletingLastPathComponent() {
+            candidates += [dir.appendingPathComponent("ycode").path, dir.deletingLastPathComponent().appendingPathComponent("Helpers/ycode").path]
+        }
+        candidates += (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map { "\($0)/ycode" }
+        let exe = candidates.first { fm.isExecutableFile(atPath: $0) } ?? "ycode"
+        return (exe.contains(" ") ? "'\(exe)'" : exe) + " mcp"
+    }
+
+    /// A selectable, read-only line with a Copy button.
+    func copyField(_ text: String) -> NSView {
+        let f = NSTextField(string: text)
+        f.isEditable = false
+        f.isSelectable = true
+        f.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        f.lineBreakMode = .byTruncatingMiddle
+        f.widthAnchor.constraint(equalToConstant: 300).isActive = true
+        let copy = ClosureButton(title: "Copy", target: nil, action: nil)
+        copy.bezelStyle = .rounded
+        copy.onChange = { _ in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+        let stack = NSStackView(views: [f, copy])
+        stack.spacing = 6
+        return stack
     }
 
     static let privacyText = """

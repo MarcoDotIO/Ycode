@@ -12,6 +12,8 @@ cc -fobjc-arc -framework Foundation -framework Metal -framework IOSurface -frame
    -framework CoreGraphics -o "$OUT/mtltest" "$HERE/mtltest.m"
 cc -fobjc-arc -framework Foundation -framework Metal -o "$OUT/mtlvary" "$HERE/mtlvary.m"
 codesign -s - -f "$OUT/mtlvary" >/dev/null 2>&1
+cc -fobjc-arc -framework Foundation -framework Metal -o "$OUT/argprobe" "$HERE/argprobe.m"
+codesign -s - -f "$OUT/argprobe" >/dev/null 2>&1
 xcrun --sdk iphonesimulator metal -target air64-apple-ios27.0-simulator -o "$OUT/shaders.metallib" "$HERE/shaders.metal"
 for f in mslog.dylib mslog-sfb.dylib mtltest; do codesign -s - -f "$OUT/$f" >/dev/null 2>&1; done
 if [ -f "$HERE/msnames.m" ]; then

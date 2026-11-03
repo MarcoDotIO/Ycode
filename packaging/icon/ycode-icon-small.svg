@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Ycode (16 to 32 pixels)</title>
+  <!-- The small master: a larger field and thicker marks, the two colours separating chevron and caret. -->
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A2157"/>
+      <stop offset="1" stop-color="#1F1033"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#field)" d="M264 40H760C891 40 984 133 984 264V760C984 891 891 984 760 984H264C133 984 40 891 40 760V264C40 133 133 40 264 40Z"/>
+  <path fill="none" stroke="#FFF3DC" stroke-width="150" stroke-linecap="round" stroke-linejoin="round" d="M270 262L512 512L754 262"/>
+  <path fill="none" stroke="#FF7A59" stroke-width="150" stroke-linecap="round" d="M512 648V796"/>
+</svg>

@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The editor with no document (`specs/ide/reference-ui-4.md` §9): an Open
 /// Quickly field, a "Recent Files" heading and the recent files (icon, name

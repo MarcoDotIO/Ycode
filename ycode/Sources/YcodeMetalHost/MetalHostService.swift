@@ -68,6 +68,13 @@ public final class MetalHostService: @unchecked Sendable {
 
     public var statistics: MetalHostStatistics { core.statistics }
 
+    /// The clock of the command buffers' GPU start and end times in
+    /// completion events, in seconds; the default is the host's uptime. Set
+    /// it before any client connects: the guest compares these times with
+    /// its own media time (frame pacing), so a VMM whose guest clock is not
+    /// the host's gives the guest's mach time in seconds here.
+    public func setEventClock(_ clock: @escaping () -> Double) { core.eventClock = clock }
+
     /// The guest pids of the processes with a Metal connection: their GPU
     /// objects cannot be saved, so a snapshot restore restarts them
     /// (snapshot.md §8 option 1).

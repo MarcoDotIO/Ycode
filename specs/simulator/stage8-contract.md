@@ -1132,6 +1132,11 @@ Safari boots hang the GPU (§15.6), and a hang stops every client
    all of them (§15.1), with no recovery but a host restart. A device per
    client (contexts are killed one at a time by the driver), or a rebuild
    of the device and its objects after a loss, remain open (§13.5.4).
+   *(GPU-SIRI, 2026-11-01: the rebuild is done. A GPU watchdog ends a
+   submission after 10 s by waiting the device idle; only its command
+   buffer fails; the device is made again with every object in place and
+   the other command buffers are recorded again: metal-sim-protocol.md
+   §8.7.)*
 3. ~~The `astc` kernel's real trigger data is still unknown (§15.5).~~
    Found (§15.9): not the data, a stale storage descriptor.
 4. Two captured Safari hangs had no feedback draw (§15.6). If hangs

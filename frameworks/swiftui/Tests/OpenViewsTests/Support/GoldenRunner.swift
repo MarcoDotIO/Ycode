@@ -39,7 +39,9 @@ enum Golden {
 
     static func close(_ a: CGFloat, _ b: CGFloat) -> Bool {
         if a.isInfinite || b.isInfinite { return a == b }
-        return abs(a - b) <= tolerance
+        // 0.01 pt, plus the representation error of decimal golden values
+        // (21.0 against the printed 20.99 is within the tolerance).
+        return abs(a - b) <= tolerance + 1e-9
     }
 
     static func describe(_ p: ProposedViewSize) -> String {

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// The Editor menu of each editor kind, transcribed from
@@ -112,9 +113,17 @@ let editorMenuGolden: [EditorKind: String] = [
       Default for File Type
       None
       —
+      Build Configuration File
       C
+      C++
+      JSON
+      Markdown
+      Metal
       Objective-C
+      Shell Script
       Swift
+      XML
+      YAML
     Font Size ▸
       Increase | ⌘+
       Decrease | ⌘-
@@ -402,19 +411,5 @@ let editorMenuGolden: [EditorKind: String] = [
             DynamicMenus.fillEditor(m, kind: .assetCatalog)
             #expect(m.item(withTitle: "Show Overview")?.state == .on && m.item(withTitle: "Show Slicing")?.state == .off)
         }
-    }
-
-    /// Dynamic titles (§1.3) of the source Editor menu.
-    @Test func editorTitlesInContext() {
-        var ctx = MenuContext()
-        ctx.fileName = "Model.swift"
-        #expect(MenuTitles.title(generic: "Format File", in: ctx) == "Format File with \u{2018}swift-format\u{2019}")
-        #expect(MenuTitles.title(generic: "Format Selection", in: ctx) == "Format Selection with \u{2018}swift-format\u{2019}")
-        ctx.fileName = "main.c"
-        #expect(MenuTitles.title(generic: "Format File", in: ctx) == "Format File")
-        #expect(MenuTitles.title(generic: "Show All Issues", in: ctx) == "Hide All Issues")
-        ctx.inlineIssuesShown = false
-        #expect(MenuTitles.title(generic: "Show All Issues", in: ctx) == "Show All Issues")
-        #expect(MenuTitles.title(generic: "Format File", in: nil) == "Format File")
     }
 }

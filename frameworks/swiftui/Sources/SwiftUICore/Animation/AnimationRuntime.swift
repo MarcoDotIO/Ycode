@@ -59,6 +59,13 @@ package protocol AnimationDriver: AnyObject {
     var onChange: (() -> Void)? { get }
     /// Stops at once (its owner went away).
     func cancel()
+    /// When the current run started (nil: not a timed run). Removal
+    /// transitions wait for the runs a removal started (R9 QA fix).
+    var runStart: TimeInterval? { get }
+}
+
+extension AnimationDriver {
+    package var runStart: TimeInterval? { nil }
 }
 
 /// A completion handler of a transaction, with the runs it waits for.
@@ -140,6 +147,8 @@ package final class Animator<V: VectorArithmetic>: AnimationDriver {
     }
 
     package var isActive: Bool { run != nil }
+
+    package var runStart: TimeInterval? { run?.begin }
 
     /// The animation of the current run.
     package var animation: Animation? { run?.animation }

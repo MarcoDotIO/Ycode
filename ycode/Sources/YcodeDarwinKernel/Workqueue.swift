@@ -143,6 +143,10 @@ struct WorkqueueState {
     /// The cooperative pool's width: one thread per guest CPU (§2.5 rule 5).
     static let cooperativeWidth = GuestCPUs.count
     static let maxThreads = 512
+    /// Constrained workers scheduled at once, blocked ones included:
+    /// max(64, 5 × CPUs) (§2.5 rule 3). Overcommit, kevent and workloop
+    /// requests are not counted and not limited by it.
+    static let maxConstrained = max(64, 5 * GuestCPUs.count)
     /// Idle workers exit after this long with no work (5 s; tests shorten it).
     var idleTimeoutNanoseconds: UInt64 = 5_000_000_000
 }
@@ -273,12 +277,17 @@ extension DarwinKernel {
     // MARK: Admission
 
     /// True when a constrained request at `qos` may start another worker.
+    /// Both limits of §2.5 rule 3: unblocked constrained workers at `qos`
+    /// below the parallelism, and constrained workers scheduled (blocked or
+    /// not) below `maxConstrained`.
     private func constrainedRoom(qos: Int) -> Bool {
-        let running = workqueue.workers.values.filter { t in
-            guard let w = t.worker else { return false }
-            return w.constrained && w.phase == .running && !t.blockedInKernel && w.qos == qos
-        }.count
-        return running < WorkqueueState.parallelism
+        var running = 0, scheduled = 0
+        for t in workqueue.workers.values {
+            guard let w = t.worker, w.constrained, w.phase == .running else { continue }
+            scheduled += 1
+            if !t.blockedInKernel && w.qos == qos { running += 1 }
+        }
+        return running < WorkqueueState.parallelism && scheduled < WorkqueueState.maxConstrained
     }
 
     /// True when a cooperative request at `qos` may start another worker:

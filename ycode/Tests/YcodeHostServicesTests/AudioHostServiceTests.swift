@@ -319,6 +319,23 @@ import YcodeDarwinABI
         #expect(c.service.aggregateCount == 0 && c.service.runningContexts.isEmpty)
     }
 
+    /// The service's state read as a snapshot reads it (snapshot.md §3.1
+    /// step 4): under the kernel lock, with no host-service message in hand,
+    /// the service lock only tried; a failed try is a retry after 1 ms, up
+    /// to the 5 s deadline. The service thread takes its lock on every turn
+    /// of its loop (and holds it while it sends a wake), so one try right
+    /// after the client's wake can find it taken.
+    func settledSnapshot(_ c: Client) -> SnapshotFields? {
+        let deadline = Date().addingTimeInterval(5)
+        while true {
+            let state = c.system.lock.withLock {
+                c.system.hostTask.messagesInHandLocked == 0 ? c.service.trySnapshotState() : nil
+            }
+            if state != nil || Date() >= deadline { return state }
+            Thread.sleep(forTimeInterval: 0.001)
+        }
+    }
+
     /// A snapshot keeps the objects, the clients and running IO; the service
     /// of the restored run takes them back and wakes the client with 0.
     @Test func snapshotRoundTrip() throws {
@@ -337,9 +354,9 @@ import YcodeDarwinABI
         let region = try #require(c.guest.memoryEntry(Self.ports(start)[1])).object.host
         try c.guest.send(MachHostOutgoingMessage(remotePort: ioPort, id: 0))
         #expect(try c.guest.receive(on: wake, timeout: 5_000_000_000).id == 1)
-        let saved = try #require(c.service.trySnapshotState())
+        let saved = try #require(settledSnapshot(c))
         c.service.stop()
-        Thread.sleep(forTimeInterval: 0.3)  // its thread leaves its receive
+        #expect(c.service.waitUntilStopped())  // its thread leaves its receive
         // The restored run's service over the same host task.
         let b = try AudioHostService(host: c.system.hostTask, log: { _ in }, capturePath: nil)
         b.start()

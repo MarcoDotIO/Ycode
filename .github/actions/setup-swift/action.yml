@@ -1,0 +1,48 @@
+name: Set up Swift
+description: Selects Xcode 27.1 on macOS, or installs the Swift release and the system packages it needs on Ubuntu.
+inputs:
+  swift-version:
+    description: The Swift release to install on Linux (macOS uses the one in Xcode).
+    required: false
+    default: "6.4"
+  xcode-path:
+    description: The Xcode to select on macOS.
+    required: false
+    default: /Applications/Xcode_27.1.app
+runs:
+  using: composite
+  steps:
+    - name: Select Xcode
+      if: runner.os == 'macOS'
+      shell: bash
+      env:
+        XCODE_PATH: ${{ inputs.xcode-path }}
+      run: |
+        test -d "$XCODE_PATH"
+        echo "DEVELOPER_DIR=$XCODE_PATH/Contents/Developer" >> "$GITHUB_ENV"
+    - name: Install system packages
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --no-install-recommends \
+          binutils git gnupg2 libc6-dev libcurl4-openssl-dev libedit2 libgcc-13-dev \
+          libncurses-dev libpython3-dev libsqlite3-dev libstdc++-13-dev libxml2-dev \
+          libz3-dev pkg-config tzdata unzip zlib1g-dev
+    - name: Restore the Swift toolchain
+      if: runner.os == 'Linux'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.swift-toolchain
+        key: swift-${{ inputs.swift-version }}-${{ runner.os }}-${{ runner.arch }}-ubuntu24.04
+    - name: Install Swift
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        SWIFT_VERSION: ${{ inputs.swift-version }}
+      run: |
+        "$GITHUB_ACTION_PATH/../../scripts/install-swift-linux.sh" "$SWIFT_VERSION" "$HOME/.swift-toolchain"
+        echo "$HOME/.swift-toolchain/usr/bin" >> "$GITHUB_PATH"
+    - name: Show the toolchain
+      shell: bash
+      run: swift --version

@@ -1,6 +1,7 @@
 import AppKit
 import YcodeBuild
 import YcodeDebug
+import YcodeIDECore
 
 /// A row in any navigator outline.
 public final class OutlineItem: NSObject {
@@ -37,6 +38,9 @@ public final class OutlineItem: NSObject {
     /// (`path` is only set on rows that open something).
     public var nodePath: String?
     public var expansionKey: String?
+    /// A project-tree row's pbxproj object (`NavigatorNode.objectID`):
+    /// what the file operations act on.
+    public var objectID: String?
     /// A glyph at the row's right end (the Test navigator's status
     /// diamonds, a done bookmark's check).
     public var trailingSymbol: String?
@@ -49,6 +53,9 @@ public final class OutlineItem: NSObject {
     /// Small buttons at the row's right end (the Debug navigator's process
     /// row): symbol, tooltip and the action sent up the responder chain.
     public var rowButtons: [(symbol: String, toolTip: String, action: String)] = []
+    /// A Find navigator result row: its file and match in the results
+    /// (`match` nil for the file row; FindNavigator.swift).
+    public var findIndex: (file: Int, match: Int?)?
 
     public init(title: String, symbol: String, tint: NSColor? = nil, children: [OutlineItem] = [], path: String? = nil, line: Int? = nil,
                 frameID: Int? = nil, reportIndex: Int? = nil) {
@@ -63,31 +70,10 @@ public final class OutlineItem: NSObject {
     }
 
     /// SF Symbol names by file kind (looked up at runtime through the public API).
-    static func symbol(for node: NavigatorNode) -> String {
-        switch node.kind {
-        case .container:
-            if node.path?.hasSuffix(".xcworkspace") == true { return "square.stack.3d.up" }
-            return node.path?.hasSuffix(".xcodeproj") == true ? "folder.badge.gearshape" : "shippingbox"
-        case .group: return "folder"
-        case .folder: return "folder.fill"
-        case .file: return fileSymbol(node.name)
-        }
-    }
+    static func symbol(for node: NavigatorNode) -> String { WorkspaceChrome.symbol(for: node) }
 
     /// The file-type glyph of a file name or path.
-    static func fileSymbol(_ name: String) -> String {
-        switch URL(fileURLWithPath: name).pathExtension {
-        case "swift": "chevron.left.forwardslash.chevron.right"
-        case "h", "m", "c", "mm", "cpp": "c.square"
-        case "xcassets": "photo.on.rectangle"
-        case "xcstrings": "character.book.closed"
-        case "plist", "json": "list.bullet.rectangle"
-        case "storyboard", "xib": "rectangle.on.rectangle"
-        case "xcconfig": "gearshape"
-        case "app", "framework", "xctest", "a", "dylib": "shippingbox"
-        default: "doc.text"
-        }
-    }
+    static func fileSymbol(_ name: String) -> String { WorkspaceChrome.fileSymbol(name) }
 
     public convenience init(_ node: NavigatorNode) { self.init(node, hideExtensions: false) }
 
@@ -101,6 +87,7 @@ public final class OutlineItem: NSObject {
                   children: node.children.map { OutlineItem($0, hideExtensions: hideExtensions) }, path: opens ? node.path : nil)
         nodeKind = node.kind
         nodePath = node.path
+        objectID = node.objectID
         expansionKey = node.kind == .file ? nil : node.expansionKey
     }
 }
@@ -110,10 +97,7 @@ public final class OutlineItem: NSObject {
 /// `specs/ide/navigators.md`.
 @MainActor
 public final class NavigatorAreaController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
-    public static let symbols = [
-        "folder", "arrow.triangle.branch", "bookmark", "magnifyingglass", "exclamationmark.triangle",
-        "checkmark.diamond", "gauge.with.dots.needle.33percent", "tag", "list.bullet.rectangle",
-    ]
+    public static let symbols = WorkspaceChrome.navigatorSymbols
 
     public private(set) var selectedIndex = 0
     public var onOpen: ((String, Int?) -> Void)?
@@ -151,6 +135,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             copy.enabledMarker = item.enabledMarker
             copy.level = item.level
             copy.rowButtons = item.rowButtons
+            copy.findIndex = item.findIndex
             return copy
         }
         filteredRoots = roots[selectedIndex].compactMap(keep)
@@ -164,9 +149,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     }
     private let selector = NSStackView()
     private var buttons: [NSButton] = []
-    private let outline = NSOutlineView()
+    private let outline = NavigatorOutlineView()
     /// The outline and the selector (tests: row metrics).
     var outlineView: NSOutlineView { outline }
+    var navigatorOutline: NavigatorOutlineView { outline }
     /// The selector bar as drawn: its glass capsule (macOS 26+), or the
     /// selector itself.
     var selectorView: NSView { GlassBars.enabled ? selectorGlass : selector }
@@ -180,6 +166,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     /// clipped below the header rows (§3.1, §2.7).
     var clippedScrollConstraints: [NSLayoutConstraint] = []
     var underBarsScroll: [NSLayoutConstraint] = []
+    let measuredOutlineTopPadding = OutlinePaddingBox()
     var scrollView: NSScrollView { scroll }
     var scrollClipView: NSView { scrollClip }
     var selectorButtons: [NSButton] { buttons }
@@ -232,6 +219,16 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     public let thirdToggle = NSButton()
     public var toggleButtons: [NSButton] { [recentToggle, sourceControlToggle, thirdToggle] }
     let rowMenu = NSMenu(title: "Row")
+    /// The Test navigator's row menu (Run Repeatedly…; set by the window).
+    public var testRowMenu: (() -> [NSMenuItem])?
+    /// The Source Control navigator's row menu for a row key (set by the window).
+    public var sourceControlRowMenu: ((String) -> [NSMenuItem])?
+    /// Project navigator file operations (NavigatorAreaController+ProjectOps.swift).
+    public var projectOps = ProjectNavigatorHooks()
+    let renameDelegate = NavigatorRenameDelegate()
+    var draggedRows: [OutlineItem] = []
+    /// Items Edit ▸ Cut marked for Edit ▸ Paste ▸ Move Item Here, with their project.
+    public var itemsToMove: (project: String?, items: [ProjectItem])?
     let toggleStack = NSStackView()
     private var filterAfterLeftButton: NSLayoutConstraint!
     private var filterAtEdge: NSLayoutConstraint!
@@ -273,9 +270,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     public static let findKinds = ["Text", "Multiple Words", "Regular Expression", "Symbols", "Ancestor Types", "Descendent Types",
                                    "Conforming Types", "Call Hierarchy", "Asset References"]
     public static let findMatches = ["Containing", "Matching Word", "Starting With", "Ending With"]
-    /// Ycode implements Find with Text and Regular Expression; the other
-    /// modes and kinds are listed disabled.
-    static let supportedKinds: Set<Int> = [0, 2]
+    /// The kinds Ycode implements (Asset References is listed disabled).
+    static let supportedKinds = Set(FindQuery.Kind.allCases.filter(\.isAvailable).map(\.rawValue))
+    /// Replace mode, the count line and the search state (FindNavigator.swift).
+    let findUI = FindNavigatorUI()
     private let findOptions = NSStackView()
     private var scopeHeight: NSLayoutConstraint!
     private var findOptionsTop: NSLayoutConstraint!
@@ -284,14 +282,13 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     private var reportScopeTop: NSLayoutConstraint!
     private var scrollTop: NSLayoutConstraint!
     private var reportScopeHeight: NSLayoutConstraint!
-    /// The selected scope: the whole workspace, the current results' files,
-    /// or one containing group (its path).
-    public enum FindScope: Equatable { case workspace, currentResults, group(String) }
+    /// The selected scope (`YcodeIDECore.FindScope`).
+    public typealias FindScope = YcodeIDECore.FindScope
     public private(set) var findScopeValue: FindScope = .workspace
-    private var lastResultFiles: [String] = []
+    var lastResultFiles: [String] = []
     /// Called to list the groups containing the selected file, outermost first.
     public var containingGroups: (() -> [(name: String, path: String)])?
-    private var lastQuery = ""
+    var lastQuery = ""
 
     public var findOptionsValue: WorkspaceSearch.Options {
         get {
@@ -314,12 +311,13 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         findField.placeholderString = findStyle.titleOfSelectedItem ?? Self.findKinds[0]
     }
     /// The workspace tree, for find and symbols.
-    private var workspaceRoot: NavigatorNode?
+    var workspaceRoot: NavigatorNode?
     public var onOpenReport: ((Int) -> Void)?
 
     public override func viewDidLayout() {
         super.viewDidLayout()
         updateGlassLayout()
+        updateOutlineInsets()
     }
 
     public override func loadView() {
@@ -362,16 +360,20 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         // reference-ui-6.md §5.3 (N3): the first row sits `firstRowGap`
-        // below the selector. The source-list style pads its first row by
-        // more than that, so the scroll view starts above a clipping
-        // container by the difference; scrolled rows clip at its top.
+        // below the selector. The scroll view's top content inset puts it
+        // there (`updateOutlineInsets`), measured against where the outline
+        // draws its first row: the source-list style pads that row by an
+        // amount that depends on where the outline sits (none in the
+        // window's sidebar, 10 points in a plain window), so no padding is
+        // assumed. Scrolled rows clip at the container's top.
         scroll.automaticallyAdjustsContentInsets = false
         scroll.contentInsets = NSEdgeInsets()
         scrollClip.clipsToBounds = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
         scrollClip.addSubview(scroll)
+        outline.onReload = { [weak self] in self?.updateOutlineInsets() }
         clippedScrollConstraints = [
-            scroll.topAnchor.constraint(equalTo: scrollClip.topAnchor, constant: Self.firstRowGap - Self.selectorToContent - Self.sourceListTopPadding),
+            scroll.topAnchor.constraint(equalTo: scrollClip.topAnchor),
             scroll.bottomAnchor.constraint(equalTo: scrollClip.bottomAnchor),
         ]
         NSLayoutConstraint.activate(clippedScrollConstraints + [
@@ -432,7 +434,6 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             }
             findOptions.addArrangedSubview(p)
         }
-        findMode.item(at: 1)?.isEnabled = false
         updateFindPlaceholder()
         for i in Self.findKinds.indices where !Self.supportedKinds.contains(i) { findStyle.item(at: i)?.isEnabled = false }
         findCaseToggle.setButtonType(.pushOnPushOff)
@@ -461,6 +462,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
+        installFindControls(in: root)   // FindNavigator.swift
         if glass {
             // Above the outline (which scrolls beneath them), below the
             // controls they carry.
@@ -476,10 +478,11 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         // one takes no room (N3).
         findOptionsTop = findOptions.topAnchor.constraint(equalTo: sep.bottomAnchor, constant: 2)
         findFieldTop = findField.topAnchor.constraint(equalTo: findOptions.bottomAnchor, constant: 2)
-        findScopeTop = findScope.topAnchor.constraint(equalTo: findField.bottomAnchor, constant: 2)
+        findScopeTop = findScope.topAnchor.constraint(equalTo: findUI.replaceRow.bottomAnchor, constant: 2)
         reportScopeTop = reportScope.topAnchor.constraint(equalTo: findScope.bottomAnchor, constant: 2)
         scrollTop = scrollClip.topAnchor.constraint(equalTo: reportScope.bottomAnchor, constant: 4)
-        filterAfterLeftButton = filter.leadingAnchor.constraint(equalTo: addBreakpointButton.trailingAnchor, constant: glass ? 6 + Self.filterInset : 2)
+        filterAfterLeftButton = filter.leadingAnchor.constraint(equalTo: addBreakpointButton.trailingAnchor,
+                                                                 constant: glass ? Self.plusToFilter + Self.filterInset : 2)
         filterAtEdge = filter.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: glass ? 6 + Self.filterInset : 6)
         NSLayoutConstraint.activate([
             // Below the toolbar: the sidebar runs the window's full height
@@ -600,6 +603,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             copy.badge = item.badge
             copy.detail = item.detail
             copy.reportPage = item.reportPage
+            copy.nodeKind = item.nodeKind
+            copy.nodePath = item.nodePath
+            copy.objectID = item.objectID
+            copy.expansionKey = item.expansionKey
             return copy
         }
         roots[0] = active ? unfilteredProject.compactMap(keep) : unfilteredProject
@@ -615,7 +622,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     /// Called when the user expands or collapses a project row.
     public var onProjectExpansionChange: (([String]) -> Void)?
     private var restoringExpansion = false
-    private var projectFilterActive: Bool { !filterText.isEmpty || filterRecent || filterSourceControl }
+    var projectFilterActive: Bool { !filterText.isEmpty || filterRecent || filterSourceControl }
 
     /// Expands the project rows: the saved set, or the first-open default.
     func restoreProjectExpansion() {
@@ -930,31 +937,13 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         if selectedIndex == 7 { outline.expandItem(nil, expandChildren: true) }
     }
 
-    /// Runs a workspace search and shows the results grouped by file.
-    public func find(_ query: String) {
-        _ = view
-        findField.stringValue = query
-        lastQuery = query
-        guard let root = workspaceRoot else { return }
-        var results: [WorkspaceSearch.FileResult]
-        switch findScopeValue {
-        case .workspace: results = WorkspaceSearch.search(query, in: root, options: findOptionsValue)
-        case .group(let dir):
-            // A group or folder, or one file (Find ▸ Find in Selected File…).
-            results = WorkspaceSearch.search(query, in: root, options: findOptionsValue, limit: 100_000).filter { $0.path == dir || $0.path.hasPrefix(dir + "/") }
-        case .currentResults:
-            let keep = Set(lastResultFiles)
-            results = WorkspaceSearch.search(query, in: root, options: findOptionsValue, limit: 100_000).filter { keep.contains($0.path) }
-        }
-        if findScopeValue != .currentResults { lastResultFiles = results.map(\.path) }
-        roots[3] = results.map { f in
-            OutlineItem(title: "\(URL(fileURLWithPath: f.path).lastPathComponent)  (\(f.matches.count))", symbol: "doc.text",
-                        children: f.matches.map { m in
-                            let row = OutlineItem(title: m.text, symbol: "text.magnifyingglass", tint: .secondaryLabelColor, path: f.path, line: m.line)
-                            row.maxLines = Preferences.shared.findNavigatorDetail
-                            return row
-                        })
-        }
+    /// Runs a workspace search and shows the results grouped by file
+    /// (FindNavigator.swift).
+    public func find(_ query: String) { runFind(query) }
+
+    /// Shows the Find navigator's rows (FindNavigator.swift builds them).
+    func setFindRows(_ rows: [OutlineItem]) {
+        roots[3] = rows
         reloadIfShowing(3)
         if selectedIndex == 3 { outline.expandItem(nil, expandChildren: true) }
     }
@@ -968,11 +957,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         outline.expandItem(nil, expandChildren: true)
     }
 
-    @objc private func findSubmitted() {
-        let q = findField.stringValue
-        if !q.isEmpty { noteRecentSearch(q) }
-        find(q)
-    }
+    @objc private func findSubmitted() { submitFind() }
 
     /// The Find field's recent searches, newest first (§5.4).
     public var recentSearches: [String] { findField.recentSearches }
@@ -1003,7 +988,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
 
     /// The scope menu (reference-ui-2.md §3.5): the workspace (Package or
     /// Project), its dependencies (disabled), Current Find Results,
-    /// Containing Groups of the selected file, Custom Scopes… (disabled).
+    /// Containing Groups of the selected file, then Ycode's Open Files and
+    /// the saved custom scopes, and Custom Scopes… (the editor).
     func rebuildScopeMenu() {
         guard let menu = findScope.menu else { return }
         menu.removeAllItems()
@@ -1027,12 +1013,16 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             for g in groups { add(g.name, enabled: true, tag: 2, path: g.path) }
         }
         menu.addItem(.separator())
-        add("Custom Scopes…", enabled: false, tag: -1)
+        add("Open Files", enabled: true, tag: 3)
+        for c in findUI.customScopes { add(c.name, enabled: true, tag: 4, path: c.name) }
+        add("Custom Scopes…", enabled: true, tag: 5)
         let title: String
         switch findScopeValue {
         case .workspace: title = unit
         case .currentResults: title = "Current Find Results"
-        case .group(let p): title = groups.first { $0.path == p }?.name ?? URL(fileURLWithPath: p).lastPathComponent
+        case .group(let p), .project(let p): title = groups.first { $0.path == p }?.name ?? URL(fileURLWithPath: p).lastPathComponent
+        case .openFiles: title = "Open Files"
+        case .custom(let name): title = name
         }
         if let item = menu.items.first(where: { $0.title == title }) { findScope.select(item) }
         if let cell = findScope.cell as? NSPopUpButtonCell {
@@ -1057,14 +1047,14 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         switch item.tag {
         case 1: setFindScope(.currentResults)
         case 2: if let p = item.representedObject as? String { setFindScope(.group(p)) }
+        case 3: setFindScope(.openFiles)
+        case 4: if let n = item.representedObject as? String { setFindScope(.custom(n)) }
+        case 5: editCustomScopes()   // FindNavigator.swift
         default: setFindScope(.workspace)
         }
     }
-    /// Changing an option re-runs the last search.
-    @objc private func findOptionChanged() {
-        updateFindPlaceholder()
-        if !lastQuery.isEmpty { find(lastQuery) }
-    }
+    /// Changing an option re-runs the last search (FindNavigator.swift).
+    @objc private func findOptionChanged() { findOptionsDidChange() }
 
     /// Collects the workspace's symbols: files with their declarations.
     public func refreshSymbols() {
@@ -1072,7 +1062,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         symbolRows = root.allFiles.compactMap { file -> OutlineItem? in
             guard let path = file.path else { return nil }
             let lang = SourceTokenizer.Language(fileName: file.name)
-            guard lang != .plain, let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+            guard lang.isCode, let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
             let syms = SymbolScanner.symbols(in: text, language: lang)
             guard !syms.isEmpty else { return nil }
             @MainActor func item(_ s: SymbolScanner.Symbol) -> OutlineItem {
@@ -1296,6 +1286,19 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         if selectedIndex == 1 { outline.expandItem(nil, expandChildren: true) }
     }
 
+    /// Selects the Source Control row with `key` (shown navigator only);
+    /// false when it is not there.
+    @discardableResult
+    public func selectSourceControlRow(key: String) -> Bool {
+        guard isViewLoaded, selectedIndex == 1 else { return false }
+        outline.expandItem(nil, expandChildren: true)
+        for r in 0..<outline.numberOfRows where (outline.item(atRow: r) as? OutlineItem)?.scmKey == key {
+            outline.selectRowIndexes([r], byExtendingSelection: false)
+            return true
+        }
+        return false
+    }
+
     /// The Source Control navigator: the repository, then Branches, Tags
     /// and Remotes (current branch marked).
     public func setRepository(name: String, branches: [GitRepository.Ref], tags: [GitRepository.Ref],
@@ -1401,11 +1404,14 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         reportScope.isHidden = index != 8
         sourceControlMode.isHidden = index != 1
         testHeader.isHidden = index != 5
-        // Only bookmark rows have a context menu (Mark as Done).
-        outline.menu = index == 2 ? rowMenu : nil
+        // Bookmark rows (Mark as Done) and project rows (the file
+        // operations) have a context menu.
+        outline.menu = index == 2 || index == 0 || index == 5 ? rowMenu : nil
+        configureProjectOperations(index)
         findScope.isHidden = index != 3
         findField.isHidden = index != 3
         findOptions.isHidden = index != 3
+        applyFindVisibility(index == 3)
         rebuildAddMenu()
         configureToggles(index)
         for b in buttons { b.state = b.tag == index ? .on : .off; b.contentTintColor = b.tag == index ? .controlAccentColor : .secondaryLabelColor }
@@ -1466,6 +1472,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         if let r = item.reportIndex {
             if let page = item.reportPage { onOpenReportPage?(r, page) } else { onOpenReport?(r) }
         }
+        if selectedIndex == 3, item.findIndex?.match != nil { openFindRow(item); return }   // FindNavigator.swift
         if let path = item.path { onOpen?(path, item.line) }
     }
 
@@ -1532,6 +1539,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         if let level = item.level { addLevelBar(level, to: cell) }
         if !item.rowButtons.isEmpty { addRowButtons(item.rowButtons, to: cell) }
         if let t = item.trailingSymbol { addTrailingGlyph(t, tint: item.trailingTint, to: cell, label: label) }
+        if selectedIndex == 3 { decorateFindRow(item, cell: cell, image: image, label: label) }
         cell.textField = label
         cell.imageView = image
         return cell
@@ -1543,9 +1551,27 @@ extension NavigatorAreaController: NSMenuDelegate {
         if menu === findScope.menu { rebuildScopeMenu() } else if menu === rowMenu { rebuildRowMenu(menu) } else { rebuildAddMenu() }
     }
 
-    /// The row context menu: for a bookmark, Mark as Done / Not Done.
+    /// The row context menu: for a bookmark, Mark as Done / Not Done; for
+    /// project rows, the file operations (`projectRowMenu`).
     func rebuildRowMenu(_ menu: NSMenu) {
         menu.removeAllItems()
+        if selectedIndex == 0 { rebuildProjectRowMenu(menu); return }
+        if selectedIndex == 1 {
+            // The Source Control navigator: by the clicked row's key.
+            let clicked = outline.clickedRow
+            if clicked >= 0, !outline.selectedRowIndexes.contains(clicked) { outline.selectRowIndexes([clicked], byExtendingSelection: false) }
+            let row = clicked >= 0 ? clicked : outline.selectedRow
+            guard row >= 0, let key = (outline.item(atRow: row) as? OutlineItem)?.scmKey else { return }
+            for item in sourceControlRowMenu?(key) ?? [] { menu.addItem(item) }
+            return
+        }
+        if selectedIndex == 5 {
+            // A right click outside the selection acts on the clicked row.
+            let clicked = outline.clickedRow
+            if clicked >= 0, !outline.selectedRowIndexes.contains(clicked) { outline.selectRowIndexes([clicked], byExtendingSelection: false) }
+            for item in testRowMenu?() ?? [] { menu.addItem(item) }
+            return
+        }
         let row = outline.clickedRow >= 0 ? outline.clickedRow : outline.selectedRow
         guard row >= 0, let b = (outline.item(atRow: row) as? OutlineItem)?.bookmark else { return }
         for item in bookmarkMenuItems(b) { menu.addItem(item) }
@@ -1591,6 +1617,7 @@ extension NavigatorAreaController {
     }
 
     public func outlineViewSelectionDidChange(_ notification: Notification) {
+        if selectedIndex == 3 { findSelectionChanged() }
         // The selected issue (bookmark, find result) grows to show all of it.
         guard [2, 3, 4].contains(selectedIndex) else { return }
         outline.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<outline.numberOfRows))
@@ -1641,8 +1668,11 @@ extension NavigatorAreaController {
     /// From the selector's bottom to the outline's scroll view with no
     /// header shown: 2 points, then the 1-point rule.
     static let selectorToContent: CGFloat = 3
-    /// The source-list table style's padding above its first row.
-    static let sourceListTopPadding: CGFloat = 10
+    /// The first row's top below the top of the outline's clipping
+    /// container when the outline does not run under the bars: 7 below the
+    /// selector with no header shown, and the same 4 points below the
+    /// header rows (Find, Source Control, Tests, Reports) when they are.
+    static let clipToFirstRow: CGFloat = firstRowGap - selectorToContent
 
     /// Row pitch: the custom height and no spacing between rows.
     func applyRowMetrics() {

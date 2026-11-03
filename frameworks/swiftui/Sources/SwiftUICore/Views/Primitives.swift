@@ -1,4 +1,5 @@
 import Foundation
+import OVRender
 
 // Primitive views and containers, lowered onto the R3 layout engine
 // (Engine/NodeBuilders.swift). Layout rules are those of 04-layout.md; this
@@ -6,21 +7,42 @@ import Foundation
 
 // MARK: - Image
 
-/// An image: a symbol, an asset, or (for tests) an image of known size.
+/// An image: a symbol, a named image from a bundle or asset catalog, or
+/// pixels (round R5 draws them; Render/ImageRendering.swift).
 public struct Image: Equatable, Sendable {
+    package struct BundleRef: Equatable, @unchecked Sendable {
+        package let bundle: Bundle
+    }
+
     package enum Source: Equatable, Sendable {
         case system(String)
-        case named(String)
+        case named(String, BundleRef?)
+        case raster(RenderImage, scale: CGFloat)
         case natural(CGSize)
     }
 
     package var source: Source
     package var isResizable = false
+    package var renderingModeValue: TemplateRenderingMode?
+    package var interpolationValue: Interpolation?
+    /// Accessibility (R10): a decorative image is not exposed; `label` is
+    /// the image's own accessibility label.
+    package var isDecorative = false
+    package var accessibilityLabelText: String?
 
     public init(systemName: String) { source = .system(systemName) }
-    public init(_ name: String, bundle: Bundle? = nil) { source = .named(name) }
-    public init(decorative name: String, bundle: Bundle? = nil) { source = .named(name) }
+    public init(_ name: String, bundle: Bundle? = nil) { source = .named(name, bundle.map(BundleRef.init)) }
+    public init(decorative name: String, bundle: Bundle? = nil) {
+        source = .named(name, bundle.map(BundleRef.init))
+        isDecorative = true
+    }
+    public init(_ name: String, bundle: Bundle? = nil, label: Text) {
+        source = .named(name, bundle.map(BundleRef.init))
+        accessibilityLabelText = label.segments.map(\.string).joined()
+    }
     package init(naturalSize: CGSize) { source = .natural(naturalSize) }
+    /// An image from decoded or encoded pixels; `scale` pixels per point.
+    package init(_ image: RenderImage, scale: CGFloat = 1) { source = .raster(image, scale: scale) }
 
     public enum ResizingMode: Hashable, Sendable { case tile, stretch }
 
@@ -42,12 +64,30 @@ extension Image: PrimitiveView {
     package func _makeChildren(node: ViewNode, old: Image?, transaction: Transaction) {}
 
     package func _lower(node: ViewNode) -> [LayoutNode] {
-        let font = (node.environment.font ?? .body).textFont(in: node.environment)
+        let env = node.environment
+        let font = (env.font ?? .body).textFont(in: env)
+        let n: LayoutNode
         switch source {
-        case .system(let name): return [.image(systemName: name, resizable: isResizable, font: font)]
-        case .named(let name): return [.image(systemName: "asset:" + name, resizable: isResizable, font: font)]
-        case .natural(let size): return [.image(naturalSize: size, resizable: isResizable)]
+        case .system(let name):
+            n = .image(systemName: name, resizable: isResizable, font: font)
+            if let leaf = n.behavior as? ImageLeaf, env.imageScale != .medium {
+                var l = leaf
+                l.imageScale = env.imageScale
+                let m = LayoutNode(l)
+                m.draw = draw(environment: env, symbols: nil)
+                return [m]
+            }
+        case let .named(name, bundle):
+            let size = ImageAssets.lookup(name, bundle: bundle?.bundle, displayScale: env.displayScale)?.pointSize ?? .zero
+            n = .image(naturalSize: size, resizable: isResizable)
+        case let .raster(img, scale):
+            n = .image(naturalSize: CGSize(width: CGFloat(img.pixelSize.width) / scale, height: CGFloat(img.pixelSize.height) / scale),
+                       resizable: isResizable)
+        case .natural(let size):
+            n = .image(naturalSize: size, resizable: isResizable)
         }
+        n.draw = draw(environment: env, symbols: nil)
+        return [n]
     }
 }
 
@@ -59,7 +99,11 @@ extension Color: View {
 
 extension Color: PrimitiveView {
     package func _makeChildren(node: ViewNode, old: Color?, transaction: Transaction) {}
-    package func _lower(node: ViewNode) -> [LayoutNode] { [.color()] }
+    package func _lower(node: ViewNode) -> [LayoutNode] {
+        let n = LayoutNode.color()
+        n.draw = shapeDraw(shape: Rectangle(), style: self, mode: .fill(FillStyle()), environment: node.environment)
+        return [n]
+    }
 }
 
 /// Corner style of rounded rectangles.
@@ -68,64 +112,8 @@ public enum RoundedCornerStyle: Hashable, Sendable {
     case continuous
 }
 
-public struct Rectangle: View, Sendable {
-    public init() {}
-    public typealias Body = Never
-}
-
-public struct Circle: View, Sendable {
-    public init() {}
-    public typealias Body = Never
-}
-
-public struct Ellipse: View, Sendable {
-    public init() {}
-    public typealias Body = Never
-}
-
-public struct Capsule: View, Sendable {
-    public var style: RoundedCornerStyle
-    public init(style: RoundedCornerStyle = .continuous) { self.style = style }
-    public typealias Body = Never
-}
-
-public struct RoundedRectangle: View, Sendable {
-    public var cornerSize: CGSize
-    public var style: RoundedCornerStyle
-    public init(cornerSize: CGSize, style: RoundedCornerStyle = .continuous) {
-        self.cornerSize = cornerSize
-        self.style = style
-    }
-    public init(cornerRadius: CGFloat, style: RoundedCornerStyle = .continuous) {
-        self.init(cornerSize: CGSize(width: cornerRadius, height: cornerRadius), style: style)
-    }
-    public typealias Body = Never
-}
-
-extension Rectangle: PrimitiveView {
-    package func _makeChildren(node: ViewNode, old: Rectangle?, transaction: Transaction) {}
-    package func _lower(node: ViewNode) -> [LayoutNode] { [.rectangle()] }
-}
-
-extension Circle: PrimitiveView {
-    package func _makeChildren(node: ViewNode, old: Circle?, transaction: Transaction) {}
-    package func _lower(node: ViewNode) -> [LayoutNode] { [.circle()] }
-}
-
-extension Ellipse: PrimitiveView {
-    package func _makeChildren(node: ViewNode, old: Ellipse?, transaction: Transaction) {}
-    package func _lower(node: ViewNode) -> [LayoutNode] { [.ellipse()] }
-}
-
-extension Capsule: PrimitiveView {
-    package func _makeChildren(node: ViewNode, old: Capsule?, transaction: Transaction) {}
-    package func _lower(node: ViewNode) -> [LayoutNode] { [.capsule()] }
-}
-
-extension RoundedRectangle: PrimitiveView {
-    package func _makeChildren(node: ViewNode, old: RoundedRectangle?, transaction: Transaction) {}
-    package func _lower(node: ViewNode) -> [LayoutNode] { [.roundedRectangle()] }
-}
+// Rectangle, RoundedRectangle, Capsule, Ellipse and Circle are shapes
+// (Render/Shape.swift, round R5).
 
 // MARK: - Spacer
 

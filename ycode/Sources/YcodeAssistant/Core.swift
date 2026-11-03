@@ -7,6 +7,8 @@ import Foundation
 /// The back ends Ycode can talk to (coding-assistant.md §3).
 public enum ProviderKind: String, Codable, Sendable, CaseIterable, Hashable {
     case ollama, llamaCpp, openAI, claudeCode, codex, antigravity
+    /// An external Agent Client Protocol agent (a command set in Settings).
+    case acpAgent
 
     public var displayName: String {
         switch self {
@@ -16,6 +18,7 @@ public enum ProviderKind: String, Codable, Sendable, CaseIterable, Hashable {
         case .claudeCode: "Claude Code"
         case .codex: "Codex"
         case .antigravity: "Antigravity"
+        case .acpAgent: "ACP Agent"
         }
     }
 
@@ -60,6 +63,32 @@ public struct ModelInfo: Codable, Sendable, Equatable, Hashable {
     }
 }
 
+/// Output and sampling limits sent with a request; nil = the server's
+/// default (never sent). See coding-assistant.md §3.5.
+public struct GenerationOptions: Codable, Sendable, Equatable {
+    /// The most tokens a reply may have (`max_tokens`, Ollama's
+    /// `num_predict`, OpenAI's `max_output_tokens`).
+    public var maxOutputTokens: Int?
+    public var temperature: Double?
+    public var topP: Double?
+    /// Local servers only (llama-server, Ollama).
+    public var topK: Int?
+    /// Local servers only (llama-server, Ollama: `repeat_penalty`).
+    public var repeatPenalty: Double?
+
+    public init(maxOutputTokens: Int? = nil, temperature: Double? = nil, topP: Double? = nil, topK: Int? = nil, repeatPenalty: Double? = nil) {
+        self.maxOutputTokens = maxOutputTokens
+        self.temperature = temperature
+        self.topP = topP
+        self.topK = topK
+        self.repeatPenalty = repeatPenalty
+    }
+
+    /// The coding assistant's default: replies stop after 4,096 tokens (a
+    /// looping model otherwise runs until the context is full).
+    public static let assistantDefault = GenerationOptions(maxOutputTokens: 4096)
+}
+
 /// One request: the instructions, the conversation so far (ending with the
 /// new user message) and where an agent tool runs.
 public struct ChatRequest: Sendable, Equatable {
@@ -70,7 +99,11 @@ public struct ChatRequest: Sendable, Equatable {
     public var contextTokens: Int?
     /// The workspace folder (agent tools run there).
     public var workingDirectory: URL?
-    public init(model: String?, instructions: String, messages: [ChatMessage], contextTokens: Int? = nil, workingDirectory: URL? = nil) {
+    /// Output limit and sampling (model servers; agent tools ignore them).
+    public var generation: GenerationOptions
+    public init(model: String?, instructions: String, messages: [ChatMessage], contextTokens: Int? = nil, workingDirectory: URL? = nil,
+                generation: GenerationOptions = GenerationOptions()) {
+        self.generation = generation
         self.model = model
         self.instructions = instructions
         self.messages = messages
@@ -108,6 +141,10 @@ public enum ChatEvent: Sendable, Equatable {
     case text(String)
     /// What an agent tool is doing ("Reading Sources/App.swift").
     case activity(String)
+    /// The reply stopped at the output limit (`finish_reason: "length"`,
+    /// Ollama's `done_reason: "length"`, OpenAI's incomplete
+    /// `max_output_tokens`); `.finished` follows.
+    case truncated
     /// The response is complete.
     case finished(TokenUsage?)
 }

@@ -48,7 +48,9 @@ final class ProcEnv: @unchecked Sendable {
     private var spaces: [ObjectIdentifier: GuestAddressSpace] = [:]
     var rootKernel: DarwinKernel!
 
-    init() throws {
+    /// `prefixes` (given the root directory): the guest file system; nil:
+    /// the root directory alone, writable.
+    init(prefixes: ((String) -> [DarwinFileSystem.Prefix])? = nil) throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath()
         let dir = tmp.appendingPathComponent("ycode-proc-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -59,7 +61,7 @@ final class ProcEnv: @unchecked Sendable {
         system.processExited = { [unowned self] pid, status in self.exits.append((pid, status)) }
         let sink = sink
         let fs = DarwinFileSystem(
-            prefixes: [.init(guestPath: root, hostPath: root, writable: true)],
+            prefixes: prefixes?(root) ?? [.init(guestPath: root, hostPath: root, writable: true)],
             console: { fd, bytes in sink.append(fd, bytes) })
         rootKernel = try system.spawnInitialProcess(
             ProcessImageRequest(executablePath: exe, hostExecutablePath: exe, argv: [exe], envp: []), fileSystem: fs)
@@ -72,11 +74,26 @@ final class ProcEnv: @unchecked Sendable {
 
     /// A minimal arm64 iOS-simulator `MH_EXECUTE` header with one
     /// LC_BUILD_VERSION (`cputype`/`platform` overridable).
-    static func machO(cpu: UInt32 = 0x0100_000C, platform: UInt32 = 7, fileType: UInt32 = 2) -> [UInt8] {
+    static func machO(cpu: UInt32 = 0x0100_000C, platform: UInt32 = 7, fileType: UInt32 = 2, subtype: UInt32 = 0) -> [UInt8] {
         var b: [UInt8] = []
-        for v: UInt32 in [0xFEED_FACF, cpu, 0, fileType, 1, 24, 0, 0] { b.appendLE(v) }
+        for v: UInt32 in [0xFEED_FACF, cpu, subtype, fileType, 1, 24, 0, 0] { b.appendLE(v) }
         for v: UInt32 in [0x32, 24, platform, 0x1A_0000, 0x1A_0000, 0] { b.appendLE(v) }
         return b
+    }
+
+    /// A fat file (big-endian `fat_header`, 32-bit `fat_arch` entries) of
+    /// `slices`, each at a 4 KiB-aligned offset.
+    static func fat(_ slices: [(cpu: UInt32, subtype: UInt32, image: [UInt8])]) -> [UInt8] {
+        func be(_ v: UInt32) -> [UInt8] { [UInt8(v >> 24), UInt8(v >> 16 & 0xFF), UInt8(v >> 8 & 0xFF), UInt8(v & 0xFF)] }
+        var header = be(0xCAFE_BABE) + be(UInt32(slices.count))
+        var body: [UInt8] = []
+        var offset = 4096
+        for s in slices {
+            header += be(s.cpu) + be(s.subtype) + be(UInt32(offset)) + be(UInt32(s.image.count)) + be(12)
+            body += s.image + Array(repeating: 0, count: 4096 - s.image.count % 4096)
+            offset += s.image.count + 4096 - s.image.count % 4096
+        }
+        return header + Array(repeating: 0, count: 4096 - header.count) + body
     }
 
     /// The guest memory of `kernel` (made on first use, with a scratch region).

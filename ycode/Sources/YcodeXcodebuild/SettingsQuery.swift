@@ -70,6 +70,14 @@ public struct RunDestination: Equatable, Sendable {
     /// A generic destination ("Any Mac"): builds every architecture.
     public var disableOnlyActiveArch = false
 
+    public init(platform: String, sdk: String, sdkVariant: String? = nil, targetArchitecture: String, supportedArchitectures: [String]) {
+        self.platform = platform
+        self.sdk = sdk
+        self.sdkVariant = sdkVariant
+        self.targetArchitecture = targetArchitecture
+        self.supportedArchitectures = supportedArchitectures
+    }
+
     public static func hostMac(architecture: String) -> RunDestination {
         RunDestination(platform: "macosx", sdk: "macosx", sdkVariant: "macos", targetArchitecture: architecture,
                        supportedArchitectures: ["arm64", "x86_64"])

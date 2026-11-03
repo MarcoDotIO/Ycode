@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// Device Hub: the camera of Ycode's simulators (`specs/ide/devices.md`
 /// §Camera; `specs/simulator/camera.md` "Ycode implementation"). A Ycode

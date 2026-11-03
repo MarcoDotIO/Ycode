@@ -191,7 +191,7 @@ Install and launch device runs, `--debug-no-metal --skip-first-boot-migration`:
 | patched | release | none | 0/13 |
 | patched | release | both | 0/3 |
 
-The owner installed a kernel with the upstream fix series on 2026-10-12
+We installed a kernel with the upstream fix series on 2026-10-12
 (`uname -v`: "#1 SMP PREEMPT Mon Oct 12 22:00:00 EDT 2026"). The kernel fix
 alone removes the crash.
 

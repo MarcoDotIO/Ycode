@@ -10,8 +10,11 @@ import CoreGraphics
 public enum DeviceCommand: String, Sendable, CaseIterable {
     // Controls menu (§7, in its order)
     case home, lock, appSwitcher, actionButton, rotateLeft, rotateRight, screenshot, recordScreen
-    // Ycode extras in the Controls menu
-    case volumeUp, volumeDown
+    // Ycode extras in the Controls menu (Reset Camera: a Vision Pro's start
+    // pose, visionos.md §5.1 and "Ycode implementation")
+    case volumeUp, volumeDown, resetCamera
+    // A Vision Pro's headset view (device-hub.md §I.12): View in Headset / Back to Desktop
+    case viewInHeadset
     // View menu
     case zoomIn, zoomOut, zoomToFit, physicalSize, toggleBezels
     // Device menu
@@ -32,6 +35,8 @@ public enum DeviceCommand: String, Sendable, CaseIterable {
         case .recordScreen: "Record Screen"
         case .volumeUp: "Volume Up"
         case .volumeDown: "Volume Down"
+        case .resetCamera: "Reset Camera"
+        case .viewInHeadset: "View in Headset"
         case .zoomIn: "Zoom In"
         case .zoomOut: "Zoom Out"
         case .zoomToFit: "Zoom to Fit"
@@ -65,6 +70,7 @@ public enum DeviceCommand: String, Sendable, CaseIterable {
         case .zoomToFit: ("9", [.command])
         case .physicalSize: ("0", [.command])
         case .captureKeyboard: ("k", [.command, .shift])
+        case .viewInHeadset: ("h", [.command, .control])
         case .poseClosed: ("1", [.command, .option])
         case .posePartiallyOpen: ("2", [.command, .option])
         case .poseOpen: ("3", [.command, .option])
@@ -74,7 +80,8 @@ public enum DeviceCommand: String, Sendable, CaseIterable {
 
     /// The Controls menu, in order (§7), with Ycode's volume items after it.
     public static let controlsMenu: [DeviceCommand?] = [.home, .lock, .appSwitcher, .actionButton, nil, .rotateLeft, .rotateRight,
-                                                        nil, .screenshot, .recordScreen, nil, .volumeUp, .volumeDown]
+                                                        nil, .screenshot, .recordScreen, nil, .volumeUp, .volumeDown, .resetCamera,
+                                                        .viewInHeadset]
     /// The View menu's zoom items (§7).
     public static let zoomMenu: [DeviceCommand] = [.zoomIn, .zoomOut, .zoomToFit, .physicalSize]
 

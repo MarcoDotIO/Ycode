@@ -284,6 +284,9 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
     F->fragmentShaderBarycentric = extBary && bary.fragmentShaderBarycentric;
     F->shaderDemoteToHelperInvocation = f13.shaderDemoteToHelperInvocation;
     F->diagnosticCheckpoints = extCheckpoints;
+    const char *crp = getenv("YCODE_GPU_CAPTURE_REPLAY");
+    F->bufferCaptureReplay = f12.bufferDeviceAddressCaptureReplay && !(crp && strcmp(crp, "0") == 0);
+    if (!F->bufferCaptureReplay) f12.bufferDeviceAddressCaptureReplay = VK_FALSE;
 
     const char *missing = NULL;
     if (!F->bufferDeviceAddress) missing = "bufferDeviceAddress";
@@ -462,9 +465,26 @@ static int32_t find_memory(const yvk_context *ctx, uint32_t bits, VkMemoryProper
     return -1;
 }
 
+static int buffer_create(yvk_context *ctx, VkDeviceSize size, yvk_memory_kind kind, void *hostPointer,
+                         uint64_t replay, yvk_buffer *out, char *err, size_t errlen);
+
 int yvk_buffer_create(yvk_context *ctx, VkDeviceSize size, yvk_memory_kind kind, void *hostPointer,
                       yvk_buffer *out, char *err, size_t errlen) {
+    return buffer_create(ctx, size, kind, hostPointer, 0, out, err, errlen);
+}
+
+int yvk_buffer_recreate(yvk_context *ctx, VkDeviceSize size, yvk_memory_kind kind, void *hostPointer,
+                        uint64_t captureAddress, yvk_buffer *out, char *err, size_t errlen) {
+    if (captureAddress && ctx->features.bufferCaptureReplay &&
+        buffer_create(ctx, size, kind, hostPointer, captureAddress, out, err, errlen) == 0)
+        return 0;
+    return buffer_create(ctx, size, kind, hostPointer, 0, out, err, errlen);
+}
+
+static int buffer_create(yvk_context *ctx, VkDeviceSize size, yvk_memory_kind kind, void *hostPointer,
+                         uint64_t replay, yvk_buffer *out, char *err, size_t errlen) {
     memset(out, 0, sizeof *out);
+    const int capture = ctx->features.bufferCaptureReplay != 0;
     if (size == 0) size = 4;
     VkExternalMemoryBufferCreateInfo ext = {VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO, NULL,
                                             VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT};
@@ -474,7 +494,13 @@ int yvk_buffer_create(yvk_context *ctx, VkDeviceSize size, yvk_memory_kind kind,
             return fail(err, errlen, "host import of %p (+%llu) is not %llu-aligned", hostPointer,
                         (unsigned long long)size, (unsigned long long)ctx->hostPointerAlignment);
     }
-    VkBufferCreateInfo bi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, kind == YVK_MEMORY_IMPORT_HOST ? &ext : NULL, 0,
+    /* Capture replay: the buffer's own opaque address is left to the
+       device (0); the memory's is what places the buffer. */
+    VkBufferOpaqueCaptureAddressCreateInfo bcap = {VK_STRUCTURE_TYPE_BUFFER_OPAQUE_CAPTURE_ADDRESS_CREATE_INFO,
+                                                   kind == YVK_MEMORY_IMPORT_HOST ? &ext : NULL, 0};
+    VkBufferCreateInfo bi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                             capture ? (void *)&bcap : (kind == YVK_MEMORY_IMPORT_HOST ? (void *)&ext : NULL),
+                             capture ? VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT : 0,
                              size,
                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                                  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
@@ -485,8 +511,11 @@ int yvk_buffer_create(yvk_context *ctx, VkDeviceSize size, yvk_memory_kind kind,
     if (r != VK_SUCCESS) return fail(err, errlen, "vkCreateBuffer(%llu) failed (%d)", (unsigned long long)size, r);
     VkMemoryRequirements mr;
     g_vk.vkGetBufferMemoryRequirements(ctx->device, out->buffer, &mr);
-    VkMemoryAllocateFlagsInfo flags = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO, NULL,
-                                       VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT, 0};
+    VkMemoryOpaqueCaptureAddressAllocateInfo mcap = {VK_STRUCTURE_TYPE_MEMORY_OPAQUE_CAPTURE_ADDRESS_ALLOCATE_INFO, NULL,
+                                                     replay};
+    VkMemoryAllocateFlagsInfo flags = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO, replay ? &mcap : NULL,
+                                       VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT |
+                                           (capture ? VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT : 0), 0};
     VkImportMemoryHostPointerInfoEXT imp = {VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT, NULL,
                                             VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, hostPointer};
     VkMemoryAllocateInfo ai = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, &flags, mr.size, 0};
@@ -514,7 +543,7 @@ int yvk_buffer_create(yvk_context *ctx, VkDeviceSize size, yvk_memory_kind kind,
         uint32_t bits = hp.memoryTypeBits & mr.memoryTypeBits;
         type = find_memory(ctx, bits, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         if (type < 0) type = find_memory(ctx, bits, 0);
-        flags.pNext = &imp;
+        if (replay) mcap.pNext = &imp; else flags.pNext = &imp;
         ai.allocationSize = size;
         break;
     }
@@ -546,6 +575,11 @@ int yvk_buffer_create(yvk_context *ctx, VkDeviceSize size, yvk_memory_kind kind,
     out->size = size;
     VkBufferDeviceAddressInfo da = {VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, NULL, out->buffer};
     out->address = g_vk.vkGetBufferDeviceAddress(ctx->device, &da);
+    if (capture && g_vk.vkGetDeviceMemoryOpaqueCaptureAddress) {
+        VkDeviceMemoryOpaqueCaptureAddressInfo mi = {VK_STRUCTURE_TYPE_DEVICE_MEMORY_OPAQUE_CAPTURE_ADDRESS_INFO, NULL,
+                                                     out->memory};
+        out->captureAddress = g_vk.vkGetDeviceMemoryOpaqueCaptureAddress(ctx->device, &mi);
+    }
     return 0;
 }
 
@@ -755,7 +789,7 @@ VkPipeline yvk_graphics_pipeline_create(yvk_context *ctx, const yvk_graphics_inf
     VkPipelineViewportStateCreateInfo vps = {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, NULL, 0, 1, NULL, 1,
                                              NULL};
     VkPipelineRasterizationStateCreateInfo rs = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-    rs.rasterizerDiscardEnable = g->fragment.code ? VK_FALSE : VK_TRUE;
+    rs.rasterizerDiscardEnable = g->rasterizerDiscard ? VK_TRUE : VK_FALSE;
     rs.polygonMode = VK_POLYGON_MODE_FILL;
     rs.cullMode = VK_CULL_MODE_NONE;
     rs.frontFace = VK_FRONT_FACE_CLOCKWISE;
@@ -876,18 +910,21 @@ VkPipeline yvk_library_fragment_shader(yvk_context *ctx, const yvk_shader_stage 
     library_begin(ctx, &L, VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT);
     VkPipelineShaderStageCreateInfo stage;
     stage_storage st;
-    if (make_stage(ctx, fragment, VK_SHADER_STAGE_FRAGMENT_BIT, &stage, &st, err, errlen) != 0) return VK_NULL_HANDLE;
+    /* No fragment shader (code NULL): a part with no stage, for depth- and
+       stencil-only pipelines. */
+    int hasStage = fragment && fragment->code;
+    if (hasStage && make_stage(ctx, fragment, VK_SHADER_STAGE_FRAGMENT_BIT, &stage, &st, err, errlen) != 0) return VK_NULL_HANDLE;
     VkPipelineMultisampleStateCreateInfo ms = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
     ms.rasterizationSamples = samples ? samples : VK_SAMPLE_COUNT_1_BIT;
     VkPipelineDepthStencilStateCreateInfo ds = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     ds.depthCompareOp = VK_COMPARE_OP_ALWAYS;
     ds.maxDepthBounds = 1.0f;
-    L.create.stageCount = 1;
-    L.create.pStages = &stage;
+    L.create.stageCount = hasStage ? 1 : 0;
+    L.create.pStages = hasStage ? &stage : NULL;
     L.create.pMultisampleState = &ms;
     L.create.pDepthStencilState = &ds;
     VkPipeline p = library_create(ctx, &L, "fragment shader", err, errlen);
-    g_vk.vkDestroyShaderModule(ctx->device, stage.module, NULL);
+    if (hasStage) g_vk.vkDestroyShaderModule(ctx->device, stage.module, NULL);
     return p;
 }
 

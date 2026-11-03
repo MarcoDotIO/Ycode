@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 import YcodeLanguage
 
 /// State for the assistant modes that are not file lists.

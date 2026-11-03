@@ -35,8 +35,9 @@ swift-testing, `Documentation/ABI/JSON.md`) in a child process
 suites and source files. XCTest class/method lists for `-skip-testing`
 come from SwiftPM's open-source `swiftpm-xctest-helper` in the toolchain.
 
-Tests hosted in an application (`TEST_HOST`) are not run yet: reported as
-a "Testing failed" line. Code coverage (scheme setting or
+Tests hosted in an application (`TEST_HOST`) run inside the application,
+and UI test bundles in the xctest runner ("Ycode implementation" below).
+Code coverage (scheme setting or
 `-enableCodeCoverage YES`): the build gets `CLANG_COVERAGE_MAPPING = YES`
 and `CLANG_PROFILE_DATA_DIRECTORY = <build folder>/ProfileData`; each runner
 writes `LLVM_PROFILE_FILE = <ProfileData>/<device id>/<UUID>-%p.profraw`,
@@ -152,6 +153,70 @@ passing N argument(s) <label> → <value>[, …] to <name> started.` (one
 result per case, the overall status and an equal share of the time).
 Identifiers: `Class/method()` and `Suite/function()`.
 
+## Ycode implementation (TEST-HOST, 2026-10-30)
+
+How the bundle gets into the host, the agent and its protocol:
+`specs/ide/testing.md`, "Ycode implementation". For the actions:
+
+- **Targets.** A scheme with test plans builds the chosen plan's enabled
+  targets with the scheme's (`-testPlan`, else the default plan). Plan
+  names come from the reference without `container:` (a plan at the
+  container's root was not found before). Each target's `PRODUCT_TYPE`,
+  `PLATFORM_NAME`, `TEST_HOST` and `TEST_TARGET_NAME` decide how it runs:
+
+  | Bundle | macOS | iOS-family simulator |
+  |---|---|---|
+  | tool-hosted | xctest runner (§1) | – |
+  | `TEST_HOST` | inside the host app, Ycode's agent inserted | the Ycode simulator, one run per host app |
+  | UI test | xctest runner (no automation service) | reported as not supported |
+
+- **Destinations.** `-destination 'platform=iOS Simulator,name=Ycode
+  Simulator'` (any name containing "Ycode", or `id=ycode-remote-simulator`)
+  builds for the simulator and runs hosted bundles on the Ycode simulator
+  described by `YCODE_SIM_HOST` (`user@host`, ssh keys only),
+  `YCODE_SIM_DATA`, `YCODE_SIM_RUNTIME`, `YCODE_SIM_SIMD` (ycode-simd or the
+  `ycode-sim` launcher), `YCODE_SIM_DEVICE` (directory name under
+  `<data>/devices`, default `ycode-device`), `YCODE_SIM_OPTIONS` (more
+  options, split like a shell), `YCODE_SIM_ENV` (`K=V` words for the remote
+  environment, e.g. `YCODE_WARM_BOOT=1`); `YCODE_SSH`, `YCODE_RSYNC`
+  replace the programs. Without the four required variables the action
+  fails with exit 64. Machine names are never written to files. Hosted
+  bundles for another platform without that destination fail with a
+  "Testing failed" line that names it.
+- **The agent.** `YCODE_TEST_AGENT` (macOS) or `YCODE_TEST_AGENT_<SDK>`
+  (`YCODE_TEST_AGENT_IPHONESIMULATOR`), else `libYcodeTestAgent.dylib`
+  next to ycodebuild (`swift build --product YcodeTestAgent`) or in its
+  `<sdk>/` folder (`OUT=.build/debug SimGuestAgents/build-test-agent.sh`).
+  Missing, the target fails with a "Testing failed" line saying how to
+  build it.
+- **Output.** The same as tool-hosted runs: the libraries' console lines
+  (the agent's report lines are not printed), the session lines, "Failing
+  tests:", the banner, exit 65 on a failure. A host that crashed or did not
+  load the agent adds a "Testing failed:" line (`testing.md`).
+- **Test plans.** Configurations (`-only-test-configuration`,
+  `-skip-test-configuration`), environment, arguments, repetitions,
+  language and region (`testing.md`, "Test plans"). Repetitions also
+  apply to tool-hosted bundles (the runner is started again: all tests, or
+  the failing ones when retrying). `-test-iterations N`,
+  `-retry-tests-on-failure` (at most N tries, else 3) and
+  `-run-tests-until-failure` (at most N, else 100) replace the plan's
+  repetition (`man xcodebuild`, level 1);
+  `-test-repetition-relaunch-enabled` is ignored (repetitions stay in one
+  process).
+- **`.xctestrun` (§4) for hosted bundles**, after `man xcodebuild.xctestrun`:
+  `TestHostPath` the application (`__TESTROOT__/…/Host.app`),
+  `TestBundlePath` `__TESTHOST__/PlugIns/X.xctest` (or
+  `__TESTHOST__/Contents/PlugIns/…`), `TestHostBundleIdentifier`,
+  `IsAppHostedTestBundle`, `DependentProductPaths` (the app and the
+  bundle); UI tests `IsUITestBundle` and `UITargetAppPath`. Reading expands
+  `__TESTHOST__` and takes the application's `CFBundleExecutable` as the
+  host. The file is named after the destination's SDK
+  (`…_iphonesimulator27.0-arm64.xctestrun` for the simulator; it was always
+  `macosx` before).
+- **Result bundles**: one `ActionTestPlanRunSummary` per configuration
+  (`result-bundle.md`, "Ycode implementation"); `testKind` `app hosted`
+  and `UI test` for those bundles (Ycode's words, OPEN QUESTION there).
+
 ## Evidence
 
 - Output order, `Testing started` placement on a pipe and on a terminal
@@ -166,8 +231,11 @@ Identifiers: `Class/method()` and `Suite/function()`.
   reference tool writes (level 2).
 - swift-testing console format and ABI: open-source swift-testing; XCTest
   listing: open-source SwiftPM `swiftpm-xctest-helper` (level 1).
-- OPEN QUESTION: application-hosted tests (`TEST_HOST`), UI tests, test
-  repetitions and parallel testing options are not implemented.
+- Hosted tests: Ycode's own design (`testing.md`, "Ycode implementation");
+  the `.xctestrun` keys for them from `man xcodebuild.xctestrun` (level 1).
+- OPEN QUESTION: parallel testing options are not implemented; the
+  reference's own mechanism for hosted and UI tests is a dirty-room
+  question (`testing.md`, Evidence).
 - OPEN QUESTION: the reference tool's default bundle location for
   `-xctestrun` runs (observed under a DerivedData folder whose hash is not
   the project path's).

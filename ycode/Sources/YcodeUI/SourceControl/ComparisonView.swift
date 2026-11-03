@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The comparison (code review) editor: HEAD on the left, the working copy
 /// on the right, rows aligned, removed lines red, added green, changed

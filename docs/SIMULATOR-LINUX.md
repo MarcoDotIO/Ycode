@@ -108,7 +108,8 @@ Each stage has a contract or spec in `specs/simulator/`.
 - **GPU faults.** A stuck GPU submission stops every client
   (`stage8-contract.md` §15.8).
 - **x86-64 hosts** need user-mode arm64 translation on top of all this. That
-  is deferred. `native-mode.md` is a feasibility study only.
+  is deferred, and `native-mode.md` is a feasibility study only. An x86-64 PC can
+  run the IDE and a viewer against an arm64 host (`specs/simulator/sim-link.md`).
 - **Host kernels** without upstream commit `fbc7e61195e2` can corrupt host
   SVE state; see [postmortem-kvm-sve.md](postmortem-kvm-sve.md).
 
@@ -134,7 +135,7 @@ sh Translator/build.sh                                # ycode-airc
 they need the iOS simulator SDK; copy their `out/` into the host's
 guest-tools directory.
 
-To boot a device and see it from a Mac, use `scripts/ycode-sim-try`
+To boot a device and see it from a Mac or a Linux PC, use `scripts/ycode-sim-try`
 ([ycode/README.md](../ycode/README.md)). The IDE runs the same launcher,
 `scripts/ycode-sim.sh`, over ssh (`specs/ide/run.md`). `ycode-simd --help`
 lists the device types, the feature flags (`--ui`, `--accessibility`,

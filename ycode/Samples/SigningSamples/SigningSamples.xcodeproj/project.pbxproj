@@ -1,0 +1,293 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		5C1A9E000000000000000002 /* KeychainGroupsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C1A9E000000000000000001 /* KeychainGroupsApp.swift */; };
+		5C1A9E00000000000000000D /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C1A9E00000000000000000C /* main.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		5C1A9E000000000000000001 /* KeychainGroupsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainGroupsApp.swift; sourceTree = "<group>"; };
+		5C1A9E000000000000000003 /* KeychainGroups.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KeychainGroups.entitlements; sourceTree = "<group>"; };
+		5C1A9E000000000000000004 /* KeychainGroups.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeychainGroups.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5C1A9E00000000000000000C /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		5C1A9E00000000000000000E /* SandboxedMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SandboxedMac.entitlements; sourceTree = "<group>"; };
+		5C1A9E00000000000000000F /* SandboxedMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SandboxedMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5C1A9E000000000000000007 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5C1A9E000000000000000012 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5C1A9E000000000000000005 /* KeychainGroups */ = {
+			isa = PBXGroup;
+			children = (
+				5C1A9E000000000000000001 /* KeychainGroupsApp.swift */,
+				5C1A9E000000000000000003 /* KeychainGroups.entitlements */,
+			);
+			path = KeychainGroups;
+			sourceTree = "<group>";
+		};
+		5C1A9E000000000000000010 /* SandboxedMac */ = {
+			isa = PBXGroup;
+			children = (
+				5C1A9E00000000000000000C /* main.swift */,
+				5C1A9E00000000000000000E /* SandboxedMac.entitlements */,
+			);
+			path = SandboxedMac;
+			sourceTree = "<group>";
+		};
+		5C1A9E000000000000000017 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5C1A9E000000000000000004 /* KeychainGroups.app */,
+				5C1A9E00000000000000000F /* SandboxedMac.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		5C1A9E000000000000000018 = {
+			isa = PBXGroup;
+			children = (
+				5C1A9E000000000000000005 /* KeychainGroups */,
+				5C1A9E000000000000000010 /* SandboxedMac */,
+				5C1A9E000000000000000017 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5C1A9E00000000000000000B /* KeychainGroups */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5C1A9E00000000000000000A /* Build configuration list for PBXNativeTarget "KeychainGroups" */;
+			buildPhases = (
+				5C1A9E000000000000000006 /* Sources */,
+				5C1A9E000000000000000007 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KeychainGroups;
+			productName = KeychainGroups;
+			productReference = 5C1A9E000000000000000004 /* KeychainGroups.app */;
+			productType = "com.apple.product-type.application";
+		};
+		5C1A9E000000000000000016 /* SandboxedMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5C1A9E000000000000000015 /* Build configuration list for PBXNativeTarget "SandboxedMac" */;
+			buildPhases = (
+				5C1A9E000000000000000011 /* Sources */,
+				5C1A9E000000000000000012 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SandboxedMac;
+			productName = SandboxedMac;
+			productReference = 5C1A9E00000000000000000F /* SandboxedMac.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5C1A9E00000000000000001C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+			};
+			buildConfigurationList = 5C1A9E00000000000000001B /* Build configuration list for PBXProject "SigningSamples" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 5C1A9E000000000000000018;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 5C1A9E000000000000000017 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5C1A9E00000000000000000B /* KeychainGroups */,
+				5C1A9E000000000000000016 /* SandboxedMac */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5C1A9E000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5C1A9E000000000000000002 /* KeychainGroupsApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5C1A9E000000000000000011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5C1A9E00000000000000000D /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		5C1A9E000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KeychainGroups/KeychainGroups.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = KeychainGroups;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.signing.KeychainGroups;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		5C1A9E000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = KeychainGroups/KeychainGroups.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = KeychainGroups;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.signing.KeychainGroups;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		5C1A9E000000000000000013 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SandboxedMac/SandboxedMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.signing.SandboxedMac;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		5C1A9E000000000000000014 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SandboxedMac/SandboxedMac.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.signing.SandboxedMac;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		5C1A9E000000000000000019 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		5C1A9E00000000000000001A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5C1A9E00000000000000000A /* Build configuration list for PBXNativeTarget "KeychainGroups" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5C1A9E000000000000000008 /* Debug */,
+				5C1A9E000000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5C1A9E000000000000000015 /* Build configuration list for PBXNativeTarget "SandboxedMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5C1A9E000000000000000013 /* Debug */,
+				5C1A9E000000000000000014 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5C1A9E00000000000000001B /* Build configuration list for PBXProject "SigningSamples" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5C1A9E000000000000000019 /* Debug */,
+				5C1A9E00000000000000001A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5C1A9E00000000000000001C /* Project object */;
+}

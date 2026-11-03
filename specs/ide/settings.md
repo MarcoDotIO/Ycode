@@ -42,14 +42,17 @@ A list of categories (Build, Testing, Running, Search, Localization
 Import / Export, File) with the number of events that have actions; each
 opens a sub-page listing its events with their actions, + to add an
 action and − to remove one. Ycode's events: Build — when build starts,
-generates errors, generates warnings, succeeds, fails; Running — when
+generates errors, generates warnings, succeeds, fails; Testing — when
+testing succeeds, fails; Running — when
 running starts, pauses, generates output (the program's first output in
 a run), completes, exits unexpectedly. Actions: show a navigator, show or
 hide the debug area, hide the debug area if the run printed nothing,
-play a system sound, notify (bounce the Dock icon). Sounds and
-notifications only happen for a window on screen. Defaults
-(reference-ui.md §4): build generates errors → Issues navigator; build
-succeeds / fails → notify; running pauses → Debug navigator and debug
+play a system sound, notify (the result bezel over the window, or a
+system notification when the window is not in front; see
+`build-notifications.md`). Sounds only happen for a window on screen.
+Defaults (reference-ui.md §4): build generates errors → Issues navigator;
+build succeeds / fails → notify; testing succeeds / fails → notify
+(Ycode's choice); running pauses → Debug navigator and debug
 area; running generates output → debug area; running completes → hide
 the debug area if no output. Stored per event under
 `Ycode.behavior.<caseName>`.
@@ -95,8 +98,9 @@ line numbers, code folding ribbon (default off), minimap, page
 guide at a column, highlight instances of the selected symbol (on) with
 its delay (0.25 s), wrap lines to the editor width (on; off: horizontal
 scrolling) and the wrapped-line indent (4 spaces). Indentation: indent
-using spaces or tabs, tab width, indent width (Tab inserts one
-indentation step).
+using spaces or tabs, tab width, indent width, the Tab key, syntax-aware
+indenting, closing brackets and quotes, and enclosing selections
+(`source-editor.md`, "Ycode implementation" ▸ Settings).
 
 ## Shortcuts (key bindings)
 A searchable list of every menu command (title, shortcut, menu path).
@@ -146,6 +150,16 @@ given.
 Run (⌘R) asks the active engine for the executable: xcodebuild via
 `-showBuildSettings`; swift-build from its derived-data layout
 (`Products/<configuration>/<product>`, inside `Contents/MacOS` for apps).
+
+## Language ▸ Build server (no pane yet)
+
+`Ycode.buildServer` (Boolean, default YES) in the app's user defaults:
+whether sourcekit-lsp gets compiler arguments for projects and workspaces
+from Ycode's build server (`specs/ide/language.md` §Build server). Set it
+with `defaults write org.ycode.Ycode Ycode.buildServer -bool NO`; the
+environment variable `YCODE_BUILD_SERVER=0` turns it off for one run. With
+it off, the language server opens the project's folder as before. A
+checkbox in Settings is future work (the Settings code is being moved).
 
 ## Evidence
 

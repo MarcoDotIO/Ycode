@@ -31,9 +31,9 @@ private struct Builder {
         return b.bytes
     }
 
-    static func image(fileType: UInt32 = 2, commands: [[UInt8]], cpu: UInt32 = MachO.cpuTypeARM64) -> [UInt8] {
+    static func image(fileType: UInt32 = 2, commands: [[UInt8]], cpu: UInt32 = MachO.cpuTypeARM64, subtype: UInt32 = 0) -> [UInt8] {
         var b = Builder()
-        b.u32(MachO.magic64); b.u32(cpu); b.u32(0); b.u32(fileType)
+        b.u32(MachO.magic64); b.u32(cpu); b.u32(subtype); b.u32(fileType)
         b.u32(UInt32(commands.count)); b.u32(UInt32(commands.reduce(0) { $0 + $1.count })); b.u32(0x0020_0085); b.u32(0)
         for c in commands { b.bytes += c }
         return b.bytes
@@ -88,6 +88,28 @@ private struct Builder {
         #expect(image.entryOffset == 0x4000)
         #expect(image.codeSignature == .init(offset: 0x8000, size: 0x200))
         #expect(!image.isEncrypted)
+    }
+
+    /// watchos.md W-3: platform 9 (watchOS simulator) runs wherever 7 does;
+    /// a device platform (watchOS 4) or an arm64e slice does not.
+    @Test func runnableInSimulator() throws {
+        func image(platform: UInt32?, subtype: UInt32 = 0, cpu: UInt32 = MachO.cpuTypeARM64) throws -> MachOImage {
+            var build = Builder()
+            if let platform { build.u32(0x32); build.u32(24); build.u32(platform); build.u32(0x001B_0000); build.u32(0x001B_0000); build.u32(0) }
+            return try MachOImage(ByteReader(Data(Builder.image(commands: platform == nil ? [] : [build.bytes], cpu: cpu, subtype: subtype))))
+        }
+        for platform: UInt32 in [7, 8, 9, 12] { #expect(try image(platform: platform).isRunnableInSimulator, "platform \(platform)") }
+        #expect(try image(platform: nil).isRunnableInSimulator)
+        #expect(try image(platform: 9, subtype: 1).isRunnableInSimulator)  // V8
+        for platform: UInt32 in [1, 2, 4, 11, 99] { #expect(try !image(platform: platform).isRunnableInSimulator, "platform \(platform)") }
+        // arm64e (2), with or without the capability bits, even for a simulator platform.
+        for subtype: UInt32 in [2, 0x8000_0002, 0x8100_0002, 3] {
+            #expect(try !image(platform: 9, subtype: subtype).isRunnableInSimulator, "subtype \(subtype)")
+        }
+        // powerexperienced's slice: arm64e, platform 4.
+        #expect(try !image(platform: 4, subtype: 0x8000_0002).isRunnableInSimulator)
+        #expect(try !image(platform: 9, cpu: MachO.cpuTypeX86_64).isRunnableInSimulator)
+        #expect(MachO.isPlainARM64(cpuSubtype: 0) && MachO.isPlainARM64(cpuSubtype: 1) && !MachO.isPlainARM64(cpuSubtype: 2))
     }
 
     @Test func detectsEncryptedImages() throws {

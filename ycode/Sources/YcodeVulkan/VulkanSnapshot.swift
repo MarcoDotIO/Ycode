@@ -11,10 +11,13 @@ extension VulkanMetalBackend {
     /// (`vkDeviceWaitIdle`). Does nothing without a GPU.
     public func snapshotSettle() {
         guard isAvailable else { return }
+        enterDevice()
+        defer { leaveDevice() }
         cond.lock()
         try? flushSetup()
-        cond.unlock()
+        // Under the lock: waiting the device idle needs the queue to itself.
         _ = fn.vkDeviceWaitIdle!(ctx.pointee.device)
+        cond.unlock()
     }
 
     /// The bytes of a buffer in backend-owned, host-mapped memory; nil for

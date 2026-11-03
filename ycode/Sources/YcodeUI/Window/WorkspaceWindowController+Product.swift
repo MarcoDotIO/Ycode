@@ -1,5 +1,6 @@
 import AppKit
 import YcodeBuild
+import YcodeIDECore
 
 /// Product menu commands (`specs/ide/reference-ui-5.md` §2.9, R36): Build
 /// For, Perform Action, Clean Build Folder (with and without confirmation),
@@ -15,6 +16,7 @@ extension WorkspaceWindowController {
     /// (`runProduct` keeps its own copy of the dispatch for now, so the
     /// remote-simulator run path stays where its owners edit it.)
     func runScheme(building: Bool) {
+        if let d = session.destination, d.isYcodeRemoteSimulator { Task { await runOnYcodeRemote(d, building: building) }; return }
         let request = session.model.buildRequest(scheme: session.scheme, destination: session.destination, action: .build)
         let engine = session.engine
         if let d = session.destination, d.isYcodeRemoteSimulator || (d.kind == .simulator && d.platform != "macOS") {
@@ -45,6 +47,69 @@ extension WorkspaceWindowController {
 
     /// Perform Action ▸ Run Without Building (⌃⌘R).
     @objc public func runWithoutBuilding(_ sender: Any?) { runScheme(building: false) }
+
+    // MARK: Profile (Gauge, specs/ide/profiler.md §5)
+
+    /// Product ▸ Profile (⌘I): build with the Profile action's
+    /// configuration, launch on the destination under Gauge, and open the
+    /// profiler window (the trace arrives when the run ends).
+    @objc public func profileProduct(_ sender: Any?) { profileScheme(building: true) }
+    /// Perform Action ▸ Profile Without Building (⌃⌘I).
+    @objc public func profileWithoutBuilding(_ sender: Any?) { profileScheme(building: false) }
+
+    /// The text shown when the destination cannot be profiled yet.
+    static let profilingUnavailable = "Gauge records apps on the Ycode simulator (experimental); it cannot record apps on this Mac yet. Choose a Ycode simulator destination."
+
+    @discardableResult
+    func profileScheme(building: Bool, rate: Int = GaugeSettings.sampleRate) -> GaugeWindowController? {
+        guard let d = session.destination, d.isYcodeRemoteSimulator else {
+            session.appendConsole("Ycode: Gauge: \(Self.profilingUnavailable)\n", kind: .debugger)
+            // A sheet on a shown window; never an application-modal alert.
+            if let window, window.isVisible {
+                let alert = NSAlert()
+                alert.messageText = "Gauge cannot profile this destination yet"
+                alert.informativeText = Self.profilingUnavailable
+                alert.beginSheetModal(for: window)
+            }
+            return nil
+        }
+        var built = session.model.buildRequest(scheme: session.scheme, destination: d, action: .build)
+        built.configuration = session.configuration(for: "ProfileAction")
+        let request = built
+        let engine = session.engine
+        let remote = RemoteSimulator(settings: RemoteSimulatorSettings.load(Preferences.shared.defaults), destination: d)
+        let gauge = GaugeWindowController(title: "Gauge")
+        gauge.onStop = { [weak self] in self?.session.stopSimulatorRun(remote: remote) }
+        gauge.onRecord = { [weak self, weak gauge] in
+            gauge?.close()
+            self?.profileScheme(building: building, rate: rate)
+        }
+        gauge.beginRecording(target: "\(session.scheme ?? session.model.displayName) on \(d.name)", rate: rate)
+        gauge.present()
+        Task { [weak self] in
+            guard let self else { return }
+            if building {
+                let result = await self.session.buildFor(.profiling)
+                guard result.status == .succeeded else { gauge.fail("the build failed"); return }
+            }
+            guard let exe = await Task.detached(operation: { engine.executablePath(for: request) }).value else { gauge.fail("no product to profile"); return }
+            let app = URL(fileURLWithPath: Self.simulatorAppPath(fromExecutablePath: exe))
+            guard FileManager.default.fileExists(atPath: app.path) else {
+                self.session.reportMissingProduct(app.path)
+                gauge.fail("\(app.lastPathComponent) has not been built")
+                return
+            }
+            let profile = remote.profile(app: app, rate: rate)
+            gauge.beginRecording(target: "\(app.deletingPathExtension().lastPathComponent) on \(d.name)", rate: rate)
+            await self.session.runOnRemoteSimulator(app: app, remote: remote, profile: profile) { result in
+                switch result {
+                case .success(let url): gauge.load(url: url)
+                case .failure(let error): gauge.fail("\(error)")
+                }
+            }
+        }
+        return gauge
+    }
 
     // MARK: Build For
 
@@ -171,6 +236,7 @@ extension WorkspaceWindowController {
 
     @objc public func runProductEditingScheme(_ sender: Any?) { editSchemeThenPerform(action: 1) { [weak self] in self?.runProduct(nil) } }
     @objc public func testProductEditingScheme(_ sender: Any?) { editSchemeThenPerform(action: 2) { [weak self] in self?.testProduct(nil) } }
+    @objc public func profileProductEditingScheme(_ sender: Any?) { editSchemeThenPerform(action: 3) { [weak self] in self?.profileProduct(nil) } }
     @objc public func analyzeProductEditingScheme(_ sender: Any?) { editSchemeThenPerform(action: 4) { [weak self] in self?.analyzeProduct(nil) } }
     @objc public func archiveProductEditingScheme(_ sender: Any?) { editSchemeThenPerform(action: 5) { [weak self] in self?.archiveProduct(nil) } }
 

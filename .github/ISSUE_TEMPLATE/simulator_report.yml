@@ -1,0 +1,78 @@
+name: Simulator report
+description: The experimental simulator doesn't boot, draw, run an app or take input as it should.
+labels: [simulator]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The simulator is experimental, and [docs/SIMULATOR.md](https://github.com/MarcoDotIO/Ycode/blob/main/docs/SIMULATOR.md) lists the known problems.
+
+        **Don't attach any Apple files:** no runtimes, SDKs, frameworks, or anything copied from a device or a runtime. We can't accept them, and we can't send them to you. Check logs for private names and paths.
+  - type: input
+    id: version
+    attributes:
+      label: Ycode version
+      placeholder: 1.0.0-beta.1
+    validations:
+      required: true
+  - type: textarea
+    id: host
+    attributes:
+      label: Simulator host
+      description: Board or machine, Linux distribution, kernel (`uname -r`), and GPU with its Vulkan driver.
+      placeholder: arm64, Ubuntu 24.04, kernel 6.8, …
+    validations:
+      required: true
+  - type: dropdown
+    id: viewer
+    attributes:
+      label: How do you view the device?
+      options:
+        - In the IDE on macOS
+        - In the IDE on Linux
+        - Viewer window on macOS
+        - Viewer window on Linux
+        - On the host itself
+        - Headless
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Platform
+      options:
+        - iOS
+        - iPadOS
+        - watchOS
+        - visionOS
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Runtime version and device type
+      placeholder: iOS 27.1, iPhone 18 Pro
+    validations:
+      required: true
+  - type: dropdown
+    id: boot
+    attributes:
+      label: Kind of boot
+      options:
+        - First boot of a new device
+        - Cold boot
+        - Warm boot (restored snapshot)
+        - Not relevant
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include the steps and the `ycode-simd` command line, if you ran it yourself.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: Only the lines that matter, from Ycode's own output.
+      render: text

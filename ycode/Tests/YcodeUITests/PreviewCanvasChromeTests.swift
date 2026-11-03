@@ -1,12 +1,13 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// reference-ui-4.md §10 and §17: canvas states, header tabs, bottom bar,
 /// device menu, settings and placement (no builds).
 @MainActor
-@Suite struct PreviewCanvasChromeTests {
+@Suite(.timeLimit(.minutes(2))) struct PreviewCanvasChromeTests {
     func rendered(_ names: [String]) throws -> [PreviewRenderer.Rendered] {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-canvas-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -22,12 +23,6 @@ import Testing
             }
         }
         return out
-    }
-
-    @Test func tabTitlesFromNameOrViewType() {
-        let p = PreviewDiscovery.previews(in: "#Preview(\"Named\") { Text(\"a\") }\n#Preview {\n  @Previewable @State var x = 1\n  Badge(text: \"b\")\n}\n#Preview { 42 }")
-        #expect(p.map(\.tabTitle) == ["Named", "Badge", "Preview 2"])
-        #expect(p.map(\.isNamed) == [true, false, false])
     }
 
     @Test func pausedThenTabsThenFrame() throws {

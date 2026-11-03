@@ -134,6 +134,13 @@ public struct TestRunner: Sendable {
     /// the scheme's default plan.
     public var testPlan: String?
 
+    /// Variables added to the runner's environment (the Ycode simulator's
+    /// host for ycodebuild: `YCODE_SIM_*`, testing.md "Ycode implementation").
+    public var environment: [String: String] = [:]
+    /// Replaces the request's `-destination` (the Ycode simulator's tests:
+    /// `platform=iOS Simulator,name=Ycode Simulator,arch=arm64`).
+    public var destinationOverride: String?
+
     /// The command for a request; `only` narrows to `Suite/test` identifiers.
     /// The request's action picks the step (Product ▸ Build For ▸ Testing,
     /// Perform Action ▸ Test Without Building, `reference-ui-5.md` §2.9):
@@ -164,6 +171,9 @@ public struct TestRunner: Sendable {
             if let testPlan, !testPlan.isEmpty { options += ["-testPlan", testPlan] }
             if action != .buildForTesting { options += only.map { "-only-testing:\($0)" } }
             a.insert(contentsOf: options, at: optionsEnd)
+            if let d = destinationOverride {
+                if let i = a.firstIndex(of: "-destination"), i + 1 < a.count { a[i + 1] = d } else { a.insert(contentsOf: ["-destination", d], at: optionsEnd) }
+            }
             return (a, nil)
         }
     }
@@ -189,11 +199,10 @@ public struct TestRunner: Sendable {
                 p.executableURL = URL(fileURLWithPath: args[0])
                 p.arguments = Array(args.dropFirst())
                 if let cwd { p.currentDirectoryURL = URL(fileURLWithPath: cwd) }
-                if coverage, let out = coverageSummaryPath {
-                    var env = ProcessInfo.processInfo.environment
-                    env["YCODE_COVERAGE_SUMMARY"] = out
-                    p.environment = env
-                }
+                var env = ProcessInfo.processInfo.environment
+                if coverage, let out = coverageSummaryPath { env["YCODE_COVERAGE_SUMMARY"] = out }
+                for (k, v) in environment { env[k] = v }
+                if (coverage && coverageSummaryPath != nil) || !environment.isEmpty { p.environment = env }
                 let pipe = Pipe()
                 p.standardOutput = pipe
                 p.standardError = pipe

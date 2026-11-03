@@ -38,23 +38,50 @@ public final class LSPClient: @unchecked Sendable {
 
     // MARK: JSON-RPC
 
+    /// Sends a request and waits for its answer. Cancelling the calling
+    /// task ends the wait with `CancellationError` and tells the server
+    /// (`$/cancelRequest`): a server that never answers no longer holds
+    /// the caller forever.
     @discardableResult
     public func request(_ method: String, _ params: JSON? = nil) async throws -> JSON {
-        try await withCheckedThrowingContinuation { (c: CheckedContinuation<JSON, Error>) in
-            lock.lock()
-            if closed {
+        let id = takeID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (c: CheckedContinuation<JSON, Error>) in
+                lock.lock()
+                if closed {
+                    lock.unlock()
+                    c.resume(throwing: ResponseError(method: method, code: -32099, message: "server closed"))
+                    return
+                }
+                if Task.isCancelled {
+                    lock.unlock()
+                    c.resume(throwing: CancellationError())
+                    return
+                }
+                pending[id] = (method, c)
                 lock.unlock()
-                c.resume(throwing: ResponseError(method: method, code: -32099, message: "server closed"))
-                return
+                var msg: [String: JSON] = ["jsonrpc": "2.0", "id": .number(Double(id)), "method": .string(method)]
+                if let params { msg["params"] = params }
+                transport.send(DAPFraming.frame(JSON.object(msg).encoded()))
             }
-            nextID += 1
-            let id = nextID
-            pending[id] = (method, c)
-            lock.unlock()
-            var msg: [String: JSON] = ["jsonrpc": "2.0", "id": .number(Double(id)), "method": .string(method)]
-            if let params { msg["params"] = params }
-            transport.send(DAPFraming.frame(JSON.object(msg).encoded()))
+        } onCancel: {
+            cancelRequest(id)
         }
+    }
+
+    private func takeID() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        nextID += 1
+        return nextID
+    }
+
+    private func cancelRequest(_ id: Int) {
+        lock.lock()
+        let waiter = pending.removeValue(forKey: id)
+        lock.unlock()
+        guard let (_, c) = waiter else { return }
+        notify("$/cancelRequest", ["id": .number(Double(id))])
+        c.resume(throwing: CancellationError())
     }
 
     public func notify(_ method: String, _ params: JSON? = nil) {
@@ -114,9 +141,11 @@ public final class LSPClient: @unchecked Sendable {
 
     // MARK: Lifecycle
 
+    /// `initializationOptions` go to the server as given (sourcekit-lsp
+    /// reads its configuration options there).
     @discardableResult
-    public func initialize(root: URL) async throws -> JSON {
-        let result = try await request("initialize", [
+    public func initialize(root: URL, initializationOptions: JSON? = nil) async throws -> JSON {
+        var params: JSON = [
             "processId": .number(Double(ProcessInfo.processInfo.processIdentifier)),
             "rootUri": .string(root.absoluteString),
             "workspaceFolders": [["uri": .string(root.absoluteString), "name": .string(root.lastPathComponent)]],
@@ -128,17 +157,30 @@ public final class LSPClient: @unchecked Sendable {
                     "definition": ["linkSupport": false],
                     // codeActionsInline: sourcekit-lsp attaches fix-its to diagnostics.
                     "publishDiagnostics": ["relatedInformation": true, "codeActionsInline": true],
-                ].merging(Self.refactoringCapabilities) { a, _ in a }),
-                "workspace": ["configuration": true, "applyEdit": true, "workspaceEdit": ["documentChanges": true]],
+                ].merging(Self.refactoringCapabilities) { a, _ in a }.merging(Self.findTextDocumentCapabilities) { a, _ in a }),
+                "workspace": .object(["configuration": true, "applyEdit": true, "workspaceEdit": ["documentChanges": true]]
+                    .merging(Self.findWorkspaceCapabilities) { a, _ in a }),
             ],
-        ])
+        ]
+        if let initializationOptions, case .object(var o) = params {
+            o["initializationOptions"] = initializationOptions
+            params = .object(o)
+        }
+        let result = try await request("initialize", params)
         lock.withLock { capabilities = result["capabilities"] ?? [:] }
         notify("initialized", [:])
         return result
     }
 
-    public func shutdown() async {
-        _ = try? await request("shutdown")
+    /// `shutdown`, then `exit`, then the transport closes. A server that
+    /// does not answer within `timeout` seconds is closed anyway.
+    public func shutdown(timeout: TimeInterval = 5) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { _ = try? await self.request("shutdown") }
+            group.addTask { try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000)) }
+            await group.next()
+            group.cancelAll()
+        }
         notify("exit")
         close()
     }

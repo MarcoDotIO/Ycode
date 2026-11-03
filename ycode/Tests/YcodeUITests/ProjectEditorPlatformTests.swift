@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 import YcodePlist
 import YcodeProject
 @testable import YcodeUI
@@ -15,8 +16,8 @@ import YcodeProject
     /// A project in a temp directory; `settings` replaces the target's
     /// platform settings, `info` is written as App/Info.plist.
     func project(settings: String? = nil, info: String? = nil) throws -> (ProjectEditorModel, URL) {
-        let base = try ProjectEditorReferenceTests().model()
-        var text = ProjectEditorReferenceTests.pbxproj
+        let base = try ProjectEditorFixture().model()
+        var text = ProjectEditorFixture.pbxproj
         if let settings {
             text = text.replacingOccurrences(of: """
             SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; TARGETED_DEVICE_FAMILY = "1,2";
@@ -84,17 +85,6 @@ import YcodeProject
         #expect(try PBXProj(contentsOf: url).project?.string("compatibilityVersion") == "Xcode 15.3")
         // Untouched keys survive.
         #expect(try PBXProj(contentsOf: url).project?["attributes"]?.dictionary?["ORGANIZATIONNAME"]?.string == "Acme")
-    }
-
-    /// The table in specs/formats/pbxproj.md (Project format).
-    @Test func compatibilityTableMatchesSpec() {
-        let spec: [(String, Int)] = [("Xcode 16.0", 77), ("Xcode 15.3", 63), ("Xcode 15.0", 60), ("Xcode 14.0", 56),
-            ("Xcode 13.0", 55), ("Xcode 12.0", 54), ("Xcode 11.4", 53), ("Xcode 11.0", 52), ("Xcode 10.0", 51),
-            ("Xcode 9.3", 50), ("Xcode 8.0", 48), ("Xcode 6.3", 47), ("Xcode 3.2", 46), ("Xcode 3.1", 45)]
-        #expect(ProjectEditorModel.compatibilityVersions.map(\.title) == spec.map(\.0))
-        #expect(ProjectEditorModel.compatibilityVersions.map(\.objectVersion) == spec.map(\.1))
-        #expect(ProjectEditorModel.compatibility(objectVersion: "110") == "Xcode 16.0")
-        #expect(ProjectEditorModel.compatibility(objectVersion: "45") == "Xcode 3.1")
     }
 
     static let info = """

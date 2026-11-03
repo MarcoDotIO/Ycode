@@ -1,0 +1,37 @@
+# Exceptions for .github/scripts/scan-public.py.
+# Each line: <path glob> <regular expression of the allowed text>
+# With no expression the whole file is allowed. Say why in a comment.
+
+# Vendored third-party sources keep their authors' addresses and links.
+frameworks/swiftui/Sources/COVSDL/*
+frameworks/swiftui/Sources/CThorVG/*
+ycode/Sources/CVulkan/*
+ycode/Sources/CYcodeOpenXR/*
+ycode/Sources/CYcodeVideo/nvheaders/*
+frameworks/swiftui/Sources/COVVulkan/*
+frameworks/swiftui/Sources/OVText/Resources/Fonts/*
+
+# Third-party licence texts keep their authors' addresses.
+packaging/licenses/*
+THIRD_PARTY_NOTICES.md
+
+# A placeholder key header that a test looks for; there is no key.
+frameworks/weatherkit/Tests/WeatherKitTests/JWTTests.swift BEGIN PRIVATE KEY
+
+# Example router and interface addresses in test fixtures.
+ycode/Tests/YcodeCompletionTests/CompletionEngineTests.swift ^10\.0\.0\.2$
+ycode/Tests/YcodeDarwinKernelTests/NetworkingTests.swift ^10\.0\.0\.5$
+ycode/Tests/YcodeHostServicesTests/SCDynamicStoreHostServiceTests.swift ^10\.0\.0\.[15]$
+
+# Reserved-looking example domain in a network probe note.
+research/notes/obs-net-2026-10-27.md ^example\.edu$
+
+# The mount points of simulator runtime disk images and of system volumes
+# inside a device: facts of the format, not anyone's machine.
+research/* ^/Volumes/(iOS_[0-9A-Za-z]+|Data|Preboot)/$
+specs/* ^/Volumes/(iOS_[0-9A-Za-z]+|Data|Preboot)/$
+ycode/Tests/YcodeMachOTests/MachOTests.swift ^/Volumes/iOS_[0-9A-Za-z]+/$
+ycode/Tests/YcodeUITests/LaunchWelcomeR31Tests.swift ^/Volumes/(Data|External)/$
+
+# A test whose expected DerivedData hash was observed for this exact path.
+ycode/Tests/YcodeXcodebuildTests/ArgumentTests.swift ^/Volumes/[^/]+/$

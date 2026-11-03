@@ -114,6 +114,21 @@ public enum PromptBuilder {
     as examples and are not applied. The user reviews every proposed change before it is applied.
     """
 
+    /// The instructions in agent mode (an agent with Ycode's MCP server or
+    /// an ACP agent whose file writes go through Ycode): it may change
+    /// files through Ycode, and each change is reviewed.
+    public static let agentInstructions = """
+    You are a coding agent working in Ycode, an IDE for Apple platforms, on the user's workspace. Be concise; use \
+    Markdown.
+
+    Use Ycode's tools (the "ycode" MCP server) to work: workspace_describe, file_read, search, build, issues, test, run, \
+    preview_render, simulator_screenshot, strings_list. Change files only with Ycode's file_edit and file_write tools \
+    (or your client's file writes, which go through Ycode). Every change is shown to the user as a proposal in Ycode; \
+    the tool answers when they accept it (the file is then saved) or reject it (nothing changes). After changing code, \
+    build again and fix what the build reports; run the tests when the change affects them. Paths are relative to the \
+    workspace folder.
+    """
+
     /// Builds the request. Always included: the instructions and the new
     /// message. Then, while the budget lasts and in this order: the
     /// attachments, the selection, the current file (whole, or a window

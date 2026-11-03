@@ -22,14 +22,26 @@ import YcodeDarwinABI
         }
     }
 
+    /// Waits until `context` sleeps in the kernel (queued as a waiter, the
+    /// lock released), at most 10 s. A fixed pause raced the new host
+    /// thread's start on a loaded machine (x86 full runs): the send or
+    /// interrupt came before the wait, and the test saw no blocked thread.
+    func blocked(_ env: IPCEnv, _ context: ThreadContext) -> Bool {
+        let end = Date().addingTimeInterval(10)
+        while Date() < end {
+            if env.lock.withLock({ context.blockedInKernel }) { return true }
+            Thread.sleep(forTimeInterval: 0.001)
+        }
+        return false
+    }
+
     @Test func receiveBlocksUntilAnotherThreadSends() throws {
         let env = try IPCEnv()
         let p = env.allocate()
         let worker = ThreadContext(threadID: 2, portName: env.ipc.allocateThreadPort(), vcpuIndex: 1, kind: .pthread)
         let buffer = IPCEnv.scratch + 0x10000
         let wait = spawn { env.kr(-31, [buffer, MachMsgOption.rcvMsg, 0, 0x100, UInt64(p), 0, 0], context: worker) }
-        Thread.sleep(forTimeInterval: 0.05)
-        #expect(env.lock.withLock { worker.blockedInKernel })
+        #expect(blocked(env, worker))
         #expect(env.send(TestMessage(remote: p, remoteDisposition: MachMsgType.makeSend, id: 99).bytes) == 0)
         #expect(wait() == 0)
         #expect(Received(env.read(buffer, 64)).id == 99)
@@ -43,7 +55,7 @@ import YcodeDarwinABI
         let sendBuffer = IPCEnv.scratch + 0x10000
         env.put(TestMessage(remote: p, remoteDisposition: MachMsgType.makeSend, id: 2).bytes, at: sendBuffer)
         let wait = spawn { env.kr(-31, [sendBuffer, MachMsgOption.sendMsg, 24, 0, 0, 0, 0], context: worker) }
-        Thread.sleep(forTimeInterval: 0.05)
+        #expect(blocked(env, worker))
         #expect(env.ipc.portCounters(p)?.msgcount == 1)
         let (code, raw) = env.receive(p)
         #expect(code == 0 && Received(raw).id == 1)
@@ -67,9 +79,9 @@ import YcodeDarwinABI
         env.put(TestMessage(remote: p, remoteDisposition: MachMsgType.makeSend, id: 2).bytes, at: b1)
         env.put(TestMessage(remote: p, remoteDisposition: MachMsgType.makeSend, id: 3).bytes, at: b2)
         let wait1 = spawn { env.kr(-31, [b1, MachMsgOption.sendMsg, 24, 0, 0, 0, 0], context: first) }
-        Thread.sleep(forTimeInterval: 0.05)
+        #expect(blocked(env, first))
         let wait2 = spawn { env.kr(-31, [b2, MachMsgOption.sendMsg, 24, 0, 0, 0, 0], context: second) }
-        Thread.sleep(forTimeInterval: 0.05)
+        #expect(blocked(env, second))
         #expect(env.lock.withLock { first.blockedInKernel && second.blockedInKernel })
         let (code, raw) = env.receive(p)
         #expect(code == 0 && Received(raw).id == 1)
@@ -92,14 +104,14 @@ import YcodeDarwinABI
         let worker = ThreadContext(threadID: 2, portName: env.ipc.allocateThreadPort(), vcpuIndex: 1, kind: .pthread)
         let buffer = IPCEnv.scratch + 0x10000
         let wait = spawn { env.kr(-31, [buffer, MachMsgOption.rcvMsg, 0, 0x100, UInt64(p), 0, 0], context: worker) }
-        Thread.sleep(forTimeInterval: 0.05)
+        #expect(blocked(env, worker))
         #expect(env.modRefs(p, MachPortRight.receive, -1) == 0)
         #expect(wait() == MachMsgReturn.rcvPortChanged)
 
         // Adding the port to a set while a thread waits on it: PORT_CHANGED too.
         let q = env.allocate(), set = env.allocate(MachPortRight.portSet)
         let wait2 = spawn { env.kr(-31, [buffer, MachMsgOption.rcvMsg, 0, 0x100, UInt64(q), 0, 0], context: worker) }
-        Thread.sleep(forTimeInterval: 0.05)
+        #expect(blocked(env, worker))
         #expect(env.kr(-22, [env.task, UInt64(q), UInt64(set)]) == 0)
         #expect(wait2() == MachMsgReturn.rcvPortChanged)
     }
@@ -111,7 +123,7 @@ import YcodeDarwinABI
         let worker = ThreadContext(threadID: 2, portName: env.ipc.allocateThreadPort(), vcpuIndex: 1, kind: .pthread)
         let buffer = IPCEnv.scratch + 0x10000
         let wait = spawn { env.kr(-31, [buffer, MachMsgOption.rcvMsg, 0, 0x100, UInt64(set), 0, 0], context: worker) }
-        Thread.sleep(forTimeInterval: 0.05)
+        #expect(blocked(env, worker))
         // Joining the set with a queued message makes the set ready.
         #expect(env.send(TestMessage(remote: b, remoteDisposition: MachMsgType.makeSend, id: 5).bytes) == 0)
         #expect(env.kr(-22, [env.task, UInt64(b), UInt64(set)]) == 0)
@@ -146,7 +158,7 @@ import YcodeDarwinABI
         let worker = ThreadContext(threadID: 2, portName: env.ipc.allocateThreadPort(), vcpuIndex: 1, kind: .pthread)
         let buffer = IPCEnv.scratch + 0x10000
         let wait = spawn { env.kr(-31, [buffer, MachMsgOption.rcvMsg, 0, 0x100, UInt64(p), 0, 0], context: worker) }
-        Thread.sleep(forTimeInterval: 0.05)
+        #expect(blocked(env, worker))
         #expect(env.send(TestMessage(remote: p, remoteDisposition: MachMsgType.copySend, id: 3).bytes,
                          options: MachMsgOption.sendMsg | MachMsgOption.sendTimeout) == 0)
         #expect(wait() == 0)
@@ -159,14 +171,14 @@ import YcodeDarwinABI
         let worker = ThreadContext(threadID: 2, portName: env.ipc.allocateThreadPort(), vcpuIndex: 1, kind: .pthread)
         let buffer = IPCEnv.scratch + 0x10000
         let wait = spawn { env.kr(-31, [buffer, MachMsgOption.rcvMsg, 0, 0x100, UInt64(p), 0, 0], context: worker) }
-        Thread.sleep(forTimeInterval: 0.05)
+        #expect(blocked(env, worker))
         #expect(env.lock.withLock { env.lock.interrupt(worker) })
         #expect(wait() == MachMsgReturn.rcvInterrupted)
         // A blocked send is interrupted the same way (and pseudo-received).
         let (_, q) = env.construct(flags: MachPortConstruct.qlimit, qlimit: 0)
         env.put(TestMessage(remote: q, remoteDisposition: MachMsgType.makeSend).bytes, at: buffer)
         let wait2 = spawn { env.kr(-31, [buffer, MachMsgOption.sendMsg, 24, 0, 0, 0, 0], context: worker) }
-        Thread.sleep(forTimeInterval: 0.05)
+        #expect(blocked(env, worker))
         #expect(env.lock.withLock { env.lock.interrupt(worker) })
         #expect(wait2() == MachMsgReturn.sendInterrupted)
         #expect(env.type(q) == (0, MachPortType.send | MachPortType.receive))

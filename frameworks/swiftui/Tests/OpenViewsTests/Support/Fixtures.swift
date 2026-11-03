@@ -44,18 +44,29 @@ enum Fixture {
         "X": th(11.33), "Fixed": th(40.67),            // grid.flex
         "short": th(39.67),                // viewThatFits
         "short words here": th(128.67),    // hstack.equalTexts
+        // Round R8 (T-CTL): label widths implied by the control rows with
+        // the control rules of README "Controls design (R8)" — inputs, like
+        // the rows above; the other proposals of each row are the checks.
+        "Tap": th(27.67),                  // button.default (borderless: the label)
+        "Ycode": th(47.33),                // link
+        "Title": 33,                       // label: 63 = 22 (star) + 8 + title
+        "On": th(22.33),                   // toggle: 91.33 = title + 8 + 61
+        "S": th(10.67),                    // stepper: 112.67 = title + 8 + 94
+        "D": 12,                           // datePicker.compact: 142.67 − 130.67
+        "G": th(12.33),                    // gauge: the label's width
+        "Placeholder": 90,                 // textfield.plain
+        "Password": th(73.33),             // secureField
+        "Jan 1, 1970": th(98.67),          // datePicker.compact: 130.67 = 8 + 98.67 + 12 + 12
     ]
 
     /// Typesets with the reference font tables (ReferenceFont.swift).
     static let measurer = TypesetTextMeasurer(fonts: ReferenceFontProvider())
 
-    /// `star` / `star.fill` at body size: 22 × 20.67, baseline 3.67 above the
-    /// bottom, natural (resizable) size 18.67 × 18 (07 §3, 04 §2).
-    static let symbols: StubSymbolProvider = {
-        let star = SymbolMetrics(size: CGSize(width: 22, height: th(20.67)), baselineOffset: th(3.67),
-                                 naturalSize: CGSize(width: th(18.67), height: 18))
-        return StubSymbolProvider(symbols: ["star": star, "star.fill": star])
-    }()
+    /// Symbols: Ycode's own provider (round R5) in reference-parity mode
+    /// (unknown names lay out 0 × 0). Its boxes are the spec's: `star` /
+    /// `star.fill` at body size 22 × 20.67, baseline 3.67 above the bottom,
+    /// natural (resizable) size 18.67 × 18 (07 §3, 04 §2).
+    static let symbols = OpenSymbolProvider(missingSymbolsLayOutEmpty: true)
 
     static var engine: LayoutEngine { LayoutEngine(textMeasurer: measurer, symbols: symbols) }
 }

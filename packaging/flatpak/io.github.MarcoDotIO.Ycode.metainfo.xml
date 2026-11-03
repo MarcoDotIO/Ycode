@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.MarcoDotIO.Ycode</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Ycode</name>
+  <summary>An independent IDE for Swift and Apple-platform project formats</summary>
+  <developer id="io.github.marcodotio">
+    <name>The Ycode contributors</name>
+  </developer>
+  <description>
+    <p>
+      Ycode is an independent, open-source IDE. It opens, edits and builds Swift
+      packages and projects in the Xcode project format. It is not affiliated
+      with or endorsed by Apple Inc.
+    </p>
+    <p>
+      This Flatpak uses the Swift toolchain installed on your computer: it
+      reaches it through the Flatpak portal with flatpak-spawn --host, which also
+      means the app is not really sandboxed. Without a toolchain on the host it
+      tells you what to install. The simulator tools are experimental, and the
+      simulator needs a runtime from your own copy of the platform tools.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.MarcoDotIO.Ycode.desktop</launchable>
+  <url type="homepage">https://github.com/MarcoDotIO/Ycode</url>
+  <url type="bugtracker">https://github.com/MarcoDotIO/Ycode/issues</url>
+  <categories>
+    <category>Development</category>
+    <category>IDE</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <releases>
+    <release version="1.0.0-beta.1" date="2026-11-06" type="development">
+      <description>
+        <p>First public beta: the IDE, with the simulator tools marked experimental.</p>
+      </description>
+    </release>
+  </releases>
+</component>

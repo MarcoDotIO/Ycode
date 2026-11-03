@@ -29,8 +29,10 @@ void ycodec_name_thread(const char *name) {
 
 typedef int (*compress2_fn)(unsigned char *, unsigned long *, const unsigned char *, unsigned long, int);
 typedef unsigned long (*compressBound_fn)(unsigned long);
+typedef int (*uncompress_fn)(unsigned char *, unsigned long *, const unsigned char *, unsigned long);
 static compress2_fn z_compress2;
 static compressBound_fn z_compressBound;
+static uncompress_fn z_uncompress;
 static pthread_once_t zOnce = PTHREAD_ONCE_INIT;
 
 static void *open_first(const char *const *names) {
@@ -47,8 +49,10 @@ static void z_load(void) {
     if (!h) return;
     compress2_fn c = (compress2_fn)dlsym(h, "compress2");
     compressBound_fn b = (compressBound_fn)dlsym(h, "compressBound");
-    if (c && b) {
+    uncompress_fn u = (uncompress_fn)dlsym(h, "uncompress");
+    if (c && b && u) {
         z_compressBound = b;
+        z_uncompress = u;
         z_compress2 = c;
     }
 }
@@ -69,6 +73,32 @@ int ycodec_zlib_compress(const uint8_t *src, size_t n, int level, uint8_t *dst, 
     if (z_compress2(dst, &out, src, (unsigned long)n, level) != 0) return -1;
     *dstSize = (size_t)out;
     return 0;
+}
+
+int ycodec_zlib_uncompress(const uint8_t *src, size_t n, uint8_t *dst, size_t *dstSize) {
+    if (!ycodec_zlib_available()) return -1;
+    unsigned long out = (unsigned long)*dstSize;
+    if (z_uncompress(dst, &out, src, (unsigned long)n) != 0) return -1;
+    *dstSize = (size_t)out;
+    return 0;
+}
+
+static uint32_t crcTable[256];
+static pthread_once_t crcOnce = PTHREAD_ONCE_INIT;
+
+static void crc_build(void) {
+    for (uint32_t i = 0; i < 256; i++) {
+        uint32_t c = i;
+        for (int k = 0; k < 8; k++) c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+        crcTable[i] = c;
+    }
+}
+
+uint32_t ycodec_crc32(uint32_t crc, const uint8_t *src, size_t n) {
+    pthread_once(&crcOnce, crc_build);
+    crc = ~crc;
+    for (size_t i = 0; i < n; i++) crc = crcTable[(crc ^ src[i]) & 0xFF] ^ (crc >> 8);
+    return ~crc;
 }
 
 /* ---- downscale ---- */
@@ -128,6 +158,15 @@ static struct {
     void (*finish)(j_compress_ptr);
     void (*destroy)(j_compress_ptr);
     int ok;
+    /* Decompression (the viewer's side). */
+    void (*d_create)(j_decompress_ptr, int, size_t);
+    void (*d_mem_src)(j_decompress_ptr, const unsigned char *, unsigned long);
+    int (*d_read_header)(j_decompress_ptr, boolean);
+    boolean (*d_start)(j_decompress_ptr);
+    JDIMENSION (*d_read_scanlines)(j_decompress_ptr, JSAMPARRAY, JDIMENSION);
+    boolean (*d_finish)(j_decompress_ptr);
+    void (*d_destroy)(j_decompress_ptr);
+    int d_ok;
 } J;
 static pthread_once_t jOnce = PTHREAD_ONCE_INIT;
 
@@ -151,8 +190,16 @@ static void j_load(void) {
     SYM(write_scanlines, "jpeg_write_scanlines")
     SYM(finish, "jpeg_finish_compress")
     SYM(destroy, "jpeg_destroy_compress")
-#undef SYM
     J.ok = 1;
+    SYM(d_create, "jpeg_CreateDecompress")
+    SYM(d_mem_src, "jpeg_mem_src")
+    SYM(d_read_header, "jpeg_read_header")
+    SYM(d_start, "jpeg_start_decompress")
+    SYM(d_read_scanlines, "jpeg_read_scanlines")
+    SYM(d_finish, "jpeg_finish_decompress")
+    SYM(d_destroy, "jpeg_destroy_decompress")
+#undef SYM
+    J.d_ok = 1;
 }
 
 struct ycodec_jpeg_job {
@@ -232,6 +279,74 @@ int ycodec_jpeg_encode_bgra(const uint8_t *pixels, int width, int height, size_t
     return 0;
 }
 
+int ycodec_jpeg_decode_available(void) {
+    pthread_once(&jOnce, j_load);
+    return J.d_ok;
+}
+
+struct ycodec_jpeg_djob {
+    struct jpeg_error_mgr err;
+    jmp_buf jump;
+    uint8_t *row;
+};
+
+static void on_derror(j_common_ptr c) {
+    struct ycodec_jpeg_djob *job = (struct ycodec_jpeg_djob *)c->err;
+    longjmp(job->jump, 1);
+}
+
+int ycodec_jpeg_decode_bgra(const uint8_t *data, size_t size, int width, int height, uint8_t *dst, size_t dstBytesPerRow) {
+    if (!ycodec_jpeg_decode_available() || !data || size < 4 || width <= 0 || height <= 0) return -1;
+    struct jpeg_decompress_struct dinfo;
+    struct ycodec_jpeg_djob job;
+    memset(&dinfo, 0, sizeof dinfo);
+    memset(&job, 0, sizeof job);
+    dinfo.err = J.std_error(&job.err);
+    job.err.error_exit = on_derror;
+    job.err.output_message = on_message;
+    if (setjmp(job.jump)) {
+        J.d_destroy(&dinfo);
+        free(job.row);
+        return -1;
+    }
+    J.d_create(&dinfo, JPEG_LIB_VERSION, sizeof dinfo);
+    J.d_mem_src(&dinfo, data, (unsigned long)size);
+    if (J.d_read_header(&dinfo, TRUE) != JPEG_HEADER_OK || (int)dinfo.image_width != width || (int)dinfo.image_height != height) {
+        J.d_destroy(&dinfo);
+        return -1;
+    }
+#ifdef JCS_EXTENSIONS
+    dinfo.out_color_space = JCS_EXT_BGRX;
+#else
+    dinfo.out_color_space = JCS_RGB;
+    job.row = malloc((size_t)width * 3);
+    if (!job.row) { J.d_destroy(&dinfo); return -1; }
+#endif
+    dinfo.dct_method = JDCT_IFAST;
+    dinfo.do_fancy_upsampling = FALSE;
+    J.d_start(&dinfo);
+    while (dinfo.output_scanline < dinfo.output_height) {
+        uint8_t *out = dst + (size_t)dinfo.output_scanline * dstBytesPerRow;
+#ifdef JCS_EXTENSIONS
+        JSAMPROW row = (JSAMPROW)out;
+        J.d_read_scanlines(&dinfo, &row, 1);
+#else
+        JSAMPROW row = job.row;
+        J.d_read_scanlines(&dinfo, &row, 1);
+        for (int x = 0; x < width; x++) {
+            out[x * 4 + 0] = job.row[x * 3 + 2];
+            out[x * 4 + 1] = job.row[x * 3 + 1];
+            out[x * 4 + 2] = job.row[x * 3 + 0];
+            out[x * 4 + 3] = 0xFF;
+        }
+#endif
+    }
+    J.d_finish(&dinfo);
+    J.d_destroy(&dinfo);
+    free(job.row);
+    return 0;
+}
+
 #else /* no jpeglib.h at build time */
 
 int ycodec_jpeg_available(void) { return 0; }
@@ -239,6 +354,13 @@ int ycodec_jpeg_available(void) { return 0; }
 int ycodec_jpeg_encode_bgra(const uint8_t *pixels, int width, int height, size_t bytesPerRow, int quality,
                             uint8_t **out, size_t *outSize) {
     (void)pixels; (void)width; (void)height; (void)bytesPerRow; (void)quality; (void)out; (void)outSize;
+    return -1;
+}
+
+int ycodec_jpeg_decode_available(void) { return 0; }
+
+int ycodec_jpeg_decode_bgra(const uint8_t *data, size_t size, int width, int height, uint8_t *dst, size_t dstBytesPerRow) {
+    (void)data; (void)size; (void)width; (void)height; (void)dst; (void)dstBytesPerRow;
     return -1;
 }
 

@@ -1,5 +1,6 @@
 import AppKit
 import YcodeBuild
+import YcodeIDECore
 
 /// What the activity view showed before a preview build's text.
 struct PreviewActivityState {

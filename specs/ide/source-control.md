@@ -124,3 +124,141 @@ is refused before git runs; a path outside the repository is refused.
   what "Recents" lists exactly (Ycode uses the reflog); per-hunk staging;
   the Commit button menu's items; Push/Pull option sheets (remote and
   branch choice).
+
+## Ycode implementation: branch workflows (SCM-BRANCHES, 2026-10-31)
+
+Gap #13 of `docs/PARITY.md`. Ycode's design unless an evidence line says
+otherwise; everything is in the portable core (`YcodeIDECore/SourceControl/`)
+except the AppKit views, so the Linux shell can use the same models.
+
+### Operations (`GitRepository+Branches.swift`, `+Integration.swift`)
+
+All through `git -C <top level>` with the environment above, plus
+`GIT_SEQUENCE_EDITOR=true`. Names are checked first (`check-ref-format
+--branch <name>`, `check-ref-format refs/tags/<name>`; a leading `-` is
+refused) and always follow `--` or the option that takes them.
+
+| Operation | Command |
+|---|---|
+| New branch (and check out) | `branch --no-track -- <name> [<start>]` (`switch --no-track -c <name> [<start>]`) |
+| Rename | `branch -m -- <old> <new>` (the current branch too) |
+| Delete | `branch -d -- <name>`; unmerged: a second confirmation, then `-D`; the current branch is refused |
+| Check out a local branch | `switch -- <name>` |
+| Check out a remote branch | `switch -c <name> --track <remote>/<name>` (or `switch` to an existing local branch of that name) |
+| Check out a commit | `switch --detach <hash>` |
+| Merge | `merge --no-edit` with `--ff`, `--ff-only` or `--no-ff`, `[-m <message>] <rev>` |
+| Rebase | `rebase <rev>` |
+| Cherry-pick, revert | `cherry-pick <rev>`, `revert --no-edit <rev>` |
+| Continue | merge: `commit --no-edit`; rebase: `rebase --continue`; pick: `cherry-pick --continue` (`--skip` when the resolution leaves nothing to commit); revert: `revert --continue` |
+| Abort | `merge --abort`, `rebase --abort`, `cherry-pick --abort`, `revert --abort` |
+| Stash apply, pop, drop | `stash apply <stash@{n}>`, `stash pop <stash@{n}>`, `stash drop -q <stash@{n}>`; files: `diff --name-status -M <ref>^1 <ref>` |
+| Tags | `tag -- <name> <rev>` (lightweight), `tag -a -m <message> -- <name> <rev>`, `tag -d -- <name>`; list `for-each-ref refs/tags` with `%(objecttype)`, `%(*objectname)`, `%(contents:subject)` |
+| Remotes | `remote add -- <name> <url>`, `remote remove -- <name>`, `fetch --prune -- <remote>` |
+| Pull | fetch, then a fast-forward-only merge, a merge or a rebase of `<remote>/<branch>` |
+| Push | `push [--set-upstream] [--force-with-lease] -- <remote> refs/heads/<b>:refs/heads/<b>`; a tag `refs/tags/<t>`; delete `:refs/heads/<b>` |
+| Ahead / behind | `rev-list --left-right --count refs/heads/<b>...<upstream>` |
+
+**Uncommitted changes when switching.** Three choices: refuse (tracked
+changes exist), carry them (`git switch`, which itself refuses when a
+change would be overwritten), or stash first (`stash push
+--include-untracked -m "Before switching to <b>"`; the stash stays in
+Stashes). The window asks "Stash and Check Out / Keep Changes / Cancel"
+when tracked files changed. A working copy with conflicts never switches.
+
+**Results.** Integrating commands return up to date, fast-forwarded,
+completed (the new HEAD) or conflicts (the files `diff --name-only
+--diff-filter=U` lists). A non-zero status without conflicts is an error
+with git's message.
+
+**What is in progress.** Read from git's state files in `rev-parse
+--absolute-git-dir`: `rebase-merge/` or `rebase-apply/` (`head-name`,
+`onto`, `msgnum`/`end` or `next`/`last`) → rebasing; `MERGE_HEAD` →
+merging, named from `MERGE_MSG`'s quoted name; `CHERRY_PICK_HEAD`,
+`REVERT_HEAD`. The snapshot carries it; the Changes header reads
+"main (Merging “feature”)", "(Rebasing “b” onto 1a2b3c4, 1 of 3)".
+
+### Conflicts (`GitRepository+Conflicts.swift`)
+
+A conflicted file's versions are its index stages: `ls-files -u -z`, then
+`show :1:<path>` (base), `:2:` (ours), `:3:` (theirs). A missing stage is
+an empty side ("(deleted)" in its label). Without stages, the conflict
+markers in the working file are parsed (`ConflictMarkers`). Labels: merge
+— ours is the current branch, theirs the merged name; rebase — ours is the
+commit rebased onto (short hash), theirs the branch being replayed;
+cherry-pick — the picked short hash; a stash apply — "Stashed changes".
+Resolving writes the result (refused while it has markers) and runs
+`add`; resolving a delete moves the file to the Trash and runs `rm
+--cached`. The editor itself is in `comparison.md` ("Ycode implementation").
+
+### Source Control navigator menus (`SourceControlRowMenu`)
+
+Rows carry keys; groups get `group:Branches|Tags|Remotes`, remotes
+`remote:<name>`. Context menus (curly quotes around names):
+
+| Row | Items |
+|---|---|
+| Repository | New Branch…, New Tag… — Add Remote… |
+| Branches / Tags / Remotes group | New Branch… / New Tag… / Add Remote… |
+| Branch (not current) | Check Out “b”… — New Branch from “b”…, New Tag from “b”… — Merge “b” into “current”…, Rebase “current” onto “b”… — Push “b”… (with a remote) — Rename…, Delete… |
+| Current branch | New Branch from…, New Tag from… — Push “b”…, Pull… (with a remote) — Rename…, Delete… (disabled) |
+| Remote branch | Check Out “b”… — New Branch from “r/b”… — Merge…, Rebase… — Delete “b” from “r”… |
+| Tag | New Branch from “t”…, Push “t”… (with a remote) — Delete… |
+| Stash | Apply Stashed Changes, Apply and Delete Stash — Delete… |
+| Remote | Fetch “r” — Remove “r”… |
+| Conflicted change | Resolve Conflicts…, Mark as Resolved |
+
+Check out, merge, rebase and the stash items are disabled while an
+operation is stopped. Selecting a conflicted change opens the conflict
+editor instead of the commit editor. A conflicting merge, rebase,
+cherry-pick, pull or stash apply opens it on the first conflicted file;
+one that completes closes it.
+
+### Integrate menu additions
+
+After Stash Changes…, shown only while an operation is stopped or files
+have conflicts (`MenuCondition.integrationInProgress`): **Resolve
+Conflicts…** (enabled with conflicts), **Continue <Merge|Rebase|Cherry-Pick|Revert>**
+(enabled once none remain), **Abort <…>** (asks first). Their generic
+titles are "Continue" and "Abort". Cherry-Pick… now opens the conflict
+editor when the pick conflicts.
+
+### Blame (`GitBlame.swift`)
+
+`blame --porcelain [--contents <temporary copy of the editor's text>] --
+<path>` (git-blame's documented porcelain format). Lines that differ from
+HEAD come back with the all-zero id: "Not Committed Yet". Consecutive
+lines of one commit form a block.
+
+- **Editor ▸ Authors (⌃⇧⌘A)** and the Adjust Editor Options item toggle,
+  per editor, a 170-pt column at the gutter's far left (before the change
+  column): at each block's first line "Author  Today|Yesterday|MMM d, yyyy";
+  every other block shaded; hovering shows "<short hash> — Author <email>",
+  the date ("MMM d, yyyy at h:mm a") and the summary. It re-reads on open,
+  save and after an edit's pause. A click shows that line's last change.
+- **Editor ▸ Show Last Change for Line**: the history of the commit that
+  last changed the caret's line, with that commit selected (and its
+  inspector); a beep for an uncommitted line.
+
+### Tests
+
+`YcodeIDECoreTests/SourceControlBranchesTests.swift` and
+`ThreeWayMergeTests.swift` (every operation on repositories in temporary
+folders, a bare repository there as the only remote, a conflicting merge,
+rebase and cherry-pick resolved through the model);
+`YcodeUITests/SourceControlBranchWorkflowTests.swift` (navigator menus,
+the conflict editor through Continue Merge, Abort Rebase from Integrate,
+Compare Files, Authors and Show Last Change).
+
+### Evidence
+
+- Commands, porcelain formats, state files and conflict stages: git's
+  public documentation (`git-merge`, `git-rebase`, `git-cherry-pick`,
+  `git-stash`, `git-blame`, `git-ls-files`, `gitrepository-layout`;
+  level 1), verified on repositories the tests create (level 3).
+- That Xcode offers branch creation, merge, rebase, stash, tags and an
+  Authors view: Apple's public Xcode Help (level 1). Menu titles, the
+  switch prompt and the Authors column's look are Ycode's design.
+- OPEN QUESTION: the reference's branch, tag, stash and remote context
+  menu titles and order; the merge sheet (Xcode Help describes choosing
+  "Merge into" / "Merge from"); whether the reference rebases from the
+  navigator; the Authors column's width, format and hover card.

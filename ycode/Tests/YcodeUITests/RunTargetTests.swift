@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeDebug
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -89,7 +90,7 @@ func writeInfoPlist(_ app: URL, id: String, exe: String) throws {
         #expect(RemoteSimulator(settings: full).runCommand(app: app, bundleID: "dev.ycode.remote") == "echo YCODE-REMOTE-PID $$; exec env YCODE_WARM_BOOT=1 '\(fakeSimd.path)' --device '\(data.path)/devices/dev1' --runtime-root '/rr/iOS 27.1' --install-app '\(data.path)/apps/Remote.app' --launch 'dev.ycode.remote' --environment-overrides '--display-server' 'unix:\(data.path)/display/dev1.sock'")
         // Device Hub's live screen: every run serves its display on a socket per device.
         #expect(remote.displaySocketPath == "\(data.path)/display/dev1.sock")
-        #expect(remote.mkdirCommand(app) == "mkdir -p '\(data.path)/apps' '\(data.path)/display'")
+        #expect(remote.mkdirCommand(app) == "mkdir -p '\(data.path)/apps' '\(data.path)/display' '\(data.path)/profiles'")
         // Warm boot off: every run boots cold.
         var cold = full
         cold.warmBoot = false
@@ -135,28 +136,6 @@ func writeInfoPlist(_ app: URL, id: String, exe: String) throws {
         #expect(s2.console.contains("Settings ▸ Simulators"))
     }
 
-    /// Lean boot was on by default until 2026-10-27, and every save stored
-    /// it: a stored `true` under the old key is the old default and gives a
-    /// full boot now, once; the user's later choice is kept (run.md).
-    @Test func leanBootSettingMigratesToFullBoot() throws {
-        let t = TestDefaults("remote-lean")
-        defer { t.remove() }
-        t.defaults.set(true, forKey: RemoteSimulatorSettings.leanBootLegacyKey)
-        var s = RemoteSimulatorSettings.load(t.defaults)
-        #expect(!s.leanBoot)
-        // A save (of any setting) drops the old key and stores the choice.
-        s.deviceName = "other"
-        s.save(t.defaults)
-        #expect(t.defaults.object(forKey: RemoteSimulatorSettings.leanBootLegacyKey) == nil)
-        #expect(t.defaults.object(forKey: RemoteSimulatorSettings.leanBootKey) as? Bool == false)
-        // Turned on again: remembered, and not undone by later loads.
-        s.leanBoot = true
-        s.save(t.defaults)
-        #expect(RemoteSimulatorSettings.load(t.defaults).leanBoot)
-        #expect(RemoteSimulatorSettings.load(t.defaults).leanBoot)
-        #expect(RemoteSimulator(settings: RemoteSimulatorSettings.load(t.defaults)).leanBootVariables == "YCODE_LEAN_BOOT=daemons ")
-    }
-
     @Test func settingsPaneAndDestination() throws {
         let t = TestDefaults("remote")
         defer { t.remove() }
@@ -178,6 +157,9 @@ func writeInfoPlist(_ app: URL, id: String, exe: String) throws {
         #expect(!RemoteSimulatorSettings.load(t.defaults).leanBoot)
         #expect(WorkspaceWindowController.simulatorAppPath(fromExecutablePath: "/p/.ycode-build/Products/Debug/App.app/Contents/MacOS/App")
                 == "/p/.ycode-build/Products/Debug-iphonesimulator/App.app")
+        // A flat (iOS) bundle's executable, already in the simulator folder.
+        #expect(WorkspaceWindowController.simulatorAppPath(fromExecutablePath: "/d/Build/Products/Release-iphonesimulator/App.app/App")
+                == "/d/Build/Products/Release-iphonesimulator/App.app")
         #expect(Simctl.launchArguments(udid: "U", bundleID: "b.id", waitForDebugger: true)
                 == ["launch", "--console", "--terminate-running-process", "--wait-for-debugger", "U", "b.id"])
         #expect(Simctl.launchedPID("b.id: 4242", bundleID: "b.id") == 4242)

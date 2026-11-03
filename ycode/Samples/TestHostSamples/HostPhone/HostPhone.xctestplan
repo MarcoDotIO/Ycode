@@ -1,0 +1,27 @@
+{
+  "configurations" : [
+    {
+      "id" : "2A4C6E8F-0B1D-4F3A-9C5E-7D9F1B3D5F05",
+      "name" : "Configuration 1",
+      "options" : {}
+    }
+  ],
+  "defaultOptions" : {},
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:HostPhone.xcodeproj",
+        "identifier" : "24D0427D187B79B379571EC2",
+        "name" : "HostPhoneTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:HostPhone.xcodeproj",
+        "identifier" : "2A4A7D1B3F9F8AFCBB239CE0",
+        "name" : "HostPhoneSwiftTests"
+      }
+    }
+  ],
+  "version" : 1
+}

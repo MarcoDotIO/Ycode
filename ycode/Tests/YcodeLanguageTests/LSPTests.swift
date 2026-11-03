@@ -93,6 +93,11 @@ final class FakeServer: DAPTransport, @unchecked Sendable {
 
     @Test func diagnosticsCompletionDefinition() async throws {
         guard let server = SourceKitLSP.locate() else { return }
+        // A fresh package each run: sourcekit-lsp keeps its index build
+        // (with an implicit module cache) in the package's `.build`, and a
+        // stale cache from an earlier run can stop the standard library
+        // from loading, so the semantic diagnostics never come.
+        try? FileManager.default.removeItem(at: Self.dir)
         let src = Self.dir.appendingPathComponent("Sources/E2E")
         try FileManager.default.createDirectory(at: src, withIntermediateDirectories: true)
         try "// swift-tools-version: 6.0\nimport PackageDescription\nlet package = Package(name: \"E2E\", targets: [.executableTarget(name: \"E2E\")])\n"

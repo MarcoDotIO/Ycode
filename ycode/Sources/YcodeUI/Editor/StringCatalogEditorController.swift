@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The String Catalog editor: a languages sidebar (with progress), and a
 /// Key | Default Localization | Comment | <language> | State table. Edits
@@ -66,9 +67,12 @@ public final class StringCatalogEditorController: NSViewController, NSTableViewD
         addLanguagePopUp.bezelStyle = .smallSquare
         let addKey = NSButton(title: "Add Key", target: self, action: #selector(addKeyClicked))
         addKey.bezelStyle = .smallSquare
+        let refresh = NSButton(title: "Refresh from Source", target: self, action: #selector(refreshClicked))
+        refresh.bezelStyle = .smallSquare
+        refreshButton = refresh
         let sep = NSBox()
         sep.boxType = .separator
-        for v in [sideScroll, mainScroll, addLanguagePopUp, addKey, sep] as [NSView] {
+        for v in [sideScroll, mainScroll, addLanguagePopUp, addKey, refresh, sep] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
@@ -82,6 +86,7 @@ public final class StringCatalogEditorController: NSViewController, NSTableViewD
             mainScroll.topAnchor.constraint(equalTo: root.topAnchor), mainScroll.leadingAnchor.constraint(equalTo: sep.trailingAnchor),
             mainScroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), mainScroll.bottomAnchor.constraint(equalTo: addKey.topAnchor, constant: -4),
             addKey.leadingAnchor.constraint(equalTo: sep.trailingAnchor, constant: 6), addKey.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -4),
+            refresh.leadingAnchor.constraint(equalTo: addKey.trailingAnchor, constant: 6), refresh.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -4),
         ])
         view = root
         reload()
@@ -140,6 +145,33 @@ public final class StringCatalogEditorController: NSViewController, NSTableViewD
         save()
         reload()
     }
+
+    // MARK: Refresh from source
+
+    /// The source files to extract from (the window gives the catalog's
+    /// targets' sources); nil or empty: every source file under the
+    /// catalog's folder.
+    public var sourceFiles: (() -> [String])?
+    public private(set) var refreshButton: NSButton?
+    /// What the last refresh changed.
+    public private(set) var lastRefresh: StringCatalog.MergeSummary?
+
+    /// Extracts the strings of this catalog's table from the sources and
+    /// merges them (`specs/ide/string-catalog.md`, "Ycode implementation").
+    @discardableResult
+    public func refreshFromSource() -> StringCatalog.MergeSummary {
+        var files = sourceFiles?() ?? []
+        if files.isEmpty { files = StringsCLI.sourceFiles([url.deletingLastPathComponent().path]) }
+        let table = StringCatalog.tableName(forPath: url.path)
+        let found = files.flatMap { StringExtractor.extract(file: $0) }.filter { $0.table == table }
+        let summary = catalog.merge(extracted: found)
+        if !summary.isEmpty { save() }
+        lastRefresh = summary
+        reload()
+        return summary
+    }
+
+    @objc private func refreshClicked() { refreshFromSource() }
 
     @objc private func languageChosen() {
         if let code = addLanguagePopUp.selectedItem?.representedObject as? String { addLanguage(code) }

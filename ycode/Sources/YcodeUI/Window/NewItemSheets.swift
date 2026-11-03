@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 import YcodeProject
 
 /// A template chooser: platform tabs, a filter field, a sectioned list with
@@ -22,6 +23,8 @@ public class TemplateChooserController: NSViewController, NSTableViewDataSource,
     public let filterField = NSSearchField()
     public let previousButton = NSButton(title: "Previous", target: nil, action: nil)
     public let nextButton = NSButton(title: "Next", target: nil, action: nil)
+    /// The sheet's heading line (a later step may change it).
+    public let titleLabel = NSTextField(labelWithString: "")
     /// The area below the heading; subclasses swap it for later steps.
     let body = NSView()
     var chooserView = NSView()
@@ -83,7 +86,8 @@ public class TemplateChooserController: NSViewController, NSTableViewDataSource,
 
     public override func loadView() {
         let root = PanelBackgroundView(frame: NSRect(x: 0, y: 0, width: 720, height: 480))
-        let title = NSTextField(labelWithString: heading)
+        let title = titleLabel
+        title.stringValue = heading
         title.font = .boldSystemFont(ofSize: 13)
         platformControl.segmentCount = platforms.count
         for (i, p) in platforms.enumerated() { platformControl.setLabel(p, forSegment: i) }
@@ -221,132 +225,6 @@ public final class NewFileSheetController: TemplateChooserController {
         grid?.highlight(selectedEntry)
         return ok
     }
-}
-
-/// The new-project template sheet, then the options step.
-@MainActor
-public final class NewProjectSheetController: TemplateChooserController {
-    public private(set) var steps = TemplateSheetSteps(count: 2)
-    public var options = ProjectOptions()
-    /// (platform, template title, options) once the options step's Next.
-    public var onFinish: ((String, String, ProjectOptions) -> Void)?
-    let defaults: UserDefaults
-    public let productNameField = NSTextField(string: "")
-    public let organizationField = NSTextField(string: "")
-    public let bundleIdentifierLabel = NSTextField(labelWithString: "")
-    public let teamPopUp = NSPopUpButton()
-    public let interfacePopUp = NSPopUpButton()
-    public let languagePopUp = NSPopUpButton()
-    public let testingPopUp = NSPopUpButton()
-    public let storagePopUp = NSPopUpButton()
-    public let cloudKitBox = NSButton(checkboxWithTitle: "Host in CloudKit", target: nil, action: nil)
-    let optionsHeading = NSTextField(labelWithString: ProjectOptions.heading)
-
-    public init(defaults: UserDefaults) {
-        self.defaults = defaults
-        let last = ProjectTemplateCatalog.lastSelection(defaults)
-        super.init(heading: ProjectTemplateCatalog.heading, platforms: ProjectTemplateCatalog.platforms, platform: last.platform,
-                   catalog: { p, f in
-                       let all = ProjectTemplateCatalog.sections(platform: p)
-                       guard !f.isEmpty else { return all }
-                       return all.compactMap { s in
-                           let hits = s.entries.filter { $0.title.localizedCaseInsensitiveContains(f) }
-                           return hits.isEmpty ? nil : TemplateSection(title: s.title, entries: hits)
-                       }
-                   })
-        select(title: last.title)
-    }
-
-    override func updateButtons() {
-        previousButton.isEnabled = steps.isPreviousEnabled
-        nextButton.isEnabled = steps.index == 0 ? selectedEntry != nil : options.isNextEnabled
-    }
-
-    public override func nextClicked() {
-        guard let e = selectedEntry else { return }
-        if steps.index == 0 {
-            ProjectTemplateCatalog.setLastSelection(platform: platform, title: e.title, defaults)
-            steps.next()
-            if isViewLoaded { show(optionsView()) }
-            updateButtons()
-        } else {
-            readFields()
-            guard options.isNextEnabled else { return }
-            onFinish?(platform, e.title, options)
-        }
-    }
-
-    public override func previousClicked() {
-        guard steps.isPreviousEnabled else { return }
-        readFields()
-        steps.previous()
-        if isViewLoaded { show(chooserView) }
-        updateButtons()
-    }
-
-    /// Copies the option controls into `options` and refreshes the
-    /// derived bundle identifier and CloudKit box.
-    public func readFields() {
-        guard isViewLoaded else { return }
-        options.productName = productNameField.stringValue
-        options.organizationIdentifier = organizationField.stringValue
-        options.interface = ProjectOptions.Interface(rawValue: interfacePopUp.titleOfSelectedItem ?? "") ?? options.interface
-        options.testing = ProjectOptions.Testing(rawValue: testingPopUp.titleOfSelectedItem ?? "") ?? options.testing
-        options.setStorage(ProjectOptions.Storage(rawValue: storagePopUp.titleOfSelectedItem ?? "") ?? options.storage)
-        if options.isCloudKitEnabled { options.hostInCloudKit = cloudKitBox.state == .on }
-        refreshDerived()
-    }
-
-    func refreshDerived() {
-        bundleIdentifierLabel.stringValue = options.bundleIdentifier
-        bundleIdentifierLabel.textColor = options.isBundleIdentifierPlaceholder ? .tertiaryLabelColor : .secondaryLabelColor
-        cloudKitBox.isEnabled = options.isCloudKitEnabled
-        cloudKitBox.state = options.hostInCloudKit ? .on : .off
-        updateButtons()
-    }
-
-    override func initialBody() -> NSView { steps.index == 0 ? chooserView : optionsView() }
-
-    @objc func optionChanged(_ sender: Any?) { readFields() }
-
-    func optionsView() -> NSView {
-        productNameField.stringValue = options.productName
-        organizationField.stringValue = options.organizationIdentifier
-        for f in [productNameField, organizationField] {
-            f.target = self
-            f.action = #selector(optionChanged(_:))
-            f.delegate = self
-            f.widthAnchor.constraint(equalToConstant: 300).isActive = true
-        }
-        teamPopUp.removeAllItems(); teamPopUp.addItem(withTitle: options.team)
-        languagePopUp.removeAllItems(); languagePopUp.addItem(withTitle: options.language)
-        func fill(_ p: NSPopUpButton, _ titles: [String], _ sel: String) {
-            p.removeAllItems(); p.addItems(withTitles: titles); p.selectItem(withTitle: sel)
-            p.target = self; p.action = #selector(optionChanged(_:))
-        }
-        fill(interfacePopUp, ProjectOptions.Interface.allCases.map(\.rawValue), options.interface.rawValue)
-        fill(testingPopUp, ProjectOptions.Testing.allCases.map(\.rawValue), options.testing.rawValue)
-        fill(storagePopUp, ProjectOptions.Storage.allCases.map(\.rawValue), options.storage.rawValue)
-        cloudKitBox.target = self
-        cloudKitBox.action = #selector(optionChanged(_:))
-        let rows: [(String, NSView)] = [("Product Name", productNameField), ("Team", teamPopUp),
-                                        ("Organization Identifier", organizationField), ("Bundle Identifier", bundleIdentifierLabel),
-                                        ("Interface", interfacePopUp), ("Language", languagePopUp), ("Testing System", testingPopUp),
-                                        ("Storage", storagePopUp), ("", cloudKitBox)]
-        let grid = NSGridView(views: rows.map { [NSTextField(labelWithString: $0.0.isEmpty ? "" : $0.0 + ":"), $0.1] })
-        grid.column(at: 0).xPlacement = .trailing
-        grid.rowSpacing = 8
-        optionsHeading.font = .boldSystemFont(ofSize: 13)
-        let stack = NSStackView(views: [optionsHeading, grid])
-        stack.orientation = .vertical
-        stack.alignment = .centerX
-        refreshDerived()
-        return stack
-    }
-}
-
-extension NewProjectSheetController: NSTextFieldDelegate {
-    public func controlTextDidChange(_ obj: Notification) { readFields() }
 }
 
 /// File ▸ New ▸ Project…'s compact picker: "+ New Project" and five rows.

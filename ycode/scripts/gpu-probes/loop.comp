@@ -1,0 +1,13 @@
+// loop.comp: a kernel that never ends unless dst's word is set to 0xdeadbeef (hangkick.c;
+// glslangValidator --target-env vulkan1.3 -V loop.comp -o loop.spv).
+#version 460
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+layout(local_size_x = 32) in;
+layout(buffer_reference, std430, buffer_reference_align = 4) coherent buffer U32 { uint v; };
+layout(push_constant, std430) uniform PC { uint64_t src; uint64_t dst; } pc;
+void main() {
+    uint i = 0u;
+    while (U32(pc.dst).v != 0xdeadbeefu) { i++; }
+    U32(pc.src).v = i;
+}

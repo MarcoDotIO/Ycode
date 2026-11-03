@@ -55,6 +55,12 @@ public final class OpenTypeFace: FontFace, @unchecked Sendable {
     private let kernPairs: [UInt32: Int16]
     private let gposKern: [PairAdjustment]
     private let kernCache = Mutex<[UInt64: Int32]>([:])
+    /// TrueType outline tables (`glyf`, `loca`; nil for CFF faces) and the
+    /// `loca` format (`head.indexToLocFormat` = 1: 32-bit offsets).
+    let glyfTable: (offset: Int, length: Int)?
+    let locaTable: (offset: Int, length: Int)?
+    let locaLong: Bool
+    var bytes: FontBytes { data }
 
     /// Reads face `index` of a font file or collection.
     public convenience init(contentsOf url: URL, index: Int = 0) throws {
@@ -89,6 +95,9 @@ public final class OpenTypeFace: FontFace, @unchecked Sendable {
         let head = try table("head")
         unitsPerEm = max(Int(d.u16(head + 18)), 1)
         let macStyle = d.u16(head + 44)
+        locaLong = d.i16(head + 50) == 1
+        glyfTable = tables["glyf"]
+        locaTable = tables["loca"]
 
         let hhea = try table("hhea")
         var asc = Int(d.i16(hhea + 4)), desc = -Int(d.i16(hhea + 6)), gap = Int(d.i16(hhea + 8))

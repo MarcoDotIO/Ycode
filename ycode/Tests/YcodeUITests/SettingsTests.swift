@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import YcodeBuild
 import YcodeDebug
+@testable import YcodeIDECore
 import YcodeXcodebuild
 @testable import YcodeUI
 
@@ -10,22 +11,6 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 
 @MainActor
 @Suite(.serialized, .heavyIntegration) struct SettingsTests {
-
-    @Test func buildSystemPreference() {
-        let t = TestDefaults("settings")
-        defer { t.remove() }
-        let d = t.defaults
-        #expect(BuildSystemPreference.current(d) == .swiftBuild) // the default
-        #expect(BuildSystemPreference.swiftBuild.makeEngine(locateSwiftBuild: { nil }).name == "xcodebuild")
-        let fb = BuildSystemPreference.swiftBuild.makeEngine(locateSwiftBuild: { "/x/swbuild" })
-        #expect(fb.name == "swift-build")
-        // Workspaces are not described by our PIF yet: they go to xcodebuild.
-        let engine = try! #require(fb as? FallbackEngine)
-        // A workspace that cannot be read falls back to xcodebuild.
-        #expect(engine.engine(for: BuildRequest(container: .workspace("/w.xcworkspace"))).name == "xcodebuild")
-        #expect((engine.primary as? SwiftBuildEngine)?.pifSource is XcodePIFSource)
-        #expect(engine.engine(for: BuildRequest(container: .package("/p"))).name == "swift-build")
-    }
 
     @Test func locationsPanePopUp() throws {
         _ = NSApplication.shared

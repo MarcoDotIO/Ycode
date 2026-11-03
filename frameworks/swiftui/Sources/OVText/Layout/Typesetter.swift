@@ -251,7 +251,7 @@ public enum Typesetter {
         // One word (no break opportunity) known to be wider than the line,
         // shown on a single line: it is broken inside the word whatever the
         // advances, so nothing here depends on estimates.
-        if lines.count == 1, paragraphs.count == 1, let w = limitWidth, w > 0, let p = paragraphs.first,
+        if lines.count == 1, paragraphs.count == 1, let w = limitWidth, w > 0, let p = paragraphs.first, !p.isEmpty,
            !(p.lowerBound + 1..<p.upperBound).contains(where: { opportunities[$0] == .allowed }) {
             let full = c.width(p, strip: .trailing)
             if !full.estimated && full.width > w + epsilon {

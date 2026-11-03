@@ -26,14 +26,16 @@ public struct PBXObject: Equatable, Sendable {
 /// The contents of a `project.pbxproj` file: an object graph rooted at a
 /// `PBXProject`. See `specs/formats/pbxproj.md`.
 public struct PBXProj: Sendable {
-    public enum LoadError: Error, CustomStringConvertible {
+    public enum LoadError: LocalizedError, CustomStringConvertible {
         case syntax(OpenStepParser.Error)
         case structure(String)
 
+        public var errorDescription: String? { description }
+
         public var description: String {
             switch self {
-            case .syntax(let e): "syntax error at \(e)"
-            case .structure(let m): "malformed project: \(m)"
+            case .syntax(let e): "The project file is damaged: syntax error at \(e)"
+            case .structure(let m): "The project file is damaged: \(m)"
             }
         }
     }
@@ -134,7 +136,41 @@ public struct PBXProj: Sendable {
     }
 
     public func makeObjectID() -> String {
+        if let idSequence {
+            while true {
+                let s = idSequence.next()
+                if objects[s] == nil { return s }
+            }
+        }
         var g = SystemRandomNumberGenerator()
         return makeObjectID(using: &g)
+    }
+
+    /// When set, `makeObjectID()` takes new IDs from this sequence instead
+    /// of random ones (tests that compare written files with fixtures).
+    public var idSequence: ObjectIDSequence?
+}
+
+/// Predictable object IDs: a fixed prefix and a counter, 24 hex digits in
+/// all. Copies of a project share the counter.
+public final class ObjectIDSequence: @unchecked Sendable {
+    private let lock = NSLock()
+    private let prefix: String
+    private var counter: UInt64
+
+    /// `prefix` is up to 8 hex digits (padded with zeros); the counter fills
+    /// the remaining 16 and starts at `start`.
+    public init(prefix: String = "AA", start: UInt64 = 1) {
+        self.prefix = String((prefix.uppercased() + String(repeating: "0", count: 8)).prefix(8))
+        counter = start
+    }
+
+    public func next() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        let n = counter
+        counter += 1
+        let hex = String(n, radix: 16, uppercase: true)
+        return prefix + String(repeating: "0", count: max(0, 16 - hex.count)) + hex
     }
 }

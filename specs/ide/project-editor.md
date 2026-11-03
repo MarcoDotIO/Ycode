@@ -142,7 +142,11 @@ bytes (sections and order are deterministic).
 | `removeBuildFile(_:)` | removes the build file from its phase and from `objects` |
 | `removeFileReference(_:)` | removes the reference, its build files, and its entries in groups |
 
-New object IDs are 24 uppercase hex digits not already used.
+New object IDs are 24 uppercase hex digits not already used. The project
+navigator's file operations (groups, folders, Add Files, delete, rename,
+move, sort) are further graph edits, in `YcodeIDECore`
+(`ProjectGraphEdits`, `ProjectFileOperations`); see `navigators.md`
+§Ycode implementation.
 
 ## Evidence
 

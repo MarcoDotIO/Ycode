@@ -658,6 +658,61 @@ coalescing of §7 item 4 is kept (`display-stream.md` §10.4).
 - **Kind 5** (UIDeviceOrientation, §10) stays unimplemented; rotation of a
   foldable goes through kind 7.
 
+## 16. Watches (WATCH-W3B, 2026-10-30; `watchos.md` §5.1, §12)
+
+- **Service.** A watch device type (`YCODE_SIMHID_DIGITAL_CROWN=1`, set for
+  types with the feature `com.apple.hid.digital-crown`) gets a further
+  service at initialization: **Digital Crown**, ID `0x59434F4400000006`,
+  `PrimaryUsagePage` 0xFF0B, `PrimaryUsage` 1, `DeviceUsagePairs` with
+  that pair, `Built-In` true, `Product` "Ycode Digital Crown".
+- **Transport (§7.3) additions.** **8 crown rotation**, body size 32: 8 the
+  signed delta (IEEE double), 4 axis (0: the bundle's own, y; 1 x, 2 y,
+  3 z: diagnostics), 4 reserved. **9 watch gesture**, body size 24: 4 the
+  gesture (0 double tap, 1 flick, 2 single tap), 4 reserved.
+- **Events.** Each kind-8 message becomes one scroll event from the crown
+  service (`IOHIDEventCreateScrollEvent`, looked up with `dlsym`), the delta
+  on the y axis, unchanged. Kind 9 is logged and dropped: its guest route is
+  an open question (`watchos.md` §12.2, Q15).
+- **Buttons.** A watch's crown press and side button are the kind-3 buttons
+  of §5.5 (home, lock), provisionally (`watchos.md` §11.3).
+
+## 17. Vision Pro (VISIONOS-R9, 2026-10-31; `visionos.md` §5.3, §5.5)
+
+- **Services.** A visionOS device (`YCODE_SIMHID_VISION=1`, set for the
+  visionOS platform) gets four further services at initialization, each
+  `Built-In`, with `DeviceUsagePairs` equal to the primary pair and a
+  `Product`: **DigitalDial** `0x59434F4400000008` (page 1, usage 0x37),
+  **Pose** `…09` (0xFF00 / 0x72), **SelectionStream** `…0A` (0xFF00 / 0x71),
+  **Manipulator** `…0B` (0xFF00 / 0x6F; published, never dispatched from).
+- **Transport (§7.3) additions.** **10 pose**, body size 72: 7 IEEE
+  doubles, translation x, y, z, then the unit quaternion w, x, y, z (stage
+  frame, `visionos.md` §5.5.1). **11 selection**, body size 216: u32 flags
+  (bit 0: hands present), u32 0, ray origin 3 doubles, ray direction 3
+  doubles, then the left and the right hand, 72 bytes each: u32 pinching,
+  u32 allowDirect, u32 extra (`visionos.md` §5.5.2's 16-bit value; Ycode
+  sends 0), u32 0, translation 3 doubles, quaternion w, x, y, z. On a
+  Vision Pro **kind 8** (the crown) turns the Digital Crown. Non-finite
+  values are sent as 0.
+- **Events** (`visionos.md` §5.5.2; IOHIDFamily's constructors and field
+  numbers, APSL 2.0, all looked up with `dlsym`): kind 10 → one
+  vendor-defined event (page 0xFF00, usage 0x72, version 13, no data, flags
+  0x1) with a Translation child (type 4, x/y/z) and an Orientation child
+  (type 10, orientation type 3 = quaternion, fields QuatW…QuatZ), from the
+  Pose service. Kind 11 → one vendor-defined event 0x6F (flags 0x2000003)
+  with, when hands are present, the left and the right hand (0x70, data
+  `{pinching, 2 or 1, allowDirect}`, flags `extra << 24 | 3` and `| 1`,
+  each with Translation and Orientation children), then the gaze (0x71,
+  flags 3, an absolute Translation = ray origin and an absolute Rotation =
+  ray direction), from SelectionStream. Kind 8 → a Scroll event (flags
+  0x10, y = the delta) from DigitalDial. Translation and Rotation use
+  `IOHIDEventCreateTranslationEvent`/`…RotationEvent` when present, else
+  the generic constructor and `IOHIDEventSetFloatValue`; the Orientation
+  event is always the generic one with its fields set; flags are set with
+  `IOHIDEventSetEventFlags`.
+- A message for a service the device does not have is logged and dropped
+  (an unknown target crashed the reference's backboardd, `visionos.md`
+  §10.23.2 item 1).
+
 ## Appendix A. Programs (ours)
 
 In `research/experiments/simulator/hid/`; `build.sh <out>` builds them
@@ -735,6 +790,8 @@ for arbitrary usages the usage page. Mapping seen in the guest: source 0 →
 | The registration is a host-task right whose name a snapshot keeps (§7 item 6) | — | Ycode design (`snapshot.md` §2.6); `HIDHostServiceTests.registrationSurvivesRestore`; restores through the viewer |
 | Delivery timing (§14.2) | 3 | the bundle's event timing log and the display server's trace in Ycode runs on the Thor |
 | Device-motion service and its events reach the guest's relay (§15) | 1, 3 | IOHIDFamily `IOHIDEvent.h` (vendor-defined constructor), IOKitUser `IOCFSerialize.h`; Ycode boots on the Thor (`foldable.md` §10.2) |
+| Digital Crown service, kinds 8 and 9, the crown's scroll event (§16) | 1, 3 | IOHIDFamily (APSL 2.0) `IOHIDEvent.h` and `HIDEventAccessors.h` (the scroll and generic-gesture constructors, `IOHIDFloat` a double); Ycode's run a1 on the Thor (`watchos.md` §12.3) |
+| Vision Pro services, kinds 10 and 11, the pose, selection, hand, gaze and dial events (§17) | 1, 3 | IOHIDFamily (APSL 2.0) `IOHIDEventTypes.h` (event types, `kIOHIDOrientationTypeQuaternion` = 3, option bits) and `IOHIDEventFieldDefs.h` (field numbers), as redistributed by the Darling project; `visionos.md` §5.5.2 for the events; VISIONOS-R9 runs r1, r2 on the Thor (`visionos.md` §10.25) |
 
 Level 5 (disassembly, decompilation) was not used. No Apple binary was
 opened in a disassembler or Ghidra; `research/dirty/` was not used. Level 4

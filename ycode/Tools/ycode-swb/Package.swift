@@ -21,6 +21,11 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-build", revision: "5d44ed6ba16c53d56cac5fc6a2d572635aa4a979"),
     ],
     targets: [
-        .executableTarget(name: "ycode-swb", dependencies: [.product(name: "SwiftBuild", package: "swift-build")]),
+        // Sources/YcodeSigning is a symbolic link to ycode/Sources/YcodeSigning
+        // (Foundation only): the signing logic is tested in the Ycode package.
+        .target(name: "YcodeSigning"),
+        // Sources/YcodeRelease is a link to ycode/Sources/YcodeRelease, the release's version.
+        .target(name: "YcodeRelease"),
+        .executableTarget(name: "ycode-swb", dependencies: [.product(name: "SwiftBuild", package: "swift-build"), "YcodeSigning", "YcodeRelease"]),
     ]
 )

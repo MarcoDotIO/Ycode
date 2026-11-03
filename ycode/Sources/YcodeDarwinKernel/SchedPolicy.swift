@@ -204,7 +204,9 @@ extension DarwinProcess {
         // the classes are process state, done under L0 (`mach-ipc-locking.md` §4.5).
         k.lock.deferIfFast(.kernelLock(k.lock), tag: "importance hold/class") { [weak self] in
             guard let self, let k = self.kernel else { return }
-            if self.importanceBoosts > 0, self.holdStart != nil { k.system.releaseStartHold(self, reason: "boost") }
+            if self.importanceBoosts > 0, self.holdStart != nil, !k.system.waitsForShell(self) {
+                k.system.releaseStartHold(self, reason: "boost")
+            }
             if flipped { k.refreshSchedClasses() }
         }
     }
@@ -424,9 +426,13 @@ extension MachIPC {
     }
 
     /// An importance message joined `p`'s queue. Lock held.
-    func importanceQueued(on p: IPCPort) {
+    func importanceQueued(on p: IPCPort, id: Int32 = 0) {
         rebalanceImportance(p)
         p.importanceCount += 1
+        if let target = p.creditedProcess, target.holdActive.load(ordering: .acquiring) {
+            let sender = kernel?.schedProcess
+            target.holdBoostSource = "from pid \(sender?.pid ?? 0) \(sender?.name ?? "?"), message id \(id)"
+        }
         p.creditedProcess?.changeImportance(1)
     }
 
@@ -482,6 +488,8 @@ public struct SchedStats: Sendable {
     public var releasedQuiet = 0
     public var releasedTimeout = 0
     public var releasedExit = 0
+    /// Holds that waited for the shell (`markShellReady`).
+    public var releasedShellReady = 0
     /// Holdable spawns not held because a client had already sent to them.
     public var demandStarts = 0
     public var heldNanoseconds: UInt64 = 0
@@ -519,6 +527,26 @@ extension DarwinSystem {
         }
     }
 
+    /// Whether `p`'s hold waits for the shell (`shellReadyHoldLabels`). Lock held.
+    func waitsForShell(_ p: DarwinProcess) -> Bool {
+        !shellReady && !shellReadyHoldLabels.isEmpty && shellReadyHoldLabels.contains(p.holdLabel)
+    }
+
+    /// The shell is ready (a visionOS device run: the room's first frame, or
+    /// the home view launched): releases the holds that waited for it
+    /// (`visionos.md` §10.26.1). Later calls do nothing.
+    public func markShellReady(reason: String) {
+        lock.withLock {
+            guard !shellReady else { return }
+            shellReady = true
+            guard !shellReadyHoldLabels.isEmpty else { return }
+            holdLog?("shell ready (\(reason)): releasing the holds that waited for it")
+            for p in heldProcesses where shellReadyHoldLabels.contains(p.holdLabel) {
+                releaseStartHold(p, reason: "shell ready")
+            }
+        }
+    }
+
     /// Starts `p`'s held image now. Lock held.
     func releaseStartHold(_ p: DarwinProcess, reason: String) {
         guard let start = p.holdStart else { return }
@@ -530,9 +558,14 @@ extension DarwinSystem {
         case "boost": schedStats.releasedByBoost += 1
         case "quiet": schedStats.releasedQuiet += 1
         case "timeout": schedStats.releasedTimeout += 1
+        case "shell ready": schedStats.releasedShellReady += 1
         default: schedStats.releasedExit += 1
         }
-        holdLog?("pid \(p.pid) \(p.holdLabel): start hold released (\(reason)) after \(held / 1_000_000) ms")
+        var source = reason == "boost" && !p.holdBoostSource.isEmpty ? " (\(p.holdBoostSource))" : ""
+        if reason != "boost", !p.holdBoostSource.isEmpty, shellReadyHoldLabels.contains(p.holdLabel) {
+            source = " (boosted while waiting for the shell, last \(p.holdBoostSource))"
+        }
+        holdLog?("pid \(p.pid) \(p.holdLabel): start hold released (\(reason)) after \(held / 1_000_000) ms\(source)")
         if reason != "exit", p.state != .zombie, !p.exiting { p.image?.resume() }
     }
 
@@ -571,7 +604,7 @@ extension DarwinSystem {
                     releaseStartHold(p, reason: "timeout")
                 }
                 if windowFull, busy < SchedPolicy.holdBusyFraction, cpuQuiet, contentionAge >= SchedPolicy.holdQuietNanoseconds {
-                    for p in heldProcesses where now &- (p.holdStart ?? now) >= SchedPolicy.holdQuietNanoseconds {
+                    for p in heldProcesses where now &- (p.holdStart ?? now) >= SchedPolicy.holdQuietNanoseconds && !waitsForShell(p) {
                         releaseStartHold(p, reason: "quiet")
                     }
                 }
@@ -594,7 +627,7 @@ extension DarwinSystem {
         lock.withLock {
             let s = schedStats
             var line = "start holds \(s.holds) (boost \(s.releasedByBoost), quiet \(s.releasedQuiet), "
-                + "timeout \(s.releasedTimeout), exit \(s.releasedExit), still held \(heldProcesses.count); not held on demand \(s.demandStarts)), "
+                + "timeout \(s.releasedTimeout), exit \(s.releasedExit)\(s.releasedShellReady > 0 ? ", shell ready \(s.releasedShellReady)" : ""), still held \(heldProcesses.count); not held on demand \(s.demandStarts)), "
                 + "\(s.heldNanoseconds / 1_000_000) ms held in all; class changes \(SchedStats.classChanges.load(ordering: .relaxed)) "
                 + "(\(SchedStats.fastRefreshes.load(ordering: .relaxed)) recomputations without L0); "
                 + "importance: \(s.donationPorts) receiving ports, \(s.tempOwnerPorts) temporary owners, "

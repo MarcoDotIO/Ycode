@@ -58,10 +58,16 @@ struct EntryInfo {
 // unsupported-stage for other entry lists and not-an-entry-point when absent.
 EntryInfo entryInfo(llvm::Module &M, llvm::Function *F);
 
-// A constexpr sampler (section 3.7): the global and its first state word.
+// A constexpr sampler (section 3.7): the global and its state words, read
+// from the global's initializer as bytes (whatever aggregate form holds
+// them), and where they came from: "initializer", "zero initializer",
+// "no initializer" or "unreadable initializer" (the last three leave the
+// words 0, which no real sampler has: its LOD maximum is not 0).
 struct ConstexprSampler {
     llvm::GlobalVariable *global = nullptr;
     uint64_t word0 = 0, word1 = 0;
+    std::string source;
+    std::string type;  // the initializer's type, for reflection
 };
 std::vector<ConstexprSampler> constexprSamplers(llvm::Module &M);
 

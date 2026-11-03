@@ -434,7 +434,10 @@ names of `launchd-sim.md` §6.3, denied by our interposer in every process):
    copies observed values).
 2. The 64-bit argument of the display-updated block, and the block
    signatures of the connected/disconnected handlers. When the server
-   invokes them (not in a plain boot).
+   invokes them (not in a plain boot). Under Ycode on visionOS 27.0 the
+   only process using the library registers none of the three handlers
+   (`specs/ide/device-hub.md` §I.12.5; the library's
+   `YCODE_FRAMEBUFFER_LIVE_SIZE` diagnostic calls them when one is set).
 3. The two trailing integer arguments of `SwapAddSurface` and the third
    argument of `SwapSetCallback`.
 4. Arguments of `CreateDisplay`, `UpdateDisplay`, `RemoveDisplay`,

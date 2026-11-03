@@ -195,6 +195,18 @@ import YcodeDarwinABI
         #expect(env.spawn(from: root, path: env.root + "/x86").errno == 86)  // EBADARCH
         try Data(ProcEnv.machO(platform: 1)).write(to: URL(fileURLWithPath: env.root + "/mac"))
         #expect(env.spawn(from: root, path: env.root + "/mac").errno == 86)  // a macOS image: EBADARCH
+        // watchos.md W-3: arm64e (thin, or the only arm64 slices of a fat
+        // file, like watchOS's device binary powerexperienced: arm64e and
+        // arm64e.x1, platform 4) is EBADARCH.
+        try Data(ProcEnv.machO(platform: 9, subtype: 2)).write(to: URL(fileURLWithPath: env.root + "/arm64e"))
+        #expect(env.spawn(from: root, path: env.root + "/arm64e").errno == 86)
+        let device = ProcEnv.fat([(0x0100_000C, 0x8000_0002, ProcEnv.machO(platform: 4, subtype: 0x8000_0002)),
+                                  (0x0100_000C, 0x8000_000C, ProcEnv.machO(platform: 4, subtype: 0x8000_000C))])
+        try Data(device).write(to: URL(fileURLWithPath: env.root + "/powerexperienced"))
+        #expect(env.spawn(from: root, path: env.root + "/powerexperienced").errno == 86)
+        let device9 = ProcEnv.fat([(0x0100_000C, 2, ProcEnv.machO(platform: 9, subtype: 2))])
+        try Data(device9).write(to: URL(fileURLWithPath: env.root + "/fat-arm64e"))
+        #expect(env.spawn(from: root, path: env.root + "/fat-arm64e").errno == 86)
         #expect(env.spawn(from: root, path: env.root).errno == 13)  // a directory: EACCES
         env.launcher.failNext = 12
         #expect(env.spawn(from: root).errno == 12)  // the launcher's ENOMEM
@@ -204,6 +216,22 @@ import YcodeDarwinABI
         let close = SpawnFileAction(type: 1, fd: 77)
         #expect(env.spawn(from: root, fileActions: [close]).errno == 9)  // EBADF
         #expect(env.system.allProcesses.count == before)
+    }
+
+    /// watchos.md W-3: the watchOS simulator's executables (platform 9)
+    /// spawn as iOS's do; in a fat file the plain arm64 slice is taken over
+    /// an arm64e one.
+    @Test func watchOSSimulatorExecutablesSpawn() throws {
+        let env = try ProcEnv()
+        let root = env.rootKernel!
+        try Data(ProcEnv.machO(platform: 9)).write(to: URL(fileURLWithPath: env.root + "/watch"))
+        let thin = env.spawn(from: root, path: env.root + "/watch")
+        #expect(thin.errno == 0 && thin.pid > 0)
+        let mixed = ProcEnv.fat([(0x0100_000C, 2, ProcEnv.machO(platform: 9, subtype: 2)),
+                                 (0x0100_000C, 0, ProcEnv.machO(platform: 9))])
+        try Data(mixed).write(to: URL(fileURLWithPath: env.root + "/watch-fat"))
+        let fat = env.spawn(from: root, path: env.root + "/watch-fat")
+        #expect(fat.errno == 0 && fat.pid > 0)
     }
 
     @Test func setexecKeepsThePid() throws {

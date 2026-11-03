@@ -25,6 +25,22 @@ import Testing
         #expect(r.command(for: req).args.suffix(2) == ["-c", "release"])
     }
 
+    /// Tests on the Ycode simulator (testing.md, "Ycode implementation"):
+    /// the destination is replaced and the host's variables are passed.
+    @Test func destinationOverrideForTheYcodeSimulator() {
+        var r = TestRunner()
+        r.destinationOverride = "platform=iOS Simulator,name=Ycode Simulator,arch=arm64"
+        r.environment = ["YCODE_SIM_HOST": "u@h"]
+        let req = BuildRequest(container: .project("/a/A.xcodeproj"), scheme: "A", destination: "generic/platform=iOS Simulator", action: .test)
+        let args = r.command(for: req).args
+        let i = try? #require(args.firstIndex(of: "-destination"))
+        #expect(i.map { args[$0 + 1] } == "platform=iOS Simulator,name=Ycode Simulator,arch=arm64")
+        #expect(args.filter { $0 == "-destination" }.count == 1 && args.last == "test")
+        // No destination in the request: one is added.
+        let bare = r.command(for: BuildRequest(container: .project("/a/A.xcodeproj"), scheme: "A", action: .test)).args
+        #expect(bare.contains("platform=iOS Simulator,name=Ycode Simulator,arch=arm64") && bare.last == "test")
+    }
+
     @Test func testingStepsForProjects() {
         var r = TestRunner()
         r.testPlan = "Smoke"

@@ -55,6 +55,9 @@ package enum DynamicPropertyInstaller {
 /// A value cell in the graph that bodies can depend on.
 package final class StateLocation<Value>: DependencySource, @unchecked Sendable {
     package private(set) var value: Value
+    /// Runs after a change (R13: a `FocusState` write schedules an update
+    /// even when no body read it, so programmatic focus is applied).
+    package var onChange: (@MainActor () -> Void)?
 
     package init(_ value: Value) { self.value = value }
 
@@ -80,7 +83,10 @@ package final class StateLocation<Value>: DependencySource, @unchecked Sendable 
     @MainActor private func apply(_ newValue: Value, _ tx: Transaction) {
         let same = GraphComparison.valuesEqual(value, newValue)
         value = newValue
-        if !same { invalidateDependents(transaction: tx) }
+        if !same {
+            invalidateDependents(transaction: tx)
+            onChange?()
+        }
     }
 }
 

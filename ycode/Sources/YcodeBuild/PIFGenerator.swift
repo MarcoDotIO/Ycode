@@ -68,6 +68,14 @@ public struct PIFGenerator {
         if let other = proj.targets.first(where: { t in !targets.contains { $0.id == t.id } }) {
             throw GenerationError.unsupported("target \(other.string("name") ?? other.id) (\(other.string("productType") ?? other.isa))")
         }
+        // Synchronized folders are expanded only by YcodeXcodebuild's
+        // `XcodePIF`; describing such a target here would build it with no
+        // files and report success.
+        if !proj.objects(isa: "PBXFileSystemSynchronizedRootGroup").isEmpty {
+            let users = proj.targets.filter { !$0.references("fileSystemSynchronizedGroups").isEmpty }.compactMap { $0.string("name") }
+            throw GenerationError.unsupported("synchronized folders" + (users.isEmpty ? "" : " (target \(users.joined(separator: ", ")))")
+                + "; use the IDE's or ycodebuild's PIF (XcodePIF)")
+        }
         var objects: [JSONValue] = [
             .object(["signature": .string(projectSignature()), "type": "project", "contents": try projectContents(targets: targets)]),
         ]
@@ -174,7 +182,7 @@ public struct PIFGenerator {
             out["type"] = "file"
             out["fileType"] = .string(obj.string("lastKnownFileType") ?? obj.string("explicitFileType") ?? "file")
         default:
-            return .null // synchronized folders etc. are not supported yet
+            return .null // synchronized folders are rejected in `projectObjects()`
         }
         return .object(out)
     }

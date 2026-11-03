@@ -1,0 +1,171 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		5D0000000000000000000011 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0000000000000000000001 /* main.swift */; };
+		5D0000000000000000000012 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5D0000000000000000000020 /* Localizable.strings */; };
+		5D0000000000000000000013 /* Localizable.stringsdict in Resources */ = {isa = PBXBuildFile; fileRef = 5D0000000000000000000030 /* Localizable.stringsdict */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		5D0000000000000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		5D0000000000000000000002 /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5D0000000000000000000021 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		5D0000000000000000000022 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
+		5D0000000000000000000031 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = de; path = de.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		5D0000000000000000000040 = {
+			isa = PBXGroup;
+			children = (
+				5D0000000000000000000041 /* App */,
+				5D0000000000000000000042 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5D0000000000000000000041 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				5D0000000000000000000001 /* main.swift */,
+				5D0000000000000000000020 /* Localizable.strings */,
+				5D0000000000000000000030 /* Localizable.stringsdict */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		5D0000000000000000000042 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5D0000000000000000000002 /* App.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5D0000000000000000000050 /* App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5D0000000000000000000060 /* Build configuration list for PBXNativeTarget "App" */;
+			buildPhases = (
+				5D0000000000000000000051 /* Sources */,
+				5D0000000000000000000052 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = App;
+			productName = App;
+			productReference = 5D0000000000000000000002 /* App.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5D0000000000000000000070 /* Project object */ = {
+			isa = PBXProject;
+			buildConfigurationList = 5D0000000000000000000061 /* Build configuration list for PBXProject "App" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				de,
+			);
+			mainGroup = 5D0000000000000000000040;
+			productRefGroup = 5D0000000000000000000042 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5D0000000000000000000050 /* App */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5D0000000000000000000052 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5D0000000000000000000012 /* Localizable.strings in Resources */,
+				5D0000000000000000000013 /* Localizable.stringsdict in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5D0000000000000000000051 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5D0000000000000000000011 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		5D0000000000000000000020 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				5D0000000000000000000021 /* en */,
+				5D0000000000000000000022 /* de */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		5D0000000000000000000030 /* Localizable.stringsdict */ = {
+			isa = PBXVariantGroup;
+			children = (
+				5D0000000000000000000031 /* de */,
+			);
+			name = Localizable.stringsdict;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		5D0000000000000000000062 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		5D0000000000000000000063 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5D0000000000000000000060 /* Build configuration list for PBXNativeTarget "App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D0000000000000000000062 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		5D0000000000000000000061 /* Build configuration list for PBXProject "App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D0000000000000000000063 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5D0000000000000000000070 /* Project object */;
+}

@@ -260,7 +260,9 @@ public final class IOSurfaceHostService: @unchecked Sendable {
         do {
             let object = try XPCWire.decode(body: m.body, descriptors: wire)
             guard case let .dictionary(d) = object else { throw XPCWireError.noPayload }
+            let statsStart = Self.statsInterval > 0 ? DispatchTime.now().uptimeNanoseconds : 0
             (reply, afterReply) = perform(d, connection: m.localPort)
+            if statsStart != 0 { noteStats(method: d["Method"]?.uint64Value ?? .max, pid: m.sender?.pid ?? 0, start: statsStart) }
             if Self.failureLog, let code = reply.first(where: { $0.0 == "ErrorCode" })?.1.uint64Value, code != 0 {
                 logFailure(d, code: code)
             }
@@ -284,6 +286,29 @@ public final class IOSurfaceHostService: @unchecked Sendable {
         rest.replyPort = 0
         drop(rest)
         afterReply?()
+    }
+
+    /// Diagnostics (`YCODE_IOSURFACE_STATS=<seconds>`, frame-profile.md §10):
+    /// a line per interval with the requests per client and method, and
+    /// their service time.
+    static let statsInterval = ProcessInfo.processInfo.environment["YCODE_IOSURFACE_STATS"].flatMap(Double.init) ?? 0
+    private var stats: [String: (count: Int, ns: UInt64)] = [:]
+    private var statsSince: UInt64 = 0
+
+    /// On the service's thread.
+    private func noteStats(method: UInt64, pid: Int32, start: UInt64) {
+        let now = DispatchTime.now().uptimeNanoseconds
+        let key = "pid \(pid) method \(method)"
+        let old = stats[key] ?? (0, 0)
+        stats[key] = (old.count + 1, old.ns &+ (now &- start))
+        if statsSince == 0 { statsSince = now }
+        let span = Double(now &- statsSince) / 1e9
+        guard span >= Self.statsInterval else { return }
+        log(String(format: "iosurface stats: %.1f s: ", span) + stats.sorted { $0.value.ns > $1.value.ns }.prefix(12).map {
+            String(format: "%@ %.0f/s %.1f ms/s", $0.key, Double($0.value.count) / span, Double($0.value.ns) / 1e6 / span)
+        }.joined(separator: "; "))
+        stats.removeAll(keepingCapacity: true)
+        statsSince = now
     }
 
     /// Diagnostics (`YCODE_IOSURFACE_LOG=1`): each failed request is logged

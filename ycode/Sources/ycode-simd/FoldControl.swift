@@ -256,7 +256,7 @@ final class DeviceControlServer: @unchecked Sendable {
             return result(fold.setOrientation(o))
         default:
             if let answer = moreCommands?(w) { return answer }
-            return "error: unknown command '\(command)' (fold, orientation, rotate, state, screenshot, ui, accessibility, location, audio, overrides, settings)"
+            return "error: unknown command '\(command)' (fold, orientation, rotate, state, screenshot, crown, gesture, pairing, ui, accessibility, location, audio, overrides, settings)"
         }
     }
 }
@@ -278,7 +278,7 @@ func withUnixAddress<R>(_ path: String, _ body: (UnsafePointer<sockaddr>, sockle
 
 /// Whether these arguments ask for the control client.
 func isControlClient(_ arguments: [String]) -> Bool {
-    arguments.contains { ["--control", "--fold", "--orientation", "--rotate", "--fold-state"].contains($0) }
+    arguments.contains { ["--control", "--fold", "--orientation", "--rotate", "--fold-state", "--crown", "--gesture", "--button", "--vision"].contains($0) }
 }
 
 /// Sends one command to the running device's control socket, prints the
@@ -288,7 +288,9 @@ func runControlClient(_ arguments: [String]) -> Never {
     var words: [String] = []
     var i = 1
     let help = "usage: ycode-simd --device <dir> --control <command…> | --fold closed|half|open|<degrees> [--instant]"
-        + " | --orientation <name> | --rotate left|right | --fold-state"
+        + " | --orientation <name> | --rotate left|right | --fold-state | --crown <delta> [count] | --gesture <g>"
+        + " | --button crown|side|action|screen [hold-ms] | --vision <vision command…> (VisionInput.swift; `--vision room <key>`"
+        + " on a stopped Vision Pro sets the room of its next boot)"
     func next() -> String {
         i += 1
         guard i < arguments.count else { die("\(arguments[i - 1]) needs a value\n\(help)", status: 64) }
@@ -304,6 +306,16 @@ func runControlClient(_ arguments: [String]) -> Never {
         case "--orientation": words = ["orientation", next()]
         case "--rotate": words = ["rotate", next()]
         case "--fold-state": words = ["state"]
+        case "--crown":
+            // A watch's crown (WatchInput.swift): the delta, then an optional count.
+            words = ["crown", next()]
+            if i + 1 < arguments.count, Int(arguments[i + 1]) != nil { words.append(next()) }
+        case "--gesture": words = ["gesture", next()]
+        case "--vision": words = ["vision"] + arguments[(i + 1)...]; i = arguments.count
+        case "--button":
+            // A watch's button (WatchInput.swift): the name, then an optional hold.
+            words = ["button", next()]
+            if i + 1 < arguments.count, Int(arguments[i + 1]) != nil { words.append(next()) }
         default: die("unknown argument '\(a)'\n\(help)", status: 64)
         }
         i += 1
@@ -315,6 +327,17 @@ func runControlClient(_ arguments: [String]) -> Never {
     let path = DeviceLayout.controlSocketPath(dev: absolutePath(dev))
     let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
     guard fd >= 0, withUnixAddress(path, { connect(fd, $0, $1) }) == 0 else {
+        // A stopped Vision Pro: the room of its next boot (visionos.md §5.5.4, V-13).
+        if words.count == 3, words[0] == "vision", words[1] == "room", VisionRooms.isValidKey(words[2]) {
+            do {
+                try VisionRooms.writePreference(dev: absolutePath(dev), room: words[2])
+                print("ok room \(words[2]) for the next boot (the device is not running)")
+                exit(0)
+            } catch {
+                print("error: \(error)")
+                exit(1)
+            }
+        }
         stderrLine("ycode-simd: no running device at \(dev) (\(path): \(String(cString: strerror(errno))))")
         exit(69)
     }

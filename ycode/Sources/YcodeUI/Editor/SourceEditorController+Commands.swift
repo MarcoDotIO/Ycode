@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The source editor's text commands behind the Editor menu, the change
 /// gutter and the Edit menu's symbol items (`specs/ide/reference-ui-5.md`
@@ -71,13 +72,15 @@ extension SourceEditorController {
     /// Re-Indent (⌃I).
     @discardableResult
     public func reindentLines() -> Bool {
-        apply(TextCommands.reindent(in: textView.string, selection: selection, language: language, unit: Preferences.shared.indentUnit), actionName: "Re-Indent")
+        let p = Preferences.shared
+        return apply(TextCommands.reindent(in: textView.string, selection: selection, language: language, unit: p.indentUnit, tabWidth: p.tabWidth,
+                                           document: language == .plain ? nil : syntaxDocument), actionName: "Re-Indent")
     }
 
     /// Add Documentation (⌥⌘/).
     @discardableResult
     public func addDocumentation() -> Bool {
-        guard language == .swift || language == .objc || language == .c else { return false }
+        guard language == .swift || language.isCFamily else { return false }
         return apply(TextCommands.addDocumentation(in: textView.string, caretLine: currentLine), actionName: "Add Documentation")
     }
 
@@ -243,6 +246,7 @@ extension SourceEditorController {
             changeBaselineCache = nil
             gutter.changeRegions = []
         }
+        refreshBlame()
         let generation = changeBaselineGeneration
         changeBaselineLoading = Task { [weak self] in
             let base = await read(url)
@@ -267,6 +271,7 @@ extension SourceEditorController {
         }
         gutter.showsChangeColumn = true
         gutter.changeRegions = SourceChanges.regions(text: textView.string, index: base.index, head: base.head)
+        if isDirty { refreshBlame() }
     }
 
     /// Waits for the baseline read (tests).
@@ -331,7 +336,7 @@ extension SourceEditorController {
     // MARK: Minimap landmarks (§6.5)
 
     func minimapLandmarks() -> [(line: Int, name: String)] {
-        guard fileURL != nil, language != .plain else { return [] }
+        guard fileURL != nil, language.isCode else { return [] }
         func flat(_ s: [SymbolScanner.Symbol]) -> [(line: Int, name: String)] {
             s.flatMap { [($0.line, $0.name)] + flat($0.children.filter { $0.kind != .property && $0.kind != .enumCase }) }
         }

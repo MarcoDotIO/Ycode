@@ -1,5 +1,7 @@
 import AppKit
 import YcodeBuild
+import YcodeCompletion
+import YcodeIDECore
 import YcodeLanguage
 
 /// A text view that paints issue annotations and the current-line tint
@@ -20,6 +22,19 @@ final class SourceTextView: NSTextView {
     var currentFindMatch: NSRange? { didSet { needsDisplay = true } }
     /// Editing ▸ Display extras and issue presentation (SourceEditorDisplayExtras.swift).
     let displayState = EditorDisplayState()
+    /// The predictive completion drawn after the caret, on a view above the
+    /// text's layout fragments (SourceEditorController+Prediction.swift).
+    var ghostText: GhostText? { didSet { if oldValue != ghostText { updateGhostOverlay() } } }
+    let ghostOverlay = GhostTextOverlay()
+
+    /// Editor ▸ Show Predictive Completion (⌃⌥Space).
+    @objc func showPredictiveCompletion(_ sender: Any?) { owner?.showPredictiveCompletion(sender) }
+
+    /// Holding Option expands the suggestion.
+    override func flagsChanged(with event: NSEvent) {
+        owner?.predictionFlagsChanged(event)
+        super.flagsChanged(with: event)
+    }
 
     /// Editor overscroll: blank space after the last line.
     override func setFrameSize(_ newSize: NSSize) {
@@ -149,24 +164,43 @@ final class SourceTextView: NSTextView {
         multipleRanges = carets.count > 1 ? carets : []
     }
 
+    /// Typed text: at each of several insertion points, or through the
+    /// typing rules (bracket and quote pairing, re-indenting;
+    /// SourceEditorController+Typing.swift). An explicit replacement range
+    /// (input methods, the rules' own edits) inserts as it is.
     override func insertText(_ string: Any, replacementRange: NSRange) {
-        guard multipleRanges.count > 1, replacementRange.location == NSNotFound else {
-            super.insertText(string, replacementRange: replacementRange)
+        let s = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
+        if multipleRanges.count > 1, replacementRange.location == NSNotFound {
+            editEachSelection { ($0, s) }
             return
         }
-        let s = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
-        editEachSelection { ($0, s) }
+        let typed = replacementRange.location == NSNotFound && !hasMarkedText()
+        if typed, owner?.typeCharacter(s) == true { return }
+        super.insertText(string, replacementRange: replacementRange)
+        if typed { owner?.didTypeCharacter(s) }
+    }
+
+    /// Return indents by the code's structure.
+    override func insertNewline(_ sender: Any?) {
+        if owner?.typeNewline() == true { return }
+        super.insertNewline(sender)
     }
 
     override func deleteBackward(_ sender: Any?) {
-        guard multipleRanges.count > 1 else { super.deleteBackward(sender); return }
+        guard multipleRanges.count > 1 else {
+            if owner?.deleteAutomaticPair() == true { return }
+            super.deleteBackward(sender)
+            return
+        }
         editEachSelection { r in r.length > 0 ? (r, "") : (r.location > 0 ? (NSRange(location: r.location - 1, length: 1), "") : nil) }
     }
 
-    /// Escape returns to one selection.
+    /// Escape returns to one selection. Otherwise it goes up the responder
+    /// chain: NSTextView itself has no `cancelOperation:`, and calling
+    /// super raised "unrecognized selector" (Escape with nothing to cancel).
     override func cancelOperation(_ sender: Any?) {
         if !multipleRanges.isEmpty { multipleRanges = []; return }
-        super.cancelOperation(sender)
+        _ = nextResponder?.tryToPerform(#selector(cancelOperation(_:)), with: sender)
     }
 
     /// The other selections: tinted ranges and thin insertion points.
@@ -192,12 +226,17 @@ final class SourceTextView: NSTextView {
     /// Records each edit (range and old text) for incremental highlighting.
     override func shouldChangeText(in range: NSRange, replacementString: String?) -> Bool {
         let ok = super.shouldChangeText(in: range, replacementString: replacementString)
-        if ok { owner?.noteEdit(range: range, replacement: replacementString ?? "") }
+        if ok {
+            owner?.noteEdit(range: range, replacement: replacementString ?? "")
+            owner?.notePredictionEdit(range: range, replacement: replacementString ?? "")
+            owner?.noteSyntaxEdit(range: range, replacement: replacementString)
+        }
         return ok
     }
 
     override func keyDown(with event: NSEvent) {
         if owner?.handleCompletionKey(event) == true { return }
+        if owner?.handlePredictionKey(event) == true { return }
         if owner?.handlePlaceholderKey(event) == true { return }
         super.keyDown(with: event)
     }
@@ -243,13 +282,21 @@ final class SourceTextView: NSTextView {
     /// Settings ▸ Text Editing ▸ Page guide at column (nil = off).
     var pageGuideColumn: Int? { didSet { needsDisplay = true } }
 
-    /// Tab inserts one indentation step (spaces or a tab, per settings).
+    /// Tab and Shift-Tab follow Settings ▸ Editing ▸ Indentation ▸ Tab key
+    /// (`TypingRules.tab`); without a file, Tab inserts one indentation step.
     override func insertTab(_ sender: Any?) {
+        if owner?.typeTab(backward: false) == true { return }
         insertText(Preferences.shared.indentUnit, replacementRange: selectedRange())
+    }
+
+    override func insertBacktab(_ sender: Any?) {
+        if owner?.typeTab(backward: true) == true { return }
+        super.insertBacktab(sender)
     }
 
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
+        drawEditorGuides(in: rect)   // scope guides and invisibles (SourceEditorController+Guides.swift)
         if let col = pageGuideColumn {
             let w = ("0" as NSString).size(withAttributes: [.font: Theme.font]).width
             let x = textContainerOrigin.x + (textContainer?.lineFragmentPadding ?? 0) + w * CGFloat(col)
@@ -335,6 +382,10 @@ final class MinimapView: NSView {
 /// history is in the toolbar (`specs/ide/reference-ui-5.md` §6.1).
 @MainActor
 final class JumpBar: NSView {
+    /// `liquid-glass.md` §2.6: the band runs y 52–83 under the toolbar (31
+    /// points), then the separator line; it was 25 + 1.
+    static let bandHeight = CGFloat(WorkspaceChrome.jumpBarBandHeight)
+    static let height: CGFloat = bandHeight + 1
     let stack = NSStackView()
     /// The right end: Show Previous Issue, the Issues pull-down, Show Next Issue.
     let issueStack = NSStackView()
@@ -650,6 +701,13 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     public var onDocumentClosed: ((URL) -> Void)?
     public var onDocumentChanged: ((URL, String) -> Void)?
     public var completionProvider: ((URL, Position) async -> [CompletionItem])?
+    /// Predictive completion (SourceEditorController+Prediction.swift): its
+    /// state, the status for the window's activity view, the other open
+    /// files (related snippets) and the path the model sees.
+    let predictionState = PredictionState()
+    public var onPredictionStatus: ((PredictionSession.Status) -> Void)?
+    public var predictionOtherFiles: (() -> [(path: String, text: String)])?
+    public var predictionPath: ((URL) -> String)?
     let completionPopup = CompletionPopupView(frame: NSRect(x: 0, y: 0, width: 380, height: 160))
     public var isShowingCompletions: Bool { completionPopup.superview != nil }
     public var completions: CompletionModel { completionPopup.model }
@@ -707,6 +765,12 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     /// The baseline read in progress, if any.
     public internal(set) var changeBaselineLoading: Task<Void, Never>?
     var changeBaselineGeneration = 0
+    /// Editor ▸ Authors: reads the blame of a file (the editor's text when
+    /// given); nil when the file is not in git. Set by the window.
+    public var blameLoader: ((URL, String?) async -> [GitBlame.Commit]?)?
+    /// The blame read in progress, if any.
+    public internal(set) var blameLoading: Task<Void, Never>?
+    var blameGeneration = 0
     /// The change gutter refreshes this long after the last edit (§6.3.4).
     public static var changeRefreshDelay: TimeInterval = 0.5
 
@@ -773,7 +837,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
             jumpBar.topAnchor.constraint(equalTo: root.topAnchor),
             jumpBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             jumpBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            jumpBar.heightAnchor.constraint(equalToConstant: 26),
+            jumpBar.heightAnchor.constraint(equalToConstant: JumpBar.height),
             findBar.topAnchor.constraint(equalTo: jumpBar.bottomAnchor),
             findBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             findBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -797,6 +861,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
             MainActor.assumeIsolated { self?.applyPreferences() }
         }
         applyPreferences()
+        setUpPrediction()
         // No document yet: Related Items and "No Selection" over an empty
         // editor (reference-ui-6.md §1.3.1, W4).
         jumpBar.setPath(pathComponents)
@@ -1036,9 +1101,10 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
             scrollView.hasHorizontalScroller = false
             textView.frame.size.width = scrollView.contentSize.width
         }
-        multilineTokens = Theme.highlightReturningMultiline(textView.textStorage!, language: language)
+        recolorAll()
         textView.textStorage?.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: textView.textStorage!.length))
         applyDisplayPreferences()
+        applyPredictionPreferences()
         textView.needsDisplay = true
         gutter.needsDisplay = true
     }
@@ -1137,6 +1203,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
 
     public func open(_ url: URL) throws {
         _ = view
+        dismissPrediction()
         hideComparison()
         hideInlineComparison()
         hideAuxiliary()
@@ -1154,7 +1221,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         textView.string = text
         isDirty = false
         reindex()
-        multilineTokens = Theme.highlightReturningMultiline(textView.textStorage!, language: language)
+        resetSyntax()
         updateDisplayExtras()
         refreshSourceChanges()
         onDocumentOpened?(url, text)
@@ -1169,6 +1236,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     /// Stops showing the file: an empty editor, "No Selection".
     public func closeFile() {
         _ = view
+        dismissPrediction()
         let old = fileURL
         showText("", title: "")
         pathComponents = []
@@ -1194,7 +1262,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         refreshSourceChanges()
         isDirty = false
         reindex()
-        Theme.highlight(textView.textStorage!, language: .plain)
+        resetSyntax()
         pathComponents = [(title, "doc.plaintext")]
         setIssues([])
         setBreakpoints([:], active: true)
@@ -1225,10 +1293,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     /// after a short pause instead of on every keystroke.
     public static var lazyThreshold = 3_000
     private var pendingEdit: (range: NSRange, newLength: Int, oldText: String)?
-    private var multilineTokens: [NSRange] = []
     private var deferredIndex: DispatchWorkItem?
     /// How the last change was colored (tests): true = only the edited lines.
-    public private(set) var lastHighlightWasIncremental = false
+    public internal(set) var lastHighlightWasIncremental = false
+    /// The syntax document and typing state (SourceEditorController+Typing.swift).
+    let syntax = EditorSyntaxState()
 
     func noteEdit(range: NSRange, replacement: String) {
         if !textView.issues.isEmpty { textView.issuesStale = true; gutter.marks.issuesStale = true }
@@ -1236,37 +1305,6 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         let old = NSMaxRange(range) <= ns.length ? ns.substring(with: range) : ""
         // Several edits before one change notification: fall back to a full pass.
         pendingEdit = pendingEdit == nil ? (range, (replacement as NSString).length, old) : (NSRange(location: 0, length: 0), -1, "")
-    }
-
-    /// Re-colors after an edit: the edited lines only when no multi-line
-    /// token can be affected, else the whole text.
-    func rehighlight() {
-        let storage = textView.textStorage!
-        defer { pendingEdit = nil }
-        guard Self.incrementalEditing, let e = pendingEdit, e.newLength >= 0 else {
-            multilineTokens = Theme.highlightReturningMultiline(storage, language: language)
-            lastHighlightWasIncremental = false
-            return
-        }
-        let ns = textView.string as NSString
-        let delta = e.newLength - e.range.length
-        let changed = NSRange(location: e.range.location, length: e.newLength)
-        let region = ns.lineRange(for: NSRange(location: min(changed.location, ns.length), length: min(changed.length, ns.length - min(changed.location, ns.length))))
-        let inserted = ns.substring(with: NSRange(location: changed.location, length: min(changed.length, ns.length - changed.location)))
-        let markers = ["/*", "*/", "\"\"\"", "#\""]
-        let touchesMarkers = markers.contains { inserted.contains($0) || e.oldText.contains($0) || ns.substring(with: region).contains($0) }
-        // Shift multi-line token ranges after the edit; any token touching
-        // the edited lines forces a full pass.
-        let oldRegionEnd = NSMaxRange(region) - delta
-        let hits = multilineTokens.contains { t in t.location <= oldRegionEnd && NSMaxRange(t) >= region.location }
-        if touchesMarkers || hits || region.length == 0 {
-            multilineTokens = Theme.highlightReturningMultiline(storage, language: language)
-            lastHighlightWasIncremental = false
-            return
-        }
-        multilineTokens = multilineTokens.map { $0.location >= e.range.location ? NSRange(location: $0.location + delta, length: $0.length) : $0 }
-        Theme.highlight(storage, language: language, region: region)
-        lastHighlightWasIncremental = true
     }
 
     public func textDidChange(_ notification: Notification) {
@@ -1290,6 +1328,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         } else if caret > 0, ns.character(at: caret - 1) == 46 /* . */, language == .swift {
             requestCompletion()
         }
+        predictionTextDidChange()
     }
 
     // MARK: Completion
@@ -1315,6 +1354,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     }
 
     public func showCompletions(_ m: CompletionModel) {
+        dismissPrediction() // the pop-up and the ghost text never show together
         completionPopup.model = m
         guard !m.visible.isEmpty else { return hideCompletions() }
         // Below the start of the word; the label column lines up with it.
@@ -1425,14 +1465,18 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
 
     /// The document's declarations, for View ▸ Editor ▸ Show Document Items (⌃6).
     var documentSymbols: [SymbolScanner.Symbol] {
-        guard fileURL != nil, language != .plain else { return [] }
+        guard fileURL != nil, language.isCode else { return [] }
         if symbolCache.symbols == nil { symbolCache.symbols = SymbolScanner.symbols(in: textView.string, language: language) }
         return symbolCache.symbols ?? []
     }
 
     /// The innermost declaration at or before the caret's line.
     func updateSymbolComponent() {
-        guard fileURL != nil, language != .plain else { jumpBar.symbolTitle = nil; return }
+        guard fileURL != nil, language.isCode else { jumpBar.symbolTitle = nil; return }
+        // Large files: while typing, the symbol component waits for the
+        // pause that updates folds (re-scanning symbols per keystroke cost
+        // most of a keystroke on a 10,000-line file).
+        if symbolCache.symbols == nil, deferredIndex != nil { return }
         if symbolCache.symbols == nil { symbolCache.symbols = SymbolScanner.symbols(in: textView.string, language: language) }
         let line = currentLine
         var best: SymbolScanner.Symbol?
@@ -1487,7 +1531,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         let p = Preferences.shared
         guard p.highlightSelectedSymbol, !isShowingFindBar else { return }
         if symbolCache.highlighted != nil { symbolCache.highlighted = nil; highlightOccurrences(of: nil) }
-        guard let name = identifierAtCaret, language != .plain else { return }
+        guard let name = identifierAtCaret, language.isCode else { return }
         symbolCache.highlightTimer = Timer.scheduledTimer(withTimeInterval: p.highlightDelay, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.applySymbolHighlight(name) }
         }
@@ -1509,11 +1553,13 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
             textView.lineIndex = idx
             gutter.lineIndex = idx
         }
+        predictionSelectionDidChange()
         let caret = fileURL == nil && textView.string.isEmpty ? nil : currentLine
         textView.caretLine = caret
         gutter.caretLine = caret
         updateSymbolComponent()
         scheduleSymbolHighlight()
+        dropClosersOffCaretLine()
         guard let url = fileURL else { return }
         onSelectionChange?(url, caretPosition)
     }
@@ -1630,6 +1676,8 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         foldedStarts = foldedStarts.filter { s in allFoldRegions.contains { $0.startLine == s } }
         minimap.landmarks = showsMinimapCache ? minimapLandmarks() : []
         applyFolds()
+        updateSymbolComponent()
+        updateScopeGuides()
     }
 
     // MARK: Marks
@@ -1697,6 +1745,12 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     /// Test diamonds for the open file.
     public func setTests(_ marks: [Int: GutterView.TestStatusMark]) { gutter.marks.tests = marks }
 
+    /// Editor ▸ Code Coverage: execution counts by line for the ribbon.
+    public func setCoverage(_ counts: [Int: Int], shown: Bool) {
+        gutter.marks.coverage = counts
+        gutter.showsCoverage = shown
+    }
+
     /// "Thread 1: breakpoint 1.1 (1)" at the right of the current line.
     public func setStopAnnotation(_ text: String?) { textView.stopAnnotation = text }
     public var stopAnnotationText: String? { textView.stopAnnotation }
@@ -1743,25 +1797,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     @objc public func toggleMinimap(_ sender: Any?) { Preferences.shared.showMinimap.toggle() }
     @objc public func toggleLineNumbers(_ sender: Any?) { showsLineNumbers.toggle() }
 
-    /// ⌘/: adds or removes `// ` at the start of each selected line.
-    @objc public func commentSelection(_ sender: Any?) {
-        let ns = textView.string as NSString
-        let lines = ns.lineRange(for: textView.selectedRange())
-        let block = ns.substring(with: lines)
-        let parts = block.components(separatedBy: "\n")
-        let body = parts.last?.isEmpty == true ? Array(parts.dropLast()) : parts
-        let allCommented = body.allSatisfy { $0.trimmingCharacters(in: .whitespaces).hasPrefix("//") || $0.isEmpty }
-        let changed = body.map { line -> String in
-            if allCommented, let r = line.range(of: "// ") ?? line.range(of: "//") { return line.replacingCharacters(in: r, with: "") }
-            return allCommented ? line : "// " + line
-        }.joined(separator: "\n") + (parts.last?.isEmpty == true ? "\n" : "")
-        if textView.shouldChangeText(in: lines, replacementString: changed) {
-            textView.replaceCharacters(in: lines, with: changed)
-            textView.didChangeText()
-            // Keep the same lines selected so ⌘/ toggles back.
-            textView.setSelectedRange(NSRange(location: lines.location, length: max(0, changed.utf16.count - 1)))
-        }
-    }
+    // ⌘/ (Comment Selection) is in SourceEditorController+Typing.swift.
 }
 
 /// The in-editor rename field.

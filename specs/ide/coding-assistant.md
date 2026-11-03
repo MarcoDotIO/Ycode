@@ -1,11 +1,12 @@
 # Coding assistant
 
 Ycode modules: `YcodeAssistant` (platform-neutral: providers, conversations,
-prompt building, change proposals, secret storage, OpenAI sign-in; builds
-and tests on Linux), `YcodeSubprocess` (`StreamingSubprocess`), `YcodeUI`
+prompt building, change proposals, secret storage, OpenAI sign-in, the
+JSON-RPC layer, the ACP client; builds and tests on Linux), `YcodeMCP`
+(platform-neutral: the Ycode MCP server and its tools, `ycode mcp`; §10), `YcodeSubprocess` (`StreamingSubprocess`), `YcodeUI`
 (`Assistant/CodingAssistantModel`, `CodingAssistantViewController`,
 `ConversationView`, `NewConversationPrompt`, `ProposalReviewController`, `CodingAssistantServices`,
-`WorkspaceWindowController+CodingAssistant`,
+`WorkspaceWindowController+CodingAssistant`, `+AgentMode`,
 `App/CodingAssistantSettingsPane`).
 
 The assistant answers questions about the user's code and proposes
@@ -208,6 +209,45 @@ Rules:
   in it (no tool session is kept: `--no-session-persistence`,
   `--ephemeral`).
 
+### 3.5 Output limit, sampling, cut-off replies (Ycode)
+
+Added after the SimpleSD trial against a real `llama-server`. Before this
+section, one reply looped for 32.5k tokens over 867 s, until the context
+was full. Also, a reply cut off by the server looked complete, and streamed
+replies carried no token usage. These are **Ycode decisions**; the request
+fields are each server's documented API.
+
+- **Settings** (`AssistantSettings.generation`, `GenerationOptions`):
+  - Most output tokens: default **4,096**. Empty means no limit.
+  - Temperature, top P, top K and repeat penalty: not set by default. A
+    value that is not set is not sent, so the server's default applies.
+- **Requests:**
+
+  | Server | Fields sent |
+  |---|---|
+  | llama.cpp (`/v1/chat/completions`) | `max_tokens`, `temperature`, `top_p`, `top_k`, `repeat_penalty`, and always `stream_options: {include_usage: true}` |
+  | Ollama (`/api/chat`) | `options.num_predict`, `temperature`, `top_p`, `top_k`, `repeat_penalty` |
+  | OpenAI (Responses) | `max_output_tokens`, `temperature`, `top_p` (the API has no top K or repeat penalty) |
+
+  Agent tools and ACP agents ignore these settings.
+- **Cut-off replies.** A server can report that a reply stopped at the
+  output limit:
+  - `finish_reason: "length"` in a streamed chunk (llama.cpp);
+  - `done_reason: "length"` (Ollama);
+  - `response.incomplete` with reason `max_output_tokens` (OpenAI). Before
+    this change that event was an error.
+
+  The provider then sends `ChatEvent.truncated`, followed by `.finished`.
+  The conversation marks the reply `isCutOff`. The transcript shows one
+  secondary line, "The reply was cut off at the output limit (Settings ▸
+  Coding Assistant ▸ Most output tokens).", and a small **Continue**
+  button. Continue sends "Continue exactly where your last reply stopped.
+  Do not repeat anything." in the same conversation.
+- **Usage.** llama.cpp's final chunk (`choices: []`, `usage`) is read for
+  the token counts.
+- **Predictive completion** has its own limits: `maxTokens`, temperature,
+  top P, top K and repeat penalty (`predictive-completion.md` §2).
+
 ## 4. The Coding Assistant pane and commands
 
 - **Showing it.** ⌘0, View ▸ Navigators ▸ Show Coding Assistant, or the
@@ -361,7 +401,7 @@ unsaved edits, or the file on disk), the text with the change on the right
 Sections and rows, in order:
 
 - **Model Provider.** Use: Ollama | llama.cpp | OpenAI | Claude Code | Codex
-  | Antigravity. (The model is chosen in the pane.)
+  | Antigravity | ACP Agent. (The model is chosen in the pane.)
 - **Local Models.** Ollama address; llama.cpp address; llama.cpp API key
   (Save / Remove).
 - **OpenAI.** Sign-in method: Sign in with ChatGPT | API key. With ChatGPT:
@@ -371,9 +411,18 @@ Sections and rows, in order:
 - **Agent Tools.** For each tool: where it was found ("Found: <path>" or
   "Not found"), a path that replaces the search, and a model name (empty:
   the tool's default).
+- **ACP Agent.** Command (the agent's executable and the arguments of its
+  ACP mode) and where it was found (§10.5).
+- **Agent Mode.** "Let agents use Ycode's tools and change files" (on by
+  default), a note, the `ycode mcp` command line and the `claude mcp add`
+  / `codex mcp add` lines with Copy buttons, and Ycode skill: Install in
+  Workspace… (§10.6).
 - **Context.** Context limit (tokens) (at least 1,024); Send the current
   file; Send the other open files; Send the workspace's issues (all on by
   default).
+- **Output.** Most output tokens (default 4,096; empty: no limit),
+  Temperature, Top P, Top K, Repeat penalty (empty: the server's default;
+  §3.5).
 - **Privacy.** "What is sent: your message, the attached file or selection,
   and, as allowed above, the current file (or the part of it that fits),
   the other open files and the issue list, plus the earlier messages of
@@ -443,12 +492,297 @@ the settings pane keeping keys out of user defaults.
   tools popover with a prompt field; the four tools are in the menu.
 - No history slider or automatic application of changes; no `@` references or symbol search in the
   message field (attachments instead); no "Generate Fix for Issue" button
-  on issues; no reasoning-level pop-up; no Model Context Protocol tools;
-  no Agent Client Protocol agents.
-- Agent tools run read-only and propose; they do not build or edit the
-  project themselves.
+  on issues; no reasoning-level pop-up. (Model Context Protocol tools and
+  Agent Client Protocol agents: §10.)
+- Agent tools build, test and run through Ycode's tools in agent mode
+  (§10) and change files only through proposals; with agent mode off they
+  run read-only and propose, as in §3.4.
 - Behaviors ▸ Intelligence keeps the reference's category name and has no
   events.
+
+## 10. Ycode implementation: agent mode, the Ycode MCP server, ACP
+
+Xcode 27's public release notes describe agents that build, test, run and
+render previews through Xcode's MCP server, agents hosted in the IDE over
+the Agent Client Protocol, and skills (level 1). Ycode provides the same
+capabilities with its own design: the tool names, schemas and behaviour
+below are Ycode's, made from the public descriptions and the two public
+protocol specifications. They do not follow the reference's private tool
+list (open question for a dirty-room pass, only if interop ever needs it).
+
+### 10.1 Protocols and transports
+
+- **MCP** (modelcontextprotocol.io, MIT): revision **2026-07-28** served
+  statelessly (every request names its version in
+  `_meta["io.modelcontextprotocol/protocolVersion"]` with
+  `clientCapabilities`; results carry `resultType: "complete"` and
+  `_meta["io.modelcontextprotocol/serverInfo"]`; `server/discover`), and
+  the initialize-based revisions **2025-11-25, 2025-06-18, 2025-03-26** for
+  older clients (dual-era server: an `initialize` selects legacy behaviour
+  for the stdio process or the HTTP client). Unknown versions: `-32022`
+  with `data.supported`/`requested`; a modern request without client
+  capabilities: `-32602`. Methods: `initialize`, `ping`, `server/discover`,
+  `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`,
+  `resources/read`, `prompts/list`, `prompts/get`, `logging/setLevel`;
+  notifications in: `notifications/initialized`, `notifications/cancelled`
+  (stdio: cancels the request, no reply); out: `notifications/progress`
+  for a request with `_meta.progressToken`. Batches are refused.
+- **stdio** (`ycode mcp`): newline-delimited JSON-RPC on standard input and
+  output; requests run concurrently. Standard output is kept for protocol
+  messages only (it is duplicated at start and file descriptor 1 is pointed
+  at standard error, so nothing a library prints can corrupt the stream).
+  End of input ends the server and the programs it started.
+- **Streamable HTTP** (`ycode mcp --http [port]`, and in the IDE): one
+  endpoint `POST /mcp` on **127.0.0.1 only**; `Authorization: Bearer
+  <token>` required (32 random bytes, hex; constant-time compare; else
+  401 with `WWW-Authenticate: Bearer`); an `Origin` that is not loopback:
+  403; GET and DELETE: 405 (no standalone stream, no sessions, no
+  `Mcp-Session-Id`). Notifications and responses: 202. Modern requests
+  must repeat `MCP-Protocol-Version`, `Mcp-Method` and, for `tools/call`,
+  `prompts/get`, `resources/read`, `Mcp-Name` (the `=?base64?…?=` form is
+  decoded) as headers; a mismatch is 400 with `-32020`; an unknown method
+  404 with `-32601`; other protocol errors 400. Legacy errors come in 200
+  responses. A request with a progress token that accepts
+  `text/event-stream` gets an SSE stream (`event: message`, `X-Accel-
+  Buffering: no`) of its progress notifications, then its response;
+  otherwise one JSON object. `ycode mcp --http` takes the token from
+  `YCODE_MCP_TOKEN` or prints a new one on standard error.
+- **ACP** (agentclientprotocol.com, Apache-2.0), **protocol version 1**:
+  Ycode is the client, the agent a subprocess speaking newline-delimited
+  JSON-RPC on its standard input and output (§10.5).
+
+### 10.2 The tools
+
+Every tool has a JSON Schema 2020-12 input schema (`type: object`,
+`additionalProperties: false`, a description on every property), most an
+output schema; results carry `structuredContent` and the same data as text
+(a summary first where it helps). Arguments are checked against the schema
+(required keys, top-level types, unknown keys); failures, like every tool
+failure, are results with `isError: true` and a message the model can act
+on; an unknown tool name is `-32602`. Annotations: `readOnlyHint` true for
+the reading tools; the write tools are `destructiveHint`. Paths are
+relative to the workspace folder (a package's folder, or the folder that
+holds the project or workspace); absolute paths must lie inside it, and
+anything that leaves it (after resolving symbolic links) is refused. Each
+tool takes an optional `workspace` (a path; opened when it is not the open
+one), so a stateless client can name its workspace on every call.
+
+| Tool | What it does |
+|---|---|
+| `workspace_open` | Opens a package (folder or `Package.swift`), `.xcodeproj` or `.xcworkspace` (a folder: the package in it, or its only workspace or project); describes it. |
+| `workspace_describe` | Name, kind, path, folder, schemes, targets (with product types; a package's target folders), configurations, destinations (the host's, and each Ycode Simulator target when one is set up), selected scheme and destination, test plans, whether a simulator host is set up. |
+| `file_list` | The workspace's files as Find in Workspace sees them (navigator order), relative; `glob` (fnmatch; a pattern without `/` also matches file names), `limit` (500). |
+| `file_read` | Text with line numbers (`cat -n` style), `startLine`, `lineCount` (at most 2,000; "… more lines" says where to go on); the structured result has the plain text. The IDE's unsaved editor text wins over disk. Folders, files over 8 MB and non-UTF-8 files are refused. |
+| `search` | Find in Workspace (`FindEngine`): text or `regex`, `ignoreCase` (default true), `wholeWord`, `limit` (200); `path:line:column: text` lines. |
+| `issues` | The session's displayed issues (build, test and project issues) with relative path, line, column, notes and fix-its; counts. |
+| `build_settings` | A project target's resolved settings for a configuration (default: the project's default configuration), optionally only `names`; packages: refused with a pointer to `Package.swift`. |
+| `symbol_search` | Declarations in the workspace's Swift files whose name contains the query, with kind, line, declaration and the `///` or `/** */` comment above. Documentation of Apple's SDKs is not searched (the core has no documentation index; a DocC archive reader would add it). |
+| `build`, `clean` | The session's Product ▸ Build / Clean Build Folder for `scheme` and `destination` (by name, id or specifier), documents saved first in the IDE. Every issue is collected (`stopOnFirstError` off in `ycode mcp`). Progress: the activity view's texts as `notifications/progress` (`done/total` when the text has counts). Result: status, counts, up to 300 issues, seconds, the last 30 log lines. |
+| `test` | Product ▸ Test: all tests, `tests` (identifiers `Suite/name`, `Target/Suite/name`, or a bare name, matched against the tests found in the sources; unknown ones are refused with the known list), or a scheme's `plan`. Result: status, passed/failed/skipped, each outcome with its failures, the issues, the log tail. |
+| `build_log` | The last build's or test run's log (`tail`, 200). |
+| `run` | Builds, then runs the scheme's product: on this computer as a subprocess in the workspace folder with `arguments`, its output captured (`waitSeconds`, default 5, then the state and output so far); on a Ycode Simulator destination, the app bundle around the executable is installed and launched on the remote device (`WorkspaceSession.runOnRemoteSimulator`, no debugger in `ycode mcp`). A run ID for `run_output` and `stop`. |
+| `run_output`, `stop` | A run's state and latest output (`tail`); stop: SIGINT, then SIGTERM after 3 s; a simulator run is stopped as Product ▸ Stop does (the device is saved with warm boot). |
+| `simulator_list` | The remote host's simulator targets (`RemoteSimulator.all`): name, id, runtime, device directory, running. |
+| `simulator_boot`, `simulator_shutdown` | Device Hub's Start and Shut Down (`RemoteDeviceSessions`); the launcher's lines are kept for `simulator_logs`. |
+| `simulator_launch_app` | Installs a built `.app` and launches it on a device (`runOnRemoteSimulator`), waiting up to `waitSeconds` (60) for "Running …". |
+| `simulator_screenshot` | The running device's screen as an MCP image block (`image/png`): one ssh call runs the launcher's `--control screenshot <display> <file>` into `<data>/shots/`, prints the PNG and removes it (`RemoteSimulator.screenshot`); `display` active, LCD or LCD-1. |
+| `simulator_logs` | The launcher's and the app's latest console lines. |
+| `preview_list` | A Swift file's `#Preview` and `PreviewProvider` declarations (name, line, kind, traits). |
+| `preview_render` | One `#Preview` rendered headlessly to a PNG image block through OpenViews (`PreviewRenderRunner`, the same path as `ycode preview --render`; the OpenViews package must be found: `YCODE_OPENVIEWS` or `frameworks/swiftui` above the workspace or the executable). |
+| `strings_catalogs` | The workspace's `.xcstrings` files: source language, key count, each language's progress. |
+| `strings_list` | A catalog's rows for a `language` (key, source, comment, translation, state, variations); `missingOnly`: new, needs review, stale, or empty. A new language code lists every key. |
+| `strings_set` (write) | One translation (state translated) through the String Catalog model; the language column is added when new. |
+| `file_write` (write) | Creates a file or replaces its contents. |
+| `file_edit` (write) | Replaces `oldText` (exact, occurring once unless `replaceAll`) with `newText`; missing or ambiguous text is explained. |
+| `complete` | One predictive code completion at a 1-based line and column, from the backend in Ycode's settings (`specs/ide/predictive-completion.md` §7; added by PREDICT). |
+
+Resources: every workspace file as a `file://` URI (at most 2,000, text
+read like `file_read`), `ycode://workspace/build-log`, and
+`ycode://workspace/issues` (JSON); the template `file:///{path}`. Reading
+outside the workspace: `-32602`; an unknown URI: `-32602` (modern) or
+`-32002` (legacy). Prompts: `build_and_fix` (`scheme`) and `run_tests`
+(`tests`). The server's instructions describe the build–issues–edit loop
+and the write rules.
+
+### 10.3 Write mode and the security model
+
+- **Read-only by default.** `ycode mcp` refuses the three write tools with
+  a message naming `--allow-writes` and agent mode; `--allow-writes` lets
+  them write directly.
+- **Review** (the IDE): a write tool computes the change (the file's text
+  before, from the editor when it is open, and after) and asks the write
+  policy; the IDE shows it as a proposal (§10.4) and the tool answers only
+  after the user decides: accepted → written (the IDE already saved it; the
+  tool writes only if the disk differs), rejected → `isError` "The change
+  was rejected in Ycode's review; nothing was written." Nothing is written
+  before the decision.
+- **Loopback and tokens.** HTTP listens on 127.0.0.1 only; the IDE starts
+  one endpoint per agent request with a new token and stops it when the
+  response ends. Claude Code gets the token in a 0600 file in a 0700
+  folder (`--mcp-config`), removed after the run; Codex in its
+  environment (`YCODE_MCP_TOKEN`, named by `bearer_token_env_var`). Tokens
+  are never on a command line, in logs or in conversations.
+- **Paths** are confined to the workspace folder (§10.2). The simulator
+  tools use ssh with keys only (`BatchMode=yes`), as the IDE does.
+
+### 10.4 Agent mode in the IDE
+
+- **Settings.** Settings ▸ Coding Assistant ▸ Agent Mode (on by default).
+  With it on, each request to Claude Code, Codex or the ACP agent gets an
+  attachment: the window's MCP tools (one `YcodeMCPHost` over the window's
+  own `WorkspaceSession`, so an agent's build shows in the activity view,
+  the issue navigator and the report navigator), a new per-request server
+  over those tools whose write policy is the conversation's review, and
+  its loopback endpoint. The instructions become the agent instructions
+  (use Ycode's tools; change files only through them; every change is a
+  proposal; build after changing code). The response's activity says
+  "Agent mode: Ycode's tools are attached; each change is a proposal you
+  review".
+- **Claude Code**: `-p --output-format stream-json --verbose
+  --include-partial-messages --permission-mode default --tools
+  Read,Grep,Glob --mcp-config <file> --strict-mcp-config --allowedTools
+  mcp__ycode --restricted --no-session-persistence --permission-prompts
+  none [--model M]`. `--safe-mode` (§3.4) would disable MCP servers, so
+  agent mode uses `--restricted` (no command-running tools or WebFetch,
+  the user's and project's settings files ignored, file tools confined to
+  the working directory). Its own edit tools stay off; only Ycode's tools
+  change files.
+- **Codex**: the §3.4 command line plus `-c
+  mcp_servers.ycode.url="<endpoint>"` and `-c
+  mcp_servers.ycode.bearer_token_env_var="YCODE_MCP_TOKEN"`; the read-only
+  sandbox stays (Ycode's tools run in Ycode). `mcp_tool_call` items show
+  as activity ("ycode: build"); Claude Code's `mcp__ycode__build` tool uses
+  likewise.
+- **Antigravity**: no attachment (its print mode documents no MCP
+  configuration); it stays read-only.
+- **Proposals.** An agent's change is appended to the running response as
+  a `<lang> file=<relative path>` block (a still-open fence is closed
+  first; `~~~~` when the text holds backticks); paths outside the
+  workspace or with spaces are refused. Review… shows the agent's exact
+  text (not re-applied through §5.3); Accept applies it to the editor as
+  one undoable edit and **saves** the file, since the agent builds from
+  disk next; Reject changes nothing. The waiting tool call then returns.
+  A response that ends with changes still waiting answers them as not
+  accepted. After a tool writes, an open editor without unsaved edits is
+  updated from disk.
+- **Saving before builds.** The agent's `build`, `test` and `run` save
+  the window's edited documents and projects first.
+- **Off**: agents run as in §3.4 (read-only, proposals in text).
+
+### 10.5 ACP agents
+
+`ProviderKind.acpAgent` ("ACP Agent"): the command typed in Settings is
+split like a shell (quotes group), its first word found like the agent
+tools (§3.4). Not set or not found: "not installed" with the setup hint.
+One agent process and one session per request (nothing is kept, like the
+agent tools):
+
+1. `initialize` `{protocolVersion: 1, clientCapabilities: {fs:
+   {readTextFile: true, writeTextFile: true}, terminal: false},
+   clientInfo: {name: "ycode", title: "Ycode", version}}`; another
+   protocol version is an error.
+2. `session/new` `{cwd: <workspace folder>, mcpServers}`: Ycode's endpoint
+   as `{type: "http", name: "ycode", url, headers: [{name:
+   "Authorization", value: "Bearer <token>"}]}` when the agent's
+   `agentCapabilities.mcpCapabilities.http` is true, else none.
+3. `session/prompt` with one text block (the flattened prompt, §5.1).
+   `session/update` notifications for the session become the transcript:
+   `agent_message_chunk` → text; `agent_thought_chunk` → "Thinking: …"
+   activity per paragraph (or 240 characters); `tool_call` /
+   `tool_call_update` → "<title> (<first location>)" with "…" (in
+   progress), "✓" (completed) or "✗" (failed); `plan` → "Plan: ☑ done; ▸
+   in progress; ☐ pending"; `current_mode_update` → "Mode: …"; `notice` →
+   its title and description. The response's `stopReason` ends the turn:
+   `cancelled` → "Stopped.", `refusal` → an error, others finish.
+   Ending the stream (Stop) sends `session/cancel`; the agent process is
+   interrupted when the request ends.
+4. Agent requests: `fs/read_text_file` (absolute path inside the
+   workspace, `line`/`limit` applied; the editor's text when open);
+   `fs/write_text_file` → a proposal (§10.4); accepted → `{}`, rejected →
+   error `-32003` "The change to <file> was not accepted in Ycode's review;
+   nothing was written."; `session/request_permission` → a sheet with the
+   agent's options as buttons (at most four; closing it is `{outcome:
+   "cancelled"}`, a choice `{outcome: "selected", optionId}`); other
+   methods (terminals) → method not found. Without agent mode the agent
+   may read inside the workspace only; writes are refused and permission
+   requests answered with the first reject option.
+
+### 10.6 The Ycode skill
+
+Only on the user's action (Settings ▸ Coding Assistant ▸ Ycode skill:
+Install in Workspace…, after a confirmation naming the files; or `ycode
+mcp install-skill [<folder>]`), Ycode writes the same Markdown file to
+`.claude/skills/ycode/SKILL.md` (Claude Code's project skills) and
+`.agents/skills/ycode/SKILL.md` (for other agents that read skills
+there): YAML front matter (`name: ycode`, a `description` of when to use
+it), the workflow (describe → read/search → edit → build → issues → test →
+run → screenshot → preview), the write rules, and one line per tool,
+generated from the tool list.
+
+### 10.7 What is not done
+
+- Plug-ins (the reference's agent plug-ins), a plan view (plans show as
+  activity lines), session history across requests (`session/load`), ACP
+  terminals, MCP `subscriptions/listen` and list-changed notifications
+  (the tool list is fixed), elicitation and sampling (MRTR).
+- `ycode-ide` (the Linux shell) has no assistant pane yet; on Linux agents
+  use `ycode mcp`.
+- No Generate Translations command in the String Catalog editor (agents
+  translate through `strings_list` / `strings_set`).
+- Tests on the Ycode Simulator (`test` with a simulator destination) go
+  through the session's runner as Product ▸ Test does; the remote tests
+  were not run by this round.
+
+### 10.8 Tests
+
+`YcodeMCPTests` (macOS and Linux): JSON values and JSON-RPC framing
+(lines split across reads, CRLF, batches refused, ids), peers (concurrent
+requests, errors, cancellation without a reply, closing fails waiters);
+the server (legacy `initialize` negotiation, modern `_meta` requests with
+`resultType`, `-32022`, `-32602`, argument checks, write policies, prompts,
+resource errors by era); every tool's schema; the HTTP transport (401,
+403, 405, 202, header checks and `-32020`, base64 `Mcp-Name`, 404 and
+`-32601`, `-32022`, SSE progress); each tool against
+`Samples/AgentSamples/Greeter` (a copy) and `Samples/PackageSamples`
+(build settings): open/describe/list/read/search/symbols, build with an
+error → issues → `file_edit` → build → test (all, one, unknown) → run →
+clean, write gating and review, String Catalogs, previews, resources, and
+the simulator tools against a stand-in `ssh` that returns a PNG; an
+end-to-end run of the built `ycode mcp` driven as a client (initialize,
+build with progress, issue, read, edit, build green, tests green) and a
+modern stateless client against a read-only server. `YcodeAssistantTests`
+(`AgentModeTests`): an ACP session with an in-process stand-in agent
+(updates, plan, tool calls, file read, permission, write through the
+client; a rejected write; read-only handlers), event mapping, the ACP
+provider with a shell-script agent process, agent-mode command lines for
+Claude Code (config file mode 0600, removed afterwards, no token on the
+command line) and Codex (token in the environment). `YcodeUITests`
+(`AgentModeUITests`): an agent that calls the window's endpoint over HTTP
+gets its `file_edit` as a proposal, accepted (saved, the tool answers
+"Edited …") or rejected (nothing written), its permission request
+answered; agent mode off; the skill; the window's host over its session.
+Opt-in: `YCODE_MCP_THOR=1` with `YCODE_MCP_SIM_*` set runs
+`simulator_boot`, waits for the launcher's "home screen at" line and
+takes `simulator_screenshot` on the real remote host
+(`YCODE_MCP_THOR_WAIT`: seconds to wait for a picture, default 600; a
+shared host's launcher may first wait for a boot slot). The device
+directory is the target's (`<device>-<type>-<runtime>`, run.md §Runtimes
+and device types), so a copied device goes there.
+
+### 10.9 Evidence
+
+| Claim | Level | Source |
+|---|---|---|
+| Agents build, test, run and render previews through an MCP server; ACP agents in the IDE; skills | 1 | Apple, "Xcode 27 Release Notes" (developer.apple.com) |
+| MCP 2026-07-28: per-request `_meta` keys, `server/discover`, `resultType`, error codes `-32020`/`-32021`/`-32022`, Streamable HTTP without sessions or GET, header mirroring and validation, base64 header values, SSE responses, `X-Accel-Buffering`, Origin checks, loopback binding, dual-era compatibility | 1 | modelcontextprotocol.io/specification/2026-07-28: versioning, basic (overview), server/discover, transports/streamable-http (read 2026-10-31) |
+| Legacy `initialize`, tools, resources, prompts, progress, cancellation, content blocks, tool annotations, output schemas | 1 | modelcontextprotocol.io/specification/2025-11-25 and 2025-06-18 |
+| ACP methods, `session/update` kinds and fields, `ToolCall`, `PlanEntry`, `PermissionOption`, outcomes, `McpServer` (stdio, http, sse), `StopReason`, `ProtocolVersion` (uint16; version 1) | 1 | agentclientprotocol.com: protocol overview and schema (read 2026-10-31) |
+| Claude Code: `--mcp-config`, `--strict-mcp-config`, `--allowedTools mcp__<server>`, `--restricted`, `--safe-mode` disabling MCP servers; HTTP MCP config with headers | 1, 3 | `claude --help` (2.1.316); a read-only smoke run against `ycode mcp --http` on a copy of the Greeter sample: the server connected, `workspace_describe` and `build` were called (2026-10-31) |
+| Codex: `-c mcp_servers.<name>.url`, `bearer_token_env_var`, `mcp_tool_call` items | 1, 3 | Codex configuration documentation; a read-only smoke run with `codex exec` 0.163.0 against `ycode mcp --http` (`workspace_describe` called; 2026-10-31) |
+| Claude Code project skills in `.claude/skills/<name>/SKILL.md` with `name`/`description` front matter | 1 | Claude Code documentation, "Agent Skills" |
+| `simulator_boot` → launcher "home screen at …" → `simulator_screenshot` returns the device's home screen (iPhone 18 Pro, iOS 27.0, cold boot, 95.5 s) | 3 | `MCPThorTests` against the arm64 Linux simulator host, 2026-10-31 |
+| No ACP-capable agent CLI was installed on the Mac (Claude Code 2.1.316, Codex 0.163.0 and Antigravity offer MCP, not ACP); the ACP client is tested with stand-ins only | 3 | `--help` of each, 2026-10-31 |
+| Everything else in §10 (tool names, schemas, results, the review flow, the skill text) | — | Ycode's design |
 
 ## Evidence
 

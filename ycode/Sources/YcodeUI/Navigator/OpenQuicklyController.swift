@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// Open Quickly (⇧⌘O): a search field over a list of matching files and
 /// symbols; Return opens the selected one. See `specs/ide/open-quickly.md`.

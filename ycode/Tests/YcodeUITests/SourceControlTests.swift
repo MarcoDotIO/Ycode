@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -32,19 +33,6 @@ private func git(_ dir: URL, _ args: String...) throws -> String {
         try "print(2)\n".write(to: dir.appendingPathComponent("Sources/App/main.swift"), atomically: true, encoding: .utf8)
         try "let x = 1\n".write(to: dir.appendingPathComponent("Sources/App/New.swift"), atomically: true, encoding: .utf8)
         return dir
-    }
-
-    @Test func repositoryReading() throws {
-        let dir = try makeRepo()
-        let repo = try #require(GitRepository(containing: dir))
-        #expect(repo.root.path == dir.standardizedFileURL.resolvingSymlinksInPath().path || repo.root.lastPathComponent == "scm-repo")
-        #expect(try repo.branches() == [.init(name: "feature", isCurrent: false), .init(name: "main", isCurrent: true)])
-        #expect(try repo.tags().map(\.name) == ["v1.0"])
-        #expect(try repo.remotes() == [.init(name: "origin", url: "https://example.invalid/app.git")])
-        let status = try repo.status()
-        #expect(status.values.sorted { $0.rawValue < $1.rawValue } == [.untracked, .modified])
-        #expect(status.first { $0.key.hasSuffix("main.swift") }?.value == .modified)
-        #expect(GitRepository(containing: URL(fileURLWithPath: "/")) == nil)
     }
 
     @Test func navigatorsBadgesAndCommit() async throws {

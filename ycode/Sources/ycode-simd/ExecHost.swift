@@ -11,6 +11,7 @@ import Foundation
 import Glibc
 import YcodeDarwinABI
 import YcodeDarwinKernel
+import YcodeDisplayStream
 import YcodeHypervisor
 import YcodeMachO
 import YcodeHostServices
@@ -58,7 +59,9 @@ final class ExecConfiguration: @unchecked Sendable {
     let rootEnvironment: [String]
 
     init(_ options: Options) throws {
-        guard let rootArgument = options.runtimeRoot, options.execPath != nil || options.devicePath != nil else {
+        // --macos (MacOSMode.swift): the root is the macOS userland root.
+        let macOSRoot = MacOSMode.enabled ? MacOSMode.locateRoot(explicit: options.macOSRoot) : nil
+        guard let rootArgument = macOSRoot ?? options.runtimeRoot, options.execPath != nil || options.devicePath != nil else {
             die("--exec and --device need --runtime-root\n\(usage)", status: 64)
         }
         if options.execPath != nil && options.devicePath != nil { die("--exec and --device exclude each other", status: 64) }
@@ -80,6 +83,8 @@ final class ExecConfiguration: @unchecked Sendable {
             let platform = layout.runtimePlatform()
             let recorded = DeviceLayout.recordedDeviceType(in: layout.dev).flatMap(DeviceType.named).flatMap { $0.platform == platform ? $0 : nil }
             layout.deviceType = options.deviceType ?? recorded ?? DeviceType.default(for: platform, version: layout.runtimeVersion().version)
+            // The lean profile's list is per platform (watchos.md W-6).
+            layout.lean = LeanBootProfile.fromProcessEnvironment(platform: platform)
             layout.oneshotDelay = options.oneshotDelay
             layout.installApp = options.installApp.map(absolutePath)
             layout.launchBundleID = options.launchBundleID
@@ -95,7 +100,21 @@ final class ExecConfiguration: @unchecked Sendable {
                 layout.framebufferLibrary = options.framebufferLibrary.map(absolutePath)
                     ?? fallback.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             }
-            layout.hidBundle = hidBundlePath(options, foldable: layout.deviceType.isFoldable)
+            // A foldable's hinge and a watch's crown are HID input: those types
+            // have the bundle with or without a display server (§12 of watchos.md).
+            // So is a Vision Pro's gaze, hands and camera (visionos.md §5.5).
+            layout.hidBundle = hidBundlePath(options, foldable: layout.deviceType.isFoldable || layout.deviceType.family == .watch
+                                                 || layout.deviceType.family == .vision)
+            // visionOS: the room for this boot (`--room`; visionos.md §5.5.4, V-13).
+            if let room = options.visionRoom {
+                guard layout.deviceType.family == .vision else { die("--room: \(layout.deviceType.name) is not a Vision Pro", status: 64) }
+                do {
+                    try VisionRooms.writePreference(dev: layout.dev, room: room)
+                    stderrLine("ycode-simd: visionOS: room \(room) for this boot (\(VisionRooms.preferenceKey))")
+                } catch {
+                    die("--room: cannot write \(VisionRooms.preferencePath(dev: layout.dev)): \(error)", status: 73)
+                }
+            }
             // Ycode's guest agents (simulator-features.md "Ycode implementation").
             let agentsOut = options.shimPath.map { shim -> String in
                 let simShim = ((absolutePath(shim) as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
@@ -107,10 +126,21 @@ final class ExecConfiguration: @unchecked Sendable {
             }
             layout.settingsAgent = options.settingsAgent == "none" ? nil
                 : options.settingsAgent.map(absolutePath) ?? guestAgentFile("ycode-settings-agent")
+            layout.pairingAgent = options.pairingAgent == "none" ? nil
+                : options.pairingAgent.map(absolutePath) ?? guestAgentFile("ycode-pairing-agent")
+            layout.healthAgent = options.healthAgent == "none" ? nil
+                : options.healthAgent.map(absolutePath) ?? guestAgentFile(DeviceLayout.healthAgentBundleName)
             if options.environmentOverrides {
                 layout.overridesLibrary = guestAgentFile("libYcodeEnvironmentOverrides.dylib")
                 if layout.overridesLibrary == nil {
                     stderrLine("ycode-simd: warning: --environment-overrides: no libYcodeEnvironmentOverrides.dylib in the guest tools")
+                }
+            }
+            // Gauge's signpost agent (profiler.md §3.1), inserted after the overrides library.
+            if let profile = options.profile, profile.signposts, options.launchBundleID != nil {
+                layout.gaugeLibrary = guestAgentFile(GaugeAgentFiles.libraryName)
+                if layout.gaugeLibrary == nil {
+                    stderrLine("ycode-simd: warning: --profile: no \(GaugeAgentFiles.libraryName) in the guest tools; the trace has no signposts")
                 }
             }
             layout.skipFirstBootMigration = options.skipFirstBootMigration
@@ -133,6 +163,27 @@ final class ExecConfiguration: @unchecked Sendable {
             }
             do { try layout.prepare() } catch { die("cannot prepare the device directory \(layout.dev): \(error)", status: 66) }
             layout.appEnvironment += layout.overridesEnvironment
+            layout.appEnvironment = DeviceLayout.mergingInsertedLibraries(layout.appEnvironment, layout.gaugeEnvironment)
+            if let profile = options.profile {
+                let r = GaugeRecorder(options: profile)
+                r.appExecutable = options.installApp.flatMap { app -> String? in
+                    let plist = absolutePath(app) + "/Info.plist"
+                    guard let data = FileManager.default.contents(atPath: plist),
+                          let p = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else { return nil }
+                    return p["CFBundleExecutable"] as? String
+                }
+                r.signpostsHostPath = layout.gaugeLibrary != nil ? layout.gaugeSignpostsHostPath : nil
+                r.frameRecordPath = layout.framebufferStatePath
+                let v = layout.runtimeVersion()
+                r.deviceDescription = "\(layout.deviceType.name), iOS \(v.version) (\(v.build)), Ycode simulator"
+                r.command = options.launchBundleID ?? r.appExecutable ?? ""
+                // The GPU track: the Metal trace (stage8-contract.md §14.1) next to the trace.
+                if getenv("YCODE_METAL_TRACE") == nil && getenv("YCODE_GAUGE_GPU").map({ String(cString: $0) }) != "0" {
+                    setenv("YCODE_METAL_TRACE", profile.path + ".metal", 1)
+                }
+                r.metalTracePath = getenv("YCODE_METAL_TRACE").map { String(cString: $0) }
+                GaugeRecorder.shared = r
+            }
             device = layout
             camera = DeviceCamera(options: options, layout: layout)
             execPath = layout.launchdSimPath
@@ -151,7 +202,7 @@ final class ExecConfiguration: @unchecked Sendable {
             device = nil
             execPath = absolutePath(options.execPath!)
             rootArguments = [execPath] + options.execArguments
-            var env = SimulatorEnvironment.make(runtimeRoot: root)
+            var env = MacOSMode.enabled ? MacOSMode.environment() : SimulatorEnvironment.make(runtimeRoot: root)
             for pair in options.environment {
                 let key = pair.prefix { $0 != "=" }
                 env.removeAll { $0.hasPrefix(key + "=") }
@@ -159,8 +210,9 @@ final class ExecConfiguration: @unchecked Sendable {
             }
             rootEnvironment = env
         }
-        dyldSimPath = root + "/usr/lib/dyld_sim"
-        let index = SharedCacheIndex(cachePath: root + "/System/Library/Caches/com.apple.dyld/dyld_sim_shared_cache_arm64")
+        // --macos: Ycode's dyld takes dyld_sim's place (specs/macos/dyld.md §3).
+        dyldSimPath = root + (MacOSMode.enabled ? MacOSMode.dyldGuestPath : "/usr/lib/dyld_sim")
+        let index = SharedCacheIndex(cachePath: MacOSMode.enabled ? "" : root + "/System/Library/Caches/com.apple.dyld/dyld_sim_shared_cache_arm64")
         cacheIndex = index
         cacheImageFiles = CacheImageFiles.enabledByEnvironment
             ? CacheImageFiles(runtimeRoot: root, imagePaths: { index.imagePaths() }) : nil
@@ -188,7 +240,8 @@ final class ExecConfiguration: @unchecked Sendable {
         // the --exec program's directory at the same guest path, read-only
         // (stage4b-contract.md §2 item 6: a probe spawns its own argv[0]).
         let execDirectory = (execPath as NSString).deletingLastPathComponent
-        var prefixes = [DarwinFileSystem.Prefix(guestPath: root, hostPath: root, writable: false)]
+        // --macos: the userland root is the guest's "/" (macos-apps.md §3).
+        var prefixes = [DarwinFileSystem.Prefix(guestPath: MacOSMode.enabled ? "/" : root, hostPath: root, writable: false)]
         if !execDirectory.hasPrefix(root + "/") {
             prefixes.append(DarwinFileSystem.Prefix(guestPath: execDirectory, hostPath: execDirectory, writable: false))
         }
@@ -235,7 +288,11 @@ final class ExecConfiguration: @unchecked Sendable {
         // single-file prefixes; every other /usr/lib/system path stays ENOENT.
         var hostLibraryPaths: Set<String> = []
         let (hostLibDir, hostLibTried) = locateHostLibraryDirectory(explicit: options.hostLibsPath)
-        if let hostLibDir {
+        if MacOSMode.enabled {
+            // The userland root carries its own (macOS-tagged) copies.
+            DarwinKernel.simulatorPlatform = MacOSMode.platform
+            hostLibraryPaths = Set(hostLibraryNames.map(hostLibraryGuestPath))
+        } else if let hostLibDir {
             // A visionOS runtime: copies built for its platform, in DEV
             // (GuestImagePlatform.swift; visionos.md §7.2 R1).
             let platform = device?.runtimePlatform() ?? .iOS
@@ -376,7 +433,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     // the background; the libSystem milestone never waits for it
     // (performance-contract.md §6, C15). `YCODE_CACHE_INDEX_PREWARM=0`: built
     // on first use, as before.
-    if getenv("YCODE_CACHE_INDEX_PREWARM").map({ String(cString: $0) != "0" }) ?? true { config.cacheIndex.prewarm() }
+    if !MacOSMode.enabled, getenv("YCODE_CACHE_INDEX_PREWARM").map({ String(cString: $0) != "0" }) ?? true { config.cacheIndex.prewarm() }
     let system = DarwinSystem()
     // The objects every process start asks for by id are in the object
     // index from the start (boot-profile.md §7).
@@ -475,6 +532,19 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                                                              memory: HostMemoryEntryResolver(host: system.hostTask),
                                                              surfaces: ioSurfaceService.map { IOSurfacePortResolver(service: $0) },
                                                              log: { stderrLine("ycode-simd: " + $0) })
+                            // Completion events carry GPU times on the guest's
+                            // clock (its mach time in seconds), as on a host whose
+                            // guest shares the host's mach clock: the guest's frame
+                            // pacing compares them with its own times (visionos.md
+                            // §10.28). YCODE_METAL_EVENT_CLOCK=host: the host's uptime.
+                            if ProcessInfo.processInfo.environment["YCODE_METAL_EVENT_CLOCK"] != "host" {
+                                metal.setEventClock { [weak launcher] in
+                                    guard let c = launcher?.snapshotSystemClock, c.frequency > 0 else {
+                                        return ProcessInfo.processInfo.systemUptime
+                                    }
+                                    return Double(c.guestCounter) / Double(c.frequency)
+                                }
+                            }
                             metal.start()
                             s.hostServices.append((MetalHostService.serviceNames[0], metal.servicePort))
                             metalService = metal
@@ -608,7 +678,9 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                     snapLog("restore: Metal: \(rep.processes) processes, \(rep.objects) objects and \(rep.ghosts) kept recipes "
                         + "made again in \((monotonicNanoseconds() - began) / 1_000_000) ms (\(rep.failures) failed); contents: textures "
                         + "\(rep.textureBytes >> 10) KiB, buffers \(rep.bufferBytes >> 10) KiB, \(rep.contentsSkipped) skipped; "
-                        + "\(rep.addressesChanged) buffer GPU addresses and \(rep.samplerIDsChanged) sampler IDs changed")
+                        + "\(rep.addressesChanged) buffer GPU addresses and \(rep.samplerIDsChanged) sampler IDs changed; heap slots "
+                        + "\(rep.slotsKept) kept, \(rep.textureIDsChanged) texture IDs changed; argument-encoder members "
+                        + "\(rep.argumentMembers), \(rep.argumentMembersChanged) written again")
                     for line in rep.lines { snapLog("restore: " + line) }
                 }
             }
@@ -649,6 +721,15 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
             + (SchedPolicy.holdEnabled || SchedPolicy.qosEnabled ? "; sched: " + system.schedReport + "; " + HostSched.report : "")
     }
     HomeWatch.startIfRequested(statePath: config.device?.framebufferStatePath, surfaces: ioSurfaceService)
+    // visionOS: Siri's assistant daemon starts after the shell's home view
+    // (visionos.md §10.26.1), and Home is pressed as a fallback when the
+    // shell has not brought up the home view after the boot (§10.21.2;
+    // VisionHomeGuard.swift).
+    if let device = config.device, device.runtimePlatform() == .visionOS, let surfaces = ioSurfaceService {
+        system.shellReadyHoldLabels = VisionHomeGuardPolicy.shellReadyHoldLabels()
+        let policy = device.launchBundleID == nil && hidService != nil ? VisionHomeGuardPolicy.fromEnvironment() : nil
+        VisionHomeGuard.start(policy: policy, statePath: device.framebufferStatePath, surfaces: surfaces, hid: hidService, system: system)
+    }
     let rootKernel: DarwinKernel
     do {
         // Device mode (stage4c-contract.md §8.3): launchd_sim needs the pid of
@@ -729,6 +810,37 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     BootProfile.shared?.launcherForReport = launcher
     BootProfile.shared?.startSampler(launcher: launcher, lock: system.lock)
     BootProfile.shared?.startPCSampler(launcher: launcher)
+    if let gauge = GaugeRecorder.shared {
+        gauge.launchedPID = { [weak session] in session?.launchedAppPID }
+        gauge.start(launcher: launcher)
+    }
+    // The debug stub (specs/simulator/debug-stub.md): a connection attaches
+    // to the app --launch started.
+    if let debug = config.options.debugServer {
+        let server = SimDebugServer(options: debug)
+        server.launchedPID = { [weak session] in session?.launchedAppPID }
+        // The OS type LLDB is told (debug-stub.md §4.3): the device OS, not
+        // its simulator. For a simulator process LLDB's platform takes the
+        // OS version from the local Mac process of that pid (which a
+        // remote simulator has not got), and Swift expressions then fail;
+        // with the device OS it takes the stub's os_version.
+        // YCODE_DEBUG_OSTYPE (diagnostics) replaces it, e.g. iossimulator.
+        switch config.device?.deviceType.platform {
+        case .watchOS?: server.osType = "watchos"
+        case .visionOS?: server.osType = "xros"
+        default: server.osType = "ios"
+        }
+        if let o = getenv("YCODE_DEBUG_OSTYPE").map({ String(cString: $0) }), !o.isEmpty { server.osType = o }
+        (server.osVersion, server.osBuild) = SimDebugServer.runtimeVersion(root: config.root)
+        server.launchExecutable = config.options.installApp.flatMap { app -> String? in
+            let plist = absolutePath(app) + "/Info.plist"
+            guard let data = FileManager.default.contents(atPath: plist),
+                  let p = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else { return nil }
+            return p["CFBundleExecutable"] as? String
+        }
+        SimDebugServer.shared = server
+        server.start(launcher: launcher)
+    }
     if config.options.debugThreadReport {
         DarwinKernel.recordKnoteHistory = true
         system.lock.slowHoldNanoseconds = 20_000_000
@@ -806,7 +918,34 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                               rotation: PanelPicture.uprightRotation(mountRotation: panel.mountRotation), displayName: panel.name)
         return c.capture(to: path)
     }
+    // visionOS input (VisionInput.swift; visionos.md §5.5): the HID pose and
+    // selection, and vhmdd's host connection for set_pose and the rooms.
+    var vision: VisionInputController?
+    if let device = config.device, device.deviceType.family == .vision, let hid = hidService {
+        let vhmd = VisionHMDClient(host: system.hostTask, find: { [weak session] in
+            guard let c = session?.boundControl else {
+                throw LaunchSimControlError(operation: "find \(VisionHMDClient.serviceName): no session", code: 3)
+            }
+            return try c.findEndpoint(VisionHMDClient.serviceName)
+        }, log: { stderrLine("ycode-simd: " + $0) })
+        let screen = device.deviceType.screen
+        vision = VisionInputController(hid: hid, vhmd: vhmd, pointWidth: screen.pointWidth, pointHeight: screen.pointHeight,
+                                       log: { stderrLine("ycode-simd: " + $0) })
+        // `--room` on a restored device: the preference was read by the run
+        // that was saved, so the room is switched live once vhmdd answers.
+        if let room = config.options.visionRoom, device.restoring, let vision {
+            Thread.detachNewThread {
+                for attempt in 1...12 {
+                    Thread.sleep(forTimeInterval: 5)
+                    let answer = vision.handle(["vision", "room", room]) ?? ""
+                    stderrLine("ycode-simd: visionOS: --room after the restore (attempt \(attempt)): \(answer)")
+                    if answer.hasPrefix("ok") { return }
+                }
+            }
+        }
+    }
     var control: DeviceControlServer?
+    var pairingHost: PairingHost?
     if let device = config.device {
         let server = DeviceControlServer(path: DeviceLayout.controlSocketPath(dev: device.dev), fold: fold,
                                          summary: { [weak fold, weak ioSurfaceService] in
@@ -831,7 +970,36 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         if device.settingsAgent != nil {
             stderrLine("ycode-simd: settings: agent \(device.settingsAgentHostPath) (log \(device.settingsAgentLogPath))")
         }
-        server.moreCommands = { words in
+        // Pairing (PairingHost.swift; device-pairing.md §8): the pair records
+        // of the device set, the rendezvous socket, the endpoints and the
+        // guest pairing agent's channel. The UDID is recorded for the pairing
+        // commands (a device booted with --udid keeps it).
+        try? Data((device.udid + "\n").utf8).write(to: URL(fileURLWithPath: device.dev + "/" + PairingDeviceDirectory.udidRecordName),
+                                                   options: .atomic)
+        let pairing = PairingHost(udid: device.udid, dev: device.dev, set: PairingHost.deviceSet(for: device.dev),
+                                  family: PairingDeviceDirectory.family(typeID: device.deviceType.id), host: system.hostTask,
+                                  session: session, log: { stderrLine("ycode-simd: " + $0) })
+        HostStreamSockets.serve(paths: PairingAgentChannel.guestPaths, with: pairing)
+        pairing.start()
+        pairingHost = pairing
+        if device.pairingAgent != nil {
+            stderrLine("ycode-simd: pairing: agent \(device.pairingAgentHostPath) (log \(device.pairingAgentLogPath))")
+        }
+        // Health (HealthHost.swift; health-simulation.md "Ycode implementation"):
+        // the guest health agent's channel and the `health …` commands.
+        let health = HealthHost(dev: device.dev, isWatch: device.deviceType.family == .watch, log: { stderrLine("ycode-simd: " + $0) })
+        HostStreamSockets.serve(paths: HealthChannel.guestPaths, with: health)
+        if device.healthAgent != nil, FileManager.default.fileExists(atPath: device.healthAgentPlistPath) {
+            stderrLine("ycode-simd: health: agent \(device.healthAgentHostPath) (log \(device.healthAgentLogPath))")
+        }
+        let buttonFamily = WatchInputCommand.buttonFamily(device.deviceType)
+        server.moreCommands = { [weak hidService, weak vision] words in
+            if let answer = pairing.controlCommand(words) { return answer }
+            if words.first == VisionInputController.verb {
+                return vision?.handle(words) ?? "error: vision: this device is not a Vision Pro (or has no HID bundle)"
+            }
+            if words.first == "health" { return health.handle(words) }
+            if let answer = WatchInputCommand.handle(words, hid: hidService, family: buttonFamily) { return answer }
             guard let verb = words.first, SimSettingsCommand.verbs.contains(verb) else { return nil }
             return settings.handle(words)
         }
@@ -885,7 +1053,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         return scale.apply(c.guestCounter)
     }
     let display = startDisplayServer(config: config, surfaces: ioSurfaceService, session: session, hid: hidService, fold: fold,
-                                     started: started, guestClock: guestClock)
+                                     vision: vision, started: started, guestClock: guestClock)
     display?.commands = { [weak control] line in control?.handle(line) ?? "error: no control commands for this device" }
     // The audio service's host times are guest mach time (audio-host.md §10).
     DefaultHostServices.audio?.setGuestClock { [weak launcher] in
@@ -904,6 +1072,8 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         deviceCameraControl = { [weak session] words in camera.handle(words, session: session) }
     }
     var result = launcher.superviseRoot(timeoutMilliseconds: config.timeout)
+    // The peers see this device stop (their endpoints for it go, P-5).
+    pairingHost?.stop()
     config.camera?.stop()
     DefaultHostServices.audio?.finishCapture()
     display?.stop(message: "the device run ended")
@@ -970,6 +1140,8 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     }
     TrapProfile.shared?.dump()
     BootProfile.shared?.writeReport(records: launcher.records)
+    GaugeRecorder.shared?.finish(reason: "the run ended")
+    SimDebugServer.shared?.stop()
 
     // Summary: the root's first image as in stage 3/4a, then every image.
     let records = launcher.records

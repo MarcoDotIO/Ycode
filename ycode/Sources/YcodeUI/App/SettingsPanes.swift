@@ -1,5 +1,7 @@
 import AppKit
 import UniformTypeIdentifiers
+import YcodeCompletion
+import YcodeIDECore
 import YcodeSettings
 import YcodeWorkspace
 import YcodeSubprocess
@@ -62,12 +64,27 @@ public class SettingsPane: NSViewController {
         build()
     }
 
+    /// The right-aligned label column of a form row.
+    static let labelColumnWidth: CGFloat = 200
+
+    /// A form row: the label right-aligned in its column, the control after
+    /// it. A label wider than the column wraps onto a second line instead
+    /// of being cut off (`specs/ide/metrics.md` §8), and the control then
+    /// centers on the two lines.
     func row(_ label: String, _ control: NSView) {
         let l = NSTextField(labelWithString: label)
+        let wraps = l.intrinsicContentSize.width > Self.labelColumnWidth
+        if wraps {
+            l.cell?.wraps = true
+            l.cell?.isScrollable = false
+            l.lineBreakMode = .byWordWrapping
+            l.maximumNumberOfLines = 2
+            l.preferredMaxLayoutWidth = Self.labelColumnWidth
+        }
         l.alignment = .right
-        l.widthAnchor.constraint(equalToConstant: 200).isActive = true
+        l.widthAnchor.constraint(equalToConstant: Self.labelColumnWidth).isActive = true
         let r = NSStackView(views: [l, control])
-        r.alignment = .firstBaseline
+        r.alignment = wraps ? .centerY : .firstBaseline
         stack.addArrangedSubview(r)
         var t = label
         if t.hasSuffix(":") { t.removeLast() }
@@ -759,6 +776,11 @@ public final class TextEditingSettingsPane: SettingsPane {
     public enum Page: String { case main = "Editing", display = "Display", completion = "Completion", indentation = "Indentation" }
     public var page: Page = .main { didSet { if isViewLoaded { rebuild() } } }
     public init(prefs: Preferences = .shared) { super.init("Editing", prefs: prefs) }
+    /// Predictive completion's Test result and download progress
+    /// (TextEditingSettingsPane+Prediction.swift).
+    public internal(set) var predictionProbe: BackendProbe?
+    public internal(set) var predictionMessage = ""
+    var predictionTask: Task<Void, Never>?
 
     override func build() {
         switch page {
@@ -770,6 +792,12 @@ public final class TextEditingSettingsPane: SettingsPane {
             heading("When Editing")
             row("", check("Automatically trim trailing whitespace", prefs.trimTrailingWhitespace) { [prefs] in prefs.trimTrailingWhitespace = $0 })
             row("", check("Trim whitespace-only lines", prefs.trimWhitespaceOnlyLines) { [prefs] in prefs.trimWhitespaceOnlyLines = $0 })
+            // specs/ide/predictive-completion.md §5: the switch; its backend is on the Completion page.
+            row("", check("Predictive code completion", prefs.predictiveCompletion.enabled) { [prefs] on in
+                var s = prefs.predictiveCompletion
+                s.enabled = on
+                prefs.predictiveCompletion = s
+            })
             heading("Localized Strings")
             row("", check("Automatically generate string catalog comments", prefs.generateStringCatalogComments) { [prefs] in
                 prefs.generateStringCatalogComments = $0
@@ -807,11 +835,18 @@ public final class TextEditingSettingsPane: SettingsPane {
         case .completion:
             backRow("Editing") { [weak self] in self?.page = .main }
             note("Completions come from the language server as you type.")
+            buildPredictionRows()
         case .indentation:
             backRow("Editing") { [weak self] in self?.page = .main }
             row("Prefer indent using:", popUp(["Spaces", "Tabs"], selected: prefs.indentWithTabs ? "Tabs" : "Spaces") { [prefs] in prefs.indentWithTabs = $0 == "Tabs" })
             row("Tab width:", number(prefs.tabWidth) { [prefs] in prefs.tabWidth = $0 })
             row("Indent width:", number(prefs.indentWidth) { [prefs] in prefs.indentWidth = $0 })
+            row("Tab key:", popUp(TabKeyBehavior.allCases.map(\.title), selected: prefs.tabKeyBehavior.title) { [prefs] t in
+                prefs.tabKeyBehavior = TabKeyBehavior.allCases.first { $0.title == t } ?? .indentsInLeadingWhitespace
+            })
+            row("", check("Syntax-aware indenting", prefs.autoIndent) { [prefs] in prefs.autoIndent = $0 })
+            row("", check("Automatically insert closing brackets and quotes", prefs.autoInsertClosers) { [prefs] in prefs.autoInsertClosers = $0 })
+            row("", check("Enclose selection in matching delimiters", prefs.encloseSelection) { [prefs] in prefs.encloseSelection = $0 })
         }
     }
 }
@@ -1072,8 +1107,8 @@ public final class SimulatorsSettingsPane: SettingsPane {
     }
 
     override func build() {
-        heading("Ycode Simulator")
-        let note = NSTextField(wrappingLabelWithString: "Runs apps on the Ycode iOS simulator on an arm64 Linux host over SSH (keys only; Ycode never asks for a password). These values stay in your user settings.")
+        heading("Ycode Simulator (\(ExperimentalNotice.label))")
+        let note = NSTextField(wrappingLabelWithString: ExperimentalNotice.simulator + " Runs apps on the Ycode iOS simulator on an arm64 Linux host over SSH (keys only; Ycode never asks for a password). These values stay in your user settings.")
         note.preferredMaxLayoutWidth = 480
         note.textColor = .secondaryLabelColor
         stack.addArrangedSubview(note)

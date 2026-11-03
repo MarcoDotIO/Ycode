@@ -170,7 +170,7 @@ extension DarwinKernel {
         case ProcInfoFlavor.platformInfo:
             try need(4, zombieOK: true)
             var b: [UInt8] = []
-            b.appendLE(Self.simulatorPlatform)  // PLATFORM_IOSSIMULATOR (7) or PLATFORM_XROSSIMULATOR (12)
+            b.appendLE(Self.simulatorPlatform)  // PLATFORM_IOSSIMULATOR (7), PLATFORM_WATCHOSSIMULATOR (9) or PLATFORM_XROSSIMULATOR (12)
             bytes = b
         default:
             trace("note: proc_info PIDINFO flavor \(flavor) is not supported")
@@ -283,7 +283,7 @@ extension DarwinKernel {
     public static let dirtyControlFast = Atomic<UInt64>(0)
     /// The platform proc_info's platform flavor reports for every process:
     /// the runtime's (iOS simulator 7; a visionOS runtime sets 12,
-    /// visionos.md §2.2). Set once before the first process starts.
+    /// visionos.md §2.2; a watchOS runtime 9, watchos.md §2.3). Set once before the first process starts.
     nonisolated(unsafe) public static var simulatorPlatform: UInt32 = 7
     /// On by default; `YCODE_DIRTY_FAST=0` keeps every `proc_info` call on L0.
     nonisolated(unsafe) public static var dirtyControlFastEnabled = getenv("YCODE_DIRTY_FAST").map { String(cString: $0) != "0" } ?? true

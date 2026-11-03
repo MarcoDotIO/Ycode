@@ -1,5 +1,6 @@
 import AppKit
 import YcodeAssistant
+import YcodeIDECore
 
 /// The toolbar New Conversation button's popover (reference-ui-6.md §9.4,
 /// A3), about 342 × 146: a multi-line prompt whose placeholder rotates

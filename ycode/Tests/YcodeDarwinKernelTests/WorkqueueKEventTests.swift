@@ -126,6 +126,34 @@ import YcodeDarwinABI
         #expect(wait() == 0)
     }
 
+    /// §2.5 rule 3, second limit (agent ICON-FREEZE): constrained workers
+    /// scheduled at once, blocked ones included, stay below max(64, 5 × N);
+    /// overcommit and workloop requests still start workers beyond it.
+    @Test func constrainedWorkersStopAtTheSchedulingCap() throws {
+        let t = try T2Env()
+        open(t)
+        let cap = WorkqueueState.maxConstrained
+        #expect(cap == max(64, 5 * GuestCPUs.count))
+        #expect(t.x0(368, [0x20, 0, UInt64(cap + 10), UInt64(Self.legacy)]) == 0)
+        // Every started worker blocks in the kernel: each frees its
+        // parallelism slot, so another starts, until the cap.
+        var started = -1
+        while t.host.starts.count != started {
+            started = t.host.starts.count
+            t.kernel.lock.withLock { for s in t.host.starts { s.context.blockedInKernel = true } }
+            t.kernel.retryPendingWorkqueue()
+        }
+        #expect(t.host.starts.count == cap)
+        t.kernel.lock.withLock {
+            #expect(t.kernel.workqueue.plainPending[.init(qos: 4, overcommit: false)] == 10)
+        }
+        // Overcommit requests are not limited by it.
+        #expect(t.x0(368, [0x20, 0, 2, 0x8000_0000 | UInt64(Self.legacy)]) == 0)
+        #expect(t.host.starts.count == cap + 2)
+        t.kernel.lock.withLock { for s in t.host.starts { s.context.blockedInKernel = false } }
+        t.kernel.shutdown()
+    }
+
     /// §2.5 rule 5: the cooperative pool is one thread per guest CPU (N),
     /// plus one per QoS that has none; a blocked cooperative worker still
     /// counts; its return takes the next cooperative request.

@@ -71,7 +71,7 @@ struct CoverageTarget {
     }
 }
 
-enum Coverage {
+public enum Coverage {
     // MARK: Gathering
 
     /// The scheme's targets as coverage sees them: test bundles first, then
@@ -410,14 +410,26 @@ extension Coverage {
     /// summary for Ycode's test report (Coverage page) to the named path.
     /// Ycode's own JSON, not an Apple format: `{"targets": [{"name",
     /// "coveredLines", "executableLines", "files": [{"path",
-    /// "coveredLines", "executableLines"}]}]}`.
+    /// "coveredLines", "executableLines", "lines"}]}]}`; `lines` holds one
+    /// execution count per source line from line 1 (-1: not executable),
+    /// for the editor's coverage ribbon.
     public static let summaryVariable = "YCODE_COVERAGE_SUMMARY"
 
     static func summaryJSON(_ c: CoverageData) -> Data {
         let targets: [[String: Any]] = c.targets.map { t in
             ["name": t.name, "coveredLines": t.coveredLines, "executableLines": t.executableLines,
-             "files": t.files.map { ["path": $0.path, "coveredLines": $0.coveredLines, "executableLines": $0.executableLines] as [String: Any] }]
+             "files": t.files.map {
+                 ["path": $0.path, "coveredLines": $0.coveredLines, "executableLines": $0.executableLines,
+                  "lines": $0.lines.map { $0.executable ? $0.count : -1 }] as [String: Any]
+             }]
         }
         return (try? JSONSerialization.data(withJSONObject: ["targets": targets], options: [.sortedKeys])) ?? Data()
+    }
+
+    /// Execution counts per line (from line 1; -1: not executable) of one
+    /// file of an llvm-cov export (`data[0].files[].segments`), by LLVM's
+    /// line-coverage rules (`lineCoverage`).
+    public static func lineCounts(llvmCovSegments segments: [[Any]]) -> [Int] {
+        lineCoverage(segments.compactMap(Segment.init)).map { $0.executable ? $0.count : -1 }
     }
 }

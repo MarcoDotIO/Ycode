@@ -1,5 +1,6 @@
 import AppKit
 import YcodeAssistant
+import YcodeIDECore
 
 /// The left area's Coding Assistant pane (reference-ui-6.md §9.2, A1):
 /// a header where the navigator selector sits, with "New Conversation" and

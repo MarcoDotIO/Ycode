@@ -101,7 +101,15 @@ In addition:
 
 | Region | Size | Contents |
 |---|---|---|
-| GPA `0x4100_0000` (inside RAM) | 4 MiB | **vCPU slots**, 64 × 64 KiB. Slot *i* at `0x4100_0000 + i·0x1_0000` |
+| GPA `0x4100_0000` (inside RAM) | 4 MiB | **vCPU slots** 0–63, 64 × 64 KiB. Slot *i* at `0x4100_0000 + i·0x1_0000` |
+| GPA `0x4600_0000` (inside RAM, after the 64 MiB table arena at `0x4200_0000`) | 28 MiB | **vCPU slots** 64–511, 448 × 64 KiB. Slot *i* at `0x4600_0000 + (i − 64)·0x1_0000` (added 2026-10-29, agent ICON-FREEZE) |
+
+A process has up to 512 vCPUs (and threads), at most `KVM_CAP_MAX_VCPUS`:
+as many as Darwin's workqueue threads (`threads-and-events.md` §2.5). The
+first 64 slots keep their addresses; the stage-2 `--vcpus` self-test maps
+only those. Slots cost nothing until a vCPU uses them (guest RAM is
+allocated on touch). Before 2026-10-29 the pool had 64 slots, and a
+process that needed more threads stopped (`app-launch.md` §3.9).
 
 Each 64 KiB slot holds:
 

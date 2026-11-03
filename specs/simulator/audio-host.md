@@ -512,6 +512,17 @@ names; the restored service takes the tables back and, once the guest
 clock is set, gives every running context a wake 0 at the cycle after the
 saved one (a restart; the device clock goes on from the saved sample time).
 
+The record is read as snapshot.md §3.1 step 4 says: under the kernel lock,
+with no host-service message in hand, and with the service's own lock only
+tried. The service thread takes that lock on every turn of its loop and
+holds it while it sends a wake, so a try can fail at any moment the IO
+runs; a failed try is a retry (1 ms later, within the 5 s deadline), never
+an error. Ycode's tests read the record the same way. After `stop()` the
+service thread leaves its loop at the end of the receive it is in (at most
+200 ms); `waitUntilStopped()` waits for that, so a second service over the
+same host task (a restore inside one process, as in the tests) is the only
+receiver on the restored ports.
+
 ### 13.7 Results
 
 Visionos.md §10.19 (visionOS and iOS boots on the Thor).

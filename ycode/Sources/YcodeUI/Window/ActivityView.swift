@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The toolbar's activity view (`reference-ui-6.md` §3.1): the workspace's
 /// icon, or a small spinner while an action runs, then two lines, the

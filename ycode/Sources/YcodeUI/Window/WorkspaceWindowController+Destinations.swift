@@ -1,5 +1,6 @@
 import AppKit
 import YcodeBuild
+import YcodeIDECore
 
 /// The run destination pop-up (`specs/ide/reference-ui-3.md` §4).
 extension WorkspaceWindowController {
@@ -7,11 +8,14 @@ extension WorkspaceWindowController {
     public func destinationMenuModel(filter: String = "") -> DestinationMenuModel {
         let all = session.model.destinationGroups.flatMap(\.destinations)
         let proj = session.model.projects.keys.sorted().first.flatMap { session.model.projects[$0] }
-        let (platforms, ipad) = proj.map(DestinationMenuModel.platforms(of:)) ?? ([], false)
+        var (platforms, ipad) = proj.map(DestinationMenuModel.platforms(of:)) ?? ([], false)
+        // A scheme of another target (a watch app beside its iOS app,
+        // device-pairing.md §13): that target's platforms.
+        if let s = schemeTargetPlatform { platforms = s.platforms; ipad = ipad && s.platforms.contains("iOS") }
         // §11.4 item 3: destinations below the deployment target are incompatible.
-        let product = proj.map(DestinationMenuModel.productPlatform(of:))
+        let product = productPlatform
         var targets: [String: String] = [:]
-        if let p = product?.platform, let t = product?.deploymentTarget { targets[p] = t }
+        if let p = product.platform, let t = product.deploymentTarget { targets[p] = t }
         // §11.5: Ycode's remote simulator is listed with the simulators.
         return DestinationMenuModel(current: session.destination,
                                     devices: all.filter { $0.kind == .device },
@@ -49,6 +53,10 @@ extension WorkspaceWindowController {
             item.image = NSImage(systemSymbolName: Self.symbol(for: d), accessibilityDescription: nil)
             item.osVersion = d.osVersion
             item.name = d.name
+            if d.isYcodeRemoteSimulator {
+                item.subtitle = ExperimentalNotice.label
+                item.toolTip = ExperimentalNotice.simulator
+            }
             return item
         }
         // The pop-up also puts .on on its selected item (at first the
@@ -79,6 +87,14 @@ extension WorkspaceWindowController {
         }
         menu.addItem(NSMenuItem(title: DestinationMenuModel.manageDevicesTitle, action: #selector(manageDevicesChosen(_:)), keyEquivalent: ""))
         menu.items.last?.target = self
+        // Say where simulators come from when none is set up.
+        if !model.sections.contains(where: { $0.destinations.contains(where: \.isYcodeRemoteSimulator) }) && filter.isEmpty {
+            let setUp = NSMenuItem(title: Self.setUpSimulatorTitle, action: #selector(setUpSimulatorChosen(_:)), keyEquivalent: "")
+            setUp.target = self
+            setUp.subtitle = ExperimentalNotice.label
+            setUp.toolTip = ExperimentalNotice.simulator
+            menu.addItem(setUp)
+        }
         let current = session.destination.map(Self.menuKey(for:))
         if let i = recent ?? menu.items.firstIndex(where: { ($0.representedObject as? String) == current })
             ?? menu.items.firstIndex(where: { $0.representedObject is String }) {
@@ -95,8 +111,23 @@ extension WorkspaceWindowController {
     /// The product's platform and deployment target: the first project's
     /// first target (nil for packages, which run on the Mac).
     public var productPlatform: (platform: String?, deploymentTarget: String?) {
+        if let s = schemeTargetPlatform { return (s.platform, s.deploymentTarget) }
         let proj = session.model.projects.keys.sorted().first.flatMap { session.model.projects[$0] }
         return proj.map(DestinationMenuModel.productPlatform(of:)) ?? (nil, nil)
+    }
+
+    /// The scheme's target when it is not the first project's first target
+    /// and supports other platforms (a watch app's scheme beside its iOS
+    /// app, device-pairing.md §13): its platforms, its platform and its
+    /// deployment target. Nil otherwise (the first target decides).
+    var schemeTargetPlatform: (platforms: Set<String>, platform: String?, deploymentTarget: String?)? {
+        guard let scheme = session.scheme, let key = session.model.projects.keys.sorted().first, let proj = session.model.projects[key] else { return nil }
+        let name = WatchCompanion.targetName(scheme: scheme, schemes: session.model.loadSchemes())
+        guard name != proj.targets.first?.string("name") else { return nil }
+        let platforms = WatchCompanion.platforms(ofTarget: name, in: proj)
+        guard !platforms.isEmpty, platforms != DestinationMenuModel.platforms(of: proj).platforms else { return nil }
+        let platform = ["watchOS", "iOS", "tvOS", "visionOS", "macOS"].first(where: platforms.contains)
+        return (platforms, platform, platform.flatMap { WatchCompanion.deploymentTarget(ofTarget: name, platform: $0, in: proj) })
     }
 
     /// The first project's first target: whether it supports macOS and
@@ -170,6 +201,8 @@ extension WorkspaceWindowController {
 
     @objc func destinationFilterChanged(_ f: NSSearchField) { rebuildDestinationMenu(filter: f.stringValue) }
     @objc func manageDevicesChosen(_ sender: Any?) { _ = showDevices(sender) }
+    static let setUpSimulatorTitle = "Set Up Ycode Simulator…"
+    @objc func setUpSimulatorChosen(_ sender: Any?) { SettingsWindowController.shared.show(pane: "Simulators") }
 
     // MARK: Ycode's remote simulator row (reference-ui-5.md §11.5)
 
@@ -191,8 +224,9 @@ extension WorkspaceWindowController {
         return Task { [weak self] in
             var found = false
             for remote in probes {
-                guard let v = await Task.detached(operation: { remote.readRuntimeVersion() }).value else { continue }
-                RemoteSimulatorSettings.saveRuntimeVersion(v, root: remote.runtimeRoot, defaults, primary: remote.runtimeRoot == primary)
+                guard let v = await Task.detached(operation: { remote.readRuntimeSystemVersion() }).value else { continue }
+                RemoteSimulatorSettings.saveRuntimeVersion(v.version, root: remote.runtimeRoot, defaults, primary: remote.runtimeRoot == primary)
+                RemoteSimulatorSettings.saveRuntimePlatform(v.platform, root: remote.runtimeRoot, defaults)
                 found = true
             }
             guard found, let self else { return }

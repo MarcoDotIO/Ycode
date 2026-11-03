@@ -447,6 +447,14 @@ public final class DarwinKernel {
     /// before its first instruction (a `POSIX_SPAWN_START_SUSPENDED` image).
     /// Lock held.
     var mainStartPending = false
+    /// The debugger attached to this image (`debug-stub.md` §5), and
+    /// whether it holds every thread (a debug stop: threads made meanwhile
+    /// start held). Lock held.
+    var debugHook: (any KernelDebugger)?
+    var debugAllHeld = false
+    /// `dyld_sim` reported that it calls `main` (helper slot 54): libdyld's
+    /// process state is "program running" (debug-stub.md §4.3). Lock held.
+    var dyldMainCalled = false
     /// What every later trap returns once the process is exiting.
     var termination: Outcome? {
         didSet { terminatingFlag.store(termination != nil, ordering: .releasing) }
@@ -760,6 +768,10 @@ public final class DarwinKernel {
                     return .resume
                 }
             }
+            // An attached debugger takes breakpoints, steps and faults
+            // (debug-stub.md §5): the thread stops where it is, every
+            // other thread with it, and the trap resumes when it runs again.
+            if let outcome = debugException(&frame) { return outcome }
             trace("trap \(frame.trapKind?.description ?? "kind \(frame.kind)") fatal")
             if faultFrame == nil { faultFrame = frame }
             if Self.isCachePatchPlaceholderFault(frame) {
@@ -1850,10 +1862,19 @@ public final class DarwinKernel {
                 images.append("\(hx(base)) \(path)")
             }
             if !images.isEmpty { call += " [" + images.joined(separator: "; ") + "]" }
+            // With a debugger attached the call goes on to the image list's
+            // `notification` function, where the debugger keeps its
+            // breakpoint (debug-stub.md §4.4).
+            if debugHook != nil, count > 0,
+               debuggerImageNotification(&frame, unloading: a[0] & 0xFF != 0, count: count, addresses: a[2], paths: a[3], mem) {
+                trace("\(prefix) \(call) -> the debugger's notification at \(hx(frame.elr))")
+                return .resume
+            }
             return ok(0)
 
         case Private.notifyMainCalled:
             call.set("notifyMonitorOfMainCalled()")
+            dyldMainCalled = true
             return ok(0)
 
         case Private.notifyBeforeInitializers:

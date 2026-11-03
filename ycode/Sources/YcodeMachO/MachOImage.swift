@@ -3,7 +3,7 @@ import Foundation
 /// A parsed 64-bit Mach-O image. See `specs/formats/macho-and-dyld-cache.md` §2.
 public struct MachOImage: Sendable {
     public enum FileType: UInt32, Sendable {
-        case object = 1, executable = 2, dylib = 6, dylinker = 7, bundle = 8, dsym = 0xB, kextBundle = 0xC
+        case object = 1, executable = 2, dylib = 6, dylinker = 7, bundle = 8, dsym = 0xA, kextBundle = 0xB, fileSet = 0xC
     }
 
     public struct Section: Sendable, Equatable {
@@ -48,6 +48,14 @@ public struct MachOImage: Sendable {
     }
 
     /// A `__LINKEDIT` blob referenced by a load command (code signature, fixups, …).
+    /// LC_SYMTAB (`mach-o/loader.h`): `symoff`, `nsyms`, `stroff`, `strsize`.
+    public struct SymtabCommand: Sendable, Equatable {
+        public var symbolOffset: UInt32
+        public var symbolCount: UInt32
+        public var stringOffset: UInt32
+        public var stringSize: UInt32
+    }
+
     public struct LinkEditData: Sendable, Equatable {
         public var offset: UInt32
         public var size: UInt32
@@ -69,6 +77,11 @@ public struct MachOImage: Sendable {
     public var codeSignature: LinkEditData?
     public var chainedFixups: LinkEditData?
     public var exportsTrie: LinkEditData?
+    /// LC_SYMTAB: the symbol table and its strings (offsets into `__LINKEDIT`'s
+    /// file range; `SymbolTable` reads them).
+    public var symtab: SymtabCommand?
+    /// LC_FUNCTION_STARTS.
+    public var functionStarts: LinkEditData?
     /// Nonzero `cryptid` in LC_ENCRYPTION_INFO_64. Ycode never decrypts.
     public var isEncrypted = false
     /// Load commands Ycode does not interpret, by command number.
@@ -76,6 +89,18 @@ public struct MachOImage: Sendable {
 
     public var fileType: FileType? { FileType(rawValue: fileTypeRaw) }
     public var isArm64: Bool { cpuType == MachO.cpuTypeARM64 }
+
+    /// Whether a simulator can run this image as an executable's slice
+    /// (watchos.md W-3): plain arm64 (not arm64e, which needs pointer
+    /// authentication), built for a simulator platform (iOS 7, tvOS 8,
+    /// watchOS 9, visionOS 12) or with no platform recorded. A spawn of
+    /// anything else fails with EBADARCH, as the reference's "Bad CPU type in
+    /// executable" for watchOS's arm64e device binary (platform 4).
+    public var isRunnableInSimulator: Bool {
+        guard isArm64, MachO.isPlainARM64(cpuSubtype: cpuSubtype) else { return false }
+        if let raw = buildVersion?.platformRaw { return Platform(rawValue: raw)?.isSimulator == true }
+        return true
+    }
 
     /// Parses the image whose header starts at `offset` in `reader`.
     public init(_ reader: ByteReader, at offset: Int = 0) throws(MachOError) {
@@ -161,6 +186,11 @@ public struct MachOImage: Sendable {
             chainedFixups = try linkEdit()
         case MachO.lcDyldExportsTrie:
             exportsTrie = try linkEdit()
+        case MachO.lcSymtab:
+            symtab = SymtabCommand(symbolOffset: try r.u32(p + 8), symbolCount: try r.u32(p + 12),
+                                   stringOffset: try r.u32(p + 16), stringSize: try r.u32(p + 20))
+        case MachO.lcFunctionStarts:
+            functionStarts = try linkEdit()
         case MachO.lcEncryptionInfo64:
             isEncrypted = try r.u32(p + 16) != 0
         default:
@@ -178,6 +208,11 @@ public enum MachO {
     public static let fatMagic64: UInt32 = 0xCAFEBABF
     public static let cpuTypeARM64: UInt32 = 0x0100000C
     public static let cpuTypeX86_64: UInt32 = 0x01000007
+
+    /// An arm64 subtype without pointer authentication: `ALL` (0) or `V8`
+    /// (1), the low 24 bits (host-library-loading.md §2). arm64e (2) and its
+    /// variants are not.
+    public static func isPlainARM64(cpuSubtype: UInt32) -> Bool { cpuSubtype & 0x00FF_FFFF <= 1 }
 
     /// Architecture name from CPU type and subtype. The low 24 bits of the
     /// subtype select the variant; the high byte holds capability flags.
@@ -211,6 +246,7 @@ public enum MachO {
     static let lcLazyLoadDylib: UInt32 = 0x20
     static let lcEncryptionInfo64: UInt32 = 0x2C
     static let lcBuildVersion: UInt32 = 0x32
+    static let lcFunctionStarts: UInt32 = 0x26
     static let lcLoadWeakDylib: UInt32 = 0x8000_0018
     static let lcRpath: UInt32 = 0x8000_001C
     static let lcReexportDylib: UInt32 = 0x8000_001F

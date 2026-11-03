@@ -131,9 +131,14 @@ struct DeviceTypeTests {
         #expect(try Self.xml(DeviceCapabilities.plist(for: .iPhoneDuo))
             == (try Self.expectedDuoCapabilities(withDisplays: DeviceType.foldDisplaysEnabled)))
         #expect(DeviceType.default == .iPhoneDuo)
-        // No other type has a `displays` list.
+        // No other type has a `displays` list but the watches, which keep
+        // theirs for the display round and do not write it (watchos.md §10).
         for t in DeviceType.all where t != .iPhoneDuo {
-            #expect(t.displays == nil && (t.capabilitiesPlist(withDisplays: true)["capabilities"] as? [String: Any])?["displays"] == nil, "\(t.id)")
+            if t.family == .watch {
+                #expect(t.displays?.count == 1 && (t.capabilitiesPlist["capabilities"] as? [String: Any])?["displays"] == nil, "\(t.id)")
+            } else {
+                #expect(t.displays == nil && (t.capabilitiesPlist(withDisplays: true)["capabilities"] as? [String: Any])?["displays"] == nil, "\(t.id)")
+            }
         }
     }
 
@@ -427,7 +432,7 @@ struct DeviceTypeTests {
     // MARK: Data
 
     @Test func typesByName() {
-        #expect(DeviceType.all.map(\.id) == ["iphone-duo", "iphone-18-pro", "ipad-a16", "ipad-pro-13-m5", "vision-pro"])
+        #expect(Array(DeviceType.all.map(\.id).prefix(5)) == ["iphone-duo", "iphone-18-pro", "ipad-a16", "ipad-pro-13-m5", "vision-pro"])
         #expect(DeviceType.named("ipad-a16")?.modelIdentifier == "iPad15,7")
         #expect(DeviceType.named("ipad-pro-13-m5")?.screen == DeviceScreen(width: 2064, height: 2752, scale: 2, pitch: 264))
         #expect(DeviceType.named("ipad") == nil)

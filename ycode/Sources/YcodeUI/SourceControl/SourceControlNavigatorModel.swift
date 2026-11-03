@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// What the Source Control navigator shows (`reference-ui-4.md` §2): the
 /// Changes and Repositories trees, as outline items. Rows carry an
@@ -14,7 +15,8 @@ public enum SourceControlNavigatorModel {
     }
 
     /// Changes: the repository header and "Uncommitted Changes" with its count.
-    public static func changesTree(repository: String, branch: String?, changes: [GitRepository.Change], root: URL) -> [OutlineItem] {
+    public static func changesTree(repository: String, branch: String?, changes: [GitRepository.Change], root: URL,
+                                   integration: GitRepository.IntegrationState = .none) -> [OutlineItem] {
         let rows = changes.map { c -> OutlineItem in
             let name = URL(fileURLWithPath: c.path).deletingPathExtension().lastPathComponent
             let item = OutlineItem(title: name, symbol: symbol(for: c.path))
@@ -26,9 +28,21 @@ public enum SourceControlNavigatorModel {
         group.detail = String(changes.count)
         let h = header(repository: repository, branch: branch)
         let top = OutlineItem(title: h.title, symbol: "externaldrive", children: [group])
-        top.detail = h.detail
+        top.detail = h.detail + integrationSuffix(integration)
         top.scmKey = "repository"
         return [top]
+    }
+
+    /// " (Merging “feature”)" and the like while an operation is stopped.
+    static func integrationSuffix(_ state: GitRepository.IntegrationState) -> String {
+        switch state {
+        case .none: ""
+        case .merging(let b): " (Merging \u{201C}\(b)\u{201D})"
+        case .rebasing(let b, let onto, let step, let total):
+            " (Rebasing \u{201C}\(b)\u{201D} onto \(onto)" + (total > 0 ? ", \(step) of \(total))" : ")")
+        case .cherryPicking(let c): " (Cherry-picking \(c.prefix(7)))"
+        case .reverting(let c): " (Reverting \(c.prefix(7)))"
+        }
     }
 
     /// Repositories: Branches, Recents, Tags, Stashes, Remotes. A name
@@ -54,10 +68,16 @@ public enum SourceControlNavigatorModel {
             let kids = foldered(names, current: nil, prefixKey: "remoteBranch:\(r.name)/", symbol: "arrow.triangle.branch")
             let i = OutlineItem(title: r.name, symbol: "cloud", children: kids)
             i.detail = r.url
+            i.scmKey = "remote:" + r.name
             return i
         }
         let groups = [("Branches", branchRows), ("Recents", recentRows), ("Tags", tagRows), ("Stashes", stashRows), ("Remotes", remoteRows)]
-            .map { OutlineItem(title: $0.0, symbol: "folder", children: $0.1) }
+            .map { g -> OutlineItem in
+                let i = OutlineItem(title: g.0, symbol: "folder", children: g.1)
+                // Context menus only (New Branch…, New Tag…, Add Remote…).
+                i.scmKey = "group:" + g.0
+                return i
+            }
         let h = header(repository: repository, branch: branch)
         let top = OutlineItem(title: h.title, symbol: "externaldrive", children: groups)
         top.detail = h.detail
@@ -102,46 +122,4 @@ public enum SourceControlNavigatorModel {
         default: "doc"
         }
     }
-}
-
-/// Integrate menu (`reference-ui-4.md` §3): which items apply.
-public struct IntegrateMenuState: Equatable, Sendable {
-    public var hasRepository = false
-    public var hasRemote = false
-    public var hasUnstaged = false
-    public var hasStaged = false
-    /// Status of the file selected in a navigator, if it has one.
-    public var selectedStatus: GitRepository.FileStatus?
-    public var selectedIsStaged = false
-    public var selectedFileExists = false
-    public var selectedCommit: String?
-
-    public init() {}
-
-    public var hasChanges: Bool { hasUnstaged || hasStaged }
-
-    /// Whether the item with this action applies.
-    public func isEnabled(_ action: String) -> Bool {
-        switch action {
-        case "showCommitSheet:": hasRepository && hasChanges
-        case "scmPush:", "scmPull:", "scmFetch:": hasRepository && hasRemote
-        case "refreshFileStatus:": hasRepository
-        case "scmStageAll:": hasRepository && hasUnstaged
-        case "scmUnstageAll:": hasRepository && hasStaged
-        case "scmStageSelected:": hasRepository && selectedStatus != nil && selectedStatus != .untracked
-        case "scmUnstageSelected:": hasRepository && selectedIsStaged
-        case "scmMarkResolved:": hasRepository && selectedStatus == .conflicted
-        case "scmAddSelected:": hasRepository && selectedStatus == .untracked
-        case "scmCherryPick:": hasRepository && selectedCommit != nil
-        case "scmStash:", "scmDiscardAll:": hasRepository && hasChanges
-        case "scmTrashSelected:": selectedFileExists
-        case "scmClone:": true
-        case "scmNewRepository:": !hasRepository
-        default: true
-        }
-    }
-
-    public static let actions = ["showCommitSheet:", "scmPush:", "scmPull:", "scmFetch:", "refreshFileStatus:", "scmStageAll:",
-                                 "scmStageSelected:", "scmUnstageAll:", "scmUnstageSelected:", "scmMarkResolved:", "scmAddSelected:",
-                                 "scmCherryPick:", "scmStash:", "scmDiscardAll:", "scmTrashSelected:", "scmClone:", "scmNewRepository:"]
 }

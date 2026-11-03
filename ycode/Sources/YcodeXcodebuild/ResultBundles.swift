@@ -341,8 +341,14 @@ struct ResultRecords {
 
     func testSummaries(_ outcome: TestActions.Outcome) throws -> (String, Issues) {
         var issues = Issues()
-        var testables: [V] = []
+        // One run summary per test plan configuration (a plan with one
+        // configuration names none: "Test Scheme Action").
+        var runs: [(name: String, testables: [V])] = []
         for run in outcome.targets {
+            let runName = run.target.configuration ?? "Test Scheme Action"
+            if !runs.contains(where: { $0.name == runName }) { runs.append((runName, [])) }
+            var testables: [V] = []
+            defer { if let i = runs.firstIndex(where: { $0.name == runName }) { runs[i].testables += testables } }
             let t = run.target
             let base = "test://com.apple.xcode/\(t.projectName)/\(t.blueprintName)"
             func url(_ s: String, query: String? = nil) -> String {
@@ -439,16 +445,26 @@ struct ResultRecords {
             testables.append(.obj(XCRType("ActionTestableSummary", "ActionAbstractTestSummary"), [
                 "diagnosticsDirectoryName": .string(""), "failureSummaries": .array([]), "identifierURL": .string(base),
                 "name": .string(t.blueprintName), "projectRelativePath": .string(t.projectRelativePath),
-                "targetName": .string(t.blueprintName), "testKind": .string("xctest-tool hosted"),
-                "testLanguage": .string(""), "testRegion": .string(""), "tests": .array(top),
+                "targetName": .string(t.blueprintName), "testKind": .string(Self.testKind(t)),
+                "testLanguage": .string(t.language ?? ""), "testRegion": .string(t.region ?? ""), "tests": .array(top),
             ]))
         }
         let plan: V = .obj(XCRType("ActionTestPlanRunSummaries"), [
-            "summaries": .array([.obj(XCRType("ActionTestPlanRunSummary", "ActionAbstractTestSummary"), [
-                "name": .string("Test Scheme Action"), "testableSummaries": .array(testables),
-            ])]),
+            "summaries": .array((runs.isEmpty ? [("Test Scheme Action", [])] : runs).map { r in
+                .obj(XCRType("ActionTestPlanRunSummary", "ActionAbstractTestSummary"), [
+                    "name": .string(r.name), "testableSummaries": .array(r.testables),
+                ])
+            }),
         ])
         return (try store.put(plan), issues)
+    }
+
+    /// `xctest-tool hosted` for bundles in the xctest runner (observed);
+    /// Ycode's own words for bundles in an app and UI test bundles
+    /// (`app hosted`, `UI test`; result-bundle.md OPEN QUESTION).
+    static func testKind(_ t: TestTarget) -> String {
+        if t.isUITest { return "UI test" }
+        return t.testHost != nil ? "app hosted" : "xctest-tool hosted"
     }
 
     func displayName(_ r: TestCaseResult) -> String { r.library == .xctest ? r.name + "()" : r.name }

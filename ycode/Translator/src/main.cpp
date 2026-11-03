@@ -888,6 +888,12 @@ int main(int argc, char **argv) {
         return 2;
     }
     std::string cmd = argv[1];
+#ifdef YCODE_RELEASE_VERSION
+    if (cmd == "--version") {
+        printf("ycode-airc %s\n", YCODE_RELEASE_VERSION);
+        return 0;
+    }
+#endif
     if (cmd == "version") { printf("%s\n", kTranslatorVersion); return 0; }
     if (cmd == "list") return cmdList(argc - 2, argv + 2);
     if (cmd == "decls") return cmdDecls(argc - 2, argv + 2);

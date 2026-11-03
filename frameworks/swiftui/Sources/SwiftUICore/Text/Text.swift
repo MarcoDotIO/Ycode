@@ -193,7 +193,10 @@ extension Text: PrimitiveView {
     package func _makeChildren(node: ViewNode, old: Text?, transaction: Transaction) {}
 
     package func _lower(node: ViewNode) -> [LayoutNode] {
-        [.text(resolve(in: node.environment))]
+        let resolved = resolve(in: node.environment)
+        let n = LayoutNode.text(resolved)
+        n.draw = textDraw(resolved, environment: node.environment)
+        return [n]
     }
 
     /// The runs and paragraph settings of this text in `environment`.
@@ -209,7 +212,8 @@ extension Text: PrimitiveView {
             }
             return ResolvedText.Run(string: s, font: a.textFont(in: environment),
                                     tracking: a.tracking ?? 0, kerning: a.kerning ?? 0,
-                                    baselineOffset: a.baselineOffset ?? 0)
+                                    baselineOffset: a.baselineOffset ?? 0,
+                                    color: a.foregroundColor?.resolve(in: environment))
         }
         return ResolvedText(runs: runs, paragraph: ResolvedText.Paragraph(environment: environment))
     }

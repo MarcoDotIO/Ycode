@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// reference-ui-4.md §13 leftovers (reference-ui-5.md §11.6, P14).

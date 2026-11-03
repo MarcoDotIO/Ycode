@@ -15,7 +15,8 @@ import YcodeHostServices
 
 /// The HID bundle directory for this run, or nil (no input). A foldable
 /// device type has it by default, display server or not: its hinge is HID
-/// input (foldable.md §5, §8.2), and every boot starts closed.
+/// input (foldable.md §5, §8.2), and every boot starts closed. So does a
+/// watch: its crown is (`ycode-sim --crown`, watchos.md §12).
 func hidBundlePath(_ options: Options, foldable: Bool = false) -> String? {
     if options.hidBundle == "none" { return nil }
     if let explicit = options.hidBundle { return absolutePath(explicit) }
@@ -68,7 +69,11 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
     private let queue = DispatchQueue(label: "ycode-hid-input")
     private var lastPoint = [(x: Double, y: Double)](repeating: (0, 0), count: maxContacts + 1)
     private var keysDown = Set<UInt32>()      // page << 16 | usage
-    private var buttonsDown = Set<UInt32>()
+    private var buttonsDown = Set<HIDUsagePair>()
+    /// The device's buttons (DeviceButtonTable; watchos.md §5.2 on a watch).
+    var family: DeviceButtonTable.Family = .phone
+    /// A Vision Pro's pose, selection and dial (VisionInput.swift); nil elsewhere.
+    weak var vision: VisionInputController?
 
     init(hid: HIDHostService, pointWidth: Double, pointHeight: Double) {
         self.hid = hid
@@ -77,7 +82,7 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
 
     var acceptsTouch: Bool { true }
     var acceptsKeyboard: Bool { true }
-    var buttons: [DisplayButton] { DisplayButton.allCases }
+    var buttons: [DisplayButton] { DeviceButtonTable.buttons(for: family) }
 
     static func edge(x: Double, y: Double, width: Double, height: Double) -> HIDHostService.Edge {
         // Nearest edge within the threshold; bottom before top on ties (§8.2).
@@ -89,16 +94,6 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
         return best?.0 ?? .none
     }
 
-    static func usage(of button: DisplayButton) -> UInt32 {
-        switch button {
-        case .home: 0x40
-        case .lock: 0x30
-        case .side: 0x95
-        case .volumeUp: 0xE9
-        case .volumeDown: 0xEA
-        }
-    }
-
     func deliver(_ input: DisplayInput) -> Bool {
         switch input {
         case .touch(_, let contacts):
@@ -108,15 +103,32 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
             lock.withLock { if down { keysDown.insert(id) } else { keysDown.remove(id) } }
             return hid.send(.key(usagePage: UInt32(page), usage: UInt32(usage), down: down))
         case .button(_, let button, let down):
-            let usage = Self.usage(of: button)
-            lock.withLock { if down { buttonsDown.insert(usage) } else { buttonsDown.remove(usage) } }
-            return hid.send(.button(usagePage: 0x0C, usage: usage, down: down))
+            // A button this device lacks (a watch's volume, a non-Ultra's
+            // Action) is dropped (watchos.md §5.2).
+            guard let pair = DeviceButtonTable.usage(of: button, for: family) else { return false }
+            lock.withLock { if down { buttonsDown.insert(pair) } else { buttonsDown.remove(pair) } }
+            return hid.send(.button(usagePage: pair.page, usage: pair.usage, down: down))
+        case .pose(_, let pose):
+            return vision?.send(pose: pose) ?? false
+        case .selection(_, let selection):
+            return vision?.send(selection: selection) ?? false
+        case .dial(_, let delta):
+            return vision?.send(dial: delta) ?? false
+        case .fovea:
+            return true   // the server's foveated streaming only; never the guest
+        case .views(_, let v):
+            return vision?.send(pose: v.head) ?? false
         }
     }
 
+    func deliver(viewPose: SpatialPose, devicePose: SpatialPose) -> Bool {
+        vision?.send(pose: viewPose, devicePose: devicePose) ?? false
+    }
+
     func reset() {
+        vision?.reset()
         flush()
-        let (contacts, keys, buttons) = lock.withLock { () -> ([HIDHostService.Contact], Set<UInt32>, Set<UInt32>) in
+        let (contacts, keys, buttons) = lock.withLock { () -> ([HIDHostService.Contact], Set<UInt32>, Set<HIDUsagePair>) in
             var c: [HIDHostService.Contact] = []
             for slot in 1...Self.maxContacts where down[slot] {
                 down[slot] = false
@@ -128,7 +140,7 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
         }
         if !contacts.isEmpty { _ = sendTouch(contacts) }
         for k in keys { hid.send(.key(usagePage: k >> 16, usage: k & 0xFFFF, down: false)) }
-        for b in buttons { hid.send(.button(usagePage: 0x0C, usage: b, down: false)) }
+        for b in buttons { hid.send(.button(usagePage: b.page, usage: b.usage, down: false)) }
     }
 
     private func touch(_ contacts: [TouchContact]) -> Bool {

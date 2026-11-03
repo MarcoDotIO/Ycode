@@ -1,8 +1,10 @@
 import AppKit
+import YcodeIDECore
 
 /// Editor colors and fonts. Ycode's own default theme, built from system
 /// colors so it follows light and dark appearance. See
-/// `specs/ide/source-editor.md` §Syntax coloring.
+/// `specs/ide/source-editor.md` §Syntax coloring; token kinds map to the
+/// theme's color roles (`SyntaxTokenKind.role`).
 @MainActor
 public enum Theme {
     /// The selected theme (Settings ▸ Themes).
@@ -69,43 +71,46 @@ public enum Theme {
     }
 
     public static let placeholderTextColor = NSColor.labelColor
+    /// Predictive completion's ghost text: the text color, faded.
+    public static var ghostTextColor: NSColor { textColor.withAlphaComponent(0.4) }
     public static let placeholderFill = NSColor.systemBlue.withAlphaComponent(0.18)
     public static let placeholderSelectedFill = NSColor.systemBlue.withAlphaComponent(0.45)
 
-    /// Applies coloring for the whole text and returns the ranges of
-    /// tokens that span lines (block comments, multi-line strings), which
-    /// incremental re-highlighting must not cut through.
-    @discardableResult
-    public static func highlightReturningMultiline(_ storage: NSTextStorage, language: SourceTokenizer.Language) -> [NSRange] {
-        let full = NSRange(location: 0, length: storage.length)
-        storage.beginEditing()
-        storage.setAttributes([.font: font, .foregroundColor: textColor], range: full)
-        var multi: [NSRange] = []
-        let ns = storage.string as NSString
-        for t in SourceTokenizer(language: language).tokens(in: storage.string) where NSMaxRange(t.range) <= storage.length {
-            storage.addAttribute(.foregroundColor, value: color(for: t.kind), range: t.range)
-            if let f = font(for: t.kind) { storage.addAttribute(.font, value: f, range: t.range) }
-            if t.range.length > 1, ns.rangeOfCharacter(from: .newlines, options: [], range: t.range).location != NSNotFound { multi.append(t.range) }
+    /// A highlighting token's color: its theme role's.
+    public static func color(forToken kind: SyntaxTokenKind) -> NSColor { color(for: kind.role) }
+
+    /// A highlighting token's font: its role's, with Markdown's strong
+    /// text bold and emphasis italic.
+    public static func font(forToken kind: SyntaxTokenKind) -> NSFont? {
+        switch kind {
+        case .strong: return boldFont
+        case .emphasis: return NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+        default: return font(for: kind.role)
         }
-        stylePlaceholders(storage)
-        storage.endEditing()
-        return multi
     }
 
-    /// Re-colors only `region` (whole lines). The caller guarantees the
-    /// region does not start inside or overlap a multi-line token.
-    public static func highlight(_ storage: NSTextStorage, language: SourceTokenizer.Language, region: NSRange) {
-        guard NSMaxRange(region) <= storage.length else { return highlight(storage, language: language) }
-        let ns = storage.string as NSString
-        let text = ns.substring(with: region)
+    /// Colors `range` (whole lines; nil: all) of `storage` from the
+    /// document's tokens (`YcodeSyntax`); nil document: plain text.
+    public static func apply(_ doc: SyntaxDocument?, to storage: NSTextStorage, range: Range<Int>? = nil) {
+        let all = 0..<storage.length
+        let r = range.map { max(0, $0.lowerBound)..<min(storage.length, $0.upperBound) } ?? all
+        guard !r.isEmpty || r == all else { return }
+        let ns = NSRange(location: r.lowerBound, length: r.count)
         storage.beginEditing()
-        storage.setAttributes([.font: font, .foregroundColor: textColor], range: region)
-        for t in SourceTokenizer(language: language).tokens(in: text) where NSMaxRange(t.range) <= region.length {
-            let r = NSRange(location: t.range.location + region.location, length: t.range.length)
-            storage.addAttribute(.foregroundColor, value: color(for: t.kind), range: r)
-            if let f = font(for: t.kind) { storage.addAttribute(.font, value: f, range: r) }
+        // Font and color replaced; the paragraph style stays. The theme is
+        // resolved once per kind (reading it lists the themes folder).
+        let base = font
+        storage.addAttributes([.font: base, .foregroundColor: textColor], range: ns)
+        if let doc, doc.units.count == storage.length, !r.isEmpty {
+            var styles: [SyntaxTokenKind: [NSAttributedString.Key: Any]] = [:]
+            for t in doc.tokens(in: r) where t.kind.role != .identifier {
+                let tr = NSIntersectionRange(t.range, ns)
+                guard tr.length > 0 else { continue }
+                if styles[t.kind] == nil { styles[t.kind] = [.foregroundColor: color(forToken: t.kind), .font: font(forToken: t.kind) ?? base] }
+                storage.addAttributes(styles[t.kind]!, range: tr)
+            }
         }
-        stylePlaceholders(storage, in: region)
+        if range == nil { stylePlaceholders(storage) } else { stylePlaceholders(storage, in: ns) }
         storage.endEditing()
     }
 
@@ -121,16 +126,9 @@ public enum Theme {
         }
     }
 
-    /// Applies coloring for the whole text.
+    /// Applies coloring for the whole text (a fresh lexical pass; the
+    /// editor keeps its own `SyntaxDocument`).
     public static func highlight(_ storage: NSTextStorage, language: SourceTokenizer.Language) {
-        let full = NSRange(location: 0, length: storage.length)
-        storage.beginEditing()
-        storage.setAttributes([.font: font, .foregroundColor: textColor], range: full)
-        for t in SourceTokenizer(language: language).tokens(in: storage.string) where NSMaxRange(t.range) <= storage.length {
-            storage.addAttribute(.foregroundColor, value: color(for: t.kind), range: t.range)
-            if let f = font(for: t.kind) { storage.addAttribute(.font, value: f, range: t.range) }
-        }
-        stylePlaceholders(storage)
-        storage.endEditing()
+        apply(language == .plain ? nil : SyntaxDocument(text: storage.string, language: language), to: storage)
     }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import YcodeBuild
+import YcodeIDECore
 
 /// Menu commands added to match the reference menu bar
 /// (specs/ide/reference-ui.md §1). Commands Ycode cannot perform are listed
@@ -16,7 +17,7 @@ extension WorkspaceWindowController {
         // Source Control and Report ones are still to observe: Ycode lists
         // the related commands it has).
         switch index {
-        case 0: return [item("New File…", #selector(newFile(_:))), item("New Folder", nil), item("Add Files…", nil)]
+        case 0: return [item("New File…", #selector(newFile(_:))), item("New Folder", #selector(newFolder(_:))), item("Add Files…", #selector(addFiles(_:)))]
         case 1: return [item("Commit…", #selector(showCommitSheet(_:))), item("Refresh File Status", #selector(refreshFileStatus(_:)))]
         case 2: return [item("Bookmark File", #selector(bookmarkFile(_:))), item("Bookmark Line", #selector(bookmarkLine(_:)))]
         case 5: return [item("New Unit Test Target…", nil), item("New UI Test Target…", nil), item("New Unit Test Class…", #selector(newFile(_:)))]

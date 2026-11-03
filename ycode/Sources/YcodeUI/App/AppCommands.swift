@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// Menu commands that need no workspace window (`specs/ide/reference-ui-5.md`
 /// §2.1, §2.12, §2.13): documentation links, developer tools, Downloads.
@@ -27,7 +28,7 @@ public final class AppCommands: NSObject {
 
     static let actions: Set<String> = [
         "showDeveloperDocumentation:", "showHumanInterfaceGuidelines:", "showSwiftBook:", "openMoreDeveloperTools:",
-        "openDeveloperTool:", "showDownloads:",
+        "openDeveloperTool:", "showDownloads:", "compareFiles:", "showAboutWindow:", "showYcodeHelp:", "showReleaseNotes:", "reportBug:",
     ]
 
     public static func handles(_ action: String) -> Bool { actions.contains(action) }
@@ -38,6 +39,14 @@ public final class AppCommands: NSObject {
     @objc public func showHumanInterfaceGuidelines(_ sender: Any?) { Self.open(Links.humanInterfaceGuidelines) }
     /// Help ▸ The Swift Programming Language.
     @objc public func showSwiftBook(_ sender: Any?) { Self.open(Links.swiftBook) }
+    /// Ycode ▸ About Ycode.
+    @objc public func showAboutWindow(_ sender: Any?) { AboutWindowController.shared.showWindow(sender) }
+    /// Help ▸ Ycode Help: the repository's README.
+    @objc public func showYcodeHelp(_ sender: Any?) { Self.open(ProductIdentity.helpURL) }
+    /// Help ▸ Release Notes: the repository's releases.
+    @objc public func showReleaseNotes(_ sender: Any?) { Self.open(ProductIdentity.releasesURL) }
+    /// Help ▸ Report a Bug…: the new-issue page, with the version and platform.
+    @objc public func reportBug(_ sender: Any?) { Self.open(ProductIdentity.bugReportURL()) }
     /// Ycode ▸ Open Developer Tool ▸ More Developer Tools….
     @objc public func openMoreDeveloperTools(_ sender: Any?) { Self.open(Links.moreDeveloperTools) }
 

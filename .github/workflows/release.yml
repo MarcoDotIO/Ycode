@@ -1,0 +1,161 @@
+# Builds the packages for a tag `v<version>` and publishes a prerelease with
+# checksums and notes from CHANGELOG.md. A manual run builds the same packages
+# from a branch and keeps them as workflow artifacts, without publishing.
+#
+# Signing is optional. With no Developer ID secrets the same scripts produce an
+# ad-hoc signed disk image, and the release notes say so.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check the version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: version
+        name: The tag must match ycode/VERSION
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(cd ycode && scripts/version.sh)"
+          if [ "$REF_TYPE" = tag ] && [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match ycode/VERSION ($version)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: CHANGELOG.md must have notes for this version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: python3 -I .github/scripts/changelog-section.py "$VERSION" > /dev/null
+      - name: Scan for private names, secrets and files that must not be public
+        run: python3 -I .github/scripts/scan-public.py
+
+  macos:
+    name: Disk image (macOS)
+    needs: check
+    runs-on: xcode-27
+    timeout-minutes: 120
+    outputs:
+      signing: ${{ steps.dmg.outputs.signing }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-swift
+      - id: dmg
+        name: Build, sign and verify the disk image
+        working-directory: ycode
+        # The only step that sees the signing secrets.
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          YCODE_SIGN_IDENTITY: ${{ secrets.YCODE_SIGN_IDENTITY }}
+          NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          YCODE_BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          signing=ad-hoc
+          if [ -n "$MACOS_CERTIFICATE_P12_BASE64" ]; then
+            signing=developer-id
+            if [ -n "$NOTARY_KEY_P8_BASE64" ] && [ -n "$NOTARY_KEY_ID" ] && [ -n "$NOTARY_ISSUER_ID" ]; then
+              signing=notarized
+              # A notarized image must pass Gatekeeper, not just carry a signature.
+              export YCODE_VERIFY_REQUIRE_GATEKEEPER=1
+            fi
+          fi
+          scripts/make-dmg.sh "$GITHUB_WORKSPACE/dist"
+          echo "signing=$signing" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-macos
+          path: dist/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  flatpak:
+    name: Flatpak (${{ matrix.arch }})
+    needs: check
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: x86_64
+            os: ubuntu-24.04
+          - arch: aarch64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Flatpak and let it use user namespaces
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq flatpak flatpak-builder
+          # Ubuntu 24.04 restricts unprivileged user namespaces, which flatpak-builder needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Build the bundle
+        run: packaging/flatpak/build-flatpak.sh "$GITHUB_WORKSPACE/dist"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-flatpak-${{ matrix.arch }}
+          path: |
+            dist/*.flatpak
+            dist/*.tar.xz
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish the prerelease
+    if: github.ref_type == 'tag'
+    needs: [check, macos, flatpak]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: package-*
+          path: artifacts
+      - name: Write the checksums and notes
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          SIGNING: ${{ needs.macos.outputs.signing }}
+        run: .github/scripts/prepare-release.sh artifacts release/files "$VERSION" "$SIGNING"
+      - name: Create the prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          gh release create "$TAG" release/files/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --prerelease \
+            --title "Ycode $VERSION" \
+            --notes-file release/release-notes.md

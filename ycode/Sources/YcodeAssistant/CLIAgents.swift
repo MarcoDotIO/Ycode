@@ -58,9 +58,35 @@ public enum CLIAgentKind: String, Codable, Sendable, CaseIterable {
     ///   files, working root `-C`.
     /// - Antigravity: print mode with stream-json, plan mode, the terminal
     ///   sandbox, no slash-command expansion.
-    public func arguments(model: String?, workingDirectory: String, prompt: String, toolsEnabled: Bool = true) -> [String] {
+    ///
+    /// Agent mode (`mcpConfig` for Claude Code, `mcp` for Codex): Ycode's
+    /// MCP server is attached and its tools are allowed; the tools' own
+    /// editing stays off, so every change goes through Ycode's review.
+    /// Claude Code: `--mcp-config <file>` (only that server, all its tools
+    /// allowed, default permission mode); `--restricted` instead of
+    /// `--safe-mode`, which would turn the MCP server off too (restricted
+    /// mode ignores the user's and the project's settings files, so their
+    /// hooks and MCP servers, and keeps the file tools in the workspace). Codex: `-c mcp_servers.ycode.url`
+    /// and `bearer_token_env_var` (the token is in the child's environment).
+    public func arguments(model: String?, workingDirectory: String, prompt: String, toolsEnabled: Bool = true,
+                          mcp: AgentAttachment.MCPEndpoint? = nil, mcpConfig: String? = nil) -> [String] {
         let m = model.flatMap { $0.isEmpty ? nil : $0 }
         switch self {
+        case .claudeCode where mcpConfig != nil:
+            var a = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+                     "--permission-mode", "default", "--tools", toolsEnabled ? "Read,Grep,Glob" : "",
+                     "--mcp-config", mcpConfig ?? "", "--strict-mcp-config", "--allowedTools", "mcp__\(mcp?.name ?? "ycode")",
+                     "--restricted", "--no-session-persistence", "--permission-prompts", "none"]
+            if let m { a += ["--model", m] }
+            return a
+        case .codex where mcp != nil:
+            let name = mcp?.name ?? "ycode"
+            var a = ["exec", "--json", "--sandbox", "read-only", "--ephemeral", "--skip-git-repo-check", "--color", "never",
+                     "-C", workingDirectory,
+                     "-c", "mcp_servers.\(name).url=\"\(mcp?.url ?? "")\"",
+                     "-c", "mcp_servers.\(name).bearer_token_env_var=\"\(Self.mcpTokenVariable)\""]
+            if let m { a += ["-m", m] }
+            return a + ["-"]
         case .claudeCode:
             var a = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
                      "--permission-mode", "plan", "--tools", toolsEnabled ? "Read,Grep,Glob" : "",
@@ -78,6 +104,18 @@ public enum CLIAgentKind: String, Codable, Sendable, CaseIterable {
             if let m { a += ["--model", m] }
             return a
         }
+    }
+
+    /// The environment variable that carries the MCP bearer token to Codex.
+    public static let mcpTokenVariable = "YCODE_MCP_TOKEN"
+
+    /// Whether the tool can take Ycode's MCP server (Antigravity's print
+    /// mode documents no MCP configuration).
+    public var supportsAgentMode: Bool { self != .antigravity }
+
+    /// Claude Code's `--mcp-config` file for an endpoint.
+    public static func claudeMCPConfig(_ e: AgentAttachment.MCPEndpoint) -> String {
+        AnyJSON.object(["mcpServers": .object([e.name: ["type": "http", "url": .string(e.url), "headers": ["Authorization": .string("Bearer \(e.token)")]]])]).text
     }
 
     /// Whether the prompt is sent on standard input.
@@ -161,6 +199,14 @@ public struct ClaudeCodeEventParser: CLIEventParser {
     public mutating func finish() -> [ChatEvent] { [] }
 
     static func describeTool(_ name: String, _ input: [String: Any]?) -> String {
+        // Agent mode's MCP tools: "mcp__ycode__build" → "ycode: build".
+        if name.hasPrefix("mcp__") {
+            let parts = name.dropFirst(5).components(separatedBy: "__")
+            if parts.count >= 2 {
+                let arg = (input?["path"] as? String) ?? (input?["query"] as? String)
+                return "\(parts[0]): \(parts.dropFirst().joined(separator: "__"))" + (arg.map { " \($0)" } ?? "")
+            }
+        }
         let target = (input?["file_path"] as? String) ?? (input?["path"] as? String) ?? (input?["pattern"] as? String)
         return target.map { "\(name): \($0)" } ?? name
     }
@@ -185,6 +231,7 @@ public struct CodexEventParser: CLIEventParser {
             case "command_execution": return [.activity("Running \((item["command"] as? String) ?? "a command")")]
             case "file_change": return [.activity("Codex tried to change files; the read-only sandbox blocks it.")]
             case "web_search": return [.activity("Searching the web")]
+            case "mcp_tool_call": return [.activity("\((item["server"] as? String) ?? "MCP"): \((item["tool"] as? String) ?? "tool")")]
             default: return []
             }
         case "item.completed":
@@ -292,7 +339,7 @@ public struct CLIToolLocator: Sendable {
 }
 
 /// An agent tool as a provider: one subprocess per request.
-public struct CLIAgentProvider: AssistantProvider {
+public struct CLIAgentProvider: AgentAttachable {
     public let agent: CLIAgentKind
     public var kind: ProviderKind { agent.providerKind }
     /// The located executable (nil: not installed).
@@ -300,10 +347,22 @@ public struct CLIAgentProvider: AssistantProvider {
     /// Arguments that replace the documented ones (tests).
     public var argumentsOverride: [String]?
 
+    /// Agent mode's attachment (Ycode's MCP server), when given.
+    public var attachment: AgentAttachment?
+
     public init(agent: CLIAgentKind, executable: URL?, argumentsOverride: [String]? = nil) {
         self.agent = agent
         self.executable = executable
         self.argumentsOverride = argumentsOverride
+    }
+
+    public var isAttached: Bool { attachment != nil }
+
+    public func attaching(_ attachment: AgentAttachment) -> AssistantProvider {
+        guard agent.supportsAgentMode else { return self }
+        var p = self
+        p.attachment = attachment
+        return p
     }
 
     public func availability() async -> ProviderAvailability {
@@ -315,6 +374,7 @@ public struct CLIAgentProvider: AssistantProvider {
     /// first on PATH (tools installed with Node need `node` beside them).
     func environment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
+        if let token = attachment?.mcp?.token, agent == .codex { env[CLIAgentKind.mcpTokenVariable] = token }
         if let dir = executable?.deletingLastPathComponent().path {
             env["PATH"] = ([dir] + (env["PATH"].map { [$0] } ?? ["/usr/bin:/bin"])).joined(separator: ":")
         }
@@ -330,7 +390,22 @@ public struct CLIAgentProvider: AssistantProvider {
             }
             let dir = request.workingDirectory ?? FileManager.default.homeDirectoryForCurrentUser
             let prompt = request.flattenedPrompt
-            let args = provider.argumentsOverride ?? provider.agent.arguments(model: request.model, workingDirectory: dir.path, prompt: prompt)
+            // Agent mode: Claude Code reads the MCP server from a private
+            // file (it holds the bearer token), removed after the run.
+            var configFile: URL?
+            if let mcp = provider.attachment?.mcp, provider.agent == .claudeCode {
+                let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-agent-\(UUID().uuidString)")
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+                let file = dir.appendingPathComponent("mcp.json")
+                FileManager.default.createFile(atPath: file.path, contents: nil, attributes: [.posixPermissions: 0o600])
+                let h = try FileHandle(forWritingTo: file)
+                try h.write(contentsOf: Data(CLIAgentKind.claudeMCPConfig(mcp).utf8))
+                try h.close()
+                configFile = file
+            }
+            defer { if let f = configFile { try? FileManager.default.removeItem(at: f.deletingLastPathComponent()) } }
+            let args = provider.argumentsOverride ?? provider.agent.arguments(model: request.model, workingDirectory: dir.path, prompt: prompt,
+                                                                             mcp: provider.attachment?.mcp, mcpConfig: configFile?.path)
             var parser = provider.agent.makeParser()
             var finished = false
             do {

@@ -5,11 +5,17 @@
 //   click / drag            one finger
 //   option + drag           two fingers mirrored about the screen center (pinch, rotate)
 //   option + shift + drag   two fingers moving together (two-finger pan)
-//   scroll wheel / trackpad one-finger drag that follows the scroll
+//   scroll wheel / trackpad one-finger drag that follows the scroll; on a
+//                           watch the Digital Crown's rotation instead
+//                           (watchos.md §5.1, §12: scrolling down = positive)
 //   keys (without command)  hardware keyboard usages
 //   keys with command       also sent while Capture Keyboard is on
 //                           (device-hub.md §4.6); holding Escape for a
 //                           second ends the capture
+//
+// A Vision Pro (the server's hello says `spatial`): gaze, hands and camera
+// instead of touches (DeviceView+Spatial.swift; visionos.md "Ycode
+// implementation").
 
 #if os(macOS)
 import AppKit
@@ -20,13 +26,38 @@ import YcodeDisplayStream
 public protocol DeviceInputHandler: AnyObject {
     func sendTouch(_ contacts: [TouchContact], label: String?)
     func sendKey(usage: UInt16, down: Bool, label: String?)
+    /// A watch's Digital Crown turned by `delta` (signed; watchos.md §5.1).
+    func rotateCrown(by delta: Double)
+    /// Whether scrolling turns the crown (a watch) instead of dragging a finger.
+    var scrollsTurnTheCrown: Bool { get }
+    /// visionOS: the server takes pose, selection and dial messages (its hello's `spatial`).
+    var isSpatial: Bool { get }
+    /// visionOS: a gaze-and-hands selection, a camera pose, a Digital Crown turn (stage frame).
+    func sendSelection(_ selection: SpatialSelection, label: String?)
+    func sendPose(_ pose: SpatialPose)
+    func turnDial(by delta: Double)
+}
+
+public extension DeviceInputHandler {
+    func rotateCrown(by delta: Double) {}
+    var scrollsTurnTheCrown: Bool { false }
+    var isSpatial: Bool { false }
+    func sendSelection(_ selection: SpatialSelection, label: String?) {}
+    func sendPose(_ pose: SpatialPose) {}
+    func turnDial(by delta: Double) {}
 }
 
 public final class DeviceView: NSView {
     public weak var input: DeviceInputHandler?
     /// The device's size in points (touch coordinates).
-    public var pointSize = CGSize(width: 466, height: 678)
+    public var pointSize = CGSize(width: 466, height: 678) {
+        didSet { spatial.width = pointSize.width; spatial.height = pointSize.height }
+    }
     private let indicator = CAShapeLayer()
+    /// visionOS: the camera and the hands (DeviceView+Spatial.swift).
+    public var spatial = SpatialInteraction()
+    /// visionOS: the pointer at the start of a mouse-look drag (Control-drag).
+    var spatialLook: CGPoint?
 
     /// Capture Keyboard (device-hub.md §4.6): command shortcuts go to the
     /// device too. Holding Escape for `escapeHold` seconds ends it.
@@ -134,6 +165,7 @@ public final class DeviceView: NSView {
     }
 
     public override func mouseDown(with event: NSEvent) {
+        if spatialMouseDown(event) { return }
         window?.makeFirstResponder(self)
         endScroll()
         let p = convert(event.locationInWindow, from: nil)
@@ -154,6 +186,7 @@ public final class DeviceView: NSView {
     }
 
     public override func mouseDragged(with event: NSEvent) {
+        if spatialMouseDragged(event) { return }
         guard let g = gesture else { return }
         let p = convert(event.locationInWindow, from: nil)
         lastLocation = p
@@ -162,6 +195,7 @@ public final class DeviceView: NSView {
     }
 
     public override func mouseUp(with event: NSEvent) {
+        if spatialMouseUp(event) { return }
         guard let g = gesture else { return }
         let p = convert(event.locationInWindow, from: nil)
         input?.sendTouch(contacts(positions(for: p, gesture: g), phase: .ended), label: nil)
@@ -170,6 +204,7 @@ public final class DeviceView: NSView {
     }
 
     public override func mouseMoved(with event: NSEvent) {
+        if spatialMouseMoved(event) { return }
         lastLocation = convert(event.locationInWindow, from: nil)
         updateHoverIndicator(flags: event.modifierFlags, at: lastLocation)
     }
@@ -197,8 +232,14 @@ public final class DeviceView: NSView {
         CATransaction.commit()
     }
 
+    public override func magnify(with event: NSEvent) {
+        if spatialMagnify(event) { return }
+        super.magnify(with: event)
+    }
+
     /// Ends whatever touch is down (the window lost focus).
     public func cancelInput() {
+        spatialCancel()
         if let g = gesture {
             input?.sendTouch(contacts(positions(for: lastLocation, gesture: g), phase: .cancelled), label: nil)
             gesture = nil
@@ -223,7 +264,28 @@ public final class DeviceView: NSView {
     private var scrollFinger: CGPoint?
     private var scrollIdle: Timer?
 
+    /// The crown's delta per point of precise (trackpad) scrolling; a wheel's
+    /// line counts 10 points. User-adjustable with the defaults key
+    /// `YcodeCrownScrollFactor` (Ycode decision, watchos.md §12).
+    public static var crownFactor: Double {
+        let v = UserDefaults.standard.double(forKey: "YcodeCrownScrollFactor")
+        return v > 0 ? v : 2
+    }
+
+    /// The crown's delta for one scroll event: content moving up (scrolling
+    /// down a list, two fingers up on a natural-scrolling trackpad) is positive.
+    public static func crownDelta(scrollingDeltaY: CGFloat, precise: Bool, factor: Double = crownFactor) -> Double {
+        -Double(scrollingDeltaY) * (precise ? 1 : 10) * factor
+    }
+
     public override func scrollWheel(with event: NSEvent) {
+        if spatialScroll(event) { return }
+        if let input, input.scrollsTurnTheCrown {
+            // The guest makes its own acceleration from the crown's deltas.
+            guard event.momentumPhase.isEmpty, event.scrollingDeltaY != 0 else { return }
+            input.rotateCrown(by: Self.crownDelta(scrollingDeltaY: event.scrollingDeltaY, precise: event.hasPreciseScrollingDeltas))
+            return
+        }
         if !event.momentumPhase.isEmpty {
             // The guest makes its own momentum from the drag's speed.
             endScroll()
@@ -271,6 +333,7 @@ public final class DeviceView: NSView {
     private var pressedKeys = Set<UInt16>()
 
     public override func keyDown(with event: NSEvent) {
+        if spatialKeyDown(event) { return }
         if event.modifierFlags.contains(.command) && !capturesKeyboard { super.keyDown(with: event); return }
         if capturesKeyboard, event.keyCode == 0x35, !event.isARepeat {
             // Escape: sent as usual; held, it ends the capture.

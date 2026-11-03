@@ -1,16 +1,22 @@
 # Spec: the display stream (live view and input for a remote viewer)
 
-Status: **implemented** (agent SIM-VIEWER, 2026-10-19). Ycode-original
-design: nothing here describes Apple software. It defines how `ycode-simd`
-serves a device's display and takes input over one socket, and how the
-viewer (`ycode-sim-viewer`, macOS) uses it. How input then enters the guest
-is `hid-input.md`.
+Status: **implemented** (agent SIM-VIEWER, 2026-10-19; Linux viewer, stage
+timing, H.264, sound and remote x86 viewing: REMOTE-X86, 2026-10-31).
+Ycode-original design: nothing here describes Apple software. It defines
+how `ycode-simd` serves a device's display and sound and takes input over
+one socket, and how the viewers (`ycode-sim-viewer` on macOS, §7, and on
+Linux, §13) use it. How input then enters the guest is `hid-input.md`; how
+a viewer reaches a simulator host without ssh is `sim-link.md`.
 
 Code: `Sources/YcodeDisplayStream` (protocol and sockets, shared),
 `Sources/CYcodeCodec` (JPEG, zlib, downscale), `Sources/ycode-simd/
 DisplayServer.swift`, `DisplayTiles.swift`, `InputBridge.swift`,
 `Sources/ycode-sim-viewer`, `scripts/ycode-sim-serve`, `scripts/ycode-sim-try`;
-timing instruments in §10.
+timing instruments in §10. Since REMOTE-X86: `Sources/YcodeRemoteViewer`
+(the portable viewer: stream client, canvas, touches, layout, clock, sound,
+scripts), `Sources/YcodeRemoteViewerSDL` (the Linux window),
+`Sources/CYcodeVideo` (NVENC/NVDEC), `Sources/CYcodeCodec/audio.c` (Opus,
+PulseAudio), `Sources/ycode-simd/DisplayVideo.swift`, `DisplayAudio.swift`.
 
 ## 1. Transport
 
@@ -21,11 +27,25 @@ timing instruments in §10.
   no port is opened on a shared host, and ssh supplies authentication and
   encryption. The protocol itself has no authentication: never listen on a
   non-loopback TCP address.
+- **A viewer taken over does not fight** (§1.1, XR-HUB 2026-11-02).
 - A stale socket file (nobody accepting) is replaced; a live one is an error.
 - **One viewer at a time.** A new connection closes the previous one (it
   gets a notice first), so a viewer can reconnect after a network drop.
 - Without `--display-server` nothing of this exists. With it, before a
   viewer connects, one thread waits in `accept()`; no frame work is done.
+
+### 1.1 Takeover
+
+The notice the server sends the previous viewer is exactly "another viewer
+connected; this one is closed" (`DisplayNotice.takenOver`). A viewer that
+gets it does **not** reconnect by itself: it reports the phase `takenOver`
+and waits until its user takes the display back (the hub's canvas: Take
+Back or Back to Desktop; the Linux viewer: a click on the screen; the
+headset viewer ends). Before, every viewer reconnected after 1 s, so two
+viewers of one device took the display from each other every second. A
+viewer whose connection drops for any other reason still reconnects. The
+hub expects the takeover when it starts the headset viewer itself and
+shows no notice then (`device-hub.md` §I.12.3).
 
 ## 2. Framing
 
@@ -51,6 +71,12 @@ integers are little-endian; floats are IEEE.
 | 0x05 | screenshot | u32 token, PNG bytes (empty: none available) |
 | 0x06 | notice | UTF-8 text for the person (e.g. "input not delivered…") |
 | 0x07 | display state | JSON (§11) |
+| 0x08 | frame timing | 5 × u64: the server's stage times of the frame just sent (§12) |
+| 0x09 | audio | u64 play time, u8 codec, u8 channels, u16 frames, u32 rate, data (§15) |
+| 0x0A | frame view | the headset mode (§18): the view and pose of the next frame message |
+| 0x0B | inset | foveated streaming (§18): the full-resolution inset around the gaze for the frame just sent |
+| 0x0C | frame depth | the headset mode's depth of the frame just sent (§19, `xr-depth.md` §4.2) |
+| 0x0D | environment | the room's environment cube, on request and on change (§19, `xr-depth.md` §4.3) |
 | 0x10 | command answer | u32 token (the command's), UTF-8 text: the control socket's answer ("ok …" or "error: …") |
 | 0x81 | client hello | JSON (§3.2) |
 | 0x82 | touch | §5.1 |
@@ -61,6 +87,12 @@ integers are little-endian; floats are IEEE.
 | 0x87 | screenshot request | u32 token |
 | 0x88 | rotate | u8 orientation (1 portrait, 2 upside down, 3 landscape left, 4 landscape right; 5 face up, 6 face down) |
 | 0x89 | fold | u16 hinge angle 0–180, u8 flags (bit 0: one message, no sweep) (§11) |
+| 0x8A | pose | visionOS camera pose (§17): u32 sequence, 3 × f32 position, 4 × f32 quaternion x, y, z, w |
+| 0x8B | selection | visionOS gaze and hands (§17): u32 sequence, u8 flags (bit 0: hands present), u8 0, u16 0, 3 × f32 ray origin, 3 × f32 ray direction, then with hands left and right: u8 pinching, u8 allowDirect, u16 0, 3 × f32 position, 4 × f32 quaternion x, y, z, w |
+| 0x8C | dial | visionOS Digital Crown (§17): u32 sequence, f32 signed turn |
+| 0x8D | views | the headset mode (§18): u32 sequence, u8 flags, u8 0, u16 0, head, left eye, right eye (each 3 × f32 position, 4 × f32 quaternion) |
+| 0x8E | fovea | foveated streaming (§18): u32 sequence, f32 u, f32 v (where the eyes look in the guest's view; never logged) |
+| 0x8F | frame ack | u64 sequence: every frame up to it is decoded (flow control, §4.2.1) |
 | 0x90 | command | u32 token, UTF-8 words of a control-socket command (`ui appearance dark`, `settings`; `simulator-features.md` §I.4); answered by 0x10, off the receive thread (a command can wait for the guest) |
 
 ## 3. Control messages
@@ -79,6 +111,13 @@ HUB-UI (2026-10-28): `deviceType` (Ycode's device type id, `ycode-simd
 "iOS 27.1"): the viewer draws the device's frame from the type and titles
 its window with the OS (`device-hub.md` "Ycode implementation"); a viewer
 without them falls back to the model identifier and the pixel size.
+Optional since REMOTE-X86: `encodings` may include `"h264"` (§14), and
+`audio` lists the sound codecs the server sends (`["opus", "pcm"]`, §15;
+absent: no sound). Optional since VISIONOS-R9: `spatial` (true: the
+server takes pose, selection and dial, §17) and `rooms` (the room keys the
+device offers). Optional since XR-VIEWER: `xr` (true: the headset mode,
+§18). Optional since XR-GAZE: `frameAcks` (true: the server honours a client's
+`frameWindow`, §4.2.1).
 
 ### 3.2 Client hello
 
@@ -88,7 +127,13 @@ stream image is ⌈pixel size / downscale⌉ per axis). The server clamps the
 numbers, falls back to an encoding it has, and starts with a full frame.
 The client may send another hello at any time to change settings. Until a
 client hello arrives (at most 2 s) the server sends nothing but hello and
-status.
+status. Optional since REMOTE-X86: `encoding` `"h264"` (§14),
+`videoBitrate` (kbit/s, §14), `timing` (true: a frame timing message after
+every frame, §12), `audio` (the sound codecs the client plays, preferred
+first; absent or empty: no sound, §15). Optional since XR-VIEWER: `xr`
+(`{"stereo": "adaptive" | "alternate" | "mono", "latch": n, "settleMs":
+n}`: the headset mode, §18). Optional since XR-GAZE: `frameWindow` (n: at most
+n frames unacknowledged, §4.2.1).
 
 ### 3.3 Status
 
@@ -124,7 +169,9 @@ Scans happen when the frame counter changes, for 300 ms after each change
 (the GPU may finish writing a surface after the swap), for 500 ms after
 each input event, on a keyframe request, and once a second as a safety net.
 `maxFPS` limits the frames **sent**: a new frame record (or a keyframe
-request) is scanned as soon as the last sent frame is one interval old; the
+request) is scanned as soon as the last sent frame is one interval old
+(measured from that frame's capture since REMOTE-X86, §16.3; before, from
+the end of its send, which added scan + encode + send to every interval); the
 speculative scans (settling, after input, the safety net) run at most once
 per interval and never hold back the scan of a new frame. (Before
 2026-10-19 every scan counted against the interval, so a settling scan that
@@ -135,6 +182,30 @@ Sends are blocking: on a slow link the next scan simply waits, and because
 damage is computed against what the viewer has, the newest pixels always
 win and no frame queue builds up.
 
+#### 4.2.1 Flow control (XR-GAZE, 2026-11-02)
+
+A slow viewer must see the newest picture late, never a queue of old ones. Only
+the server's blocking send used to push back, and between it and the decoder lie
+the Unix socket, two TCP buffers (megabytes when auto-tuned: seconds of video at
+a megabyte per second) and, over the link, the transport's own queue in the
+viewer, which had no bound. In run 8's `--reproject off` that queue reached 11 s
+(`xr-viewer.md` §13.2).
+
+A client whose hello carries `frameWindow` n acknowledges every frame once it is
+decoded (0x8F, the newest sequence; only when the server's hello says
+`frameAcks`). The server captures a new picture only while fewer than n frames
+are unacknowledged. While the window is full it scans nothing and encodes
+nothing, so the next frame is simply the newest picture against the mirror (§4.2):
+the encoder's chain stays whole and no keyframe is needed. An acknowledgement
+wakes the send loop at once. A lost frame (UDP) is covered by the next
+acknowledgement; if none comes for 300 ms, one more frame goes, so a lost message
+cannot stop the stream. In the alternate-eye mode the window also holds back the
+next eye's pose (`due`), which would otherwise be lost with the picture it is for.
+Depth, timing and sound are not counted. `ycode-xr-viewer` asks for 3
+(`--frame-window`; 0: none); other viewers do not ask yet and behave as before.
+Over the link the transport's queue is also bounded now (16 MB: past that the TCP
+reader waits, so the socket pushes back).
+
 ### 4.3 Frame message (0x03)
 
 | Bytes | Field |
@@ -144,7 +215,7 @@ win and no frame queue builds up.
 | 8 | server monotonic ns when the frame was encoded |
 | 4 | input sequence: the newest input event (§5) received before the scan |
 | 2, 2 | stream image width, height |
-| 1 | encoding: 1 JPEG, 2 zlib |
+| 1 | encoding: 1 JPEG, 2 zlib, 3 H.264 (§14) |
 | 1 | flags: bit 0 = the tiles cover the whole image |
 | 2 | tile count |
 | per tile | u16 x, u16 y, u16 width, u16 height (stream-image pixels), u32 length, data |
@@ -192,8 +263,12 @@ u32 sequence, u8 down (1) / up (0), u8 0, u16 usage page (7), u16 usage
 ### 5.3 Button (0x84)
 
 u32 sequence, u8 button (1 home, 2 lock, 3 volume up, 4 volume down,
-5 side), u8 down. The bridge sends consumer-page usages (`hid-input.md`
-§5.5).
+5 side, 6 action), u8 down. The bridge sends the usage pairs of
+`DeviceButtonTable` (consumer page, `hid-input.md` §5.5; on a watch the
+pairs of `watchos.md` §5.2, the Ultra's Action button 0xFF01/0x200, and no
+volume buttons). A server lists the buttons its device has in the hello's
+`buttons`; a viewer sends 6 only when "action" is listed (an older server
+closes the connection on an unknown value) (WATCH-W7, 2026-10-31).
 
 ## 6. Shutdown
 
@@ -431,6 +506,456 @@ are not used as evidence.
   for a foldable; script commands `fold closed|half|open|<deg>`,
   `rotate left|right`, `wait-display <name>`.
 
+## 12. Stage timing and the clock (REMOTE-X86, 2026-10-31)
+
+### 12.1 Frame timing (0x08)
+
+With `timing: true` in the client hello, the server follows every frame with
+a frame timing message: the frame's sequence, then four times on its
+monotonic clock (ns; 0 = not known): **record seen** (the loop saw the
+guest's frame record change; 0 for a speculative scan), **capture start**
+(the scan began, after `IOSurfaceHostService.surface(id:)` waited for the
+GPU work that writes the surface), **encode end**, **send end** (the frame's
+last byte was handed to the socket). The viewer adds **received** (the
+frame's last byte arrived), **decoded** and **presented** (after
+`SDL_RenderPresent` returned, i.e. the frame was handed to the display
+server; under Xvfb there is no photon to measure).
+
+### 12.2 Clock offset
+
+The viewer estimates server − client with pings (0x85/0x04: the pong
+carries the server's monotonic ns): offset = s − (t0 + t1) / 2 of the ping
+with the smallest round trip in the last 60 s; its error is at most half
+that round trip (0.05–0.15 ms on the test LAN). Three pings go out at
+hello, then one a second. All server times are mapped to the client clock
+with it; `--measure <file.tsv>` writes every presented frame's stages
+(client ns) and the input latencies at exit.
+
+### 12.3 Input
+
+Each input event's sequence number appears in the first frame the guest
+drew after it (§4.3): the viewer reports input → first frame received and
+→ presented. Input on the viewer → the guest's event is the one-way network
+time (half the round trip: 0.15–0.35 ms on this LAN) plus the server's
+delivery into `backboardd` (0.2 ms, §10.3).
+
+## 13. The Linux viewer (`ycode-sim-viewer` on Linux)
+
+An SDL 3 window (`YcodeRemoteViewerSDL`; libSDL3 opened at run time,
+`$YCODE_SDL3_LIBRARY`, `$OV_SDL3_LIBRARY`, the loader's path,
+`~/.local/lib`; no SDL at build time) on the portable viewer
+(`YcodeRemoteViewer`), the same code the IDE embeds (`sim-link.md` §11).
+
+### 13.1 Features
+
+- The device in Ycode's frame (`DeviceFrameGeometry`: body, rounded screen,
+  buttons), the stream image as a textured rounded polygon, turned for a
+  foldable's turned panel; a control row (Home, Lock, Vol+, Vol−, Rotate,
+  Shot, Mute, the scale mode) and a status line (Ctrl+F: phase, fps, KB/s,
+  input → shown, round trip).
+- Scale: fit (the default: the window; resizing scales the device), point
+  accurate (one device point per window unit), pixel accurate (one device
+  pixel per output pixel); the latter two resize the window.
+- Input as on the Mac (§7): click and drag = one finger, Alt-drag = pinch
+  about the centre, Alt-Shift-drag = two-finger pan, the wheel = a drag
+  that ends 150 ms after the last step (a watch: the Digital Crown), the
+  frame's buttons clickable; keys → HID usages (SDL scancodes are the USB
+  HID usages), the Super key as the device's Command; Ctrl shortcuts stay
+  with the window: Ctrl+Shift+H Home, Ctrl+L Lock, Ctrl+Up/Down volume,
+  Ctrl+Left/Right rotate, Ctrl+Shift+S screenshot (the server's PNG, in
+  `$YCODE_DEVICE_CAPTURE_DIR` or ~/Pictures), Ctrl+1/2/3 scale, Ctrl+B
+  bezels, Ctrl+R refresh, Ctrl+M mute, Ctrl+= / Ctrl+− the viewer's volume,
+  Ctrl+Q quit. Losing focus lifts fingers and keys. Alt shows the second
+  finger's dot.
+- Decoding on the connection thread: JPEG tiles with the system's libjpeg
+  (`CYcodeCodec`, opened at run time; the header at build time) straight into
+  the canvas, tiles of a frame in parallel; zlib tiles inflated; H.264 by
+  NVDEC (§14). Only the changed rectangle is uploaded (`SDL_UpdateTexture`),
+  video pictures as NV12 textures. The renderer presents without vsync as
+  soon as a frame is decoded; one image waits at most.
+- `--link <device> [--host N]` (`sim-link.md`), `--connect <address>`,
+  `--scale`, `--fps` (default 120: the guest paces itself, §16.3),
+  `--encoding jpeg|zlib|h264|auto`, `--bitrate`, `--quality`,
+  `--downscale`, `--timing`, `--measure`, `--audio pulse|null|off`,
+  `--audio-latency`, `--audio-wav`, `--script`, `--headless` (no window:
+  receive and decode only), `--media tcp`.
+- `--script` (`ViewerScript.swift`): the Mac viewer's language (waits, taps,
+  drags, pinch, scroll, type, key, button, rotate, shots of the stream, the
+  server and the window) plus `scale`, `stats-begin/end` (with the stage
+  medians and the round trip), `latency-summary`, `audio-summary`, and
+  `av-probe` (§15.4).
+
+### 13.2 Checked (2026-10-31, x86 PC, Xvfb, renderer `opengles2` on llvmpipe)
+
+The iPhone 18 Pro (iOS 27.0) streamed from the Thor: the home screen; a tap
+on Settings opens it; a tap on Search, then typing, enters text; the Home
+button returns home (screenshots `remote-x86-*.png` in the worktree folder).
+The software renderer (`YCODE_SDL_RENDERER=software`) costs 16 ms per
+presented frame against 2.6 ms for `opengles2`; it is not used.
+
+## 14. Video (H.264 REMOTE-X86; HEVC, choice and measurements XR-QUALITY, 2026-11-02)
+
+- **Encodings.** `hevc444` (HEVC Range Extensions, 4:4:4, 8-bit), `hevc`
+  (HEVC 4:2:0, 8-bit), `h264` (4:2:0), then the tile encodings `jpeg` and
+  `zlib`. Frame encoding byte: 3 `h264`, 4 `hevc`, 5 `hevc444`. Each video
+  frame is one Annex B access unit in one tile covering the image, `isFull` =
+  IDR, at the device's pixel size (`downscale` is ignored).
+- **Encoder**: NVIDIA NVENC on the simulator host (the Jetson Thor's, through
+  the driver's `libnvidia-encode.so.1` and `libcuda.so.1`, opened at run
+  time; interfaces from the vendored MIT headers of FFmpeg's
+  nv-codec-headers n12.2.72.0, `Sources/CYcodeVideo/nvheaders`). P1
+  preset, ultra-low-latency tuning, no B-frames, one reference frame, an
+  infinite GOP (IDR only on a keyframe request, the first frame, or a lost
+  frame), parameter sets repeated with every IDR, input as BGRA (the encoder
+  converts). No periodic IDR means no IDR spike, so intra refresh has nothing
+  to replace. The damage the mirror found (§4.2) is copied into
+  the encoder's input picture, which keeps the rest of the previous frame.
+  NVENC's minimum size is above 64 × 64: the availability check opens a
+  256 × 256 session. `YCODE_DISPLAY_VIDEO=0` keeps video out of the hello.
+- **Rate control**, from the client hello: `videoQP` (> 0): constant QP;
+  else `videoBitrate` with `videoFPS`: CBR, a VBV of one picture at that
+  nominal rate; else VBR at `videoBitrate` (default 20 Mbit/s;
+  `YCODE_DISPLAY_VIDEO_KBPS`), peak twice that, a VBV of one picture of the
+  peak at `maxFPS` (what older clients get). The stream sends a picture only
+  when it changes, so nothing later would refine a picture a rate limit had
+  starved: a client on a LAN wants constant QP (the headset viewer's default,
+  QP 20, §14.2). At 120 fps VBR's budget was about 42 KB a picture.
+- **The colours are BT.709, limited range.** Measured on flat patches through
+  every codec on the Thor: red → Y 63, U 102, V 240; green → 173, 42, 26; blue
+  → 32, 240, 118; white → 235, 128, 128. Every conversion in Ycode assumed
+  BT.601 until 2026-11-02, so saturated colours were wrong by up to 30 levels
+  (PSNR on a synthetic UI, G channel: 27.7 dB before, 35.1 dB after). The
+  encoder's VUI now says BT.709 (primaries, matrix) with the sRGB transfer.
+- **Decoder**: NVDEC through `libnvcuvid.so.1` (the viewer's GPU), parser
+  with no display delay, the picture copied to host memory: NV12, or three
+  full planes for 4:4:4 (the chroma format follows the stream). A window
+  shows NV12 as a texture (the renderer converts; SDL's default matrix for it
+  is still BT.601: a follow-up) and converts 4:4:4 on the CPU; the headset
+  viewer's re-projection uploads the planes and converts on the GPU
+  (`shaders/yuv.frag`: into the sRGB colour image, then its mip chain), for
+  every video encoding; 19 ms a picture on one CPU core at 2160 × 3840 before.
+  CUDA–Vulkan interop would save the copy through host memory (3–7 ms):
+  follow-up. There is no software decoder (no LGPL-only build of libavcodec
+  was available on the test machine, and openh264 is not installed; both are
+  follow-up options).
+- **Licences**: nv-codec-headers MIT (each file); the NVIDIA driver's
+  libraries are the user's, opened at run time, not redistributed.
+
+### 14.1 Choosing the encoding
+
+The server finds out what it can encode at run time: NVENC's
+`nvEncGetEncodeGUIDs` for each codec, then `NV_ENC_CAPS_SUPPORT_YUV444_ENCODE`,
+`NV_ENC_CAPS_SUPPORT_10BIT_ENCODE` and the maximum sizes. It lists the names in
+the hello's `encodings` (`jpeg`, `zlib`, then `hevc444`, `hevc`, `h264` as
+available; a client with no list gets its `encoding` or the first of these, as
+before) and logs the capabilities. The client asks `cuvidGetDecoderCaps` for each
+codec, chroma format and depth, and sends what it decodes, best first, in
+the client hello's `encodings` (`encoding` holds the first, for older servers).
+The server takes the first of the list it offers
+(`DisplayCodecChoice.serverPick`).
+
+**No fallback is silent.** A viewer that gets less than its first wish prints
+which encoding it got, why each better one is missing (for example "jpeg: JPEG
+is compiled out of this viewer"), what to expect of it, and that `--encoding` chooses.
+A server whose encoder fails later logs it, sends the viewer a notice and
+falls back to tiles with a keyframe.
+
+| Machine | H.264 | HEVC 4:2:0 | HEVC 4:4:4 | AV1 |
+|---|---|---|---|---|
+| Thor, encode (up to 8192², H.264 4096²) | yes | yes, 10-bit too | yes, 10-bit too | GUID offered, 4:2:0 only; `nvEncLockBitstream` answers `INVALID_PARAM` with these headers: not offered, not measured |
+| Thor, decode | yes | yes | yes | 4:2:0 |
+| x86 RTX 4060 Ti, encode | yes | yes | yes | as the Thor |
+| x86 RTX 4060 Ti, decode | yes (8-bit, 4:2:0) | yes | yes | 4:2:0 |
+
+### 14.2 Measurements
+
+2160 × 3840, the visionOS room with a Settings window, the x86 viewer offscreen
+over the link (TCP), the moving `walk` script, 20 s per run, Thor load 30–60 from
+other agents. Depth 1/4 on the same stream (1–2 MB/s of the rate). Seen → decoded
+is the guest's frame record seen by the server → the picture decoded on the x86
+(§12.1). One run each unless said; the picture rate follows the guest and the
+load, not the codec.
+
+| Encoding, rate control | Pictures/s | Rate | Encode | Send | Decode + copy | Seen → decoded p50 / p90 |
+|---|---|---|---|---|---|---|
+| zlib, over an ssh forward (run 7's path) | 5.7 | 59 MB/s | 82 ms | 80 ms | 18 ms | 201 / 234 ms |
+| zlib | 8.7 | 88 MB/s | 89 ms | 15 ms | 18 ms | 228 / 258 ms |
+| jpeg q80 | 36.1 | 20.4 MB/s | 9.6 ms | 3.5 ms | 3.6 ms | 19.9 / 25.1 ms |
+| h264 QP 24 | 34.6 | 2.8 MB/s | 13.8 ms | 3.3 ms | 6.3 ms | 21.0 / 27.1 ms |
+| hevc QP 24 | 23.1 | 1.9 MB/s | 11.4 ms | 3.3 ms | 3.9 ms | 16.3 / 22.6 ms |
+| hevc444 QP 24 | 41.6 | 3.2 MB/s | 10.5 ms | 3.2 ms | 7.5 ms | 19.4 / 22.3 ms |
+| hevc444 QP 24, again | 36.8, 44.3 | 2.9, 3.4 MB/s | 10.0 ms | 3.1 ms | 7.5 ms | 18.9 / 22.5, 18.9 / 21.8 ms |
+| **hevc444 QP 20** | 35.1, 28.6 | 3.4, 2.8 MB/s | 10.3, 10.8 ms | 3.4, 3.2 ms | 7.5 ms | 19.4 / 22.8, 19.8 / 22.6 ms |
+| h264 CBR 50 Mbit/s, VBV one picture at 30 | 25.7 | 5.9 MB/s | 14.9 ms | 3.5 ms | 6.6 ms | 23.8 / 33.2 ms |
+| hevc CBR 50 Mbit/s | 29.1 | 11.3 MB/s | 11.0 ms | 3.9 ms | 5.5 ms | 20.8 / 23.5 ms |
+| hevc444 CBR 50 Mbit/s | 52.6 | 20.3 MB/s | 11.1 ms | 3.4 ms | 8.7 ms | 24.8 / 28.9 ms |
+| hevc444 QP 24, ssh forward | 34.4 | 2.7 MB/s | 10.1 ms | 3.4 ms | 7.5 ms | 21.7 / 29.1 ms |
+| hevc444 QP 24, link, media by UDP | 33.4 | 2.6 MB/s | 10.3 ms | 3.3 ms | 7.6 ms | 19.6 / 25.6 ms |
+
+Quality against the lossless (zlib) picture of the same still scene, PSNR in dB,
+the whole picture and the Settings window (coloured icons and text):
+
+| Encoding | Whole picture R / G / B | Window R / G / B |
+|---|---|---|
+| jpeg q80 | 40.9 / 45.1 / 40.3 | 39.2 / 41.4 / 37.5 |
+| h264 QP 24 | 43.1 / 44.8 / 41.5 | 41.4 / 44.2 / 39.4 |
+| hevc QP 24 | 43.5 / 45.3 / 41.8 | 42.0 / 45.4 / 39.8 |
+| hevc444 QP 24 | 44.0 / 45.3 / 42.6 | 43.6 / 45.5 / 42.5 |
+| **hevc444 QP 20** | 45.6 / 47.1 / 44.2 | 45.8 / 47.9 / 44.7 |
+| h264 50 Mbit/s | 43.3 / 45.2 / 41.8 | 40.9 / 43.7 / 39.0 |
+| hevc 50 Mbit/s | 45.1 / 47.5 / 43.3 | 43.5 / 48.3 / 40.8 |
+| hevc444 50 Mbit/s | 46.0 / 47.5 / 44.5 | 46.1 / 48.4 / 44.9 |
+
+On a synthetic UI of thin saturated lines (2160 × 3840, 8 px of motion a picture,
+QP 24, encode and decode on the Thor): H.264 and HEVC 4:2:0 about 28.6 dB in R and 22.6 dB
+in B, HEVC 4:4:4 37.7 and 36.3 dB, for 16 % more bytes on the IDR. On the
+Settings window the dots of the "Apps" icon keep their colours with 4:4:4 and
+smear together with 4:2:0.
+
+**Recommendation: `hevc444` at QP 20, by the numbers.** The encoders differ by
+about 4 ms in favour of HEVC (H.264 is the slowest of the three on this NVENC:
+13.8 ms against 10–11 ms); 4:4:4 pays about 3.5 ms of decode and copy for its
+three planes, so total latency is the same as H.264 and its p90 is lower
+(22 against 27 ms). HEVC 4:2:0 is 3 ms faster at p50 and is the choice for a
+viewer that wants the last milliseconds and has no coloured text to read. The
+bit rate (3 MB/s) does not matter on this LAN; CBR's budget per picture costs
+quality or rate without saving anything here, so it stays an option for slower links.
+
+## 15. Sound (REMOTE-X86)
+
+### 15.1 Server
+
+`AudioHostService.deliver` (`audio-host.md` §13.4) gives the display
+server each output block (512 frames, 48 kHz Float32 stereo, after the
+device's volume) with its host play time. A per-viewer pipe (only when the
+client hello lists codecs) queues it without blocking the audio service's
+thread; its own thread cuts the audio into **5 ms packets** (240 frames;
+a block that does not continue the previous one starts afresh), skips
+silent packets, and encodes with **Opus** (`OPUS_APPLICATION_RESTRICTED_LOWDELAY`,
+96 kbit/s, complexity 5, in-band FEC with 5 % expected loss; libopus opened at
+run time) or as 16-bit PCM. Message 0x09: play time (server monotonic ns of
+the first frame, the clock of §12), codec (1 PCM, 2 Opus), channels,
+frames, rate, data. At most 200 ms waits in the pipe. Over the link the
+packets go by UDP (`sim-link.md` §5).
+
+### 15.2 Viewer
+
+Packets are decoded on the connection thread (Opus; a single missing
+packet before this one is recovered from this one's FEC) and placed on the
+output's sample timeline at their play time on the viewer's clock (§12.2)
+**plus a target delay** (`--audio-latency`, default 10 ms). The writer
+thread feeds the output 5 ms at a time and knows when the next frame it
+writes will play (PulseAudio's reported latency); a packet that would land
+in the past moves the whole sound later by the shortfall (an adaptive delay
+that only grows, at most 200 ms). Packets within 2 ms of the previous one's
+end are joined to it (no clicks); clock drift beyond that re-places a
+packet (a small jump; resampling is follow-up work). **Sync**: the video is
+presented as soon as it is decoded; the sound keeps the device's own
+timing delayed by the target, so the A/V offset is the target minus the
+video's capture → presented time, and both are measured. The output is
+PulseAudio's simple API (`libpulse-simple.so.0`, served by PipeWire's
+pulse server), else a null output paced by the monotonic clock; `--audio-wav`
+writes what goes to the speaker. Mute and volume are the viewer's own; the
+device's volume buttons act on the guest.
+
+### 15.3 Microphone
+
+Not done: the viewer sends no input audio (`audio-host.md` input streams);
+follow-up work.
+
+### 15.4 Measured (2026-10-31, Thor → x86 over the link, UDP)
+
+With Samples/StreamSamples AVSync (built on the x86, `sim-link.md` §10.1): `av-probe`
+taps 10 times; each tap turns the screen white and starts a 1 kHz tone in
+the same main-thread turn.
+
+| What | Result |
+|---|---|
+| Sound − picture (beep plays here − white frame presented here) | p50 +2.9 ms, p90 +9.4 ms (one tap −41 ms: its frame came late) |
+| Tap → white frame presented / → beep plays | p50 88 / 87 ms (the guest's reaction) |
+| Packet arrival vs its play time | p50 10.1 ms early, latest 1.0 ms early: the device's output time is one 512-frame buffer (10.7 ms) after it writes |
+| Play time on the viewer | device play time + 11.4 ms (10 ms target + 1.4 ms for PipeWire's 12–17 ms output latency) |
+| Guest write → speaker | about 22 ms (10.7 + 11.4) |
+| Losses | 380 packets, 0 late, 0 holes, 0 recovered (no loss on the LAN) |
+| Bandwidth | Opus 96 kbit/s while sounding, nothing in silence |
+
+Before the adaptive delay (fixed 10 ms target) 5 of 123 packets of a lock
+sound under swipe load were late (the output's latency exceeded the target).
+
+## 16. Remote viewing from x86 (REMOTE-X86, 2026-10-31)
+
+### 16.1 Setup
+
+The device (iPhone 18 Pro, iOS 27.0) runs on the Thor (arm64, KVM); the
+viewer runs on an x86-64 Linux PC on the same subnet (ping 0.16 ms), in
+Xvfb (no physical display session was available), renderer `opengles2` on
+llvmpipe. Paths: **link** (`sim-link.md`: TCP 47800 for control and input,
+frames by UDP 47801, or `--media tcp`), and **ssh** (`ssh -L` of the
+device's display socket, the fallback). Workload: `run/bench.txt`, 8
+home-screen page swipes, 2 Search taps, 2 Home presses, 15 s, `--timing`.
+
+### 16.2 Results
+
+seen → presented: the guest's frame record seen by the server → the frame
+presented on the x86 (§12.1), p50 / p90 ms; capture → presented excludes the
+wait for the guest's GPU (§16.4).
+
+| Path, codec | seen → presented | capture → presented | capture → encoded | sent → received | decode | decoded → presented | bandwidth | round trip |
+|---|---|---|---|---|---|---|---|---|
+| **Before** (pacing from send end, 60 fps), ssh, JPEG | 16.8 / 40.4 | — | — | 1.6 / 23.1 | — | — | 1.6 MB/s | — |
+| Before, link TCP, JPEG | 15.4 / 25.0 | — | 4.6 / 10.3 | 1.2 / 2.1 | 0.5 | 2.5 | 1.6 MB/s | — |
+| Before, link UDP, JPEG | 14.6 / 22.9 | — | 2.9 / 5.9 | 1.5 / 3.8 | 0.4 | 2.6 | 2.0 MB/s | — |
+| **After**, ssh, JPEG | 12.8 / 29.3 | 10.0 / 27.1 | 2.6 / 5.0 | 1.7 / 19.0 | 0.4 | 2.8 | 2.4 MB/s | 0.45 |
+| After, link TCP, JPEG | 10.7 / 16.7 | 8.1 / 13.7 | 3.0 / 6.3 | 0.9 / 2.1 | 0.5 | 2.6 | 2.3 MB/s | 0.29 |
+| After, link UDP, JPEG | **10.2 / 17.9** | **6.4 / 14.6** | 2.7 / 6.0 | 0.9 / 3.9 | 0.3 | 2.6 | 2.4 MB/s | 0.43 |
+| After, ssh, H.264 | 14.2 / 20.9 | 11.5 / 18.8 | 4.9 / 6.6 | 0.4 / 6.0 | 3.1 | 2.7 | 0.38 MB/s | 0.70 |
+| After, link TCP, H.264 | 13.3 / 16.4 | 11.3 / 13.7 | 5.0 / 7.3 | 0.4 / 0.6 | 3.2 | 2.7 | 0.32 MB/s | 0.40 |
+| After, link UDP, H.264 | 14.0 / 16.8 | 11.8 / 14.0 | 5.1 / 7.1 | 0.6 / 1.0 | 3.2 | 2.8 | 0.37 MB/s | 0.53 |
+
+"After" = pacing from capture (§16.3), viewer at 120 fps, JPEG on up to 8
+threads. Input → first change presented (touch down on the home screen):
+p50 29–57 ms across runs, almost all of it the guest's reaction; a tap in
+an app (AVSync) → its white frame presented: p50 88 ms.
+
+### 16.3 What changed, in order of effect
+
+1. **Pacing from the capture** (`DisplayServer`, `YCODE_DISPLAY_PACE=send`
+   restores the old rule): the interval of `maxFPS` was measured from the
+   end of the previous send, so scan + encode + send (3–6 ms) were added to
+   every interval and a 60 fps guest got at most about 45 fps with frames
+   waiting. Now measured from the previous capture.
+2. **Viewer at 120 fps**: the guest paces itself at 60 Hz (§10.2); a 60 fps
+   gate only delayed frames that arrived a little early. Together with 1:
+   seen → presented p50 14.6 → 10.2 ms, p90 22.9 → 17.9 ms (link, UDP).
+   The stream now sends every distinct picture: consecutive captures are at
+   least 16.7 ms apart (p10) during a swipe.
+3. **The link instead of ssh**: ssh's forward added a long tail (sent →
+   received p90 19 ms against 2–4 ms; its own buffering and the extra hop);
+   the link's records add < 0.1 ms. TCP vs UDP is a wash on a clean LAN
+   (UDP p50 lower, p90 higher: 70 datagrams of a full JPEG frame); UDP is
+   kept for its behaviour under loss (no head-of-line blocking, a lost frame
+   costs one keyframe).
+4. **H.264**: 6–7× less bandwidth (0.32–0.38 MB/s against 2.3–2.4 MB/s) and
+   the tightest p90, but 3–5 ms more at p50 (NVENC 5 ms for 1206 × 2622 at
+   P1, NVDEC + copy to host 3.2 ms against JPEG's 2.7 + 0.3 ms). On this LAN
+   JPEG tiles are the lower-latency choice; H.264 is the choice on slower
+   links (Wi-Fi, VPN). The viewer's `--encoding auto` picks H.264 where it
+   decodes it.
+5. JPEG bands on up to 8 threads instead of 4 (`YCODE_DISPLAY_JPEG_THREADS`;
+   not measured on its own). Tried and dropped: SDL's software renderer
+   (16 ms per present).
+
+### 16.4 Where the milliseconds go (link, UDP, JPEG, p50)
+
+| Stage | ms |
+|---|---|
+| guest submit → record seen (inotify; §10.4) | ~0.8 |
+| record seen → capture: the guest's GPU still drawing the surface (`gpuWriteWait`) | 2.4 |
+| scan + JPEG encode (8 bands) | 2.7 |
+| send + relay (simhost) + encrypt + network + decrypt + reassembly | 0.9 |
+| decode (libjpeg, parallel tiles) | 0.3 |
+| upload, draw, present (Xvfb, llvmpipe) | 2.6 |
+| **total, record seen → presented** | **~10** (0.6 of a 60 Hz frame) |
+
+The guest's own frame build (`SwapBegin` → `SwapSubmit`, §10.2: p50 13–15
+ms) and its reaction to input (tens of ms) dominate everything the stream
+adds. Targets: glass-to-glass within one to two guest frame times of the
+guest's own reaction — met (the stream adds 6–10 ms p50, under one frame);
+60 fps at native resolution — the stream's capacity is above 60 fps (JPEG
+2.7 ms, H.264 5.1 ms per full frame; captures 16.7 ms apart at p10); the
+guest itself presents 30–60 fps.
+
+### 16.5 Next steps (proposals, not built)
+
+- Present on a real GPU display (X11 or Wayland session) instead of Xvfb:
+  the 2.6 ms of llvmpipe should drop below 1 ms; measure with a photodiode
+  or a camera for true glass-to-glass.
+- H.264: NVENC's sub-frame (slice) output and decoding into a GL texture
+  (CUDA–GL interop) instead of a copy to host memory would remove about
+  3 ms each side; capture the guest's Vulkan image directly (dmabuf → NVENC
+  on the Thor's unified memory) to skip the mirror copy.
+- Send damage-only JPEG tiles when they are smaller than an H.264 P-frame
+  (small changes such as a blinking cursor) on the H.264 path.
+- Sub-frame pipelining of JPEG: send each band as it is encoded.
+
+## 17. visionOS input (VISIONOS-R9, 2026-10-31; `visionos.md` §5.5 and "Ycode implementation")
+
+- **Negotiated.** A server for a Vision Pro says `spatial: true` (and
+  `rooms`) in its hello. A viewer sends pose (0x8A), selection (0x8B) and
+  dial (0x8C) only to such a server (an older server would skip them as
+  unknown types, but a viewer must not rely on that for its own state).
+- **Frame.** All values are in the stage frame of `visionos.md` §5.5.1
+  (metres, y up, −Z forward, origin at the default eye point). The viewer
+  makes them with `SpatialInteraction` (YcodeDisplayStream): the camera
+  pose it keeps, the gaze ray through the pointer by the 90° horizontal
+  projection, turned and placed by the camera, the hands at fixed
+  camera-space rest points (±0.15, −0.35, −0.4) turned and placed the same
+  way.
+- **Server.** A pose goes to the HID bundle (`hid-input.md` §17, kind 10)
+  and to vhmdd's `set_pose` (the same matrix); a selection to kind 11,
+  coalesced to one per 16 ms while its pinch state does not change (pinch
+  changes are never dropped); a dial to kind 8. The control socket's
+  `vision …` commands (`visionos.md` "Ycode implementation") use the same
+  `SpatialInteraction` and the same paths; a pose from a viewer becomes
+  the camera the commands continue from.
+- **Release.** When the viewer goes away, an open pinch is released (the
+  hands open).
+
+## 18. The headset mode (XR-VIEWER, 2026-11-01; `xr-viewer.md`)
+
+- **Negotiated.** A visionOS server says `xr: true`; a viewer asks with the
+  hello's `xr`. Then the viewer sends `views` (0x8D) every headset frame
+  (latest wins) instead of the pose (0x8A); selections, dials, buttons and
+  commands are unchanged.
+- **The server** (`DisplayXRState`, `XREyeScheduler`) gives the guest the
+  rendered camera — the head while it moves, the eyes in turn while it is
+  still (adaptive) — and vhmdd the same pose (`visionos.md` §5.6.5). It
+  counts pictures by content (a 64 × 36-sample signature), keeps damage
+  per view, and sends a **frame view** (0x0A) just before each frame it
+  tags: u64 frame sequence, u8 view (0 mono, 1 left, 2 right), u8 flags
+  (bit 0 estimated), u16 latch, u32 pose sequence, the pose (3 × f32,
+  4 × f32, stage frame), 4 × f32 field-of-view tangents (left, right, up,
+  down), u64 guest frame. A frame without a frame view is mono and untagged.
+- **The viewer** decodes each tagged frame into its view's canvas
+  (`DisplayStreamClient.canvas(for:)`), so the eyes' damage applies to
+  their own images.
+- **Encodings**: as §14, with one NVENC session per view. With depth
+  re-projection (§19) the planes are converted on the GPU; without, on the CPU
+  into the upload. A frame view goes with its frame on the link's media
+  channel (`sim-link.md` §5), so the pairing holds over UDP; a picture whose
+  frame view was lost is skipped.
+- **Foveated** (`xr.foveaFraction`): 0x8E in, and after each frame 0x0B:
+  u64 frame sequence, u8 view, u8 encoding, u16 x, y, w, h, u16 full width
+  and height, then the inset's JPEG (`xr-viewer.md` §4.5). Also
+  `xr.eyeYawDegrees` (`xr-viewer.md` §4.6) and `xr.settleMs`. Numbers 0x0C
+  (frame depth) and 0x0D (environment) are XR-DEPTH's.
+- **Rates and latency** (`xr-viewer.md` §6; measured before the event clock
+  fix: now up to 60 pictures/s and about 75 ms to the first change,
+  `visionos.md` §10.28.1): the guest gave about 23
+  pictures/s whether or not the camera changes every picture; a new pose
+  shows from about 170 ms and settles about 250 ms later (the guest smooths
+  its camera); the stream adds a few ms.
+
+## 19. Depth and environment (XR-DEPTH, 2026-11-01; `xr-depth.md`)
+
+- **Negotiated.** The server's hello says `xrDepth: true` and
+  `xrEnvironment: true` (a visionOS server with the headset mode); the
+  client hello's `xr.depthDownscale` (2, 4, 8) asks for each picture's
+  depth, `xr.environment: true` for the room's environment now and on every
+  change.
+- **Frame depth (0x0C)** follows the frame (0x03) it belongs to: 16-bit
+  inverse depth (q / 65535 = near / z; 0 nothing drawn) at the picture's
+  size / n, lossless (row deltas, byte planes, zlib), with the frame
+  sequence, the view, the projection's near and tangents, and flags (another
+  frame's depth, windows merged, room only, a sample's low bit marks the
+  windows layer). The GPU backend's depth tap
+  captures it (`xr-depth.md` §3) and pairs it with the presented surface.
+- **Environment (0x0D)**: six faces of the guest's environment cube (one
+  mip level, RGBA16F), the cube's orientation when known, zlib. The faces
+  are in the guest's own cube frame, which is left-handed against the
+  stage (`xr-depth.md` §3.4): a viewer mirrors Z, it does not turn it.
+- A viewer that gets no 0x0C for a frame shows that frame as before.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -447,6 +972,15 @@ are not used as evidence.
 | Timer cadence, mach-time rate (§10.2) | 3 | `p_frameclock` under `ycode-simd --exec` on the Thor |
 | Target time = SwapBegin time, 60 Hz cadence, next frame ≈ 12 ms after a long frame's submit, completions not waited for (§10.2) | 3 | Ycode boots on the Thor with `YCODE_DISPLAY_TIMING=1` (and `YCODE_FRAMEBUFFER_COMPLETION=delay-30-ab`): the swap log of our own framebuffer library, i.e. the calls the runtime's render server made into it |
 | Input → photon stages and the paired before/after numbers (§10.3, §10.4) | 3 | probe sessions on the Thor (server trace, swap log, HID event log); the viewer benchmark on the Mac |
+| Stage timing, clock offset, Linux viewer, video, sound and the remote x86 measurements (§12–§16) | — / 3 | Ycode design; REMOTE-X86 runs, Thor → x86 PC, 2026-10-31 |
+| SDL 3 API and event layouts (§13) | 1 | SDL 3.4 public headers (zlib), as vendored by OpenViews |
+| Flow control (§4.2.1) | — / 3 | Ycode design; XR-GAZE's offscreen runs, Thor → x86, 2026-11-02 (`xr-viewer.md` §13.2) |
+| Depth and environment messages (§19) | — | Ycode design decisions (`xr-depth.md`; its evidence there) |
+| H.264 and HEVC encode/decode interfaces, capability queries (§14) | 1 | NVIDIA Video Codec SDK headers via FFmpeg's nv-codec-headers (MIT); ITU-T H.264 and H.265 Annex B |
+| NVENC's colour conversion, capabilities on the Thor and the x86, latencies and PSNR (§14) | 3 | XR-QUALITY's probes and runs on Ycode's own stream, Thor → x86, 2026-11-02 |
+| Opus and PulseAudio interfaces (§15) | 1 | libopus 1.5.2 public `opus_defines.h` (BSD-3-Clause); PulseAudio simple API documentation |
+| visionOS messages and their negotiation (§17) | — / 3 | Ycode design from `visionos.md` §5.5; VISIONOS-R9 runs on the Thor (`visionos.md` §10.25) |
+| The headset mode, its messages and its measurements (§18) | — / 3 | Ycode design (`xr-viewer.md`); XR-VIEWER runs on the Thor and the x86 PC, 2026-11-01 |
 
 No Apple binary, Apple source, or `research/` material was used for this
 spec (level 5 not used; levels 2–4 not needed).

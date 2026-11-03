@@ -63,7 +63,15 @@ public struct OllamaProvider: AssistantProvider {
         var messages: [[String: Any]] = [["role": "system", "content": request.instructions]]
         messages += request.messages.map { ["role": $0.role.rawValue, "content": $0.content] }
         var body: [String: Any] = ["model": request.model ?? "", "messages": messages, "stream": true]
-        if let n = request.contextTokens { body["options"] = ["num_ctx": n] }
+        var options: [String: Any] = [:]
+        if let n = request.contextTokens { options["num_ctx"] = n }
+        let g = request.generation
+        if let n = g.maxOutputTokens { options["num_predict"] = n }
+        if let t = g.temperature { options["temperature"] = t }
+        if let p = g.topP { options["top_p"] = p }
+        if let k = g.topK { options["top_k"] = k }
+        if let r = g.repeatPenalty { options["repeat_penalty"] = r }
+        if !options.isEmpty { body["options"] = options }
         return body
     }
 
@@ -105,6 +113,7 @@ public struct OllamaProvider: AssistantProvider {
         var events: [ChatEvent] = []
         if let m = o["message"] as? [String: Any], let c = m["content"] as? String, !c.isEmpty { events.append(.text(c)) }
         if (o["done"] as? Bool) == true {
+            if o["done_reason"] as? String == "length" { events.append(.truncated) }
             events.append(.finished(TokenUsage(inputTokens: JSON.int(o["prompt_eval_count"]), outputTokens: JSON.int(o["eval_count"]))))
         }
         return events

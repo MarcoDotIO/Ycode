@@ -29,6 +29,7 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
     static let open = NSToolbarItem.Identifier("hub.openInNewWindow")
     static let more = NSToolbarItem.Identifier("hub.more")
     static let tabs = NSToolbarItem.Identifier("hub.inspectorTabs")
+    static let headset = NSToolbarItem.Identifier("hub.headset")
 
     init(owner: DevicesController) {
         self.owner = owner
@@ -44,9 +45,13 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
         w.toolbar = t
     }
 
-    /// The item order (§3).
-    static let order: [NSToolbarItem.Identifier] = [add, filter, .toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace,
-                                                    capture, zoom, open, more, .inspectorTrackingSeparator, .flexibleSpace, tabs]
+    /// The item order (§3). The leading flexible space keeps the sidebar's
+    /// group at the sidebar's edge: the Hide Sidebar circle ends 7 points
+    /// before it and Add Device | Filter 6 before the circle (device-hub.md
+    /// §3 items 2–4, `specs/ide/metrics.md` §9); they sat at the window
+    /// buttons, 27 points short of the edge.
+    static let order: [NSToolbarItem.Identifier] = [.flexibleSpace, add, filter, .toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace,
+                                                    headset, capture, zoom, open, more, .inspectorTrackingSeparator, .flexibleSpace, tabs]
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         if #available(macOS 14.0, *) { return Self.order }
@@ -109,6 +114,16 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
             i.target = self
             i.action = #selector(openClicked(_:))
             return i
+        case Self.headset:
+            // View in Headset / Back to Desktop (§I.12): a Vision Pro's only.
+            let i = NSToolbarItem(itemIdentifier: id)
+            i.image = image("eyeglasses", "View in Headset")
+            i.label = "View in Headset"
+            i.toolTip = "View in Headset (⌃⌘H)"
+            i.isBordered = true
+            i.target = self
+            i.action = #selector(headsetClicked(_:))
+            return i
         case Self.more:
             let i = NSMenuToolbarItem(itemIdentifier: id)
             i.image = image("ellipsis", "More Actions")
@@ -166,6 +181,13 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
         switch item.itemIdentifier {
         case Self.capture, Self.zoom, Self.more: return owner.selected != nil
         case Self.open: return owner.selected?.state == "Booted" && owner.selected?.isYcodeRemote == true
+        case Self.headset:
+            let title = owner.headsetCommandTitle(for: owner.selected)
+            item.label = title
+            item.toolTip = title + " (⌃⌘H)"
+            item.image = NSImage(systemSymbolName: title == "View in Headset" ? "eyeglasses" : "macwindow", accessibilityDescription: title)
+            if #available(macOS 15.0, *) { item.isHidden = !owner.headsetControlsShown }
+            return owner.canToggleHeadset(owner.selected)
         default: return true
         }
     }
@@ -181,6 +203,7 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
     }
 
     @objc func openClicked(_ sender: Any?) { owner.openInNewWindow() }
+    @objc func headsetClicked(_ sender: Any?) { owner.toggleHeadset() }
 
     @objc func tabChosen(_ sender: NSToolbarItemGroup) {
         owner.selectInspectorTab(DevicesController.InspectorTab(rawValue: sender.selectedIndex) ?? .settings)
@@ -191,7 +214,7 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         if menu === addMenu {
-            for i in Self.addItems(target: self) { menu.addItem(i) }
+            for i in Self.addItems(target: self, hub: owner) { menu.addItem(i) }
         } else if menu === filterMenu {
             for i in filterItems() { menu.addItem(i) }
         } else if menu === moreMenu {
@@ -202,15 +225,30 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
     /// Add Device (§3 item 2; §2.3): the simulator kinds and Pair Nearby
     /// Device…. Ycode decision: Ycode's simulators are its runtimes and
     /// device types, set in Settings ▸ Simulators, so iPhone… and iPad…
-    /// open that pane; Ycode has no watch, TV or headset simulator yet and
-    /// does not pair devices, so those items are disabled.
-    static func addItems(target: AnyObject?) -> [NSMenuItem] {
+    /// open that pane; Ycode has no TV or headset simulator to create here,
+    /// so those items are disabled. Apple Watch… creates a watch simulator
+    /// and iPhone with Paired Watch… a paired iPhone and watch
+    /// (device-pairing.md §13), when a watchOS runtime is set up; Apple
+    /// Vision Pro… creates a Vision Pro when a visionOS runtime is set up
+    /// (§I.11). Ycode has no TV simulator: Apple TV… stays disabled.
+    static func addItems(target: AnyObject?, hub: DevicesController? = nil) -> [NSMenuItem] {
         var out: [NSMenuItem] = []
-        for (title, on) in [("iPhone…", true), ("iPad…", true), ("Apple Watch…", false), ("Apple Vision Pro…", false), ("Apple TV…", false)] {
-            let i = NSMenuItem(title: title, action: on ? #selector(addSimulator(_:)) : nil, keyEquivalent: "")
-            i.target = target
+        let watches = hub?.canCreateWatches ?? false
+        let visions = hub?.canCreateVisionDevices ?? false
+        for (title, on) in [("iPhone…", true), ("iPad…", true), ("Apple Watch…", watches), ("Apple Vision Pro…", visions), ("Apple TV…", false)] {
+            let watch = title == "Apple Watch…", vision = title == "Apple Vision Pro…"
+            let action = watch ? #selector(DevicesController.newWatchChosen(_:))
+                : vision ? #selector(DevicesController.newVisionDeviceChosen(_:)) : #selector(addSimulator(_:))
+            let i = NSMenuItem(title: title, action: on ? action : nil, keyEquivalent: "")
+            i.target = watch || vision ? hub : target
             i.isEnabled = on
             out.append(i)
+            if watch {
+                let p = NSMenuItem(title: "iPhone with Paired Watch…", action: on ? #selector(DevicesController.newPairedPhoneChosen(_:)) : nil, keyEquivalent: "")
+                p.target = hub
+                p.isEnabled = on
+                out.append(p)
+            }
         }
         out.append(.separator())
         let pair = NSMenuItem(title: "Pair Nearby Device…", action: nil, keyEquivalent: "")
@@ -262,7 +300,7 @@ final class DeviceHubToolbar: NSObject, NSToolbarDelegate, NSMenuDelegate, NSToo
     /// Erase All Content and Settings….
     func moreItems() -> [NSMenuItem] {
         guard let r = owner.selected else { return [] }
-        var out = owner.lifecycleItems(for: r)
+        var out = owner.lifecycleItems(for: r) + owner.headsetMenuItems(for: r)
         let bezels = NSMenuItem(title: owner.canvas.showsBezels ? "Hide Bezels" : "Show Bezels", action: #selector(toggleBezels(_:)), keyEquivalent: "")
         bezels.target = self
         let stats = NSMenuItem(title: "Show Frame Rate", action: #selector(toggleStatistics(_:)), keyEquivalent: "")

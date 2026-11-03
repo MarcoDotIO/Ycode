@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeAssistant
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// A scripted back end: answers with `reply` (in pieces), or keeps
@@ -11,6 +12,8 @@ final class FakeProvider: AssistantProvider, @unchecked Sendable {
     let state: ProviderAvailability
     var reply: String
     var endless = false
+    /// The reply stops at the output limit (`.truncated` before `.finished`).
+    var truncate = false
     private let lock = NSLock()
     private var received: [ChatRequest] = []
     var requests: [ChatRequest] { lock.lock(); defer { lock.unlock() }; return received }
@@ -25,7 +28,7 @@ final class FakeProvider: AssistantProvider, @unchecked Sendable {
 
     func send(_ request: ChatRequest) -> AsyncThrowingStream<ChatEvent, Error> {
         lock.lock(); received.append(request); lock.unlock()
-        let reply = reply, endless = endless
+        let reply = reply, endless = endless, truncate = truncate
         return AsyncThrowingStream { c in
             let t = Task {
                 if endless {
@@ -41,6 +44,7 @@ final class FakeProvider: AssistantProvider, @unchecked Sendable {
                     c.yield(.text(piece))
                     try? await Task.sleep(nanoseconds: 2_000_000)
                 }
+                if truncate { c.yield(.truncated) }
                 c.yield(.finished(TokenUsage(inputTokens: 1, outputTokens: 1)))
                 c.finish()
             }
@@ -176,6 +180,35 @@ final class FakeProvider: AssistantProvider, @unchecked Sendable {
         #expect(env.fakes[.ollama]?.requests.last?.messages.map(\.role) == [.user, .assistant, .user])
     }
 
+    /// coding-assistant.md §3.5: a reply cut off at the output limit says
+    /// so and offers Continue; requests carry the output limit.
+    @Test func cutOffReplyOffersContinue() async throws {
+        let env = try Env("cutoff", reply: "The first half")
+        defer { env.restore() }
+        env.fakes[.ollama]?.truncate = true
+        let wc = try env.window()
+        wc.newConversation(nil)
+        let pane = wc.codingAssistant
+        await pane.model.refreshAvailability().value
+        let id = try #require(pane.model.send("Explain everything"))
+        await pane.model.response(id)?.value
+        #expect(pane.model.conversation(id)?.messages.last?.isCutOff == true)
+        #expect(env.fakes[.ollama]?.requests.last?.generation.maxOutputTokens == 4096)
+        let button = try #require(pane.messageViews.last?.continueButton)
+        #expect(button.isEnabled)
+        env.fakes[.ollama]?.truncate = false
+        env.fakes[.ollama]?.reply = "and the rest."
+        button.performClick(nil)
+        await pane.model.response(id)?.value
+        let c = try #require(pane.model.conversation(id))
+        #expect(c.messages.count == 4)
+        #expect(c.messages[2].text == CodingAssistantModel.continuePrompt)
+        #expect(c.messages[3].text == "and the rest." && c.messages[3].isCutOff == nil)
+        #expect(pane.messageViews.last?.continueButton == nil)
+        // Not cut off: Continue does nothing.
+        #expect(pane.model.continueReply(in: id) == nil)
+    }
+
     @Test func stopAndJumpToActiveConversation() async throws {
         let env = try Env("stop")
         defer { env.restore() }
@@ -291,7 +324,8 @@ final class FakeProvider: AssistantProvider, @unchecked Sendable {
         let pane = CodingAssistantSettingsPane(prefs: env.prefs, services: CodingAssistantServices.shared)
         _ = pane.view
         for t in ["# Model Provider", "Use", "# Local Models", "Ollama address", "llama.cpp address", "# OpenAI", "Sign-in method", "Account",
-                  "# Agent Tools", "Claude Code", "Codex", "Antigravity", "# Context", "Context limit (tokens)", "# Privacy"] {
+                  "# Agent Tools", "Claude Code", "Codex", "Antigravity", "# Context", "Context limit (tokens)", "# Output", "Most output tokens", "Temperature", "Top P", "Top K",
+                  "Repeat penalty", "# Privacy"] {
             #expect(pane.rowTitles.contains(t), "missing row \(t)")
         }
         pane.choose("API key", inRow: "Sign-in method")

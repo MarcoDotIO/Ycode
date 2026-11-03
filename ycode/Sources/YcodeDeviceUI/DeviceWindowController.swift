@@ -17,7 +17,8 @@ import AppKit
 import YcodeDeviceModel
 
 @MainActor
-public final class DeviceWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation, DeviceLiveSessionObserver {
+public final class DeviceWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation, NSToolbarItemValidation,
+    DeviceLiveSessionObserver {
     public enum Kind { case compact, expanded }
     public private(set) var kind: Kind
     public private(set) var session: DeviceLiveSession
@@ -29,6 +30,16 @@ public final class DeviceWindowController: NSWindowController, NSWindowDelegate,
     /// Restart in the IDE; Q6).
     public var extraMoreItems: (() -> [NSMenuItem])?
     public var onClose: (() -> Void)?
+    /// View in Headset / Back to Desktop in the toolbar (a Vision Pro in the
+    /// IDE, device-hub.md §I.12); its title and state come from the canvas's
+    /// `headsetCommandTitle` and `headsetCommandEnabled`. nil: no such item.
+    public var headsetToggle: (() -> Void)? {
+        didSet {
+            guard (oldValue == nil) != (headsetToggle == nil) else { return }
+            window?.toolbar = nil
+            installToolbar()
+        }
+    }
     /// Where the window's state is kept.
     public var defaults: UserDefaults = .standard
     /// A scale to open the compact window at instead of the saved one
@@ -38,6 +49,11 @@ public final class DeviceWindowController: NSWindowController, NSWindowDelegate,
     private var toolbarHeight = CGFloat(CompactWindowLayout.toolbarHeight)
     private var lastDeviceSize: CGSize = .zero
     private var resizing = false
+    /// The compact window's scale as the user chose it (opening, a drag).
+    /// A shape change (rotation, the bezels) keeps it even when the minimum
+    /// width makes the window larger for a while, so hiding and showing the
+    /// bezels returns to the same window.
+    private var compactScale: Double?
     private let moreMenu = NSMenu(title: "More Actions")
     private weak var zoomGroup: NSToolbarItemGroup?
     private weak var captureButton: NSButton?
@@ -100,14 +116,19 @@ public final class DeviceWindowController: NSWindowController, NSWindowDelegate,
         if toolbarHeight < 20 { toolbarHeight = CGFloat(CompactWindowLayout.toolbarHeight) }
         canvas.topInset = toolbarHeight
         lastDeviceSize = canvas.deviceSize
+        lastTypeID = session.spec.typeID
         let saved = defaults.dictionary(forKey: defaultsKey)
         if kind == .compact {
-            let scale = max(initialScale ?? (saved?["scale"] as? Double) ?? CompactWindowLayout.defaultScale(device: lastDeviceSize),
-                            CompactWindowLayout.scale(device: lastDeviceSize, windowWidth: CompactWindowLayout.minimumWidth))
+            let scale = initialScale.map { max($0, CompactWindowLayout.scale(device: lastDeviceSize, windowWidth: CompactWindowLayout.minimumWidth)) }
+                ?? startScale(device: lastDeviceSize)
             initialScale = nil
+            compactScale = scale
             resize(to: CompactWindowLayout.contentSize(device: lastDeviceSize, scale: scale, toolbar: toolbarHeight), keepTop: false)
         } else {
-            let w = (saved?["width"] as? Double) ?? 760, h = (saved?["height"] as? Double) ?? 820
+            // Never below the expanded form's minimum (a size saved by an
+            // older build, or while a smaller device was shown, can be).
+            let w = max((saved?["width"] as? Double) ?? 760, Double(window.contentMinSize.width))
+            let h = max((saved?["height"] as? Double) ?? 820, Double(window.contentMinSize.height))
             window.setContentSize(NSSize(width: w, height: h))
         }
         if let x = saved?["x"] as? Double, let top = saved?["top"] as? Double,
@@ -124,7 +145,7 @@ public final class DeviceWindowController: NSWindowController, NSWindowDelegate,
         guard let window else { return }
         var d: [String: Any] = ["x": window.frame.minX, "top": window.frame.maxY]
         if kind == .compact {
-            d["scale"] = CompactWindowLayout.scale(device: canvas.deviceSize, windowWidth: window.contentLayoutRect.width)
+            d["scale"] = compactScale ?? CompactWindowLayout.scale(device: canvas.deviceSize, windowWidth: window.contentLayoutRect.width)
         } else {
             d["width"] = window.contentLayoutRect.width
             d["height"] = window.frame.height
@@ -149,13 +170,35 @@ public final class DeviceWindowController: NSWindowController, NSWindowDelegate,
         resizing = false
     }
 
-    /// Rotation, the other panel or the bezels: same scale, new shape.
+    /// The device type whose shape the window has (the hello can change it).
+    private var lastTypeID: String?
+
+    /// The scale a compact window opens at for a device of this size: the
+    /// type's saved one, else the default, never narrower than the minimum.
+    private func startScale(device: CGSize) -> Double {
+        let saved = defaults.dictionary(forKey: defaultsKey)?["scale"] as? Double
+        return max(saved ?? CompactWindowLayout.defaultScale(device: device),
+                   CompactWindowLayout.scale(device: device, windowWidth: CompactWindowLayout.minimumWidth))
+    }
+
+    /// Rotation, the other panel or the bezels: same scale, new shape. A
+    /// different device type (the hello names it after the window opened,
+    /// e.g. a watch shown first as the default phone) starts at that
+    /// type's own scale; the window never gets narrower than its minimum.
     private func deviceShapeChanged() {
         guard kind == .compact, let window, window.isVisible else { lastDeviceSize = canvas.deviceSize; return }
         let new = canvas.deviceSize
+        let typeChanged = lastTypeID != nil && lastTypeID != session.spec.typeID
+        lastTypeID = session.spec.typeID
         guard new != lastDeviceSize, lastDeviceSize.width > 0 else { lastDeviceSize = new; return }
-        let size = CompactWindowLayout.rotatedContentSize(oldDevice: lastDeviceSize, newDevice: new,
-                                                          contentWidth: Double(window.contentLayoutRect.width), toolbar: toolbarHeight)
+        let scale = typeChanged ? startScale(device: new)
+            : compactScale ?? CompactWindowLayout.scale(device: lastDeviceSize, windowWidth: Double(window.contentLayoutRect.width))
+        compactScale = scale
+        var size = CompactWindowLayout.contentSize(device: new, scale: scale, toolbar: toolbarHeight)
+        if Double(size.width) < CompactWindowLayout.minimumWidth {
+            size = CompactWindowLayout.contentSize(device: new, scale: CompactWindowLayout.scale(device: new, windowWidth: CompactWindowLayout.minimumWidth),
+                                                   toolbar: toolbarHeight)
+        }
         lastDeviceSize = new
         resize(to: size, keepTop: true)
         saveState()
@@ -168,7 +211,13 @@ public final class DeviceWindowController: NSWindowController, NSWindowDelegate,
         return sender.frameRect(forContentRect: NSRect(origin: .zero, size: c)).size
     }
 
-    public func windowDidResize(_ notification: Notification) { if !resizing { saveState() } }
+    public func windowDidResize(_ notification: Notification) {
+        guard !resizing, let window else { return }
+        if kind == .compact {
+            compactScale = CompactWindowLayout.scale(device: canvas.deviceSize, windowWidth: Double(window.contentLayoutRect.width))
+        }
+        saveState()
+    }
     public func windowDidMove(_ notification: Notification) { saveState() }
     public func windowDidResignKey(_ notification: Notification) { canvas.frameView.screen.cancelInput() }
 
@@ -217,6 +266,7 @@ public final class DeviceWindowController: NSWindowController, NSWindowDelegate,
     static let captureID = NSToolbarItem.Identifier("device.capture")
     static let zoomID = NSToolbarItem.Identifier("device.zoom")
     static let openID = NSToolbarItem.Identifier("device.open")
+    public static let headsetID = NSToolbarItem.Identifier("device.headset")
 
     private func installToolbar() {
         let t = NSToolbar(identifier: kind == .compact ? "YcodeCompactDevice" : "YcodeExpandedDevice")
@@ -227,8 +277,9 @@ public final class DeviceWindowController: NSWindowController, NSWindowDelegate,
     }
 
     public func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        kind == .compact ? [.flexibleSpace, Self.expandID, Self.moreID]
-            : [.flexibleSpace, Self.captureID, Self.zoomID, Self.openID, Self.moreID]
+        let headset: [NSToolbarItem.Identifier] = headsetToggle == nil ? [] : [Self.headsetID]
+        return kind == .compact ? [.flexibleSpace] + headset + [Self.expandID, Self.moreID]
+            : [.flexibleSpace, Self.captureID, Self.zoomID] + headset + [Self.openID, Self.moreID]
     }
 
     public func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -256,6 +307,15 @@ public final class DeviceWindowController: NSWindowController, NSWindowDelegate,
             item.isBordered = true
             item.target = self
             item.action = #selector(openInNewWindow(_:))
+            return item
+        case Self.headsetID:
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.image = image("eyeglasses", "View in Headset")
+            item.label = "View in Headset"
+            item.toolTip = "View in Headset"
+            item.isBordered = true
+            item.target = self
+            item.action = #selector(headsetClicked(_:))
             return item
         case Self.moreID:
             let item = NSMenuToolbarItem(itemIdentifier: id)
@@ -308,6 +368,17 @@ public final class DeviceWindowController: NSWindowController, NSWindowDelegate,
     }
 
     @objc func toggleCapture(_ sender: NSButton) { canvas.setCapturesKeyboard(sender.state == .on) }
+
+    @objc func headsetClicked(_ sender: Any?) { headsetToggle?() }
+
+    public func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        guard item.itemIdentifier == Self.headsetID else { return true }
+        let title = canvas.headsetCommandTitle?() ?? DeviceCommand.viewInHeadset.title
+        item.label = title
+        item.toolTip = title
+        item.image = NSImage(systemSymbolName: title == DeviceCommand.viewInHeadset.title ? "eyeglasses" : "macwindow", accessibilityDescription: title)
+        return canvas.canPerform(.viewInHeadset)
+    }
 
     // MARK: More Actions (Q6, Ycode decision)
 

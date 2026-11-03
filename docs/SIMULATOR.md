@@ -1,8 +1,13 @@
 # Ycode Simulator: Apple's simulator runtimes on Linux
 
-The Ycode simulator runs the simulator runtimes that ship with Xcode on arm64
-Linux. It does not emulate a device and it does not use firmware. This page
-explains that choice and lists where the work stands. The design is in
+**Experimental.** The Ycode simulator runs the simulator runtimes that ship with
+Xcode on arm64 Linux. It does not emulate a device and it does not use firmware.
+Nothing of Apple's is in this repository or in Ycode's packages, and Ycode doesn't
+download or decrypt any of it: you supply a runtime from your own Xcode
+installation, under Apple's licence terms. Check whether those terms allow your
+setup before you use it.
+
+This page explains that choice and lists where the work stands. The design is in
 [SIMULATOR-LINUX.md](SIMULATOR-LINUX.md); the specifications are in
 [`specs/simulator/`](../specs/simulator/).
 
@@ -18,19 +23,20 @@ explains that choice and lists where the work stands. The design is in
 | Graphics | Metal calls replayed on Vulkan; Metal shaders (AIR) translated to SPIR-V by `ycode-airc`. A stuck GPU submission stops every client. | `stage8-contract.md`, `metal-shaders.md` |
 | Apps | Install and launch an `.app`; the built-in apps launch. | `app-install-launch.md`, `app-launch.md`, `home-apps.md` |
 | Devices | iPhone 18 Pro; the iPhone Duo foldable with a cover and an inner display; iPad (A16); iPad Pro 13-inch (M5). | `iphone-types.md`, `foldable.md`, `ipad.md` |
-| visionOS | visionOS 27.0 boots to its room (LivingRoomDay) and the home view. Parts of the room are sometimes missing; there is no room selection yet. | `visionos.md` §10.20 |
+| watchOS | watchOS 27.0 boots and draws its face, on 13 device types, and pairs with an iPhone. Input is partial. | `watchos.md`, `device-pairing.md` |
+| visionOS | visionOS 27.0 boots to its room and the home view, with open problems in the room, input and snapshots. | `visionos.md` |
 | Networking | Guest sockets are host sockets, with a DNS responder in the VMM. No Bonjour. | `networking-ycode.md` |
 | Audio | One 48 kHz stereo output. Output is discarded unless captured to a file; no input device. | `audio-host.md` §13 |
 | Camera | Off by default, as in the reference. Opt in to a host webcam (V4L2) or a synthetic source. | `camera.md` §9, `camera-host.md` |
 | Simulator features | Appearance, Liquid Glass, color filters, text size, accessibility switches, VoiceOver, location, sound, environment overrides. | `simulator-features.md` |
 | File system | File events (FSEvents) from Ycode's own VFS; volume capabilities such as document IDs and `RENAME_SWAP`. | `fsevents-host.md`, `file-system-features.md` |
 | Threads | Real Mach thread and task suspension. | `threads-and-events.md` §1.6, `host-libraries.md` §11.7 |
-| Hosts | arm64 Linux with KVM only. x86-64 Linux needs arm64 translation, which is deferred. | `SIMULATOR-LINUX.md` §4 |
+| Hosts | arm64 Linux with KVM only. x86-64 Linux can't run the simulator (it would need arm64 translation, which is deferred). It can show a device from an arm64 host and run the IDE against it, over an encrypted link. | `SIMULATOR-LINUX.md` §4, `sim-link.md` |
 
 ## 2. Why not boot an IPSW
 
-The first request was: given an `.ipsw` for a device, boot it on a Linux
-x86-64 machine and run the app under development. We did not take that path.
+An early idea was to take an `.ipsw` for a device, boot it on a Linux x86-64
+machine and run the app under development. We did not take that path.
 
 Xcode's Simulator does not use IPSWs:
 
@@ -57,11 +63,12 @@ firmware, so that path could not produce a bootable iOS.
 Option B it is. On arm64 Linux the runtime's arm64 code runs natively, so no
 translation is needed.
 
-## 3. Owner decisions
+## 3. Project decisions
 
 - **Building iOS apps on Linux** needs the iOS SDK. Apple licenses the SDK
-  only for use on Apple-branded hardware. The owner accepts this risk. The
-  usual setup builds on the Mac and runs the `.app` on Linux.
+  only for use on Apple-branded hardware, and whether a setup is allowed is for
+  each user to check. The usual setup builds on the Mac and runs the `.app` on
+  Linux.
 - **No decryption.** Ycode never decrypts encrypted components and never
   redistributes Apple software.
 - **Code signing in the guest** may be relaxed to run development builds.

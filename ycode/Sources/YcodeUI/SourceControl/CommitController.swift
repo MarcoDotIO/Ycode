@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The commit sheet (Integrate ▸ Commit…, ⌥⌘C): changed files with a
 /// checkbox each, a message field, and Commit. See

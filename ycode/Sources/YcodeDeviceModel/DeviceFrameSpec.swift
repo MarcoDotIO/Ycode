@@ -13,6 +13,9 @@ import CoreGraphics
 /// The kind of device: it decides the frame's band and button layout.
 public enum DeviceFamily: String, Sendable, Codable, CaseIterable {
     case phone, pad, vision
+    /// Apple Watch (watchos.md §3): a small rounded screen in a body with
+    /// the Digital Crown and the side button on its right edge.
+    case watch
 }
 
 /// Corner radii in points, per corner of a rectangle as shown.
@@ -121,6 +124,12 @@ public struct DeviceFrameSpec: Equatable, Sendable {
     public var isFoldable: Bool { panels.count > 1 }
     /// visionOS shows no frame (device-hub.md §4.3).
     public var hasFrame: Bool { family != .vision }
+    /// The device has volume buttons (Volume Up / Down in the Controls
+    /// menu): phones and iPads.
+    public var hasVolumeButtons: Bool { family == .phone || family == .pad }
+    /// The device turns (Rotate in the control row; a watch does not:
+    /// watchos.md §2.2 has no rotation feature, visionOS has no Rotate).
+    public var rotates: Bool { family == .phone || family == .pad }
     /// The panel with this stream name, else display 1.
     public func panel(named name: String?) -> DevicePanelSpec { panels.first { $0.name == name } ?? panels[0] }
     public func panelIndex(named name: String?) -> Int { panels.firstIndex { $0.name == name } ?? 0 }
@@ -152,9 +161,51 @@ public struct DeviceFrameSpec: Equatable, Sendable {
         panels: [DevicePanelSpec(name: "LCD", pixelWidth: 3840, pixelHeight: 2160, scale: 2, pixelsPerInch: 264,
                                  cornerRadii: CornerRadii(all: 0))])
 
-    public static let all: [DeviceFrameSpec] = [iPhoneDuo, iPhone18Pro, iPadA16, iPadPro13M5, visionPro]
+    /// The thirteen Apple Watch types (watchos.md §3.1; the same ids and
+    /// values as ycode-simd's `WatchDeviceTypes.swift`): screen pixels at
+    /// scale 2, 326 pixels per inch, one corner radius on all four corners
+    /// (§3.3 `displays`); the Ultra types have the Action button.
+    public static let watches: [DeviceFrameSpec] = [
+        watch("apple-watch-series-12-46mm", "Apple Watch Series 12 (46mm)", "Watch8,3", 416, 496, 50),
+        watch("apple-watch-series-12-42mm", "Apple Watch Series 12 (42mm)", "Watch8,4", 374, 446, 44),
+        watch("apple-watch-ultra-4-49mm", "Apple Watch Ultra 4 (49mm)", "Watch8,1", 422, 514, 57, ultra: true),
+        watch("apple-watch-series-11-46mm", "Apple Watch Series 11 (46mm)", "Watch7,18", 416, 496, 50),
+        watch("apple-watch-series-11-42mm", "Apple Watch Series 11 (42mm)", "Watch7,17", 374, 446, 44),
+        watch("apple-watch-series-10-46mm", "Apple Watch Series 10 (46mm)", "Watch7,9", 416, 496, 50),
+        watch("apple-watch-series-10-42mm", "Apple Watch Series 10 (42mm)", "Watch7,8", 374, 446, 44),
+        watch("apple-watch-series-9-45mm", "Apple Watch Series 9 (45mm)", "Watch7,4", 396, 484, 42.5),
+        watch("apple-watch-series-9-41mm", "Apple Watch Series 9 (41mm)", "Watch7,3", 352, 430, 38.5),
+        watch("apple-watch-ultra-3-49mm", "Apple Watch Ultra 3 (49mm)", "Watch7,12", 422, 514, 57, ultra: true),
+        watch("apple-watch-ultra-2-49mm", "Apple Watch Ultra 2 (49mm)", "Watch7,5", 410, 502, 54, ultra: true),
+        watch("apple-watch-se-3-44mm", "Apple Watch SE 3 (44mm)", "Watch7,16", 368, 448, 34),
+        watch("apple-watch-se-3-40mm", "Apple Watch SE 3 (40mm)", "Watch7,13", 324, 394, 28),
+    ]
+
+    static func watch(_ id: String, _ name: String, _ model: String, _ w: Int, _ h: Int, _ radius: Double,
+                      ultra: Bool = false) -> DeviceFrameSpec {
+        DeviceFrameSpec(typeID: id, name: name, modelIdentifier: model, family: .watch,
+                        panels: [DevicePanelSpec(name: "LCD", pixelWidth: w, pixelHeight: h, scale: 2, pixelsPerInch: 326,
+                                                 cornerRadii: CornerRadii(all: radius))],
+                        hasActionButton: ultra)
+    }
+
+    /// Apple Watch Series 12 (46mm), the default watch.
+    public static var appleWatchSeries12_46mm: DeviceFrameSpec { watches[0] }
+
+    public static let all: [DeviceFrameSpec] = [iPhoneDuo, iPhone18Pro, iPadA16, iPadPro13M5, visionPro] + watches
 
     public static func named(typeID: String) -> DeviceFrameSpec? { all.first { $0.typeID == typeID } }
+
+    /// The picture for a device of a family whose type Ycode does not know
+    /// (the hub's other simulators): a device of that family's usual size.
+    public static func placeholder(for family: DeviceFamily) -> DeviceFrameSpec {
+        switch family {
+        case .pad: matching(pixelWidth: 1640, pixelHeight: 2360, scale: 2)
+        case .watch: matching(pixelWidth: 416, pixelHeight: 496, scale: 2)
+        case .vision: visionPro
+        case .phone: matching(pixelWidth: 1206, pixelHeight: 2622, scale: 3)
+        }
+    }
 
     /// The type a display stream hello describes: its `deviceType`, else its
     /// model identifier, else a device of that display size, else a
@@ -165,8 +216,13 @@ public struct DeviceFrameSpec: Equatable, Sendable {
         if let model, let s = all.first(where: { $0.modelIdentifier == model }) { return s }
         if let s = all.first(where: { $0.panels[0].pixelWidth == pixelWidth && $0.panels[0].pixelHeight == pixelHeight }) { return s }
         let points = Double(min(pixelWidth, pixelHeight)) / max(scale, 1)
-        return DeviceFrameSpec(typeID: "unknown", name: "Device", modelIdentifier: model ?? "", family: points >= 600 ? .pad : .phone,
+        // A model of the watch family ("Watch8,3") or a screen no wider than a
+        // watch's (at most 211 points): a watch; 600 points or more: an iPad.
+        let watch = model?.hasPrefix("Watch") == true || points <= 211
+        return DeviceFrameSpec(typeID: "unknown", name: "Device", modelIdentifier: model ?? "",
+                               family: watch ? .watch : points >= 600 ? .pad : .phone,
                                panels: [DevicePanelSpec(name: "LCD", pixelWidth: pixelWidth, pixelHeight: pixelHeight, scale: max(scale, 1),
-                                                        pixelsPerInch: scale >= 3 ? 460 : 264, cornerRadii: CornerRadii(all: 0))])
+                                                        pixelsPerInch: watch ? 326 : scale >= 3 ? 460 : 264,
+                                                        cornerRadii: CornerRadii(all: 0))])
     }
 }

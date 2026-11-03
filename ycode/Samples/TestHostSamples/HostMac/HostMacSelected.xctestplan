@@ -1,0 +1,62 @@
+{
+  "configurations" : [
+    {
+      "id" : "0B7F3D3A-5E1C-4D6A-8E2F-3C9B1A7D5E02",
+      "name" : "English",
+      "options" : {
+        "language" : "en"
+      }
+    },
+    {
+      "id" : "3E9C1B5D-7A2F-4C8E-9D1B-6F4A2C8E1D03",
+      "name" : "Repeated",
+      "options" : {
+        "maximumTestRepetitions" : 2,
+        "testRepetitionMode" : "fixedIterations"
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "commandLineArgumentEntries" : [
+      {
+        "argument" : "-HostMacFlag",
+        "enabled" : true
+      }
+    ],
+    "environmentVariableEntries" : [
+      {
+        "key" : "HOSTMAC_PLAN",
+        "value" : "selected"
+      },
+      {
+        "enabled" : false,
+        "key" : "HOSTMAC_UNUSED",
+        "value" : "x"
+      }
+    ]
+  },
+  "testTargets" : [
+    {
+      "skippedTests" : [
+        "HostMacXCTests/testFailsOnPurpose()"
+      ],
+      "target" : {
+        "containerPath" : "container:HostMac.xcodeproj",
+        "identifier" : "4BE1DB2BA8A6E6E6D7491C0E",
+        "name" : "HostMacXCTests"
+      }
+    },
+    {
+      "selectedTests" : [
+        "HostMacSwiftTests/addsInTheApp()",
+        "HostMacSwiftTests/doubles(_:)"
+      ],
+      "target" : {
+        "containerPath" : "container:HostMac.xcodeproj",
+        "identifier" : "6535931586A528902630D3FE",
+        "name" : "HostMacSwiftTests"
+      }
+    }
+  ],
+  "version" : 1
+}

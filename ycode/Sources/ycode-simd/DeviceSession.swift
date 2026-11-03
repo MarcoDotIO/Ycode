@@ -243,6 +243,9 @@ final class DeviceSession: @unchecked Sendable {
                 emit("control: 701 register \(name) failed: \(error)")
             }
         }
+        if let names = ProcessInfo.processInfo.environment["YCODE_CONTROL_CHECK"], !names.isEmpty {
+            checkControlOperations(c, guestNames: names == "1" ? [] : names.split(separator: ",").map(String.init))
+        }
         if layout.stagedAppGuestPath != nil || layout.launchBundleID != nil {
             let t = Thread { [self] in runApps(c) }
             t.name = "ycode-apps"
@@ -256,6 +259,40 @@ final class DeviceSession: @unchecked Sendable {
         for index in layout.oneshots.indices where !isEnding {
             runOneshot(c, index)
         }
+    }
+
+    /// Diagnostics (`YCODE_CONTROL_CHECK=1` or `=name,name`; watchos.md §2.4,
+    /// risk 3, §10): the control operations the pairing rounds need, in the
+    /// domain this runtime's jobs live in (`system` on watchOS, `user/<uid>`
+    /// on iOS). 702 finds a host-side endpoint and each named guest name;
+    /// 703 asks for an unset variable; a test name is registered (701),
+    /// found (702), unregistered (709), then not found and not unregistered
+    /// again. One line per operation; nothing is kept.
+    private func checkControlOperations(_ c: LaunchSimControl, guestNames: [String]) {
+        func outcome(_ body: () throws -> String) -> String {
+            do { return try body() } catch { return "failed: \(error)" }
+        }
+        let hostName = hostServices.first?.name ?? "com.apple.IOSurface.Remote"
+        for name in [hostName] + guestNames {
+            emit("control check: 702 find \(name): " + outcome {
+                let port = try c.findEndpoint(name)
+                try? host.deallocate(port)
+                return "send right"
+            })
+        }
+        emit("control check: 703 getenv \(Self.livenessProbeName): " + outcome { try c.domainEnvironment(Self.livenessProbeName) ?? "not set" })
+        let test = "dev.ycode.control-check"
+        guard let port = try? host.makePort(sendRight: true) else { emit("control check: no port"); return }
+        defer { try? host.destroyPort(port) }
+        emit("control check: 701 register \(test): " + outcome { try c.registerEndpoint(test, port: port); return "ok" })
+        emit("control check: 702 find \(test): " + outcome {
+            let found = try c.findEndpoint(test)
+            try? host.deallocate(found)
+            return "send right"
+        })
+        emit("control check: 709 unregister \(test): " + outcome { try c.unregisterEndpoint(test); return "ok" })
+        emit("control check: 702 find \(test) after 709: " + outcome { _ = try c.findEndpoint(test); return "still found" })
+        emit("control check: 709 unregister \(test) again: " + outcome { try c.unregisterEndpoint(test); return "ok" })
     }
 
     /// A send right (host task) to a fileport of the host file `path`, opened
@@ -410,5 +447,15 @@ final class DeviceSession: @unchecked Sendable {
     }
 
     var isBound: Bool { lock.withLock { control }?.isBound ?? false }
+
+    /// The control channel once the session is bound (or adopted after a
+    /// restore), for requests at run time (pairing's 701/709 and 702;
+    /// device-pairing.md P-5); nil before that and after the session ended.
+    var boundControl: LaunchSimControl? {
+        lock.withLock { () -> LaunchSimControl? in
+            guard !ending, let c = control, c.isBound else { return nil }
+            return c
+        }
+    }
 }
 #endif

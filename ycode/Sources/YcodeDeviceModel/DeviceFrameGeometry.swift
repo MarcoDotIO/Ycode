@@ -1,9 +1,12 @@
 // The device frame Ycode draws around a simulated screen (device-hub.md
 // §4.3, "Ycode implementation"): a dark band of even width all round, outer
 // corners concentric with the screen's, side buttons as short bars on the
-// edges. Everything is in device points; a view scales it. Ycode decision:
-// the band and button positions are Ycode's own proportions, not measured
-// from any device or picture.
+// edges. A watch (watchos.md §3.1, W-8) has a wider band, the Digital Crown
+// as a short ridged cylinder and the side button as a long flat bar on its
+// right edge, and the Ultra types the Action button on the left. Everything
+// is in device points; a view scales it. Ycode decision: the band and
+// button positions are Ycode's own proportions, not measured from any
+// device or picture.
 
 import Foundation
 #if canImport(CoreGraphics)
@@ -116,6 +119,8 @@ public struct FrameSegment: Equatable, Sendable {
 public struct DeviceFrameGeometry: Equatable, Sendable {
     public enum ButtonKind: String, Sendable, CaseIterable {
         case action, volumeUp, volumeDown, side, top
+        /// A watch's Digital Crown and its side button (watchos.md §3.2).
+        case crown, sideButton
 
         /// The tooltip and accessibility name.
         public var title: String {
@@ -125,6 +130,8 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
             case .volumeDown: "Volume Down"
             case .side: "Sleep/Wake"
             case .top: "Top Button"
+            case .crown: "Digital Crown"
+            case .sideButton: "Side Button"
             }
         }
     }
@@ -150,6 +157,8 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
 
     /// How far buttons stand out from the body.
     public static let protrusion: Double = 3
+    /// How far a watch's Digital Crown stands out from the body.
+    public static let crownProtrusion: Double = 8
 
     /// The band's width per family (Ycode decision).
     public static func band(_ family: DeviceFamily) -> Double {
@@ -157,7 +166,15 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
         case .phone: 12
         case .pad: 20
         case .vision: 0
+        case .watch: 16
         }
+    }
+
+    /// The space left round the body for what stands out of it: the
+    /// buttons, a watch's crown (the same on every side, so the screen
+    /// stays at the drawing's centre).
+    public static func margin(_ family: DeviceFamily) -> Double {
+        family == .watch ? crownProtrusion : protrusion
     }
 
     /// The frame for `spec`'s panel `panelIndex`, the device turned
@@ -177,7 +194,7 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
             self = g
             return
         }
-        let b = Self.band(spec.family), m = Self.protrusion
+        let b = Self.band(spec.family), m = Self.margin(spec.family)
         let body = CGRect(x: m, y: m, width: screenSize.width + 2 * b, height: screenSize.height + 2 * b)
         let screen = CGRect(x: m + b, y: m + b, width: screenSize.width, height: screenSize.height)
         var g = DeviceFrameGeometry(size: CGSize(width: body.width + 2 * m, height: body.height + 2 * m), body: body,
@@ -206,7 +223,9 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
     /// right; an iPad its top button on the top edge near the right corner
     /// and volume on the right edge near the top; an open iPhone Duo keeps
     /// the cover's side button and volume on its right edge and the action
-    /// button on its top edge).
+    /// button on its top edge; a watch has the crown in the upper part of
+    /// its right edge, the side button below it, and an Ultra the Action
+    /// button on its left edge).
     static func buttons(spec: DeviceFrameSpec, inner: Bool, body: CGRect) -> [Button] {
         let m = protrusion, t = protrusion + 2  // a bar tucks 2 points under the body
         let W = body.width, H = body.height
@@ -216,6 +235,12 @@ public struct DeviceFrameGeometry: Equatable, Sendable {
         switch spec.family {
         case .vision:
             return []
+        case .watch:
+            let c = crownProtrusion
+            var out = [Button(kind: .crown, rect: CGRect(x: body.maxX - 2, y: body.minY + 0.22 * H, width: c + 2, height: 0.15 * H)),
+                       Button(kind: .sideButton, rect: right(0.47, 0.24))]
+            if spec.hasActionButton { out.append(Button(kind: .action, rect: left(0.30, 0.13))) }
+            return out
         case .pad:
             return [Button(kind: .top, rect: top(0.80, 0.07)),
                     Button(kind: .volumeUp, rect: right(0.07, 0.055)), Button(kind: .volumeDown, rect: right(0.14, 0.055))]

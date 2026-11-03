@@ -2,18 +2,21 @@ import AppKit
 import Foundation
 import Testing
 import YcodeDebug
+@testable import YcodeIDECore
 import YcodeLanguage
 @testable import YcodeUI
 
-@Suite struct QuickHelpFormatterTests {
-    @Test func markdownToPlain() {
-        let md = "```swift\nstruct Greeter\n```\n\n---\n\n\n A `greeting` printer.\n"
-        #expect(QuickHelpFormatter.plain(md) == "struct Greeter\n\n A greeting printer.")
-    }
-}
-
+/// The time limit is a guard against a hang, not a measure of speed: it
+/// runs on the wall clock and includes the wait for the shared debugger
+/// lock (held by other test processes on the machine) and the stretches in
+/// which other suites hold the main actor (150 s and more in a full run).
+/// Alone the test takes about 4 s. Its waits count the main actor's own
+/// time (`waitUntil`), and the language-server requests end when the limit
+/// cancels the test, so a server that never answers fails the test at the
+/// limit instead of holding it (it once ran for an hour after a 3-minute
+/// limit, in a hover that was never answered).
 @MainActor
-@Suite(.serialized, .heavyIntegration, .timeLimit(.minutes(3))) struct QuickHelpTests {
+@Suite(.serialized, .heavyIntegration, .timeLimit(.minutes(10))) struct QuickHelpTests {
     /// ⌥-click → hover in the Quick Help inspector; ⌘-click → definition.
     @Test func hoverAndCommandClick() async throws {
         // Heavy work (builds, debugger, language server) takes turns across test processes.
@@ -21,7 +24,8 @@ import YcodeLanguage
         defer { heavy.unlock() }
         guard SourceKitLSP.locate() != nil else { return }
         _ = NSApplication.shared
-        let dir = try WindowSnapshotTests().samplePackage()
+        // Its own copy: other suites rewrite and build the shared one meanwhile.
+        let dir = try WindowSnapshotTests().samplePackage(directory: "Sample-quick-help")
         let session = WorkspaceSession(model: try WorkspaceModel(url: dir))
         let wc = WorkspaceWindowController(session: session, loadDestinations: false, startLanguageService: false)
         wc.window?.appearance = NSAppearance(named: .aqua)

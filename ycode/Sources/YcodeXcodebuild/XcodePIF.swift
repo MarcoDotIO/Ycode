@@ -1,6 +1,7 @@
 import Foundation
 import YcodeProject
 import YcodePlist
+import YcodeBuild
 
 /// Generates the PIF (Project Interchange Format) for a whole container, in
 /// the shape the reference tool sends to swift-build. Unlike
@@ -11,10 +12,16 @@ import YcodePlist
 /// See `specs/xcodebuild/show-build-settings.md` §3.
 public struct XcodePIF {
     public let container: Container
+    /// The container's Swift packages (`PackageGraphLoader`). Without them
+    /// build files and dependencies naming package products are left out.
+    public var packages: PackageGraphPIF?
     /// Things the PIF could not express (package products, unknown phases).
     public private(set) var notes: [String] = []
 
-    public init(container: Container) { self.container = container }
+    public init(container: Container, packages: PackageGraphPIF? = nil) {
+        self.container = container
+        self.packages = packages
+    }
 
     // MARK: GUIDs
 
@@ -31,6 +38,14 @@ public struct XcodePIF {
 
     public func targetGUID(_ p: LoadedProject, _ target: PBXObject) -> String { guid(p, target.id) }
 
+    /// The package products a project target links, as its PIF target's
+    /// dependencies name them (no build-tool plug-ins; products missing from
+    /// the package graph are left out). The build server uses them.
+    public func packageProducts(_ p: LoadedProject, _ target: PBXObject) -> [PackageGraphPIF.Product] {
+        let project = ProjectPIF(pif: self, project: p)
+        return target.references("packageProductDependencies").compactMap(project.packageProduct)
+    }
+
     static func relativePath(_ path: String, from base: String) -> String {
         let a = path.split(separator: "/").map(String.init)
         let b = base.split(separator: "/").map(String.init)
@@ -41,23 +56,54 @@ public struct XcodePIF {
 
     // MARK: Whole PIF
 
+    /// Signatures carry a hash of the object's contents
+    /// (`<KIND>@<guid>_hash=<md5>`): swift-build keeps build descriptions by
+    /// the signatures of the objects they come from, so an edited target, or
+    /// a project whose packages changed, must not keep its old signature.
+    static func signature(_ kind: String, _ guid: String, _ contents: [String: Any]) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: contents, options: [.sortedKeys, .withoutEscapingSlashes])) ?? Data()
+        return kind + "@" + guid + "_hash=" + MD5.hex(String(decoding: data, as: UTF8.self))
+    }
+
     public func objects() -> [[String: Any]] {
-        var out: [[String: Any]] = []
-        out.append(["signature": "WORKSPACE@" + workspaceGUID, "type": "workspace", "contents": [
+        var projects: [[String: Any]] = []
+        for p in container.projects {
+            let gen = ProjectPIF(pif: self, project: p)
+            var project = gen.projectContents()
+            var targets: [[String: Any]] = []
+            for t in p.targets {
+                guard let contents = gen.targetContents(t) else { continue }
+                targets.append(["signature": Self.signature("TARGET", guid(p, t.id), contents), "type": "target", "contents": contents])
+            }
+            project["targets"] = targets.compactMap { $0["signature"] as? String }
+            projects.append(["signature": Self.signature("PROJECT", projectGUID(p), project), "type": "project", "contents": project])
+            projects += targets
+        }
+        let workspace: [String: Any] = [
             "guid": workspaceGUID,
             "name": container.name,
             "path": container.workspacePath.path,
-            "projects": container.projects.map { "PROJECT@" + projectGUID($0) },
-        ] as [String: Any]])
-        for p in container.projects {
-            var gen = ProjectPIF(pif: self, project: p)
-            out.append(["signature": "PROJECT@" + projectGUID(p), "type": "project", "contents": gen.projectContents()])
-            for t in p.targets {
-                guard let contents = gen.targetContents(t) else { continue }
-                out.append(["signature": "TARGET@" + guid(p, t.id), "type": "target", "contents": contents])
-            }
+            "projects": projects.filter { $0["type"] as? String == "project" }.compactMap { $0["signature"] as? String }
+                + (packages?.projectSignatures ?? []),
+        ]
+        // The package projects and their targets (SwiftPM's PIF) follow.
+        return [["signature": Self.signature("WORKSPACE", workspaceGUID, workspace), "type": "workspace", "contents": workspace]]
+            + projects + (packages?.objects ?? [])
+    }
+
+    /// Warnings about the synchronized folders of the named targets (all
+    /// targets when nil): missing folders, and targets that compile no
+    /// source file although they take files from synchronized folders.
+    public func synchronizedFolderWarnings(targetNames: [String]? = nil) -> [String] {
+        container.projects.flatMap { p in
+            let gen = ProjectPIF(pif: self, project: p)
+            return p.targets.filter { t in targetNames.map { $0.contains(t.string("name") ?? "") } ?? true }.flatMap(gen.synchronizedWarnings)
         }
-        return out
+    }
+
+    /// The synchronized-folder warnings of one target.
+    public func synchronizedFolderWarnings(_ p: LoadedProject, _ target: PBXObject) -> [String] {
+        ProjectPIF(pif: self, project: p).synchronizedWarnings(target)
     }
 
     public func serialized() throws -> Data {
@@ -73,8 +119,8 @@ struct ProjectPIF {
     let parents: [String: String]
     /// Product reference id → target id.
     let productOwners: [String: String]
-    /// Files found in synchronized folders, per root group id: (guid, relative path, file type).
-    var synchronizedFiles: [String: [(guid: String, path: String, type: String)]] = [:]
+    /// The project's synchronized folders read from disk, by root group id.
+    let synchronizedFolders: [String: SynchronizedFolder]
 
     init(pif: XcodePIF, project: LoadedProject) {
         self.pif = pif
@@ -83,20 +129,26 @@ struct ProjectPIF {
         var owners: [String: String] = [:]
         for t in project.proj.targets { if let r = t.string("productReference") { owners[r] = t.id } }
         productOwners = owners
+        var folders: [String: SynchronizedFolder] = [:]
+        for g in project.proj.objects(isa: "PBXFileSystemSynchronizedRootGroup") {
+            if let f = project.proj.synchronizedFolder(g.id, projectDirectory: project.directory, parents: parents) { folders[g.id] = f }
+        }
+        synchronizedFolders = folders
     }
 
     func guid(_ id: String) -> String { pif.guid(project, id) }
 
     // MARK: Project
 
-    mutating func projectContents() -> [String: Any] {
+    func projectContents() -> [String: Any] {
         let root = proj.project
         let list = root?.string("buildConfigurationList")
         var c: [String: Any] = [
             "guid": pif.projectGUID(project),
             "path": project.url.path,
             "projectDirectory": project.directory.path,
-            "targets": proj.targets.filter { Self.targetKind($0) != nil }.map { "TARGET@" + guid($0.id) },
+            // Filled in with the targets' signatures by `XcodePIF.objects()`.
+            "targets": [String](),
             "buildConfigurations": configurations(list),
             "defaultConfigurationName": project.defaultConfigurationName,
             "developmentRegion": root?.string("developmentRegion") ?? "en",
@@ -104,7 +156,10 @@ struct ProjectPIF {
             "appPreferencesBuildSettings": [String: Any](),
         ]
         if let regions = root?["knownRegions"]?.array?.compactMap(\.string) { c["knownRegions"] = regions }
-        if let main = root?.string("mainGroup"), let tree = reference(main, isRoot: true) { c["groupTree"] = tree }
+        if let main = root?.string("mainGroup"), var tree = reference(main, isRoot: true) {
+            if let generated = pluginOutputGroup() { tree["children"] = (tree["children"] as? [[String: Any]] ?? []) + [generated] }
+            c["groupTree"] = tree
+        }
         return c
     }
 
@@ -129,7 +184,7 @@ struct ProjectPIF {
 
     func synchronizedGUID(_ root: String, _ relative: String) -> String { guid(root + "/" + relative) }
 
-    mutating func reference(_ id: String, isRoot: Bool = false) -> [String: Any]? {
+    func reference(_ id: String, isRoot: Bool = false) -> [String: Any]? {
         guard let obj = proj[id] else { return nil }
         var out: [String: Any] = ["guid": guid(id), "sourceTree": obj.string("sourceTree") ?? "<group>", "path": obj.string("path") ?? ""]
         switch obj.isa {
@@ -158,34 +213,95 @@ struct ProjectPIF {
         case "PBXFileSystemSynchronizedRootGroup":
             out["type"] = "group"
             out["name"] = obj.string("name") ?? obj.string("path") ?? ""
-            let dir = proj.resolvedPath(of: id, projectDirectory: project.directory, parents: parents) ?? ""
-            out["children"] = synchronizedChildren(root: id, directory: dir, relative: "")
+            out["children"] = (synchronizedFolders[id]?.entries ?? []).map { synchronizedReference(root: id, $0) }
         default:
             return nil // reference proxies and others live elsewhere
         }
         return out
     }
 
-    /// Expands a synchronized folder from disk: directories become groups
-    /// (bundle-like ones become files), files become file references.
-    mutating func synchronizedChildren(root: String, directory: String, relative: String) -> [[String: Any]] {
-        let fm = FileManager.default
-        let names = ((try? fm.contentsOfDirectory(atPath: directory)) ?? []).filter { !$0.hasPrefix(".") }
-            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-        var out: [[String: Any]] = []
-        for n in names {
-            let full = directory + "/" + n
-            let rel = relative.isEmpty ? n : relative + "/" + n
-            var isDir: ObjCBool = false
-            fm.fileExists(atPath: full, isDirectory: &isDir)
-            let type = FileTypes.type(forPath: n)
-            if isDir.boolValue && !FileTypes.isBundleLike(n) {
-                out.append(["guid": synchronizedGUID(root, rel), "type": "group", "name": n, "path": n, "sourceTree": "<group>",
-                            "children": synchronizedChildren(root: root, directory: full, relative: rel)])
-            } else {
-                out.append(["guid": synchronizedGUID(root, rel), "type": "file", "path": n, "sourceTree": "<group>", "fileType": type])
-                synchronizedFiles[root, default: []].append((synchronizedGUID(root, rel), rel, type))
-            }
+    /// GUID of a synchronized item (file, folder, variant group) by its
+    /// membership key.
+    func synchronizedItemGUID(_ root: String, _ e: SynchronizedFolder.Entry) -> String { synchronizedGUID(root, e.membershipKey) }
+
+    /// A synchronized folder's row in the group tree: sub-folders become
+    /// groups, `.lproj` files variant groups, everything else files.
+    func synchronizedReference(root: String, _ e: SynchronizedFolder.Entry) -> [String: Any] {
+        switch e.kind {
+        case .group:
+            return ["guid": synchronizedGUID(root, e.path), "type": "group", "name": e.name, "path": e.name, "sourceTree": "<group>",
+                    "children": e.children.map { synchronizedReference(root: root, $0) }]
+        case .variantGroup:
+            // The region files sit in `<region>.lproj` folders next to the
+            // localized item, so the variant group adds no path of its own.
+            return ["guid": synchronizedItemGUID(root, e), "type": "variantGroup", "name": e.name, "path": "", "sourceTree": "<group>",
+                    "children": e.children.map { r -> [String: Any] in
+                        var f: [String: Any] = ["guid": synchronizedGUID(root, r.path), "type": "file",
+                                                "path": (r.region ?? "") + ".lproj/" + e.name, "sourceTree": "<group>",
+                                                "fileType": r.fileType, "regionVariantName": r.region ?? ""]
+                        if r.fileType.hasPrefix("text") { f["fileTextEncoding"] = "utf-8" }
+                        return f
+                    }]
+        case .file:
+            var out: [String: Any] = ["guid": synchronizedGUID(root, e.path), "type": "file", "path": e.name, "sourceTree": "<group>",
+                                      "fileType": e.fileType]
+            if e.fileType.hasPrefix("sourcecode") || e.fileType.hasPrefix("text") { out["fileTextEncoding"] = "utf-8" }
+            return out
+        }
+    }
+
+    /// The synchronized members of a target, folder by folder.
+    func synchronizedMembers(_ t: PBXObject) -> [SynchronizedMember] {
+        guard t.isa == "PBXNativeTarget" else { return [] }
+        return proj.synchronizedFolderIDs(ofTarget: t.id).compactMap { synchronizedFolders[$0] }
+            .flatMap { proj.synchronizedMembers(ofTarget: t.id, folder: $0) }
+    }
+
+    /// PIF platform filters for pbxproj platform names (`ios`,
+    /// `maccatalyst`, `macos`, …).
+    static func platformFilters(_ names: [String]) -> [[String: Any]] {
+        names.map { n in n == "maccatalyst" ? ["platform": "ios", "environment": "macabi"] : ["platform": n] }
+    }
+
+    /// The build file of a synchronized member in phase `pid`.
+    func synchronizedBuildFile(_ m: SynchronizedMember, phase pid: String) -> [String: Any] {
+        let attributes = Set(m.attributes)
+        var out: [String: Any] = ["guid": guid(pid + "/" + m.folder + "/" + m.entry.membershipKey),
+                                  "fileReference": synchronizedItemGUID(m.folder, m.entry),
+                                  "codeSignOnCopy": attributes.contains("CodeSignOnCopy") ? "true" : "false",
+                                  "removeHeadersOnCopy": attributes.contains("RemoveHeadersOnCopy") ? "true" : "false",
+                                  "platformFilters": Self.platformFilters(m.platformFilters)]
+        if attributes.contains("Weak") { out["shouldLinkWeakly"] = "true" }
+        if let v = m.headerVisibility { out["headerVisibility"] = v.rawValue }
+        if let f = m.compilerFlags, !f.isEmpty { out["additionalCompilerOptions"] = f }
+        return out
+    }
+
+    /// Warnings about a target's synchronized folders: a folder that is
+    /// not on disk, and a target that compiles no source file although it
+    /// takes its files from synchronized folders (Ycode decision,
+    /// `build-pif.md` §Synchronized folders).
+    func synchronizedWarnings(_ t: PBXObject) -> [String] {
+        guard t.isa == "PBXNativeTarget" else { return [] }
+        let ids = proj.synchronizedFolderIDs(ofTarget: t.id)
+        guard !ids.isEmpty else { return [] }
+        let name = t.string("name") ?? t.id
+        func folderName(_ id: String) -> String { proj[id]?.string("name") ?? proj[id]?.string("path") ?? id }
+        var out: [String] = []
+        for id in ids where synchronizedFolders[id]?.exists != true {
+            let path = synchronizedFolders[id]?.directory
+                ?? proj.resolvedPath(of: id, projectDirectory: project.directory, parents: parents) ?? folderName(id)
+            out.append("The synchronized folder \u{201C}\(folderName(id))\u{201D} of target \u{201C}\(name)\u{201D} is missing (\(path)); the target gets no files from it.")
+        }
+        // Resource bundles need no code.
+        guard t.string("productType") != "com.apple.product-type.bundle" else { return out }
+        let ownSources = t.references("buildPhases").filter { proj[$0]?.isa == "PBXSourcesBuildPhase" }
+            .contains { !(proj[$0]?.references("files").isEmpty ?? true) }
+        let synchronizedSources = synchronizedMembers(t).contains { $0.phase == .sources }
+        let generated = !(pluginOutputs(t)?.generatedSources.isEmpty ?? true)
+        if !ownSources && !synchronizedSources && !generated {
+            let folders = ids.map { "\u{201C}\(folderName($0))\u{201D}" }.joined(separator: ", ")
+            out.append("Target \u{201C}\(name)\u{201D} compiles no source files: its synchronized folders (\(folders)) hold none that it builds.")
         }
         return out
     }
@@ -201,14 +317,14 @@ struct ProjectPIF {
         }
     }
 
-    mutating func targetContents(_ t: PBXObject) -> [String: Any]? {
+    func targetContents(_ t: PBXObject) -> [String: Any]? {
         guard let kind = Self.targetKind(t) else { return nil }
         let name = t.string("name") ?? ""
         var c: [String: Any] = [
             "guid": guid(t.id), "name": name, "type": kind,
             "buildConfigurations": configurations(t.string("buildConfigurationList")),
             "dependencies": dependencies(t),
-            "customTasks": [Any](),
+            "customTasks": pluginCustomTasks(t),
         ]
         switch kind {
         case "external":
@@ -241,7 +357,115 @@ struct ProjectPIF {
                 out.append(["guid": g, "platformFilters": [Any]()])
             }
         }
+        // Package products the target uses are explicit dependencies: swift-build
+        // builds them for the target's platform (package targets take part in no
+        // implicit dependencies).
+        for p in t.references("packageProductDependencies") {
+            guard let product = packageProduct(p), !out.contains(where: { $0["guid"] as? String == product.guid }) else { continue }
+            out.append(["guid": product.guid, "platformFilters": [Any]()])
+        }
+        // Build-tool plug-ins: their PIF targets build the tools for the host.
+        for g in pluginOutputs(t)?.pluginTargetGUIDs ?? [] where !out.contains(where: { $0["guid"] as? String == g }) {
+            out.append(["guid": g, "platformFilters": [Any]()])
+        }
         return out
+    }
+
+    // MARK: Build-tool plug-ins
+
+    func pluginOutputs(_ t: PBXObject) -> ProjectPlugins.TargetOutputs? {
+        pif.packages?.pluginOutputs[ProjectPlugins.key(project, t.id)]
+    }
+
+    /// The plug-ins' build commands as custom tasks (host tools at the
+    /// client build's products folder).
+    func pluginCustomTasks(_ t: PBXObject) -> [[String: Any]] {
+        guard let outputs = pluginOutputs(t), let graph = pif.packages else { return [] }
+        return outputs.commands.map { c in
+            var task: [String: Any] = [
+                "commandLine": ([c.executable] + c.arguments).map(graph.relocated),
+                "environment": c.environment.sorted { $0.key < $1.key }.map { [$0.key, graph.relocated($0.value)] },
+                "executionDescription": c.displayName ?? "Performing build tool plug-in command",
+                "inputFilePaths": ([c.executable] + c.inputFiles).map(graph.relocated),
+                "outputFilePaths": c.outputFiles,
+                "enableSandboxing": "false",
+                "preparesForIndexing": "true",
+            ]
+            if let w = c.workingDirectory { task["workingDirectory"] = w }
+            return task
+        }
+    }
+
+    /// GUID of the file reference of a plug-in's generated file.
+    func generatedFileGUID(_ path: String) -> String { guid("ycode-plugin-output:" + path) }
+
+    /// A group holding the files plug-ins generate for this project's
+    /// targets (absolute paths); nil when there are none.
+    func pluginOutputGroup() -> [String: Any]? {
+        var files: [String] = []
+        for t in proj.targets {
+            guard let o = pluginOutputs(t) else { continue }
+            for f in o.generatedSources + o.generatedResources where !files.contains(f) { files.append(f) }
+        }
+        guard !files.isEmpty else { return nil }
+        return ["guid": guid("ycode-plugin-outputs"), "type": "group", "name": "Plug-in Outputs", "path": "", "sourceTree": "<absolute>",
+                "children": files.map { f -> [String: Any] in
+                    ["guid": generatedFileGUID(f), "type": "file", "path": f, "sourceTree": "<absolute>",
+                     "fileType": FileTypes.type(forPath: f)]
+                }]
+    }
+
+    // MARK: Package products
+
+    /// The package product an `XCSwiftPackageProductDependency` names: its
+    /// `package` reference gives the package identity (a local folder's
+    /// name, or the repository's last URL component), else any package with
+    /// a product of that name. Nil for build-tool plug-ins (`plugin:`
+    /// names) and when the product is not in the package graph.
+    func packageProduct(_ id: String) -> PackageGraphPIF.Product? {
+        guard let graph = pif.packages, let dep = proj[id], dep.isa == "XCSwiftPackageProductDependency",
+              let name = dep.string("productName"), !name.hasPrefix("plugin:") else { return nil }
+        var identity: String?
+        if let ref = dep.string("package").flatMap({ proj[$0] }) {
+            if ref.isa == "XCLocalSwiftPackageReference", let rel = ref.string("relativePath") {
+                identity = URL(fileURLWithPath: rel).lastPathComponent.lowercased()
+            } else if let url = ref.string("repositoryURL") {
+                identity = PackageResolver.identity(of: url)
+            }
+        }
+        if let identity, let p = graph.product(name, identity: identity) { return p }
+        return graph.product(name, identity: nil)
+    }
+
+    /// Whether a target is an application, whose bundle gets the dynamic
+    /// package products it links.
+    static func embedsPackageProducts(_ t: PBXObject) -> Bool {
+        (t.string("productType") ?? "").hasPrefix("com.apple.product-type.application")
+    }
+
+    /// A copy-files phase that embeds the dynamic package products an
+    /// application links but no copy-files phase of its own copies (Ycode
+    /// decision, `build-pif.md` §Package products); nil when there are none.
+    func packageEmbedPhase(_ t: PBXObject, phases: [[String: Any]]) -> [String: Any]? {
+        guard Self.embedsPackageProducts(t), let dynamic = pif.packages?.dynamicProductGUIDs, !dynamic.isEmpty else { return nil }
+        func references(_ type: String) -> [String] {
+            phases.filter { $0["type"] as? String == type }
+                .flatMap { ($0["buildFiles"] as? [[String: Any]] ?? []).compactMap { $0["targetReference"] as? String } }
+        }
+        let copied = Set(references("com.apple.buildphase.copy-files"))
+        var embed: [String] = []
+        for g in references("com.apple.buildphase.frameworks") where dynamic.contains(g) && !copied.contains(g) && !embed.contains(g) {
+            embed.append(g)
+        }
+        guard !embed.isEmpty else { return nil }
+        let phase = t.id + "-ycode-embed-package-products"
+        return ["guid": guid(phase), "type": "com.apple.buildphase.copy-files",
+                "destinationSubfolder": "$(FRAMEWORKS_FOLDER_PATH)", "destinationSubpath": "",
+                "runOnlyForDeploymentPostprocessing": "false",
+                "buildFiles": embed.map { g -> [String: Any] in
+                    ["guid": guid(phase + "/" + g), "targetReference": g, "codeSignOnCopy": "true",
+                     "removeHeadersOnCopy": "true", "platformFilters": [Any]()]
+                }]
     }
 
     /// The GUID of the target a `PBXContainerItemProxy` names, in this
@@ -280,22 +504,31 @@ struct ProjectPIF {
 
     func buildPhases(_ t: PBXObject) -> [[String: Any]] {
         var phases: [[String: Any]] = []
-        let synchronized = t.references("fileSystemSynchronizedGroups")
-        for pid in t.references("buildPhases") {
+        let phaseIDs = t.references("buildPhases")
+        let members = synchronizedMembers(t)
+        // Default phases a synchronized member needs but the target lacks
+        // are added after its own (Ycode decision, `build-pif.md`).
+        var placed = Set<Int>()
+        func membersFor(_ pid: String, isa: String) -> [[String: Any]] {
+            let firstOfKind = phaseIDs.first { proj[$0]?.isa == isa } == pid
+            var out: [[String: Any]] = []
+            for (i, m) in members.enumerated() {
+                let matches = m.phase == .buildPhase(pid) || (firstOfKind && m.phase.isa == isa)
+                if matches { out.append(synchronizedBuildFile(m, phase: pid)); placed.insert(i) }
+            }
+            return out
+        }
+        for pid in phaseIDs {
             guard let phase = proj[pid], let type = Self.phaseTypes[phase.isa] else { continue }
             var files = phase.references("files").compactMap { buildFile($0, phaseISA: phase.isa) }
             // Members of synchronized folders join the phase their type
-            // belongs to.
-            if phase.isa == "PBXSourcesBuildPhase" || phase.isa == "PBXResourcesBuildPhase" {
-                for root in synchronized {
-                    let excluded = synchronizedExclusions(root: root, target: t.id)
-                    for f in synchronizedFiles[root] ?? [] where !excluded.contains(f.path) {
-                        let wanted = FileTypes.phase(forType: f.type, path: f.path)
-                        if (wanted == "sources") == (phase.isa == "PBXSourcesBuildPhase") && wanted != nil {
-                            files.append(["guid": guid(pid + "/" + root + "/" + f.path), "fileReference": f.guid,
-                                          "codeSignOnCopy": "false", "removeHeadersOnCopy": "false", "platformFilters": [Any]()])
-                        }
-                    }
+            // belongs to, or the phase an exception set names.
+            files += membersFor(pid, isa: phase.isa)
+            // Files build-tool plug-ins generate.
+            if let o = pluginOutputs(t), phase.isa == "PBXSourcesBuildPhase" || phase.isa == "PBXResourcesBuildPhase" {
+                for f in phase.isa == "PBXSourcesBuildPhase" ? o.generatedSources : o.generatedResources {
+                    files.append(["guid": guid(pid + "/ycode-plugin-output:" + f), "fileReference": generatedFileGUID(f),
+                                  "codeSignOnCopy": "false", "removeHeadersOnCopy": "false", "platformFilters": [Any]()])
                 }
             }
             var out: [String: Any] = ["guid": guid(pid), "type": type, "buildFiles": files]
@@ -327,17 +560,18 @@ struct ProjectPIF {
             }
             phases.append(out)
         }
-        return phases
-    }
-
-    /// Paths excluded from a target by `membershipExceptions`.
-    func synchronizedExclusions(root: String, target: String) -> Set<String> {
-        var out: Set<String> = []
-        for ex in proj[root]?.references("exceptions") ?? [] {
-            guard let e = proj[ex], e.string("target") == target || e.string("target") == nil else { continue }
-            out.formUnion(e.references("membershipExceptions"))
+        // Products that are no bundle take no resources.
+        let unbundled = ["com.apple.product-type.tool", "com.apple.product-type.library.static", "com.apple.product-type.library.dynamic",
+                         "com.apple.product-type.tool.host-build"].contains(t.string("productType") ?? "")
+        for kind in [SynchronizedMember.Phase.headers, .sources, .frameworks, .resources] where !(kind == .resources && unbundled) {
+            guard let isa = kind.isa, let type = Self.phaseTypes[isa] else { continue }
+            let files = members.enumerated().filter { !placed.contains($0.offset) && $0.element.phase == kind }
+            guard !files.isEmpty else { continue }
+            let pid = t.id + "-ycode-synchronized-" + type
+            phases.append(["guid": guid(pid), "type": type, "buildFiles": files.map { synchronizedBuildFile($0.element, phase: pid) }])
         }
-        return out
+        if let embed = packageEmbedPhase(t, phases: phases) { phases.append(embed) }
+        return phases
     }
 
     func buildFile(_ id: String, phaseISA: String) -> [String: Any]? {
@@ -351,8 +585,10 @@ struct ProjectPIF {
             } else {
                 out["fileReference"] = guid(ref)
             }
+        } else if let ref = bf.string("productRef"), let product = packageProduct(ref) {
+            out["targetReference"] = product.guid
         } else {
-            return nil // package products are not expressed yet
+            return nil // a package product outside the package graph (or none loaded)
         }
         let settings = bf["settings"]?.dictionary
         let attributes = Set(settings?["ATTRIBUTES"]?.array?.compactMap(\.string) ?? [])
@@ -401,7 +637,7 @@ struct ProjectPIF {
                 count(f.string("lastKnownFileType") ?? f.string("explicitFileType") ?? FileTypes.type(forPath: f.string("path") ?? ""))
             }
         }
-        for root in t.references("fileSystemSynchronizedGroups") { for f in synchronizedFiles[root] ?? [] { count(f.type) } }
+        for m in synchronizedMembers(t) where m.phase == .sources { count(m.entry.fileType) }
         guard let best = counts.max(by: { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value }) else { return nil }
         return "Xcode.SourceCodeLanguage." + best.key
     }
@@ -428,42 +664,4 @@ struct ProjectPIF {
 }
 
 /// File types by extension (for synchronized folders and untyped files).
-enum FileTypes {
-    static let byExtension: [String: String] = [
-        "swift": "sourcecode.swift", "c": "sourcecode.c.c", "m": "sourcecode.c.objc", "mm": "sourcecode.cpp.objcpp",
-        "cpp": "sourcecode.cpp.cpp", "cc": "sourcecode.cpp.cpp", "cxx": "sourcecode.cpp.cpp", "h": "sourcecode.c.h",
-        "hpp": "sourcecode.cpp.h", "metal": "sourcecode.metal", "s": "sourcecode.asm", "xcassets": "folder.assetcatalog",
-        "storyboard": "file.storyboard", "xib": "file.xib", "strings": "text.plist.strings", "xcstrings": "text.json.xcstrings",
-        "plist": "text.plist.xml", "json": "text.json", "xcconfig": "text.xcconfig", "entitlements": "text.plist.entitlements",
-        "png": "image.png", "jpg": "image.jpeg", "jpeg": "image.jpeg", "pdf": "image.pdf", "md": "net.daringfireball.markdown",
-        "txt": "text", "xcdatamodeld": "wrapper.xcdatamodeld", "mlmodel": "file.mlmodel", "intentdefinition": "file.intentdefinition",
-        "docc": "folder.documentationcatalog", "xctestplan": "text", "rcproject": "file.rcproject", "usdz": "file.usdz",
-        "lproj": "folder", "bundle": "wrapper.plug-in", "framework": "wrapper.framework", "a": "archive.ar", "dylib": "compiled.mach-o.dylib",
-        "modulemap": "sourcecode.module-map", "y": "sourcecode.yacc", "l": "sourcecode.lex", "mig": "sourcecode.mig", "defs": "sourcecode.mig",
-    ]
-
-    static func type(forPath path: String) -> String {
-        let ext = (path as NSString).pathExtension.lowercased()
-        return byExtension[ext] ?? "file"
-    }
-
-    static func isBundleLike(_ name: String) -> Bool {
-        ["xcassets", "xcdatamodeld", "bundle", "framework", "docc", "rcproject", "app", "appex", "xcframework", "scnassets", "lproj"]
-            .contains((name as NSString).pathExtension.lowercased())
-    }
-
-    /// The phase a synchronized-folder file belongs to: "sources",
-    /// "resources" or nil (not built).
-    static func phase(forType type: String, path: String) -> String? {
-        if type.hasPrefix("sourcecode.") {
-            return type.hasSuffix(".h") || type == "sourcecode.module-map" ? nil : "sources"
-        }
-        switch type {
-        case "wrapper.xcdatamodeld", "file.mlmodel", "file.intentdefinition", "folder.documentationcatalog": return "sources"
-        case "text.xcconfig", "text.plist.entitlements": return nil
-        case "text.plist.xml" where (path as NSString).lastPathComponent == "Info.plist": return nil
-        case "text.xctestplan": return nil
-        default: return path.hasSuffix(".xctestplan") ? nil : "resources"
-        }
-    }
-}
+typealias FileTypes = BuildFileTypes

@@ -465,7 +465,10 @@ first fails.
 BSD additions: `setattrlist`/`fsetattrlist`/`setattrlistat` (221/229/524;
 Finder info stored as the xattr `com.apple.FinderInfo`, volume attributes
 EROFS); `madvise` advice 0–11 (11 = `MADV_ZERO` zeroes the range, xnu);
-`statfs` with the host volume's real sizes, `f_fsid` = {dev, 0x1A},
+`statfs` with the host volume's real sizes (since 2026-11-01, as
+getattrlist's volume sizes, the same for every path of a guest volume:
+taken from the host file system of the volume's first writable prefix,
+for "/"'s volume the device directory; `visionos.md` §10.26.2), `f_fsid` = {dev, 0x1A},
 `MNT_ROOTFS` for `/`, `MNT_DOVOLFS | MNT_JOURNALED`, `f_fssubtype` 1.
 
 **Ycode decisions (not yet backed by a probe):** `memorystatus_control`

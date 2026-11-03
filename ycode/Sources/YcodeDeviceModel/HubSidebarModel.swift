@@ -49,6 +49,7 @@ public struct HubDevice: Equatable, Sendable {
     /// when the device type is not known).
     public static func family(platform: String, name: String) -> DeviceFamily {
         if platform == "visionOS" || platform == "xrOS" || name.contains("Vision") { return .vision }
+        if platform == "watchOS" || name.contains("Watch") { return .watch }
         if name.contains("iPad") { return .pad }
         return .phone
     }

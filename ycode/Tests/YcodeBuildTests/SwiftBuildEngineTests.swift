@@ -39,10 +39,44 @@ import Testing
         #expect(inv.arguments == ["build", "/w/p.json", "--target", "Tool", "--buildParametersFile", "/w/q.json", "--derivedDataPath", "/tmp/dd"])
         let params = try JSONSerialization.jsonObject(with: inv.parameters) as! [String: Any]
         #expect(params["configurationName"] as? String == "Release")
-        let table = ((params["overrides"] as! [String: Any])["commandLine"] as! [String: Any])["table"] as! [String: String]
+        var table = ((params["overrides"] as! [String: Any])["commandLine"] as! [String: Any])["table"] as! [String: String]
+        // Off macOS the asset compiler hook (AssetCompilerHookTests) adds ASSETCATALOG_EXEC when it finds `ycode`.
+        table["ASSETCATALOG_EXEC"] = nil
+        // Off macOS the String Catalog hook (StringsCompilerHookTests) sets the input encoding of compiled tables.
+        table["STRINGS_FILE_INPUT_ENCODING"] = nil
         #expect(table == ["SDK_STAT_CACHE_ENABLE": "NO", "CODE_SIGN_IDENTITY": "-", "ENTITLEMENTS_DESTINATION": "", "ENTITLEMENTS_REQUIRED": "NO", "FOO": "1"])
         // No destination means My Mac: the host architecture only.
         #expect((params["activeRunDestination"] as? [String: Any])?["targetArchitecture"] as? String == SwiftBuildEngine.hostArchitecture)
+    }
+
+    /// A simulator destination is a run destination of that simulator's SDK
+    /// (visionos.md §10.21), so host tools (macros, plug-in tools) still build
+    /// for the Mac; there is no SDKROOT override, and one on the command line
+    /// is passed as given. A generic destination builds every architecture.
+    @Test func simulatorDestinationsChooseTheSimulatorSDK() throws {
+        #expect(SwiftBuildEngine.simulatorSDK(for: "generic/platform=visionOS Simulator") == "xrsimulator")
+        #expect(SwiftBuildEngine.simulatorSDK(for: "platform=iOS Simulator,name=iPhone 18 Pro") == "iphonesimulator")
+        #expect(SwiftBuildEngine.simulatorSDK(for: "platform=macOS") == nil && SwiftBuildEngine.simulatorSDK(for: nil) == nil)
+        let projURL = try writeToolProject(at: ideScratch.appendingPathComponent("pif-sim"))
+        func params(_ destination: String, _ settings: [(String, String)]) throws -> [String: Any] {
+            let inv = try SwiftBuildEngine.invocation(
+                for: BuildRequest(container: .project(projURL.path), scheme: "Tool", destination: destination, settings: settings),
+                pifPath: URL(fileURLWithPath: "/w/p.json"), parametersPath: URL(fileURLWithPath: "/w/q.json"))
+            return try JSONSerialization.jsonObject(with: inv.parameters) as! [String: Any]
+        }
+        func table(_ p: [String: Any]) -> [String: String] {
+            ((p["overrides"] as! [String: Any])["commandLine"] as! [String: Any])["table"] as! [String: String]
+        }
+        let generic = try params("generic/platform=visionOS Simulator", [])
+        let run = generic["activeRunDestination"] as? [String: Any]
+        #expect(run?["sdk"] as? String == "xrsimulator" && run?["platform"] as? String == "xrsimulator")
+        #expect(run?["disableOnlyActiveArch"] as? Bool == true)
+        #expect(table(generic)["SDKROOT"] == nil)
+        let device = try params("platform=iOS Simulator,name=iPhone 18 Pro", [])
+        #expect((device["activeRunDestination"] as? [String: Any])?["sdk"] as? String == "iphonesimulator")
+        #expect((device["activeRunDestination"] as? [String: Any])?["disableOnlyActiveArch"] as? Bool == false)
+        #expect(device["activeArchitecture"] as? String == SwiftBuildEngine.hostArchitecture)
+        #expect(table(try params("generic/platform=visionOS Simulator", [("SDKROOT", "xros")]))["SDKROOT"] == "xros")
     }
 }
 

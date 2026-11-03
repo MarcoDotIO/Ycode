@@ -12,14 +12,38 @@ public final class InterprocessLock: @unchecked Sendable {
 
     /// Blocks until the lock at `path` is acquired.
     public init(path: String) {
-        try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
-        fd = open(path, O_CREAT | O_RDWR, 0o644)
+        fd = Self.open(path)
         if fd >= 0 { _ = flock(fd, LOCK_EX) }
     }
 
-    /// Acquires without blocking the calling thread (polls).
-    public static func acquire(path: String) async -> InterprocessLock {
-        await Task.detached { InterprocessLock(path: path) }.value
+    private init(locked fd: Int32) { self.fd = fd }
+
+    private static func open(_ path: String) -> Int32 {
+        try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        #if canImport(Glibc)
+        return Glibc.open(path, O_CREAT | O_RDWR, 0o644)
+        #else
+        return Darwin.open(path, O_CREAT | O_RDWR, 0o644)
+        #endif
+    }
+
+    /// Acquires without blocking a thread: tries the lock and sleeps
+    /// between tries (`poll` seconds). It used to wait in `flock` on a
+    /// detached task, which held one of the cooperative pool's threads for
+    /// as long as another holder kept the lock (minutes, behind a debugger
+    /// test); a dozen waiting tests left the pool no thread for anything
+    /// else in the process (streamed replies, language-server start-up).
+    public static func acquire(path: String, poll: TimeInterval = 0.05) async -> InterprocessLock {
+        let fd = open(path)
+        guard fd >= 0 else { return InterprocessLock(locked: fd) }
+        while flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            // EWOULDBLOCK: held elsewhere; anything else: no lock to take.
+            guard errno == EWOULDBLOCK || errno == EINTR else { break }
+            // A cancelled task's sleep returns at once: pause the thread
+            // instead of spinning (the caller still gets the lock).
+            if Task.isCancelled { usleep(useconds_t(poll * 1_000_000)) } else { try? await Task.sleep(nanoseconds: UInt64(poll * 1_000_000_000)) }
+        }
+        return InterprocessLock(locked: fd)
     }
 
     public func unlock() {

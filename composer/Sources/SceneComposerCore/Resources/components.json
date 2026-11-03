@@ -1,0 +1,588 @@
+{
+  "about": "RealityKit component catalogue for RealityKitComponent child prims. Data only: names, USD types and verification state come from specs/tools/scene-composer/scene-usd.md section 4.3 (verified = a non-default value written by us was seen on the loaded component). Defaults are USDA value text and are only written when listed in alwaysWrite.",
+  "components": [
+    {
+      "id": "RealityKit.Collider",
+      "primName": "Collider",
+      "runtime": "CollisionComponent",
+      "alwaysWrite": [
+        "group",
+        "mask",
+        "type",
+        "Shape.extent",
+        "Shape.radius"
+      ],
+      "fields": [
+        {
+          "name": "group",
+          "type": "uint",
+          "default": "1",
+          "verified": true
+        },
+        {
+          "name": "mask",
+          "type": "uint",
+          "default": "4294967295",
+          "verified": true
+        },
+        {
+          "name": "type",
+          "type": "token",
+          "default": "\"Default\"",
+          "allowed": [
+            "Default"
+          ],
+          "verified": false
+        }
+      ],
+      "structs": [
+        {
+          "name": "Shape",
+          "fields": [
+            {
+              "name": "shapeType",
+              "type": "token",
+              "default": "\"Box\"",
+              "allowed": [
+                "Box",
+                "Sphere",
+                "Capsule"
+              ],
+              "verified": true
+            },
+            {
+              "name": "extent",
+              "type": "float3",
+              "default": "(0.2, 0.2, 0.2)",
+              "verified": true
+            },
+            {
+              "name": "radius",
+              "type": "float",
+              "default": "0.1",
+              "verified": true
+            },
+            {
+              "name": "height",
+              "type": "float",
+              "verified": true
+            }
+          ],
+          "structs": [
+            {
+              "name": "pose",
+              "fields": [
+                {
+                  "name": "position",
+                  "type": "float3",
+                  "verified": true
+                },
+                {
+                  "name": "orientation",
+                  "type": "quatf",
+                  "verified": false
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.RigidBody",
+      "primName": "RigidBody",
+      "runtime": "PhysicsBodyComponent",
+      "fields": [
+        {
+          "name": "motionType",
+          "type": "token",
+          "allowed": [
+            "Dynamic",
+            "Kinematic",
+            "Static"
+          ],
+          "verified": true
+        },
+        {
+          "name": "gravityEnabled",
+          "type": "bool",
+          "verified": true
+        },
+        {
+          "name": "isCCDEnabled",
+          "type": "bool",
+          "verified": true
+        },
+        {
+          "name": "lockRotationX",
+          "type": "bool",
+          "verified": true
+        },
+        {
+          "name": "lockRotationY",
+          "type": "bool",
+          "verified": false
+        },
+        {
+          "name": "lockRotationZ",
+          "type": "bool",
+          "verified": false
+        },
+        {
+          "name": "lockTranslationX",
+          "type": "bool",
+          "verified": true
+        },
+        {
+          "name": "lockTranslationY",
+          "type": "bool",
+          "verified": false
+        },
+        {
+          "name": "lockTranslationZ",
+          "type": "bool",
+          "verified": false
+        },
+        {
+          "name": "angularDamping",
+          "type": "float",
+          "verified": true
+        },
+        {
+          "name": "linearDamping",
+          "type": "float",
+          "verified": false
+        }
+      ],
+      "structs": [
+        {
+          "name": "massFrame",
+          "fields": [
+            {
+              "name": "m_mass",
+              "type": "float",
+              "verified": true
+            }
+          ]
+        },
+        {
+          "name": "material",
+          "fields": [
+            {
+              "name": "staticFriction",
+              "type": "double",
+              "verified": true
+            },
+            {
+              "name": "dynamicFriction",
+              "type": "double",
+              "verified": true
+            },
+            {
+              "name": "restitution",
+              "type": "double",
+              "verified": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.MotionState",
+      "primName": "MotionState",
+      "runtime": "PhysicsMotionComponent",
+      "fields": [
+        {
+          "name": "m_linearVelocity",
+          "type": "float3",
+          "verified": true
+        },
+        {
+          "name": "m_angularVelocity",
+          "type": "float3",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.Anchoring",
+      "primName": "Anchoring",
+      "runtime": "AnchoringComponent",
+      "structs": [
+        {
+          "name": "descriptor",
+          "fields": [
+            {
+              "name": "type",
+              "type": "token",
+              "allowed": [
+                "Plane",
+                "World",
+                "Camera",
+                "Image",
+                "Face",
+                "Body"
+              ],
+              "verified": true
+            },
+            {
+              "name": "alignment",
+              "type": "token",
+              "allowed": [
+                "Horizontal",
+                "Vertical"
+              ],
+              "verified": true
+            },
+            {
+              "name": "bounds",
+              "type": "float2",
+              "verified": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.Accessibility",
+      "primName": "Accessibility",
+      "runtime": "AccessibilityComponent",
+      "fields": [
+        {
+          "name": "isEnabled",
+          "type": "bool",
+          "verified": true
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "verified": true
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.InputTarget",
+      "primName": "InputTarget",
+      "runtime": "InputTargetComponent",
+      "fields": [
+        {
+          "name": "allowsIndirectInput",
+          "type": "bool",
+          "verified": true
+        },
+        {
+          "name": "allowsDirectTouchInput",
+          "type": "bool",
+          "verified": false
+        },
+        {
+          "name": "allowsDirectPinchInput",
+          "type": "bool",
+          "verified": false
+        },
+        {
+          "name": "hitTestingType",
+          "type": "token",
+          "allowed": [
+            "Strong",
+            "Weak",
+            "Hierarchical"
+          ],
+          "verified": false
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.GroundingShadow",
+      "primName": "GroundingShadow",
+      "runtime": "GroundingShadowComponent",
+      "fields": [
+        {
+          "name": "enableIBLShadow",
+          "type": "bool",
+          "verified": true
+        },
+        {
+          "name": "enableMeshShadow",
+          "type": "bool",
+          "verified": true
+        },
+        {
+          "name": "enableReceiveIBLShadow",
+          "type": "bool",
+          "verified": false
+        },
+        {
+          "name": "enableReceiveMeshShadow",
+          "type": "bool",
+          "verified": false
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.HierarchicalFade",
+      "primName": "HierarchicalFade",
+      "runtime": "OpacityComponent",
+      "fields": [
+        {
+          "name": "opacity",
+          "type": "float",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.Billboard",
+      "primName": "Billboard",
+      "runtime": "BillboardComponent",
+      "fields": [
+        {
+          "name": "blendFactor",
+          "type": "float",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.CharacterController",
+      "primName": "CharacterController",
+      "runtime": "CharacterControllerComponent",
+      "structs": [
+        {
+          "name": "m_controllerDesc",
+          "fields": [
+            {
+              "name": "extents",
+              "type": "float3",
+              "verified": true
+            },
+            {
+              "name": "skinWidth",
+              "type": "float",
+              "verified": true
+            },
+            {
+              "name": "slopeLimit",
+              "type": "float",
+              "verified": true
+            },
+            {
+              "name": "stepLimit",
+              "type": "float",
+              "verified": true
+            }
+          ],
+          "structs": [
+            {
+              "name": "collisionFilter",
+              "fields": [
+                {
+                  "name": "group",
+                  "type": "uint",
+                  "verified": true
+                },
+                {
+                  "name": "mask",
+                  "type": "uint",
+                  "verified": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.PointLight",
+      "primName": "PointLight",
+      "runtime": "PointLightComponent",
+      "fields": [
+        {
+          "name": "color",
+          "type": "float3",
+          "verified": true
+        },
+        {
+          "name": "intensity",
+          "type": "float",
+          "verified": true
+        },
+        {
+          "name": "attenuationRadius",
+          "type": "float",
+          "verified": true
+        },
+        {
+          "name": "attenuationFalloffExponent",
+          "type": "float",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.SpotLight",
+      "primName": "SpotLight",
+      "runtime": "SpotLightComponent",
+      "fields": [
+        {
+          "name": "color",
+          "type": "float3",
+          "verified": true
+        },
+        {
+          "name": "intensity",
+          "type": "float",
+          "verified": true
+        },
+        {
+          "name": "attenuationRadius",
+          "type": "float",
+          "verified": true
+        },
+        {
+          "name": "attenuationFalloffExponent",
+          "type": "float",
+          "verified": true
+        },
+        {
+          "name": "innerAngle",
+          "type": "float",
+          "verified": true
+        },
+        {
+          "name": "outerAngle",
+          "type": "float",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.DirectionalLight",
+      "primName": "DirectionalLight",
+      "runtime": "DirectionalLightComponent",
+      "fields": [
+        {
+          "name": "color",
+          "type": "float3",
+          "verified": true
+        },
+        {
+          "name": "intensity",
+          "type": "float",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.ImageBasedLightReceiver",
+      "primName": "ImageBasedLightReceiver",
+      "runtime": "ImageBasedLightReceiverComponent",
+      "relationships": [
+        {
+          "name": "iblEntity",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.WorldRoot",
+      "primName": "WorldRoot",
+      "runtime": "WorldComponent"
+    },
+    {
+      "id": "RealityKit.Portal",
+      "primName": "Portal",
+      "runtime": "PortalComponent"
+    },
+    {
+      "id": "RealityKit.CustomDockingRegion",
+      "primName": "CustomDockingRegion",
+      "runtime": "DockingRegionComponent",
+      "structs": [
+        {
+          "name": "m_bounds",
+          "fields": [
+            {
+              "name": "min",
+              "type": "float3",
+              "verified": false
+            },
+            {
+              "name": "max",
+              "type": "float3",
+              "verified": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "RealityKit.ImageBasedLight",
+      "primName": "ImageBasedLight",
+      "runtime": "ImageBasedLightComponent",
+      "openFields": true,
+      "fieldsSpec": "scene-usd.md 4.3 (asset form open, Q2)"
+    },
+    {
+      "id": "RealityKit.VFXEmitter",
+      "primName": "VFXEmitter",
+      "runtime": "ParticleEmitterComponent",
+      "openFields": true,
+      "fieldsSpec": "particles-audio.md"
+    },
+    {
+      "id": "RealityKit.SpatialAudio",
+      "primName": "SpatialAudio",
+      "runtime": "SpatialAudioComponent",
+      "openFields": true,
+      "fieldsSpec": "particles-audio.md"
+    },
+    {
+      "id": "RealityKit.AmbientAudio",
+      "primName": "AmbientAudio",
+      "runtime": "AmbientAudioComponent",
+      "openFields": true,
+      "fieldsSpec": "particles-audio.md"
+    },
+    {
+      "id": "RealityKit.ChannelAudio",
+      "primName": "ChannelAudio",
+      "runtime": "ChannelAudioComponent",
+      "openFields": true,
+      "fieldsSpec": "particles-audio.md"
+    },
+    {
+      "id": "RealityKit.AudioLibrary",
+      "primName": "AudioLibrary",
+      "runtime": "AudioLibraryComponent",
+      "openFields": true,
+      "fieldsSpec": "particles-audio.md"
+    },
+    {
+      "id": "RealityKit.AudioMixGroups",
+      "primName": "AudioMixGroups",
+      "runtime": "AudioMixGroupsComponent",
+      "openFields": true,
+      "fieldsSpec": "particles-audio.md"
+    },
+    {
+      "id": "RealityKit.Reverb",
+      "primName": "Reverb",
+      "runtime": "ReverbComponent",
+      "openFields": true,
+      "fieldsSpec": "particles-audio.md"
+    },
+    {
+      "id": "RealityKit.AnimationLibrary",
+      "primName": "AnimationLibrary",
+      "runtime": "AnimationLibraryComponent",
+      "openFields": true,
+      "fieldsSpec": "timelines-behaviors.md"
+    }
+  ]
+}

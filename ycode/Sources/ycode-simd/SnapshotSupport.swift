@@ -368,6 +368,8 @@ final class SnapshotSupport: @unchecked Sendable {
         Thread.detachNewThread { [self] in
             while StopSignal.received.load(ordering: .relaxed) == 0 { usleep(50_000) }
             let sig = StopSignal.received.load(ordering: .relaxed)
+            // Gauge's trace is written before the save (profiler.md §3.1).
+            GaugeRecorder.shared?.finish(reason: "stop (signal \(sig))")
             beforeStop?()
             if !stopAndSave(reason: "signal \(sig)") {
                 // No snapshot: the guest shuts down cleanly (the session

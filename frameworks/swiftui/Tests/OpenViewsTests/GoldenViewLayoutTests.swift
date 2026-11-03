@@ -758,6 +758,78 @@ struct GoldenViewLayoutTests {
         Golden.run(c) { ViewGraph.layoutNode(for: HStack { Text("A"); Divider(); Text("B") }) }
     }
 
+    @Test("image.symbol — Image(systemName: \"star.fill\")")
+    func goldenView_image_symbol() {
+        let c = GoldenCase(
+            id: "view:image.symbol", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 22, 20.67),
+                .init(0, 0, 22, 20.67),
+                .init(inf, inf, 22, 20.67),
+                .init(100, nil, 22, 20.67),
+                .init(nil, 100, 22, 20.67),
+                .init(100, 100, 22, 20.67),
+                .init(300, 500, 22, 20.67),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Image(systemName: "star.fill")) }
+    }
+
+    @Test("image.symbol.scaleSmall — Image(systemName: \"star.fill\").imageScale(.small)")
+    func goldenView_image_symbol_scaleSmall() {
+        let c = GoldenCase(
+            id: "view:image.symbol.scaleSmall", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 17.67, 16.33),
+                .init(0, 0, 17.67, 16.33),
+                .init(inf, inf, 17.67, 16.33),
+                .init(100, nil, 17.67, 16.33),
+                .init(nil, 100, 17.67, 16.33),
+                .init(100, 100, 17.67, 16.33),
+                .init(300, 500, 17.67, 16.33),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Image(systemName: "star.fill").imageScale(.small)) }
+    }
+
+    @Test("image.symbol.scaleLarge — Image(systemName: \"star.fill\").imageScale(.large)")
+    func goldenView_image_symbol_scaleLarge() {
+        let c = GoldenCase(
+            id: "view:image.symbol.scaleLarge", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 28, 26.67),
+                .init(0, 0, 28, 26.67),
+                .init(inf, inf, 28, 26.67),
+                .init(100, nil, 28, 26.67),
+                .init(nil, 100, 28, 26.67),
+                .init(100, 100, 28, 26.67),
+                .init(300, 500, 28, 26.67),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Image(systemName: "star.fill").imageScale(.large)) }
+    }
+
+    @Test("image.symbol.wide — Image(systemName: \"rectangle.portrait.and.arrow.right\")")
+    func goldenView_image_symbol_wide() {
+        let c = GoldenCase(
+            id: "view:image.symbol.wide", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 23.33, 20.67),
+                .init(0, 0, 23.33, 20.67),
+                .init(inf, inf, 23.33, 20.67),
+                .init(100, nil, 23.33, 20.67),
+                .init(nil, 100, 23.33, 20.67),
+                .init(100, 100, 23.33, 20.67),
+                .init(300, 500, 23.33, 20.67),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Image(systemName: "rectangle.portrait.and.arrow.right")) }
+    }
+
     @Test("image.symbol.resizable — Image(systemName: \"star.fill\").resizable()")
     func goldenView_image_symbol_resizable() {
         let c = GoldenCase(
@@ -792,6 +864,24 @@ struct GoldenViewLayoutTests {
             frames: [:],
             baselines: nil)
         Golden.run(c) { ViewGraph.layoutNode(for: Image(systemName: "star.fill").resizable().scaledToFit()) }
+    }
+
+    @Test("label — Label(\"Title\", systemImage: \"star\")")
+    func goldenView_label() {
+        let c = GoldenCase(
+            id: "view:label", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 63, 20.99),
+                .init(0, 0, 30, 20.67),
+                .init(inf, inf, 63, 20.99),
+                .init(100, nil, 63, 20.99),
+                .init(nil, 100, 63, 20.99),
+                .init(100, 100, 63, 20.99),
+                .init(300, 500, 63, 20.99),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Label("Title", systemImage: "star")) }
     }
 
     @Test("hstack.texts — HStack { Text(\"A\").probe(\"a\"); Text(\"B\").probe(\"b\") }")
@@ -2044,6 +2134,408 @@ struct GoldenViewLayoutTests {
             ],
             baselines: (16.33, 16.33))
         Golden.run(c) { ViewGraph.layoutNode(for: ViewThatFits { Text(Fixture.longText).fixedSize().probe("a"); Text("short").probe("b") }) }
+    }
+
+    @Test("button.default — Button(\"Tap\") {}")
+    func goldenView_button_default() {
+        let c = GoldenCase(
+            id: "view:button.default", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 27.67, 20.33),
+                .init(0, 0, 0, 0),
+                .init(inf, inf, 27.67, 20.33),
+                .init(100, nil, 27.67, 20.33),
+                .init(nil, 100, 27.67, 20.33),
+                .init(100, 100, 27.67, 20.33),
+                .init(300, 500, 27.67, 20.33),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Button("Tap") {}) }
+    }
+
+    @Test("button.bordered — Button(\"Tap\") {}.buttonStyle(.bordered)")
+    func goldenView_button_bordered() {
+        let c = GoldenCase(
+            id: "view:button.bordered", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 51.67, 34.33),
+                .init(0, 0, 24, 14),
+                .init(inf, inf, 51.67, 34.33),
+                .init(100, nil, 51.67, 34.33),
+                .init(nil, 100, 51.67, 34.33),
+                .init(100, 100, 51.67, 34.33),
+                .init(300, 500, 51.67, 34.33),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Button("Tap") {}.buttonStyle(.bordered)) }
+    }
+
+    @Test("button.borderedProminent — Button(\"Tap\") {}.buttonStyle(.borderedProminent)")
+    func goldenView_button_borderedProminent() {
+        let c = GoldenCase(
+            id: "view:button.borderedProminent", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 51.67, 34.33),
+                .init(0, 0, 24, 14),
+                .init(inf, inf, 51.67, 34.33),
+                .init(100, nil, 51.67, 34.33),
+                .init(nil, 100, 51.67, 34.33),
+                .init(100, 100, 51.67, 34.33),
+                .init(300, 500, 51.67, 34.33),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Button("Tap") {}.buttonStyle(.borderedProminent)) }
+    }
+
+    @Test("button.glass — Button(\"Tap\") {}.buttonStyle(.glass)")
+    func goldenView_button_glass() {
+        let c = GoldenCase(
+            id: "view:button.glass", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 51.67, 34.33),
+                .init(0, 0, 24, 14),
+                .init(inf, inf, 51.67, 34.33),
+                .init(100, nil, 51.67, 34.33),
+                .init(nil, 100, 51.67, 34.33),
+                .init(100, 100, 51.67, 34.33),
+                .init(300, 500, 51.67, 34.33),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Button("Tap") {}.buttonStyle(.glass)) }
+    }
+
+    @Test("button.borderless — Button(\"Tap\") {}.buttonStyle(.borderless)")
+    func goldenView_button_borderless() {
+        let c = GoldenCase(
+            id: "view:button.borderless", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 27.67, 20.33),
+                .init(0, 0, 0, 0),
+                .init(inf, inf, 27.67, 20.33),
+                .init(100, nil, 27.67, 20.33),
+                .init(nil, 100, 27.67, 20.33),
+                .init(100, 100, 27.67, 20.33),
+                .init(300, 500, 27.67, 20.33),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Button("Tap") {}.buttonStyle(.borderless)) }
+    }
+
+    @Test("button.plain — Button(\"Tap\") {}.buttonStyle(.plain)")
+    func goldenView_button_plain() {
+        let c = GoldenCase(
+            id: "view:button.plain", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 27.67, 20.33),
+                .init(0, 0, 0, 0),
+                .init(inf, inf, 27.67, 20.33),
+                .init(100, nil, 27.67, 20.33),
+                .init(nil, 100, 27.67, 20.33),
+                .init(100, 100, 27.67, 20.33),
+                .init(300, 500, 27.67, 20.33),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Button("Tap") {}.buttonStyle(.plain)) }
+    }
+
+    @Test("button.large — Button(\"Tap\") {}.buttonStyle(.borderedProminent).controlSize(.large)")
+    func goldenView_button_large() {
+        let c = GoldenCase(
+            id: "view:button.large", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 67.67, 50.33),
+                .init(0, 0, 40, 30),
+                .init(inf, inf, 67.67, 50.33),
+                .init(100, nil, 67.67, 50.33),
+                .init(nil, 100, 67.67, 50.33),
+                .init(100, 100, 67.67, 50.33),
+                .init(300, 500, 67.67, 50.33),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Button("Tap") {}.buttonStyle(.borderedProminent).controlSize(.large)) }
+    }
+
+    @Test("toggle — Toggle(\"On\", isOn: .constant(true))")
+    func goldenView_toggle() {
+        let c = GoldenCase(
+            id: "view:toggle", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 91.33, 28),
+                .init(0, 0, 69, 28),
+                .init(inf, inf, inf, 28),
+                .init(100, nil, 100, 28),
+                .init(nil, 100, 91.33, 28),
+                .init(100, 100, 100, 28),
+                .init(300, 500, 300, 28),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Toggle("On", isOn: .constant(true))) }
+    }
+
+    @Test("toggle.labelsHidden — Toggle(\"On\", isOn: .constant(true)).labelsHidden()")
+    func goldenView_toggle_labelsHidden() {
+        let c = GoldenCase(
+            id: "view:toggle.labelsHidden", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 61, 28),
+                .init(0, 0, 61, 28),
+                .init(inf, inf, 61, 28),
+                .init(100, nil, 61, 28),
+                .init(nil, 100, 61, 28),
+                .init(100, 100, 61, 28),
+                .init(300, 500, 61, 28),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Toggle("On", isOn: .constant(true)).labelsHidden()) }
+    }
+
+    @Test("slider — Slider(value: .constant(0.5))")
+    func goldenView_slider() {
+        let c = GoldenCase(
+            id: "view:slider", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 0, 31),
+                .init(0, 0, 0, 31),
+                .init(inf, inf, inf, 31),
+                .init(100, nil, 100, 31),
+                .init(nil, 100, 0, 31),
+                .init(100, 100, 100, 31),
+                .init(300, 500, 300, 31),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Slider(value: .constant(0.5))) }
+    }
+
+    @Test("stepper — Stepper(\"S\", value: .constant(1))")
+    func goldenView_stepper() {
+        let c = GoldenCase(
+            id: "view:stepper", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 112.67, 32),
+                .init(0, 0, 102, 32),
+                .init(inf, inf, inf, 32),
+                .init(100, nil, 102, 32),
+                .init(nil, 100, 112.67, 32),
+                .init(100, 100, 102, 32),
+                .init(300, 500, 300, 32),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Stepper("S", value: .constant(1))) }
+    }
+
+    @Test("progress.spinner — ProgressView()")
+    func goldenView_progress_spinner() {
+        let c = GoldenCase(
+            id: "view:progress.spinner", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 20, 20),
+                .init(0, 0, 20, 20),
+                .init(inf, inf, 20, 20),
+                .init(100, nil, 20, 20),
+                .init(nil, 100, 20, 20),
+                .init(100, 100, 20, 20),
+                .init(300, 500, 20, 20),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: ProgressView()) }
+    }
+
+    @Test("progress.linear — ProgressView(value: 0.5)")
+    func goldenView_progress_linear() {
+        let c = GoldenCase(
+            id: "view:progress.linear", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 0, 4),
+                .init(0, 0, 0, 4),
+                .init(inf, inf, inf, 4),
+                .init(100, nil, 100, 4),
+                .init(nil, 100, 0, 4),
+                .init(100, 100, 100, 4),
+                .init(300, 500, 300, 4),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: ProgressView(value: 0.5)) }
+    }
+
+    @Test("picker.segmented — Picker(\"P\", selection: .constant(0)) { Text(\"A\").tag(0); Text(\"Bee\").tag(1) }.pickerStyle(.segmented)")
+    func goldenView_picker_segmented() {
+        let c = GoldenCase(
+            id: "view:picker.segmented", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 84, 31),
+                .init(0, 0, 0, 31),
+                .init(inf, inf, inf, 31),
+                .init(100, nil, 100, 31),
+                .init(nil, 100, 84, 31),
+                .init(100, 100, 100, 31),
+                .init(300, 500, 300, 31),
+            ],
+            frames: [:],
+            baselines: (20.67, 20.67))
+        Golden.run(c) { ViewGraph.layoutNode(for: Picker("P", selection: .constant(0)) { Text("A").tag(0); Text("Bee").tag(1) }.pickerStyle(.segmented)) }
+    }
+
+    @Test("textfield.plain — TextField(\"Placeholder\", text: .constant(\"\"))")
+    func goldenView_textfield_plain() {
+        let c = GoldenCase(
+            id: "view:textfield.plain", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 90, 22),
+                .init(0, 0, 0, 22),
+                .init(inf, inf, inf, 22),
+                .init(100, nil, 100, 22),
+                .init(nil, 100, 90, 22),
+                .init(100, 100, 100, 22),
+                .init(300, 500, 300, 22),
+            ],
+            frames: [:],
+            baselines: (17.33, 17.33))
+        Golden.run(c) { ViewGraph.layoutNode(for: TextField("Placeholder", text: .constant(""))) }
+    }
+
+    @Test("textfield.rounded — TextField(\"Placeholder\", text: .constant(\"\")).textFieldStyle(.roundedBorder)")
+    func goldenView_textfield_rounded() {
+        let c = GoldenCase(
+            id: "view:textfield.rounded", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 118, 34),
+                .init(0, 0, 0, 34),
+                .init(inf, inf, inf, 34),
+                .init(100, nil, 100, 34),
+                .init(nil, 100, 118, 34),
+                .init(100, 100, 100, 34),
+                .init(300, 500, 300, 34),
+            ],
+            frames: [:],
+            baselines: (23.33, 23.33))
+        Golden.run(c) { ViewGraph.layoutNode(for: TextField("Placeholder", text: .constant("")).textFieldStyle(.roundedBorder)) }
+    }
+
+    @Test("secureField — SecureField(\"Password\", text: .constant(\"\"))")
+    func goldenView_secureField() {
+        let c = GoldenCase(
+            id: "view:secureField", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 73.33, 21),
+                .init(0, 0, 0, 21),
+                .init(inf, inf, inf, 21),
+                .init(100, nil, 100, 21),
+                .init(nil, 100, 73.33, 21),
+                .init(100, 100, 100, 21),
+                .init(300, 500, 300, 21),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: SecureField("Password", text: .constant(""))) }
+    }
+
+    @Test("datePicker.compact — DatePicker(\"D\", selection: .constant(Date(timeIntervalSince1970: 0)), displayedComponents: .date)")
+    func goldenView_datePicker_compact() {
+        let c = GoldenCase(
+            id: "view:datePicker.compact", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 142.67, 34.33),
+                .init(0, 0, 130.67, 34.33),
+                .init(inf, inf, inf, 34.33),
+                .init(100, nil, 130.67, 34.33),
+                .init(nil, 100, 142.67, 34.33),
+                .init(100, 100, 130.67, 34.33),
+                .init(300, 500, 300, 34.33),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: DatePicker("D", selection: .constant(Date(timeIntervalSince1970: 0)), displayedComponents: .date).environment(\.timeZone, TimeZone(identifier: "UTC")!).environment(\.locale, Locale(identifier: "en_US"))) }
+    }
+
+    @Test("gauge — Gauge(value: 0.5) { Text(\"G\") }")
+    func goldenView_gauge() {
+        let c = GoldenCase(
+            id: "view:gauge", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 12.33, 46.98),
+                .init(0, 0, 0, 26.64),
+                .init(inf, inf, inf, 46.98),
+                .init(100, nil, 100, 46.98),
+                .init(nil, 100, 12.33, 46.98),
+                .init(100, 100, 100, 46.98),
+                .init(300, 500, 300, 46.98),
+            ],
+            frames: [:],
+            baselines: (16.33, 16.33))
+        Golden.run(c) { ViewGraph.layoutNode(for: Gauge(value: 0.5) { Text("G") }) }
+    }
+
+    @Test("link — Link(\"Ycode\", destination: URL(string: \"https://example.com\")!)")
+    func goldenView_link() {
+        let c = GoldenCase(
+            id: "view:link", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 47.33, 20.33),
+                .init(0, 0, 0, 0),
+                .init(inf, inf, 47.33, 20.33),
+                .init(100, nil, 47.33, 20.33),
+                .init(nil, 100, 47.33, 20.33),
+                .init(100, 100, 47.33, 20.33),
+                .init(300, 500, 47.33, 20.33),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { ViewGraph.layoutNode(for: Link("Ycode", destination: URL(string: "https://example.com")!)) }
+    }
+
+    @Test("scrollView — ScrollView { VStack { Text(\"A\").probe(\"a\"); Color.red.frame(height: 1000).probe(\"c\") } }")
+    func goldenView_scrollView() {
+        let c = GoldenCase(
+            id: "view:scrollView", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 11.33, 1030.98),
+                .init(0, 0, 0, 0),
+                .init(inf, inf, inf, inf),
+                .init(100, nil, 100, 1030.98),
+                .init(nil, 100, 11.33, 100),
+                .init(100, 100, 100, 100),
+                .init(300, 500, 300, 500),
+            ],
+            frames: [
+                "a": CGRect(144.33, 0, 11.33, 20.33),
+                "c": CGRect(0, 30.98, 300, 1000),
+            ],
+            baselines: (500, 500))
+        Golden.run(c) { ViewGraph.layoutNode(for: ScrollView { VStack { Text("A").probe("a"); Color.red.frame(height: 1000).probe("c") } }) }
+    }
+
+    @Test("scrollView.horizontal — ScrollView(.horizontal) { HStack { Text(\"A\").probe(\"a\"); Color.red.frame(width: 1000).probe(\"c\") } }")
+    func goldenView_scrollView_horizontal() {
+        let c = GoldenCase(
+            id: "view:scrollView.horizontal", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 1019.33, 20.33),
+                .init(0, 0, 0, 20.33),
+                .init(inf, inf, inf, inf),
+                .init(100, nil, 100, 20.33),
+                .init(nil, 100, 1019.33, 100),
+                .init(100, 100, 100, 100),
+                .init(300, 500, 300, 500),
+            ],
+            frames: [
+                "a": CGRect(0, 239.83, 11.33, 20.33),
+                "c": CGRect(19.33, 0, 1000, 500),
+            ],
+            baselines: (500, 500))
+        Golden.run(c) { ViewGraph.layoutNode(for: ScrollView(.horizontal) { HStack { Text("A").probe("a"); Color.red.frame(width: 1000).probe("c") } }) }
     }
 
 }

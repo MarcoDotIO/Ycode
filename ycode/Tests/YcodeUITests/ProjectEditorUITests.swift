@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 import YcodeProject
 @testable import YcodeUI
 
@@ -11,7 +12,7 @@ import YcodeProject
 @Suite struct ProjectEditorUITests {
     func controller() throws -> ProjectEditorController {
         _ = NSApplication.shared
-        let pe = ProjectEditorController(model: try ProjectEditorReferenceTests().model())
+        let pe = ProjectEditorController(model: try ProjectEditorFixture().model())
         _ = pe.view
         return pe
     }
@@ -165,7 +166,7 @@ import YcodeProject
         let proj = dir.appendingPathComponent("App.xcodeproj")
         try FileManager.default.createDirectory(at: proj, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        try ProjectEditorReferenceTests.pbxproj.write(to: proj.appendingPathComponent("project.pbxproj"), atomically: true, encoding: .utf8)
+        try ProjectEditorFixture.pbxproj.write(to: proj.appendingPathComponent("project.pbxproj"), atomically: true, encoding: .utf8)
         let insp = InspectorAreaController()
         _ = insp.view
         insp.show(file: proj)

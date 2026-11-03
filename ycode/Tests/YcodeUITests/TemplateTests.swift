@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeBuild
+@testable import YcodeIDECore
 import YcodeProject
 @testable import YcodeUI
 
@@ -9,13 +10,6 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 
 @MainActor
 @Suite(.serialized, .heavyIntegration, .timeLimit(.minutes(5))) struct TemplateTests {
-    @Test func fileTemplateContents() {
-        #expect(FileTemplate.swiftClass.files(named: "Widget").map(\.0) == ["Widget.swift"])
-        #expect(FileTemplate.objcClass.files(named: "Widget").map(\.0) == ["Widget.h", "Widget.m"])
-        #expect(FileTemplate.propertyList.files(named: "Config")[0].1.contains("<dict/>"))
-        #expect(FileTemplate.empty.files(named: "README").first?.1 == "")
-    }
-
     @Test func newProjectsBuildAndNewFilesJoinTheProject() async throws {
         _ = NSApplication.shared
         let location = ycodeDir.appendingPathComponent(".build-ide/new-projects")
@@ -29,11 +23,11 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         defer { td.remove() }
         hostWindow.templateDefaults = td.defaults
         hostWindow.newProjectLocation = location
-        let sheet = hostWindow.projectPickerChose(1)
+        let sheet = try #require(hostWindow.projectPickerChose(1))
         #expect(sheet.steps.index == 1 && sheet.selectedEntry?.title == "Command Line Tool")
         #expect(!sheet.options.isNextEnabled)
-        sheet.options.productName = "Hello Tool"
-        sheet.options.organizationIdentifier = "org.ycode.tests"
+        sheet.setOption(TemplateOptionID.productName, "Hello Tool")
+        sheet.setOption(TemplateOptionID.organizationIdentifier, "org.ycode.tests")
         sheet.nextClicked()
         let toolProj = try #require(hostWindow.lastCreatedProject)
         #expect(toolProj.lastPathComponent == "Hello Tool.xcodeproj")
@@ -78,13 +72,14 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         _ = try WindowSnapshotTests().render(fileSheet.view, to: "new-file-sheet.png")
         _ = try wc.createFile(entry: try #require(fileSheet.selectedEntry), name: "Widget")
         let pbx = try String(contentsOf: toolProj.appendingPathComponent("project.pbxproj"), encoding: .utf8)
-        #expect(pbx.contains("/* Widget.m in Sources */") && pbx.contains("path = Widget.h;") && !pbx.contains("Widget.h in Sources"))
+        // The tool's folder is synchronized: new files need no project change.
+        #expect(!pbx.contains("Widget.m"))
         let folder = toolProj.deletingLastPathComponent().appendingPathComponent("Hello Tool")
         #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Widget.m").path))
         #expect(wc.editor.fileURL?.lastPathComponent == "Widget.h")
         #expect(session.model.root.allFiles.contains { $0.name == "Widget.m" })
         _ = try wc.createFile(.swiftClass, name: "Gadget")
-        #expect((try String(contentsOf: toolProj.appendingPathComponent("project.pbxproj"), encoding: .utf8)).contains("/* Gadget.swift in Sources */"))
+        #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Gadget.swift").path))
         #expect(throws: NewFileError.self) { try wc.createFile(.swiftClass, name: "Gadget") }
     }
 }

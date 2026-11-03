@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The editor area: a tab bar (shown with two or more tabs) above the
 /// selected tab, which holds one or more editors split side by side or

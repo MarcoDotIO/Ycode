@@ -41,6 +41,10 @@ public final class LoopbackServer: @unchecked Sendable {
         /// between them) so tests can stream.
         public var chunks: [Data]
         public var delay: TimeInterval
+        /// A body written while it is produced (server-sent events): called
+        /// on the connection's thread after the head and the chunks; `write`
+        /// returns false once the client has gone.
+        public var stream: (@Sendable (_ write: @escaping @Sendable (Data) -> Bool) -> Void)?
         public init(status: Int = 200, contentType: String = "text/plain; charset=utf-8", body: Data = Data(), chunks: [Data]? = nil,
                     delay: TimeInterval = 0, headers: [String: String] = [:]) {
             self.status = status
@@ -149,7 +153,7 @@ public final class LoopbackServer: @unchecked Sendable {
         defer { close(c) }
         guard let request = readRequest(c) else { return }
         let r = handler(request)
-        let reason = [200: "OK", 201: "Created", 204: "No Content", 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden",
+        let reason = [200: "OK", 201: "Created", 202: "Accepted", 204: "No Content", 405: "Method Not Allowed", 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden",
                       404: "Not Found", 429: "Too Many Requests", 500: "Internal Server Error", 503: "Service Unavailable"][r.status] ?? "Status"
         var head = "HTTP/1.1 \(r.status) \(reason)\r\nConnection: close\r\n"
         for (k, v) in r.headers.sorted(by: { $0.key < $1.key }) { head += "\(k): \(v)\r\n" }
@@ -158,6 +162,9 @@ public final class LoopbackServer: @unchecked Sendable {
         for (i, chunk) in r.chunks.enumerated() {
             if i > 0 && r.delay > 0 { Thread.sleep(forTimeInterval: r.delay) }
             if isStopped || !sendAll(c, chunk) { return }
+        }
+        if let stream = r.stream {
+            stream { [self] data in !isStopped && sendAll(c, data) }
         }
     }
 

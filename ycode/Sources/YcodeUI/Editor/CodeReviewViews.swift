@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// Code Review mode in the source editor (`specs/ide/reference-ui-4.md`
 /// §15): inline tints with gutter bars, the change stepper bar with the

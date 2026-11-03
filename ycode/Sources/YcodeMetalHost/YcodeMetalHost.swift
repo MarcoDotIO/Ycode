@@ -264,6 +264,13 @@ public protocol MetalBackend: AnyObject {
     /// The 64-bit value a shader uses for a texture (its heap index in the
     /// Vulkan back end); nil: none.
     func gpuResourceID(ofTexture handle: MetalHandle) -> UInt64?
+    /// Snapshots: the run of heap slots a texture holds (its ID and the
+    /// slots of its levels); nil: none, or a back end without slots.
+    func heapSlots(ofTexture handle: MetalHandle) -> (index: UInt32, count: UInt32)?
+    /// Restores, before any object is made again: the textures and samplers
+    /// that get these heap slots back when they are made (the slots are kept
+    /// from every other allocation), so the IDs the guest holds stay valid.
+    func reserveHeapSlots(textures: [MetalHandle: (index: UInt32, count: UInt32)], samplers: [MetalHandle: UInt32])
     /// Writes bytes into a buffer's memory as the guest's CPU sees it
     /// (argument-encoder set calls, `YCODE_METAL_ARGUMENT_ENCODER`); false
     /// when the buffer has no CPU-visible memory.
@@ -283,6 +290,11 @@ public protocol MetalBackend: AnyObject {
     /// driver's own teardown (`stage8-contract.md` §12).
     /// Called once no request can arrive any more; idempotent.
     func shutdown()
+    /// A back end that can lose its device and make it again
+    /// (metal-sim-protocol.md §8.7) calls `handler` after every object was
+    /// rebuilt; the service then writes argument-buffer members again whose
+    /// values changed (a buffer at a new GPU address).
+    func setDeviceResetHandler(_ handler: @escaping @Sendable () -> Void)
 }
 
 public extension MetalBackend {
@@ -294,6 +306,8 @@ public extension MetalBackend {
     func gpuAddress(ofBuffer handle: MetalHandle) -> UInt64? { nil }
     func gpuResourceID(ofSampler handle: MetalHandle) -> UInt64? { nil }
     func gpuResourceID(ofTexture handle: MetalHandle) -> UInt64? { nil }
+    func heapSlots(ofTexture handle: MetalHandle) -> (index: UInt32, count: UInt32)? { nil }
+    func reserveHeapSlots(textures: [MetalHandle: (index: UInt32, count: UInt32)], samplers: [MetalHandle: UInt32]) {}
     func writeBuffer(_ handle: MetalHandle, offset: Int, _ bytes: [UInt8]) -> Bool { false }
     /// Diagnostics: a one-line summary of the backend's state (nil: none).
     func diagnosticSummary() -> String? { nil }
@@ -301,6 +315,7 @@ public extension MetalBackend {
     func bufferContents(_ handle: MetalHandle) -> [UInt8]? { nil }
     func setBufferContents(_ handle: MetalHandle, _ bytes: [UInt8]) -> Bool { false }
     func shutdown() {}
+    func setDeviceResetHandler(_ handler: @escaping @Sendable () -> Void) {}
 }
 
 // CONTRACT-REQUEST (I3): IOSurfaceHostService keeps its Method-14 ports

@@ -159,6 +159,7 @@ struct Translator {
     bool callMath(llvm::CallInst *C, llvm::StringRef name);
     std::string imageType(const ImageKind &k, bool storage);
     std::string heapImage(const std::string &handle, const ImageKind &k, bool storage);
+    std::string srgbStorage(const std::string &handle, const std::string &v, bool encode);
     std::string heapSampler(const std::string &handle);
 };
 

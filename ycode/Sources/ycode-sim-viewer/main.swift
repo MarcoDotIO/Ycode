@@ -5,6 +5,7 @@
 
 #if os(macOS)
 import AppKit
+import YcodeRelease
 import YcodeDisplayStream
 import YcodeDeviceUI
 
@@ -36,6 +37,7 @@ var zoom: CGFloat?
 var scriptPath: String?
 var verbose = false
 
+YcodeRelease.handleVersionFlag(tool: "ycode-sim-viewer")
 var args = CommandLine.arguments.dropFirst().makeIterator()
 @MainActor func value(_ name: String) -> String {
     guard let v = args.next() else { FileHandle.standardError.write(Data("\(name) needs a value\n\(usage)\n".utf8)); exit(64) }
@@ -93,5 +95,11 @@ connection.start()
 runner?.start()
 app.run()
 #else
-print("ycode-sim-viewer runs on macOS; the device runs on a Linux simulator host (see scripts/ycode-sim-try).")
+// Linux: the SDL window (Sources/YcodeRemoteViewerSDL, display-stream.md §13).
+import Foundation
+import YcodeRelease
+import YcodeRemoteViewerSDL
+
+YcodeRelease.handleVersionFlag(tool: "ycode-sim-viewer")
+exit(LinuxViewer.main(Array(CommandLine.arguments.dropFirst())))
 #endif

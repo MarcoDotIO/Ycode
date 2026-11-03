@@ -122,7 +122,7 @@ enum InfoCommands {
 
     static func showTestPlans(_ inv: Invocation, plan: Plan, context ctx: XcodebuildContext) -> Int32 {
         guard let scheme = plan.scheme else { return 0 }
-        let names = scheme.testPlans.map { URL(fileURLWithPath: $0.reference).deletingPathExtension().lastPathComponent }
+        let names = scheme.testPlans.map { TestPlanFile.name(ofReference: $0.reference) }
         ctx.console.out("Test plans associated with the scheme \"\(scheme.name)\":")
         for n in names.isEmpty ? [scheme.name] : names { ctx.console.out("        " + n) }
         return 0

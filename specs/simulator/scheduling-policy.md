@@ -209,6 +209,21 @@ The quiet test is Ycode's stand-in for the Mac's mechanism: a darwin-bg
 `xpcproxy_sim` gets CPU and I/O only when nothing above it needs them. In
 Ycode the scarce resource is the kernel lock.
 
+**Shell-ready holds** (added 2026-11-01, `visionos.md` §10.26.1). A job
+whose label is in the system's shell-ready list stays held through boosts
+and the quiet test until the shell is ready; then it starts at once
+(reason `shell ready`); the bound (`timeout`) and `exit` still apply, and
+later spawns of the job are held as usual. On a visionOS device run the
+list is `com.apple.assistantd` (`YCODE_VISIONOS_SHELL_HOLD`: another
+comma-separated list, `0` none), and `ycode-simd` marks the shell ready
+when RealityLauncher runs or at the room's first lit frame. The release
+line names the last boost that the hold outlived.
+
+**The boost's source** (diagnostic, 2026-11-01): a release by `boost`
+logs the sender's pid and name and the message id of the last importance
+message queued for the held job (for example `from pid 145 apsd, message
+id 473000`; `1999646836` is XPC's message id).
+
 ### 4.3 Importance bookkeeping (either switch)
 
 - At send, a user message carries importance when the sending process is a
@@ -364,6 +379,16 @@ down with every serviced request, and a move is not free (§7.5).
 The default backend is `none` for the VMM in general and `cgroup` for a
 device run (§6, `YCODE_BOOT_PRIORITY`).
 
+**Background CPUs** (`YCODE_HOST_SCHED_BG_CPUS=N`, opt-in, added
+2026-11-01): with a backend on, a host thread applying class bg also sets
+its CPU affinity to the last N online CPUs, and any other class to all of
+them, as the Mac runs background work on its efficiency cores (Apple's
+public documentation on Apple silicon performance tuning, level 1).
+`sched_setaffinity` is looked up at run time (glibc declares it only with
+`_GNU_SOURCE`). One visionOS boot with N = 2 (`visionos.md` §10.26.1, `e1`)
+did not move assistantd's start-up past the shell's; it stays off by
+default.
+
 **Lock holders** (`YCODE_LOCK_HOLDER_PROMOTION`, default on with a
 backend; added 2026-10-27). xnu's turnstiles push the waiters' priority
 onto the owner of a kernel lock (§2.4). Ycode's kernel locks (L0, the
@@ -458,6 +483,8 @@ skipped. A waiter in a condition wait that takes the mutex back
 | `YCODE_HOST_SCHED` | none | `nice`, `cgroup` (§4.7) |
 | `YCODE_HOST_SCHED_BG_WEIGHT` | 5 | class 0's `cpu.weight` (1–10000), or `idle` for `cpu.idle` (§4.7) |
 | `YCODE_HOST_SCHED_DEMOTE_MS` | 50 | §4.7 demotion delay; `0` at once |
+| `YCODE_HOST_SCHED_BG_CPUS` | unset | §4.7: class bg host threads on the last N online CPUs |
+| `YCODE_VISIONOS_SHELL_HOLD` | `com.apple.assistantd` (visionOS device runs) | §4.2 shell-ready holds; a comma-separated list, `0` none |
 | `YCODE_HOST_SCHED_SELF_ZERO` | 1 | §4.7: a thread moves itself by writing `0`; `0` writes its id |
 | `YCODE_LOCK_HOLDER_PROMOTION` | `group` | §4.7 lock holders: `group`, `thread`, `0` (off) |
 | `YCODE_LOCK_PROMOTION_DELAY_US` | 200 | §4.7: a waiter raises the holder after waiting this long |
@@ -746,5 +773,6 @@ fileindexerd and intelligencetasksd crashes (`service-fidelity.md` §11,
 | Send turnstile: blocked senders push onto the receiver side (§4.6) | 1 (xnu `osfmk/ipc/ipc_port.c` send turnstile and its inheritor, `osfmk/kern/turnstile.c`) |
 | Timed boots with and without QoS and the cgroup backend (§7.4) | 3 (Thor, `ide-remote/bootcp` series C: runs `C-base-*`, `C-hand-*`, `C-qos-*`, `C-prof-qos`; series D: `D-dflt-*`, `D-off-*`; exit reports: kernel-lock hold, start-hold releases) |
 | Everything in §4–§6 | Ycode design |
+| Shell-ready holds; the boost's source; background CPUs (§4.2, §4.7) | Ycode design; `SchedPolicyTests.shellReadyHoldWaitsForTheShell`; Thor boots of `visionos.md` §10.26 |
 
 No disassembly or decompilation was used (level 5 not used).

@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 import YcodeProject
 
 /// The project editor's tab views (reference-ui-3.md §1): General and Info
@@ -720,9 +721,4 @@ extension ProjectEditorController {
     @objc func settingExpansionToggled(_ b: SettingDisclosure) {
         if expandedSettings.contains(b.value) { expandedSettings.remove(b.value) } else { expandedSettings.insert(b.value) }
     }
-}
-
-extension ProjectEditorModel {
-    /// The Combined view's value column: the shown level's name.
-    static func levelsColumnTitle(_ owner: String) -> String { owner }
 }

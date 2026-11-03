@@ -15,8 +15,27 @@
  * messages are dispatched as vendor-defined events whose data is a
  * dictionary in IOKit's text serialization (I3, §5.3 there).
  *
- * Clean-room Ycode code, written from specs/simulator/hid-input.md and
- * specs/simulator/foldable.md only, with public C, Mach, CoreFoundation,
+ * A watch (YCODE_SIMHID_DIGITAL_CROWN=1; specs/simulator/watchos.md W-9, §5.1,
+ * §5.2, §12, §13) gets the Digital Crown service (usage pair 0xFF0B/1,
+ * Built-In), from which each host crown message (kind 8) is dispatched as one
+ * scroll event carrying the signed delta unchanged; backboardd routes it to
+ * the keyboard focus. Its buttons service takes only the watch's button pairs
+ * (crown press 0x0C/0x40, side 0x0C/0x95, screen 0x0C/0x30 and, with
+ * YCODE_SIMHID_ACTION_BUTTON=1 on the Ultra types, the Action button
+ * 0xFF01/0x200); any other pair is ignored (§5.2). A watch gesture (kind 9)
+ * becomes one GenericGesture event (IOHIDFamily event type 39) made here and
+ * dispatched from the bundle's watch-gestures service (§5.2): double tap =
+ * gesture type 2 (HandTap) with tap count 2, flick = type 8 (HandFlick),
+ * phase Ended (event flags 0x4000000), relative; single tap makes no event.
+ *
+ * A Vision Pro (YCODE_SIMHID_VISION=1; specs/simulator/visionos.md §5.3,
+ * §5.5.2, V-10) gets the DigitalDial, PalomaPose, SelectionStream and
+ * Manipulator services; host pose (kind 10), selection (kind 11) and crown
+ * (kind 8) messages become the camera-pose, gaze-and-hands and dial events
+ * of §5.5.2 (see "visionOS" below).
+ *
+ * Clean-room Ycode code, written from specs/simulator/hid-input.md,
+ * specs/simulator/foldable.md, watchos.md and visionos.md only, with public C, Mach, CoreFoundation,
  * dispatch, IOKit (IOCFSerialize's text format, IOHIDFamily's event
  * constructors) and Objective-C runtime interfaces. Built without SDK headers like the framebuffer library: the
  * types and imported functions are declared here, and build.sh links
@@ -216,8 +235,23 @@ extern void IOHIDEventSetIntegerValue(IOHIDEventRef event, uint32_t field, CFInd
 typedef IOHIDEventRef (*VendorDefinedEventCreator)(CFAllocatorRef, uint64_t timeStamp, uint32_t usagePage, uint32_t usage,
                                                    uint32_t version, const uint8_t *data, CFIndex length, uint32_t options);
 typedef CFDataRef (*CFSerializer)(CFTypeRef object, uint32_t options);
+/* IOKitUser's scroll event constructor (public declaration; the axis values
+ * are IOHIDFloat, a double on 64-bit). Looked up at run time. */
+typedef IOHIDEventRef (*ScrollEventCreator)(CFAllocatorRef, uint64_t timeStamp, double x, double y, double z, uint32_t options);
+/* IOHIDFamily's GenericGesture constructor (HIDEventAccessors.h /
+ * IOHIDEvent.h, APSL 2.0: timestamp, gesture type, options), the generic
+ * constructor (type, timestamp, options), and the event-flags and phase
+ * setters. All looked up at run time. */
+typedef IOHIDEventRef (*GenericGestureCreator)(CFAllocatorRef, uint64_t timeStamp, uint32_t gestureType, uint32_t options);
+typedef IOHIDEventRef (*GenericEventCreator)(CFAllocatorRef, uint32_t type, uint64_t timeStamp, uint32_t options);
+typedef void (*EventFlagsSetter)(IOHIDEventRef, uint32_t flags);
+typedef void (*EventPhaseSetter)(IOHIDEventRef, uint32_t phase);
 
 #define TRANSDUCER_HAND 3u
+/* The scroll axis that carries the crown's delta (0 x, 1 y, 2 z; watchos.md §12). */
+#ifndef CROWN_AXIS_DEFAULT
+#define CROWN_AXIS_DEFAULT 1
+#endif
 #define FIELD_DIGITIZER_IS_DISPLAY_INTEGRATED 0xB0019u
 #define MASK_RANGE 0x1u
 #define MASK_TOUCH 0x2u
@@ -427,6 +461,11 @@ static struct service buttons, keyboard, touchscreen;
 /* Foldable devices (foldable.md §8.2): the second display's touch screen
  * and the device-motion control service. */
 static struct service innerTouchscreen, motion;
+/* A watch (watchos.md §5, W-9): the Digital Crown service; the service the
+ * GenericGesture events come from (§5.2). */
+static struct service crown, gestures;
+/* A watch: only its button pairs are dispatched (§5.2); actionButton on the Ultras. */
+static int watchButtons, actionButton;
 
 static void add_service(struct service *s) {
     if (s->added) return;
@@ -494,6 +533,25 @@ static void make_motion(void) {
     motion.properties = usage_properties(0xFF61, 0x5B);
     set_string(motion.properties, "Product", "Ycode Device Motion");
     set_string(motion.properties, "Transport", "Virtual");
+}
+
+/* watchos.md §5 (W-9): primary pair 0xFF0B/1 with DeviceUsagePairs, Built-In. */
+static void make_crown(void) {
+    crown.id = SERVICE_ID_BASE | 6;
+    crown.name = "digital crown service";
+    crown.properties = usage_properties(0xFF0B, 1);
+    set_true(crown.properties, "Built-In");
+    set_string(crown.properties, "Product", "Ycode Digital Crown");
+}
+
+/* watchos.md §5.2: the gesture events' own service (the reference's comes
+ * from watchgesturesd, primary page and usage 0); Built-In. */
+static void make_gestures(void) {
+    gestures.id = SERVICE_ID_BASE | 7;
+    gestures.name = "watch gestures service";
+    gestures.properties = usage_properties(0, 0);
+    set_true(gestures.properties, "Built-In");
+    set_string(gestures.properties, "Product", "Ycode Watch Gestures");
 }
 
 /* ---- The second built-in display (foldable.md §8.1 D1) ----
@@ -775,6 +833,359 @@ static void device_orientation(uint32_t code) {
     motion_event("orientation-picker-control", "enum", name, 0);
 }
 
+/* ---- The Digital Crown and watch gestures (watchos.md §5.1, §12) ----
+ * One scroll event per host message, the delta unchanged (the guest does the
+ * detents and acceleration). The axis that carries it is Ycode's choice
+ * (§12): YCODE_SIMHID_CROWN_AXIS x, y or z (default below). */
+
+static uint32_t le32(const uint8_t *p);
+static uint64_t le64(const uint8_t *p);
+static ScrollEventCreator scrollEventCreator;
+static int scrollResolved, crownAxis = -1;
+
+static void crown_rotation(double delta, uint32_t axisOverride) {
+    if (!crown.added) {
+        log_line("crown: no crown service (not a watch); dropped", 0, 0);
+        return;
+    }
+    if (!scrollResolved) {
+        scrollResolved = 1;
+        scrollEventCreator = (ScrollEventCreator)dlsym(RTLD_DEFAULT, "IOHIDEventCreateScrollEvent");
+        const char *axis = getenv("YCODE_SIMHID_CROWN_AXIS");
+        crownAxis = axis && axis[0] >= 'x' && axis[0] <= 'z' ? axis[0] - 'x' : CROWN_AXIS_DEFAULT;
+        log_line("crown: scroll event constructor found, axis (0 x, 1 y, 2 z)", scrollEventCreator != NULL, (uint64_t)crownAxis);
+    }
+    if (!scrollEventCreator) {
+        log_line("crown: the runtime has no scroll event constructor; dropped", 0, 0);
+        return;
+    }
+    double v[3] = {0, 0, 0};
+    /* Diagnostics: the message's second word may name the axis (1 x, 2 y, 3 z). */
+    v[axisOverride >= 1 && axisOverride <= 3 ? (int)axisOverride - 1 : crownAxis] = delta;
+    static uint32_t logged;
+    if (logged < 10) {
+        logged++;
+        int64_t milli = (int64_t)(delta * 1000);
+        log_line(milli < 0 ? "crown: scroll (-delta x 1000)" : "crown: scroll (delta x 1000)", (uint64_t)(milli < 0 ? -milli : milli), 0);
+    }
+    dispatch_from(&crown, scrollEventCreator(NULL, timestamp(), v[0], v[1], v[2], 0));
+}
+
+/* watchos.md §5.2 (the values of HIDHostService.WatchGestureEvent). */
+#define EVENT_TYPE_GENERIC_GESTURE 39u
+#define FIELD_GESTURE_TYPE (EVENT_TYPE_GENERIC_GESTURE << 16)
+#define FIELD_GESTURE_TAP_COUNT ((EVENT_TYPE_GENERIC_GESTURE << 16) | 1u)
+#define GESTURE_PHASE_ENDED 4u
+#define GESTURE_EVENT_FLAGS (GESTURE_PHASE_ENDED << 24)
+
+static GenericGestureCreator gestureCreator;
+static GenericEventCreator genericCreator;
+static EventFlagsSetter flagsSetter;
+static EventPhaseSetter phaseSetter;
+static int gestureResolved;
+
+static void watch_gesture(uint32_t gesture) {
+    /* §5.1's host numbering: 0 double tap, 1 flick, 2 single tap. */
+    static uint32_t logged;
+    uint32_t type, taps;
+    switch (gesture) {
+    case 0: type = 2, taps = 2; break; /* HandTap, two taps */
+    case 1: type = 8, taps = 0; break; /* HandFlick */
+    default:
+        /* Single tap: no receiver in the reference, no event; others unknown. */
+        if (logged++ < 20) log_line("watch gesture: no event for this gesture (2: single tap), ignored", gesture, 0);
+        return;
+    }
+    if (!gestures.added) {
+        log_line("watch gesture: no gestures service (not a watch); dropped", gesture, 0);
+        return;
+    }
+    if (!gestureResolved) {
+        gestureResolved = 1;
+        gestureCreator = (GenericGestureCreator)dlsym(RTLD_DEFAULT, "IOHIDEventCreateGenericGestureEvent");
+        genericCreator = (GenericEventCreator)dlsym(RTLD_DEFAULT, "IOHIDEventCreate");
+        flagsSetter = (EventFlagsSetter)dlsym(RTLD_DEFAULT, "IOHIDEventSetEventFlags");
+        phaseSetter = (EventPhaseSetter)dlsym(RTLD_DEFAULT, "IOHIDEventSetPhase");
+        log_line("watch gesture: constructors (gesture, generic), setters (flags, phase) found",
+                 (uint64_t)(gestureCreator != NULL) << 4 | (genericCreator != NULL),
+                 (uint64_t)(flagsSetter != NULL) << 4 | (phaseSetter != NULL));
+    }
+    /* Options carry the phase only when no setter exists (the constructors
+     * store their options as the event flags). */
+    uint32_t options = flagsSetter || phaseSetter ? 0 : GESTURE_EVENT_FLAGS;
+    uint64_t ts = timestamp();
+    IOHIDEventRef e = NULL;
+    if (gestureCreator) {
+        e = gestureCreator(NULL, ts, type, options);
+    } else if (genericCreator) {
+        e = genericCreator(NULL, EVENT_TYPE_GENERIC_GESTURE, ts, options);
+        if (e) IOHIDEventSetIntegerValue(e, FIELD_GESTURE_TYPE, (CFIndex)type);
+    }
+    if (!e) {
+        log_line("watch gesture: the runtime has no GenericGesture constructor; dropped", gesture, 0);
+        return;
+    }
+    if (taps) IOHIDEventSetIntegerValue(e, FIELD_GESTURE_TAP_COUNT, (CFIndex)taps);
+    if (flagsSetter) flagsSetter(e, GESTURE_EVENT_FLAGS);
+    else if (phaseSetter) phaseSetter(e, GESTURE_PHASE_ENDED);
+    if (logged++ < 20) log_line("watch gesture: GenericGesture dispatched (gesture type, tap count)", type, taps);
+    dispatch_from(&gestures, e);
+}
+
+/* ---- visionOS: camera pose, gaze and hands, Digital Crown (visionos.md §5.5.2, V-10) ----
+ * A Vision Pro (YCODE_SIMHID_VISION=1) gets four further services with the
+ * usage pairs of visionos.md §5.3: DigitalDial (1 / 0x37), PalomaPose
+ * (0xFF00 / 0x72), SelectionStream (0xFF00 / 0x71) and Manipulator
+ * (0xFF00 / 0x6F; published, never used). A host pose message (kind 10)
+ * becomes one vendor-defined event (0xFF00 / 0x72, version 13, no data,
+ * flags 0x1) with a Translation child (the camera position) and an
+ * Orientation child (quaternion, orientation type 3), dispatched from
+ * PalomaPose. A selection message (kind 11) becomes one vendor-defined
+ * event 0x6F (flags 0x2000003: phase Changed, absolute) with, unless it is
+ * selection-only, a left and a right hand child (0x70, data {pinching,
+ * chirality 2 left / 1 right, allowDirect}, flags 3 / 1, each with
+ * Translation and Orientation children), then the gaze child (0x71, flags
+ * 3) with an absolute Translation (ray origin) and an absolute Rotation
+ * (ray direction); dispatched from SelectionStream. The crown (kind 8)
+ * becomes a Scroll event (flags 0x10, y = the delta) from DigitalDial.
+ * Constructors and setters are IOHIDFamily's (IOHIDEventTypes.h,
+ * IOHIDEventFieldDefs.h, APSL 2.0), all looked up with dlsym. */
+
+#include "vision_orientation.h"
+
+#define EVENT_TYPE_TRANSLATION 4u
+#define EVENT_TYPE_ROTATION 5u
+#define EVENT_TYPE_ORIENTATION 10u
+#define FIELD_TRANSLATION(i) ((EVENT_TYPE_TRANSLATION << 16) | (i))
+#define FIELD_ROTATION(i) ((EVENT_TYPE_ROTATION << 16) | (i))
+/* The Orientation child's fields (type 3 in 10<<16|3, w x y z in 10<<16|8…11)
+ * are set by its constructor (vision_orientation.h). */
+#define OPTION_ABSOLUTE 0x1u
+#define VISION_PAGE 0xFF00u
+#define VISION_VERSION 13u
+#define VISION_USAGE_SELECTION 0x6Fu
+#define VISION_USAGE_HAND 0x70u
+#define VISION_USAGE_GAZE 0x71u
+#define VISION_USAGE_POSE 0x72u
+#define SELECTION_FLAGS 0x2000003u /* phase Changed (2) << 24 | absolute | collection */
+#define DIAL_FLAGS 0x10u
+
+typedef void (*FloatSetter)(IOHIDEventRef, uint32_t field, double value);
+typedef IOHIDEventRef (*Vector3Creator)(CFAllocatorRef, uint64_t timeStamp, double x, double y, double z, uint32_t options);
+
+static struct service dial, pose, selectionStream, manipulator;
+static int vision;
+static FloatSetter floatSetter;
+static Vector3Creator translationCreator, rotationCreator;
+static QuaternionOrientationCreator quaternionCreator;
+static int visionResolved;
+
+static void make_vision_service(struct service *s, uint64_t number, const char *name, int64_t page, int64_t usage, const char *product) {
+    s->id = SERVICE_ID_BASE | number;
+    s->name = name;
+    s->properties = usage_properties(page, usage);
+    set_true(s->properties, "Built-In");
+    set_string(s->properties, "Product", product);
+}
+
+static void resolve_vision_functions(void) {
+    if (visionResolved) return;
+    visionResolved = 1;
+    resolve_motion_functions(); /* the vendor-defined constructor */
+    if (!scrollResolved) {
+        scrollResolved = 1;
+        scrollEventCreator = (ScrollEventCreator)dlsym(RTLD_DEFAULT, "IOHIDEventCreateScrollEvent");
+        crownAxis = CROWN_AXIS_DEFAULT;
+    }
+    genericCreator = (GenericEventCreator)dlsym(RTLD_DEFAULT, "IOHIDEventCreate");
+    flagsSetter = (EventFlagsSetter)dlsym(RTLD_DEFAULT, "IOHIDEventSetEventFlags");
+    phaseSetter = (EventPhaseSetter)dlsym(RTLD_DEFAULT, "IOHIDEventSetPhase");
+    floatSetter = (FloatSetter)dlsym(RTLD_DEFAULT, "IOHIDEventSetFloatValue");
+    translationCreator = (Vector3Creator)dlsym(RTLD_DEFAULT, "IOHIDEventCreateTranslationEvent");
+    rotationCreator = (Vector3Creator)dlsym(RTLD_DEFAULT, "IOHIDEventCreateRotationEvent");
+    quaternionCreator = (QuaternionOrientationCreator)dlsym(RTLD_DEFAULT, "IOHIDEventCreateQuaternionOrientationEvent");
+    log_line("vision: vendor, generic, scroll constructors found (bits)",
+             (uint64_t)(vendorEventCreator != NULL) << 8 | (uint64_t)(genericCreator != NULL) << 4 | (scrollEventCreator != NULL),
+             (uint64_t)(quaternionCreator != NULL) << 16 | (uint64_t)(translationCreator != NULL) << 12 | (uint64_t)(rotationCreator != NULL) << 8 |
+                 (uint64_t)(floatSetter != NULL) << 4 | (flagsSetter != NULL));
+}
+
+/* Sets the event flags (the constructor's options when no setter exists). */
+static void set_flags(IOHIDEventRef e, uint32_t flags) {
+    if (e && flagsSetter) flagsSetter(e, flags);
+}
+
+/* A Translation (type 4) or Rotation (type 5) event with x, y, z. */
+static IOHIDEventRef vector_event(uint32_t type, uint64_t ts, const double v[3], uint32_t flags) {
+    Vector3Creator create = type == EVENT_TYPE_TRANSLATION ? translationCreator : rotationCreator;
+    IOHIDEventRef e = create ? create(NULL, ts, v[0], v[1], v[2], flags) : NULL;
+    if (!e && genericCreator && floatSetter) {
+        e = genericCreator(NULL, type, ts, flags);
+        for (uint32_t i = 0; e && i < 3; i++) floatSetter(e, (type << 16) | i, v[i]);
+    }
+    set_flags(e, flags);
+    return e;
+}
+
+/* An Orientation event (type 10) of orientation type 3 (quaternion w, x,
+ * y, z), made with IOHIDEventCreateQuaternionOrientationEvent: one made with
+ * the generic constructor stays type 0 and loses the quaternion
+ * (visionos.md §5.5.10). Without the constructor the pose and the hands go
+ * without their rotation (logged once). */
+static IOHIDEventRef quaternion_event(uint64_t ts, const double q[4], uint32_t flags) {
+    IOHIDEventRef e = (IOHIDEventRef)vision_quaternion_event(quaternionCreator, ts, q);
+    if (!e) {
+        static int logged;
+        if (!logged) {
+            logged = 1;
+            log_line("vision: IOHIDEventCreateQuaternionOrientationEvent missing; poses go without rotation", 0, 0);
+        }
+        return NULL;
+    }
+    set_flags(e, flags);
+    return e;
+}
+
+static IOHIDEventRef vendor_event(uint64_t ts, uint32_t usage, const uint8_t *data, CFIndex length, uint32_t flags) {
+    static const uint8_t none[1] = {0};
+    if (!vendorEventCreator) return NULL;
+    IOHIDEventRef e = vendorEventCreator(NULL, ts, VISION_PAGE, usage, VISION_VERSION, length ? data : none, length, flags);
+    set_flags(e, flags);
+    return e;
+}
+
+/* Appends `child` to `parent` and releases it (NULL children are skipped). */
+static void append(IOHIDEventRef parent, IOHIDEventRef child) {
+    if (!child) return;
+    if (parent) IOHIDEventAppendEvent(parent, child, 0);
+    CFRelease(child);
+}
+
+static double read_f64(const uint8_t *p) {
+    uint64_t bits = le64(p);
+    double v;
+    copy_bytes(&v, &bits, sizeof v);
+    return v == v && v < 1e9 && v > -1e9 ? v : 0; /* NaN and absurd values: 0 */
+}
+
+/* Kind 10: 7 f64, translation x, y, z, quaternion w, x, y, z (stage frame). */
+static void vision_pose(const uint8_t *k) {
+    if (!pose.added) {
+        log_line("vision: no pose service (not a Vision Pro); pose dropped", 0, 0);
+        return;
+    }
+    resolve_vision_functions();
+    uint64_t ts = timestamp();
+    double t[3] = {read_f64(k), read_f64(k + 8), read_f64(k + 16)};
+    double q[4] = {read_f64(k + 24), read_f64(k + 32), read_f64(k + 40), read_f64(k + 48)};
+    IOHIDEventRef parent = vendor_event(ts, VISION_USAGE_POSE, NULL, 0, OPTION_ABSOLUTE);
+    if (!parent) {
+        log_line("vision: the runtime has no vendor-defined event constructor; pose dropped", 0, 0);
+        return;
+    }
+    append(parent, vector_event(EVENT_TYPE_TRANSLATION, ts, t, 0));
+    append(parent, quaternion_event(ts, q, 0));
+    static uint32_t logged;
+    if (logged < 10) {
+        logged++;
+        log_line("vision: pose dispatched (x, z in mm)", (uint64_t)(int64_t)(t[0] * 1000), (uint64_t)(int64_t)(t[2] * 1000));
+    }
+    dispatch_from(&pose, parent);
+}
+
+/* One hand of kind 11 at `h` (48... bytes: u32 pinching, u32 allowDirect,
+ * u32 extra, u32 0, 7 f64): its 0x70 event. */
+static IOHIDEventRef vision_hand(uint64_t ts, const uint8_t *h, int left) {
+    uint32_t pinching = le32(h) ? 1 : 0, direct = le32(h + 4) ? 1 : 0, extra = le32(h + 8) & 0xFFFF;
+    uint8_t data[3] = {(uint8_t)pinching, (uint8_t)(left ? 2 : 1), (uint8_t)direct};
+    IOHIDEventRef e = vendor_event(ts, VISION_USAGE_HAND, data, 3, extra << 24 | (left ? 3u : 1u));
+    if (!e) return NULL;
+    const uint8_t *v = h + 16;
+    double t[3] = {read_f64(v), read_f64(v + 8), read_f64(v + 16)};
+    double q[4] = {read_f64(v + 24), read_f64(v + 32), read_f64(v + 40), read_f64(v + 48)};
+    append(e, vector_event(EVENT_TYPE_TRANSLATION, ts, t, 0));
+    append(e, quaternion_event(ts, q, 0));
+    return e;
+}
+
+#define VISION_HAND_SIZE 72u
+#define VISION_SELECTION_SIZE (8u + 48u + 2u * VISION_HAND_SIZE)
+
+/* Kind 11: u32 flags (bit 0: hands present), u32 0, ray origin 3 f64, ray
+ * direction 3 f64, left hand, right hand (VISION_HAND_SIZE each). */
+static void vision_selection(const uint8_t *k) {
+    if (!selectionStream.added) {
+        log_line("vision: no selection service (not a Vision Pro); selection dropped", 0, 0);
+        return;
+    }
+    resolve_vision_functions();
+    uint64_t ts = timestamp();
+    int hands = le32(k) & 1;
+    IOHIDEventRef parent = vendor_event(ts, VISION_USAGE_SELECTION, NULL, 0, SELECTION_FLAGS);
+    if (!parent) {
+        log_line("vision: the runtime has no vendor-defined event constructor; selection dropped", 0, 0);
+        return;
+    }
+    if (!flagsSetter && phaseSetter) phaseSetter(parent, 2); /* Changed */
+    const uint8_t *hand = k + 56;
+    if (hands) {
+        append(parent, vision_hand(ts, hand, 1));
+        append(parent, vision_hand(ts, hand + VISION_HAND_SIZE, 0));
+    }
+    double origin[3] = {read_f64(k + 8), read_f64(k + 16), read_f64(k + 24)};
+    double direction[3] = {read_f64(k + 32), read_f64(k + 40), read_f64(k + 48)};
+    IOHIDEventRef gaze = vendor_event(ts, VISION_USAGE_GAZE, NULL, 0, 3);
+    if (gaze) {
+        append(gaze, vector_event(EVENT_TYPE_TRANSLATION, ts, origin, OPTION_ABSOLUTE));
+        append(gaze, vector_event(EVENT_TYPE_ROTATION, ts, direction, OPTION_ABSOLUTE));
+    }
+    append(parent, gaze);
+    static uint32_t logged;
+    uint32_t pinches = hands ? (le32(hand) ? 2 : 0) | (le32(hand + VISION_HAND_SIZE) ? 1 : 0) : 0;
+    if (logged < 30 || (pinches && logged < 200)) {
+        logged++;
+        log_line(hands ? "vision: selection with hands dispatched (pinch bits left 2 right 1, dir x in 1/1000)"
+                       : "vision: selection-only dispatched (0, dir x in 1/1000)",
+                 pinches, (uint64_t)(int64_t)(direction[0] * 1000));
+    }
+    dispatch_from(&selectionStream, parent);
+}
+
+/* Kind 8 on a Vision Pro: the Digital Crown as one Scroll event (flags 0x10, y). */
+static void vision_dial(double delta) {
+    if (!dial.added) return;
+    resolve_vision_functions();
+    if (!scrollEventCreator) {
+        log_line("vision: the runtime has no scroll event constructor; dial dropped", 0, 0);
+        return;
+    }
+    IOHIDEventRef e = scrollEventCreator(NULL, timestamp(), 0, delta, 0, DIAL_FLAGS);
+    set_flags(e, DIAL_FLAGS);
+    static uint32_t logged;
+    if (logged < 10) {
+        logged++;
+        int64_t milli = (int64_t)(delta * 1000);
+        log_line(milli < 0 ? "vision: dial (-delta x 1000)" : "vision: dial (delta x 1000)", (uint64_t)(milli < 0 ? -milli : milli), 0);
+    }
+    dispatch_from(&dial, e);
+}
+
+/* A host button message (kind 3). A watch takes only its own pairs (§5.2):
+ * the reference's backboardd crashed on an unknown source, Ycode ignores it. */
+static void button(uint32_t page, uint32_t usage, uint32_t down) {
+    if (watchButtons) {
+        int known = page == 0x0C && (usage == 0x40 || usage == 0x95 || usage == 0x30);
+        if (!known && !(actionButton && page == 0xFF01 && usage == 0x200)) {
+            static uint32_t logged;
+            if (logged++ < 20) log_line("watch: not a button of this watch (page, usage); ignored", page, usage);
+            return;
+        }
+        static uint32_t shown;
+        if (shown++ < 40) log_line(down ? "watch button down (page, usage)" : "watch button up (page, usage)", page, usage);
+    }
+    key(&buttons, page, usage, down);
+}
+
 /* ---- Host transport (§7) ---- */
 
 #define HID_SERVICE_NAME "dev.ycode.simulator.hid"
@@ -836,9 +1247,12 @@ static void handle_event(const uint8_t *body, uint32_t size) {
         return;
     }
     case 2:
+        if (size < 32) break;
+        key(&keyboard, le32(k), le32(k + 4), le32(k + 8));
+        return;
     case 3:
         if (size < 32) break;
-        key(kind == 2 ? &keyboard : &buttons, le32(k), le32(k + 4), le32(k + 8));
+        button(le32(k), le32(k + 4), le32(k + 8));
         return;
     case 4:
         if (size < 24) break;
@@ -854,6 +1268,26 @@ static void handle_event(const uint8_t *body, uint32_t size) {
     case 7:
         if (size < 24) break;
         device_orientation(le32(k));
+        return;
+    case 8: {
+        if (size < 32) break;
+        uint64_t bits = le64(k);
+        double delta;
+        copy_bytes(&delta, &bits, sizeof delta);
+        if (vision) vision_dial(delta); else crown_rotation(delta, le32(k + 8));
+        return;
+    }
+    case 9:
+        if (size < 24) break;
+        watch_gesture(le32(k));
+        return;
+    case 10:
+        if (size < 16 + 56) break;
+        vision_pose(k);
+        return;
+    case 11:
+        if (size < 16 + VISION_SELECTION_SIZE) break;
+        vision_selection(k);
         return;
     default:
         return; /* unknown kinds are ignored */
@@ -972,6 +1406,31 @@ static id init_using_hid_service(id self, SEL cmd, IOHIDEventSystemRef system, i
         add_service(&motion);
     }
     if (second) CFRelease(second);
+    const char *wantCrown = getenv("YCODE_SIMHID_DIGITAL_CROWN");
+    if (wantCrown && wantCrown[0] == '1') {
+        make_crown();
+        add_service(&crown);
+        make_gestures();
+        add_service(&gestures);
+        watchButtons = 1;
+        const char *wantAction = getenv("YCODE_SIMHID_ACTION_BUTTON");
+        actionButton = wantAction && wantAction[0] == '1';
+        log_line("watch: buttons crown, side, screen; Action button", (uint64_t)actionButton, 0);
+    }
+    /* A Vision Pro (visionos.md §5.3, V-10): DigitalDial, PalomaPose,
+     * SelectionStream and Manipulator. */
+    const char *wantVision = getenv("YCODE_SIMHID_VISION");
+    if (wantVision && wantVision[0] == '1') {
+        vision = 1;
+        make_vision_service(&dial, 8, "digital dial service", 1, 0x37, "Ycode Digital Dial");
+        make_vision_service(&pose, 9, "pose service", 0xFF00, 0x72, "Ycode Pose");
+        make_vision_service(&selectionStream, 10, "selection stream service", 0xFF00, 0x71, "Ycode Selection Stream");
+        make_vision_service(&manipulator, 11, "manipulator service", 0xFF00, 0x6F, "Ycode Manipulator");
+        add_service(&dial);
+        add_service(&pose);
+        add_service(&selectionStream);
+        add_service(&manipulator);
+    }
     dispatch_async_f(queue, NULL, register_with_host);
     dispatch_async_f(queue, NULL, find_display);
     log_line("initialized with event system", (uint64_t)(uintptr_t)system, 0);

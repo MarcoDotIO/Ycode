@@ -1,0 +1,266 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0A0000000000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000001 /* main.swift */; };
+		0A0000000000000000000002 /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000002 /* Model.swift */; };
+		0A0000000000000000000003 /* Model.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000002 /* Model.swift */; };
+		0A0000000000000000000004 /* Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000006 /* Helpers.swift */; };
+		0A0000000000000000000005 /* ToolMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B0000000000000000000007 /* ToolMain.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0B0000000000000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		0B0000000000000000000002 /* Model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Model.swift; sourceTree = "<group>"; };
+		0B0000000000000000000003 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		0B0000000000000000000004 /* Nav */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = Nav; sourceTree = BUILT_PRODUCTS_DIR; };
+		0B0000000000000000000005 /* NavTool */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = NavTool; sourceTree = BUILT_PRODUCTS_DIR; };
+		0B0000000000000000000006 /* Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Helpers.swift; sourceTree = "<group>"; };
+		0B0000000000000000000007 /* ToolMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolMain.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		0C0000000000000000000001 /* Exceptions for "Shared" folder in "NavTool" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Debug.swift,
+			);
+			target = 0E0000000000000000000002 /* NavTool */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		0D0000000000000000000010 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0C0000000000000000000001 /* Exceptions for "Shared" folder in "NavTool" target */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000001 /* Feature */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Feature;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXGroup section */
+		0D0000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				0D0000000000000000000002 /* Nav */,
+				0D0000000000000000000010 /* Shared */,
+				0B0000000000000000000003 /* README.md */,
+				0D0000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		0D0000000000000000000002 /* Nav */ = {
+			isa = PBXGroup;
+			children = (
+				0B0000000000000000000001 /* main.swift */,
+				0B0000000000000000000002 /* Model.swift */,
+				0B0000000000000000000007 /* ToolMain.swift */,
+				0D0000000000000000000004 /* Support */,
+				AA0000000000000000000001 /* Feature */,
+			);
+			path = Nav;
+			sourceTree = "<group>";
+		};
+		0D0000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0B0000000000000000000004 /* Nav */,
+				0B0000000000000000000005 /* NavTool */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		0D0000000000000000000004 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				0B0000000000000000000006 /* Helpers.swift */,
+			);
+			name = Support;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0E0000000000000000000001 /* Nav */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0F0000000000000000000011 /* Build configuration list for PBXNativeTarget "Nav" */;
+			buildPhases = (
+				0C0000000000000000000011 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				0D0000000000000000000010 /* Shared */,
+				AA0000000000000000000001 /* Feature */,
+			);
+			name = Nav;
+			productName = Nav;
+			productReference = 0B0000000000000000000004 /* Nav */;
+			productType = "com.apple.product-type.tool";
+		};
+		0E0000000000000000000002 /* NavTool */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0F0000000000000000000012 /* Build configuration list for PBXNativeTarget "NavTool" */;
+			buildPhases = (
+				0C0000000000000000000012 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				0D0000000000000000000010 /* Shared */,
+				AA0000000000000000000001 /* Feature */,
+			);
+			name = NavTool;
+			productName = NavTool;
+			productReference = 0B0000000000000000000005 /* NavTool */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0E0000000000000000000010 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+			};
+			buildConfigurationList = 0F0000000000000000000010 /* Build configuration list for PBXProject "Nav" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 0D0000000000000000000001;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 0D0000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0E0000000000000000000001 /* Nav */,
+				0E0000000000000000000002 /* NavTool */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0C0000000000000000000011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0A0000000000000000000001 /* main.swift in Sources */,
+				0A0000000000000000000002 /* Model.swift in Sources */,
+				0A0000000000000000000004 /* Helpers.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0C0000000000000000000012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0A0000000000000000000003 /* Model.swift in Sources */,
+				0A0000000000000000000005 /* ToolMain.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0F0000000000000000000001 /* Debug configuration for PBXProject "Nav" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		0F0000000000000000000002 /* Release configuration for PBXProject "Nav" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		0F0000000000000000000003 /* Debug configuration for PBXNativeTarget "Nav" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		0F0000000000000000000004 /* Release configuration for PBXNativeTarget "Nav" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		0F0000000000000000000005 /* Debug configuration for PBXNativeTarget "NavTool" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		0F0000000000000000000006 /* Release configuration for PBXNativeTarget "NavTool" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0F0000000000000000000010 /* Build configuration list for PBXProject "Nav" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0F0000000000000000000001 /* Debug configuration for PBXProject "Nav" */,
+				0F0000000000000000000002 /* Release configuration for PBXProject "Nav" */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0F0000000000000000000011 /* Build configuration list for PBXNativeTarget "Nav" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0F0000000000000000000003 /* Debug configuration for PBXNativeTarget "Nav" */,
+				0F0000000000000000000004 /* Release configuration for PBXNativeTarget "Nav" */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0F0000000000000000000012 /* Build configuration list for PBXNativeTarget "NavTool" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0F0000000000000000000005 /* Debug configuration for PBXNativeTarget "NavTool" */,
+				0F0000000000000000000006 /* Release configuration for PBXNativeTarget "NavTool" */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 0E0000000000000000000010 /* Project object */;
+}

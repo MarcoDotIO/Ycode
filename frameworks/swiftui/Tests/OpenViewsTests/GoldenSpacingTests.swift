@@ -32,14 +32,20 @@ struct GoldenSpacingTests {
         GoldenSpacing.check("spacing.text.color", from: { text("A") }, to: { color().frame(width: 10, height: 10) }, horizontal: 8, vertical: 10.64)
     }
 
-    @Test("spacing.text.button — text → button: 8 / 2", .disabled("R8 controls: Button"))
-    func golden_spacing_text_button() {}
+    @MainActor @Test("spacing.text.button — text → button: 8 / 2")
+    func golden_spacing_text_button() {
+        GoldenSpacing.check("spacing.text.button", from: { ViewGraph.layoutNode(for: Text("A")) }, to: { ViewGraph.layoutNode(for: Button("A") {}) }, horizontal: 8, vertical: 2)
+    }
 
-    @Test("spacing.text.toggle — text → toggle: 8 / 10.64", .disabled("R8 controls: Toggle"))
-    func golden_spacing_text_toggle() {}
+    @MainActor @Test("spacing.text.toggle — text → toggle: 8 / 10.64")
+    func golden_spacing_text_toggle() {
+        GoldenSpacing.check("spacing.text.toggle", from: { ViewGraph.layoutNode(for: Text("A")) }, to: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, horizontal: 8, vertical: 10.64)
+    }
 
-    @Test("spacing.text.textField — text → textField: 8 / 10.64", .disabled("R8 controls: TextField"))
-    func golden_spacing_text_textField() {}
+    @MainActor @Test("spacing.text.textField — text → textField: 8 / 10.64")
+    func golden_spacing_text_textField() {
+        GoldenSpacing.check("spacing.text.textField", from: { ViewGraph.layoutNode(for: Text("A")) }, to: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, horizontal: 8, vertical: 10.64)
+    }
 
     @Test("spacing.text.padded — text → padded: 8 / 10.64")
     func golden_spacing_text_padded() {
@@ -66,14 +72,20 @@ struct GoldenSpacingTests {
         GoldenSpacing.check("spacing.textCaption.color", from: { text("A").font(.caption) }, to: { color().frame(width: 10, height: 10) }, horizontal: 8, vertical: 7.53)
     }
 
-    @Test("spacing.textCaption.button — textCaption → button: 8 / 2", .disabled("R8 controls: Button"))
-    func golden_spacing_textCaption_button() {}
+    @MainActor @Test("spacing.textCaption.button — textCaption → button: 8 / 2")
+    func golden_spacing_textCaption_button() {
+        GoldenSpacing.check("spacing.textCaption.button", from: { ViewGraph.layoutNode(for: Text("A").font(.caption)) }, to: { ViewGraph.layoutNode(for: Button("A") {}) }, horizontal: 8, vertical: 2)
+    }
 
-    @Test("spacing.textCaption.toggle — textCaption → toggle: 8 / 7.53", .disabled("R8 controls: Toggle"))
-    func golden_spacing_textCaption_toggle() {}
+    @MainActor @Test("spacing.textCaption.toggle — textCaption → toggle: 8 / 7.53")
+    func golden_spacing_textCaption_toggle() {
+        GoldenSpacing.check("spacing.textCaption.toggle", from: { ViewGraph.layoutNode(for: Text("A").font(.caption)) }, to: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, horizontal: 8, vertical: 7.53)
+    }
 
-    @Test("spacing.textCaption.textField — textCaption → textField: 8 / 7.53", .disabled("R8 controls: TextField"))
-    func golden_spacing_textCaption_textField() {}
+    @MainActor @Test("spacing.textCaption.textField — textCaption → textField: 8 / 7.53")
+    func golden_spacing_textCaption_textField() {
+        GoldenSpacing.check("spacing.textCaption.textField", from: { ViewGraph.layoutNode(for: Text("A").font(.caption)) }, to: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, horizontal: 8, vertical: 7.53)
+    }
 
     @Test("spacing.textCaption.padded — textCaption → padded: 8 / 7.53")
     func golden_spacing_textCaption_padded() {
@@ -100,14 +112,20 @@ struct GoldenSpacingTests {
         GoldenSpacing.check("spacing.image.color", from: { image(systemName: "star") }, to: { color().frame(width: 10, height: 10) }, horizontal: 8, vertical: 3.33)
     }
 
-    @Test("spacing.image.button — image → button: 8 / 0", .disabled("R8 controls: Button"))
-    func golden_spacing_image_button() {}
+    @MainActor @Test("spacing.image.button — image → button: 8 / 0")
+    func golden_spacing_image_button() {
+        GoldenSpacing.check("spacing.image.button", from: { ViewGraph.layoutNode(for: Image(systemName: "star")) }, to: { ViewGraph.layoutNode(for: Button("A") {}) }, horizontal: 8, vertical: 0)
+    }
 
-    @Test("spacing.image.toggle — image → toggle: 8 / 3.33", .disabled("R8 controls: Toggle"))
-    func golden_spacing_image_toggle() {}
+    @MainActor @Test("spacing.image.toggle — image → toggle: 8 / 3.33")
+    func golden_spacing_image_toggle() {
+        GoldenSpacing.check("spacing.image.toggle", from: { ViewGraph.layoutNode(for: Image(systemName: "star")) }, to: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, horizontal: 8, vertical: 3.33)
+    }
 
-    @Test("spacing.image.textField — image → textField: 8 / 3.33", .disabled("R8 controls: TextField"))
-    func golden_spacing_image_textField() {}
+    @MainActor @Test("spacing.image.textField — image → textField: 8 / 3.33")
+    func golden_spacing_image_textField() {
+        GoldenSpacing.check("spacing.image.textField", from: { ViewGraph.layoutNode(for: Image(systemName: "star")) }, to: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, horizontal: 8, vertical: 3.33)
+    }
 
     @Test("spacing.image.padded — image → padded: 8 / 3.33")
     func golden_spacing_image_padded() {
@@ -134,91 +152,145 @@ struct GoldenSpacingTests {
         GoldenSpacing.check("spacing.color.color", from: { color().frame(width: 10, height: 10) }, to: { color().frame(width: 10, height: 10) }, horizontal: 8, vertical: 8)
     }
 
-    @Test("spacing.color.button — color → button: 8 / 6.43", .disabled("R8 controls: Button"))
-    func golden_spacing_color_button() {}
+    @MainActor @Test("spacing.color.button — color → button: 8 / 6.43")
+    func golden_spacing_color_button() {
+        GoldenSpacing.check("spacing.color.button", from: { ViewGraph.layoutNode(for: Color.red.frame(width: 10, height: 10)) }, to: { ViewGraph.layoutNode(for: Button("A") {}) }, horizontal: 8, vertical: 6.43)
+    }
 
-    @Test("spacing.color.toggle — color → toggle: 8 / 8", .disabled("R8 controls: Toggle"))
-    func golden_spacing_color_toggle() {}
+    @MainActor @Test("spacing.color.toggle — color → toggle: 8 / 8")
+    func golden_spacing_color_toggle() {
+        GoldenSpacing.check("spacing.color.toggle", from: { ViewGraph.layoutNode(for: Color.red.frame(width: 10, height: 10)) }, to: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, horizontal: 8, vertical: 8)
+    }
 
-    @Test("spacing.color.textField — color → textField: 8 / 8", .disabled("R8 controls: TextField"))
-    func golden_spacing_color_textField() {}
+    @MainActor @Test("spacing.color.textField — color → textField: 8 / 8")
+    func golden_spacing_color_textField() {
+        GoldenSpacing.check("spacing.color.textField", from: { ViewGraph.layoutNode(for: Color.red.frame(width: 10, height: 10)) }, to: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, horizontal: 8, vertical: 8)
+    }
 
     @Test("spacing.color.padded — color → padded: 8 / 8")
     func golden_spacing_color_padded() {
         GoldenSpacing.check("spacing.color.padded", from: { color().frame(width: 10, height: 10) }, to: { text("A").padding() }, horizontal: 8, vertical: 8)
     }
 
-    @Test("spacing.button.text — button → text: 8 / 2", .disabled("R8 controls: Button"))
-    func golden_spacing_button_text() {}
+    @MainActor @Test("spacing.button.text — button → text: 8 / 2")
+    func golden_spacing_button_text() {
+        GoldenSpacing.check("spacing.button.text", from: { ViewGraph.layoutNode(for: Button("A") {}) }, to: { ViewGraph.layoutNode(for: Text("A")) }, horizontal: 8, vertical: 2)
+    }
 
-    @Test("spacing.button.textCaption — button → textCaption: 8 / 2", .disabled("R8 controls: Button"))
-    func golden_spacing_button_textCaption() {}
+    @MainActor @Test("spacing.button.textCaption — button → textCaption: 8 / 2")
+    func golden_spacing_button_textCaption() {
+        GoldenSpacing.check("spacing.button.textCaption", from: { ViewGraph.layoutNode(for: Button("A") {}) }, to: { ViewGraph.layoutNode(for: Text("A").font(.caption)) }, horizontal: 8, vertical: 2)
+    }
 
-    @Test("spacing.button.image — button → image: 8 / 0", .disabled("R8 controls: Button"))
-    func golden_spacing_button_image() {}
+    @MainActor @Test("spacing.button.image — button → image: 8 / 0")
+    func golden_spacing_button_image() {
+        GoldenSpacing.check("spacing.button.image", from: { ViewGraph.layoutNode(for: Button("A") {}) }, to: { ViewGraph.layoutNode(for: Image(systemName: "star")) }, horizontal: 8, vertical: 0)
+    }
 
-    @Test("spacing.button.color — button → color: 8 / 10.64", .disabled("R8 controls: Button"))
-    func golden_spacing_button_color() {}
+    @MainActor @Test("spacing.button.color — button → color: 8 / 10.64")
+    func golden_spacing_button_color() {
+        GoldenSpacing.check("spacing.button.color", from: { ViewGraph.layoutNode(for: Button("A") {}) }, to: { ViewGraph.layoutNode(for: Color.red.frame(width: 10, height: 10)) }, horizontal: 8, vertical: 10.64)
+    }
 
-    @Test("spacing.button.button — button → button: 8 / 2", .disabled("R8 controls: Button"))
-    func golden_spacing_button_button() {}
+    @MainActor @Test("spacing.button.button — button → button: 8 / 2")
+    func golden_spacing_button_button() {
+        GoldenSpacing.check("spacing.button.button", from: { ViewGraph.layoutNode(for: Button("A") {}) }, to: { ViewGraph.layoutNode(for: Button("A") {}) }, horizontal: 8, vertical: 2)
+    }
 
-    @Test("spacing.button.toggle — button → toggle: 8 / 10.64", .disabled("R8 controls: Button"))
-    func golden_spacing_button_toggle() {}
+    @MainActor @Test("spacing.button.toggle — button → toggle: 8 / 10.64")
+    func golden_spacing_button_toggle() {
+        GoldenSpacing.check("spacing.button.toggle", from: { ViewGraph.layoutNode(for: Button("A") {}) }, to: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, horizontal: 8, vertical: 10.64)
+    }
 
-    @Test("spacing.button.textField — button → textField: 8 / 10.64", .disabled("R8 controls: Button"))
-    func golden_spacing_button_textField() {}
+    @MainActor @Test("spacing.button.textField — button → textField: 8 / 10.64")
+    func golden_spacing_button_textField() {
+        GoldenSpacing.check("spacing.button.textField", from: { ViewGraph.layoutNode(for: Button("A") {}) }, to: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, horizontal: 8, vertical: 10.64)
+    }
 
-    @Test("spacing.button.padded — button → padded: 8 / 10.64", .disabled("R8 controls: Button"))
-    func golden_spacing_button_padded() {}
+    @MainActor @Test("spacing.button.padded — button → padded: 8 / 10.64")
+    func golden_spacing_button_padded() {
+        GoldenSpacing.check("spacing.button.padded", from: { ViewGraph.layoutNode(for: Button("A") {}) }, to: { ViewGraph.layoutNode(for: Text("A").padding()) }, horizontal: 8, vertical: 10.64)
+    }
 
-    @Test("spacing.toggle.text — toggle → text: 8 / 6.43", .disabled("R8 controls: Toggle"))
-    func golden_spacing_toggle_text() {}
+    @MainActor @Test("spacing.toggle.text — toggle → text: 8 / 6.43")
+    func golden_spacing_toggle_text() {
+        GoldenSpacing.check("spacing.toggle.text", from: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, to: { ViewGraph.layoutNode(for: Text("A")) }, horizontal: 8, vertical: 6.43)
+    }
 
-    @Test("spacing.toggle.textCaption — toggle → textCaption: 8 / 4.56", .disabled("R8 controls: Toggle"))
-    func golden_spacing_toggle_textCaption() {}
+    @MainActor @Test("spacing.toggle.textCaption — toggle → textCaption: 8 / 4.56")
+    func golden_spacing_toggle_textCaption() {
+        GoldenSpacing.check("spacing.toggle.textCaption", from: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, to: { ViewGraph.layoutNode(for: Text("A").font(.caption)) }, horizontal: 8, vertical: 4.56)
+    }
 
-    @Test("spacing.toggle.image — toggle → image: 8 / 2.33", .disabled("R8 controls: Toggle"))
-    func golden_spacing_toggle_image() {}
+    @MainActor @Test("spacing.toggle.image — toggle → image: 8 / 2.33")
+    func golden_spacing_toggle_image() {
+        GoldenSpacing.check("spacing.toggle.image", from: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, to: { ViewGraph.layoutNode(for: Image(systemName: "star")) }, horizontal: 8, vertical: 2.33)
+    }
 
-    @Test("spacing.toggle.color — toggle → color: 8 / 8", .disabled("R8 controls: Toggle"))
-    func golden_spacing_toggle_color() {}
+    @MainActor @Test("spacing.toggle.color — toggle → color: 8 / 8")
+    func golden_spacing_toggle_color() {
+        GoldenSpacing.check("spacing.toggle.color", from: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, to: { ViewGraph.layoutNode(for: Color.red.frame(width: 10, height: 10)) }, horizontal: 8, vertical: 8)
+    }
 
-    @Test("spacing.toggle.button — toggle → button: 8 / 6.43", .disabled("R8 controls: Toggle"))
-    func golden_spacing_toggle_button() {}
+    @MainActor @Test("spacing.toggle.button — toggle → button: 8 / 6.43")
+    func golden_spacing_toggle_button() {
+        GoldenSpacing.check("spacing.toggle.button", from: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, to: { ViewGraph.layoutNode(for: Button("A") {}) }, horizontal: 8, vertical: 6.43)
+    }
 
-    @Test("spacing.toggle.toggle — toggle → toggle: 8 / 8", .disabled("R8 controls: Toggle"))
-    func golden_spacing_toggle_toggle() {}
+    @MainActor @Test("spacing.toggle.toggle — toggle → toggle: 8 / 8")
+    func golden_spacing_toggle_toggle() {
+        GoldenSpacing.check("spacing.toggle.toggle", from: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, to: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, horizontal: 8, vertical: 8)
+    }
 
-    @Test("spacing.toggle.textField — toggle → textField: 8 / 8", .disabled("R8 controls: Toggle"))
-    func golden_spacing_toggle_textField() {}
+    @MainActor @Test("spacing.toggle.textField — toggle → textField: 8 / 8")
+    func golden_spacing_toggle_textField() {
+        GoldenSpacing.check("spacing.toggle.textField", from: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, to: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, horizontal: 8, vertical: 8)
+    }
 
-    @Test("spacing.toggle.padded — toggle → padded: 8 / 8", .disabled("R8 controls: Toggle"))
-    func golden_spacing_toggle_padded() {}
+    @MainActor @Test("spacing.toggle.padded — toggle → padded: 8 / 8")
+    func golden_spacing_toggle_padded() {
+        GoldenSpacing.check("spacing.toggle.padded", from: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, to: { ViewGraph.layoutNode(for: Text("A").padding()) }, horizontal: 8, vertical: 8)
+    }
 
-    @Test("spacing.textField.text — textField → text: 8 / 6.43", .disabled("R8 controls: TextField"))
-    func golden_spacing_textField_text() {}
+    @MainActor @Test("spacing.textField.text — textField → text: 8 / 6.43")
+    func golden_spacing_textField_text() {
+        GoldenSpacing.check("spacing.textField.text", from: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, to: { ViewGraph.layoutNode(for: Text("A")) }, horizontal: 8, vertical: 6.43)
+    }
 
-    @Test("spacing.textField.textCaption — textField → textCaption: 8 / 4.56", .disabled("R8 controls: TextField"))
-    func golden_spacing_textField_textCaption() {}
+    @MainActor @Test("spacing.textField.textCaption — textField → textCaption: 8 / 4.56")
+    func golden_spacing_textField_textCaption() {
+        GoldenSpacing.check("spacing.textField.textCaption", from: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, to: { ViewGraph.layoutNode(for: Text("A").font(.caption)) }, horizontal: 8, vertical: 4.56)
+    }
 
-    @Test("spacing.textField.image — textField → image: 8 / 2.33", .disabled("R8 controls: TextField"))
-    func golden_spacing_textField_image() {}
+    @MainActor @Test("spacing.textField.image — textField → image: 8 / 2.33")
+    func golden_spacing_textField_image() {
+        GoldenSpacing.check("spacing.textField.image", from: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, to: { ViewGraph.layoutNode(for: Image(systemName: "star")) }, horizontal: 8, vertical: 2.33)
+    }
 
-    @Test("spacing.textField.color — textField → color: 8 / 8", .disabled("R8 controls: TextField"))
-    func golden_spacing_textField_color() {}
+    @MainActor @Test("spacing.textField.color — textField → color: 8 / 8")
+    func golden_spacing_textField_color() {
+        GoldenSpacing.check("spacing.textField.color", from: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, to: { ViewGraph.layoutNode(for: Color.red.frame(width: 10, height: 10)) }, horizontal: 8, vertical: 8)
+    }
 
-    @Test("spacing.textField.button — textField → button: 8 / 6.43", .disabled("R8 controls: TextField"))
-    func golden_spacing_textField_button() {}
+    @MainActor @Test("spacing.textField.button — textField → button: 8 / 6.43")
+    func golden_spacing_textField_button() {
+        GoldenSpacing.check("spacing.textField.button", from: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, to: { ViewGraph.layoutNode(for: Button("A") {}) }, horizontal: 8, vertical: 6.43)
+    }
 
-    @Test("spacing.textField.toggle — textField → toggle: 8 / 8", .disabled("R8 controls: TextField"))
-    func golden_spacing_textField_toggle() {}
+    @MainActor @Test("spacing.textField.toggle — textField → toggle: 8 / 8")
+    func golden_spacing_textField_toggle() {
+        GoldenSpacing.check("spacing.textField.toggle", from: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, to: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, horizontal: 8, vertical: 8)
+    }
 
-    @Test("spacing.textField.textField — textField → textField: 8 / 8", .disabled("R8 controls: TextField"))
-    func golden_spacing_textField_textField() {}
+    @MainActor @Test("spacing.textField.textField — textField → textField: 8 / 8")
+    func golden_spacing_textField_textField() {
+        GoldenSpacing.check("spacing.textField.textField", from: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, to: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, horizontal: 8, vertical: 8)
+    }
 
-    @Test("spacing.textField.padded — textField → padded: 8 / 8", .disabled("R8 controls: TextField"))
-    func golden_spacing_textField_padded() {}
+    @MainActor @Test("spacing.textField.padded — textField → padded: 8 / 8")
+    func golden_spacing_textField_padded() {
+        GoldenSpacing.check("spacing.textField.padded", from: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, to: { ViewGraph.layoutNode(for: Text("A").padding()) }, horizontal: 8, vertical: 8)
+    }
 
     @Test("spacing.padded.text — padded → text: 8 / 6.43")
     func golden_spacing_padded_text() {
@@ -240,14 +312,20 @@ struct GoldenSpacingTests {
         GoldenSpacing.check("spacing.padded.color", from: { text("A").padding() }, to: { color().frame(width: 10, height: 10) }, horizontal: 8, vertical: 8)
     }
 
-    @Test("spacing.padded.button — padded → button: 8 / 6.43", .disabled("R8 controls: Button"))
-    func golden_spacing_padded_button() {}
+    @MainActor @Test("spacing.padded.button — padded → button: 8 / 6.43")
+    func golden_spacing_padded_button() {
+        GoldenSpacing.check("spacing.padded.button", from: { ViewGraph.layoutNode(for: Text("A").padding()) }, to: { ViewGraph.layoutNode(for: Button("A") {}) }, horizontal: 8, vertical: 6.43)
+    }
 
-    @Test("spacing.padded.toggle — padded → toggle: 8 / 8", .disabled("R8 controls: Toggle"))
-    func golden_spacing_padded_toggle() {}
+    @MainActor @Test("spacing.padded.toggle — padded → toggle: 8 / 8")
+    func golden_spacing_padded_toggle() {
+        GoldenSpacing.check("spacing.padded.toggle", from: { ViewGraph.layoutNode(for: Text("A").padding()) }, to: { ViewGraph.layoutNode(for: Toggle("", isOn: .constant(true)).labelsHidden()) }, horizontal: 8, vertical: 8)
+    }
 
-    @Test("spacing.padded.textField — padded → textField: 8 / 8", .disabled("R8 controls: TextField"))
-    func golden_spacing_padded_textField() {}
+    @MainActor @Test("spacing.padded.textField — padded → textField: 8 / 8")
+    func golden_spacing_padded_textField() {
+        GoldenSpacing.check("spacing.padded.textField", from: { ViewGraph.layoutNode(for: Text("A").padding()) }, to: { ViewGraph.layoutNode(for: TextField("", text: .constant(""))) }, horizontal: 8, vertical: 8)
+    }
 
     @Test("spacing.padded.padded — padded → padded: 8 / 8")
     func golden_spacing_padded_padded() {

@@ -225,7 +225,8 @@ final class SharedCacheIndex: @unchecked Sendable {
 
     private func sharedCache() -> SharedCache? {
         loadLock.withLock {
-            if cache == nil && !loadFailed {
+            // An empty path: no shared cache (--macos, MacOSMode.swift).
+            if cache == nil && !loadFailed && !cachePath.isEmpty {
                 do { cache = try SharedCache(contentsOf: URL(fileURLWithPath: cachePath)) } catch {
                     loadFailed = true
                     stderrLine("ycode-simd: cannot read the shared cache \(cachePath): \(error)")
@@ -234,6 +235,9 @@ final class SharedCacheIndex: @unchecked Sendable {
             return cache
         }
     }
+
+    /// The parsed cache (Gauge's symbols, profiler.md §4.2); nil when it cannot be read.
+    func sharedCacheForSymbols() -> SharedCache? { sharedCache() }
 
     /// The path (install name) of every image in the cache's image table.
     func imagePaths() -> [String] { sharedCache()?.images.map(\.path) ?? [] }
@@ -437,7 +441,8 @@ struct CacheMappingTracker {
 
 /// Stage 4a: the vCPU slots (`VCPUSlots`, GPA 0x4100_0000, 4 MiB) lie inside
 /// the stage-3 table arena (0x4020_0000 + 64 MiB), so the arena moves to
-/// 0x4200_0000 (64 MiB, up to 0x4600_0000, inside the 1 GiB of RAM).
+/// 0x4200_0000 (64 MiB, up to 0x4600_0000, inside the 1 GiB of RAM). The
+/// second slot region follows it (0x4600_0000, 28 MiB).
 let stage4TableArenaGPA: UInt64 = 0x4200_0000
 
 /// The EL1 identity regions of an --exec VM: the stage-3 ones with the table
@@ -445,7 +450,7 @@ let stage4TableArenaGPA: UInt64 = 0x4200_0000
 let stage4EL1Regions: [VMLayout.Region] = VMLayout.stage3EL1Regions.map { r in
     guard r.name == "page-tables" else { return r }
     return VMLayout.Region(name: r.name, va: stage4TableArenaGPA, size: VMLayout.stage3PageTableArenaSize, attributes: r.attributes)
-} + [VCPUSlots.region]
+} + VCPUSlots.regions
 
 /// A loaded Mach-O image (main executable or dyld_sim).
 struct LoadedImage {

@@ -27,7 +27,8 @@
 //                                    (home, screenshot, recordScreen, rotateLeft, poseOpen,
 //                                    toggleBezels, captureKeyboard, zoomIn, … DeviceCommand)
 //   frame-button <kind> [ms]         click a button of the drawn frame (action, volumeUp,
-//                                    volumeDown, side, top) with the mouse, held ms (default 100)
+//                                    volumeDown, side, top, crown, sideButton) with the mouse, held
+//                                    ms (default 100)
 //   expand / compact                 the window's expanded or compact form
 //   window-size <width>              the compact window's content width (the device scales)
 //   window-shot <path.png>           the viewer's own window (screencapture -l with its id)
@@ -326,7 +327,7 @@ final class ScriptRunner: @unchecked Sendable {
             onMain { controller.perform(c) }
         case "frame-button":
             guard words.count > 1, let kind = DeviceFrameGeometry.ButtonKind(rawValue: words[1]) else {
-                throw ScriptError(description: "frame-button action|volumeUp|volumeDown|side|top [ms]")
+                throw ScriptError(description: "frame-button action|volumeUp|volumeDown|side|top|crown|sideButton [ms]")
             }
             let hold = try number(words, 2, default: 100)
             let p: CGPoint? = onMain {

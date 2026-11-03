@@ -1,8 +1,11 @@
 import Foundation
+import YcodeRelease
 import YcodeXcodebuild
 
 // ycodebuild: an xcodebuild-compatible command line built on Ycode's own
 // project model and swift-build. See specs/xcodebuild/.
+YcodeRelease.handleVersionFlag(tool: "ycodebuild")
+YcodeRelease.adoptBundledHelpers()
 let arguments = Array(CommandLine.arguments.dropFirst())
 // Internal: list a test bundle's swift-testing tests (run by ycodebuild
 // itself in a child process with the test frameworks on the search path).

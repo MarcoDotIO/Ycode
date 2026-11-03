@@ -91,7 +91,10 @@ extension VulkanMetalBackend {
             flushEarlyScheduled()
         }
         if deviceLost {
-            enqueueCompletion(status: MetalCommandBufferStatus.error, scheduled: scheduled, completed: completed)
+            // A reset is coming (VulkanDeviceReset.swift): it records this one again.
+            if !parkForReset(commandBuffer, scheduled: scheduled, completed: completed) {
+                enqueueCompletion(status: MetalCommandBufferStatus.error, scheduled: scheduled, completed: completed)
+            }
             return
         }
         var rec: Recording?
@@ -111,6 +114,8 @@ extension VulkanMetalBackend {
             rec = try newRecording()
             registerCheckpoints(rec!, commandBuffer)
             beginProbe(commandBuffer)
+            if Self.frameMap != nil || Self.frameMapFile != nil { frameMapNote(commandBuffer) }
+            depthTapBegin(commandBuffer)
             profiled(.start, since: t0)
             if let ft = frameTrace, trace != nil {
                 trace!.slot = ft.allocate()
@@ -118,6 +123,7 @@ extension VulkanMetalBackend {
                 if ft.segmentPool != nil { sink.traceSlot = trace!.slot }
             }
             try replay(commandBuffer, rec: &rec!, sink: sink)
+            depthTapEnd(commandBuffer, rec!)
             let t1 = profileClock()
             var entry = PendingSubmission(serial: 0, cb: nil, chunks: [], status: MetalCommandBufferStatus.completed,
                                           scheduled: scheduled, completed: completed)
@@ -155,7 +161,10 @@ extension VulkanMetalBackend {
                 freeCommandBuffers.append(r.cb!)
                 for c in r.chunks { recycle(c) }
             }
-            enqueueCompletion(status: MetalCommandBufferStatus.error, scheduled: scheduled, completed: completed)
+            // Refused because the device was lost: the reset records it again.
+            if !(deviceLost && parkForReset(commandBuffer, scheduled: scheduled, completed: completed)) {
+                enqueueCompletion(status: MetalCommandBufferStatus.error, scheduled: scheduled, completed: completed)
+            }
         }
     }
 
@@ -478,6 +487,16 @@ extension VulkanMetalBackend {
         }
     }
 
+    /// Logs the first 16 (function, slots) pairs of buffers a function reads
+    /// that the command buffer left unbound (they read the dummy buffer). Under the lock.
+    func noteUnboundBuffers(_ name: String, _ mask: UInt32) {
+        guard unboundBuffersSeen.count < 16, unboundBuffersSeen.insert("\(name) \(mask)").inserted else { return }
+        var slots: [Int] = []
+        forEachBit(mask) { slots.append($0) }
+        log("\(name) reads buffer slots \(slots.map(String.init).joined(separator: ", ")) that its command buffer left unbound: "
+            + "they read the dummy buffer (zeros)")
+    }
+
     // MARK: Argument tables
 
     /// Writes a stage's argument table; returns its device address.
@@ -496,7 +515,7 @@ extension VulkanMetalBackend {
         }
         func texture(_ i: Int) {
             guard let h = b.textures[i], let t = textures[h] else { return }
-            put(YcodeMetalABI.textureEntry0 + i, UInt64(textureOverride[h] ?? t.heapIndex))
+            put(YcodeMetalABI.textureEntry0 + i, textureOverride[h] ?? t.shaderHandle)
         }
         let fast = options.recordFast
         if fast {
@@ -519,6 +538,17 @@ extension VulkanMetalBackend {
             put(YcodeMetalABI.samplerEntry0 + i, UInt64(index))
         }
         for (entry, value) in statics.entries { put(entry, value) }
+        // A buffer the function reads that the command buffer left unbound
+        // (visionOS's Siri orb kernel reads ten buffers and binds one) reads
+        // the dummy buffer's zeros: address 0 is unmapped, and on the Thor
+        // a read there never completes and stops every client
+        // (metal-shaders.md §4.11, stage8-contract.md §15.6).
+        let unbound = statics.usedBuffers & ~b.bufferMask
+        if unbound != 0 && options.unboundBuffersReadDummy {
+            forEachBit(unbound) { i in put(YcodeMetalABI.bufferEntry0 + i, dummyBufferAddress) }
+            statistics.unboundBufferReads += 1
+            noteUnboundBuffers(statics.name, unbound)
+        }
         return slice.address
     }
 
@@ -570,6 +600,10 @@ extension VulkanMetalBackend {
         }
     }
 
+    /// `YCODE_GPU_MIXED_SIZE=first` (experiments): a pass is rendered at its
+    /// first attachment's size, as before metal-sim-protocol.md §8.7.
+    static let mixedSizeFirst = ProcessInfo.processInfo.environment["YCODE_GPU_MIXED_SIZE"] == "first"
+
     func replayRender(_ pass: MetalRenderPass, _ rec: Recording, passIndex: Int = 0) throws {
         let tBegin = profileClock()
         guard let d = pass.descriptor, d.hasAttachments else {
@@ -581,6 +615,7 @@ extension VulkanMetalBackend {
         var info = yvk_rendering_info()
         var width = d.renderTargetWidth, height = d.renderTargetHeight
         var sizeFromTexture: (Int, Int)?
+        var mixedSizes = false
         let integerFormats = MetalIntegerFormats.all
 
         func attachment(_ a: MetalRenderPassAttachment, clear: VkClearValue) -> (yvk_attachment, VKTexture)? {
@@ -596,7 +631,21 @@ extension VulkanMetalBackend {
                 out.resolveMode = tex.format.isColor && !integerFormats.contains(tex.metalFormat)
                     ? VK_RESOLVE_MODE_AVERAGE_BIT : VK_RESOLVE_MODE_SAMPLE_ZERO_BIT
             }
-            if sizeFromTexture == nil { let s = tex.levelSize(a.level); sizeFromTexture = (s.0, s.1) }
+            // The smallest attachment bounds the pass: Vulkan's render area
+            // must lie inside every attachment, and a larger one wrote past
+            // the end of a smaller image (visionOS backboardd's immersion
+            // mask pass clears a 172 × 172 and a 16 × 16 target together;
+            // the write past the small one never completed on the Thor,
+            // metal-sim-protocol.md §8.7).
+            let s = tex.levelSize(a.level)
+            if let (w, h) = sizeFromTexture, Self.mixedSizeFirst {
+                if s.0 != w || s.1 != h { mixedSizes = true }
+            } else if let (w, h) = sizeFromTexture {
+                if s.0 != w || s.1 != h { mixedSizes = true }
+                sizeFromTexture = (min(w, s.0), min(h, s.1))
+            } else {
+                sizeFromTexture = (s.0, s.1)
+            }
             return (out, tex)
         }
 
@@ -643,13 +692,21 @@ extension VulkanMetalBackend {
         if width <= 0 || height <= 0, let s = sizeFromTexture { (width, height) = s }
         if let s = sizeFromTexture { width = min(width, s.0); height = min(height, s.1) }
         guard width > 0, height > 0 else { noteSkip(); return }
+        if mixedSizes {
+            statistics.mixedSizePasses += 1
+            if mixedSizeLogs < 8 {
+                mixedSizeLogs += 1
+                log("render pass with attachments of different sizes: rendering \(width)x\(height), the smallest")
+            }
+        }
         info.width = UInt32(width)
         info.height = UInt32(height)
         info.layerCount = 1
         if Self.debugPassDrawsSize != nil { debugPassDraws(pass, width: width, height: height, process: debugReplayProcess) }
         // Visibility results (record 132): occlusion queries, reset here,
         // outside rendering (VulkanVisibility.swift).
-        var vis = visibilityQueries(pass, rec)
+        var vis = visibilityQueries(pass, rec, width: width, height: height)
+        let tapped = depthTapPassBegin(d, &info, width: width, height: height, draws: !pass.commands.isEmpty)
         yvk_cmd_begin_rendering(cb, &info)
         bindHeap(rec, graphics: true)
 
@@ -738,7 +795,7 @@ extension VulkanMetalBackend {
                         statistics.feedbackTexels += (x1 - x0) * (y1 - y0)
                     }
                 }
-                textureOverride[h] = copy.heapIndex
+                textureOverride[h] = copy.shaderHandle
             }
             barrier(cb)
             var again = info
@@ -930,7 +987,8 @@ extension VulkanMetalBackend {
         let tEnd = profileClock()
         if vis != nil { endVisibilityQuery(&vis!, cb) }
         fn.vkCmdEndRendering!(cb)
-        if let v = vis { writeVisibilityResults(v, cb) }
+        if let v = vis { writeVisibilityResults(v, cb, rec) }
+        if let tapped { depthTapPassEnd(tapped, rec) }
         profiled(.passEnd, since: tEnd)
         _ = colorCount
     }

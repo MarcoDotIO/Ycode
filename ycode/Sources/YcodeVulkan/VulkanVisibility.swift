@@ -30,6 +30,16 @@ struct VisibilityQueries {
     var active = false
     /// (query, slot offset) per segment, in order.
     var segments: [(query: UInt32, offset: Int)] = []
+    /// Diagnostics: the pass's size and the draws of each segment.
+    var label = ""
+    var segmentDraws: [Int] = []
+}
+
+/// Diagnostics: one segment's query, read back after its recording completed.
+struct VisibilityRead {
+    let pool: VkQueryPool
+    let query: UInt32
+    let key: String
 }
 
 extension VulkanMetalBackend {
@@ -41,7 +51,7 @@ extension VulkanMetalBackend {
     /// Queries for a render pass that sets a non-zero visibility mode and has
     /// a visibility result buffer: `count` of them, reset in `rec`'s command
     /// buffer (outside rendering). Nil when the pass needs none.
-    func visibilityQueries(_ pass: MetalRenderPass, _ rec: Recording) -> VisibilityQueries? {
+    func visibilityQueries(_ pass: MetalRenderPass, _ rec: Recording, width: Int = 0, height: Int = 0) -> VisibilityQueries? {
         guard let d = pass.descriptor, pass.commands.contains(where: {
             if case .setVisibilityResultMode(let m, _) = $0 { return m != 0 }
             return false
@@ -67,8 +77,10 @@ extension VulkanMetalBackend {
         rec.visibilityUsed += count
         fn.vkCmdResetQueryPool!(rec.cb, pool, first, UInt32(count))
         statistics.visibilityPasses += 1
-        return VisibilityQueries(pool: pool, first: first, capacity: UInt32(count), buffer: vb, bufferHandle: vh,
-                                 precise: ctx.pointee.features.occlusionQueryPrecise != 0)
+        var v = VisibilityQueries(pool: pool, first: first, capacity: UInt32(count), buffer: vb, bufferHandle: vh,
+                                  precise: ctx.pointee.features.occlusionQueryPrecise != 0)
+        if Self.debugVisibilityStats { v.label = visibilityLabel(pass, d, width: width, height: height, buffer: vh) }
+        return v
     }
 
     func makeVisibilityPool() -> VkQueryPool? {
@@ -88,9 +100,14 @@ extension VulkanMetalBackend {
     func retireVisibilityPools(_ rec: Recording, serial: UInt64) {
         guard !rec.visibilityPools.isEmpty else { return }
         let pools = rec.visibilityPools
+        let reads = rec.visibilityReads
         rec.visibilityPools.removeAll()
+        rec.visibilityReads.removeAll()
         rec.visibilityPool = nil
-        graveyard.append((serial, { [unowned self] in self.freeVisibilityPools.append(contentsOf: pools) }))
+        graveyard.append((serial, { [unowned self] in
+            if !reads.isEmpty { self.countVisibilityResults(reads) }
+            self.freeVisibilityPools.append(contentsOf: pools)
+        }))
     }
 
     /// Mode change (record 132): the running segment ends.
@@ -105,6 +122,7 @@ extension VulkanMetalBackend {
 
     /// Before a draw: a segment begins if the mode counts and none runs.
     func beginVisibilityQuery(_ v: inout VisibilityQueries, _ cb: VkCommandBuffer?) {
+        if v.active, !v.segmentDraws.isEmpty { v.segmentDraws[v.segmentDraws.count - 1] += 1 }
         guard v.mode != 0, !v.active, v.used < v.capacity else { return }
         let q = v.first + v.used
         v.used += 1
@@ -112,6 +130,7 @@ extension VulkanMetalBackend {
         fn.vkCmdBeginQuery!(cb, v.pool, q, flags)
         v.active = true
         v.segments.append((q, v.offset))
+        v.segmentDraws.append(1)
     }
 
     /// Before rendering ends (pass end, feedback snapshot) or the mode changes.
@@ -124,7 +143,7 @@ extension VulkanMetalBackend {
     /// After rendering ended: each slot receives its query's 64-bit result.
     /// A slot counted by several segments receives the sum in Metal; here it
     /// receives the last segment's count (logged).
-    func writeVisibilityResults(_ v: VisibilityQueries, _ cb: VkCommandBuffer?) {
+    func writeVisibilityResults(_ v: VisibilityQueries, _ cb: VkCommandBuffer?, _ rec: Recording? = nil) {
         guard !v.segments.isEmpty else { return }
         var last: [Int: UInt32] = [:]
         var shared = 0
@@ -138,7 +157,17 @@ extension VulkanMetalBackend {
                 noteVisibility("visibility: offset \(offset) outside #\(v.bufferHandle.raw) (\(v.buffer.length) B); not written")
                 continue
             }
-            fn.vkCmdCopyQueryPoolResults!(cb, v.pool, q, 1, v.buffer.vkBuffer, VkDeviceSize(v.buffer.offset + offset), 8, flags)
+            if let forced = Self.debugForcedVisibility {
+                fn.vkCmdFillBuffer!(cb, v.buffer.vkBuffer, VkDeviceSize(v.buffer.offset + offset), 8, forced)
+            } else {
+                fn.vkCmdCopyQueryPoolResults!(cb, v.pool, q, 1, v.buffer.vkBuffer, VkDeviceSize(v.buffer.offset + offset), 8, flags)
+            }
+        }
+        if Self.debugVisibilityStats, let rec {
+            for (i, s) in v.segments.enumerated() {
+                rec.visibilityReads.append(VisibilityRead(pool: v.pool, query: s.query,
+                                                          key: "\(v.label) slot \(s.offset) segment draws \(v.segmentDraws[i])"))
+            }
         }
         statistics.visibilityQueries += v.segments.count
         statistics.visibilitySharedSlots += shared
@@ -146,6 +175,61 @@ extension VulkanMetalBackend {
             noteVisibility("visibility: pass with \(v.segments.count) queries into \(last.count) slots of #\(v.bufferHandle.raw)"
                 + (shared > 0 ? "; \(shared) segments share a slot (the last one's count is kept)" : ""))
         }
+    }
+
+    /// Diagnostics (`YCODE_DEBUG_VISIBILITY_FORCE=<u32>`): every counted
+    /// slot receives this value in both of its words instead of its query's
+    /// count (1: every segment visible, 0: none), to find out whether a
+    /// guest's draw decisions follow its visibility results (visionos.md §9 Q26).
+    static let debugForcedVisibility = ProcessInfo.processInfo.environment["YCODE_DEBUG_VISIBILITY_FORCE"].flatMap(UInt32.init)
+
+    /// Diagnostics (`YCODE_DEBUG_VISIBILITY_STATS=1`): every counted
+    /// segment's result is read back after its recording completed and
+    /// counted as zero or not, per pass size, slot, mode and draws; a summary
+    /// of the keys that saw zeros is logged every 20 s (visionos.md §9 Q26).
+    static let debugVisibilityStats = ProcessInfo.processInfo.environment["YCODE_DEBUG_VISIBILITY_STATS"] == "1"
+    nonisolated(unsafe) static var visibilityCounts: [String: (zero: Int, nonzero: Int)] = [:]
+    nonisolated(unsafe) static var visibilityCountsLogged = Date()
+
+    /// Diagnostics: the pass (size, attachments, the depth attachment's
+    /// actions and clear value, the depth states and the kinds of draws).
+    func visibilityLabel(_ pass: MetalRenderPass, _ d: MetalRenderPassDescriptor, width: Int, height: Int, buffer: MetalHandle) -> String {
+        var states = Set<String>(), kinds = [String: Int]()
+        for c in pass.commands {
+            switch c {
+            case .setDepthStencilState(let h):
+                let s = h.flatMap { depthStencilStates[$0] }
+                states.insert(s.map { "cmp\($0.depthCompareFunction)\($0.depthWriteEnabled ? "w" : "")\($0.frontFaceStencil == nil ? "" : "s")" } ?? "none")
+            case .draw: kinds["draw", default: 0] += 1
+            case .drawIndexed: kinds["indexed", default: 0] += 1
+            case .drawIndirect: kinds["indirect", default: 0] += 1
+            case .drawIndexedIndirect: kinds["indexedIndirect", default: 0] += 1
+            default: break
+            }
+        }
+        let depth = d.depth.map { a -> String in
+            let fmt = a.texture.flatMap { textures[$0] }.map { "\($0.metalFormat)/\($0.image.samples)x" } ?? "?"
+            return " depth \(fmt) load \(a.loadAction) store \(a.storeAction) clear \(d.clearDepth)"
+        } ?? ""
+        return "\(width)x\(height) \(d.colorAttachments.count)c\(depth) states [\(states.sorted().joined(separator: ","))] "
+            + "draws \(kinds.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ",")) #\(buffer.raw)"
+    }
+
+    /// Under the lock (graveyard actions run under it).
+    func countVisibilityResults(_ reads: [VisibilityRead]) {
+        for r in reads {
+            var value: UInt64 = 0
+            let res = fn.vkGetQueryPoolResults!(device, r.pool, r.query, 1, 8, &value, 8, VK_QUERY_RESULT_64_BIT.rawValue)
+            guard res == VK_SUCCESS else { continue }
+            var c = Self.visibilityCounts[r.key] ?? (0, 0)
+            if value == 0 { c.zero += 1 } else { c.nonzero += 1 }
+            Self.visibilityCounts[r.key] = c
+        }
+        guard Date().timeIntervalSince(Self.visibilityCountsLogged) >= 20 else { return }
+        Self.visibilityCountsLogged = Date()
+        let lines = Self.visibilityCounts.sorted { $0.key < $1.key }.prefix(40)
+            .map { "\($0.key): \($0.value.zero) zero, \($0.value.nonzero) not" }
+        log("visibility statistics: " + lines.joined(separator: "; "))
     }
 
     func noteVisibility(_ message: String) {
@@ -184,6 +268,8 @@ extension VulkanMetalBackend {
         var pipeline: VKRenderPipeline?
         var fragmentTexture: MetalHandle?
         var fragmentBuffers: [Int: MetalHandle] = [:]
+        // Fixed-function state at each draw (in the line, not the signature).
+        var depthState = "-", cull: UInt64 = 0, winding: UInt64 = 0, clip: UInt64 = 0, stencilRef = ""
         // The signature leaves out handles (textures and buffers change from
         // frame to frame); the line has them.
         var sig: [String] = [], line: [String] = []
@@ -194,11 +280,21 @@ extension VulkanMetalBackend {
             case .setTexture(let st, let index, let t) where st == .fragment && index == 0: fragmentTexture = t
             case .setBuffer(let st, let index, let b, _) where st == .fragment: fragmentBuffers[index] = b
             case .setVisibilityResultMode(let m, let off): s = "V\(m)@\(off)"
+            case .setDepthStencilState(let h):
+                depthState = h.flatMap { depthStencilStates[$0] }.map {
+                    "cmp\($0.depthCompareFunction)\($0.depthWriteEnabled ? "w" : "")"
+                        + ($0.frontFaceStencil.map { " st\($0)" } ?? "")
+                } ?? "none"
+            case .setCullMode(let m): cull = m
+            case .setFrontFacingWinding(let w): winding = w
+            case .setDepthClipMode(let m): clip = m
+            case .setStencilReference(let front, let back): stencilRef = " sref\(front)/\(back)"
             case .draw(let dr):
                 s = "\(short(pipeline?.vertex))+\(short(pipeline?.fragment)) v\(dr.vertexCount)x\(dr.instanceCount)+\(dr.baseInstance)"
             case .drawIndexed(let dr):
                 s = "\(short(pipeline?.vertex))+\(short(pipeline?.fragment)) i\(dr.indexCount)x\(dr.instanceCount)+\(dr.baseInstance)"
-                extra = " ib\(dr.indexBuffer?.raw ?? 0) t\(fragmentTexture?.raw ?? 0)"
+                extra = " ib\(dr.indexBuffer?.raw ?? 0) t\(fragmentTexture?.raw ?? 0) [\(depthState) cull\(cull) wind\(winding) clip\(clip)\(stencilRef)"
+                    + " pipe \(pipeline.map { "c\($0.desc.colorAttachments.count) d\($0.desc.depthAttachmentPixelFormat) s\($0.desc.stencilAttachmentPixelFormat) n\($0.desc.rasterSampleCount) unknown\($0.desc.unknownKeys.keys.sorted())" } ?? "-")]"
                     + (Self.debugPassDrawsBuffers ? " fb" + fragmentBuffers.sorted { $0.key < $1.key }
                         .map { "\($0.key):\($0.value.raw)" }.joined(separator: ",") : "")
             case .drawIndirect, .drawIndexedIndirect:

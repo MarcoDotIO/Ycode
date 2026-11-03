@@ -1,0 +1,37 @@
+#!/bin/bash
+# ycode-ios-build-linux: builds an iOS Simulator app (arm64) on an x86-64 or
+# arm64 Linux machine with Ycode's swift-build engine, for a run on a Ycode
+# simulator host (specs/simulator/sim-link.md §9; the recipe is RES-STRINGS',
+# specs/ide/string-catalog.md §C.7).
+#
+# usage: ycode-ios-build-linux <project.xcodeproj> <scheme> <derived data dir> [NAME=value ...]
+#
+# Needs, from the environment (never committed: machine paths, the user's SDK):
+#   YCODE_USER_SDK   a developer folder holding the user's own copy of
+#                    Platforms/iPhoneSimulator.platform and
+#                    Toolchains/XcodeDefault.xctoolchain (usr/lib/swift, usr/lib/clang)
+#   YCODE_SWB        a built ycode-swb (ycode/Tools/ycode-swb)
+#   YCODE            the ycode command (default: the debug build next to this script's package)
+#   YCODE_LD64       an upstream ld64.lld (swift.org's lld refuses Apple platforms;
+#                    default: the newest /usr/lib/llvm-*/bin/ld64.lld)
+#   YCODE_SWIFT_BIN  the Swift toolchain's real bin folder (default: swiftly's newest toolchain)
+# The app is <derived data>/Products/Debug-iphonesimulator/<product>.app.
+set -eu
+[ $# -ge 3 ] || { sed -n '2,20p' "$0"; exit 64; }
+project=$1; scheme=$2; dd=$3; shift 3
+here=$(cd "$(dirname "$0")" && pwd); pkg=$(cd "$here/.." && pwd)
+: "${YCODE_USER_SDK:?set YCODE_USER_SDK (see the header)}"
+: "${YCODE_SWB:?set YCODE_SWB (see the header)}"
+YCODE=${YCODE:-$pkg/.build/debug/ycode}
+LD64=${YCODE_LD64:-$(ls -1 /usr/lib/llvm-*/bin/ld64.lld 2>/dev/null | sort -V | tail -1)}
+[ -x "$LD64" ] || { echo "no ld64.lld (set YCODE_LD64)" >&2; exit 2; }
+SWIFT_BIN=${YCODE_SWIFT_BIN:-$(ls -d "$HOME"/.local/share/swiftly/toolchains/*/usr/bin 2>/dev/null | sort -V | tail -1)}
+TC=$YCODE_USER_SDK/Toolchains/XcodeDefault.xctoolchain
+RT=$(ls -1 "$TC"/usr/lib/clang/*/lib/darwin/libclang_rt.iossim.a 2>/dev/null | sort -V | tail -1)
+[ -f "$RT" ] || { echo "no libclang_rt.iossim.a in $TC/usr/lib/clang" >&2; exit 2; }
+export YCODE_SWB PATH="$SWIFT_BIN:$PATH" DEVELOPER_DIR=$YCODE_USER_SDK XCODE_EXTRA_PLATFORM_FOLDERS=$YCODE_USER_SDK/Platforms
+exec "$YCODE" build "$project" -scheme "$scheme" -destination "generic/platform=iOS Simulator" -derivedDataPath "$dd" \
+  --engine swift-build CODE_SIGNING_ALLOWED=NO SDKROOT=iphonesimulator ARCHS=arm64 \
+  "OTHER_SWIFT_FLAGS=-resource-dir $TC/usr/lib/swift" \
+  "OTHER_LDFLAGS=-fuse-ld=lld --ld-path=$LD64 $RT" \
+  DONT_RUN_SWIFT_STDLIB_TOOL=YES LM_SKIP_METADATA_EXTRACTION=YES "$@"

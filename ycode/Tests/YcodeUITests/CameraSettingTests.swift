@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// Settings ▸ Simulators ▸ Camera (specs/simulator/camera.md "Ycode

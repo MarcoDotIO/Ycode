@@ -1,0 +1,49 @@
+name: Feature request
+description: Suggest something Ycode should do.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [feature table](https://github.com/MarcoDotIO/Ycode#what-works-today) and [docs/PARITY.md](https://github.com/MarcoDotIO/Ycode/blob/main/docs/PARITY.md) first: the feature may already be planned.
+
+        **Clean-room note:** describe what you want to happen, in your own words. Please don't paste Apple code, decompiler output, or text from Xcode's resources.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem or workflow, not only the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - IDE on macOS
+        - IDE on Linux
+        - Both IDEs
+        - Project files and command-line tools
+        - Simulator
+        - Open frameworks
+        - Scene Composer
+        - Packaging or documentation
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else?
+      description: Public documentation, examples from open-source tools, or how you work around it today.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to work on this. I have read the clean-room rules in CONTRIBUTING.md.

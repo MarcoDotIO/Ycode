@@ -156,7 +156,7 @@ struct TileEncoder {
     /// one JPEG (display-stream.md §4.3).
     static let bandRows = 256
     /// At most this many bands are encoded at once.
-    static let maxParallel = 4
+    static let maxParallel = ProcessInfo.processInfo.environment["YCODE_DISPLAY_JPEG_THREADS"].flatMap(Int.init) ?? 8
 
     init(encoding: DisplayEncoding, quality: Int, downscale: Int) {
         self.encoding = encoding
@@ -254,6 +254,8 @@ struct TileEncoder {
                     out.removeSubrange(cap...)
                     data = out
                 }
+            case .h264, .hevc, .hevc444:
+                return  // whole pictures go through VideoFrameEncoder (§14), not tiles
             }
         }
         guard let data else { return nil }

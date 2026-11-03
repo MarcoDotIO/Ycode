@@ -1,0 +1,20 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Hello" : {
+      "comment" : "The greeting's first word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hallo"
+          }
+        }
+      }
+    },
+    "world" : {
+      "comment" : "Who is greeted when no name is given."
+    }
+  },
+  "version" : "1.0"
+}

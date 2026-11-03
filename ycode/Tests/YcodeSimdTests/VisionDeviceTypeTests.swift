@@ -40,7 +40,7 @@ struct VisionDeviceTypeTests {
         #expect(t.screen.pointWidth == 1920 && t.screen.pointHeight == 1080)
         #expect(!t.extendedDisplayProperties)
         #expect(t.displayUID == "731F1373-97EF-4DCA-BC31-14C516B3E06F")
-        #expect(DeviceType.all.map(\.id) == ["iphone-duo", "iphone-18-pro", "ipad-a16", "ipad-pro-13-m5", "vision-pro"])
+        #expect(Array(DeviceType.all.map(\.id).prefix(5)) == ["iphone-duo", "iphone-18-pro", "ipad-a16", "ipad-pro-13-m5", "vision-pro"])
         #expect(DeviceType.default(for: .visionOS) == .visionPro)
         #expect(DeviceType.default(for: .iOS) == .iPhoneDuo)
         for other in [DeviceType.iPhoneDuo, .iPadA16, .iPadPro13M5] {

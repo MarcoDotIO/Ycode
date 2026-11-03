@@ -12,8 +12,13 @@ import YcodeMetalHost
 /// region; several Metal objects over the same guest object share it.
 final class VKAllocation {
     var buffer: yvk_buffer
-    /// The host address of byte 0 of `buffer` (nil for device memory without a mapping).
-    let base: UnsafeMutableRawPointer?
+    /// The host address of byte 0 of `buffer` (nil for device memory without
+    /// a mapping). Changes for owned host memory when the device is made
+    /// again (VulkanDeviceReset.swift); an import keeps the guest's address.
+    var base: UnsafeMutableRawPointer?
+    /// How the memory was made (owned host or device memory, or an import):
+    /// a device made again after a loss makes it the same way.
+    var kind: yvk_memory_kind = YVK_MEMORY_HOST
     /// Import-cache key, nil for allocations the back end owns alone.
     let key: AllocationKey?
     var references = 0
@@ -110,6 +115,8 @@ final class VKImage {
     let samples: Int
     let usage: VkImageUsageFlags
     var surface: SurfaceLink?
+    /// How it was created (a device made again after a loss creates it again).
+    var createInfo = yvk_image_info()
     /// The image has been moved to VK_IMAGE_LAYOUT_GENERAL.
     var initialized = false
     /// IOSurface images: the surface generation and seed when the image
@@ -161,6 +168,13 @@ final class VKTexture {
     var heapCount: UInt32 = 1
     /// The one-level storage views of levels 1… at heapIndex + 1….
     var levelStorageViews: [VkImageView] = []
+    /// An sRGB texture whose storage views have the unorm format of the same
+    /// layout: shaders encode linear to sRGB on writes and decode on reads
+    /// through them (bit 32 of the handle, `shaderHandle`; metal-shaders.md §4.4).
+    var srgbStorage = false
+    /// The 64-bit value shaders get for the texture (argument tables,
+    /// argument buffers): the heap index, with bit 32 set for `srgbStorage`.
+    var shaderHandle: UInt64 { UInt64(heapIndex) | (srgbStorage && heapIndex != 0 ? 1 << 32 : 0) }
     /// Attachment and copy views by (level, layer).
     var attachmentViews: [Int: VkImageView] = [:]
 
@@ -184,7 +198,7 @@ final class VKTexture {
 
 /// A deduplicated sampler (Vulkan allows only a few thousand sampler objects).
 final class VKSampler {
-    let sampler: VkSampler?
+    var sampler: VkSampler?
     let heapIndex: UInt32
     let key: SamplerKey
     init(sampler: VkSampler?, heapIndex: UInt32, key: SamplerKey) {
@@ -222,7 +236,11 @@ struct SamplerKey: Hashable {
             default: return 0
             }
         }
-        func filter(_ n: String?) -> UInt8 { n == "linear" ? 1 : 0 }
+        // Bicubic (Metal's `filter::bicubic`, metal-shaders.md §3.7) is
+        // filtered linearly: Vulkan's cubic filter is an extension the
+        // Thor's driver may not offer, and linear is the closer of the two
+        // core filters.
+        func filter(_ n: String?) -> UInt8 { n == "linear" || n == "bicubic" ? 1 : 0 }
         func mip(_ n: String?) -> UInt8 { n == "linear" ? 2 : (n == "nearest" ? 1 : 0) }
         func compare(_ n: String?) -> UInt8 {
             ["never": 0, "less": 1, "equal": 2, "less_equal": 3, "greater": 4, "not_equal": 5, "greater_equal": 6,
@@ -251,6 +269,12 @@ final class VKFunction: @unchecked Sendable {
 struct StageStatics {
     var entries: [(Int, UInt64)] = []
     var memory: [VKAllocation] = []
+    /// Buffer entries (0–30) the function's reflection marks used: one the
+    /// command buffer leaves unbound points at the dummy buffer instead of
+    /// address 0 (a read there never completes on the Thor; metal-shaders.md §4.11).
+    var usedBuffers: UInt32 = 0
+    /// The function's name (diagnostics).
+    var name = ""
 }
 
 /// A render pipeline: translated stages plus one Vulkan pipeline per
@@ -299,7 +323,7 @@ struct ComputeVariantKey: Hashable {
 
 /// A Metal event or shared event: a timeline semaphore.
 final class VKEvent {
-    let semaphore: VkSemaphore?
+    var semaphore: VkSemaphore?
     /// The largest value signaled or scheduled for signaling (timeline values must grow).
     var highest: UInt64 = 0
     init(semaphore: VkSemaphore?) { self.semaphore = semaphore }
@@ -326,6 +350,24 @@ struct IndexAllocator {
         guard next + count <= capacity else { return nil }
         defer { next += count }
         return next
+    }
+
+    /// Hands out exactly the run `i ..< i + count` (a snapshot restore gives
+    /// textures and samplers their old slots, visionos.md §10.21): a run past
+    /// every slot handed out so far (the slots skipped become free single
+    /// slots), or a free run of that start and length. False when any slot
+    /// of the run is taken or out of range.
+    mutating func claim(_ i: UInt32, count: UInt32 = 1) -> Bool {
+        guard i != 0, count >= 1, i + count <= capacity else { return false }
+        if i >= next {
+            for s in next..<i where freeSet.insert(s).inserted { free[1, default: []].append(s) }
+            next = i + count
+            return true
+        }
+        guard freeSet.contains(i), let k = free[count]?.firstIndex(of: i) else { return false }
+        free[count]!.remove(at: k)
+        freeSet.remove(i)
+        return true
     }
 
     mutating func release(_ i: UInt32, count: UInt32 = 1) {
@@ -408,6 +450,9 @@ final class Recording {
     var visibilityPool: VkQueryPool?
     var visibilityUsed = 0
     var visibilityPools: [VkQueryPool] = []
+    /// Diagnostics (`YCODE_DEBUG_VISIBILITY_STATS=1`): the segments whose
+    /// results are read back once the recording completes.
+    var visibilityReads: [VisibilityRead] = []
 
     init(cb: VkCommandBuffer?) { self.cb = cb }
 }

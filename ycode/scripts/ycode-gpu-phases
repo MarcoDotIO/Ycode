@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+# ycode-gpu-phases: the GPU budget of a visionOS session per marked phase (specs/simulator/frame-profile.md section 10).
+# Run it with `python3 -I`.
+#
+# usage: ycode-gpu-phases <dir>   (<dir>/marks.txt: "name ns" lines on CLOCK_MONOTONIC; <dir>/metal.trace: YCODE_METAL_TRACE
+#        with YCODE_METAL_TRACE_SEGMENTS=1)
+# Client 1 is the presenter, client 2 the render server (the Metal client order of a visionOS boot). Prints presents and
+# render-server pictures per second with interval percentiles, GPU busy (union of begin..end), GPU ms per present by pass
+# (size, sample count, load action), and the host stages' p50/p90.
+import sys, collections
+run = sys.argv[1]
+marks = [l.split() for l in open(run + "/marks.txt")]
+marks = [(a, int(b)) for a, b in marks]
+rows = []
+for l in open(run + "/metal.trace", errors="replace"):
+    if l.startswith("#"): continue
+    p = l.split()
+    if len(p) >= 20:
+        try: int(p[2])
+        except ValueError: continue
+        rows.append(p)
+q = lambda v, x: sorted(v)[min(len(v) - 1, int(x * len(v)))] if v else 0
+def ints(ts):
+    return [(b - a) / 1e6 for a, b in zip(ts, ts[1:])]
+for (name, lo), (_, hi) in zip(marks, marks[1:]):
+    if name == "end": continue
+    sel = [p for p in rows if lo <= int(p[2]) < hi]
+    win = (hi - lo) / 1e9
+    ids = collections.Counter(p[0] for p in sel)
+    pres = [int(p[2]) for p in sel if p[0] == "1" and len(p) > 20 and "/D=" in p[20]]
+    bbf = [int(p[2]) for p in sel if p[0] == "2" and len(p) > 20 and ("/C=" in p[20] or "/L=" in p[20]) and "R" in p[20]]
+    print("== %s: %.1f s  presents %.1f/s (interval p50 %.1f p90 %.1f p99 %.1f max %.1f)  backboardd passes-bearing cbs %.1f/s (interval p50 %.1f p90 %.1f p99 %.1f max %.1f)" % (
+        name, win, len(pres) / win, q(ints(pres), .5), q(ints(pres), .9), q(ints(pres), .99), max(ints(pres) or [0]),
+        len(bbf) / win, q(ints(bbf), .5), q(ints(bbf), .9), q(ints(bbf), .99), max(ints(bbf) or [0])))
+    agg = collections.defaultdict(lambda: [0.0, 0])
+    iv = []; bycl = collections.Counter(); stages = collections.defaultdict(list)
+    for p in sel:
+        if p[7] != "-":
+            b, e = int(p[7]), int(p[8]); iv.append((b, e)); bycl[p[0]] += (e - b) / 1e6
+        for k, a, c in (("pipe", 3, 4), ("lock", 4, 5), ("rec", 5, 6), ("sub2done", 6, 9), ("e2e", 2, 10)):
+            stages[(p[0], k)].append((int(p[c]) - int(p[a])) / 1e6)
+        if len(p) > 20:
+            prev = 0
+            for s in p[20].split(","):
+                if "=" not in s: continue
+                lab, v = s.rsplit("=", 1); v = int(v)
+                # a pass's kind: R size, samples, load op letters
+                parts = lab.split("/")
+                key = (p[0], parts[0] + ("/" + parts[-1] if parts[0].startswith("R") else "") if lab[0] == "R" else lab[0] if lab[0] in "BC" else lab)
+                agg[key][0] += (v - prev) / 1e6; agg[key][1] += 1
+                prev = v
+    iv.sort(); busy = 0; cs = ce = None
+    for b, e in iv:
+        if ce is None or b > ce:
+            if ce is not None: busy += ce - cs
+            cs, ce = b, e
+        else: ce = max(ce, e)
+    if ce is not None: busy += ce - cs
+    n = max(len(pres), 1)
+    print("   GPU busy %.1f %% (union); per presented frame: %.2f ms union; by client: %s" % (busy / 1e9 / win * 100, busy / 1e6 / n, " ".join("%s=%.2f" % (k, v / n) for k, v in bycl.most_common(5))))
+    for (cl, lab), (v, c) in sorted(agg.items(), key=lambda kv: -kv[1][0])[:9]:
+        print("     cl%-3s %-26s %7.3f ms/present  %6.1f /s  %.3f ms each" % (cl, lab, v / n, c / win, v / c))
+    print("   stages p50/p90 (ms): " + "  ".join("cl%s %s" % (cl, " ".join("%s %.2f/%.2f" % (k, q(stages[(cl, k)], .5), q(stages[(cl, k)], .9)) for k in ("pipe", "lock", "rec", "sub2done", "e2e"))) for cl in ("1", "2")))

@@ -481,6 +481,9 @@ final class VMMLauncher: ProcessLauncher, @unchecked Sendable {
         if FrameProfile.active.load(ordering: .relaxed), let fp = FrameProfile.shared {
             fp.imageLaunched(pid: kernel.pid, serial: image.record.serial, executable: image.record.executable, suspended: startSuspended)
         }
+        // The debug stub (debug-stub.md §7): an image a debugger waits for
+        // is attached now, so its main thread parks before its first instruction.
+        SimDebugServer.shared?.imageWillStart(image)
         if !startSuspended {
             do {
                 try image.startMainThread()
@@ -1001,7 +1004,10 @@ final class GuestImageInstance: @unchecked Sendable {
             }
             kernel.executableUUID = uuidBytes(main.uuid)
 
-            mainState = VCPUStartState(pc: VMLayout.hostPageEntryVA, sp: arguments.stackPointer, tpidrro: threadBlock.tsdBase)
+            // --macos: the main thread starts in Ycode's dyld itself, SP on the
+            // Mach-header slot (specs/macos/dyld.md §3); no dyld_sim hand-off.
+            let firstPC = MacOSMode.enabled ? prepareEntry : VMLayout.hostPageEntryVA
+            mainState = VCPUStartState(pc: firstPC, sp: arguments.stackPointer, tpidrro: threadBlock.tsdBase)
             if var timer = buildTimer {
                 timer.mark()
                 ImageBuildProfile.shared?.record(timer)
@@ -1036,19 +1042,34 @@ final class GuestImageInstance: @unchecked Sendable {
         }
         pool.onEnd = { end in self.launcher.imageEnded(self, end) }
         pool.onFinished = { self.finished() }
-        if BootProfile.pcHz > 0 {
-            // The PC samples' call chains (frame pointers; at most 8 frames,
-            // each 16 bytes of guest stack read through the address space).
+        if BootProfile.pcHz > 0 || GaugeRecorder.active {
+            // The PC samples' call chains (frame pointers; at most 8 frames
+            // for the boot profile, 128 for Gauge, each 16 bytes of guest
+            // stack read through the address space).
+            let depth = GaugeRecorder.active ? 128 : 8
             pool.sampleStackReader = { [weak space] fp in
                 guard let space else { return [] }
+                // Frame records lie close together: read up to the end of
+                // the 4 KiB block holding a record at once and take the
+                // next records from that copy while they fall inside it.
                 var out: [UInt64] = []
                 var frame = fp
-                for _ in 0..<8 {
-                    guard frame != 0, frame & 7 == 0,
-                          let raw = try? space.read(va: frame, count: 16, checkingEL0Access: true) else { break }
-                    func word(_ o: Int) -> UInt64 { (0..<8).reduce(UInt64(0)) { $0 | UInt64(raw[o + $1]) << (8 * UInt64($1)) } }
-                    out.append(word(8))
-                    let next = word(0)
+                var buffer: [UInt8] = []
+                var bufferStart: UInt64 = 0
+                for _ in 0..<depth {
+                    guard frame != 0, frame & 7 == 0 else { break }
+                    if frame < bufferStart || frame &+ 16 > bufferStart &+ UInt64(buffer.count) {
+                        let blockEnd = (frame | 0xFFF) &+ 1
+                        let count = max(16, Int(min(blockEnd &- frame, 4096)))
+                        guard let raw = (try? space.read(va: frame, count: count, checkingEL0Access: true))
+                                ?? (try? space.read(va: frame, count: 16, checkingEL0Access: true)) else { break }
+                        buffer = raw
+                        bufferStart = frame
+                    }
+                    let o = Int(frame &- bufferStart)
+                    func word(_ at: Int) -> UInt64 { (0..<8).reduce(UInt64(0)) { $0 | UInt64(buffer[at + $1]) << (8 * UInt64($1)) } }
+                    out.append(word(o + 8))
+                    let next = word(o)
                     guard next > frame else { break }
                     frame = next
                 }
@@ -1157,10 +1178,7 @@ final class GuestImageInstance: @unchecked Sendable {
                 throw DarwinErrnoError(LaunchErrno.ENOEXEC)
             }
             guard header.image.fileType == .executable else { throw DarwinErrnoError(LaunchErrno.ENOEXEC) }
-            // As below: iOS simulator, or visionOS simulator (visionos.md §2.2).
-            if let platform = header.image.buildVersion?.platform, platform != .iOSSimulator && platform != .visionOSSimulator {
-                throw DarwinErrnoError(LaunchErrno.EBADARCH)
-            }
+            try Self.checkRunnable(header.image)
             return
         }
         guard let fat = try? MachOFile(contentsOf: URL(fileURLWithPath: hostPath)) else {
@@ -1173,11 +1191,20 @@ final class GuestImageInstance: @unchecked Sendable {
         guard let image = try? MachOImage(fat.reader, at: slice.offset), image.fileType == .executable else {
             throw DarwinErrnoError(LaunchErrno.ENOEXEC)
         }
-        // The runtime's executables: iOS simulator, or visionOS simulator on
-        // a visionOS runtime (visionos.md §2.2).
-        if let platform = image.buildVersion?.platform, platform != .iOSSimulator && platform != .visionOSSimulator {
-            throw DarwinErrnoError(LaunchErrno.EBADARCH)
-        }
+        try Self.checkRunnable(image)
+    }
+
+    /// The executable's slice must be one Ycode runs: without --macos a
+    /// simulator image (`isRunnableInSimulator`: plain arm64, iOS, tvOS,
+    /// watchOS or visionOS simulator; watchos.md W-3; the kernel's spawn
+    /// check takes the same set), with --macos a plain arm64 macOS image
+    /// (MacOSMode.swift). Else EBADARCH, as the reference for watchOS's
+    /// arm64e device binary `powerexperienced`.
+    static func checkRunnable(_ image: MachOImage) throws {
+        let runnable = MacOSMode.enabled
+            ? image.isArm64 && MachO.isPlainARM64(cpuSubtype: image.cpuSubtype) && MacOSMode.accepts(image.buildVersion?.platform)
+            : image.isRunnableInSimulator
+        guard runnable else { throw DarwinErrnoError(LaunchErrno.EBADARCH) }
     }
 
     // MARK: Traps

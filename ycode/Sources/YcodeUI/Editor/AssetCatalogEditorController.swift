@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// One image slot: a drop target that shows its image (or a dashed box) and
 /// its title; a click opens a file picker.
@@ -530,12 +531,13 @@ public final class AssetCatalogEditorController: NSViewController, NSTableViewDa
         return set
     }
 
-    /// "+" menu titles Ycode can create, mapped to `addSet(kind:)`.
-    /// Tags from here on index `AssetCatalog.otherSetTitles`.
-    nonisolated static let otherKindBase = 10
-    nonisolated static let watchIconTag = 40, visionIconTag = 41, tvIconTag = 42, messagesIconTag = 43
-    nonisolated static let folderTag = 100
-    nonisolated static let folderFromSelectionTag = 102, importTag = 103, stickerFrameTag = 104
+    /// "+" menu tags (`AssetCatalog.AddMenuTags` in YcodeIDECore).
+    nonisolated static let otherKindBase = AssetCatalog.AddMenuTags.otherKindBase
+    nonisolated static let watchIconTag = AssetCatalog.AddMenuTags.watchIcon, visionIconTag = AssetCatalog.AddMenuTags.visionIcon
+    nonisolated static let tvIconTag = AssetCatalog.AddMenuTags.tvIcon, messagesIconTag = AssetCatalog.AddMenuTags.messagesIcon
+    nonisolated static let folderTag = AssetCatalog.AddMenuTags.folder
+    nonisolated static let folderFromSelectionTag = AssetCatalog.AddMenuTags.folderFromSelection, importTag = AssetCatalog.AddMenuTags.importFiles
+    nonisolated static let stickerFrameTag = AssetCatalog.AddMenuTags.stickerFrame
 
     /// "+" ▸ Folder / Folder with Namespace: a uniquely named folder in the
     /// insertion directory; selects it.
@@ -582,17 +584,7 @@ public final class AssetCatalogEditorController: NSViewController, NSTableViewDa
         showDetail()
     }
 
-    nonisolated static let creatable: [String: Int] = {
-        var m = ["Image Set": 0, "Color Set": 1, "macOS App Icon": 2, "iOS App Icon": 3, "watchOS App Icon": watchIconTag,
-                 "visionOS App Icon": visionIconTag, "tvOS App Icon and Top Shelf Image": tvIconTag, "Messages Extension Icon": messagesIconTag]
-        for (i, t) in AssetCatalog.otherSetTitles.enumerated() { m[t.title] = otherKindBase + i }
-        m["Folder"] = folderTag
-        m["Folder with Namespace"] = folderTag + 1
-        m["Folder from Selection"] = folderFromSelectionTag
-        m["Import…"] = importTag
-        m["Sticker Sequence Frame"] = stickerFrameTag
-        return m
-    }()
+    nonisolated static let creatable = AssetCatalog.AddMenuTags.creatable
 
     /// Runs a "+" (or Editor ▸ Add New Asset) item by its tag.
     public func addAsset(tag: Int) {

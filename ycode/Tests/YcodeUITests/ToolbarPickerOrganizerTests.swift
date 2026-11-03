@@ -1,4 +1,5 @@
 import XCTest
+@testable import YcodeIDECore
 @testable import YcodeUI
 import YcodeBuild
 

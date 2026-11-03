@@ -803,17 +803,32 @@ void Translator::setupInterface() {
     }
 }
 
+// Whether a buffer argument is threadgroup memory ([[threadgroup(n)]]):
+// by its node's air.address_space, or by the address space of the
+// argument's pointer when the node gives another one or none. visionOS
+// RealityKit's kernelSFBBlurAndFilter has a threadgroup strip whose node
+// reads as a device buffer at the index of a real buffer (visionos.md
+// §10.24); bound as that buffer, its blur wrote nothing and window glass
+// showed a flat grey.
+static bool isThreadgroupBuffer(const AirNode &n, const Argument *A) {
+    if (n.kind != "air.buffer" && n.kind != "air.indirect_buffer") return false;
+    if (n.intAt("air.address_space", 0, 1) == kThreadgroup) return true;
+    return A && A->getType()->isPointerTy() && A->getType()->getPointerAddressSpace() == kThreadgroup;
+}
+
 void Translator::prologue() {
     std::string u32 = E.tInt(32), u64 = E.tInt(64), v3 = E.tVec(u32, 3);
     // This stage's argument table address.
     loadTableAddr();
     // Threadgroup memory size and slots (kernels).
     std::string wgBase;
-    for (auto &a : EI.args)
-        if ((a.second.kind == "air.buffer") && a.second.intAt("air.address_space", 0, 1) == kThreadgroup) {
+    for (Argument &A : F.args()) {
+        auto a = EI.args.find(A.getArgNo());
+        if (a != EI.args.end() && isThreadgroupBuffer(a->second, &A)) {
             wgDynamic = true;
-            wgSlots.push_back((unsigned)a.second.location());
+            wgSlots.push_back((unsigned)a->second.location());
         }
+    }
     for (auto &a : EI.args) {
         if (a.second.kind != "air.imageblock") continue;
         if (EI.stage != Stage::Kernel) fail("unsupported-feature", "imageblock in a tile or fragment function");
@@ -864,7 +879,7 @@ void Translator::prologue() {
         Type *T = A.getType();
         if (k == "air.buffer" || k == "air.indirect_buffer") {
             int as = (int)n.intAt("air.address_space", 0, 1);
-            if (as == kThreadgroup) {
+            if (isThreadgroupBuffer(n, &A)) {
                 std::string spec = E.fresh();
                 unsigned idx = (unsigned)(std::find(wgSlots.begin(), wgSlots.end(), (unsigned)loc) - wgSlots.begin());
                 E.globals << spec << " = OpSpecConstant " << u32 << " " << wgStaticBytesAligned() + 16 * idx << "\n";
@@ -874,6 +889,7 @@ void Translator::prologue() {
                 j.set("offset_spec_id", abi::kSpecThreadgroupSlot0 + loc);
                 j.set("type", n.typeName());
                 j.set("used", used);
+                if (as != kThreadgroup) j.set("by_pointer_address_space", true);
                 jThreadgroup.push(j);
                 if (used) r = E.op("OpUConvert", u64, {spec});
             } else if (dynamicIndex || A.hasByValAttr()) {
@@ -1777,8 +1793,10 @@ Json Translator::reflection() {
         char buf[32];
         snprintf(buf, sizeof buf, "0x%016llx", (unsigned long long)s.word0);
         j.set("state", buf);
+        j.set("state_source", s.source);
+        if (!s.type.empty()) j.set("state_type", s.type);
         static const char *addr[] = {"clamp_to_zero", "clamp_to_edge", "repeat", "mirrored_repeat", "4", "5", "6", "7"};
-        static const char *filt[] = {"nearest", "linear", "2", "3"};
+        static const char *filt[] = {"nearest", "linear", "bicubic", "3"};
         static const char *mip[] = {"none", "nearest", "linear", "3"};
         static const char *cmp[] = {"never", "less", "less_equal", "greater", "greater_equal", "equal", "not_equal", "always"};
         static const char *border[] = {"transparent_black", "opaque_black", "opaque_white", "3"};
@@ -1885,7 +1903,7 @@ static void lowerResourceArgs(Module &M, Function &F, EntryInfo &EI) {
         unsigned base;
         if (n.kind == "air.texture") base = abi::kTableTexture0;
         else if (n.kind == "air.sampler") base = abi::kTableSampler0;
-        else if ((n.kind == "air.buffer" || n.kind == "air.indirect_buffer") && n.intAt("air.address_space", 0, 1) != kThreadgroup)
+        else if ((n.kind == "air.buffer" || n.kind == "air.indirect_buffer") && !isThreadgroupBuffer(n, &A))
             base = abi::kTableBuffer0;
         else continue;
         GlobalVariable *LG = n.locationGlobal();

@@ -1,4 +1,5 @@
 import Foundation
+import YcodeBuild
 
 /// Build actions through swift-build (the `ycode-swb build` helper), with
 /// the reference tool's log format, banners and exit codes.
@@ -63,10 +64,12 @@ enum BuildActions {
                         return ExitCode.dataError
                     }
                 }
-                let targets = TestActions.applySelection(inv, to: try TestActions.targets(inv, plan: plan, testPlan: file, context: ctx))
+                let targets = TestActions.expand(TestActions.applySelection(inv, to: try TestActions.targets(inv, plan: plan, testPlan: file, context: ctx)),
+                                                 plan: file, inv)
                 ctx.console.outDeferred("Testing started")
                 let profiles = plan.coverage ? plan.synthesized.last { $0.0 == "CLANG_PROFILE_DATA_DIRECTORY" }?.1 : nil
-                var outcome = TestActions.execute(targets, quiet: quiet, context: ctx, profileDirectory: profiles)
+                var outcome = TestActions.execute(targets, quiet: quiet, context: ctx, profileDirectory: profiles,
+                                                  remoteSimulator: try TestActions.remoteSimulator(inv, context: ctx))
                 if let profiles, let dev = ctx.developerDirectory {
                     outcome.coverage = Coverage.collect(profile: Coverage.profilePath(profileDirectory: profiles),
                                                         targets: Coverage.targets(plan: plan, context: ctx), developerDirectory: dev)
@@ -122,8 +125,10 @@ enum BuildActions {
         let (name, file, isDefault) = try TestActions.testPlan(inv, plan: plan)
         let targets = TestActions.applySelection(inv, to: try TestActions.targets(inv, plan: plan, testPlan: file, context: ctx))
         guard !targets.isEmpty else { return }
+        // The destination's platform (an iOS simulator run's file names iphonesimulator<version>).
+        let platform = plan.runDestination?.sdk ?? targets.first?.platform ?? "macosx"
         let sdk = plan.overrides.last { $0.0 == "SDKROOT" }?.1 ?? SDKRegistry(developerDirectory: ctx.developerDirectory ?? "")
-            .lookup("macosx", relativeTo: ctx.cwd)?.canonicalName ?? "macosx"
+            .lookup(platform, relativeTo: ctx.cwd)?.canonicalName ?? platform
         let arch = plan.runDestination?.targetArchitecture ?? ctx.hostArchitecture
         let plist = XCTestRunFile.make(scheme: scheme.name, containerName: plan.container.name, testPlan: name, isDefaultPlan: isDefault,
                                        targets: targets, testRoot: arena.buildProductsPath)
@@ -149,8 +154,21 @@ enum BuildActions {
                        beforeBanner: ((BuildOutcome) -> Void)? = nil) throws(XcodebuildFailure) -> BuildOutcome {
         let started = Date()
         let console = ctx.console
-        let pif = XcodePIF(container: plan.container)
         let package = plan.package
+        var pif = XcodePIF(container: plan.container)
+        if package == nil {
+            // The container's Swift packages (local folders and pinned
+            // checkouts in the source-packages folder), as SwiftPM's PIF.
+            let dir = ResolvePackages.sourcePackagesDirectory(inv, name: plan.container.name, path: plan.container.url.path, context: ctx)
+            var loader = PackageGraphLoader(container: plan.container, sourcePackagesDirectory: URL(fileURLWithPath: dir))
+            if let dev = ctx.developerDirectory {
+                let swift = dev + "/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
+                if FileManager.default.isExecutableFile(atPath: swift) { loader.swift = swift }
+            }
+            do { pif.packages = try loader.load() } catch {
+                throw XcodebuildFailure("Could not resolve package dependencies:\n  \(error)", exitCode: ExitCode.dataError)
+            }
+        }
         let fm = FileManager.default
         let work = fm.temporaryDirectory.appendingPathComponent("ycodebuild-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)")
         defer { try? fm.removeItem(at: work) }
@@ -163,7 +181,13 @@ enum BuildActions {
             action == .docbuild && !p.documentation.isEmpty ? p.documentation : [.buildForTesting, .test].contains(action) ? p.build + p.tests : p.build
         }
             ?? targets.map { pif.targetGUID($0.project, $0.target) }
-        let parameters = plan.parameters(action: action).json
+        var buildParameters = plan.parameters(action: action)
+        // YCODE_ASSET_COMPILER=ycode: swift-build runs `ycode assets compile` for actool.
+        buildParameters.synthesized += AssetCompilerHook.overrides(settings: plan.overrides, directory: work)
+            + StringsCompilerHook.overrides(settings: plan.overrides, environment: ctx.environment)
+        buildParameters.synthesized += TestActions.testFrameworkCopying(action: action,
+                                                                        sdk: plan.runDestination?.sdk ?? plan.overrides.last { $0.0 == "SDKROOT" }?.1)
+        let parameters = buildParameters.json
         let request: [String: Any] = [
             // `clean` removes the whole build folder (Build/Products and
             // Build/Intermediates.noindex, or the legacy `build` directory).
@@ -199,10 +223,24 @@ enum BuildActions {
         var log = BuildLog(quiet: inv.quiet, console: console, schemeName: plan.scheme?.name, projectName: plan.container.mainProject?.name ?? plan.container.name)
         if plan.container.kind == .workspace { log.containerWord = "workspace" }
         log.deferTargetIssues = action == .archive || action == .docbuild
+        if package == nil && action != .clean {
+            // Synchronized folders that are missing or hold no source the
+            // target builds (Ycode's own warnings, `build-pif.md`).
+            for t in targets {
+                let name = t.target.string("name") ?? ""
+                for w in pif.synchronizedFolderWarnings(t.project, t.target) {
+                    console.out("warning: \(w) (in target '\(name)' from project '\(t.project.name)')")
+                    log.issues.append(.init(kind: "warning", message: w, targetName: name))
+                }
+            }
+        }
         let raw = ctx.environment["YCODEBUILD_RAW_EVENTS"].flatMap { FileHandle(forWritingAtPath: $0) ?? (fm.createFile(atPath: $0, contents: nil) ? FileHandle(forWritingAtPath: $0) : nil) }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: helper)
         p.arguments = ["build", requestURL.path]
+        // YCODE_STRINGS_COMPILER=ycode: swift-build finds Ycode's `xcstringstool` first.
+        p.environment = StringsCompilerHook.environment(settings: plan.overrides, directory: work.appendingPathComponent("YcodeStringsCompiler"),
+                                                        base: ctx.environment)
         let out = Pipe()
         let err = Pipe()
         p.standardOutput = out

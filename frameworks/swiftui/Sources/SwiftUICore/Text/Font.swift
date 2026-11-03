@@ -183,14 +183,25 @@ public struct Font: Hashable, Sendable {
     public struct Context: Hashable, Sendable, CustomDebugStringConvertible {
         package var dynamicTypeSize: DynamicTypeSize
         package var legibilityWeight: LegibilityWeight?
+        /// Text styles at the desktop sizes (`DesktopTextStyles`) instead
+        /// of the phone's Dynamic Type table.
+        package var desktopTextStyles: Bool
 
-        package init(dynamicTypeSize: DynamicTypeSize = .large, legibilityWeight: LegibilityWeight? = .regular) {
+        package init(dynamicTypeSize: DynamicTypeSize = .large, legibilityWeight: LegibilityWeight? = .regular,
+                     desktopTextStyles: Bool = false) {
             self.dynamicTypeSize = dynamicTypeSize
             self.legibilityWeight = legibilityWeight
+            self.desktopTextStyles = desktopTextStyles
         }
 
         public var debugDescription: String {
-            "Font.Context(dynamicTypeSize: \(dynamicTypeSize), legibilityWeight: \(String(describing: legibilityWeight)))"
+            "Font.Context(dynamicTypeSize: \(dynamicTypeSize), legibilityWeight: \(String(describing: legibilityWeight))"
+                + (desktopTextStyles ? ", desktop" : "") + ")"
+        }
+
+        /// A text style's point size in this context.
+        package func pointSize(_ style: DynamicTypeTable.Style) -> CGFloat {
+            desktopTextStyles ? DesktopTextStyles.pointSize(style) : DynamicTypeTable.pointSize(style, dynamicTypeSize)
         }
     }
 
@@ -224,8 +235,8 @@ public struct Font: Hashable, Sendable {
         var style: TextStyle?
         switch base {
         case .style(let s):
-            size = DynamicTypeTable.pointSize(.init(s), context.dynamicTypeSize)
-            if self.weight == nil && s == .headline { weight = .semibold } // 07 §1.1
+            size = context.pointSize(.init(s))
+            if self.weight == nil && s == .headline { weight = context.desktopTextStyles ? .bold : .semibold } // 07 §1.1
             style = s
         case .system(let s):
             size = s
@@ -233,7 +244,7 @@ public struct Font: Hashable, Sendable {
             family = name
             size = s
             if let r = relative {
-                size = s * DynamicTypeTable.pointSize(.init(r), context.dynamicTypeSize)
+                size = context.desktopTextStyles ? s : s * DynamicTypeTable.pointSize(.init(r), context.dynamicTypeSize)
                     / DynamicTypeTable.pointSize(.init(r), .large)
             }
         }
@@ -254,7 +265,40 @@ public struct Font: Hashable, Sendable {
 extension EnvironmentValues {
     /// The values font resolution reads.
     public var fontResolutionContext: Font.Context {
-        Font.Context(dynamicTypeSize: dynamicTypeSize, legibilityWeight: legibilityWeight)
+        Font.Context(dynamicTypeSize: dynamicTypeSize, legibilityWeight: legibilityWeight, desktopTextStyles: _desktopTextStyles)
+    }
+
+    /// Text styles resolve to the desktop sizes (`DesktopTextStyles`):
+    /// set by the app host on window-system back ends, where the phone's
+    /// Dynamic Type sizes are too large for desktop chrome.
+    package var _desktopTextStyles: Bool {
+        get { self[DesktopTextStylesKey.self] }
+        set { self[DesktopTextStylesKey.self] = newValue }
+    }
+}
+
+private enum DesktopTextStylesKey: EnvironmentKey { static let defaultValue = false }
+
+/// The text styles' point sizes on a desktop: the sizes Apple's Human
+/// Interface Guidelines publish for macOS's built-in text styles
+/// (Typography ▸ Specifications ▸ macOS): large title 26, title 22,
+/// title 2 17, title 3 15, headline 13 bold, body 13, callout 12,
+/// subheadline 11, footnote 10, caption 10, caption 2 10. They do not
+/// follow Dynamic Type (macOS has none).
+package enum DesktopTextStyles {
+    package static func pointSize(_ style: DynamicTypeTable.Style) -> CGFloat {
+        switch style {
+        case .largeTitle: 26
+        case .title1: 22
+        case .title2: 17
+        case .title3: 15
+        case .headline, .body: 13
+        case .callout: 12
+        case .subheadline: 11
+        case .footnote, .caption1, .caption2: 10
+        case .extraLargeTitle: 36
+        case .extraLargeTitle2: 28
+        }
     }
 }
 

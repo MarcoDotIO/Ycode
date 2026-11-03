@@ -77,14 +77,18 @@ package struct ResolvedText: Hashable, Sendable {
         package var tracking: CGFloat
         package var kerning: CGFloat
         package var baselineOffset: CGFloat
+        /// The run's own colour (`Text.foregroundColor`); nil uses the
+        /// environment's foreground style. Rendering only (R5).
+        package var color: Color.Resolved?
 
         package init(string: String, font: TextFont, tracking: CGFloat = 0, kerning: CGFloat = 0,
-                     baselineOffset: CGFloat = 0) {
+                     baselineOffset: CGFloat = 0, color: Color.Resolved? = nil) {
             self.string = string
             self.font = font
             self.tracking = tracking
             self.kerning = kerning
             self.baselineOffset = baselineOffset
+            self.color = color
         }
     }
 
@@ -313,10 +317,16 @@ package final class TypesetTextMeasurer: TextMeasurer, @unchecked Sendable {
     /// The lines of `text` as drawn in a view of `size` (the size it was
     /// given by layout).
     package func placedLines(_ text: ResolvedText, size: CGSize) -> [PlacedLine] {
+        placedLayout(text, size: size).lines
+    }
+
+    /// The text's layout in a view of `size` and its placed lines (the
+    /// renderer needs the clusters as well).
+    package func placedLayout(_ text: ResolvedText, size: CGSize) -> (layout: TextLayout, lines: [PlacedLine]) {
         let l = layout(text, width: size.width, height: size.height)
         let scale = text.paragraph.displayScale
         let rtl = text.paragraph.layoutDirection == .rightToLeft
-        return l.lines.map { line in
+        let lines = l.lines.map { line in
             let slack = Double(size.width) - line.width
             let x: Double
             switch text.paragraph.alignment {
@@ -327,6 +337,7 @@ package final class TypesetTextMeasurer: TextMeasurer, @unchecked Sendable {
             return PlacedLine(line: line, origin: CGPoint(x: CGFloat(x),
                                                           y: TypesetTextMeasurer.roundPx(line.baseline, scale)))
         }
+        return (l, lines)
     }
 
     package func measure(_ text: ResolvedText, proposal p: ProposedViewSize) -> TextMeasurement {

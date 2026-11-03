@@ -21,6 +21,7 @@ final class ViewerController: NSObject, DeviceMenuTarget, NSMenuDelegate {
         send: { [weak self] text, reply in self?.session.sendCommand(text, reply: reply) },
         report: { [weak self] text in self?.windowController.canvas.showBanner(text, seconds: 3) })
     private var foldItem: NSMenuItem?
+    private var roomItem: NSMenuItem?
 
     var log: (String) -> Void = { _ in } {
         didSet { session.log = log }
@@ -110,6 +111,8 @@ final class ViewerController: NSObject, DeviceMenuTarget, NSMenuDelegate {
         device.addItem(.separator())
         device.addItem(own[2])  // Fold
         foldItem = own[2]
+        device.addItem(own[3])  // Room (a Vision Pro)
+        roomItem = own[3]
         device.addItem(.separator())
         device.addItem(item("Refresh Display", #selector(refreshDisplay(_:)), "r", target: self))
         device.delegate = self
@@ -131,6 +134,7 @@ final class ViewerController: NSObject, DeviceMenuTarget, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         settingsMenu.refresh()
         foldItem?.isHidden = !session.isFoldable
+        roomItem?.isHidden = !session.isSpatial
     }
 }
 #endif

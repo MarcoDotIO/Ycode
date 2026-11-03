@@ -5,7 +5,12 @@ import YcodeBuild
 /// IDE and ycodebuild send swift-build the same PIF (reference GUID scheme,
 /// workspace path, every target kind). See `specs/ide/build-pif.md`.
 public struct XcodePIFSource: PIFSource {
-    public init() {}
+    /// The `SourcePackages` folder (package checkouts, the generated package
+    /// root); nil: `PackageGraphLoader.defaultSourcePackages(for:)`, the
+    /// folder of the IDE's checkouts.
+    public var sourcePackagesDirectory: URL?
+
+    public init(sourcePackagesDirectory: URL? = nil) { self.sourcePackagesDirectory = sourcePackagesDirectory }
 
     /// Loads a project (with its sub-projects) or a workspace.
     public static func container(for request: BuildRequest) throws -> Container {
@@ -16,11 +21,62 @@ public struct XcodePIFSource: PIFSource {
         }
     }
 
+    /// The PIF of a request's container with its package graph: what the
+    /// build sends to swift-build. Also the entry point for clients that ask
+    /// swift-build about a target (compiler arguments for a build server):
+    /// serialize it, and name targets by `XcodePIF.targetGUID(_:_:)`.
+    public func makePIF(for request: BuildRequest) throws -> XcodePIF {
+        let container = try Self.container(for: request)
+        let dir = sourcePackagesDirectory ?? PackageGraphLoader.defaultSourcePackages(for: container.url)
+        let packages = try PackageGraphLoader(container: container, sourcePackagesDirectory: dir).load()
+        return XcodePIF(container: container, packages: packages)
+    }
+
     public func pif(for request: BuildRequest) throws -> (data: Data, targets: [String]) {
-        let pif = XcodePIF(container: try Self.container(for: request))
-        let targets = pif.objects().filter { $0["type"] as? String == "target" }
-            .compactMap { ($0["contents"] as? [String: Any])?["name"] as? String }
-        return (try pif.serialized(), targets)
+        let (data, targets, _) = try pifWithWarnings(for: request)
+        return (data, targets)
+    }
+
+    /// With the synchronized-folder warnings of each target
+    /// (`XcodePIF.synchronizedFolderWarnings`).
+    public func pifWithWarnings(for request: BuildRequest) throws -> (data: Data, targets: [String], warnings: [String: [String]]) {
+        let pif = try makePIF(for: request)
+        // The container's own targets (the build target is chosen by name).
+        let targets = pif.container.projects.flatMap { $0.targets.filter { ProjectPIF.targetKind($0) != nil }.compactMap { $0.string("name") } }
+        var warnings: [String: [String]] = [:]
+        for p in pif.container.projects {
+            for t in p.targets {
+                let w = pif.synchronizedFolderWarnings(p, t)
+                if !w.isEmpty { warnings[t.string("name") ?? "", default: []] += w }
+            }
+        }
+        return (try pif.serialized(), targets, warnings)
+    }
+
+    /// Whether swift-build can build the request from this PIF (the IDE's
+    /// `FallbackEngine` test): packages always; projects and workspaces that
+    /// load, whose package products (if any) are all in the package graph,
+    /// and that apply no build-tool plug-in to a project target.
+    public static func supports(_ request: BuildRequest) -> Bool {
+        if case .package = request.container { return true }
+        guard let container = try? container(for: request) else { return false }
+        return unsupportedFeatures(container).isEmpty
+    }
+
+    /// What the PIF cannot express for a container, one line per item.
+    public static func unsupportedFeatures(_ container: Container) -> [String] {
+        var out: [String] = []
+        for p in container.projects {
+            for t in p.targets {
+                for d in t.references("dependencies") where p.proj[d]?.string("productRef") != nil {
+                    let product = p.proj[d]?.string("productRef").flatMap { p.proj[$0]?.string("productName") } ?? ""
+                    if product.hasPrefix("plugin:") && !ProjectPlugins.isSupported {
+                        out.append("\(t.string("name") ?? ""): build-tool plug-in \(product.dropFirst("plugin:".count))")
+                    }
+                }
+            }
+        }
+        return out
     }
 }
 

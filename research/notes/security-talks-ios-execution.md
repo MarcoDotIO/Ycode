@@ -567,7 +567,7 @@ also measured, on the Thor:
 - one 661 s boot that held the kernel lock 370 s over 13.94 M traps.
 
 The simulator speed work lives on branch **`speed-int`** and on worktree
-branches on top of it. The newest is `worktree-agent-a3b866d9d5e9d55e7`
+branches on top of it. The newest is an agent worktree branch
 (tip `6b2a6bc`). On that line:
 
 | Item | Status on the speed line | Effect on the G-table |
@@ -577,11 +577,11 @@ branches on top of it. The newest is `worktree-agent-a3b866d9d5e9d55e7`
 | C3: vCPUs | Landed as batches of four (`99f303b`): a KVM_CREATE_VCPU after another vCPU's first run waits one RCU grace period (25–60 ms) | — |
 | C4: `select` | Landed (`Select.swift`) | — |
 | C6: file I/O off the lock | Landed (`bdd800a`, `877fc5d`, O_NOATIME `b7414c5`/`b20efbd`) | G5 is still open (no I/O priority) |
-| C5: clock in place | **Not integrated.** `5ba106d` (commpage flag 0xF8, VMM counter alignment) is only on `worktree-agent-a12ede8c666ca228a`. The lock-free clock and `gettimeofday` trial (`6cf3726`: 4.5 M such traps held the lock 20 s and waited 2,860 thread-seconds) was **reverted** (`5d32f6c`). On the speed line, `mach.c` still traps on every clock read, and the approximate clocks call the precise ones | **G3 stands**, and it is the cheapest large win |
+| C5: clock in place | **Not integrated.** `5ba106d` (commpage flag 0xF8, VMM counter alignment) is only on an agent worktree branch. The lock-free clock and `gettimeofday` trial (`6cf3726`: 4.5 M such traps held the lock 20 s and waited 2,860 thread-seconds) was **reverted** (`5d32f6c`). On the speed line, `mach.c` still traps on every clock read, and the approximate clocks call the precise ones | **G3 stands**, and it is the cheapest large win |
 | Lock fairness | Trial `b75211f` (FIFO hand-off after N µs) was **reverted** (`c8b49b4`). Its message records single kernel-lock waits of **1.5–2.5 s** under the unfair pthread mutex | **G1 is strengthened**: starvation is measured, and plain FIFO was not the answer; class-aware hand-off is untried |
 | Cooperative pool | Landed (`6b2a6bc`) with `cooperativeWidth = 1`, "the guest sees one CPU". Before it, Swift-concurrency daemons (suggestd, parsecd, axassetsd) had their cooperative requests turned into up to 8 constrained threads each | **G2 stands**. The width is now tied to the one-CPU guest, so raising N in G2 must raise it too |
 | Commpage CPU count, `hw.*cpu*`, `hw.optional.*`, `QOS_MAX_PARALLELISM` = 8, `setpriority` ignored, eager page tables | Unchanged on the speed line (`ProcessImage.swift` `cpuCount = 1`; `SysctlTable.swift`; `Threads.swift` case 0x800; `ExtendedBSD.swift` case 96; `AddressSpace.swift` "O(pages changed)") | G1, G2, G4, G6 stand |
-| Snapshot/restore prototype | `7ba86a7`, `f0b29e7` on `worktree-agent-a480795f594593949`, default off. It captures processes, Mach state, kqueues and memory, and restores a one-process guest in 23 ms | A Ycode-only route to a "warm" boot; there is no Apple counterpart (Apple's simulator always boots). See §3.1 |
+| Snapshot/restore prototype | `7ba86a7`, `f0b29e7` on an agent worktree branch, default off. It captures processes, Mach state, kqueues and memory, and restores a one-process guest in 23 ms | A Ycode-only route to a "warm" boot; there is no Apple counterpart (Apple's simulator always boots). See §3.1 |
 | Mach exceptions, thread suspension | Exception ports are stored but **no exception message is ever delivered** (`processes.md` §4.8). `thread_get_state` answers only for threads stopped in a trap (KERN_FAILURE while running). **No `thread_suspend`/`thread_resume`** in `SimHostLibs` or the kernel | New **G13** |
 | Memory status | `memorystatus_control` is EPERM for every command, which **matches the Mac** (`app-install-launch.md` §3.3). `os_proc_available_memory` returns the private trap's value or 0. `EVFILT_MEMORYSTATUS` is refused with ENOTSUP (`KEvent.swift`) | New **P4** (parity) and **G14** |
 | TPIDR_EL0 CPU number | Saved and restored per guest thread by the shim (`SimShim/shim.S`), so `pthread_cpu_number_np` and `_os_cpu_number` see the guest's value (0 in practice) | A caveat for G2: per-CPU caches (libmalloc) all use slot 0 unless the shim also gives each vCPU a CPU index below N |

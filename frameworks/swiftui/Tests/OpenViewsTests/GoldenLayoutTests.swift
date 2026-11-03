@@ -756,20 +756,80 @@ struct GoldenLayoutTests {
         Golden.run(c) { hstack { text("A"); divider(); text("B") } }
     }
 
-    @Test("image.symbol — Image(systemName: \"star.fill\")", .disabled("R5 symbols: the case measures a symbol itself (its size is a stub fixture)"))
-    func golden_image_symbol() {}
+    @Test("image.symbol — Image(systemName: \"star.fill\")")
+    func golden_image_symbol() {
+        let c = GoldenCase(
+            id: "image.symbol", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 22, 20.67),
+                .init(0, 0, 22, 20.67),
+                .init(inf, inf, 22, 20.67),
+                .init(100, nil, 22, 20.67),
+                .init(nil, 100, 22, 20.67),
+                .init(100, 100, 22, 20.67),
+                .init(300, 500, 22, 20.67),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { image(systemName: "star.fill") }
+    }
 
-    @Test("image.symbol.largeTitle — Image(systemName: \"star.fill\").font(.largeTitle)", .disabled("R5 symbols: symbol metrics per font"))
+    @Test("image.symbol.largeTitle — Image(systemName: \"star.fill\").font(.largeTitle)", .disabled("R5 symbols: the box scales linearly with the point size (41.33 high at 34 pt; the reference measured 41.67, an optical size step we have no rule for)"))
     func golden_image_symbol_largeTitle() {}
 
-    @Test("image.symbol.scaleSmall — Image(systemName: \"star.fill\").imageScale(.small)", .disabled("R5 symbols: symbol metrics per image scale"))
-    func golden_image_symbol_scaleSmall() {}
+    @Test("image.symbol.scaleSmall — Image(systemName: \"star.fill\").imageScale(.small)")
+    func golden_image_symbol_scaleSmall() {
+        let c = GoldenCase(
+            id: "image.symbol.scaleSmall", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 17.67, 16.33),
+                .init(0, 0, 17.67, 16.33),
+                .init(inf, inf, 17.67, 16.33),
+                .init(100, nil, 17.67, 16.33),
+                .init(nil, 100, 17.67, 16.33),
+                .init(100, 100, 17.67, 16.33),
+                .init(300, 500, 17.67, 16.33),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { image(systemName: "star.fill").imageScale(.small) }
+    }
 
-    @Test("image.symbol.scaleLarge — Image(systemName: \"star.fill\").imageScale(.large)", .disabled("R5 symbols: symbol metrics per image scale"))
-    func golden_image_symbol_scaleLarge() {}
+    @Test("image.symbol.scaleLarge — Image(systemName: \"star.fill\").imageScale(.large)")
+    func golden_image_symbol_scaleLarge() {
+        let c = GoldenCase(
+            id: "image.symbol.scaleLarge", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 28, 26.67),
+                .init(0, 0, 28, 26.67),
+                .init(inf, inf, 28, 26.67),
+                .init(100, nil, 28, 26.67),
+                .init(nil, 100, 28, 26.67),
+                .init(100, 100, 28, 26.67),
+                .init(300, 500, 28, 26.67),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { image(systemName: "star.fill").imageScale(.large) }
+    }
 
-    @Test("image.symbol.wide — Image(systemName: \"rectangle.portrait.and.arrow.right\")", .disabled("R5 symbols: metrics of another symbol"))
-    func golden_image_symbol_wide() {}
+    @Test("image.symbol.wide — Image(systemName: \"rectangle.portrait.and.arrow.right\")")
+    func golden_image_symbol_wide() {
+        let c = GoldenCase(
+            id: "image.symbol.wide", placed: CGSize(width: 300, height: 500),
+            fits: [
+                .init(nil, nil, 23.33, 20.67),
+                .init(0, 0, 23.33, 20.67),
+                .init(inf, inf, 23.33, 20.67),
+                .init(100, nil, 23.33, 20.67),
+                .init(nil, 100, 23.33, 20.67),
+                .init(100, 100, 23.33, 20.67),
+                .init(300, 500, 23.33, 20.67),
+            ],
+            frames: [:],
+            baselines: nil)
+        Golden.run(c) { image(systemName: "rectangle.portrait.and.arrow.right") }
+    }
 
     @Test("image.symbol.resizable — Image(systemName: \"star.fill\").resizable()")
     func golden_image_symbol_resizable() {
@@ -807,7 +867,7 @@ struct GoldenLayoutTests {
         Golden.run(c) { image(systemName: "star.fill").resizable().scaledToFit() }
     }
 
-    @Test("label — Label(\"Title\", systemImage: \"star\")", .disabled("R8 controls: Label"))
+    @Test("label — Label(\"Title\", systemImage: \"star\")", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_label() {}
 
     @Test("hstack.texts — HStack { Text(\"A\").probe(\"a\"); Text(\"B\").probe(\"b\") }")
@@ -2062,70 +2122,70 @@ struct GoldenLayoutTests {
         Golden.run(c) { viewThatFits { text(Fixture.longText).fixedSize().probe("a"); text("short").probe("b") } }
     }
 
-    @Test("button.default — Button(\"Tap\") {}", .disabled("R8 controls: Button styles"))
+    @Test("button.default — Button(\"Tap\") {}", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_button_default() {}
 
-    @Test("button.bordered — Button(\"Tap\") {}.buttonStyle(.bordered)", .disabled("R8 controls: Button styles"))
+    @Test("button.bordered — Button(\"Tap\") {}.buttonStyle(.bordered)", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_button_bordered() {}
 
-    @Test("button.borderedProminent — Button(\"Tap\") {}.buttonStyle(.borderedProminent)", .disabled("R8 controls: Button styles"))
+    @Test("button.borderedProminent — Button(\"Tap\") {}.buttonStyle(.borderedProminent)", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_button_borderedProminent() {}
 
-    @Test("button.glass — Button(\"Tap\") {}.buttonStyle(.glass)", .disabled("R8 controls: Button styles"))
+    @Test("button.glass — Button(\"Tap\") {}.buttonStyle(.glass)", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_button_glass() {}
 
-    @Test("button.borderless — Button(\"Tap\") {}.buttonStyle(.borderless)", .disabled("R8 controls: Button styles"))
+    @Test("button.borderless — Button(\"Tap\") {}.buttonStyle(.borderless)", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_button_borderless() {}
 
-    @Test("button.plain — Button(\"Tap\") {}.buttonStyle(.plain)", .disabled("R8 controls: Button styles"))
+    @Test("button.plain — Button(\"Tap\") {}.buttonStyle(.plain)", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_button_plain() {}
 
-    @Test("button.large — Button(\"Tap\") {}.buttonStyle(.borderedProminent).controlSize(.large)", .disabled("R8 controls: Button styles"))
+    @Test("button.large — Button(\"Tap\") {}.buttonStyle(.borderedProminent).controlSize(.large)", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_button_large() {}
 
-    @Test("toggle — Toggle(\"On\", isOn: .constant(true))", .disabled("R8 controls: Toggle"))
+    @Test("toggle — Toggle(\"On\", isOn: .constant(true))", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_toggle() {}
 
-    @Test("toggle.labelsHidden — Toggle(\"On\", isOn: .constant(true)).labelsHidden()", .disabled("R8 controls: Toggle"))
+    @Test("toggle.labelsHidden — Toggle(\"On\", isOn: .constant(true)).labelsHidden()", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_toggle_labelsHidden() {}
 
-    @Test("slider — Slider(value: .constant(0.5))", .disabled("R8 controls: Slider"))
+    @Test("slider — Slider(value: .constant(0.5))", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_slider() {}
 
-    @Test("stepper — Stepper(\"S\", value: .constant(1))", .disabled("R8 controls: Stepper"))
+    @Test("stepper — Stepper(\"S\", value: .constant(1))", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_stepper() {}
 
-    @Test("progress.spinner — ProgressView()", .disabled("R8 controls: ProgressView"))
+    @Test("progress.spinner — ProgressView()", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_progress_spinner() {}
 
-    @Test("progress.linear — ProgressView(value: 0.5)", .disabled("R8 controls: ProgressView"))
+    @Test("progress.linear — ProgressView(value: 0.5)", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_progress_linear() {}
 
-    @Test("picker.segmented — Picker(\"P\", selection: .constant(0)) { Text(\"A\").tag(0); Text(\"Bee\").tag(1) }.pickerStyle(.segmented)", .disabled("R8 controls: Picker"))
+    @Test("picker.segmented — Picker(\"P\", selection: .constant(0)) { Text(\"A\").tag(0); Text(\"Bee\").tag(1) }.pickerStyle(.segmented)", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_picker_segmented() {}
 
-    @Test("textfield.plain — TextField(\"Placeholder\", text: .constant(\"\"))", .disabled("R8 controls: TextField"))
+    @Test("textfield.plain — TextField(\"Placeholder\", text: .constant(\"\"))", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_textfield_plain() {}
 
-    @Test("textfield.rounded — TextField(\"Placeholder\", text: .constant(\"\")).textFieldStyle(.roundedBorder)", .disabled("R8 controls: TextField"))
+    @Test("textfield.rounded — TextField(\"Placeholder\", text: .constant(\"\")).textFieldStyle(.roundedBorder)", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_textfield_rounded() {}
 
-    @Test("secureField — SecureField(\"Password\", text: .constant(\"\"))", .disabled("R8 controls: SecureField"))
+    @Test("secureField — SecureField(\"Password\", text: .constant(\"\"))", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_secureField() {}
 
-    @Test("datePicker.compact — DatePicker(\"D\", selection: .constant(Date(timeIntervalSince1970: 0)), displayedComponents: .date)", .disabled("R8 controls: DatePicker"))
+    @Test("datePicker.compact — DatePicker(\"D\", selection: .constant(Date(timeIntervalSince1970: 0)), displayedComponents: .date)", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_datePicker_compact() {}
 
-    @Test("gauge — Gauge(value: 0.5) { Text(\"G\") }", .disabled("R8 controls: Gauge"))
+    @Test("gauge — Gauge(value: 0.5) { Text(\"G\") }", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_gauge() {}
 
-    @Test("link — Link(\"Ycode\", destination: URL(string: \"https://example.com\")!)", .disabled("R8 controls: Link"))
+    @Test("link — Link(\"Ycode\", destination: URL(string: \"https://example.com\")!)", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_link() {}
 
-    @Test("scrollView — ScrollView { VStack { Text(\"A\").probe(\"a\"); Color.red.frame(height: 1000).probe(\"c\") } }", .disabled("R9 containers: ScrollView"))
+    @Test("scrollView — ScrollView { VStack { Text(\"A\").probe(\"a\"); Color.red.frame(height: 1000).probe(\"c\") } }", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_scrollView() {}
 
-    @Test("scrollView.horizontal — ScrollView(.horizontal) { HStack { Text(\"A\").probe(\"a\"); Color.red.frame(width: 1000).probe(\"c\") } }", .disabled("R9 containers: ScrollView"))
+    @Test("scrollView.horizontal — ScrollView(.horizontal) { HStack { Text(\"A\").probe(\"a\"); Color.red.frame(width: 1000).probe(\"c\") } }", .disabled("R8 controls (T-CTL) and R9 scroll views: checked built from views in GoldenViewLayoutTests"))
     func golden_scrollView_horizontal() {}
 
     @Test("list.two — List { Text(\"A\").probe(\"a\"); Text(\"B\").probe(\"b\") }", .disabled("R9 containers: List (UIKit-backed, informative only)"))

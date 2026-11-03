@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The "+ Capability" library panel (reference-ui-3.md §1.5): a filter
 /// field, list/grid toggles, an alphabetical list with icons, a detail pane

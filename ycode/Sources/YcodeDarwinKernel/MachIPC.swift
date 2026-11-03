@@ -673,7 +673,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
         for r in m.receiveRights { r.transitHolder = p }
         if p.messages.isEmpty { p.readyStamp = nextStamp() }
         p.messages.append(m)
-        if m.importance { importanceQueued(on: p) }
+        if m.importance { importanceQueued(on: p, id: m.id) }
         p.receiveWaiters.wakeAll()
         for s in p.sets { s.waiters.wakeAll() }
         // The hooks of the space that holds the receive right.

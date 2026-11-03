@@ -1,5 +1,6 @@
 import AppKit
 import YcodeAssistant
+import YcodeIDECore
 
 /// The review sheet for a proposed change (coding-assistant.md §5.3): the
 /// file now and with the change, side by side in the comparison view

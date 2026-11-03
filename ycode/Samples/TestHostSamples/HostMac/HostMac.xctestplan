@@ -1,0 +1,34 @@
+{
+  "configurations" : [
+    {
+      "id" : "6F2D8F4E-2B44-4E43-9E0D-8D4C6A1C9B01",
+      "name" : "Configuration 1",
+      "options" : {}
+    }
+  ],
+  "defaultOptions" : {
+    "environmentVariableEntries" : [
+      {
+        "key" : "HOSTMAC_PLAN",
+        "value" : "default"
+      }
+    ]
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:HostMac.xcodeproj",
+        "identifier" : "4BE1DB2BA8A6E6E6D7491C0E",
+        "name" : "HostMacXCTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:HostMac.xcodeproj",
+        "identifier" : "6535931586A528902630D3FE",
+        "name" : "HostMacSwiftTests"
+      }
+    }
+  ],
+  "version" : 1
+}

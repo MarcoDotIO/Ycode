@@ -8,11 +8,12 @@ from the specifications in `specs/frameworks/<name>/` under the protocol in
 |---|---|---|---|
 | `eventkit/` | `ycode-eventkit` | `EventKit` (+ `CLLocation` shim on Linux) | `specs/frameworks/eventkit/` (rounds R2–R4) |
 | `weatherkit/` | `ycode-weatherkit` | `WeatherKit` (+ `CoreLocation` shim on Linux) | `specs/frameworks/weatherkit/` (R2–R4) |
-| `swiftui/` | `ycode-swiftui` | `SwiftUI` (re-exports `SwiftUICore`); built as `OpenViews` / `OpenViewsCore` on Apple hosts | `specs/frameworks/swiftui/` (R1, R2, R3 core, R4, R6); bundles Noto Sans (OFL 1.1) |
+| `swiftui/` | `ycode-swiftui` | `SwiftUI` (re-exports `SwiftUICore`); built as `OpenViews` / `OpenViewsCore` on Apple hosts | `specs/frameworks/swiftui/` (R1, R2, R3 core, R4, R6, R7); bundles Noto Sans (OFL 1.1); vendors SDL 3.4.18 headers (zlib) and opens libSDL3 at run time |
 | `healthkit/` | `ycode-healthkit` | `HealthKit` | `specs/frameworks/healthkit/` (rounds R2–R5, and R10's query descriptors) |
 | `contacts/` | `ycode-contacts` | `Contacts` | `specs/frameworks/contacts/` (rounds R2–R5) |
 | `homekit/` | `ycode-homekit` | `HomeKit` (+ `CoreLocation` region shim on Linux) | `specs/frameworks/homekit/` (round R3) |
 | `storekit/` | `ycode-storekit` | `StoreKit`, `StoreKitTest` (+ `StoreKitConfiguration`, `StoreKitEngine`, `StoreKitSigning`) | `specs/frameworks/storekit/` (rounds R2, R7–R9) |
+| `usd/` | `ycode-usd` | `USDCore`, `USDStage`, `USDShade` (not an Apple framework: a Swift-native USD/MaterialX library shared by the Scene Composer and, later, RealityKit) | public OpenUSD/MaterialX sources; `specs/tools/scene-composer/ycode-design.md` |
 
 The round numbers name the rounds of each spec's plan (`plan.md`, or
 `10-plan.md` for SwiftUI) that are done.

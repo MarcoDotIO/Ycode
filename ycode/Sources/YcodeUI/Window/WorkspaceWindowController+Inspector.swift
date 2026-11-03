@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 import YcodeProject
 
 /// The inspectors' data from the workspace (`specs/ide/reference-ui-5.md`

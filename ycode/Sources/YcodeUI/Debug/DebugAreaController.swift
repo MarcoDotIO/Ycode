@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 import YcodeSimFeatures
 import YcodeDebug
 
@@ -69,7 +70,14 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
     static var translucentBar: Bool { GlassBars.enabled }
     /// The debug bar's height with its separator: 36 with the Liquid
     /// Glass design (liquid-glass.md §2.6), 27 before.
-    static var debugBarHeight: CGFloat { translucentBar ? 36 : 27 }
+    static var debugBarHeight: CGFloat { translucentBar ? CGFloat(WorkspaceChrome.debugBarHeight) : 27 }
+    /// The variables and console bottom bars (`specs/ide/metrics.md` §7):
+    /// one height for both, their 20-point controls centered 4 points
+    /// from the window's bottom edge. They were 24 and 20 tall, so the
+    /// console's filter field touched the window's bottom edge.
+    static let bottomBarHeight = CGFloat(WorkspaceChrome.bottomBarHeight)
+    /// The bars' controls start and end this far from the column's edges.
+    static let bottomBarSideInset: CGFloat = 6
     /// Debug bar extras (DebugBarExtras.swift): the branch at the right
     /// end, the variables' A/L badges and loading spinner.
     public let branchLabel = NSTextField(labelWithString: "")
@@ -262,7 +270,8 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
         let consoleBar = NSStackView(views: [consoleQuickLook, outputOptionsButton, consoleSearch, clearButton, showVariablesButton, showConsoleButton])
         consoleBar.spacing = 6
         consoleBarStack = consoleBar
-        consoleBar.edgeInsets = NSEdgeInsets(top: 2, left: 6, bottom: 2, right: 6)
+        consoleBar.edgeInsets = NSEdgeInsets(top: 0, left: Self.bottomBarSideInset, bottom: 0, right: Self.bottomBarSideInset)
+        consoleBar.heightAnchor.constraint(equalToConstant: Self.bottomBarHeight).isActive = true
         // §7 (D1): the command-entry line shows only during a debug session.
         let inputRule = NSBox.hairline()
         consoleInputViews = [inputRule, inputRow]
@@ -333,7 +342,8 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
         variablesBarStack = varsBar
         variablesFilter.toolTip = "Filter"
         scopePopUp.toolTip = "Variables scope"
-        varsBar.edgeInsets = NSEdgeInsets(top: 2, left: 6, bottom: 2, right: 6)
+        varsBar.edgeInsets = NSEdgeInsets(top: 0, left: Self.bottomBarSideInset, bottom: 0, right: Self.bottomBarSideInset)
+        varsBar.heightAnchor.constraint(equalToConstant: Self.bottomBarHeight).isActive = true
         let varsBarRule = NSBox.hairline()
         varsBarRule.isHidden = GlassBars.enabled
         let varsColumn = NSStackView(views: [varsScroll, varsBarRule, varsBar])

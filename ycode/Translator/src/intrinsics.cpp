@@ -59,6 +59,42 @@ std::string Translator::heapImage(const std::string &handle, const ImageKind &k,
     return img;
 }
 
+// sRGB textures written or read through their storage view (metal-shaders.md
+// section 4.4, visionos.md section 10.21): the back end gives such a texture
+// a storage view in the unorm format of the same layout and sets bit 32 of
+// its handle (the heap index is the low 32 bits). Metal encodes linear to
+// sRGB on a write to an sRGB texture and decodes on a read (IEC 61966-2-1);
+// for a handle with the bit set the translated function does it in software
+// (alpha is linear). `handle` is the 64-bit texture value, `v` a vec4 of f32.
+std::string Translator::srgbStorage(const std::string &handle, const std::string &v, bool encode) {
+    std::string i64 = E.tInt(64), b = E.tBool(), f32 = E.tFloat(32);
+    std::string v3 = E.tVec(f32, 3), v4 = E.tVec(f32, 4), b3 = E.tVec(b, 3), b4 = E.tVec(b, 4);
+    auto c3 = [&](const char *hex) { std::string c = E.constant(f32, hex); return E.composite(v3, {c, c, c}); };
+    std::string bit = E.op("OpBitwiseAnd", i64, {E.op("OpShiftRightLogical", i64, {handle, E.u64(32)}), E.u64(1)});
+    std::string flag = E.op("OpINotEqual", b, {bit, E.u64(0)});
+    std::string rgb = E.op("OpVectorShuffle", v3, {v, v, "0", "1", "2"});
+    std::string alpha = E.op("OpCompositeExtract", f32, {v, "3"});
+    std::string c = E.ext(v3, "FClamp", {rgb, c3("0x0p+0"), c3("0x1p+0")});
+    std::string conv;
+    if (encode) {
+        // c <= 0.0031308 ? 12.92 c : 1.055 c^(1/2.4) - 0.055
+        std::string lo = E.op("OpFMul", v3, {c, c3("0x1.9d70a4p+3")});
+        std::string p = E.ext(v3, "Pow", {c, c3("0x1.aaaaaap-2")});
+        std::string hi = E.op("OpFSub", v3, {E.op("OpFMul", v3, {p, c3("0x1.0e147ap+0")}), c3("0x1.c28f5cp-5")});
+        conv = E.op("OpSelect", v3, {E.op("OpFOrdLessThanEqual", b3, {c, c3("0x1.9a5c38p-9")}), lo, hi});
+    } else {
+        // c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055)^2.4
+        std::string lo = E.op("OpFMul", v3, {c, c3("0x1.3d0722p-4")});
+        std::string base = E.op("OpFMul", v3, {E.op("OpFAdd", v3, {c, c3("0x1.c28f5cp-5")}), c3("0x1.e54edcp-1")});
+        std::string hi = E.ext(v3, "Pow", {base, c3("0x1.333334p+1")});
+        conv = E.op("OpSelect", v3, {E.op("OpFOrdLessThanEqual", b3, {c, c3("0x1.4b5dccp-5")}), lo, hi});
+    }
+    std::string converted = E.op("OpCompositeConstruct", v4, {conv, alpha});
+    std::string flags = E.op("OpCompositeConstruct", b4, {flag, flag, flag, flag});
+    uses.insert("srgb_storage");
+    return E.op("OpSelect", v4, {flags, converted, v});
+}
+
 std::string Translator::heapSampler(const std::string &handle) {
     std::string st = E.global("sampler", "OpTypeSampler");
     std::string var;
@@ -504,6 +540,7 @@ bool Translator::callTexture(CallInst *C, StringRef name) {
         if (storage) {
             if (sample) { ops = "Sample"; opv = {castInt(val(sample), sample->getType(), 32, false)}; }
             E.body << r << " = OpImageRead " << v4 << " " << img << " " << coords << imageOps(ops, opv) << "\n";
+            if (k.sampled == 'f' && !k.depth && !k.ms) r = srgbStorage(val(tex), r, false);
         } else {
             if (sample) { ops = "Sample"; opv = {castInt(val(sample), sample->getType(), 32, false)}; }
             else { ops = "Lod"; opv = {castInt(val(lod), lod->getType(), 32, false)}; }
@@ -550,6 +587,7 @@ bool Translator::callTexture(CallInst *C, StringRef name) {
         else if (el->isIntegerTy() && el->getIntegerBitWidth() != 32) v = E.op(k.sampled == 'i' ? "OpSConvert" : "OpUConvert", E.tVec(u32, n), {v});
         if (n != 4) fail("unsupported-feature", "texture write of " + printType(VT));
         if (k.sampled == 'i') v = E.op("OpBitcast", v4, {v});
+        if (k.sampled == 'f' && !k.depth && !k.ms) v = srgbStorage(val(tex), v, true);
         if (experiment("imgwrite")) return true;  // bisection: texture writes dropped
         E.stmt("OpImageWrite " + img + " " + coords + " " + v);
         return true;

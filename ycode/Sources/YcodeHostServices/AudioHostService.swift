@@ -185,16 +185,42 @@ public final class AudioHostService: @unchecked Sendable {
     }
 
     public func start() {
-        let t = Thread { [self] in run() }
+        threadState.withLock { threadRunning = true }
+        let t = Thread { [self] in
+            run()
+            threadState.withLock {
+                threadRunning = false
+                threadState.broadcast()
+            }
+        }
         t.name = "ycode-audio"
         t.qualityOfService = .userInteractive
         t.start()
     }
 
+    /// Ends the service: its thread leaves its loop at the end of the
+    /// receive it is in (at most 200 ms; `waitUntilStopped`).
     public func stop() {
         lock.withLock { stopping = true }
         finishCapture()
     }
+
+    /// After `stop()`: waits until the service thread has left its loop, so
+    /// it receives nothing more from the service's ports (a second service
+    /// over the same host task, as after a restore in one process, then has
+    /// them alone). False if it is still running after `timeout` seconds.
+    @discardableResult
+    public func waitUntilStopped(timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        return threadState.withLock {
+            while threadRunning { if !threadState.wait(until: deadline) { return !threadRunning } }
+            return true
+        }
+    }
+
+    /// Whether the service thread runs (`start` until `run` returns).
+    private let threadState = NSCondition()
+    private var threadRunning = false
 
     /// Writes the capture's pending audio and header (also at the end of a run).
     public func finishCapture() {

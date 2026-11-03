@@ -51,6 +51,22 @@ struct LeanBootProfile: Equatable {
         "com.apple.homed",
     ]
 
+    /// The paired-device daemons: on a watch they are the pairing path
+    /// (watchos.md §2.4, device-pairing.md §4: nanoregistryd and ids_simd
+    /// must run, W1's done-criterion), so the watch profile keeps them.
+    static let pairingLabels: Set<String> = ["com.apple.nanoregistrylaunchd", "com.apple.pairedsyncd"]
+
+    /// The watchOS profile (watchos.md W-6; **Ycode decision**, for
+    /// development only; parity runs boot everything): the iOS labels that
+    /// are not the pairing path (labels the watch runtime lacks are inert;
+    /// watchos.md §10).
+    static let watchOSDisabledLabels: [String] = defaultDisabledLabels.filter { !pairingLabels.contains($0) }
+
+    /// The labels the lean profile disables on a runtime of `platform`.
+    static func defaultDisabledLabels(for platform: RuntimePlatform) -> [String] {
+        platform == .watchOS ? watchOSDisabledLabels : defaultDisabledLabels
+    }
+
     /// The log subsystems that `logging` turns off (lean-boot.md §4.3): the
     /// 40 subsystems with the most messages in a Mac simulator boot of the
     /// same runtime (`log show`, level 3), without `com.apple.runtime-issues`
@@ -79,7 +95,7 @@ struct LeanBootProfile: Equatable {
     ///   the disabled jobs; `logging` = os_log off only; `all` = both.
     /// - `YCODE_LEAN_BOOT_DISABLE=label,label`: more labels to disable.
     /// - `YCODE_LEAN_BOOT_KEEP=label,label`: labels taken off the list.
-    static func from(environment env: [String: String]) -> LeanBootProfile? {
+    static func from(environment env: [String: String], platform: RuntimePlatform = .iOS) -> LeanBootProfile? {
         let mode = (env["YCODE_LEAN_BOOT"] ?? "").trimmingCharacters(in: .whitespaces).lowercased()
         let daemons: Bool, logging: Bool
         switch mode {
@@ -93,7 +109,7 @@ struct LeanBootProfile: Equatable {
             (env[key] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         }
         let keep = Set(list("YCODE_LEAN_BOOT_KEEP"))
-        var labels = daemons ? defaultDisabledLabels : []
+        var labels = daemons ? defaultDisabledLabels(for: platform) : []
         for extra in list("YCODE_LEAN_BOOT_DISABLE") where !labels.contains(extra) { labels.append(extra) }
         labels.removeAll { keep.contains($0) }
         let profile = LeanBootProfile(disabledLabels: labels, loggingOff: logging)
@@ -101,6 +117,11 @@ struct LeanBootProfile: Equatable {
     }
 
     static var fromProcessEnvironment: LeanBootProfile? { from(environment: ProcessInfo.processInfo.environment) }
+
+    /// The profile from ycode-simd's environment for a runtime of `platform`.
+    static func fromProcessEnvironment(platform: RuntimePlatform) -> LeanBootProfile? {
+        from(environment: ProcessInfo.processInfo.environment, platform: platform)
+    }
 
     /// The disabled-overrides dictionary for a boot: `existing` (an earlier
     /// TMP/disabled.plist, label → disabled) with the profile's labels added

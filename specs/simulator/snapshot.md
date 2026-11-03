@@ -635,6 +635,30 @@ resource ID. A guest that read such a value (op 38, op 39) and stored it in
 GPU-visible memory would see stale values; at the home screen no client had
 read a buffer address (the 39 changed addresses were never queried).
 
+**Heap slots and argument buffers (visionos.md §10.21, 2026-10-29).** A
+texture's shader-visible ID is its heap slot, which the guest finds in the
+argument buffers the host writes for it (argument-encoder set calls,
+`messageType` 12 op 19, visionos.md §10.20.7). The snapshot records each
+live texture's slot run (index and count) and each sampler's slot. Before
+the replay the restore asks the back end to reserve them
+(`reserveHeapSlots`: the slot allocator hands out exactly those runs, in
+ascending order, and keeps them from every other allocation), so textures,
+views and samplers get their old IDs back whatever order they are made in;
+reservations no object used are given back after the replay. The service
+also records each argument-encoder member it wrote (argument buffer, byte
+offset, member kind, object, the call's offset, the value written); after
+the replay it computes every member again from its object on the new back
+end and writes the ones that changed (buffer GPU addresses, which the new
+device chooses, and any slot that could not be kept). A buffer's or
+member's object that no longer exists is skipped. The restore line reports
+slots kept, texture IDs changed, members and members written again.
+Since ARGBUF-IMPL (2026-10-30, `metal-sim-protocol.md` §4.3.9), an
+argument layout's and an encoder's recipe keep the op-16 description, and
+an encoder's record keeps its argument buffer and offset. The restore
+parses the description again, so set calls after the restore land at the
+layout's offsets. Members are recorded at their absolute byte offset, so
+they are written again where they were written.
+
 ## 9. Prototype (phase 2)
 
 Behind environment variables, all default off:

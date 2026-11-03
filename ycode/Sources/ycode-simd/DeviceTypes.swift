@@ -21,26 +21,44 @@ enum DeviceFamily: String, Sendable {
     case phone
     case pad
     case vision
+    /// Apple Watch (UIKit's idiom `watch`, `UIDeviceFamily` 4; watchos.md §3).
+    case watch
 }
 
-/// The simulator platform a runtime is for (visionos.md §2.1, V-2): read from
-/// RR's `SystemVersion.plist` `ProductName` (`xrOS` for visionOS). A runtime
-/// without the key (or with any other name) is an iOS runtime, as every
-/// runtime Ycode ran before visionOS.
-enum RuntimePlatform: String, Sendable {
+/// The simulator platform a runtime is for (visionos.md §2.1, V-2; watchos.md
+/// §2.1, W-2): read from RR's `SystemVersion.plist` `ProductName` (`xrOS` for
+/// visionOS, `Watch OS`, with a space, for watchOS). A runtime without the key
+/// (or with any other name) is an iOS runtime, as every runtime Ycode ran
+/// before visionOS.
+enum RuntimePlatform: String, Sendable, CaseIterable {
     case iOS
     case visionOS
+    case watchOS
 
-    init(productName: String?) { self = productName == "xrOS" ? .visionOS : .iOS }
+    init(productName: String?) {
+        switch productName {
+        case "xrOS": self = .visionOS
+        case "Watch OS": self = .watchOS
+        default: self = .iOS
+        }
+    }
 
-    /// The name in `SIMULATOR_VERSION_INFO` ("… - Runtime: visionOS 27.0 (24M362) - …").
+    /// The name in `SIMULATOR_VERSION_INFO` ("… - Runtime: watchOS 27.0 (24R362) - …").
     var displayName: String { rawValue }
 
     /// The Mach-O platform of the runtime's images (`LC_BUILD_VERSION`):
-    /// iOS simulator 7, visionOS simulator 12. Ycode's own guest images
-    /// (host libraries, framebuffer library, HID bundle) must carry it to be
-    /// loaded into the runtime's processes (host-library-loading.md §2.1).
-    var machOPlatform: UInt32 { self == .visionOS ? 12 : 7 }
+    /// iOS simulator 7, watchOS simulator 9, visionOS simulator 12. Ycode's
+    /// own guest images (host libraries, framebuffer library, HID bundle)
+    /// must carry it to be loaded into the runtime's processes
+    /// (host-library-loading.md §2.1); proc_info answers it as the process
+    /// platform.
+    var machOPlatform: UInt32 {
+        switch self {
+        case .iOS: 7
+        case .watchOS: 9
+        case .visionOS: 12
+        }
+    }
 }
 
 /// A property-list value whose type is kept exactly (integer vs real).
@@ -156,6 +174,12 @@ struct DeviceType: Equatable, Sendable {
     /// capabilities plist only together with the second built-in display
     /// (the guest takes each panel's surface from it, foldable.md §9 Q7).
     var displays: [CapabilityValue]?
+    /// The device type's hardware features (its `supportedFeatures`,
+    /// watchos.md §3.2), for the host's input and display services: the
+    /// Digital Crown and the always-on display on every watch, the Action
+    /// button on the Ultra types. Empty for the types made before watchOS
+    /// (their features are implied by the family).
+    var features: Set<String> = []
 
     /// The capabilities plist: `{capabilities: {...}}`, with `displays`
     /// when the second built-in display is published.
@@ -173,21 +197,34 @@ struct DeviceType: Equatable, Sendable {
     static let `default` = iPhoneDuo
 
     /// Every type `--device-type` accepts, the default first.
-    static let all: [DeviceType] = [iPhoneDuo, iPhone18Pro, iPadA16, iPadPro13M5, visionPro]
+    static let all: [DeviceType] = [iPhoneDuo, iPhone18Pro, iPadA16, iPadPro13M5, visionPro] + watches
 
     static func named(_ id: String) -> DeviceType? { all.first { $0.id == id } }
 
     /// The type a new device gets on a runtime of `platform` when
-    /// `--device-type` is not given.
-    static func `default`(for platform: RuntimePlatform) -> DeviceType { platform == .visionOS ? visionPro : .default }
+    /// `--device-type` is not given: iPhone Duo on iOS, Apple Vision Pro on
+    /// visionOS, Apple Watch Series 12 (46mm) on watchOS (the first of
+    /// watchos.md §3.1, the type the reference boot of §6 used).
+    static func `default`(for platform: RuntimePlatform) -> DeviceType {
+        switch platform {
+        case .iOS: .default
+        case .visionOS: visionPro
+        case .watchOS: appleWatchSeries12_46mm
+        }
+    }
 
     /// The default type for a runtime of this platform and version
     /// (iphone-types.md §5 I3): on iOS the newest iPhone that runs on the
     /// version — iPhone Duo on 27.1 and later, iPhone 18 Pro on 27.0 —, else
     /// (unknown or older version) the platform default.
     static func `default`(for platform: RuntimePlatform, version: String) -> DeviceType {
-        guard platform == .iOS, !version.isEmpty else { return .default(for: platform) }
-        return [iPhoneDuo, iPhone18Pro].first { $0.runs(onVersion: version) } ?? .default(for: platform)
+        guard !version.isEmpty else { return .default(for: platform) }
+        switch platform {
+        case .iOS: return [iPhoneDuo, iPhone18Pro].first { $0.runs(onVersion: version) } ?? .default(for: platform)
+        // On watchOS the first watch of watchos.md §3.1 that runs on the version.
+        case .watchOS: return watches.first { $0.runs(onVersion: version) } ?? .default(for: platform)
+        case .visionOS: return .default(for: platform)
+        }
     }
 
     /// Whether the type runs on a runtime of this version (an unknown
@@ -205,8 +242,8 @@ struct DeviceType: Equatable, Sendable {
 extension DeviceType {
     /// Builds a capabilities dictionary from its value entries and its
     /// true and false keys.
-    fileprivate static func capabilities(_ values: [String: CapabilityValue], true trueKeys: [String],
-                                         false falseKeys: [String]) -> [String: CapabilityValue] {
+    static func capabilities(_ values: [String: CapabilityValue], true trueKeys: [String],
+                             false falseKeys: [String]) -> [String: CapabilityValue] {
         var c = values
         for key in trueKeys { c[key] = .bool(true) }
         for key in falseKeys { c[key] = .bool(false) }
@@ -450,7 +487,13 @@ extension DeviceType {
     static let visionPro: DeviceType = {
         let fallbacks = "APPLE7:APPLE6:APPLE5:APPLE4:APPLE3:APPLE3v1:APPLE2:APPLE1:GLES2,0"
         let model = "RealityDevice14,1"
-        let screen = DeviceScreen(width: 3840, height: 2160, scale: 2.0, pitch: 264.0)
+        // YCODE_VISION_SCREEN=<w>x<h>: a diagnostic display size (xr-viewer.md
+        // §4.4: does the guest's vertical field of view follow the display?).
+        let custom = ProcessInfo.processInfo.environment["YCODE_VISION_SCREEN"].flatMap { v -> (Int, Int)? in
+            let p = v.split(separator: "x").compactMap { Int($0) }
+            return p.count == 2 && p[0] >= 256 && p[1] >= 256 && p[0] <= 8192 && p[1] <= 8192 ? (p[0], p[1]) : nil
+        }
+        let screen = DeviceScreen(width: custom?.0 ?? 3840, height: custom?.1 ?? 2160, scale: 2.0, pitch: 264.0)
         let values: [String: CapabilityValue] = [
             "ArtworkTraits": .dictionary([
                 "ArtworkDeviceIdiom": .string("vision"),

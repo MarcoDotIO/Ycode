@@ -1,5 +1,6 @@
 import AppKit
 import YcodeAssistant
+import YcodeIDECore
 
 /// One conversation's transcript and message field (coding-assistant.md
 /// §4): the back end's status, the transcript (Markdown, code blocks,
@@ -286,6 +287,7 @@ public final class ConversationView: NSView {
     func addMessageView(_ m: ConversationMessage, conversation: UUID) {
         let v = MessageView(message: m, proposals: m.role == .assistant && m.isComplete ? ChangeProposal.parse(m.text, target: m.target) : [])
         v.onReview = { [weak self] p in self?.onReviewProposal?(p, m, conversation) }
+        v.onContinue = { [weak self] in self?.model.continueReply(in: conversation) }
         v.translatesAutoresizingMaskIntoConstraints = false
         transcript.addArrangedSubview(v)
         v.widthAnchor.constraint(equalTo: transcript.widthAnchor, constant: -16).isActive = true
@@ -444,7 +446,8 @@ public final class ComposerTextView: NSTextView {
     var placeholder = "" { didSet { needsDisplay = true } }
 
     public override func cancelOperation(_ sender: Any?) {
-        if let onCancel { onCancel() } else { super.cancelOperation(sender) }
+        // NSTextView has no `cancelOperation:` of its own: pass it up the chain.
+        if let onCancel { onCancel() } else { _ = nextResponder?.tryToPerform(#selector(cancelOperation(_:)), with: sender) }
     }
 
     public override func keyDown(with event: NSEvent) {
@@ -474,6 +477,10 @@ public final class MessageView: NSStackView {
     public let message: ConversationMessage
     public let proposals: [ChangeProposal]
     var onReview: ((ChangeProposal) -> Void)?
+    /// Continue after a cut-off reply.
+    var onContinue: (() -> Void)?
+    /// The cut-off note's Continue button (tests).
+    public private(set) var continueButton: NSButton?
     /// The proposal buttons, by proposal (tests).
     public private(set) var reviewButtons: [NSButton] = []
 
@@ -528,6 +535,20 @@ public final class MessageView: NSStackView {
                 addArrangedSubview(p)
             }
         }
+        if message.isCutOff == true {
+            // Quiet: one secondary line and a small Continue button.
+            let l = NSTextField(wrappingLabelWithString: "The reply was cut off at the output limit (Settings ▸ Coding Assistant ▸ Most output tokens).")
+            l.textColor = .secondaryLabelColor
+            l.font = .systemFont(ofSize: 11)
+            let b = NSButton(title: "Continue", target: self, action: #selector(continueClicked))
+            b.bezelStyle = .inline
+            b.controlSize = .small
+            b.isEnabled = message.isComplete
+            continueButton = b
+            let row = NSStackView(views: [l, b])
+            row.alignment = .firstBaseline
+            addArrangedSubview(row)
+        }
         if let e = message.error {
             let l = NSTextField(wrappingLabelWithString: e)
             l.textColor = e == "Stopped." ? .secondaryLabelColor : .systemRed
@@ -543,6 +564,8 @@ public final class MessageView: NSStackView {
             }
         }
     }
+
+    @objc func continueClicked() { onContinue?() }
 
     func prose(_ text: String, markdown: Bool) -> NSTextField {
         let s: NSAttributedString

@@ -45,6 +45,61 @@ import YcodeDisplayStream
         return ctx.makeImage()!
     }
 
+    /// A Vision Pro booted for the headset (device-hub.md §I.12.5): the desktop
+    /// shows the tall picture's centre at 16:9, exactly the 3840 × 2160 display's
+    /// field of view, and the pointer maps onto that crop.
+    @Test func aTallVisionProShowsTheCentreAtTheDesktopsView() throws {
+        let w = 2160, h = 3840
+        let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(red: 0, green: 0, blue: 1, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        // The rows where |tan| ≤ 0.5625 at tangents (1, 1, h/w, h/w): the centre 1215 of 3840.
+        ctx.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: (h - 1215) / 2, width: w, height: 1215))
+        let tall = ctx.makeImage()!
+
+        let c = ViewerConnection(address: .unix("/nonexistent"), settings: DisplayClientHello(client: "t"))
+        let s = DeviceLiveSession(connection: c, spec: .visionPro)
+        defer { s.close() }
+        var hello = DisplayServerHello(deviceName: "Apple Vision Pro", model: "RealityDevice14,1", pixelWidth: w, pixelHeight: h, scale: 2,
+                                       encodings: ["jpeg"], touch: true, keyboard: true, buttons: ["home"], rotation: false)
+        hello.deviceType = "vision-pro"
+        hello.spatial = true
+        s.connection(c, hello: hello)
+        #expect(s.isTallVision && s.spec.typeID == "vision-pro")
+        #expect(s.shownPointSize == CGSize(width: 1920, height: 1080))
+        s.connection(c, image: tall, frame: DisplayFrame(sequence: 1, guestFrame: 1, serverNanoseconds: 0, inputSequence: 0, width: w, height: h,
+                                                         encoding: .jpeg, isFull: true, tiles: []), receivedAt: 0)
+        let shown = try #require(s.image)
+        #expect(shown.width == 2160 && shown.height == 1215)
+        // Only the centre band is left: the crop's first and last rows are red.
+        let read = CGContext(data: nil, width: shown.width, height: shown.height, bitsPerComponent: 8, bytesPerRow: shown.width * 4,
+                             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        read.draw(shown, in: CGRect(x: 0, y: 0, width: shown.width, height: shown.height))
+        let px = read.data!.assumingMemoryBound(to: UInt8.self)
+        for row in [2, 607, 1212] {  // an odd margin leaves the painted band one row off centre
+            let o = row * read.bytesPerRow + 1000 * 4
+            #expect(px[o] > 200 && px[o + 2] < 50, "row \(row)")
+        }
+        // The pointer: the frame's top edge is the 3840 × 2160 display's top edge (tangent 0.5625).
+        let view = DeviceView()
+        view.pointSize = s.shownPointSize
+        let top = view.spatial.ray(x: 960, y: 0).direction
+        #expect(abs(top.y / -top.z - 0.5625) < 0.001)
+
+        // A wide Vision Pro and a tall phone are shown as they come.
+        hello.pixelWidth = 3840
+        hello.pixelHeight = 2160
+        s.connection(c, hello: hello)
+        #expect(!s.isTallVision)
+        #expect(DeviceLiveSession.desktopCrop(tall, aspect: 9.0 / 16.0).height == h)
+        let phone = DeviceLiveSession(connection: ViewerConnection(address: .unix("/nonexistent"), settings: DisplayClientHello(client: "t")), spec: .iPhoneDuo)
+        defer { phone.close() }
+        phone.connection(phone.connection, hello: self.hello(.iPhoneDuo))
+        #expect(!phone.isTallVision)
+    }
+
     @Test func helloNamesTheWindowAndTheFrame() {
         let s = session(type: "unknown-type")
         #expect(s.problemText == "Connecting display")
@@ -230,11 +285,11 @@ import YcodeDisplayStream
         let menus = DeviceMenus(target: t)
         let controls = menus.controlsMenu()
         #expect(controls.items.map(\.title) == ["Home", "Lock", "App Switcher", "Action Button", "", "Rotate Left", "Rotate Right", "",
-                                                "Screenshot", "Record Screen", "", "Volume Up", "Volume Down"])
+                                                "Screenshot", "Record Screen", "", "Volume Up", "Volume Down", "Reset Camera", "View in Headset"])
         let shot = controls.items.first { $0.title == "Screenshot" }!
         #expect(shot.keyEquivalent == "s" && shot.keyEquivalentModifierMask == [.command, .shift])
         #expect(menus.viewItems().map(\.title) == ["Zoom In", "Zoom Out", "Zoom to Fit", "Physical Size", "", "Hide Bezels"])
-        #expect(menus.deviceItems().map(\.title) == ["Orientation", "Keyboard", "Fold"])
+        #expect(menus.deviceItems().map(\.title) == ["Orientation", "Keyboard", "Fold", "Room"])
         #expect(menus.deviceItems()[0].submenu!.items.map(\.title) == DeviceOrientation.allCases.map(\.title))
         // Validation: nothing to act on without a device; the record item names its state.
         #expect(!menus.validateMenuItem(shot))

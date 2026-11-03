@@ -424,6 +424,21 @@ performance, not correctness, **except** that libdispatch relies on rule 3's
 Any Ycode policy must start another constrained worker when every
 admitted constrained worker is blocked and requests are pending.
 
+Ycode's limits (agent ICON-FREEZE, 2026-10-29): both bounds of rule 3 are
+kept: unblocked constrained workers at a QoS below N (the guest CPU
+count), and constrained workers scheduled, blocked ones included, below
+max(64, 5 × N) (before, only the first; a constrained request whose
+workers all blocked could start workers without bound). Overcommit,
+kqworkq and workloop requests are limited only by the 512 threads of rule
+1. Every Ycode thread runs on a vCPU of its process (§6, the 1:1 model),
+and a request that finds no vCPU stays pending (Addendum, stage 7), so a
+process must have a vCPU for each of those 512 threads: the vCPU pool
+holds 512 slots (`stage4a-contract.md` §4; 64 until 2026-10-29). With 64,
+a process whose workers each waited (`NOTE_WL_SYNC_WAIT`) for another
+workloop that had not had its first servicer yet stopped for good:
+PosterBoard on the iOS 27.0 and 27.1 runtimes, with 63 such workers and
+90 or more workloop requests pending (`app-launch.md` §3.9).
+
 Ycode's cooperative pool (rule 5; speed work 2026-10-17): `QUEUE_REQTHREADS2`
 queues one cooperative request at its QoS. It is admitted while fewer
 cooperative workers are running than the guest has CPUs (N, the guest CPU

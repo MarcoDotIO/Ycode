@@ -7,6 +7,7 @@ import YcodeDebug
 extension WorkspaceWindowController {
     func wireDebuggerUI() {
         wireSimulatorDebugBar()
+        navigator.testRowMenu = { [weak self] in self?.testRowMenuItems() ?? [] }
         navigator.onToggleBreakpointEnabled = { [weak self] file, line in
             self?.session.breakpoints.edit(file: file, line: line) { $0.isEnabled.toggle() }
         }

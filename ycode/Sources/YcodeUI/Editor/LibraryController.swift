@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The Library (⇧⌘L): Snippets and Symbols tabs, a filter field, and a
 /// list. Double-click inserts the item into the source editor; dragging

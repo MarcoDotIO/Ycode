@@ -1,0 +1,40 @@
+# Text files are stored and checked out with LF. Every tracked text file is
+# already LF; this keeps it so on any machine.
+*.swift  text eol=lf
+*.h      text eol=lf
+*.c      text eol=lf
+*.m      text eol=lf
+*.mm     text eol=lf
+*.cpp    text eol=lf
+*.s      text eol=lf
+*.S      text eol=lf
+*.metal  text eol=lf
+*.py     text eol=lf
+*.sh     text eol=lf
+*.md     text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.json   text eol=lf
+
+# Binary files, and project files that tests compare byte for byte.
+*.png    binary
+*.jpg    binary
+*.icns   binary
+*.ttf    binary
+*.otf    binary
+*.pbxproj         -text
+*.xcscheme        -text
+*.xcworkspacedata -text
+*.usda            -text
+*.usdc   binary
+*.usdz   binary
+
+# GitHub's language statistics: vendored sources and written specs don't count as the project's code.
+ycode/Sources/CVulkan/**               linguist-vendored
+ycode/Sources/CYcodeOpenXR/**          linguist-vendored
+ycode/Sources/CYcodeVideo/nvheaders/** linguist-vendored
+frameworks/swiftui/Sources/COVSDL/**   linguist-vendored
+frameworks/swiftui/Sources/COVVulkan/** linguist-vendored
+frameworks/swiftui/Sources/CThorVG/**  linguist-vendored
+research/**                            linguist-documentation
+specs/**                               linguist-documentation

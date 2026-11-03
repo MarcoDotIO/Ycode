@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// Ycode's remote simulator in Devices and Simulators: its row, the fold
 /// controls of a foldable one (`foldable.md` §8.3) and Erase All
@@ -28,14 +29,14 @@ extension WorkspaceWindowController {
         }
         // Running: a run uses it, or it was started from the hub.
         let running: (RemoteSimulator) -> Bool = { busy($0) || RemoteDeviceSessions.shared.isRunning($0) }
-        c.setYcodeRemote(rows: RemoteSimulator.all(settings).map { DeviceRow.ycodeRemote($0, running: running($0)) })
+        c.setYcodeRemote(rows: RemoteSimulator.hub(settings).map { DeviceRow.ycodeRemote($0, running: running($0)) })
         c.currentRemoteRows = {
-            RemoteSimulator.all(RemoteSimulatorSettings.load(defaults)).map { DeviceRow.ycodeRemote($0, running: running($0)) }
+            RemoteSimulator.hub(RemoteSimulatorSettings.load(defaults)).map { DeviceRow.ycodeRemote($0, running: running($0)) }
         }
         let remoteFor: (DeviceRow) -> RemoteSimulator? = { row in
             var settings = RemoteSimulatorSettings.load(defaults)
             if let ssh { settings.ssh = ssh }
-            return RemoteSimulator.all(settings).first { "\(settings.destination):\($0.remoteDevicePath)" == row.identifier }
+            return RemoteSimulator.hub(settings).first { "\(settings.destination):\($0.remoteDevicePath)" == row.identifier }
         }
         // Start / Shut Down from the hub (device-hub.md "Ycode implementation").
         c.startDevice = { [weak self] row in
@@ -62,16 +63,27 @@ extension WorkspaceWindowController {
             guard let remote = remoteFor(row) else { return nil }
             // The compact window's title is the device type's name (its row
             // adds " (Ycode)"): it leaves room for the Expand │ More capsule.
-            return RemoteDisplayLink(remote: remote, name: remote.target?.deviceType.name ?? row.name, os: "iOS \(row.osVersion)")
+            return RemoteDisplayLink(remote: remote, name: remote.target?.deviceType.name ?? row.name, os: "\(row.platform) \(row.osVersion)")
+        }
+        c.headset.visionDisplay = (get: { RemoteSimulatorSettings.load(defaults).visionDisplay },
+                                   set: { v in var s = RemoteSimulatorSettings.load(defaults); s.visionDisplay = v; s.save(defaults) })
+        // A Vision Pro in a headset (device-hub.md §I.12): the viewer host
+        // reaches the device's display socket on the simulator host by ssh.
+        c.headset.route = { [weak c] row in
+            guard let remote = remoteFor(row) else { return nil }
+            let fromViewer = c?.headsetSettings.simulatorHostFromViewer ?? ""
+            return .sshSocket(destination: fromViewer.isEmpty ? remote.settings.destination : fromViewer, socket: remote.displaySocketPath)
         }
         // The camera of Ycode's simulators (camera.md "Ycode implementation"): the same setting as Settings ▸ Simulators.
         c.cameraSetting = DevicesController.cameraSetting(defaults)
+        // Pairs of phones and watches (device-pairing.md §13).
+        configureRemotePairing(c, defaults: defaults, ssh: ssh)
         c.eraseDevice = { [weak self, weak c] row in
             guard let self else { return (false, "The workspace was closed.") }
             if Self.remoteSimulatorInUse { return (false, "Stop the run on \(RemoteSimulator.deviceName) before erasing it.") }
             var settings = RemoteSimulatorSettings.load(defaults)
             if let ssh { settings.ssh = ssh }
-            let all = RemoteSimulator.all(settings)
+            let all = RemoteSimulator.hub(settings)
             guard let remote = all.first(where: { "\(settings.destination):\($0.remoteDevicePath)" == row.identifier }) ?? all.first else {
                 return (false, "Set the remote simulator in Settings ▸ Simulators first.")
             }
@@ -84,7 +96,7 @@ extension WorkspaceWindowController {
             guard let self else { return (false, "The workspace was closed.") }
             var settings = RemoteSimulatorSettings.load(defaults)
             if let ssh { settings.ssh = ssh }
-            guard let remote = RemoteSimulator.all(settings).first(where: { "\(settings.destination):\($0.remoteDevicePath)" == row.identifier }) else {
+            guard let remote = RemoteSimulator.hub(settings).first(where: { "\(settings.destination):\($0.remoteDevicePath)" == row.identifier }) else {
                 return (false, "Set the remote simulator in Settings ▸ Simulators first.")
             }
             return await self.session.controlRemoteSimulator(remote: remote, words)
@@ -95,7 +107,7 @@ extension WorkspaceWindowController {
             guard let self else { return (false, "The workspace was closed.") }
             var settings = RemoteSimulatorSettings.load(defaults)
             if let ssh { settings.ssh = ssh }
-            guard let remote = RemoteSimulator.all(settings).first(where: { "\(settings.destination):\($0.remoteDevicePath)" == row.identifier }) else {
+            guard let remote = RemoteSimulator.hub(settings).first(where: { "\(settings.destination):\($0.remoteDevicePath)" == row.identifier }) else {
                 return (false, "Set the remote simulator in Settings ▸ Simulators first.")
             }
             return await self.session.controlRemoteSimulator(remote: remote, words)

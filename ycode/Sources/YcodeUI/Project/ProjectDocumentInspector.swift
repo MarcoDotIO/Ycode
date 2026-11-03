@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 import YcodeProject
 
 /// The file inspector's Project Document section for a `.xcodeproj`

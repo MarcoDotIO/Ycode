@@ -42,12 +42,21 @@ public enum DisplayAddress: Sendable, Equatable, CustomStringConvertible {
 
 public struct DisplaySocketError: Error, CustomStringConvertible {
     public let description: String
-    init(_ what: String) { description = what + ": " + String(cString: strerror(errno)) }
-    init(message: String) { description = message }
+    public init(_ what: String) { description = what + ": " + String(cString: strerror(errno)) }
+    public init(message: String) { description = message }
+}
+
+/// A byte stream to a display server or viewer: a socket, or Ycode's own
+/// secure link (YcodeSimLink, sim-link.md).
+public protocol DisplayTransport: AnyObject, Sendable {
+    func send(_ bytes: [UInt8]) throws
+    /// The next bytes, nil at the end.
+    func receive(max: Int) -> [UInt8]?
+    func close()
 }
 
 /// A connected stream socket (blocking).
-public final class DisplayConnection: @unchecked Sendable {
+public final class DisplayConnection: DisplayTransport, @unchecked Sendable {
     public let fd: Int32
     private let sendLock = NSLock()
     private var closed = false

@@ -18,8 +18,8 @@ Two lines on stdout, exit 0:
     Build version <build>
 
 The reference tool prints its own product name, marketing version and build
-number. **ycodebuild prints Ycode's** (`Ycode 0.1` / `Build version
-0.1.0-dev`) in the same two-line shape, so scripts that parse the shape keep
+number. **ycodebuild prints Ycode's** (`Ycode <version>` / `Build version
+<version>`, from `ycode/VERSION`) in the same two-line shape, so scripts that parse the shape keep
 working but can tell the tools apart. `-json` and info items are ignored
 without `-sdk`.
 

@@ -1,33 +1,7 @@
 import AppKit
+import YcodeIDECore
 import YcodeProject
 import YcodeWorkspace
-
-extension WorkspaceModel {
-    /// Containers whose schemes the workspace shows.
-    public var schemeContainers: [URL] {
-        switch kind {
-        case .project: [url]
-        case .workspace: [url] + projects.keys.sorted().map { URL(fileURLWithPath: $0) }
-        case .package: []
-        }
-    }
-
-    /// Scheme files of all containers (shared and the current user's).
-    public func loadSchemes() -> [Scheme] {
-        schemeContainers.flatMap { Scheme.discover(in: $0) }
-    }
-
-    /// Build configuration names of the projects, in list order, unique.
-    public var configurationNames: [String] {
-        var seen = Set<String>()
-        let names = projects.keys.sorted().flatMap { path -> [String] in
-            let p = projects[path]!
-            return p.buildConfigurations(listID: p.project?.string("buildConfigurationList")).compactMap { $0.string("name") }
-        }
-        let unique = names.filter { seen.insert($0).inserted }
-        return unique.isEmpty ? ["Debug", "Release"] : unique
-    }
-}
 
 /// An editable list with an enable checkbox per row and one or two text
 /// columns (arguments; environment variable name and value).
@@ -478,7 +452,7 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
         ("Working Directory", ""), ("Background Asset Packs", "None"), ("Localization Debugging", "Show non-localized strings"),
         ("App Language", "System Language"), ("App Region", "System Region"), ("Distribution", "App Store"),
         ("Simulated Apple Foundation Models Availability", "Off"), ("XPC Services", "Debug XPC services used by app"),
-        ("Queue Debugging", "Enable backtrace recording"), ("Console", "Xcode (with Standard Input)"),
+        ("Queue Debugging", "Enable backtrace recording"), ("Console", "Ycode (with Standard Input)"),
     ]
     static let checkedByDefault: Set<String> = ["Allow Location Simulation", "Allow debugging when browsing versions", "Debug XPC services used by app"]
     static let checkboxRows: Set<String> = ["Core Location", "GameKit Configuration", "Persistent State", "Document Versions",
@@ -538,9 +512,10 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
         pane.addArrangedSubview(fixedEnabled("Working Directory", NSStackView(views: [c, f])))
     }
 
-    /// Run ▸ Diagnostics (reference-ui-2.md §7.3), with defaults. Ycode's
-    /// specs name no scheme attributes for these, so they are shown
-    /// disabled.
+    /// Run ▸ Diagnostics (reference-ui-2.md §7.3), with defaults. The
+    /// sanitizer rows edit the action's attributes (`SchemeDiagnostics`,
+    /// schemes.md §Diagnostics); the other rows have no scheme attribute in
+    /// Ycode's specs and are shown disabled.
     public static let diagnosticRows: [(section: String, title: String, on: Bool, indent: Bool)] = [
         ("Runtime Sanitization", "Address Sanitizer", false, false), ("", "Detect use of stack after return", false, true),
         ("", "Thread Sanitizer", false, false), ("", "Undefined Behavior Sanitizer", false, false),
@@ -555,14 +530,50 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
         ("Core AI", "Include Model Debug Information", false, false),
     ]
 
+    /// The editable sanitizer rows and the attribute each one sets.
+    public static let sanitizerRows: [String: WritableKeyPath<SchemeDiagnostics, Bool>] = [
+        "Address Sanitizer": \.addressSanitizer, "Detect use of stack after return": \.stackUseAfterReturn,
+        "Thread Sanitizer": \.threadSanitizer, "Undefined Behavior Sanitizer": \.undefinedBehaviorSanitizer,
+    ]
+
+    /// A sanitizer checkbox of `element`'s Diagnostics.
+    private func sanitizerCheck(_ title: String, indent: Bool, element: String) -> NSButton {
+        let key = Self.sanitizerRows[title]!
+        let d = scheme.diagnostics(for: element)
+        let b = SanitizerBox(checkboxWithTitle: (indent ? "    " : "") + title, target: self, action: #selector(sanitizerToggled(_:)))
+        b.key = key
+        b.element = element
+        b.state = d[keyPath: key] ? .on : .off
+        b.isEnabled = key != \.stackUseAfterReturn || d.addressSanitizer
+        b.setAccessibilityIdentifier("\(element).\(title)")
+        return b
+    }
+
+    @objc private func sanitizerToggled(_ b: NSButton) {
+        guard let b = b as? SanitizerBox, let key = b.key else { return }
+        setSanitizer(key, b.state == .on, for: b.element)
+    }
+
+    /// Turns a sanitizer of `element` on or off (ASan and TSan exclude each
+    /// other) and redraws the pane.
+    public func setSanitizer(_ key: WritableKeyPath<SchemeDiagnostics, Bool>, _ on: Bool, for element: String = "LaunchAction") {
+        var d = scheme.diagnostics(for: element)
+        d.set(key, on)
+        scheme.setDiagnostics(d, for: element)
+        select(action: selectedAction, tab: selectedRunTab)
+    }
+
     private func diagnosticsPane() {
         for r in Self.diagnosticRows {
-            let c = check((r.indent ? "    " : "") + r.title, r.on)
+            let c = Self.sanitizerRows[r.title] != nil ? sanitizerCheck(r.title, indent: r.indent, element: "LaunchAction")
+                : check((r.indent ? "    " : "") + r.title, r.on)
             if r.section == "Runtime Sanitization" {
                 let sub = NSTextField(labelWithString: "Requires recompilation")
                 sub.font = .systemFont(ofSize: 10)
                 sub.textColor = .secondaryLabelColor
                 pane.addArrangedSubview(fixed(r.section, NSStackView(views: [c, sub])))
+            } else if Self.sanitizerRows[r.title] != nil {
+                pane.addArrangedSubview(fixedEnabled(r.section, c))
             } else {
                 pane.addArrangedSubview(fixed(r.section, c))
             }
@@ -580,6 +591,10 @@ public final class SchemeEditorController: NSViewController, NSTableViewDataSour
         lldb.placeholderString = "$(SRCROOT)/LLDBInitFile"
         lldb.isEnabled = false
         pane.addArrangedSubview(fixed("LLDB Init File", lldb))
+        // The test action's own sanitizers (schemes.md §Diagnostics).
+        for (n, r) in Self.diagnosticRows.prefix(4).enumerated() {
+            pane.addArrangedSubview(fixedEnabled(n == 0 ? "Diagnostics" : "", sanitizerCheck(r.title, indent: r.indent, element: element)))
+        }
         // Test Plans | Default, rows with a subtitle and a go-to arrow,
         // +/− and a filter (§11.3).
         var rows: [[NSView]] = []
@@ -862,4 +877,10 @@ final class SchemeActionCell: NSTableCellView {
         detail.textColor = selected ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.8) : .secondaryLabelColor
         icon.contentTintColor = selected ? .alternateSelectedControlTextColor : .secondaryLabelColor
     }
+}
+
+/// A Diagnostics checkbox that knows its attribute and action element.
+final class SanitizerBox: NSButton {
+    var key: WritableKeyPath<SchemeDiagnostics, Bool>?
+    var element = "LaunchAction"
 }

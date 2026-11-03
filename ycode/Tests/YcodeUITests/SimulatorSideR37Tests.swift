@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Testing
 import YcodeBuild
+@testable import YcodeIDECore
 import YcodeProject
 @testable import YcodeUI
 
@@ -37,6 +38,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 
     func iosApp(in dir: URL, name: String = "Tour") throws -> URL {
         var o = ProjectOptions()
+        // The fixtures' simulator runtimes predate V(iOS) (templates.md § Notation).
+        o.deploymentTarget = "18.0"
         o.productName = name
         o.organizationIdentifier = "org.ycode.tests"
         o.testing = .none
@@ -377,8 +380,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(s.activity == .running("Stopping Remote…"))
         #expect(await waitUntil(20) { s.simulatorRun == nil })
         #expect(s.console.contains("the stop signal did not reach tester@fakehost (ssh status 255)"))
-        // The launcher's last line can be read after the run has ended.
-        #expect(await waitUntil(5) { s.console.contains("stopped by SIGINT") })
+        // The launcher's last line, written as it ends, is in the console
+        // when the run is over (the exit is reported after the output: it
+        // used to be dropped when the exit was noticed first, under load).
+        #expect(s.console.contains("stopped by SIGINT"))
         // A stopped run is not a failed run.
         #expect(s.activity == .finished("Finished running Remote on \(remote.destination.name)"))
     }

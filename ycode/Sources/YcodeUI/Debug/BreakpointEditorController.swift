@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The breakpoint editor (double-click or ⌘-click a breakpoint): condition,
 /// ignore count, one action (log message or debugger command), and

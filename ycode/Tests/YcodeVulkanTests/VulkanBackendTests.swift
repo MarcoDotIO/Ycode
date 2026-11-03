@@ -296,6 +296,79 @@ struct VulkanBackendTests {
         for x in [level1, whole, t, pipe] { b.release(x) }
     }
 
+    /// A cube texture Metal only reads gets a storage view (visionos.md
+    /// §10.24): a function's `read()` of a cube face goes through it, and
+    /// without one visionOS RealityKit's `generateClampedMap` read the
+    /// room's environment cube as zeros (black reflections). A 2D texture
+    /// Metal only reads still gets none.
+    @Test func readOnlyCubesGetStorageViews() throws {
+        guard VK.available, VulkanMetalBackend.storageForCubeReads, !VulkanMetalBackend.storageForEveryTexture else { return }
+        let b = VK.backend
+        let cube = VK.handle(), flat = VK.handle()
+        try b.createTexture(cube, MetalTextureDescriptor(textureType: MetalTextureType.typeCube, pixelFormat: MetalPixelFormat.rgba16Float,
+                                                         width: 32, height: 32, mipmapLevelCount: 6,
+                                                         usage: MetalTextureUsage.shaderRead, resourceOptions: 0x20), iosurface: nil)
+        try b.createTexture(flat, MetalTextureDescriptor(pixelFormat: MetalPixelFormat.rgba16Float, width: 32, height: 32,
+                                                         usage: MetalTextureUsage.shaderRead, resourceOptions: 0x20), iosurface: nil)
+        #expect(b.textures[cube]?.storageView != nil && b.textures[cube]?.shaderView != nil)
+        #expect(b.textures[flat]?.storageView == nil)
+        // The cube's levels own consecutive storage slots (explicit-level reads).
+        #expect(try #require(b.heapSlots(ofTexture: cube)).count == 6)
+        for x in [cube, flat] { b.release(x) }
+    }
+
+    /// A snapshot restore (visionos.md §10.21) reserves the heap slots the
+    /// textures and samplers had: a fresh back end hands them out to those
+    /// handles only, in any creation order, and to nothing made first.
+    @Test func reservedHeapSlotsGoBackToTheirObjects() throws {
+        guard VK.available else { return }
+        let a = VK.backend
+        let sampled = MetalTextureDescriptor(pixelFormat: MetalPixelFormat.rgba8Unorm, width: 16, height: 16,
+                                             usage: MetalTextureUsage.shaderRead, resourceOptions: 0x20)
+        let storage = MetalTextureDescriptor(pixelFormat: MetalPixelFormat.rgba8Unorm, width: 16, height: 16, mipmapLevelCount: 3,
+                                             usage: 0x3, resourceOptions: 0x20)
+        var linear = MetalSamplerDescriptor()
+        linear.minFilter = 1
+        linear.magFilter = 1
+        linear.mipFilter = 2
+        linear.sAddressMode = 3
+        linear.rAddressMode = 2
+        let t1 = VK.handle(), t2 = VK.handle(), t3 = VK.handle(), s1 = VK.handle()
+        for (h, d) in [(t1, sampled), (t2, sampled), (t3, storage)] { try a.createTexture(h, d, iosurface: nil) }
+        try a.createSampler(s1, linear)
+        let run2 = try #require(a.heapSlots(ofTexture: t2)), run3 = try #require(a.heapSlots(ofTexture: t3))
+        let sid = try #require(a.gpuResourceID(ofSampler: s1))
+        #expect(run3.count == 3)
+        for h in [t1, t2, t3, s1] { a.release(h) }
+
+        var o = VulkanMetalBackend.Options()
+        o.log = { print($0) }
+        let b = VulkanMetalBackend(translator: VK.translator, options: o)
+        defer { b.shutdown() }
+        b.reserveHeapSlots(textures: [t2: run2, t3: run3], samplers: [s1: UInt32(sid)])
+        // Made first, a texture and a sampler of other handles get other slots.
+        let other = VK.handle(), otherSampler = VK.handle()
+        try b.createTexture(other, storage, iosurface: nil)
+        var nearest = MetalSamplerDescriptor()
+        nearest.tAddressMode = 1
+        try b.createSampler(otherSampler, nearest)
+        let otherRun = try #require(b.heapSlots(ofTexture: other))
+        #expect(!(run2.index..<run2.index + run2.count).overlaps(otherRun.index..<otherRun.index + otherRun.count))
+        #expect(!(run3.index..<run3.index + run3.count).overlaps(otherRun.index..<otherRun.index + otherRun.count))
+        #expect(b.gpuResourceID(ofSampler: otherSampler) != sid)
+        // Then the reserved ones, in reverse order, get exactly their runs back.
+        try b.createTexture(t3, storage, iosurface: nil)
+        try b.createTexture(t2, sampled, iosurface: nil)
+        try b.createSampler(s1, linear)
+        #expect(b.heapSlots(ofTexture: t2).map { $0 == run2 } == true)
+        #expect(b.heapSlots(ofTexture: t3).map { $0 == run3 } == true)
+        #expect(b.gpuResourceID(ofSampler: s1) == sid)
+        // An empty call gives back what nobody used; nothing is released twice.
+        b.reserveHeapSlots(textures: [VK.handle(): (index: 900, count: 1)], samplers: [:])
+        b.reserveHeapSlots(textures: [:], samplers: [:])
+        #expect(b.textureIndices.badReleases == 0 && b.samplerIndices.badReleases == 0)
+    }
+
     /// A texture Metal did not mark `shaderWrite` has no storage view; a
     /// kernel that writes it anyway writes the dummy image (logged), never
     /// what its heap slot held before (a released texture's view).
@@ -588,6 +661,72 @@ struct VulkanBackendTests {
         b.release(vb)
         b.release(t)
         withExtendedLifetime(pages) {}
+    }
+
+    /// A pipeline without a fragment function draws depth only
+    /// (visionos.md §10.22.2): its draws count samples for visibility
+    /// results and leave the colour attachment as it was. Before, such
+    /// pipelines were not rasterized at all and every occlusion query
+    /// counted 0.
+    @Test func depthOnlyPipelinesRasterize() throws {
+        let b = VK.backend
+        let pages = HostPages(16384)
+        let verts = HostPages(16384)
+        let positions: [(Float, Float)] = [(-1, -1), (1, -1), (0, 1)]
+        for (i, p) in positions.enumerated() {
+            verts.pointer.storeBytes(of: p.0, toByteOffset: 12 * i, as: Float.self)
+            verts.pointer.storeBytes(of: p.1, toByteOffset: 12 * i + 4, as: Float.self)
+            verts.pointer.storeBytes(of: UInt32(0xFF00_00FF), toByteOffset: 12 * i + 8, as: UInt32.self)
+        }
+        let xf: [Float] = [1, 1, 0, 0]
+        for (i, v) in xf.enumerated() { verts.pointer.storeBytes(of: v, toByteOffset: 4096 + 4 * i, as: Float.self) }
+        let vb = VK.handle(), xb = VK.handle(), vis = VK.handle()
+        try b.createBuffer(vb, length: 36, storage: .shared, guestMemory: verts.region(0, 36))
+        try b.createBuffer(xb, length: 16, storage: .shared, guestMemory: verts.region(4096, 16))
+        try b.createBuffer(vis, length: 16, storage: .shared, guestMemory: pages.region(0, 16))
+        let color = try VK.texture(MetalPixelFormat.rgba8Unorm, 32, 32)
+        let depth = try VK.texture(MetalPixelFormat.depth32Float, 32, 32, usage: 0x4)
+        var desc = MetalRenderPipelineDescriptor()
+        desc.vertexFunction = try VK.function("tri.vert")
+        var c = MetalColorAttachmentDescriptor(index: 0)
+        c.pixelFormat = MetalPixelFormat.rgba8Unorm
+        desc.colorAttachments = [c]
+        desc.depthAttachmentPixelFormat = MetalPixelFormat.depth32Float
+        var vd = MetalVertexDescriptor()
+        var a0 = MetalVertexDescriptor.Attribute(index: 0); a0.format = 29; a0.offset = 0; a0.bufferIndex = 0
+        var a1 = MetalVertexDescriptor.Attribute(index: 1); a1.format = 9; a1.offset = 8; a1.bufferIndex = 0
+        var l0 = MetalVertexDescriptor.Layout(bufferIndex: 0); l0.stride = 12
+        vd.attributes = [a0, a1]
+        vd.layouts = [l0, l0]
+        desc.vertexDescriptor = vd
+        let pipe = VK.handle(), ds = VK.handle()
+        try b.createRenderPipeline(pipe, desc)
+        var dsd = MetalDepthStencilDescriptor()
+        dsd.depthCompareFunction = 6  // GreaterEqual against a clear of 0 (reverse depth)
+        try b.createDepthStencilState(ds, dsd)
+        var d = MetalRenderPassDescriptor()
+        d.colorAttachments = [MetalColorAttachment(index: 0, attachment: MetalRenderPassAttachment(
+            texture: color, loadAction: MetalLoadAction.clear, storeAction: MetalStoreAction.store), clearColor: [0, 0, 1, 1])]
+        d.depth = MetalRenderPassAttachment(texture: depth, loadAction: MetalLoadAction.clear, storeAction: MetalStoreAction.dontCare)
+        d.clearDepth = 0
+        d.visibilityResultBuffer = vis
+        let r = VK.run([.render(MetalRenderPass(descriptor: d, commands: [
+            .setRenderPipelineState(pipe),
+            .setDepthStencilState(ds),
+            .setBuffer(stage: .vertex, index: 0, buffer: vb, offset: 0),
+            .setBuffer(stage: .vertex, index: 1, buffer: xb, offset: 0),
+            .setVisibilityResultMode(1, offset: 0),
+            .draw(MetalDraw(primitiveType: MetalPrimitiveType.triangle, vertexStart: 0, vertexCount: 3)),
+            .setVisibilityResultMode(0, offset: 0),
+        ]))])
+        #expect(r.status == 4)
+        let slot = pages.pointer.load(fromByteOffset: 0, as: UInt64.self)
+        #expect(slot != 0, "the depth-only draw passed no samples")
+        let px = try VK.read(color, 32, 32)
+        let blue: [UInt8] = [0, 0, 255, 255]
+        #expect((0..<(32 * 32)).allSatisfy { Array(px[4 * $0..<4 * $0 + 4]) == blue }, "the colour attachment changed")
+        for h in [vb, xb, vis, pipe, ds, color, depth] { b.release(h) }
+        withExtendedLifetime((pages, verts)) {}
     }
 
     /// A `replaceRegion` body shorter than its region (metal-sim-protocol.md
@@ -1197,8 +1336,36 @@ struct VulkanBackendTests {
         #expect(r.constantData?.bytes == [1, 2, 3])
         let key = SamplerKey(r.constexprSamplers![0])
         #expect(key.magFilter == 1 && key.s == 2)
+        // Bicubic constexpr samplers filter linearly (visionos.md §10.24).
+        var bicubic = ShaderReflection.ConstexprSampler(tableEntry: 177)
+        bicubic.magFilter = "bicubic"; bicubic.minFilter = "bicubic"; bicubic.mipFilter = "none"
+        let b = SamplerKey(bicubic)
+        #expect(b.magFilter == 1 && b.minFilter == 1 && b.mipFilter == 0)
     }
 }
 
 func hex(_ v: UInt32) -> String { String(v, radix: 16) }
 func hex(_ v: UInt64) -> String { String(v, radix: 16) }
+
+/// `IndexAllocator.claim` (visionos.md §10.21) hands out exactly the run
+/// asked for: past the slots handed out (the gap becomes free single slots)
+/// or a free run of that start and length; never a taken slot. No GPU needed.
+@Suite struct IndexAllocatorTests {
+    @Test func claimsExactRuns() {
+        var a = IndexAllocator(capacity: 64)
+        let first = a.claim(10, count: 3)
+        let taken = [a.claim(11), a.claim(10, count: 3), a.claim(0), a.claim(63, count: 2)]
+        #expect(first && taken == [false, false, false, false])
+        // The skipped slots 1…9 are handed out one by one, never 10…12.
+        var singles: [UInt32] = []
+        for _ in 0..<9 { if let i = a.allocate() { singles.append(i) } }
+        #expect(singles.sorted() == Array(1...9))
+        let next = a.allocate()
+        #expect(next == 13)
+        a.release(10, count: 3)
+        let again = [a.claim(10, count: 3), a.claim(10, count: 3)]
+        a.release(5)
+        let single = [a.claim(5), a.claim(5)]
+        #expect(again == [true, false] && single == [true, false] && a.badReleases == 0)
+    }
+}

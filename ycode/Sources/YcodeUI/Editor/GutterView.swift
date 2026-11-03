@@ -1,5 +1,6 @@
 import AppKit
 import YcodeBuild
+import YcodeIDECore
 
 /// The editor's left gutter: the source-control change column at its far
 /// left (`reference-ui-5.md` §6.3), line numbers, breakpoints, issue marks,
@@ -23,6 +24,8 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
         public var issuesStale = false
         /// Code Review change bars by line (reference-ui-4.md §15).
         public var changes: [Int: LineDiff.Row.Kind] = [:]
+        /// Editor ▸ Code Coverage: execution count per executable line.
+        public var coverage: [Int: Int] = [:]
     }
 
     public enum TestStatusMark: Equatable { case notRun, passed, failed }
@@ -60,6 +63,22 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
             needsDisplay = true
         }
     }
+    /// Editor ▸ Authors: the blame column at the far left
+    /// (`source-control.md`, "Ycode implementation").
+    public var showsAuthors = false {
+        didSet {
+            guard oldValue != showsAuthors else { return }
+            ruleThickness = Self.baseThickness + leftInset
+            updateChangeToolTips()
+            needsDisplay = true
+        }
+    }
+    public static let authorsColumnWidth: CGFloat = 170
+    /// Blame blocks of the shown text, sorted by line.
+    public var authorBlocks: [GitBlame.Block] = [] { didSet { if oldValue != authorBlocks { needsDisplay = true } } }
+    /// A click in the Authors column (the line clicked).
+    public var onAuthorsClick: ((Int) -> Void)?
+    var authorsInset: CGFloat { showsAuthors ? Self.authorsColumnWidth : 0 }
     /// The change regions against the index and HEAD (§6.3.2).
     public var changeRegions: [SourceChangeRegion] = [] {
         didSet {
@@ -71,9 +90,12 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
     /// A click on a change bar (the line clicked).
     public var onChangeClick: ((Int) -> Void)?
     /// Everything right of the change column starts here.
-    var leftInset: CGFloat { showsChangeColumn ? Self.changeColumnWidth : 0 }
+    var leftInset: CGFloat { authorsInset + (showsChangeColumn ? Self.changeColumnWidth : 0) }
     /// Settings ▸ Text Editing ▸ Code folding ribbon.
     public var showsRibbon = true { didSet { needsDisplay = true } }
+    /// Editor ▸ Code Coverage: draw the coverage ribbon.
+    public var showsCoverage = false { didSet { needsDisplay = true } }
+    static let coverageWidth: CGFloat = 4
     private var textView: NSTextView? { clientView as? NSTextView }
 
     public init(textView: NSTextView, scrollView: NSScrollView) {
@@ -122,6 +144,7 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
         let attrs: [NSAttributedString.Key: Any] = [.font: Theme.gutterFont, .foregroundColor: NSColor.secondaryLabelColor]
         let inset = leftInset
         let rows = visibleLines()
+        if showsAuthors { drawAuthors(rows) }
         if showsChangeColumn { drawChangeBars(rows) }
         for (line, r) in rows {
             let row = NSRect(x: 2 + inset, y: r.minY, width: numberWidth - 3 - inset, height: max(r.height, 14))
@@ -151,9 +174,25 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
                 (k == .added ? NSColor.systemGreen : (k == .removed ? NSColor.systemRed : NSColor.systemBlue)).setFill()
                 NSRect(x: bounds.width - 3, y: k == .removed ? row.minY - 1 : row.minY, width: 3, height: k == .removed ? 3 : row.height).fill()
             }
+            if showsCoverage, let count = marks.coverage[line] { drawCoverage(count, in: row) }
             // Issues have no gutter glyph: the line tint, underline and
             // annotation in the text show them (§4.3.2).
         }
+    }
+
+    /// The coverage ribbon (Ycode's look; the reference's was not
+    /// observed): a strip left of the change bars, red where the line never
+    /// ran, a faint grey where it did.
+    private func drawCoverage(_ count: Int, in row: NSRect) {
+        (count == 0 ? NSColor.systemRed.withAlphaComponent(0.6) : NSColor.secondaryLabelColor.withAlphaComponent(0.25)).setFill()
+        NSRect(x: bounds.width - 4 - Self.coverageWidth, y: row.minY, width: Self.coverageWidth, height: row.height).fill()
+    }
+
+    /// The text the ribbon stands for on a line: its execution count
+    /// ("0" for a line that never ran), nil for a line without coverage.
+    public func coverageText(line: Int) -> String? {
+        guard showsCoverage, let c = marks.coverage[line] else { return nil }
+        return "\(c)"
     }
 
     /// The breakpoint shape: a tag pointing right, filled when enabled and
@@ -236,6 +275,10 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
     public override func mouseDown(with event: NSEvent) {
         let start = convert(event.locationInWindow, from: nil)
         guard let line = line(atGutterY: start.y) else { return }
+        if showsAuthors, start.x < authorsInset {
+            onAuthorsClick?(line)
+            return
+        }
         if showsChangeColumn, start.x < leftInset {
             if changeRegion(atLine: line) != nil { onChangeClick?(line) }
             return
@@ -283,7 +326,7 @@ extension GutterView {
     /// The bar rectangles, in gutter coordinates, for the given rows.
     func changeBarRects(_ rows: [(line: Int, rect: NSRect)]) -> [(SourceChangeRegion, NSRect)] {
         var out: [(SourceChangeRegion, NSRect)] = []
-        let x: CGFloat = 3, w: CGFloat = 5
+        let x: CGFloat = authorsInset + 3, w: CGFloat = 5
         for region in changeRegions {
             let covered = rows.filter { region.contains(line: $0.line) }
             if region.kind == .deleted {
@@ -319,12 +362,14 @@ extension GutterView {
 
     func updateChangeToolTips() {
         removeAllToolTips()
+        if showsAuthors { addToolTip(NSRect(x: 0, y: -100_000, width: Self.authorsColumnWidth, height: 200_000), owner: self, userData: nil) }
         guard showsChangeColumn else { return }
-        addToolTip(NSRect(x: 0, y: -100_000, width: Self.changeColumnWidth, height: 200_000), owner: self, userData: nil)
+        addToolTip(NSRect(x: authorsInset, y: -100_000, width: Self.changeColumnWidth, height: 200_000), owner: self, userData: nil)
     }
 
     public func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
-        changeToolTip(atGutterY: point.y) ?? ""
+        if showsAuthors, point.x < authorsInset { return line(atGutterY: point.y).flatMap(authorsToolTip(line:)) ?? "" }
+        return changeToolTip(atGutterY: point.y) ?? ""
     }
 
     /// One accessibility element per bar, described as in §6.3.3.
@@ -344,5 +389,68 @@ extension GutterView {
             children.append(e)
         }
         return children
+    }
+}
+
+// MARK: Authors column (Editor ▸ Authors)
+
+extension GutterView {
+    /// The blame block holding `line` (binary search; blocks are sorted).
+    public func authorBlock(atLine line: Int) -> GitBlame.Block? { authorBlockIndex(atLine: line).map { authorBlocks[$0] } }
+
+    func authorBlockIndex(atLine line: Int) -> Int? {
+        var lo = 0, hi = authorBlocks.count - 1
+        while lo <= hi {
+            let mid = (lo + hi) / 2, b = authorBlocks[mid]
+            if line < b.firstLine { hi = mid - 1 } else if line >= b.firstLine + b.lineCount { lo = mid + 1 } else { return mid }
+        }
+        return nil
+    }
+
+    /// The annotation the column shows on `line`: at the first line of a
+    /// block only (nil elsewhere, or when the column is off).
+    public func authorsText(line: Int) -> String? {
+        guard showsAuthors, let b = authorBlock(atLine: line), b.firstLine == line else { return nil }
+        return GitBlame.annotation(b.commit)
+    }
+
+    /// The hover text for a line's commit.
+    public func authorsToolTip(line: Int) -> String? {
+        guard showsAuthors, let b = authorBlock(atLine: line) else { return nil }
+        return GitBlame.details(b.commit)
+    }
+
+    func drawAuthors(_ rows: [(line: Int, rect: NSRect)]) {
+        let w = Self.authorsColumnWidth
+        NSColor.quaternaryLabelColor.withAlphaComponent(0.05).setFill()
+        NSRect(x: 0, y: bounds.minY, width: w, height: bounds.height).fill()
+        let para = NSMutableParagraphStyle()
+        para.lineBreakMode = .byTruncatingTail
+        var shownBlock: Int?
+        for (line, r) in rows {
+            guard let bi = authorBlockIndex(atLine: line) else { continue }
+            let b = authorBlocks[bi]
+            let row = NSRect(x: 0, y: r.minY, width: w, height: max(r.height, 14))
+            // Every other commit's block is shaded, so neighbours stand apart.
+            if bi % 2 == 1 {
+                NSColor.quaternaryLabelColor.withAlphaComponent(0.10).setFill()
+                row.fill()
+            }
+            // The annotation at the block's first visible row.
+            guard shownBlock != b.firstLine else { continue }
+            shownBlock = b.firstLine
+            if line == b.firstLine {
+                NSColor.separatorColor.setFill()
+                NSRect(x: 0, y: row.minY, width: w, height: 0.5).fill()
+            }
+            let color: NSColor = b.commit.isUncommitted ? .tertiaryLabelColor : .secondaryLabelColor
+            let text = NSAttributedString(string: GitBlame.annotation(b.commit),
+                                          attributes: [.font: Theme.gutterFont, .foregroundColor: color, .paragraphStyle: para])
+            let h = text.size().height
+            text.draw(with: NSRect(x: 6, y: row.minY + (row.height - h) / 2, width: w - 12, height: h),
+                      options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        }
+        NSColor.separatorColor.setFill()
+        NSRect(x: w - 1, y: bounds.minY, width: 1, height: bounds.height).fill()
     }
 }

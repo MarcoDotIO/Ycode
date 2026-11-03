@@ -41,6 +41,15 @@ public struct PackageResolver: Sendable {
         public var version: String?
         public var branch: String?
         public var checkout: URL
+
+        public init(identity: String, location: String, revision: String, version: String?, branch: String?, checkout: URL) {
+            self.identity = identity
+            self.location = location
+            self.revision = revision
+            self.version = version
+            self.branch = branch
+            self.checkout = checkout
+        }
     }
 
     /// Where checkouts go (`<DerivedData>/<project>/SourcePackages/checkouts`).
@@ -120,6 +129,46 @@ public struct PackageResolver: Sendable {
         return Pin(identity: id, location: url, revision: rev, version: version, branch: branch, checkout: dir)
     }
 
+    /// Brings `<checkouts>/<identity>` to a pinned revision: clones the
+    /// repository when the checkout is missing and fetches when the
+    /// revision is not there yet. Nothing is fetched when HEAD already is
+    /// the revision.
+    @discardableResult
+    public func checkout(identity: String, location: String, revision: String) throws -> URL {
+        let dir = checkoutsDirectory.appendingPathComponent(identity)
+        let fm = FileManager.default
+        let hasRepository = fm.fileExists(atPath: dir.appendingPathComponent(".git").path)
+        if hasRepository, (try? Self.git(["rev-parse", "HEAD"], in: dir).trimmingCharacters(in: .whitespacesAndNewlines)) == revision {
+            return dir
+        }
+        if !hasRepository {
+            try fm.createDirectory(at: checkoutsDirectory, withIntermediateDirectories: true)
+            _ = try Self.git(["clone", "--quiet", location, dir.path], in: nil)
+        }
+        if (try? Self.git(["cat-file", "-e", revision + "^{commit}"], in: dir)) == nil {
+            _ = try Self.git(["fetch", "--tags", "--force", "origin"], in: dir)
+        }
+        _ = try Self.git(["checkout", "--quiet", "--detach", revision], in: dir)
+        return dir
+    }
+
+    /// The pins of a `Package.resolved` file (versions 1 to 3); nil when the
+    /// file is missing or unreadable. A pin's `checkout` is
+    /// `<checkouts>/<identity>`.
+    public func readResolvedFile(_ url: URL) -> [Pin]? {
+        guard let data = FileManager.default.contents(atPath: url.path),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        // Version 1 nests the pins under "object" and names its fields differently.
+        let list = obj["pins"] as? [[String: Any]] ?? (obj["object"] as? [String: Any])?["pins"] as? [[String: Any]] ?? []
+        return list.compactMap { p in
+            guard let location = p["location"] as? String ?? p["repositoryURL"] as? String,
+                  let state = p["state"] as? [String: Any], let revision = state["revision"] as? String else { return nil }
+            let identity = p["identity"] as? String ?? Self.identity(of: location)
+            return Pin(identity: identity, location: location, revision: revision, version: state["version"] as? String,
+                       branch: state["branch"] as? String, checkout: checkoutsDirectory.appendingPathComponent(identity))
+        }
+    }
+
     /// The project's remote references as resolution roots.
     public static func roots(of proj: PBXProj) -> [(url: String, requirement: SwiftPackageRequirement)] {
         proj.packageReferences.compactMap { ref in
@@ -176,7 +225,23 @@ public struct PackageResolver: Sendable {
         try run("/usr/bin/env", ["git"] + args, in: dir, environment: ["GIT_TERMINAL_PROMPT": "0"])
     }
 
-    static func run(_ exe: String, _ args: [String], in dir: URL?, environment: [String: String] = [:]) throws -> String {
+    /// `swift package dump-package` of the package at `dir` (the manifest
+    /// as JSON; nothing is resolved). SwiftPM's scratch files go to a
+    /// temporary folder, not into the package.
+    public static func dumpPackage(at dir: URL, swift: String = "/usr/bin/env") throws -> [String: Any] {
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-dump-package-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let json = try run(swift, (swift.hasSuffix("/env") ? ["swift"] : [])
+            + ["package", "--package-path", dir.path, "--scratch-path", scratch.path, "dump-package"], in: nil)
+        guard let obj = try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] else {
+            throw ResolveError("Unreadable manifest at \(dir.path)")
+        }
+        return obj
+    }
+
+    /// Runs a tool and returns its standard output; throws with its standard
+    /// error when it exits with a nonzero status.
+    public static func run(_ exe: String, _ args: [String], in dir: URL?, environment: [String: String] = [:]) throws -> String {
         MainThreadGuard.blockingCall("\(exe) \(args.prefix(2).joined(separator: " "))")
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)

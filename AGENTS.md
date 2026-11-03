@@ -21,11 +21,11 @@ only in written specs.
 |---|---|---|---|
 | Dirty (analysis) | `research/`, `research/dirty/` (git-ignored) | Yes | Observations, then specs |
 | Spec boundary | `specs/` | — | Prose, tables, grammars, interface descriptions |
-| Clean (implementation) | `ycode/`, `frameworks/` | **No** | Original source code |
+| Clean (implementation) | `ycode/`, `frameworks/`, `composer/` | **No** | Original source code |
 
 Rules:
 
-1. **No Apple code or code-shaped text enters `specs/`, `ycode/` or `frameworks/`.** This
+1. **No Apple code or code-shaped text enters `specs/`, `ycode/`, `frameworks/` or `composer/`.** This
    includes decompiler pseudo-C, disassembly, method bodies, and copied
    resources (icons, nibs, templates, strings files). Ghidra output stays in
    `research/dirty/`. That directory is never committed.
@@ -34,7 +34,7 @@ Rules:
    identifiers are facts and specs can name them. Examples: pbxproj `isa`
    names, build-setting names, plist keys, UTIs, and xcscheme XML elements.
    Specs must not describe Apple's internal algorithm line by line.
-3. Clean-room work (anything that writes `ycode/` or `frameworks/`) reads only `specs/`, public
+3. Clean-room work (anything that writes `ycode/`, `frameworks/` or `composer/`) reads only `specs/`, public
    documentation, and open-source projects whose licenses allow it. When a
    subagent does implementation work, tell it explicitly that it must not open
    the reference tools (the Xcode copy, Ghidra, the IPSW), `research/`
@@ -104,6 +104,9 @@ released.
   name is an interop identifier. Package names, READMEs and any UI use
   Ycode's own naming, never Apple artwork or branding. See
   `frameworks/README.md`.
+- `composer/`: the Scene Composer's core and command line (clean room).
+- `packaging/`: the disk image, the Flatpak and the app icon.
+- `.github/`: CI, the release workflow, and contribution templates.
 
 ## Machines
 
@@ -129,5 +132,7 @@ released.
 - Test corpora (real `.pbxproj` files and other samples) are read from local
   paths at test time. They are never copied into the repo. See
   `ycode/README.md`.
+- `python3 -I .github/scripts/scan-public.py` must pass: it looks for private
+  names and secrets in tracked files.
 - Every spec ends with an **Evidence** section that lists the evidence level
   (1–5, from rule 4) used for each claim.

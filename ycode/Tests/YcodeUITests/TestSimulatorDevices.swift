@@ -1,4 +1,5 @@
 import Foundation
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 /// The Mac simulator devices the tests make, and the only ones they shut

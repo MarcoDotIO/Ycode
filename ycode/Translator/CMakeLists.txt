@@ -30,6 +30,10 @@ add_executable(ycode-airc
   src/intrinsics.cpp
   src/cache.cpp)
 
+# The release's version (ycode/VERSION) for `ycode-airc --version`.
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" YCODE_RELEASE_VERSION LIMIT_COUNT 1)
+target_compile_definitions(ycode-airc PRIVATE YCODE_RELEASE_VERSION="${YCODE_RELEASE_VERSION}")
+
 target_include_directories(ycode-airc PRIVATE ${LLVM_INCLUDE_DIRS} ${SPIRV_TOOLS_INCLUDE_DIRS})
 separate_arguments(LLVM_DEFS NATIVE_COMMAND ${LLVM_DEFINITIONS})
 target_compile_definitions(ycode-airc PRIVATE ${LLVM_DEFS})

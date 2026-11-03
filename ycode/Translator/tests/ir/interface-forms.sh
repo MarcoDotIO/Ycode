@@ -12,7 +12,19 @@
 #     one of its inputs: accepted when the function never reads the input,
 #     refused when it does;
 #  4. the null guard on loads through pointers read from memory;
-#  5. vertex stage-in attributes the function never reads.
+#  5. vertex stage-in attributes the function never reads;
+#  6. storage writes and reads of a float texture convert sRGB for a handle
+#     with bit 32 set (visionos.md section 10.21): a kernel that writes
+#     linear (0.5, 0.25, 2^-9, 0.5) at its position and copies the texel at
+#     (0, 0) read back into out[gid] (left as srgbw.spv/json in WORK_DIR for
+#     ycode's SRGBStorageGPUTests: YCODE_TEST_SRGBW_SPV / _JSON);
+#  7. a threadgroup buffer argument whose node gives no threadgroup address
+#     space (the pointer is addrspace(3)) beside a device buffer of the same
+#     index (visionos.md section 10.24): it is threadgroup memory, a slot of
+#     the dynamic threadgroup size, not a second buffer 0;
+#  8. constexpr samplers whose global is a plain i64 (the form of the
+#     functions the guest sends, visionos.md section 10.24) and a [2 x i64]
+#     (our toolchain's form): both states are read (metal-shaders.md 3.7).
 # Usage: interface-forms.sh YCODE_AIRC WORK_DIR
 set -eu
 AIRC=$1; WORK=$2
@@ -198,6 +210,104 @@ IR
 "$LLVM_AS" "$WORK/vin.ll" -o "$WORK/vin.bc"
 check "vertex inputs: translates and validates" spv vin "$WORK/vin.bc" vin
 check "vertex inputs: locations 0 and 7 declared, 1 not" sh -c "grep -q 'Location 0' '$WORK/vin.spvasm' && grep -q 'Location 7' '$WORK/vin.spvasm' && ! grep -q 'Location 1\$' '$WORK/vin.spvasm'"
+
+# 6. sRGB storage writes and reads.
+cat > "$WORK/srgbw.ll" <<IR
+$HEAD
+declare void @air.write_texture_2d.v4f32(ptr addrspace(1), <2 x i32>, <4 x float>, i32, i32)
+declare { <4 x float>, i8 } @air.read_texture_2d.v4f32(ptr addrspace(1), <2 x i32>, i32, i32)
+define void @srgbw(ptr addrspace(1) %out, ptr addrspace(1) %t, <2 x i32> %c) {
+  call void @air.write_texture_2d.v4f32(ptr addrspace(1) %t, <2 x i32> %c, <4 x float> <float 0.5, float 0.25, float 0x3F60000000000000, float 0.5>, i32 0, i32 3)
+  %r = call { <4 x float>, i8 } @air.read_texture_2d.v4f32(ptr addrspace(1) %t, <2 x i32> <i32 1, i32 1>, i32 0, i32 3)
+  %v = extractvalue { <4 x float>, i8 } %r, 0
+  %x = extractelement <2 x i32> %c, i32 0
+  %p = getelementptr <4 x float>, ptr addrspace(1) %out, i32 %x
+  store <4 x float> %v, ptr addrspace(1) %p, align 16
+  ret void
+}
+!air.kernel = !{!0}
+!0 = !{ptr @srgbw, !1, !2}
+!1 = !{}
+!2 = !{!3, !4, !5}
+!3 = !{i32 0, !"air.buffer", !"air.location_index", i32 0, i32 1, !"air.read_write", !"air.address_space", i32 1, !"air.arg_type_size", i32 16, !"air.arg_type_align_size", i32 16, !"air.arg_type_name", !"float4", !"air.arg_name", !"out"}
+!4 = !{i32 1, !"air.texture", !"air.location_index", i32 0, i32 1, !"air.read_write", !"air.arg_type_name", !"texture2d<float, read_write>", !"air.arg_name", !"t"}
+!5 = !{i32 2, !"air.thread_position_in_grid", !"air.arg_type_name", !"uint2", !"air.arg_name", !"c"}
+IR
+"$LLVM_AS" "$WORK/srgbw.ll" -o "$WORK/srgbw.bc"
+check "sRGB storage: translates and validates" spv srgbw "$WORK/srgbw.bc" srgbw
+check "sRGB storage: tests bit 32 of the handle and converts with pow" sh -c "grep -q 'OpShiftRightLogical' '$WORK/srgbw.spvasm' && grep -q Pow '$WORK/srgbw.spvasm'"
+check "sRGB storage: reflection notes it" grep -q srgb_storage "$WORK/srgbw.json"
+
+# 7. A threadgroup buffer known by its pointer's address space only.
+cat > "$WORK/tgptr.ll" <<IR
+$HEAD
+define void @tgptr(ptr addrspace(1) %out, ptr addrspace(3) %strip, i32 %lid) {
+  %p = getelementptr <4 x half>, ptr addrspace(3) %strip, i32 %lid
+  store <4 x half> <half 0xH3C00, half 0xH3C00, half 0xH3C00, half 0xH3C00>, ptr addrspace(3) %p, align 8
+  %q = getelementptr <4 x half>, ptr addrspace(1) %out, i32 %lid
+  %v = load <4 x half>, ptr addrspace(3) %p, align 8
+  store <4 x half> %v, ptr addrspace(1) %q, align 8
+  ret void
+}
+!air.kernel = !{!0}
+!0 = !{ptr @tgptr, !1, !2}
+!1 = !{}
+!2 = !{!3, !4, !5}
+!3 = !{i32 0, !"air.buffer", !"air.location_index", i32 0, i32 1, !"air.read_write", !"air.address_space", i32 1, !"air.arg_type_size", i32 8, !"air.arg_type_align_size", i32 8, !"air.arg_type_name", !"half4", !"air.arg_name", !"out"}
+!4 = !{i32 1, !"air.buffer", !"air.location_index", i32 0, i32 1, !"air.read_write", !"air.arg_type_size", i32 8, !"air.arg_type_align_size", i32 8, !"air.arg_type_name", !"half4", !"air.arg_name", !"strip"}
+!5 = !{i32 2, !"air.thread_index_in_threadgroup", !"air.arg_type_name", !"uint", !"air.arg_name", !"lid"}
+IR
+"$LLVM_AS" "$WORK/tgptr.ll" -o "$WORK/tgptr.bc"
+check "threadgroup by pointer: translates and validates" spv tgptr "$WORK/tgptr.bc" tgptr
+check "threadgroup by pointer: one threadgroup slot (index 0), one buffer" python3 -I -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+tg = d['compute']['threadgroup_memory']
+assert tg['dynamic'] and [s['index'] for s in tg['slots']] == [0] and tg['slots'][0].get('by_pointer_address_space')
+assert [b['name'] for b in d['buffers']] == ['out']
+" "$WORK/tgptr.json"
+check "threadgroup by pointer: stores go to the Workgroup array" grep -q 'Workgroup' "$WORK/tgptr.spvasm"
+
+# 8. Constexpr samplers in both global forms.
+cat > "$WORK/cs.ll" <<IR
+$HEAD
+@lin = internal addrspace(2) constant i64 -9188470239253747127
+@rep = internal addrspace(2) constant [2 x i64] [i64 34901797601036946, i64 0]
+declare { <4 x float>, i8 } @air.sample_texture_2d.v4f32(ptr addrspace(1), ptr addrspace(2), <2 x float>, i1, <2 x i32>, i1, float, float, i32)
+define void @cs(ptr addrspace(1) %out, ptr addrspace(1) %t, <2 x i32> %c) {
+  %cf = uitofp <2 x i32> %c to <2 x float>
+  %r1 = call { <4 x float>, i8 } @air.sample_texture_2d.v4f32(ptr addrspace(1) %t, ptr addrspace(2) @lin, <2 x float> %cf, i1 true, <2 x i32> zeroinitializer, i1 true, float 0.0, float 0.0, i32 0)
+  %r2 = call { <4 x float>, i8 } @air.sample_texture_2d.v4f32(ptr addrspace(1) %t, ptr addrspace(2) @rep, <2 x float> %cf, i1 true, <2 x i32> zeroinitializer, i1 true, float 0.0, float 0.0, i32 0)
+  %v1 = extractvalue { <4 x float>, i8 } %r1, 0
+  %v2 = extractvalue { <4 x float>, i8 } %r2, 0
+  %v = fadd <4 x float> %v1, %v2
+  store <4 x float> %v, ptr addrspace(1) %out, align 16
+  ret void
+}
+!air.kernel = !{!0}
+!0 = !{ptr @cs, !1, !2}
+!1 = !{}
+!2 = !{!3, !4, !5}
+!3 = !{i32 0, !"air.buffer", !"air.location_index", i32 0, i32 1, !"air.read_write", !"air.address_space", i32 1, !"air.arg_type_size", i32 16, !"air.arg_type_align_size", i32 16, !"air.arg_type_name", !"float4", !"air.arg_name", !"out"}
+!4 = !{i32 1, !"air.texture", !"air.location_index", i32 0, i32 1, !"air.sample", !"air.arg_type_name", !"texture2d<float, sample>", !"air.arg_name", !"t"}
+!5 = !{i32 2, !"air.thread_position_in_grid", !"air.arg_type_name", !"uint2", !"air.arg_name", !"c"}
+!air.sampler_states = !{!6, !7}
+!6 = !{!"lin", ptr addrspace(2) @lin}
+!7 = !{!"rep", ptr addrspace(2) @rep}
+IR
+"$LLVM_AS" "$WORK/cs.ll" -o "$WORK/cs.bc"
+check "constexpr samplers: translates and validates" spv cs "$WORK/cs.bc" cs
+check "constexpr samplers: both states read, by global form" python3 -I -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+s = {c['state']: c for c in d['constexpr_samplers']}
+a, b = s['0x807bff0000082a49'], s['0x007bff0000084a92']
+assert a['state_source'] == b['state_source'] == 'initializer', (a, b)
+assert a['state_type'] == 'i64' and b['state_type'] == '[2 x i64]'
+assert (a['mag_filter'], a['min_filter'], a['mip_filter'], a['s_address']) == ('linear', 'linear', 'nearest', 'clamp_to_edge'), a
+assert (b['mag_filter'], b['mip_filter'], b['s_address'], b['t_address']) == ('linear', 'linear', 'repeat', 'repeat'), b
+assert a['lod_max'] == b['lod_max'] == 65504
+" "$WORK/cs.json"
 
 echo "interface forms: $pass passed, $fail failed"
 [ "$fail" = 0 ]

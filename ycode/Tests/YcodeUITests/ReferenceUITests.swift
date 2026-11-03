@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+@testable import YcodeIDECore
 @testable import YcodeUI
 
 private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -33,19 +34,6 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
                                            loadDestinations: false, startLanguageService: false, openFirstFile: false)
         wc.applyDefaultLayout()
         try body(wc, src, p)
-    }
-
-    @Test func defaultsFollowReference() {
-        let t = TestDefaults("reference-defaults")
-        defer { t.remove() }
-        let p = Preferences(defaults: t.defaults)
-        #expect(!p.showFoldingRibbon && p.wrapLines && p.wrappedLineIndent == 4 && p.trimTrailingWhitespace)
-        #expect(p.highlightSelectedSymbol && p.highlightDelay == 0.25)
-        #expect(CommandTable.navigators == ["Project", "Source Control", "Bookmarks", "Find", "Issues", "Tests", "Debug", "Breakpoints", "Reports"])
-        #expect(p.behavior(.buildErrors).showNavigator == 4)
-        #expect(p.behavior(.buildSucceeds).notify && p.behavior(.buildFails).notify)
-        #expect(p.behavior(.runPauses).showNavigator == 6 && p.behavior(.runPauses).showDebugArea == true)
-        #expect(p.behavior(.runOutput).showDebugArea == true && p.behavior(.runEnds).hideDebugAreaIfNoOutput)
     }
 
     @Test func bookmarksFilterAndAddMenu() throws {

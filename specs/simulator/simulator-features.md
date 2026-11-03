@@ -543,6 +543,12 @@ and any host reaches the device's preference files through the guest's
 cfprefsd. On another platform's runtime the image is retagged
 (`GuestImagePlatform`) or left out.
 
+Ycode's health agent (`specs/simulator/health-simulation.md` §11) uses the
+same design: a launchd daemon staged at every cold boot (its executable
+inside an app bundle, `YcodeHealth.app`, so that HealthKit gives it a
+source), and a host channel of its own, `/private/var/run/dev.ycode.health`,
+with this section's framing and frames up to 16 MiB.
+
 ### I.2 The host channel
 
 The agent connects an AF_UNIX stream socket to
@@ -612,6 +618,10 @@ not from a client process start.
   `enabled`, `disabled`, size names); a route answers "Parsed N waypoints".
   Diagnostics: `settings events|read <domain> <key>|write <domain> <key>
   int:N|real:X|bool:B|string:S|remove|notify <name>…|notify-state <name> <n>`.
+- **Health**: `health …` on the control socket and `ycode-simd --device DEV
+  --health <words>` (`health-simulation.md` §11.4): import, scenarios,
+  streams and clear through the guest health agent; grant, revoke and seed
+  edit the shut-down device's health store.
 - **Command line**: `ycode-simd --device DEV --ui|--accessibility|--location|--audio|--overrides
   <words…>` and `--settings` (the same words; getters print the bare
   value). With no running device, persistent settings (§5: everything but

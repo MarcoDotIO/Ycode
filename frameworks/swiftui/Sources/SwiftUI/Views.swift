@@ -16,7 +16,15 @@ public struct Divider: View {
 
 extension Divider: PrimitiveView {
     package func _makeChildren(node: ViewNode, old: Divider?, transaction: Transaction) {}
-    package func _lower(node: ViewNode) -> [LayoutNode] { [.divider()] }
+    /// The hairline is painted in the separator color (it was laid out but
+    /// not drawn before LINUX-UI-PARITY); in a menu it is a separator row:
+    /// inset 8 at the sides with 4 above and below.
+    package func _lower(node: ViewNode) -> [LayoutNode] {
+        let env = node.environment
+        let n = LayoutNode.divider()
+        n.draw = shapeDraw(shape: Rectangle(), style: ControlPalette(env.colorScheme).separator, mode: .fill(FillStyle()), environment: env)
+        return [env._inMenu ? n.padding(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)) : n]
+    }
 }
 
 /// The first of its views that fits the proposal (04 §6).
@@ -101,16 +109,9 @@ extension View {
 
 // MARK: - Lazy grids
 
-/// Views that stay pinned while a lazy container scrolls (R9).
-public struct PinnedScrollableViews: OptionSet, Sendable {
-    public let rawValue: UInt32
-    public init(rawValue: UInt32) { self.rawValue = rawValue }
-    public static let sectionHeaders = PinnedScrollableViews(rawValue: 1 << 0)
-    public static let sectionFooters = PinnedScrollableViews(rawValue: 1 << 1)
-}
-
 /// A vertically growing grid with columns described by `GridItem`s (04 §6).
-/// Lazy creation needs a scroll view (R9); here every cell is created.
+/// In a scroll view its rows are created as they scroll into view (R9);
+/// elsewhere every cell is created.
 public struct LazyVGrid<Content: View>: View {
     package let columns: [GridItem]
     package let alignment: HorizontalAlignment
@@ -128,10 +129,54 @@ public struct LazyVGrid<Content: View>: View {
 
 extension LazyVGrid: PrimitiveView {
     package func _makeChildren(node: ViewNode, old: LazyVGrid?, transaction: Transaction) {
-        node.reconcileChildren([(AnyHashable(0), content)], transaction: transaction)
+        if node.enclosingScrollViewport != nil {
+            let layout = LazyVGridLayout(columns: columns, alignment: alignment, spacing: spacing)
+            let lazy = LazyContainer(content: content, axis: .vertical, spacing: spacing ?? 8,
+                                     arrangement: .grid(columns: { w in layout.columnCount(forWidth: w) },
+                                                        layout: { LayoutNode.layout(layout, $0) }))
+            node.reconcileChildren([(AnyHashable("lazy"), lazy)], transaction: transaction)
+        } else {
+            node.reconcileChildren([(AnyHashable(0), content)], transaction: transaction)
+        }
     }
     package func _lower(node: ViewNode) -> [LayoutNode] {
-        [.lazyVGrid(columns: columns, alignment: alignment, spacing: spacing, node.lowerChildren())]
+        if node.childKeys.first == AnyHashable("lazy") { return node.lowerChildren() }
+        return [.lazyVGrid(columns: columns, alignment: alignment, spacing: spacing, node.lowerChildren())]
+    }
+}
+
+/// A horizontally growing grid with rows described by `GridItem`s; in a
+/// scroll view its columns are created as they scroll into view.
+public struct LazyHGrid<Content: View>: View {
+    package let rows: [GridItem]
+    package let alignment: VerticalAlignment
+    package let spacing: CGFloat?
+    package let content: Content
+    public init(rows: [GridItem], alignment: VerticalAlignment = .center, spacing: CGFloat? = nil,
+                pinnedViews: PinnedScrollableViews = .init(), @ViewBuilder content: () -> Content) {
+        self.rows = rows
+        self.alignment = alignment
+        self.spacing = spacing
+        self.content = content()
+    }
+    public typealias Body = Never
+}
+
+extension LazyHGrid: PrimitiveView {
+    package func _makeChildren(node: ViewNode, old: LazyHGrid?, transaction: Transaction) {
+        let layout = LazyHGridLayout(rows: rows, alignment: alignment, spacing: spacing)
+        if node.enclosingScrollViewport != nil {
+            let lazy = LazyContainer(content: content, axis: .horizontal, spacing: spacing ?? 8,
+                                     arrangement: .grid(columns: { h in layout.rowCount(forHeight: h) },
+                                                        layout: { LayoutNode.layout(layout, $0) }))
+            node.reconcileChildren([(AnyHashable("lazy"), lazy)], transaction: transaction)
+        } else {
+            node.reconcileChildren([(AnyHashable(0), content)], transaction: transaction)
+        }
+    }
+    package func _lower(node: ViewNode) -> [LayoutNode] {
+        if node.childKeys.first == AnyHashable("lazy") { return node.lowerChildren() }
+        return [.layout(LazyHGridLayout(rows: rows, alignment: alignment, spacing: spacing), node.lowerChildren())]
     }
 }
 

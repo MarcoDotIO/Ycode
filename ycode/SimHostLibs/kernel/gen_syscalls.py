@@ -209,6 +209,8 @@ MACH_ROUTINES = {
     "_mach_msg2_internal": ("-47", "machmsg.c: packed words passed through, library-only bits stripped, interrupt retry"),
     "_mach_msg_destroy": ("-18,-19,-21,-42,-12", "machmsg.c: library routine (mach-ipc.md 4.4)"),
     "_mach_msg_priority_encode": ("-", "machmsg.c: library routine"),
+    "_mach_msg_server": ("-47,-12,-18,-19", "machmsg.c: MIG server loop (mach-ipc.md 5.1)"),
+    "_mach_msg_server_once": ("-47,-12,-18,-19", "machmsg.c: one MIG request and its reply (mach-ipc.md 5.1)"),
     # MIG reply ports and special reply ports
     "_mig_get_reply_port": ("-26", "mach.c: TSD slot 2"),
     "_mig_dealloc_reply_port": ("-19", "mach.c"),

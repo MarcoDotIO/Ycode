@@ -68,8 +68,16 @@ public struct ChatCompletionsProvider: AssistantProvider {
     static func chatBody(_ request: ChatRequest) -> [String: Any] {
         var messages: [[String: Any]] = [["role": "system", "content": request.instructions]]
         messages += request.messages.map { ["role": $0.role.rawValue, "content": $0.content] }
-        var body: [String: Any] = ["messages": messages, "stream": true]
+        // `stream_options.include_usage` asks for the token counts in a last
+        // chunk (the Chat Completions streaming format; llama-server honours it).
+        var body: [String: Any] = ["messages": messages, "stream": true, "stream_options": ["include_usage": true]]
         if let m = request.model, !m.isEmpty { body["model"] = m }
+        let g = request.generation
+        if let n = g.maxOutputTokens { body["max_tokens"] = n }
+        if let t = g.temperature { body["temperature"] = t }
+        if let p = g.topP { body["top_p"] = p }
+        if let k = g.topK { body["top_k"] = k }
+        if let r = g.repeatPenalty { body["repeat_penalty"] = r }
         return body
     }
 
@@ -84,12 +92,16 @@ public struct ChatCompletionsProvider: AssistantProvider {
             var sse = SSEDecoder()
             var finished = false
             var usage: TokenUsage?
+            var truncated = false
             func handle(_ e: SSEDecoder.Event) throws -> Bool {
-                switch try Self.parseChunk(e.data) {
-                case .text(let t): out.yield(.text(t))
-                case .usage(let u): usage = u
-                case .done: finished = true; return true
-                case .none: break
+                for c in try Self.parseChunk(e.data) {
+                    switch c {
+                    case .text(let t): out.yield(.text(t))
+                    case .usage(let u): usage = u
+                    case .length: truncated = true
+                    case .done: finished = true; return true
+                    case .none: break
+                    }
                 }
                 return false
             }
@@ -105,27 +117,31 @@ public struct ChatCompletionsProvider: AssistantProvider {
                 throw AssistantError.unreachable(service: "llama-server", url: provider.baseURL, hint: provider.notRunningHint)
             }
             if !finished { throw AssistantError.incomplete("the server closed the stream") }
+            if truncated { out.yield(.truncated) }
             out.yield(.finished(usage))
         }
     }
 
-    enum Chunk: Equatable { case text(String), usage(TokenUsage), done, none }
+    enum Chunk: Equatable { case text(String), usage(TokenUsage), length, done, none }
 
-    /// One `data:` payload of a streamed chat completion.
-    static func parseChunk(_ data: String) throws -> Chunk {
+    /// The parts of one `data:` payload of a streamed chat completion: text,
+    /// `finish_reason: "length"`, and the usage chunk that
+    /// `stream_options.include_usage` adds (`choices: []`, `usage`).
+    static func parseChunk(_ data: String) throws -> [Chunk] {
         let d = data.trimmingCharacters(in: .whitespaces)
-        if d == "[DONE]" { return .done }
+        if d == "[DONE]" { return [.done] }
         guard let o = JSON.object(d) else { throw AssistantError.malformed("The server sent an event that is not JSON.") }
         if o["error"] != nil {
             throw AssistantError.failed(HTTP.errorMessage(Data(d.utf8)).message)
         }
-        if let choices = o["choices"] as? [[String: Any]], let first = choices.first,
-           let delta = first["delta"] as? [String: Any], let c = delta["content"] as? String, !c.isEmpty {
-            return .text(c)
+        var out: [Chunk] = []
+        if let first = (o["choices"] as? [[String: Any]])?.first {
+            if let delta = first["delta"] as? [String: Any], let c = delta["content"] as? String, !c.isEmpty { out.append(.text(c)) }
+            if first["finish_reason"] as? String == "length" { out.append(.length) }
         }
         if let u = o["usage"] as? [String: Any] {
-            return .usage(TokenUsage(inputTokens: JSON.int(u["prompt_tokens"]), outputTokens: JSON.int(u["completion_tokens"])))
+            out.append(.usage(TokenUsage(inputTokens: JSON.int(u["prompt_tokens"]), outputTokens: JSON.int(u["completion_tokens"]))))
         }
-        return .none
+        return out.isEmpty ? [.none] : out
     }
 }

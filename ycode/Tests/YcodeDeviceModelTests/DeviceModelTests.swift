@@ -210,7 +210,8 @@ import Testing
 
     @Test func menusFollowTheReference() {
         #expect(DeviceCommand.controlsMenu.compactMap { $0?.title } == ["Home", "Lock", "App Switcher", "Action Button", "Rotate Left",
-                                                                        "Rotate Right", "Screenshot", "Record Screen", "Volume Up", "Volume Down"])
+                                                                        "Rotate Right", "Screenshot", "Record Screen", "Volume Up", "Volume Down",
+                                                                        "Reset Camera", "View in Headset"])
         #expect(DeviceCommand.zoomMenu.map(\.title) == ["Zoom In", "Zoom Out", "Zoom to Fit", "Physical Size"])
         #expect(DevicePosture.allCases.map(\.title) == ["Closed", "Partially Open", "Open"])
         #expect(DevicePosture.preset(angle: 90) == .halfOpen && DevicePosture.preset(angle: 45) == nil)

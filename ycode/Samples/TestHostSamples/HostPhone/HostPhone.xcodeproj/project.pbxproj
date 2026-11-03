@@ -1,0 +1,551 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0BCE9B3EDC9D1CBDEB45C740 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1CA41D069B1632F2EFC6F817 /* Assets.xcassets */; };
+		0C4A016DD498CAD3455C16A5 /* HostPhoneTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 471BFC44634FDBC6625C464A /* HostPhoneTests.swift */; };
+		5C7DF0EA240D605F0725980D /* HostPhoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 054071329538F815BA548B9B /* HostPhoneApp.swift */; };
+		60A7009352DB0317BF52E6AE /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4E4EE1DCAC13ADDEC606336 /* ContentView.swift */; };
+		C4407C6DBBD789B43EB02622 /* HostPhoneUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C75C205A144D4B3AD1242721 /* HostPhoneUITests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B7BF1CDB565E8151DF533B07 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C1DA3D4A0B992C1F294875BF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 054CF51819D86E45DDAE08F3;
+			remoteInfo = HostPhone;
+		};
+		CE4E520B956BA3634439BBC3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C1DA3D4A0B992C1F294875BF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 054CF51819D86E45DDAE08F3;
+			remoteInfo = HostPhone;
+		};
+		D3DA7CD0BD3F14C8711A2BB2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C1DA3D4A0B992C1F294875BF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 054CF51819D86E45DDAE08F3;
+			remoteInfo = HostPhone;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		054071329538F815BA548B9B /* HostPhoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostPhoneApp.swift; sourceTree = "<group>"; };
+		19A1660CC0458B62BD5BEFF1 /* HostPhoneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HostPhoneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1CA41D069B1632F2EFC6F817 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		471BFC44634FDBC6625C464A /* HostPhoneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostPhoneTests.swift; sourceTree = "<group>"; };
+		6DF7510202171D0291DAC755 /* HostPhoneSwiftTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HostPhoneSwiftTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		74D16E61F52DEC8D6775E86F /* HostPhone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HostPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		88E17475F7A4F069135ED015 /* HostPhoneUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HostPhoneUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A4E4EE1DCAC13ADDEC606336 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		C75C205A144D4B3AD1242721 /* HostPhoneUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostPhoneUITests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		9ECCB8D0ECE6BE644E9DE5CF /* HostPhoneSwiftTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HostPhoneSwiftTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0F93618422A12C20D88984B8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A5DE0B28F37B1C1347C6A4FA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D59FC1B7B51343415CD8A945 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EFB68E45F920F2B3AA19EE48 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2C78FCC0A9F8EA9049E202EE /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				74D16E61F52DEC8D6775E86F /* HostPhone.app */,
+				19A1660CC0458B62BD5BEFF1 /* HostPhoneTests.xctest */,
+				88E17475F7A4F069135ED015 /* HostPhoneUITests.xctest */,
+				6DF7510202171D0291DAC755 /* HostPhoneSwiftTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		36B18FF4EFD7A56867D9F23C /* HostPhone */ = {
+			isa = PBXGroup;
+			children = (
+				054071329538F815BA548B9B /* HostPhoneApp.swift */,
+				A4E4EE1DCAC13ADDEC606336 /* ContentView.swift */,
+				1CA41D069B1632F2EFC6F817 /* Assets.xcassets */,
+			);
+			path = HostPhone;
+			sourceTree = "<group>";
+		};
+		58B99E7AC27BCC5A1F3BCE7C /* HostPhoneUITests */ = {
+			isa = PBXGroup;
+			children = (
+				C75C205A144D4B3AD1242721 /* HostPhoneUITests.swift */,
+			);
+			path = HostPhoneUITests;
+			sourceTree = "<group>";
+		};
+		9992EB40EFD75CDB8AC65765 /* HostPhoneTests */ = {
+			isa = PBXGroup;
+			children = (
+				471BFC44634FDBC6625C464A /* HostPhoneTests.swift */,
+			);
+			path = HostPhoneTests;
+			sourceTree = "<group>";
+		};
+		C3BE09DB9703B3139A2A74CD = {
+			isa = PBXGroup;
+			children = (
+				36B18FF4EFD7A56867D9F23C /* HostPhone */,
+				9992EB40EFD75CDB8AC65765 /* HostPhoneTests */,
+				58B99E7AC27BCC5A1F3BCE7C /* HostPhoneUITests */,
+				9ECCB8D0ECE6BE644E9DE5CF /* HostPhoneSwiftTests */,
+				2C78FCC0A9F8EA9049E202EE /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		054CF51819D86E45DDAE08F3 /* HostPhone */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EFE9D0D23DE2F27D3935367F /* Build configuration list for PBXNativeTarget "HostPhone" */;
+			buildPhases = (
+				8A83CEB6B85970C30DF1E4B7 /* Sources */,
+				A5DE0B28F37B1C1347C6A4FA /* Frameworks */,
+				62F5E4EA4D31F5846CDE3160 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HostPhone;
+			productName = HostPhone;
+			productReference = 74D16E61F52DEC8D6775E86F /* HostPhone.app */;
+			productType = "com.apple.product-type.application";
+		};
+		24D0427D187B79B379571EC2 /* HostPhoneTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4C1C80036A40A56748E4E5A8 /* Build configuration list for PBXNativeTarget "HostPhoneTests" */;
+			buildPhases = (
+				AB63010D2893BAB1F4822A70 /* Sources */,
+				EFB68E45F920F2B3AA19EE48 /* Frameworks */,
+				4FBEDF53F47FBB1FCA177C5B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				31545D4F08315F57C21A3702 /* PBXTargetDependency */,
+			);
+			name = HostPhoneTests;
+			productName = HostPhoneTests;
+			productReference = 19A1660CC0458B62BD5BEFF1 /* HostPhoneTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		2A4A7D1B3F9F8AFCBB239CE0 /* HostPhoneSwiftTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FEA3386D53A78B5BFBF6A70A /* Build configuration list for PBXNativeTarget "HostPhoneSwiftTests" */;
+			buildPhases = (
+				49F0E4403A89F8DC33238187 /* Sources */,
+				0F93618422A12C20D88984B8 /* Frameworks */,
+				7C72E2C287AA610F949AF9EC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8F5439D21615FFF9647ADCF5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				9ECCB8D0ECE6BE644E9DE5CF /* HostPhoneSwiftTests */,
+			);
+			name = HostPhoneSwiftTests;
+			productName = HostPhoneSwiftTests;
+			productReference = 6DF7510202171D0291DAC755 /* HostPhoneSwiftTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		8946359DEFF2E024B57D5919 /* HostPhoneUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 522305B4B6444AC67BC46FA8 /* Build configuration list for PBXNativeTarget "HostPhoneUITests" */;
+			buildPhases = (
+				3CEC6F6BBDE0684BC7D0DE10 /* Sources */,
+				D59FC1B7B51343415CD8A945 /* Frameworks */,
+				9F17A1B1276B745B3C8E1F23 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A26D552529F9DB670C2A9CD3 /* PBXTargetDependency */,
+			);
+			name = HostPhoneUITests;
+			productName = HostPhoneUITests;
+			productReference = 88E17475F7A4F069135ED015 /* HostPhoneUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		C1DA3D4A0B992C1F294875BF /* Project object */ = {
+			isa = PBXProject;
+			buildConfigurationList = CB7261ABD501BC1B692BE953 /* Build configuration list for PBXProject "HostPhone" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = C3BE09DB9703B3139A2A74CD;
+			productRefGroup = 2C78FCC0A9F8EA9049E202EE /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				054CF51819D86E45DDAE08F3 /* HostPhone */,
+				24D0427D187B79B379571EC2 /* HostPhoneTests */,
+				8946359DEFF2E024B57D5919 /* HostPhoneUITests */,
+				2A4A7D1B3F9F8AFCBB239CE0 /* HostPhoneSwiftTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4FBEDF53F47FBB1FCA177C5B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		62F5E4EA4D31F5846CDE3160 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0BCE9B3EDC9D1CBDEB45C740 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7C72E2C287AA610F949AF9EC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9F17A1B1276B745B3C8E1F23 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3CEC6F6BBDE0684BC7D0DE10 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C4407C6DBBD789B43EB02622 /* HostPhoneUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		49F0E4403A89F8DC33238187 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8A83CEB6B85970C30DF1E4B7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5C7DF0EA240D605F0725980D /* HostPhoneApp.swift in Sources */,
+				60A7009352DB0317BF52E6AE /* ContentView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AB63010D2893BAB1F4822A70 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0C4A016DD498CAD3455C16A5 /* HostPhoneTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		31545D4F08315F57C21A3702 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 054CF51819D86E45DDAE08F3 /* HostPhone */;
+			targetProxy = CE4E520B956BA3634439BBC3 /* PBXContainerItemProxy */;
+		};
+		8F5439D21615FFF9647ADCF5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 054CF51819D86E45DDAE08F3 /* HostPhone */;
+			targetProxy = B7BF1CDB565E8151DF533B07 /* PBXContainerItemProxy */;
+		};
+		A26D552529F9DB670C2A9CD3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 054CF51819D86E45DDAE08F3 /* HostPhone */;
+			targetProxy = D3DA7CD0BD3F14C8711A2BB2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0DCAC503269F3965D9759A1C /* Release configuration for PBXNativeTarget "HostPhoneSwiftTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.HostPhoneSwiftTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HostPhone.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HostPhone";
+			};
+			name = Release;
+		};
+		334F27C3A16266C05213F47B /* Debug configuration for PBXNativeTarget "HostPhone" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.HostPhone;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6119873517CBF6DB968C5673 /* Debug configuration for PBXProject "HostPhone" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		74A0269563085705E7486B22 /* Debug configuration for PBXNativeTarget "HostPhoneSwiftTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.HostPhoneSwiftTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HostPhone.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HostPhone";
+			};
+			name = Debug;
+		};
+		7B38C6AAF40129A6CB17D15F /* Release configuration for PBXProject "HostPhone" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				SDKROOT = iphoneos;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		9149C16127EF635313BAC882 /* Release configuration for PBXNativeTarget "HostPhoneUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.HostPhoneUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = HostPhone;
+			};
+			name = Release;
+		};
+		CD1FB477C7F76E761F12CF89 /* Release configuration for PBXNativeTarget "HostPhoneTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.HostPhoneTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HostPhone.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HostPhone";
+			};
+			name = Release;
+		};
+		D3A3C7233E3389B0AE1AF009 /* Debug configuration for PBXNativeTarget "HostPhoneTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.HostPhoneTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HostPhone.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HostPhone";
+			};
+			name = Debug;
+		};
+		E9C400914606E032D6DDC327 /* Debug configuration for PBXNativeTarget "HostPhoneUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.HostPhoneUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = HostPhone;
+			};
+			name = Debug;
+		};
+		F537A5FD3D23D983F2D4A2D2 /* Release configuration for PBXNativeTarget "HostPhone" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ycode.samples.HostPhone;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4C1C80036A40A56748E4E5A8 /* Build configuration list for PBXNativeTarget "HostPhoneTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D3A3C7233E3389B0AE1AF009 /* Debug configuration for PBXNativeTarget "HostPhoneTests" */,
+				CD1FB477C7F76E761F12CF89 /* Release configuration for PBXNativeTarget "HostPhoneTests" */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		522305B4B6444AC67BC46FA8 /* Build configuration list for PBXNativeTarget "HostPhoneUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E9C400914606E032D6DDC327 /* Debug configuration for PBXNativeTarget "HostPhoneUITests" */,
+				9149C16127EF635313BAC882 /* Release configuration for PBXNativeTarget "HostPhoneUITests" */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CB7261ABD501BC1B692BE953 /* Build configuration list for PBXProject "HostPhone" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6119873517CBF6DB968C5673 /* Debug configuration for PBXProject "HostPhone" */,
+				7B38C6AAF40129A6CB17D15F /* Release configuration for PBXProject "HostPhone" */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EFE9D0D23DE2F27D3935367F /* Build configuration list for PBXNativeTarget "HostPhone" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				334F27C3A16266C05213F47B /* Debug configuration for PBXNativeTarget "HostPhone" */,
+				F537A5FD3D23D983F2D4A2D2 /* Release configuration for PBXNativeTarget "HostPhone" */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FEA3386D53A78B5BFBF6A70A /* Build configuration list for PBXNativeTarget "HostPhoneSwiftTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				74A0269563085705E7486B22 /* Debug configuration for PBXNativeTarget "HostPhoneSwiftTests" */,
+				0DCAC503269F3965D9759A1C /* Release configuration for PBXNativeTarget "HostPhoneSwiftTests" */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = C1DA3D4A0B992C1F294875BF /* Project object */;
+}

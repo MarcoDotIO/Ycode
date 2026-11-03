@@ -1,4 +1,5 @@
 import AppKit
+import YcodeIDECore
 
 /// The Interface Builder editor: Document Outline and a zoomable canvas.
 /// Its inspectors (Identity, Attributes, Size, Connections) are shown by
@@ -73,6 +74,17 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
         canvasScroll.backgroundColor = .underPageBackgroundColor
         NotificationCenter.default.addObserver(self, selector: #selector(magnificationChanged), name: NSScrollView.didEndLiveMagnifyNotification, object: canvasScroll)
         layoutChrome(root: root, outlineScroll: outlineScroll)
+        // Common properties only so far: say so where the editor is met.
+        let experimental = NSTextField(labelWithString: ExperimentalNotice.label)
+        experimental.font = .systemFont(ofSize: 11)
+        experimental.textColor = .secondaryLabelColor
+        experimental.toolTip = ExperimentalNotice.interfaceBuilder
+        experimental.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(experimental)
+        NSLayoutConstraint.activate([
+            experimental.trailingAnchor.constraint(equalTo: canvasScroll.trailingAnchor, constant: -20),
+            experimental.topAnchor.constraint(equalTo: canvasScroll.topAnchor, constant: 8),
+        ])
         view = root
         reloadOutline()
         select(document.roots.first.flatMap(firstView) ?? document.roots.first)

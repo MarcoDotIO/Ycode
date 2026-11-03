@@ -40,3 +40,80 @@ lines green. The first file is selected when the sheet opens.
 - OPEN QUESTION: Xcode's diff algorithm and change-bar decorations,
   whether it compares against HEAD or the index by default, and its
   inline (non side-by-side) presentation.
+
+## Ycode implementation: conflict editor and Compare Files (SCM-BRANCHES, 2026-10-31)
+
+Ycode's design; the reference's conflict view and its file-merge tool
+were not observed (open question below).
+
+### Three-way merge (`YcodeIDECore/SourceControl/ThreeWayMerge.swift`)
+
+The textbook diff3 procedure: line-diff the base against each side with
+`LineDiff`, take base lines both diffs keep (in order) as sync points, and
+classify each stretch between them: **unchanged**, **ours only**, **theirs
+only**, **both the same**, or **conflict**. Changes on touching lines
+conflict, as in git's merge. A two-way comparison is the merge of the
+right side against the left (every difference "theirs only").
+
+`MergeDocument` holds the chunks, one choice per hunk (every chunk that
+is not unchanged) and the result:
+
+| Choice | Result lines | Default for |
+|---|---|---|
+| Left (ours) | ours | ours only, both the same |
+| Right (theirs) | theirs | theirs only |
+| Left + Right / Right + Left | both, in that order | — |
+| Base | the ancestor's | — |
+| Edit | hand-written | — |
+| Unresolved | `<<<<<<< <ours label>`, ours, `=======`, theirs, `>>>>>>> <theirs label>` | conflict |
+
+`ConflictMarkers` parses git's markers (with the optional `|||||||` base
+section) back into chunks; a marker is seven characters alone or followed
+by a space.
+
+### Conflict editor (`YcodeUI/SourceControl/ConflictEditorController.swift`)
+
+Shown over the editor area like the commit editor. Top row: "Conflicts in
+<file>", a pop-up of the conflicted files, the unresolved count ("1
+conflict unresolved", "Resolved", "All conflicts resolved"), **Mark as
+Resolved** (enabled with nothing unresolved), **Continue <operation>**
+(enabled once no file is conflicted) and **Abort <operation>**. The hunk
+bar: ‹ "Change 2 of 5 (conflict)" ›, the choice control **Left | Right |
+Left + Right | Right + Left | Base | Edit**, and the pair control **Left ↔
+Right | Base ↔ Left | Base ↔ Right**, which picks the two versions the
+comparison view shows (the old side on the left, titles "Left: main",
+"Right: feature", "Base: …"). Edit opens a small text editor with the
+hunk's text (ours then theirs for a conflict). Below: the **Result**,
+read-only, with each hunk tinted (red unresolved, green resolved, darker
+for the selected one). Choosing for a hunk moves to the next unresolved
+one. Mark as Resolved writes the result and stages it, then shows the
+next conflicted file.
+
+### Compare Files
+
+Ycode's file-merge tool: **Ycode ▸ Open Developer Tool ▸ Compare Files…**
+asks for a left file, a right file, then an optional common ancestor, and
+opens a "Compare Files" window with the same controller. Two files: the
+hunks read "Difference n of m", the pair control is hidden and Base is
+disabled; the result starts as the right file. Three files: a three-way
+merge against the ancestor. **Save Merge…** writes the result (refused
+while a conflict is unresolved).
+
+**`ycode compare <left> <right> [--ancestor <base> [--merge <out>]]`** does
+the same without a window: two files print a unified diff (`---`/`+++`
+headers, `@@ -a,b +c,d @@` hunks, three context lines; exit 1 when they
+differ), three print or write the merged text with conflict markers
+labelled by the file names (exit 1 with conflicts, and "N conflicts" on
+standard error); 2 for bad arguments.
+
+### Evidence
+
+- diff3 merging and git's conflict markers: git's public documentation
+  (`git-merge` "How conflicts are presented", `git-merge-file`; level 1).
+- The unified diff format: POSIX `diff -u` (level 1).
+- That Xcode resolves conflicts in a comparison view and ships a file-merge
+  tool comparing two files or three with an ancestor: Apple's public Xcode
+  Help and the `opendiff` manual page (level 1).
+- OPEN QUESTION: the reference conflict view's layout and per-conflict
+  controls; the file-merge tool's window, its choice menu and folder
+  comparison (not done in Ycode).

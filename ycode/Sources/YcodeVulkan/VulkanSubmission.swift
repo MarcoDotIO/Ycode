@@ -197,10 +197,17 @@ extension VulkanMetalBackend {
             cond.lock()
             // At shutdown the held-work thread queues error completions for
             // what it still holds, so this thread ends after it.
-            while pending.isEmpty && earlyScheduledQueue.isEmpty && (running || heldThread != nil) { cond.wait() }
+            while pending.isEmpty && earlyScheduledQueue.isEmpty && (running || heldThread != nil)
+                    && !(deviceLost && canRecover) { cond.wait() }
             if !earlyScheduledQueue.isEmpty {
                 cond.unlock()
                 flushEarlyScheduled()
+                continue
+            }
+            // A loss seen by a submission (nothing pending to wait for): reset.
+            if pending.isEmpty && deviceLost && canRecover {
+                cond.unlock()
+                recoverDevice(stuckSerial: 0)
                 continue
             }
             if pending.isEmpty && !running && heldThread == nil {
@@ -233,11 +240,35 @@ extension VulkanMetalBackend {
                     }
                     if r == VK_SUCCESS { break }
                     if r == VK_TIMEOUT {
+                        let ran = Double(DispatchTime.now().uptimeNanoseconds &- waitStart) / 1e9
                         if !reported, options.hangReportSeconds > 0 {
-                            let ran = Double(DispatchTime.now().uptimeNanoseconds &- waitStart) / 1e9
                             if ran >= options.hangReportSeconds {
                                 reported = true
                                 cond.lock(); reportRunningSubmission(serial: serial, seconds: ran); cond.unlock()
+                            }
+                        }
+                        // The watchdog (metal-sim-protocol.md §8.7): waiting
+                        // the device idle makes the driver stop the stuck
+                        // work (about 1.3 s on the Thor, then
+                        // VK_ERROR_DEVICE_LOST); the loss is handled below.
+                        if options.watchdogSeconds > 0, ran >= options.watchdogSeconds {
+                            cond.lock()
+                            let isRunning = running
+                            let label = pending.first?.label ?? ""
+                            if isRunning {
+                                log(String(format: "watchdog: serial %llu still running after %.1f s", serial, ran)
+                                    + (label.isEmpty ? "" : " (\(label))") + "; the device is waited idle to end it")
+                                watchdogFired = true
+                            }
+                            let w = isRunning ? fn.vkDeviceWaitIdle!(ctx.pointee.device) : VK_TIMEOUT
+                            cond.unlock()
+                            if isRunning {
+                                if w == VK_SUCCESS || yvk_timeline_value(ctx, sem) >= serial { r = VK_SUCCESS; break }
+                                r = VK_ERROR_DEVICE_LOST
+                                log("waiting for serial \(serial) failed (\(w.rawValue)): the watchdog ended it")
+                                cond.lock(); reportDeviceLoss("the watchdog after \(Int(ran)) s"); cond.unlock()
+                                ok = false
+                                break
                             }
                         }
                         slices += 1
@@ -274,6 +305,16 @@ extension VulkanMetalBackend {
                     ok = false
                     break
                 }
+            }
+
+            // A lost device is made again (VulkanDeviceReset.swift): the work
+            // that was running fails, the rest runs again on the new device.
+            cond.lock()
+            let recover = !ok && canRecover && !abandonedAtShutdown
+            cond.unlock()
+            if recover {
+                recoverDevice(stuckSerial: serial)
+                continue
             }
 
             cond.lock()
@@ -342,6 +383,10 @@ extension VulkanMetalBackend {
     @discardableResult
     public func waitForSurfaceWrites(_ surfaceID: UInt32, timeout: Double = 0.5) -> Bool {
         guard isAvailable else { return true }
+        // The waits below use the device outside the lock: a device reset
+        // (VulkanDeviceReset.swift) may not run meanwhile.
+        enterDevice()
+        defer { leaveDevice() }
         cond.lock()
         let serial = surfaceWriteSerials[surfaceID] ?? 0
         let sem = timeline

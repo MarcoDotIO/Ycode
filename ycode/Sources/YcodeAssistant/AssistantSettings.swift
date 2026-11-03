@@ -19,6 +19,15 @@ public struct AssistantSettings: Codable, Sendable, Equatable {
     public var context = ContextOptions()
     /// The ChatGPT plan notice was shown (the first sign-in disclosure).
     public var shownPlanNotice = false
+    /// The ACP agent's command line ("<executable> <arguments…>").
+    public var acpCommand = ""
+    /// Agent mode: agent tools and ACP agents get Ycode's MCP server and may
+    /// change files, each change reviewed as a proposal (off: they only
+    /// read and propose, coding-assistant.md §3.4).
+    public var agentMode = true
+    /// Output limit and sampling for the model servers (Ollama, llama.cpp,
+    /// OpenAI); unset values are not sent.
+    public var generation = GenerationOptions.assistantDefault
 
     public init() {}
 
@@ -39,6 +48,9 @@ public struct AssistantSettings: Codable, Sendable, Equatable {
         contextLimit = (try? c.decode(Int.self, forKey: .contextLimit)) ?? d.contextLimit
         context = (try? c.decode(ContextOptions.self, forKey: .context)) ?? d.context
         shownPlanNotice = (try? c.decode(Bool.self, forKey: .shownPlanNotice)) ?? false
+        acpCommand = (try? c.decode(String.self, forKey: .acpCommand)) ?? ""
+        agentMode = (try? c.decode(Bool.self, forKey: .agentMode)) ?? d.agentMode
+        generation = (try? c.decode(GenerationOptions.self, forKey: .generation)) ?? d.generation
     }
 }
 
@@ -72,6 +84,8 @@ public struct AssistantBackends: Sendable {
         case .claudeCode, .codex, .antigravity:
             let agent = kind.cliAgent!
             return CLIAgentProvider(agent: agent, executable: locator.find(agent.executableName, override: settings.toolPaths[kind.rawValue]))
+        case .acpAgent:
+            return ACPAgentProvider(command: settings.acpCommand, locator: locator)
         }
     }
 
@@ -95,5 +109,6 @@ public struct AssistantBackends: Sendable {
     • llama.cpp: run `llama-server -m <model>.gguf`.
     • OpenAI: sign in with ChatGPT, or enter an API key, in Settings ▸ Coding Assistant.
     • Claude Code, Codex or the Antigravity CLI: install one and sign in to it once in Terminal.
+    • An ACP agent: set its command in Settings ▸ Coding Assistant.
     """
 }

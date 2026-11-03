@@ -1,5 +1,6 @@
 import AppKit
 import YcodeBuild
+import YcodeIDECore
 import YcodeLanguage
 
 /// The Editor menu of each editor kind (`specs/ide/reference-ui-5.md`
@@ -29,6 +30,14 @@ extension WorkspaceWindowController {
                 let index = repo.contents(of: url.path, at: nil), head = repo.headContents(of: url.path)
                 return index == nil && head == nil ? nil : (index, head)
             }.value
+        }
+        e.blameLoader = { [weak self] url, contents in
+            guard let self, Preferences.shared.sourceControlEnabled, let repo = self.repository, repo.relative(url.path) != nil else { return nil }
+            return await Task.detached { repo.blame(of: url.path, contents: contents) }.value
+        }
+        e.gutter.onAuthorsClick = { [weak self, weak e] line in
+            guard let self, let e, let url = e.fileURL else { return }
+            Task { await self.sourceControl.showLastChange(path: url.path, line: line, contents: e.isDirty ? e.text : nil) }
         }
         e.gutter.onChangeClick = { [weak self, weak e] line in
             guard let self, let e else { return }

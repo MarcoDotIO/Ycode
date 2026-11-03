@@ -1,5 +1,6 @@
 import AppKit
 import YcodeBuild
+import YcodeIDECore
 import YcodeLanguage
 
 /// Rename, references, call hierarchy, code actions and fix-its through
