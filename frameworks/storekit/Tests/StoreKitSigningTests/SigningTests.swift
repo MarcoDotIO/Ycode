@@ -73,7 +73,9 @@ struct IdentityTests {
         try id.certificate.pem.write(to: pem, atomically: true, encoding: .utf8)
         let text = try #require(openssl(["x509", "-in", pem.path, "-noout", "-subject", "-issuer", "-text"]))
         #expect(text.status == 0)
-        #expect(text.output.contains("subject=CN=StoreKit Testing in Xcode, O=StoreKit Testing in Xcode"))
+        // OpenSSL 3.0 prints "CN = value", later versions "CN=value".
+        let subject = text.output.replacingOccurrences(of: " = ", with: "=")
+        #expect(subject.contains("subject=CN=StoreKit Testing in Xcode, O=StoreKit Testing in Xcode"))
         #expect(text.output.contains("X509v3 Basic Constraints: critical"))
         #expect(text.output.contains("X509v3 Key Usage: critical"))
         #expect(text.output.contains("DNS:storekit-testing.invalid"))

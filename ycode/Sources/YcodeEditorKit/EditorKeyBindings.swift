@@ -11,6 +11,8 @@ public enum EditorKeyCommand: Equatable, Sendable {
     case tab(backward: Bool)
     case selectAll, copy, cut, paste, undo, redo
     case escape
+    /// Ask for completions (Ctrl+Space).
+    case complete
 }
 
 /// A key in toolkit-free terms.
@@ -56,6 +58,8 @@ public enum EditorKeyBindings {
             if primary { return .copy }
             if shift { return .paste }
             return nil
+        case .character(" ") where primary && !shift:
+            return .complete
         case .character(let c):
             guard primary, !m.contains(.alt) else { return nil }
             switch String(c).lowercased() {

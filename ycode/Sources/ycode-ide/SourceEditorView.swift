@@ -79,6 +79,7 @@ struct SourceEditorView: View {
                     return true
                 }
                 c.scheduleRefine(after: 0.05)
+                c.requestCompletions = { [weak model] in await model?.completions() ?? [] }
             }
             .task(id: c.document.path) {
                 // The file on disk, about once a second.
@@ -283,6 +284,36 @@ struct SourceEditorPainter {
             if let i = issues[n + 1] {
                 let dot = CGRect(x: c.gutterWidth - 14, y: top(n) + lh / 2 - 3.5, width: 7, height: 7)
                 ctx.fill(Path(ellipseIn: dot), with: .color(i.isError ? Color.red : Color.yellow))
+            }
+        }
+
+        drawCompletion(&ctx, size: size)
+    }
+
+    /// The completion list under the word being completed.
+    private func drawCompletion(_ ctx: inout GraphicsContext, size: CGSize) {
+        let c = controller
+        guard let list = c.completion, let f = c.completionFrame(in: size) else { return }
+        let box = Path(roundedRect: f.rect, cornerRadius: 6)
+        ctx.fill(box, with: .color(palette.background.color))
+        ctx.fill(box, with: .color(palette.foreground.color.opacity(0.05)))
+        ctx.stroke(box, with: .color(palette.foreground.color.opacity(0.25)), lineWidth: 1)
+        let rows = min(SourceEditorController.completionRows, list.shown.count)
+        let labelFont = font(c), detailFont = Font.system(size: 11)
+        for r in 0..<rows {
+            let i = f.first + r
+            let y = f.rect.minY + 3 + CGFloat(r) * f.rowHeight
+            if i == list.selected {
+                ctx.fill(Path(roundedRect: CGRect(x: f.rect.minX + 3, y: y, width: f.rect.width - 6, height: f.rowHeight), cornerRadius: 4),
+                         with: .color(colors.accent.opacity(0.85)))
+            }
+            let fg = i == list.selected ? Color.white : palette.foreground.color
+            let item = list.shown[i]
+            ctx.draw(Text(verbatim: item.label).font(labelFont).foregroundStyle(fg),
+                     at: CGPoint(x: f.rect.minX + 10, y: y + f.rowHeight / 2), anchor: .leading)
+            if let d = item.detail, !d.isEmpty {
+                ctx.draw(Text(verbatim: d).font(detailFont).foregroundStyle(fg.opacity(0.7)),
+                         at: CGPoint(x: f.rect.maxX - 10, y: y + f.rowHeight / 2), anchor: .trailing)
             }
         }
     }

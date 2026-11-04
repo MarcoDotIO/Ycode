@@ -37,6 +37,9 @@ struct YcodeIDEApp: App {
         ApplicationTermination.shouldTerminate = { ShellApp.model.shouldQuit() }
         ShellApp.model.terminateApp = { OpenViewsAutomation.terminate() }
         #endif
+        // A language server or build tool that dies must not take the app
+        // with it: writing to its closed pipe fails instead of signalling.
+        signal(SIGPIPE, SIG_IGN)
         // Live issues from sourcekit-lsp; YCODE_IDE_LSP=0 leaves it off.
         ShellApp.model.startsLanguageService = ProcessInfo.processInfo.environment["YCODE_IDE_LSP"] != "0"
         if let path = ShellAppModel.launchPath() {

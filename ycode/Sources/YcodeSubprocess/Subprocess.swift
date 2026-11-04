@@ -32,13 +32,17 @@ public enum Subprocess {
         p.standardInput = FileHandle.nullDevice
         try p.run()
         // stderr on its own thread: reading the two pipes one after the
-        // other deadlocks when the child fills the second one first.
+        // other deadlocks when the child fills the second one first. A
+        // thread, not a global queue: on a machine with few cores, callers
+        // waiting here can fill the queue's thread pool, the reader never
+        // starts, and both sides wait for ever.
         final class Box: @unchecked Sendable { var data = Data() }
         let errBox = Box()
         let group = DispatchGroup()
         if captureStderr {
             let h = err.fileHandleForReading
-            DispatchQueue.global().async(group: group) { errBox.data = h.readDataToEndOfFile() }
+            group.enter()
+            Thread { errBox.data = h.readDataToEndOfFile(); group.leave() }.start()
         }
         let data = out.fileHandleForReading.readDataToEndOfFile()
         group.wait()

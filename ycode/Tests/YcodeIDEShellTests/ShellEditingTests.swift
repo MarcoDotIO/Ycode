@@ -454,4 +454,34 @@ import YcodeSyntax
         m.preferencesChanged()
         #expect(m.editor?.buffer.typingOptions.indent.usesTabs == true)
     }
+
+    // MARK: Completion
+
+    @Test func snippetsBecomePlainTextWithTheCaretAtTheFirstStop() {
+        let (a, ia) = EditorCompletion.plain(snippet: "add(${1:x: Int}, ${2:y})")
+        #expect(a == "add(x: Int, y)" && ia == 4)
+        let (b, ib) = EditorCompletion.plain(snippet: "foo($1)$0")
+        #expect(b == "foo()" && ib == 4)
+        let (c, ic) = EditorCompletion.plain(snippet: #"cost \$5"#)
+        #expect(c == "cost $5" && ic == nil)
+        let (d, id) = EditorCompletion.plain(snippet: "plain")
+        #expect(d == "plain" && id == nil)
+    }
+
+    @Test func completionsFilterByPrefixThenSubstring() {
+        let items = ["append", "count", "isEmpty", "reserveCapacity", "Appendable"].map { EditorCompletion(label: $0, text: $0) }
+        #expect(EditorCompletion.filter(items, prefix: "app").map(\.label) == ["append", "Appendable"])
+        #expect(EditorCompletion.filter(items, prefix: "cap").map(\.label) == ["reserveCapacity"])
+        #expect(EditorCompletion.filter(items, prefix: "").count == 5)
+    }
+
+    @Test func noLanguageServerGivesNoCompletionsAtOnce() async throws {
+        let pkg = try TempPackage()
+        defer { pkg.remove() }
+        let m = try model(pkg)
+        m.open(pkg.path("Sources/DemoCore/Greeting.swift"))
+        let t0 = Date()
+        #expect(await m.completions().isEmpty)
+        #expect(Date().timeIntervalSince(t0) < 1)
+    }
 }

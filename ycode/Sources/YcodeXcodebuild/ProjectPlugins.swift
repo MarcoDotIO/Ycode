@@ -303,7 +303,8 @@ public enum ProjectPlugins {
             let group = DispatchGroup()
             group.enter()
             let errHandle = errors.fileHandleForReading
-            DispatchQueue.global().async { err.data = errHandle.readDataToEndOfFile(); group.leave() }
+            // A thread, not a global queue (see Subprocess.run).
+            Thread { err.data = errHandle.readDataToEndOfFile(); group.leave() }.start()
             let data = output.fileHandleForReading.readDataToEndOfFile()
             try? input.fileHandleForWriting.close()
             group.wait()

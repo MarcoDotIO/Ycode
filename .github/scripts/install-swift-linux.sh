@@ -31,7 +31,17 @@ curl -fsSL --retry 3 -o "$WORK/$NAME" "$URL"
 curl -fsSL --retry 3 -o "$WORK/$NAME.sig" "$URL.sig"
 export GNUPGHOME="$WORK/gnupg"
 mkdir -m 700 "$GNUPGHOME"
-curl -fsSL --retry 3 https://swift.org/keys/all-keys.asc | gpg --batch --quiet --import -
+# The keys download now and then returns something other than the key file on
+# CI runners, so check for the key block and try a few times.
+for attempt in 1 2 3 4 5; do
+    if curl -fsSL --retry 3 -o "$WORK/keys.asc" https://www.swift.org/keys/all-keys.asc \
+        && grep -q -- '-----BEGIN PGP PUBLIC KEY BLOCK-----' "$WORK/keys.asc"; then
+        break
+    fi
+    [ "$attempt" = 5 ] && { echo "Could not download swift.org's signing keys" >&2; exit 1; }
+    sleep $((attempt * 5))
+done
+gpg --batch --quiet --import "$WORK/keys.asc"
 gpg --batch --quiet --verify "$WORK/$NAME.sig" "$WORK/$NAME"
 mkdir -p "$TARGET"
 tar -xzf "$WORK/$NAME" -C "$TARGET" --strip-components=1

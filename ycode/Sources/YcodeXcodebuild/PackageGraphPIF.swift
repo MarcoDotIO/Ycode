@@ -382,7 +382,8 @@ public struct PackageGraphLoader: Sendable {
         let group = DispatchGroup()
         group.enter()
         let errHandle = err.fileHandleForReading
-        DispatchQueue.global().async { box.data = errHandle.readDataToEndOfFile(); group.leave() }
+        // A thread, not a global queue (see Subprocess.run).
+        Thread { box.data = errHandle.readDataToEndOfFile(); group.leave() }.start()
         let data = out.fileHandleForReading.readDataToEndOfFile()
         group.wait()
         p.waitUntilExit()

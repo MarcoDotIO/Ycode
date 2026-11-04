@@ -26,6 +26,13 @@ final class ShellPreferences {
         ShellApp.model.workspace?.preferencesChanged()
     }
 
+    /// Completions open by themselves after a "." (off by default for the
+    /// beta; Ctrl+Space and Escape always ask).
+    static var completionWhileTyping: Bool {
+        UserDefaults.standard.object(forKey: completionKey) as? Bool ?? false
+    }
+    static let completionKey = "Ycode.linuxCompletionWhileTyping"
+
     /// The source font's size: the user's, else the theme's.
     static var fontSize: Double { Preferences.shared.sourceFontSize ?? Preferences.shared.theme.fontSize }
 }
@@ -43,6 +50,7 @@ struct ShellSettingsView: View {
     @State private var autoIndent = Preferences.shared.autoIndent
     @State private var closers = Preferences.shared.autoInsertClosers
     @State private var prediction = PredictiveCompletionSettings.load(from: .standard)
+    @State private var completionWhileTyping = ShellPreferences.completionWhileTyping
 
     var body: some View {
         Form {
@@ -66,6 +74,13 @@ struct ShellSettingsView: View {
                     .shellTarget("settings indent width")
                 Toggle("Syntax-aware indenting", isOn: $autoIndent).shellTarget("settings auto indent")
                 Toggle("Automatically insert closing brackets and quotes", isOn: $closers).shellTarget("settings closers")
+            }
+            Section {
+                Toggle("Suggest completions after a period", isOn: $completionWhileTyping).shellTarget("settings completion")
+            } header: {
+                Text("Code Completion")
+            } footer: {
+                Text("Ctrl+Space or Escape asks at any time. Needs sourcekit-lsp on the PATH.").font(ShellFonts.small)
             }
             Section {
                 Toggle("Predictive code completion", isOn: $prediction.enabled).shellTarget("settings prediction")
@@ -102,6 +117,7 @@ struct ShellSettingsView: View {
         .onChange(of: autoIndent) { _, v in Preferences.shared.autoIndent = v }
         .onChange(of: closers) { _, v in Preferences.shared.autoInsertClosers = v }
         .onChange(of: prediction) { _, v in v.save(to: .standard) }
+        .onChange(of: completionWhileTyping) { _, v in UserDefaults.standard.set(v, forKey: ShellPreferences.completionKey) }
         .shellTarget("settings")
     }
 }

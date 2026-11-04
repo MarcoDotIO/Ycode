@@ -29,7 +29,7 @@ Short answers:
 - **The Linux IDE.** Milestones L0 and L1 are done. L2, editing, has its first
   part: editing and safe saving, find and replace, Jump to Line, build issues
   in the editor, live issues from sourcekit-lsp, a Settings window (§5.9,
-  "Done in L2"). Code completion is not there yet.
+  "Done in L2"), code completion on request.
 - **The biggest gaps** for a developer on either OS:
   - Projects that use Swift packages do not build: package products are
     dropped from the PIF. *(Closed by PIF-PKG, 2026-10-30: package
@@ -1089,11 +1089,25 @@ has unit tests.
   editor without saving or building. Driven on the sample package: a type
   error typed into a file showed in about 10 s (the server's first analysis)
   and went away on undo.
+- **Code completion** (`EditorCompletions.swift`, the list in
+  `SourceEditorView`): Ctrl+Space or Escape asks sourcekit-lsp at the caret
+  (the server gets the current text first); the list filters as you type
+  (prefix matches, then substring), Up/Down/Page Up/Page Down move, Return or
+  Tab or a click inserts the item over the word typed (snippet stops become
+  plain text, the caret at the first stop; one undo step), Escape or any
+  other caret movement closes it. Requests give up after 3 s and a newer one
+  replaces an older one; typing never waits. Opening the list after a "." is
+  a setting, off by default for the beta. Driven: `t.` listed `Trail`'s
+  members, "est" filtered to `estimatedMinutes`, Return inserted it, undo
+  took it out; with sourcekit-lsp killed (`kill -9`), typing, Ctrl+Space and
+  saving went on (the app ignores SIGPIPE so a dead server's pipe cannot end
+  it; its last live issues stay until the workspace is opened again).
 - **Settings window** (Ycode ▸ Settings…, Ctrl+,; `ShellSettingsView`): font
   size, theme, indent with spaces or tabs, tab and indent widths,
   syntax-aware indenting, closing brackets and quotes, and predictive
   completion's switch, model source (Ollama, llama.cpp server,
-  OpenAI-compatible), address and model. The same user defaults as the macOS
+  OpenAI-compatible), address and model, and whether code completions open
+  after a period. The same user defaults as the macOS
   IDE and `ycode complete`; open editors take a new font, theme or tab width
   at once (driven: font size and tab width, light and dark).
 
@@ -1121,8 +1135,7 @@ over 20,000 lines are colored by the lexer only (`EditorBuffer.parserLineLimit`)
 swift-syntax's pass over a 50,000-line file took 480 ms after each pause in
 typing, on the main thread.
 
-Not done in L2 so far: code completion, hover, Jump to Definition, predictive
-completion in the
+Not done in L2 so far: hover, Jump to Definition, predictive completion in the
 editor, folding, placeholders, multiple carets, line wrapping, the change
 bar and breakpoints in the gutter. Known: under
 the test Xvfb, `xdotool` clicks sometimes arrive bunched in one read of

@@ -31,10 +31,11 @@ public enum SwiftFormatTool {
         p.standardInput = input == nil ? FileHandle.nullDevice : inp
         guard (try? p.run()) != nil else { return nil }
         if let input {
-            // Write from another thread so a large output cannot block us.
+            // Write from another thread so a large output cannot block us; a
+            // thread of its own, not a global queue (see Subprocess.run).
             let data = Data(input.utf8)
             let w = inp.fileHandleForWriting
-            DispatchQueue.global().async { w.write(data); try? w.close() }
+            Thread { w.write(data); try? w.close() }.start()
         }
         let o = out.fileHandleForReading.readDataToEndOfFile()
         let e = err.fileHandleForReading.readDataToEndOfFile()

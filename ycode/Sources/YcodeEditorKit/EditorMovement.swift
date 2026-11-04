@@ -149,6 +149,14 @@ extension EditorBuffer {
         goalX = x
     }
 
+    /// Where the identifier (letters, digits, `_`) that ends at `offset` starts.
+    public func identifierStart(before offset: Int) -> Int {
+        let u = document.units
+        var i = min(max(offset, 0), u.count)
+        while i > 0, Self.kind(u[i - 1]) == .word { i -= 1 }
+        return i
+    }
+
     // MARK: Word and line selection
 
     /// The word (or run of spaces, or single punctuation mark) at `offset`.

@@ -76,6 +76,20 @@ final class SourceEditorController {
     private var dragStart: (range: Range<Int>, lines: Bool)?
     private var isPressed = false
 
+    // Completion (sourcekit-lsp).
+    struct CompletionList {
+        var all: [EditorCompletion]
+        var shown: [EditorCompletion]
+        var selected = 0
+        /// Where the word being completed starts.
+        var wordStart: Int
+    }
+    private(set) var completion: CompletionList?
+    private var completionTask: Task<Void, Never>?
+    /// Asks the language server (set by the view; nil: no completions).
+    var requestCompletions: (() async -> [EditorCompletion])?
+    static let completionRows = 8
+
     // Work after typing.
     private var refineTask: Task<Void, Never>?
     private var seenTextRevision = -1
@@ -335,6 +349,7 @@ final class SourceEditorController {
     }
 
     func setFocused(_ f: Bool) {
+        if !f { dismissCompletion() }
         isFocused = f
         caretOn = f
         if f { restartBlink() } else { scheduleBlink() }
@@ -359,6 +374,15 @@ final class SourceEditorController {
     }
 
     private func press(_ p: CGPoint, time: TimeInterval, shift: Bool) {
+        if let f = completionFrame(in: viewport) {
+            if f.rect.contains(p) {
+                let row = f.first + Int((p.y - f.rect.minY - 3) / f.rowHeight)
+                acceptCompletion(row)
+                dragStart = nil
+                return
+            }
+            dismissCompletion()
+        }
         var count = 1
         // Half a second between clicks (the desktops' usual double-click time).
         if let l = lastClick, time - l.time < 0.5, hypot(p.x - l.point.x, p.y - l.point.y) < 5 {
@@ -412,6 +436,10 @@ final class SourceEditorController {
     func perform(_ command: EditorKeyCommand, clipboard: (get: () -> String?, set: (String) -> Void)) -> Bool {
         let b = buffer
         switch command {
+        case .deleteBackward, .complete, .escape: break
+        default: dismissCompletion()
+        }
+        switch command {
         case .move(let unit, let forward, let extending):
             b.move(unit, forward: forward, extending: extending)
         case .moveVertically(let lines, let extending):
@@ -435,10 +463,137 @@ final class SourceEditorController {
         case .undo: b.undo()
         case .redo: b.redo()
         case .escape:
-            return onEscape()
+            // Escape stays in the editor (the window would otherwise take
+            // the keyboard away): it closes the completion list or the find
+            // bar, else asks for completions.
+            if completion != nil {
+                dismissCompletion()
+            } else if !onEscape() {
+                triggerCompletion(automatic: false)
+            }
+            return true
+        case .complete:
+            triggerCompletion(automatic: false)
+            return true
         }
         noteActivity()
         return true
+    }
+
+    // MARK: Completion
+
+    /// The identifier before `offset` starts here.
+    func wordStart(before offset: Int) -> Int { buffer.identifierStart(before: offset) }
+
+    /// Asks for completions at the caret; the list shows when they come,
+    /// filtered by what was typed meanwhile. A newer request or any other
+    /// change of the caret's word drops an older one.
+    func triggerCompletion(automatic: Bool) {
+        completionTask?.cancel()
+        guard let request = requestCompletions, !buffer.isReadOnly else { return }
+        let start = wordStart(before: buffer.caret)
+        let line = buffer.caretLine
+        completionTask = Task { [weak self] in
+            if automatic {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard !Task.isCancelled else { return }
+            }
+            let items = await request()
+            guard !Task.isCancelled, let self, self.isFocused, !items.isEmpty, self.buffer.caretLine == line,
+                  self.buffer.caret >= start, self.buffer.selection.isEmpty else { return }
+            self.completion = CompletionList(all: items, shown: items, wordStart: start)
+            self.refilterCompletion()
+        }
+    }
+
+    func dismissCompletion() {
+        completionTask?.cancel()
+        completionTask = nil
+        guard completion != nil else { return }
+        completion = nil
+        invalidate()
+    }
+
+    /// Filters by the word typed since the list opened; closes it when the
+    /// caret left the word or nothing matches.
+    func refilterCompletion() {
+        guard var c = completion else { return }
+        let caret = buffer.caret
+        guard buffer.selection.isEmpty, caret >= c.wordStart, buffer.document.line(containing: c.wordStart) == buffer.caretLine,
+              wordStart(before: caret) == c.wordStart else { return dismissCompletion() }
+        c.shown = EditorCompletion.filter(c.all, prefix: buffer.string(c.wordStart..<caret))
+        c.selected = 0
+        guard !c.shown.isEmpty else { return dismissCompletion() }
+        completion = c
+        invalidate()
+    }
+
+    /// Inserts the selected completion over the word typed (one undo step).
+    func acceptCompletion(_ index: Int? = nil) {
+        guard let c = completion else { return }
+        let i = index ?? c.selected
+        guard c.shown.indices.contains(i) else { return dismissCompletion() }
+        let item = c.shown[i]
+        let caret = buffer.caret
+        dismissCompletion()
+        buffer.breakUndoGroup()
+        buffer.replace(NSRange(location: c.wordStart, length: caret - c.wordStart), with: item.text,
+                       selection: EditorSelection(caret: c.wordStart + item.caretOffset))
+        buffer.breakUndoGroup()
+        noteActivity()
+    }
+
+    /// Keys while the list is up: true when the list used it.
+    func completionKey(_ key: EditorKey, _ m: EditorKeyModifiers) -> Bool {
+        guard var c = completion, m.isEmpty || m == [.shift] else {
+            if completion != nil, key != .escape { dismissCompletion() }
+            return false
+        }
+        switch key {
+        case .up, .down:
+            c.selected = min(max(0, c.selected + (key == .down ? 1 : -1)), c.shown.count - 1)
+            completion = c
+            invalidate()
+            return true
+        case .pageUp, .pageDown:
+            c.selected = min(max(0, c.selected + (key == .pageDown ? 1 : -1) * Self.completionRows), c.shown.count - 1)
+            completion = c
+            invalidate()
+            return true
+        case .enter, .tab:
+            acceptCompletion()
+            return true
+        case .escape:
+            dismissCompletion()
+            return true
+        case .left, .right, .home, .end:
+            dismissCompletion()
+            return false
+        default:
+            return false
+        }
+    }
+
+    /// Text typed: the list follows the word; a "." asks for members.
+    func typed(_ text: String) {
+        if completion != nil { refilterCompletion() }
+        if text == ".", ShellPreferences.completionWhileTyping { triggerCompletion(automatic: true) }
+    }
+
+    /// The list's frame in the editor (nil when hidden), and its first row.
+    func completionFrame(in size: CGSize) -> (rect: CGRect, first: Int, rowHeight: CGFloat)? {
+        guard let c = completion else { return nil }
+        let rowH = lineHeight + 4
+        let rows = min(Self.completionRows, c.shown.count)
+        let width = min(420, max(200, size.width - 20))
+        let n = buffer.document.line(containing: c.wordStart)
+        var x = textOrigin + layout.x(ofOffset: c.wordStart, line: n, in: buffer) - left - 6
+        x = max(gutterWidth, min(x, size.width - width - 4))
+        var y = lineTop(n) - top + lineHeight + 2
+        let h = CGFloat(rows) * rowH + 6
+        if y + h > size.height, lineTop(n) - top - h - 2 > 0 { y = lineTop(n) - top - h - 2 }
+        let first = max(0, min(c.selected - rows / 2, c.shown.count - rows))
+        return (CGRect(x: x, y: y, width: width, height: h), first, rowH)
     }
 }
 
@@ -455,6 +610,7 @@ extension SourceEditorController: TextSurfaceClient {
     func surfaceInsertText(_ text: String) {
         buffer.insertText(text)
         noteActivity()
+        typed(text)
     }
 
     func surfaceSetMarkedText(_ text: String, cursor: Int) {
@@ -473,8 +629,11 @@ extension SourceEditorController: TextSurfaceClient {
         if e.modifiers.contains(.shift) { m.insert(.shift) }
         if e.modifiers.contains(.control) || e.modifiers.contains(.command) { m.insert(.primary) }
         if e.modifiers.contains(.option) { m.insert(.alt) }
+        if completion != nil, completionKey(key, m) { return true }
         guard let c = EditorKeyBindings.command(key, m) else { return false }
-        return perform(c, clipboard: clipboard)
+        let used = perform(c, clipboard: clipboard)
+        if case .deleteBackward = c { refilterCompletion() }
+        return used
     }
 
     var surfaceCaretRect: CGRect {
@@ -535,6 +694,7 @@ extension EditorKey {
         case .return: self = .enter
         case .tab: self = .tab
         case .escape: self = .escape
+        case .space: self = .character(" ")
         case .character(let c): self = .character(c)
         default: return nil
         }
@@ -566,6 +726,7 @@ extension SourceEditorController {
         if p.modifiers.contains(.shift) { m.insert(.shift) }
         if p.modifiers.contains(.command) { m.insert(.primary) }
         if p.modifiers.contains(.option) { m.insert(.alt) }
+        if completion != nil, completionKey(key, m) { return .handled }
         if let c = EditorKeyBindings.command(key, m) {
             let done = perform(c, clipboard: (get: { NSPasteboard.general.string(forType: .string) },
                                               set: { NSPasteboard.general.clearContents(); NSPasteboard.general.setString($0, forType: .string) }))
@@ -574,6 +735,7 @@ extension SourceEditorController {
         guard m.isSubset(of: [.shift]), !p.characters.isEmpty else { return .ignored }
         buffer.insertText(p.characters)
         noteActivity()
+        typed(p.characters)
         return .handled
     }
 }

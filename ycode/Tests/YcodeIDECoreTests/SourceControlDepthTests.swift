@@ -20,6 +20,10 @@ private func freshRepo(_ name: String) throws -> URL {
         try "// \(f)\nlet \(f.lowercased()) = 1\n".write(to: dir.appendingPathComponent("Sources/App/\(f).swift"), atomically: true, encoding: .utf8)
     }
     try git(dir, "init", "-q", "-b", "main")
+    // An identity in the repository itself: commits made through GitRepository
+    // must not depend on the machine's global git configuration (CI has none).
+    try git(dir, "config", "user.name", "Ycode Test")
+    try git(dir, "config", "user.email", "test@ycode.invalid")
     try git(dir, "add", "-A")
     try git(dir, "commit", "-q", "-m", "Initial")
     return dir
