@@ -296,6 +296,194 @@ motion starts about 40 ms after that.
    a 155 ms input. Round 2 needs a real trackpad flick with the window in
    the foreground.
 
+## Council round 2 measurements (2026-11-04)
+
+Round 2 captured both apps in the foreground with the window key: 1x on
+a 100 Hz display, 1400 × 880, with the same grid as round 1 (editor
+x 290–1139, content from y 86). The recorder writes a frame only when
+something changes, so the gaps between changed frames give each app's
+frame cadence. Conditions are in `liquid-glass.md` §8, the checklist in
+`fidelity-council.md` (round 2), and the method in
+`research/notes/council-r2-2026-11-04.md`. These values supersede §C
+where they differ.
+
+### D.1 Syntax colours in the active window
+
+All nine token colours in §C.4 are **unchanged** in the active window.
+The type names `Int` and `String` are **#9D31CF** (purple). Gemini's teal
+#36867A for types, #AD3DA4 for keywords and #D12F1B for strings do not
+occur in the captures.
+
+Ycode now matches every token but one: it colours the module name after
+`import` (`Foundation`) as a type (#9D31CE). The reference draws it in
+plain text, #322529.
+
+### D.2 The pinned scope header during a linear scroll
+
+The input was a 600-point scroll, delivered as 120 events 8.3 ms apart.
+Each frame's scroll offset was found by matching rows against the
+before and after stills:
+
+| Offset | What the top of the editor shows |
+|---|---|
+| 0–470 | normal text; no header and no separator |
+| **474–480** | the header pins. Line 17 ("struct Section00 {") reaches the header's row (top y 87) and **stops there**, with its line number. The 2-point separator (#E6E6E6–#E7E7E7) appears under it in the same frame. There is no fade-in. |
+| 480–600 | line 17 stays pinned while lines 18 onward scroll beneath it. At 600 the first line below the header is line 25, as in §C.3. |
+
+The header pins exactly when the declaration's own line would pass
+y 87. It would stay until the declaration's closing line reaches the
+header (offset about 726, beyond this scroll).
+
+**Ycode:** in this step it scrolled **1050** points for the same input
+(D.3). That left line 42, inside a `/* … */` block between two structs, at
+the top. No header belongs there. The judges' "Ycode has no pinned
+header" therefore was not tested in round 2.
+
+### D.3 Scroll travel and frame cadence
+
+| Step (input) | Reference travel | Ycode travel |
+|---|---|---|
+| 03, linear 600 | **600** | **1050** (1.75 ×) |
+| 08, bands, linear 1200 | 1200 | 1200 |
+| 15, navigator, 500 | 432 | 432 |
+
+The harness's own measurement agrees with these. Ycode over-travelled
+only in the first editor scroll after opening the file. The cause is not
+visible in the captures; round 1 had Ycode 5.7 % short.
+
+| Step | Reference: median / 90th percentile / longest gap between changed frames | Ycode |
+|---|---|---|
+| 03 linear scroll | 20.0 / 28.0 / 39 ms | 19.3 / 30.6 / 40 ms |
+| 04 flick | 13.0 / 25.6 / 100 ms | 15.7 / **48.7** / 109 ms |
+| 08 bands scroll | 20.0 / 22.0 / 40 ms | 19.8 / 22.0 / 33 ms |
+| 15 navigator scroll | 19.7 / 24.6 / 33 ms | 22.9 / 29.8 / **75** ms |
+
+The linear scrolls run at about 50 frames a second in **both** apps. The
+judges' "Xcode 13.3 ms against Ycode 20 ms" for step 03 is not borne out.
+Ycode's gaps are the problem only in the flick and in the navigator.
+
+### D.4 Momentum flick and the top bounce
+
+The input was 8 gesture events of 40 points over 60 ms, then 173 momentum
+events (1544 points) over 1.43 s, decaying with a 0.33 s time constant.
+The momentum curve is the harness's, so what each app adds is the bounce
+at the top.
+
+1. **Reference:** the text reached the top within about 30 ms of its first
+   change. It ran on past the top, **overscrolling 83 points**: −19, −39,
+   −55, −74, −79, −82, −83 in frames 10–15 ms apart, peaking about 75 ms
+   after crossing. It then sprang back as a **critically damped spring,
+   ω = 12.6 rad/s (response about 0.50 s)**, with an RMSE of 0.5 points.
+   It was within 1 point of rest 0.48 s after the peak and at rest after
+   0.58 s.
+2. **Ycode:** overscroll **10** points; spring-back ω = 10.5 rad/s (about
+   0.60 s); at rest 0.42 s after the peak.
+3. The judges' totals (713 against 788 ms) include the input-driven travel
+   from different starting offsets (600 against 1050), so they are not
+   comparable.
+
+### D.5 Hiding and showing the inspector with Long.swift open
+
+This supersedes §C.7's duration and curve. Round 1 was recorded in an
+inactive, background window and with an image open.
+
+| | Hide | Show |
+|---|---|---|
+| Press to first motion | 43 ms | 118 ms (the pressed state shows at 94 ms) |
+| Motion, first moving frame to last | **222 ms**; with fitted ends, about 255 ms | **216 ms**; with fitted ends, about 240 ms |
+| Changed frames during the motion | 15; gaps 9–28 ms, mean **15.8 ms** (about 63 per second) | 14; mean **18.0 ms** |
+| Best simple curve | ease-in-out (0.42, 0, 0.58, 1) over 248 ms (RMSE 0.046). The free fit, (0.5, −0.05, 0.6, 0.95) over 258 ms, gives 0.024. | ease-in-out over 240 ms (RMSE 0.040) |
+
+Hide progress (the inspector's leading edge, divided by 260), in ms from
+the press:
+
+| ms | 43 | 54 | 81 | 95 | 111 | 121 | 144 | 167 | 180 | 189 | 214 | 230 | 240 | 253 | 264 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| progress | 0.01 | 0.02 | 0.08 | 0.15 | 0.20 | 0.31 | 0.44 | 0.51 | 0.68 | 0.77 | 0.87 | 0.91 | 0.97 | 0.98 | 1 |
+
+1. **What moves.** The inspector slides rigidly, as in §C.7. The editor
+   widens every frame, and **the text re-wraps progressively during the
+   slide, not once at the end**. The second row of line 6 ended at x 859,
+   835, 795, 755, 698, 650 and then 618 over successive frames, as words
+   moved up a row with each gain in width. Showing the inspector does the
+   reverse. The minimap widens with the editor (§D.6).
+2. **Nothing else moves.** Line 1's number stays at y 98 in every frame:
+   the scroll position and the top inset are preserved.
+3. The judges' 305 and 270 ms include the pressed-state frame and a
+   trailing toolbar frame.
+4. **Ycode, hide:** 135 ms to the first motion, then only four frames over
+   144 ms (gaps of 83, 38 and 23 ms). The text re-wraps in a separate
+   frame 23 ms after the inspector is gone. **The text then jumps up 40
+   points:** line 1 goes under the jump bar and line 3 takes its place.
+   This persists through the show and the later steps.
+5. **Ycode, show:** 83 ms to the first motion; 309 ms of motion in 12
+   frames (mean 28 ms). The text re-wraps progressively.
+
+### D.6 Minimap
+
+| Editor width | Minimap (plus a 1-pt separator) | Share | Source |
+|---|---|---|---|
+| 551 (window 1100) | **83** | 15.1 % | narrow-window still, drawn at 0.898 scale |
+| 850 | **127** | 14.9 % | at rest (§C.5) |
+| 1110 (inspector hidden) | **139** | 12.5 % | still after hiding the inspector |
+
+1. **Width.** These fit **min(15 % of the editor's width, about 140)**.
+   The 17-point scroll-bar lane is unchanged. `reference-ui-5.md` §6.5's
+   962 → 128 does not fit this rule (it would give 140). Confirm with
+   several more widths in round 3.
+2. **Scale is the same in both apps:** 1/6, a 3-point pitch per visual
+   line and about 1.33 points per character. Opus's "Ycode at half scale"
+   does not hold.
+3. **What differs is the bars.** The reference draws one solid bar per
+   token: a whole comment, spaces included, is a single bar, and code
+   lines break only between tokens. Ycode breaks its bars at every space
+   (one bar per word).
+4. **The visible-region shade** is #EDEDED across the full minimap width,
+   with no outline, in both apps. The reference's spans y 87–210 at the
+   top of the file; Ycode's spans 86–211.
+
+### D.7 Selecting files in the navigator by click
+
+The reference's timings, from the click:
+
+| Click | Navigator band, jump bar, editor, status bar | Inspector | Image |
+|---|---|---|---|
+| Long.swift (first selection of the session) | +580–660 ms, one frame | 289 ms after the editor | — |
+| Stripes.png | +85–160 ms: the editor clears | +61 ms | "**Loading…**" 454 ms after the editor cleared, for about 100 ms; then the image |
+| Bands.swift | +100–180 ms | +12 ms | — |
+
+1. The reference **does show "Loading…"** before an image appears, so
+   Opus's "Xcode never shows a loading state" is wrong. Ycode's one
+   Loading frame (50 ms) is within the reference's behaviour.
+2. Ycode changes the editor and the inspector in the same frame, 165–250
+   ms after the click.
+3. For an image, the reference's status bar shows no "Line: Col:".
+   Ycode's still shows "Line: 1 Col: 1".
+
+### D.8 Image inspector text (Stripes.png)
+
+| Row | Reference | Ycode |
+|---|---|---|
+| Dimensions | "800 × 1800 pixels" | the same text |
+| Resolution | **"--"** (the file records no resolution) | "72 × 72 DPI" |
+| Color Space; Alpha Channel | "RGB"; "No" | the same |
+| Labels | right-aligned, dark (#2C2C2C), regular weight | grey, and "Alpha Channel" clipped to "Alpha Channe" |
+| Localize… | a pop-up-style button **as wide as the value area** (x 1152–1387, y 641–656, 16 tall), fill #DCDCDD, title centred | a small button at the left |
+| On Demand Resource Tags | a "Tags" token field (y 457–480, #E0E0E1): an image is a resource | "Only resources are taggable" |
+
+Whether the separator is "×" (U+00D7) or the letter "x" cannot be told at
+1x: both apps draw the same small cross. **Retina capture needed**, or the
+value read through Accessibility.
+
+### D.9 Add Editor menu
+
+The failed split step left the reference's Add Editor menu open in the
+following stills. Its items are "**Tab**" (⌘T), "**Editor Pane On
+Right**" (⌃⌘T) and "**Editor Pane Below**" (⌃⌥⌘T). The harness had looked
+for "Add Editor Pane on Right", which is why the split failed. Ycode's
+items are "Add Editor Tab", "Add Editor Pane on Right" and "Add Editor
+Pane Below".
+
 ## Evidence
 
 - Commands, shortcuts and the assistant/counterparts behavior: Apple's
@@ -320,3 +508,10 @@ motion starts about 40 ms after that.
   the method is `research/notes/council-r1-2026-11-04.md`. Font family:
   reference-ui.md §4 (level 3). Ycode values come from the same session's
   captures of Ycode.
+- Council round 2 (D.1–D.9), level 3: the round 2 session's 1x stills and
+  recordings of the reference (foreground, key window). Offsets come from
+  row matching against stills; the springs and Bezier curves from least
+  squares; cadence from the gaps between changed frames. The script is
+  `research/tools/council-r2/measure_r2.py`; the method is
+  `research/notes/council-r2-2026-11-04.md`. The harness's input
+  parameters come from its manifest.

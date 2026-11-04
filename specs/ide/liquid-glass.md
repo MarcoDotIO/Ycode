@@ -509,6 +509,131 @@ circle stays where it is. One frame about 35 ms after the slide ends
 redraws the centre group (x 694–955). The slide itself is in
 `editor-area.md` §C.7.
 
+## 8. Council round 2 measurements (2026-11-04)
+
+Round 2 captured both apps **in the foreground, with the window key**.
+The capture was 1x on a 100 Hz display, with the window 1400 × 880 (1100
+× 880 in the narrow-window step). These are the **active** values that §7
+could not measure. The checklist's round 2 section is in
+`fidelity-council.md`; the method is in
+`research/notes/council-r2-2026-11-04.md`.
+
+### 8.1 Active toolbar glass and pane colours
+
+| Surface | Active (round 2) | Inactive (round 1, §7) |
+|---|---|---|
+| Navigator and inspector areas | **#EDEDEE** | #F2F2F3 |
+| Editor ▸ inspector divider | 1 point **#D4D4D6** | #DADADB |
+| Toolbar band over the editor | #FFFFFF | #FFFFFF |
+| Toolbar shape over the editor (column x 700) | rim y 7 #EBEAEB; a fill that is #FFFFFF at the top, darkens to #F9F9F9 at y 15–24 and returns to #FDFDFD; rim y 44 #E7E7E7; a **soft shadow** about 10 points tall below the shape (y 45–54, #FCFCFC) | flat #ECECEC, 1-point outline |
+| Toolbar shape over a side area (column x 150) | rim #DBDBDC; the fill runs from #FFFFFF at y 8 down to #EFEFF0 at y 15–17 and back up to #FBFBFC at y 42, with a white inner highlight at y 43; rim #D8D8D9; shadow #EAEAEB at y 45–50 | flat #E6E6E7 |
+| Navigator selector capsule (y 51–80) | rim #D7D7D8; an inner highlight #FEFEFE at y 52; a fill from #E7E7E8 (y 59–68) to #F3F3F5 (y 78); an inner highlight #FFFFFF at y 79; rim #D5D5D6 at y 80 | flat #DEDEDF |
+| Inspector fields | Name field #E0E0E1; pop-ups #DCDCDD; disabled pop-ups #E5E5E6; section rules #D6D6D7; Target Membership border #A0A0A1 | #E5E5E6 / #E1E1E2 / #E9E9EA / #DADADB / #A6A6A7 |
+
+**Toggles and disabled buttons.** The reference never fills a toolbar
+toggle with the accent colour. With the navigator shown, the Navigators
+segment and the selected editor mode carry only the recessed grey pill;
+neither has a single accent-blue pixel. Unavailable buttons dim:
+- Stop is #A2A2A4;
+- Go Back and Go Forward are #AEAEAE until there is history (Go Back is
+  black once there is).
+
+Ycode fills the navigator toggle (630 accent pixels) and the selected
+editor mode (605) with solid accent blue, and draws Stop, Back and Forward
+black whether or not they can act. The Show Inspector circle is not
+accent-filled in either app, before or after hiding; Gemini's
+"highlighted" button was not seen.
+
+### 8.2 The toolbar in a narrower window (1100 × 880)
+
+The harness resized the window from 1400 to 1100 in one step. In the
+reference, the still of that step shows the whole window drawn at
+**0.898 scale**, with its shadow, inside the 1100 × 880 frame. The Add
+Editor menu from the failed split step was still open, so the capture
+took in the window together with the menu. The window-server frame stayed
+1100 × 880. Positions below are divided by 0.898 (±2 points). GPT's
+"visible frame ends near 988" is this scaling, not a minimum width.
+
+| Item, left to right | x (points) | Compared with 1400 |
+|---|---|---|
+| Navigators \| Coding Assistant; Run \| Stop; Back \| Forward | 95–173, 208–281, 298–372 | unchanged (they track the navigator) |
+| Activity view | icon at 385; title 411–482; the subtitle **truncated in the middle**, "Scannin…positories", 412–512 | the subtitle was 165 wide |
+| New Conversation (circle) | about 529–565 | moved left |
+| **Scheme › Destination** | about 573–660 (87 wide) | **titles dropped**: target glyph, "›", destination glyph; no text |
+| Add Editor \| Editor Options | about 668–746 | — |
+| **Overflow "»" (circle)** | about 797–834, 7 before the inspector's edge (841) | new |
+| Notices circle; Canvas \| Assistant \| Code Review | **not shown**: moved into the overflow | — |
+| Show Inspector | 1056–1091 | stays over the inspector |
+
+1. **Order of overflow.** At 1100 the editor-mode group and the Notices
+   circle went into "»", and the scheme capsule dropped its titles. The
+   order in which they go cannot be told from a one-step resize. **Window
+   minimum width: not measured.**
+2. **Ycode at 1100:** no "»". It keeps New Conversation, the scheme ("Glas…
+   › My Mac", truncated), Add Editor, Editor Options, and a collapsed
+   editor-mode pull-down. It has no subtitle and no Notices.
+3. **To measure in round 3:** a slow live resize from 1400 down to the
+   minimum, recorded, to get each item's overflow threshold, the scheme
+   capsule's title-dropping width and the minimum window width.
+
+### 8.3 Content under the bars, over dark and red bands
+
+Step 08 scrolled `Bands.swift` 1200 points over 2 s. The file has rows
+of full-block characters in the comment colour (slate) and in the string
+colour (red), with blank rows between. The table gives each region's mean
+colour, white at rest, at the frame where it was darkest over slate content
+and where it was reddest. The content row itself (y 86–104) reaches a mean
+darkness of 94.5 over slate.
+
+| Region | Over slate bands | Mean darkness | Share of the content's | Over red bands | Ycode |
+|---|---|---|---|---|---|
+| Toolbar band, y 0–6 (above the shapes) | #ECEDF0 | 17.2 | **18 %** | #FDE5E3 | no change (#FFFFFF throughout) |
+| Toolbar band, y 45–51 | #EEEFF2 | 15.3 | 16 % | #FBE7E6 | no change |
+| Toolbar, between shapes (y 20–30) | #F1F2F5 | 12.2 | 13 % | #FEEBE9 | no change |
+| Jump bar, y 53–83 | #F6F7F8 | 8.0 | **8.5 %** | #FFF2F0 | at most 2 levels |
+| Editor bottom bar, y 846–879 | #F2F3F5 | 11.4 | **12 %** | #FEEDEB | 13.4 (12 %): **matches** |
+
+1. **Blurred, not just tinted.** Over a red band the toolbar band and jump
+   bar show a soft red glow in the band's shape. It stops where the band
+   stops, and its edge spreads over about 15 points (10 % to 90 %), which
+   is a blur of roughly 6 points (σ). Rows stay distinct vertically: at
+   one frame the darkening in the green channel was 26, 12, 2, 24 and 26
+   levels at y 3, 48, 60, 75 and 83, following the bands beneath. The
+   glow also shows **through the toolbar shapes** (capsules and circles
+   turn pink).
+2. **Peak strength.** A red band darkens the green channel by 211 levels
+   in the open editor and by 26 under the toolbar band: about 12 % per
+   pixel.
+3. **Edges.** The content is sharp right up to the jump bar's separator
+   (y 84–85). Above it the toolbar band and jump bar act as one blurred
+   veil, with **no gradient by height** and no fade below the separator.
+   The bottom bar does the same above its 1-point separator.
+4. **Active vs inactive.** Round 1, on an inactive window, measured about
+   6 % for the toolbar band and jump bar over text. The active window
+   passes 8.5–18 %. The inactive share may simply be lower; to confirm
+   with one capture of each state over the same bands.
+5. **Ycode:** its bottom bar matches. Its toolbar band does not respond
+   at all and its jump bar barely responds (≤ 2 levels), so the red glow
+   never appears above the editor. Ycode's own record says the editor
+   column still starts below the toolbar (`liquid-glass-ycode.md` §12.8).
+6. **The judge's 229,230,231 → 228,220,221** was a region mean that took
+   in the toolbar shapes. Use the per-region values above.
+
+### 8.4 Navigator under its bars (active)
+
+After scrolling the navigator 432 points:
+- the toolbar band over the navigator changed by at most 2 levels: rows
+  never show above the selector capsule;
+- rows showed through the selector capsule (the selected row's blue
+  glows through it) and through the filter capsule (up to 237 levels of
+  change: plainly visible, softened).
+
+In **Ycode the rows draw over the toolbar band, the traffic lights and the
+toolbar shapes at full contrast** (pixel change up to 238 levels at
+y 0–44), and below the filter capsule. The outline must be clipped at the
+selector capsule's top edge. Its content may pass under the two capsules
+only.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -534,3 +659,4 @@ redraws the centre group (x 694–955). The slide itself is in
 | §7.3 scroll-under | 3 | Recordings 02 (136 frames) and 07: per-frame mean darkness of each bar region against the content; before/after differences of stills 07. Script sections `under` and `navigator` |
 | §7.4 pane colours | 3 | Still 01: colour runs (fully covered pixels, sRGB) |
 | §7.5 toolbar during the inspector slide | 3 | Recording 08: per-frame changed regions |
+| §8 round 2: active glass, narrow toolbar, bands, navigator | 3 | Council r2 1x stills and recordings (foreground, key window). Column runs; capsule rims located as local minima; per-frame region means over the bands scroll; before/after differences. `research/tools/council-r2/measure_r2.py` (`bars`, `navigator`); the narrow still's scale from its alpha channel |

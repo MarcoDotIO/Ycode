@@ -126,7 +126,7 @@ extension SourceEditorController: NSTextContentStorageDelegate {
         let para = text.attributedSubstring(from: range)
         let indent = EditorMetrics.wrappedIndent(of: Substring(para.string), tabWidth: snap.tabWidth)
         let base = (para.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle) ?? NSParagraphStyle.default
-        let style = base.mutableCopy() as! NSMutableParagraphStyle
+        let style = (base.mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
         style.headIndent = CGFloat(indent) * snap.advance
         let out = NSMutableAttributedString(attributedString: para)
         out.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: out.length))

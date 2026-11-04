@@ -148,7 +148,7 @@ struct InspectorColumn: View {
 struct InspectorTabs: View {
     var selected: Int
     /// A fourth tab's symbol (the asset catalog's Attributes inspector).
-    var extra: String? = nil
+    var extra: String?
     var select: (Int) -> Void
     @Environment(\.colorScheme) private var scheme
 

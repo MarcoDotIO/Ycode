@@ -555,6 +555,44 @@ and a `Models` folder of 48 Swift files. Row geometry is in `metrics.md`
    (`editor-area.md` §C.8). The longest pause between changed frames was
    23 ms in the reference and 48 ms in Ycode.
 
+## Council round 2 measurements (2026-11-04)
+
+These are Project navigator observations from the round 2 captures of the
+reference: a key window in the foreground, 1x. The test project added a
+plain group "Plain" (a `PBXGroup` with `path = Plain`; the folder
+exists on disk) whose `children` list
+`Zeta.swift`, a subgroup `Sub` (holding `Inner.swift`), `alpha.swift` and
+`Beta.swift`, in that order. Row geometry and colours are in `metrics.md`
+§13.1, the scroll bar in §13.2, and the bars in `liquid-glass.md` §8.4.
+
+1. **Plain groups keep the project file's order.** Expanded, Plain showed
+   Zeta, Sub (with Inner), alpha, Beta. That is the `children` order: not
+   sorted, and not folders first. This answers round 1's open question
+   for plain groups. Synchronized folders still sort folders first
+   (round 1, §1). Ycode matches.
+2. **Group glyph:** a `PBXGroup` (and its subgroups) gets a neutral grey
+   filled folder (#7B7B80), even when it has a folder on disk. A
+   synchronized folder (`PBXFileSystemSynchronizedRootGroup`) and the
+   folders inside it are blue. Ycode draws plain groups as light-blue
+   outline folders.
+3. **Selection after a click** stays on the clicked row, drawn **#0070F5
+   with a white label and icon**, while the editor shows the file. Opening
+   the file does not move focus out of the outline, so the band stays
+   accent-coloured. Ycode's band came up 248–519 ms after the click. In
+   step 01 it disappeared 357 ms later, apparently when focus moved to
+   the editor, and no after-still shows it. Keep the outline focused after
+   a click, and keep a visible selection when it is not. The reference's
+   unfocused colour in an active window was not captured.
+4. **Accessibility.** The harness found every reference row as an
+   `AXRow` by its title ("Stripes" or "Stripes.png"). It could not find
+   Ycode's Stripes row, so every row must be exposed as an outline row
+   with its title.
+5. **Expanding** Models or Plain showed the new rows in one frame in both
+   apps (round 1, §5).
+6. **Clipping.** The outline draws only below the selector capsule's top
+   edge. Ycode drew rows over the toolbar band and the window buttons
+   (`liquid-glass.md` §8.4).
+
 ## Evidence
 
 - Find, Symbol and Report navigator roles: Apple's public Xcode Help
@@ -590,7 +628,8 @@ and a `Models` folder of 48 Swift files. Row geometry is in `metrics.md`
 - pbxproj group classes: `specs/formats/pbxproj.md` (level 2).
 - Sort order inside synchronized folders: folders first, then files, each
   by name (council round 1, level 3). OPEN QUESTION: which names it hides,
-  and the order in plain groups and packages.
+  and the order in packages. Plain groups keep their `children` order
+  (council round 2, level 3).
 - Issue grouping (by file only) and row text: `specs/ide/reference-ui-2.md`
   §1 (level 3).
 - OPEN QUESTION: icons for each navigator (ours are SF Symbols chosen by
@@ -629,3 +668,9 @@ and a `Models` folder of 48 Swift files. Row geometry is in `metrics.md`
 - The Linux IDE's Symbol navigator: Ycode's own design (the reference has
   none). swift-build's progress-line form in build logs is from SwiftPM
   6.4's own output (level 3, Ycode's builds on Linux).
+- Council round 2 section, level 3: the round 2 session's 1x stills and
+  recordings of the reference (row order, colours, per-frame selection
+  pixels); the harness's Accessibility lookups from its manifest; the plain
+  group's `children` order from the test project's `project.pbxproj`
+  (level 2). `research/tools/council-r2/measure_r2.py`,
+  `research/notes/council-r2-2026-11-04.md`.

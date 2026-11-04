@@ -112,7 +112,7 @@
       "id": "split-editor",
       "note": "Add an editor pane on the right from the toolbar's Add Editor menu: width 3 for the minimap rule (needs the foreground).",
       "do": [{"click": {"role": "AXMenuButton", "description": "Add Editor"}}, {"wait": 0.5},
-             {"press": {"role": "AXMenuItem", "title": "Add Editor Pane on Right|Add Editor on Right", "scope": "app"}}],
+             {"press": {"role": "AXMenuItem", "title": "Editor Pane On Right|Add Editor Pane on Right|Add Editor on Right", "scope": "app"}}],
       "record": {"post": 1.2}
     },
     {

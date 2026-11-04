@@ -9,8 +9,9 @@ decision. Reference values come only from `reference-ui.md` to
 Interface Guidelines and AppKit documentation. Nothing here comes from
 observing the reference directly. Where no spec value exists, Ycode's
 value is a decision, and the measurement is listed as an open question
-for the dirty room (§11). §12 is the exception: the dirty room's
-measurements of the reference from the council's captures (2026-11-04).
+for the dirty room (§11). §12 and §13 are the exceptions: the dirty
+room's measurements of the reference from the council's captures
+(rounds 1 and 2, 2026-11-04).
 
 **How Ycode was measured.** `UISpacingProbeTests` (opt-in, with
 `YCODE_UI_PROBE_DIR=<dir>`) opens a sample package "Demo" in a real
@@ -313,6 +314,117 @@ Ycode must look for `.editorconfig` in the file's folder and its
 ancestors, up to a file with `root = true`. When indentation comes from
 one, it must disable those controls and show the note.
 
+## 13. Council round 2 measurements (2026-11-04)
+
+This is a dirty-room addition, like §12: the reference measured in the
+round 2 captures (level 3). The window was 1400 × 880, **active (key)**,
+light, at 1x. Conditions are in `liquid-glass.md` §8 and the checklist in
+`fidelity-council.md` (round 2). Every §12 position that was measured
+again is unchanged in the active window. Only colours change.
+
+### 13.1 Navigator outline, active
+
+| Element | Reference | Ycode in the session |
+|---|---|---|
+| Selected row (the open file, outline focused after the click) | band y 220–241 (**22**), x **10–279** (inset 10 on both sides), corners about 8, fill **#0070F5**; the label and the icon in it are **white** | not in any after-still. In the recordings the band appeared 248–519 ms after the click; in step 01 it vanished again 357 ms later |
+| Labels | **#3B3B3C**, regular weight (mean ink darkness of a label 34) | black (#000000) and heavier (mean darkness 48) |
+| Indentation | 14 per level (§12.1), also in plain groups | 14 (now matches) |
+| Icon colour families | project and image badges blue (#006BEF); synchronized folders blue (#3FA1F6); **`PBXGroup`s a neutral grey filled folder (#7B7B80), even with a folder on disk**; Swift files orange (#F77640) | plain groups as a light-blue outline folder (#7DA8EE); Swift files as an orange "</>" glyph |
+
+Ycode draws its own icons; only the colour family is the target.
+
+### 13.2 Navigator scroll bar
+
+The Mac showed the layout-taking (legacy) style in both apps.
+
+1. **When content fits** (before the Models folder is expanded), there is
+   **no scroll bar**.
+2. **When content overflows** it appears at once and **stays**. It was
+   still drawn 1 s after the scroll ended: no auto-hide under this setting.
+   Gemini's "overlay, hidden until scrolled" does not match this Mac. The
+   overlay style is to measure with the setting on "When scrolling".
+3. **Geometry:**
+   - The track is 11 wide at x 276–286 (3 from the area's edge), #DAD8DA.
+   - It runs y **83–832**: 3 below the selector capsule (bottom y 80) and
+     11 above the filter capsule (top y 843).
+   - The knob is #A6A6A7, as wide as the track.
+4. **Knob length** = track × (scroll view height ÷ document height). The
+   scroll view is the **whole area height** (880), because the outline runs
+   under both bars. Here 750 × 880 / 1507 = 438, measured 438 (y 83–520).
+5. **Knob travel:** 432 points scrolled moved the knob 215, which is
+   (750 − 438) / (1507 − 880) × 432.
+6. **Ycode:** the same width and colours, but the track runs y **179–798**
+   (620 tall): it starts 96 lower and ends 34 higher. So its knob was 363
+   tall and sat 96 below the reference's at the top of the list.
+
+### 13.3 Inspector, active
+
+**Colours.**
+
+| Element | Reference | Ycode |
+|---|---|---|
+| Section headings | bold, **#858587** (mean ink darkness 30): a light grey | **#393A3B** (48.8): darker |
+| Labels | #252525–#2C2C2C | — |
+| Name field fill | #E0E0E1 | #D5D5D6 |
+| Pop-up fill | #DCDCDD; disabled #E5E5E6 | #D2D2D3 |
+| Rules | #D6D6D7 | — |
+
+**Row rhythm, top of the text ink (y).**
+
+| Row | Reference | Ycode | Reference rule after the row |
+|---|---|---|---|
+| Name | 116 | 116 | — |
+| Type | 140 | 137 (pop-up 137–152) | rule at 158 (Ycode: none) |
+| Location | 167 | 159 | — |
+| File name | 187 | 180 | — |
+| Full Path, first line | 205; **the label is top-aligned** with it | 194; the label is centred on the block (234–246) | rule at 306 (Ycode: none) |
+| Working Copy | 313 | 295 | — |
+| Relative Path | 360 | 326 | rule at 426 (Ycode: 371) |
+| On Demand Resource Tags heading | 434 | 384 | rule at 493 |
+| Target Membership heading | 501 | 439 | — |
+| Table | 520–629 | 454–563 | rule at 638 |
+| Text Settings heading | **646** | **582** (64 ahead) | — |
+| Text Encoding, Line Endings | 673, 695 | 600, 622 (pop-up tops) | **rule at 713** (Ycode: none) |
+| Indent Using | 722 | 644 | — |
+| Widths | 745 | 666 | — |
+| EditorConfig note | 782 | 697 | — |
+
+Ycode falls behind in three ways:
+- it **leaves out the rules** after Type, Full Path, and Line Endings,
+  together with their 6-point margins;
+- it spaces its path lines from the file name by 14 instead of 18;
+- it centres the Full Path label instead of top-aligning it.
+
+Ycode's inspector is also 265 wide (divider at x 1135) against 260.
+
+**Target Membership row.** The reference shows a grey rounded-square
+target glyph, the name, and "Default" in grey below it. Ycode shows a
+checkbox and no glyph.
+
+**Widths row.** The reference has two disabled fields, values
+right-aligned, each about 48 wide (x 1224–1272 and 1312–1361), with a
+stepper after each. "Tab" and "Indent" are centred under them. Ycode
+packs "4", a stepper, "4" and a stepper into about 70 points.
+
+### 13.4 Welcome window
+
+The Welcome window was captured over the workspace window, and its top
+(the app icon) lies outside the frame. After its 160 ms appearance:
+
+| Element | Reference | Ycode |
+|---|---|---|
+| App name | bold, cap ink 13 tall (y 110–122), 49 wide, #272727, centred over the list box | **26 tall, 95 wide**: about twice the size |
+| Version line | #808080, ink 10 tall (y 132–141) | #808080 |
+| Buttons Open…, Clone…, New Project | 36 tall (y 161–196), about 99 / 98 / 129 wide, 8 apart, spanning the list box's width | 103 / 103 / 126 |
+| List box | x **520–862 (343)**, fill #F8F8F8 | x 520–879 (360) |
+| Rows | **47-point pitch**. The selected row is y 221–267, x 528–854 (inset 8), #0064E1. Separators are 1 point, #DFDFDF, from x 576 (under the text, not the icon) to 848. Name #262626; path #7D7D7D. | one row; selected 529–870, #0064E1 |
+| Path | **head-truncated**: the line starts with "…" and keeps the end, e.g. "…/captures/2026-11-04-council-r2-full/xcode/project". A path on another volume is shown from the volume's name, without "/Volumes". | the startup volume's name and the full path, **truncated in the middle** |
+
+The list box measured 343 here, against 360 in `liquid-glass.md` §2.10,
+and the rows 47 against 48. The whole window was not in the frame, so
+this needs a capture of the entire Welcome window (**Retina capture
+needed** for the 1-point differences).
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -323,7 +435,8 @@ one, it must disable those controls and show the note.
 | Form-label wrapping, side insets | 1 | Apple's Human Interface Guidelines (Layout; Sidebars) and AppKit documentation (`NSStackView`, `NSTextField`) |
 
 | §12 council round 1 (reference values) | 3 | Council r1 1x stills and recordings of the reference: colour runs, glyph ink boxes, before/after differences (`research/tools/council-r1/measure_captures.py`, sections `navigator`, `inspector`; `research/notes/council-r1-2026-11-04.md`) |
+| §13 council round 2 (reference values, active window) | 3 | Council r2 1x stills and recordings of the reference, foreground: colour runs, ink boxes, row matching; `research/tools/council-r2/measure_r2.py` (`navigator`, `welcome`); `research/notes/council-r2-2026-11-04.md` |
 | §12.4 EditorConfig lookup rule | 1 | The EditorConfig specification (editorconfig.org: files are read from the file's folder upward until `root = true`) |
 
-Level 5 was not used. Reference behavior was observed only for §12
+Level 5 was not used. Reference behavior was observed only for §12 and §13
 (black box, from captures).

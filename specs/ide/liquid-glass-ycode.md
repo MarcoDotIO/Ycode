@@ -302,6 +302,38 @@ session. Targets are in `liquid-glass.md` §7, `editor-area.md` §C,
    text and the scroll bar's lane; scroll views follow
    `NSScroller.preferredScrollerStyle`.
 
+## 13. Council round 2 measurements (2026-11-04)
+
+What the round 2 captures (foreground, key window) showed of **Ycode's**
+surfaces since §12. The targets are `liquid-glass.md` §8.
+
+1. **Fixed since round 1.** The captured build now draws the macOS 26+
+   design:
+   - the toolbar glass shapes match the reference's profile on the white
+     band (rim, gradient, shadow) to within 1–3 levels;
+   - the side areas are #EDEDEE in both;
+   - the jump bar is white over a 2-point #E5E5E5 separator;
+   - the divider is #D4D4D6.
+2. **Toolbar band and jump bar still do not show content.** Over red
+   bands, the reference's toolbar band reaches #FDE5E3 and its jump bar
+   #FFF2F0, a blurred glow of the band beneath. Ycode's stay #FFFFFF and
+   at most 2 levels off. §12.8 explains why: the editor column starts below
+   the toolbar, and the 96.5 % fill passes too little. The reference's
+   active bars pass about 8.5 % (jump bar) to 18 % (toolbar band) of the
+   content's darkness, **blurred** with an edge spread of about 15
+   points. Ycode's bottom bar already matches (12 %).
+3. **Accent fills on toggles.** Remove the accent fill from the Navigators
+   toggle and the selected editor mode; the reference shows only the grey
+   recessed pill. Dim unavailable buttons: the reference's Stop is #A2A2A4,
+   and Back and Forward are #AEAEAE.
+4. **Navigator clipping.** Rows draw over the toolbar band and the window
+   buttons. Clip the outline at the selector capsule's top edge, and let it
+   run only under the two capsules.
+5. **Narrow windows.** Add the "»" overflow. At 1100 points the reference
+   moves the editor-mode group and the Notices circle into it, and drops
+   the scheme capsule's titles (glyphs only) before truncating anything
+   (`liquid-glass.md` §8.2).
+
 ## Evidence
 
 - Target geometry and materials: `liquid-glass.md` (level 3 there).
@@ -313,5 +345,7 @@ session. Targets are in `liquid-glass.md` §7, `editor-area.md` §C,
 - §12: what the council session's captures showed of Ycode's own windows
   (pixel runs and `otool -l` of the captured executable); the reference
   targets it cites are level 3 in `liquid-glass.md` §7.
+- §13: the round 2 captures of Ycode's own windows; the targets it cites
+  are level 3 in `liquid-glass.md` §8.
 - Apart from those cited targets, nothing here comes from observing the
   reference directly.

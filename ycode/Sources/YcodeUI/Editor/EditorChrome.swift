@@ -46,8 +46,8 @@ final class ScopeHeaderView: NSView {
     }
     private(set) var rows: [Row] = []
     var lineHeight: CGFloat = 18
-    var codeColumn: CGFloat = CGFloat(EditorMetrics.codeColumn)
-    var numberEnd: CGFloat = CGFloat(EditorMetrics.lineNumberEnd)
+    var codeColumn = CGFloat(EditorMetrics.codeColumn)
+    var numberEnd = CGFloat(EditorMetrics.lineNumberEnd)
     var showsLineNumbers = true
     /// The code baseline below a line's top.
     var baseline: CGFloat = 14
@@ -109,7 +109,7 @@ final class MinimapView: NSView {
     /// A character's width at full size (the minimap draws it at 1/6).
     var advance: CGFloat = 8
     /// The first line's inset below the content top, in text points.
-    var textTopInset: CGFloat = CGFloat(EditorMetrics.firstLineInset)
+    var textTopInset = CGFloat(EditorMetrics.firstLineInset)
     /// A click or drag: scroll the editor so this document y (text
     /// points) is centred.
     var onScrollTo: ((CGFloat) -> Void)?
