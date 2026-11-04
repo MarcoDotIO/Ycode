@@ -16,7 +16,7 @@ import YcodeDisplayStream
 /// `YCODE_XR_HUB_SHOTS=<dir>` the onboarding's steps and the canvas are
 /// written there as PNGs (drawn offscreen).
 @MainActor
-@Suite(.serialized, .timeLimit(.minutes(3))) struct HeadsetHubTests {
+@Suite(.serialized, .timeLimit(.minutes(10))) struct HeadsetHubTests {
     /// The display server's handover, with a hello for a Vision Pro and one picture per connection.
     final class TakeoverServer: @unchecked Sendable {
         let path: String

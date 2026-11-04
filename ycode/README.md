@@ -166,8 +166,9 @@ Known flaky tests (rerun alone before reporting one; CI reads the same list from
 `CLIAgentTests.cancelInterruptsTheTool`,
 `MainThreadResponsivenessTests.fileSystemWatcherReportsChanges`,
 `threadSelfusageCountsTheCallingThread` under load,
-`StreamingProcessTests.anInheritedPipeDoesNotHoldTheExitBack` under load (a
-3.9 s limit, 3.9 and 4.8 s seen in full runs, passes alone),
+`StreamingProcessTests.anInheritedPipeDoesNotHoldTheExitBack` under load (its
+limit was 3.9 s, with 3.9 and 4.8 s seen in full runs; since 2026-11-04 the
+child lives 60 s and the limit is 20 s),
 `SourceKitLSPEndToEndTests` timeouts on the arm64 Linux host, and, on the
 3-core macOS CI runner only, `BuildServerWindowTests.projectWindowUsesTheBuildServer`,
 `NavigatorInspectorR45Tests.filterOptionsAndTogglesSitInsideTheField` and

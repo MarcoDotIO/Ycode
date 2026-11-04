@@ -60,11 +60,15 @@ import Testing
     /// only once the pipe has closed, so there the exit waits for the child.)
     @Test(.enabled(if: Self.reportsExitBeforeThePipeCloses))
     func anInheritedPipeDoesNotHoldTheExitBack() async throws {
+        // The child lives 60 s, far beyond any plausible run, and is ended
+        // afterwards; a slow machine cannot pass or fail this by timing alone.
+        let pidFile = FileManager.default.temporaryDirectory.appendingPathComponent("inherited-\(UUID().uuidString)")
+        defer { killChild(in: pidFile) }
         let start = Date()
-        let seen = try await run("echo before; (sleep 4) & echo after; exit 0", timeout: 10)
+        let seen = try await run("echo before; sleep 60 & echo $! > '\(pidFile.path)'; echo after; exit 0", timeout: 40)
         #expect(seen.status == 0)
         #expect(seen.lines == ["before", "after"])
         // Reported before the child ended.
-        #expect(Date().timeIntervalSince(start) < 3.9)
+        #expect(Date().timeIntervalSince(start) < 20)
     }
 }

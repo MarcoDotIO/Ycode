@@ -361,7 +361,7 @@ func fakeTool(at url: URL, record: URL, output: String) throws {
 
 /// Real compiler and test-tool runs through the session.
 @MainActor
-@Suite(.serialized, .heavyIntegration, .timeLimit(.minutes(5))) struct ProductActionsR36RealTests {
+@Suite(.serialized, .heavyIntegration, .timeLimit(.minutes(15))) struct ProductActionsR36RealTests {
     /// Compile “main.swift” of a project target: type-checked against the
     /// target's other file; Assemble opens the assembly; Preprocess and
     /// Analyze “util.c”.

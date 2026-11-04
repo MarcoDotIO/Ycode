@@ -246,9 +246,13 @@ struct StandInRunner: HeadsetCommandRunner {
 
     /// A command's end is the shell's exit, even when something it left detached keeps the pipe.
     @Test func aDetachedProcessDoesNotHoldACommand() async {
+        // The child outlives any plausible run by far, so a slow machine
+        // cannot pass or fail this by timing alone; it is ended afterwards.
+        let pidFile = FileManager.default.temporaryDirectory.appendingPathComponent("detached-\(UUID().uuidString)")
+        defer { killChild(in: pidFile) }
         let t0 = Date()
-        let r = await LocalHeadsetRunner().run("echo started; sleep 6 & exit 0")
-        #expect(r.ok && r.output.contains("started") && Date().timeIntervalSince(t0) < 5)
+        let r = await LocalHeadsetRunner().run("echo started; sleep 60 & echo $! > '\(pidFile.path)'; exit 0")
+        #expect(r.ok && r.output.contains("started") && Date().timeIntervalSince(t0) < 20)
     }
 
     @Test func settingsPersist() {
