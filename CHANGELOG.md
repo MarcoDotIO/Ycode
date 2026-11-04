@@ -6,7 +6,7 @@ Notable changes to Ycode are recorded here. The format follows
 
 ## [Unreleased]
 
-## [1.0.0-beta.1] - 2026-11-06
+## [1.0.0-beta.1] - 2026-11-04
 
 The first public beta, and the first release with installable packages. Everything below is new to users, since there were
 no earlier releases. [The README](https://github.com/MarcoDotIO/Ycode#what-works-today) says how mature each part is.
