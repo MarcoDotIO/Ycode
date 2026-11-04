@@ -65,8 +65,8 @@ if [ "$arch" = aarch64 ]; then
     (cd ycode && YCODE="$bin/ycode" sh SimHostLibs/build.sh)
     (cd ycode && sh SimGuestFrameworks/build.sh)
     # shellcheck disable=SC2016 # $ORIGIN is for the dynamic linker
-    LDFLAGS='-Wl,-rpath,$ORIGIN/../../..' PKG_CONFIG_PATH=/app/lib/pkgconfig LLVM_DIR=/usr/lib/sdk/llvm20/lib/cmake/llvm \
-        PATH="/usr/lib/sdk/llvm20/bin:$PATH" sh ycode/Translator/build.sh "$root/airc-build"
+    LDFLAGS='-Wl,-rpath,$ORIGIN/../../..' PKG_CONFIG_PATH=/app/lib/pkgconfig LLVM_DIR=/usr/lib/sdk/llvm22/lib/cmake/llvm \
+        PATH="/usr/lib/sdk/llvm22/bin:$PATH" sh ycode/Translator/build.sh "$root/airc-build"
     install -d "$sim/.build/release" "$sim/scripts"
     install -m755 "$bin/ycode-simd" "$root/airc-build/ycode-airc" "$sim/.build/release/"
     ln -sf ../lib/ycode-sim/.build/release/ycode-simd /app/bin/ycode-simd
@@ -87,7 +87,7 @@ exec "$sim/scripts/ycode-sim.sh" "$@"
 SCRIPT
     chmod 755 /app/bin/ycode-sim
     # libLLVM for ycode-airc, from the SDK extension.
-    cp -L /usr/lib/sdk/llvm20/lib/libLLVM.so.20.1 /app/lib/
+    cp -L /usr/lib/sdk/llvm22/lib/libLLVM.so.22.1 /app/lib/
 fi
 
 # The Swift runtime libraries the tools load, and nothing else of the toolchain.

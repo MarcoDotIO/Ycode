@@ -122,7 +122,7 @@ func writeToolProject(at dir: URL) throws -> URL {
 /// prints `output`.
 func fakeTool(at url: URL, record: URL, output: String) throws {
     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try "#!/bin/sh\necho \"$@\" >> '\(record.path)'\ncat <<'EOF'\n\(output)\nEOF\n".write(to: url, atomically: true, encoding: .utf8)
+    try "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '\(record.path)'\ncat <<'EOF'\n\(output)\nEOF\n".write(to: url, atomically: true, encoding: .utf8)
 }
 
 @MainActor
@@ -163,8 +163,8 @@ func fakeTool(at url: URL, record: URL, output: String) throws {
         _ = await session.testAgain(withoutBuilding: true)
         _ = await session.testAgain()
         let lines = try String(contentsOf: record, encoding: .utf8).split(separator: "\n")
-        #expect(lines == ["test --skip-build", "test --filter CalcTests.testAdds",
-                          "test --skip-build --filter CalcTests.testAdds", "test --filter CalcTests.testAdds"])
+        #expect(lines == ["test --skip-build", "test --filter CalcTests.testAdds\\b",
+                          "test --skip-build --filter CalcTests.testAdds\\b", "test --filter CalcTests.testAdds\\b"])
 
         let clear = NSMenuItem(title: "Clear Test Results", action: #selector(WorkspaceWindowController.clearTestResults(_:)), keyEquivalent: "")
         #expect(wc.validateMenuItem(clear))

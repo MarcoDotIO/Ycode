@@ -32,13 +32,23 @@ struct NavigatorColumn: View {
                 } else {
                     switch model.navigator {
                     case .project: ProjectNavigator(model: model)
+                    case .sourceControl: SourceControlNavigator(model: model)
+                    case .symbols: SymbolNavigator(model: model)
                     case .find: FindNavigator(model: model)
                     case .issues: IssueNavigator(model: model)
+                    case .tests: TestNavigator(model: model)
+                    case .debug: DebugNavigator(model: model)
+                    case .breakpoints: BreakpointNavigator(model: model)
+                    case .reports: ReportNavigator(model: model)
                     }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            NavigatorFilterBar(spec: NavigatorBars.specs[index])
+            if shownIndex == nil, model.navigator == .symbols {
+                SymbolFilterBar(symbols: model.symbols)   // SymbolNavigatorView.swift
+            } else {
+                NavigatorFilterBar(spec: NavigatorBars.specs[index])
+            }
         }
         .onChange(of: model.navigator) { _, _ in shownIndex = nil }
     }
@@ -239,6 +249,7 @@ struct OutlineRowView: View {
                 .padding(.vertical, row.lineLimit > 1 ? 3 : 0)
                 .frame(minHeight: CGFloat(WorkspaceChrome.rowHeight), alignment: .leading)
             Spacer(minLength: 6)
+            OutlineRowAccessories(row: row, colors: c)
             if row.isEdited {
                 Circle().fill(c.secondaryLabel).frame(width: 6, height: 6)
                     .frame(height: CGFloat(WorkspaceChrome.rowHeight))
@@ -264,7 +275,7 @@ struct OutlineRowView: View {
         } else if let detail = row.detail {
             HStack(spacing: 6) {
                 Text(verbatim: row.title).font(row.isBold ? ShellFonts.rowBold : ShellFonts.row).foregroundStyle(c.label).lineLimit(1)
-                Text(verbatim: detail).font(ShellFonts.row).foregroundStyle(c.label).lineLimit(1)
+                Text(verbatim: detail).font(ShellFonts.row).foregroundStyle(row.detailIsSecondary ? c.secondaryLabel : c.label).lineLimit(1)
             }
         } else {
             Text(verbatim: row.title).font(row.isBold ? ShellFonts.rowBold : ShellFonts.row).foregroundStyle(c.label).lineLimit(row.lineLimit)
@@ -281,6 +292,8 @@ struct ProjectNavigator: View {
     @Bindable var model: WorkspaceShellModel
 
     var body: some View {
+        // Settings ▸ General ▸ File extensions applies at once.
+        let _ = ShellPreferences.shared.revision
         NavigatorOutline(rows: model.projectRows, selection: model.selection, select: { model.selection = $0 },
                          toggle: { model.setExpanded($0, $1) }, target: "project navigator")
     }

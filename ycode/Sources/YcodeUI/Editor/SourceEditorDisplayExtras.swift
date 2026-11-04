@@ -18,46 +18,8 @@ final class EditorDisplayState {
     var lastExtra: CGFloat = 0
     /// Issue presentation ▸ Show Minimized: an icon only.
     var minimizedIssues = false
-    var header: StructureHeaderView?
     var scrollObserver: NSObjectProtocol?
     var pending: DispatchWorkItem?
-}
-
-/// The sticky header at the top of the editor: the lines that open the
-/// declarations enclosing the first visible line.
-final class StructureHeaderView: NSView {
-    let label = NSTextField(labelWithString: "")
-    private(set) var lines: [String] = []
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        label.maximumNumberOfLines = 0
-        label.lineBreakMode = .byTruncatingTail
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4), label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
-            label.topAnchor.constraint(equalTo: topAnchor, constant: 1),
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    func show(_ lines: [String]) {
-        self.lines = lines
-        isHidden = lines.isEmpty
-        label.attributedStringValue = NSAttributedString(string: lines.joined(separator: "\n"),
-                                                         attributes: [.font: Theme.font, .foregroundColor: Theme.textColor])
-        layer?.backgroundColor = Theme.backgroundColor.cgColor
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        NSColor.separatorColor.setFill()
-        NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
-    }
 }
 
 extension SourceTextView {
@@ -116,7 +78,10 @@ extension SourceEditorController {
             scrollView.contentView.postsBoundsChangedNotifications = true
             d.scrollObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scrollView.contentView,
                                                                       queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.updateStructureHeader() }
+                MainActor.assumeIsolated {
+                    self?.updateStructureHeader()
+                    self?.updateMinimapViewport()
+                }
             }
         }
         updateDisplayExtras()
@@ -180,34 +145,54 @@ extension SourceEditorController {
         }
     }
 
-    /// Shows or hides the code structure headers for the first visible line.
+    /// Shows or hides the sticky scope header for the first visible line
+    /// (`editor-area.md` §C.3): its rows sit under the jump bar, each with
+    /// its line number and syntax colours.
     func updateStructureHeader() {
-        let d = displayState
-        guard Preferences.shared.showCodeStructureHeaders, fileURL != nil, !scrollView.isHidden else { d.header?.isHidden = true; return }
-        let top = scrollView.contentView.bounds.minY
-        guard top > 0 else { d.header?.isHidden = true; return }
-        let offset = textView.characterIndexForInsertion(at: NSPoint(x: textView.textContainerOrigin.x + 1, y: top + 1))
-        var topLine = textView.lineIndex.line(at: offset)
+        let header = stickyHeader
+        func hide() {
+            header.show([])
+            if stickyHeaderHeight.constant != 0 { stickyHeaderHeight.constant = 0 }
+        }
+        guard Preferences.shared.showCodeStructureHeaders, fileURL != nil, !scrollView.isHidden else { return hide() }
+        let insets = scrollView.contentInsets
+        let top = scrollView.contentView.bounds.minY + insets.top
+        guard top > textView.textContainerOrigin.y else { return hide() }
+        let lineHeight = Theme.lineHeight
+        func line(at y: CGFloat) -> Int {
+            let offset = textView.characterIndexForInsertion(at: NSPoint(x: textView.textContainerOrigin.x + 1, y: y + 1))
+            return textView.lineIndex.line(at: offset)
+        }
         let ns = textView.string as NSString
         func text(_ l: Int) -> String { textView.lineIndex.range(ofLine: l).map { ns.substring(with: $0) } ?? "" }
-        var lines = EditorDisplayModel.structureHeaderLines(foldRegions, topLine: topLine, lineText: text)
+        var lines = EditorDisplayModel.structureHeaderLines(foldRegions, topLine: line(at: top), lineText: text)
         // The header covers the first lines: look below it once.
-        if !lines.isEmpty { topLine += lines.count; lines = EditorDisplayModel.structureHeaderLines(foldRegions, topLine: topLine, lineText: text) }
-        let header = d.header ?? {
-            let h = StructureHeaderView(frame: .zero)
-            scrollView.addFloatingSubview(h, for: .vertical)
-            d.header = h
-            return h
-        }()
-        header.show(lines.map { text($0).trimmingCharacters(in: .newlines) })
-        let lineHeight = ceil(Theme.font.ascender - Theme.font.descender + Theme.font.leading)
-        // A vertical floating subview: its y is fixed at the top of the clip view.
-        let clip = scrollView.contentView
-        header.frame = NSRect(x: 0, y: clip.frame.minY, width: clip.frame.width, height: lineHeight * CGFloat(lines.count) + 3)
+        if !lines.isEmpty {
+            let covered = CGFloat(EditorMetrics.stickyHeaderHeight(rows: lines.count, lineHeight: Double(lineHeight)))
+            lines = EditorDisplayModel.structureHeaderLines(foldRegions, topLine: line(at: top + covered), lineText: text)
+        }
+        let storage = textView.textStorage
+        let rows: [ScopeHeaderView.Row] = lines.compactMap { l in
+            guard let r = textView.lineIndex.range(ofLine: l), let storage, NSMaxRange(r) <= storage.length else { return nil }
+            let s = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: r))
+            while s.length > 0, [10, 13].contains((s.string as NSString).character(at: s.length - 1)) { s.deleteCharacters(in: NSRange(location: s.length - 1, length: 1)) }
+            s.removeAttribute(.paragraphStyle, range: NSRange(location: 0, length: s.length))
+            return ScopeHeaderView.Row(line: l, text: s)
+        }
+        header.lineHeight = lineHeight
+        header.codeColumn = gutter.ruleThickness
+        header.numberEnd = gutter.lineNumberEnd
+        header.showsLineNumbers = gutter.showsLineNumbers
+        header.baseline = gutter.baselineOffset
+        header.show(rows)
+        if stickyHeaderHeight.constant != header.totalHeight { stickyHeaderHeight.constant = header.totalHeight }
     }
 
     /// The code structure header lines shown (tests).
-    public var structureHeaderLines: [String] { displayState.header.map { $0.isHidden ? [] : $0.lines } ?? [] }
+    public var structureHeaderLines: [String] { stickyHeader.isHidden ? [] : stickyHeader.rows.map(\.text.string) }
+    /// The sticky header's line numbers and height (tests).
+    public var structureHeaderLineNumbers: [Int] { stickyHeader.isHidden ? [] : stickyHeader.rows.map(\.line) }
+    public var structureHeaderHeight: CGFloat { stickyHeader.isHidden ? 0 : stickyHeader.totalHeight }
     /// Lines with a MARK separator, `#endif` conditions and inactive
     /// ranges, as drawn (tests).
     public var markSeparatorLines: [Int] { displayState.markLines }

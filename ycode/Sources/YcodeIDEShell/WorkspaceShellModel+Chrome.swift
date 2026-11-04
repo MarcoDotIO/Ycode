@@ -9,7 +9,9 @@ extension WorkspaceShellModel {
     /// General ▸ File Extensions (hidden by default).
     public var hidesFileExtensions: Bool { Preferences.shared.fileExtensions == .hide }
 
-    public var projectRows: [OutlineRow] { OutlineRows.project(root, expanded: expanded, hideExtensions: hidesFileExtensions, edited: editedPaths) }
+    public var projectRows: [OutlineRow] {
+        OutlineRows.project(root, expanded: expanded, hideExtensions: hidesFileExtensions, edited: editedPaths, badges: sourceControl.badges)
+    }
 
     /// The jump bar's components for the open file (title, symbol).
     public var jumpPath: [(title: String, symbol: String)] {

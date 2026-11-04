@@ -35,6 +35,8 @@ struct WorkspaceView: View {
         .overlay { BuildBezelOverlay(notifier: model.notifier) }
         .navigationTitle(model.windowTitle)
         .modifier(EditorPrompts(model: model))
+        .modifier(LanguageSheets(model: model, app: app))
+        .modifier(SourceControlDialogs(scm: model.sourceControl))
     }
 }
 

@@ -9,7 +9,8 @@ decision. Reference values come only from `reference-ui.md` to
 Interface Guidelines and AppKit documentation. Nothing here comes from
 observing the reference directly. Where no spec value exists, Ycode's
 value is a decision, and the measurement is listed as an open question
-for the dirty room (§11).
+for the dirty room (§11). §12 is the exception: the dirty room's
+measurements of the reference from the council's captures (2026-11-04).
 
 **How Ycode was measured.** `UISpacingProbeTests` (opt-in, with
 `YCODE_UI_PROBE_DIR=<dir>`) opens a sample package "Demo" in a real
@@ -211,6 +212,107 @@ still holds in its plain window, where the padding is 10.
 9. Device Hub: the sidebar search field's frame and the gap to the first
    section header.
 
+Items 1, 2 and 5 are answered in §12.
+
+## 12. Council round 1 measurements (2026-11-04)
+
+**This section is a dirty-room addition.** Unlike §1–§11, it records the
+reference, measured in the council session's 1x captures (level 3). The
+window was 1400 × 880, inactive and light, with the navigator 290 wide
+(x 0–289) and the inspector 260 wide (x 1141–1399). Conditions are in
+`liquid-glass.md` §7, the checklist in `fidelity-council.md`. The editor's
+text metrics, gutter and minimap are in `editor-area.md` §C.1–§C.5. This
+section adds the outline, scroll bars, jump bar and inspector. "Ycode"
+means the session's build, which showed the SDK 15 fallback.
+
+### 12.1 Navigator outline (answers §11 item 1)
+
+| Element | Reference | Ycode in the session |
+|---|---|---|
+| Row pitch | **22** (judges: 20 or 22; settled at 22) | 22 |
+| First row | ink from y 92: the row runs y 88–109, 7 below the selector capsule (§2) | the same |
+| Indentation | **14 per level** (judges: 16 or 24; neither) | 13 |
+| Disclosure triangle | centred at x 18 + 14 × level; 9 wide when open (ink 14–22 at level 0) | x 14–22 at level 0 |
+| Row icon | left edge at x 27 + 14 × level, about 14 wide (level 0: 27–41; level 1: 42–55; level 2: 56–69; level 3: 71–83) | 40–52 at level 1 |
+| Label | starts at x 48 + 14 × level (48, 62, 76, 91), 6–7 after the icon | 58 at level 1, 71 at level 2 |
+| Label colour (inactive) | #404041; the selected row #353536; triangle #737374 | — |
+| Selected row | **band y 198–219 (22, the row itself), x 10–279: 10 from both edges of the area**; corners about 8; fill **#E7E7E8** on #F2F2F3 (window inactive, outline not focused). With the scroll bar's lane shown, the band ends at x 262, 13 before the lane. | **none drawn** |
+
+Every level steps 14: the triangle, the icon and the label all move by
+14 per level. `liquid-glass.md` §2.3 had the selection's corners at about
+5; this capture's best circular fit is 8. The corner may be a continuous
+curve; confirm at 2x in round 2.
+
+### 12.2 Scroll bars
+
+The session's Mac showed **layout-taking scroll bars** (the system's
+legacy style, which depends on the "Show scroll bars" setting and the
+pointing device). When the navigator's bar appeared, the outline's rows
+narrowed by 17. Ycode's scroll bars were overlay-style on the same Mac,
+so Ycode sets a style the system did not choose. **Use
+`NSScroller.preferredScrollerStyle` and follow its change notification.**
+Do not force overlay.
+
+| Bar | Reference (legacy style) | Ycode |
+|---|---|---|
+| Navigator | lane at the area's trailing edge: track and knob both **11 wide** at x 276–286, 3 from the edge; track #DEDEDF, knob #ABABAC; the track runs y 83–832 (3 below the selector capsule, 11 above the filter capsule) | knob 8 wide at x 279–286, no track, rows not narrowed |
+| Editor | a **17-point lane at the editor's right edge, right of the minimap** (x 1123–1139). Track and knob 11 wide at x 1126–1136; track #F3F3F3, knob #7A7A7A; the track runs y 86–839. The knob was 31 tall with the file at its top. | **between the text and the minimap** (x 1012–1019) |
+
+The overlay style (thin knob, no track, hides when idle) is to measure in
+round 2 with the setting on "When scrolling".
+
+### 12.3 Jump bar and bottom bar
+
+| Element | Reference | Ycode in the session |
+|---|---|---|
+| Jump bar band | y 52–83 (32), editor white | y 52–82, #ECECEC |
+| Separator | **2 points**, #E5E5E5, y 84–85 | 1 point, #D4D4D4, y 83 |
+| Text | ink y 60–72; inactive colour #BFBFBF | — |
+| Bottom bar (880 window) | separator at y 843, bar y 844–879 (36) | the same height |
+
+### 12.4 Inspector (answers §11 item 5)
+
+There is no separate inspector spec. Content per file type is in
+`reference-ui-5.md` §7; the image file's sections are in
+`editor-area.md` §C.6.
+
+| Element | Reference (260 wide) | Ycode in the session (265 wide) |
+|---|---|---|
+| Content insets | **7** from the divider (x 1148), **8** from the window's edge (x 1391): section rules, table, placeholder field | 12 / 12 |
+| Section header | bold, at x 1147–1148. The first ("Identity and Type") has cap ink y 87–99, 7 below the tab capsule. Inactive colour #8C8C8D. | first header ink y 94–104, at x 1149 |
+| Key column | right-aligned; ink ends at **x 1219** (inspector edge + 78). Labels #252525–#2B2B2B. | ends at x 1226 |
+| Value column | controls from **x 1224** (5 after the keys) to x 1392 (7 from the edge); text inset 6 (x 1230) | from x 1236 |
+| Text field (Name) | **22 tall** (y 110–131), **filled #E5E5E6, no border**, corners about 6 | white with a border |
+| Pop-ups | **16 tall** (Type: y 137–152), filled **#E1E1E2** with no border, a black up-down chevron at x 1381–1387. Disabled: fill #E9E9EA, title #9C9C9D, chevron #A4A4A5. | white with an outline |
+| Row pitch (baseline to baseline) | text field to pop-up **24**; pop-up to pop-up **22**; across a section rule **27** | about 22–23 throughout |
+| Section rules | 1 point #DADADB, **6** below the control above and 6 above the next (y 158, 306, 426, 493, 638, 713, 833 in this file) | — |
+| Multi-line values (Full Path, Working Copy, Relative Path) | **14-point** line pitch. Lines break after "/" and also after "-" inside a component ("Xcode-clean-room-re-" / "project/…"), and each line is filled first: Full Path took 6 lines. | breaks after almost every "/", 7 lines |
+| Location | the disabled pop-up "**Relative to Group**", even for a file in a synchronized folder (`PBXFileSystemSynchronizedRootGroup`) | "Relative to Folder" |
+| On Demand Resource Tags | a placeholder field x 1148–1391, y 457–480, fill #EAEAEB, "Only resources are taggable" | — |
+| Target Membership | a **table box** x 1148–1391, y 520–629 (**110 tall** with its border); 1-point border #A6A6A7; the inside is the area's background. One row per target: a grey rounded-square target glyph, the name, and "Default" (grey) under it. Footer (y 610–628, 19 tall) under a #DEDEDF line at y 609: "+", "−" and a pencil, separated by thin vertical lines. | 52 tall, a checkbox per row |
+| Text Settings with an EditorConfig file | see below | all controls enabled, no note |
+
+**Text Settings and EditorConfig.** The test project sits inside a
+repository whose root `.editorconfig` sets `indent_style = space`,
+`indent_size = 4`, `charset = utf-8` and `end_of_line = lf`. The reference
+found that file in an ancestor folder and took **only the indentation**
+from it:
+
+1. "Indent Using" (Spaces) and the Tab and Indent width fields (4, 4,
+   each with a stepper, labelled "Tab" and "Indent" underneath) are
+   **disabled**.
+2. Under them sits the note **"Indentation settings provided by
+   EditorConfig"**, in two lines at x 1226 (y 782–806), regular weight,
+   #252525.
+3. Text Encoding and Line Endings stay **enabled** (enabled fill, black
+   chevrons), with grey titles (#949495): "No Explicit Encoding" and "No
+   Explicit Line Endings". The file's `charset` and `end_of_line` did not
+   set them.
+
+Ycode must look for `.editorconfig` in the file's folder and its
+ancestors, up to a file with `root = true`. When indentation comes from
+one, it must disable those controls and show the note.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -220,5 +322,8 @@ still holds in its plain window, where the padding is 10.
 | The source-list padding depends on placement | — | Ycode's own outline in a plain window (10) and in the workspace window's sidebar item (0), measured with `rect(ofRow:)` |
 | Form-label wrapping, side insets | 1 | Apple's Human Interface Guidelines (Layout; Sidebars) and AppKit documentation (`NSStackView`, `NSTextField`) |
 
-Level 5 was not used, and no reference behavior was observed for this
-spec.
+| §12 council round 1 (reference values) | 3 | Council r1 1x stills and recordings of the reference: colour runs, glyph ink boxes, before/after differences (`research/tools/council-r1/measure_captures.py`, sections `navigator`, `inspector`; `research/notes/council-r1-2026-11-04.md`) |
+| §12.4 EditorConfig lookup rule | 1 | The EditorConfig specification (editorconfig.org: files are read from the file's folder upward until `root = true`) |
+
+Level 5 was not used. Reference behavior was observed only for §12
+(black box, from captures).

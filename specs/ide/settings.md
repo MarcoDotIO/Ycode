@@ -161,12 +161,54 @@ environment variable `YCODE_BUILD_SERVER=0` turns it off for one run. With
 it off, the language server opens the project's folder as before. A
 checkbox in Settings is future work (the Settings code is being moved).
 
+## The Linux IDE
+
+`ycode-ide`'s Settings window (Ctrl+,; `SettingsWindow.swift` and the
+`SettingsPane*.swift` files) is one fixed 860 × 600 window: the pane list
+at the left (200 points, an icon and a title per pane), the selected pane
+at the right under a title row with back and forward buttons. Panes, in
+the macOS order: General, Appearance, Behaviors, Navigation,
+Notifications, Editing (with its Display, Completion and Indentation
+pages), Shortcuts, Source Control, Locations. Accounts, Coding Assistant,
+Components and Simulators are not offered on Linux.
+
+- The values are the same `Preferences` keys as on macOS, in the user
+  defaults of the `ycode-ide` process (swift-corelibs-foundation keeps
+  them in `$XDG_CONFIG_HOME/ycode-ide.plist`); every change is written at
+  once, so a quit or killed app keeps it. Themes are in
+  `$XDG_DATA_HOME/Ycode/Themes`.
+- Applied at once: the appearance (System, Light, Dark; both windows), the
+  theme and font sizes (editors), indentation and typing (open buffers),
+  File extensions (the project navigator), Notify (the build bezel) and
+  shortcuts (the menu bar is rebuilt). The other rows are stored for the
+  macOS IDE and for when the Linux editor gains the feature.
+- Appearance: colors are edited as `#RRGGBB` text with a swatch (an empty
+  field is the system color); a live preview shows sample code in the
+  selected theme. Built-in themes are read-only. Import and Export use the
+  file dialogs.
+- Behaviors: the events by category, each with a summary of its actions;
+  an event's page sets them with pop-ups (navigator, debug area: No
+  Change, Show, Hide, Hide If No Output; sound) and a Notify checkbox, and
+  Restore Default Actions.
+- Shortcuts are written as the Linux menus show them: "Ctrl+Shift+K" (⌘
+  is Ctrl, ⌥ is Alt, ⇧ is Shift, ⌃⌘ is Super+Ctrl). The field also reads
+  the ⌃⌥⇧⌘ notation. Because ⌘ and ⌃ are both Ctrl on Linux, conflicts
+  are checked in the Linux notation (⌃K conflicts with ⌘K there). A
+  shortcut needs a modifier unless it is a function or arrow key. Overrides are
+  the shared `Ycode.keyBindings`.
+- Locations: Linux builds packages with SwiftPM and projects with
+  ycodebuild, so the pane lists the tools found (Swift, sourcekit-lsp,
+  ycodebuild, git) and the themes folder instead of the Build System
+  pop-up.
+
 ## Evidence
 
 - Correction 2026-10-19: General, Navigation and Editing ▸ Display rows and
   defaults per `reference-ui-5.md` §9 (level 3); the File extensions factory
   default (Hide All) per `reference-ui-5.md` §5.1 (level 3).
 
+- The Linux IDE's layout, its shortcut notation (Ctrl for ⌘, as the
+  OpenViews menus write it) and its persistence are Ycode's own.
 - Xcode's settings live under the application menu with Locations among
   the panes, and Xcode offers a build-system choice: Apple's public Xcode
   Help (level 1). The swift-build choice and fallback rule are Ycode's own.

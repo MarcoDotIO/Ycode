@@ -269,8 +269,8 @@ package.products += [.library(name: "YcodeIDEShell", targets: ["YcodeIDEShell"])
 package.targets += [
     .target(name: "YcodeEditorKit", dependencies: ["YcodeSyntax"]),
     .testTarget(name: "YcodeEditorKitTests", dependencies: ["YcodeEditorKit", "YcodeSyntax"]),
-    .target(name: "YcodeIDEShell", dependencies: ["YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeXcodebuild", "YcodeSimLink", "YcodeEditorKit"]),
-    .testTarget(name: "YcodeIDEShellTests", dependencies: ["YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion"]),
+    .target(name: "YcodeIDEShell", dependencies: ["YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeXcodebuild", "YcodeSimLink", "YcodeEditorKit", "YcodeDebug"]),
+    .testTarget(name: "YcodeIDEShellTests", dependencies: ["YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeDebug"]),
 ]
 // Agent mode (specs/ide/coding-assistant.md, "Ycode implementation"): the
 // Ycode MCP server (`ycode mcp`, and in-process for the IDE's agents), the

@@ -49,6 +49,25 @@ and write back unchanged).
   Green, Blue, Alpha fields (0–1); each edit writes the set.
 - App icon slots behave like image slots, titled "16x16pt 1x" etc.
 
+- Removing a set or a folder ("−", Editor ▸ Delete Selected Items)
+  moves it to the trash, never deletes it outright: the Finder's Trash on
+  macOS, the freedesktop.org trash (`$XDG_DATA_HOME/Trash`) on Linux. This
+  is Ycode's choice, the rule its other destructive actions follow
+  (`source-control.md` §Commit editor: "Nothing is deleted outright"); the
+  reference's behavior is not observed (issue #3).
+
+## Linux IDE (Ycode, 1.0.0-beta.2)
+
+`ycode-ide` opens `.xcassets` from the project navigator in an editor with
+the same parts (`YcodeIDEShell/AssetCatalogEditorModel.swift`,
+`ycode-ide/AssetCatalogEditorView.swift`): the outline with "+", "−" and
+the filter, the set header, slots (a click on an empty slot or the slot's
+context menu chooses an image through the file dialog; Delete clears the
+selected slot), color rows (sRGB / Display P3, a hex field and the four
+components), and the Attributes inspector tab (Name renames the set or
+folder; the Color Set and App Icon rows; Provides Namespace for folders).
+There is no drag-in: OpenViews has no drop targets yet.
+
 ## Compiling (Ycode)
 
 Ycode compiles catalogs itself with `ycode assets compile` (module

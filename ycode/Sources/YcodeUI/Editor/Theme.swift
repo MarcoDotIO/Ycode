@@ -10,23 +10,64 @@ public enum Theme {
     /// The selected theme (Settings ▸ Themes).
     public static var current: EditorTheme { Preferences.shared.theme }
     /// The theme's font at Editor ▸ Font Size's size, if one is set.
-    public static var font: NSFont {
+    public static var font: NSFont { wholePointAdvance(baseFont) }
+    /// The theme's font at Editor ▸ Font Size's size, as the theme names it.
+    static var baseFont: NSFont {
         let f = current.font
         guard let size = Preferences.shared.sourceFontSize, CGFloat(size) != f.pointSize else { return f }
         return NSFont(descriptor: f.fontDescriptor, size: CGFloat(size)) ?? f
     }
-    public static var boldFont: NSFont { NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask) }
+    public static var boldFont: NSFont {
+        wholePointAdvance(NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask), like: baseFont)
+    }
+    /// The source line pitch: 18 at 13 points (`editor-area.md` §C.1).
+    public static var lineHeight: CGFloat { CGFloat(EditorMetrics.lineHeight(fontSize: Double(font.pointSize))) }
+    /// One character's advance in the source font.
+    public static var advance: CGFloat { ("0" as NSString).size(withAttributes: [.font: font]).width }
+
+    /// `f` with every glyph advancing a whole number of points (8.0 at 13
+    /// points, `editor-area.md` §C.1), the advance `like`'s rounded, so
+    /// columns line up and never drift.
+    static func wholePointAdvance(_ f: NSFont, like base: NSFont? = nil) -> NSFont {
+        let key = "\(f.fontName) \(f.pointSize) \(base?.fontName ?? "")"
+        if let cached = advanceFonts[key] { return cached }
+        let own = ("0" as NSString).size(withAttributes: [.font: base ?? f]).width
+        let target = CGFloat(EditorMetrics.advance(fontAdvance: Double(own)))
+        var out = f
+        if f.isFixedPitch || base?.isFixedPitch == true, abs(target - own) > 0.001 {
+            let d = f.fontDescriptor.addingAttributes([.fixedAdvance: target])
+            out = NSFont(descriptor: d, size: f.pointSize) ?? f
+        }
+        advanceFonts[key] = out
+        return out
+    }
+    private static var advanceFonts: [String: NSFont] = [:]
     public static var consoleFont: NSFont { current.consoleFont }
-    public static var textColor: NSColor { EditorTheme.color(current.foreground) ?? .textColor }
+    public static var textColor: NSColor {
+        EditorTheme.color(current.foreground) ?? (DefaultLightTheme.applies ? DefaultLightTheme.plain : .textColor)
+    }
+    /// Line numbers (`editor-area.md` §C.2).
+    public static var lineNumberColor: NSColor { DefaultLightTheme.applies ? DefaultLightTheme.lineNumber : .secondaryLabelColor }
     public static var backgroundColor: NSColor { EditorTheme.color(current.background) ?? .textBackgroundColor }
     public static var selectionColor: NSColor { EditorTheme.color(current.selection) ?? .selectedTextBackgroundColor }
     public static var consoleTextColor: NSColor { EditorTheme.color(current.consoleText) ?? .textColor }
     public static var consoleBackgroundColor: NSColor { EditorTheme.color(current.consoleBackground) ?? .textBackgroundColor }
-    public static var gutterFont: NSFont { NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular) }
+    /// Line numbers: a smaller face than the code (`editor-area.md` §C.2).
+    public static var gutterFont: NSFont {
+        NSFont.monospacedDigitSystemFont(ofSize: CGFloat(EditorMetrics.lineNumberFontSize(sourceSize: Double(font.pointSize))), weight: .regular)
+    }
 
     public static func color(for kind: SourceTokenizer.Kind) -> NSColor {
         if let c = EditorTheme.color(current.tokens[kind.rawValue]) { return c }
         if kind == .identifier { return textColor }
+        if DefaultLightTheme.applies, let hex = DefaultLightTheme.lightHex[kind] {
+            return DefaultLightTheme.dynamic(hex, dark: systemColor(for: kind))
+        }
+        return systemColor(for: kind)
+    }
+
+    /// The default theme's system colour for a role (its dark look).
+    static func systemColor(for kind: SourceTokenizer.Kind) -> NSColor {
         return switch kind {
         case .keyword: .systemPink
         case .comment: .secondaryLabelColor
@@ -56,6 +97,9 @@ public enum Theme {
     public static let errorColor = NSColor.systemRed
     public static let warningColor = NSColor.systemYellow
     public static let breakpointColor = NSColor.systemBlue
+    /// The insertion point's line: a neutral band, #EEEEEE on white
+    /// (`editor-area.md` §C.2).
+    public static var currentLineBandColor: NSColor { NSColor.labelColor.withAlphaComponent(0.067) }
     public static var currentLineColor: NSColor { EditorTheme.color(current.currentLine) ?? NSColor.systemGreen.withAlphaComponent(0.25) }
 
     /// Placeholder tokens: the `<#` / `#>` delimiters collapse to nothing
@@ -109,6 +153,9 @@ public enum Theme {
                 if styles[t.kind] == nil { styles[t.kind] = [.foregroundColor: color(forToken: t.kind), .font: font(forToken: t.kind) ?? base] }
                 storage.addAttributes(styles[t.kind]!, range: tr)
             }
+        }
+        if DefaultLightTheme.applies, let doc, doc.units.count == storage.length, !r.isEmpty {
+            DefaultLightTheme.colorDeclarations(doc.tokens(in: r), in: storage, range: ns)
         }
         if range == nil { stylePlaceholders(storage) } else { stylePlaceholders(storage, in: ns) }
         storage.endEditing()

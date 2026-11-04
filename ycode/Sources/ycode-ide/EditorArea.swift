@@ -14,6 +14,17 @@ struct EditorArea: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        // The commit editor or a history replaces the source editor.
+        if model.sourceControl.pane != nil {
+            SourceControlPaneView(model: model)
+        } else if model.testing.shownReport != nil {
+            ReportPaneView(model: model)
+        } else {
+            sourceEditor
+        }
+    }
+
+    @ViewBuilder var sourceEditor: some View {
         let prefs = ShellPreferences.shared.revision
         let palette = SourcePalette.forAppearance(dark: colorScheme == .dark, theme: Preferences.shared.theme)
         let c = ShellColors(colorScheme)
@@ -29,7 +40,9 @@ struct EditorArea: View {
             }
             Group {
                 if let doc = model.document {
-                    if let message = doc.message {
+                    if let s = model.structuredEditor, s.path == doc.path {
+                        StructuredEditorView(model: model, editor: s)
+                    } else if let message = doc.message {
                         Text(verbatim: message).font(Font.system(size: 15)).foregroundStyle(c.secondaryLabel)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if let editor = model.editor {
@@ -40,6 +53,7 @@ struct EditorArea: View {
                             Hairline(color: c.separator, vertical: true)
                             Minimap(controller: controller, colors: c)
                         }
+                        .overlay { QuickHelpPopoverLayer(model: model, controller: controller) }
                     }
                 } else {
                     // Nothing open: the empty editor with its minimap column,
@@ -55,6 +69,7 @@ struct EditorArea: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(palette.background.color)
+            .overlay { LanguageNotice(model: model) }
             DebugBar(model: model)
         }
         .shellTarget("editor")
@@ -88,11 +103,13 @@ struct JumpBar: View {
                         .shellTarget("edited mark")
                 }
                 chevron(c)
-                Text(verbatim: WorkspaceChrome.jumpBarNoSymbol).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.secondaryLabel).lineLimit(1)
+                // The declaration at the insertion point; its menu lists the file's (LanguageViews.swift).
+                DocumentItemsMenu(model: model)
             } else {
                 Text("No Selection").font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.secondaryLabel)
             }
             Spacer(minLength: 0)
+            if let path = model.document?.path, StructuredEditor.hasSourceView(path) { OpenAsSwitch(model: model) }
             // The issue stepper (reference-ui-5.md §6.1) once there are issues.
             if model.issueCounts.errors + model.issueCounts.warnings > 0 {
                 HStack(spacing: 8) {
@@ -133,10 +150,18 @@ struct DebugBar: View {
         VStack(spacing: 0) {
             Hairline(color: c.separator)
             HStack(spacing: 10) {
-                Image(systemName: "tag").font(.system(size: 13)).foregroundStyle(c.secondaryLabel)
-                    .help("Activate Breakpoints")
+                DebugBarItems(model: model)
                 Spacer()
-                if let editor = model.editor {
+                if let branch = model.currentBranch {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.branch").font(.system(size: 11))
+                        Text(verbatim: branch).font(ShellFonts.small).tracking(ShellFonts.smallTracking).lineLimit(1)
+                    }
+                    .foregroundStyle(c.secondaryLabel)
+                    .help("The current branch")
+                    .shellTarget("debug bar branch")
+                }
+                if let editor = model.editor, model.sourceControl.pane == nil {
                     CaretPositionLabel(controller: SourceEditorController.of(editor), color: c.label)
                         .shellTarget("caret position")
                 }

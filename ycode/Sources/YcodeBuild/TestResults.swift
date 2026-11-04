@@ -48,6 +48,12 @@ public struct TestResultParser: Sendable {
             var issue = d
             issue.message = String(d.message[close.upperBound...])
             pendingIssues[name, default: []].append(issue)
+        } else if let d = DiagnosticParser.parseLine(line), d.severity == .error, let close = d.message.range(of: " : "),
+                  case let id = d.message[..<close.lowerBound], !id.contains(" "), let dot = id.lastIndex(of: ".") {
+            // On Linux: `/path/F.swift:12: error: Class.testX : message`.
+            var issue = d
+            issue.message = String(d.message[close.upperBound...])
+            pendingIssues[String(id[id.index(after: dot)...]), default: []].append(issue)
         }
         return nil
     }
@@ -159,7 +165,9 @@ public struct TestRunner: Sendable {
             if action == .testWithoutBuilding { a.append("--skip-build") }
             if request.configuration == "Release" { a += ["-c", "release"] }
             if coverage && action == .test { a.append("--enable-code-coverage") }
-            for o in only { a += ["--filter", o.replacingOccurrences(of: "/", with: ".")] }
+            // A word boundary after the name: `testAdd` must not also run
+            // `testAddsMore` (the filter is a regular expression).
+            for o in only { a += ["--filter", o.replacingOccurrences(of: "/", with: ".") + "\\b"] }
             return (a, dir)
         default:
             var r = request

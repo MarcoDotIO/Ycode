@@ -7,6 +7,7 @@
 #include "translator_impl.h"
 
 #include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
@@ -29,6 +30,17 @@
 using namespace llvm;
 
 namespace airc {
+
+// The module's target triple as text. LLVM 21 made Module::getTargetTriple()
+// return a Triple; LLVM 17 to 20 return the string (the Flatpak's SDK
+// extension is LLVM 22, a distribution's may be 18).
+static std::string targetTriple(const Module &M) {
+#if LLVM_VERSION_MAJOR >= 21
+    return M.getTargetTriple().str();
+#else
+    return M.getTargetTriple();
+#endif
+}
 
 const char *kTranslatorVersion = "ycode-airc 0.1 (abi 1)";
 
@@ -2183,7 +2195,7 @@ TranslateResult translate(const std::string &module, const std::string &name, co
     auto mod = parseBitcodeFile(MemoryBufferRef(StringRef(module), "air"), ctx);
     if (!mod) fail("bad-bitcode", toString(mod.takeError()));
     Module &M = **mod;
-    if (!StringRef(M.getTargetTriple()).starts_with("air64")) fail("bad-bitcode", "target triple " + M.getTargetTriple());
+    if (!StringRef(targetTriple(M)).starts_with("air64")) fail("bad-bitcode", "target triple " + targetTriple(M));
     Function *F = M.getFunction(name);
     if (!F || F->isDeclaration()) fail("function-not-found", name);
     if (!opts.linkModules.empty() || opts.resolveVisible) linkVisible(M, opts);
@@ -2349,7 +2361,7 @@ TranslateResult translate(const std::string &module, const std::string &name, co
     if (wrapped) top.set("wrapped_visible_function", true);
     if (!hashHex.empty()) top.set("hash", hashHex);
     if (kind >= 0) top.set("metallib_type", kind);
-    top.set("air_triple", M.getTargetTriple());
+    top.set("air_triple", targetTriple(M));
     top.set("spirv_words", (unsigned long long)res.spirv.size());
     for (auto &p : res.reflection.obj) top.set(p.first, p.second);
     res.reflection = top;

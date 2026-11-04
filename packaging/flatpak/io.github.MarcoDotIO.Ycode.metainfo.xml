@@ -35,7 +35,7 @@
     <control>pointing</control>
   </supports>
   <releases>
-    <release version="1.0.0-beta.1" date="2026-11-06" type="development">
+    <release version="1.0.0-beta.1" date="2026-11-04" type="development">
       <description>
         <p>First public beta: the IDE, with the simulator tools marked experimental.</p>
       </description>

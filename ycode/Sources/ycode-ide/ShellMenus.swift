@@ -42,7 +42,8 @@ struct ShellMenus: Commands {
         CommandGroup(replacing: .sidebar) { MenuSpecItems(app: app, items: Self.items("View")) }
         CommandMenu("Find") { MenuSpecItems(app: app, items: Self.items("Find")) }
         CommandMenu("Navigate") { MenuSpecItems(app: app, items: Self.items("Navigate")) }
-        CommandMenu("Editor") { MenuSpecItems(app: app, items: Self.items("Editor")) }
+        // The focused editor's own Editor menu (property list, asset catalog).
+        CommandMenu("Editor") { MenuSpecItems(app: app, items: EditorMenu.items(for: app.workspace?.editorKind ?? .source)) }
         CommandMenu("Product") { MenuSpecItems(app: app, items: Self.items("Product")) }
         CommandMenu("Debug") { MenuSpecItems(app: app, items: Self.items("Debug")) }
         CommandMenu("Integrate") { MenuSpecItems(app: app, items: Self.items("Integrate")) }
@@ -58,6 +59,8 @@ struct MenuSpecItems: View {
     var trimSeparators = false
 
     var body: some View {
+        // Settings ▸ Shortcuts: a changed shortcut rebuilds the items.
+        let _ = ShellPreferences.shared.revision
         ForEach(Array(shown.enumerated()), id: \.offset) { pair in
             view(pair.element)
         }
@@ -104,7 +107,16 @@ struct MenuSpecItems: View {
         case .command(let c):
             let shell = ShellCommand.allCases.first { $0.action == (c.action, c.tag) }
             let title = shell.map { app.title($0) } ?? MenuTitles.title(for: c, in: app.workspace?.menuContext)
-            let shortcut = ShellShortcut(command: c)?.keyboardShortcut
+            let shortcut = ShellShortcut(command: KeyBindings.effective(c))?.keyboardShortcut
+            // The structured editors' items (StructuredEditors.swift).
+            if shell == nil, let state = app.workspace?.editorActionState(c.action, tag: c.tag) {
+                if ["toggleRawKeysAndValues:", "setPlistValueType:"].contains(c.action) {
+                    return AnyView(Toggle(title, isOn: Binding(get: { state.checked },
+                                                               set: { _ in app.workspace?.performEditorAction(c.action, tag: c.tag) }))
+                        .disabled(!state.enabled))
+                }
+                return AnyView(Button(title) { app.workspace?.performEditorAction(c.action, tag: c.tag) }.disabled(!state.enabled))
+            }
             return AnyView(Button(title) { if let shell { app.perform(shell) } }
                 .keyboardShortcut(shortcut)
                 .disabled(shell.map { !app.isEnabled($0) } ?? true))

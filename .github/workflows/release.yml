@@ -45,6 +45,10 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: python3 -I .github/scripts/changelog-section.py "$VERSION" > /dev/null
+      - name: The metainfo's newest release must match the CHANGELOG version and date
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: python3 -I .github/scripts/check-release-metadata.py "$VERSION"
       - name: Scan for private names, secrets and files that must not be public
         run: python3 -I .github/scripts/scan-public.py
 

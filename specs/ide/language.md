@@ -77,6 +77,39 @@ line index converts both ways (clamping columns to the line).
 - ⌘-click on a symbol places the insertion point there and does Jump to
   Definition.
 
+### The Linux IDE
+
+`ycode-ide` has the same features through the shell model
+(`WorkspaceShellModel+Language.swift`, `YcodeIDEShell`) over the
+session's language service; the requests and their mappings are the
+core's (`YcodeIDECore/Session/LanguageNavigation.swift`), shared with the
+macOS window:
+
+- Quick Help: ⌥-click on a symbol, or Help ▸ Show Quick Help for Selected
+  Item (⌃⌘?) at the insertion point, shows the hover in a 420-point
+  popover under the symbol (the sections of `reference-ui-4.md` §7, the
+  same `QuickHelpDocument` as the inspector). Moving the insertion point,
+  Escape, typing or scrolling closes it. The inspector's Quick Help tab
+  (⌥⌘3) follows the insertion point 0.35 s after it stops.
+- Jump to Definition: ⌃⌘J, Navigate ▸ Jump to Definition, or a click with
+  Ctrl or the Super key (⌘) held. The file opens as a new history entry
+  and the symbol's name is selected (a definition without a range selects
+  the identifier there). Navigate ▸ Jump to Original Source asks for the
+  declaration first.
+- A request with no answer leaves a short notice at the top of the editor
+  ("No definition found", "No Quick Help", "Can't rename this symbol") for
+  two seconds. Every request gives up after 5 s (references and callers:
+  15 s, they read the index).
+- The jump bar's last component is the declaration the insertion point is
+  in (`DocumentSymbols.enclosing`, as the macOS jump bar), with its letter
+  badge; a click lists the file's declarations, indented by nesting, and
+  goes to the one chosen.
+
+A server request runs only on an editable file the server has open; the
+server gets the editor's text first. The commands are disabled without a
+running server.
+
+
 ## Build server
 
 sourcekit-lsp knows packages; for a project or workspace it needs a build
@@ -359,6 +392,39 @@ ycode-bsp prepare <container> <target>… …        # emits the modules
 ycode-bsp sample <dir> [ios|portable]            # the sample project of the tests
 ```
 
+### Context changes
+
+The build server reads the scheme and the destination from its command
+line, so they are fixed for the life of one server. When the window's
+scheme or destination changes (any part of the destination's specifier),
+the session (`WorkspaceSession+LanguageContext.swift`, shared by the macOS
+window and the Linux shell) restarts the language server for the new
+context:
+
+1. A change only counts when the running server serves a context: a
+   project or workspace opened through the build server. Packages, and
+   servers started without the build server (the setting off, `ycode-bsp`
+   not found), are left alone.
+2. The restart waits 0.3 s after the last change, so that a scheme switch
+   that also picks a new destination restarts once.
+3. The old server gets `shutdown` and `exit`; the connection file is
+   written again with the new `--scheme` and `--destination`, and
+   sourcekit-lsp is started on the same folder, which starts the build
+   server again.
+4. Every document the old server had open is opened in the new one with
+   the text last sent (`didOpen`, version 1); the window's handler for
+   `workspace/applyEdit` carries over. Live issues of the old server are
+   dropped at once; the new server publishes its own.
+5. A change made while the server is starting is noticed when it has
+   started, and restarts it.
+
+**Decision:** a restart rather than a notification to the build server.
+BSP has no request for a client to change the build server's settings,
+and sourcekit-lsp starts the build server itself; a new server is the one
+path that reaches every cached compiler argument. A restart of a small
+project takes about a second; live issues reappear when the new server
+has prepared the open files' targets.
+
 ### Status
 
 - Covered: app, framework, static/dynamic library, tool and test targets;
@@ -370,10 +436,8 @@ ycode-bsp sample <dir> [ios|portable]            # the sample project of the tes
   §Package products): local and remote packages, static and dynamic
   products, C targets' module maps and macros. Needs the swift-build helper
   to build them.
-- Not yet: the IDE does not restart the build server when the scheme or
-  destination changes (they are fixed when the window opens); build rules
-  and script phases that generate sources; Mac Catalyst; header maps
-  proper; `buildTarget/outputPaths`.
+- Not yet: build rules and script phases that generate sources; Mac
+  Catalyst; header maps proper; `buildTarget/outputPaths`.
 
 ## Evidence
 
@@ -428,3 +492,6 @@ ycode-bsp sample <dir> [ios|portable]            # the sample project of the tes
 - OPEN QUESTION: Xcode's completion popup layout (icons, detail column,
   documentation pane), when it opens automatically, and how live issues
   and build issues are distinguished in the issue navigator.
+- Context changes (restart on a scheme or destination change) and the Linux
+  IDE's Quick Help popover, notices and jump bar symbol: Ycode's own design
+  over the LSP and BSP specifications (level 1); nothing observed.

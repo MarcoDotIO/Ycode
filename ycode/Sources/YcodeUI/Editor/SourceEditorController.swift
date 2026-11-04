@@ -329,9 +329,17 @@ final class SourceTextView: NSTextView {
                 NSBezierPath(roundedRect: r.insetBy(dx: -1, dy: 0), xRadius: 2, yRadius: 2).fill()
             }
         }
-        if let l = caretLine, l != highlightedLine, let r = lineRect(l), r.intersects(rect) {
-            NSColor.labelColor.withAlphaComponent(0.05).setFill()
-            r.fill()
+        if let l = caretLine, l != highlightedLine, var r = lineRect(l), r.intersects(rect) {
+            // The band ends at the text container's edge, with rounded
+            // corners there; it continues in the gutter (editor-area.md §C.2).
+            Theme.currentLineBandColor.setFill()
+            r.size.width = owner?.textContainerEnd ?? r.width
+            r.size.height = Theme.lineHeight
+            let radius = CGFloat(EditorMetrics.currentLineBandRadius)
+            let p = NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius)
+            p.append(NSBezierPath(rect: NSRect(x: r.minX, y: r.minY, width: r.width / 2, height: r.height)))
+            p.windingRule = .nonZero
+            p.fill()
         }
         if let l = highlightedLine, let r = lineRect(l) {
             Theme.currentLineColor.setFill()
@@ -345,37 +353,6 @@ final class SourceTextView: NSTextView {
     }
 }
 
-/// A thumbnail of the whole file at the editor's right edge (⌃⇧⌘M).
-@MainActor
-final class MinimapView: NSView {
-    var lines: [Int] = [] { didSet { needsDisplay = true } }
-    /// Declaration labels at their lines ("landmarks", reference-ui-5.md §6.5).
-    var landmarks: [(line: Int, name: String)] = [] { didSet { needsDisplay = true } }
-    override var isFlipped: Bool { true }
-
-    /// §6.5: about 13–14 % of the editor's width, at least 60 pt.
-    static func width(forEditorWidth w: CGFloat) -> CGFloat { max(60, (w * 0.133).rounded()) }
-
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.textBackgroundColor.setFill()
-        bounds.fill()
-        NSColor.separatorColor.setFill()
-        NSRect(x: 0, y: 0, width: 1, height: bounds.height).fill()
-        NSColor.tertiaryLabelColor.setFill()
-        for (i, len) in lines.enumerated() where len > 0 {
-            let y = CGFloat(i) * 2
-            if y > bounds.height { break }
-            NSRect(x: 6, y: y, width: min(CGFloat(len), bounds.width - 10), height: 1).fill()
-        }
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 9, weight: .semibold), .foregroundColor: NSColor.secondaryLabelColor]
-        for l in landmarks {
-            let y = CGFloat(l.line - 1) * 2
-            if y > bounds.height { break }
-            NSAttributedString(string: l.name, attributes: attrs).draw(at: NSPoint(x: 6, y: max(0, y - 5)))
-        }
-    }
-}
-
 /// The path above the editor: Related Items, then workspace › groups ›
 /// file › symbol, and the issue controls at the right end. The assistant's
 /// bar starts with a close button and the mode pop-up. No history buttons:
@@ -385,7 +362,8 @@ final class JumpBar: NSView {
     /// `liquid-glass.md` §2.6: the band runs y 52–83 under the toolbar (31
     /// points), then the separator line; it was 25 + 1.
     static let bandHeight = CGFloat(WorkspaceChrome.jumpBarBandHeight)
-    static let height: CGFloat = bandHeight + 1
+    static let separatorHeight = CGFloat(EditorMetrics.jumpBarSeparator)
+    static let height: CGFloat = bandHeight + separatorHeight
     let stack = NSStackView()
     /// The right end: Show Previous Issue, the Issues pull-down, Show Next Issue.
     let issueStack = NSStackView()
@@ -417,11 +395,13 @@ final class JumpBar: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The band is the editor's background, nearly opaque, so the text
+    /// scrolling beneath shows as a faint veil; then a 2-point separator
+    /// (`metrics.md` §12.3, `liquid-glass.md` §7.3).
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.windowBackgroundColor.setFill()
-        bounds.fill()
-        NSColor.separatorColor.setFill()
-        NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
+        EditorVeil.fill.setFill()
+        NSRect(x: 0, y: Self.separatorHeight, width: bounds.width, height: bounds.height - Self.separatorHeight).fill(using: .copy)
+        EditorVeil.drawSeparator(NSRect(x: 0, y: 0, width: bounds.width, height: Self.separatorHeight))
     }
 
     /// The Related Items button was clicked (the window opens the ⌃1 menu).
@@ -628,6 +608,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     public var pathComponents: [(String, String)] = [] { didSet { jumpBar.setPath(pathComponents) } }
     public var onBreakpointClick: ((String, Int) -> Void)?
     private var prefsObserver: NSObjectProtocol?
+    private var scrollerStyleObserver: NSObjectProtocol?
     private var showsMinimapCache = false
     /// The files this editor showed (Go Back / Go Forward).
     public var history = NavigationHistory()
@@ -743,6 +724,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     let gutter: GutterView
     let minimap = MinimapView()
     private var minimapWidth: NSLayoutConstraint!
+    var minimapTrailing: NSLayoutConstraint!
+    let bandBackdrop = EditorBandBackdrop()
+    let stickyHeader = ScopeHeaderView()
+    var stickyHeaderTrailing: NSLayoutConstraint!
+    var stickyHeaderHeight: NSLayoutConstraint!
     /// The coloring language: the file's, or Editor ▸ Syntax Coloring's choice.
     var language = SourceTokenizer.Language.plain
     /// The language the text is colored as (Display extras).
@@ -794,7 +780,10 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.font = Theme.font
-        textView.textContainerInset = NSSize(width: 4, height: 4)
+        // editor-area.md §C.1: the code column at the editor's edge + 51
+        // (the gutter is 51 wide) and the first line 7 below the content top.
+        textView.textContainerInset = NSSize(width: 0, height: EditorMetrics.firstLineInset)
+        textView.textContainer?.lineFragmentPadding = 0
         textView.delegate = self
         textView.owner = self
         completionPopup.onAccept = { [weak self] in self?.acceptCompletion() }
@@ -805,7 +794,13 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         textView.backgroundColor = .textBackgroundColor
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
+        // The system's scroller style, not a forced one (metrics.md §12.2).
+        scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
         scrollView.drawsBackground = true
+        // The text runs under the toolbar band, the jump bar and the
+        // bottom bar; the insets keep it clear of them at rest
+        // (liquid-glass-ycode.md §12 item 4).
+        scrollView.automaticallyAdjustsContentInsets = false
         scrollView.verticalRulerView = gutter
         scrollView.hasVerticalRuler = true
         scrollView.rulersVisible = true
@@ -828,30 +823,47 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         findBar.onDone = { [weak self] in self?.hideFindBar() }
         findBar.clipsToBounds = true
         comparison.isHidden = true
-        for v in [jumpBar, findBar, scrollView, minimap, comparison] as [NSView] {
+        findBar.wantsLayer = true
+        // Order, back to front: the text, the minimap, the sticky header,
+        // the band behind the toolbar, the jump bar and find bar.
+        for v in [scrollView, minimap, stickyHeader, bandBackdrop, jumpBar, findBar, comparison] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
+        stickyHeader.isHidden = true
+        minimap.onScrollTo = { [weak self] y in self?.scrollMinimapTarget(y) }
         minimapWidth = minimap.widthAnchor.constraint(equalToConstant: 0)
+        minimapTrailing = minimap.trailingAnchor.constraint(equalTo: root.trailingAnchor)
+        stickyHeaderTrailing = stickyHeader.trailingAnchor.constraint(equalTo: root.trailingAnchor)
+        stickyHeaderHeight = stickyHeader.heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
-            jumpBar.topAnchor.constraint(equalTo: root.topAnchor),
+            // The jump bar sits under the toolbar (the safe area's top);
+            // the band behind the toolbar runs from the editor's top to it.
+            jumpBar.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             jumpBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             jumpBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             jumpBar.heightAnchor.constraint(equalToConstant: JumpBar.height),
+            bandBackdrop.topAnchor.constraint(equalTo: root.topAnchor),
+            bandBackdrop.bottomAnchor.constraint(equalTo: jumpBar.topAnchor),
+            bandBackdrop.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            bandBackdrop.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             findBar.topAnchor.constraint(equalTo: jumpBar.bottomAnchor),
             findBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             findBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: findBar.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: root.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: minimap.leadingAnchor),
-            minimap.topAnchor.constraint(equalTo: findBar.bottomAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            stickyHeader.topAnchor.constraint(equalTo: findBar.bottomAnchor),
+            stickyHeader.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            stickyHeaderTrailing, stickyHeaderHeight,
+            minimap.topAnchor.constraint(equalTo: root.topAnchor),
             comparison.topAnchor.constraint(equalTo: findBar.bottomAnchor),
             comparison.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             comparison.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             comparison.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             minimap.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            minimap.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            minimapTrailing,
             minimapWidth,
         ])
         findBarHeight = findBar.heightAnchor.constraint(equalToConstant: 0)
@@ -859,6 +871,14 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         view = root
         prefsObserver = NotificationCenter.default.addObserver(forName: Preferences.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.applyPreferences() }
+        }
+        // Follow the system's scroller style when it changes (metrics.md §12.2).
+        scrollerStyleObserver = NotificationCenter.default.addObserver(forName: NSScroller.preferredScrollerStyleDidChangeNotification,
+                                                                      object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
+                self?.view.needsLayout = true
+            }
         }
         applyPreferences()
         setUpPrediction()
@@ -880,13 +900,16 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     }
     let noDocument = NoDocumentFlag()
 
-    /// The minimap keeps its share of the editor's width (§6.5).
+    /// The minimap keeps its share of the editor's width (§C.5), the text
+    /// keeps clear of the bars, and the text container ends before the
+    /// minimap.
     public override func viewDidLayout() {
         super.viewDidLayout()
         if minimapWidth.constant > 0 {
             let w = MinimapView.width(forEditorWidth: view.bounds.width)
             if minimapWidth.constant != w { minimapWidth.constant = w }
         }
+        updateEditorInsets()
     }
 
     /// The minimap's width (tests).
@@ -919,6 +942,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         pathComponents = path
         scrollView.isHidden = true
         minimap.isHidden = true
+        stickyHeader.isHidden = true
     }
 
     public func hideAuxiliary() {
@@ -1078,14 +1102,18 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         textView.insertionPointColor = Theme.textColor
         textView.selectedTextAttributes = [.backgroundColor: Theme.selectionColor]
         textView.typingAttributes = [.font: Theme.font, .foregroundColor: Theme.textColor]
-        let tab = ("0" as NSString).size(withAttributes: [.font: Theme.font]).width * CGFloat(p.tabWidth)
+        let tab = Theme.advance * CGFloat(p.tabWidth)
         let para = NSMutableParagraphStyle()
         para.defaultTabInterval = tab
         para.tabStops = []
-        // Wrapped lines are indented (Editing ▸ Display ▸ Indent wrapped lines).
-        if p.wrapLines {
-            para.headIndent = ("0" as NSString).size(withAttributes: [.font: Theme.font]).width * CGFloat(p.wrappedLineIndent)
-        }
+        // editor-area.md §C.1: an 18-point pitch at 13 points, the same for
+        // wrapped continuation lines.
+        para.minimumLineHeight = Theme.lineHeight
+        para.maximumLineHeight = Theme.lineHeight
+        // Wrapped lines continue past their own indentation (Editing ▸
+        // Display ▸ Indent wrapped lines): set per paragraph as it is laid
+        // out (SourceEditorController+Layout.swift).
+        wrapSnapshot = WrapSnapshot(wraps: p.wrapLines && p.wrappedLineIndent > 0, advance: Theme.advance, tabWidth: p.tabWidth)
         if let ts = textView.textStorage, ts.length > 0 {
             ts.addAttribute(.paragraphStyle, value: para.copy(), range: NSRange(location: 0, length: ts.length))
         }
@@ -1100,8 +1128,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         } else {
             scrollView.hasHorizontalScroller = false
             textView.frame.size.width = scrollView.contentSize.width
+            updateTextContainerWidth()
         }
+        scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
         recolorAll()
+        updateMinimapRows()
         textView.textStorage?.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: textView.textStorage!.length))
         applyDisplayPreferences()
         applyPredictionPreferences()
@@ -1222,6 +1253,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         isDirty = false
         reindex()
         resetSyntax()
+        updateMinimapRows()
         updateDisplayExtras()
         refreshSourceChanges()
         onDocumentOpened?(url, text)
@@ -1478,13 +1510,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         // most of a keystroke on a 10,000-line file).
         if symbolCache.symbols == nil, deferredIndex != nil { return }
         if symbolCache.symbols == nil { symbolCache.symbols = SymbolScanner.symbols(in: textView.string, language: language) }
-        let line = currentLine
-        var best: SymbolScanner.Symbol?
-        var level = symbolCache.symbols ?? []
-        while let s = level.last(where: { $0.line <= line }), line <= endLine(of: s) {
-            best = s
-            level = s.children
-        }
+        let best = DocumentSymbols.enclosing(symbolCache.symbols ?? [], line: currentLine, text: textView.string as NSString, index: textView.lineIndex)
         jumpBar.symbolTitle = best?.name ?? "No Selection"
     }
 
@@ -1492,18 +1518,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     /// no body). Braces in strings and comments are not skipped
     /// (an approximation for the jump bar).
     func endLine(of s: SymbolScanner.Symbol) -> Int {
-        guard let start = textView.lineIndex.range(ofLine: s.line) else { return s.line }
-        let ns = textView.string as NSString
-        var depth = 0, opened = false, i = start.location
-        let open = UInt16(UInt8(ascii: "{")), close = UInt16(UInt8(ascii: "}")), nl = UInt16(UInt8(ascii: "\n"))
-        while i < ns.length {
-            let c = ns.character(at: i)
-            if c == open { depth += 1; opened = true }
-            else if c == close { depth -= 1; if opened && depth == 0 { return textView.lineIndex.line(at: i) } }
-            else if c == nl && !opened && i > start.location + start.length { return s.line }
-            i += 1
-        }
-        return opened ? textView.lineIndex.line(at: max(0, ns.length - 1)) : s.line
+        DocumentSymbols.endLine(of: s, text: textView.string as NSString, index: textView.lineIndex)
     }
 
     /// The identifier at the caret (nil inside whitespace or punctuation).
@@ -1586,6 +1601,9 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     /// What the (nonisolated) TextKit delegate reads: hidden lines and the
     /// line index they refer to. Written only on the main actor.
     nonisolated(unsafe) private var foldSnapshot = (hidden: Set<Int>(), index: LineIndex(""))
+    /// What the paragraph delegate reads for wrapped-line indentation
+    /// (SourceEditorController+Layout.swift).
+    nonisolated(unsafe) var wrapSnapshot = WrapSnapshot()
 
     /// Brace and comment regions together.
     public var allFoldRegions: [FoldRegion] { foldRegions + commentRegions }
@@ -1669,12 +1687,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     func reindexDeferred() {
         deferredIndex = nil
         // The minimap is computed only while it is shown.
-        minimap.lines = showsMinimapCache ? textView.string.components(separatedBy: "\n").map { $0.utf16.count } : []
         // Keep folds whose regions still exist (matched by start line).
         foldRegions = FoldRegions.regions(in: textView.string, language: language)
         commentRegions = FoldRegions.commentRegions(in: textView.string, language: language)
         foldedStarts = foldedStarts.filter { s in allFoldRegions.contains { $0.startLine == s } }
-        minimap.landmarks = showsMinimapCache ? minimapLandmarks() : []
+        updateMinimapRows()
         applyFolds()
         updateSymbolComponent()
         updateScopeGuides()
@@ -1780,10 +1797,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         get { minimapWidth.constant > 0 }
         set {
             _ = view
-            minimapWidth.constant = newValue ? MinimapView.width(forEditorWidth: view.bounds.width) : 0  // reference-ui-5.md §6.5
+            minimapWidth.constant = newValue ? MinimapView.width(forEditorWidth: view.bounds.width) : 0  // editor-area.md §C.5
             if newValue != showsMinimapCache {
                 showsMinimapCache = newValue
-                if newValue { minimap.lines = textView.string.components(separatedBy: "\n").map { $0.utf16.count }; minimap.landmarks = minimapLandmarks() }
+                updateEditorInsets()
+                if newValue { updateMinimapRows() }
             }
         }
     }

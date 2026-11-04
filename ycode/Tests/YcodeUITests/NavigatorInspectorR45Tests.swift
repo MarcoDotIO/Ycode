@@ -10,6 +10,13 @@ import YcodeProject
 /// reference-ui-6.md R45: navigator, inspector and debug-area polish.
 @MainActor
 @Suite(.serialized) struct NavigatorInspectorR45Tests {
+    /// Windows hosting the inspectors under test (kept for the test's life).
+    @MainActor static var hosts: [NSWindow] = []
+    @MainActor var inspectorWindows: [NSWindow] {
+        get { Self.hosts }
+        nonmutating set { Self.hosts = newValue }
+    }
+
     /// A navigator laid out at 280 × 600 with a small project tree.
     func laidOutNavigator() -> NavigatorAreaController {
         _ = NSApplication.shared
@@ -185,7 +192,11 @@ import YcodeProject
     func inspector(_ info: FileInspectorInfo) -> InspectorAreaController {
         _ = NSApplication.shared
         let i = InspectorAreaController()
-        i.view.frame = NSRect(x: 0, y: 0, width: 260, height: 700)
+        // In a window, as in the workspace (its area is sized by its container).
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 260, height: 700), styleMask: [.borderless], backing: .buffered, defer: false)
+        w.contentViewController = i
+        w.setContentSize(NSSize(width: 260, height: 700))
+        inspectorWindows.append(w)
         i.fileInfo = { _ in info }
         return i
     }

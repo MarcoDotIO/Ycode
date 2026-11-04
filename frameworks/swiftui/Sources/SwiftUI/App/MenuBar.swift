@@ -98,7 +98,12 @@ extension KeyboardShortcut {
         case .end: k = "End"
         case .pageUp: k = "Page Up"
         case .pageDown: k = "Page Down"
-        default: k = String(key.character).uppercased()
+        default:
+            if let v = key.character.unicodeScalars.first?.value, key.character.unicodeScalars.count == 1, (0xF704...0xF726).contains(v) {
+                k = "F\(v - 0xF703)"
+            } else {
+                k = String(key.character).uppercased()
+            }
         }
         parts.append(k)
         return parts.joined(separator: "+")

@@ -35,6 +35,14 @@ import OVPlatform
 //                           file to open (default: the first .swift file
 //                           under Sources), YCODE_IDE_FIND the query
 //
+//   YCODE_IDE_RUNTIME_WALK=<p>  the simulator runtime wizard, every step
+//                           (ShellDriver+Runtimes.swift); writes <p>-runtime-*.png
+//   YCODE_IDE_IME=1         open a file for a test with a real input method
+//                           and report the composition
+//                           (ShellDriverInputMethod.swift)
+//
+//   YCODE_IDE_SCM=<p>       source control's walk (ShellDriver+SourceControl.swift)
+//   YCODE_IDE_TESTS=<p>     testing's walk (ShellDriver+Tests.swift)
 //   YCODE_IDE_WALK=<p>      a tester's walk: Welcome, About, Clone, New Project
 //                           (each tab) with no path; with a path every
 //                           navigator, the menus, Build, Test, Run; writes
@@ -68,7 +76,10 @@ enum ShellDriver {
         guard !started else { return }
         started = true
         // A normal launch prints nothing: everything below is for drivers.
-        let switches = ["OV_PRINT_TARGETS", "OV_QUIT_AFTER", "YCODE_IDE_SCRIPT", "YCODE_IDE_PARITY", "YCODE_IDE_REMOTE_RUN", "YCODE_IDE_WALK"]
+        let switches = ["OV_PRINT_TARGETS", "OV_QUIT_AFTER", "YCODE_IDE_SCRIPT", "YCODE_IDE_PARITY", "YCODE_IDE_REMOTE_RUN", "YCODE_IDE_WALK",
+                        "YCODE_IDE_DEBUG", "YCODE_IDE_SCM", "YCODE_IDE_TESTS", "YCODE_IDE_RUNTIME_WALK", "YCODE_IDE_SETTINGS",
+                        "YCODE_IDE_SETTINGS_VERIFY", "YCODE_IDE_EDITORS", "YCODE_IDE_LSP",
+                        "YCODE_IDE_IME"]
         guard switches.contains(where: { env[$0] != nil }) else { return }
         await pause(0.4)
         say("backend \(OpenViewsAutomation.backendName)")
@@ -83,6 +94,20 @@ enum ShellDriver {
         if let file = env["YCODE_IDE_EDITOR_BENCH"] { await EditorBench.run(app, file: file) }
         if let name = env["YCODE_IDE_REMOTE_RUN"] { await remoteRun(app, destination: name) }
         if let prefix = env["YCODE_IDE_WALK"] { await walk(app, prefix: prefix) }
+        if let prefix = env["YCODE_IDE_EDITORS"] { await EditorsDriver.run(app, prefix: prefix) }
+        if let prefix = env["YCODE_IDE_SETTINGS"] { await SettingsDriver.run(app, prefix: prefix) } else if env["YCODE_IDE_SETTINGS_VERIFY"] != nil { say(SettingsDriver.values()) }
+        if let prefix = env["YCODE_IDE_LSP"] { await LanguageDriver.run(app, prefix: prefix) }   // LanguageDriver.swift
+        if env["YCODE_IDE_IME"] != nil { await prepareInputMethodTest(app) }  // ShellDriverInputMethod.swift
+        if let prefix = env["YCODE_IDE_DEBUG"] { await DebugDriver.run(app, prefix: prefix) }
+        if let prefix = env["YCODE_IDE_SCM"] {
+            await scmWalk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_TESTS"] {
+            await testsWalk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_RUNTIME_WALK"] { await runtimeWalk(app, prefix: prefix) }
         if let s = env["OV_QUIT_AFTER"], let t = Double(s) {
             var elapsed = 0.0
             while elapsed < t {
@@ -184,6 +209,30 @@ enum ShellDriver {
         await pause(0.35)
     }
 
+    /// Clicks the Project navigator's row `id`, `dx` from the start of its
+    /// text. Rows are found by their text, and titles repeat (a package and
+    /// its main target's folder share a name, and file extensions may be
+    /// hidden), so this is the row's text that comes as many times after the
+    /// others with that title as the row does in the model's rows.
+    static func clickProjectRow(_ w: WorkspaceShellModel, id: String, dx: CGFloat) async {
+        let rows = w.projectRows
+        guard let index = rows.firstIndex(where: { $0.id == id }) else {
+            say("no project row \(id)")
+            return
+        }
+        let title = rows[index].title
+        let nth = rows[..<index].filter { $0.title == title }.count
+        let texts = OpenViewsAutomation.texts().filter { !$0.inPopup && $0.text == title && inNavigator($0.frame) }
+            .sorted { $0.frame.minY < $1.frame.minY }
+        guard texts.indices.contains(nth) else {
+            say("no navigator text \(title) (row \(nth + 1) with that title)")
+            return
+        }
+        let f = texts[nth].frame
+        await OpenViewsAutomation.click(at: CGPoint(x: f.minX + dx, y: f.midY))
+        await pause(0.35)
+    }
+
     static func shot(_ step: String) {
         if let p = env["YCODE_IDE_SHOT_PREFIX"] { say(OpenViewsAutomation.screenshot(to: "\(p)-\(step).png")) }
     }
@@ -222,16 +271,22 @@ enum ShellDriver {
             ?? w.root.allFiles.first { $0.name.hasSuffix(".swift") && ($0.path ?? "").contains("/Sources/") }
         if let file = target, let path = file.path, let ids = w.root.idPath(to: path) {
             for id in ids.dropLast() where !w.isExpanded(id) {
-                guard let item = w.root.find(id: id) else { continue }
                 await pause(0.3)
                 // The disclosure triangle is left of the folder icon.
-                await clickNavigatorText(item.name, dx: -26)
+                await clickProjectRow(w, id: id, dx: -26)
             }
             await pause(0.3)
-            await clickNavigatorText(file.name, dx: 10)
+            await clickProjectRow(w, id: file.id, dx: 10)
             await pause(0.5)
         }
         step("selected a file")
+        // Selecting a file's row opens it. (Issue 25: the step looked rows
+        // up by the file's name, which the navigator shows without its
+        // extension, and expanded a folder by clicking the first row with
+        // its name, the package's own row, which collapsed the package.)
+        if let file = target {
+            say("check selected a file: \(w.document?.name == file.name ? "ok" : "FAILED") (\(file.name))")
+        }
         shot("file")
         // Find in Workspace: Ctrl+Shift+F, the query, Return.
         OpenViewsAutomation.press(.character("f"), modifiers: [.control, .shift])

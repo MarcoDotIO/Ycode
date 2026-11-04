@@ -11,7 +11,7 @@ import Testing
         #expect(r.command(for: req).args.suffix(2) == ["build", "--build-tests"])
         req.action = .testWithoutBuilding
         let run = r.command(for: req, only: ["MathTests/testAdds"])
-        #expect(run.args.suffix(4) == ["test", "--skip-build", "--filter", "MathTests.testAdds"])
+        #expect(run.args.suffix(4) == ["test", "--skip-build", "--filter", "MathTests.testAdds\\b"])
         #expect(run.cwd == "/p")
         // Coverage instruments the build of `swift test` only.
         var cov = r

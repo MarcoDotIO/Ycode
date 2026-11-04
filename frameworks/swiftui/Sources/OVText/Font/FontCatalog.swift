@@ -188,15 +188,29 @@ public final class FontCatalog: @unchecked Sendable {
     }
 
     /// A face that has a glyph for `scalar`, preferring `near`'s traits.
+    ///
+    /// Among the directories' faces, one that OpenViews can draw comes
+    /// first: CFF-flavoured faces have the glyph but no outlines OpenViews
+    /// reads (Outlines.swift), so text set in them is invisible. A Linux
+    /// system often has CJK only in CFF collections (Noto Sans CJK) ahead of
+    /// a TrueType one (Droid Sans Fallback) in path order. A CFF face is
+    /// still the answer when no other face has the glyph, for measuring.
     public func fallback(for scalar: Unicode.Scalar, near traits: FontTraits) -> (any FontFace)? {
         if let cached = state.withLock({ $0.fallbackCache[scalar.value] }) { return cached }
         var found = registeredFaces.first { $0.glyph(for: scalar) != nil }
         if found == nil {
             scanPendingDirectories()
+            var undrawable: (any FontFace)?
             for d in state.withLock({ $0.descriptors }) {
-                guard let f = load(d) else { continue }
-                if f.glyph(for: scalar) != nil { found = f; break }
+                guard let f = load(d), f.glyph(for: scalar) != nil else { continue }
+                if (f as? OpenTypeFace)?.glyfTable == nil {
+                    undrawable = undrawable ?? f
+                    continue
+                }
+                found = f
+                break
             }
+            found = found ?? undrawable
         }
         state.withLock { $0.fallbackCache[scalar.value] = found }
         return found

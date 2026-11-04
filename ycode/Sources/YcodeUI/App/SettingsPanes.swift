@@ -388,33 +388,17 @@ public final class BehaviorsSettingsPane: SettingsPane {
     }
 
     /// The actions + offers.
-    public static func addableActions() -> [String] {
-        CommandTable.navigators.map { "Navigator: \($0)" } + [Preferences.showDebuggerAction, Preferences.hideDebuggerAction,
-            Preferences.hideDebuggerIfNoOutputAction, Preferences.notifyAction, "Play Sound: Glass", "Play Sound: Basso", "Play Sound: Hero"]
-    }
+    public static func addableActions() -> [String] { Preferences.Behavior.addableActions() }
 
     public func add(_ action: String, to e: Preferences.Event) {
         event = e
-        update { b in
-            if action.hasPrefix("Navigator: ") { b.showNavigator = CommandTable.navigators.firstIndex(of: String(action.dropFirst(11))) }
-            else if action == Preferences.showDebuggerAction { b.showDebugArea = true }
-            else if action == Preferences.hideDebuggerAction { b.showDebugArea = false }
-            else if action == Preferences.hideDebuggerIfNoOutputAction { b.hideDebugAreaIfNoOutput = true }
-            else if action == Preferences.notifyAction { b.notify = true }
-            else if action.hasPrefix("Play Sound: ") { b.sound = String(action.dropFirst(12)) }
-        }
+        update { $0.add(action: action) }
         if isViewLoaded { rebuild() }
     }
 
     public func remove(_ action: String, from e: Preferences.Event) {
         event = e
-        update { b in
-            if action.hasPrefix("Navigator: ") { b.showNavigator = nil }
-            else if action == Preferences.hideDebuggerIfNoOutputAction { b.hideDebugAreaIfNoOutput = false }
-            else if action.hasPrefix("Debugger: ") { b.showDebugArea = nil }
-            else if action == Preferences.notifyAction { b.notify = false }
-            else if action.hasPrefix("Play Sound: ") { b.sound = nil }
-        }
+        update { $0.remove(action: action) }
         if isViewLoaded { rebuild() }
     }
 
@@ -479,7 +463,7 @@ public final class NotificationsSettingsPane: SettingsPane {
     override func build() {
         heading("Notify when")
         for e in Preferences.Event.allCases {
-            row("", check(e.rawValue.replacingOccurrences(of: "When ", with: "").capitalizedFirst, prefs.behavior(e).notify) { [prefs] on in
+            row("", check(e.notificationTitle, prefs.behavior(e).notify) { [prefs] on in
                 var b = prefs.behavior(e)
                 b.notify = on
                 prefs.setBehavior(b, for: e)
@@ -720,12 +704,7 @@ public final class ThemesSettingsPane: SettingsPane {
     }
 
     /// Edits the selected user theme (built-ins are left alone).
-    public func edit(_ f: (inout EditorTheme) -> Void) {
-        var t = prefs.theme
-        guard !EditorTheme.builtIns.contains(where: { $0.name == t.name }) else { return }
-        f(&t)
-        try? prefs.save(t)
-    }
+    public func edit(_ f: (inout EditorTheme) -> Void) { prefs.editSelectedTheme(f) }
 
     @objc public func duplicateClicked() {
         _ = try? prefs.duplicate(prefs.theme)
@@ -909,24 +888,10 @@ public final class KeyBindingsSettingsPane: SettingsPane, NSTableViewDataSource,
         return lastConflicts.isEmpty
     }
 
-    /// `⌃⌥⇧⌘` prefixes then one key (or `F6`, `↩`, …).
+    /// `⌃⌥⇧⌘` prefixes then one key (or `F6`, `↩`, …); the core's parser,
+    /// shared with the Linux IDE.
     static func parse(_ text: String) -> (String, MenuCommand.Modifiers)? {
-        var mods: MenuCommand.Modifiers = []
-        var rest = Substring(text.trimmingCharacters(in: .whitespaces))
-        if rest.isEmpty { return ("", []) }
-        while let c = rest.first, "⌃⌥⇧⌘".contains(c) {
-            switch c {
-            case "⌃": mods.insert(.control)
-            case "⌥": mods.insert(.option)
-            case "⇧": mods.insert(.shift)
-            default: mods.insert(.command)
-            }
-            rest = rest.dropFirst()
-        }
-        let names = ["↑": Key.up, "↓": Key.down, "←": Key.left, "→": Key.right, "F6": Key.f6, "F7": Key.f7, "F8": Key.f8, "↩": Key.return, "Space": Key.space]
-        if let k = names[String(rest)] { return (k, mods) }
-        guard rest.count == 1 else { return nil }
-        return (rest.lowercased(), mods)
+        KeyBindings.parse(text).map { ($0.key, $0.modifiers) }
     }
 
     public func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
@@ -979,17 +944,7 @@ public final class SourceControlSettingsPane: SettingsPane {
     /// `git config --global --get <key>` (read-only).
     public nonisolated static func gitConfig(_ key: String) -> String? {
         MainThreadGuard.blockingCall("git config \(key)")
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        p.arguments = ["git", "config", "--global", "--get", key]
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
-        let d = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        let s = String(decoding: d, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        return p.terminationStatus == 0 && !s.isEmpty ? s : nil
+        return GitGlobalConfig.value(key)
     }
 
     public var authorName: String { value("user.name", loadedAuthor?.name) }
@@ -1087,7 +1042,14 @@ public final class ComponentsSettingsPane: SettingsPane {
         heading("Installed (read-only)")
         if components.isEmpty && loaded { stack.addArrangedSubview(NSTextField(labelWithString: "None found")) }
         for c in components { row("\(c.kind):", NSTextField(labelWithString: "\(c.name)  \(c.version)")) }
+        // The runtime wizard: add, copy and remove runtimes (runtime-onboarding.md §11.4).
+        let get = NSButton(title: Self.runtimesTitle, target: self, action: #selector(showRuntimes(_:)))
+        get.identifier = .init("components-runtimes")
+        row("", get)
     }
+
+    public static let runtimesTitle = "Simulator Runtimes…"
+    @objc func showRuntimes(_ sender: Any?) { RuntimeSetupWindowController.show(step: .runtimes) }
 }
 
 // MARK: Simulators (the remote Ycode simulator)

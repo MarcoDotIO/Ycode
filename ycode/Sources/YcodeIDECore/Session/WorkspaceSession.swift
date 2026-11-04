@@ -21,8 +21,10 @@ public final class WorkspaceSession {
     public enum Change { case activity, issues, breakpoints, console, debugState, reports, tests, process }
 
     public var model: WorkspaceModel { didSet { issueTargetStore.targets = [:] } }
-    public var scheme: String?
-    public var destination: Destination?
+    /// A change of either restarts the language server with the build
+    /// server's new context (WorkspaceSession+LanguageContext.swift).
+    public var scheme: String? { didSet { if scheme != oldValue { buildContextChanged() } } }
+    public var destination: Destination? { didSet { if destination?.specifier != oldValue?.specifier { buildContextChanged() } } }
     /// The build engine chosen in Settings ▸ Locations ▸ Build System.
     public var engine: BuildEngine = BuildSystemPreference.current().makeEngine()
     public private(set) var activity: Activity = .idle
@@ -54,6 +56,8 @@ public final class WorkspaceSession {
     var repetitionCancelled = false
     /// The language service, once started.
     public internal(set) var language: LanguageService?
+    /// The build context the language server serves, and its restarts.
+    let languageRestart = LanguageRestartState()
 
     /// Project, package and build issues plus the language server's live
     /// issues, one entry per diagnostic, messages capitalized
@@ -261,7 +265,7 @@ public final class WorkspaceSession {
         let summary = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-coverage-\(UUID().uuidString).json").path
         if runner.coverage { runner.coverageSummaryPath = summary }
         defer { try? FileManager.default.removeItem(atPath: summary) }
-        let (code, outcomes) = await runner.run(request, only: only.map(runnerIdentifier)) { line in
+        let (code, ran) = await runner.run(request, only: only.map(runnerIdentifier)) { line in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.appendBuildLog(line)
@@ -271,6 +275,7 @@ public final class WorkspaceSession {
             }
         }
         try? await Task.sleep(nanoseconds: 50_000_000) // let queued log lines land
+        let outcomes = TestFailureFiles.resolve(ran, tests: tests)
         if testActivityProgress === progress { testActivityProgress = nil }
         for t in (only.isEmpty ? tests : only) {
             testResults[t] = outcomes.first { t.matches($0) }?.status

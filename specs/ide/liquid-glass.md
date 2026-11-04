@@ -363,6 +363,152 @@ this spec with system materials and semantic colors only, so that the dark
 appearance is the system's; the shapes, sizes, spacing and scroll-edge
 behavior of §2–§4 do not depend on the appearance.
 
+## 7. Council round 1 measurements (2026-11-04)
+
+A review council of three judges compared Ycode with the reference in one
+scripted session. These values were measured from that session's captures:
+1x stills (one pixel is one point) and recordings with per-frame times. The
+judges disagreed on several values, and these measurements settle them. The
+checklist for the clean side is `fidelity-council.md`. The method is in
+`research/notes/council-r1-2026-11-04.md`.
+
+**Capture conditions.** The window was 1400 × 880 with the navigator (290)
+and the inspector (260) shown, in the light appearance. **The window was
+not key** in either app: the session runs in the background and the window
+buttons are neutral grey. Every glass value below is therefore the
+**inactive** look of §4.2. The colours in this section (an exception to the
+"no colors" scope above, made for the council) are inactive-state sRGB
+values.
+
+**The Ycode build in the session showed the earlier design.** The capture
+wrapper bundles the plain `swift build` executable, which declares SDK 15.0
+(`LC_BUILD_VERSION`, minos 15.0, sdk 15.0). That is gap G0 again. AppKit
+therefore drew Ycode's pre-macOS-26 fallback: no toolbar capsules, an
+opaque grey toolbar band and a grey jump bar. The judges' "no glass
+capsules" findings describe that build, not `make-app.sh`'s. The wrapper
+must stamp the SDK as `make-app.sh` does before round 2.
+
+### 7.1 Toolbar
+
+Height 52. Every shape is 38 tall, from y 7 to y 44 inclusive. The judges'
+28–32 and 34–36 are both wrong; §2.2 stands. In the inactive state each
+shape is one flat fill with a 1-point outline.
+
+| Shape over | Fill | Outline |
+|---|---|---|
+| Editor (white band) | #ECECEC | #D1D1D1 to #DDDDDD (anti-aliased 1 pt) |
+| Navigator or inspector (#F2F2F3) | #E6E6E7 | #D3D3D4 |
+| Selected segment pill (inside a capsule) | #CACACB | — |
+
+Drawn spans at mid-height (y 26) in this window:
+
+| Group, members | x with the subtitle shown | x after the subtitle went | x with the inspector hidden |
+|---|---|---|---|
+| Navigators \| Coding Assistant (two segments, the first selected) | 95–172 | 95–172 | 95–172 |
+| Run \| Stop | 208–282 | 208–282 | 208–282 |
+| Go Back \| Go Forward | 297–371 | 297–371 | 297–371 |
+| Activity view (no shape) | icon 385–399, text 412–565 | icon 385–403, text 412–482 | the same |
+| New Conversation (circle) | 599–636 | 565–602 | 694–731 |
+| Scheme › Destination (capsule) | 643–859 (217) | 609–825 (217) | 738–954 |
+| Issue capsule | absent (no issues) | absent | absent |
+| Notices (circle) | 879–916 | 879–916 | 1090–1127 |
+| Add Editor \| Editor Options (one capsule) | 923–1002 (80) | 923–1002 | 1134–1213 |
+| Canvas \| Assistant \| Code Review (first selected) | 1009–1133 (125) | 1009–1133 | 1220–1344 |
+| Hide / Show Inspector (circle) | 1355–1393 | 1355–1393 | 1355–1392 |
+
+1. **The centre group follows the activity view's width.** New
+   Conversation and the scheme capsule moved 34 points left when the
+   subtitle "Preparing Editor Functionality" went away. That subtitle
+   line was 153 wide and the title is 71, so the activity view is as wide
+   as its longer line. When the inspector hid, the centre group moved
+   right by 129–130, half of the 260 points the editor gained. The
+   right-hand group moved with the inspector tracking separator, and the
+   editor-mode capsule ended 11 before the circle (§2.2 item 3).
+2. **Scheme capsule contents**, from left to right: a target glyph on a
+   grey rounded square, "GlassScroll", a small "›" separator, a
+   destination glyph (a laptop), "My Mac". The capsule has **no up-down
+   pop-up chevrons**. Ycode draws "⌃⌄" chevrons after both titles; remove
+   them.
+3. **Activity view (title).** It has no shape. The icon is 19 wide at
+   x 385, and the text starts 8 points after the icon. While a project
+   loads, a progress spinner takes the icon's place; afterwards the icon
+   is the project's. The title is bold. With a subtitle, the title's cap
+   height runs from y 14 to y 23 and the subtitle line from y 30 to y 39
+   (a smaller regular weight). Without one, the title is centred on the
+   bar (ink y 21–30). **Inactive colour:** title and subtitle both
+   #BCBDBD. The active colour is to measure in round 2. Ycode draws its
+   title in #454546 in an inactive window and puts a document glyph before
+   it.
+4. The toolbar band over the editor is **white (#FFFFFF)**, the editor's
+   background. Over the side areas it is their background, #F2F2F3. Ycode
+   draws #E6E6E7 across the whole width.
+
+### 7.2 Navigator and inspector bars
+
+| Element | Measured | Notes |
+|---|---|---|
+| Navigator selector capsule | y 51–80 (30 tall), outline #C8C8C9, fill #DEDEDF | §2.3 confirmed |
+| Its selected pill | x ≈ 10–36, y 54–77 (≈ 27 × 24), #CACACB; selected glyph #7C7D7E, others #919192 | neutral grey. **No accent colour.** Ycode tints the selected glyph accent blue (#0070F5) with no pill |
+| Inspector tab capsule | y 51–80, fill #DEDEDF | §2.5 |
+| Its selected pill | x ≈ 1151–1224, y 54–77, #CACACB; selected glyph #7D7D7E | Ycode: an accent-blue glyph (#007AFF) on a light pill |
+| Filter capsule (880 window) | y 843–872, fill #E6E6E7, outline #C8C8C9 | 7 above the bottom edge, as §2.3 |
+| Debug bar's first item | a filled light-accent shape 18 × 11 at x 303–320, y 857–867 (#7FBCFF inactive) | Ycode draws a grey outline glyph there |
+
+### 7.3 Scroll-under
+
+What passes under which bar. "Veil" means content that shows only as a
+faint, shapeless darkening, with no glyph shapes.
+
+| Bar | Content beneath | How much shows through (editor scroll of 600 pt, 136 frames) |
+|---|---|---|
+| Toolbar band over the editor (y 0–51) | editor text and minimap | Veil. Median mean darkness 0.4–0.6 levels of 255 (max 2.3). Visible content averages 8.1, so about **6 %** shows through. No pixel changes by more than 7 levels. |
+| Jump bar (y 52–83) | editor text | Veil, the same strength: median 0.5 (max 1.2), at most 6 levels per pixel. **Correction to §3.3 item 1:** the band does change, faintly. |
+| Sticky scope header (y 85–104) | editor text | Veil, median 0.54. Nearly opaque (`editor-area.md` §C.3). |
+| Editor bottom bar (y 844–879) | editor text | Veil, median 1.2 (max 1.4), at most 8 levels per pixel (§3.2) |
+| Navigator selector capsule | outline rows | Veil, at most 10 levels: heavily blurred; an orange icon shows only as a soft tint |
+| Navigator filter capsule (bottom) | outline rows | **Visible**, moderately blurred. Glyph shapes and icon colour are discernible (pixel change up to 109 levels). |
+| Toolbar band over the navigator | nothing | 0 pixels changed: the outline does not reach above the selector capsule |
+| Inspector | not scrolled in this session | to measure in round 2 |
+
+1. **No edge fade anywhere.** The first text row under the sticky
+   header, and the first outline row under the selector capsule, are at
+   full colour. For example, the comment ink right under the header is
+   #697085, the same as in the middle of the editor. The effect does not
+   reach below a bar's edge at all (0 points).
+2. **Ycode:** its toolbar band and jump bar changed by 0–1 levels during
+   the same scroll. They are opaque, and its scroll's changed region stops
+   at y 83 and at the bottom bar. This is partly the SDK 15 fallback above.
+3. **Tint over light and dark content was not measured.** Step 5 (bands
+   under the toolbar) did not scroll in the reference: the image viewer
+   scales the image to fit, so it has no scroll area
+   (`editor-area.md` §C.6). To measure in round 2 (see the checklist).
+
+### 7.4 Pane backgrounds (inactive, light)
+
+| Surface | Reference | Ycode in the session |
+|---|---|---|
+| Navigator area | #F2F2F3 | #E6E6E7 |
+| Inspector area | #F2F2F3 | #EBECEC |
+| Editor text area | #FFFFFF | #FFFFFF |
+| Toolbar band over the editor | #FFFFFF | #E6E6E7 |
+| Jump bar band (y 52–83) | #FFFFFF, then a **2-point** separator #E5E5E5 at y 84–85 | #ECECEC, then a 1-point #D4D4D4 at y 83 |
+| Editor bottom bar | #FFFFFF, 1-point separator #D7D7D7 above it (y 843) | #FBFBFB, separator #E6E6E6 |
+| Editor ▸ inspector divider | 1 point #DADADB at x 1140 | 1 point #DADADB |
+| Navigator ▸ editor | no line: #F2F2F3 meets #FFFFFF at x 289/290 | no line |
+| Inspector section rules | 1 point #DADADB, x 1148–1391 | 1 point #D4D5D5 |
+
+§4.2 says the side areas get lighter when the window is inactive, so
+their active values are darker than #F2F2F3. To measure in round 2 with
+the window key.
+
+### 7.5 Inspector show/hide and the toolbar
+
+When the inspector hides, the toolbar's right group and the centre group
+move with the editor's width every frame (§7.1, item 1). The inspector
+circle stays where it is. One frame about 35 ms after the slide ends
+redraws the centre group (x 694–955). The slide itself is in
+`editor-area.md` §C.7.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -382,3 +528,9 @@ behavior of §2–§4 do not depend on the appearance.
 | §4.3 full screen | 3 | Window-server window list and a background capture of the content window after the owner put it in full screen |
 | §4.3, §5 | — | Settings read with `defaults read` only; limits of background, click-only control |
 | §6 dark | — | Not observed (appearance setting read only) |
+| §7 capture conditions | 3 / — | Capture manifests: window frame, neutral window buttons. Ycode wrapper: `otool -l` of its executable (our own binary) |
+| §7.1 toolbar shapes, positions, title | 3 | Council r1 stills 01, 02, 08 (1x): colour runs on rows 10 and 26 and on column 700, and glyph ink boxes. `research/tools/council-r1/measure_captures.py` (`toolbar`) |
+| §7.2 bars and pills | 3 | Still 01: colour runs on the selector and tab capsules |
+| §7.3 scroll-under | 3 | Recordings 02 (136 frames) and 07: per-frame mean darkness of each bar region against the content; before/after differences of stills 07. Script sections `under` and `navigator` |
+| §7.4 pane colours | 3 | Still 01: colour runs (fully covered pixels, sRGB) |
+| §7.5 toolbar during the inspector slide | 3 | Recording 08: per-frame changed regions |

@@ -50,15 +50,18 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
     public var foldStarts: [Int: Bool] = [:] { didSet { needsDisplay = true } }
 
     static let ribbonWidth: CGFloat = 12
-    /// The change column (§6.3.1): 11 pt, left of the line numbers.
+    /// The change column (§6.3.1): 11 pt at the gutter's left edge, inside
+    /// the room left of the numbers.
     public static let changeColumnWidth: CGFloat = 11
-    static let baseThickness: CGFloat = 48
+    /// The code column at the editor's edge + 51, the numbers ending at
+    /// + 38 (`editor-area.md` §C.1, §C.2).
+    static let baseThickness = CGFloat(EditorMetrics.codeColumn)
 
     /// Shown while the file is in a git working copy (§6.3.1).
     public var showsChangeColumn = false {
         didSet {
             guard oldValue != showsChangeColumn else { return }
-            ruleThickness = Self.baseThickness + leftInset
+            ruleThickness = Self.baseThickness + authorsInset
             updateChangeToolTips()
             needsDisplay = true
         }
@@ -68,7 +71,7 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
     public var showsAuthors = false {
         didSet {
             guard oldValue != showsAuthors else { return }
-            ruleThickness = Self.baseThickness + leftInset
+            ruleThickness = Self.baseThickness + authorsInset
             updateChangeToolTips()
             needsDisplay = true
         }
@@ -135,15 +138,25 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
         NSColor.textBackgroundColor.setFill()
         bounds.fill()
         let numberWidth = ruleThickness - Self.ribbonWidth
-        // Folding ribbon (not drawn when the ribbon is off, reference-ui.md §3).
-        if showsRibbon {
-            NSColor.quaternaryLabelColor.withAlphaComponent(0.08).setFill()
-            NSRect(x: numberWidth, y: bounds.minY, width: Self.ribbonWidth, height: bounds.height).fill()
-        }
+        // The gutter has no background or column of its own (§C.2); the
+        // folding ribbon draws only its marks.
 
-        let attrs: [NSAttributedString.Key: Any] = [.font: Theme.gutterFont, .foregroundColor: NSColor.secondaryLabelColor]
+        let font = Theme.gutterFont
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Theme.lineNumberColor]
         let inset = leftInset
         let rows = visibleLines()
+        // The current-line band starts 14 after the editor's edge, under the
+        // numbers, and continues in the text view (§C.2).
+        if let l = caretLine, let r = rows.first(where: { $0.line == l })?.rect {
+            Theme.currentLineBandColor.setFill()
+            let x = authorsInset + CGFloat(EditorMetrics.currentLineBandStart)
+            let band = NSRect(x: x, y: r.minY, width: bounds.width - x, height: Theme.lineHeight)
+            let radius = CGFloat(EditorMetrics.currentLineBandRadius)
+            let p = NSBezierPath(roundedRect: band.insetBy(dx: 0, dy: 0), xRadius: radius, yRadius: radius)
+            p.append(NSBezierPath(rect: NSRect(x: band.midX, y: band.minY, width: band.width / 2, height: band.height)))
+            p.windingRule = .nonZero
+            p.fill()
+        }
         if showsAuthors { drawAuthors(rows) }
         if showsChangeColumn { drawChangeBars(rows) }
         for (line, r) in rows {
@@ -162,10 +175,10 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
             } else if showsLineNumbers {
                 let isBP = marks.breakpoints[line] != nil
                 var a = attrs
-                if isBP { a[.foregroundColor] = NSColor.white } else if line == caretLine { a[.foregroundColor] = NSColor.labelColor }
+                if isBP { a[.foregroundColor] = NSColor.white } else if line == caretLine { a[.foregroundColor] = Theme.textColor }
                 let s = NSAttributedString(string: "\(line)", attributes: a)
-                let size = s.size()
-                s.draw(at: NSPoint(x: numberWidth - 8 - size.width, y: row.minY + (row.height - size.height) / 2))
+                // Right-aligned at + 38, on the code line's baseline.
+                s.draw(at: NSPoint(x: lineNumberEnd - s.size().width, y: r.minY + baselineOffset - font.ascender))
             }
             if showsRibbon, let folded = foldStarts[line] {
                 drawFoldMark(folded: folded, at: NSPoint(x: numberWidth + Self.ribbonWidth / 2, y: row.midY))
@@ -226,7 +239,15 @@ public final class GutterView: NSRulerView, NSViewToolTipOwner {
     }
 
     /// The diamond's centre: where the line number's digits sit.
-    func testDiamondCenterX(numberWidth: CGFloat) -> CGFloat { numberWidth - 8 - 7 }
+    func testDiamondCenterX(numberWidth: CGFloat) -> CGFloat { lineNumberEnd - 7 }
+
+    /// Where the line numbers end (right-aligned): 12 before the code
+    /// column, after the Authors column when it shows.
+    public var lineNumberEnd: CGFloat { authorsInset + CGFloat(EditorMetrics.lineNumberEnd) }
+
+    /// The code baseline below a line's top: the line pitch less the
+    /// font's descent (TextKit puts the extra pitch above the glyphs).
+    public var baselineOffset: CGFloat { (Theme.lineHeight + Theme.font.descender).rounded() }
 
     /// A click at `x` (gutter coordinates) hits a test line's diamond: the
     /// number's area, right of the change column.

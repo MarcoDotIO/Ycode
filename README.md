@@ -76,17 +76,21 @@ expect gaps. **Not yet** means it isn't there. The full audit against Xcode 27.1
 |---|---|---|
 | Open projects, workspaces and Swift packages; Welcome window; New Project | Beta | Experimental |
 | Project navigator, Find in workspace, Issues | Experimental | Experimental |
-| Other navigators (source control, symbols, tests, debug, breakpoints, reports) | Experimental | Not yet |
+| Debug and Breakpoint navigators | Experimental | Experimental: new in this beta |
+| Source Control, Test and Report navigators | Experimental | Experimental: new in this beta |
+| Symbol navigator | Experimental | Experimental: new in this beta; declarations by file, a filter that also asks SourceKit-LSP |
 | View source with syntax highlighting | Experimental | Experimental |
 | Edit and save source files: undo, find and replace, jump to line, safe saves with crash recovery | Experimental | Experimental: new in this beta |
 | Build | Experimental: swift-build, with an `xcodebuild` fallback | Experimental: Swift packages, through SwiftPM |
 | Run | Experimental: My Mac and simulators | Experimental: Swift packages, with console output |
-| Debugger (breakpoints, stepping, variables) through `lldb-dap` | Experimental | Not yet |
-| Language features through SourceKit-LSP (completion, definition, rename, live issues) | Experimental | Experimental: live issues and completion |
-| Plist, asset catalog and String Catalog editors; Interface Builder documents; SwiftUI previews | Experimental | Not yet |
-| Tests, source control (git), Organizer | Experimental | Not yet |
+| Debugger (breakpoints, stepping, variables) through `lldb-dap` | Experimental | Experimental: Swift packages; gutter breakpoints, stepping, variables, the `(lldb)` console |
+| Language features through SourceKit-LSP (completion, definition, rename, live issues) | Experimental | Experimental: live issues, completion, Quick Help, Jump to Definition, rename, references and callers |
+| Plist, asset catalog and String Catalog editors; Interface Builder documents; SwiftUI previews | Experimental | Experimental: plist (XML, binary, OpenStep), asset catalog and String Catalog editors; no Interface Builder documents or previews |
+| Source control (git): changes, commit, branches, tags, stashes, history, push and pull | Experimental | Experimental: new in this beta |
+| Tests: run all, a suite or one test; results per test; failures at their lines | Experimental | Experimental: Swift packages (XCTest and Swift Testing) |
+| Organizer | Experimental | Not yet |
 | Coding assistant (local models, OpenAI, agent CLIs); you review each proposed change | Experimental | Not yet |
-| Settings, themes and key bindings | Experimental | Experimental: font, theme, indentation, predictive completion's model |
+| Settings, themes and key bindings | Experimental | Experimental: General, Appearance (theme editing), Behaviors, Navigation, Notifications, Editing, Shortcuts, Source Control, Locations; no Accounts |
 | Signing and distribution | Experimental: partial | Not yet |
 | Physical devices | Listed only | Not yet |
 

@@ -500,31 +500,7 @@ public final class AssetCatalogEditorController: NSViewController, NSTableViewDa
     /// insertion directory; selects it.
     @discardableResult
     public func addSet(kind: Int, name: String? = nil) throws -> AssetCatalog.AssetSet {
-        let dir = insertionDirectory
-        let group = catalog.relativePath(dir)
-        let other = kind >= Self.otherKindBase && kind - Self.otherKindBase < AssetCatalog.otherSetTitles.count
-            ? AssetCatalog.otherSetTitles[kind - Self.otherKindBase] : nil
-        let (base, ext): (String, String) = switch kind {
-        case 1: ("Color", "colorset")
-        case 2, 3, Self.watchIconTag: ("AppIcon", "appiconset")
-        case Self.visionIconTag: ("AppIcon", "solidimagestack")
-        case Self.tvIconTag: ("App Icon & Top Shelf Image", "brandassets")
-        case Self.messagesIconTag: ("iMessage App Icon", "stickersiconset")
-        default: other.map { ($0.defaultName, $0.kind.rawValue) } ?? ("Image", "imageset")
-        }
-        let n = name ?? AssetCatalog.uniqueName(base, ext: ext, in: dir)
-        var set: AssetCatalog.AssetSet = switch kind {
-        case 1: try catalog.addColorSet(named: n, in: group)
-        case 2: try catalog.addMacAppIconSet(named: n, in: dir)
-        case 3: try catalog.addSingleSizeAppIcon(platform: "ios", named: n, in: dir)
-        case Self.watchIconTag: try catalog.addSingleSizeAppIcon(platform: "watchos", named: n, in: dir)
-        case Self.visionIconTag: try catalog.addVisionOSAppIcon(named: n, in: dir)
-        case Self.tvIconTag: try catalog.addTVBrandAssets(named: n, in: dir)
-        case Self.messagesIconTag: try catalog.addMessagesIcon(named: n, in: dir)
-        default:
-            if let other { try catalog.addSet(other.kind, named: n, in: group) } else { try catalog.addImageSet(named: n, in: group) }
-        }
-        set.group = catalog.sets().first { AssetCatalog.same($0.url, set.url) }?.group ?? set.group
+        let set = try catalog.addSet(tag: kind, named: name, in: insertionDirectory)
         selectedFolder = nil
         reload(selecting: nil)
         if let i = rows.firstIndex(where: { AssetCatalog.same($0.set?.url, set.url) }) { selectRow(i) }
@@ -641,13 +617,17 @@ public final class AssetCatalogEditorController: NSViewController, NSTableViewDa
 
     @objc private func removeClicked() { removeSelected() }
 
-    /// "−" and Editor ▸ Delete Selected Items.
+    /// Where removed sets and folders go: the user's Trash (tests pass a
+    /// folder of their own).
+    public var trashBin: TrashBin = .user
+
+    /// "−" and Editor ▸ Delete Selected Items: the item moves to the Trash.
     public func removeSelected() {
         if let f = selectedFolder {
-            try? FileManager.default.removeItem(at: f)
+            try? catalog.removeFolder(f, bin: trashBin)
             selectedFolder = nil
         } else if let set = selected {
-            try? catalog.remove(set)
+            try? catalog.remove(set, bin: trashBin)
         }
         selected = nil
         reload(selecting: nil)

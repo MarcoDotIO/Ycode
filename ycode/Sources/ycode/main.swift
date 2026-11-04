@@ -44,6 +44,7 @@ func usage() -> Never {
            ycode compare <left> <right> [--ancestor <base> [--merge <output>]]   unified diff, or a three-way merge
            ycode sim remote pair|devices|boot|run|view ...   a simulator host over Ycode's own link (ycode sim remote for details)
            ycode sim headset check|view|desktop|state ...     a visionOS device in a headset and back (ycode sim headset for details)
+           ycode sim runtimes check|script ...   simulator runtimes and host setup (ycode sim runtimes for details)
            ycode new --template <id> --name N [--org O] [--option key=value]... [--git] <dir>   New Project (ycode new --list)
            ycode --version
 
@@ -532,6 +533,8 @@ case "sim":
     // The headset (specs/ide/device-hub.md §I.12): `ycode sim headset …`, and
     // `ycode sim remote [--host N] view <device> --xr --background | --desktop`.
     if args.first == "headset" { exit(runHeadset(Array(args.dropFirst()))) }
+    // Simulator runtimes (specs/simulator/runtime-onboarding.md §11): `ycode sim runtimes …`.
+    if args.first == "runtimes" { exit(runRuntimes(Array(args.dropFirst()))) }
     guard args.first == "remote" else { usage() }
     if let switched = HeadsetCLI.remoteView(Array(args.dropFirst())) { exit(runHeadset(switched.headset, then: switched.viewer)) }
     exit(SimRemoteCLI.main(Array(args.dropFirst())))
@@ -561,3 +564,15 @@ func runHeadset(_ args: [String], then viewer: [String]? = nil) -> Int32 {
 }
 
 final class HeadsetExit: @unchecked Sendable { var status: Int32 = 1 }
+
+/// `ycode sim runtimes …` (blocking).
+func runRuntimes(_ args: [String]) -> Int32 {
+    let box = HeadsetExit()
+    let done = DispatchSemaphore(value: 0)
+    Task.detached {
+        box.status = await RuntimeCLI.main(args)
+        done.signal()
+    }
+    done.wait()
+    return box.status
+}

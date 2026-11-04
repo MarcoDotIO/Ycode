@@ -27,6 +27,8 @@ public final class LanguageService {
     /// The hash of the text last sent per document (an `open` of an open
     /// document with the same text is not an edit).
     private var textHashes: [URL: Int] = [:]
+    /// The text last sent per open document (a restarted server gets them again).
+    public private(set) var openTexts: [URL: String] = [:]
     /// Live issues by file path, from `publishDiagnostics`.
     public private(set) var liveIssues: [String: [Diagnostic]] = [:]
     /// The diagnostics as sent, by file path (for code-action requests).
@@ -86,6 +88,7 @@ public final class LanguageService {
         guard versions[url] == nil else { return change(url, text: text) }
         versions[url] = 1
         textHashes[url] = text.hashValue
+        openTexts[url] = text
         client.didOpen(url, text: text)
     }
 
@@ -93,6 +96,7 @@ public final class LanguageService {
         let v = (versions[url] ?? 0) + 1
         versions[url] = v
         client.didChange(url, text: text, version: v)
+        openTexts[url] = text
         let h = text.hashValue
         if textHashes.updateValue(h, forKey: url) != h { onEdited?(url.standardizedFileURL.path) }
     }
@@ -107,6 +111,7 @@ public final class LanguageService {
     public func close(_ url: URL) {
         guard versions.removeValue(forKey: url) != nil else { return }
         textHashes[url] = nil
+        openTexts[url] = nil
         client.didClose(url)
     }
 
@@ -128,21 +133,29 @@ extension WorkspaceSession {
     public func startLanguageService(transport: DAPTransport? = nil) async {
         let t: DAPTransport
         var root = languageRoot
+        languageRestart.context = nil
+        let startedContext = languageBuildContext
         var options: JSON?
         if let transport { t = transport } else {
             guard let path = await Task.detached(operation: { SourceKitLSP.locate() }).value else { return }
             t = ProcessTransport(executable: path)
             // Projects and workspaces: through Ycode's build server (language.md §Build server).
-            let (container, scheme, destination) = (model.url, scheme, destination?.specifier)
+            let (container, scheme, destination) = (model.url, startedContext.scheme, startedContext.destination)
             if let folder = await Task.detached(operation: {
                 BuildServerLaunch.prepareWorkspaceFolder(container: container, scheme: scheme, destination: destination)
-            }).value { (root, options) = (folder, BuildServerLaunch.initializationOptions) }
+            }).value {
+                (root, options) = (folder, BuildServerLaunch.initializationOptions)
+                languageRestart.context = startedContext
+            }
         }
+        if transport != nil, model.kind != .package, languageRestart.makeTransport != nil { languageRestart.context = startedContext }
         do {
             let service = try await LanguageService(transport: t, root: root, initializationOptions: options)
             service.onIssuesChanged = { [weak self] in self?.languageIssuesChanged() }
             service.onEdited = { [weak self] in self?.noteFileEdited($0) }
             language = service
+            // The scheme or destination changed while the server started.
+            buildContextChanged()
         } catch {
             appendConsole("Ycode: the language server did not start: \(error)\n")
         }

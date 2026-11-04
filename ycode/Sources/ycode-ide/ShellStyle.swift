@@ -49,6 +49,7 @@ struct ShellColors {
     }
     var error: Color { Color(.sRGB, red: 1, green: 59 / 255, blue: 48 / 255) }
     var warning: Color { Color(.sRGB, red: 1, green: 204 / 255, blue: 0) }
+    var success: Color { Color(.sRGB, red: 52 / 255, green: 199 / 255, blue: 89 / 255) }
 
     func tint(_ t: OutlineRow.Tint) -> Color {
         switch t {
@@ -56,6 +57,7 @@ struct ShellColors {
         case .secondary: secondaryLabel
         case .error: error
         case .warning: warning
+        case .success: success
         }
     }
 }

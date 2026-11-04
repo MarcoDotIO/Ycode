@@ -308,7 +308,8 @@ the Mac is shared with other agents, the Linux workstation is x86-64 with
 
 ## Symbols (jump bar and Open Quickly)
 
-There is no Symbol navigator (Bookmarks took its place). The same symbol
+There is no Symbol navigator in the reference (Bookmarks took its place).
+The same symbol
 scan feeds the jump bar's symbol component and Open Quickly: one row per source file that has top-level declarations; children are the
 declarations in file order, and (Swift) each type's members nest under
 it: properties (`var`/`let`, badge V), initializers (`init`, I),
@@ -339,6 +340,31 @@ errors, M warnings"). A test run shows its summary; Tests and Coverage
 show those pages (reference-ui-2.md §6; Ycode records no durations or
 coverage yet, shown as "—" and "No coverage data"). Not yet: the
 Package group, nested step rows in the log, the SDK in the subtitle.
+
+### Symbol navigator (Linux IDE)
+
+**Decision** (orchestrator, beta 2): the Linux IDE has a Symbol navigator
+at the third place of the selector bar (⌘3, where the reference has
+Bookmarks; the Linux IDE has no Bookmarks navigator yet), titled
+"Symbols". `SymbolNavigatorModel` (`YcodeIDEShell`) reads the scan above
+for every source file of the workspace (an edited open file as edited),
+off the main thread, when the navigator appears:
+
+- Rows: one per file that declares something (its file icon and name in
+  bold), then its declarations nested as the scan nests them, each with
+  its letter badge (`DocumentSymbols.badge`) and name; the outline metrics
+  of `metrics.md` (22-point rows, 12 points per level, the triangle at
+  x 12, the badge at x 25, the name at x 45). Files and types collapse.
+- The bottom bar's filter keeps the declarations whose name contains it
+  (any case), the types that hold them and their files, all expanded.
+  With a language server running and two or more characters typed, the
+  server's `workspace/symbol` answer (0.25 s after typing stops) joins
+  them: matches the scan does not see (for example a function declared
+  in another function's body) are added under their file, by line, their
+  LSP kind mapped to a badge.
+- Selecting a declaration opens its file at its line; a file row expands
+  or collapses.
+- Empty: "No Symbols" (with the filter, "No declaration contains “…”").
 
 ## Test navigator
 
@@ -470,6 +496,65 @@ use (tests use `PBXProj.idSequence`).
   open file's folder), through the same operations (so they are undoable
   and land in the selected group, even a group without a folder).
 
+## Council round 1 measurements (2026-11-04)
+
+These are Project navigator observations from the council session's 1x
+captures of the reference: a 1400 × 880 window, inactive, light, with the
+navigator 290 wide. The test project has one synchronized root folder,
+"GlassScroll" (`PBXFileSystemSynchronizedRootGroup`), holding
+`ContentView.swift`, `GlassScrollApp.swift`, `Long.swift`, `Stripes.png`
+and a `Models` folder of 48 Swift files. Row geometry is in `metrics.md`
+§12.1, scroll bars in §12.2, the bars' glass and scroll-under in
+`liquid-glass.md` §7. The checklist is `fidelity-council.md`.
+
+1. **Sort order: folders first.** Inside the synchronized folder the
+   order was Models, then ContentView, GlassScrollApp, Long, Stripes.
+   With Models expanded and scrolled to the end, the list ended Model48,
+   ContentView, GlassScrollApp, Long, Stripes. Subfolders come before
+   files, and each is sorted by name. This answers the open question
+   "folders first or mixed" (Evidence) for synchronized folders. Plain
+   groups were not observed. **Correction to "Project navigator" above:**
+   "folders and files mixed" holds for packages and plain directory
+   listings until observed; synchronized folders put folders first. Ycode
+   mixed them (ContentView, GlassScrollApp, Long, Models, Stripes).
+2. **Names** show without extensions ("Long", "Stripes"), in both apps.
+3. **The open file's row is selected.** At rest, with Long.swift in the
+   editor, Long's row carried the selection band: 22 tall, inset 10 on
+   both sides, corners about 8, #E7E7E8 on #F2F2F3 in an inactive window
+   with the outline unfocused (`metrics.md` §12.1). Opening another file
+   moves the band to it in the same frame as the editor change
+   (`editor-area.md` §C.6). Ycode drew no selection band. The selection
+   colour in an active window with the outline focused is to measure in
+   round 2.
+4. **Icon colour families.** Ycode draws its own icons, so only the
+   colour family matters. Values are inactive-window sRGB.
+
+   | Row | Reference | Ycode in the session |
+   |---|---|---|
+   | Project | blue rounded-square badge (#78AFF2) | blue |
+   | Folders, synchronized root folder | light blue (#9ACBF6) | blue |
+   | Swift source file | **orange** glyph (light orange #F6B59A when inactive) | **blue** "</>" glyph |
+   | PNG image | blue picture badge (#78AFF2) | a generic grey-blue document |
+
+5. **Expanding a folder** (an accessibility "disclosing" set on the
+   Models row) shows all child rows in **one frame**, with no animation,
+   in both apps. The reference's change came 63 ms after the input began,
+   Ycode's 40 ms after.
+6. **Scrolling under the bars.** Rows scroll beneath the selector capsule
+   and beneath the bottom filter capsule, out to the area's edges:
+   1. Under the **filter capsule** the rows stay visible, moderately
+      blurred: glyph shapes and the orange icons are discernible (pixel
+      change up to 109 levels).
+   2. Under the **selector capsule** they show only as a faint veil (at
+      most 10 levels).
+   3. Nothing shows above the selector capsule.
+   4. The first row below the selector, and the last above the filter
+      bar, are at full contrast, with no fade.
+   5. Ycode's rows stop at its bars (its change region began at y 88).
+7. **Scrolling** moved the rows with the input 1:1 within a frame
+   (`editor-area.md` §C.8). The longest pause between changed frames was
+   23 ms in the reference and 48 ms in Ycode.
+
 ## Evidence
 
 - Find, Symbol and Report navigator roles: Apple's public Xcode Help
@@ -503,8 +588,9 @@ use (tests use `PBXProj.idSequence`).
 - Navigator names, order and ⌘1–⌘9: Apple's public Xcode Help and
   keyboard-shortcut reference (level 1).
 - pbxproj group classes: `specs/formats/pbxproj.md` (level 2).
-- OPEN QUESTION: Xcode's sort order inside synchronized folders (folders
-  first or mixed) and which names it hides.
+- Sort order inside synchronized folders: folders first, then files, each
+  by name (council round 1, level 3). OPEN QUESTION: which names it hides,
+  and the order in plain groups and packages.
 - Issue grouping (by file only) and row text: `specs/ide/reference-ui-2.md`
   §1 (level 3).
 - OPEN QUESTION: icons for each navigator (ours are SF Symbols chosen by
@@ -534,3 +620,12 @@ use (tests use `PBXProj.idSequence`).
   project rows' context menu; whether a move between folders keeps the
   file in the targets of a destination folder it was not in; what the
   reference's Convert ▸ To Folder accepts and how Preflight reports it.
+- Council round 1 section, level 3: the council session's 1x stills and
+  recordings of the reference (row order, colour runs, icon colours from
+  their most saturated pixels, per-frame changes);
+  `research/tools/council-r1/measure_captures.py`,
+  `research/notes/council-r1-2026-11-04.md`. The test project's group
+  classes come from its own `project.pbxproj` (level 2).
+- The Linux IDE's Symbol navigator: Ycode's own design (the reference has
+  none). swift-build's progress-line form in build logs is from SwiftPM
+  6.4's own output (level 3, Ycode's builds on Linux).

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import YcodeBuild
 import YcodeEditorKit
 import YcodeIDECore
 import YcodeIDEShell
@@ -35,6 +36,12 @@ struct SourceEditorView: View {
         let matches = bar.isShown ? bar.matches : []
         let currentMatch = bar.current
         let issues = model.editorIssues
+        let debugMarks = model.debug.marks(for: c.document.path)
+        let scm = model.sourceControl
+        let changes = scm.changeRegionsPath != nil && scm.changeRegionsPath == model.editor?.path ? scm.changeRegions : []
+        let diamonds = model.testDiamonds
+        // The rename's occurrences (they change rarely, as the matches).
+        let highlights = model.languageFeatures.highlights
         let colors = ShellColors(scheme)
         let palette = palette
         let preferences = preferences
@@ -42,7 +49,8 @@ struct SourceEditorView: View {
             c.applyPreferences(revision: preferences)
             c.viewportChanged(size)
             var painter = SourceEditorPainter(controller: c, palette: palette, colors: colors,
-                                              matches: matches, currentMatch: currentMatch, issues: issues)
+                                              matches: matches, currentMatch: currentMatch, issues: issues, debug: debugMarks,
+                                              changes: changes, diamonds: diamonds, highlights: highlights)
             painter.draw(&ctx, size: size)
         }
         content(canvas)
@@ -53,12 +61,17 @@ struct SourceEditorView: View {
                 switch e {
                 case .down(let p, let t):
                     focused = true
+                    // ⌥-click: Quick Help; ⌘- or Ctrl-click: Jump to Definition.
+                    if let m = c.connection?.pointerModifiers, SymbolClick.handle(p, modifiers: m, controller: c, model: model) { return }
                     c.pointerChanged(start: p, location: p, time: t, shift: c.connection?.pointerModifiers.contains(.shift) ?? false)
                 case .moved(let p, _): c.pointerChanged(start: p, location: p, time: 0, shift: false)
                 case .up, .cancelled: c.pointerEnded()
                 }
             }
-            .textSurfaceScroll { d, _ in c.wheel(d) }
+            .textSurfaceScroll { d, _ in
+                model.dismissQuickHelp()
+                return c.wheel(d)
+            }
             .textSurface(c)
             .focused($focused)
             #else
@@ -73,13 +86,25 @@ struct SourceEditorView: View {
             .onChange(of: model.editorFocusCount) { _, _ in focused = true }
             .onAppear {
                 if !ShellFocus.outlineHasKeyboard { focused = true }
-                c.onEscape = { [weak bar] in
+                c.onGutterDiamondClick = { [weak model] line in
+                    guard let model, model.testDiamonds[line] != nil else { return false }
+                    model.runTests(atLine: line)
+                    return true
+                }
+                c.onActivity = { [weak model] in model?.caretMoved() }
+                model.updateCaretSymbol()
+                c.onEscape = { [weak bar, weak model] in
+                    if let model, model.languageFeatures.popover != nil {
+                        model.dismissQuickHelp()
+                        return true
+                    }
                     guard let bar, bar.isShown else { return false }
                     bar.isShown = false
                     return true
                 }
                 c.scheduleRefine(after: 0.05)
                 c.requestCompletions = { [weak model] in await model?.completions() ?? [] }
+                DebugGutter.connect(c, model: model)
             }
             .task(id: c.document.path) {
                 // The file on disk, about once a second.
@@ -167,6 +192,14 @@ struct SourceEditorPainter {
     let matches: [NSRange]
     let currentMatch: Int?
     let issues: [Int: EditorLineIssue]
+    var debug = EditorDebugMarks()
+    /// The change bars (source control): unstaged in the accent color,
+    /// staged in grey, a deletion as a short mark between lines.
+    var changes: [SourceChangeRegion] = []
+    /// Test diamonds by 1-based line, in place of the line number
+    /// (`specs/ide/testing.md` §Gutter): outlined, green, red.
+    var diamonds: [Int: TestOutcome.Status?] = [:]
+    var highlights: [NSRange] = []
 
     func font(_ c: SourceEditorController) -> Font { ShellFonts.editor(c.fontSize) }
 
@@ -199,6 +232,7 @@ struct SourceEditorPainter {
                 ctx.fill(Path(CGRect(x: 0, y: top(n), width: size.width, height: lh)), with: .color(tint))
             }
         }
+        DebugGutter.drawStoppedLine(&ctx, debug, lines: lines, top: top, lineHeight: lh, width: size.width)
 
         // Find matches.
         if !matches.isEmpty {
@@ -216,6 +250,11 @@ struct SourceEditorPainter {
                           color: Color.yellow.opacity(isCurrent ? 0.75 : 0.32), textX: textX)
                 i += 1
             }
+        }
+
+        // The occurrences of a symbol being renamed.
+        for h in highlights where h.length > 0 {
+            fillRange(&ctx, h.location..<(h.location + h.length), lines: lines, color: colors.accent.opacity(0.22), textX: textX)
         }
 
         // The selection.
@@ -250,6 +289,8 @@ struct SourceEditorPainter {
             ctx.draw(r, in: CGRect(x: box.minX + 5, y: box.minY, width: w, height: box.height))
         }
 
+        DebugGutter.drawAnnotation(&ctx, debug, lines: lines, top: top, lineHeight: lh, width: size.width)
+
         // The caret.
         if b.selection.isEmpty || b.hasMarkedText, caretOn, c.isFocused {
             var x = textX + c.layout.x(ofOffset: b.caret, line: currentLine, in: b)
@@ -279,15 +320,74 @@ struct SourceEditorPainter {
         let numberFont = Font.system(size: 10).monospacedDigit()
         for n in lines {
             let isCurrent = n == currentLine
-            let t = Text(verbatim: "\(n + 1)").font(numberFont).foregroundStyle(isCurrent ? palette.foreground.color : palette.lineNumber.color)
-            ctx.draw(t, at: CGPoint(x: c.numberRight, y: top(n) + lh / 2), anchor: .trailing)
+            let hasBreakpoint = DebugGutter.drawBreakpoint(&ctx, debug, line: n + 1, top: top(n), lineHeight: lh, numberRight: c.numberRight)
+            DebugGutter.drawPCMark(&ctx, debug, line: n + 1, top: top(n), lineHeight: lh)
+            if !hasBreakpoint, let d = diamonds[n + 1] {
+                drawDiamond(&ctx, status: d, center: CGPoint(x: c.numberRight - 6, y: top(n) + lh / 2))
+            } else {
+                let numberColor = hasBreakpoint ? Color.white : (isCurrent ? palette.foreground.color : palette.lineNumber.color)
+                let t = Text(verbatim: "\(n + 1)").font(numberFont).foregroundStyle(numberColor)
+                ctx.draw(t, at: CGPoint(x: c.numberRight, y: top(n) + lh / 2), anchor: .trailing)
+            }
             if let i = issues[n + 1] {
                 let dot = CGRect(x: c.gutterWidth - 14, y: top(n) + lh / 2 - 3.5, width: 7, height: 7)
                 ctx.fill(Path(ellipseIn: dot), with: .color(i.isError ? Color.red : Color.yellow))
             }
         }
+        drawChangeBars(&ctx, lines: lines)
 
         drawCompletion(&ctx, size: size)
+    }
+
+    /// A test's diamond: outlined before a run, green with a check when it
+    /// passed, red with a cross when it failed.
+    private func drawDiamond(_ ctx: inout GraphicsContext, status: TestOutcome.Status?, center p: CGPoint) {
+        let r: CGFloat = 6.5
+        var shape = Path()
+        shape.move(to: CGPoint(x: p.x, y: p.y - r))
+        shape.addLine(to: CGPoint(x: p.x + r, y: p.y))
+        shape.addLine(to: CGPoint(x: p.x, y: p.y + r))
+        shape.addLine(to: CGPoint(x: p.x - r, y: p.y))
+        shape.closeSubpath()
+        switch status {
+        case .passed?, .failed?:
+            ctx.fill(shape, with: .color(status == .passed ? colors.success : colors.error))
+            var mark = Path()
+            if status == .passed {
+                mark.move(to: CGPoint(x: p.x - 2.6, y: p.y))
+                mark.addLine(to: CGPoint(x: p.x - 0.6, y: p.y + 2))
+                mark.addLine(to: CGPoint(x: p.x + 2.8, y: p.y - 2))
+            } else {
+                mark.move(to: CGPoint(x: p.x - 2.2, y: p.y - 2.2)); mark.addLine(to: CGPoint(x: p.x + 2.2, y: p.y + 2.2))
+                mark.move(to: CGPoint(x: p.x + 2.2, y: p.y - 2.2)); mark.addLine(to: CGPoint(x: p.x - 2.2, y: p.y + 2.2))
+            }
+            ctx.stroke(mark, with: .color(.white), lineWidth: 1.5)
+        default:
+            ctx.stroke(shape, with: .color(palette.lineNumber.color), lineWidth: 1.2)
+        }
+    }
+
+    /// The change column at the gutter's right edge (`reference-ui-5.md`
+    /// §6.3), as the AppKit gutter draws it.
+    private func drawChangeBars(_ ctx: inout GraphicsContext, lines: Range<Int>) {
+        guard let first = lines.first, let last = lines.last, !changes.isEmpty else { return }
+        let c = controller
+        let lh = c.lineHeight
+        let x = c.gutterWidth - 5
+        func top(_ n: Int) -> CGFloat { c.lineTop(n) - c.top }
+        for r in changes {
+            let tint = r.staged ? colors.secondaryLabel : colors.accent
+            let a = r.firstLine - 1
+            if r.kind == .deleted {
+                guard a >= first, a <= last + 1 else { continue }
+                ctx.fill(Path(roundedRect: CGRect(x: x - 1, y: top(a) - 2, width: 5, height: 4), cornerRadius: 1.5), with: .color(tint))
+                continue
+            }
+            let z = a + max(r.lineCount, 1) - 1
+            guard z >= first, a <= last else { continue }
+            let y0 = top(max(a, first)), y1 = top(min(z, last)) + lh
+            ctx.fill(Path(roundedRect: CGRect(x: x, y: y0, width: 3, height: y1 - y0), cornerRadius: 1.5), with: .color(tint))
+        }
     }
 
     /// The completion list under the word being completed.

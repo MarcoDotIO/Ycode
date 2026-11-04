@@ -109,8 +109,9 @@ selected tab (a quiet semantic fill set in `updateLayer`).
 
 ## 4. Editor chrome (`liquid-glass.md` §2.6, §3)
 
-- Jump bar: an opaque band, 31 points (y 52–83), with a separator line
-  below it.
+- Jump bar: a 32-point band (y 52–83) in the editor's background, nearly
+  opaque (96.5 %), then a 2-point separator (§12.8). The editor's text
+  scrolls beneath it.
 - Debug bar: 36 tall (35 plus its separator), laid over the editor, whose
   view runs to the column's bottom with a 36-point bottom safe-area inset
   (`additionalSafeAreaInsets`) so its text scrolls clear of the bar. The
@@ -226,6 +227,81 @@ choices, all system materials through public API:
 Seen in Ycode's own inactive windows over a real device picture
 (`device-hub.md` §I.12.8); the active look and the tint are not yet seen.
 
+## 12. Council round 1 measurements (2026-11-04)
+
+The council compared this design with the reference in one scripted
+session. Targets are in `liquid-glass.md` §7, `editor-area.md` §C,
+`metrics.md` §12 and `navigators.md` "Council round 1"; the work list is
+`fidelity-council.md`. This section records what the session showed of
+**Ycode's** surfaces and what each needs.
+
+1. **The session's Ycode declared SDK 15.0.** The capture wrapper bundles
+   the bare `swift build` executable, not `make-app.sh`'s product, so §0
+   did not apply. The toolbar, bars and jump bar drew the pre-macOS-26
+   fallback:
+   - no capsules: bare glyphs, with a grey square under each selected
+     toggle (y 12–39);
+   - an opaque #E6E6E7 toolbar band;
+   - a #ECECEC jump bar.
+
+   Stamp the SDK in the wrapper (`vtool -set-build-version macos 15.0
+   <SDK>`, as `make-app.sh` does). Then recapture before judging §2–§4
+   again.
+2. **Toolbar (§2).** Even with the SDK fixed, two things differ from the
+   reference:
+   - Remove the up-down chevrons after the scheme and destination titles.
+     The reference's capsule has a "›" between them and no chevrons.
+   - Drop the document glyph before the title. The reference's activity
+     view shows the project's icon (a spinner while loading), the bold
+     title, and a subtitle line while a task runs. Both lines dim to
+     #BCBDBD when the window is inactive; Ycode's title stayed #454546.
+3. **Toolbar band and jump bar colour (§1, §4).** Over the editor the
+   reference shows the **editor's background** (white in light), not a
+   bar colour. The jump bar is the same white band, 32 tall, over a
+   **2-point** separator (#E5E5E5). Ycode's band was #E6E6E7 and its jump
+   bar #ECECEC over a 1-point separator. With the SDK fixed, check that
+   the toolbar band shows the area beneath it, and draw the jump bar with
+   the editor's background colour, not a grey fill.
+4. **Scroll-under (§4).** The reference's toolbar band, jump bar, sticky
+   header and bottom bar each let about 6 % of the text beneath show as a
+   shapeless veil (`liquid-glass.md` §7.3). Ycode's toolbar and jump bar
+   showed nothing (0–1 levels of change). Run the editor's scroll view
+   under the jump bar and the toolbar, as the outline already runs under
+   the navigator's bars. Its top content inset keeps the first line at
+   y 93 at rest. The bars' backgrounds must be nearly opaque, with no fade
+   below them. The navigator's rows must show **through the filter
+   capsule** (moderately blurred) and only faintly through the selector
+   capsule. Ycode's rows stopped at y 88 and at its bottom bar.
+5. **Side-area backgrounds.** The reference's navigator and inspector
+   were both #F2F2F3 (inactive). Ycode's were #E6E6E7 and #EBECEC: two
+   different colours, both darker. Use the same system sidebar or
+   inspector background for both areas, and check the inactive values
+   against #F2F2F3.
+6. **Selected tab glyphs (§3).** The reference's selected icon in the
+   selector bar and in the inspector tab bar sits on a grey pill (#CACACB)
+   and is drawn grey (#7C7D7E), **not accent blue**. Ycode tinted it blue
+   (#0070F5, #007AFF).
+7. **Scroll bars.** Follow the system's preferred scroller style
+   (`metrics.md` §12.2). Ycode showed overlay knobs while the system's
+   style on that Mac was the layout-taking one. In the editor, put the
+   scroll bar's lane at the editor's right edge, **after** the minimap.
+
+8. **What Ycode does since B2-GLASS (beta 2).** Each source editor's
+   scroll view spans the editor, with content insets for its safe area,
+   the jump bar and the find bar, so the text scrolls under the jump bar
+   and the sticky header. The editor column still starts below the
+   toolbar: running the center split under it was tried, but the system
+   band over the editor stayed opaque in an inactive window and the split
+   no longer kept the debug area at the height asked for. Those bars and the band behind the toolbar are the
+   editor's background at 96.5 % (`EditorMetrics.barVeil`): a black glyph
+   pixel beneath changes the bar by about 8 levels, and nothing fades
+   below a bar. AppKit offers a hard scroll edge only through a split
+   item's top accessory (`NSSplitViewItemAccessoryViewController`), which
+   has one bar per split item, while Ycode has a jump bar per editor pane,
+   so the bars are drawn fills. The minimap sits between the
+   text and the scroll bar's lane; scroll views follow
+   `NSScroller.preferredScrollerStyle`.
+
 ## Evidence
 
 - Target geometry and materials: `liquid-glass.md` (level 3 there).
@@ -234,4 +310,8 @@ Seen in Ycode's own inactive windows over a real device picture
   glass buttons to see what each public API draws.
 - API names and behavior: the public AppKit API reference and SDK
   declarations; Apple's HIG and "Adopting Liquid Glass" (level 1).
-- Nothing here comes from observing the reference directly.
+- §12: what the council session's captures showed of Ycode's own windows
+  (pixel runs and `otool -l` of the captured executable); the reference
+  targets it cites are level 3 in `liquid-glass.md` §7.
+- Apart from those cited targets, nothing here comes from observing the
+  reference directly.

@@ -262,3 +262,61 @@ Compare Files, Authors and Show Last Change).
   menu titles and order; the merge sheet (Xcode Help describes choosing
   "Merge into" / "Merge from"); whether the reference rebases from the
   navigator; the Authors column's width, format and hover card.
+
+## Ycode implementation: the Linux IDE (B2-SCM, 2026-11-04)
+
+The SwiftUI shell (`YcodeIDEShell/SourceControlShellModel.swift`,
+`SourceControlRows.swift`; views in `ycode-ide/SourceControlNavigator.swift`
+and `SourceControlEditor.swift`) shows the core's models; it runs no git
+of its own beyond `GitRepository`'s operations, always off the main actor,
+one command after another, then reads `SourceControlSnapshot` again. In
+the Flatpak `git` is the host-tool wrapper (`HostTool.path("git")`).
+
+- **Navigator (⌘2):** Changes | Repositories as in the AppKit navigator;
+  rows carry the same keys, so `SourceControlRowMenu` gives the context
+  menus; a change row adds Stage or Unstage, Discard Changes… and Show in
+  Editor. A merge, rebase or cherry-pick that stopped shows a banner with
+  Continue and Abort. Outside git: "No Repository" and New Git Repository….
+- **Commit editor** over the editor area: author, Amend, Commit with
+  Commit and Push in its menu; the message; the scope and Stage All; one
+  card per change (Stage or Unstage, discard, status letter, numbered diff
+  with bars). The inspector shows the selected change and the repository.
+- **Commit sheet** (Integrate ▸ Commit…, ⌥⌘C): checked files, message,
+  Commit Files (`commit(files:message:)`).
+- **Questions:** Check Out (with Stash and Check Out when tracked files
+  changed), Delete, Merge, Rebase, Discard; prompts for New Branch (checked
+  out), New Tag (optional message), Rename, Add Remote, Stash Changes.
+- **Push and Pull:** to the upstream; without one, Push sets it on the
+  branch's remote (else `origin`, else the first remote) and Pull
+  fast-forwards from that remote's branch of the same name. The
+  remote-and-branch sheet is still to do.
+- **History:** a branch's, tag's, remote branch's or stash's log with the
+  time scope and filter; a commit's detail below (files, message), and the
+  Branch and Commit sections in the inspector. The History inspector tab
+  lists the open file's commits (`history(ofFile:)`).
+- **Status:** letters in the project navigator; change bars in the gutter
+  (`SourceChanges.regions` against the index and HEAD, recomputed a moment
+  after typing); the branch in the debug bar. The repository is watched
+  (`FileSystemWatcher`, inotify on Linux) for outside changes.
+- **Integrate menu:** the shell performs Commit…, Push…, Pull…, Fetch,
+  Refresh File Status, Stage/Unstage All and Selected, Mark as Resolved,
+  Add, Cherry-Pick…, Stash Changes…, Discard All / Selected… and New Git
+  Repository…, enabled by `IntegrateMenuState`.
+- Paths: a workspace opened through a link is mapped to git's real paths
+  and back (`repoPath`, `workspacePath`).
+
+Tests: `YcodeIDEShellTests/SourceControlShellTests.swift` (repositories with
+a repository-local `user.name` and `user.email` and a bare repository as the
+remote: both trees, the commit editor, scopes, staging, amend, the sheet,
+discard, branches, checkout with stash, merge, delete, history, push, pull,
+Commit and Push, change bars, file history, the Integrate menu outside
+git). End to end on Linux: `ycode-ide` with `YCODE_IDE_SCM=<prefix>`
+(`ShellDriver+SourceControl.swift`).
+
+### Evidence
+
+- git commands and formats: git's public documentation (level 1),
+  verified on repositories the tests create (level 3).
+- Layout and labels: `reference-ui-4.md` §2–§3 (level 3) through the AppKit
+  IDE's implementation. The change-row menu items, the banner, the
+  questions' wording and the push and pull fallbacks are Ycode's design.

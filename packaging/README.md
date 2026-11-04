@@ -100,7 +100,7 @@ It does not look at the window: open the image once by hand to check the layout.
 
 ## The Flatpak
 
-The manifest is `flatpak/io.github.MarcoDotIO.Ycode.yml`, on freedesktop 25.08.
+The manifest is `flatpak/io.github.MarcoDotIO.Ycode.yml`, on freedesktop 26.08.
 Every download is pinned by SHA-256, and the build itself has no network. The Swift
 dependencies are commit archives listed in `flatpak/swift-dependencies.json`;
 `prepare-swift-deps.py` turns them into local git repositories for SwiftPM.
@@ -166,7 +166,7 @@ unpacked:
   that wraps this tarball declares `--talk-name=org.freedesktop.Flatpak` for it, for
   the reason given above.
 
-It is built against freedesktop 25.08 (glibc 2.42), so it needs that runtime, or a
+It is built against freedesktop 26.08 (glibc 2.44), so it needs that runtime, or a
 host with that glibc or newer. Outside a Flatpak the wrappers are not used and tools
 come from the host's `PATH`.
 

@@ -43,15 +43,7 @@ extension WorkspaceWindowController {
     }
 
     /// Applies text edits to a string (last edit first).
-    static func apply(_ edits: [TextEdit], to text: String) -> String {
-        let index = LineIndex(text)
-        let ns = NSMutableString(string: text)
-        for e in edits.sorted(by: { ($0.start.line, $0.start.character) > ($1.start.line, $1.start.character) }) {
-            let a = index.offset(of: e.start), b = index.offset(of: e.end)
-            ns.replaceCharacters(in: NSRange(location: a, length: max(0, b - a)), with: e.newText)
-        }
-        return ns as String
-    }
+    static func apply(_ edits: [TextEdit], to text: String) -> String { TextEditApplication.apply(edits, to: text) }
 
     /// Restores files changed on disk by the last refactorings.
     public func revertDiskRefactorings() {

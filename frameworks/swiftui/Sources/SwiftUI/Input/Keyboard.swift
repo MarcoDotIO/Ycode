@@ -57,6 +57,9 @@ public struct KeyEquivalent: Sendable, Hashable, ExpressibleByExtendedGraphemeCl
         case .pageUp: self = .pageUp
         case .pageDown: self = .pageDown
         case .clear: self = .clear
+        // F1… as AppKit's function-key characters (F1 is U+F704), so a
+        // shortcut written that way (F6 for Step Over) matches.
+        case .function(let n) where (1...35).contains(n): self.init(Character(UnicodeScalar(UInt32(0xF703 + n))!))
         case .function, .other: return nil
         }
     }

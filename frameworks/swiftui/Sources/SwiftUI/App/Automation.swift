@@ -113,8 +113,9 @@ public enum OpenViewsAutomation {
     /// A click (press and release) at a point of a main window, through the
     /// back end's event queue; a point inside an open pop-up goes to that
     /// pop-up (the frames `texts` reports are in the main window's points).
-    /// `button` 1 is primary, 3 secondary.
-    public static func click(at p: CGPoint, window index: Int = 0, button: Int = 1) async {
+    /// `button` 1 is primary, 3 secondary; `modifiers` are held during it
+    /// (⌥-click, Ctrl-click).
+    public static func click(at p: CGPoint, window index: Int = 0, button: Int = 1, modifiers: KeyModifiers = []) async {
         guard let h = host, mainWindows.indices.contains(index) else { return }
         let main = mainWindows[index]
         var target = main, local = p
@@ -128,9 +129,20 @@ public enum OpenViewsAutomation {
             }
         }
         let id = target.platform.id
-        h.backend.post(.pointer(PointerEvent(window: id, phase: .down, location: local, button: button, isPressed: true, timestamp: h.backend.now)))
+        // A back end whose pointer events carry no modifiers (SDL) takes
+        // them from the keyboard's last state: a release of no key with
+        // them held sets it, and one without them clears it afterwards.
+        if !modifiers.isEmpty {
+            h.backend.post(.key(KeyEvent(window: main.platform.id, key: .other(0), isDown: false, modifiers: modifiers, timestamp: h.backend.now)))
+        }
+        h.backend.post(.pointer(PointerEvent(window: id, phase: .down, location: local, button: button, isPressed: true, modifiers: modifiers,
+                                             timestamp: h.backend.now)))
         try? await Task.sleep(nanoseconds: 50_000_000)
-        h.backend.post(.pointer(PointerEvent(window: id, phase: .up, location: local, button: button, isPressed: false, timestamp: h.backend.now)))
+        h.backend.post(.pointer(PointerEvent(window: id, phase: .up, location: local, button: button, isPressed: false, modifiers: modifiers,
+                                             timestamp: h.backend.now)))
+        if !modifiers.isEmpty {
+            h.backend.post(.key(KeyEvent(window: main.platform.id, key: .other(0), isDown: false, modifiers: [], timestamp: h.backend.now)))
+        }
     }
 
     /// Moves the pointer (no button pressed) to a point of a main window, or

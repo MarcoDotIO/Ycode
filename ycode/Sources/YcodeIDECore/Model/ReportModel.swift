@@ -203,6 +203,20 @@ public enum BuildLogModel {
             }
             if let (target, group, task, duration) = task(line, isPackage: r.context.containerKind == "Package") {
                 let si = section(target)
+                // swift-build's progress lines ("[19 / 23] Greeter-product")
+                // repeat one task: one step, with every line in its
+                // transcript; issues after them are not that task's.
+                if Self.isProgressLine(line) {
+                    if let ti = sections[si].steps.firstIndex(where: { $0.title == group }) {
+                        sections[si].steps[ti].children[0].transcript.append(line)
+                    } else {
+                        var t = BuildLogStep(title: task, duration: nil)
+                        t.transcript = [line]
+                        sections[si].steps.append(BuildLogStep(title: group, duration: nil, children: [t]))
+                    }
+                    current = nil
+                    continue
+                }
                 var t = BuildLogStep(title: task, duration: duration)
                 t.transcript = [line]
                 sections[si].steps.append(BuildLogStep(title: group, duration: duration, children: [t]))
@@ -250,12 +264,34 @@ public enum BuildLogModel {
         }
     }
 
+    /// A swift-build progress line: "[19 / 23] <target>" (spaces round the slash).
+    static func isProgressLine(_ line: String) -> Bool {
+        let s = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard s.hasPrefix("["), let close = s.firstIndex(of: "]") else { return false }
+        // swift-build sets the slash between thin spaces (U+2009).
+        let inside = s[s.index(after: s.startIndex)..<close]
+        let parts = inside.split(separator: "/").map { $0.trimmingCharacters(in: .whitespaces) }
+        return inside.contains(where: \.isWhitespace) && parts.count == 2 && parts.allSatisfy { Int($0) != nil }
+    }
+
     /// (target, group title, task title, duration) for a task line.
     static func task(_ line: String, isPackage: Bool) -> (String, String, String, TimeInterval?)? {
-        let s = line.trimmingCharacters(in: .whitespaces)
+        // (A progress line may start with a carriage return.)
+        let s = line.trimmingCharacters(in: .whitespacesAndNewlines)
         // SwiftPM: "[3/7] Compiling Demo main.swift other.swift"
         if s.hasPrefix("["), let close = s.firstIndex(of: "]") {
             let words = s[s.index(after: close)...].split(separator: " ").map(String.init)
+            // swift-build (SwiftPM 6.4): "[19 / 23] Greeter-product", the
+            // target being built; a product's target links it.
+            let progressWords = s[s.index(after: close)...].split(whereSeparator: \.isWhitespace)
+            if isProgressLine(s), progressWords.count == 1 {
+                let name = String(progressWords[0])
+                if name.hasSuffix("-product") {
+                    let product = String(name.dropLast("-product".count))
+                    return (name, "Linking \(product)", "Link \(product)", nil)
+                }
+                return (name, "Building \(name)", "Build \(name)", nil)
+            }
             guard words.count >= 2 else { return nil }
             switch words[0] {
             case "Compiling" where words.count >= 3:

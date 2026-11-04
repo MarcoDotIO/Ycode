@@ -4,10 +4,10 @@
 # SHA-256; the build itself has no network.
 id: io.github.MarcoDotIO.Ycode
 runtime: org.freedesktop.Platform
-runtime-version: '25.08'
+runtime-version: '26.08'
 sdk: org.freedesktop.Sdk
 sdk-extensions:
-  - org.freedesktop.Sdk.Extension.llvm20
+  - org.freedesktop.Sdk.Extension.llvm22
 command: ycode-ide
 finish-args:
   # The window: Wayland, or X11 where there is no Wayland; the GPU for the renderer.

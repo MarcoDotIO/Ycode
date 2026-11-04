@@ -60,12 +60,7 @@ public final class YcodeDocumentController: NSDocumentController {
     /// The open workspace window whose workspace contains `file`, the
     /// frontmost first (`windows` in front-to-back order).
     public static func workspaceWindow(containing file: URL, among windows: [WorkspaceWindowController]) -> WorkspaceWindowController? {
-        let path = file.standardizedFileURL.resolvingSymlinksInPath().path
-        return windows.first { wc in
-            wc.session.model.root.allFiles.contains { f in
-                f.path.map { URL(fileURLWithPath: $0).standardizedFileURL.resolvingSymlinksInPath().path == path } ?? false
-            }
-        }
+        windows.first { $0.session.model.root.containsForOpening(file) }
     }
 
     /// The open workspace windows, frontmost first.
@@ -95,10 +90,71 @@ public final class YcodeDocumentController: NSDocumentController {
             completionHandler(wc.document as? NSDocument, true, nil)
             return
         }
-        Self.launchGate.openRequested()
-        super.openDocument(withContentsOf: url, display: displayDocument) { [weak self] doc, wasOpen, error in
-            completionHandler(doc, wasOpen, error)
+        // A file asked for while a workspace is still opening (`open -a
+        // Ycode Project.xcodeproj File.swift`, or a file right after the
+        // launch's project) waits for it, then opens in its window if the
+        // workspace holds it (#71).
+        if !Self.isWorkspaceContainer(url), !pendingOpens.isEmpty {
+            deferredFileOpens.append((url, displayDocument, completionHandler))
+            return
+        }
+        openOnce(url, display: displayDocument, completionHandler: completionHandler) { done in
+            super.openDocument(withContentsOf: url, display: displayDocument, completionHandler: done)
+        }
+    }
+
+    /// State restoration reopens a workspace through here. It joins an
+    /// open of the same workspace already under way (the launch's
+    /// open-document request), so the workspace gets one window, and it
+    /// holds the Welcome window back like any other open (#71).
+    public override func reopenDocument(for urlOrNil: URL?, withContentsOf contentsURL: URL, display displayDocument: Bool,
+                                        completionHandler: @escaping (NSDocument?, Bool, (any Error)?) -> Void) {
+        openOnce(urlOrNil ?? contentsURL, display: displayDocument, completionHandler: completionHandler) { done in
+            super.reopenDocument(for: urlOrNil, withContentsOf: contentsURL, display: displayDocument, completionHandler: done)
+        }
+    }
+
+    /// Files whose open waits for a workspace being opened.
+    private var deferredFileOpens: [(URL, Bool, (NSDocument?, Bool, (any Error)?) -> Void)] = []
+
+    private func openDeferredFiles() {
+        guard pendingOpens.isEmpty, !deferredFileOpens.isEmpty else { return }
+        let files = deferredFileOpens
+        deferredFileOpens = []
+        // After the new window is set up (its document's window controller).
+        DispatchQueue.main.async {
             MainActor.assumeIsolated {
+                for (url, display, done) in files { self.openDocument(withContentsOf: url, display: display, completionHandler: done) }
+            }
+        }
+    }
+
+    /// Opens currently under way, by workspace path: the callers waiting
+    /// for each.
+    private var pendingOpens: [String: [(NSDocument?, Bool, (any Error)?) -> Void]] = [:]
+
+    /// Runs `open` unless the same file is open or being opened: then the
+    /// open window comes forward, or the request waits for the open under
+    /// way and gets its document.
+    private func openOnce(_ url: URL, display: Bool, completionHandler: @escaping (NSDocument?, Bool, (any Error)?) -> Void,
+                          open: (@escaping (NSDocument?, Bool, (any Error)?) -> Void) -> Void) {
+        let key = OpenRequestKey.path(url)
+        if let existing = documents.first(where: { $0.fileURL.map(OpenRequestKey.path) == key }) {
+            if display { existing.showWindows() }
+            completionHandler(existing, true, nil)
+            return
+        }
+        if pendingOpens[key] != nil {
+            pendingOpens[key]?.append(completionHandler)
+            return
+        }
+        pendingOpens[key] = [completionHandler]
+        Self.launchGate.openRequested()
+        open { [weak self] doc, wasOpen, error in
+            MainActor.assumeIsolated {
+                let waiting = self?.pendingOpens.removeValue(forKey: key) ?? []
+                for (i, done) in waiting.enumerated() { done(doc, wasOpen || i > 0, error) }
+                self?.openDeferredFiles()
                 if Self.launchGate.openFinished(openDocuments: self?.documents.count ?? 0) { Self.showWelcome?() }
             }
         }
@@ -436,6 +492,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
                 if YcodeDocumentController.launchGate.launchCheck(openDocuments: NSDocumentController.shared.documents.count) {
                     self.showWelcomeWindow(nil)
                 }
+                RuntimeSetupWindowController.offerAtFirstLaunch()
             }
         }
     }

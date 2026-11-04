@@ -426,8 +426,11 @@ component waits for the typing pause, as folds do.
   (level 1).
 - Language lexical rules: The Swift Programming Language (lexical
   structure), C and Objective-C public documentation (level 1).
-- OPEN QUESTION: Xcode's default theme colors and font size (ours are our
-  own choices).
+- Xcode's default light theme colours and the editor's text metrics were
+  measured in council round 1 (`editor-area.md` §C.1–§C.4, level 3). The
+  font size is to confirm at 2x. Whether Ycode's default theme adopts
+  these colours is the owner's decision (`fidelity-council.md`); until
+  then ours are our own choices.
 - OPEN QUESTION: annotation placement and wording.
 - Defaults (reference-ui.md §4, level 3): wrapping on with wrapped lines
   indented 4 spaces; folding ribbon off; trim trailing whitespace on;

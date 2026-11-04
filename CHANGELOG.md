@@ -6,6 +6,18 @@ Notable changes to Ycode are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Packages:** the Flatpak is built on the freedesktop 26.08 runtime (glibc 2.44), and its tarballs need that runtime or a
+  host with that glibc or newer.
+
+### Fixed
+
+- **The Linux IDE:** Chinese, Japanese and Korean text was drawn as nothing on systems whose only CJK fonts are CFF (such as
+  Noto Sans CJK). Text from an input method (IBus, tested with Cangjie 5 and dead keys on Wayland) now shows in the editor
+  and in text fields.
+- **Packages:** after the Linux IDE's window closed, a helper process kept the Flatpak's instance running.
+
 ## [1.0.0-beta.1] - 2026-11-04
 
 The first public beta, and the first release with installable packages. Everything below is new to users, since there were

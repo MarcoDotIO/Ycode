@@ -95,7 +95,7 @@ extension DAPClient {
         var args: [String: JSON] = ["waitFor": .bool(waitFor)]
         if let pid { args["pid"] = .number(Double(pid)) }
         if let program { args["program"] = .string(program) }
-        if let threadFormat { args["threadFormat"] = .string(threadFormat) }
+        if let threadFormat { args["threadFormat"] = .string(threadFormat); args["customThreadFormat"] = .string(threadFormat) }
         try await request("attach", .object(args))
     }
 
@@ -108,7 +108,7 @@ extension DAPClient {
                              preRunCommands: [String] = []) async throws {
         var args: [String: JSON] = ["gdb-remote-port": .number(Double(port)), "gdb-remote-hostname": .string(hostname)]
         if let program { args["program"] = .string(program) }
-        if let threadFormat { args["threadFormat"] = .string(threadFormat) }
+        if let threadFormat { args["threadFormat"] = .string(threadFormat); args["customThreadFormat"] = .string(threadFormat) }
         if !preRunCommands.isEmpty { args["preRunCommands"] = .array(preRunCommands.map { .string($0) }) }
         try await request("attach", .object(args))
     }
@@ -117,7 +117,8 @@ extension DAPClient {
     public func launch(program: String, cwd: String?, threadFormat: String, arguments: [String] = [], environment: [String: String] = [:]) async throws {
         var args: [String: JSON] = ["program": .string(program), "args": .array(arguments.map { .string($0) }),
                                     "env": .array(environment.keys.sorted().map { .string("\($0)=\(environment[$0]!)") }),
-                                    "stopOnEntry": false, "threadFormat": .string(threadFormat)]
+                                    "stopOnEntry": false, "threadFormat": .string(threadFormat),
+                                    "customThreadFormat": .string(threadFormat)]
         if let cwd { args["cwd"] = .string(cwd) }
         try await request("launch", .object(args))
     }
@@ -125,7 +126,10 @@ extension DAPClient {
 
 extension DebugThread {
     /// The thread format Ycode asks lldb-dap for: `Thread <n>`, then the
-    /// name and the dispatch queue when known.
+    /// name and the dispatch queue when known. It is sent as both
+    /// `threadFormat` (older lldb-dap) and `customThreadFormat` (the name in
+    /// current LLVM's lldb-dap documentation; Swift 6.4's lldb-dap on Linux
+    /// reads only this one).
     public static let format = "Thread ${thread.index}{ name = ${thread.name}}{ queue = ${thread.queue}}"
 
     /// The queue name parsed from a thread name in `format`.

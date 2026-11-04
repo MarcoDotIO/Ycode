@@ -72,6 +72,13 @@ final class SourceEditorController {
     static let bottomInset: CGFloat = 8
 
     // Pointer.
+    /// The gutter's breakpoint gestures (set by the view; nil: the gutter
+    /// selects lines): a click on a line number, and a breakpoint dragged
+    /// to another line or out of the gutter (`to` nil). Lines are 1-based.
+    var onGutterClick: ((Int) -> Void)?
+    var onGutterDrag: ((_ from: Int, _ to: Int?) -> Void)?
+    var hasBreakpoint: (Int) -> Bool = { _ in false }
+    private var gutterPress: (line: Int, last: CGPoint)?
     private var lastClick: (time: TimeInterval, point: CGPoint, count: Int)?
     private var dragStart: (range: Range<Int>, lines: Bool)?
     private var isPressed = false
@@ -95,6 +102,11 @@ final class SourceEditorController {
     private var seenTextRevision = -1
     /// Escape outside the buffer's own use (closes the find bar).
     var onEscape: () -> Bool = { false }
+    /// The caret moved or the text changed (Quick Help follows; set by the view).
+    var onActivity: (() -> Void)?
+    /// A click in the gutter on a 1-based line; true when it was handled
+    /// (a test's diamond runs the test) instead of selecting the line.
+    var onGutterDiamondClick: (Int) -> Bool = { _ in false }
 
     init(document: EditorDocument) {
         self.document = document
@@ -277,6 +289,7 @@ final class SourceEditorController {
 
     /// Anything the user did: the caret shows, and shows up.
     func noteActivity(reveal: Bool = true) {
+        onActivity?()
         restartBlink()
         if reveal { revealCaret() }
         invalidate()
@@ -359,6 +372,10 @@ final class SourceEditorController {
     // MARK: Pointer
 
     func pointerChanged(start: CGPoint, location: CGPoint, time: TimeInterval, shift: Bool) {
+        if isPressed, gutterPress != nil {
+            gutterPress?.last = location
+            return
+        }
         if !isPressed {
             isPressed = true
             press(start, time: time, shift: shift)
@@ -371,6 +388,34 @@ final class SourceEditorController {
     func pointerEnded() {
         isPressed = false
         dragStart = nil
+        if let g = gutterPress {
+            gutterPress = nil
+            gutterReleased(line: g.line, at: g.last)
+        }
+    }
+
+    /// The 1-based line under a viewport point (nil below the last line).
+    func lineNumber(at p: CGPoint) -> Int? {
+        let y = p.y + top - Self.topInset
+        guard y >= 0 else { return nil }
+        let n = Int(y / lineHeight)
+        return n < buffer.lineCount ? n + 1 : nil
+    }
+
+    /// A press in the gutter ended at `p`: a click, or a breakpoint's drag
+    /// out of the gutter (deleted) or along it (moved).
+    private func gutterReleased(line: Int, at p: CGPoint) {
+        if hasBreakpoint(line) {
+            if p.x > gutterWidth + 24 || p.x < -8 {
+                onGutterDrag?(line, nil)
+                return
+            }
+            if let to = lineNumber(at: p), to != line {
+                onGutterDrag?(line, to)
+                return
+            }
+        }
+        onGutterClick?(line)
     }
 
     private func press(_ p: CGPoint, time: TimeInterval, shift: Bool) {
@@ -391,6 +436,17 @@ final class SourceEditorController {
         lastClick = (time, p, count)
         let o = offset(at: p)
         let b = buffer
+        if p.x < gutterWidth, !shift, count == 1, onGutterDiamondClick(b.document.line(containing: o) + 1) {
+            // A test diamond runs its test.
+            dragStart = nil
+            return
+        }
+        if p.x < gutterWidth, !shift, onGutterClick != nil {
+            // The gutter sets breakpoints (released in `pointerEnded`).
+            if let line = lineNumber(at: p) { gutterPress = (line, p) }
+            dragStart = nil
+            return
+        }
         if p.x < gutterWidth, !shift {
             // The gutter selects the line.
             b.selectLine(at: o)

@@ -50,6 +50,7 @@ extension WorkspaceShellModel {
 
     /// Shows `path`: its open document, else a new one from disk.
     func showFile(_ path: String) {
+        if showStructured(path) { return }
         if let d = openDocuments[path] {
             editor = d
             document = SourceDocument(path: path, language: d.buffer.language, lines: [])
@@ -73,10 +74,12 @@ extension WorkspaceShellModel {
         }
         findBar.documentChanged(to: editor)
         syncEditorIssues()
+        sourceControl.noteText(of: path)
     }
 
     func documentChanged(_ d: EditorDocument) {
         syncEdited(d)
+        if d === editor { sourceControl.noteText(of: d.path) }
         session.noteFileEdited(d.path)
         if d === editor { findBar.textChanged() }
         scheduleRecoveryCopy()
@@ -199,6 +202,7 @@ extension WorkspaceShellModel {
         case .saved:
             recovery.discard(path: d.path)
             recoveredPaths.remove(d.path)
+            sourceControl.refresh()
             session.language?.saved(URL(fileURLWithPath: d.path))
             return true
         case .conflict(let c):
@@ -258,8 +262,10 @@ extension WorkspaceShellModel {
         session.language?.close(URL(fileURLWithPath: path))
         editor = nil
         document = nil
+        structuredEditor = nil
         findBar.documentChanged(to: nil)
         syncEditorIssues()
+        sourceControl.noteText(of: nil)
     }
 
     // MARK: Files on disk

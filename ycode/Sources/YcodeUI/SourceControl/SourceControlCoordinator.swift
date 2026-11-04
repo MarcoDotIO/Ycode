@@ -254,7 +254,7 @@ public final class SourceControlCoordinator {
         v.translatesAutoresizingMaskIntoConstraints = false
         host.view.addSubview(v)
         NSLayoutConstraint.activate([
-            v.topAnchor.constraint(equalTo: host.view.topAnchor), v.bottomAnchor.constraint(equalTo: host.view.bottomAnchor),
+            v.topAnchor.constraint(equalTo: host.view.safeAreaLayoutGuide.topAnchor), v.bottomAnchor.constraint(equalTo: host.view.bottomAnchor),
             v.leadingAnchor.constraint(equalTo: host.view.leadingAnchor), v.trailingAnchor.constraint(equalTo: host.view.trailingAnchor),
         ])
     }

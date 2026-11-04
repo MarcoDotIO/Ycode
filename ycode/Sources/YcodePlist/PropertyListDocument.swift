@@ -52,7 +52,9 @@ public struct PropertyListEntry: Equatable, Sendable {
 }
 
 public struct PropertyListDocument: Equatable, Sendable {
-    public enum Format: Sendable { case xml, binary }
+    /// The file's encoding: XML, binary (`bplist00`) or OpenStep ASCII
+    /// (`specs/formats/openstep-plist.md`).
+    public enum Format: Sendable { case xml, binary, openStep }
     public var root: PropertyListItem
     public var format: Format
 
@@ -73,9 +75,37 @@ public struct PropertyListDocument: Equatable, Sendable {
             format = .binary
             return
         }
+        if Self.looksLikeOpenStep(data) {
+            do {
+                root = Self.item(fromOpenStep: try OpenStepParser.parse(bytes: Array(data)))
+            } catch {
+                throw ParseError(description: "\(error)")
+            }
+            format = .openStep
+            return
+        }
         let reader = XMLPlistReader()
         root = try reader.parse(data)
         format = .xml
+    }
+
+    /// An OpenStep list starts (after a byte-order mark, white space and
+    /// comments) with something other than `<?xml`, `<!DOCTYPE` or
+    /// `<plist`: a dictionary, array, string or data value.
+    static func looksLikeOpenStep(_ data: Data) -> Bool {
+        var bytes = Array(data.prefix(4096))
+        if bytes.starts(with: [0xEF, 0xBB, 0xBF]) { bytes.removeFirst(3) }
+        var i = 0
+        while i < bytes.count {
+            let b = bytes[i]
+            if b == 0x20 || b == 0x09 || b == 0x0A || b == 0x0D { i += 1; continue }
+            if b == UInt8(ascii: "/"), i + 1 < bytes.count, bytes[i + 1] == UInt8(ascii: "/") || bytes[i + 1] == UInt8(ascii: "*") { return true }
+            guard b == UInt8(ascii: "<") else { return true }
+            // "<" opens either XML or an OpenStep data value (hex digits).
+            let next = i + 1 < bytes.count ? bytes[i + 1] : 0
+            return next != UInt8(ascii: "?") && next != UInt8(ascii: "!") && next != UInt8(ascii: "p")
+        }
+        return false
     }
 
     // MARK: Writing
@@ -98,6 +128,31 @@ public struct PropertyListDocument: Equatable, Sendable {
         switch format {
         case .xml: return Data(xml().utf8)
         case .binary: return BinaryPropertyList.write(root)
+        case .openStep: return Data(OpenStepWriter.write(Self.openStep(root)).utf8)
+        }
+    }
+
+    // MARK: OpenStep
+
+    /// OpenStep has strings, arrays, dictionaries and data only.
+    static func item(fromOpenStep v: PlistValue) -> PropertyListItem {
+        switch v {
+        case .string(let s): .string(s)
+        case .data(let d): .data(Data(d))
+        case .array(let a): .array(a.map(item(fromOpenStep:)))
+        case .dictionary(let d): .dictionary(d.map { PropertyListEntry(key: $0.key, value: item(fromOpenStep: $0.value)) })
+        }
+    }
+
+    /// Numbers, Booleans and dates are written as their text (`YES`/`NO`
+    /// for Booleans), which is how OpenStep lists hold them.
+    static func openStep(_ v: PropertyListItem) -> PlistValue {
+        switch v {
+        case .string(let s): .string(s)
+        case .integer, .real, .bool, .date: .string(v.summary)
+        case .data(let d): .data(Array(d))
+        case .array(let a): .array(a.map(openStep))
+        case .dictionary(let d): .dictionary(PlistDictionary(d.map { ($0.key, openStep($0.value)) }))
         }
     }
 

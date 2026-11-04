@@ -3,32 +3,41 @@ import SwiftUI
 import YcodeIDECore
 import YcodeIDEShell
 
-/// The debug area (`metrics.md` §7): the console over a 28-point bottom bar.
-/// The variables view comes with L3 and has no column until then; the
-/// console shows the run's output (lldb-dap), and the build log until a run
-/// writes there.
+/// The debug area (`metrics.md` §7): the variables view and the console
+/// side by side (DebugViews.swift), each over a 28-point bottom bar. The
+/// console shows the run's output (lldb-dap) with the `(lldb)` prompt under
+/// it, and the build log until a run writes there.
 struct DebugArea: View {
     @Bindable var model: WorkspaceShellModel
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let c = ShellColors(scheme)
-        Group {
-            VStack(spacing: 0) {
-                LogView(lines: shownLines, colors: c)
-                bar(c) {
-                    Spacer(minLength: 0)
-                    Button { model.clearConsole() } label: {
-                        Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(c.secondaryLabel)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Clear Console")
-                    .accessibilityLabel("Clear Console")
-                    .shellTarget("clear console")
-                }
+        HStack(spacing: 0) {
+            if model.debug.showsVariables {
+                VariablesPane(model: model).frame(minWidth: 150, maxWidth: .infinity)
+                if model.debug.showsConsole { Hairline(color: c.separator, vertical: true) }
             }
-            .frame(minWidth: 150, maxWidth: .infinity)
-            .shellTarget("debug pane")
+            if model.debug.showsConsole {
+                VStack(spacing: 0) {
+                    LogView(lines: shownLines, colors: c)
+                    if model.debug.isDebugging { ConsolePrompt(model: model) }
+                    bar(c) {
+                        ConsoleFilterMenu(model: model)
+                        Spacer(minLength: 0)
+                        Button { model.clearConsole() } label: {
+                            Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(c.secondaryLabel)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Clear Console")
+                        .accessibilityLabel("Clear Console")
+                        .shellTarget("clear console")
+                        DebugHalvesToggles(model: model)
+                    }
+                }
+                .frame(minWidth: 150, maxWidth: .infinity)
+                .shellTarget("debug pane")
+            }
         }
         .background(c.content)
         .shellTarget("debug area")
@@ -36,7 +45,7 @@ struct DebugArea: View {
 
     /// The console's lines: the run's output; the build log before a run.
     var shownLines: [String] {
-        let console = model.console.replacingOccurrences(of: "\r", with: "")
+        let console = (model.debug.consoleFilter == .all ? model.console : model.debug.consoleText).replacingOccurrences(of: "\r", with: "")
         if model.debugPane == .console && !console.isEmpty || model.buildLog.isEmpty {
             return console.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         }

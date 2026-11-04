@@ -11,8 +11,9 @@ private func offset(_ text: String, line: Int, column: Int = 0) -> Int { LineInd
     // MARK: Minimap (E5)
 
     @Test @MainActor func minimapWidth() {
-        #expect(MinimapView.width(forEditorWidth: 962) == 128)
-        #expect(MinimapView.width(forEditorWidth: 480) == 64)
-        #expect(MinimapView.width(forEditorWidth: 300) == 60)
+        // min(128, 15 % of the editor) plus the 1-point separator (editor-area.md §C.5).
+        #expect(MinimapView.width(forEditorWidth: 962) == 129)
+        #expect(MinimapView.width(forEditorWidth: 480) == 73)
+        #expect(MinimapView.width(forEditorWidth: 300) == 46)
     }
 }

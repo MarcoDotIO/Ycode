@@ -347,8 +347,21 @@ public struct AssetCatalog {
         return dir
     }
 
-    /// Removes the set's folder from disk (not to the Trash).
-    public func remove(_ set: AssetSet) throws { try FileManager.default.removeItem(at: set.url) }
+    /// Removes a set (the catalog's "−" and Editor ▸ Delete Selected
+    /// Items): its folder moves to the trash, never deleted outright (the
+    /// Finder's Trash on macOS, the freedesktop.org trash on Linux), as
+    /// the IDE's other destructive actions do. Returns where it went, so an
+    /// undo can put it back (`TrashBin.restore`).
+    @discardableResult
+    public func remove(_ set: AssetSet, bin: TrashBin = .user) throws -> URL { try bin.moveToTrash(set.url) }
+
+    /// Removes a folder (a group) of the catalog the same way: to the trash.
+    @discardableResult
+    public func removeFolder(_ folder: URL, bin: TrashBin = .user) throws -> URL {
+        // Only something inside the catalog, never the catalog itself.
+        guard !relativePath(folder).isEmpty else { throw CocoaError(.fileWriteNoPermission) }
+        return try bin.moveToTrash(folder)
+    }
 }
 
 // MARK: Presentation model (specs/ide/reference-ui-3.md §3)

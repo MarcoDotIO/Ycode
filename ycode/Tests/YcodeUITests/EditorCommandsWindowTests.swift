@@ -264,7 +264,7 @@ private func git(_ dir: URL, _ args: String...) throws -> String {
         let e = wc.editor
         await e.sourceChangesIdle()   // the baselines are read in the background
         #expect(e.showsChangeColumn && e.sourceChanges.isEmpty)
-        #expect(e.gutter.ruleThickness == 48 + GutterView.changeColumnWidth)
+        #expect(e.gutter.ruleThickness == 51)   // the change column sits inside the gutter (editor-area.md §C.1)
 
         // Editing line 13 shows a bar on line 13 within one second.
         let r13 = try #require(e.textView.lineIndex.range(ofLine: 13))
@@ -314,7 +314,7 @@ private func git(_ dir: URL, _ args: String...) throws -> String {
         let wc2 = try window(plain)
         wc2.open(path: plain.appendingPathComponent("Sources/App/main.swift").path, line: nil)
         await wc2.editor.sourceChangesIdle()
-        #expect(!wc2.editor.showsChangeColumn && wc2.editor.gutter.ruleThickness == 48)
+        #expect(!wc2.editor.showsChangeColumn && wc2.editor.gutter.ruleThickness == 51)
     }
 
     /// Runs the main run loop (timers fire) until `done` or the timeout.
@@ -385,11 +385,14 @@ private func git(_ dir: URL, _ args: String...) throws -> String {
         wc.open(path: dir.appendingPathComponent(catalog).path, line: nil)
         #expect(wc.focusedEditorKind == .assetCatalog && titles().contains("Device Image Reps"))
         let ae = try #require(wc.assetEditor)
+        ae.trashBin = .folder(dir.appendingPathComponent("Trash"))
         #expect(enabled(wc, "deleteSelectedAssets:").0 == false)
         wc.addNewAsset(item(tag: AssetCatalogEditorController.creatable["Image Set"]!))
         #expect(ae.selected?.kind == .imageSet && enabled(wc, "deleteSelectedAssets:").0)
         wc.deleteSelectedAssets(nil)
         #expect(ae.catalog.sets().isEmpty)
+        // Moved to the trash, not deleted (#3).
+        #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("Trash").path))
 
         // Back to source: the source menu again.
         wc.open(path: dir.appendingPathComponent("Sources/App/main.swift").path, line: nil)

@@ -266,7 +266,7 @@ struct ProductEngine: BuildEngine {
         let retry = await session.runTestsRepeatedly(repetition: TestRepetition(.retryOnFailure, maximum: 3))
         #expect(retry.iterations == [[], [broken], [broken]] && retry.failedIterations == 3)
         let lines = try String(contentsOf: record, encoding: .utf8).split(separator: "\n")
-        #expect(lines.count == 3 + 1 + 3 && lines.last == "test --filter CalcTests.testBroken")
+        #expect(lines.count == 3 + 1 + 3 && lines.last == "test --filter CalcTests.testBroken\\b")
         #expect(session.console.contains("Ycode: Retry on Failure: 3 iterations, 3 with failures."))
         #expect(session.testResults[broken] == .failed && session.testResults[adds] == .passed)
         // Stop ends a series before its next iteration.

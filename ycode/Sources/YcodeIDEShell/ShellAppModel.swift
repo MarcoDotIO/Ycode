@@ -25,6 +25,9 @@ public final class ShellAppModel {
     public var clone: CloneShellModel?
     /// The About sheet is up.
     public var isAboutShown = false
+    /// The simulator runtime wizard, while it is up (Window ▸ Downloads, first launch).
+    public var runtimeSetup: RuntimeSetupSession?
+    @ObservationIgnored public var runtimeDefaults: UserDefaults = .standard
     /// An alert to show.
     public var notice: ShellNotice?
     /// Hands a URL to the desktop (the views install the toolkit's opener).
@@ -89,6 +92,7 @@ public final class ShellAppModel {
         }
         do {
             workspace = try WorkspaceShellModel(url: url, engine: makeEngine())
+            workspace?.debug.restoreBreakpoints()
             if startsLanguageService { workspace?.startLanguageService() }
             openError = nil
             isOpenSheetShown = false
@@ -160,7 +164,7 @@ public final class ShellAppModel {
 
     public func isEnabled(_ c: ShellCommand) -> Bool {
         switch c {
-        case .open, .welcome, .newProject, .about, .help, .releaseNotes, .reportBug, .swiftBook, .clone: true
+        case .open, .welcome, .newProject, .about, .help, .releaseNotes, .reportBug, .swiftBook, .clone, .downloads: true
         case .closeWorkspace: workspace != nil
         default: workspace?.isEnabled(c) ?? false
         }
@@ -178,6 +182,7 @@ public final class ShellAppModel {
         case .reportBug: openLink(ProductIdentity.bugReportURL())
         case .swiftBook: if let u = URL(string: "https://docs.swift.org/swift-book/") { openLink(u) }
         case .clone: showClone()
+        case .downloads: showRuntimeSetup()
         default: workspace?.perform(c)
         }
     }

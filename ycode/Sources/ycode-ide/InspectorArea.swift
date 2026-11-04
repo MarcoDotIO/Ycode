@@ -10,18 +10,34 @@ import YcodeIDEShell
 /// values 8 after it, 11-point text.
 struct InspectorColumn: View {
     var model: WorkspaceShellModel
-    @State private var tab = 0
+    /// The asset catalog editor's Attributes tab is chosen.
+    @State private var assetTab = false
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let c = ShellColors(scheme)
         VStack(spacing: 0) {
             InspectorToolbar(model: model)
-            InspectorTabs(selected: tab) { tab = $0 }
+            // File, History and Quick Help follow the model (Quick Help can be
+            // asked for from the editor); the asset catalog editor adds its
+            // Attributes tab on top.
+            let tab = assetTab && assetModel != nil ? AssetInspectorTab.index : model.languageFeatures.inspectorTab.rawValue
+            InspectorTabs(selected: tab, extra: assetModel != nil ? AssetInspectorTab.symbol : nil) { i in
+                assetTab = i == AssetInspectorTab.index
+                if !assetTab { model.showInspector(ShellLanguageFeatures.InspectorTab(rawValue: i) ?? .file) }
+            }
                 .padding(.horizontal, CGFloat(WorkspaceChrome.selectorInset))
             Group {
-                if tab != 0 {
-                    centered(tab == 1 ? "No History" : "No Quick Help", c)
+                if tab == AssetInspectorTab.index, let a = assetModel {
+                    AssetAttributesInspector(model: a)
+                } else if tab == 2 {
+                    QuickHelpInspector(model: model)
+                } else if tab == 1 {
+                    FileHistoryInspector(model: model)
+                } else if tab == 0, model.sourceControl.pane != nil {
+                    SourceControlInspector(scm: model.sourceControl)
+                } else if tab != 0 {
+                    centered("No Quick Help", c)
                 } else if model.document == nil {
                     centered("Not Applicable", c)
                 } else {
@@ -42,6 +58,14 @@ struct InspectorColumn: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .shellTarget("inspector")
+        // The asset catalog editor adds its Attributes tab and shows it.
+        .onChange(of: assetModel != nil) { _, on in assetTab = on }
+        .onAppear { if assetModel != nil { assetTab = true } }
+    }
+
+    var assetModel: AssetCatalogEditorModel? {
+        if case .assetCatalog(let m)? = model.structuredEditor { return m }
+        return nil
     }
 
     /// An empty inspector's message, centered on the whole column (as the
@@ -123,6 +147,8 @@ struct InspectorColumn: View {
 /// tab in a 78 × 24 pill.
 struct InspectorTabs: View {
     var selected: Int
+    /// A fourth tab's symbol (the asset catalog's Attributes inspector).
+    var extra: String? = nil
     var select: (Int) -> Void
     @Environment(\.colorScheme) private var scheme
 
@@ -130,11 +156,11 @@ struct InspectorTabs: View {
         let c = ShellColors(scheme)
         let pill = WorkspaceChrome.inspectorTabPillSize
         HStack(spacing: 0) {
-            ForEach(Array(WorkspaceChrome.inspectorSymbols.enumerated()), id: \.offset) { pair in
+            ForEach(Array((WorkspaceChrome.inspectorSymbols + (extra.map { [$0] } ?? [])).enumerated()), id: \.offset) { pair in
                 let on = pair.offset == selected
                 Button { select(pair.offset) } label: {
                     ZStack {
-                        if on { Capsule(style: .continuous).fill(c.selectorPill).frame(width: CGFloat(pill.width), height: CGFloat(pill.height)) }
+                        if on { Capsule(style: .continuous).fill(c.selectorPill).frame(width: extra == nil ? CGFloat(pill.width) : 58, height: CGFloat(pill.height)) }
                         Image(systemName: pair.element).font(.system(size: 13)).foregroundStyle(on ? c.accent : c.toolbarIcon)
                     }
                     .frame(maxWidth: .infinity)
@@ -142,7 +168,7 @@ struct InspectorTabs: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(["Show the File inspector", "Show the History inspector", "Show the Quick Help inspector"][pair.offset])
+                .help(["Show the File inspector", "Show the History inspector", "Show the Quick Help inspector", "Show the Attributes inspector"][pair.offset])
                 .shellTarget("inspector tab \(pair.offset)")
             }
         }

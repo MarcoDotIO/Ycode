@@ -114,9 +114,20 @@ public enum NavigatorTree {
                 }
             }
             for n in regions.values { n.children.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending } }
-            return out.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+            return foldersFirst(out)
         }
         return rows(folder.entries)
+    }
+
+    /// A synchronized folder's order (`navigators.md` "Council round 1"
+    /// item 1): sub-folders first, then files, each in Finder-style name
+    /// order.
+    public static func foldersFirst(_ rows: [NavigatorNode]) -> [NavigatorNode] {
+        rows.sorted { a, b in
+            let fa = a.kind == .folder, fb = b.kind == .folder
+            if fa != fb { return fa }
+            return a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
     }
 
     /// A directory's contents in Finder-style name order, folders and files

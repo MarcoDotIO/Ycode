@@ -94,10 +94,18 @@ public final class ProcessTransport: DAPTransport, @unchecked Sendable {
     }
 }
 
-/// Finds the LLDB debug adapter: `xcrun -f lldb-dap` on macOS, else PATH.
+/// Finds the LLDB debug adapter: `YCODE_LLDB_DAP`; in the Flatpak the
+/// host-tool wrapper; `xcrun -f lldb-dap` on macOS; else PATH, then
+/// swiftly's folders.
 public enum LLDBDAP {
-    public static func locate(environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
+    public static func locate(environment: [String: String] = ProcessInfo.processInfo.environment,
+                              toolDirectory: @autoclosure () -> String? = HostTool.packagedToolDirectory()) -> String? {
         if let explicit = environment["YCODE_LLDB_DAP"] { return explicit }
+        // In the Flatpak the toolchain is the host's: the package's
+        // host-tool wrapper runs lldb-dap there (packaging/flatpak/host-tool.sh).
+        if HostTool.isInFlatpak(environment: environment), let dir = toolDirectory() {
+            return "\(dir)/lldb-dap"
+        }
         #if os(macOS)
         MainThreadGuard.blockingCall("xcrun --find lldb-dap")
         let p = Process()
@@ -113,9 +121,13 @@ public enum LLDBDAP {
             if p.terminationStatus == 0, !path.isEmpty { return path }
         }
         #endif
-        // Older LLVM releases named the tool lldb-vscode.
+        // Older LLVM releases named the tool lldb-vscode. swiftly's folders
+        // come last: a desktop session's PATH may not have them.
+        let home = environment["HOME"] ?? NSHomeDirectory()
+        let dirs = (environment["PATH"] ?? "/usr/bin").split(separator: ":").map(String.init)
+            + ["\(home)/.local/share/swiftly/bin", "\(home)/.swiftly/bin"]
         for name in ["lldb-dap", "lldb-vscode"] {
-            for dir in (environment["PATH"] ?? "/usr/bin").split(separator: ":") {
+            for dir in dirs {
                 let candidate = "\(dir)/\(name)"
                 if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
             }

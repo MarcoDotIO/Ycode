@@ -33,6 +33,8 @@ public final class EditorAreaController: NSViewController {
 
     private let tabBar = NSStackView()
     private var tabBarHeight: NSLayoutConstraint!
+    private var contentUnderToolbar: NSLayoutConstraint!
+    private var contentBelowTabs: NSLayoutConstraint!
     private let content = NSView()
 
     public init(first: SourceEditorController) {
@@ -75,11 +77,17 @@ public final class EditorAreaController: NSViewController {
         }
         tabBarHeight = tabBar.heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
-            tabBar.topAnchor.constraint(equalTo: root.topAnchor), tabBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            tabBar.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor), tabBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: root.trailingAnchor), tabBarHeight,
-            content.topAnchor.constraint(equalTo: tabBar.bottomAnchor), content.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            content.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             content.leadingAnchor.constraint(equalTo: root.leadingAnchor), content.trailingAnchor.constraint(equalTo: root.trailingAnchor),
         ])
+        // Without a tab bar the editors run up under the toolbar (their
+        // text scrolls beneath it, liquid-glass.md §7.3); with one, they
+        // start below it.
+        contentUnderToolbar = content.topAnchor.constraint(equalTo: root.topAnchor)
+        contentBelowTabs = content.topAnchor.constraint(equalTo: tabBar.bottomAnchor)
+        contentUnderToolbar.isActive = true
         view = root
         for e in tabs[0].editors { prepare(e, in: tabs[0]) }
         showSelected()
@@ -181,6 +189,8 @@ public final class EditorAreaController: NSViewController {
         guard isViewLoaded else { return }
         tabBar.arrangedSubviews.forEach { $0.removeFromSuperview() }
         tabBarHeight.constant = isTabBarVisible ? 26 : 0
+        contentUnderToolbar.isActive = !isTabBarVisible
+        contentBelowTabs.isActive = isTabBarVisible
         guard isTabBarVisible else { return }
         for (i, title) in tabTitles.enumerated() {
             let b = NSButton(title: title, target: self, action: #selector(tabClicked(_:)))

@@ -87,6 +87,11 @@ extension WorkspaceWindowController {
         }
         menu.addItem(NSMenuItem(title: DestinationMenuModel.manageDevicesTitle, action: #selector(manageDevicesChosen(_:)), keyEquivalent: ""))
         menu.items.last?.target = self
+        // In place of the reference's Get (runtime-onboarding.md §5.1, §11.4).
+        if filter.isEmpty {
+            menu.addItem(NSMenuItem(title: Self.getRuntimeTitle, action: #selector(getRuntimeChosen(_:)), keyEquivalent: ""))
+            menu.items.last?.target = self
+        }
         // Say where simulators come from when none is set up.
         if !model.sections.contains(where: { $0.destinations.contains(where: \.isYcodeRemoteSimulator) }) && filter.isEmpty {
             let setUp = NSMenuItem(title: Self.setUpSimulatorTitle, action: #selector(setUpSimulatorChosen(_:)), keyEquivalent: "")
@@ -202,6 +207,8 @@ extension WorkspaceWindowController {
     @objc func destinationFilterChanged(_ f: NSSearchField) { rebuildDestinationMenu(filter: f.stringValue) }
     @objc func manageDevicesChosen(_ sender: Any?) { _ = showDevices(sender) }
     static let setUpSimulatorTitle = "Set Up Ycode Simulator…"
+    static let getRuntimeTitle = "Get a Simulator Runtime…"
+    @objc func getRuntimeChosen(_ sender: Any?) { RuntimeSetupWindowController.show() }
     @objc func setUpSimulatorChosen(_ sender: Any?) { SettingsWindowController.shared.show(pane: "Simulators") }
 
     // MARK: Ycode's remote simulator row (reference-ui-5.md §11.5)
@@ -281,6 +288,7 @@ final class DestinationPopUpButton: NSPopUpButton, NSMenuDelegate {
         probe.isBordered = isBordered
         probe.controlSize = controlSize
         probe.font = font
+        if let arrow = (cell as? NSPopUpButtonCell)?.arrowPosition { (probe.cell as? NSPopUpButtonCell)?.arrowPosition = arrow }
         let item = NSMenuItem(title: selectedItem?.title ?? "", action: nil, keyEquivalent: "")
         item.image = selectedItem?.image
         probe.menu?.addItem(item)

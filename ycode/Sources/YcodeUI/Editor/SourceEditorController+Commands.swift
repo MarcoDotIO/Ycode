@@ -332,14 +332,4 @@ extension SourceEditorController {
         return apply(TextChange(range: NSRange(location: at, length: 0), replacement: copy, selection: NSRange(location: newLineStart + column, length: 0)),
                      actionName: "Duplicate")
     }
-
-    // MARK: Minimap landmarks (§6.5)
-
-    func minimapLandmarks() -> [(line: Int, name: String)] {
-        guard fileURL != nil, language.isCode else { return [] }
-        func flat(_ s: [SymbolScanner.Symbol]) -> [(line: Int, name: String)] {
-            s.flatMap { [($0.line, $0.name)] + flat($0.children.filter { $0.kind != .property && $0.kind != .enumCase }) }
-        }
-        return flat(documentSymbols)
-    }
 }

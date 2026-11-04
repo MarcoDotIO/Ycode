@@ -35,3 +35,8 @@ ycode/Tests/YcodeUITests/LaunchWelcomeR31Tests.swift ^/Volumes/(Data|External)/$
 
 # A test whose expected DerivedData hash was observed for this exact path.
 ycode/Tests/YcodeXcodebuildTests/ArgumentTests.swift ^/Volumes/[^/]+/$
+
+# simctl output fixtures (a mounted runtime disk image) and a made-up host in
+# the runtime wizard's tests.
+ycode/Tests/YcodeIDECoreTests/RuntimeSetupTests.swift iOS_24A434/
+ycode/Tests/YcodeIDECoreTests/RuntimeSetupTests.swift tester@sim-host

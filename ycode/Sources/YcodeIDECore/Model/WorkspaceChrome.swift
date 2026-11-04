@@ -52,8 +52,8 @@ public enum WorkspaceChrome {
     // MARK: Editor area (`metrics.md` §4)
 
     /// The jump bar's band, then a 1-point separator.
-    public static let jumpBarBandHeight: Double = 31
-    public static var jumpBarHeight: Double { jumpBarBandHeight + 1 }
+    public static let jumpBarBandHeight: Double = EditorMetrics.jumpBarBand
+    public static var jumpBarHeight: Double { jumpBarBandHeight + EditorMetrics.jumpBarSeparator }
     /// The gutter: line numbers right-aligned in the 36 points left of a
     /// 12-point folding-ribbon column.
     public static let gutterWidth: Double = 48
@@ -132,7 +132,28 @@ public enum WorkspaceChrome {
         case "storyboard", "xib": "rectangle.on.rectangle"
         case "xcconfig": "gearshape"
         case "app", "framework", "xctest", "a", "dylib": "shippingbox"
+        case "png", "jpg", "jpeg", "gif", "tif", "tiff", "heic", "bmp", "webp": "photo"
         default: "doc.text"
+        }
+    }
+
+    /// The colour family of a project navigator row's icon (`navigators.md`
+    /// "Council round 1" item 4; Ycode's own glyphs, only the family
+    /// follows the reference): Swift sources orange, folders and groups
+    /// light blue, the project and images blue; other files keep the
+    /// accent colour.
+    public enum IconTint: Equatable, Sendable { case orange, lightBlue, blue, accent }
+
+    public static func iconTint(kind: NavigatorNode.Kind, name: String) -> IconTint {
+        switch kind {
+        case .container: return .blue
+        case .group, .folder: return .lightBlue
+        case .file:
+            switch URL(fileURLWithPath: name).pathExtension {
+            case "swift": return .orange
+            case "png", "jpg", "jpeg", "gif", "tif", "tiff", "heic", "bmp", "webp", "xcassets": return .blue
+            default: return .accent
+            }
         }
     }
 
@@ -174,6 +195,11 @@ public enum WorkspaceChrome {
         case "c": "C Source"
         case "plist": "Property List"
         case "xcconfig": "Configuration Settings File"
+        case "png": "PNG Image"   // editor-area.md §C.6
+        case "jpg", "jpeg": "JPEG Image"
+        case "gif": "GIF Image"
+        case "tif", "tiff": "TIFF Image"
+        case "heic": "HEIC Image"
         default: "Default"
         }
     }

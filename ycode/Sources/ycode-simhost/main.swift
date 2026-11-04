@@ -1,6 +1,7 @@
 // ycode-simhost: the simulator host's own service (specs/simulator/sim-link.md).
 //
 //   ycode-simhost serve [--config FILE]     run the service (TCP control 47800, UDP media 47801 by default)
+//   ycode-simhost check [--config FILE]     check the configuration and the ports as serve would; boots nothing
 //   ycode-simhost pair [--config FILE]      open a 5-minute pairing window and print its one-time code
 //   ycode-simhost identity [--name N] [--address HOST:PORT]   print this host's pairing file (JSON)
 //   ycode-simhost trust <file.json>         trust a client from its pairing file (`ycode sim remote identity`)
@@ -24,7 +25,7 @@ func fail(_ s: String, _ code: Int32 = 2) -> Never {
 
 YcodeRelease.handleVersionFlag(tool: "ycode-simhost")
 var args = Array(CommandLine.arguments.dropFirst())
-guard let command = args.first else { fail("usage: ycode-simhost serve|pair|identity|trust|peers|untrust (see the source header)", 64) }
+guard let command = args.first else { fail("usage: ycode-simhost serve|check|pair|identity|trust|peers|untrust (see the source header)", 64) }
 args.removeFirst()
 @MainActor func option(_ name: String) -> String? {
     guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
@@ -63,6 +64,18 @@ case "serve":
     }
     // The sources must live as long as the service (Swift may release a local after its last use).
     withExtendedLifetime(sources) { while true { sleep(3600) } }
+case "check":
+    // The configuration as serve reads it, its files, and whether the ports are free.
+    let text: String
+    do { text = try String(contentsOfFile: configPath, encoding: .utf8) } catch { fail("\(configPath): cannot be read") }
+    let config: SimHostConfig
+    do { config = try SimHostConfig.load(text: text, environment: ProcessInfo.processInfo.environment) } catch { fail("\(configPath): \(error)") }
+    var problems = config.problems()
+    for (port, udp) in [(config.controlPort, false), (config.mediaPort, true)] {
+        if let e = PortProbe.bindError(host: config.listenHost, port: port, udp: udp) { problems.append("\(port)/\(udp ? "udp" : "tcp"): \(e)") }
+    }
+    guard problems.isEmpty else { fail(problems.joined(separator: "\n"), 1) }
+    print("ok: \(configPath) — home \(config.home), tree \(config.tree), \(config.runtimes.count) runtime(s), ports \(config.controlPort)/tcp \(config.mediaPort)/udp")
 case "pair":
     let code = Pairing.newCode()
     do { try Pairing.open(code: code, store: store) } catch { fail("\(error)") }
@@ -93,4 +106,24 @@ case "untrust":
     print((try? store.removePeer(named: name)) == true ? "removed \(name)" : "no client \(name)")
 default:
     fail("unknown command \(command)", 64)
+}
+
+/// Whether `serve` could bind a port (bound and closed again at once).
+enum PortProbe {
+    static func bindError(host: String, port: Int, udp: Bool) -> String? {
+        #if os(Linux)
+        let type = udp ? Int32(SOCK_DGRAM.rawValue) : Int32(SOCK_STREAM.rawValue)
+        #else
+        let type = udp ? SOCK_DGRAM : SOCK_STREAM
+        #endif
+        let fd = socket(AF_INET, type, 0)
+        guard fd >= 0 else { return "socket: \(String(cString: strerror(errno)))" }
+        defer { close(fd) }
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(UInt16(port).bigEndian)
+        addr.sin_addr.s_addr = inet_addr(host.isEmpty || host == "0.0.0.0" ? "0.0.0.0" : host)
+        let r = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
+        return r == 0 ? nil : (errno == EADDRINUSE ? "in use by another program" : String(cString: strerror(errno)))
+    }
 }

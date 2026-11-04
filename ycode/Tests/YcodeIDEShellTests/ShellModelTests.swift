@@ -254,8 +254,10 @@ struct ScriptedEngine: BuildEngine {
     }
 
     @Test func navigatorsKeepTheirPlaceInTheFullSelectorBar() {
-        #expect(ShellNavigator.allCases.map(\.title) == ["Project", "Find", "Issues"])
-        #expect(ShellNavigator.allCases.map { $0.command.shortcut?.text } == ["⌘1", "⌘4", "⌘5"])
+        #expect(ShellNavigator.allCases.map(\.title) == ["Project", "Source Control", "Symbols", "Find", "Issues", "Tests", "Debug", "Breakpoints", "Reports"])
+        #expect(ShellNavigator.allCases.map { $0.command.shortcut?.text } == ["⌘1", "⌘2", "⌘3", "⌘4", "⌘5", "⌘6", "⌘7", "⌘8", "⌘9"])
+        #expect(ShellCommand.scmCommit.shortcut?.text == "⌥⌘C")
+        #expect(ShellCommand.scmCommit.menu == "Integrate")
     }
 }
 

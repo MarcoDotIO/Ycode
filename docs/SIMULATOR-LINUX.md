@@ -142,6 +142,41 @@ lists the device types, the feature flags (`--ui`, `--accessibility`,
 `--location`, `--audio`, `--overrides`, `--camera`) and the app options
 (`--install-app`, `--launch`).
 
+### 5.1 Getting a runtime and preparing a host
+
+The IDE's runtime wizard (macOS: Settings ▸ Components ▸ Simulator
+Runtimes…, the destination menu's Get a Simulator Runtime…, and the first
+launch; Linux: Window ▸ Downloads and the first launch) lists the runtimes
+you have, copies a RuntimeRoot into Ycode's folder or to a simulator host
+(`<data>/runtimes/<token>-<version>-<build>`, resumable), and removes only
+the runtimes Ycode copied. It never downloads a runtime; on a Mac it adds a
+runtime image you picked with `xcrun simctl runtime add` only after you
+confirm the command. `ycode sim runtimes check` prints the same checklist.
+
+For a host, the wizard sends `ycode-host-setup` over ssh
+(`ycode sim runtimes script` prints it): `--report` (the default) changes
+nothing; `--apply` runs the steps that need no root as you; `--root`, run
+in your own terminal with `sudo`, runs the rest (packages, the `kvm` group,
+firewall ports). A second run only reports. Its kernel check runs a short
+probe for the KVM SVE bug of [postmortem-kvm-sve.md](postmortem-kvm-sve.md)
+on arm64 hosts with SVE (not applicable elsewhere); it never builds or
+installs a kernel.
+
+On an aarch64 host without a built tree, Apply installs the simulator service
+from Ycode's own release: `Ycode-<version>-aarch64.tar.xz`, checked against the
+release's `SHA256SUMS.txt`, unpacked in `<data>/ycode`, with `ycode-simhost`
+and `ycode` linked into `<data>/bin` and `YCODE_SIM_TREE` set to its
+`lib/ycode-sim`. The tarball's tools are built for the Flatpak runtime
+(freedesktop, glibc 2.44 and its OpenSSL). On a plain distribution only
+`ycode-simhost` and the simulator tree are used, and they run (checked on
+Ubuntu 24.04). The tarball's `ycode` command line may not start there: its
+bundled libcurl needs OpenSSL 3.2, and Ubuntu 24.04 has 3.0. So the setup
+script and the wizard read the installed version from the release's folder
+(`manifest.json`, else `Ycode-<version>-<arch>`) and never run that `ycode`.
+A `ycode-simhost` from 1.0.0-beta.1 has no `check` command; the self-test then
+checks the configuration's files itself and reports itself as unknown, not
+failed.
+
 ## 6. Clean-room status
 
 The design uses only:

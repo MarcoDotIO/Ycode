@@ -41,3 +41,8 @@ ci-logs/
 .build-ci-logs/
 # A marker the working drive keeps next to a checkout
 .drive-origin
+# Capture tools build in place; captures stay in research/dirty/ (above)
+tools/capture/wincap/.build/
+research/tools/capture/axdrive/.build/
+tools/capture/__pycache__/
+research/tools/capture/__pycache__/

@@ -216,6 +216,10 @@ struct CommandsTests {
         #expect(KeyboardShortcut(.return, modifiers: []).displayText == "Enter")
         #expect(KeyboardShortcut("s", modifiers: [.command, .option]).displayText == "Ctrl+Alt+S")
         #expect(KeyboardShortcut(.leftArrow, modifiers: .control).displayText == "Ctrl+Left")
+        // Function keys as AppKit's characters (F6 is U+F709).
+        #expect(KeyboardShortcut(KeyEquivalent("\u{F709}"), modifiers: []).displayText == "F6")
+        #expect(KeyboardShortcut(KeyEquivalent("\u{F70A}"), modifiers: .control).displayText == "Ctrl+F7")
+        #expect(KeyEquivalent(platformKey: .function(8)) == KeyEquivalent("\u{F70B}"))
     }
 
     @Test func headlessHostWithoutAMenuBarStillHasCommandShortcuts() {

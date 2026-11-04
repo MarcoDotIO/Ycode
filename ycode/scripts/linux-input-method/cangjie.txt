@@ -1,0 +1,29 @@
+# Cangjie 5 (ibus-table): H Q I composes 我, in the source editor and then in
+# the Find navigator's field. Sources: "[('ibus', 'table:cangjie5')]".
+# The headless shell gives the window keyboard focus at the first key from
+# the remote-desktop keyboard, which the input method then drops: Escape
+# comes first. (Shift would switch Cangjie to direct input.)
+until ime:.ready LOG
+wait 0.5
+key ff1b
+wait 0.5
+key ff0d
+wait 0.5
+key 68
+key 71
+key 69
+wait 0.4
+shot SHOTS/cangjie-1-editor-composing.png
+key 20
+wait 0.4
+shot SHOTS/cangjie-2-editor-committed.png
+key ffe3+ffe1+66
+wait 0.8
+key 68
+key 71
+key 69
+wait 0.4
+shot SHOTS/cangjie-3-field-composing.png
+key 20
+wait 0.4
+shot SHOTS/cangjie-4-field-committed.png

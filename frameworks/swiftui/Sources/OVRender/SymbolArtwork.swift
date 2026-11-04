@@ -493,10 +493,48 @@ extension SymbolArtwork {
             make("checklist", [s(S.join([S.poly([(3, 6.5), (5, 8.5), (8.5, 4.5)]), S.poly([(3, 15.5), (5, 17.5), (8.5, 13.5)]),
                                          S.poly([(11.5, 7), (21, 7)]), S.poly([(11.5, 16), (21, 16)])]), 1.75)]),
             make("hammer.circle", [s(c, 1.75), f(S.hammer().applying(RenderTransform(a: 0.55, b: 0, c: 0, d: 0.55, tx: 5.4, ty: 5.4)))]),
-        ] + projectTemplateSymbols
+            // Ycode's editors (asset and String Catalogs, the Attributes
+            // inspector): a picture (frame, hill, sun), a picture on a
+            // second frame, a closed book with a character (the sliders are
+            // the debugger's set below).
+            make("photo", [s(S.roundedRect(3, 5, 18, 14, 2.5), 1.75), s(S.poly([(4, 17.5), (9.5, 11.5), (13, 15), (15.5, 12.5), (20, 17)]), 1.5),
+                           f(S.circle(15.5, 9, 1.6))]),
+            make("photo.on.rectangle", [s(S.poly([(6, 3.5), (19, 3.5), (21, 3.5), (21, 15)]), 1.5), s(S.roundedRect(3, 7, 15, 13, 2.5), 1.75),
+                                        s(S.poly([(4, 18.5), (8.5, 13.5), (11.5, 16.5), (13.5, 14.5), (17, 18)]), 1.5), f(S.circle(13.5, 10.5, 1.4))]),
+            make("character.book.closed", [s(S.roundedRect(5, 3, 14, 18, 2), 1.75), s(S.poly([(8, 3), (8, 21)]), 1.5),
+                                           s(S.join([S.poly([(10.5, 15), (13, 8), (15.5, 15)]), S.poly([(11.4, 12.5), (14.6, 12.5)])]), 1.5)]),
+        ] + projectTemplateSymbols + debuggerSymbols + sourceControlSymbols
         var d: [String: SymbolArtwork] = [:]
         for a in list { d[a.name] = a }
         return d
+    }()
+
+    /// The IDE's debug bar and debug area (B2-DEBUG): Step Over, Step Into,
+    /// Step Out, and the variables-view half of the debug area. Plain
+    /// outlines on the same grid.
+    private static let debuggerSymbols: [SymbolArtwork] = {
+        typealias S = Shapes
+        let w = 1.75
+        func lines(_ l: [[(Double, Double)]]) -> RenderPath { S.join(l.map { S.poly($0) }) }
+        // An arc over a point, landing to its right.
+        var over = RenderPath()
+        over.move(to: CGPoint(x: 4, y: 15))
+        over.cubic(to: CGPoint(x: 17, y: 12), control1: CGPoint(x: 4, y: 5), control2: CGPoint(x: 17, y: 4))
+        return [
+            make("arrow.turn.down.right", [s(over, w), s(lines([[(13.5, 9), (17, 12.5), (20.5, 9)]]), w), f(S.circle(4, 19.5, 1.6))]),
+            make("arrow.down.to.line", [s(lines([[(12, 3), (12, 15)], [(7.5, 10.5), (12, 15), (16.5, 10.5)], [(5, 20), (19, 20)]]), w)]),
+            make("arrow.up.to.line", [s(lines([[(12, 21), (12, 9)], [(7.5, 13.5), (12, 9), (16.5, 13.5)], [(5, 4), (19, 4)]]), w)]),
+            // A window with its left half filled (the variables view).
+            make("rectangle.lefthalf.inset.filled", 70 * third, 56 * third,
+                 [s(S.roundedRect(2.5, 4.5, 19, 15, 2.5), w), f(S.roundedRect(5, 7, 6.5, 10, 1))]),
+            // The Debug and Breakpoint navigators' bottom-bar toggles.
+            make("arrow.down.right.and.arrow.up.left", [s(lines([[(4, 4), (10, 10)], [(5.5, 10), (10, 10), (10, 5.5)],
+                                                                [(20, 20), (14, 14)], [(18.5, 14), (14, 14), (14, 18.5)]]), w)]),
+            make("star.circle", [s(S.circle(12, 12, 9), w), s(S.star().applying(RenderTransform(a: 0.5, b: 0, c: 0, d: 0.5, tx: 6, ty: 5.7)), 1.5)]),
+            make("play.circle", [s(S.circle(12, 12, 9), w), s(S.poly([(10, 8), (16, 12), (10, 16)], closed: true), 1.5)]),
+            make("slider.horizontal.3", [s(lines([[(3, 6), (21, 6)], [(3, 12), (21, 12)], [(3, 18), (21, 18)]]), w),
+                                         f(S.circle(8, 6, 2.2)), f(S.circle(15, 12, 2.2)), f(S.circle(10, 18, 2.2))]),
+        ]
     }()
 
     /// What the IDE's New Project templates show (BETA-POLISH): plain

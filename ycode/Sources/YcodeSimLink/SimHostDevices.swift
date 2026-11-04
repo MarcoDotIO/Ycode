@@ -69,6 +69,27 @@ public struct SimHostConfig: Sendable, Equatable {
     }
 
     public func runtime(for type: String) -> String { runtimes[type] ?? runtimes[""]! }
+
+    /// What would stop `serve` from running a device (`ycode-simhost check`,
+    /// the host setup's self-test; it boots nothing): the home is a writable
+    /// folder, the tree has ycode-simd and the EL1 shim, the launcher is
+    /// executable, each runtime root has launchd_sim. Empty: ready.
+    public func problems(fileManager fm: FileManager = .default) -> [String] {
+        var out: [String] = []
+        var dir: ObjCBool = false
+        if !fm.fileExists(atPath: home, isDirectory: &dir) || !dir.boolValue {
+            out.append("YCODE_SIM_HOME \(home) is not a folder")
+        } else if !fm.isWritableFile(atPath: home) {
+            out.append("YCODE_SIM_HOME \(home) is not writable")
+        }
+        if !fm.isExecutableFile(atPath: simd) { out.append("YCODE_SIM_TREE \(tree) has no .build/release/ycode-simd") }
+        if !fm.fileExists(atPath: tree + "/SimShim/out/shim.bin") { out.append("YCODE_SIM_TREE \(tree) has no SimShim/out/shim.bin") }
+        if !fm.isExecutableFile(atPath: launcher) { out.append("the launcher \(launcher) is missing or not executable (YCODE_SIM_LAUNCHER)") }
+        for (type, root) in runtimes.sorted(by: { $0.key < $1.key }) where !fm.fileExists(atPath: root + "/sbin/launchd_sim") {
+            out.append("the runtime \(type.isEmpty ? "YCODE_SIM_RUNTIME" : type) \(root) has no sbin/launchd_sim (not a RuntimeRoot)")
+        }
+        return out
+    }
     public var devicesDirectory: String { home + "/devices" }
     public var runDirectory: String { home + "/run" }
     public var appsDirectory: String { home + "/apps" }

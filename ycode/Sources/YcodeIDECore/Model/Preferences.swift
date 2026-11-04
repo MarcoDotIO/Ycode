@@ -382,7 +382,7 @@ public struct EditorTheme: Codable, Equatable, Sendable {
     /// other product). "Ycode Default" uses system colors (follows light
     /// and dark appearance).
     public static let builtIns: [EditorTheme] = [
-        EditorTheme(name: "Ycode Default", fontName: "", fontSize: 12, background: nil, foreground: nil, selection: nil, currentLine: nil,
+        EditorTheme(name: "Ycode Default", fontName: "", fontSize: 13, background: nil, foreground: nil, selection: nil, currentLine: nil,
                     tokens: [:], consoleFontName: "", consoleFontSize: 11, consoleBackground: nil, consoleText: nil),
         EditorTheme(name: "Ycode Paper", fontName: "", fontSize: 13, background: "#FBF8F1", foreground: "#2B2A27", selection: "#E3DCC8", currentLine: "#F2ECDD",
                     tokens: ["keyword": "#8A2D5E", "comment": "#8C8778", "docComment": "#5E7A3A", "string": "#A3471B", "number": "#2F5E9E",

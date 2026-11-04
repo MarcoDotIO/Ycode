@@ -1,0 +1,26 @@
+# Dead keys on the US international layout: ´ e, ^ o, ¨ u give é ô ü in the
+# editor, then ´ e, ^ o in the Find field. Sources: "[('xkb', 'us+intl')]".
+until ime:.ready LOG
+wait 0.5
+key ff1b
+wait 0.5
+key ff0d
+wait 0.3
+key fe51
+wait 0.4
+shot SHOTS/dead-keys-1-editor-pending.png
+text e
+key fe52
+text o
+key fe57
+text u
+wait 0.4
+shot SHOTS/dead-keys-2-editor-composed.png
+key ffe3+ffe1+66
+wait 0.8
+key fe51
+text e
+key fe52
+text o
+wait 0.4
+shot SHOTS/dead-keys-3-field-composed.png

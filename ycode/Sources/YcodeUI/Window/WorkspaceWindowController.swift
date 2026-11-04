@@ -60,6 +60,8 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         deinit { for t in tokens where !(t is NSKeyValueObservation) { NotificationCenter.default.removeObserver(t) } }
     }
     let leftAreaObservation = LeftAreaObservation()
+    let imageViewerBox = ImageViewerBox()
+    let inspectorSlideBox = InspectorSlideState()
     /// The coding assistant (WorkspaceWindowController+CodingAssistant.swift).
     let codingAssistantHolder = CodingAssistantHolder()
     /// Agent mode's MCP tools and requests (`+AgentMode`).
@@ -282,6 +284,11 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         let centerView = centerSplit.view
         centerView.translatesAutoresizingMaskIntoConstraints = false
         centerColumn.view.addSubview(centerView)
+        // The editor starts below the toolbar: the system's toolbar band
+        // over it stays opaque in an inactive window, and a split that runs
+        // under the toolbar does not keep the debug area at the height asked
+        // for. The text still scrolls under the jump bar and the sticky
+        // header (SourceEditorController+Layout.swift).
         NSLayoutConstraint.activate([
             centerView.topAnchor.constraint(equalTo: centerColumn.view.safeAreaLayoutGuide.topAnchor),
             centerView.leadingAnchor.constraint(equalTo: centerColumn.view.leadingAnchor),
@@ -471,6 +478,11 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     private func reloadSchemes() {
         schemePopUp.removeAllItems()
         schemePopUp.addItems(withTitles: session.model.schemeNames)
+        // Each scheme with the target glyph before its name (§7.1 item 2).
+        for item in schemePopUp.itemArray {
+            item.image = NSImage(systemSymbolName: "app.dashed", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
+        }
         schemePopUp.selectItem(withTitle: session.scheme ?? "")
         chooseDefaultDestination()
         rebuildDestinationMenu()
@@ -877,6 +889,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         updateUserState { $0.noteRecentFile(path) }
         editor.history.visit(path)
         display(path: path, line: line)
+        // The open file's row is selected, in the same pass as the editor,
+        // jump bar and inspector (editor-area.md §C.6; navigators.md
+        // "Council round 1" item 3).
+        navigator.selectOpenFileRow(path)
         updateCounterparts()
         updateWindowTitle()
     }
@@ -1541,6 +1557,17 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     }
 
     func display(path: String, line: Int?) {
+        // Images open in the image viewer (editor-area.md §C.6, +ImageViewer.swift).
+        if ImageViewerController.handles(URL(fileURLWithPath: path)) {
+            assetEditor = nil
+            stringCatalogEditor = nil
+            interfaceEditor = nil
+            projectEditor = nil
+            plistEditor = nil
+            showImage(URL(fileURLWithPath: path))
+            return
+        }
+        imageViewer = nil
         if path.hasSuffix(".xcodeproj") {
             openProjectEditor(path)
             return
@@ -1911,6 +1938,9 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             destinationPopUp.action = #selector(destinationChosen(_:))
             destinationPopUp.isBordered = false
             destinationPopUp.controlSize = .small
+            // liquid-glass.md §7.1 item 2: no up-down chevrons after the
+            // titles; a "›" between scheme and destination.
+            for p in [schemePopUp, destinationPopUp] { (p.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow }
             let chevron = NSTextField(labelWithString: "›")
             chevron.textColor = .tertiaryLabelColor
             let stack = NSStackView(views: [schemePopUp, chevron, destinationPopUp])
@@ -2027,7 +2057,6 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         if window?.isVisible == true { navigatorItem.animator().isCollapsed.toggle() } else { navigatorItem.isCollapsed.toggle() }
         updateToolbarState()
     }
-    @objc public func toggleInspector(_ sender: Any?) { inspectorItem.animator().isCollapsed.toggle() }
     @objc public func toggleDebugArea(_ sender: Any?) { showDebugArea(debugItem.isCollapsed) }
     /// The Library (⇧⌘L), created on first use.
     public private(set) var library: LibraryController?

@@ -73,3 +73,36 @@ public enum LaunchArguments {
         return out
     }
 }
+
+/// Open requests (Finder, `open`, state restoration) for one file are
+/// the same request when their paths name the same file.
+public enum OpenRequestKey {
+    /// The path with `.`/`..` and symbolic links resolved.
+    public static func path(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+}
+
+extension NavigatorNode {
+    /// Whether an open-document request for `file` belongs to this
+    /// workspace (`specs/ide/editor-area.md` §C.6, #71): a file row of the
+    /// tree, or a file inside one of its folders (a synchronized folder
+    /// lists what is on disk, so a file added since still belongs), or
+    /// inside a package's folder.
+    public func containsForOpening(_ file: URL) -> Bool {
+        let target = OpenRequestKey.path(file)
+        func resolved(_ p: String) -> String { OpenRequestKey.path(URL(fileURLWithPath: p)) }
+        func walk(_ n: NavigatorNode) -> Bool {
+            if let p = n.path {
+                switch n.kind {
+                case .file: if resolved(p) == target { return true }
+                case .folder: if target.hasPrefix(resolved(p) + "/") { return true }
+                case .container: if NavigatorTree.isPackageRoot(n), target.hasPrefix(resolved(p) + "/") { return true }
+                case .group: break
+                }
+            }
+            return n.children.contains(where: walk)
+        }
+        return walk(self)
+    }
+}

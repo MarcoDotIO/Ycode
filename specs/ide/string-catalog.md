@@ -50,6 +50,14 @@ bytes back.
   when it becomes empty). Add Key adds an entry with
   `extractionState = manual`. Every edit is saved at once.
 
+Linux IDE (1.0.0-beta.2): `ycode-ide` has the same editor
+(`YcodeIDEShell/StringCatalogEditorModel.swift`,
+`ycode-ide/StringCatalogEditorView.swift`), plus a filter over key, value,
+comment and translation, sorting by any column header (the view only),
+editing the Default Localization (the source language's unit), Mark for
+Review / Mark as Reviewed and Delete in a row's context menu, and Refresh
+from Source with a summary of what changed.
+
 ## Ycode implementation (RES-STRINGS, 2026-10-31)
 
 Clean-room implementation from this spec, Apple's public documentation

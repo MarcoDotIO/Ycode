@@ -40,6 +40,20 @@ file, edits last-to-first:
    preview sheet lists the files with their edit counts; Rename applies,
    Cancel drops it.
 
+### In the Linux IDE
+
+Editor ▸ Refactor ▸ Rename… opens a 520-point sheet instead of the field
+over the symbol: the title `Rename “<name>”`, the new name (the server's
+placeholder to start with), and Cancel and Rename. The symbol's
+occurrences in the file are highlighted under the sheet
+(`documentHighlight`). Rename asks the server; an edit of one file is
+applied at once, as one undo step; an edit of several files shows the
+preview in the same sheet: "Rename N occurrences in M files", then each
+file with its edit count and every changed line, its number, the line
+before and the line after; Rename applies it. Applying follows §Applying
+edits: open files change in their buffers (one undo step each), others on
+disk with their old text kept. The preview is the core's `RenamePreview`.
+
 ## Find
 
 - Find ▸ Find Selected Symbol in Workspace (⌃⇧⌘F):
@@ -51,6 +65,12 @@ file, edits last-to-first:
   `Callers of <name>`.
 - Navigate ▸ Jump to Original Source: `textDocument/declaration`, else
   the definition. (Jump to Definition is unchanged.)
+- The Linux IDE puts both in its Find navigator as a search's results:
+  the query field holds the name, the count's place the title
+  (`greet — 3 references`, `Callers of greet`), files in path order with
+  their lines (`SymbolResults`, shared). Callers are one level: each
+  caller's call sites, by file. A search of the user's own clears the
+  title.
 
 ## Code actions and fix-its
 
@@ -92,3 +112,5 @@ Conformance"; on an expression "Extract Expression", "Extract Method",
 - OPEN QUESTION: the reference's in-place multi-cursor rename look and
   its cross-file preview layout; caller levels shown by default; whether
   Fix All Issues also covers build issues of other files.
+- The Linux IDE's rename sheet and preview, and references and callers in
+  its Find navigator: Ycode's own design (no observation).

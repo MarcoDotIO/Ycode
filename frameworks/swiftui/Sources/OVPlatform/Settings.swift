@@ -308,6 +308,13 @@ public final class DesktopSettingsReader {
     }
 }
 
+/// The running `gdbus monitor`'s process id, for the exit handler. `exit()`
+/// runs no deinitializers, and the child would otherwise outlive the app
+/// until the portal next signals: inside a Flatpak it keeps the sandbox, and
+/// so the app's instance, running after the window has closed.
+nonisolated(unsafe) private var portalMonitorPID: pid_t = 0
+nonisolated(unsafe) private var portalMonitorExitHandlerInstalled = false
+
 /// The freedesktop settings portal through the `gdbus` tool: one `ReadAll`
 /// at start, then `gdbus monitor` for `SettingChanged` signals (a child
 /// process whose output is read on the main queue).
@@ -426,6 +433,13 @@ package final class PortalSettings {
         do {
             try p.run()
             monitorProcess = p
+            portalMonitorPID = p.processIdentifier
+            if !portalMonitorExitHandlerInstalled {
+                portalMonitorExitHandlerInstalled = true
+                atexit {
+                    if portalMonitorPID > 0 { kill(portalMonitorPID, SIGTERM) }
+                }
+            }
         } catch {
             out.fileHandleForReading.readabilityHandler = nil
         }
@@ -434,5 +448,6 @@ package final class PortalSettings {
     func stop() {
         monitorProcess?.terminate()
         monitorProcess = nil
+        portalMonitorPID = 0
     }
 }

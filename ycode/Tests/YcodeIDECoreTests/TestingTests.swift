@@ -82,7 +82,7 @@ import YcodeBuild
     @Test func runnerCommands() {
         let r = TestRunner()
         let pkg = r.command(for: BuildRequest(container: .package("/p")), only: ["MathTests/testAdds"])
-        #expect(pkg.args.suffix(3) == ["test", "--filter", "MathTests.testAdds"] && pkg.cwd == "/p")
+        #expect(pkg.args.suffix(3) == ["test", "--filter", "MathTests.testAdds\\b"] && pkg.cwd == "/p")
         let proj = r.command(for: BuildRequest(container: .project("/a/A.xcodeproj"), scheme: "A"), only: ["ATests/MathTests/testAdds"])
         #expect(proj.args.suffix(2) == ["-only-testing:ATests/MathTests/testAdds", "test"])
     }

@@ -41,7 +41,7 @@ python3 -I "$HERE/changelog-section.py" "$VERSION" > "$NOTES"
             echo "The macOS disk image in this release is **ad-hoc signed, not notarized**. macOS blocks it on first launch: see [Opening an ad-hoc signed build](https://github.com/MarcoDotIO/Ycode#opening-an-ad-hoc-signed-build)." ;;
     esac
     echo
-    echo "The \`.tar.xz\` files hold the same files as the Flatpak bundles, for repackaging. They are built against the freedesktop 25.08 runtime (glibc 2.42) and are not meant to run directly on most distributions: install the \`.flatpak\` instead."
+    echo "The \`.tar.xz\` files hold the same files as the Flatpak bundles, for repackaging. They are built against the freedesktop 26.08 runtime (glibc 2.44) and are not meant to run directly on most distributions: install the \`.flatpak\` instead."
     echo
     echo "Ycode is not affiliated with or endorsed by Apple Inc. Nothing of Apple's is in these packages."
 } >> "$NOTES"

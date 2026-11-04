@@ -46,6 +46,21 @@ writes back byte for byte. Known limits: 4-byte reals are written back as
 8-byte reals, UID objects (keyed archives) are not read, and a container
 referenced twice is written twice.
 
+## Ycode implementation (Linux IDE, 1.0.0-beta.2)
+
+`ycode-ide` opens `.plist` and `.entitlements` files from the project
+navigator in the same editor (`YcodeIDEShell/PlistEditorModel.swift`,
+`ycode-ide/PlistEditorView.swift`): the Key | Type | Value outline with
+the rows and rules above, + and − on the selected row, the Editor menu's
+Add Item, Value Type ▸ and Raw Keys and Values, and the column headers'
+sort (the view only). Ycode's own additions: Alt+Up / Alt+Down and the
+row's context menu move an item among its siblings; the jump bar's Open
+As switch shows the file as source text and back (unsaved text is saved
+first). OpenStep lists (`openstep-plist.md`) are read too and written back
+as OpenStep with the general writer; numbers, Booleans and dates become
+strings there (`YES`/`NO`). A file that is opened and not edited is never
+written.
+
 ## Evidence
 
 - The property list format and DTD: Apple's public documentation

@@ -42,6 +42,8 @@ struct YcodeIDEApp: App {
         signal(SIGPIPE, SIG_IGN)
         // Live issues from sourcekit-lsp; YCODE_IDE_LSP=0 leaves it off.
         ShellApp.model.startsLanguageService = ProcessInfo.processInfo.environment["YCODE_IDE_LSP"] != "0"
+        // The simulator runtime wizard, once, when this computer has none (runtime-onboarding.md §3).
+        ShellApp.model.offerRuntimeSetupAtFirstLaunch()
         if let path = ShellAppModel.launchPath() {
             if !ShellApp.model.open(path: path) {
                 FileHandle.standardError.write(Data("ycode-ide: \(ShellApp.model.openError ?? "cannot open \(path)")\n".utf8))
@@ -51,11 +53,11 @@ struct YcodeIDEApp: App {
 
     var body: some Scene {
         WindowGroup("Ycode") {
-            ShellRootView(app: ShellApp.model)
+            ShellRootView(app: ShellApp.model).shellAppearance()
         }
         .defaultSize(width: ShellMetrics.windowSize.width, height: ShellMetrics.windowSize.height)
         .commands { ShellMenus(app: ShellApp.model) }
-        Settings { ShellSettingsView() }
+        Settings { ShellSettingsView().shellAppearance() }
     }
 }
 
@@ -86,6 +88,9 @@ struct ShellRootView: View {
             if let m = app.clone { CloneSheet(model: m, app: app) }
         }
         .sheet(isPresented: $app.isAboutShown) { AboutSheet(app: app) }
+        .sheet(isPresented: Binding(get: { app.runtimeSetup != nil }, set: { if !$0 { app.closeRuntimeSetup() } })) {
+            if let s = app.runtimeSetup { RuntimeSetupSheet(session: s, app: app) }
+        }
         .alert(app.notice?.title ?? "", isPresented: Binding(get: { app.notice != nil }, set: { if !$0 { app.notice = nil } })) {
             Button("OK") { app.notice = nil }
         } message: {

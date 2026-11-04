@@ -1,0 +1,217 @@
+{
+  "name": "glass-scroll-edges",
+  "issue": 57,
+  "title": "Liquid Glass materials and scroll-edge effects in the workspace window",
+  "targets": [
+    "xcode",
+    "ycode"
+  ],
+  "compare_order": [
+    "xcode",
+    "ycode"
+  ],
+  "project": {
+    "generator": "make-test-project.py",
+    "path": "GlassScroll/GlassScroll.xcodeproj"
+  },
+  "window": {
+    "size": [
+      1400,
+      880
+    ],
+    "display": "builtin",
+    "title": "{project}",
+    "timeout": 90
+  },
+  "focus": "background",
+  "launch_settle": 3.0,
+  "record": {
+    "fps": 60,
+    "codec": "prores4444",
+    "pre": 0.4,
+    "post": 1.2
+  },
+  "setup": [
+    {
+      "select": {
+        "role": "AXRow",
+        "text": "Long"
+      }
+    },
+    {
+      "wait": 1.0
+    }
+  ],
+  "steps": [
+    {
+      "id": "editor-at-rest",
+      "note": "Long.swift scrolled to the top: toolbar, jump bar and navigator glass at rest, nothing underneath yet.",
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "editor-scroll-down",
+      "note": "Slow trackpad scroll of 600 pt in the editor: text passes under the toolbar and the jump bar; the scroll-edge effect appears.",
+      "do": [
+        {
+          "scroll": {
+            "at": [
+              700,
+              450
+            ]
+          },
+          "dy": -600,
+          "steps": 60,
+          "interval": 0.016
+        }
+      ],
+      "record": {
+        "post": 1.0
+      }
+    },
+    {
+      "id": "editor-flick-up",
+      "note": "A flick back to the top with momentum: the scroll-edge effect fades as content leaves the bar.",
+      "do": [
+        {
+          "scroll": {
+            "at": [
+              700,
+              450
+            ]
+          },
+          "dy": 900,
+          "steps": 8,
+          "interval": 0.016,
+          "momentum": true
+        }
+      ],
+      "record": {
+        "post": 1.5
+      }
+    },
+    {
+      "id": "select-stripes",
+      "note": "Select Stripes.png in the project navigator (the selection path), for the tint the bars take from the content beneath.",
+      "do": [
+        {
+          "select": {
+            "role": "AXRow",
+            "text": "Stripes"
+          }
+        }
+      ],
+      "per_focus": {
+        "foreground": {
+          "do": [
+            {
+              "click": {
+                "role": "AXRow",
+                "text": "Stripes"
+              }
+            }
+          ]
+        }
+      },
+      "record": {
+        "post": 1.5
+      }
+    },
+    {
+      "id": "open-stripes-document",
+      "note": "The open-document path (issue #71): open Stripes.png with `open -a`.",
+      "do": [
+        {
+          "open": "GlassScroll/Stripes.png"
+        }
+      ],
+      "record": {
+        "post": 1.5
+      }
+    },
+    {
+      "id": "stripes-scroll",
+      "note": "Scroll the bands under the toolbar slowly: the glass tint follows light and dark content.",
+      "do": [
+        {
+          "scroll": {
+            "at": [
+              700,
+              450
+            ]
+          },
+          "dy": -900,
+          "steps": 120,
+          "interval": 0.016
+        }
+      ],
+      "record": {
+        "post": 1.0
+      }
+    },
+    {
+      "id": "navigator-expand",
+      "note": "Expand the Models group so the navigator has more rows than fit.",
+      "do": [
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "Models"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        }
+      ],
+      "record": {
+        "post": 0.8
+      }
+    },
+    {
+      "id": "navigator-scroll",
+      "note": "Scroll the navigator under the navigator selector bar and above the filter bar: both scroll edges.",
+      "do": [
+        {
+          "scroll": {
+            "at": [
+              140,
+              400
+            ]
+          },
+          "dy": -500,
+          "steps": 50,
+          "interval": 0.016
+        }
+      ],
+      "record": {
+        "post": 1.0
+      }
+    },
+    {
+      "id": "inspector-toggle",
+      "note": "Hide the inspector with its toolbar button: the toolbar glass regroups (more in #59).",
+      "do": [
+        {
+          "press": {
+            "role": "AXButton",
+            "description": "Hide Inspector|Show Inspector"
+          }
+        }
+      ],
+      "record": {
+        "post": 1.2
+      }
+    },
+    {
+      "id": "welcome-window",
+      "note": "Needs focus: Window > Welcome. Skipped in a background session.",
+      "do": [
+        {
+          "menu": "Window > Welcome to {app}"
+        }
+      ],
+      "record": {
+        "post": 1.2
+      }
+    }
+  ]
+}

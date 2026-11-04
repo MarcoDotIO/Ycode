@@ -47,6 +47,10 @@ public final class WorkspaceShellModel {
     @ObservationIgnored var openDocuments: [String: EditorDocument] = [:]
     /// The files with unsaved changes (navigator marks, prompts).
     public internal(set) var editedPaths: Set<String> = []
+    /// The open file's property list, asset catalog or String Catalog
+    /// editor (StructuredEditors.swift), and the files shown as text instead.
+    public internal(set) var structuredEditor: StructuredEditor?
+    public internal(set) var sourceViewPaths: Set<String> = []
     /// A save that needs the user: a change on disk, or an error.
     public var saveAlert: SaveAlert?
     /// Asking about the open file's unsaved changes (Close Document).
@@ -90,6 +94,9 @@ public final class WorkspaceShellModel {
     }
     /// Bumped by Find in Workspace so the view focuses its query field.
     public private(set) var findFocusCount = 0
+    /// The title of results a language request put there ("greet — 3
+    /// references"), in place of the count; a search clears it.
+    public private(set) var findResultsTitle: String?
     @ObservationIgnored private var findTask: Task<Void, Never>?
 
     // MARK: Issues, activity, logs
@@ -106,6 +113,19 @@ public final class WorkspaceShellModel {
     public private(set) var buildCount = 0
     /// Build results: the bezel or a system notification (ShellBuildNotifier.swift).
     public let notifier = ShellBuildNotifier()
+    /// Breakpoints, the debug navigator and the variables view (ShellDebugModel.swift).
+    public let debug: ShellDebugModel
+    /// Source control (SourceControlShellModel.swift).
+    public let sourceControl: SourceControlShellModel
+    /// The Test and Report navigators (TestShellModel.swift).
+    public let testing: TestShellModel
+
+    // MARK: Language features (WorkspaceShellModel+Language.swift)
+
+    /// Quick Help, Jump to Definition, rename and their state.
+    public let languageFeatures = ShellLanguageFeatures()
+    /// The Symbol navigator (SymbolNavigatorModel.swift).
+    public let symbols: SymbolNavigatorModel
 
     // MARK: Toolbar
 
@@ -116,6 +136,10 @@ public final class WorkspaceShellModel {
 
     public init(session: WorkspaceSession) {
         self.session = session
+        debug = ShellDebugModel(session: session)
+        sourceControl = SourceControlShellModel(folder: SourceControlShellModel.folder(for: session.model.url))
+        testing = TestShellModel(session: session)
+        symbols = SymbolNavigatorModel()
         let root = NavigatorItem(session.model.root)
         self.root = root
         expanded = Set(NavigatorTree.initiallyExpanded(session.model.root))
@@ -128,6 +152,8 @@ public final class WorkspaceShellModel {
         destination = session.destination
         session.observe { [weak self] change in self?.sessionChanged(change) }
         syncIssues()
+        debug.workspace = self
+        connectSourceControl()
     }
 
     /// Opens a workspace: an `.xcodeproj`, `.xcworkspace`, `Package.swift`
@@ -158,6 +184,9 @@ public final class WorkspaceShellModel {
         c.inspectorShown = isInspectorShown
         c.debugAreaShown = isDebugAreaShown
         c.isDebugging = session.debugClient != nil
+        c.isPaused = debug.isPaused
+        c.breakpointsActive = debug.breakpoints.isActive
+        c.caretLineBreakpointsEnabled = debug.caretLineBreakpointsEnabled
         return c
     }
 
@@ -230,6 +259,8 @@ public final class WorkspaceShellModel {
 
     /// Opens a file in the editor (it becomes the current history entry).
     public func open(_ path: String, line: Int? = nil) {
+        sourceControl.hidePane()
+        testing.hideReport()
         if document?.path != path { showFile(path) }
         history.visit(path)
         updateHistoryState()
@@ -279,6 +310,7 @@ public final class WorkspaceShellModel {
     /// matches; rows fill in as files finish.
     public func runFind() {
         findTask?.cancel()
+        findResultsTitle = nil
         let text = findText
         find.query = FindQuery(text, ignoreCase: findIgnoreCase)
         find.begin()
@@ -308,7 +340,27 @@ public final class WorkspaceShellModel {
     /// Waits for the running search (tests, drivers).
     public func waitForFind() async { await findTask?.value }
 
-    public var findCountText: String { find.countText }
+    public var findCountText: String { findResultsTitle ?? find.countText }
+
+    /// Shows what a language request found (references, callers) in the
+    /// Find navigator as a search for `query` shows its matches, titled
+    /// `title` (`refactoring.md` §Find).
+    public func showFindResults(query: String, title: String, _ results: [WorkspaceSearch.FileResult]) {
+        findTask?.cancel()
+        isSearching = false
+        findText = query
+        find.query = FindQuery(query, ignoreCase: findIgnoreCase)
+        find.begin()
+        var summary = FindEngine.Summary()
+        summary.files = results
+        summary.matchCount = results.reduce(0) { $0 + $1.matches.count }
+        find.finish(summary)
+        findRows = FindMatchRow.rows(find.results)
+        findSelection = nil
+        findResultsTitle = title
+        navigator = .find
+        isNavigatorShown = true
+    }
 
     private func openFindResult(_ id: String) {
         for (fi, f) in findRows.enumerated() {
@@ -454,6 +506,12 @@ public final class WorkspaceShellModel {
         case .nextIssue, .previousIssue: !issueGroups.isEmpty
         case .stop: isBusy
         case .run, .test, .build, .clean: !isBusy
+        case .jumpToDefinition, .jumpToOriginalSource, .renameSymbol, .showQuickHelp, .findSelectedSymbol, .showCallHierarchy:
+            isLanguageCommandEnabled(c)
+        case .pauseOrContinue, .stepOver, .stepInto, .stepOut, .toggleBreakpointAtCurrentLine, .toggleBreakpointsEnabledAtCurrentLine,
+             .deleteAllBreakpoints: debug.isEnabled(c)
+        case .testAgain: !isBusy && session.lastTestRun != nil
+        case _ where c.isSourceControl: sourceControl.isEnabled(c.action.selector)
         default: true
         }
     }
@@ -462,10 +520,22 @@ public final class WorkspaceShellModel {
     /// Open, Close and Welcome are the app's (`ShellAppModel.perform`).
     public func perform(_ c: ShellCommand) {
         switch c {
-        case .open, .closeWorkspace, .welcome, .newProject, .about, .help, .releaseNotes, .reportBug, .swiftBook, .clone: break
+        case .open, .closeWorkspace, .welcome, .newProject, .about, .help, .releaseNotes, .reportBug, .swiftBook, .clone, .downloads: break
         case .showProjectNavigator: show(.project)
         case .showFindNavigator: show(.find)
         case .showIssueNavigator: show(.issues)
+        case .showDebugNavigator: show(.debug)
+        case .showBreakpointNavigator: show(.breakpoints)
+        case .pauseOrContinue, .stepOver, .stepInto, .stepOut, .toggleBreakpointsActive, .toggleBreakpointAtCurrentLine,
+             .toggleBreakpointsEnabledAtCurrentLine, .deleteAllBreakpoints, .clearConsole:
+            debug.perform(c)
+        case .showSourceControlNavigator: show(.sourceControl)
+        case .showTestNavigator: show(.tests)
+        case .showReportNavigator: show(.reports)
+        case .showSymbolNavigator: show(.symbols)
+        case .jumpToDefinition, .jumpToOriginalSource, .renameSymbol, .showQuickHelp, .findSelectedSymbol, .showCallHierarchy,
+             .showFileInspector, .showQuickHelpInspector:
+            performLanguage(c)
         case .toggleNavigator: isNavigatorShown.toggle()
         case .toggleInspector: isInspectorShown.toggle()
         case .toggleDebugArea: isDebugAreaShown.toggle()
@@ -479,13 +549,16 @@ public final class WorkspaceShellModel {
         case .nextIssue: stepIssue(forward: true)
         case .previousIssue: stepIssue(forward: false)
         case .run: Task { await run() }
-        case .test: Task { await build(.test) }
+        case .test: Task { await runTests() }
+        case .testAgain: Task { await testAgain() }
         case .build: Task { await build(.build) }
         case .clean: Task { await build(.clean) }
         case .stop: stop()
         case .save, .saveAll, .closeDocument, .revertToSaved, .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind,
              .jumpToLine, .commentSelection, .shiftLeft, .shiftRight, .moveLineUp, .moveLineDown:
             performEditing(c)
+        default:
+            if c.isSourceControl { sourceControl.performIntegrate(c.action.selector) }
         }
     }
 

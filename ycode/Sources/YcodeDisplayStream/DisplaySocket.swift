@@ -120,6 +120,11 @@ public final class DisplayConnection: DisplayTransport, @unchecked Sendable {
         }
     }
 
+    /// How long a TCP connect may take before the host counts as offline
+    /// (a powered-off host on another subnet would otherwise hold the
+    /// caller for the kernel's minutes-long SYN retries).
+    public static let tcpConnectTimeout: Int32 = 5000
+
     public static func connect(to address: DisplayAddress) throws -> DisplayConnection {
         switch address {
         case .unix(let path):
@@ -155,11 +160,22 @@ public final class DisplayConnection: DisplayTransport, @unchecked Sendable {
             while let ai = cursor {
                 let fd = socket(ai.pointee.ai_family, ai.pointee.ai_socktype, ai.pointee.ai_protocol)
                 if fd >= 0 {
+                    // Non-blocking, bounded by tcpConnectTimeout, then blocking again.
+                    let flags = fcntl(fd, F_GETFL)
+                    _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
                     #if canImport(Glibc)
-                    let r = Glibc.connect(fd, ai.pointee.ai_addr, ai.pointee.ai_addrlen)
+                    var r = Glibc.connect(fd, ai.pointee.ai_addr, ai.pointee.ai_addrlen)
                     #else
-                    let r = Darwin.connect(fd, ai.pointee.ai_addr, ai.pointee.ai_addrlen)
+                    var r = Darwin.connect(fd, ai.pointee.ai_addr, ai.pointee.ai_addrlen)
                     #endif
+                    if r != 0 && errno == EINPROGRESS {
+                        var p = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+                        var soError: Int32 = 0
+                        var len = socklen_t(MemoryLayout<Int32>.size)
+                        if poll(&p, 1, tcpConnectTimeout) == 1, getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len) == 0, soError == 0 { r = 0 }
+                        else { errno = soError != 0 ? soError : ETIMEDOUT }
+                    }
+                    _ = fcntl(fd, F_SETFL, flags)
                     if r == 0 {
                         var one: Int32 = 1
                         setsockopt(fd, Int32(IPPROTO_TCP), TCP_NODELAY, &one, socklen_t(MemoryLayout<Int32>.size))

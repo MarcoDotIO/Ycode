@@ -51,10 +51,17 @@ public enum ReportFormat {
         day.dateStyle = .medium
         day.timeStyle = .none
         day.doesRelativeDateFormatting = true
+        // Foundation on Linux ignores relative formatting: the day names
+        // the formatter gives on macOS.
+        var dayText = day.string(from: d)
+        #if os(Linux)
+        let cal = Calendar.current
+        if cal.isDateInToday(d) { dayText = "Today" } else if cal.isDateInYesterday(d) { dayText = "Yesterday" }
+        #endif
         let time = DateFormatter()
         time.dateStyle = .none
         time.timeStyle = .short
-        return "\(day.string(from: d)), \(time.string(from: d))"
+        return "\(dayText), \(time.string(from: d))"
     }
 
     public static func footerDate(_ d: Date) -> String {

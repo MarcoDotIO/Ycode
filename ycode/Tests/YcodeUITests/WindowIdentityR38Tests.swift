@@ -126,10 +126,12 @@ import YcodeProject
         #expect(e.jumpBarTitles == ["Navigate to Related Items", "No Selection"])
         #expect(e.emptyView == nil && e.fileURL == nil && e.showsNoDocument)
         #expect(!e.scrollView.rulersVisible && !e.textView.isEditable)
-        // Nothing above the jump bar: it starts at the editor area's top.
+        // Nothing above the jump bar: it starts at the editor area's safe
+        // top, under the toolbar (the area itself runs under the toolbar,
+        // liquid-glass.md §7.3).
         let area = wc.editorArea.view.convert(wc.editorArea.view.bounds, to: nil)
         let bar = e.jumpBar.convert(e.jumpBar.bounds, to: nil)
-        #expect(abs(bar.maxY - area.maxY) < 0.5)
+        #expect(abs(bar.maxY - (area.maxY - wc.editorArea.view.safeAreaInsets.top)) < 0.5)
         // The gutter no longer draws a gutter-wide cell into the jump bar's
         // row: the bar's top strip is one colour across the gutter's edge.
         e.scrollView.rulersVisible = true   // as when a file is shown

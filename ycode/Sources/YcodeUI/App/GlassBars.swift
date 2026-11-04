@@ -75,6 +75,16 @@ enum GlassBars {
     }
 }
 
+/// Tab glyph colours in the selector and inspector bars (`liquid-glass.md`
+/// §7.2): grey, not accent; the selected one darker, on its pill.
+@MainActor
+enum TabGlyphTint {
+    static func color(selected: Bool) -> NSColor {
+        guard GlassBars.enabled else { return selected ? .controlAccentColor : .secondaryLabelColor }
+        return NSColor.labelColor.withAlphaComponent(selected ? 0.39 : 0.35)
+    }
+}
+
 /// The selected tab's recessed pill inside a glass bar (§2.3, §2.5): a
 /// fully rounded quiet fill under the selected icon, no accent color. The
 /// fill is a semantic system color set in `updateLayer`, so it follows

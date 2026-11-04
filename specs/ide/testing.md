@@ -34,7 +34,7 @@ a partial run update only the tests that ran.
 
 | Container | Command | Filter |
 |---|---|---|
-| package | `swift test` in the package folder (SwiftPM builds and runs both XCTest and swift-testing) | `--filter Suite.name` |
+| package | `swift test` in the package folder (SwiftPM builds and runs both XCTest and swift-testing) | `--filter Suite.name\b` (the filter is a regular expression; the word boundary keeps `testAdd` from also running `testAddsMore`) |
 | project / workspace | `ycodebuild … test` when the build system is swift-build and `ycodebuild` is found; else `xcodebuild … test` | `-only-testing:<Target>/<Suite>/<name>` |
 
 Status (2026-10-28): `TestRunner` (`YcodeBuild`) builds these commands;
@@ -57,6 +57,7 @@ Lines read from the runner's merged output:
 | `Test Case '-[Module.Class test]' passed (…)` / `failed` / `skipped` | XCTest outcome (Darwin) |
 | `Test Case 'Class.test' passed (…)` | XCTest outcome (Linux) |
 | `<file>:<line>: error: -[Module.Class test] : <message>` | XCTest failure, attached to that test |
+| `<file>:<line>: error: Class.test : <message>` | XCTest failure (Linux), attached to that test |
 | `✔ Test name() passed after …` | swift-testing pass |
 | `✘ Test name() recorded an issue at <file>:<line>:<col>: <message>` | swift-testing failure, attached |
 | `✘ Test name() failed after …` | swift-testing fail |
@@ -331,8 +332,47 @@ launcher, device directory, options, warm and lean boot).
 ⌘U on `Samples/TestHostSamples/HostMac`, and opt-in with `YCODE_E2E_*` on
 HostPhone on a real Ycode simulator); `RemoteTestEnvironmentTests`.
 
+## Ycode implementation: the Linux IDE (B2-SCM, 2026-11-04)
+
+The SwiftUI shell (`YcodeIDEShell/TestShellModel.swift`,
+`ycode-ide/TestNavigator.swift`) uses the session's discovery,
+`runTests(only:)` and reports, as the AppKit IDE does:
+
+- **Test navigator (⌘6):** the package or project with "N Tests", each
+  test target (a package's `Tests/<Target>` folder), its suites, then the
+  tests as `name()`. The diamond at a row's right end is outlined before a
+  run, a green check, a red cross, or an arrow for skipped; a parent shows
+  the aggregate (failed if any failed, else passed if any passed). The
+  selected row shows a run button; its context menu has Run and Jump to
+  Definition; selecting a test or suite opens its line.
+- **Running:** Product ▸ Test (⌘U) runs everything; a row, a gutter
+  diamond or Product ▸ Perform Action ▸ Test Again runs that selection.
+  Without a toolchain on `PATH` (outside the Flatpak) Test reports what to
+  install, as Build does. In the Flatpak `swift` is the host-tool wrapper
+  on the sandbox's `PATH`.
+- **Results:** swift-testing names a failure's file without its folder;
+  the session resolves it to the discovered test's file
+  (`TestFailureFiles`), so failures are issues at their lines in the
+  Issue navigator and the editor.
+- **Gutter:** a test's or suite's declaration line shows its diamond in
+  place of the line number; clicking it runs that test or suite.
+- **Report navigator (⌘9):** the runs, newest first (the core's
+  `ReportNavigatorModel`); a test run's Tests page lists each test with its
+  result, suite, time and failures (failed first), and its Log page the
+  output.
+
+Tests: `YcodeIDEShellTests/TestShellTests.swift` (a package with XCTest and
+Swift Testing tests and a stand-in runner printing Linux output: rows,
+results, issues at lines, diamonds, reports, filters, Test Again; the
+Linux XCTest failure form; file resolution). End to end on Linux:
+`ycode-ide` with `YCODE_IDE_TESTS=<prefix>` (`ShellDriver+Tests.swift`).
+
 ## Evidence
 
+- Linux XCTest failure lines and Swift Testing's issue lines: black-box
+  runs of `swift test` on Linux with Swift 6.4 (level 3); `--filter` as a
+  regular expression with `\b`: SwiftPM's public `swift test --help` and
+  runs (levels 1 and 3).
 - Test navigator, ⌘U, diamonds in the gutter and navigator: Apple's public
   Xcode Help (level 1).
 - XCTest and swift-testing declaration rules: the XCTest documentation and

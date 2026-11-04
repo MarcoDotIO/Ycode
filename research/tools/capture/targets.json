@@ -1,0 +1,20 @@
+{
+  "ycode": {
+    "label": "Ycode",
+    "executable": "ycode/.build/debug/YcodeApp",
+    "build_hint": "cd ycode && swift build --product YcodeApp",
+    "bundle_name": "Ycode",
+    "bundle_id": "io.github.MarcoDotIO.Ycode.capture",
+    "app_name": "Ycode",
+    "reset_defaults": true,
+    "stamp_sdk": true,
+    "require_current_sdk": true
+  },
+  "xcode": {
+    "label": "Xcode 27.1",
+    "app_env": "YCODE_REFERENCE_XCODE",
+    "bundle_id": "com.apple.dt.Xcode",
+    "app_name": "Xcode",
+    "needs_owner_ok": true
+  }
+}

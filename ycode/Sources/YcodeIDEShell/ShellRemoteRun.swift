@@ -31,13 +31,30 @@ public enum ShellRemoteRun {
         return (String(rest[..<slash]), String(rest[rest.index(after: slash)...]))
     }
 
+    /// The row of a paired host that did not answer (#69): it says so, and
+    /// Run on it fails at once with the reason instead of waiting.
+    public static func offlineDestination(host: String) -> Destination {
+        Destination(name: "\(host) is offline", specifier: "generic/platform=iOS Simulator", platform: "iOS", kind: .simulator,
+                    identifier: prefix + host + "/")
+    }
+
+    public static func offlineMessage(host: String) -> String {
+        "The simulator host \(host) did not answer on Ycode's link. Check that it is on and that ycode-simhost serve runs there, "
+            + "then reopen the project; Window ▸ Downloads checks the host."
+    }
+
     /// One group per paired host with its devices (asked with a short
-    /// timeout; a host that does not answer is left out).
+    /// timeout); a host that does not answer keeps its group with one row
+    /// saying it is offline.
     public static func destinationGroups(store: LinkStore = LinkStore()) -> [DestinationGroup] {
         guard let client = try? LinkClient(store: store) else { return [] }
         var groups: [DestinationGroup] = []
         for p in store.peers() where p.role == "host" {
-            guard let h = LinkHost(p), let c = try? client.control(h) else { continue }
+            guard let h = LinkHost(p) else { continue }
+            guard let c = try? client.control(h) else {
+                groups.append(DestinationGroup(title: "Ycode Simulator, \(ExperimentalNotice.label) (\(h.name))", destinations: [offlineDestination(host: h.name)]))
+                continue
+            }
             defer { c.close() }
             guard let r = try? c.request(LinkRequest(op: "devices")), r.ok, let devices = r.devices, !devices.isEmpty else { continue }
             groups.append(DestinationGroup(title: "Ycode Simulator, \(ExperimentalNotice.label) (\(h.name))", destinations: devices.map { destination(host: h.name, device: $0) }))
@@ -78,6 +95,7 @@ public enum ShellRemoteRun {
     public static func run(project: String, scheme: String, destination: Destination, packageRoot: URL,
                            output: @escaping @Sendable (String) -> Void) async throws -> Process {
         guard let (hostName, device) = target(of: destination) else { throw Failure(description: "not a Ycode simulator host destination") }
+        guard !device.isEmpty else { throw Failure(description: offlineMessage(host: hostName)) }
         let derived = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".cache/ycode/remote-run/" + scheme).path
         let script = ProcessInfo.processInfo.environment["YCODE_IOS_BUILD"] ?? packageRoot.appendingPathComponent("scripts/ycode-ios-build-linux").path
         output("Building \(scheme) for the iOS Simulator…\n")

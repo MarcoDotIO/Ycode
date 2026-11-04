@@ -78,6 +78,11 @@ scripts/lint.sh     # needs SwiftLint
 - **No private details.** Keep host names, user names, machine paths and secrets out of the repository. Specs
   and scripts call the data directory `$YCODE_DATA`. CI scans every change with
   `python3 -I .github/scripts/scan-public.py`, and you can run that yourself.
+- **`Package.resolved` follows the dependencies.** A package with remote dependencies commits its
+  `Package.resolved`, which is the only record of its transitive pins (today `ycode/`, `ycode/Tools/ycode-swb/`,
+  `frameworks/storekit/` and `frameworks/weatherkit/`). A package with none has no `Package.resolved`. When
+  `ycode/` or `ycode-swb`'s file changes, run `python3 -I packaging/flatpak/generate-swift-dependencies.py`
+  so the Flatpak build gets the same pins.
 - **Docs match.** If you change what works, update the feature table in [README.md](README.md) and add a line to
   [CHANGELOG.md](CHANGELOG.md).
 
@@ -87,6 +92,10 @@ scripts/lint.sh     # needs SwiftLint
 - Public declarations in shared libraries carry `///` comments that say what and why, not the name again, and
   name the spec section they implement.
 - Keep each commit to one change, with a message that says what changed and why.
+
+## Releases
+
+Cutting a release follows the checklist in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Working on the simulator
 

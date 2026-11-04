@@ -152,7 +152,10 @@ or goto appends the reason to the `reference-ui-4.md` §5.1 title).
 
 ## Threads and queues; attaching
 
-- Launch and attach pass lldb-dap's `threadFormat`:
+- Launch and attach pass lldb-dap's thread format, under both its names:
+  `threadFormat` (older releases) and `customThreadFormat` (current LLVM
+  documentation; the Swift 6.4 toolchain's lldb-dap on Linux reads only
+  this one and otherwise names a thread after the process):
   `Thread ${thread.index}{ name = ${thread.name}}{ queue = ${thread.queue}}`;
   the queue is the text after ` queue = `.
 - Debug ▸ Debug Workflow ▸ View Process by Queue toggles the Debug
@@ -268,6 +271,45 @@ interposing) and their public change notifications are posted. Code:
 `YcodeSimFeatures.EnvironmentOverrides`. Tests: `SimulatorSettingsUITests`,
 `SimFeaturesTests`; verified on the Linux host with Ycode's probe app
 (`simulator-features.md` "Ycode implementation" §I.8).
+
+## The Linux IDE (B2-DEBUG, 2026-11-04)
+
+`ycode-ide` debugs Swift packages through the same `WorkspaceSession` and
+lldb-dap session as the macOS IDE; `YcodeIDEShell.ShellDebugModel` mirrors
+it for the OpenViews views.
+
+- **Adapter.** `YCODE_LLDB_DAP`; in the Flatpak the package's host-tool
+  wrapper (`libexec/ycode-host/lldb-dap`, run on the host through
+  `flatpak-spawn`); else `PATH`, then swiftly's folders
+  (`~/.local/share/swiftly/bin`, `~/.swiftly/bin`).
+- **Gutter.** A click on a line number adds a breakpoint or enables or
+  disables the line's; a breakpoint dragged along the gutter moves, out of
+  it (more than 24 points right of the gutter) is deleted. The breakpoint
+  is the macOS shape (a tag pointing right behind the number, which turns
+  white); pale when disabled or deactivated, darker when customized. The
+  selected frame's line has a green band, a mark at the gutter's edge, and
+  the stop's annotation at its end.
+- **Navigators.** Debug (⌘7) and Breakpoints (⌘8) per `reference-ui-4.md`
+  §5.3 and §6. On Linux a frame is a user frame only when its source is on
+  this computer (the C library's start-up frames name absolute build
+  paths). Breakpoint rows read "<function>  <line>" with an F or M badge,
+  else "line <n>"; a context menu deletes one; the marker toggles it.
+- **Variables.** "A"/"L" badges; lldb-dap lists arguments with the locals,
+  so a name in the enclosing declaration's parameter list (read from the
+  source) is an argument. Expanded aggregates stay expanded across steps
+  (their children are fetched again by name).
+- **Debug area and bar.** The variables view and the console side by side
+  (each can be hidden from the console bar), the `(lldb)` prompt under the
+  console while a session runs (↑/↓ history), the output filter. The debug
+  bar: breakpoints toggle, Continue/Pause, Step Over, Step Into, Step Out,
+  the path.
+- **Menus.** Debug ▸ Pause/Continue, Step Over/Into/Out (F6/F7/F8),
+  Deactivate Breakpoints (⌘Y), Breakpoints ▸ Create Breakpoint at Current
+  Line (⌘\\), Enable/Disable Breakpoints at Current Line, Delete All
+  Breakpoints, Console ▸ Clear Console; View ▸ Navigators ▸ Debug,
+  Breakpoints.
+- Tests: `ShellDebugTests` (a scripted adapter), `LLDBDAPLocateTests`;
+  end to end on x86-64 Linux with `YCODE_IDE_DEBUG` (`DebugDriver.swift`).
 
 ## Evidence
 

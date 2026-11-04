@@ -12,6 +12,7 @@ New here? Start with the [README](../README.md). It says what Ycode is, what wor
 | [SIMULATOR.md](SIMULATOR.md) | The simulator: where it stands, what it needs, and why it works the way it does |
 | [SIMULATOR-LINUX.md](SIMULATOR-LINUX.md) | The simulator's design, and how to build and run it on arm64 Linux |
 | [SCENE-COMPOSER.md](SCENE-COMPOSER.md) | The design of the Scene Composer |
+| [RELEASING.md](RELEASING.md) | The checklist for cutting a release |
 
 ## Background
 

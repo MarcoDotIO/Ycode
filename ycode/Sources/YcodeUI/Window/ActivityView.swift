@@ -23,12 +23,14 @@ public final class ActivityView: NSView {
     let icon = NSImageView()
     let spinner = NSProgressIndicator()
 
-    static let iconSize: CGFloat = 16
+    /// `liquid-glass.md` §7.1 item 3: the icon is 19 wide and the text
+    /// starts 8 after it.
+    static let iconSize: CGFloat = 19
     /// The space before the icon and after the text: none (the activity
     /// view has no glass shape, `specs/ide/liquid-glass.md` §2.2).
     static let sideInset: CGFloat = 0
     /// Where the text starts (after the icon).
-    static var textInset: CGFloat { sideInset + 24 }
+    static var textInset: CGFloat { sideInset + iconSize + 8 }
     static let nameFont = NSFont.boldSystemFont(ofSize: 13)
     static let statusFont = NSFont.systemFont(ofSize: 11)
     static func iconImage(package: Bool) -> NSImage? {
@@ -39,6 +41,8 @@ public final class ActivityView: NSView {
         super.init(frame: frame)
         icon.image = Self.iconImage(package: false)
         icon.imageScaling = .scaleProportionallyUpOrDown
+        // The project's colour family, as in the navigator (not a document glyph).
+        icon.contentTintColor = .systemBlue
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
@@ -52,6 +56,23 @@ public final class ActivityView: NSView {
 
     /// The spinner is shown (tests).
     public var showsSpinner: Bool { !spinner.isHidden }
+
+    /// Whether the window is key (the title's colours follow it).
+    public var isWindowActive: Bool { window.map { $0.isKeyWindow || $0.isMainWindow && NSApp.isActive } ?? true }
+    private var keyObservers: [NSObjectProtocol] = []
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        for o in keyObservers { NotificationCenter.default.removeObserver(o) }
+        keyObservers = []
+        guard let w = window else { return }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification, NSWindow.didBecomeMainNotification,
+                     NSWindow.didResignMainNotification] {
+            keyObservers.append(NotificationCenter.default.addObserver(forName: name, object: w, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.needsDisplay = true }
+            })
+        }
+    }
 
     func updateBusy() {
         spinner.isHidden = !isBusy
@@ -82,7 +103,7 @@ public final class ActivityView: NSView {
 
     public override func layout() {
         super.layout()
-        let r = NSRect(x: Self.sideInset + 2, y: (bounds.height - Self.iconSize) / 2, width: Self.iconSize, height: Self.iconSize)
+        let r = NSRect(x: Self.sideInset, y: (bounds.height - Self.iconSize) / 2, width: Self.iconSize, height: Self.iconSize)
         icon.frame = r
         spinner.frame = r
     }
@@ -114,8 +135,13 @@ public final class ActivityView: NSView {
         let width = max(0, bounds.width - Self.textInset - Self.sideInset)
         let para = NSMutableParagraphStyle()
         para.lineBreakMode = .byTruncatingTail
-        let name = NSAttributedString(string: workspaceName, attributes: [.font: Self.nameFont, .foregroundColor: NSColor.labelColor, .paragraphStyle: para])
-        let line = NSAttributedString(string: shownStatus, attributes: [.font: Self.statusFont, .foregroundColor: NSColor.secondaryLabelColor])
+        // In an inactive window both lines dim to the same grey (#BCBDBD,
+        // liquid-glass.md §7.1 item 3).
+        let active = isWindowActive
+        let name = NSAttributedString(string: workspaceName, attributes: [.font: Self.nameFont, .paragraphStyle: para,
+                                                                           .foregroundColor: active ? NSColor.labelColor : NSColor.tertiaryLabelColor])
+        let line = NSAttributedString(string: shownStatus, attributes: [.font: Self.statusFont,
+                                                                        .foregroundColor: active ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor])
         let nameH = name.size().height
         let lineHeight = status.isEmpty ? 0 : line.size().height
         let top = (bounds.height - nameH - lineHeight) / 2

@@ -75,6 +75,18 @@ public final class OutlineItem: NSObject {
     /// The file-type glyph of a file name or path.
     static func fileSymbol(_ name: String) -> String { WorkspaceChrome.fileSymbol(name) }
 
+    /// A row icon's colour (nil: the accent colour).
+    static func color(_ t: WorkspaceChrome.IconTint) -> NSColor? {
+        switch t {
+        case .orange: .systemOrange
+        case .blue: .systemBlue
+        case .lightBlue: NSColor(name: nil) { a in
+            NSColor.systemBlue.blended(withFraction: a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? 0.2 : 0.4, of: .white) ?? .systemBlue
+        }
+        case .accent: nil
+        }
+    }
+
     public convenience init(_ node: NavigatorNode) { self.init(node, hideExtensions: false) }
 
     /// `hideExtensions`: file rows without their extension (Settings ▸
@@ -84,6 +96,7 @@ public final class OutlineItem: NSObject {
         let opens = node.kind == .file || node.path?.hasSuffix(".xcodeproj") == true
         let title = hideExtensions && node.kind == .file ? (node.name as NSString).deletingPathExtension : node.name
         self.init(title: title.isEmpty ? node.name : title, symbol: Self.symbol(for: node),
+                  tint: Self.color(WorkspaceChrome.iconTint(kind: node.kind, name: node.name)),
                   children: node.children.map { OutlineItem($0, hideExtensions: hideExtensions) }, path: opens ? node.path : nil)
         nodeKind = node.kind
         nodePath = node.path
@@ -101,6 +114,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
 
     public private(set) var selectedIndex = 0
     public var onOpen: ((String, Int?) -> Void)?
+    /// Set while the window selects the row of a file it opened.
+    let selectionFromOpen = FlagBox()
+    private var scrollerStyleObserver: NSObjectProtocol?
 
     private(set) var roots: [[OutlineItem]] = Array(repeating: [], count: CommandTable.navigators.count)
     /// Each navigator's filter text (the field shows the selected one's).
@@ -358,6 +374,12 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         scroll.documentView = outline
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
+        // The system's scroller style, never a forced one (metrics.md §12.2).
+        scroll.scrollerStyle = NSScroller.preferredScrollerStyle
+        scrollerStyleObserver = NotificationCenter.default.addObserver(forName: NSScroller.preferredScrollerStyleDidChangeNotification,
+                                                                      object: nil, queue: .main) { [weak scroll] _ in
+            MainActor.assumeIsolated { scroll?.scrollerStyle = NSScroller.preferredScrollerStyle }
+        }
         scroll.drawsBackground = false
         // reference-ui-6.md §5.3 (N3): the first row sits `firstRowGap`
         // below the selector. The scroll view's top content inset puts it
@@ -1414,7 +1436,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         applyFindVisibility(index == 3)
         rebuildAddMenu()
         configureToggles(index)
-        for b in buttons { b.state = b.tag == index ? .on : .off; b.contentTintColor = b.tag == index ? .controlAccentColor : .secondaryLabelColor }
+        for b in buttons { b.state = b.tag == index ? .on : .off; b.contentTintColor = TabGlyphTint.color(selected: b.tag == index) }
         setOutlineUnderBars(GlassBars.enabled && !(headerBar || index == 3))
         view.needsLayout = true
         outline.reloadData()
@@ -1458,6 +1480,22 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     public var selectedItemParent: OutlineItem? {
         guard let item = selectedItem else { return nil }
         return outline.parent(forItem: item) as? OutlineItem
+    }
+
+    /// A project row selected by any route other than a click (the
+    /// keyboard, Accessibility's selected rows) opens its file, as a click
+    /// does (`editor-area.md` §C.6; #71). A click opens through
+    /// `rowClicked` (with its modifiers); a selection the window made for
+    /// an opened file opens nothing.
+    func openSelectedProjectFile() {
+        guard selectedIndex == 0, !selectionFromOpen.value, outline.selectedRowIndexes.count == 1,
+              let item = outline.item(atRow: outline.selectedRow) as? OutlineItem, let path = item.path,
+              item.nodeKind == .file || path.hasSuffix(".xcodeproj") else { return }
+        // A click in the outline right now: `rowClicked` opens it.
+        if let e = NSApp.currentEvent, [.leftMouseDown, .leftMouseUp, .rightMouseDown, .otherMouseDown].contains(e.type),
+           e.window === outline.window, ProcessInfo.processInfo.systemUptime - e.timestamp < 1,
+           outline.bounds.contains(outline.convert(e.locationInWindow, from: nil)) { return }
+        onOpen?(path, item.line)
     }
 
     @objc private func rowClicked() {
@@ -1515,10 +1553,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         }
         for v in [image, label] { v.translatesAutoresizingMaskIntoConstraints = false; cell.addSubview(v) }
         NSLayoutConstraint.activate([
-            image.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
+            image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: Self.iconInset),
             image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             image.widthAnchor.constraint(equalToConstant: 16),
-            label.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 4),
+            label.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: Self.iconToLabel),
             label.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor),
             item.maxLines > 0 ? label.topAnchor.constraint(equalTo: cell.topAnchor, constant: 2) : label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
@@ -1617,6 +1655,7 @@ extension NavigatorAreaController {
     }
 
     public func outlineViewSelectionDidChange(_ notification: Notification) {
+        openSelectedProjectFile()
         if selectedIndex == 3 { findSelectionChanged() }
         // The selected issue (bookmark, find result) grows to show all of it.
         guard [2, 3, 4].contains(selectedIndex) else { return }
@@ -1674,8 +1713,15 @@ extension NavigatorAreaController {
     /// header rows (Find, Source Control, Tests, Reports) when they are.
     static let clipToFirstRow: CGFloat = firstRowGap - selectorToContent
 
+    /// `metrics.md` §12.1: every level steps 14 (triangle, icon, label);
+    /// the icon's left edge at 27 + 14 × level, the label at 48 + 14 × level.
+    static let indentation: CGFloat = 14
+    static let iconInset: CGFloat = 1
+    static let iconToLabel: CGFloat = 5
+
     /// Row pitch: the custom height and no spacing between rows.
     func applyRowMetrics() {
+        outline.indentationPerLevel = Self.indentation
         outline.rowSizeStyle = .custom
         outline.rowHeight = Self.rowHeight
         outline.intercellSpacing = NSSize(width: outline.intercellSpacing.width, height: 0)

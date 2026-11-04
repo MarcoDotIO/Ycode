@@ -83,9 +83,12 @@ import YcodeProject
     @Test func jumpBarIsTheReferenceBandAndASeparator() throws {
         try withWindow { wc, _ in
             let bar = Self.box(wc.editor.jumpBar)
-            // liquid-glass.md §2.6: y 52–83, then the separator.
-            #expect(bar.minY == 52 && bar.height == 32)
-            #expect(Self.box(wc.editor.scrollView).minY == bar.maxY)
+            // metrics.md §12.3: the band y 52–83, then a 2-point separator;
+            // the text scrolls under both (liquid-glass.md §7.3), kept clear
+            // of them at rest by the content inset.
+            #expect(bar.minY == 52 && bar.height == 34)
+            #expect(Self.box(wc.editor.scrollView).minY <= bar.minY)
+            #expect(Self.box(wc.editor.scrollView).minY + wc.editor.scrollView.contentInsets.top == bar.maxY)
         }
     }
 
@@ -98,7 +101,8 @@ import YcodeProject
             let area = Self.box(insp.view)
             let limit = area.maxX - InspectorAreaController.contentInset
             let name = try #require(insp.nameField)
-            #expect(abs(Self.box(name).maxX - limit) <= 1, "the name field ends \(area.maxX - Self.box(name).maxX) from the edge")
+            // metrics.md §12.4: values run to 7 before the edge (the rows to 8).
+            #expect(abs(Self.box(name).maxX - (area.maxX - 7)) <= 1, "the name field ends \(area.maxX - Self.box(name).maxX) from the edge")
             for key in ["Type", "Location", "Text Encoding", "Line Endings", "Indent Using"] {
                 let c = try #require(insp.fileControls[key])
                 #expect(Self.box(c).maxX <= limit + 1, "\(key) ends \(area.maxX - Self.box(c).maxX) from the edge")

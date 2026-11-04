@@ -162,9 +162,29 @@ extension NavigatorAreaController {
         }
         walk(rows(0), [])
         let rows = IndexSet(found.map { projectOutline.row(forItem: $0) }.filter { $0 >= 0 })
+        // The window's own selection (an opened file, an operation's
+        // items) opens nothing by itself.
+        selectionFromOpen.value = true
+        defer { selectionFromOpen.value = false }
         projectOutline.selectRowIndexes(rows, byExtendingSelection: false)
         if let first = rows.first { projectOutline.scrollRowToVisible(first) }
         return found
+    }
+
+    /// Selects the row of the file just opened, expanding its folders,
+    /// unless it is already among the selected rows (a multiple selection
+    /// the click made stays).
+    public func selectOpenFileRow(_ path: String) {
+        guard isViewLoaded, selectedIndex == 0 else { return }
+        let key = OpenRequestKey.path(URL(fileURLWithPath: path))
+        func matches(_ i: OutlineItem) -> Bool { i.path.map { OpenRequestKey.path(URL(fileURLWithPath: $0)) == key } ?? false }
+        if projectOutline.selectedRowIndexes.contains(where: { (projectOutline.item(atRow: $0) as? OutlineItem).map(matches) ?? false }) { return }
+        var first = true
+        selectProjectRows { i in
+            guard first, matches(i) else { return false }
+            first = false
+            return true
+        }
     }
 
     // MARK: Context menu
@@ -289,3 +309,6 @@ extension NavigatorAreaController {
         return true
     }
 }
+
+/// A flag an extension can set (stored in the controller).
+@MainActor final class FlagBox { var value = false }

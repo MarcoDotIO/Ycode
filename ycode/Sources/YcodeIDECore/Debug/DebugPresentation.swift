@@ -67,10 +67,12 @@ public enum DebugPresentation {
 
     // MARK: Frames
 
-    /// Whether a frame belongs to the user's code: it has a source file
-    /// outside the system and toolchain directories.
+    /// Whether a frame belongs to the user's code: it has an absolute
+    /// source path outside the system and toolchain directories. (The C
+    /// library's frames on Linux name relative build paths such as
+    /// `./csu/../sysdeps/…`.)
     public static func isUserFrame(_ f: StackFrame) -> Bool {
-        guard let file = f.file, !file.isEmpty else { return false }
+        guard let file = f.file, file.hasPrefix("/") else { return false }
         let prefixes = ["/usr/", "/System/", "/Library/Developer/", "/Applications/Xcode", "/AppleInternal/"]
         return !prefixes.contains { file.hasPrefix($0) } && !file.contains(".xctoolchain/") && !file.contains(".platform/Developer/")
     }
@@ -83,9 +85,10 @@ public enum DebugPresentation {
 
     /// User frames, then for each run of system frames a separator and
     /// the run's first frame (greyed); the rest of the run is hidden.
-    /// Without any user frame every frame is listed.
-    public static func groupFrames(_ frames: [StackFrame]) -> [FrameRow] {
-        let user = frames.map(isUserFrame)
+    /// Without any user frame every frame is listed. `isUser` decides
+    /// which frames are the user's (`isUserFrame` unless given).
+    public static func groupFrames(_ frames: [StackFrame], isUser: (StackFrame) -> Bool = isUserFrame) -> [FrameRow] {
+        let user = frames.map(isUser)
         guard user.contains(true) else { return frames.enumerated().map { .frame(index: $0.offset, $0.element, user: false) } }
         var out: [FrameRow] = []
         var i = 0

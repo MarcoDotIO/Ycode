@@ -144,7 +144,7 @@ public final class PreviewCanvasController: NSViewController {
             root.addSubview(v)
         }
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: root.topAnchor), header.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            header.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor), header.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: root.trailingAnchor), header.heightAnchor.constraint(equalToConstant: 28),
             sep.topAnchor.constraint(equalTo: header.bottomAnchor), sep.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             sep.trailingAnchor.constraint(equalTo: root.trailingAnchor),
