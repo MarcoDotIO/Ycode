@@ -17,6 +17,8 @@ public final class ShellBuildNotifier {
     public private(set) var bezel: BuildNotice?
     /// The bezel is fading out (the view animates its opacity to 0).
     public private(set) var isFading = false
+    /// How many fading phases have started (tests: a fade can be shorter than a poll).
+    public private(set) var fadesStarted = 0
 
     /// The window is the one in front (OpenViews: scene phase active).
     @ObservationIgnored public var isWindowActive = true
@@ -67,6 +69,7 @@ public final class ShellBuildNotifier {
             guard let self, self.timeline.generation == g else { return }
             if t.currentFadeDuration > 0 {
                 self.isFading = true
+                self.fadesStarted += 1
                 try? await Task.sleep(nanoseconds: UInt64(t.currentFadeDuration * k * 1e9))
             }
             if self.timeline.expire(generation: g) {

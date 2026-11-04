@@ -46,8 +46,10 @@ if(TARGET LLVM)
 else()
   llvm_map_components_to_libnames(AIRC_LLVM_LIBS core bitreader analysis transformutils scalaropts ipo passes linker support)
 endif()
-find_library(SPIRV_TOOLS_OPT_LIB SPIRV-Tools-opt)
-find_library(SPIRV_TOOLS_LIB SPIRV-Tools)
+# HINTS: pkg-config's directory, for a prefix CMake does not search on its
+# own (the Flatpak build installs SPIRV-Tools into /app).
+find_library(SPIRV_TOOLS_OPT_LIB SPIRV-Tools-opt HINTS ${SPIRV_TOOLS_LIBRARY_DIRS})
+find_library(SPIRV_TOOLS_LIB SPIRV-Tools HINTS ${SPIRV_TOOLS_LIBRARY_DIRS})
 target_link_libraries(ycode-airc PRIVATE ${AIRC_LLVM_LIBS} ${SPIRV_TOOLS_OPT_LIB} ${SPIRV_TOOLS_LIB})
 
 # GPU test harness (Vulkan; tests/gpu).

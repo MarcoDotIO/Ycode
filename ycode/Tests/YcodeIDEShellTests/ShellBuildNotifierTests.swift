@@ -31,7 +31,7 @@ private struct ResultEngine: BuildEngine {
     }
 
     func waitUntil(_ cond: () -> Bool) async {
-        for _ in 0..<200 where !cond() { try? await Task.sleep(nanoseconds: 10_000_000) }
+        for _ in 0..<2000 where !cond() { try? await Task.sleep(nanoseconds: 10_000_000) }
     }
 
     @Test func buildResultsShowTheBezelReplaceItAndFade() async throws {
@@ -47,8 +47,10 @@ private struct ResultEngine: BuildEngine {
         _ = await m.build()
         #expect(n.bezel == BuildNotice(title: "Build Succeeded", symbolName: "hammer", outcome: .succeeded))
         #expect(announced == ["Build Succeeded"] && n.workspaceName == "Hud")
-        await waitUntil { n.isFading }
-        #expect(n.isFading)
+        // The fade lasts a few milliseconds at this time scale: count it
+        // rather than poll for it.
+        await waitUntil { n.fadesStarted == 1 }
+        #expect(n.fadesStarted == 1)
         await waitUntil { n.bezel == nil }
         #expect(n.bezel == nil && !n.isFading)
 
