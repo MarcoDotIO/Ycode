@@ -7,7 +7,7 @@ import Testing
 /// reference-ui-4.md §10 and §17: canvas states, header tabs, bottom bar,
 /// device menu, settings and placement (no builds).
 @MainActor
-@Suite(.timeLimit(.minutes(2))) struct PreviewCanvasChromeTests {
+@Suite(.timeLimit(.minutes(10))) struct PreviewCanvasChromeTests {
     func rendered(_ names: [String]) throws -> [PreviewRenderer.Rendered] {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-canvas-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

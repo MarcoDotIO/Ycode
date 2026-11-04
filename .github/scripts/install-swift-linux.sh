@@ -31,17 +31,12 @@ curl -fsSL --retry 3 -o "$WORK/$NAME" "$URL"
 curl -fsSL --retry 3 -o "$WORK/$NAME.sig" "$URL.sig"
 export GNUPGHOME="$WORK/gnupg"
 mkdir -m 700 "$GNUPGHOME"
-# The keys download now and then returns something other than the key file on
-# CI runners, so check for the key block and try a few times.
-for attempt in 1 2 3 4 5; do
-    if curl -fsSL --retry 3 -o "$WORK/keys.asc" https://www.swift.org/keys/all-keys.asc \
-        && grep -q -- '-----BEGIN PGP PUBLIC KEY BLOCK-----' "$WORK/keys.asc"; then
-        break
-    fi
-    [ "$attempt" = 5 ] && { echo "Could not download swift.org's signing keys" >&2; exit 1; }
-    sleep $((attempt * 5))
-done
-gpg --batch --quiet --import "$WORK/keys.asc"
+# swift.org's public signing keys are kept in the repository: downloading
+# them from CI runners failed too often. The copy is
+# https://www.swift.org/keys/all-keys.asc as of 2026-11-04 (sha256
+# 67abcc2cff49a9dd4536b12bc4a7c2b82c434ddaa42b90516c9734f4dd5481af); Swift 6
+# releases are signed with "Swift 6.x Release Signing Key" (EF80A866B47A981F).
+gpg --batch --quiet --import "$(dirname "$0")/../ci/swift-signing-keys.asc"
 gpg --batch --quiet --verify "$WORK/$NAME.sig" "$WORK/$NAME"
 mkdir -p "$TARGET"
 tar -xzf "$WORK/$NAME" -C "$TARGET" --strip-components=1

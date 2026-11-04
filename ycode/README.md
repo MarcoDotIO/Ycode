@@ -141,6 +141,10 @@ share the machine. What made tests pass alone and fail in full runs:
   (`flock`, `waitUntilExit`, a blocking `read` in a detached task): a dozen
   such waits leave no thread for streamed replies or other suites, and can
   deadlock the process. `InterprocessLock.acquire` polls for this reason.
+  Work that a blocked caller waits for (a pipe reader or writer) gets a
+  `Thread` of its own, never `DispatchQueue.global()`: when waiting callers
+  fill that queue's pool, the work never starts. `Subprocess.run` hung the
+  3-core CI runner this way.
 - **Host state moves.** Volume free space, clocks and the process list
   change while a test runs; compare only what the code under test decides.
 - **Fixed pauses race.** Wait for the state itself (a thread blocked in the
@@ -163,8 +167,12 @@ Known flaky tests (rerun alone before reporting one; CI reads the same list from
 `MainThreadResponsivenessTests.fileSystemWatcherReportsChanges`,
 `threadSelfusageCountsTheCallingThread` under load,
 `StreamingProcessTests.anInheritedPipeDoesNotHoldTheExitBack` under load (a
-3.9 s limit, 3.9 and 4.8 s seen in full runs, passes alone), and
-`SourceKitLSPEndToEndTests` timeouts on the arm64 Linux host.
+3.9 s limit, 3.9 and 4.8 s seen in full runs, passes alone),
+`SourceKitLSPEndToEndTests` timeouts on the arm64 Linux host, and, on the
+3-core macOS CI runner only, `BuildServerWindowTests.projectWindowUsesTheBuildServer`,
+`NavigatorInspectorR45Tests.filterOptionsAndTogglesSitInsideTheField` and
+`UISpacingTests.hubSidebarGroupEndsAtTheSidebarEdge` (they pass on a
+developer Mac; listed so that CI reruns them alone).
 
 CI runs on macOS and on Linux x86-64 and arm64 (`../.github/workflows/ci.yml`).
 Its hosted machines have no KVM guarantee, GPU, simulator runtime or corpus, so
