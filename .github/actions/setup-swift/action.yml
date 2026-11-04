@@ -4,7 +4,7 @@ inputs:
   swift-version:
     description: The Swift release to install on Linux (macOS uses the one in Xcode).
     required: false
-    default: "6.4"
+    default: "6.4.2"
   xcode-path:
     description: The Xcode to select on macOS.
     required: false

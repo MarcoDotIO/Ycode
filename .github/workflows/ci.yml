@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  SWIFT_VERSION: "6.4"
+  SWIFT_VERSION: "6.4.2"  # the Swift that the Flatpak ships; swift.org names releases in full (6.4.0, not 6.4)
 
 jobs:
   changes:

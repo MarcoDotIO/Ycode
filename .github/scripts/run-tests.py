@@ -19,9 +19,12 @@ import argparse
 import glob
 import os
 import platform
+import queue
 import re
+import signal
 import subprocess
 import sys
+import threading
 import xml.etree.ElementTree as ET
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -96,18 +99,84 @@ def summary(lines):
             out.write("\n".join(lines) + "\n\n")
 
 
-def run(command, cwd, log_path):
-    """Runs a command, streaming its output to the console and a log. Returns (status, text)."""
+def descendants(root):
+    """The process ids below root, from `ps` (parents before children)."""
+    listing = subprocess.run(["ps", "-A", "-o", "pid=,ppid="], capture_output=True, text=True).stdout
+    children = {}
+    for line in listing.splitlines():
+        fields = line.split()
+        if len(fields) == 2:
+            children.setdefault(int(fields[1]), []).append(int(fields[0]))
+    found, queue = [], [root]
+    while queue:
+        for child in children.get(queue.pop(0), []):
+            found.append(child)
+            queue.append(child)
+    return found
+
+
+def report_hang(root, log):
+    """Writes what each process of a silent run is doing: its command line and,
+    on macOS, a few seconds of `sample` (all threads' stacks)."""
+    def emit(text):
+        data = text.encode("utf-8", "replace")
+        sys.stdout.buffer.write(data)
+        sys.stdout.buffer.flush()
+        log.write(data)
+    for pid in [root] + descendants(root):
+        command = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+        emit(f"\n=== hang guard: process {pid}: {command}\n")
+        if sys.platform == "darwin":
+            sampled = subprocess.run(["sample", str(pid), "3", "-mayDie"], capture_output=True, text=True, timeout=60)
+            emit(sampled.stdout + sampled.stderr)
+
+
+def run(command, cwd, log_path, silence_limit=0):
+    """Runs a command, streaming its output to the console and a log. Returns (status, text, hung).
+
+    With silence_limit (seconds), a run that prints nothing for that long is
+    taken as hung: its processes' stacks go to the log, then it is stopped."""
     print("+ " + " ".join(command), flush=True)
-    process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    chunks = []
-    with open(log_path, "wb") as log:
+    process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               start_new_session=True)
+    lines = queue.Queue()
+
+    def read():
         for line in process.stdout:
+            lines.put(line)
+        lines.put(None)  # End of output.
+
+    threading.Thread(target=read, daemon=True).start()
+    chunks, hung = [], False
+    with open(log_path, "wb") as log:
+        while True:
+            try:
+                line = lines.get(timeout=silence_limit or None)
+            except queue.Empty:
+                hung = True
+                message = f"\n::error title=Hang guard::no output for {silence_limit // 60} minutes; stopping the run\n"
+                sys.stdout.write(message)
+                sys.stdout.flush()
+                log.write(message.encode())
+                report_hang(process.pid, log)
+                for sig in (signal.SIGTERM, signal.SIGKILL):
+                    try:
+                        os.killpg(process.pid, sig)
+                    except ProcessLookupError:
+                        break
+                    try:
+                        process.wait(timeout=15)
+                        break
+                    except subprocess.TimeoutExpired:
+                        pass
+                break
+            if line is None:
+                break
             sys.stdout.buffer.write(line)
             sys.stdout.buffer.flush()
             log.write(line)
             chunks.append(line)
-    return process.wait(), b"".join(chunks).decode("utf-8", "replace")
+    return process.wait(), b"".join(chunks).decode("utf-8", "replace"), hung
 
 
 def main():
@@ -116,6 +185,8 @@ def main():
     parser.add_argument("--scratch-path", help="SwiftPM scratch path")
     parser.add_argument("--log", default=None, help="directory for logs and xUnit files")
     parser.add_argument("--swift", default="swift", help="the swift command")
+    parser.add_argument("--silence-limit", type=int, default=20,
+                        help="minutes without output after which the run counts as hung (0: no limit)")
     parser.add_argument("extra", nargs="*", help="more arguments for swift test")
     options = parser.parse_args()
 
@@ -129,7 +200,8 @@ def main():
 
     scratch = ["--scratch-path", os.path.abspath(options.scratch_path)] if options.scratch_path else []
     base = [options.swift, "test"] + scratch
-    status, text = run(base + ["--xunit-output", xunit] + options.extra, package, os.path.join(log_dir, label + ".log"))
+    status, text, hung = run(base + ["--xunit-output", xunit] + options.extra, package,
+                             os.path.join(log_dir, label + ".log"), options.silence_limit * 60)
 
     reports = sorted(glob.glob(os.path.join(log_dir, label + "*.xml")))
     failed, skipped = read_xunit(reports)
@@ -144,6 +216,10 @@ def main():
         skip_lines = [f"Skipped {len(skipped)} tests:"]
         skip_lines += [f"- {count} × {reason}" for reason, count in sorted(reasons.items())]
 
+    if hung:
+        summary([title, f"**Failed:** no output for {options.silence_limit} minutes, so the run was stopped. "
+                        "The log ends with each test process's stacks."] + skip_lines)
+        return 1
     if status == 0:
         summary([title, "All tests passed."] + skip_lines)
         return 0
@@ -164,7 +240,8 @@ def main():
     still_failing = []
     for test, pattern in sorted(failed.items()):
         rerun_log = os.path.join(log_dir, label + "-rerun-" + re.sub(r"[^A-Za-z0-9.]", "_", test) + ".log")
-        rerun_status, _ = run(base + ["--skip-build", "--filter", pattern], package, rerun_log)
+        rerun_status, _, _ = run(base + ["--skip-build", "--filter", pattern], package, rerun_log,
+                                 options.silence_limit * 60)
         results.append(f"- `{test}`: {'passed alone' if rerun_status == 0 else 'also failed alone'}")
         if rerun_status != 0:
             still_failing.append(test)

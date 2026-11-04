@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs a Swift release from swift.org on an Ubuntu machine into a folder,
 # after checking its signature with the keys swift.org publishes.
-# Usage: install-swift-linux.sh <version> <folder>     for example 6.4 "$HOME/.swift-toolchain"
+# Usage: install-swift-linux.sh <version> <folder>     for example 6.4.2 "$HOME/.swift-toolchain"
 # An installed toolchain in that folder (from the cache) is kept as it is.
 set -eu
 SWIFT="$1"
