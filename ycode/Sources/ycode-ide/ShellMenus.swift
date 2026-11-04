@@ -27,7 +27,6 @@ struct ShellMenus: Commands {
         CommandGroup(replacing: .appInfo) {
             MenuSpecItems(app: app, items: Self.items("Ycode").filter { if case .command(let c) = $0 { return c.action != "terminate:" }; return true })
         }
-        CommandGroup(replacing: .appSettings) {}
         CommandGroup(replacing: .appVisibility) {}
         CommandGroup(replacing: .newItem) { MenuSpecItems(app: app, items: Self.items("File")) }
         CommandGroup(replacing: .saveItem) {}
@@ -70,7 +69,10 @@ struct MenuSpecItems: View {
         var out: [MenuItemSpec] = []
         for i in items {
             switch i {
-            case .command(let c) where c.isAlternate || c.condition != nil: continue
+            // Conditional items are left out, except the ones this shell
+            // performs (Jump to Line… is "when a source editor is open").
+            case .command(let c) where c.isAlternate
+                || (c.condition != nil && !ShellCommand.allCases.contains { $0.action == (c.action, c.tag) }): continue
             case .separator:
                 if out.isEmpty || out.last == .separator { continue }
                 out.append(i)

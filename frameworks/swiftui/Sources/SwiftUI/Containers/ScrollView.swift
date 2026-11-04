@@ -59,6 +59,10 @@ package final class ScrollViewState: @unchecked Sendable {
     var targetBehavior: (any ScrollTargetBehavior)?
     var positionBinding: ScrollPositionBinding?
     var lastReportedPositionID: AnyHashable?
+    /// `scrollPosition(_:)`: the request last applied, and one the content's
+    /// size may not have reached yet.
+    var appliedPointSerial = 0
+    var pendingPoint: CGPoint?
     var defaultAnchor: UnitPoint?
     var appliedDefaultAnchor = false
     /// Scroll views count as scrolling for this long after the last motion.
@@ -264,6 +268,7 @@ extension ScrollViewState: GeometryObserving {
             ins.trailing = g.safeAreaInsets.trailing
         }
         insets = ins
+        settleScrollPoint()
         if !appliedDefaultAnchor, let a = defaultAnchor, contentSize != .zero {
             appliedDefaultAnchor = true
             let m = maxOffset
@@ -408,6 +413,7 @@ extension ScrollView: PrimitiveView {
         s.targetBehavior = env._scrollTargetBehavior
         s.positionBinding = env._scrollPositionBinding
         s.defaultAnchor = env._defaultScrollAnchor
+        s.applyScrollPoint(env._scrollPointBinding)
         let catcher = Rectangle().fill(Color.clear).contentShape(Rectangle()).gesture(dragGesture(s))
         let body = content.gesture(dragGesture(s))
             .transformEnvironment(\.self) { e in
@@ -415,12 +421,14 @@ extension ScrollView: PrimitiveView {
                 e._scrollTargetBehavior = nil
                 e._scrollPositionBinding = nil
                 e._defaultScrollAnchor = nil
+                e._scrollPointBinding = nil
             }
         node.reconcileChildren([(AnyHashable(0), catcher), (AnyHashable(1), body)], transaction: transaction)
     }
 
     package func _refresh(node: ViewNode, environmentChanged: Bool, transaction: Transaction) {
         if environmentChanged { _makeChildren(node: node, old: self, transaction: transaction) } else {
+            state(node).applyScrollPoint(node.environment._scrollPointBinding)
             node.refreshChildren(transaction: transaction)
         }
     }

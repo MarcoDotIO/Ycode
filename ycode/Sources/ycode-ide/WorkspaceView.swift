@@ -34,6 +34,7 @@ struct WorkspaceView: View {
         }
         .overlay { BuildBezelOverlay(notifier: model.notifier) }
         .navigationTitle(model.windowTitle)
+        .modifier(EditorPrompts(model: model))
     }
 }
 
@@ -241,5 +242,36 @@ struct CenterColumn: View {
                 EditorArea(model: model)
             }
         }
+    }
+}
+
+/// What editing asks in the window: a save that needs the user, closing a
+/// file with unsaved changes, Jump to Line.
+struct EditorPrompts: ViewModifier {
+    @Bindable var model: WorkspaceShellModel
+
+    func body(content: Content) -> some View {
+        content
+            .alert(model.saveAlert?.title ?? "", isPresented: Binding(get: { model.saveAlert != nil }, set: { if !$0 { model.saveAlert = nil } })) {
+                if case .conflict? = model.saveAlert {
+                    Button("Overwrite", role: .destructive) { model.overwriteOnConflict() }
+                    Button("Cancel", role: .cancel) { model.saveAlert = nil }
+                } else {
+                    Button("OK") { model.saveAlert = nil }
+                }
+            } message: {
+                Text(verbatim: model.saveAlert?.message ?? "")
+            }
+            .alert("Save changes to “\(model.document?.name ?? "")”?", isPresented: $model.closeDocumentPrompt) {
+                Button("Save") {
+                    if model.saveCurrent() { model.closeCurrentDocument() }
+                }
+                .keyboardShortcut(.defaultAction)
+                Button("Don't Save", role: .destructive) { model.closeCurrentDocument(discard: true) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(verbatim: "Your changes will be lost if you don't save them.")
+            }
+            .sheet(isPresented: $model.isJumpToLineShown) { JumpToLineSheet(model: model) }
     }
 }

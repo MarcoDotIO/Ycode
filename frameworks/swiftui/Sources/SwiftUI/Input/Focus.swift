@@ -272,9 +272,23 @@ package final class FocusSystem {
 
     private func wanted(_ t: Target) -> Bool { t.bindings.contains { $0.matches() } }
 
-    /// Applies programmatic focus changes made through `FocusState`.
+    /// Targets whose bindings asked for focus at the last sync.
+    private var lastWanted: Set<ObjectIdentifier> = []
+
+    /// Applies programmatic focus changes made through `FocusState`. A
+    /// binding that has just asked for focus takes it from the focused view,
+    /// whose bindings are cleared (two `FocusState`s set to true one after
+    /// the other: the later one wins, as on the reference platform).
     package func sync() {
         for id in order where targets[id]?.node?.isAlive != true { remove(id) }
+        let nowWanted = Set(order.filter { targets[$0].map(wanted) == true })
+        defer { lastWanted = Set(order.filter { targets[$0].map(wanted) == true }) }
+        if let id = order.first(where: { nowWanted.contains($0) && !lastWanted.contains($0) && $0 != focusedID }) {
+            let old = focusedID.flatMap { targets[$0] }
+            setFocus(id)
+            for b in old?.bindings ?? [] { b.clear() }
+            return
+        }
         if let id = focusedID, let t = targets[id], !t.bindings.isEmpty, !wanted(t) {
             setFocus(nil)
         }
@@ -338,6 +352,9 @@ package final class WindowServices {
     package let tooltips = TooltipCenter()
     /// Back-end time of the last input event (R13: tooltip timers).
     package var lastEventTime: TimeInterval = 0
+    /// Draws the window again from its last layout (a text surface's own
+    /// state changed; no view's body did).
+    package var requestDisplay: () -> Void = {}
 
     private var timers: [ObjectIdentifier: (deadline: TimeInterval, fire: (TimeInterval) -> Void)] = [:]
 

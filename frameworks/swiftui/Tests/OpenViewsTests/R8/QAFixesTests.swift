@@ -100,4 +100,14 @@ struct QAFixesTests {
         do { let ok = f.accept(button: 3, down: true, time: 2.001, x: 0, y: 0); #expect(!ok) }
         do { let ok = f.accept(button: 2, down: false, time: 3, x: 0, y: 0); #expect(ok) }
     }
+
+    @Test func clicksReadLateAreNotTakenForDuplicates() {
+        var f = MouseButtonFilter()
+        // A double click read after a long frame: both pairs carry about the
+        // time they were read.
+        for (i, down) in [true, false, true, false].enumerated() {
+            let ok = f.accept(button: 1, down: down, time: 5 + Double(i) * 0.0001, x: 10, y: 10, timeIsReliable: false)
+            #expect(ok)
+        }
+    }
 }

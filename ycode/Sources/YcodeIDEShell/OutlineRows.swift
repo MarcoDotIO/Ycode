@@ -28,12 +28,14 @@ public struct OutlineRow: Identifiable, Equatable, Sendable {
     public var isDimmed = false
     /// What selecting the row opens (files, matches, issues).
     public var opens = false
+    /// A file with unsaved changes.
+    public var isEdited = false
 
     public static func == (a: Self, b: Self) -> Bool {
         a.id == b.id && a.level == b.level && a.title == b.title && a.detail == b.detail && a.symbol == b.symbol && a.tint == b.tint
             && a.isBold == b.isBold && a.isExpandable == b.isExpandable && a.isExpanded == b.isExpanded
             && a.match?.before == b.match?.before && a.match?.match == b.match?.match && a.match?.after == b.match?.after
-            && a.lineLimit == b.lineLimit && a.isDimmed == b.isDimmed && a.opens == b.opens
+            && a.lineLimit == b.lineLimit && a.isDimmed == b.isDimmed && a.opens == b.opens && a.isEdited == b.isEdited
     }
 }
 
@@ -41,14 +43,15 @@ public enum OutlineRows {
     /// The Project navigator: the tree with `expanded` open; file names
     /// without their extension when `hideExtensions` (Settings ▸ General ▸
     /// File Extensions, as the AppKit navigator shows them).
-    public static func project(_ root: NavigatorItem, expanded: Set<String>, hideExtensions: Bool) -> [OutlineRow] {
+    public static func project(_ root: NavigatorItem, expanded: Set<String>, hideExtensions: Bool, edited: Set<String> = []) -> [OutlineRow] {
         var out: [OutlineRow] = []
         func walk(_ item: NavigatorItem, _ level: Int) {
             let open = expanded.contains(item.id)
             let title = item.isFile ? WorkspaceChrome.jumpBarFileTitle(item.name, hideExtension: hideExtensions) : item.name
             out.append(OutlineRow(id: item.id, level: level, title: title, detail: nil,
                                   symbol: WorkspaceChrome.symbol(kind: item.kind, name: item.name, path: item.path), tint: .accent,
-                                  isExpandable: item.children != nil, isExpanded: open, opens: item.isFile))
+                                  isExpandable: item.children != nil, isExpanded: open, opens: item.isFile,
+                                  isEdited: item.path.map(edited.contains) ?? false))
             if open { for c in item.children ?? [] { walk(c, level + 1) } }
         }
         walk(root, 0)

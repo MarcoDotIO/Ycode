@@ -32,6 +32,18 @@ public final class ShellAppModel {
     /// Where New Project remembers its choices (tests pass their own).
     @ObservationIgnored public var newProjectDefaults: UserDefaults = .standard
 
+    /// What waits for an answer about unsaved changes.
+    public enum PendingClose: Equatable, Sendable {
+        case closeWorkspace, quit
+        case open(String)
+    }
+    /// The prompt for unsaved changes is up, for this.
+    public private(set) var pendingClose: PendingClose?
+    /// Workspaces start sourcekit-lsp for live issues (the app sets it).
+    @ObservationIgnored public var startsLanguageService = false
+    /// Ends the app after the prompt (the view layer's; tests record it).
+    @ObservationIgnored public var terminateApp: () -> Void = {}
+
     @ObservationIgnored let recentProjects: RecentProjects
     @ObservationIgnored let makeEngine: () -> BuildEngine
 
@@ -70,8 +82,14 @@ public final class ShellAppModel {
             return false
         }
         let url = URL(fileURLWithPath: expanded)
+        if workspace?.hasUnsavedChanges == true {
+            pendingClose = .open(expanded)
+            isOpenSheetShown = false
+            return true
+        }
         do {
             workspace = try WorkspaceShellModel(url: url, engine: makeEngine())
+            if startsLanguageService { workspace?.startLanguageService() }
             openError = nil
             isOpenSheetShown = false
             recentProjects.note(url)
@@ -83,11 +101,53 @@ public final class ShellAppModel {
         }
     }
 
-    /// File ▸ Close Project / Workspace / Package: back to Welcome.
+    /// File ▸ Close Project / Workspace / Package: back to Welcome, after
+    /// asking about unsaved changes.
     public func closeWorkspace() {
+        guard workspace?.hasUnsavedChanges != true else {
+            pendingClose = .closeWorkspace
+            return
+        }
+        discardWorkspace()
+    }
+
+    private func discardWorkspace() {
+        workspace?.stopLanguageService()
         workspace?.stop()
         workspace = nil
         recent = recentProjects.urls
+    }
+
+    /// The app is asked to quit: true if it may; false after raising the
+    /// prompt about unsaved changes.
+    public func shouldQuit() -> Bool {
+        guard workspace?.hasUnsavedChanges == true else { return true }
+        pendingClose = .quit
+        return false
+    }
+
+    /// What the prompt about unsaved changes offers.
+    public enum CloseAnswer: Sendable { case saveAll, discard, cancel }
+
+    /// The prompt's answer. Save All that needs the user (a change on disk,
+    /// an error) keeps everything open and shows why.
+    public func answerClose(_ answer: CloseAnswer) {
+        guard let pending = pendingClose else { return }
+        pendingClose = nil
+        switch answer {
+        case .cancel: return
+        case .saveAll: if workspace?.saveAll() == false { return }
+        case .discard: workspace?.discardAllRecoveryCopies()
+        }
+        switch pending {
+        case .closeWorkspace: discardWorkspace()
+        case .quit:
+            workspace?.stop()
+            terminateApp()
+        case .open(let path):
+            discardWorkspace()
+            open(path: path)
+        }
     }
 
     public func showOpenSheet() {

@@ -1,32 +1,44 @@
 import Foundation
 import SwiftUI
+import YcodeEditorKit
 import YcodeIDECore
 import YcodeIDEShell
 import YcodeSyntax
 
 /// The editor area (`metrics.md` §4): the jump bar (a 31-point band and
-/// its separator), the open file read-only with `YcodeSyntax` highlighting
-/// (L1; EditorKit replaces it in L2) and the minimap, then the debug bar.
+/// its separator), the find bar when shown, a banner when the file changed on
+/// disk, the source editor (`SourceEditorView`) and the minimap, then the
+/// debug bar.
 struct EditorArea: View {
     var model: WorkspaceShellModel
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        let prefs = ShellPreferences.shared.revision
         let palette = SourcePalette.forAppearance(dark: colorScheme == .dark, theme: Preferences.shared.theme)
         let c = ShellColors(colorScheme)
         VStack(spacing: 0) {
             JumpBar(model: model)
             Hairline(color: c.separator)
+            if model.findBar.isShown, model.editor != nil {
+                EditorFindBarView(bar: model.findBar, model: model)
+                Hairline(color: c.separator)
+            }
+            if let editor = model.editor {
+                EditorBanner(model: model, document: editor)
+            }
             Group {
                 if let doc = model.document {
                     if let message = doc.message {
                         Text(verbatim: message).font(Font.system(size: 15)).foregroundStyle(c.secondaryLabel)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
+                    } else if let editor = model.editor {
+                        let controller = SourceEditorController.of(editor)
                         HStack(spacing: 0) {
-                            SourceView(document: doc, markedLine: model.markedLine, revealCount: model.revealCount, palette: palette)
+                            SourceEditorView(controller: controller, model: model, palette: palette, preferences: prefs)
+                                .id(editor.path)
                             Hairline(color: c.separator, vertical: true)
-                            Minimap(document: doc, palette: palette, colors: c)
+                            Minimap(controller: controller, colors: c)
                         }
                     }
                 } else {
@@ -68,6 +80,12 @@ struct JumpBar: View {
                         Image(systemName: pair.element.symbol).font(.system(size: 11)).foregroundStyle(c.secondaryLabel)
                         Text(verbatim: pair.element.title).font(ShellFonts.small.weight(.medium)).foregroundStyle(c.label).lineLimit(1)
                     }
+                }
+                if let path = model.document?.path, model.editedPaths.contains(path) {
+                    // The unsaved changes' mark.
+                    Circle().fill(c.secondaryLabel).frame(width: 6, height: 6)
+                        .help("Unsaved changes")
+                        .shellTarget("edited mark")
                 }
                 chevron(c)
                 Text(verbatim: WorkspaceChrome.jumpBarNoSymbol).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.secondaryLabel).lineLimit(1)
@@ -118,8 +136,9 @@ struct DebugBar: View {
                 Image(systemName: "tag").font(.system(size: 13)).foregroundStyle(c.secondaryLabel)
                     .help("Activate Breakpoints")
                 Spacer()
-                if model.document != nil {
-                    Text(verbatim: "Line: \(model.markedLine ?? 1)  Col: 1").font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.label)
+                if let editor = model.editor {
+                    CaretPositionLabel(controller: SourceEditorController.of(editor), color: c.label)
+                        .shellTarget("caret position")
                 }
                 Button { model.perform(.toggleDebugArea) } label: {
                     Image(systemName: "rectangle.bottomthird.inset.filled").font(.system(size: 13))
@@ -138,111 +157,97 @@ struct DebugBar: View {
     }
 }
 
-/// The source text: a 48-point gutter with the line numbers (10 points,
-/// right-aligned 28 from its start), then each line's colored runs from 9
-/// points after the gutter, 15 points apart, built lazily; the marked line
-/// has the current-line color and is scrolled to.
-struct SourceView: View {
-    let document: SourceDocument
-    let markedLine: Int?
-    let revealCount: Int
-    let palette: SourcePalette
-
-    static let lineHeight: CGFloat = 15
-    /// The numbers end 25 points into the gutter (the AppKit gutter's
-    /// numbers end there: right-aligned in its 36-point number column, less
-    /// its padding).
-    static let numberWidth: CGFloat = 26
-    /// Where the text's first glyph is drawn after its layout origin here
-    /// (the run's side bearing and the line's leading padding); taken off the
-    /// inset so the ink starts where the AppKit editor's does.
-    static let glyphOrigin: CGFloat = 1
-
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(document.lines) { line in
-                        row(line)
-                    }
-                }
-                .padding(.top, 4)
-                .padding(.bottom, 8)
-            }
-            .scrollIndicators(.hidden)
-            .onChange(of: revealCount) { _, _ in
-                proxy.scrollTo(markedLine ?? 1, anchor: markedLine == nil ? .top : .center)
-            }
-            .onChange(of: document.path) { _, _ in
-                proxy.scrollTo(markedLine ?? 1, anchor: markedLine == nil ? .top : .center)
-            }
-        }
-        .shellTarget("source")
-    }
-
-    func row(_ line: SourceLine) -> some View {
-        let current = line.number == (markedLine ?? 1)
-        return HStack(alignment: .center, spacing: 0) {
-            Text(verbatim: "\(line.number)")
-                .font(.system(size: 10).monospacedDigit())
-                .foregroundStyle(current ? palette.foreground.color : palette.lineNumber.color)
-                .frame(width: Self.numberWidth, alignment: .trailing)
-            Color.clear.frame(width: CGFloat(WorkspaceChrome.gutterWidth) - Self.numberWidth, height: 1)
-            HStack(spacing: 0) {
-                text(line)
-                    .font(ShellFonts.editor(CGFloat(Preferences.shared.theme.fontSize)))
-                    .lineLimit(1)
-                    .padding(.leading, CGFloat(WorkspaceChrome.textInset) - Self.glyphOrigin)
-                Spacer(minLength: 0)
-            }
-            .frame(height: Self.lineHeight)
-            .background(current ? palette.currentLine.color : Color.clear)
-        }
-        .frame(height: Self.lineHeight)
-        .id(line.number)
-    }
-
-    func text(_ line: SourceLine) -> Text {
-        guard !line.runs.isEmpty else { return Text(verbatim: " ") }
-        return line.runs.reduce(Text(verbatim: "")) { t, r in
-            let piece = Text(verbatim: r.text).foregroundStyle(palette.color(r.role).color)
-            return t + (r.role == .keyword ? piece.bold() : piece)
-        }
-    }
-}
-
-/// The minimap (`reference-ui-5.md` §6.5): the file in miniature, 13.3 %
-/// of the editor's width, each line's runs as short bars.
+/// The minimap (`reference-ui-5.md` §6.5): the file in miniature, each
+/// line a bar from its first to its last ink; a band marks what the editor
+/// shows, and dragging moves it. A file taller than the column scrolls with
+/// the editor.
 struct Minimap: View {
-    let document: SourceDocument
-    let palette: SourcePalette
+    let controller: SourceEditorController
     let colors: ShellColors
 
+    static let pitch: CGFloat = 1.6
+    static let cell: CGFloat = 0.8
+
     var body: some View {
+        let c = controller
+        #if !os(Linux)
+        let _ = c.redraw.tick
+        #endif
         GeometryReader { geo in
             Canvas { ctx, size in
-                let pitch: CGFloat = 1.6, cw: CGFloat = 0.8
+                // Read when drawing: the editor's redraws draw this too.
+                let top = c.top, viewport = c.viewport, content = c.contentHeight
+                let doc = c.buffer.document
+                let u = doc.units
+                let (first, count) = window(height: size.height, top: top)
                 var y: CGFloat = 4
-                for line in document.lines {
-                    var x: CGFloat = 6
-                    for r in line.runs {
-                        let n = CGFloat(r.text.count)
-                        let lead = CGFloat(r.text.prefix { $0 == " " }.count)
-                        let body = n - lead - CGFloat(r.text.reversed().prefix { $0 == " " }.count)
-                        if body > 0 {
-                            let rect = CGRect(x: x + lead * cw, y: y, width: body * cw, height: 1)
-                            if rect.minX < size.width { ctx.fill(Path(rect), with: .color(colors.minimapText)) }
-                        }
-                        x += n * cw
+                for n in first..<min(doc.lineCount, first + count) {
+                    let r = doc.lineRange(n)
+                    var a = r.lowerBound, z = r.upperBound
+                    var lead = 0
+                    while a < z, u[a] == 32 || u[a] == 9 {
+                        lead += u[a] == 9 ? 4 : 1
+                        a += 1
                     }
-                    y += pitch
-                    if y > size.height { break }
+                    while z > a, u[z - 1] == 32 || u[z - 1] == 9 { z -= 1 }
+                    if z > a {
+                        let rect = CGRect(x: 6 + CGFloat(lead) * Self.cell, y: y, width: min(CGFloat(z - a) * Self.cell, size.width), height: 1)
+                        ctx.fill(Path(rect), with: .color(colors.minimapText))
+                    }
+                    y += Self.pitch
+                }
+                // What the editor shows.
+                if content > viewport.height {
+                    let lh = c.lineHeight
+                    let bandTop = 4 + (top / lh - CGFloat(first)) * Self.pitch
+                    let bandHeight = viewport.height / lh * Self.pitch
+                    ctx.fill(Path(CGRect(x: 0, y: bandTop, width: size.width, height: bandHeight)), with: .color(colors.minimapText.opacity(0.22)))
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .local).onChanged { v in
+                // The line under the pointer goes to the middle of the editor.
+                let (first, _) = window(height: geo.size.height, top: c.top)
+                let line = CGFloat(first) + (v.location.y - 4) / Self.pitch
+                c.scroll(x: c.left, y: line * c.lineHeight - c.viewport.height / 2)
+            })
         }
         .frame(width: 112)
         .frame(maxHeight: .infinity)
         .shellTarget("minimap")
+    }
+
+    /// The first line the column shows, and how many fit.
+    private func window(height: CGFloat, top: CGFloat) -> (first: Int, count: Int) {
+        let c = controller
+        let count = Int(max(0, height - 8) / Self.pitch) + 1
+        let lines = c.buffer.lineCount
+        guard lines > count else { return (0, count) }
+        let scrollable = max(1, c.contentHeight - c.viewport.height)
+        return (Int(CGFloat(lines - count) * min(1, top / scrollable)), count)
+    }
+}
+
+/// "Line: 12  Col: 8" in the debug bar, drawn from the editor's state when the
+/// editor redraws (no view update per keystroke).
+struct CaretPositionLabel: View {
+    let controller: SourceEditorController
+    let color: Color
+
+    var body: some View {
+        let c = controller
+        #if !os(Linux)
+        let _ = c.redraw.tick
+        #endif
+        return Canvas { ctx, size in
+            let b = c.buffer
+            let t = Text(verbatim: "Line: \(b.caretLine + 1)  Col: \(b.caretColumn + 1)")
+                .font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(color)
+            ctx.draw(t, at: CGPoint(x: size.width, y: size.height / 2), anchor: .trailing)
+        }
+        .frame(width: 130, height: 16)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Insertion Point")
     }
 }

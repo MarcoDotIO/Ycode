@@ -1,12 +1,13 @@
 import Foundation
 import Testing
 import YcodeBuild
+import YcodeEditorKit
 @testable import YcodeIDECore
 @testable import YcodeIDEShell
 import YcodeSyntax
 
 /// A package on disk for one test.
-private struct TempPackage {
+struct TempPackage {
     let url: URL
 
     init(_ name: String = "Demo", error: Bool = false) throws {
@@ -31,7 +32,7 @@ private struct TempPackage {
 }
 
 /// A build engine that replays a fixed log and issues.
-private struct ScriptedEngine: BuildEngine {
+struct ScriptedEngine: BuildEngine {
     var lines: [String]
     var issues: [Diagnostic]
     var name: String { "scripted" }
@@ -77,9 +78,13 @@ private struct ScriptedEngine: BuildEngine {
         let row = try #require(m.root.allFiles.first { $0.path == greeting })
         m.selection = row.id
         let doc = try #require(m.document)
-        #expect(doc.name == "Greeting.swift" && doc.language == .swift && doc.lines.count == 5)
-        #expect(doc.lines[0].runs.contains { $0.role == .keyword && $0.text.contains("public") })
-        #expect(doc.lines[2].runs.contains { $0.role == .comment })
+        #expect(doc.name == "Greeting.swift" && doc.language == .swift)
+        let editor = try #require(m.editor)
+        editor.buffer.refineHighlighting()
+        let layout = EditorLineLayout(tabWidth: 4, advance: 7)
+        #expect(editor.buffer.lineCount == 6)   // After the final newline, the empty line an editor shows.
+        #expect(layout.displayLine(0, in: editor.buffer).runs.contains { $0.role == .keyword && $0.text.contains("public") })
+        #expect(layout.displayLine(2, in: editor.buffer).runs.contains { $0.role == .comment })
         #expect(m.windowTitle == "Demo — Greeting.swift")
         // Reveal: collapse everything, then Navigate ▸ Reveal in Project Navigator.
         m.expanded = []
@@ -231,7 +236,8 @@ private struct ScriptedEngine: BuildEngine {
         var seen: [ShellShortcut: ShellCommand] = [:]
         for c in ShellCommand.allCases {
             #expect(c.menuCommand != nil, "\(c) has no CommandTable entry")
-            #expect(c.menuCommand?.isAvailable == true, "\(c) is unavailable in the core")
+            // Save All: the AppKit IDE lists it unavailable; this shell performs it.
+            #expect(c.menuCommand?.isAvailable == true || c == .saveAll, "\(c) is unavailable in the core")
             if let s = c.shortcut {
                 #expect(seen[s] == nil, "\(c) and \(seen[s].map { "\($0)" } ?? "") share \(s.text)")
                 seen[s] = c

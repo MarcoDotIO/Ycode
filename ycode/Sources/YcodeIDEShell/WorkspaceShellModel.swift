@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import YcodeBuild
+import YcodeEditorKit
 import YcodeIDECore
 import YcodeSyntax
 
@@ -35,7 +36,38 @@ public final class WorkspaceShellModel {
 
     // MARK: Editor
 
-    public private(set) var document: SourceDocument?
+    /// The open file's name and language, or why it can't be shown. Its
+    /// `editor` holds the text.
+    public internal(set) var document: SourceDocument?
+    /// The open file's editable text (nil for no file, or one that can't be
+    /// shown as text).
+    public internal(set) var editor: EditorDocument?
+    /// Every file opened since the workspace opened: their undo histories and
+    /// unsaved text stay while another file is shown.
+    @ObservationIgnored var openDocuments: [String: EditorDocument] = [:]
+    /// The files with unsaved changes (navigator marks, prompts).
+    public internal(set) var editedPaths: Set<String> = []
+    /// A save that needs the user: a change on disk, or an error.
+    public var saveAlert: SaveAlert?
+    /// Asking about the open file's unsaved changes (Close Document).
+    public var closeDocumentPrompt = false
+    /// The open file's text came back from an earlier session's recovery
+    /// copy; the banner offers to give it up.
+    public internal(set) var recoveredPaths: Set<String> = []
+    /// Where unsaved text is kept against a crash (tests pass their own).
+    @ObservationIgnored public var recovery = EditorRecovery.standard
+    @ObservationIgnored var recoveryTask: Task<Void, Never>?
+    /// Starting sourcekit-lsp, and the pending text updates by file.
+    @ObservationIgnored var languageStart: Task<Void, Never>?
+    @ObservationIgnored var languageUpdates: [String: Task<Void, Never>] = [:]
+    /// Find and Replace in the open file.
+    public let findBar = EditorFindBar()
+    /// Navigate ▸ Jump to Line…: the sheet is up.
+    public var isJumpToLineShown = false
+    /// Bumped when the editor should take the keyboard.
+    public internal(set) var editorFocusCount = 0
+    /// The issues of the open file, by 1-based line.
+    public private(set) var editorIssues: [Int: EditorLineIssue] = [:]
     /// The line the editor marks and scrolls to (from Find, an issue, or
     /// Jump), 1-based.
     public private(set) var markedLine: Int?
@@ -109,9 +141,11 @@ public final class WorkspaceShellModel {
     public var workspaceName: String { session.model.displayName }
     public var containerKind: WorkspaceModel.ContainerKind { session.model.kind }
 
-    /// "<workspace> — <document>" (`workspace-window.md` §Areas).
+    /// "<workspace> — <document>" (`workspace-window.md` §Areas), with
+    /// "Edited" while the file has unsaved changes.
     public var windowTitle: String {
-        document.map { "\(workspaceName) — \($0.name)" } ?? workspaceName
+        guard let document else { return workspaceName }
+        return "\(workspaceName) — \(document.name)\(editedPaths.contains(document.path) ? " — Edited" : "")"
     }
 
     /// What dynamic menu titles depend on.
@@ -153,6 +187,7 @@ public final class WorkspaceShellModel {
         let shown = session.displayedIssues
         issueGroups = IssueRows.tree(shown, grouping: session.issueGrouping)
         issueCounts = IssueNavigatorModel().capsuleCounts(fresh: shown)
+        syncEditorIssues()
     }
 
     public var allIssues: [IssueRow] { IssueRows.flattened(issueGroups) }
@@ -195,7 +230,7 @@ public final class WorkspaceShellModel {
 
     /// Opens a file in the editor (it becomes the current history entry).
     public func open(_ path: String, line: Int? = nil) {
-        if document?.path != path { document = SourceDocument.load(path: path) }
+        if document?.path != path { showFile(path) }
         history.visit(path)
         updateHistoryState()
         reveal(line)
@@ -203,7 +238,9 @@ public final class WorkspaceShellModel {
 
     private func reveal(_ line: Int?) {
         markedLine = line
+        if let line, let b = editor?.buffer { b.selectLine(number: line) }
         revealCount += 1
+        editorFocusCount += 1
     }
 
     /// Navigate ▸ Go Back / Go Forward through the opened files.
@@ -218,7 +255,7 @@ public final class WorkspaceShellModel {
     }
 
     private func showFromHistory(_ p: String) {
-        document = SourceDocument.load(path: p)
+        showFile(p)
         reveal(nil)
         updateHistoryState()
     }
@@ -288,6 +325,28 @@ public final class WorkspaceShellModel {
     private func openIssue(_ id: String) {
         guard let row = allIssues.first(where: { $0.id == id }), let file = row.file else { return }
         open(file, line: row.line)
+        if let col = row.column, col > 0, let b = editor?.buffer, let line = row.line {
+            let n = min(max(line - 1, 0), b.lineCount - 1)
+            let r = b.document.lineRange(n)
+            b.setCaret(min(r.lowerBound + max(col - 1, 0), r.upperBound))
+        }
+    }
+
+    /// The open file's issues for its gutter and line marks.
+    func syncEditorIssues() {
+        guard let path = document?.path else {
+            if !editorIssues.isEmpty { editorIssues = [:] }
+            return
+        }
+        let target = IssueMerge.canonicalPath(path)
+        var out: [Int: EditorLineIssue] = [:]
+        for row in allIssues {
+            guard let f = row.file, let line = row.line, IssueMerge.canonicalPath(f) == target else { continue }
+            let isError = row.severity == .error
+            if let have = out[line], have.isError || !isError { continue }
+            out[line] = EditorLineIssue(isError: isError, message: row.message)
+        }
+        if out != editorIssues { editorIssues = out }
     }
 
     /// Navigate ▸ Jump to Next / Previous Issue (⌘', ⇧⌘'): the issue after
@@ -314,6 +373,8 @@ public final class WorkspaceShellModel {
     /// the session's engine.
     @discardableResult
     public func build(_ action: BuildRequest.Action = .build) async -> BuildResult {
+        // Builds see the saved files; a save that needs the user stops here.
+        guard saveAllBeforeBuilding() else { return BuildResult(status: .failed, exitCode: 1, issues: []) }
         isDebugAreaShown = true
         debugPane = .buildLog
         buildCount += 1
@@ -358,6 +419,7 @@ public final class WorkspaceShellModel {
     /// Product ▸ Run (⌘R): build, then launch the scheme's executable under
     /// the debugger (lldb-dap); its output goes to the console.
     public func run() async {
+        guard saveAllBeforeBuilding() else { return }
         if let d = destination, ShellRemoteRun.target(of: d) != nil { await remoteRun(d); return }
         isDebugAreaShown = true
         let request = session.model.buildRequest(scheme: session.scheme, destination: session.destination, action: .build)
@@ -380,6 +442,13 @@ public final class WorkspaceShellModel {
     public func isEnabled(_ c: ShellCommand) -> Bool {
         switch c {
         case .revealInProjectNavigator: document != nil
+        case .save: editor.map { $0.readOnlyReason == nil && (editedPaths.contains($0.path) || $0.diskChange != nil) } ?? false
+        case .saveAll: !editedPaths.isEmpty
+        case .closeDocument: document != nil
+        case .revertToSaved: editor.map { editedPaths.contains($0.path) } ?? false
+        case .find, .findAndReplace, .useSelectionForFind, .jumpToLine: editor != nil
+        case .findNext, .findPrevious: editor != nil && !findBar.query.isEmpty
+        case .commentSelection, .shiftLeft, .shiftRight, .moveLineUp, .moveLineDown: editor?.readOnlyReason == nil && editor != nil
         case .goBack: canGoBack
         case .goForward: canGoForward
         case .nextIssue, .previousIssue: !issueGroups.isEmpty
@@ -414,6 +483,9 @@ public final class WorkspaceShellModel {
         case .build: Task { await build(.build) }
         case .clean: Task { await build(.clean) }
         case .stop: stop()
+        case .save, .saveAll, .closeDocument, .revertToSaved, .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind,
+             .jumpToLine, .commentSelection, .shiftLeft, .shiftRight, .moveLineUp, .moveLineDown:
+            performEditing(c)
         }
     }
 

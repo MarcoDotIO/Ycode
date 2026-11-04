@@ -166,6 +166,7 @@ struct NavigatorOutline: View {
     var toggle: (String, Bool) -> Void
     var target: String
     @Environment(\.colorScheme) private var scheme
+    @FocusState private var hasKeyboard: Bool
 
     var body: some View {
         let c = ShellColors(scheme)
@@ -183,6 +184,9 @@ struct NavigatorOutline: View {
         }
         .scrollIndicators(.hidden)
         .focusable()
+        .focused($hasKeyboard)
+        // Browsing files with the arrow keys keeps the keyboard here.
+        .onChange(of: hasKeyboard) { _, on in ShellFocus.outlineHasKeyboard = on }
         .onKeyPress(.downArrow) { move(1); return .handled }
         .onKeyPress(.upArrow) { move(-1); return .handled }
         .onKeyPress(.rightArrow) { expand(true); return .handled }
@@ -235,6 +239,12 @@ struct OutlineRowView: View {
                 .padding(.vertical, row.lineLimit > 1 ? 3 : 0)
                 .frame(minHeight: CGFloat(WorkspaceChrome.rowHeight), alignment: .leading)
             Spacer(minLength: 6)
+            if row.isEdited {
+                Circle().fill(c.secondaryLabel).frame(width: 6, height: 6)
+                    .frame(height: CGFloat(WorkspaceChrome.rowHeight))
+                    .padding(.trailing, 12)
+                    .help("Unsaved changes")
+            }
         }
         .opacity(row.isDimmed ? 0.55 : 1)
         .background {
@@ -370,4 +380,10 @@ struct IssueNavigator: View {
                              toggle: { id, on in if on { collapsed.remove(id) } else { collapsed.insert(id) } }, target: "issue navigator")
         }
     }
+}
+
+/// Who has the keyboard, where a view elsewhere needs to know.
+@MainActor
+enum ShellFocus {
+    static var outlineHasKeyboard = false
 }

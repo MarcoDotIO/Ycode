@@ -20,14 +20,16 @@ Short answers:
 - **The full IDE is macOS only.** `YcodeUI`, `YcodeDeviceUI` and `YcodeApp` are
   added to the package only under `#if os(macOS)` (`ycode/Package.swift`). On
   Linux, `ycode-ide` is a smaller window on the same model: browse, search,
-  build and run, with files read-only so far (§5.8, §5.10).
+  build and run, and edit and save files (§5.8, §5.9, §5.10).
 - **On Linux, Ycode also has command-line tools:**
   - `ycode`: describe, settings, round trip, PIF, profile, preview list.
   - `ycodebuild`: the `xcodebuild` grammar.
   - `ycode-simd`: the simulator. It runs on arm64 Linux with KVM only.
   - `ycode-scene`: the Scene Composer core.
-- **The Linux IDE.** Milestones L0 and L1 are done. L2, editing, is next (§5.6,
-  §5.9).
+- **The Linux IDE.** Milestones L0 and L1 are done. L2, editing, has its first
+  part: editing and safe saving, find and replace, Jump to Line, build issues
+  in the editor, live issues from sourcekit-lsp, a Settings window (§5.9,
+  "Done in L2"). Code completion is not there yet.
 - **The biggest gaps** for a developer on either OS:
   - Projects that use Swift packages do not build: package products are
     dropped from the PIF. *(Closed by PIF-PKG, 2026-10-30: package
@@ -144,6 +146,7 @@ These follow `AGENTS.md` rule 4:
 | Open `.xcworkspace` | Several projects, shared schemes | done | `specs/formats/xcode-xml.md` | `YcodeWorkspace/Workspace.swift`, `Scheme.swift` | yes / yes / no | – | P3 — works |
 | Open a package folder | `Package.swift` opened as a workspace | done | `specs/xcodebuild/packages.md` | `WorkspaceModel` `.package`, `YcodeXcodebuild/SwiftPackages.swift` | yes / yes / no | – | P3 — works |
 | pbxproj round trip | Lossless, Xcode-identical output | done | `specs/formats/pbxproj.md`, `openstep-plist.md` | `YcodeProject/PBXProjWriter.swift`; `ycode roundtrip` | yes / yes / no | – | P3 — byte-identical on the corpus |
+| App skills (`.skillsbundle`) | **Siri AI Developer Preview**: one bundle per target of `SKILL.md` files that guide Siri across several tool intents; validated and compiled at build time | missing (planned for Ycode 2) | `specs/formats/skills-bundle.md` | – | no / no / no | M | P2 — new in the preview; the API may change. |
 | JSON project format `.xcproj` | **Xcode 27.2**: opt-in JSON project file, readable by 27.x | missing | – | – | no / no / no | M | P2 — the reference is 27.1; needed once 27.2 projects arrive. Format spec needed (level 2). |
 | Typed mutations | Add or remove files, targets, packages, settings | done (library) | `specs/ide/project-editor.md` | `YcodeProject/Mutations.swift`, `TargetMutations.swift`, `PackageDependencies.swift` | yes / no command / no | S | P2 — Linux users need a CLI or API |
 | Navigator file operations | Add Files, groups, delete, drag, sort, convert | done (NAV-OPS): New File into the selected group, the four Group items, Folder and Folder from Selection, Add Files… (copy, move or reference; groups, folder references or synchronized folders; targets), Delete (to the Trash or the reference only), inline rename, drag and drop (and from the Finder), Sort, Convert ▸ To Group / To Folder / Preflight, Cut and Paste ▸ Move Item Here, a row context menu; each undoable, exception sets kept for synchronized folders, git staging. Missing: nothing in this row (the reference's context menu is still to observe). | `specs/ide/navigators.md` §Ycode implementation | `YcodeIDECore/Navigator/ProjectFileOperations*.swift`, `ProjectGraphEdits.swift`; `YcodeUI/Navigator/NavigatorAreaController+ProjectOps.swift`, `Window/WorkspaceWindowController+ProjectNavigatorOps.swift` | yes (model, portable) / – / no | S | P3 |
@@ -748,7 +751,7 @@ pixel-identical.
 |---|---|---|---|
 | **L0 Core extraction** (done, §5.7) | New target `YcodeIDECore`: move bucket 1 (16.5k lines) and split the view models out of bucket 2. An inotify `FileSystemWatcher`. A portable `Preferences` (colors and fonts as values). Run the moved `YcodeUITests` model tests on Linux. | – | M (1 round) |
 | **L1 Shell skeleton** (done, §5.8) | A SwiftUI `WorkspaceView`: navigator, editor area (read-only text) and inspector; project navigator from `NavigatorTree`; issue navigator; build through `YcodeXcodebuild` in process. It runs on macOS with Apple's SwiftUI before OpenViews is ready, which proves the code is shared. | L0, R5, R7, R8, R9 (R12 for split views) | L |
-| **L2 EditorKit v1** | Editable Swift files: storage, virtualized layout, carets, IME, undo, swift-syntax highlighting, find. Then LSP completion, hover, definition and diagnostics. | R14, L1 | XL (2–3 rounds) |
+| **L2 EditorKit v1** (first part done, §5.9) | Editable Swift files: storage, virtualized layout, carets, IME, undo, swift-syntax highlighting, find. Then LSP completion, hover, definition and diagnostics. | R14, L1 | XL (2–3 rounds) |
 | **L3 Run and debug** | lldb-dap debug area (`YcodeDebug` is portable). Console. Run on the Ycode simulator **locally** on arm64 Linux (no ssh) or remotely from x86-64. A device canvas from `YcodeDisplayStream`. **Remote from x86-64: done (REMOTE-X86, 2026-10-31, §5.11)**; local arm64 run and debugging remain. | L1, R12 | L |
 | **L4 Editors and windows** | Project editor, scheme editor, plist and String Catalog editors, source control, Settings. Menus and toolbars. | R11, R12, R13 | XL |
 | **L5 Previews, Gauge, assistant, IB, asset catalogs** | Port the remaining bucket 2 screens. Previews on Linux use the Ycode simulator path; the OpenViews renderer later serves Linux-native previews. | L4 | XL |
@@ -827,7 +830,7 @@ queue on arm64 under a headless Weston (Wayland), in light and dark.
 - A `NavigationSplitView` holds the navigator (290), the editor over the debug area, and the inspector (265, `.inspector`). View ▸ Navigators / Debug Area / Inspectors and the toolbar toggle them.
 - The selector bar has Project (⌘1), Find (⌘4) and Issues (⌘5), and they keep their indices in the full bar.
 - The **Project navigator** is `NavigatorTree` through `List` and `DisclosureGroup`s whose expansion lives in the model. It opens with `NavigatorTree.initiallyExpanded`. `OutlineGroup` was not used: its expansion belongs to the container and no SwiftUI API sets an initial state. Selecting a file opens it. Navigate ▸ Reveal in Project Navigator (⇧⌘J) expands the file's parents and selects it.
-- The **editor** is read-only for L1. It shows a jump bar, then the file's lines with a 48-point gutter, colored by `YcodeSyntax` (swift-syntax for Swift, line lexers for the others) as `Text` runs, built lazily. The colors are Ycode Paper in light mode and Ycode Dusk in dark mode, and keywords are bold. The line that Find or an issue points at gets the current-line color and is scrolled to. Go Back / Go Forward (⌃⌘← / ⌃⌘→, toolbar) use the core's `NavigationHistory`.
+- The **editor** was read-only for L1 (L2 replaced it, §5.9). It showed a jump bar, then the file's lines with a 48-point gutter, colored by `YcodeSyntax` (swift-syntax for Swift, line lexers for the others) as `Text` runs, built lazily. The colors are Ycode Paper in light mode and Ycode Dusk in dark mode, and keywords are bold. The line that Find or an issue points at gets the current-line color and is scrolled to. Go Back / Go Forward (⌃⌘← / ⌃⌘→, toolbar) use the core's `NavigationHistory`.
 - The **Find navigator** is "Find › Text › Containing" with Aa (match case), the query field, and "In Package/Project/Workspace". Find in Workspace (⇧⌘F) shows it and focuses the field. Return runs `FindEngine` over `FindScopeResolver`'s workspace files, and rows fill in as files finish ("name (N)", then each match with its text in bold). Selecting a match opens the file at its line.
 - The **Issue navigator** shows `IssueNavigatorModel.tree` from `WorkspaceSession.displayedIssues`: the project row, then targets, files and issues, each with its severity symbol and "file:line". Selecting an issue opens its line. Jump to Next / Previous Issue (⌘' / ⇧⌘') step through the issues in navigator order. A build with errors shows this navigator.
 - The **toolbar** has the navigator toggle, Run | Stop, Back | Forward, the activity view ("<workspace>" over "Build Failed | Today at 12:10 AM", from `WorkspaceSession.activity`), the scheme › destination pop-ups (the core's lists), the issue capsule, and the inspector toggle.
@@ -999,6 +1002,133 @@ and `WorkspaceSession.noteFileEdited` follow.
      with `PredictionSession.collapsed`), covering and redrawing the rest
      of the caret line, extra lines on a filled block; the Settings rows
      of the spec's §3.5 go into the shell's settings.
+
+#### Done in L2 (LINUX-EDITOR, 2026-11-03)
+
+What a beta tester gets in `ycode-ide` on Linux. Unless a line says
+otherwise, it was driven for real on the x86-64 workstation (private Xvfb,
+`xdotool` keystrokes and clicks, light and dark, screenshots looked at) and
+has unit tests.
+
+- **`YcodeEditorKit`** (portable, no toolkit; tested on Linux and macOS):
+  - `EditorBuffer`: the text in `SyntaxDocument` (its UTF-16 array and line
+    index, so every edit re-highlights incrementally), the selection, marked
+    text and undo. Undo groups follow OVText's rules (typing coalesces until
+    the caret moves; deletions by direction; paste, cut and typing rules
+    are their own steps); "unsaved" follows undo and redo back to the saved
+    state. The typing rules are the AppKit editor's `TypingRules` unchanged
+    (auto-indent, closing brackets and quotes, stepping over, enclosing a
+    selection, Tab and Shift-Tab, Comment Selection).
+  - Movement by character (grapheme clusters; a CRLF is one), word, line
+    (Home goes to the text first, then column 0), document; vertical moves
+    keep their column; word and line selection, and drags that extend by
+    words or lines.
+  - `EditorFile` and `EditorDocument`, saving: the bytes go to a temporary
+    file beside the target, are flushed and read back, then renamed over
+    it, and the directory is flushed: a crash or a full disk leaves the old
+    file or the whole new one. Links stay links, the mode and owner carry
+    over. A folder that takes no new file gets an in-place write after a
+    backup copy. UTF-8 with or without a byte order mark, UTF-16 with one,
+    and CRLF files (edited as LF) save back to their own form; a file with
+    mixed line endings keeps its bytes. A file that is not valid UTF-8 is
+    shown read-only (saving its replacement characters would destroy it).
+    A save that fails leaves the buffer as it was, unsaved, and says why.
+  - Changes on disk: about once a second the open files are compared with
+    what was read (size, time, inode, then a hash, so a touched file is no
+    change). An unedited file follows the disk; an edited one shows a banner
+    (Reload from Disk, undoable; Keep My Version). A save over a change on
+    disk asks first (Overwrite or Cancel); a deleted file can be saved again.
+  - `EditorRecovery`: unsaved text is copied 1.5 s after typing pauses to
+    `$XDG_STATE_HOME/ycode/recovery` (private files). After a crash, opening
+    the file brings the text back as an undoable edit, with a banner
+    (Discard). Saving, reverting or giving up the changes removes the copy.
+- **The editor view** (`ycode-ide/SourceEditorView.swift`): a viewport-sized
+  `Canvas` drawing only the visible lines (§5.9 item 2), the gutter over the
+  text, the current line, the selection, find matches, the caret (it blinks,
+  rests after 10 s), the build's issues (a dot in the gutter, a tinted line,
+  the message at the line's end), a scroll indicator, and the minimap (a
+  band shows what is in view; dragging it scrolls, not driven). Colors
+  follow typing (seen live: a new `let`, string, comment and `struct`). On OpenViews the editor
+  scrolls itself and draws again from the last layout when typing, the
+  caret or scrolling change it (`TextSurfaceConnection.setNeedsDisplay`), so
+  a keystroke does not lay out the whole window.
+- **Input** (OpenViews' new `textSurface`, `textSurfacePointer`,
+  `textSurfaceScroll`, `09-open-design.md`): typed and committed text, the
+  Linux text keys (arrows, Ctrl+arrows, Home/End, Ctrl+Home/End, Page
+  Up/Down (not driven), Backspace and Delete by character or word, Ctrl+A/C/X/V/Z,
+  Ctrl+Shift+Z and Ctrl+Y, Ctrl+Insert, Shift+Insert, Shift+Delete), the
+  Edit menu's items, a context menu (Cut, Copy, Paste, Select All; not
+  driven), the
+  system clipboard, click, drag (scrolling at the edges), shift-click,
+  triple-click a line, a click in the gutter selects its line. Double-click
+  a word has unit tests only: under the test Xvfb the two clicks reached the
+  app bunched or more than half a second apart. Input-method composition goes through SDL's text-editing events
+  (marked text underlined at the caret, the candidate window placed at the
+  caret); it has unit tests but was **not tried with a real input method**
+  (none runs under the test Xvfb).
+- **The shell:** File ▸ Save (Ctrl+S), Save All (Ctrl+Alt+S), Revert to
+  Saved… and Close Document (these two with unit tests only); the unsaved mark in the jump bar, on the file's
+  navigator row and in the window title ("— Edited"); unsaved text stays
+  while other files are shown; closing the workspace, opening another, and
+  quitting ask Save / Don't Save / Cancel (driven: Ctrl+Q; the last window's
+  close button takes the same path but was not driven, the test Xvfb has no
+  window manager); a build, test or run saves first, and a save
+  that needs the user stops it. Find ▸ Find… (Ctrl+F), Find and Replace…
+  (Ctrl+Alt+F), Find Next/Previous (Ctrl+G, Ctrl+Shift+G), Use Selection for
+  Find (Ctrl+E): a bar with text or regular expression, matching word,
+  matching case, "N of M", Replace (then on to the next) and All (one undo
+  step; `$1` templates with regular expressions). Navigate ▸ Jump to Line…
+  (Ctrl+L; "120" or "120:8"). Editor ▸ Structure: Comment Selection,
+  Shift Left/Right, Move Line Up/Down. Choosing an issue puts the caret at
+  its line and column.
+
+- **Live issues** (`WorkspaceShellModel.startLanguageService`): the app starts
+  sourcekit-lsp for the workspace (`YCODE_IDE_LSP=0` leaves it off; it must be
+  on the `PATH`); open files are sent to it and updated 0.3 s after typing
+  pauses, and its errors and warnings show in the Issue navigator and in the
+  editor without saving or building. Driven on the sample package: a type
+  error typed into a file showed in about 10 s (the server's first analysis)
+  and went away on undo.
+- **Settings window** (Ycode ▸ Settings…, Ctrl+,; `ShellSettingsView`): font
+  size, theme, indent with spaces or tabs, tab and indent widths,
+  syntax-aware indenting, closing brackets and quotes, and predictive
+  completion's switch, model source (Ollama, llama.cpp server,
+  OpenAI-compatible), address and model. The same user defaults as the macOS
+  IDE and `ycode complete`; open editors take a new font, theme or tab width
+  at once (driven: font size and tab width, light and dark).
+
+Measured (x86-64 workstation, release build, 1400 × 926 window under Xvfb,
+`YCODE_IDE_EDITOR_BENCH`, frames timed in the window: update, layout,
+drawing and presenting):
+
+| 50,000-line Swift file | Software renderer (`OV_RENDERER=software`) | Vulkan on llvmpipe (`OV_VULKAN_DEVICE=cpu`) | Vulkan on the RTX 4060 Ti, presented to Xvfb |
+|---|---|---|---|
+| Open (read, lex) | 62 ms; first frame 300 ms later | same | same |
+| Scrolling, 37 points a frame | 15.0 ms mean, 16.2 ms p95 | 15.8 ms mean | 53 ms mean |
+| Jumps to far lines | 19.2 ms mean, 21.3 ms p95 | – | 57 ms mean |
+| Typing, key to its frame | 18.9 ms mean, 21.9 ms p95 | 20.3 ms mean | 57 ms mean |
+| Undo of 500 edits | 25–38 ms | same | same |
+| Save (2 MB) | 12–28 ms | same | same |
+
+Before the redraw-only path every keystroke and scroll step laid out the
+whole window: 111 ms a frame. The last column is the default renderer on
+this machine (the GPU is preferred), but its frames go to a virtual X server
+that the GPU cannot present to directly, so most of the 53 ms is that copy;
+a desktop with the GPU driving its display was not measured (the owner's
+session was left alone). `OV_RENDERER=software` is the fallback if a desktop
+shows the same cost. Swift files
+over 20,000 lines are colored by the lexer only (`EditorBuffer.parserLineLimit`):
+swift-syntax's pass over a 50,000-line file took 480 ms after each pause in
+typing, on the main thread.
+
+Not done in L2 so far: code completion, hover, Jump to Definition, predictive
+completion in the
+editor, folding, placeholders, multiple carets, line wrapping, the change
+bar and breakpoints in the gutter. Known: under
+the test Xvfb, `xdotool` clicks sometimes arrive bunched in one read of
+the event queue; OpenViews' filter for duplicated clicks (QA B4) then drops
+the second click of a double-click. The filter now ignores clicks read
+after a long frame, when their times are not reliable.
 
 ### 5.10 Linux IDE parity with Ycode's macOS IDE (LINUX-UI-PARITY, 2026-10-31)
 

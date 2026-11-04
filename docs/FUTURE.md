@@ -7,9 +7,9 @@ This is the direction of the project, not a set of promises or dates. What works
 
 **On Linux**, in order:
 
-1. Editing: an editor component with undo, input methods and find, then language features through
-   SourceKit-LSP ([PARITY.md](PARITY.md) §5.9).
-2. Settings, and the navigators the Linux window doesn't have yet.
+1. Completion, Jump to Definition and the other language features through SourceKit-LSP; live issues landed in
+   1.0.0-beta.1 ([PARITY.md](PARITY.md) §5.9).
+2. The navigators the Linux window doesn't have yet, and the rest of Settings (key bindings, accounts).
 3. The debugger interface, and debugging on a remote simulator.
 
 **On both systems:**
@@ -27,6 +27,9 @@ The second major version targets what Xcode 27.2 adds, on both systems:
 - The HomeView platform: opening, building and templating its projects. This is still being investigated.
 - Device Hub additions: shake, memory pressure, slow animations and Standby ([PARITY.md](PARITY.md) §4).
 - Rendered Markdown editing, `#Playground`, Icon Composer 2.0 documents, and `simctl`-style verbs.
+- App skills for Siri (`.skillsbundle`, from the Siri AI Developer Preview): the Skills Bundle template,
+  validation of each `SKILL.md` as live issues and build errors, the compiled output in the app bundle, and a
+  coding-assistant action that drafts a skill from a target's App Intents ([skills-bundle.md](../specs/formats/skills-bundle.md)).
 
 ## The simulator
 

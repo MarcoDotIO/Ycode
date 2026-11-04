@@ -438,8 +438,14 @@ public final class SDLBackend: PlatformBackend {
     }
 
     public func waitForEvents(until deadline: TimeInterval?) -> [PlatformEvent] {
-        var out = drain()
+        // Event times are when SDL read the events, not when they happened.
+        // Events that queued while the app was busy (a long frame) all look
+        // simultaneous: two quick clicks 0.1 ms apart. Times count as
+        // reliable when the previous read was recent or the loop slept until
+        // the events came; the duplicate-click filter compares only those.
+        var out = drain(timesAreReliable: now - lastDrain < Self.busyGap)
         if !out.isEmpty { return out }
+        let waitStart = now
         if displaySource != nil {
             let date = deadline.map { Date(timeIntervalSinceNow: max(0, $0 - now)) } ?? Date.distantFuture
             _ = RunLoop.main.run(mode: .default, before: date)
@@ -450,11 +456,19 @@ public final class SDLBackend: PlatformBackend {
             _ = sdl.WaitEventTimeout(nil, Int32(min(10, max(0, remaining * 1_000)).rounded(.up)))
             _ = RunLoop.main.run(mode: .default, before: Date())
         }
-        out = drain()
+        out = drain(timesAreReliable: now - waitStart > 0.001 || now - lastDrain < Self.busyGap)
         return out
     }
 
-    private func drain() -> [PlatformEvent] {
+    /// Longer than this between two reads of the event queue, and the
+    /// events read carry unreliable times.
+    static let busyGap: TimeInterval = 0.02
+    private var lastDrain: TimeInterval = 0
+    private var eventTimesAreReliable = true
+
+    private func drain(timesAreReliable: Bool) -> [PlatformEvent] {
+        eventTimesAreReliable = timesAreReliable
+        defer { lastDrain = now }
         var out: [PlatformEvent] = []
         sdl.PumpEvents()
         var e = SDL_Event()
@@ -530,8 +544,11 @@ public final class SDLBackend: PlatformBackend {
     private static func string(_ p: UnsafePointer<CChar>?) -> String { p.map { String(cString: $0) } ?? "" }
 
     func acceptButton(_ button: UInt8, down: Bool, t: Double, x: Float, y: Float) -> Bool {
-        buttonFilter.accept(button: button, down: down, time: t, x: Double(x), y: Double(y))
+        buttonFilter.accept(button: button, down: down, time: t, x: Double(x), y: Double(y), timeIsReliable: eventTimesAreReliable)
     }
+
+    /// The modifier keys held at the last key event.
+    private var heldModifiers: KeyModifiers = []
 
     // swiftlint:disable:next cyclomatic_complexity function_body_length
     private func translate(_ e: inout SDL_Event) -> PlatformEvent? {
@@ -562,6 +579,9 @@ public final class SDLBackend: PlatformBackend {
             guard let w = window(e.window.windowID) else { return nil }
             return .window(w.id, .scaleChanged(w.scale))
         case SDL_EVENT_KEY_DOWN.rawValue, SDL_EVENT_KEY_UP.rawValue:
+            // SDL's pointer events carry no modifiers: the keyboard's last state
+            // goes with them (shift-click).
+            heldModifiers = Self.modifiers(e.key.mod)
             return .key(KeyEvent(window: e.key.windowID, key: Self.key(e.key.key), isDown: e.key.down,
                                  isRepeat: e.key.repeat, modifiers: Self.modifiers(e.key.mod), timestamp: t))
         case SDL_EVENT_TEXT_INPUT.rawValue:
@@ -576,13 +596,13 @@ public final class SDLBackend: PlatformBackend {
             let pressed = e.motion.state & 1 != 0
             return .pointer(PointerEvent(window: w.id, pointer: 0, kind: .mouse, phase: .moved,
                                          location: w.toPoints(x: e.motion.x, y: e.motion.y),
-                                         button: pressed ? 1 : 0, isPressed: pressed, timestamp: t))
+                                         button: pressed ? 1 : 0, isPressed: pressed, modifiers: heldModifiers, timestamp: t))
         case SDL_EVENT_MOUSE_BUTTON_DOWN.rawValue, SDL_EVENT_MOUSE_BUTTON_UP.rawValue:
             guard e.button.which != Self.touchMouseID, let w = window(e.button.windowID) else { return nil }
             guard acceptButton(e.button.button, down: e.button.down, t: t, x: e.button.x, y: e.button.y) else { return nil }
             return .pointer(PointerEvent(window: w.id, pointer: 0, kind: .mouse, phase: e.button.down ? .down : .up,
                                          location: w.toPoints(x: e.button.x, y: e.button.y),
-                                         button: Int(e.button.button), isPressed: e.button.down, timestamp: t))
+                                         button: Int(e.button.button), isPressed: e.button.down, modifiers: heldModifiers, timestamp: t))
         case SDL_EVENT_MOUSE_WHEEL.rawValue:
             guard let w = window(e.wheel.windowID) else { return nil }
             var dx = Double(e.wheel.x), dy = Double(e.wheel.y)
@@ -691,7 +711,9 @@ public final class SDLBackend: PlatformBackend {
 /// down, and a press (with its release) that follows a release of the same
 /// button at the same place within `duplicateInterval` (QA B4: SDL 3.4.18 on
 /// some X servers delivers one click as two press/release pairs 0.1–0.3 ms
-/// apart; no person clicks twice within 4 ms).
+/// apart; no person clicks twice within 4 ms). Only events whose times are
+/// reliable are compared: events read late (after a long frame) all carry
+/// about the same time, and a quick double click would lose its second click.
 public struct MouseButtonFilter: Sendable {
     public static let duplicateInterval = 0.004
     private var down: Set<UInt8> = []
@@ -701,10 +723,11 @@ public struct MouseButtonFilter: Sendable {
     public init() {}
 
     /// Whether to deliver the event.
-    public mutating func accept(button: UInt8, down isDown: Bool, time t: Double, x: Double, y: Double) -> Bool {
+    public mutating func accept(button: UInt8, down isDown: Bool, time t: Double, x: Double, y: Double,
+                                timeIsReliable: Bool = true) -> Bool {
         if isDown {
             if down.contains(button) { return false }
-            if let r = lastRelease[button], t - r.t >= 0, t - r.t < Self.duplicateInterval, abs(r.x - x) < 1, abs(r.y - y) < 1 {
+            if timeIsReliable, let r = lastRelease[button], t - r.t >= 0, t - r.t < Self.duplicateInterval, abs(r.x - x) < 1, abs(r.y - y) < 1 {
                 dropped.insert(button)
                 return false
             }

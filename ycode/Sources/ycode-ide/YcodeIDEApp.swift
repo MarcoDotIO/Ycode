@@ -32,6 +32,13 @@ struct YcodeIDEApp: App {
         YcodeRelease.handleVersionFlag(tool: "ycode-ide")
         YcodeRelease.adoptBundledHelpers()
         ShellLook.apply()
+        #if os(Linux)
+        // Quit and the window's close button ask about unsaved changes first.
+        ApplicationTermination.shouldTerminate = { ShellApp.model.shouldQuit() }
+        ShellApp.model.terminateApp = { OpenViewsAutomation.terminate() }
+        #endif
+        // Live issues from sourcekit-lsp; YCODE_IDE_LSP=0 leaves it off.
+        ShellApp.model.startsLanguageService = ProcessInfo.processInfo.environment["YCODE_IDE_LSP"] != "0"
         if let path = ShellAppModel.launchPath() {
             if !ShellApp.model.open(path: path) {
                 FileHandle.standardError.write(Data("ycode-ide: \(ShellApp.model.openError ?? "cannot open \(path)")\n".utf8))
@@ -45,6 +52,7 @@ struct YcodeIDEApp: App {
         }
         .defaultSize(width: ShellMetrics.windowSize.width, height: ShellMetrics.windowSize.height)
         .commands { ShellMenus(app: ShellApp.model) }
+        Settings { ShellSettingsView() }
     }
 }
 
@@ -86,6 +94,14 @@ struct ShellRootView: View {
         } message: {
             Text(verbatim: app.openError ?? "")
         }
+        // Closing the workspace or quitting with unsaved changes.
+        .alert(unsavedTitle, isPresented: Binding(get: { app.pendingClose != nil }, set: { if !$0 { app.answerClose(.cancel) } })) {
+            Button((app.workspace?.editedPaths.count ?? 0) > 1 ? "Save All" : "Save") { app.answerClose(.saveAll) }.keyboardShortcut(.defaultAction)
+            Button("Don't Save", role: .destructive) { app.answerClose(.discard) }
+            Button("Cancel", role: .cancel) { app.answerClose(.cancel) }
+        } message: {
+            Text(verbatim: "Your changes will be lost if you don't save them.")
+        }
         .onAppear {
             let app = app, openURL = openURL
             app.openExternally = { url in
@@ -95,6 +111,14 @@ struct ShellRootView: View {
             }
         }
         .task { await ShellDriver.start(app) }
+    }
+}
+
+extension ShellRootView {
+    var unsavedTitle: String {
+        let names = app.workspace?.editedDocumentNames ?? []
+        if names.count == 1 { return "Save changes to “\(names[0])”?" }
+        return "Save changes to \(names.count) files?"
     }
 }
 

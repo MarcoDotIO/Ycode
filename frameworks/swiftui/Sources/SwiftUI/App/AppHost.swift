@@ -222,6 +222,7 @@ package final class WindowHost {
         gestures = GestureEngine(graph: graph)
         self.presenter = presenter
         services.presentations.onChange = { [weak self] in self?.refreshRoot() }
+        services.requestDisplay = { [weak self] in self?.needsDisplay = true }
         services.focus.onTextClientChanged = { [weak self] client in
             guard let self else { return }
             if let client { self.platform.startTextInput(caretRect: client.caretRect) } else { self.platform.stopTextInput() }
@@ -285,6 +286,10 @@ package final class WindowHost {
     }
 
     func renderFrame() {
+        let began = OpenViewsAutomation.frameDurations == nil || isPopup ? nil : DispatchTime.now().uptimeNanoseconds
+        defer {
+            if let began { OpenViewsAutomation.frameDurations?.append(Double(DispatchTime.now().uptimeNanoseconds - began) / 1e9) }
+        }
         let passes = graph.passCount
         // An animation frame changes presented values without a pass (render
         // effects, layout geometry): it must be presented too (QA B1). The
@@ -768,6 +773,7 @@ package final class AppHost: RunLoopClient {
 
     /// Quit from a menu or a shortcut: a user quit.
     package func quit() {
+        if ApplicationTermination.shouldTerminate?() == false { return }
         quitByUser = true
         terminate()
     }
@@ -882,6 +888,7 @@ package final class AppHost: RunLoopClient {
         case .textEditing(let e): window(for: e.window)?.handleEditing(e)
         case .openURL(let u): openURL(u)
         case .quit:
+            // The platform's quit (SDL: SIGINT, SIGTERM) is not asked about.
             quitByUser = true
             terminate()
         case .settingsChanged: applySettings()
@@ -907,7 +914,10 @@ package final class AppHost: RunLoopClient {
         case .resized(let s): w.resized(to: s)
         case .scaleChanged(let s): w.scaleChanged(s)
         case .exposed: w.exposed()
-        case .closeRequested: closeWindow(w)
+        case .closeRequested:
+            // The last window takes the app with it (closeWindow).
+            if windows.filter({ !$0.isPopup }).count == 1, ApplicationTermination.shouldTerminate?() == false { return }
+            closeWindow(w)
         case .pointerLeft: w.pointerLeft()
         case .minimized, .hidden:
             w.isMinimized = true

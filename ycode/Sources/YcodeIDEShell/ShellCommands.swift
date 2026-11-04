@@ -7,14 +7,18 @@ import YcodeIDECore
 /// (`specs/ide/menus.md`).
 public enum ShellCommand: String, CaseIterable, Sendable {
     // File
-    case open, closeWorkspace, newProject
+    case open, closeWorkspace, newProject, closeDocument, save, saveAll, revertToSaved
+    // Find (in the open file)
+    case find, findAndReplace, findNext, findPrevious, useSelectionForFind
+    // Editor ▸ Structure
+    case commentSelection, shiftLeft, shiftRight, moveLineUp, moveLineDown
     // View
     case showProjectNavigator, showFindNavigator, showIssueNavigator
     case toggleNavigator, toggleInspector, toggleDebugArea, activateConsole
     // Find
     case findInWorkspace
     // Navigate
-    case revealInProjectNavigator, goBack, goForward, nextIssue, previousIssue
+    case revealInProjectNavigator, goBack, goForward, nextIssue, previousIssue, jumpToLine
     // Product
     case run, test, stop, build, clean
     // Window
@@ -28,6 +32,21 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .open: ("openDocument:", 0)
         case .newProject: ("newProject:", 0)
         case .closeWorkspace: ("closeWorkspace:", 0)
+        case .closeDocument: ("closeDocument:", 0)
+        case .save: ("saveDocument:", 0)
+        case .saveAll: ("ycodeUnavailableSaveAll:", 0)
+        case .revertToSaved: ("revertDocumentToSaved:", 0)
+        case .find: ("performFindPanelAction:", 1)
+        case .findAndReplace: ("performFindPanelAction:", 12)
+        case .findNext: ("performFindPanelAction:", 2)
+        case .findPrevious: ("performFindPanelAction:", 3)
+        case .useSelectionForFind: ("performFindPanelAction:", 7)
+        case .commentSelection: ("commentSelection:", 0)
+        case .shiftLeft: ("shiftLeft:", 0)
+        case .shiftRight: ("shiftRight:", 0)
+        case .moveLineUp: ("moveLineUp:", 0)
+        case .moveLineDown: ("moveLineDown:", 0)
+        case .jumpToLine: ("jumpToLine:", 0)
         case .showProjectNavigator: ("showNavigator:", ShellNavigator.project.selectorIndex)
         case .showFindNavigator: ("showNavigator:", ShellNavigator.find.selectorIndex)
         case .showIssueNavigator: ("showNavigator:", ShellNavigator.issues.selectorIndex)
@@ -59,11 +78,13 @@ public enum ShellCommand: String, CaseIterable, Sendable {
     /// The menu the command is in (`CommandTable.menus` titles).
     public var menu: String {
         switch self {
-        case .open, .closeWorkspace, .newProject: "File"
+        case .open, .closeWorkspace, .newProject, .closeDocument, .save, .saveAll, .revertToSaved: "File"
+        case .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind: "Find"
+        case .commentSelection, .shiftLeft, .shiftRight, .moveLineUp, .moveLineDown: "Editor"
         case .showProjectNavigator, .showFindNavigator, .showIssueNavigator, .toggleNavigator, .toggleInspector, .toggleDebugArea,
              .activateConsole: "View"
         case .findInWorkspace: "Find"
-        case .revealInProjectNavigator, .goBack, .goForward, .nextIssue, .previousIssue: "Navigate"
+        case .revealInProjectNavigator, .goBack, .goForward, .nextIssue, .previousIssue, .jumpToLine: "Navigate"
         case .run, .test, .stop, .build, .clean: "Product"
         case .welcome: "Window"
         case .about: "Ycode"

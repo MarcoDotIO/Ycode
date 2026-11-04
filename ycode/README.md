@@ -15,6 +15,7 @@ make any change here.
 | `Sources/YcodeIDECore` | The IDE's portable model, shared by both windows |
 | `Sources/Ycode{UI,DeviceUI,App}` | The macOS IDE (AppKit) and its device windows |
 | `Sources/{YcodeIDEShell,ycode-ide}` | The Linux IDE (SwiftUI on OpenViews, `../frameworks/swiftui`) |
+| `Sources/YcodeEditorKit` | The Linux IDE's source editor model: buffer, undo, movement, safe saving, recovery copies (portable) |
 | `Sources/{YcodeXcodebuild,ycodebuild-cli}`, `Tools/ycode-swb` | `ycodebuild` and its swift-build helper |
 | `Sources/Ycode{DarwinABI,DarwinKernel,Hypervisor,XPC,HostServices}`, `Sources/ycode-simd` | Simulator: the Darwin kernel layer, KVM, XPC, host services, the VM monitor |
 | `Sources/Ycode{MetalHost,Vulkan}`, `Translator/` | Simulator: Metal on Vulkan, and the AIR to SPIR-V translator |

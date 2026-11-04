@@ -22,7 +22,8 @@ no earlier releases. [The README](https://github.com/MarcoDotIO/Ycode#what-works
   SourceKit-LSP, plist, asset and String Catalog editors, Interface Builder documents, SwiftUI previews, tests, source control,
   a coding assistant and Settings. All experimental.
 - **The Linux IDE:** the workspace window on OpenViews, our SwiftUI implementation. It can open projects, workspaces and
-  packages, browse and search them, and build and run Swift packages. All experimental.
+  packages, browse and search them, edit and save files (undo, find and replace, crash recovery), and build and run
+  Swift packages, with build errors shown in the editor. All experimental.
 - **Simulators (experimental):** iOS, iPadOS and watchOS devices, and a partial visionOS, on arm64 Linux with KVM, with viewers
   for macOS and x86-64 Linux. You supply the simulator runtime; none of Apple's software is included.
 - **Open frameworks (partial):** Contacts, EventKit, HealthKit, HomeKit, StoreKit, WeatherKit and SwiftUI as Swift packages
@@ -31,7 +32,8 @@ no earlier releases. [The README](https://github.com/MarcoDotIO/Ycode#what-works
 
 ### Known limitations
 
-- The Linux IDE opens files read-only and has no Settings window, language features or debugger interface yet.
+- The Linux IDE has a Settings window and live issues from SourceKit-LSP, but no completion, source control or
+  debugger interface yet. Input methods are wired up but untested with a real one.
 - Physical devices are listed only, and signing and distribution are partial.
 - Simulators are slower than Apple's on a Mac, and parts are missing: see [docs/SIMULATOR.md](docs/SIMULATOR.md).
 

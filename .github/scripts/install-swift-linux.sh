@@ -4,7 +4,7 @@
 # Usage: install-swift-linux.sh <version> <folder>     for example 6.4 "$HOME/.swift-toolchain"
 # An installed toolchain in that folder (from the cache) is kept as it is.
 set -eu
-VERSION="$1"
+SWIFT="$1"
 TARGET="$2"
 
 if [ -x "$TARGET/usr/bin/swift" ]; then
@@ -12,7 +12,8 @@ if [ -x "$TARGET/usr/bin/swift" ]; then
     exit 0
 fi
 
-. /etc/os-release
+# Only VERSION_ID: sourcing /etc/os-release would also set VERSION ("24.04.3 LTS (Noble Numbat)").
+VERSION_ID="$(. /etc/os-release && printf '%s' "$VERSION_ID")"
 UBUNTU="ubuntu${VERSION_ID}"                           # ubuntu24.04
 FOLDER="ubuntu$(printf '%s' "$VERSION_ID" | tr -d .)"  # ubuntu2404
 SUFFIX=""
@@ -21,8 +22,8 @@ case "$(uname -m)" in
     x86_64) ;;
     *) echo "No Swift release for $(uname -m)" >&2; exit 1 ;;
 esac
-NAME="swift-${VERSION}-RELEASE-${UBUNTU}${SUFFIX}.tar.gz"
-URL="https://download.swift.org/swift-${VERSION}-release/${FOLDER}/swift-${VERSION}-RELEASE/${NAME}"
+NAME="swift-${SWIFT}-RELEASE-${UBUNTU}${SUFFIX}.tar.gz"
+URL="https://download.swift.org/swift-${SWIFT}-release/${FOLDER}/swift-${SWIFT}-RELEASE/${NAME}"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

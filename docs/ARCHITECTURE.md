@@ -163,7 +163,8 @@ tests that need one skip themselves.
 
 8. **Linux IDE.** The same window on OpenViews (`docs/PARITY.md` §5.6). *(L0, the
    portable model, and L1, the window with browsing, Find, build and run, are done.
-   L2, editing, is next: files open read-only today.)*
+   L2, editing and safe saving, landed in 1.0.0-beta.1; language features and Settings
+   are next.)*
 
 **Simulator track (parallel):** run Xcode's simulator runtimes on arm64
 Linux, on a Darwin compatibility layer in KVM micro-VMs. See

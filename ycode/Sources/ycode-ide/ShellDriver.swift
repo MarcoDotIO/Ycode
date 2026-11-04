@@ -20,6 +20,9 @@ import OVPlatform
 //                           Ycode simulator host's device, ShellRemoteRun) and
 //                           Product ▸ Run with the pointer; shots
 //                           <prefix>-remote-*.png (REMOTE-X86)
+//   YCODE_IDE_EDITOR_BENCH=<file>  open that file and measure the editor:
+//                           opening, scrolling, typing, a page jump
+//                           (docs/PARITY.md §5.9; EditorBench.swift)
 //   YCODE_IDE_SCRIPT=1      drive the window with synthetic input through
 //                           the back end's queue (expand a folder, open a
 //                           file, Find in Workspace, Product ▸ Build, open
@@ -52,7 +55,7 @@ enum ShellDriver {
         guard let w = app.workspace else { return "state: welcome recent=\(app.recent.count)" }
         let c = w.issueCounts
         return "state: workspace=\(w.workspaceName) navigator=\(w.navigator.rawValue) document=\(w.document?.name ?? "none") "
-            + "lines=\(w.document?.lines.count ?? 0) marked=\(w.markedLine.map(String.init) ?? "none") "
+            + "lines=\(w.editor?.buffer.lineCount ?? 0) edited=\(w.editedPaths.count) caret=\(w.editor.map { "\($0.buffer.caretLine + 1):\($0.buffer.caretColumn + 1)/\($0.buffer.selection.range.count)" } ?? "-") length=\(w.editor?.buffer.length ?? 0) findbar=\(w.findBar.isShown ? "\"" + w.findBar.countText + "\"" : "hidden") jump=\(w.isJumpToLineShown) alert=\(w.saveAlert != nil) marked=\(w.markedLine.map(String.init) ?? "none") "
             + "find=\"\(w.findText)\" results=\"\(w.findCountText)\" issues=\(c.errors)E/\(c.warnings)W "
             + "activity=\"\(w.activityText)\" builds=\(w.buildCount) debugArea=\(w.isDebugAreaShown) "
             + "inspector=\(w.isInspectorShown) navigatorShown=\(w.isNavigatorShown) findFocus=\(w.findFocusCount) bezel=\"\(w.notifier.bezel?.title ?? "")\""
@@ -77,6 +80,7 @@ enum ShellDriver {
         if env["OV_PRINT_TARGETS"] != nil { printTargets() }
         if env["YCODE_IDE_SCRIPT"] != nil { await script(app) }
         if let prefix = env["YCODE_IDE_PARITY"] { await parity(app, prefix: prefix) }
+        if let file = env["YCODE_IDE_EDITOR_BENCH"] { await EditorBench.run(app, file: file) }
         if let name = env["YCODE_IDE_REMOTE_RUN"] { await remoteRun(app, destination: name) }
         if let prefix = env["YCODE_IDE_WALK"] { await walk(app, prefix: prefix) }
         if let s = env["OV_QUIT_AFTER"], let t = Double(s) {
@@ -86,9 +90,15 @@ enum ShellDriver {
                 elapsed += 0.25
                 if let req = env["OV_SHOT_REQUEST"], let path = try? String(contentsOfFile: req, encoding: .utf8) {
                     try? FileManager.default.removeItem(atPath: req)
-                    say(OpenViewsAutomation.screenshot(to: path.trimmingCharacters(in: .whitespacesAndNewlines)))
+                    // "<n>:<path>" photographs the n-th window (1: Settings).
+                    let p = path.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let colon = p.firstIndex(of: ":"), let n = Int(p[..<colon]) {
+                        say(OpenViewsAutomation.screenshot(n, to: String(p[p.index(after: colon)...])))
+                    } else {
+                        say(OpenViewsAutomation.screenshot(to: p))
+                    }
                 }
-                if Int(elapsed * 4) % 4 == 0 {
+                if Int(elapsed * 4) % 4 == 0 || env["YCODE_IDE_STATE_FAST"] != nil {
                     if env["OV_PRINT_TARGETS"] != nil { printTargets() }
                     say(state(app))
                 }
@@ -107,6 +117,10 @@ enum ShellDriver {
     }
 
     static func printTargets() {
+        // A second window's named views ("w1target", its own points).
+        for (name, f) in OpenViewsAutomation.identifiedFrames(1).sorted(by: { $0.key < $1.key }) {
+            say(String(format: "w1target %@ %.0f %.0f %.0f %.0f", name.replacingOccurrences(of: " ", with: "_"), f.minX, f.minY, f.width, f.height))
+        }
         let k = scale
         func line(_ name: String, _ f: CGRect) -> String {
             String(format: "target %@ %.0f %.0f %.0f %.0f pixels %.0f %.0f %.0f %.0f", name.replacingOccurrences(of: " ", with: "_"),

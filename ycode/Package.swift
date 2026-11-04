@@ -264,10 +264,13 @@ package.targets += [
 // module); they are left out when that folder is not next to this package
 // (an rsync of ycode/ alone). On macOS they build against Apple's SwiftUI;
 // the macOS product is still the AppKit YcodeApp.
-package.products += [.library(name: "YcodeIDEShell", targets: ["YcodeIDEShell"])]
+// YcodeEditorKit is the source editor's model without a toolkit (docs/PARITY.md §5.9).
+package.products += [.library(name: "YcodeIDEShell", targets: ["YcodeIDEShell"]), .library(name: "YcodeEditorKit", targets: ["YcodeEditorKit"])]
 package.targets += [
-    .target(name: "YcodeIDEShell", dependencies: ["YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeXcodebuild", "YcodeSimLink"]),
-    .testTarget(name: "YcodeIDEShellTests", dependencies: ["YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild"]),
+    .target(name: "YcodeEditorKit", dependencies: ["YcodeSyntax"]),
+    .testTarget(name: "YcodeEditorKitTests", dependencies: ["YcodeEditorKit", "YcodeSyntax"]),
+    .target(name: "YcodeIDEShell", dependencies: ["YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeXcodebuild", "YcodeSimLink", "YcodeEditorKit"]),
+    .testTarget(name: "YcodeIDEShellTests", dependencies: ["YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion"]),
 ]
 // Agent mode (specs/ide/coding-assistant.md, "Ycode implementation"): the
 // Ycode MCP server (`ycode mcp`, and in-process for the IDE's agents), the
@@ -288,7 +291,7 @@ if FileManager.default.fileExists(atPath: Context.packageDirectory + "/../framew
     package.dependencies += [.package(path: "../frameworks/swiftui")]
     package.products += [.executable(name: "ycode-ide", targets: ["ycode-ide"])]
     package.targets += [
-        .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild",
+        .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion",
                                                           .product(name: "SwiftUI", package: "swiftui"),
                                                           .product(name: "OVPlatform", package: "swiftui"),
                                                           .product(name: "OVDBus", package: "swiftui")]),
@@ -297,6 +300,6 @@ if FileManager.default.fileExists(atPath: Context.packageDirectory + "/../framew
 #else
 package.products += [.executable(name: "ycode-ide", targets: ["ycode-ide"])]
 package.targets += [
-    .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild"]),
+    .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion"]),
 ]
 #endif

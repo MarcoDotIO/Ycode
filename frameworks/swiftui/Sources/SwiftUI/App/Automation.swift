@@ -163,8 +163,23 @@ public enum OpenViewsAutomation {
         h.backend.post(.textInput(TextInputEvent(window: mainWindows[index].platform.id, text: text, timestamp: h.backend.now)))
     }
 
+    /// A wheel step at a point, through the back end's event queue (positive y
+    /// scrolls up, as `ScrollEvent`).
+    public static func scroll(at p: CGPoint, delta: CGSize, window index: Int = 0) {
+        guard let h = host, mainWindows.indices.contains(index) else { return }
+        h.backend.post(.scroll(ScrollEvent(window: mainWindows[index].platform.id, location: p, delta: delta, timestamp: h.backend.now)))
+    }
+
     /// Ends the app's run loop.
     public static func terminate() { host?.terminate() }
+
+    /// With a list set, each main window's frame adds how long it took
+    /// (update, layout, drawing, presenting; seconds), for the benchmark drivers.
+    public static var frameDurations: [Double]?
+    /// Frames presented by the main window.
+    public static func presentedFrames(window index: Int = 0) -> Int {
+        mainWindows.indices.contains(index) ? mainWindows[index].presentedFrames : 0
+    }
 
     static func owner(of p: WindowHost) -> WindowHost? {
         var w = p.popupOwner

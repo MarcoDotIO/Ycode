@@ -45,7 +45,7 @@ project between the two tools and keep your colleagues' diffs small.
 It is written from scratch in Swift under a [clean-room protocol](#clean-room): **it contains no Apple
 code.** It builds with the compilers and SDKs you have installed, and it ships none of Apple's.
 
-**Ycode may suit you if** you want to browse and build Swift projects on Linux, you need `xcodebuild`-style
+**Ycode may suit you if** you want to edit, build and run Swift projects on Linux, you need `xcodebuild`-style
 tooling or project-file handling you can read and change, or you want to take part in an open IDE.
 
 **It won't suit you yet if** you need a drop-in replacement for Xcode to ship an app. Signing and
@@ -70,7 +70,7 @@ expect gaps. **Not yet** means it isn't there. The full audit against Xcode 27.1
 
 ### The IDE
 
-<!-- Linux rows below describe the main line. Update them when Linux editing and Settings land. -->
+<!-- Linux rows below describe the main line. Update them as more Linux features land. -->
 
 | Feature | macOS | Linux |
 |---|---|---|
@@ -78,15 +78,15 @@ expect gaps. **Not yet** means it isn't there. The full audit against Xcode 27.1
 | Project navigator, Find in workspace, Issues | Experimental | Experimental |
 | Other navigators (source control, symbols, tests, debug, breakpoints, reports) | Experimental | Not yet |
 | View source with syntax highlighting | Experimental | Experimental |
-| **Edit and save source files** | Experimental | **Not yet:** files open read-only |
+| Edit and save source files: undo, find and replace, jump to line, safe saves with crash recovery | Experimental | Experimental: new in this beta |
 | Build | Experimental: swift-build, with an `xcodebuild` fallback | Experimental: Swift packages, through SwiftPM |
 | Run | Experimental: My Mac and simulators | Experimental: Swift packages, with console output |
 | Debugger (breakpoints, stepping, variables) through `lldb-dap` | Experimental | Not yet |
-| Language features through SourceKit-LSP (completion, definition, rename, live issues) | Experimental | Not yet |
+| Language features through SourceKit-LSP (completion, definition, rename, live issues) | Experimental | Experimental: live issues only |
 | Plist, asset catalog and String Catalog editors; Interface Builder documents; SwiftUI previews | Experimental | Not yet |
 | Tests, source control (git), Organizer | Experimental | Not yet |
 | Coding assistant (local models, OpenAI, agent CLIs); you review each proposed change | Experimental | Not yet |
-| Settings, themes and key bindings | Experimental | Not yet |
+| Settings, themes and key bindings | Experimental | Experimental: font, theme, indentation, predictive completion's model |
 | Signing and distribution | Experimental: partial | Not yet |
 | Physical devices | Listed only | Not yet |
 
@@ -249,7 +249,7 @@ The full gap list is in [docs/PARITY.md](docs/PARITY.md) and the longer view in 
 
 ### 1.0 betas: finishing what is here
 
-- **Linux IDE:** editing, then language features through SourceKit-LSP, Settings, and the navigators,
+- **Linux IDE:** completion and the other language features through SourceKit-LSP, and the navigators,
   debugger interface, Source Control and coding assistant that the macOS IDE already has.
 - **Fixes from beta reports.** Please [file them](https://github.com/MarcoDotIO/Ycode/issues/new/choose).
 - **Distribution:** a listing on a Flatpak repository, alongside the GitHub release.
@@ -260,6 +260,7 @@ The full gap list is in [docs/PARITY.md](docs/PARITY.md) and the longer view in 
 |---|---|---|
 | Project files | The JSON `.xcproj` project format that Xcode 27.2 adds as an opt-in, read and written alongside `.pbxproj` | Planned |
 | Platforms | Opening, building and templating projects for the HomeView platform in Xcode 27.2 | Investigating |
+| App Intents | App skills for Siri (`.skillsbundle`): the template, validation of each `SKILL.md`, and the built output | Planned; the API is a developer preview |
 | Device Hub | Shake, memory pressure, slow animations and Standby | Planned |
 | Editor | Rendered Markdown with formatting tools; `#Playground` | Planned |
 | Icons | Icon Composer 2.0 documents, and an `.icon` viewer | Partial: `.icon` files build into app icons today |
@@ -292,7 +293,8 @@ It writes the same formats as Xcode. Round trips are byte-identical on our test 
 every project, so keep your work under version control and report any unexpected diff.
 
 **Can I edit code on Linux?**
-Not in this build: the Linux IDE opens files read-only. You can browse, search, build and run Swift packages.
+Yes, as of this beta: the Linux editor has undo, find and replace, and saves that can't leave a half-written
+file. Build errors and SourceKit-LSP's live issues show in the editor; completion isn't there yet on Linux.
 
 **Can I build iOS apps on Linux?**
 That needs Apple's iOS SDK, which Ycode doesn't ship and which Apple licenses for use on Apple-branded
