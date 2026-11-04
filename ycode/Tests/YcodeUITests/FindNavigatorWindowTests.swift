@@ -157,6 +157,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             #expect(nav.findScope.title == "In Open Files")
             nav.find("old")
             #expect(nav.rows(3).map(\.title) == ["main.swift  (2)", "Other.swift  (3)"])
+            // The scope goes into the shared preferences: put back what was
+            // there, or later tests see an extra item in the scope menu.
+            let savedScopes = Preferences.shared.findCustomScopes
+            defer { Preferences.shared.findCustomScopes = savedScopes }
             nav.editCustomScopes()
             let editor = try #require(nav.lastScopeEditor)
             _ = editor.view

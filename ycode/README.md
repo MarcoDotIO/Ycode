@@ -175,7 +175,9 @@ child lives 60 s and the limit is 20 s),
 `UISpacingTests.hubSidebarGroupEndsAtTheSidebarEdge` (they pass on a
 developer Mac; listed so that CI reruns them alone).
 
-CI runs on macOS and on Linux x86-64 and arm64 (`../.github/workflows/ci.yml`).
+CI runs on macOS and on Linux x86-64 and arm64 (`../.github/workflows/ci.yml`),
+one test at a time (`swift test --no-parallel`): its machines have three or four
+cores, and a parallel run there spent minutes waiting for the main actor.
 Its hosted machines have no KVM guarantee, GPU, simulator runtime or corpus, so
 those tests skip themselves; each job's summary lists what it skipped. A clean
 checkout on an x86-64 Linux machine with 16 cores builds in under 2 minutes and

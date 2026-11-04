@@ -131,7 +131,10 @@ jobs:
         working-directory: ycode
         run: swift build --build-tests
       - name: Test
-        run: python3 -I .github/scripts/run-tests.py --package ycode --log ci-logs
+        # One test at a time: on the hosted machines (3 and 4 cores) a parallel
+        # run starts hundreds of UI suites at once, and the waits for the shared
+        # main actor ran past time limits that measure the tests themselves.
+        run: python3 -I .github/scripts/run-tests.py --package ycode --log ci-logs -- --no-parallel
       - name: Keep the logs of a failed run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

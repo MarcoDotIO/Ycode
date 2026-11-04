@@ -141,7 +141,7 @@ ln -s /Applications "$mount_point/Applications"
 mkdir "$mount_point/.background"
 cp "$macos/dmg-background.tiff" "$mount_point/.background/background.tiff"
 cat > "$work/layout.json" <<'JSON'
-{"window": [660, 420], "icon_size": 128, "icons": {"Ycode.app": [170, 190], "Applications": [490, 190]}}
+{"window": [660, 400], "icon_size": 128, "icons": {"Ycode.app": [170, 205], "Applications": [490, 205]}}
 JSON
 /usr/bin/python3 -I "$macos/make-dsstore.py" "$mount_point" .background/background.tiff "$work/layout.json"
 rm -rf "$mount_point/.fseventsd" "$mount_point/.Trashes"
