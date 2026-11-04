@@ -142,7 +142,9 @@ import YcodeProject
 
     // MARK: N7, N8 — filter fields and selector titles
 
-    @Test func filterOptionsAndTogglesSitInsideTheField() throws {
+    @Test(.enabled(if: ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 27, minorVersion: 2, patchVersion: 0)),
+                   "positions measured on macOS 27.2; the AppKit of macOS 27.0 lays out search fields and toolbars differently"))
+    func filterOptionsAndTogglesSitInsideTheField() throws {
         let nav = laidOutNavigator()
         for i in 0..<9 {
             nav.select(i)

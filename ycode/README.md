@@ -170,10 +170,12 @@ Known flaky tests (rerun alone before reporting one; CI reads the same list from
 limit was 3.9 s, with 3.9 and 4.8 s seen in full runs; since 2026-11-04 the
 child lives 60 s and the limit is 20 s),
 `SourceKitLSPEndToEndTests` timeouts on the arm64 Linux host, and, on the
-3-core macOS CI runner only, `BuildServerWindowTests.projectWindowUsesTheBuildServer`,
+3-core macOS CI runner only, `BuildServerWindowTests.projectWindowUsesTheBuildServer`
+(it passes alone). Two layout tests,
 `NavigatorInspectorR45Tests.filterOptionsAndTogglesSitInsideTheField` and
-`UISpacingTests.hubSidebarGroupEndsAtTheSidebarEdge` (they pass on a
-developer Mac; listed so that CI reruns them alone).
+`UISpacingTests.hubSidebarGroupEndsAtTheSidebarEdge`, need macOS 27.2: their
+positions were measured there, and CI's macOS 27.0 lays these controls out
+differently.
 
 CI runs on macOS and on Linux x86-64 and arm64 (`../.github/workflows/ci.yml`),
 one test at a time (`swift test --no-parallel`): its machines have three or four

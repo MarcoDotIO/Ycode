@@ -14,7 +14,5 @@
 *             threadSelfusageCountsTheCallingThread
 *             StreamingProcessTests.anInheritedPipeDoesNotHoldTheExitBack
 linux-aarch64 SourceKitLSPEndToEndTests
-# Seen failing on the 3-core macOS CI runner (2026-11-04); they pass on a developer Mac.
+# Seen failing on the 3-core macOS CI runner (2026-11-04); passes alone.
 macos         BuildServerWindowTests.projectWindowUsesTheBuildServer
-macos         NavigatorInspectorR45Tests.filterOptionsAndTogglesSitInsideTheField
-macos         UISpacingTests.hubSidebarGroupEndsAtTheSidebarEdge

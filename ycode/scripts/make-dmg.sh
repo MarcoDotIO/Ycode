@@ -103,18 +103,33 @@ if [ -n "${NOTARY_KEY_P8_BASE64:-}" ] && [ -n "${NOTARY_KEY_ID:-}" ] && [ -n "${
 else
     echo "make-dmg: no notary variables: not notarizing" >&2
 fi
+notary() { # notarytool arguments...
+    xcrun notarytool "$@" --key "$work/notary-key.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID"
+}
 notarize() { # file
-    result="$work/notary-result.json"
-    if ! xcrun notarytool submit "$1" --key "$work/notary-key.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
-        --wait --output-format json > "$result"; then
-        echo "make-dmg: notarytool failed" >&2
-        return 1
-    fi
-    status=$(/usr/bin/plutil -extract status raw "$result" 2>/dev/null || echo unknown)
+    # Submit, wait and read the status as separate steps, each retried: a CI
+    # runner once lost its network while waiting, and a dropped connection
+    # loses nothing on Apple's side, so the script waits on the same submission.
+    for attempt in 1 2 3; do
+        notary submit "$1" --output-format json > "$work/notary-submit.json" && break
+        [ "$attempt" = 3 ] && { echo "make-dmg: notarytool submit failed" >&2; return 1; }
+        sleep $((attempt * 20))
+    done
+    submission=$(/usr/bin/plutil -extract id raw "$work/notary-submit.json" 2>/dev/null || echo "")
+    [ -n "$submission" ] || { echo "make-dmg: notarytool returned no submission id" >&2; return 1; }
+    echo "make-dmg: notary submission $submission" >&2
+    status=unknown
+    for attempt in 1 2 3 4 5 6; do
+        notary wait "$submission" --timeout 30m > /dev/null || true
+        if notary info "$submission" --output-format json > "$work/notary-info.json"; then
+            status=$(/usr/bin/plutil -extract status raw "$work/notary-info.json" 2>/dev/null || echo unknown)
+            case "$status" in Accepted|Invalid|Rejected) break ;; esac
+        fi
+        sleep $((attempt * 20))
+    done
     if [ "$status" != Accepted ]; then
-        submission=$(/usr/bin/plutil -extract id raw "$result" 2>/dev/null || echo "")
         echo "make-dmg: notarization status: $status" >&2
-        [ -n "$submission" ] && xcrun notarytool log "$submission" --key "$work/notary-key.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" >&2
+        notary log "$submission" >&2 || true
         return 1
     fi
 }

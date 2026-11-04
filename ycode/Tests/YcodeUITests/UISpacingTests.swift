@@ -157,7 +157,9 @@ import YcodeProject
 
     /// The sidebar's toolbar group hugs the sidebar's edge (device-hub.md
     /// §3 items 2–4): the Hide Sidebar circle ends 7 points before x 240.
-    @Test func hubSidebarGroupEndsAtTheSidebarEdge() throws {
+    @Test(.enabled(if: ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 27, minorVersion: 2, patchVersion: 0)),
+                   "positions measured on macOS 27.2; the AppKit of macOS 27.0 lays out search fields and toolbars differently"))
+    func hubSidebarGroupEndsAtTheSidebarEdge() throws {
         _ = NSApplication.shared
         let prefs = IsolatedPreferences("ui-spacing-hub")
         defer { prefs.restore() }

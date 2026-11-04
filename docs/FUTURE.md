@@ -7,8 +7,8 @@ This is the direction of the project, not a set of promises or dates. What works
 
 **On Linux**, in order:
 
-1. Completion, Jump to Definition and the other language features through SourceKit-LSP; live issues landed in
-   1.0.0-beta.1 ([PARITY.md](PARITY.md) §5.9).
+1. Hover, Jump to Definition and the other language features through SourceKit-LSP; live issues and completion
+   landed in 1.0.0-beta.1 ([PARITY.md](PARITY.md) §5.9).
 2. The navigators the Linux window doesn't have yet, and the rest of Settings (key bindings, accounts).
 3. The debugger interface, and debugging on a remote simulator.
 
