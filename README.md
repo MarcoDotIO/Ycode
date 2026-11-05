@@ -14,6 +14,7 @@
   <a href="https://github.com/MarcoDotIO/Ycode/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/MarcoDotIO/Ycode?include_prereleases&label=release"></a>
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
   <img alt="Platforms: macOS, Linux x86-64 and arm64" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20x86--64%20%7C%20Linux%20arm64-lightgrey">
+  <a href="https://flatpark.org/apps/io.github.MarcoDotIO.Ycode/"><img alt="Get it on FlatPark" src="https://flatpark.org/badges/get-it-on-flatpark.svg" height="20"></a>
 </p>
 
 <p align="center">
@@ -126,6 +127,20 @@ Try to open Ycode once, then go to **System Settings ▸ Privacy & Security** an
 
 **Requires** x86-64 or arm64 (aarch64), Flatpak, and [Swift 6.4 installed on the host](https://www.swift.org/install/linux/).
 Ycode uses your host's Swift toolchain to build.
+
+The easiest way is [FlatPark](https://flatpark.org/apps/io.github.MarcoDotIO.Ycode/). It installs the Linux release
+from this repository's Releases page, checks it against a pinned checksum, and brings new releases with `flatpak update`:
+
+```sh
+flatpak remote-add --user --if-not-exists flatpark https://dl.flatpark.org/flatpark.flatpakrepo
+flatpak install --user flatpark io.github.MarcoDotIO.Ycode
+flatpak run io.github.MarcoDotIO.Ycode
+```
+
+If you installed the bundle from an earlier release, remove it first with
+`flatpak uninstall --user io.github.MarcoDotIO.Ycode`. Your settings are kept.
+
+Or install the bundle from the Releases page:
 
 ```sh
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
@@ -256,7 +271,7 @@ The full gap list is in [docs/PARITY.md](docs/PARITY.md) and the longer view in 
 - **Linux IDE:** hover, Jump to Definition and the other language features through SourceKit-LSP, and the navigators,
   debugger interface, Source Control and coding assistant that the macOS IDE already has.
 - **Fixes from beta reports.** Please [file them](https://github.com/MarcoDotIO/Ycode/issues/new/choose).
-- **Distribution:** a listing on a Flatpak repository, alongside the GitHub release.
+- **Distribution:** listed on [FlatPark](https://flatpark.org/apps/io.github.MarcoDotIO.Ycode/) since 1.0.0-beta.1, alongside the GitHub release.
 
 ### Version 2: Xcode 27.2 parity
 
