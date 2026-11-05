@@ -105,8 +105,8 @@ expect gaps. **Not yet** means it isn't there. The full audit against Xcode 27.1
 
 ## Install
 
-Download from the [Releases page](https://github.com/MarcoDotIO/Ycode/releases). Releases are marked as
-prereleases during the beta, and each one has a `SHA256SUMS.txt`.
+Download from the [Releases page](https://github.com/MarcoDotIO/Ycode/releases). During the beta the version
+numbers end in `-beta.N`, and each release has a `SHA256SUMS.txt`.
 
 ### macOS
 

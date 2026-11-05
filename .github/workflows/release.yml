@@ -1,5 +1,5 @@
-# Builds the packages for a tag `v<version>` and publishes a prerelease with
-# checksums and notes from CHANGELOG.md. A manual run builds the same packages
+# Builds the packages for a tag `v<version>` and publishes it as the latest
+# release (so the repository page shows it), with checksums and notes from CHANGELOG.md. A manual run builds the same packages
 # from a branch and keeps them as workflow artifacts, without publishing.
 #
 # Signing is optional. With no Developer ID secrets the same scripts produce an
@@ -131,7 +131,7 @@ jobs:
           retention-days: 14
 
   publish:
-    name: Publish the prerelease
+    name: Publish the release
     if: github.ref_type == 'tag'
     needs: [check, macos, flatpak]
     runs-on: ubuntu-24.04
@@ -151,7 +151,7 @@ jobs:
           VERSION: ${{ needs.check.outputs.version }}
           SIGNING: ${{ needs.macos.outputs.signing }}
         run: .github/scripts/prepare-release.sh artifacts release/files "$VERSION" "$SIGNING"
-      - name: Create the prerelease
+      - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -160,6 +160,6 @@ jobs:
           gh release create "$TAG" release/files/* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
-            --prerelease \
+            --latest \
             --title "Ycode $VERSION" \
             --notes-file release/release-notes.md

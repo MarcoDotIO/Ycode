@@ -82,8 +82,10 @@ One commit on `main` that states the new version everywhere it is stated. `Ycode
   - writes `SHA256SUMS.txt` over the five files;
   - writes the release notes from the CHANGELOG section (`changelog-section.py`), then the Install paragraph,
     the macOS signing state (notarized, Developer ID only, or ad-hoc) and the tarballs' runtime;
-  - creates the GitHub release with `--prerelease` and `--verify-tag`.
-- [ ] **Check the published release by hand:** it is marked as a prerelease, it has the five files and
+  - creates the GitHub release with `--latest` and `--verify-tag`. A prerelease can't be the latest release,
+    and the repository page lists only the latest, so beta versions are published as full releases; the version
+    and title say beta.
+- [ ] **Check the published release by hand:** it is marked as Latest, it has the five files and
   `SHA256SUMS.txt`, `shasum -a 256 -c SHA256SUMS.txt` passes on the downloaded files, and the notes state the
   signing you expected.
 
