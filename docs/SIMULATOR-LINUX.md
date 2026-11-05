@@ -166,7 +166,9 @@ computer (no Mac model fields on Linux), downloads it into
 SHA-256, decrypts it with the key Apple returns (macOS: the Apple Archive
 framework; Linux: python-aea, MIT, which the wizard installs on request into
 `<runtimes>/.tools/python-aea`), reads the disk image (macOS: `hdiutil`;
-Linux: 7-Zip 23 or later, run as a separate program), puts the RuntimeRoot
+Linux: 7-Zip 23 or later, run as a separate program; the Flatpak ships 7-Zip's
+own `7zz`, built without the RAR code, and a build from source uses the
+system's `7zz` or `7z`, or `$YCODE_7Z`), puts the RuntimeRoot
 in `<runtimes>/<token>-<version>-<build>` with `ycode-runtime.json`, and
 removes the archives. `ycode runtime list` shows what is there; `ycode runtime
 import <exportedBundle>` adds a bundle exported on a Mac. The runtime folder is

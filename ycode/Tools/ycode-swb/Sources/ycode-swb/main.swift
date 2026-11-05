@@ -65,11 +65,25 @@ func decode<T: Decodable>(_ type: T.Type, _ path: String) -> T {
 func withSession<R>(pif: String, _ body: (SWBBuildServiceSession, [String]) async throws -> R) async -> R {
     let service: SWBBuildService
     do { service = try await SWBBuildService() } catch { fail("cannot start the build service: \(error)") }
-    let (result, sessionDiagnostics) = await service.createSession(name: pif, cachePath: nil, inferiorProductsPath: nil, environment: nil)
+    let toolchain = hostSwiftToolchain()
+    let (result, sessionDiagnostics) = if let toolchain {
+        await service.createSession(name: pif, swiftToolchainPath: toolchain, resourceSearchPaths: [], cachePath: nil,
+                                    inferiorProductsPath: nil, environment: nil)
+    } else {
+        await service.createSession(name: pif, cachePath: nil, inferiorProductsPath: nil, environment: nil)
+    }
     let session: SWBBuildServiceSession
     switch result {
     case .success(let s): session = s
-    case .failure(let e): fail("cannot create a session: \(e)")
+    case .failure(let e):
+        var message = "cannot create a session: \(e)"
+        for d in sessionDiagnostics { message += "\n  \(d.kind): \(d.message)" }
+        #if !os(macOS)
+        if toolchain == nil {
+            message += "\n  No Swift toolchain was found: put `swift` on PATH, or set YCODE_SWIFT_TOOLCHAIN to the folder that holds usr/bin/swift."
+        }
+        #endif
+        fail(message)
     }
     do {
         // The workspace must be loaded before system and user info are set.
@@ -85,6 +99,18 @@ func withSession<R>(pif: String, _ body: (SWBBuildServiceSession, [String]) asyn
         try? await session.close()
         fail("\(error)")
     }
+}
+
+/// On macOS swift-build finds Xcode's developer folder itself. Elsewhere its
+/// own search for the Swift toolchain fails for swiftly's proxy and the
+/// Flatpak's wrapper, so the helper names the toolchain (YcodeRelease's
+/// `SwiftToolchain`; specs/xcodebuild/show-build-settings.md §3).
+func hostSwiftToolchain() -> String? {
+    #if os(macOS)
+    nil
+    #else
+    SwiftToolchain.locate()
+    #endif
 }
 
 func settings(_ path: String) async {

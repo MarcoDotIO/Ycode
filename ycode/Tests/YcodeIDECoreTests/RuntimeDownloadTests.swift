@@ -498,6 +498,17 @@ import Testing
         #expect(await run.run(output: { _ in }, progress: { _ in }) == .cancelled)
     }
 
+    @Test func xcodebuildProgressLinesSplitAcrossWrites() async throws {
+        // One progress line written in two pieces, then the tool exits at once:
+        // the line is parsed whole (42 %, not 4 % and 2 %), and before `run` returns.
+        let split = try Self.standIn("printf 'Downloading tvOS 40.0 Simulator: 4'\nsleep 0.2\nprintf '2%%\\r'\nprintf 'Downloading tvOS 40.0 Simulator: 100%%\\r'\nexit 0\n")
+        let progress = EventBox2()
+        let r = await XcodebuildDownloadRun(XcodebuildDownload(platform: .tvOS), tool: split)
+            .run(output: { _ in }, progress: { progress.add($0.fraction ?? -1) })
+        #expect(r == .finished)
+        #expect(progress.all == [0.42, 1.0])
+    }
+
     // MARK: Install (§6.2 steps 3–7)
 
     /// A made-up exported bundle and the volume its disk image would hold.

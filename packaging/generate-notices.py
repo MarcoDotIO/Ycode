@@ -22,6 +22,10 @@ COMPONENTS = [
      "Unicode-3.0 and Apache-2.0", "Flatpak", [L + "unicode-icu-LICENSE.txt", L + "swift-LICENSE.txt"]),
     ("libxml2 (loaded by Foundation's XML library)", "2.13.9", "https://gitlab.gnome.org/GNOME/libxml2", "MIT", "Flatpak", [L + "libxml2-LICENSE.txt"]),
     ("curl (libcurl, for Foundation's networking)", "8.23.0", "https://github.com/curl/curl", "curl (MIT-style)", "Flatpak", [L + "curl-LICENSE.txt"]),
+    ("7-Zip (7zz), built without the RAR code", "26.05", "https://www.7-zip.org",
+     "LGPL-2.1-or-later; LZFSE and Zstandard decoders BSD-3-Clause; xxHash BSD-2-Clause",
+     "Flatpak (/app/bin/7zz, run as a separate program to read a runtime's disk image, never linked)",
+     [L + "7zip-License.txt", L + "7zip-LGPL-2.1.txt"]),
     ("SDL 3", "3.4.20", "https://github.com/libsdl-org/SDL", "Zlib", "Flatpak; headers in the source", [OV + "COVSDL/SDL3-LICENSE.txt"]),
     ("ThorVG", "vendored", "https://github.com/thorvg/thorvg", "MIT", "Flatpak (compiled into ycode-ide)", [OV + "CThorVG/thorvg/LICENSE"]),
     ("Inter", "4.001", "https://github.com/rsms/inter", "OFL-1.1", "Flatpak (fonts); DMG background picture", [OV + "OVText/Resources/Fonts/Inter-OFL.txt"]),
@@ -53,7 +57,7 @@ RUN_ONLY = [
     ("cryptography, lz4, pyliblzfse, cffi, pycparser (python-aea's dependencies)", "as pip resolves them", "https://pypi.org/project/python-aea/",
      "Apache-2.0 OR BSD-3-Clause; BSD-3-Clause; MIT (LZFSE: BSD-3-Clause); MIT-0; BSD-3-Clause", "Installed by pip with python-aea, in the same environment."),
     ("7-Zip (7zz or 7z)", "23 or later", "https://www.7-zip.org", "LGPL-2.1-or-later with the unRAR restriction; parts BSD-3-Clause",
-     "Reads the runtime's disk image (UDIF and APFS) on Linux. Installed by the user; run as a separate program, never linked."),
+     "Reads the runtime's disk image (UDIF and APFS) on Linux when Ycode is built from source. Installed by the user; run as a separate program, never linked. The Flatpak ships its own 7zz (above)."),
     ("liblzma (XZ Utils)", "the system's", "https://github.com/tukaani-project/xz", "0BSD (public domain before 5.6)",
      "Decodes XZ chunks of an asset archive; the system's library, loaded at run time."),
     ("curl (the command)", "the system's", "https://github.com/curl/curl", "curl (MIT-style)", "Fetches Apple's index, asset answer and archive."),
@@ -105,7 +109,7 @@ def main():
     out += ["## Programs Ycode runs but does not ship", "",
             "Getting a simulator runtime (`specs/simulator/runtime-downloads.md` §6) uses these programs, only when the user",
             "asks for a download. Ycode runs each as a separate program, or loads the system's library at run time; it links",
-            "none of them and no Ycode package contains them.", "",
+            "none of them, and no Ycode package contains them except 7-Zip, which the Flatpak ships (above).", "",
             "| Program | Version | Licence | How Ycode uses it |", "|---|---|---|---|"]
     for name, version, url, licence, use in RUN_ONLY:
         out.append("| [%s](%s) | %s | %s | %s |" % (name, url, version, licence, use))

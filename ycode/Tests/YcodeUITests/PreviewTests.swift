@@ -244,6 +244,13 @@ func nonBlankPixels(_ png: URL) throws -> Int {
 
     func alive(_ pid: pid_t) -> Bool { kill(pid, 0) == 0 }
 
+    /// `body`'s result and how long it took, in seconds.
+    nonisolated static func timed<T>(_ body: () -> T) -> (T, TimeInterval) {
+        let started = Date()
+        let r = body()
+        return (r, Date().timeIntervalSince(started))
+    }
+
     nonisolated static let request = PreviewMacHost.Request(generation: 1, payload: "/nonexistent", output: "/tmp", schemes: ["light"], items: [])
 
     @Test(.timeLimit(.minutes(2))) func aHungHostIsKilledAfterTheRequestTimeout() async throws {
@@ -253,9 +260,8 @@ func nonBlankPixels(_ png: URL) throws -> Int {
         let h = try MacPreviewHostProcess(executable: exe)
         MacPreviewHostProcess.requestTimeout = 1.5
         defer { MacPreviewHostProcess.requestTimeout = 120; h.stop(grace: 0.2) }
-        let started = Date()
-        let r = try await offMain { h.send(Self.request, newPayload: true) }
-        let took = Date().timeIntervalSince(started)
+        // Timed on the thread that sends: the code under test, not how soon a thread was free.
+        let (r, took) = try await offMain { Self.timed { h.send(Self.request, newPayload: true) } }
         #expect(r == nil)
         // The timeout, then end of input, SIGTERM and SIGKILL, each with a short grace.
         #expect(took >= 1.5 && took < 10, "\(took)")
@@ -273,9 +279,7 @@ func nonBlankPixels(_ png: URL) throws -> Int {
         MacPreviewHostProcess.requestTimeout = 20
         defer { MacPreviewHostProcess.requestTimeout = 120; h.stop(grace: 0.2) }
         #expect(await waitUntil(30) { FileManager.default.fileExists(atPath: marker) })
-        let started = Date()
-        let r = try await offMain { h.send(Self.request, newPayload: true) }
-        let took = Date().timeIntervalSince(started)
+        let (r, took) = try await offMain { Self.timed { h.send(Self.request, newPayload: true) } }
         #expect(r == nil && !h.process.isRunning)
         // Well before the request timeout: the write failed.
         #expect(took < 10, "\(took)")
@@ -285,9 +289,8 @@ func nonBlankPixels(_ png: URL) throws -> Int {
         let exe = try script("trap '' TERM\nwhile :; do sleep 1; done")
         defer { try? FileManager.default.removeItem(at: exe) }
         let h = try MacPreviewHostProcess(executable: exe)
-        let started = Date()
-        await Task.detached { h.stop(grace: 0.5) }.value
-        #expect(!h.process.isRunning && Date().timeIntervalSince(started) < 5)
+        let ((), took) = try await offMain { Self.timed { h.stop(grace: 0.5) } }
+        #expect(!h.process.isRunning && took < 5, "\(took)")
     }
 
     @Test(.timeLimit(.minutes(5))) func theRealHostEndsWithItsInputAndWithItsParent() async throws {
@@ -299,7 +302,7 @@ func nonBlankPixels(_ png: URL) throws -> Int {
         let h = try MacPreviewHostProcess(executable: exe)
         #expect(ProcessAudit.children().contains { $0.pid == h.pid && $0.name == PreviewMacHost.executableName })
         // End of input: the host ends by itself (an exit, not a signal).
-        await Task.detached { h.stop(grace: 10) }.value
+        try await offMain { h.stop(grace: 10) }
         #expect(!h.process.isRunning && h.process.terminationReason == .exit)
 
         // Its parent goes away while its input stays open: it ends within a few seconds.

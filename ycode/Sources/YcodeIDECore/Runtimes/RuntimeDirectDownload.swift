@@ -76,6 +76,8 @@ public final class RuntimeDirectDownload: @unchecked Sendable {
     public var replace = false
     /// The asset query (tests answer for the asset service).
     public var query: @Sendable (_ assetType: String, _ build: String) async throws -> RuntimeAssetRecord
+    /// Free bytes where a path is (tests answer for the volume, whose free space other work changes).
+    public var freeSpace: @Sendable (String) -> Int64? = { RuntimeDirectDownload.freeBytes($0) }
 
     public init(folder: String, transport: any RuntimeTransport = CurlTransport(), expander: (any RuntimeArchiveExpander)? = nil,
                 reader: (any RuntimeImageReader)? = RuntimeImageReaders.standard(), host: RuntimeHostDescription = .current(),
@@ -136,7 +138,7 @@ public final class RuntimeDirectDownload: @unchecked Sendable {
         say("Selected \(chosen.name), build \(chosen.build), \(RuntimeSize.format(chosen.size)).")
         // Room for the archive, the unpacked tree and the RuntimeRoot.
         let need = stop == .queried ? 0 : stop == .downloaded ? chosen.size : chosen.size * 4
-        if let free = Self.freeBytes(folder), free < need {
+        if let free = freeSpace(folder), free < need {
             throw RuntimeDownloadError.notEnoughSpace("\(RuntimeSize.format(free)) free in \(folder); \(chosen.name) needs about \(RuntimeSize.format(need)). Free some space and try again.")
         }
         try cancel.check()

@@ -73,6 +73,28 @@ version and architecture). It is found through `YCODE_SWB`, then `PATH`,
 then next to the `ycodebuild` executable. It pins swift-build to the head
 of its `release/6.4.x` branch (§6).
 
+On macOS swift-build finds the active developer directory itself. On other
+hosts its own search takes the real path of `swift` on `PATH` and requires a
+`…/usr/bin` (or `…/usr/local/bin`) folder; swiftly's `swift` is a proxy in
+`~/.local/share/swiftly/bin` and the Flatpak's is a wrapper that runs the
+host's, so that search fails and the session cannot be created ("Could not
+initialize build system"). The helper therefore names the toolchain
+(`SWBBuildService.createSession(name:swiftToolchainPath:…)`), found by
+`YcodeRelease.SwiftToolchain` in this order:
+
+1. `YCODE_SWIFT_TOOLCHAIN`, the folder that holds `usr/bin/swift`;
+2. `SWIFT_EXEC`, then each `swift` on `PATH`, whose real path is in a
+   `usr/bin` or `usr/local/bin` folder (`/usr/bin/swift` → `/`);
+3. the first `swift` on `PATH`, asked with `-print-target-info`: the folder
+   above `usr/lib/swift` in `paths.runtimeResourcePath`, if the helper sees
+   `usr/bin/swift` there. This covers swiftly and, in the Flatpak, a host
+   toolchain in the home folder (the sandbox sees the home folder at the same
+   path).
+
+Without one, the helper fails with swift-build's session diagnostics and
+says how to name a toolchain. The toolchain gives `DEVELOPER_DIR`,
+`TOOLCHAIN_DIR` and `SYSTEM_DEVELOPER_DIR`.
+
 ### PIF (Ycode's generator, `XcodePIF`)
 
 Same object model as `specs/ide/build-pif.md`, with these rules that the
@@ -157,6 +179,50 @@ the ycode-swb helper was not found …`) and evaluates with Ycode's own
 resolver (`specs/build-settings.md`): only the levels a project defines and
 a few built-ins, no specification defaults, no `-xcconfig`.
 
+### 5.1 Apple SDKs that are not installed (Linux)
+
+Apple's platforms and SDKs exist only in a Mac's developer directory, and
+Ycode ships none (no SDK files and no platform definitions of its own). On
+Linux swift-build still evaluates every target of an Apple-platform project
+from its open-source specifications, the project's levels, xcconfig files
+and the command line, so the output has the format of §1. What the SDK and
+its platform would define is not known, and is not made up:
+
+| Setting | On Linux |
+|---|---|
+| `SDKROOT` | stays as written (`macosx`, `iphoneos`), not a path |
+| From the SDK and the platform: `ARCHS`, `VALID_ARCHS`, `SDK_NAME`, `SDK_VERSION`, `SDK_DIR`, `PLATFORM_NAME`, `PLATFORM_DIR`, `SUPPORTED_PLATFORMS`, `DEPLOYMENT_TARGET_SETTING_NAME`, `SWIFT_PLATFORM_TARGET_PREFIX`, … | left out |
+| The bundle layout, which the product type sets per platform: `WRAPPER_EXTENSION`, `FULL_PRODUCT_NAME`, `CONTENTS_FOLDER_PATH`, `EXECUTABLE_PATH`, `INFOPLIST_PATH`, … | left out |
+| `EFFECTIVE_PLATFORM_NAME` | `-unknown`, so build folders end in `-unknown` (`build/Release-unknown`) |
+| `DEVELOPER_DIR`, `TOOLCHAIN_DIR`, `TOOLCHAINS` | the Swift toolchain (§3), `org.swift.<version>` |
+| `XCODE_VERSION_ACTUAL`, `_MAJOR`, `_MINOR`, `XCODE_PRODUCT_BUILD_VERSION` | swift-build's placeholders for a toolchain session (`10989`, `9900`, `10890`, `99T999`) |
+| `HOST_PLATFORM` | `linux` |
+
+These are swift-build's values; the reference tool also prints
+`EFFECTIVE_PLATFORM_NAME = -unknown` for an SDKROOT it cannot resolve
+(`specs/build-settings.md`, open questions). Measured with Ycode's
+macOS App template (Release, legacy): 604 settings on macOS, 446 on Linux;
+315 names have the same value, 127 differ (paths, user, toolchain, version
+placeholders), 162 are only on macOS and 4 only on Linux
+(`EFFECTIVE_PLATFORM_NAME`, which is empty and so absent from that list on
+macOS, `SWIFT_DEVELOPMENT_TOOLCHAIN`, `SWIFT_USE_DEVELOPMENT_TOOLCHAIN_RUNTIME`,
+`TOOLCHAIN_VERSION`).
+
+ycodebuild says so on stderr, also with `-json`: one warning per `SDKROOT`
+that stayed a name with no `SDK_NAME`, and one when
+`XCODE_PRODUCT_BUILD_VERSION` is the placeholder:
+
+    ycodebuild: warning: the SDK "iphoneos" is not installed on this computer. Settings that come from the SDK and its platform (ARCHS, SDK_NAME, SDK_VERSION, PLATFORM_NAME, the bundle layout such as EXECUTABLE_PATH and WRAPPER_EXTENSION, and the SDK's defaults) are left out, and build folders end in "-unknown".
+    ycodebuild: warning: there is no Xcode on this computer: XCODE_VERSION_ACTUAL, XCODE_VERSION_MAJOR, XCODE_VERSION_MINOR and XCODE_PRODUCT_BUILD_VERSION are swift-build's placeholders (99T999).
+
+The warnings are not printed on macOS. Building such a project on Linux
+still fails: it needs the SDK.
+
+Ycode decision: no stand-in platform or SDK definitions. swift-build would
+load them (`XCODE_EXTRA_PLATFORM_FOLDERS`), but their contents (the
+platform's and SDK's default settings, versions, architectures) would be
+guesses presented as facts.
+
 ## 6. Measured agreement
 
 `conformance.md` gives the numbers. With swift-build `main`
@@ -183,6 +249,11 @@ plug-in directory.
   samples and the corpus, values compared setting by setting (level 3).
   The DerivedData hash agrees with open-source descriptions of the
   algorithm (level 1).
+- Toolchain discovery on Linux (`swift` real path rule, fallback developer
+  directory, `createSession(swiftToolchainPath:)`) and the values for an SDK
+  that is not found: open-source swift-build (level 1), checked by running
+  the helper on x86-64 Linux with swiftly and in the Flatpak (level 3, Ycode
+  only).
 - OPEN QUESTION: `MacFamily20,1` was observed on one Apple-silicon Mac; how
   it varies across Macs is unknown.
 - OPEN QUESTION: default destinations for iOS apps that cannot run on the

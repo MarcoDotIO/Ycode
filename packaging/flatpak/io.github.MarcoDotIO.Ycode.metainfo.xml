@@ -35,6 +35,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="1.0.0-beta.2" date="2026-11-05" type="development">
+      <description>
+        <p>Second beta: the Linux IDE gains debugging, source control, tests, language features, the structured editors, the rest of Settings and the coding assistant, and simulator runtimes can be fetched and set up from the IDE.</p>
+      </description>
+    </release>
     <release version="1.0.0-beta.1" date="2026-11-04" type="development">
       <description>
         <p>First public beta: the IDE, with the simulator tools marked experimental.</p>

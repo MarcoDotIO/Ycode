@@ -114,43 +114,53 @@ public final class XcodebuildDownloadRun: @unchecked Sendable {
         DispatchQueue.global().asyncAfter(deadline: .now() + 5) { if p.isRunning { p.terminate() } }
     }
 
-    /// Runs the tool; `output` gets each chunk, `progress` what it parsed.
+    /// Runs the tool; `output` gets each chunk, `progress` what it parsed
+    /// from each complete line (a chunk can hold several progress lines, each
+    /// ended by `\r`, or end inside one). The output is read to its end on a
+    /// thread of its own before the exit status is taken, so every line has
+    /// reached `output` and `progress` when this returns.
     public func run(output: @escaping @Sendable (String) -> Void, progress: @escaping @Sendable (XcodebuildProgress) -> Void) async -> Outcome {
-        await withCheckedContinuation { (k: CheckedContinuation<Outcome, Never>) in
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: tool)
-            p.arguments = Array(download.arguments(tool: tool).dropFirst())
-            let pipe = Pipe()
-            p.standardOutput = pipe
-            p.standardError = pipe
-            p.standardInput = FileHandle.nullDevice
-            let text = LockedText()
-            pipe.fileHandleForReading.readabilityHandler = { h in
-                let s = String(decoding: h.availableData, as: UTF8.self)
-                guard !s.isEmpty else { return }
-                text.append(s)
-                output(s)
-                if let pr = XcodebuildProgress.parse(s) { progress(pr) }
-            }
-            p.terminationHandler = { [weak self] proc in
-                pipe.fileHandleForReading.readabilityHandler = nil
-                let rest = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                if !rest.isEmpty {
-                    text.append(rest)
-                    output(rest)
-                    if let pr = XcodebuildProgress.parse(rest) { progress(pr) }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: tool)
+        p.arguments = Array(download.arguments(tool: tool).dropFirst())
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = pipe
+        p.standardInput = FileHandle.nullDevice
+        lock.withLock { process = p }
+        do { try p.run() } catch {
+            return .failed(127, "\(tool): \(error.localizedDescription)")
+        }
+        return await withCheckedContinuation { (k: CheckedContinuation<Outcome, Never>) in
+            Thread.detachNewThread { [self] in
+                let h = pipe.fileHandleForReading
+                var text = Data(), line = Data()
+                func parse(_ bytes: Data) {
+                    if let pr = XcodebuildProgress.parse(String(decoding: bytes, as: UTF8.self)) { progress(pr) }
                 }
-                let wasInterrupted = self?.lock.withLock { self?.interrupted ?? false } ?? false
-                if proc.terminationStatus == 0 { k.resume(returning: .finished) }
+                while true {
+                    let d = h.availableData
+                    if d.isEmpty { break }
+                    text.append(d)
+                    output(String(decoding: d, as: UTF8.self))
+                    for b in d {
+                        if b == UInt8(ascii: "\n") || b == UInt8(ascii: "\r") {
+                            if !line.isEmpty { parse(line) }
+                            line.removeAll(keepingCapacity: true)
+                        } else {
+                            line.append(b)
+                        }
+                    }
+                }
+                if !line.isEmpty { parse(line) }
+                p.waitUntilExit()
+                let wasInterrupted = lock.withLock { interrupted }
+                if p.terminationStatus == 0 { k.resume(returning: .finished) }
                 else if wasInterrupted { k.resume(returning: .cancelled) }
                 else {
-                    let tail = text.text.split(whereSeparator: \.isNewline).suffix(4).joined(separator: "\n")
-                    k.resume(returning: .failed(proc.terminationStatus, tail))
+                    let tail = String(decoding: text, as: UTF8.self).split(whereSeparator: \.isNewline).suffix(4).joined(separator: "\n")
+                    k.resume(returning: .failed(p.terminationStatus, tail))
                 }
-            }
-            lock.withLock { process = p }
-            do { try p.run() } catch {
-                k.resume(returning: .failed(127, "\(tool): \(error.localizedDescription)"))
             }
         }
     }

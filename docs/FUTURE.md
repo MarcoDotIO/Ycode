@@ -7,10 +7,11 @@ This is the direction of the project, not a set of promises or dates. What works
 
 **On Linux**, in order:
 
-1. Hover, Jump to Definition and the other language features through SourceKit-LSP; live issues and completion
-   landed in 1.0.0-beta.1 ([PARITY.md](PARITY.md) §5.9).
-2. The navigators the Linux window doesn't have yet, and Settings ▸ Accounts.
-3. The debugger interface, and debugging on a remote simulator.
+1. Settings ▸ Accounts and the source-control conflict editor. Language features through SourceKit-LSP, every
+   navigator, the debugger interface, Source Control and the coding assistant landed in 1.0.0-beta.2
+   ([PARITY.md](PARITY.md) §5.9).
+2. Debugging on a simulator, local or remote.
+3. The Organizer, SwiftUI previews and Interface Builder documents.
 
 **On both systems:**
 

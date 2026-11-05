@@ -142,7 +142,9 @@ Both: `ycode-ide`, `ycode`, `ycodebuild`, `ycode-bsp`, `ycode-swb`,
 `libYcodeGaugeAgent.so`, `scripts/ycode-ios-build-linux`, SDL 3, the Swift runtime
 libraries the tools load (unmodified from swift.org's toolchain), libxml2 2.13 and
 libcurl 8.23 for Foundation (the runtime's copies have another soname or no
-versioned symbols), the host-tool wrappers, and the notices.
+versioned symbols), 7-Zip 26.05's `7zz` (built from its own source without the RAR
+code; a runtime download reads the runtime's disk image with it, as a separate
+program), the host-tool wrappers, and the notices.
 
 aarch64 also: the simulator tools, labelled experimental, in
 `/app/lib/ycode-sim`, laid out like the source tree the scripts expect:

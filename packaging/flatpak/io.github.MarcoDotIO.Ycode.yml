@@ -139,6 +139,24 @@ modules:
         sha256: 5b3a0d099f5c7649e29c0938476c462e71d66ad89a0bde42fa1ba3eb476956c9
         dest: external/spirv-headers
 
+  # 7-Zip's own Linux program (7zz), run as a separate program, never linked: it
+  # reads a simulator runtime's disk image (UDIF and APFS) for a runtime download
+  # (specs/simulator/runtime-downloads.md, route B). Built without the RAR code
+  # (DISABLE_RAR=1), so no part of it is under the unRAR restriction. Its
+  # makefile builds with -Werror, and this SDK's GCC warns where 7-Zip's own
+  # compilers do not (array-bounds in ProgressUtils.h), so warnings stay
+  # warnings. The archive has no top folder.
+  - name: 7zip
+    buildsystem: simple
+    build-commands:
+      - make -C CPP/7zip/Bundles/Alone2 -f makefile.gcc -j"$FLATPAK_BUILDER_N_JOBS" DISABLE_RAR=1 CFLAGS_WARN_WALL="-Wall -Wextra"
+      - install -Dm755 CPP/7zip/Bundles/Alone2/_o/7zz /app/bin/7zz
+    sources:
+      - type: archive
+        url: https://github.com/ip7z/7zip/releases/download/26.05/7z2605-src.tar.xz
+        sha256: 0b6080b8c3e7a579161d2d495224c0e51c467576cb4c7048b0ab485ef44cc22e
+        strip-components: 0
+
   - name: ycode
     buildsystem: simple
     build-options:

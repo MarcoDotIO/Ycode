@@ -164,10 +164,16 @@ var localSwbuild: String? {
     }
 }
 
-/// Runs blocking work (a preview build) off the main actor, so the other
-/// suites' main-actor tests keep running meanwhile.
+/// Runs blocking work (a preview build, a host request) off the main
+/// actor, so the other suites' main-actor tests keep running meanwhile. It
+/// gets a thread of its own, never a cooperative-pool thread: in a full run
+/// the pool is busy, and blocking work queued there started a minute late.
 func offMain<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
-    try await Task.detached(operation: body).value
+    try await withCheckedThrowingContinuation { (k: CheckedContinuation<T, any Error>) in
+        let t = Thread { k.resume(with: Result { try body() }) }
+        t.stackSize = 8 << 20
+        t.start()
+    }
 }
 
 /// Timings reported from the renderer's thread.

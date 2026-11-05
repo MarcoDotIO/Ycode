@@ -339,7 +339,11 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
             let json = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
             #expect(json["format"] as? String == "ycode-settings")
             p.resetSettings()
-            #expect(p.issuePresentation == .inline && p.reportHistoryLimit == 20 && p.navigatorSize == .system && p.stopBuildOnFirstError)
+            // One expectation per setting, with what is stored, so a failure names the setting and its value.
+            for (key, factory) in [("issuePresentation", p.issuePresentation == .inline), ("reportHistoryLimit", p.reportHistoryLimit == 20),
+                                   ("navigatorSize", p.navigatorSize == .system), ("stopBuildOnFirstError", p.stopBuildOnFirstError)] {
+                #expect(factory, "Ycode.\(key) after Reset: \(String(describing: p.defaults.object(forKey: "Ycode." + key)))")
+            }
             #expect(p.behavior(.buildSucceeds).notify)
             try general.importSettings(from: file)
             #expect(p.issuePresentation == .minimized && p.reportHistoryLimit == 10 && p.navigatorSize == .large && !p.stopBuildOnFirstError)

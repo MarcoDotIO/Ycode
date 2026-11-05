@@ -33,7 +33,7 @@
 </picture>
 
 > [!NOTE]
-> **This is a public beta (1.0.0-beta.1).** The project file formats and command-line tools are the most
+> **This is a public beta (1.0.0-beta.2).** The project file formats and command-line tools are the most
 > mature part. The IDE is usable and still has rough edges, and the Linux IDE is well behind the macOS one.
 > Keep your projects under version control, and please [report what you find](https://github.com/MarcoDotIO/Ycode/issues/new/choose).
 
@@ -81,7 +81,7 @@ expect gaps. **Not yet** means it isn't there. The full audit against Xcode 27.1
 | Source Control, Test and Report navigators | Experimental | Experimental: new in this beta |
 | Symbol navigator | Experimental | Experimental: new in this beta; declarations by file, a filter that also asks SourceKit-LSP |
 | View source with syntax highlighting | Experimental | Experimental |
-| Edit and save source files: undo, find and replace, jump to line, safe saves with crash recovery | Experimental | Experimental: new in this beta |
+| Edit and save source files: undo, find and replace, jump to line, safe saves with crash recovery | Experimental | Experimental |
 | Build | Experimental: swift-build, with an `xcodebuild` fallback | Experimental: Swift packages, through SwiftPM |
 | Run | Experimental: My Mac and simulators | Experimental: Swift packages, with console output |
 | Debugger (breakpoints, stepping, variables) through `lldb-dap` | Experimental | Experimental: Swift packages; gutter breakpoints, stepping, variables, the `(lldb)` console |
@@ -90,7 +90,7 @@ expect gaps. **Not yet** means it isn't there. The full audit against Xcode 27.1
 | Source control (git): changes, commit, branches, tags, stashes, history, push and pull | Experimental | Experimental: new in this beta |
 | Tests: run all, a suite or one test; results per test; failures at their lines | Experimental | Experimental: Swift packages (XCTest and Swift Testing) |
 | Organizer | Experimental | Not yet |
-| Coding assistant (local models, OpenAI, agent CLIs); you review each proposed change | Experimental | Not yet |
+| Coding assistant (local models, OpenAI, agent CLIs); you review each proposed change | Experimental | Experimental: new in this beta |
 | Settings, themes and key bindings | Experimental | Experimental: General, Appearance (theme editing), Behaviors, Navigation, Notifications, Editing, Shortcuts, Source Control, Locations; no Accounts |
 | Signing and distribution | Experimental: partial | Not yet |
 | Physical devices | Listed only | Not yet |
@@ -114,7 +114,7 @@ prereleases during the beta, and each one has a `SHA256SUMS.txt`.
 anything you also need Xcode from Apple, which provides the compilers and SDKs. Ycode is developed against
 Xcode 27.1.
 
-1. Download `Ycode-1.0.0-beta.1.dmg` and open it.
+1. Download `Ycode-1.0.0-beta.2.dmg` and open it.
 2. Drag **Ycode** to **Applications**.
 3. Open Ycode from Applications.
 
@@ -144,7 +144,7 @@ Or install the bundle from the Releases page:
 
 ```sh
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user ./Ycode-1.0.0-beta.1-x86_64.flatpak      # or -aarch64
+flatpak install --user ./Ycode-1.0.0-beta.2-x86_64.flatpak      # or -aarch64
 flatpak run io.github.MarcoDotIO.Ycode
 ```
 
@@ -268,8 +268,9 @@ The full gap list is in [docs/PARITY.md](docs/PARITY.md) and the longer view in 
 
 ### 1.0 betas: finishing what is here
 
-- **Linux IDE:** hover, Jump to Definition and the other language features through SourceKit-LSP, and the navigators,
-  debugger interface, Source Control and coding assistant that the macOS IDE already has.
+- **Linux IDE:** what the macOS IDE has and the Linux one still lacks: Settings ▸ Accounts, the source-control conflict
+  editor, the Organizer, SwiftUI previews, Interface Builder documents, and debugging on a simulator. Language features,
+  the navigators, the debugger, Source Control and the coding assistant arrived in 1.0.0-beta.2.
 - **Fixes from beta reports.** Please [file them](https://github.com/MarcoDotIO/Ycode/issues/new/choose).
 - **Distribution:** listed on [FlatPark](https://flatpark.org/apps/io.github.MarcoDotIO.Ycode/) since 1.0.0-beta.1, alongside the GitHub release.
 

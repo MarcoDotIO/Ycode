@@ -843,7 +843,8 @@ queue on arm64 under a headless Weston (Wayland), in light and dark.
 Linux, `ycodebuild` cannot build a package. It lists only "My Mac" as a
 destination. It refuses a package build without `-destination`, rejects
 `platform=Linux`, and with `platform=macOS` it needs the `ycode-swb` helper
-(swift-build), which has not been built for Linux. So the shell's engine on
+(swift-build), which on Linux has no macOS SDK to build against (it serves
+`-showBuildSettings` since 1.0.0-beta.2). So the shell's engine on
 Linux (`ShellBuildSetup.engine()`) is:
 - `PackageBuildEngine` for packages: `swift build`, `swift package clean`
   and `swift test`. The terminal color sequences that the compiler writes
