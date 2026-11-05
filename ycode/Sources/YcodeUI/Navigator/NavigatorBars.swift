@@ -69,13 +69,19 @@ extension NavigatorAreaController {
 /// laid over the field), so the text and the clear button keep between
 /// them.
 final class NavigatorFilterField: NSSearchField {
-    /// The options pull-down's width and a toggle's width.
-    static let optionsWidth: CGFloat = 28
+    /// The options pull-down's width (its glyph image's) and a toggle's width.
+    static let optionsWidth: CGFloat = 23.5
+    /// The options pull-down's leading edge from the field's (its alignment
+    /// rectangle's): the glyph's ink, 1.2 into its image, then starts 7.5
+    /// into the glass capsule, which begins 4 before the field
+    /// (metrics.md §15).
+    static let optionsLeading: CGFloat = 2.3
     static let toggleWidth: CGFloat = 18
     /// A toggle's height: the small search field's.
     static let toggleHeight: CGFloat = 16
-    /// Room kept at the leading end (the options pull-down).
-    var leadingInset: CGFloat = optionsWidth + 2 { didSet { needsLayout = true; needsDisplay = true } }
+    /// Room kept at the leading end (the options pull-down and a gap; the
+    /// glass layout sets its own, `NavigatorAreaController.filterTextInset`).
+    var leadingInset: CGFloat = 30 { didSet { needsLayout = true; needsDisplay = true } }
     /// Room kept at the trailing end (the shown toggles).
     var trailingInset: CGFloat = 0 { didSet { needsLayout = true; needsDisplay = true } }
 
@@ -117,19 +123,24 @@ final class NavigatorFilterField: NSSearchField {
         return NSRect(x: c.minX, y: r.minY, width: r.width, height: r.height)
     }
 
-    /// The funnel with a chevron, one template image.
+    /// The lines in a circle with a chevron 1.5 after it, one template
+    /// image (metrics.md §15: ink 13 and 6 × 3.5). The symbols draw with
+    /// padding inside their rects (the circle's ink is 13 in a 15.5 rect,
+    /// starting 1.2 in; the chevron's 6 × 3.5 in its natural 8 × 5), so
+    /// the rects are larger than the ink.
     static let optionsGlyph: NSImage = {
-        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
-        let funnel = NSImage(systemSymbolName: "line.3.horizontal.decrease", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        let funnel = NSImage(systemSymbolName: "line.3.horizontal.decrease.circle", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
         let chevron = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 7, weight: .semibold))
-        let size = NSSize(width: 22, height: 14)
+            .withSymbolConfiguration(.init(pointSize: 6.5, weight: .semibold))
+        let circle: CGFloat = 15.5, chevronX: CGFloat = 15.1, chevronSize = NSSize(width: 8, height: 5)
+        let size = NSSize(width: optionsWidth, height: 16)
         let image = NSImage(size: size, flipped: false) { _ in
             if let f = funnel {
-                f.draw(in: NSRect(x: 0, y: (size.height - f.size.height) / 2, width: f.size.width, height: f.size.height))
+                f.draw(in: NSRect(x: 0, y: (size.height - circle) / 2, width: circle, height: circle))
             }
             if let c = chevron {
-                c.draw(in: NSRect(x: size.width - c.size.width, y: (size.height - c.size.height) / 2, width: c.size.width, height: c.size.height))
+                c.draw(in: NSRect(x: chevronX, y: (size.height - chevronSize.height) / 2, width: chevronSize.width, height: chevronSize.height))
             }
             return true
         }
@@ -137,6 +148,26 @@ final class NavigatorFilterField: NSSearchField {
         image.accessibilityDescription = "Filter options"
         return image
     }()
+}
+
+/// The filter field's options pull-down. It draws its glyph itself, from
+/// its leading edge and in its tint (a pull-down cell places and clips its
+/// image in an area of its own), and its frame is its alignment rectangle,
+/// so the layout places that glyph (metrics.md §15).
+final class NavigatorOptionsButton: NSPopUpButton {
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let glyph = NavigatorFilterField.optionsGlyph
+        let tint = isEnabled ? (contentTintColor ?? .secondaryLabelColor) : .tertiaryLabelColor
+        let tinted = NSImage(size: glyph.size, flipped: false) { rect in
+            glyph.draw(in: rect)
+            tint.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tinted.draw(in: NSRect(x: 0, y: (bounds.height - glyph.size.height) / 2, width: glyph.size.width, height: glyph.size.height))
+    }
 }
 
 /// An in-field toggle of the navigator's filter field: its frame is its

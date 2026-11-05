@@ -50,7 +50,7 @@ extension WorkspaceShellModel {
 
     /// Shows `path`: its open document, else a new one from disk.
     func showFile(_ path: String) {
-        if showStructured(path) { return }
+        if showStructured(path) { previewCanvasFocusChanged(); return }
         if let d = openDocuments[path] {
             editor = d
             document = SourceDocument(path: path, language: d.buffer.language, lines: [])
@@ -75,6 +75,7 @@ extension WorkspaceShellModel {
         findBar.documentChanged(to: editor)
         syncEditorIssues()
         sourceControl.noteText(of: path)
+        previewCanvasFocusChanged()   // WorkspaceShellModel+Previews.swift
     }
 
     func documentChanged(_ d: EditorDocument) {
@@ -84,6 +85,7 @@ extension WorkspaceShellModel {
         if d === editor { findBar.textChanged() }
         scheduleRecoveryCopy()
         scheduleLanguageUpdate(d)
+        previewCanvasEdited(d)
     }
 
     // MARK: Language server
@@ -266,6 +268,7 @@ extension WorkspaceShellModel {
         findBar.documentChanged(to: nil)
         syncEditorIssues()
         sourceControl.noteText(of: nil)
+        previewCanvasFocusChanged()
     }
 
     // MARK: Files on disk

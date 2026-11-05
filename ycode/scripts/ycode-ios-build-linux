@@ -10,8 +10,9 @@
 #   YCODE_USER_SDK   a developer folder holding the user's own copy of
 #                    Platforms/iPhoneSimulator.platform and
 #                    Toolchains/XcodeDefault.xctoolchain (usr/lib/swift, usr/lib/clang)
-#   YCODE_SWB        a built ycode-swb (ycode/Tools/ycode-swb)
-#   YCODE            the ycode command (default: the debug build next to this script's package)
+#   YCODE_SWB        a built ycode-swb (ycode/Tools/ycode-swb; default: bin/ycode-swb of a release or the Flatpak)
+#   YCODE            the ycode command (default: bin/ycode of a release or the Flatpak, else the
+#                    debug build next to this script's package)
 #   YCODE_LD64       an upstream ld64.lld (swift.org's lld refuses Apple platforms;
 #                    default: the newest /usr/lib/llvm-*/bin/ld64.lld)
 #   YCODE_SWIFT_BIN  the Swift toolchain's real bin folder (default: swiftly's newest toolchain)
@@ -20,9 +21,14 @@ set -eu
 [ $# -ge 3 ] || { sed -n '2,20p' "$0"; exit 64; }
 project=$1; scheme=$2; dd=$3; shift 3
 here=$(cd "$(dirname "$0")" && pwd); pkg=$(cd "$here/.." && pwd)
-: "${YCODE_USER_SDK:?set YCODE_USER_SDK (see the header)}"
-: "${YCODE_SWB:?set YCODE_SWB (see the header)}"
-YCODE=${YCODE:-$pkg/.build/debug/ycode}
+[ -n "${YCODE_USER_SDK:-}" ] || { echo "No iOS SDK: set YCODE_USER_SDK to a folder with your own copy of Xcode's Platforms/iPhoneSimulator.platform and Toolchains/XcodeDefault.xctoolchain (see the header of $0)" >&2; exit 2; }
+[ -d "$YCODE_USER_SDK/Platforms/iPhoneSimulator.platform" ] || { echo "YCODE_USER_SDK ($YCODE_USER_SDK) has no Platforms/iPhoneSimulator.platform" >&2; exit 2; }
+# A release (bin/ next to scripts/) or the Flatpak (/app/bin) carries ycode and ycode-swb.
+[ -n "${YCODE_SWB:-}" ] || { [ -x "$pkg/bin/ycode-swb" ] && YCODE_SWB=$pkg/bin/ycode-swb; }
+: "${YCODE_SWB:?set YCODE_SWB to a built ycode-swb (see the header)}"
+if [ -z "${YCODE:-}" ]; then
+    if [ -x "$pkg/bin/ycode" ]; then YCODE=$pkg/bin/ycode; else YCODE=$pkg/.build/debug/ycode; fi
+fi
 LD64=${YCODE_LD64:-$(ls -1 /usr/lib/llvm-*/bin/ld64.lld 2>/dev/null | sort -V | tail -1)}
 [ -x "$LD64" ] || { echo "no ld64.lld (set YCODE_LD64)" >&2; exit 2; }
 SWIFT_BIN=${YCODE_SWIFT_BIN:-$(ls -d "$HOME"/.local/share/swiftly/toolchains/*/usr/bin 2>/dev/null | sort -V | tail -1)}
@@ -37,17 +43,18 @@ build() {
     "OTHER_LDFLAGS=-fuse-ld=lld --ld-path=$LD64 $RT" \
     DONT_RUN_SWIFT_STDLIB_TOOL=YES LM_SKIP_METADATA_EXTRACTION=YES "$@"
 }
-# Older swift-builds load no platforms from DEVELOPER_DIR for a Swift
-# toolchain and need XCODE_EXTRA_PLATFORM_FOLDERS; newer ones register them
-# themselves and refuse the second registration ("platform … already
-# registered"): then the build runs again without it.
+# DEVELOPER_DIR alone registers the SDK's platforms with the swift-build
+# Ycode ships (naming them again in XCODE_EXTRA_PLATFORM_FOLDERS makes it
+# refuse: "platform … already registered"). Older swift-builds load no
+# platforms from DEVELOPER_DIR for a Swift toolchain: when the build can't
+# find the SDK or its platform, it runs again with the folders named.
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
-XCODE_EXTRA_PLATFORM_FOLDERS=$YCODE_USER_SDK/Platforms build "$@" 2>&1 | tee "$log"
+build "$@" 2>&1 | tee "$log"
 status=${PIPESTATUS[0]}
-if [ "$status" != 0 ] && grep -q "already registered" "$log"; then
-  echo "ycode-ios-build-linux: building again without XCODE_EXTRA_PLATFORM_FOLDERS"
-  build "$@"
+if [ "$status" != 0 ] && grep -qiE "unable to find sdk|(sdk|platform)[^\n]*not found|unknown platform" "$log"; then
+  echo "ycode-ios-build-linux: building again with XCODE_EXTRA_PLATFORM_FOLDERS"
+  XCODE_EXTRA_PLATFORM_FOLDERS=$YCODE_USER_SDK/Platforms build "$@"
   status=$?
 fi
 exit "$status"

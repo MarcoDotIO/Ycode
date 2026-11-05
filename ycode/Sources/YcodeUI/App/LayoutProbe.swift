@@ -257,10 +257,15 @@ public enum LayoutProbe {
         let opts = r.frame("\(prefix).filterOptions", r.rect(nav.filterOptions.alignmentRect(forFrame: nav.filterOptions.frame),
                                                                in: nav.filterOptions.superview ?? nav.view))
         let text = r.frame("\(prefix).filterText", r.rect(field.rectForSearchText(whenCentered: false), in: field))
-        r.measure("\(prefix).options.leadingGap", opts.x - f.x, "<=", 4, tolerance: 0, source: src)
+        // Horizontally the button's frame, from which it draws its glyph,
+        // against the field's alignment rectangle, which the layout uses.
+        let optsFrame = r.rect(nav.filterOptions.frame, in: nav.filterOptions.superview ?? nav.view)
+        let fieldAlign = r.rect(field.alignmentRect(forFrame: field.frame), in: field.superview ?? nav.view)
+        r.measure("\(prefix).options.leadingGap", optsFrame.x - fieldAlign.x, "=", NavigatorFilterField.optionsLeading, tolerance: 0.5,
+                  source: "metrics.md §15")
         r.measure("\(prefix).options.inside", (opts.x >= f.x - 0.01 && opts.maxX <= f.maxX + 0.01 && opts.y >= f.y - 0.01 && opts.maxY <= f.maxY + 0.01) ? 1 : 0,
                   "=", 1, tolerance: 0, source: src)
-        r.measure("\(prefix).text.afterOptions", text.x - opts.maxX, ">=", 0, source: src)
+        r.measure("\(prefix).text.afterOptions", text.x - optsFrame.maxX, ">=", 0, source: src)
         var last: Frame?
         for (k, b) in nav.toggleButtons.filter({ !$0.isHidden }).enumerated() {
             let t = r.frame("\(prefix).toggle\(k)", r.box(b))

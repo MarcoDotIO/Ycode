@@ -229,12 +229,20 @@ typedef struct yvk_features {
              bufferCaptureReplay;
 } yvk_features;
 
+#define YVK_MAX_QUEUES 16u
+
 typedef struct yvk_context {
     VkInstance instance;
     VkPhysicalDevice physical;
     VkDevice device;
-    VkQueue queue;
+    VkQueue queue;                /* queues[0] */
     uint32_t queueFamily;
+    /* Queues of the family (yvk_context_options.queues; at least 1). Work
+       on different queues is ordered only by semaphores, so a submission
+       that never ends holds up its own queue only (metal-sim-protocol.md
+       §8.8). */
+    VkQueue queues[YVK_MAX_QUEUES];
+    uint32_t queueCount;
     VkPhysicalDeviceProperties properties;
     VkPhysicalDeviceMemoryProperties memory;
     VkDeviceSize hostPointerAlignment;
@@ -262,6 +270,11 @@ typedef struct yvk_context_options {
     uint32_t maxSamplers;         /* 0 = default (4096) */
     uint32_t maxStorageImages;    /* 0 = default (65536, capped by the device) */
     int validation;               /* 1: enable VK_LAYER_KHRONOS_validation when installed */
+    uint32_t queues;              /* queues to create in the family (0 = 1; capped by the family and YVK_MAX_QUEUES) */
+    /* 1: a second context made while another one is in use (the GPU kick,
+       metal-sim-protocol.md §8.8): writes no function into the shared table
+       and fails unless its functions are the ones already loaded. */
+    int second;
 } yvk_context_options;
 
 /* Creates the instance, device, queue, heap and pipeline layout. Returns 0,
@@ -475,13 +488,26 @@ void yvk_cmd_image_layout(VkCommandBuffer cb, VkImage image, VkImageAspectFlags 
    for (waitSemaphore, waitValue) first. Returns VkResult. */
 VkResult yvk_submit(yvk_context *ctx, VkCommandBuffer cb, VkSemaphore signal, uint64_t value,
                     VkSemaphore waitSemaphore, uint64_t waitValue);
+/* Submits cb on queue `queue` (an index below ctx->queueCount); signals
+   the timeline semaphore with value after waiting for every (waits[i],
+   waitValues[i]). Returns VkResult. */
+VkResult yvk_submit_on(yvk_context *ctx, uint32_t queue, VkCommandBuffer cb, VkSemaphore signal, uint64_t value,
+                       const VkSemaphore *waits, const uint64_t *waitValues, uint32_t waitCount);
 VkSemaphore yvk_timeline_create(yvk_context *ctx, uint64_t initial);
+/* The GPU kick (metal-sim-protocol.md §8.8): runs an empty kernel on ctx
+   (a second context) and waits for it at most timeoutNs. On the Thor the
+   driver gives the GPU to it by ending another context's submission that
+   never ends (a context-switch timeout, about 4 s), after which that
+   context's waits report VK_ERROR_DEVICE_LOST at once. VkResult. */
+VkResult yvk_kick(yvk_context *ctx, uint64_t timeoutNs);
 /* Diagnostic checkpoints (VK_NV_device_diagnostic_checkpoints; nothing
    without it): a marker in the command stream, and after device loss the
    last markers the queue passed, top and bottom of the pipe. Returns the
    number written to markers/stages (at most max). */
 void yvk_cmd_checkpoint(VkCommandBuffer cb, uint64_t marker);
 uint32_t yvk_queue_checkpoints(yvk_context *ctx, uint64_t *markers, uint64_t *stages, uint32_t max);
+/* The same for queue `queue`. */
+uint32_t yvk_queue_checkpoints_on(yvk_context *ctx, uint32_t queue, uint64_t *markers, uint64_t *stages, uint32_t max);
 /* Waits until semaphore >= value or timeoutNs passes. VK_SUCCESS or VK_TIMEOUT. */
 VkResult yvk_timeline_wait(yvk_context *ctx, VkSemaphore semaphore, uint64_t value, uint64_t timeoutNs);
 uint64_t yvk_timeline_value(yvk_context *ctx, VkSemaphore semaphore);

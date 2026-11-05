@@ -38,14 +38,20 @@ import OVPlatform
 //   YCODE_IDE_RUNTIME_WALK=<p>  the simulator runtime wizard, every step
 //                           (ShellDriver+Runtimes.swift); writes <p>-runtime-*.png
 //   YCODE_IDE_DOWNLOAD_WALK=<p>  Get a Runtime's states (ShellDriver+RuntimeDownload.swift)
+//   YCODE_IDE_SIMUX=<p>     the simulator walk of docs/SIMULATOR-UX.md: destinations,
+//                           Run on a simulator host with its phases, Stop
+//                           (ShellDriver+SimulatorUX.swift)
 //   YCODE_IDE_IME=1         open a file for a test with a real input method
 //                           and report the composition
 //                           (ShellDriverInputMethod.swift)
 //
 //   YCODE_IDE_SCM=<p>       source control's walk (ShellDriver+SourceControl.swift)
+//   YCODE_IDE_ORGANIZER=<p> Window ▸ Organizer's walk (OrganizerDriver.swift)
 //   YCODE_IDE_CONFLICT=<p>  the conflict editor's walk (ShellDriver+Conflicts.swift)
 //   YCODE_IDE_TESTS=<p>     testing's walk (ShellDriver+Tests.swift)
 //   YCODE_IDE_POLISH=<p>    the beta 2 polish pass (ShellDriver+Polish.swift)
+//   YCODE_IDE_IB=<p>        Interface Builder documents (InterfaceBuilderDriver.swift)
+//   YCODE_IDE_PREVIEWS=<p>  the preview canvas's walk (PreviewsDriver.swift)
 //   YCODE_IDE_WALK=<p>      a tester's walk: Welcome, About, Clone, New Project
 //                           (each tab) with no path; with a path every
 //                           navigator, the menus, Build, Test, Run; writes
@@ -83,7 +89,7 @@ enum ShellDriver {
                         "YCODE_IDE_DEBUG", "YCODE_IDE_SCM", "YCODE_IDE_TESTS", "YCODE_IDE_RUNTIME_WALK", "YCODE_IDE_SETTINGS",
                         "YCODE_IDE_SETTINGS_VERIFY", "YCODE_IDE_EDITORS", "YCODE_IDE_LSP",
                         "YCODE_IDE_IME", "YCODE_IDE_POLISH", "YCODE_IDE_DEBUG2", "YCODE_IDE_ASSISTANT",
-                        "YCODE_IDE_DOWNLOAD_WALK", "YCODE_IDE_ACCOUNTS", "YCODE_IDE_CONFLICT", "YCODE_IDE_SIMDEBUG"]
+                        "YCODE_IDE_DOWNLOAD_WALK", "YCODE_IDE_ACCOUNTS", "YCODE_IDE_CONFLICT", "YCODE_IDE_SIMDEBUG", "YCODE_IDE_SIMUX", "YCODE_IDE_ORGANIZER", "YCODE_IDE_IB", "YCODE_IDE_PREVIEWS"]
         guard switches.contains(where: { env[$0] != nil }) else { return }
         await pause(0.4)
         say("backend \(OpenViewsAutomation.backendName)")
@@ -99,14 +105,17 @@ enum ShellDriver {
         if let name = env["YCODE_IDE_REMOTE_RUN"] { await remoteRun(app, destination: name) }
         if let prefix = env["YCODE_IDE_WALK"] { await walk(app, prefix: prefix) }
         if let prefix = env["YCODE_IDE_EDITORS"] { await EditorsDriver.run(app, prefix: prefix) }
+        if let prefix = env["YCODE_IDE_IB"] { await InterfaceBuilderDriver.run(app, prefix: prefix) }   // InterfaceBuilderDriver.swift
         if let prefix = env["YCODE_IDE_SETTINGS"] { await SettingsDriver.run(app, prefix: prefix) } else if env["YCODE_IDE_SETTINGS_VERIFY"] != nil { say(SettingsDriver.values()) }
         if let prefix = env["YCODE_IDE_ACCOUNTS"] { await AccountsDriver.run(prefix: prefix) }   // AccountsDriver.swift
+        if let prefix = env["YCODE_IDE_ORGANIZER"] { await OrganizerDriver.run(app, prefix: prefix) }   // OrganizerDriver.swift
         if let prefix = env["YCODE_IDE_LSP"] { await LanguageDriver.run(app, prefix: prefix) }   // LanguageDriver.swift
         if env["YCODE_IDE_IME"] != nil { await prepareInputMethodTest(app) }  // ShellDriverInputMethod.swift
         if let prefix = env["YCODE_IDE_DEBUG"] { await DebugDriver.run(app, prefix: prefix) }
         if let prefix = env["YCODE_IDE_POLISH"] { await polish(app, prefix: prefix) }   // ShellDriver+Polish.swift
         if let prefix = env["YCODE_IDE_DEBUG2"] { await DebugEditingDriver.run(app, prefix: prefix) }   // DebugEditingDriver.swift
         if let prefix = env["YCODE_IDE_SIMDEBUG"] { await SimDebugDriver.run(app, prefix: prefix) }   // SimDebugDriver.swift
+        if let prefix = env["YCODE_IDE_PREVIEWS"] { await PreviewsDriver.run(app, prefix: prefix) }   // PreviewsDriver.swift
         if let prefix = env["YCODE_IDE_SCM"] {
             await scmWalk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
@@ -125,6 +134,7 @@ enum ShellDriver {
         }
         if let prefix = env["YCODE_IDE_RUNTIME_WALK"] { await runtimeWalk(app, prefix: prefix) }
         if let prefix = env["YCODE_IDE_DOWNLOAD_WALK"] { await downloadWalk(app, prefix: prefix) }
+        if let prefix = env["YCODE_IDE_SIMUX"] { await simulatorWalk(app, prefix: prefix) }   // ShellDriver+SimulatorUX.swift
         if let s = env["OV_QUIT_AFTER"], let t = Double(s) {
             var elapsed = 0.0
             while elapsed < t {

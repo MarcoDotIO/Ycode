@@ -8,37 +8,36 @@ import YcodeIDECore
 /// `specs/ide/interface-builder.md`.
 @MainActor
 public final class InterfaceBuilderController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
-    public enum InspectorTab: Int, CaseIterable {
-        case identity, attributes, size, connections
-        public var title: String { ["Identity", "Attributes", "Size", "Connections"][rawValue] }
-        public var symbol: String { ["person.crop.rectangle", "slider.horizontal.3", "ruler", "arrow.right.circle"][rawValue] }
-    }
+    public typealias InspectorTab = IBInspectorTab
 
-    public let url: URL
-    public private(set) var document: IBDocument
-    public private(set) var selected: IBDocument.Object?
+    /// The document, selection, undo and edits, shared with the Linux IDE.
+    public let session: IBEditorSession
+    public var url: URL { session.url }
+    public var document: IBDocument { session.document }
+    public var selected: IBDocument.Object? { session.selected }
     /// Called when the selection or the document changes (the window
     /// refreshes its inspectors).
     public var onChange: (() -> Void)?
     /// Whether edits are written to `url` (off for documents not from a file).
-    public var writesFile: Bool
+    public var writesFile: Bool {
+        get { session.writesFile }
+        set { session.writesFile = newValue }
+    }
     let outline = IBOutlineView()
     let canvas: IBCanvasView
     let canvasScroll = NSScrollView()
+    /// The canvas overview at the canvas's top right.
+    lazy var overview = IBCanvasOverviewView(canvas: canvas, scroll: canvasScroll)
     /// Chrome (InterfaceBuilderChrome.swift): bottom bar, jump bar, filter.
     let bar = IBCanvasBar()
     let jumpBar = NSTextField(labelWithString: "")
     let filterField = NSSearchField()
     let outlineColumn = NSView()
     var outlineWidth: NSLayoutConstraint?
-    private var undoStack: [[UInt8]] = []
-    private var redoStack: [[UInt8]] = []
 
     public init(document: IBDocument, url: URL = URL(fileURLWithPath: "/"), writesFile: Bool = false) {
-        self.url = url
-        self.document = document
-        self.writesFile = writesFile
-        canvas = IBCanvasView(document: document)
+        session = IBEditorSession(document: document, url: url, writesFile: writesFile)
+        canvas = IBCanvasView(layout: session.layout)
         super.init(nibName: nil, bundle: nil)
         canvas.controller = self
     }
@@ -81,19 +80,19 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
         experimental.toolTip = ExperimentalNotice.interfaceBuilder
         experimental.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(experimental)
+        overview.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(overview)
         NSLayoutConstraint.activate([
             experimental.trailingAnchor.constraint(equalTo: canvasScroll.trailingAnchor, constant: -20),
             experimental.topAnchor.constraint(equalTo: canvasScroll.topAnchor, constant: 8),
+            overview.trailingAnchor.constraint(equalTo: canvasScroll.trailingAnchor, constant: -20),
+            overview.topAnchor.constraint(equalTo: experimental.bottomAnchor, constant: 6),
+            overview.widthAnchor.constraint(equalToConstant: IBCanvasOverviewView.size.width),
+            overview.heightAnchor.constraint(equalToConstant: IBCanvasOverviewView.size.height),
         ])
         view = root
         reloadOutline()
-        select(document.roots.first.flatMap(firstView) ?? document.roots.first)
-    }
-
-    func firstView(_ o: IBDocument.Object) -> IBDocument.Object? {
-        if o.isView { return o }
-        for c in o.children { if let v = firstView(c) { return v } }
-        return nil
+        select(session.selected)
     }
 
     // MARK: Zoom
@@ -112,15 +111,17 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
     /// Fits every scene in the visible canvas area.
     @objc public func zoomToFit(_ sender: Any? = nil) {
         _ = view
-        let content = canvas.contentBounds.insetBy(dx: -20, dy: -20)
+        let content = canvas.layout.fitBounds.insetBy(dx: -20, dy: -20)
         let visible = canvasScroll.contentSize
         guard content.width > 0, content.height > 0, visible.width > 0 else { return }
-        setZoom(min(visible.width / content.width, visible.height / content.height, 1))
+        setZoom(canvas.layout.zoomToFit(visible))
         canvasScroll.contentView.scroll(to: content.origin)
     }
 
     // MARK: Outline
 
+    /// An outline row for NSOutlineView (reference items), built from the
+    /// session's `IBOutlineRow`.
     final class Row: NSObject {
         let object: IBDocument.Object?
         let constraint: IBDocument.Constraint?
@@ -128,91 +129,57 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
         let title: String
         /// Kind badge after a subview named by content ("Label").
         let badge: String?
-        init(object: IBDocument.Object?, constraint: IBDocument.Constraint? = nil, title: String, badge: String? = nil, children: [Row]) {
-            self.object = object
-            self.constraint = constraint
-            self.title = title
-            self.badge = badge
-            self.children = children
+        init(_ r: IBOutlineRow, in d: IBDocument) {
+            object = r.objectID.flatMap { d.byID[$0] }
+            constraint = r.constraintID.flatMap { Self.constraint($0, in: d) }
+            title = r.title
+            badge = r.badge
+            children = r.children.map { Row($0, in: d) }
         }
 
-        func filtered(_ q: String) -> Row? {
-            let kids = children.compactMap { $0.filtered(q) }
-            guard title.localizedCaseInsensitiveContains(q) || !kids.isEmpty else { return nil }
-            return Row(object: object, constraint: constraint, title: title, badge: badge, children: kids)
+        static func constraint(_ id: String, in d: IBDocument) -> IBDocument.Constraint? {
+            var hit: IBDocument.Constraint?
+            for r in d.roots { r.walk { o in if hit == nil { hit = o.constraints.first { $0.id == id } } } }
+            return hit
         }
     }
 
     var rows: [Row] = []
 
     /// The outline's Filter (bottom of the column).
-    public var outlineFilter = "" { didSet { reloadOutline() } }
+    public var outlineFilter: String {
+        get { session.outlineFilter }
+        set { session.outlineFilter = newValue; reloadOutline() }
+    }
 
     func reloadOutline() {
-        rows = document.roots.map { row($0) }
-        if !outlineFilter.isEmpty { rows = rows.compactMap { $0.filtered(outlineFilter) } }
+        rows = session.outlineRows.map { Row($0, in: document) }
         guard isViewLoaded else { return }
         outline.reloadData()
         outline.expandItem(nil, expandChildren: true)
     }
 
-    func row(_ o: IBDocument.Object) -> Row {
-        var kids = document.outlineChildren(o).map { row($0) }
-        if !o.constraints.isEmpty {
-            kids.append(Row(object: nil, title: "Constraints", children: o.constraints.map {
-                Row(object: nil, constraint: $0, title: $0.text(document.name), children: [])
-            }))
-        }
-        if o.element == "scene", document.isInitialScene(o) {
-            kids.append(Row(object: nil, title: IBDocument.entryPointTitle, children: []))
-        }
-        return Row(object: o, title: document.outlineTitle(o), badge: document.outlineBadge(o), children: kids)
-    }
-
     /// Outline titles, depth-first with indentation (for tests).
-    public var outlineTitles: [String] {
-        if rows.isEmpty { rows = document.roots.map { row($0) } }
-        var out: [String] = []
-        func walk(_ r: Row, _ d: Int) { out.append(String(repeating: "  ", count: d) + r.title); r.children.forEach { walk($0, d + 1) } }
-        rows.forEach { walk($0, 0) }
-        return out
-    }
+    public var outlineTitles: [String] { session.outlineTitles() }
 
     /// Outline badges by title, depth-first (for tests): "title [badge]".
-    public var outlineTitlesWithBadges: [String] {
-        if rows.isEmpty { rows = document.roots.map { row($0) } }
-        var out: [String] = []
-        func walk(_ r: Row, _ d: Int) {
-            out.append(String(repeating: "  ", count: d) + r.title + (r.badge.map { " [\($0)]" } ?? ""))
-            r.children.forEach { walk($0, d + 1) }
-        }
-        rows.forEach { walk($0, 0) }
-        return out
-    }
+    public var outlineTitlesWithBadges: [String] { session.outlineTitles(badges: true) }
 
     /// The jump bar's path down to the selection.
-    public var jumpBarPath: [String] {
-        guard let o = selected else { return [url.lastPathComponent] }
-        var path = [url.lastPathComponent] + document.outlinePath(to: o)
-        if let c = selectedConstraint, let con = document.constraints(involving: o.id).first(where: { $0.id == c }) {
-            path += ["Constraints", con.text(document.name)]
-        }
-        return path
-    }
+    public var jumpBarPath: [String] { session.jumpBarPath }
 
     /// The selected constraint (outline row), if any.
-    public private(set) var selectedConstraint: String?
+    public var selectedConstraint: String? { session.selectedConstraint }
 
     public func selectConstraint(_ id: String) {
-        selectedConstraint = id
+        session.selectConstraint(id)
         canvas.selectedConstraint = id
         updateJumpBar()
         onChange?()
     }
 
     public func select(_ o: IBDocument.Object?) {
-        selectedConstraint = nil
-        selected = o
+        session.select(id: o?.id)
         canvas.selectedID = o?.id
         canvas.selectedConstraint = nil
         updateJumpBar()
@@ -299,38 +266,35 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
     /// Replaces the document with an edited one: records undo, writes the
     /// file, reloads, and keeps the selection.
     func commit(_ next: IBDocument) {
-        guard next.source != document.source else { return }
-        undoStack.append(document.source)
-        redoStack = []
-        replace(with: next)
+        guard session.commit(next) else { return }
+        refresh()
     }
 
-    private func replace(with next: IBDocument) {
-        let keep = selected?.id
-        document = next
-        if writesFile { try? Data(next.source).write(to: url, options: .atomic) }
-        canvas.document = next
+    /// Shows the session's document and selection after a change.
+    private func refresh() {
+        canvas.layout = session.layout
+        overview.needsDisplay = true
         reloadOutline()
-        select(keep.flatMap { next.byID[$0] } ?? next.roots.first.flatMap(firstView))
+        select(session.selected)
     }
 
-    public var canUndo: Bool { !undoStack.isEmpty }
-    public var canRedo: Bool { !redoStack.isEmpty }
+    public var canUndo: Bool { session.canUndo }
+    public var canRedo: Bool { session.canRedo }
 
     @objc public func undo(_ sender: Any? = nil) {
-        guard let prev = undoStack.popLast(), let d = try? IBDocument(data: Data(prev)) else { return }
-        redoStack.append(document.source)
-        replace(with: d)
+        guard session.canUndo else { return }
+        session.undo()
+        refresh()
     }
 
     @objc public func redo(_ sender: Any? = nil) {
-        guard let next = redoStack.popLast(), let d = try? IBDocument(data: Data(next)) else { return }
-        undoStack.append(document.source)
-        replace(with: d)
+        guard session.canRedo else { return }
+        session.redo()
+        refresh()
     }
 
     func apply(_ f: (IBDocument) throws -> IBDocument) {
-        if let d = try? f(document) { commit(d) }
+        if session.apply(f) { refresh() }
     }
 
     /// Sets the selected (or given) object's stored frame.
@@ -348,23 +312,14 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
     /// ⌫: deletes the selected constraint, else the selected object (not a
     /// scene's root view or a top-level object).
     public func deleteSelection() {
-        if let c = selectedConstraint {
-            selectedConstraint = nil
-            apply { try $0.deletingConstraints([c]) }
-            return
-        }
-        guard let o = selected, o.parent?.isView == true else { return }
-        let parent = o.parent?.id
-        apply { try $0.deleting([o.id]) }
-        select(parent.flatMap { document.byID[$0] })
+        if session.deleteSelection() { refresh() }
     }
 
     /// Moves a view into another view (Document Outline drag).
     @discardableResult
     public func move(_ id: String, into parent: String) -> Bool {
-        guard let next = try? document.moving(id, into: parent), next.source != document.source else { return false }
-        commit(next)
-        select(id: id)
+        guard session.move(id, into: parent) else { return false }
+        refresh()
         return true
     }
 
@@ -373,8 +328,8 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
     /// Adds constraints to the selected view. Returns the new IDs.
     @discardableResult
     public func addConstraints(_ spec: IBDocument.NewConstraints) -> [String] {
-        guard let o = selected, let (next, ids) = try? document.addingConstraints(spec, to: o.id) else { return [] }
-        commit(next)
+        let ids = session.addConstraints(spec)
+        if !ids.isEmpty { refresh() }
         return ids
     }
 
@@ -400,16 +355,8 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
     /// selected view), centered on the point. Returns the new ID.
     @discardableResult
     public func insert(_ kind: IBDocument.NewObject, atCanvasPoint p: CGPoint? = nil) -> String? {
-        let target = p.flatMap { canvas.view(at: $0) } ?? (selected?.isView == true ? selected : nil)
-        guard let parent = target, let parentRoot = canvas.rect(of: parent), let pf = parent.frame else { return nil }
-        let size = kind.defaultSize
-        let center = p ?? CGPoint(x: parentRoot.midX, y: parentRoot.midY)
-        var local = CGRect(x: (center.x - parentRoot.minX - size.width / 2).rounded(), y: (center.y - parentRoot.minY - size.height / 2).rounded(),
-                           width: size.width, height: size.height)
-        if !document.isFlippedRuntime { local.origin.y = pf.height - local.maxY }
-        guard let (next, id) = try? document.inserting(kind, into: parent.id, frame: local), !id.isEmpty else { return nil }
-        commit(next)
-        select(id: id)
+        guard p != nil || selected?.isView == true, let id = session.insert(kind, atCanvasPoint: p) else { return nil }
+        refresh()
         return id
     }
 
@@ -469,7 +416,7 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
         }
     }
 
-    public static let alignments = ["left", "center", "right", "justified", "natural"]
+    public static let alignments = IBControlState.alignments
 
     /// The view the window's inspector area shows for a tab. Size has X/Y/
     /// Width/Height fields; Attributes starts with Title, Placeholder,
@@ -589,7 +536,9 @@ final class IBInspectorField: NSTextField {}
 /// entry-point arrow. Selection handles move and resize views.
 @MainActor
 final class IBCanvasView: NSView {
-    var document: IBDocument { didSet { layoutPlacements(); needsDisplay = true } }
+    /// Where scenes, views, segues and handles go (shared with the Linux IDE).
+    var layout: IBCanvasLayout { didSet { resize(); needsDisplay = true } }
+    var document: IBDocument { layout.document }
     weak var controller: InterfaceBuilderController?
     var selectedID: String? { didSet { needsDisplay = true } }
     var selectedConstraint: String? { didSet { needsDisplay = true } }
@@ -597,89 +546,34 @@ final class IBCanvasView: NSView {
     var landscape = false { didSet { needsDisplay = true } }
     var deviceName = "" { didSet { needsDisplay = true } }
     /// Height of a scene's title bar, drawn above its frame.
-    static let sceneBarHeight: CGFloat = 24
-    struct Placement {
-        var view: IBDocument.Object
-        var scene: IBDocument.Object
-        var title: String
-        var origin: CGPoint
-        /// Window chrome above the content (window scenes).
-        var titleBar: CGFloat
-    }
-    private(set) var placements: [Placement] = []
+    static let sceneBarHeight = IBCanvasLayout.sceneBarHeight
+    typealias Placement = IBCanvasLayout.Placement
+    var placements: [Placement] { layout.placements }
     /// The union of all scene boxes.
-    private(set) var contentBounds: CGRect = .zero
+    var contentBounds: CGRect { layout.contentBounds }
     override var isFlipped: Bool { true }
-    static let margin: CGFloat = 200
+    static let margin = IBCanvasLayout.margin
     static let objectType = NSPasteboard.PasteboardType("io.ycode.ib-object")
 
-    init(document: IBDocument) {
-        self.document = document
+    init(layout: IBCanvasLayout) {
+        self.layout = layout
         super.init(frame: .zero)
         registerForDraggedTypes([Self.objectType])
-        layoutPlacements()
+        resize()
     }
+
+    convenience init(document: IBDocument) { self.init(layout: IBCanvasLayout(document: document)) }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Scenes with a `canvasLocation` are centered there; others follow to
-    /// the right of the last one.
-    func layoutPlacements() {
-        placements = []
-        var nextX: CGFloat = 0
-        var boxes: [CGRect] = []
-        for r in document.roots {
-            var views: [(IBDocument.Object, CGFloat)] = []
-            func collect(_ o: IBDocument.Object) {
-                if o.isView { views.append((o, (o.parent?.contentRect != nil) ? 28 : 0)); return }
-                o.children.forEach(collect)
-            }
-            collect(r)
-            for (v, bar) in views {
-                let size = CGSize(width: v.frame!.width, height: v.frame!.height + bar)
-                let origin: CGPoint
-                if let c = r.canvasLocation, views.count == 1 {
-                    origin = CGPoint(x: c.x - size.width / 2, y: c.y - size.height / 2)
-                } else {
-                    origin = CGPoint(x: nextX, y: 0)
-                }
-                nextX = max(nextX, origin.x + size.width + 80)
-                // The scene title bar names the controller ("View Controller").
-                let title = r.element == "scene" ? (r.children.first?.displayName ?? r.displayName) : (v.parent?.displayName ?? v.displayName)
-                placements.append(Placement(view: v, scene: r, title: title, origin: CGPoint(x: origin.x, y: origin.y + bar), titleBar: bar))
-                boxes.append(CGRect(origin: origin, size: size))
-            }
-        }
-        // Shift everything so the canvas starts at a margin.
-        let union = boxes.reduce(boxes.first ?? .zero) { $0.union($1) }
-        let dx = Self.margin - union.minX, dy = Self.margin - union.minY
-        for i in placements.indices { placements[i].origin.x += dx; placements[i].origin.y += dy }
-        contentBounds = union.offsetBy(dx: dx, dy: dy)
-        setFrameSize(NSSize(width: contentBounds.maxX + Self.margin, height: contentBounds.maxY + Self.margin))
-    }
+    private func resize() { setFrameSize(layout.canvasSize) }
 
-    func placement(of o: IBDocument.Object) -> Placement? {
-        guard let root = document.rootView(of: o) else { return nil }
-        return placements.first { $0.view.id == root.id }
-    }
-
-    func rect(of o: IBDocument.Object) -> CGRect? {
-        guard let p = placement(of: o), let f = document.frameInRoot(o) else { return nil }
-        return f.offsetBy(dx: p.origin.x, dy: p.origin.y)
-    }
-
+    func placement(of o: IBDocument.Object) -> Placement? { layout.placement(of: o) }
+    func rect(of o: IBDocument.Object) -> CGRect? { layout.rect(of: o) }
     /// The scene box (content plus title bar) of a scene object.
-    func sceneBox(_ scene: IBDocument.Object) -> CGRect? {
-        guard let p = placements.first(where: { $0.scene === scene }) else { return nil }
-        return CGRect(x: p.origin.x, y: p.origin.y - p.titleBar, width: p.view.frame!.width, height: p.view.frame!.height + p.titleBar)
-    }
-
-    func scene(containing id: String) -> IBDocument.Object? {
-        var o = document.byID[id]
-        while let c = o, c.parent != nil { o = c.parent }
-        return o
-    }
+    func sceneBox(_ scene: IBDocument.Object) -> CGRect? { layout.sceneBox(scene) }
+    func scene(containing id: String) -> IBDocument.Object? { layout.scene(containing: id) }
 
     override func draw(_ dirtyRect: NSRect) {
         sceneBars = []
@@ -689,6 +583,7 @@ final class IBCanvasView: NSView {
             let box = CGRect(origin: p.origin, size: p.view.frame!.size)
             let full = box.insetBy(dx: 0, dy: 0).union(CGRect(x: box.minX, y: box.minY - p.titleBar, width: box.width, height: p.titleBar))
             drawSceneBar(p.title, above: full)
+            drawSceneBarIcons(p)
             if document.isFlippedRuntime { drawDeviceFrame(around: box) }
             if p.titleBar > 0 {
                 NSColor.windowBackgroundColor.setFill()
@@ -703,12 +598,12 @@ final class IBCanvasView: NSView {
             NSColor.separatorColor.setStroke()
             NSBezierPath(rect: full).stroke()
             p.view.walk { v in
-                guard v !== p.view, v.isView, let r = rect(of: v) else { return }
+                guard v !== p.view, v.isView, v.key != "cell", let r = rect(of: v) else { return }
                 NSColor.systemBlue.withAlphaComponent(document.isHidden(v.id) ? 0.02 : 0.06).setFill()
                 r.fill()
                 NSColor.systemBlue.withAlphaComponent(0.5).setStroke()
                 NSBezierPath(rect: r.insetBy(dx: 0.5, dy: 0.5)).stroke()
-                let label = NSAttributedString(string: v.displayName, attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor.labelColor])
+                let label = NSAttributedString(string: document.outlineTitle(v), attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor.labelColor])
                 NSGraphicsContext.saveGraphicsState()
                 NSBezierPath(rect: r).addClip()
                 label.draw(at: NSPoint(x: r.minX + 3, y: r.minY + 2))
@@ -744,19 +639,7 @@ final class IBCanvasView: NSView {
 
     /// Segue arrows: from the source scene's right edge to the destination
     /// scene's left edge.
-    var segueLines: [(from: CGPoint, to: CGPoint, kind: String)] {
-        var out: [(CGPoint, CGPoint, String)] = []
-        for r in document.roots {
-            r.walk { o in
-                for c in o.connections where c.kind == .segue {
-                    guard let s = scene(containing: o.id), let d = scene(containing: c.other), s !== d,
-                          let a = sceneBox(s), let b = sceneBox(d) else { continue }
-                    out.append((CGPoint(x: a.maxX, y: a.midY), CGPoint(x: b.minX, y: b.midY), c.name))
-                }
-            }
-        }
-        return out
-    }
+    var segueLines: [(from: CGPoint, to: CGPoint, kind: String)] { layout.segueLines }
 
     func drawSegues() {
         for s in segueLines {
@@ -777,15 +660,12 @@ final class IBCanvasView: NSView {
     }
 
     /// The entry-point arrow into the initial controller's scene.
-    var entryPoint: (from: CGPoint, to: CGPoint)? {
-        guard let id = document.initialViewController, let s = scene(containing: id), let b = sceneBox(s) else { return nil }
-        return (CGPoint(x: b.minX - 70, y: b.midY), CGPoint(x: b.minX - 4, y: b.midY))
-    }
+    var entryPoint: (from: CGPoint, to: CGPoint)? { layout.entryPoint }
 
     /// A scene's title bar: a rounded strip with the controller's icon
     /// and title, above its frame.
     func drawSceneBar(_ title: String, above full: CGRect) {
-        let bar = CGRect(x: full.minX, y: full.minY - Self.sceneBarHeight - (document.isFlippedRuntime ? 16 : 6), width: full.width, height: Self.sceneBarHeight)
+        let bar = CGRect(x: full.minX, y: full.minY - Self.sceneBarHeight - layout.sceneBarGap, width: full.width, height: Self.sceneBarHeight)
         sceneBars.append((title, bar))
         NSColor.controlBackgroundColor.setFill()
         let path = NSBezierPath(roundedRect: bar, xRadius: 6, yRadius: 6)
@@ -796,6 +676,19 @@ final class IBCanvasView: NSView {
         NSBezierPath(roundedRect: CGRect(x: bar.minX + 6, y: bar.minY + 6, width: 12, height: 12), xRadius: 3, yRadius: 3).fill()
         let t = NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.labelColor])
         t.draw(at: NSPoint(x: bar.minX + 24, y: bar.minY + 5))
+    }
+
+    /// The scene's objects as icons in its title bar while the scene or
+    /// one of them is selected (reference-ui-4.md §13 item 6).
+    func drawSceneBarIcons(_ p: Placement) {
+        for icon in layout.sceneBarIcons(p, selected: selectedID) {
+            guard let image = NSImage(systemSymbolName: icon.symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 11, weight: .regular)) else { continue }
+            let tinted = image.copy() as? NSImage ?? image
+            tinted.isTemplate = true
+            NSColor.secondaryLabelColor.set()
+            tinted.draw(in: icon.rect, from: .zero, operation: .sourceOver, fraction: 0.8, respectFlipped: true, hints: nil)
+        }
     }
 
     /// Scene bars as last drawn (tests).
@@ -825,30 +718,7 @@ final class IBCanvasView: NSView {
         }
     }
 
-    func constraintGuides(for o: IBDocument.Object) -> [(id: String, from: CGPoint, to: CGPoint)] {
-        func point(_ r: CGRect, _ a: String) -> CGPoint {
-            switch a {
-            case "leading", "left", "leadingMargin": return CGPoint(x: r.minX, y: r.midY)
-            case "trailing", "right", "trailingMargin": return CGPoint(x: r.maxX, y: r.midY)
-            case "top", "topMargin": return CGPoint(x: r.midX, y: r.minY)
-            case "bottom", "bottomMargin", "baseline", "lastBaseline": return CGPoint(x: r.midX, y: r.maxY)
-            default: return CGPoint(x: r.midX, y: r.midY)
-            }
-        }
-        var out: [(String, CGPoint, CGPoint)] = []
-        for c in document.constraints(involving: o.id) {
-            guard let a = c.firstItem.flatMap({ document.byID[$0] }).flatMap({ rect(of: $0) }) else { continue }
-            let p1 = point(a, c.firstAttribute)
-            if let second = c.secondItem.flatMap({ document.byID[$0] }), let b = rect(of: second) {
-                out.append((c.id, p1, point(b, c.secondAttribute ?? c.firstAttribute)))
-            } else {
-                let w = c.firstAttribute == "width"
-                out.append((c.id, w ? CGPoint(x: a.minX, y: a.maxY + 6) : CGPoint(x: a.maxX + 6, y: a.minY),
-                            w ? CGPoint(x: a.maxX, y: a.maxY + 6) : CGPoint(x: a.maxX + 6, y: a.maxY)))
-            }
-        }
-        return out
-    }
+    func constraintGuides(for o: IBDocument.Object) -> [(id: String, from: CGPoint, to: CGPoint)] { layout.constraintGuides(for: o) }
 
     func drawEntryPoint() {
         guard let e = entryPoint else { return }
@@ -874,68 +744,37 @@ final class IBCanvasView: NSView {
 
     // MARK: Handles and dragging
 
-    enum Handle: CaseIterable { case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left }
+    typealias Handle = IBCanvasLayout.Handle
 
-    func handles(_ r: CGRect) -> [(handle: Handle, rect: CGRect)] {
-        let pts: [(Handle, CGPoint)] = [(.topLeft, CGPoint(x: r.minX, y: r.minY)), (.top, CGPoint(x: r.midX, y: r.minY)),
-                                        (.topRight, CGPoint(x: r.maxX, y: r.minY)), (.right, CGPoint(x: r.maxX, y: r.midY)),
-                                        (.bottomRight, CGPoint(x: r.maxX, y: r.maxY)), (.bottom, CGPoint(x: r.midX, y: r.maxY)),
-                                        (.bottomLeft, CGPoint(x: r.minX, y: r.maxY)), (.left, CGPoint(x: r.minX, y: r.midY))]
-        return pts.map { ($0.0, CGRect(x: $0.1.x - 4, y: $0.1.y - 4, width: 8, height: 8)) }
-    }
+    func handles(_ r: CGRect) -> [(handle: Handle, rect: CGRect)] { IBCanvasLayout.handles(r) }
 
     /// The deepest view under a canvas point.
-    func view(at p: CGPoint) -> IBDocument.Object? {
-        var hit: IBDocument.Object?
-        for pl in placements { pl.view.walk { v in if v.isView, let r = rect(of: v), r.contains(p) { hit = v } } }
-        return hit
-    }
+    func view(at p: CGPoint) -> IBDocument.Object? { layout.view(at: p) }
 
     /// A resized or moved rectangle (whole points).
-    static func dragged(_ r: CGRect, handle: Handle?, by d: CGSize) -> CGRect {
-        var x0 = r.minX, y0 = r.minY, x1 = r.maxX, y1 = r.maxY
-        switch handle {
-        case nil: x0 += d.width; x1 += d.width; y0 += d.height; y1 += d.height
-        case .topLeft?: x0 += d.width; y0 += d.height
-        case .top?: y0 += d.height
-        case .topRight?: x1 += d.width; y0 += d.height
-        case .right?: x1 += d.width
-        case .bottomRight?: x1 += d.width; y1 += d.height
-        case .bottom?: y1 += d.height
-        case .bottomLeft?: x0 += d.width; y1 += d.height
-        case .left?: x0 += d.width
-        }
-        return CGRect(x: min(x0, x1).rounded(), y: min(y0, y1).rounded(), width: abs(x1 - x0).rounded(), height: abs(y1 - y0).rounded())
-    }
+    static func dragged(_ r: CGRect, handle: Handle?, by d: CGSize) -> CGRect { IBCanvasLayout.dragged(r, handle: handle, by: d) }
 
-    private var drag: (id: String, handle: Handle?, start: CGPoint, original: CGRect, root: CGRect)?
+    private var drag: IBCanvasDrag?
     private(set) var dragPreview: CGRect?
 
     /// Starts a drag at a canvas point: a handle of the selected view
     /// resizes it, the body of a view selects and moves it.
     func beginDrag(at p: CGPoint) {
-        if let id = selectedID, let o = document.byID[id], o.parent?.isView == true, let r = rect(of: o),
-           let h = handles(r).first(where: { $0.rect.insetBy(dx: -2, dy: -2).contains(p) }) {
-            drag = (id, h.handle, p, r, document.frameInRoot(o)!)
-            return
-        }
-        guard let v = view(at: p) else { return }
-        controller?.select(v)
-        if v.parent?.isView == true, let r = rect(of: v) { drag = (v.id, nil, p, r, document.frameInRoot(v)!) }
+        let (hit, d) = IBCanvasDrag.begin(at: p, selected: selectedID, in: layout)
+        if let hit, hit.id != selectedID || d?.handle == nil { controller?.select(hit) }
+        drag = d
     }
 
     func continueDrag(to p: CGPoint) {
         guard let d = drag else { return }
-        dragPreview = Self.dragged(d.original, handle: d.handle, by: CGSize(width: p.x - d.start.x, height: p.y - d.start.y))
+        dragPreview = d.preview(at: p)
         needsDisplay = true
     }
 
     func endDrag(at p: CGPoint) {
         defer { drag = nil; dragPreview = nil; needsDisplay = true }
-        guard let d = drag else { return }
-        let delta = CGSize(width: p.x - d.start.x, height: p.y - d.start.y)
-        guard delta.width != 0 || delta.height != 0 else { return }
-        controller?.setRootFrame(Self.dragged(d.root, handle: d.handle, by: delta), of: d.id)
+        guard let d = drag, let r = d.result(at: p) else { return }
+        controller?.setRootFrame(r, of: d.id)
     }
 
     override func mouseDown(with e: NSEvent) { beginDrag(at: convert(e.locationInWindow, from: nil)) }

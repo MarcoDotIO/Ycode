@@ -109,11 +109,16 @@ load_swiftly() {
 
 # Who listens on a port: "user (program)" as far as ss can tell. $1 is t or u.
 port_owner() {
-    local line uid who proc
+    local line uid who proc pid
     line=$(ss -Hln"$1"ep "sport = :$2" 2>/dev/null | head -1)
     [ -n "$line" ] || return 1
     uid=$(printf '%s' "$line" | grep -o 'uid:[0-9]*' | head -1 | cut -d: -f2)
     proc=$(printf '%s' "$line" | grep -o 'users:(("[^"]*"' | head -1 | cut -d'"' -f2)
+    # ss prints no uid for UDP sockets: the owner of the process then.
+    if [ -z "$uid" ]; then
+        pid=$(printf '%s' "$line" | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)
+        [ -n "$pid" ] && uid=$(stat -c %u "/proc/$pid" 2>/dev/null)
+    fi
     who=""; [ -n "$uid" ] && who=$(getent passwd "$uid" | cut -d: -f1)
     printf '%s' "${who:-another user}${proc:+ ($proc)}"
 }
@@ -185,8 +190,13 @@ inspect() {
         [ "$t" = llvm-config-18 ] && [ -x /usr/lib/llvm-18/bin/llvm-config ] && continue
         missing_tools+=("$t"); pkgs+=("$p")
     done
+    # The display server's JPEG frames (the viewers' default) need libjpeg at
+    # run time; without it every frame is empty and the device window stays black.
+    if ! { ldconfig -p 2>/dev/null | grep -q 'libjpeg\.so\.\(8\|62\) '; }; then
+        missing_tools+=("libjpeg"); pkgs+=("libjpeg-turbo8")
+    fi
     if [ ${#missing_tools[@]} = 0 ]; then
-        check setup.packages ok "python3, rsync, flock, LLVM 18, SPIRV-Tools and vulkaninfo are installed."
+        check setup.packages ok "python3, rsync, flock, LLVM 18, SPIRV-Tools, vulkaninfo and libjpeg are installed."
     elif [ "$pm" = apt-get ]; then
         rootstep packages "DEBIAN_FRONTEND=noninteractive apt-get install -y ${pkgs[*]}"
         check setup.packages missing "Missing: ${missing_tools[*]} (packages ${pkgs[*]})."
@@ -256,8 +266,25 @@ inspect() {
             simhost="$data/bin/ycode-simhost"
         fi ;;
     esac
+    # A tree named with --sim-tree carries its own ycode-simhost: a source
+    # tree in .build/release, an unpacked release in ../../bin. Apply links it
+    # into the data folder, where the service unit runs it.
+    linked=""
+    if [ -z "$simhost" ] && [ -n "$simtree" ]; then
+        for c in "$simtree/.build/release/ycode-simhost" "$simtree/../../bin/ycode-simhost"; do
+            [ -x "$c" ] || continue
+            linked="$(cd "$(dirname "$c")" && pwd)/ycode-simhost"
+            if [ -n "$data" ]; then
+                userstep simhost-link "mkdir -p $(q "$data/bin") && ln -sfn $(q "$linked") $(q "$data/bin/ycode-simhost")"
+                simhost="$data/bin/ycode-simhost"
+            else simhost=$linked; linked=""; fi
+            break
+        done
+    fi
     fact simhost "${simhost:-none}"
-    if [ "$release" = 1 ]; then
+    if [ -n "$linked" ]; then
+        check setup.simhost missing "The simulator tree's ycode-simhost ($linked) is not in $data/bin yet; Apply links it there."
+    elif [ "$release" = 1 ]; then
         check setup.simhost missing "No ycode-simhost ${installed:+for $ycodever }here. Apply downloads Ycode $ycodever for aarch64 from its release, checks it against SHA256SUMS.txt and unpacks it in $data/ycode."
     elif [ -n "$simhost" ]; then
         check setup.simhost ok "$simhost${installed:+ (Ycode $installed)}."
@@ -311,7 +338,13 @@ inspect() {
 
     # The self-test: the service itself reads the configuration (it boots nothing).
     if [ -n "$simhost" ] && [ -x "$simhost" ] && [ -f "$envf" ]; then
-        if out=$("$simhost" check --config "$envf" 2>&1); then
+        own=0
+        if have ss && [ "$(port_owner t "$tcp")" = "$user (ycode-simhost)" ]; then own=1; fi
+        out=$("$simhost" check --config "$envf" 2>&1); rc=$?
+        # The running service holds its own ports: check's bind test is not a problem then.
+        if [ "$rc" != 0 ] && [ "$own" = 1 ] && ! printf '%s\n' "$out" | grep -v 'in use by another program' | grep -q '[^[:space:]]'; then
+            check setup.selftest ok "ycode-simhost check: the service runs with $envf (it holds $tcp/tcp and $udp/udp)."
+        elif [ "$rc" = 0 ]; then
             check setup.selftest ok "ycode-simhost check: the service can start with $envf."
         elif printf '%s' "$out" | grep -q "unknown command check"; then
             # An older ycode-simhost (before 1.0.0-beta.2) has no check: look at the files it needs here.

@@ -80,6 +80,7 @@ static struct image images[MAX_IMAGES];
 static uint32_t nimages;
 static int main_index = -1, libsystem_index = -1;
 static int print_libraries;
+static int print_segments;  // DYLD_PRINT_SEGMENTS: each image's load address
 static const char *library_path;
 static const char *executable_path;  // set at start (no data pointers to rebase)
 static int NXArgc;
@@ -163,6 +164,15 @@ static void say(const char *a, const char *b, const char *c) {
     put(&t, c);
     put(&t, "\n");
     sys_write(2, buf, t.len);
+}
+
+// "dyld[pid]: <path> at 0x<header address>" (DYLD_PRINT_SEGMENTS).
+static void say_address(const char *path, const void *address) {
+    char hex[19] = "0x";
+    uint64_t v = (uint64_t)(uintptr_t)address;
+    for (int i = 0; i < 16; i++) hex[2 + i] = "0123456789abcdef"[(v >> (60 - 4 * i)) & 15];
+    hex[18] = 0;
+    say(path, " at ", hex);
 }
 
 __attribute__((noreturn)) static void fatal(const char *a, const char *b, const char *c) {
@@ -485,6 +495,7 @@ static int map_image(int fd, const char *path) {
         return -1;
     }
     if (print_libraries) say(path, "", "");
+    if (print_segments) say_address(path, im->mh);
     return index;
 }
 
@@ -904,6 +915,8 @@ void ydl_main(uint64_t *sp) {
     if (*progname == '/') progname++;
     const char *p = getenv_in(environ_storage, "DYLD_PRINT_LIBRARIES");
     print_libraries = p && *p && *p != '0';
+    p = getenv_in(environ_storage, "DYLD_PRINT_SEGMENTS");
+    print_segments = p && *p && *p != '0';
     library_path = getenv_in(environ_storage, "DYLD_LIBRARY_PATH");
     if (library_path && !*library_path) library_path = 0;
 

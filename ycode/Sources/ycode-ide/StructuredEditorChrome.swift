@@ -17,6 +17,7 @@ struct StructuredEditorView: View {
         case .propertyList(let m): PlistEditorView(model: m)
         case .assetCatalog(let m): AssetCatalogEditorView(model: m)
         case .stringCatalog(let m): StringCatalogEditorView(model: m)
+        case .interfaceBuilder(let m): InterfaceBuilderEditorView(model: m)
         }
     }
 }

@@ -1,0 +1,35 @@
+Date: 721692800.0 1700000000.0
+Later than 2023: true
+One day: 86400.0 s
+ISO 8601: 2023-11-14T22:13:20Z
+[
+  {
+    "count" : 3,
+    "created" : "2023-11-14T22:13:20Z",
+    "name" : "apple",
+    "price" : 0.5,
+    "tags" : [
+      "fruit",
+      "red"
+    ]
+  },
+  {
+    "count" : 1,
+    "created" : "2023-11-14T23:13:20Z",
+    "name" : "bread",
+    "price" : 2.25,
+    "tags" : [
+
+    ]
+  }
+]
+Round trip equal: true
+Decoded: [(key: "e", value: 2.71828), (key: "pi", value: 3.14159)]
+File bytes: 287 true
+Exists: true
+Contents: ["items.json", "sub"]
+Size attribute: 287
+sub is a directory: true
+Walk: ["items.json", "sub", "sub/deeper", "sub/hello.txt"]
+After copy and move: ["items.json", "moved.json", "sub"]
+Removed: true

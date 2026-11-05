@@ -1136,7 +1136,14 @@ Safari boots hang the GPU (§15.6), and a hang stops every client
    submission after 10 s by waiting the device idle; only its command
    buffer fails; the device is made again with every object in place and
    the other command buffers are recorded again: metal-sim-protocol.md
-   §8.7.)*
+   §8.7.)* *(B3-GPU, 2026-11-05: closed. A queue per client does not help
+   on the Thor (a second queue of the device does not run while one
+   submission is stuck). The watchdog now ends a submission after 2 s once
+   other clients wait behind it, stops it with a kick on a second device
+   in 4.3–4.5 s (the device wait alone took 4–59 s), fails every command
+   buffer of the stuck client only, and revokes the GPU access of a client
+   that hangs twice: other clients wait about 6.5 s in all.
+   metal-sim-protocol.md §8.8.)*
 3. ~~The `astc` kernel's real trigger data is still unknown (§15.5).~~
    Found (§15.9): not the data, a stale storage descriptor.
 4. Two captured Safari hangs had no feedback draw (§15.6). If hangs

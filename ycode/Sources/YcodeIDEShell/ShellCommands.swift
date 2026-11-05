@@ -33,7 +33,7 @@ public enum ShellCommand: String, CaseIterable, Sendable {
     case jumpToDefinition, jumpToOriginalSource, renameSymbol, showQuickHelp, findSelectedSymbol, showCallHierarchy
     case showSymbolNavigator, showFileInspector, showQuickHelpInspector
     // Window
-    case welcome, downloads
+    case welcome, downloads, organizer
     // Ycode, Help, Integrate
     case about, help, releaseNotes, reportBug, swiftBook, clone
     // Integrate ▸ Source Control (SourceControlShellModel)
@@ -49,6 +49,8 @@ public enum ShellCommand: String, CaseIterable, Sendable {
     // The coding assistant (WorkspaceShellModel+Assistant.swift)
     case showCodingAssistant, newConversation, jumpToNextActiveConversation
     case codingToolExplain, codingToolDocument, codingToolGeneratePlayground, codingToolGeneratePreview
+    // Editor ▸ Canvas and Editor ▸ Layout (WorkspaceShellModel+Previews.swift)
+    case toggleCanvas, canvasLayoutAutomatic, canvasLayoutRight, canvasLayoutBottom
 
     /// The `CommandTable` action (and tag) of the command.
     public var action: (selector: String, tag: Int) {
@@ -112,6 +114,7 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .viewMemory: ("ycodeUnavailableViewMemory:", 0)
         case .welcome: ("showWelcomeWindow:", 0)
         case .downloads: ("showDownloads:", 0)
+        case .organizer: ("showOrganizer:", 0)
         case .about: ("showAboutWindow:", 0)
         case .help: ("showYcodeHelp:", 0)
         case .releaseNotes: ("showReleaseNotes:", 0)
@@ -131,6 +134,10 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .showSymbolNavigator: ("showNavigator:", ShellNavigator.symbols.selectorIndex)
         case .showFileInspector: ("showInspector:", 0)
         case .showQuickHelpInspector: ("showInspector:", 2)
+        case .toggleCanvas: ("toggleCanvas:", 0)
+        case .canvasLayoutAutomatic: ("setCanvasLayout:", 0)
+        case .canvasLayoutRight: ("setCanvasLayout:", 1)
+        case .canvasLayoutBottom: ("setCanvasLayout:", 2)
         default: (Self.integrateSelectors[self] ?? Self.assistantActions[self]?.selector ?? "", 0)
         }
     }
@@ -151,7 +158,7 @@ public enum ShellCommand: String, CaseIterable, Sendable {
              .copyConsoleRowWithVisibleMetadata, .copyConsoleRowWithAllMetadata, .copyConsoleRowWithoutMetadata: "Debug"
         case .createSwiftErrorBreakpoint, .createExceptionBreakpoint, .createSymbolicBreakpoint, .toggleNavigateToSourceOnPause,
              .toggleAlwaysShowDisassembly, .viewMemory: "Debug"
-        case .welcome, .downloads: "Window"
+        case .welcome, .downloads, .organizer: "Window"
         case .about: "Ycode"
         case .help, .releaseNotes, .reportBug, .swiftBook: "Help"
         case .clone: "Integrate"
@@ -162,6 +169,7 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .showQuickHelp: "Help"
         case .findSelectedSymbol, .showCallHierarchy: "Find"
         case .showSymbolNavigator, .showFileInspector, .showQuickHelpInspector: "View"
+        case .toggleCanvas, .canvasLayoutAutomatic, .canvasLayoutRight, .canvasLayoutBottom: "Editor"
         default: Self.assistantActions[self]?.menu ?? "Integrate"
         }
     }

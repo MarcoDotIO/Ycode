@@ -125,6 +125,8 @@ public final class WorkspaceShellModel {
     public let testing: TestShellModel
     /// The Coding Assistant pane (ShellAssistantModel.swift).
     public let assistant = ShellAssistantModel()
+    /// The preview canvas (PreviewCanvasShellModel.swift).
+    public let previewCanvas = PreviewCanvasShellModel()
 
     // MARK: Language features (WorkspaceShellModel+Language.swift)
 
@@ -153,7 +155,7 @@ public final class WorkspaceShellModel {
         let groups = ShellBuildSetup.destinationGroups(for: session.model) + Self.remoteGroups(for: session.model)
         session.model.destinationGroups = groups
         destinations = groups.flatMap(\.destinations)
-        session.destination = destinations.first
+        session.destination = ShellRemoteRun.defaultDestination(groups, model: session.model) ?? destinations.first
         scheme = session.scheme
         destination = session.destination
         session.observe { [weak self] change in self?.sessionChanged(change) }
@@ -161,6 +163,7 @@ public final class WorkspaceShellModel {
         debug.workspace = self
         assistant.workspace = self
         connectSourceControl()
+        connectPreviewCanvas()
     }
 
     /// Opens a workspace: an `.xcodeproj`, `.xcworkspace`, `Package.swift`
@@ -462,6 +465,8 @@ public final class WorkspaceShellModel {
 
     /// The device window of the last remote run (Stop ends it).
     @ObservationIgnored private var remoteViewer: Process?
+    /// Stop before the device window opens (the build or the upload).
+    @ObservationIgnored private var remoteCancel: RemoteRunCancel?
 
     /// Run on a Ycode simulator host: build here, then upload, install,
     /// launch and show the device (ShellRemoteRun).
@@ -470,12 +475,24 @@ public final class WorkspaceShellModel {
         debugPane = .console
         remoteViewer?.terminate()
         let session = session
+        let product = session.scheme ?? workspaceName
+        let phase: @Sendable (RemoteRunPhase) -> Void = { p in Task { @MainActor [weak self] in self?.remoteRunPhase(p, product: product, device: d.name) } }
+        let cancel = RemoteRunCancel()
+        remoteCancel = cancel
         do {
             // Under the debugger when the host is this computer (ShellSimulatorDebug).
-            try await ShellSimulatorDebug.run(session: session, scheme: session.scheme ?? workspaceName, destination: d, packageRoot: ShellRemoteRun.toolsRoot(),
-                                              started: { remoteViewer = $0 }, isCurrent: { [weak self] in self?.remoteViewer === $0 })
+            try await ShellSimulatorDebug.run(session: session, scheme: product, destination: d, packageRoot: ShellRemoteRun.toolsRoot(),
+                                              phase: phase, cancel: cancel,
+                                              started: { viewer in
+                                                  viewer.terminationHandler = { _ in phase(.ended) }
+                                                  remoteViewer = viewer
+                                              }, isCurrent: { [weak self] in self?.remoteViewer === $0 })
+        } catch where cancel.isCancelled {
+            session.appendConsole("Run on \(d.name) stopped.\n", kind: .debugger)
+            phase(.ended)
         } catch {
             session.appendConsole("Run on \(d.name) failed: \(error)\n", kind: .debugger)
+            phase(.failed(""))
         }
     }
 
@@ -495,7 +512,13 @@ public final class WorkspaceShellModel {
 
     /// Product ▸ Stop (⌘.).
     public func stop() {
-        remoteViewer?.terminate()
+        remoteCancel?.cancel()
+        remoteCancel = nil
+        if let v = remoteViewer {
+            v.terminationHandler = nil
+            v.terminate()
+            remoteRunPhase(.ended, product: session.scheme ?? workspaceName, device: destination?.name ?? "")
+        }
         remoteViewer = nil
         // A simulator app's debugger detaches; the app runs on (ShellSimulatorDebug).
         if session.isDebuggingSimulatorStub { session.detachFromSimulatorStub() } else { session.stop() }
@@ -527,6 +550,7 @@ public final class WorkspaceShellModel {
         case .testAgain: !isBusy && session.lastTestRun != nil
         case _ where c.isAssistant: isAssistantCommandEnabled(c)
         case _ where c.isSourceControl: sourceControl.isEnabled(c.action.selector)
+        case _ where c.isPreviewCommand: isPreviewCommandEnabled(c)
         default: true
         }
     }
@@ -575,6 +599,7 @@ public final class WorkspaceShellModel {
              .jumpToLine, .commentSelection, .shiftLeft, .shiftRight, .moveLineUp, .moveLineDown:
             performEditing(c)
         case _ where c.isAssistant: performAssistantCommand(c)
+        case _ where c.isPreviewCommand: performPreviewCommand(c)
         default:
             if c.isSourceControl { sourceControl.performIntegrate(c.action.selector) }
         }

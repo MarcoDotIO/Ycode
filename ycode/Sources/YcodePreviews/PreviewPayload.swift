@@ -45,6 +45,14 @@ public enum PreviewPlatform: String, Codable, Sendable, CaseIterable {
     }
 }
 
+/// What a payload's previews are made of: UIKit view controllers (iOS,
+/// iPadOS, visionOS simulators), AppKit view controllers (the Mac), or
+/// OpenViews views that the payload renders itself (the Linux IDE).
+public enum PreviewPayloadKit: Sendable, Equatable {
+    case uiKit, appKit, openViews
+    public init(_ platform: PreviewPlatform) { self = platform.usesUIKit ? .uiKit : .appKit }
+}
+
 /// One file whose previews go into a payload, with its previews.
 public struct PreviewedFile: Equatable, Sendable {
     public var url: URL
@@ -75,6 +83,13 @@ public enum PreviewPayloadGenerator {
     /// resolves to the matching UIKit/AppKit overload (the shapes of the
     /// `#Preview` macro's public declarations).
     public static func supportFile(platform: PreviewPlatform, count: Int) -> String {
+        supportFile(kit: PreviewPayloadKit(platform), count: count)
+    }
+
+    /// The support file for a kit (`openViews`: `openViewsSupportFile`).
+    public static func supportFile(kit payloadKit: PreviewPayloadKit, count: Int) -> String {
+        if payloadKit == .openViews { return openViewsSupportFile(count: count) }
+        let platform: PreviewPlatform = payloadKit == .uiKit ? .iOS : .macOS
         let kit = platform.usesUIKit ? "UIKit" : "AppKit"
         let vc = platform.usesUIKit ? "UIViewController" : "NSViewController"
         let view = platform.usesUIKit ? "UIView" : "NSView"
@@ -138,14 +153,16 @@ public enum PreviewPayloadGenerator {
     /// numbered from `first`. A body with `@Previewable` lines becomes a
     /// wrapper view whose stored properties they are.
     public static func wrappers(_ previews: [PreviewDeclaration], first: Int, platform: PreviewPlatform) -> String {
-        wrapperText(previews, first: first, platform: platform).text
+        wrapperText(previews, first: first, kit: PreviewPayloadKit(platform)).text
     }
 
     /// The wrappers and, per preview, the 0-based line within the text on
     /// which its body starts.
-    static func wrapperText(_ previews: [PreviewDeclaration], first: Int, platform: PreviewPlatform) -> (text: String, bodyLines: [Int]) {
-        let vc = platform.usesUIKit ? "UIViewController" : "NSViewController"
-        var out = "\n// Ycode previews (generated)\nimport SwiftUI\nimport \(platform.usesUIKit ? "UIKit" : "AppKit")\n"
+    static func wrapperText(_ previews: [PreviewDeclaration], first: Int, kit: PreviewPayloadKit) -> (text: String, bodyLines: [Int]) {
+        // OpenViews previews are views (`AnyView`), rendered by the payload itself.
+        let vc = switch kit { case .uiKit: "UIViewController"; case .appKit: "NSViewController"; case .openViews: "AnyView" }
+        let imports = switch kit { case .uiKit: "import SwiftUI\nimport UIKit\n"; case .appKit: "import SwiftUI\nimport AppKit\n"; case .openViews: "import SwiftUI\n" }
+        var out = "\n// Ycode previews (generated)\n" + imports
         var lines: [Int] = []
         func lineCount() -> Int { out.utf8.reduce(0) { $1 == 10 ? $0 + 1 : $0 } }
         for (n, p) in previews.enumerated() {
@@ -216,6 +233,12 @@ public enum PreviewPayloadGenerator {
     /// text (an unsaved editor).
     public static func generate(moduleFiles: [URL], previewed: [PreviewedFile], platform: PreviewPlatform,
                                 into directory: URL, texts: [URL: String] = [:]) throws -> Sources {
+        try generate(moduleFiles: moduleFiles, previewed: previewed, kit: PreviewPayloadKit(platform), into: directory, texts: texts)
+    }
+
+    /// `generate` for a kit (`openViews`: payloads the Linux IDE's preview host loads).
+    public static func generate(moduleFiles: [URL], previewed: [PreviewedFile], kit: PreviewPayloadKit,
+                                into directory: URL, texts: [URL: String] = [:]) throws -> Sources {
         let fm = FileManager.default
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
         var files: [URL] = [], maps: [String: LineMap] = [:], changed: [URL] = []
@@ -236,7 +259,7 @@ public enum PreviewPayloadGenerator {
             let own = text.utf8.reduce(1) { $1 == 10 ? $0 + 1 : $0 }
             var map = LineMap(original: url, originalLines: own, bodies: [])
             if let first = firstIndex[url], let p = previewed.first(where: { $0.url.standardizedFileURL == url }) {
-                let w = wrapperText(p.previews, first: first, platform: platform)
+                let w = wrapperText(p.previews, first: first, kit: kit)
                 // The wrapper text starts with a newline that ends the file's last line.
                 map.bodies = zip(w.bodyLines, p.previews).map { (own + $0.0, $0.1.bodyLine) }
                 text += w.text
@@ -249,7 +272,7 @@ public enum PreviewPayloadGenerator {
             maps[copy.path] = map
         }
         let support = directory.appendingPathComponent(supportFileName)
-        _ = try write(supportFile(platform: platform, count: order.count), to: support)
+        _ = try write(supportFile(kit: kit, count: order.count), to: support)
         files.append(support)
         for name in (try? fm.contentsOfDirectory(atPath: directory.path)) ?? [] where !wanted.contains(name) && name.hasSuffix(".swift") {
             try? fm.removeItem(at: directory.appendingPathComponent(name))

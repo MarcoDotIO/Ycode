@@ -178,7 +178,10 @@ public final class ViewerConnection: @unchecked Sendable {
     public private(set) var settings: DisplayClientHello
     public weak var delegate: ViewerConnectionDelegate?
     private let lock = NSLock()
-    private var connection: DisplayConnection?
+    private var connection: DisplayTransport?
+    /// Opens the stream another way than `address` (Ycode's link to a
+    /// simulator host, `ycode-sim-viewer --link`); nil: `address`.
+    private let connector: (@Sendable () throws -> DisplayTransport)?
     private var stopped = false
     private var inputSequence: UInt32 = 0
     private var pings: [UInt64: UInt64] = [:]
@@ -200,9 +203,10 @@ public final class ViewerConnection: @unchecked Sendable {
     private(set) var bytesReceived = 0
     private(set) var framesReceived = 0
 
-    public init(address: DisplayAddress, settings: DisplayClientHello) {
+    public init(address: DisplayAddress, settings: DisplayClientHello, connector: (@Sendable () throws -> DisplayTransport)? = nil) {
         self.address = address
         self.settings = settings
+        self.connector = connector
     }
 
     public func start() {
@@ -212,7 +216,7 @@ public final class ViewerConnection: @unchecked Sendable {
     }
 
     public func stop() {
-        let c = lock.withLock { () -> DisplayConnection? in stopped = true; return connection }
+        let c = lock.withLock { () -> DisplayTransport? in stopped = true; return connection }
         c?.close()
     }
 
@@ -234,15 +238,15 @@ public final class ViewerConnection: @unchecked Sendable {
             attempt += 1
             let detail = attempt > 1 ? "attempt \(attempt)" : nil
             main { self.delegate?.connection(self, phase: "connecting", detail: detail) }
-            let c: DisplayConnection
+            let c: DisplayTransport
             do {
-                c = try DisplayConnection.connect(to: address)
+                c = try connector?() ?? DisplayConnection.connect(to: address)
             } catch {
                 Thread.sleep(forTimeInterval: 1)
                 continue
             }
             lock.withLock { connection = c }
-            try? c.send(.clientHello(settings))
+            try? c.send(DisplayMessage.clientHello(settings).encoded())
             var parser = DisplayMessageParser()
             var canvas: FrameCanvas?
             var gotHello = false
@@ -341,7 +345,7 @@ public final class ViewerConnection: @unchecked Sendable {
     @discardableResult
     public func send(_ m: DisplayMessage) -> Bool {
         guard let c = lock.withLock({ connection }) else { return false }
-        do { try c.send(m) } catch { return false }
+        do { try c.send(m.encoded()) } catch { return false }
         return true
     }
 

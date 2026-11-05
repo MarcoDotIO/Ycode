@@ -153,46 +153,33 @@ public final class LibraryController: NSViewController, NSTableViewDataSource, N
         switch tab { case .snippets: snippets.count; case .symbols: symbols.count; case .objects: objects.count }
     }
 
-    public static func objectSummary(_ o: IBDocument.NewObject) -> String {
-        switch o {
-        case .label: "Displays a line of read-only text."
-        case .button: "Sends an action when clicked."
-        case .textField: "Lets the user type a line of text."
-        case .imageView: "Displays an image."
-        case .view: "A plain rectangular area that holds other views."
-        case .stackView: "Arranges its views in a row or column."
-        }
-    }
+    public static func objectSummary(_ o: IBDocument.NewObject) -> String { o.summary }
 
-    /// The Objects tab's icons, drawn by Ycode (no artwork files).
+    /// The Objects tab's icons, drawn by Ycode from the shared shapes
+    /// (`IBLibraryObjects.swift`; no artwork files).
     public static func objectIcon(_ o: IBDocument.NewObject) -> NSImage {
-        NSImage(size: NSSize(width: 26, height: 26), flipped: true) { r in
-            let box = r.insetBy(dx: 2, dy: 2)
-            NSColor.controlAccentColor.withAlphaComponent(0.12).setFill()
-            NSBezierPath(roundedRect: box, xRadius: 5, yRadius: 5).fill()
-            NSColor.controlAccentColor.setStroke()
-            NSColor.controlAccentColor.setFill()
-            switch o {
-            case .label:
-                NSAttributedString(string: "Aa", attributes: [.font: NSFont.boldSystemFont(ofSize: 11), .foregroundColor: NSColor.controlAccentColor])
-                    .draw(at: NSPoint(x: box.minX + 3, y: box.minY + 4))
-            case .button:
-                NSBezierPath(roundedRect: box.insetBy(dx: 2, dy: 6), xRadius: 4, yRadius: 4).fill()
-            case .textField:
-                NSBezierPath(rect: box.insetBy(dx: 2, dy: 6)).stroke()
-                NSBezierPath(rect: CGRect(x: box.minX + 5, y: box.midY - 3, width: 1, height: 6)).fill()
-            case .imageView:
-                let m = NSBezierPath()
-                m.move(to: CGPoint(x: box.minX + 3, y: box.maxY - 4))
-                m.line(to: CGPoint(x: box.midX - 2, y: box.midY))
-                m.line(to: CGPoint(x: box.maxX - 3, y: box.maxY - 4))
-                m.close()
-                m.fill()
-                NSBezierPath(ovalIn: CGRect(x: box.maxX - 8, y: box.minY + 3, width: 4, height: 4)).fill()
-            case .view:
-                NSBezierPath(rect: box.insetBy(dx: 4, dy: 4)).stroke()
-            case .stackView:
-                for i in 0..<3 { NSBezierPath(rect: CGRect(x: box.minX + 3 + CGFloat(i) * 6.5, y: box.minY + 5, width: 5, height: box.height - 10)).fill() }
+        NSImage(size: NSSize(width: 26, height: 26), flipped: true) { _ in
+            let accent = NSColor.controlAccentColor
+            accent.setStroke()
+            accent.setFill()
+            for shape in o.iconShapes {
+                switch shape {
+                case .backdrop(let r, let radius):
+                    accent.withAlphaComponent(0.12).setFill()
+                    NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius).fill()
+                    accent.setFill()
+                case .fillRoundedRect(let r, let radius): NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius).fill()
+                case .strokeRect(let r): NSBezierPath(rect: r).stroke()
+                case .fillRect(let r): NSBezierPath(rect: r).fill()
+                case .fillOval(let r): NSBezierPath(ovalIn: r).fill()
+                case .fillPolygon(let pts):
+                    let m = NSBezierPath()
+                    for (i, p) in pts.enumerated() { if i == 0 { m.move(to: p) } else { m.line(to: p) } }
+                    m.close()
+                    m.fill()
+                case .text(let t, let at, let size):
+                    NSAttributedString(string: t, attributes: [.font: NSFont.boldSystemFont(ofSize: size), .foregroundColor: accent]).draw(at: at)
+                }
             }
             return true
         }

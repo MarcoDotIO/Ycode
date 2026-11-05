@@ -32,6 +32,10 @@ public final class ShellAppModel {
     public var notice: ShellNotice?
     /// Hands a URL to the desktop (the views install the toolkit's opener).
     @ObservationIgnored public var openExternally: (URL) -> Void = { _ in }
+    /// The Organizer window's model (Window ▸ Organizer; ShellAppModel+Organizer.swift).
+    @ObservationIgnored public let organizer = OrganizerShellModel()
+    /// Opens a window scene by id (the views install the toolkit's action).
+    @ObservationIgnored public var openWindow: (String) -> Void = { _ in }
     /// Where New Project remembers its choices (tests pass their own).
     @ObservationIgnored public var newProjectDefaults: UserDefaults = .standard
 
@@ -117,6 +121,7 @@ public final class ShellAppModel {
 
     private func discardWorkspace() {
         workspace?.stopLanguageService()
+        workspace?.previewCanvas.stop()
         workspace?.stop()
         workspace = nil
         recent = recentProjects.urls
@@ -164,7 +169,7 @@ public final class ShellAppModel {
 
     public func isEnabled(_ c: ShellCommand) -> Bool {
         switch c {
-        case .open, .welcome, .newProject, .about, .help, .releaseNotes, .reportBug, .swiftBook, .clone, .downloads: true
+        case .open, .welcome, .newProject, .about, .help, .releaseNotes, .reportBug, .swiftBook, .clone, .downloads, .organizer: true
         case .closeWorkspace: workspace != nil
         default: workspace?.isEnabled(c) ?? false
         }
@@ -183,6 +188,7 @@ public final class ShellAppModel {
         case .swiftBook: if let u = URL(string: "https://docs.swift.org/swift-book/") { openLink(u) }
         case .clone: showClone()
         case .downloads: showRuntimeSetup()
+        case .organizer: showOrganizer()
         default: workspace?.perform(c)
         }
     }
@@ -191,5 +197,5 @@ public final class ShellAppModel {
     public func title(_ c: ShellCommand) -> String { c.title(in: workspace?.menuContext) }
 
     /// A toggle's check mark (nil: the command is not a toggle).
-    public func isChecked(_ c: ShellCommand) -> Bool? { workspace?.debug.isChecked(c) }
+    public func isChecked(_ c: ShellCommand) -> Bool? { workspace.flatMap { $0.debug.isChecked(c) ?? $0.isPreviewCommandChecked(c) } }
 }

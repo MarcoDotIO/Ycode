@@ -234,6 +234,11 @@ final class MetalHostCore: @unchecked Sendable {
         }
     }
 
+    /// The guest pid of a live client process.
+    func guestPID(of process: MetalProcessID) -> Int32? {
+        lock.withLock { processes[process].map(\.guestPID).flatMap { $0 > 0 ? $0 : nil } }
+    }
+
     /// The guest pids of the live client processes (snapshot.md §8 option 1).
     func clientPIDs() -> [Int32] {
         lock.withLock { processes.values.map(\.guestPID).filter { $0 > 0 }.sorted() }

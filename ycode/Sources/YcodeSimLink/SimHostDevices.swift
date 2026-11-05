@@ -85,11 +85,28 @@ public struct SimHostConfig: Sendable, Equatable {
         if !fm.isExecutableFile(atPath: simd) { out.append("YCODE_SIM_TREE \(tree) has no .build/release/ycode-simd") }
         if !fm.fileExists(atPath: tree + "/SimShim/out/shim.bin") { out.append("YCODE_SIM_TREE \(tree) has no SimShim/out/shim.bin") }
         if !fm.isExecutableFile(atPath: launcher) { out.append("the launcher \(launcher) is missing or not executable (YCODE_SIM_LAUNCHER)") }
+        // Programs that exist but cannot start here (a release built for
+        // another system's libraries): the device would boot to a black screen.
+        for exe in [simd, translator] where fm.isExecutableFile(atPath: exe) {
+            if let why = Self.loaderProblem(exe) { out.append("\(exe) cannot start on this system: \(why)") }
+        }
         for (type, root) in runtimes.sorted(by: { $0.key < $1.key }) where !fm.fileExists(atPath: root + "/sbin/launchd_sim") {
             out.append("the runtime \(type.isEmpty ? "YCODE_SIM_RUNTIME" : type) \(root) has no sbin/launchd_sim (not a RuntimeRoot)")
         }
         return out
     }
+    /// The folder with the guest tools a run needs to install and launch an
+    /// app (`ylaunch`): YCODE_SIM_GUEST_TOOLS, else ycode-simd's default
+    /// next to the shim.
+    public var guestToolsDirectory: String { guestTools ?? tree + "/SimShim/out/guest-tests/stage7" }
+
+    /// Why this host can boot devices but not run apps (no `ylaunch`), or nil.
+    public func appRunProblem(fileManager fm: FileManager = .default) -> String? {
+        guard !fm.fileExists(atPath: guestToolsDirectory + "/ylaunch") else { return nil }
+        return "this host's simulator tree has no guest tools (\(guestToolsDirectory)/ylaunch), so it can boot devices but not install or launch apps. "
+            + "Build them on a Mac (ycode/SimGuestAgents/build.sh), copy their out/ folder to the host and name it in YCODE_SIM_GUEST_TOOLS."
+    }
+
     public var devicesDirectory: String { home + "/devices" }
     public var runDirectory: String { home + "/run" }
     public var appsDirectory: String { home + "/apps" }
@@ -98,6 +115,34 @@ public struct SimHostConfig: Sendable, Equatable {
     /// The debug stub's socket of a run with `debug` (debug-stub.md §3).
     public func debugSocketPath(_ device: String) -> String { runDirectory + "/" + device + ".debug.sock" }
     public var simd: String { tree + "/.build/release/ycode-simd" }
+
+    /// The shader translator the launcher passes: a source tree's
+    /// Translator/build, else next to ycode-simd (a release).
+    public var translator: String {
+        let built = tree + "/Translator/build/ycode-airc"
+        return FileManager.default.isExecutableFile(atPath: built) ? built : tree + "/.build/release/ycode-airc"
+    }
+
+    /// The dynamic loader's complaint when `exe` cannot start (missing
+    /// libraries, a newer C library), else nil. Runs it with --version.
+    public static func loaderProblem(_ exe: String) -> String? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: exe)
+        p.arguments = ["--version"]
+        let err = Pipe()
+        p.standardError = err
+        p.standardOutput = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return nil }   // not a program the loader complains about
+        let deadline = Date().addingTimeInterval(5)
+        while p.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.02) }
+        if p.isRunning {
+            p.terminate()
+            return nil
+        }
+        let text = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let line = text.split(separator: "\n").first { $0.contains("error while loading shared libraries") || ($0.contains("version `") && $0.contains("not found")) }
+        return line.map { String($0.trimmingCharacters(in: .whitespaces).prefix(240)) }
+    }
 
     /// The launcher's environment and arguments for a run (`ycode-sim-serve start`'s).
     public func launch(device: String, type: String, app: String?, bundleID: String?, cold: Bool,
@@ -176,15 +221,20 @@ public final class SimHostDevices: @unchecked Sendable {
         }
     }
 
-    /// Makes a device from the pristine copy of its type.
+    /// Makes a device from the pristine copy of its type. Without one (a
+    /// host just set up) the device starts empty and its first boot sets it
+    /// up, as `ycode-sim-serve` does: that boot takes minutes, later ones not.
     public func create(_ name: String, type: String) throws {
         guard isSafeName(name) else { throw LinkError.refused("bad device name") }
         let dir = config.devicesDirectory + "/" + name
         guard !FileManager.default.fileExists(atPath: dir) else { throw LinkError.refused("\(name) exists") }
-        guard let pristine = config.pristines[type] ?? (type == "iphone-duo" ? config.pristines[""] : nil) else {
-            throw LinkError.refused("no pristine device for \(type) in the host configuration (YCODE_SIM_PRISTINE_\(type.uppercased().replacingOccurrences(of: "-", with: "_")))")
-        }
         try FileManager.default.createDirectory(atPath: config.devicesDirectory, withIntermediateDirectories: true)
+        guard let pristine = config.pristines[type] ?? (type == "iphone-duo" ? config.pristines[""] : nil) else {
+            try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: false)
+            try JSONEncoder().encode(Sidecar(deviceType: type, runtime: config.runtime(for: type))).write(to: sidecarURL(name))
+            log("simhost: created \(name) (\(type)), empty: its first boot sets it up")
+            return
+        }
         let cp = Process()
         cp.executableURL = URL(fileURLWithPath: "/bin/cp")
         cp.arguments = ["-a", pristine, dir + ".partial"]

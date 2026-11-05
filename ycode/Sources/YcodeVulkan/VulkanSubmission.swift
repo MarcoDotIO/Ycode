@@ -241,31 +241,49 @@ extension VulkanMetalBackend {
                     if r == VK_SUCCESS { break }
                     if r == VK_TIMEOUT {
                         let ran = Double(DispatchTime.now().uptimeNanoseconds &- waitStart) / 1e9
-                        if !reported, options.hangReportSeconds > 0 {
-                            if ran >= options.hangReportSeconds {
+                        // The watchdog (metal-sim-protocol.md §8.7, §8.8):
+                        // after its limit, or after the blocking limit while
+                        // other clients' command buffers wait behind this one
+                        // (looked at every 16th slice: it scans the queue).
+                        let due = slices % 16 == 0 ? watchdogReason(serial: serial, ran: ran) : nil
+                        if !reported, options.hangReportSeconds > 0 || due != nil {
+                            if ran >= options.hangReportSeconds || due != nil {
                                 reported = true
                                 cond.lock(); reportRunningSubmission(serial: serial, seconds: ran); cond.unlock()
                             }
                         }
-                        // The watchdog (metal-sim-protocol.md §8.7): waiting
-                        // the device idle makes the driver stop the stuck
-                        // work (about 1.3 s on the Thor, then
+                        // Waiting the device idle makes the driver stop the
+                        // stuck work (about 1.3 s on the Thor, then
                         // VK_ERROR_DEVICE_LOST); the loss is handled below.
-                        if options.watchdogSeconds > 0, ran >= options.watchdogSeconds {
+                        if let due {
+                            let who = describeClient(due.blocked.stuck)
                             cond.lock()
                             let isRunning = running
-                            let label = pending.first?.label ?? ""
                             if isRunning {
-                                log(String(format: "watchdog: serial %llu still running after %.1f s", serial, ran)
-                                    + (label.isEmpty ? "" : " (\(label))") + "; the device is waited idle to end it")
+                                let line = String(format: "GPU hang: serial %llu of %@ still running after %.1f s", serial, who, ran)
+                                    + (due.blocked.label.isEmpty ? "" : " (\(due.blocked.label))") + "; \(due.reason); "
+                                    + "ending it, its client's command buffers fail"
+                                lastHang = line
+                                log(line)
                                 watchdogFired = true
                             }
+                            cond.unlock()
+                            // The kick (VulkanClientIsolation.swift): the
+                            // driver ends the stuck work when another context
+                            // needs the GPU; waiting the device idle then
+                            // returns at once. Without it the wait alone took
+                            // 4–59 s on the Thor.
+                            let stopStart = DispatchTime.now().uptimeNanoseconds
+                            let kick = isRunning ? kickGPU() : "-"
+                            cond.lock()
                             let w = isRunning ? fn.vkDeviceWaitIdle!(ctx.pointee.device) : VK_TIMEOUT
                             cond.unlock()
                             if isRunning {
                                 if w == VK_SUCCESS || yvk_timeline_value(ctx, sem) >= serial { r = VK_SUCCESS; break }
                                 r = VK_ERROR_DEVICE_LOST
-                                log("waiting for serial \(serial) failed (\(w.rawValue)): the watchdog ended it")
+                                let stopped = Double(DispatchTime.now().uptimeNanoseconds &- stopStart) / 1e9
+                                log("waiting for serial \(serial) failed (\(w.rawValue)): the watchdog ended it "
+                                    + "(stopped in \(Self.seconds(stopped)); kick: \(kick))")
                                 cond.lock(); reportDeviceLoss("the watchdog after \(Int(ran)) s"); cond.unlock()
                                 ok = false
                                 break

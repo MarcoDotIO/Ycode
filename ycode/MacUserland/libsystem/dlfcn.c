@@ -47,3 +47,7 @@ YCL_EXPORT intptr_t _dyld_get_image_vmaddr_slide(uint32_t i) { return ycode_dyld
 YCL_EXPORT void _dyld_register_func_for_add_image(void (*callback)(const void *, intptr_t)) {
     if (ycode_dyld_api) ycode_dyld_api->add_image_callback(callback);
 }
+
+// Ycode's dyld never unloads an image (dyld.md §9), so remove-image
+// callbacks are accepted and never called.
+YCL_EXPORT void _dyld_register_func_for_remove_image(void (*callback)(const void *, intptr_t)) { (void)callback; }

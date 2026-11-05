@@ -16,11 +16,11 @@ This page explains that choice and lists where the work stands. The design is in
 | Area | State | Spec |
 |---|---|---|
 | Runtimes | iOS 27.1 and iOS 27.0. A device is tied to the runtime it was created with. | `ipad.md` §9.2, `home-apps.md` §9 |
-| Boot | The full service boot is the default. Cold boot to the home screen: median 30.1 s on an idle host; the reference simulator on a Mac: 21.4 s. The first boot of a new device copy takes longer (57–80 s in other timed runs). | `lean-boot.md` §9, `parity-ladder.md` §3.1 and §4.8, `service-fidelity.md` §14 |
-| Service fidelity | All 23 services of the old lean profile pass the behaviour test against the Mac in a full boot. Ycode starts 498–506 programs in 700 s; the Mac starts 631. | `parity-ladder.md` §4.8 |
+| Boot | The full service boot is the default. Cold boot to the home screen: median 30.1 s on an idle host; the reference simulator on a Mac: 21.4 s. The first boot of a new device copy takes longer (57–80 s in other timed runs). On a host shared with other work it is about 41 s; the GPU is not on the path, and the log path and SpringBoard's own code are the largest items (`boot-profile.md` §10). | `lean-boot.md` §9, `boot-profile.md` §10, `parity-ladder.md` §3.1 and §4.8, `service-fidelity.md` §14 |
+| Service fidelity | All 23 services of the old lean profile pass the behaviour test against the Mac in a full boot. Ycode starts 498–540 programs in 700 s; the Mac starts 631 (a first boot): the restart loops and the kind of boot explain part of it, about 100 starts wait for the Mac's per-program counts (`service-fidelity.md` §15). | `parity-ladder.md` §4.8 |
 | Warm boot | A stop saves a snapshot; the next run restores it. Home screen in 6.4–11.1 s. | `snapshot.md` §12.3 |
 | Display and input | A live display stream (JPEG or zlib) to the Mac viewer or the IDE. Touch, keyboard, Home, Lock, volume. Animations run at the 60 Hz frame clock. | `display-stream.md`, `hid-input.md`, `frame-profile.md` §8.4 |
-| Graphics | Metal calls replayed on Vulkan; Metal shaders (AIR) translated to SPIR-V by `ycode-airc`. A stuck GPU submission stops every client. | `stage8-contract.md`, `metal-shaders.md` |
+| Graphics | Metal calls replayed on Vulkan; Metal shaders (AIR) translated to SPIR-V by `ycode-airc`. A stuck GPU submission holds up the other clients for about 6.5 s, then fails only its own client (`metal-sim-protocol.md` §8.8). | `stage8-contract.md`, `metal-shaders.md`, `metal-sim-protocol.md` §8.8 |
 | Apps | Install and launch an `.app`; the built-in apps launch. | `app-install-launch.md`, `app-launch.md`, `home-apps.md` |
 | Devices | iPhone 18 Pro; the iPhone Duo foldable with a cover and an inner display; iPad (A16); iPad Pro 13-inch (M5). | `iphone-types.md`, `foldable.md`, `ipad.md` |
 | watchOS | watchOS 27.0 boots and draws its face, on 13 device types, and pairs with an iPhone. Input is partial. | `watchos.md`, `device-pairing.md` |

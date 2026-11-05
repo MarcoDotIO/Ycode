@@ -101,7 +101,8 @@ struct CenterToolbar: View {
                     .init(symbol: WorkspaceChrome.editorOptions.symbols[0], help: ShellText.notInBeta(WorkspaceChrome.editorOptions.toolTips[0]), isEnabled: false, target: "tb editor options") {},
                 ], segmentWidth: 34, dividers: false)
                 GlassSegments(segments: [
-                    .init(symbol: modes.symbols[0], help: ShellText.notInBeta(modes.toolTips[0]), isOn: true, isEnabled: false, target: "tb canvas") {},
+                    .init(symbol: modes.symbols[0], help: modes.toolTips[0], isOn: model.previewCanvas.isModeOn, isEnabled: model.isEnabled(.toggleCanvas),
+                          target: "tb canvas") { model.perform(.toggleCanvas) },
                     .init(symbol: modes.symbols[1], help: ShellText.notInBeta(modes.toolTips[1]), isEnabled: false, target: "tb assistant editor") {},
                     .init(symbol: modes.symbols[2], help: ShellText.notInBeta(modes.toolTips[2]), isEnabled: false, target: "tb code review") {},
                 ], segmentWidth: 34)
@@ -160,13 +161,13 @@ struct SchemeCapsule: View {
             .shellTarget("tb scheme")
             Text(verbatim: "\u{203A}").font(ShellFonts.toolbarTitle).foregroundStyle(c.tertiaryLabel)
             Menu {
-                ForEach(model.destinations, id: \.specifier) { d in Button(d.name) { model.destination = d } }
+                DestinationMenuItems(model: model, groups: model.session.model.destinationGroups, secondary: c.secondaryLabel)
                 if model.containerKind != .package, !model.destinations.contains(where: { ShellRemoteRun.target(of: $0) != nil }) {
                     Divider()
                     Button("Ycode Simulator (\(ExperimentalNotice.label))…") { app.explainSimulator() }
                 }
             } label: {
-                popUpTitle(model.destination?.name ?? "No Destination", symbol: "desktopcomputer", c)
+                popUpTitle(model.destination?.name ?? "No Destination", symbol: model.destination?.kind == .simulator ? "iphone" : "desktopcomputer", c)
             }
             .menuStyle(.borderlessButton)
             .shellTarget("tb destination")

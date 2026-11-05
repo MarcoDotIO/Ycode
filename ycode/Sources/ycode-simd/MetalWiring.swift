@@ -68,3 +68,25 @@ final class IOSurfacePortResolver: IOSurfaceResolver {
         return backing
     }
 }
+
+/// Names a Metal client process for the GPU back end's hang messages
+/// (metal-sim-protocol.md §8.8): "WeatherPoster, guest pid 312". The
+/// service is set once it exists; before that only the number is known.
+final class MetalClientNames: @unchecked Sendable {
+    let system: DarwinSystem
+    private let lock = NSLock()
+    private weak var serviceStorage: MetalHostService?
+    init(system: DarwinSystem) { self.system = system }
+
+    var service: MetalHostService? {
+        get { lock.withLock { serviceStorage } }
+        set { lock.withLock { serviceStorage = newValue } }
+    }
+
+    func describe(_ process: MetalProcessID) -> String? {
+        guard let pid = service?.guestPID(of: process) else { return nil }
+        let path = system.process(pid: pid)?.executablePath ?? ""
+        let name = path.split(separator: "/").last.map(String.init) ?? "?"
+        return "\(name), guest pid \(pid)"
+    }
+}

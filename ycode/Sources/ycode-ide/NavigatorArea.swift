@@ -114,11 +114,9 @@ struct NavigatorFilterBar: View {
         let h = CGFloat(WorkspaceChrome.filterBarHeight)
         HStack(spacing: CGFloat(WorkspaceChrome.plusToFilter)) {
             if let addMenu {
+                // The "+" alone, centred in its circle (metrics.md §15).
                 Menu { addMenu() } label: {
-                    HStack(spacing: 1) {
-                        Image(systemName: "plus").font(.system(size: 12))
-                        Image(systemName: "chevron.down").font(.system(size: 7))
-                    }
+                    Image(systemName: "plus").font(.system(size: 13))
                     .foregroundStyle(c.secondaryLabel)
                     .frame(width: CGFloat(WorkspaceChrome.plusCircleWidth), height: h)
                     .background { Capsule(style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }
@@ -128,21 +126,20 @@ struct NavigatorFilterBar: View {
                 .help("Add")
                 .shellTarget("navigator add")
             } else if spec.left != .none {
-                HStack(spacing: 1) {
-                    Image(systemName: spec.left == .more ? "ellipsis" : "plus").font(.system(size: 12))
-                    Image(systemName: "chevron.down").font(.system(size: 7))
-                }
+                Image(systemName: spec.left == .more ? "ellipsis.circle" : "plus").font(.system(size: 13))
                 .foregroundStyle(c.tertiaryLabel)
                 .help(ShellText.notInBeta(spec.left == .more ? "More" : "Add"))
                 .frame(width: CGFloat(WorkspaceChrome.plusCircleWidth), height: h)
                 .background { Capsule(style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }
             }
-            HStack(spacing: 6) {
-                HStack(spacing: 1) {
-                    Image(systemName: "line.3.horizontal.decrease").font(.system(size: 11))
-                    Image(systemName: "chevron.down").font(.system(size: 7))
+            HStack(spacing: 3.5) {
+                // The lines in a circle and a chevron 1.5 after it, in the
+                // secondary colour; "Filter" begins 33.5 in (metrics.md §15).
+                HStack(spacing: 0) {
+                    Image(systemName: "line.3.horizontal.decrease.circle").font(.system(size: 13))
+                    Image(systemName: "chevron.down").font(.system(size: 6))
                 }
-                .foregroundStyle(c.tertiaryLabel)
+                .foregroundStyle(c.secondaryLabel)
                 TextField("Filter", text: $text)
                     .textFieldStyle(.plain)
                     .font(ShellFonts.row)
@@ -154,7 +151,7 @@ struct NavigatorFilterBar: View {
                         .help(ShellText.notInBeta(pair.element.toolTip))
                 }
             }
-            .padding(.leading, 10)
+            .padding(.leading, 6.5)
             .padding(.trailing, 9)
             .frame(height: h)
             .background { Capsule(style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }

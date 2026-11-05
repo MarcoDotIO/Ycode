@@ -7,6 +7,10 @@ extension NavigatorAreaController {
     /// capsule's ends.
     static let plusSize = NSSize(width: 31, height: GlassBars.height)
     static let filterInset: CGFloat = 4
+    /// The filter text's room at the field's leading end on the capsule:
+    /// with the text cell's own 3.5-point padding, "Filter" begins 33.5
+    /// into the capsule (metrics.md §15; it began at 37.5 with 32).
+    static let filterTextInset: CGFloat = 28
     /// From the "+" circle's right edge to the filter capsule: the
     /// reference's circle spans x 6–36 and its capsule x 42–283 (242
     /// wide), so 5 points (`liquid-glass.md` §2.3; `specs/ide/metrics.md`
@@ -40,9 +44,8 @@ extension NavigatorAreaController {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        // Without its bezel the text starts nearer the edge: keep it after
-        // the options pull-down.
-        (field as? NavigatorFilterField)?.leadingInset += 2
+        // "Filter" begins 33.5 into the capsule (metrics.md §15).
+        (field as? NavigatorFilterField)?.leadingInset = Self.filterTextInset
         // The rows pass under the two capsules only (`liquid-glass.md`
         // §8.4, `fidelity-council.md` row 35): the scroll view runs from the
         // selector capsule's top to the filter capsule's bottom.

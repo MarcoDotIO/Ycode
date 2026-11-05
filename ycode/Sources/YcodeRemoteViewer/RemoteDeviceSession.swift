@@ -38,6 +38,12 @@ public final class RemoteDeviceSession: @unchecked Sendable {
     public private(set) var phase = "connecting"
     public private(set) var phaseDetail: String?
     public private(set) var uptimeMilliseconds = 0
+    /// When the device started (this viewer's clock, from the first status),
+    /// and whether a lit screen was seen since: a first boot shows a black
+    /// screen for minutes after the display goes live, and the window keeps
+    /// saying it is starting until the screen lights (docs/SIMULATOR-UX.md).
+    public private(set) var deviceStartedAt: UInt64?
+    public private(set) var litSeen = false
     public private(set) var panel: DisplayPanelState?
     public private(set) var spec: DeviceFrameSpec = .iPhone18Pro
     public private(set) var notice: (text: String, until: Double)?
@@ -132,6 +138,7 @@ public final class RemoteDeviceSession: @unchecked Sendable {
                 if phase != s.phase { log("phase: \(s.phase) at \(s.uptimeMilliseconds) ms" + (s.message.map { " (\($0))" } ?? "")) }
                 phase = s.phase
                 uptimeMilliseconds = s.uptimeMilliseconds
+                noteStarted(uptimeMilliseconds: s.uptimeMilliseconds, now: now)
             case .displayState(let st):
                 panel = st
             case .frame(let f):
@@ -168,6 +175,9 @@ public final class RemoteDeviceSession: @unchecked Sendable {
         }
         if stagesBySequence.count > 512 { stagesBySequence.removeAll() }
         for w in work { w() }
+        // Until the screen first lights, look at each new image (not only once a
+        // second), so "Starting..." never shows over a lit screen.
+        if image, !litSeen, let samples = client.currentCanvas?.greySamples() { noteScreen(lit: ImageChecks.isLit(samples)) }
         return image
     }
 
@@ -217,6 +227,23 @@ public final class RemoteDeviceSession: @unchecked Sendable {
         pendingProbes.removeAll { now - $0.sent > 10_000_000_000 }
         if phase == "live" || phase == "booting" { client.ping() }
         if let n = notice, Double(now) / 1e9 > n.until { notice = nil }
+        if !litSeen, phase == "live", hasImage, let samples = client.currentCanvas?.greySamples() { noteScreen(lit: ImageChecks.isLit(samples)) }
+    }
+
+    /// The device's start on this viewer's clock, from its first status.
+    func noteStarted(uptimeMilliseconds: Int, now: UInt64) {
+        if deviceStartedAt == nil { deviceStartedAt = now &- min(now, UInt64(max(0, uptimeMilliseconds)) * 1_000_000) }
+    }
+
+    /// A look at the shown screen (once a second): lit once, lit for good.
+    public func noteScreen(lit: Bool) { if lit { litSeen = true } }
+
+    /// "Starting... N s" while the device runs but its screen has stayed
+    /// dark since it started (up to 15 minutes), else nil.
+    public func startingText(now: UInt64 = viewerNanoseconds()) -> String? {
+        guard !litSeen, let start = deviceStartedAt, now > start else { return nil }
+        let seconds = Int((now - start) / 1_000_000_000)
+        return seconds < 900 ? "Starting... \(seconds) s" : nil
     }
 
     public var framesPerSecond: Int { frameTimes.count }
@@ -487,6 +514,12 @@ public final class RemoteDeviceSession: @unchecked Sendable {
 
     public var canRotate: Bool { hello?.rotation == true }
 
+    /// A short message on the device window ("Screenshot Saved"), as the
+    /// macOS window's banner.
+    public func showNotice(_ text: String, seconds: Double = 2, now: UInt64 = viewerNanoseconds()) {
+        notice = (text, Double(now) / 1e9 + seconds)
+    }
+
     public func rotate(left: Bool) {
         guard canRotate else { notice = ("This device does not rotate", Double(viewerNanoseconds()) / 1e9 + 3); return }
         client.send(.rotate(orientation: orientation.rotated(left: left).streamCode))
@@ -543,7 +576,7 @@ public final class RemoteDeviceSession: @unchecked Sendable {
         case "disconnected": "The device is not running or the connection dropped; reconnecting"
         case "booting": "Starting... \(uptimeMilliseconds / 1000) s"
         case "stopping": "The device is shutting down"
-        case "live": hasImage ? nil : "Waiting for the first frame"
+        case "live": hasImage ? startingText() : "Waiting for the first frame"
         case DisplayNotice.takenOverPhase: "Another viewer has this device (the headset, or a second window). Click to take it back."
         default: phase
         }

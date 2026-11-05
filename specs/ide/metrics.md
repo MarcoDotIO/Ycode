@@ -518,6 +518,30 @@ supported system (the probe met it on 27.2, 27.0, 26.6 and 15.6);
 `FlushSidebarTests` forces the plain navigator item on the system that
 runs the tests and checks every workspace measure against its spec.
 
+## 15. Council round 3: the navigator's bottom bar (2026-11-05)
+
+Measured from the round 3 captures (2x, foreground, editor at rest; points
+are pixels ÷ 2, positions from the visible rim). The owner reported that
+Ycode's "+" spacing looked uneven.
+
+| Element | Reference | Ycode before | Now |
+|---|---|---|---|
+| "+" circle's contents | a "+" alone, about 10.5 × 10.5 | a "+" and a 7 × 4.5 down-chevron (the pull-down's arrow) | the "+" alone (`arrowPosition = .noArrow`) |
+| "+" ink from the circle's rims | 9.0 from the left, 9.5 from the right; the glyph's centre 0.25 left of the circle's | 2.0 from the left, 6.5 after the chevron on the right | centred within 1 point |
+| Filter capsule's options glyph | three lines inside a circle, 13 wide and 13 tall, ink from 7.5 to 20.0 | the lines without a circle, 11 wide, 6.5 tall, from 11.0 | the lines in a circle, ink from 7.5 (7.0 at 1x) |
+| Its chevron | 6 × 3.5, 1.5 after the glyph, ending at 27.5 | 6 × 3.5, ending at 29.0 | 6 × 3.5, ending at 27.5 (27.0 at 1x) |
+| Glyph and chevron colour | the secondary label colour (luminance about 120 of 255 on the light capsule) | primary (about 36) | secondary |
+| "Filter" text's first ink | 33.5 | 37.5 | 33.5 |
+
+Ycode's layout: the options pull-down draws its glyph itself from its
+leading edge (`NavigatorOptionsButton`; a pull-down cell clips its image
+to an area of its own), and its frame is its alignment rectangle; it sits
+2.3 after the field's alignment rectangle, which starts 4 after the
+capsule's. The field keeps 28 at its leading end
+(`NavigatorAreaController.filterTextInset`). The Linux IDE draws the same
+bar (`NavigatorFilterBar`): the "+" alone, the circled lines with the
+chevron in the secondary colour, the text 34 in.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -530,6 +554,7 @@ runs the tests and checks every workspace measure against its spec.
 | §12 council round 1 (reference values) | 3 | Council r1 1x stills and recordings of the reference: colour runs, glyph ink boxes, before/after differences (`research/tools/council-r1/measure_captures.py`, sections `navigator`, `inspector`; `research/notes/council-r1-2026-11-04.md`) |
 | §13 council round 2 (reference values, active window) | 3 | Council r2 1x stills and recordings of the reference, foreground: colour runs, ink boxes, row matching; `research/tools/council-r2/measure_r2.py` (`navigator`, `welcome`); `research/notes/council-r2-2026-11-04.md` |
 | §14 Ycode on macOS 27.0 and 27.2 | — | The layout probe's reports of Ycode's own windows (`scripts/layout-probe.sh`); no reference observed |
+| §15 the navigator's bottom bar: the "+" circle's contents and the options glyph | 3 | Council round 3 captures of the reference and Ycode (2x, foreground), measured by the dirty room; prose only |
 | §14.1 Ycode on macOS 26.6 and 15.6; the floating sidebar of macOS 26 | — | The layout probe's reports of Ycode's own windows, and a minimal AppKit window of our own (sidebar item against plain item, both separators) on 27.2 and 26.6; no reference observed |
 | §14.1 split items, tracking separators, alignment rectangles | 1 | AppKit documentation and SDK headers (`NSSplitViewItem`, `NSTrackingSeparatorToolbarItem`, `NSSplitViewController`, `NSView.alignmentRect(forFrame:)`) |
 | §12.4 EditorConfig lookup rule | 1 | The EditorConfig specification (editorconfig.org: files are read from the file's folder upward until `root = true`) |

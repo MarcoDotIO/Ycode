@@ -420,6 +420,94 @@ kind, traits) on any platform. `ycode preview --render <out.png>
   Measured on the x86-64 workstation: about 11 s for the first render
   (building the port), about 3 s after an edit.
 
+### The Linux canvas (Ycode design, B3-PREVIEWS, 2026-11-05)
+
+The Linux IDE's canvas (`YcodeIDEShell/PreviewCanvasShellModel.swift`,
+`ycode-ide/PreviewCanvasView.swift`) follows §Canvas: beside the editor,
+below it when the editor area is narrower than 760 points (Editor ▸ Layout
+overrides), Editor ▸ Canvas and the toolbar's Canvas segment toggle canvas
+mode, the paused capsule until Resume (once resumed, the window's canvas
+stays resumed for other files), one tab per preview with a spinner while an
+update runs and an eye after, the bottom bar's device pop-up, Live,
+Selectable, Grid and Variants (Color Scheme, Orientation, Dynamic Type, as
+on the live canvas), the zoom pop-up and Canvas Settings. Capture is not
+offered yet (the Linux clipboard carries text only).
+
+**SwiftUI previews render with OpenViews**, the Mac's payload path with
+OpenViews as the toolkit (`YcodePreviews/PreviewOpenViewsHost.swift`):
+
+- **Host.** A SwiftPM package written to
+  `$XDG_CACHE_HOME/ycode/preview-host/v<n>-<hash of the OpenViews path>`,
+  one executable on OpenViews, linked with `--export-dynamic`, built once in
+  release (1.5–2.5 minutes on the x86-64 workstation; a debug build renders
+  a phone-sized preview 10 times slower). It reads one JSON request per line
+  (`generation`, `payload`, `items`: preview index, size, dark, dynamic
+  type, output file), `dlopen`s the payload once per path and answers
+  `YCODE-PREVIEW ready|error <generation> …`. It ends at the end of its
+  input and when its parent goes; Ycode waits at most 120 s for an answer.
+- **Payload.** `PreviewPayloadGenerator` with the `openViews` kit: the
+  module's files (previews and entry points blanked), the wrappers return
+  `AnyView`, and the support file exports `ycode_preview_render(index,
+  dark, dynamicType, width, height, scale, path)`, which renders one preview
+  with `ImageRenderer` at scale 2 over white or black. `swiftc
+  -emit-library -wmo -Onone` against the host's build: `-I` its products,
+  `-fmodule-map-file` for each module map SwiftPM generated, `-I` the port's
+  C headers. Undefined OpenViews symbols resolve against the host at load.
+- **Module.** A package target without dependencies or resources gives
+  all its Swift files; a project target its sources; otherwise the file
+  alone. The editor's text is used as typed (it need not be saved).
+- **Updates.** Every edit of the focused file waits 0.15 s, then
+  `PreviewUpdatePlanner` decides: a layout change (selection, Grid,
+  variants, settings, device) renders again with the loaded payload; a
+  source change compiles a new payload. Only the shown tiles are rendered.
+  A device-sized preview is laid out on the chosen device's screen
+  (Automatic: iPhone 18 Pro, 402 × 874; also iPhone Duo, iPad (A16), iPad
+  Pro 13-inch (M5)) and drawn in Ycode's bezel with the device's corner
+  radius; fixed and fitting previews have no frame.
+- **Errors.** A failed compile keeps the last picture under a red banner
+  (up to three `File.swift:line: message` links into the editor); with no
+  picture yet the error card replaces the canvas, with Try Again.
+- **Measured** on the x86-64 workstation (`PreviewsDriver`, a two-file
+  module, a body edit typed into the editor, debug IDE): edit to new pixels
+  1.04–1.30 s (median 1.29 s; compile 0.42–0.46 s, render 0.15 s) when the
+  machine was quiet, 1.36–2.74 s (median 2.41 s) at load 15–27 from other
+  agents' builds. Payload compile plus a light and a dark phone-sized
+  render: 0.57–0.60 s (`OpenViewsHostEndToEndTests`). The 2 s target holds
+  on an idle machine.
+
+**UIKit previews** (a file that imports UIKit, or a `#Preview` body that
+makes a `UI…View`/`Controller`; `PreviewDiscovery.needsUIKit`) need UIKit, so
+Ycode's iOS simulator (`YcodeIDEShell/SimulatorPreviewEngine.swift`):
+
+- With no simulator host paired (`ycode sim remote pair`), the canvas shows
+  "Needs a Simulator Host" and what to do, with Check Again; not an error.
+  With a host but no SDK copy (`YCODE_USER_SDK`, as for Run) or no
+  `ld64.lld`, it shows "UIKit Previews Need Setup".
+- Otherwise each update compiles the payload for the simulator on Linux
+  (`PreviewIOSToolchain`: `-target arm64-apple-ios<SDK>-simulator`, the
+  SDK's Swift resources, `-use-ld=lld`, `libclang_rt.iossim.a`; 0.5 s with
+  a warm module cache, 8–10 s cold), builds the host once from
+  `PreviewHost.bundledPlanSource` (the plan and the payload are read from the
+  app's `Previews/` folder), uploads the app over Ycode's link, has the host
+  create the preview device `ycode-previews-<type>` when it is missing and
+  launch the app on it, and takes one picture with the headless viewer
+  (`ycode-sim-viewer --link --headless --script`: wait live, past the boot logo, wait quiet,
+  `server-shot`; the shot waits until the app replaced the home screen).
+  Each tile shows its region of that picture. There is no file delivery
+  into a running device over the link yet, so every update restarts the
+  preview device with the new app (the planner's relaunch).
+- **Measured** (x86-64 IDE, the arm64 simulator host, iPhone 18 Pro on the
+  27.1 runtime, a `UIView` preview): first picture 61.7 s on a device that
+  had just finished its first boot, 21.3 s after it was saved; an edit to
+  new pixels 26.1 s (compile 0.8 s, the rest the device's restore and the
+  app's launch). Far from the 2 s goal: a link operation that writes the
+  plan and the payload into a running device's `/tmp/ycode-previews` would
+  give UIKit previews the live path's fast updates (open).
+- The macOS IDE previews a package file that needs UIKit on the simulator
+  path even when the run destination is the Mac, and shows a
+  needs-a-simulator card (Check Again, Open Simulators Settings…) instead of
+  a build error when no Ycode simulator is set up.
+
 ## Open questions
 
 - The reference's live and selectable modes beyond their buttons, the
@@ -456,6 +544,12 @@ kind, traits) on any platform. `ycode preview --render <out.png>
 - The iOS 27.0 freeze and its fix: Ycode's own thread reports and
   display-stream screenshots on the simulator host (level 3, Ycode
   itself; `specs/simulator/app-launch.md` §3.9).
+- The Linux canvas, the OpenViews host and payloads, UIKit previews from
+  Linux: Ycode decisions on public POSIX and Swift API (`dlopen`,
+  `--export-dynamic`), measured by `PreviewsDriver` and
+  `OpenViewsHostEndToEndTests` (level 3, Ycode itself); tested by
+  `PreviewCanvasShellTests`, `OpenViewsPayloadTests`, `IOSToolchainTests`
+  and `UIKitPreviewCanvasTests`.
 - Host lifetime (parent watch, request timeout, stop escalation, bounded
   SwiftPM children): Ycode decisions on public POSIX API (`getppid`,
   `poll`, `kill`, `F_SETNOSIGPIPE`; level 1), tested by

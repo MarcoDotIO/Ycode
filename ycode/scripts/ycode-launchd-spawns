@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+# ycode-launchd-spawns: program starts in a guest launchd.log (the device's
+# TMP/launchd.log), counted as parity-ladder.md and service-fidelity.md §15
+# count them: every "Successfully spawned" line, in every domain (user,
+# system and the per-process domains of XPC services and extensions), from
+# the log's first line for --window seconds (default 700).
+#
+# usage: ycode-launchd-spawns LOG [LOG2] [--window S] [--top N]
+#   one log: totals by kind (restart loops, per-process domains, apps, other
+#            daemons and agents), starts by reason, the most started labels
+#   two logs: the same for both, and the labels whose starts differ
+#
+# Run with python3 -I. No dependencies.
+
+import collections
+import datetime
+import re
+import sys
+
+SPAWN = re.compile(r"\((user/\d+|system|pid/\d+)/([^ ]+) \[\d+\]\) <\w+>: Successfully spawned \S+ because (.*)")
+# Programs that restart at launchd's throttle rate in a full boot
+# (parity-ladder.md §3.3, §4.8; service-fidelity.md §11, §15).
+LOOPS = {"com.apple.mlhostd", "com.apple.proactiveeventtrackerd", "com.apple.facetimemessagestored",
+         "com.apple.intelligencetasksd", "com.apple.managedappdistributiond", "com.apple.fileindexerd"}
+
+
+def stamp(line):
+    try:
+        return datetime.datetime.strptime(line[:26], "%Y-%m-%d %H:%M:%S.%f").timestamp()
+    except ValueError:
+        return None
+
+
+def kind(domain, label):
+    if label in LOOPS:
+        return "loop " + label.split(".")[-1]
+    if domain.startswith("pid/"):
+        return "per-process domain (XPC services, extensions)"
+    if label.startswith("UIKitApplication:"):
+        return "apps"
+    return "other daemons and agents"
+
+
+def load(path, window):
+    starts = collections.Counter()
+    reasons = collections.Counter()
+    kinds = collections.Counter()
+    first = None
+    with open(path, errors="replace") as f:
+        for line in f:
+            t = stamp(line)
+            if t is None:
+                continue
+            first = first if first is not None else t
+            if t - first > window:
+                break
+            m = SPAWN.search(line)
+            if not m:
+                continue
+            domain, label, reason = m.groups()
+            # Extension instances carry a UUID, apps a short hash: one label each.
+            label = re.sub(r"\.[0-9A-F]{8}-[0-9A-F-]{27}$", ".<instance>", label)
+            label = re.sub(r"\[[0-9a-f]{4}\]", "", label)
+            starts[label] += 1
+            reasons[reason] += 1
+            kinds[kind(domain, label)] += 1
+    return starts, reasons, kinds
+
+
+def main():
+    args = sys.argv[1:]
+    window, top = 700.0, 25
+    if "--window" in args:
+        i = args.index("--window")
+        window = float(args[i + 1])
+        del args[i:i + 2]
+    if "--top" in args:
+        i = args.index("--top")
+        top = int(args[i + 1])
+        del args[i:i + 2]
+    if not 1 <= len(args) <= 2:
+        sys.exit(__doc__ or "usage: ycode-launchd-spawns LOG [LOG2] [--window S] [--top N]")
+    loaded = [load(p, window) for p in args]
+    for path, (starts, reasons, kinds) in zip(args, loaded):
+        print(f"{path}: {sum(starts.values())} starts of {len(starts)} labels in {window:g} s")
+        for k, v in sorted(kinds.items()):
+            print(f"  {v:5d}  {k}")
+        print("  by reason: " + ", ".join(f"{r} {n}" for r, n in reasons.most_common()))
+        if len(args) == 1:
+            for label, n in starts.most_common(top):
+                print(f"  {n:5d}  {label}")
+    if len(args) == 2:
+        a, b = loaded[0][0], loaded[1][0]
+        diff = sorted(((b[k] - a[k], k) for k in set(a) | set(b) if a[k] != b[k]), key=lambda d: (-abs(d[0]), d[1]))
+        print("labels whose starts differ (second minus first):")
+        for d, label in diff[:top]:
+            print(f"  {d:+5d}  {a[label]:4d} -> {b[label]:4d}  {label}")
+
+
+if __name__ == "__main__":
+    main()

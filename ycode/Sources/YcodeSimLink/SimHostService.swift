@@ -69,14 +69,22 @@ public final class SimHostService: @unchecked Sendable {
 
     // MARK: Accepting
 
+    /// At most 10 failed handshakes per address a minute (guessing a
+    /// pairing code, an untrusted key). Trusted clients' connections do not
+    /// count: a viewer that reconnects every second while its device starts
+    /// used up the budget and the IDE's next request was refused.
     private func allowAttempt(_ who: String) -> Bool {
+        lock.withLock { Self.allows(failures: attempts[who] ?? [], now: Date()) }
+    }
+
+    static func allows(failures: [Date], now: Date) -> Bool {
+        failures.filter { now.timeIntervalSince($0) < 60 }.count < 10
+    }
+
+    private func noteFailure(_ who: String) {
         lock.withLock {
             let now = Date()
-            var list = (attempts[who] ?? []).filter { now.timeIntervalSince($0) < 60 }
-            guard list.count < 10 else { attempts[who] = list; return false }
-            list.append(now)
-            attempts[who] = list
-            return true
+            attempts[who] = (attempts[who] ?? []).filter { now.timeIntervalSince($0) < 60 } + [now]
         }
     }
 
@@ -85,13 +93,13 @@ public final class SimHostService: @unchecked Sendable {
             let who = LinkSockets.describe(peer)
             let ip = String(who.split(separator: ":").first ?? "")
             guard allowAttempt(ip) else { c.close(); continue }
-            let t = Thread { [weak self] in self?.serve(c, who: who) }
+            let t = Thread { [weak self] in self?.serve(c, who: who, ip: ip) }
             t.name = "simhost-conn"
             t.start()
         }
     }
 
-    private func serve(_ c: DisplayConnection, who: String) {
+    private func serve(_ c: DisplayConnection, who: String, ip: String) {
         let accepted: SecureChannel.Accepted
         do {
             accepted = try SecureChannel.accept(c, identity: identity, pairingPSK: { Pairing.take(store: store) }, authorize: { key, hello, pairing in
@@ -100,6 +108,7 @@ public final class SimHostService: @unchecked Sendable {
             })
         } catch {
             log("simhost: \(who): rejected (\(error))")
+            noteFailure(ip)
             c.close()
             return
         }
@@ -112,6 +121,7 @@ public final class SimHostService: @unchecked Sendable {
                 log("simhost: \(who): paired with \"\(accepted.hello.client)\" (\(fp))")
             } catch {
                 log("simhost: \(who): pairing failed: \(error)")
+                noteFailure(ip)
             }
             ch.close()
             return
@@ -141,6 +151,13 @@ public final class SimHostService: @unchecked Sendable {
         }
     }
 
+    /// What a viewer shows while the device's display is not up: it is
+    /// starting (the launcher runs, the display server is not up yet), or it
+    /// is not running.
+    public static func displayNotUpNotice(device: String, state: String) -> String {
+        state == "booting" ? "\(device) is starting" : "the device \(device) is not running"
+    }
+
     func handle(_ req: LinkRequest, _ ch: SecureChannel) -> LinkResponse {
         switch req.op {
         case "info":
@@ -164,6 +181,7 @@ public final class SimHostService: @unchecked Sendable {
                 guard let app = req.app, isSafeName(app) else { return .failure("run needs an uploaded app") }
                 if bundle == nil { bundle = Self.bundleID(appDirectory: config.appsDirectory + "/" + app) }
                 guard bundle != nil else { return .failure("no CFBundleIdentifier in \(app)/Info.plist") }
+                if let why = config.appRunProblem() { return .failure(why) }
             }
             let debug = req.op == "run" && req.debug == true
             do { try devices.start(d, app: req.op == "run" ? req.app : nil, bundleID: bundle, cold: req.cold == true, debug: debug) } catch {
@@ -279,7 +297,7 @@ public final class SimHostService: @unchecked Sendable {
                                             mediaSession: session?.id, mediaPort: session == nil ? nil : media?.port))) != nil else { return }
         // The device's display socket (the client reconnects until it is up).
         guard let sim = try? DisplayConnection.connect(to: .unix(config.socketPath(device))) else {
-            try? ch.send(DisplayMessage.notice("the device \(device) is not running").encoded())
+            try? ch.send(DisplayMessage.notice(Self.displayNotUpNotice(device: device, state: devices.state(device))).encoded())
             return
         }
         defer { sim.close() }

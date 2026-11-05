@@ -1455,6 +1455,116 @@ kept command buffer's parts that had already run before the loss only
 once: a command buffer split at an event wait whose first part completed
 runs that part again.
 
+### 8.8 One client's stuck submission and the others (Ycode; agent B3-GPU, 2026-11-05)
+
+Every Metal client process of a device shares one Vulkan device and one
+queue, and the completion thread completes submissions in their order
+(stage8-contract.md §14). A submission that never ends therefore held up
+every client: nothing behind it ran, no completion handler behind it was
+called, and the render server stopped presenting (`app-launch.md` §3.7,
+§3.9: a poster extension's hang froze SpringBoard and backboardd). With
+§8.7 the watchdog ended such work after 10 s, then rebuilt the device.
+
+**Why not a queue per client** (our `scripts/gpu-probes/queuekick.c` on
+the Thor, level 3). Queue 0 runs a kernel that never ends; one second later
+a one-thread kernel is submitted:
+
+| Where the second kernel goes | Result |
+|---|---|
+| a second queue of the same device (family 0 has 16) | does not run: 0 of 5 within 2 s each |
+| queue 0, behind the hang | does not run |
+| a second device (another GPU context) of the same process | runs after 3.9–4.3 s (n = 4): the driver ends the context that does not yield (a context-switch timeout); later work there runs in 0.1 ms. The stuck device's own waits and counter reads still say "running" |
+| none; `vkDeviceWaitIdle` on the stuck device | returns `VK_ERROR_DEVICE_LOST` after 6.7, 12.5 and 19.0 s (probe); 4–59 s in the back end's tests (the 1.3 s of §8.7 was one early measurement) |
+| the second device's kernel, then `vkDeviceWaitIdle` on the stuck device | the wait returns `VK_ERROR_DEVICE_LOST` in 10–20 ms (n = 3) |
+
+So work on one device cannot be split between clients on this GPU, and
+only losing the device ends a submission. A device per client would let
+the driver end only the stuck client's context, but after the same 4 s,
+and at the cost of every object, pipeline and IOSurface link per client;
+not done.
+
+**What Ycode does (VulkanClientIsolation.swift):**
+
+1. **The blocking watchdog.** A submission still running after
+   `YCODE_GPU_BLOCKING_WATCHDOG_S` seconds (default 2; 0 off) while command
+   buffers of *other* client processes wait behind it (queued, or refused
+   while the device is lost) is ended. The plain watchdog (10 s, §8.7)
+   stays for work that holds up only its own client. The limit is about
+   100 times legitimate work: in a traced 700 s full boot
+   (`YCODE_METAL_TRACE`, run `f700`, 352 command buffers) the longest GPU
+   time of a command buffer was 21.7 ms (mean 1.7 ms; submission to
+   completion at most 53 ms); none of stage8-contract.md §14–§15's
+   measurements had a frame's command buffer over 100 ms outside hangs.
+2. **The kick.** The watchdog runs an empty kernel on a second device of
+   ours (made at the first hang without touching the function table other
+   threads use, then kept; `YCODE_GPU_KICK=0` turns it off), then waits the
+   stuck device idle, which then fails at once. Measured stop: 4.3–4.5 s
+   (12 hangs in the tests below), against 4–59 s for the wait alone.
+3. **Blame.** The hang line names the stuck client, its command buffer and
+   the clients it held up, e.g. `GPU hang: serial 102 of process 10
+   (MercuryPosterExtension, guest pid 345) still running after 2.0 s …;
+   4 command buffers of 1 other client waited behind it (process 7
+   (iconservicesagent, guest pid 282)); ending it`. The hang report of
+   stage8-contract.md §15.2 is written before the device is stopped, even
+   when the blocking limit is below `YCODE_GPU_HANG_REPORT_S`. Names come
+   from ycode-simd (`Options.describeProcess`: executable name and guest
+   pid).
+4. **Only its client fails.** The device reset (§8.7) fails the stuck
+   command buffer **and every other command buffer of the same client
+   process** still queued, held or refused meanwhile (status 5); the other
+   clients' command buffers are recorded again and complete normally.
+5. **Access revoked.** A client process whose work had to be ended
+   `YCODE_GPU_REVOKE_AFTER` times (default 2; 0 never) loses GPU access:
+   its later command buffers complete with status 5 without running, in
+   order behind its earlier ones, as Metal's
+   `MTLCommandBufferErrorAccessRevoked` describes ("the process was denied
+   access to the GPU device", level 1). A client that hangs the GPU on
+   every frame therefore stalls the others at most twice.
+
+`YCODE_GPU_INJECT_HANG=<name>@<s>[x<n>]` (debugging) puts a kernel that
+never ends in front of the first command buffer of a client whose name
+contains `<name>`, `<s>` seconds after the back end started, `<n>` times.
+
+**Tests** (`GPUClientIsolationTests`, the Thor, run alone: a shared back
+end in the same process makes the driver's stop slower). Client 1's
+kernel never ends; clients 2 and 3 submit a frame every 50 ms (clear to a
+colour that changes per frame, draw a triangle), plain watchdog 30 s,
+blocking limit 1 s. In 3 of 3 runs: client 1's command buffer failed;
+all 80 frames of clients 2 and 3 completed, none failed; their longest
+gap was 5.67–5.68 s (1 s limit + 4.3–4.4 s stop + 0.2 s reset); the last
+frame's pixels were right; the hang line named client 1 and the two
+clients. A second hang of client 1 revoked its access; its next command
+buffer failed at once and client 2 kept drawing with no further reset. A
+3 s submission with only its own client's work behind it was not ended
+by the blocking limit.
+
+**In a boot** (iOS 27.1, iPhone 18 Pro copy of the golden device, the
+Thor shared with other agents' boots, load 40–60):
+`YCODE_GPU_INJECT_HANG=Poster@90x2` hung `MercuryPosterExtension` twice
+(run `inj1`, before the kick): each hang was ended at 2.0 s with 4 and
+then 1 command buffers of `iconservicesagent` and `backboardd` waiting;
+the resets took 1.6 and 3.2 s (device creation 1.2 and 2.8 s); the
+extension's access was revoked after the second; the boot reached the
+home screen (101 s, the load).
+With the kick (runs `inj3`–`inj5`, load 10–20, the same injection 15 s
+into the boot, three times): each hang was ended at 2.0 s with 8–28
+command buffers of `backboardd` and `iconservicesagent` waiting, stopped
+in 4.3–4.5 s, and the device made again in 0.3 s; the third command
+buffer was refused without running. `inj3` reached the home screen at
+42.5 s (a boot without injection: 42.7 s). In `inj4` and `inj5` the
+extension lost access before it had drawn the wallpaper: the screen then
+showed no wallpaper and placeholder icons without labels (screenshots at
+60 and 90 s), so the home watch never saw a lit screen; `backboardd`,
+SpringBoard and the other clients did not fail. Losing a poster extension
+costs its wallpaper, by design; the alternative is a 6.5 s stall of every
+client at each of its frames.
+
+**Open.** Texture contents that only the GPU held are still lost for
+every client at a reset (§8.7); keeping a copy of `replaceRegion`
+uploads to put back would cover icons and glyphs. A spare device made in
+advance to skip the creation at reset made the driver's stop slower in
+tests (another idle context in the process: 9–50 s), so it is not used.
+
 ## 9. Presentation
 
 The Metal host has **no presentation call**. Frames reach the screen as
@@ -1646,8 +1756,12 @@ was not applied to its connections.
    buffer the host GPU stopped (a GPU timeout or fault): `status` 5 with
    which `error` value, and whether the driver turns it into
    `MTLCommandBufferErrorTimeout` (2) or `PageFault`; and what a client's
-   other in-flight command buffers get then. Ycode fails only the stuck
-   one, with `error` 1 (§8.7).
+   other in-flight command buffers get then. Ycode fails the stuck one and
+   the same client's other in-flight command buffers, with `error` 1, and
+   after two hangs refuses the client's command buffers (§8.8). Also:
+   after how many GPU errors the reference revokes a process's access
+   (`MTLCommandBufferErrorAccessRevoked`), and whether the render server
+   is exempt.
 12. *(New, GPU-SIRI.)* Which area the reference renders when a pass's
    attachments differ in size (the smallest, Ycode's rule in §8.7, or each
    attachment clipped to its own size); probe: a pass with a 64 × 64 and a
@@ -1688,6 +1802,8 @@ was not applied to its connections.
 | What ends a hung submission on the Thor: a second device, `vkDeviceWaitIdle` (1.3 s, `VK_ERROR_DEVICE_LOST`), destroy and re-create; capture-replay addresses survive a new device (§8.7) | 3 | GPU-SIRI's probes `scripts/gpu-probes/hangkick.c`, `loop.comp`, `car.c` (our C and GLSL) on the Thor; the host kernel log (Xid 109); Vulkan specification (`bufferDeviceAddressCaptureReplay`, `vkDeviceWaitIdle`, device loss) level 1 |
 | The render server's abort on a failed command buffer; the loss loop of run `x7` (§8.7) | 3 | XR-VIEWER's run `ide-remote/xr-viewer/runs/x7` (host log, guest crash annotations), Ycode's own boots |
 | Ycode's watchdog and device recovery (§8.7) | — | Ycode design; `GPURecoveryTests` on the Thor's GPU; GPU-SIRI's boots |
+| A second queue of the device does not run while one submission is stuck; a second device does after 3.9–4.3 s; the device wait alone ends it in 4–59 s, after the second device's kernel in 10–20 ms (§8.8) | 3 | B3-GPU's probe `scripts/gpu-probes/queuekick.c` (our C and GLSL) on the Thor; Vulkan specification (queue submission order, device loss) level 1 |
+| Blocking watchdog, kick, blame, revocation (§8.8) | — | Ycode design; `GPUClientIsolationTests` on the Thor's GPU; B3-GPU's boots `inj1`, `inj2`; `MTLCommandBufferErrorAccessRevoked` (Metal documentation, level 1) |
 | Requirements (§12) | — | derived from the above; Ycode design |
 
 No disassembly or decompilation was used (level 5 not used). No

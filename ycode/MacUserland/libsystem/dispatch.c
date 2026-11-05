@@ -7,7 +7,7 @@
 
 #define FOREVER (~(uint64_t)0)
 enum { MAX_WORKERS = 16 };
-enum { KIND_QUEUE = 1, KIND_GROUP, KIND_SEMAPHORE };
+enum { KIND_QUEUE = 1, KIND_GROUP, KIND_SEMAPHORE, KIND_SOURCE };
 
 struct object {
     int kind;
@@ -76,7 +76,20 @@ static pthread_mutex_t lock = YCL_PTHREAD_MUTEX_INITIALIZER;   // queues, groups
 static pthread_cond_t sync_cv = YCL_PTHREAD_COND_INITIALIZER;   // dispatch_sync hand-offs, groups
 static pthread_cond_t main_cv = YCL_PTHREAD_COND_INITIALIZER;   // the main queue has work
 
-void ycl_dispatch_init(void) {}
+// The queue whose work the calling thread is running (dispatch_assert_queue).
+int pthread_key_create(unsigned long *, void (*)(void *));
+void *pthread_getspecific(unsigned long);
+int pthread_setspecific(unsigned long, const void *);
+int pthread_main_np(void);
+static unsigned long current_key;
+
+void ycl_dispatch_init(void) { pthread_key_create(&current_key, 0); }
+
+static struct queue *set_current(struct queue *q) {
+    struct queue *old = pthread_getspecific(current_key);
+    pthread_setspecific(current_key, q);
+    return old;
+}
 
 static void *checked_malloc(size_t n) {
     void *p = malloc(n);
@@ -86,7 +99,10 @@ static void *checked_malloc(size_t n) {
 
 // Waits on `cv` until `deadline` (nanoseconds of ycl_now_ns, or FOREVER).
 // Returns 0 when woken, 1 when the deadline passed.
+static uint64_t monotonic_deadline(uint64_t t);
+
 static int wait_until(pthread_cond_t *cv, pthread_mutex_t *mu, uint64_t deadline) {
+    deadline = monotonic_deadline(deadline);
     if (deadline == FOREVER) {
         pthread_cond_wait(cv, mu);
         return 0;
@@ -187,7 +203,9 @@ static void drain_locked(struct queue *q) {
             break;
         }
         pthread_mutex_unlock(&lock);
+        struct queue *old = set_current(q);
         it->fn(it->ctx);
+        set_current(old);
         free(it);
         pthread_mutex_lock(&lock);
     }
@@ -207,9 +225,27 @@ static void push_locked(struct queue *q, struct item *it) {
     if (!q->owned) schedule_locked(q);
 }
 
+struct global_work {
+    struct queue *queue;
+    void (*fn)(void *);
+    void *ctx;
+};
+
+static void run_global(void *arg) {
+    struct global_work w = *(struct global_work *)arg;
+    free(arg);
+    struct queue *old = set_current(w.queue);
+    w.fn(w.ctx);
+    set_current(old);
+}
+
 YCL_EXPORT void dispatch_async_f(struct queue *q, void *ctx, void (*fn)(void *)) {
     if (!q->serial) {
-        pool_submit(fn, ctx);
+        struct global_work *w = checked_malloc(sizeof *w);
+        w->queue = q;
+        w->fn = fn;
+        w->ctx = ctx;
+        pool_submit(run_global, w);
         return;
     }
     struct item *it = checked_malloc(sizeof *it);
@@ -223,7 +259,9 @@ YCL_EXPORT void dispatch_async_f(struct queue *q, void *ctx, void (*fn)(void *))
 
 YCL_EXPORT void dispatch_sync_f(struct queue *q, void *ctx, void (*fn)(void *)) {
     if (!q->serial) {
+        struct queue *old = set_current(q);
         fn(ctx);
+        set_current(old);
         return;
     }
     pthread_mutex_lock(&lock);
@@ -236,7 +274,9 @@ YCL_EXPORT void dispatch_sync_f(struct queue *q, void *ctx, void (*fn)(void *)) 
         q->owned = 1;
     }
     pthread_mutex_unlock(&lock);
+    struct queue *old = set_current(q);
     fn(ctx);
+    set_current(old);
     pthread_mutex_lock(&lock);
     drain_locked(q);  // the caller still owns the queue: it runs what came in meanwhile
     pthread_mutex_unlock(&lock);
@@ -287,6 +327,8 @@ YCL_EXPORT void dispatch_main(void) {
 
 // --- objects ---
 
+static void free_source(struct object *o);
+
 YCL_EXPORT void dispatch_retain(struct object *o) {
     if (o && o->refs > 0) __atomic_fetch_add(&o->refs, 1, __ATOMIC_RELAXED);
 }
@@ -302,6 +344,8 @@ YCL_EXPORT void dispatch_release(struct object *o) {
         free(o);
     } else if (o->kind == KIND_GROUP) {
         free(o);
+    } else if (o->kind == KIND_SOURCE) {
+        free_source(o);
     }
 }
 
@@ -310,19 +354,50 @@ YCL_EXPORT void *dispatch_get_context(struct object *o) { return o->context; }
 YCL_EXPORT void dispatch_set_finalizer_f(struct object *o, void (*fn)(void *)) { o->finalizer = fn; }
 
 // --- time ---
+//
+// A dispatch_time_t is either monotonic nanoseconds (ycl_now_ns), FOREVER
+// (~0), or a wall-clock time: bit 63 set and nanoseconds since 1970 in the
+// rest; DISPATCH_WALLTIME_NOW (~1, the SDK's constant) is "the wall clock
+// now". Deadlines are converted to monotonic time when they are waited for.
+
+#define WALL_BIT (1ull << 63)
+#define WALLTIME_NOW (~(uint64_t)1)
+
+int __gettimeofday(struct ycl_timeval *, void *, uint64_t *);
+
+static uint64_t wall_now_ns(void) {
+    struct ycl_timeval tv;
+    if (__gettimeofday(&tv, 0, 0) < 0) return 0;
+    return (uint64_t)tv.tv_sec * 1000000000ull + (uint64_t)tv.tv_usec * 1000ull;
+}
+
+static uint64_t add_delta(uint64_t base, int64_t delta, uint64_t limit) {
+    if (delta < 0) return (uint64_t)-delta > base ? 1 : base - (uint64_t)-delta;
+    uint64_t t = base + (uint64_t)delta;
+    return t < base || t >= limit ? limit - 1 : t;
+}
+
+// A monotonic deadline for any dispatch_time_t (FOREVER stays FOREVER).
+static uint64_t monotonic_deadline(uint64_t t) {
+    if (t == FOREVER) return FOREVER;
+    if (t == WALLTIME_NOW) return ycl_now_ns();
+    if (!(t & WALL_BIT)) return t;
+    uint64_t wall = t & ~WALL_BIT, now_wall = wall_now_ns(), now = ycl_now_ns();
+    return wall <= now_wall ? now : add_delta(now, (int64_t)(wall - now_wall), FOREVER);
+}
 
 YCL_EXPORT uint64_t dispatch_time(uint64_t when, int64_t delta) {
     if (when == FOREVER) return FOREVER;
-    uint64_t base = when == 0 ? ycl_now_ns() : when;
-    if (delta < 0) return (uint64_t)-delta > base ? 1 : base - (uint64_t)-delta;
-    uint64_t t = base + (uint64_t)delta;
-    return t < base || t == FOREVER ? FOREVER - 1 : t;
+    if (when == WALLTIME_NOW || (when & WALL_BIT)) {
+        uint64_t base = when == WALLTIME_NOW ? wall_now_ns() : when & ~WALL_BIT;
+        return WALL_BIT | add_delta(base, delta, WALL_BIT);
+    }
+    return add_delta(when == 0 ? ycl_now_ns() : when, delta, FOREVER);
 }
 
-// Wall-clock times are taken relative to now (libsystem.md §7.2).
 YCL_EXPORT uint64_t dispatch_walltime(const struct ycl_timespec *when, int64_t delta) {
-    (void)when;
-    return dispatch_time(0, delta);
+    uint64_t base = when ? (uint64_t)when->tv_sec * 1000000000ull + (uint64_t)when->tv_nsec : wall_now_ns();
+    return WALL_BIT | add_delta(base, delta, WALL_BIT);
 }
 
 // --- groups ---
@@ -489,14 +564,20 @@ YCL_EXPORT void dispatch_apply(size_t count, struct queue *q, void *block) {
     for (size_t i = 0; i < count; i++) invoke(block, i);
 }
 
-// --- dispatch_after: one timer thread ---
+// --- timers: one thread with a deadline-ordered list; an entry either
+//     submits a function (dispatch_after) or fires a timer source ---
+
+struct source;
+static void source_timer_fired(struct source *src, uint64_t generation);
 
 struct timer {
     struct timer *next;
-    uint64_t deadline;
+    uint64_t deadline;  // monotonic
     struct queue *queue;
     void (*fn)(void *);
     void *ctx;
+    struct source *source;  // a timer source's arming, else 0
+    uint64_t generation;    // the source's arming it belongs to
 };
 static struct timer *timers;
 static int timer_thread_started;
@@ -514,23 +595,18 @@ static void *timer_thread(void *unused) {
         struct timer *t = timers;
         timers = t->next;
         pthread_mutex_unlock(&lock);
-        dispatch_async_f(t->queue, t->ctx, t->fn);
+        if (t->source) source_timer_fired(t->source, t->generation);
+        else dispatch_async_f(t->queue, t->ctx, t->fn);
         free(t);
         pthread_mutex_lock(&lock);
     }
     return 0;
 }
 
-YCL_EXPORT void dispatch_after_f(uint64_t when, struct queue *q, void *ctx, void (*fn)(void *)) {
-    if (when == FOREVER) return;
-    struct timer *t = checked_malloc(sizeof *t);
-    t->deadline = when;
-    t->queue = q;
-    t->fn = fn;
-    t->ctx = ctx;
-    pthread_mutex_lock(&lock);
+// Called with `lock` held.
+static void add_timer_locked(struct timer *t) {
     struct timer **at = &timers;
-    while (*at && (*at)->deadline <= when) at = &(*at)->next;
+    while (*at && (*at)->deadline <= t->deadline) at = &(*at)->next;
     t->next = *at;
     *at = t;
     if (!timer_thread_started) {
@@ -541,9 +617,342 @@ YCL_EXPORT void dispatch_after_f(uint64_t when, struct queue *q, void *ctx, void
         }
     }
     pthread_cond_signal(&timer_cv);
+}
+
+YCL_EXPORT void dispatch_after_f(uint64_t when, struct queue *q, void *ctx, void (*fn)(void *)) {
+    if (when == FOREVER) return;
+    struct timer *t = checked_malloc(sizeof *t);
+    memset(t, 0, sizeof *t);
+    t->deadline = monotonic_deadline(when);
+    t->queue = q;
+    t->fn = fn;
+    t->ctx = ctx;
+    pthread_mutex_lock(&lock);
+    add_timer_locked(t);
     pthread_mutex_unlock(&lock);
 }
 
 YCL_EXPORT void dispatch_after(uint64_t when, struct queue *q, void *block) {
     dispatch_after_f(when, q, _Block_copy(block), invoke_and_release);
+}
+
+// --- sources (timer and custom data sources) ---
+//
+// The type objects are exported data symbols: the SDK's
+// DISPATCH_SOURCE_TYPE_* macros take their addresses.
+
+struct source_type {
+    int id;
+};
+enum { TYPE_TIMER = 1, TYPE_DATA_ADD, TYPE_DATA_OR, TYPE_DATA_REPLACE };
+YCL_EXPORT const struct source_type _dispatch_source_type_timer = {TYPE_TIMER};
+YCL_EXPORT const struct source_type _dispatch_source_type_data_add = {TYPE_DATA_ADD};
+YCL_EXPORT const struct source_type _dispatch_source_type_data_or = {TYPE_DATA_OR};
+YCL_EXPORT const struct source_type _dispatch_source_type_data_replace = {TYPE_DATA_REPLACE};
+
+struct source {
+    struct object o;
+    const struct source_type *type;
+    uintptr_t handle;
+    unsigned long mask;
+    struct queue *queue;
+    void (*handler)(void *);
+    void *handler_block;  // a copied block, run instead of handler when set
+    void (*cancel_handler)(void *);
+    void *cancel_block;
+    void (*registration)(void *);
+    void *registration_block;
+    int suspend;          // 1 while inactive; dispatch_suspend adds
+    int cancelled, cancel_done, registered;
+    int delivery_pending;
+    unsigned long data, last_data;
+    uint64_t start, interval, generation;  // timers
+};
+
+static void retain_obj(struct object *o) {
+    if (o && o->refs > 0) __atomic_fetch_add(&o->refs, 1, __ATOMIC_RELAXED);
+}
+
+void dispatch_release(struct object *o);
+
+static void run_handler(void (*fn)(void *), void *block, void *context) {
+    if (block) ycl_block_invoke(block);
+    else if (fn) fn(context);
+}
+
+static void free_source(struct object *o) {
+    struct source *src = (struct source *)o;
+    if (src->handler_block) _Block_release(src->handler_block);
+    if (src->cancel_block) _Block_release(src->cancel_block);
+    if (src->registration_block) _Block_release(src->registration_block);
+    free(src);
+}
+
+// Runs on the source's queue.
+static void deliver(void *arg) {
+    struct source *src = arg;
+    pthread_mutex_lock(&lock);
+    src->delivery_pending = 0;
+    int cancelled = src->cancelled, suspended = src->suspend > 0;
+    int registration = !src->registered && !cancelled && !suspended;
+    if (registration) src->registered = 1;
+    unsigned long data = 0;
+    if (!cancelled && !suspended) {
+        data = src->data;
+        src->data = 0;
+        src->last_data = data;
+    }
+    int run_cancel = cancelled && !src->cancel_done;
+    if (run_cancel) src->cancel_done = 1;
+    pthread_mutex_unlock(&lock);
+    if (registration) run_handler(src->registration, src->registration_block, src->o.context);
+    if (data) run_handler(src->handler, src->handler_block, src->o.context);
+    if (run_cancel) run_handler(src->cancel_handler, src->cancel_block, src->o.context);
+    dispatch_release(&src->o);
+}
+
+// Called with `lock` held: puts one delivery on the source's queue.
+static void schedule_delivery_locked(struct source *src) {
+    if (src->delivery_pending || src->suspend > 0) return;
+    src->delivery_pending = 1;
+    retain_obj(&src->o);
+    if (src->queue->serial) {
+        struct item *it = checked_malloc(sizeof *it);
+        it->fn = deliver;
+        it->ctx = src;
+        it->sync = 0;
+        push_locked(src->queue, it);
+    } else {
+        struct global_work *w = checked_malloc(sizeof *w);
+        w->queue = src->queue;
+        w->fn = deliver;
+        w->ctx = src;
+        pool_submit(run_global, w);  // takes pool_mu only
+    }
+}
+
+// Called with `lock` held: (re)arms a timer source.
+static void arm_timer_locked(struct source *src, uint64_t deadline) {
+    src->generation++;
+    if (src->cancelled || src->suspend > 0 || deadline == FOREVER) return;
+    struct timer *t = checked_malloc(sizeof *t);
+    memset(t, 0, sizeof *t);
+    t->deadline = deadline;
+    t->source = src;
+    t->generation = src->generation;
+    retain_obj(&src->o);
+    add_timer_locked(t);
+}
+
+static void source_timer_fired(struct source *src, uint64_t generation) {
+    pthread_mutex_lock(&lock);
+    if (generation == src->generation && !src->cancelled) {
+        src->data++;
+        schedule_delivery_locked(src);
+        if (src->interval != FOREVER && src->interval != 0) {
+            uint64_t next = ycl_now_ns() + src->interval;
+            arm_timer_locked(src, next);
+        } else {
+            src->generation++;  // one-shot: disarmed
+        }
+    }
+    pthread_mutex_unlock(&lock);
+    dispatch_release(&src->o);
+}
+
+YCL_EXPORT struct source *dispatch_source_create(const struct source_type *type, uintptr_t handle, unsigned long mask,
+                                                 struct queue *q) {
+    if (!type) return 0;
+    struct source *src = checked_malloc(sizeof *src);
+    memset(src, 0, sizeof *src);
+    src->o.kind = KIND_SOURCE;
+    src->o.refs = 1;
+    src->type = type;
+    src->handle = handle;
+    src->mask = mask;
+    src->queue = q ? q : dispatch_get_global_queue(0, 0);
+    src->suspend = 1;  // inactive until dispatch_activate/dispatch_resume
+    src->start = FOREVER;
+    src->interval = FOREVER;
+    return src;
+}
+
+YCL_EXPORT void dispatch_source_set_event_handler_f(struct source *src, void (*fn)(void *)) {
+    pthread_mutex_lock(&lock);
+    src->handler = fn;
+    if (src->handler_block) _Block_release(src->handler_block);
+    src->handler_block = 0;
+    pthread_mutex_unlock(&lock);
+}
+
+YCL_EXPORT void dispatch_source_set_event_handler(struct source *src, void *block) {
+    void *copy = block ? _Block_copy(block) : 0;
+    pthread_mutex_lock(&lock);
+    if (src->handler_block) _Block_release(src->handler_block);
+    src->handler_block = copy;
+    src->handler = 0;
+    pthread_mutex_unlock(&lock);
+}
+
+YCL_EXPORT void dispatch_source_set_cancel_handler_f(struct source *src, void (*fn)(void *)) { src->cancel_handler = fn; }
+YCL_EXPORT void dispatch_source_set_cancel_handler(struct source *src, void *block) {
+    src->cancel_block = block ? _Block_copy(block) : 0;
+}
+YCL_EXPORT void dispatch_source_set_registration_handler_f(struct source *src, void (*fn)(void *)) {
+    src->registration = fn;
+}
+YCL_EXPORT void dispatch_source_set_registration_handler(struct source *src, void *block) {
+    src->registration_block = block ? _Block_copy(block) : 0;
+}
+
+YCL_EXPORT void dispatch_source_set_timer(struct source *src, uint64_t start, uint64_t interval, uint64_t leeway) {
+    (void)leeway;
+    pthread_mutex_lock(&lock);
+    src->start = start;
+    src->interval = interval;
+    src->data = 0;
+    arm_timer_locked(src, monotonic_deadline(start));
+    pthread_mutex_unlock(&lock);
+}
+
+YCL_EXPORT void dispatch_source_merge_data(struct source *src, unsigned long value) {
+    pthread_mutex_lock(&lock);
+    if (!src->cancelled) {
+        int type = src->type->id;
+        if (type == TYPE_DATA_ADD) src->data += value;
+        else if (type == TYPE_DATA_OR) src->data |= value;
+        else src->data = value;
+        if (src->data) schedule_delivery_locked(src);
+    }
+    pthread_mutex_unlock(&lock);
+}
+
+YCL_EXPORT unsigned long dispatch_source_get_data(struct source *src) { return src->last_data; }
+YCL_EXPORT unsigned long dispatch_source_get_mask(struct source *src) { return src->mask; }
+YCL_EXPORT uintptr_t dispatch_source_get_handle(struct source *src) { return src->handle; }
+YCL_EXPORT long dispatch_source_testcancel(struct source *src) { return src->cancelled; }
+
+YCL_EXPORT void dispatch_source_cancel(struct source *src) {
+    pthread_mutex_lock(&lock);
+    if (!src->cancelled) {
+        src->cancelled = 1;
+        src->generation++;  // disarms a pending timer
+        if (src->suspend <= 0) schedule_delivery_locked(src);
+    }
+    pthread_mutex_unlock(&lock);
+}
+
+// Called with `lock` held: the source became active.
+static void source_resumed_locked(struct source *src) {
+    if (src->type->id == TYPE_TIMER && !src->cancelled && src->start != FOREVER)
+        arm_timer_locked(src, monotonic_deadline(src->start));
+    if (src->data || src->cancelled || !src->registered) schedule_delivery_locked(src);
+}
+
+YCL_EXPORT void dispatch_suspend(struct object *o) {
+    if (!o) return;
+    pthread_mutex_lock(&lock);
+    if (o->kind == KIND_SOURCE) ((struct source *)o)->suspend++;
+    pthread_mutex_unlock(&lock);
+}
+
+YCL_EXPORT void dispatch_resume(struct object *o) {
+    if (!o) return;
+    pthread_mutex_lock(&lock);
+    if (o->kind == KIND_SOURCE) {
+        struct source *src = (struct source *)o;
+        if (src->suspend > 0 && --src->suspend == 0) source_resumed_locked(src);
+    }
+    pthread_mutex_unlock(&lock);
+}
+
+YCL_EXPORT void dispatch_activate(struct object *o) {
+    if (!o) return;
+    pthread_mutex_lock(&lock);
+    if (o->kind == KIND_SOURCE) {
+        struct source *src = (struct source *)o;
+        if (!src->registered && src->suspend == 1) {
+            src->suspend = 0;
+            source_resumed_locked(src);
+        }
+    }
+    pthread_mutex_unlock(&lock);
+}
+
+// --- queue identity checks ---
+
+static void queue_assertion(const char *what, struct queue *q) {
+    char message[160];
+    snprintf(message, sizeof message, "BUG IN CLIENT OF LIBDISPATCH: %s \"%s\"\n", what, q ? q->label : "");
+    write(2, message, strlen(message));
+    abort();
+}
+
+static int on_queue(struct queue *q) {
+    struct queue *current = pthread_getspecific(current_key);
+    if (current == q) return 1;
+    return q == &_dispatch_main_q && !current && pthread_main_np();
+}
+
+void ycl_dispatch_assert_queue(struct queue *q) __asm__("_dispatch_assert_queue$V2");
+YCL_EXPORT void ycl_dispatch_assert_queue(struct queue *q) {
+    if (!on_queue(q)) queue_assertion("Block was expected to execute on queue", q);
+}
+YCL_EXPORT void dispatch_assert_queue(struct queue *q) { ycl_dispatch_assert_queue(q); }
+
+void ycl_dispatch_assert_queue_not(struct queue *q) __asm__("_dispatch_assert_queue_not$V2");
+YCL_EXPORT void ycl_dispatch_assert_queue_not(struct queue *q) {
+    if (on_queue(q)) queue_assertion("Block was expected not to execute on queue", q);
+}
+YCL_EXPORT void dispatch_assert_queue_not(struct queue *q) { ycl_dispatch_assert_queue_not(q); }
+
+YCL_EXPORT struct queue *dispatch_get_current_queue(void) {
+    struct queue *current = pthread_getspecific(current_key);
+    if (current) return current;
+    return pthread_main_np() ? &_dispatch_main_q : dispatch_get_global_queue(0, 0);
+}
+
+// --- object entry points of <os/object.h> and the voucher interface:
+//     Ycode has no vouchers (importance and activity tracing), so there is
+//     never a current voucher ---
+
+YCL_EXPORT void *os_retain(void *object) {
+    if (object) dispatch_retain(object);
+    return object;
+}
+YCL_EXPORT void os_release(void *object) {
+    if (object) dispatch_release(object);
+}
+YCL_EXPORT void *voucher_copy(void) { return 0; }
+YCL_EXPORT void *voucher_copy_without_importance(void) { return 0; }
+YCL_EXPORT void *voucher_adopt(void *voucher) {
+    os_release(voucher);
+    return 0;
+}
+
+// --- targets and attributes: Ycode's queues do not form hierarchies;
+//     a target or QoS is accepted and does not change scheduling ---
+
+YCL_EXPORT void dispatch_set_target_queue(struct object *o, struct queue *target) {
+    (void)o;
+    (void)target;
+}
+YCL_EXPORT const void *dispatch_queue_attr_make_with_qos_class(const void *attr, unsigned qos, int priority) {
+    (void)qos;
+    (void)priority;
+    return attr;
+}
+YCL_EXPORT const void *dispatch_queue_attr_make_initially_inactive(const void *attr) { return attr; }
+YCL_EXPORT const void *dispatch_queue_attr_make_with_autorelease_frequency(const void *attr, unsigned long f) {
+    (void)f;
+    return attr;
+}
+YCL_EXPORT struct queue *dispatch_queue_create_with_target(const char *label, const void *attr, struct queue *target) {
+    (void)target;
+    return dispatch_queue_create(label, attr);
+}
+YCL_EXPORT unsigned dispatch_queue_get_qos_class(struct queue *q, int *priority) {
+    (void)q;
+    if (priority) *priority = 0;
+    return 0x15;  // QOS_CLASS_DEFAULT
 }

@@ -112,6 +112,12 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
         ici.enabledLayerCount = 1;
         ici.ppEnabledLayerNames = layers;
     }
+    /* A second context made while another one is in use (opts->second)
+       writes no function into g_vk, which other threads are using: it
+       loads into a copy and fails unless every function is the one g_vk
+       already has (true when one driver serves both), so g_vk serves it. */
+    yvk_dispatch secondTable = g_vk;
+    yvk_dispatch *D = opts->second ? &secondTable : &g_vk;
     VkResult r = g_vk.vkCreateInstance(&ici, NULL, &ctx->instance);
     if (r == VK_ERROR_LAYER_NOT_PRESENT) {
         ici.enabledLayerCount = 0;
@@ -120,10 +126,14 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
     if (r != VK_SUCCESS) return fail(err, errlen, "vkCreateInstance failed (%d)", r);
 
 #define YVK_LOAD_I(name) \
-    g_vk.name = (PFN_##name)g_vk.vkGetInstanceProcAddr(ctx->instance, #name); \
-    if (!g_vk.name) { yvk_context_destroy(ctx); return fail(err, errlen, "missing instance function " #name); }
+    D->name = (PFN_##name)g_vk.vkGetInstanceProcAddr(ctx->instance, #name); \
+    if (!D->name) { yvk_context_destroy(ctx); return fail(err, errlen, "missing instance function " #name); }
     YVK_INSTANCE_FUNCTIONS(YVK_LOAD_I)
 #undef YVK_LOAD_I
+    if (opts->second && memcmp(&secondTable, &g_vk, sizeof g_vk) != 0) {
+        yvk_context_destroy(ctx);
+        return fail(err, errlen, "a second instance's functions differ from the first one's");
+    }
 
     uint32_t count = 0;
     g_vk.vkEnumeratePhysicalDevices(ctx->instance, &count, NULL);
@@ -322,36 +332,47 @@ int yvk_context_create(yvk_context *ctx, const yvk_context_options *opts, char *
     F->graphicsPipelineLibrary = extGPL && gpl.graphicsPipelineLibrary && gplp.graphicsPipelineLibraryFastLinking &&
                                  gplp.graphicsPipelineLibraryIndependentInterpolationDecoration;
 
-    float prio = 1.0f;
-    VkDeviceQueueCreateInfo qci = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, NULL, 0, ctx->queueFamily, 1, &prio};
+    uint32_t wantQueues = opts->queues ? opts->queues : 1;
+    if (wantQueues > qp[ctx->queueFamily].queueCount) wantQueues = qp[ctx->queueFamily].queueCount;
+    if (wantQueues > YVK_MAX_QUEUES) wantQueues = YVK_MAX_QUEUES;
+    if (wantQueues < 1) wantQueues = 1;
+    float prios[YVK_MAX_QUEUES];
+    for (uint32_t i = 0; i < YVK_MAX_QUEUES; i++) prios[i] = 1.0f;
+    VkDeviceQueueCreateInfo qci = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, NULL, 0, ctx->queueFamily, wantQueues, prios};
     VkDeviceCreateInfo dci = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, &f2, 0, 1, &qci, 0, NULL, nenable, enable, NULL};
     r = g_vk.vkCreateDevice(ctx->physical, &dci, NULL, &ctx->device);
     if (r != VK_SUCCESS) { yvk_context_destroy(ctx); return fail(err, errlen, "vkCreateDevice failed (%d)", r); }
 
 #define YVK_LOAD_D(name) \
-    g_vk.name = (PFN_##name)g_vk.vkGetDeviceProcAddr(ctx->device, #name); \
-    if (!g_vk.name) { yvk_context_destroy(ctx); return fail(err, errlen, "missing device function " #name); }
+    D->name = (PFN_##name)g_vk.vkGetDeviceProcAddr(ctx->device, #name); \
+    if (!D->name) { yvk_context_destroy(ctx); return fail(err, errlen, "missing device function " #name); }
     YVK_DEVICE_FUNCTIONS(YVK_LOAD_D)
 #undef YVK_LOAD_D
-#define YVK_LOAD_O(name) g_vk.name = (PFN_##name)g_vk.vkGetDeviceProcAddr(ctx->device, #name);
+#define YVK_LOAD_O(name) D->name = (PFN_##name)g_vk.vkGetDeviceProcAddr(ctx->device, #name);
     YVK_OPTIONAL_DEVICE_FUNCTIONS(YVK_LOAD_O)
 #undef YVK_LOAD_O
-    if (!g_vk.vkGetMemoryHostPointerPropertiesEXT) {
+    if (!D->vkGetMemoryHostPointerPropertiesEXT) {
         yvk_context_destroy(ctx);
         return fail(err, errlen, "missing vkGetMemoryHostPointerPropertiesEXT");
     }
-    if (!F->extendedDynamicState3PolygonMode) g_vk.vkCmdSetPolygonModeEXT = NULL;
-    if (!F->extendedDynamicState3DepthClamp) g_vk.vkCmdSetDepthClampEnableEXT = NULL;
+    if (!F->extendedDynamicState3PolygonMode) D->vkCmdSetPolygonModeEXT = NULL;
+    if (!F->extendedDynamicState3DepthClamp) D->vkCmdSetDepthClampEnableEXT = NULL;
     /* The "2" query needs VK_KHR_synchronization2 enabled as an extension on
        some drivers (the Thor's resolves only the first); either serves. */
-    if (!F->diagnosticCheckpoints || !g_vk.vkCmdSetCheckpointNV ||
-        (!g_vk.vkGetQueueCheckpointData2NV && !g_vk.vkGetQueueCheckpointDataNV)) {
+    if (!F->diagnosticCheckpoints || !D->vkCmdSetCheckpointNV ||
+        (!D->vkGetQueueCheckpointData2NV && !D->vkGetQueueCheckpointDataNV)) {
         F->diagnosticCheckpoints = 0;
-        g_vk.vkCmdSetCheckpointNV = NULL;
-        g_vk.vkGetQueueCheckpointDataNV = NULL;
-        g_vk.vkGetQueueCheckpointData2NV = NULL;
+        D->vkCmdSetCheckpointNV = NULL;
+        D->vkGetQueueCheckpointDataNV = NULL;
+        D->vkGetQueueCheckpointData2NV = NULL;
     }
-    g_vk.vkGetDeviceQueue(ctx->device, ctx->queueFamily, 0, &ctx->queue);
+    if (opts->second && memcmp(&secondTable, &g_vk, sizeof g_vk) != 0) {
+        yvk_context_destroy(ctx);
+        return fail(err, errlen, "a second device's functions differ from the first one's");
+    }
+    ctx->queueCount = wantQueues;
+    for (uint32_t i = 0; i < wantQueues; i++) g_vk.vkGetDeviceQueue(ctx->device, ctx->queueFamily, i, &ctx->queues[i]);
+    ctx->queue = ctx->queues[0];
 
     /* Bindless heap. */
     const VkPhysicalDeviceLimits *L = &ctx->properties.limits;
@@ -1047,21 +1068,84 @@ VkResult yvk_submit(yvk_context *ctx, VkCommandBuffer cb, VkSemaphore signal, ui
     return g_vk.vkQueueSubmit2(ctx->queue, 1, &si, VK_NULL_HANDLE);
 }
 
+VkResult yvk_submit_on(yvk_context *ctx, uint32_t queue, VkCommandBuffer cb, VkSemaphore signal, uint64_t value,
+                       const VkSemaphore *waits, const uint64_t *waitValues, uint32_t waitCount) {
+    if (queue >= ctx->queueCount) return VK_ERROR_UNKNOWN;
+    VkCommandBufferSubmitInfo cbi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO, NULL, cb, 0};
+    VkSemaphoreSubmitInfo sig = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, NULL, signal, value,
+                                 VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, 0};
+    VkSemaphoreSubmitInfo w[8];
+    if (waitCount > 8) return VK_ERROR_UNKNOWN;
+    for (uint32_t i = 0; i < waitCount; i++) {
+        VkSemaphoreSubmitInfo x = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, NULL, waits[i], waitValues[i],
+                                   VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, 0};
+        w[i] = x;
+    }
+    VkSubmitInfo2 si = {VK_STRUCTURE_TYPE_SUBMIT_INFO_2, NULL, 0, waitCount, waitCount ? w : NULL,
+                        cb ? 1u : 0u, &cbi, signal ? 1u : 0u, &sig};
+    return g_vk.vkQueueSubmit2(ctx->queues[queue], 1, &si, VK_NULL_HANDLE);
+}
+
+/* An empty compute kernel (GLSL: layout(local_size_x = 1) in; void main() {}). */
+static const uint32_t kickKernel[] = {
+    0x07230203, 0x00010600, 0x0008000b, 0x0000000a, 0x00000000, 0x00020011, 0x00000001, 0x0006000b,
+    0x00000001, 0x4c534c47, 0x6474732e, 0x3035342e, 0x00000000, 0x0003000e, 0x00000000, 0x00000001,
+    0x0005000f, 0x00000005, 0x00000004, 0x6e69616d, 0x00000000, 0x00060010, 0x00000004, 0x00000011,
+    0x00000001, 0x00000001, 0x00000001, 0x00030003, 0x00000002, 0x000001cc, 0x00040005, 0x00000004,
+    0x6e69616d, 0x00000000, 0x00020013, 0x00000002, 0x00030021, 0x00000003, 0x00000002, 0x00040015,
+    0x00000006, 0x00000020, 0x00000000, 0x00040017, 0x00000007, 0x00000006, 0x00000003, 0x0004002b,
+    0x00000006, 0x00000008, 0x00000001, 0x0006002c, 0x00000007, 0x00000009, 0x00000008, 0x00000008,
+    0x00000008, 0x00050036, 0x00000002, 0x00000004, 0x00000000, 0x00000003, 0x000200f8, 0x00000005,
+    0x000100fd, 0x00010038,
+};
+
+VkResult yvk_kick(yvk_context *ctx, uint64_t timeoutNs) {
+    char err[256];
+    yvk_shader_stage st = {kickKernel, sizeof kickKernel / 4, "main", NULL, 0, 0};
+    VkPipeline pipe = yvk_compute_pipeline_create(ctx, &st, err, sizeof err);
+    if (!pipe) return VK_ERROR_INITIALIZATION_FAILED;
+    VkCommandBuffer cb = yvk_command_buffer_begin(ctx, err, sizeof err);
+    VkSemaphore tl = cb ? yvk_timeline_create(ctx, 0) : VK_NULL_HANDLE;
+    VkResult r = VK_ERROR_INITIALIZATION_FAILED;
+    if (cb && tl) {
+        g_vk.vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pipe);
+        g_vk.vkCmdDispatch(cb, 1, 1, 1);
+        g_vk.vkEndCommandBuffer(cb);
+        r = yvk_submit(ctx, cb, tl, 1, VK_NULL_HANDLE, 0);
+        if (r == VK_SUCCESS) r = yvk_timeline_wait(ctx, tl, 1, timeoutNs);
+        if (r == VK_SUCCESS) {
+            g_vk.vkDeviceWaitIdle(ctx->device);
+        }
+    }
+    if (r == VK_SUCCESS || r == VK_ERROR_DEVICE_LOST) {
+        if (cb) g_vk.vkFreeCommandBuffers(ctx->device, ctx->commandPool, 1, &cb);
+        if (tl) g_vk.vkDestroySemaphore(ctx->device, tl, NULL);
+        g_vk.vkDestroyPipeline(ctx->device, pipe, NULL);
+    }
+    /* On a timeout the objects are left to the context's destruction. */
+    return r;
+}
+
 void yvk_cmd_checkpoint(VkCommandBuffer cb, uint64_t marker) {
     if (g_vk.vkCmdSetCheckpointNV) g_vk.vkCmdSetCheckpointNV(cb, (const void *)(uintptr_t)marker);
 }
 
 uint32_t yvk_queue_checkpoints(yvk_context *ctx, uint64_t *markers, uint64_t *stages, uint32_t max) {
-    if (!ctx->queue) return 0;
+    return yvk_queue_checkpoints_on(ctx, 0, markers, stages, max);
+}
+
+uint32_t yvk_queue_checkpoints_on(yvk_context *ctx, uint32_t queue, uint64_t *markers, uint64_t *stages, uint32_t max) {
+    if (queue >= ctx->queueCount || !ctx->queues[queue]) return 0;
+    VkQueue q = ctx->queues[queue];
     if (!g_vk.vkGetQueueCheckpointData2NV) {
         if (!g_vk.vkGetQueueCheckpointDataNV) return 0;
         uint32_t n = 0;
-        g_vk.vkGetQueueCheckpointDataNV(ctx->queue, &n, NULL);
+        g_vk.vkGetQueueCheckpointDataNV(q, &n, NULL);
         if (n == 0) return 0;
         VkCheckpointDataNV *d = calloc(n, sizeof *d);
         if (!d) return 0;
         for (uint32_t i = 0; i < n; i++) d[i].sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV;
-        g_vk.vkGetQueueCheckpointDataNV(ctx->queue, &n, d);
+        g_vk.vkGetQueueCheckpointDataNV(q, &n, d);
         uint32_t k = 0;
         for (uint32_t i = 0; i < n && k < max; i++, k++) {
             markers[k] = (uint64_t)(uintptr_t)d[i].pCheckpointMarker;
@@ -1074,12 +1158,12 @@ uint32_t yvk_queue_checkpoints(yvk_context *ctx, uint64_t *markers, uint64_t *st
         return k;
     }
     uint32_t n = 0;
-    g_vk.vkGetQueueCheckpointData2NV(ctx->queue, &n, NULL);
+    g_vk.vkGetQueueCheckpointData2NV(q, &n, NULL);
     if (n == 0) return 0;
     VkCheckpointData2NV *d = calloc(n, sizeof *d);
     if (!d) return 0;
     for (uint32_t i = 0; i < n; i++) d[i].sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_2_NV;
-    g_vk.vkGetQueueCheckpointData2NV(ctx->queue, &n, d);
+    g_vk.vkGetQueueCheckpointData2NV(q, &n, d);
     uint32_t k = 0;
     for (uint32_t i = 0; i < n && k < max; i++, k++) {
         markers[k] = (uint64_t)(uintptr_t)d[i].pCheckpointMarker;

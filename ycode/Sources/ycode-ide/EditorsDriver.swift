@@ -223,6 +223,7 @@ enum EditorsDriver {
             case .propertyList(let m): say("reopened \(n): \(m.formatName) \(m.rows.count) rows")
             case .assetCatalog(let m): say("reopened \(n): \(m.rows.map(\.name))")
             case .stringCatalog(let m): say("reopened \(n): \(m.catalog.keys.count) keys, languages \(m.languages)")
+            case .interfaceBuilder(let m): say("reopened \(n): \(m.document.byID.count) objects")
             case nil: say("reopened \(n): NOT IN ITS EDITOR")
             }
         }

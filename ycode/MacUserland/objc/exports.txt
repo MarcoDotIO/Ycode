@@ -155,3 +155,11 @@ _sel_getUid
 _sel_isEqual
 _sel_isMapped
 _sel_registerName
+_objc_addLoadImageFunc
+_objc_readClassPair
+__objc_realizeClassFromSwift
+_class_setSuperclass
+_objc_setHook_getClass
+_objc_setHook_getImageName
+_objc_setHook_lazyClassNamer
+_class_getImageName

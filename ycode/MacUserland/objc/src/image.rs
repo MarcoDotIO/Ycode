@@ -293,15 +293,17 @@ pub unsafe extern "C" fn add_image(header: *const c_void, slide: isize) {
     if !first_time(header) {
         return;
     }
-    let Some(img) = image_at(header, slide) else { return };
-    fix_selrefs(&img);
-    let mut loads = Vec::new();
-    {
-        let _g = RUNTIME_LOCK.lock();
-        register_image(&img);
-        collect_loads(&img, &mut loads);
+    if let Some(img) = image_at(header, slide) {
+        fix_selrefs(&img);
+        let mut loads = Vec::new();
+        {
+            let _g = RUNTIME_LOCK.lock();
+            register_image(&img);
+            collect_loads(&img, &mut loads);
+        }
+        run_loads(loads);
     }
-    run_loads(loads);
+    crate::swift::image_added(header);
 }
 
 /// Queues `cls`'s own +load after its superclasses'. Runtime lock held.
@@ -339,11 +341,13 @@ pub fn init() {
     unsafe {
         let n = _dyld_image_count();
         let mut imgs = Vec::new();
+        let mut headers = Vec::new();
         for i in 0..n {
             let h = _dyld_get_image_header(i);
             if h.is_null() || !first_time(h) {
                 continue;
             }
+            headers.push(h);
             if let Some(img) = image_at(h, _dyld_get_image_vmaddr_slide(i)) {
                 imgs.push(img);
             }
@@ -362,6 +366,9 @@ pub fn init() {
             }
         }
         run_loads(loads);
+        for h in headers {
+            crate::swift::image_added(h);
+        }
         sys::_dyld_register_func_for_add_image(add_image);
     }
 }

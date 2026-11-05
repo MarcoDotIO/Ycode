@@ -296,6 +296,26 @@ public enum PreviewDiscovery {
 /// drawn for a Swift file that declares a preview and left out for any
 /// other file. With canvas mode off (the user turned it off, or Assistant
 /// or Code Review is on) no canvas is drawn.
+extension PreviewDiscovery {
+    /// Whether a file's previews need UIKit, and so Ycode's iOS simulator
+    /// (issue #84): the file imports UIKit, or a `#Preview` body makes a
+    /// UIKit view or view controller (`UILabel(…)`, `UIViewController()`).
+    /// Comments and string literals do not count.
+    public static func needsUIKit(text: String, previews: [PreviewDeclaration]? = nil) -> Bool {
+        let code = codeOnly(text)
+        for line in code.split(separator: "\n") {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t == "import UIKit" || t.hasPrefix("import UIKit.") || t.hasSuffix(" import UIKit") { return true }
+        }
+        for p in previews ?? self.previews(in: text) {
+            guard case .macro(let body) = p.kind else { continue }
+            if codeOnly(body).range(of: #"\bUI[A-Z][A-Za-z]*(View|Controller|Label|Button|Field|Switch|Slider|Stepper|Picker|Control|Bar)\b"#,
+                                    options: .regularExpression) != nil { return true }
+        }
+        return false
+    }
+}
+
 public enum CanvasAutoShow {
     public enum Decision: Equatable, Sendable { case show, hide, keep }
 

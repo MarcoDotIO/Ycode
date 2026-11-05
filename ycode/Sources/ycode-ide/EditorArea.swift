@@ -47,13 +47,15 @@ struct EditorArea: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if let editor = model.editor {
                         let controller = SourceEditorController.of(editor)
-                        HStack(spacing: 0) {
-                            SourceEditorView(controller: controller, model: model, palette: palette, preferences: prefs)
-                                .id(editor.path)
-                            Hairline(color: c.separator, vertical: true)
-                            Minimap(controller: controller, colors: c)
+                        PreviewEditorSplit(canvas: model.previewCanvas) {   // PreviewCanvasView.swift
+                            HStack(spacing: 0) {
+                                SourceEditorView(controller: controller, model: model, palette: palette, preferences: prefs)
+                                    .id(editor.path)
+                                Hairline(color: c.separator, vertical: true)
+                                Minimap(controller: controller, colors: c)
+                            }
+                            .overlay { QuickHelpPopoverLayer(model: model, controller: controller) }
                         }
-                        .overlay { QuickHelpPopoverLayer(model: model, controller: controller) }
                     }
                 } else {
                     // Nothing open: the empty editor with its minimap column,

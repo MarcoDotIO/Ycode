@@ -2,7 +2,8 @@
 
 Status: **design, wave 1 implemented (1.0.0-beta.3, #86)** in
 `ycode/MacUserland/objc/`; conformance tests pass on the Mac and under
-`ycode-simd --macos`; benchmarks in §14. Ycode design, clean room.
+`ycode-simd --macos`; benchmarks in §14. The Swift runtime's entry points
+(§15) were added for stage B (#87). Ycode design, clean room.
 
 Sources, and only these: clang's Objective-C code generation as documented
 by the open LLVM project (Apache-2.0 with LLVM exception) and as observed in
@@ -528,8 +529,8 @@ load); `imp_implementationWithBlock`; tagged-pointer class registration
 (tagged receivers behave as nil); `objc_setHook_*`; `objc_copyImageNames`
 and `class_getImageName`; ivar layouts for scanning; `class_setIvarLayout`;
 `objc_duplicateClass`; protocol construction (`objc_allocateProtocol`);
-reclaiming replaced caches (§5.3); Swift class metadata; the Rust
-toolchain in the Flatpak build (the build skips libobjc without cargo);
+reclaiming replaced caches (§5.3); Swift classes whose `class_ro` has a
+Swift metadata initializer (§15); the Rust toolchain in the Flatpak build (the build skips libobjc without cargo);
 `_Block_object_assign` in libSystem does not yet retain captured objects
 through `objc_retain` (blocks that capture objects under ARC need it).
 
@@ -583,6 +584,37 @@ and has one allocator lock) and because atomics cost more on that core
 (about 10 ns per read-modify-write), not because of the runtime's own
 code: cached sends cost the same as on the Mac.
 
+## 15. The Swift runtime's entry points (stage B)
+
+With Objective-C interop, the Swift runtime (`swift-runtime.md` §2) makes
+every Swift class an Objective-C class and calls these functions. Their
+names and C signatures are the ones the open Swift runtime declares;
+their behavior here is Ycode's, from how that runtime uses them
+(`ycode/MacUserland/objc/src/swift.rs`):
+
+| Function | Ycode's behavior |
+|---|---|
+| `objc_addLoadImageFunc(fn)` | Calls `fn(header)` at once for every image the runtime has seen (with or without Objective-C metadata), then for each image added later, after the runtime has read its classes. The Swift runtime scans each image's Swift sections from here |
+| `objc_readClassPair(cls, info)` | Registers (by name, when it has one) and realizes, in place, a class pair the Swift runtime built at run time (a generic class instance); returns `cls` |
+| `_objc_realizeClassFromSwift(cls, previously)` | Moves the categories waiting for `previously` (a class stub) to `cls`, then registers and realizes `cls`; returns it |
+| `class_setSuperclass(cls, super)` | Re-parents the class and its metaclass, fixes the subclass lists, flushes every cache; returns the old superclass |
+| `objc_setHook_getClass(new, &old)` | `objc_getClass`, `objc_lookUpClass`, `objc_getRequiredClass` and `objc_getMetaClass` ask the hook for names the name map lacks (Swift's mangled class names); a class it returns is realized. The first `old` is a hook that answers "not found" |
+| `objc_setHook_lazyClassNamer(new, &old)` | `class_getName` of a class whose `class_ro` has no name (a generic instance) asks the hook once and stores the answer in the `class_ro` (compare-and-swap) |
+| `objc_setHook_getImageName(new, &old)`, `class_getImageName(cls)` | `class_getImageName` asks the hook; the first `old` answers from `dladdr` of the class |
+
+Two details of the Swift class layout matter and need no change: the
+Swift bits in the low two bits of word 4 are kept across realization
+(§2.2), and word 3 (the fast flags here) is a word the Swift runtime
+leaves to the Objective-C runtime. A Swift class name may be absent at
+registration; such a class is not entered in the name map (§4.6) and is
+found through the get-class hook.
+
+Not done: a class whose `class_ro` carries the Swift metadata-initializer
+flag (classes with resilient ancestry) would need its initializer called
+before realization, and that initializer calls back into
+`_objc_realizeClassFromSwift`, which takes the runtime lock the caller
+holds. None of the stage-B programs has such a class.
+
 ## Evidence
 
 | Claim | Level (AGENTS.md rule 4) |
@@ -594,4 +626,5 @@ code: cached sends cost the same as on the Mac.
 | The linker-stub form of the return-value hand-off (`bl` to a stub of `objc_claimAutoreleasedReturnValue`, no marker) | 2 (Ycode's own test programs, linked by the Mac's linker, disassembled with `otool`) |
 | Expected outputs of the conformance tests | 3 (Ycode's own programs run against the Mac's runtime) |
 | `__ulock_wait`/`__ulock_wake`, `UL_COMPARE_AND_WAIT` | 1 (xnu's public `sys/ulock.h`; Ycode's `syscalls-map.tsv`) |
+| §15 function names and signatures; how the Swift runtime uses them | 1 (the open Swift runtime source, Apache-2.0) |
 | Everything else (isa layout, cache, side tables, flags, page layout, locks) | Ycode design |

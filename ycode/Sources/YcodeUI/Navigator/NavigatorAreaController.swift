@@ -231,7 +231,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             if !showsCodingAssistant { select(selectedIndex) }
         }
     }
-    public let filterOptions = NSPopUpButton(frame: .zero, pullsDown: true)
+    public let filterOptions: NSPopUpButton = NavigatorOptionsButton(frame: .zero, pullsDown: true)
     /// The in-field toggles of the selected navigator, left to right
     /// (`NavigatorBars.specs`); unused ones are hidden.
     public let recentToggle: NSButton = NavigatorFilterToggle()
@@ -419,6 +419,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         // §5.6 (N7): a funnel glyph with a chevron, inside the field.
         filterOptions.item(at: 0)?.image = NavigatorFilterField.optionsGlyph
         (filterOptions.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
+        filterOptions.imagePosition = .imageOnly
+        filterOptions.contentTintColor = .secondaryLabelColor
         filterOptions.setAccessibilityLabel("Filter options")
         rebuildFilterOptionsMenu()
         for (i, b) in toggleButtons.enumerated() {
@@ -482,6 +484,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         findScope.menu?.delegate = self
         rebuildScopeMenu()
         addBreakpointButton.isBordered = false
+        // The "+" alone, centred in its circle: no pull-down arrow (metrics.md §15).
+        (addBreakpointButton.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
+        addBreakpointButton.imagePosition = .imageOnly
         addBreakpointButton.menu?.delegate = self
         rebuildAddMenu()
         for v in [selector, sep, findField, findOptions, findScope, reportScope, sourceControlMode, testHeader, scrollClip, emptyLabel, filter, addBreakpointButton, filterOptions, toggleStack] as [NSView] {
@@ -551,7 +556,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             filterAfterLeftButton,
             // §5.6 (N7): the options pull-down at the field's leading end,
             // the toggles at its trailing end, both inside it.
-            filterOptions.leadingAnchor.constraint(equalTo: filter.leadingAnchor, constant: 2),
+            filterOptions.leadingAnchor.constraint(equalTo: filter.leadingAnchor, constant: NavigatorFilterField.optionsLeading),
             filterOptions.centerYAnchor.constraint(equalTo: filter.centerYAnchor),
             filterOptions.widthAnchor.constraint(equalToConstant: NavigatorFilterField.optionsWidth),
             filter.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: glass ? -6 - Self.filterInset : -6),

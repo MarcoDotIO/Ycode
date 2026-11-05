@@ -478,6 +478,9 @@ of the target made just before it: 0 of 10 boots hung with it (6 copying
 the whole target, 4 only the draw's scissor rectangle, the default),
 against 6 of 16 without (§15.6 there).
 
+*(B3-GPU, 2026-11-05: a hang of this kind no longer freezes the other
+clients: `metal-sim-protocol.md` §8.8.)*
+
 ### 3.9 A new app's blank icon and the frozen home screen (fixed, agent ICON-FREEZE, 2026-10-29)
 
 **Symptom** (found by PREVIEWS, `specs/ide/previews.md`, iOS 27.0 runtime

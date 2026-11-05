@@ -1,0 +1,37 @@
+--- a/stdlib/public/Platform/Platform.swift
++++ b/stdlib/public/Platform/Platform.swift
+@@ -31,7 +31,7 @@
+ // stdio.h
+ //===----------------------------------------------------------------------===//
+ 
+-#if os(FreeBSD) || os(PS4)
++#if os(FreeBSD) || os(PS4) || os(macOS)
+ public var stdin : UnsafeMutablePointer<FILE> {
+   get {
+     return __stdinp
+@@ -295,6 +295,8 @@
+ }
+ #elseif os(WASI)
+ // No signals support on WASI yet, see https://github.com/WebAssembly/WASI/issues/166.
++#elseif os(macOS)
++// Darwin's signal constants are in Ycode's Darwin.swift.
+ #else
+ internal var _ignore = _UnsupportedPlatformError()
+ #endif
+@@ -316,6 +318,8 @@
+ #if os(Linux) || os(FreeBSD) || os(OpenBSD) || os(PS4) || os(Android) || os(Cygwin) || os(Haiku) || os(WASI)
+   // The value is ABI.  Value verified to be correct on Glibc.
+   return Semaphore(bitPattern: 0)
++#elseif os(macOS)
++  return Semaphore(bitPattern: -1)
+ #else
+   _UnsupportedPlatformError()
+ #endif
+--- a/stdlib/public/Platform/Math.swift
++++ b/stdlib/public/Platform/Math.swift
+@@ -1,4 +1,4 @@
+-@_exported import _math
++// (Ycode: <math.h> comes with the Darwin Clang module)
+ 
+ //  Constants defined by <math.h>
+ @available(swift, deprecated: 3.0, message: "Please use 'Double.pi' or '.pi' to get the value of correct type and avoid casting.")

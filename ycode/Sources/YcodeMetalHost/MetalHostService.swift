@@ -80,6 +80,10 @@ public final class MetalHostService: @unchecked Sendable {
     /// (snapshot.md §8 option 1).
     public func clientPIDs() -> [Int32] { core.clientPIDs() }
 
+    /// The guest pid of a client process (nil once it ended or before its
+    /// first message): names the client in GPU hang messages.
+    public func guestPID(of process: MetalProcessID) -> Int32? { core.guestPID(of: process) }
+
     // MARK: Snapshot (snapshot.md §8 option 2)
 
     /// Why a snapshot must wait (a command buffer without its completion

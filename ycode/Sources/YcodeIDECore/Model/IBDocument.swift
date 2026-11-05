@@ -205,7 +205,9 @@ public final class IBDocument {
 
     static let nonObjects: Set<String> = ["constraint", "action", "outlet", "segue", "outletCollection", "document", "dependencies",
                                           "plugIn", "capability", "deployment", "resources", "image", "namedColor", "systemColor",
-                                          "development", "point", "rect", "size", "color", "font", "fontDescription"]
+                                          "development", "point", "rect", "size", "color", "font", "fontDescription",
+                                          // The document's simulated device (`<device id="…">`): a setting, not an object.
+                                          "device"]
 
     /// Objects among `nodes` (recursing through container elements such as
     /// `scenes`, `objects`, `subviews`), attached to `owner`.

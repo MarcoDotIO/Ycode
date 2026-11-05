@@ -49,7 +49,7 @@ public enum CommandLineBuild {
     public static func make(_ engine: Engine, isLinux: Bool,
                             environment: [String: String] = ProcessInfo.processInfo.environment,
                             locateYcodebuild: () -> String? = { TestRunnerSelection.locateYcodebuild() },
-                            locateSwbuild: () -> String? = { SwiftBuildEngine.locate() }) throws -> BuildEngine {
+                            locateSwbuild: () -> String? = { SwiftBuildEngine.locate() ?? SwiftBuildEngine.locateHelper(swbuild: nil) }) throws -> BuildEngine {
         switch engine {
         case .swiftPM:
             return PackageBuildEngine()
@@ -59,8 +59,9 @@ public enum CommandLineBuild {
         case .xcodebuild:
             return XcodebuildEngine()
         case .swiftBuild:
+            // Ycode's ycode-swb helper alone is enough (the release ships no swbuild).
             guard let tool = locateSwbuild() else {
-                throw Failure(description: "swbuild not found (set YCODE_SWBUILD). Swift packages build with --engine swiftpm"
+                throw Failure(description: "swift-build not found (set YCODE_SWB to Ycode's ycode-swb, or YCODE_SWBUILD to swbuild). Swift packages build with --engine swiftpm"
                     + (isLinux ? ", the default here." : "."))
             }
             // The PIF of projects and workspaces is XcodePIF's, with the

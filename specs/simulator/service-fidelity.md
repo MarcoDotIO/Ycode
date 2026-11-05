@@ -922,6 +922,87 @@ had already booted once at its own path, with the home screen from the
 home watch, is in `lean-boot.md` §9, and times from different series are
 not comparable.
 
+## 15. The program-count gap: 498–540 against 631 (agent B3-GPU, 2026-11-05)
+
+`parity-ladder.md` §4.8 counts 498–506 programs started in 700 s in Ycode
+full boots against 631 on the Mac with the same device data, and left
+the difference unexplained. This section breaks Ycode's count down and
+says which part the Mac's published numbers explain. It changes no
+Ycode code. The Mac's per-program counts for that run were not recorded,
+so the rest is a question for a reference observation (Q15.1).
+
+**Method (Ycode, level 3).** `scripts/ycode-launchd-spawns` counts every
+"Successfully spawned" line of the guest's `launchd.log` from its first
+line for 700 s, in every launchd domain, as §4.8 did. 79–92 of the
+starts are in the per-process domains (`pid/<n>/…`: XPC services and app
+extensions of a client); a count of the user and system domains alone
+gives 416–448. Runs: SVC-FULL's `f700a`, `f700b`, `f700q` (2026-10-27,
+copies of the golden device booted for the first time at their path),
+and `f700` (this agent, main line of 2026-11-05 plus the GPU changes, a
+copy of the same device booted three times before at its path; the Thor
+shared, load 40–60 at home, home 129 s).
+
+| Kind of start | f700a | f700b | f700q | f700 | Mac, same data (§4.7, §4.8) |
+|---|---|---|---|---|---|
+| mlhostd (exit 0 after ~0.2 s, throttle loop) | 61 | 61 | 65 | 60 | 68 |
+| proactiveeventtrackerd (exit 1, throttle loop) | 67 | 63 | 68 | 65 | 69 |
+| facetimemessagestored (exit 0, throttle loop) | 66 | 62 | 67 | 65 | 68 |
+| intelligencetasksd (SIGTRAP) | 3 | 4 | 5 | 9 | 16 |
+| fileindexerd | 16 | 16 | 16 | 1 (fixed, §11) | 1 |
+| managedappdistributiond (exit 0, throttle loop) | 0 | 0 | 0 | 62 | not recorded |
+| other daemons and agents | 203 | 207 | 202 | 183 | not recorded |
+| per-process domains (XPC services, extensions) | 79 | 88 | 80 | 92 | not recorded |
+| apps (`UIKitApplication:`) | 3 | 3 | 3 | 3 | not recorded |
+| **all** | **498** | **504** | **506** | **540** | **631** |
+
+**What explains part of it.**
+
+1. *The restart loops* the Mac has too start 11–20 % less often on Ycode
+   in total: 197–204 against 221 (−17 to −24). intelligencetasksd alone
+   is −7 to −13 (fewer launch events from the guest's task scheduler,
+   §13.1); the three throttle loops are −2 to −8 each, the throttle
+   period being the same (§12, `scheduling-policy.md` §7.2) and the
+   first start later on Ycode's slower boot.
+2. *The device's state, not Ycode, starts loops.* managedappdistributiond
+   ran a throttle loop in `f700` (62 starts: launched by an XPC event,
+   exits 0 after 2–8 s, relaunched by the same event) and not in the
+   three earlier runs. Like proactiveeventtrackerd and
+   facetimemessagestored (§12.2) it follows the device's data; the Mac's
+   count for it with the same data is not known.
+3. *The kind of boot moves about 30 starts.* 32 daemons started by XPC
+   events or Mach lookups 2–15 s into the boot in both `f700a` and
+   `f700q` (the first boot of a copy at a new path) and not in `f700`
+   (a later boot at the same path): EscrowSecurityAlert, gamecontrollerd,
+   announced, SecureBackupDaemon, CallKit.CallDirectory, amsondevicestoraged,
+   feedbackd, healthrecordsd, mlruntimed, stickersd and others. The Mac's
+   631 is the first boot of a new device that was given the data (§4.7),
+   so it compares with the first-boot runs (498–506), not with `f700`.
+4. *Host load* changes when on-demand starts fall inside the window:
+   other daemons first started after 120 s were 6 in `f700q` (home 57 s)
+   and 14–23 in the loaded runs (home 116–209 s).
+
+**What is left.** With the loops counted as the Mac's, Ycode's first-boot
+runs would start about 520–530 programs against 631: about 100 starts,
+all among the other daemons, the per-process domains and the apps, whose
+Mac counts were not recorded. `launchd.log` shows no start that Ycode
+refuses: its errors are the same for every boot and come from the
+runtime's contents (frameworks' `XPCServices` bundles with no executable,
+"The specified path is not a bundle" 803 times; framework binaries that
+live only in the shared cache, "The executable did not ship in the
+bundle" 464; `XPCService` set to false in MediaConversionService's two
+services, "Invalid XPCService dictionary" 128; a macOS-style
+`IOKit.framework/Versions/A` path, 122). Whether the Mac logs the same
+lines is part of Q15.1.
+
+**Cheap items found:** none in Ycode. The fileindexerd loop is already
+fixed (§11); intelligencetasksd's launch events are §13.1's open item.
+
+**Q15.1 (for a reference observation, dirty room).** For a new device
+given the golden device's data, first boot and second boot, 700 s each:
+the "Successfully spawned" lines per label and per domain (user, system,
+`pid/<n>`), the reasons, and the counts of the four error lines above.
+With those, each label's difference can be put on one side or the other.
+
 ## Evidence
 
 | Claim | Level |
@@ -964,5 +1045,8 @@ not comparable.
 
 | amsengagementd and assistantd before and after real thread suspension and the workqueue fix; programs started; restart loops (§14) | 3 (Thor runs `ide-remote/tsus/runs/A-*`, `B-*`: `launchd.log`, `beh.txt`, fatal reports with trap rings and crash annotations; visionOS runs `tsus/vruns/v1`, `v2`) |
 | Boot time unchanged (§14) | 3 (Thor `timed.sh` runs `TSUSB/t1-base`, `t2-base`, `TSUS2/t1-tsus`, `t2-tsus`) |
+
+| Program counts by kind and label, boot kind, host load, `launchd.log` errors (§15) | 3 (Thor runs `svcfull/f700a`, `f700b`, `f700q` of 2026-10-27 and B3-GPU's `f700` of 2026-11-05: guest `launchd.log`, `scripts/ycode-launchd-spawns`); the Mac's counts are those of §4.7–§4.8 of `parity-ladder.md` (level 3, recorded then) |
+| `XPCService` is false in the two MediaConversionService bundles (§15) | 2 (their `Info.plist` read as a property list) |
 
 No disassembly or decompilation was used (level 5 not used).

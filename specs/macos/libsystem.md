@@ -1,6 +1,8 @@
 # Spec: Ycode's libSystem for macOS programs
 
-Status: **implemented for Milestone A** (`ycode/MacUserland/libsystem/`).
+Status: **implemented for Milestone A, extended for stage B**
+(`ycode/MacUserland/libsystem/`; the libc that the Swift runtime, libc++
+and FoundationEssentials need, 1.0.0-beta.3, #87).
 Ycode design, clean room. Sources: the C standard and POSIX descriptions of
 the functions, the public SDK headers' type layouts and constants (named
 in §4), clang's public Block ABI specification, Apple's public libdispatch
@@ -27,6 +29,14 @@ what is missing. It grows with the programs Ycode runs.
 | `/usr/lib/system/libsystem_platform.dylib` | String primitives, atomics, `os_unfair_lock`, setjmp | `SimHostLibs/platform` |
 | `/usr/lib/system/libsystem_pthread.dylib` | pthreads | `SimHostLibs/pthread` |
 | `/usr/lib/dyld` | Ycode's dynamic linker | `MacUserland/dyld` (`dyld.md`) |
+| `/usr/lib/system/libdispatch.dylib`, `libsystem_c`, `libsystem_m`, `libsystem_malloc`, `libsystem_blocks`, `libsystem_info`, `libunwind`, `libcompiler_rt` | Aliases: empty dylibs that re-export libSystem | `build.sh` (`install_sublibrary_aliases`) |
+
+On a Mac, libSystem re-exports a set of sub-libraries, and libraries built
+against the SDK sometimes name one of them directly (the Swift Concurrency
+runtime binds its dispatch calls to `/usr/lib/system/libdispatch.dylib`).
+Ycode's libSystem is one image, so each such name is an alias whose only
+content is an `LC_REEXPORT_DYLIB` of libSystem: a two-level bind to the
+alias finds the symbol in libSystem (`dyld.md` §6).
 
 libSystem names the three host libraries with `LC_REEXPORT_DYLIB`, so a
 program's two-level binds to libSystem find their symbols (`dyld.md` §6).
@@ -145,10 +155,12 @@ are never copied. Without Objective-C, captured objects are plain pointers
 
 ### 7.2 Dispatch subset
 
-Ycode's own small implementation on pthreads. It is a placeholder for the
-Apache-2.0 libdispatch (stage B, `macos-apps.md` §9).
+Ycode's own small implementation on pthreads. It stands where the
+Apache-2.0 libdispatch would; why that is not built yet is in
+`macos-apps.md` §9.4.
 
-- **Objects** have a reference count (`dispatch_retain`/`release`).
+- **Objects** have a reference count (`dispatch_retain`/`release`,
+  `os_retain`/`os_release`).
 - **Global concurrent queues** (one per priority, all served by one worker
   pool): work items go on a shared run list; up to 16 worker threads are
   created on demand and wait for work.
@@ -165,11 +177,42 @@ Apache-2.0 libdispatch (stage B, `macos-apps.md` §9).
   on the caller.
 - **Main queue:** `dispatch_main` makes the main thread serve the main
   queue forever; work for the main queue before that is kept.
-- **`dispatch_after`:** one timer thread with a deadline-ordered list.
+- **Timers:** one timer thread with a deadline-ordered list serves
+  `dispatch_after` and timer sources.
 - **Groups, semaphores, `dispatch_once(_f)`, `dispatch_apply(_f)`**
   (iterations run on the caller's thread, in order; allowed, because
   `dispatch_apply` does not promise concurrency), `dispatch_time`,
-  `dispatch_walltime` (relative to now only).
+  `dispatch_walltime`.
+
+### 7.3 Additions for Swift Concurrency (stage B)
+
+- **Times.** A `dispatch_time_t` is monotonic nanoseconds, `~0` (forever),
+  or a wall-clock time: bit 63 set and nanoseconds since 1970 below it;
+  `DISPATCH_WALLTIME_NOW` (`~1`, the SDK's constant) means the wall clock
+  now. `dispatch_walltime` and `dispatch_time` on a wall-clock base give
+  wall-clock times; every wait converts its deadline to monotonic time
+  when it starts waiting.
+- **Sources** (`dispatch_source_create`): the timer type and the custom
+  data types (`DATA_ADD`, `DATA_OR`, `DATA_REPLACE`). The type objects are
+  exported data symbols (`_dispatch_source_type_timer` and others; the
+  SDK's `DISPATCH_SOURCE_TYPE_*` macros take their addresses). A source is
+  created inactive; `dispatch_activate` or `dispatch_resume` starts it,
+  `dispatch_suspend` stops deliveries. Event, cancel and registration
+  handlers (functions or blocks) run on the source's queue, one delivery
+  at a time, with `dispatch_source_get_data` reporting what accumulated
+  (a timer's fire count). A repeating timer re-arms from the time it
+  fired; leeway is ignored. File-descriptor, signal, process and memory
+  pressure sources are not implemented.
+- **Queue identity.** The queue whose work a thread runs is kept in a
+  pthread key; `dispatch_assert_queue` (exported also as
+  `dispatch_assert_queue$V2`, the name the SDK binds) and
+  `dispatch_assert_queue_not` check it, printing
+  `BUG IN CLIENT OF LIBDISPATCH: ...` and aborting on failure. The main
+  thread outside any queue counts as being on the main queue.
+- **Accepted, no effect:** target queues (`dispatch_set_target_queue`,
+  `dispatch_queue_create_with_target`), QoS and autorelease attributes.
+- **Vouchers:** Ycode has none; `voucher_copy` returns NULL and
+  `voucher_adopt` releases its argument and returns NULL.
 
 ## 8. `dlfcn` and image queries
 
@@ -212,12 +255,94 @@ Library Exception.
 
 ## 11. Not supported yet
 
-Locale support (C locale only), wide characters, `scanf`, correct
-floating-point printing and parsing, `fork`, signals beyond what the
-kernel library provides, `syslog`, `os_log`, XPC, Objective-C, thread-local
-variables, most of libdispatch (sources, I/O channels, target queues,
-QoS), `malloc` zones and introspection, `getpwnam` and the directory
-services, `iconv`, regular expressions, `glob`, `popen`, `system`.
+Locales other than C/POSIX and UTF-8 (`setlocale` accepts any `*.UTF-8`
+name and behaves as the C locale), correct floating-point *printing*
+(parsing is LLVM libc's, §13), `fork`, signals beyond what the kernel
+library provides, `syslog`, `os_log` storage, XPC, time zones with
+daylight-saving rules (`TZ` may name UTC or a fixed offset; §12),
+dispatch file-descriptor, signal and process sources, dispatch I/O and
+data objects, `malloc` zone introspection, directory services beyond the
+one user and the `wheel`/`staff` groups (§12), `iconv`, regular
+expressions, `glob`, `popen`, `system`, `getaddrinfo` and the resolver.
+
+## 12. libc for the Swift runtime, libc++ and Foundation (stage B)
+
+Added from the C standard, POSIX and Apple's public man pages; every
+structure the SDK's headers expose has the headers' layout.
+
+| Area | Functions | Notes |
+|---|---|---|
+| Character classes | `_DefaultRuneLocale`, `_CurrentRuneLocale`, `___runetype`, `__maskrune`, `___tolower`/`___toupper`, `is*`/`to*`, wide `isw*`/`tow*`, `wctype`, the `_l` forms | The SDK's inline `<ctype.h>` functions read `_DefaultRuneLocale.__runetype[c]` directly, so the table (public `_RuneLocale` layout) is filled at initialization with the C locale's classes |
+| Locales | `setlocale`, `localeconv(_l)`, `newlocale`, `duplocale`, `freelocale`, `uselocale`, `querylocale`, `nl_langinfo(_l)`, `___mb_cur_max(_l)`, `strcoll(_l)`, `strxfrm(_l)`, `strto*_l`, `*printf_l`, `sscanf_l` | One set of data: C with UTF-8 multibyte text |
+| Wide characters | `wcs*`, `wmem*`, `mbrtowc`, `wcrtomb`, `mbsrtowcs`, `wcsrtombs` and the `n`/`_l` forms, `wcsto*`, `swprintf`, `fputwc`/`fgetwc`/`ungetwc` | UTF-8; `ungetwc` takes back ASCII only (one pushback byte) |
+| Formatted input | `sscanf`, `vsscanf`, `fscanf`, `scanf` | All C conversions, `%[`, `*`, widths, length modifiers |
+| Stream locks | `flockfile`, `ftrylockfile`, `funlockfile` | **Recursive** (owner and depth in the `FILE`'s Ycode-private bytes): the Swift standard library's `print` holds the lock while it writes |
+| Images | `getsectiondata`, `getsegmentdata`, `getsectbynamefromheader_64`, `_dyld_find_unwind_sections`, `_dyld_get_image_header_containing_address`, `_dyld_register_func_for_remove_image` (never called: no unloading) | From the loaded Mach-O headers |
+| Backtraces and assertions | `backtrace` (frame-pointer walk within the thread's stack), `backtrace_symbols(_fd)`, `__assert_rtn`, `asl_log` (accepts and drops) | |
+| Version checks | `_availability_version_check`, `os_system_version_get_current_version` | Ycode's macOS userland reports **macOS 27.0** |
+| Directories | `opendir`, `fdopendir`, `readdir(_r)`, `closedir`, `rewinddir`, `telldir`, `seekdir`, `dirfd`, `scandir`, `alphasort` | From the kernel's `getdirentries64`; `DIR` in the public layout (the SDK's `dirfd` macro reads its first field) |
+| Traversal and removal | `fts_open`/`fts_read`/`fts_children`/`fts_set`/`fts_close` (the pre-macOS 28 `<fts_compat.h>` layout), `removefile` with its state, callbacks and cancellation | Ycode's fts never changes directory (`FTS_NOCHDIR` behavior) |
+| Paths | `getcwd` (`F_GETPATH` on "."), `realpath` (also as `realpath$DARWIN_EXTSN`), `statvfs`, `fstatvfs`, `mkstemp(s)`, `mkdtemp`, `mktemp`, `confstr` (`_CS_PATH`, `_CS_DARWIN_USER_{DIR,TEMP_DIR,CACHE_DIR}` under `TMPDIR`), `sysdir_*_search_path_enumeration` (the documented Mac layout; user paths start with `~`) | |
+| Files | `copyfile`, `fcopyfile` (data and mode; no ACLs or extended attributes), `copyfile_state_*` | |
+| System | `sysctl`, `sysctlbyname`, `sysctlnametomib` (the kernel's name-to-OID query), `uname`, `gethostname`, `memset_s`, `waitpid`, `wait`, `clock_getres`, `clock_gettime_nsec_np` | |
+| Users and groups | `getpwuid(_r)`, `getpwnam(_r)`, `getlogin(_r)`, `getgrgid(_r)`, `getgrnam(_r)` | One user from the environment (`USER`, `HOME`, `SHELL`; uid from the kernel, gid 20), plus `root`; groups `wheel` (0) and `staff` (20) |
+| Calendar time | `gmtime(_r)`, `localtime(_r)`, `mktime`, `timegm`, `tzset`, `tzname`, `timezone`, `daylight`, `strftime(_l)` (all conversions), `asctime(_r)`, `ctime(_r)`, `difftime` | Civil-date arithmetic over the proleptic Gregorian calendar. `TZ`: UTC, or a fixed offset written POSIX style (`EST5`, `<+03>-3`); anything else is UTC |
+| UUIDs | `uuid_generate(_random,_time)` (version 4, random), `uuid_parse`, `uuid_unparse(_lower,_upper)`, `uuid_compare`, `uuid_copy`, `uuid_clear`, `uuid_is_null` | |
+| Allocation | `malloc_default_zone`, `malloc_zone_from_ptr`, `malloc_create_zone` and the `malloc_zone_*` calls (every zone is the default zone, public `malloc_zone_t` layout), `malloc_type_*` (the type identifier is ignored) | |
+| Message catalogs | `catopen` (fails), `catgets` (returns the default text), `catclose` | |
+| Strings | `strncasecmp_l`, the `kOSThermalNotificationPressureLevelName` constant | |
+| `atexit` | 64 handlers | Unchanged; the Swift libraries register few |
+
+`tools/check_imports.py ROOT IMAGE...` lists every import of the given
+images that the userland root does not export, by two-level ordinal and
+following re-exports, so a gap shows up before a run instead of as a
+"Symbol not found" at load.
+
+## 13. Code from LLVM in libSystem
+
+libSystem is still built freestanding on Linux or a Mac (§9). Three LLVM
+projects (Apache-2.0 WITH LLVM-exception) are compiled into it from the
+`swiftlang/llvm-project` checkout that `sources.sh` fetches
+(`LLVM_PROJECT` overrides):
+
+| Part | What | How |
+|---|---|---|
+| LLVM libc | The math library (`sin` ... `tgamma`, float forms, `sincos`, `__sincos_stret` and `__exp10`, which clang emits on Darwin) and `strtod`/`strtof`/`strtold`(`_l`), `atof` | `libsystem/llvm_libc.cpp` gives LLVM's functions (in their own C++ namespace) their C names. Built in LLVM libc's full-build mode with `-U__APPLE__` (its generic floating-point environment code), errno through `__error()`, and **no errno from math functions** (Darwin's `math_errhandling` is `MATH_ERREXCEPT`). Every LLVM libc function the wrapper calls is compiled from `libc/src/{math/generic,stdlib}/<name>.cpp` |
+| Ycode, on LLVM libc | `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, `erf`, `erfc`, `lgamma(_r)`, `tgamma`, the Bessel functions `j0` ... `yn` | This LLVM libc lacks the double forms; written in `llvm_libc.cpp` from their identities, series and asymptotic expansions: accurate to a few ulps (the Bessel functions to about 1e-10), not correctly rounded |
+| compiler-rt builtins | 128-bit division, shifts, multiplication with overflow, conversions (`__divti3`, `__udivti3`, `__modti3`, `__umodti3`, `__muloti4`, `__floattidf`, ...) | Compiled from `compiler-rt/lib/builtins/<name>.c` |
+| libunwind | `_Unwind_*` (the Itanium unwinding interface) and `unw_*` | Compiled from `libunwind/src` against Ycode's minimal headers (`libsystem/include/`); finds each image's `__unwind_info` and `__eh_frame` through `_dyld_find_unwind_sections` (§12) |
+
+The licence of each project travels with the userland (`out/root/usr/share/licenses`).
+
+## 14. Thread-local variables
+
+C `__thread` and C++ `thread_local` variables (libc++abi's exception
+globals use one). From the public Mach-O facts: an image's
+`S_THREAD_LOCAL_VARIABLES` section holds one descriptor per variable,
+`{ thunk, key, offset }`; the linker binds every thunk to libSystem's
+`_tlv_bootstrap`; the `S_THREAD_LOCAL_REGULAR` and
+`S_THREAD_LOCAL_ZEROFILL` sections are the initial thread-local block, and
+`offset` is the variable's place in it. Compiled code calls
+`thunk(descriptor)` and expects the variable's address in `x0`, with
+`x1`-`x28`, the frame pointer and every SIMD register unchanged.
+
+Ycode's design (`libsystem/tlv.c`), which needs nothing from the dyld:
+
+1. `_tlv_bootstrap` runs on the first access to any variable of an image.
+   Under a lock it finds the image (by the descriptor's address), measures
+   its thread-local block, creates one pthread key for it, and rewrites
+   every descriptor of the image: `key` = that key, `thunk` =
+   `_ycl_tlv_get_addr` (stored last, with release order).
+2. `_ycl_tlv_get_addr`'s fast path reads the key's slot at
+   `TPIDRRO_EL0 + 8 × key` (the TSD layout of `libsystem_pthread`); a
+   non-NULL block plus `offset` is the answer. A key of 0 (a descriptor
+   another thread is still rewriting) takes the slow path.
+3. The slow path (also the end of `_tlv_bootstrap`) saves `x1`-`x15` and
+   `q0`-`q31`, allocates the thread's block, copies the initial values,
+   zeroes the rest, and stores it in the key.
+4. `_tlv_atexit(fn, object)` (C++ `thread_local` destructors) keeps a
+   per-thread list; the thread's exit runs it last in, first out, and the
+   key destructors free the blocks.
 
 ## Evidence
 
@@ -226,4 +351,7 @@ services, `iconv`, regular expressions, `glob`, `popen`, `system`.
 | §4 layouts and constants | 1 (the macOS SDK's public headers: `stdio.h`, `pthread.h`, `dispatch/*.h`, `crt_externs.h`; clang's Block ABI document) |
 | §3 initializer sequence and tables | `host-library-init.md` (its own evidence) |
 | Function behavior | C standard, POSIX, Apple's public man pages and libdispatch documentation |
+| §12 layouts and constants (`_RuneLocale`, `DIR`, `struct dirent`, `FTS`/`FTSENT`, `struct statfs`/`statvfs`, `struct passwd`/`group`, `malloc_zone_t`, removefile and sysdir constants, `dispatch_assert_queue$V2`, `realpath$DARWIN_EXTSN`) | 1 (macOS SDK public headers) |
+| §13 LLVM code | 1 (LLVM sources, Apache-2.0 WITH LLVM-exception) |
+| §14 thread-local variable sections and descriptors | 1 (public `<mach-o/loader.h>`); the calling convention of the thunk: 1 (open LLVM's AArch64 Darwin TLS call lowering) |
 | Everything else | Ycode design |

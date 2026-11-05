@@ -194,16 +194,22 @@ libSystem it makes the `exit` system call itself.
   format errors name the image.
 - `DYLD_PRINT_LIBRARIES` (non-empty, not `0`) prints each image path as it
   is mapped.
+- `DYLD_PRINT_SEGMENTS` (non-empty, not `0`; Ycode's form) prints each
+  library's path with its Mach-header address
+  (`dyld[<pid>]: <path> at 0x<address>`), to symbolize crash addresses.
 
 ## 9. Not supported (Milestone A)
 
 Shared caches; prebuilt closures; `LC_UNIXTHREAD` main executables;
 arm64e (pointer authentication, threaded binds, arm64e chain formats);
-thread-local variables (`_tlv_bootstrap`); interposing; insertion
+interposing; insertion
 libraries (`DYLD_INSERT_LIBRARIES`); unloading; `RTLD_NEXT` precision (it
 is a flat lookup); weak-definition coalescing; code-signature or
 library-validation checks; platform and minimum-OS checks between images.
 Limits: 256 images, 64 dependencies and 16 segments per image.
+
+Thread-local variables need nothing from the dyld: libSystem sets up each
+image's descriptors on first use (`libsystem.md` §14).
 
 ## 10. Build
 

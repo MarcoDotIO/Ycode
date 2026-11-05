@@ -86,10 +86,10 @@ expect gaps. **Not yet** means it isn't there. The full audit against Xcode 27.1
 | Run | Experimental: My Mac and simulators | Experimental: Swift packages, with console output |
 | Debugger (breakpoints, stepping, variables) through `lldb-dap` | Experimental | Experimental: Swift packages; gutter breakpoints, stepping, variables, the `(lldb)` console |
 | Language features through SourceKit-LSP (completion, definition, rename, live issues) | Experimental | Experimental: live issues, completion, Quick Help, Jump to Definition, rename, references and callers |
-| Plist, asset catalog and String Catalog editors; Interface Builder documents; SwiftUI previews | Experimental | Experimental: plist (XML, binary, OpenStep), asset catalog and String Catalog editors; no Interface Builder documents or previews |
+| Plist, asset catalog and String Catalog editors; Interface Builder documents; SwiftUI previews | Experimental | Experimental: plist (XML, binary, OpenStep), asset catalog and String Catalog editors; Interface Builder documents (outline, canvas, Library objects, inspectors, constraints); SwiftUI previews in the canvas, rendered with OpenViews and updated as you type; UIKit previews on a paired simulator host |
 | Source control (git): changes, commit, branches, tags, stashes, history, push and pull | Experimental | Experimental: new in this beta |
 | Tests: run all, a suite or one test; results per test; failures at their lines | Experimental | Experimental: Swift packages (XCTest and Swift Testing) |
-| Organizer | Experimental | Not yet |
+| Organizer | Experimental | Experimental: archives (list, details, Show in Files); no distribution yet |
 | Coding assistant (local models, OpenAI, agent CLIs); you review each proposed change | Experimental | Experimental: new in this beta |
 | Settings, themes and key bindings | Experimental | Experimental: General, Appearance (theme editing), Accounts, Behaviors, Navigation, Notifications, Editing, Shortcuts, Source Control, Locations |
 | Signing and distribution | Experimental: partial | Not yet |
@@ -268,9 +268,10 @@ The full gap list is in [docs/PARITY.md](docs/PARITY.md) and the longer view in 
 
 ### 1.0 betas: finishing what is here
 
-- **Linux IDE:** what the macOS IDE has and the Linux one still lacks: the source-control conflict
-  editor, the Organizer, SwiftUI previews, Interface Builder documents, and debugging on a simulator. Language features,
-  the navigators, the debugger, Source Control and the coding assistant arrived in 1.0.0-beta.2.
+- **Linux IDE:** what the macOS IDE has and the Linux one still lacks: a Device Hub, recording in the device
+  window, and UIKit previews at interactive speed. Language features, the navigators, the debugger, Source Control
+  and the coding assistant arrived in 1.0.0-beta.2; Settings ▸ Accounts, the conflict editor, the Organizer,
+  SwiftUI previews, Interface Builder documents and debugging on a simulator arrive in 1.0.0-beta.3.
 - **Fixes from beta reports.** Please [file them](https://github.com/MarcoDotIO/Ycode/issues/new/choose).
 - **Distribution:** listed on [FlatPark](https://flatpark.org/apps/io.github.MarcoDotIO.Ycode/) since 1.0.0-beta.1, alongside the GitHub release.
 

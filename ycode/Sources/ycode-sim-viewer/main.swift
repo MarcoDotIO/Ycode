@@ -8,13 +8,16 @@ import AppKit
 import YcodeRelease
 import YcodeDisplayStream
 import YcodeDeviceUI
+import YcodeSimLink
 
 let usage = """
-    usage: ycode-sim-viewer [--connect <address>] [--zoom Z] [--fps N] [--encoding jpeg|zlib]
-                            [--quality Q] [--downscale N] [--script <file>] [--verbose]
+    usage: ycode-sim-viewer [--connect <address> | --link <device> [--host <name>] [--media udp|tcp]] [--zoom Z] [--fps N]
+                            [--encoding jpeg|zlib] [--quality Q] [--downscale N] [--script <file>] [--verbose]
 
       --connect    the display server: <host>:<port>, <port> (127.0.0.1), or unix:<path>
                    (default 127.0.0.1:47100, or $YCODE_SIM_VIEWER_CONNECT)
+      --link       a device of a paired simulator host over Ycode's own link (sim-link.md; `ycode sim remote pair`),
+                   as on Linux; --host names the host when several are paired; --media tcp keeps frames off UDP
       --zoom       window points per device point (default: the saved window size)
       --fps        frames per second at most (default 60)
       --encoding   jpeg (default) or zlib (lossless, more bandwidth)
@@ -36,6 +39,9 @@ var settings = DisplayClientHello(client: "ycode-sim-viewer", maxFPS: 60, encodi
 var zoom: CGFloat?
 var scriptPath: String?
 var verbose = false
+var linkDevice: String?
+var linkHost: String?
+var linkMedia = true
 
 YcodeRelease.handleVersionFlag(tool: "ycode-sim-viewer")
 var args = CommandLine.arguments.dropFirst().makeIterator()
@@ -65,6 +71,12 @@ while let a = args.next() {
         guard DisplayEncoding(name: e) != nil else { FileHandle.standardError.write(Data("--encoding jpeg|zlib\n".utf8)); exit(64) }
         settings.encoding = e
     case "--script": scriptPath = value(a)
+    case "--link": linkDevice = value(a)
+    case "--host": linkHost = value(a)
+    case "--media":
+        let m = value(a)
+        guard m == "udp" || m == "tcp" else { FileHandle.standardError.write(Data("--media udp|tcp\n".utf8)); exit(64) }
+        linkMedia = m == "udp"
     case "--verbose": verbose = true
     case "-h", "--help": print(usage); exit(0)
     default: FileHandle.standardError.write(Data("unknown argument \(a)\n\(usage)\n".utf8)); exit(64)
@@ -74,7 +86,21 @@ while let a = args.next() {
 signal(SIGPIPE, SIG_IGN)
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
-let connection = ViewerConnection(address: address, settings: settings)
+// --link: the stream comes over Ycode's link, as `ycode sim remote view` opens it on Linux.
+var connector: (@Sendable () throws -> DisplayTransport)?
+if let device = linkDevice {
+    do {
+        let link = try LinkClient()
+        let host = try link.host(named: linkHost)
+        let media = linkMedia
+        connector = { try link.display(host, device: device, media: media) }
+        FileHandle.standardError.write(Data("ycode-sim-viewer: \(device) on \(host.name) (\(host.host):\(host.controlPort)) over the link\n".utf8))
+    } catch {
+        FileHandle.standardError.write(Data("ycode-sim-viewer: \(error)\n".utf8))
+        exit(69)
+    }
+}
+let connection = ViewerConnection(address: address, settings: settings, connector: connector)
 let controller = ViewerController(connection: connection, zoom: zoom)
 app.mainMenu = controller.buildMenu()
 var runner: ScriptRunner?

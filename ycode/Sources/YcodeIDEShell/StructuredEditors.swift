@@ -4,18 +4,20 @@ import YcodeIDECore
 /// An editor other than the source editor, chosen by file type as the
 /// macOS IDE chooses (`WorkspaceWindowController.display`): asset catalogs
 /// (`.xcassets`), String Catalogs (`.xcstrings`), property lists (`.plist`,
-/// `.entitlements`).
+/// `.entitlements`), Interface Builder documents (`.storyboard`, `.xib`).
 @MainActor
 public enum StructuredEditor {
     case propertyList(PlistEditorModel)
     case assetCatalog(AssetCatalogEditorModel)
     case stringCatalog(StringCatalogEditorModel)
+    case interfaceBuilder(InterfaceBuilderShellModel)
 
     public var path: String {
         switch self {
         case .propertyList(let m): m.path
         case .assetCatalog(let m): m.path
         case .stringCatalog(let m): m.path
+        case .interfaceBuilder(let m): m.path
         }
     }
 
@@ -25,6 +27,7 @@ public enum StructuredEditor {
         case .propertyList: .propertyList
         case .assetCatalog: .assetCatalog
         case .stringCatalog: .other
+        case .interfaceBuilder: .interfaceBuilder
         }
     }
 
@@ -34,13 +37,14 @@ public enum StructuredEditor {
         case .propertyList: "Property List"
         case .assetCatalog: "Asset Catalog"
         case .stringCatalog: "String Catalog"
+        case .interfaceBuilder: "Interface Builder"
         }
     }
 
     /// Whether a file of this name opens in a structured editor.
     public static func handles(_ path: String) -> Bool {
         let ext = (path as NSString).pathExtension.lowercased()
-        return ["plist", "entitlements", "xcassets", "xcstrings"].contains(ext)
+        return ["plist", "entitlements", "xcassets", "xcstrings", "storyboard", "xib"].contains(ext)
     }
 
     /// Whether the file can also be shown as source text (Open As ▸ Source
@@ -59,6 +63,7 @@ public enum StructuredEditor {
             return .assetCatalog(AssetCatalogEditorModel(path: path))
         case "xcstrings": return (try? StringCatalogEditorModel(path: path)).map(StructuredEditor.stringCatalog)
         case "plist", "entitlements": return (try? PlistEditorModel(path: path)).map(StructuredEditor.propertyList)
+        case "storyboard", "xib": return (try? InterfaceBuilderShellModel(path: path)).map(StructuredEditor.interfaceBuilder)
         default: return nil
         }
     }
@@ -126,6 +131,7 @@ extension WorkspaceShellModel {
         case (.propertyList(let m), "toggleRawKeysAndValues:"): m.showsRawKeys.toggle()
         case (.assetCatalog(let m), "addNewAsset:"): return m.add(tag: tag)
         case (.assetCatalog(let m), "deleteSelectedAssets:"): return m.removeSelected()
+        case (.interfaceBuilder(let m), _): return m.perform(action, tag: tag)
         default: return false
         }
         return true
@@ -143,6 +149,7 @@ extension WorkspaceShellModel {
         case (.assetCatalog(let m), "addNewAsset:"): return (m.canAdd(tag: tag) && tag != AssetCatalog.AddMenuTags.importFiles
                                                                && tag != AssetCatalog.AddMenuTags.stickerFrame, false)
         case (.assetCatalog(let m), "deleteSelectedAssets:"): return (m.selectedRow != nil, false)
+        case (.interfaceBuilder(let m), _): return m.actionState(action, tag: tag)
         default: return nil
         }
     }

@@ -275,7 +275,14 @@ public final class RemoteDeviceWindow: @unchecked Sendable {
             guard let self else { return }
             let bytes = png.isEmpty ? (self.session.shownPNG() ?? []) : png
             let url = dir.appendingPathComponent(name)
-            if !bytes.isEmpty, (try? Data(bytes).write(to: url)) != nil { self.log("screenshot: \(url.path)") } else { self.log("screenshot failed") }
+            if !bytes.isEmpty, (try? Data(bytes).write(to: url)) != nil {
+                self.log("screenshot: \(url.path)")
+                self.session.showNotice("Screenshot Saved to \(dir.lastPathComponent)")
+            } else {
+                self.log("screenshot failed")
+                self.session.showNotice("Screenshot Failed", seconds: 3)
+            }
+            self.needsRedraw = true
         }
     }
 

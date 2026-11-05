@@ -1216,6 +1216,121 @@ boot reached the home screen; no host crash; `guest_fatal` 6–15 (base) and
   the restore were the known `fileindexerd` and `intelligencetasksd`
   crashes (`app-launch.md` §7), as in the cold boot.
 
+## 10. Cold boot on the 2026-11-05 main line: measurements and candidates (agent B3-GPU)
+
+Issue #44 asks for the cold boot within an agreed factor of the reference
+(median 30.1 s against 21.4 s, `lean-boot.md` §9), measured as
+`parity-ladder.md` sets: full boot, every service, a device booted before
+at its own path, home from the home watch.
+
+### 10.1 Conditions
+
+Thor, release builds of the main line at `2d8f51ac` (*base*) and of this
+branch (*tree*: the GPU isolation of `metal-sim-protocol.md` §8.8), one
+copy of the golden device in the agent's own folder, booted three times at
+that path before the series, default switches (start hold, boot
+priority), `YCODE_HOME_WATCH`, 5 s held after home, no save. Each boot
+started only when no other `ycode-simd` ran and the 1-minute load was under
+6, up to 10 minutes of waiting; arms rotated each round. The Thor was
+shared with other agents' builds and Flatpak work all afternoon: the
+1-minute load at each boot's start was 4.2–6.0 (2.2 once) and 10–20 at the
+home screen, so the timed condition of `lean-boot.md` §9 (load under 4) was
+never met, and these medians are not comparable with its 30.1 s; compare
+arms within a series.
+
+### 10.2 Series
+
+| Series, arm | n | median home_s | mean ± sd | range | kernel lock held at home, median |
+|---|---|---|---|---|---|
+| S1 base | 5 | 48.51 | 46.19 ± 4.28 | 40.34–50.43 | 9.6 s |
+| S1 tree | 5 | 40.02 | 40.79 ± 4.46 | 35.66–47.93 | 8.1 s |
+| S1 tree, `YCODE_HOST_SCHED_BG_CPUS=4` | 5 | 41.12 | 43.13 ± 4.91 | 40.15–51.77 | 8.8 s |
+| S1 tree, `YCODE_HOST_SCHED_BG_WEIGHT=idle` | 5 | 42.32 | 43.68 ± 2.98 | 40.71–48.02 | 13.0 s |
+| S1 tree, `YCODE_LOCK_ADMISSION=1` | 5 | 40.30 | 40.86 ± 2.72 | 37.50–44.96 | 7.5 s |
+| S2 base, the tree's pipeline cache copied in | 5 | 40.34 | 40.77 ± 1.30 | 39.40–42.86 | 8.1 s |
+| S2 tree | 5 | 41.25 | 41.27 ± 1.65 | 38.82–43.46 | 8.1 s |
+| S2 tree, empty GPU cache every boot | 5 | 41.78 | 41.47 ± 1.17 | 39.88–42.91 | 8.7 s |
+
+- **The branch does not change the boot**: S2 base 40.34 against tree 41.25
+  (inside one standard deviation). S1's base arm was the series' first
+  boots after the base's caches were made; its pipeline cache still grew
+  by 25 KB a boot, the tree's not; with the tree's cache (S2) the base is as
+  fast as the tree.
+- **The GPU is not on the path, cold or warm** (as `stage8-contract.md`
+  §13.1 found at 240 s boots): with an empty GPU cache at every boot the
+  first frames translated 112 functions (1.8 s) and compiled 110 pipelines
+  (0.25 s, the driver's own cache warm), and home came at 41.78 s against
+  41.25 s. In the profiled boot below the GPU's share of the critical path
+  was 9 ms.
+- **None of the three scheduling candidates helps.** Background threads on
+  4 CPUs and class 0 as `cpu.idle` are slower (the latter holds the
+  kernel lock 13 s by home: idle-class holders); lock admission holds the
+  lock 7.5 s instead of 8.1 s and has the narrowest range, but its median is
+  the tree's. None is made a default.
+
+### 10.3 Where the time goes now (profiled boot `prof1`, home 40.71 s)
+
+`YCODE_FRAME_PROFILE_BOOT=120`, then `scripts/ycode-frame-profile p1.1
+--boot --backbone SpringBoard:main` (§8.1). Load 13–16 during the boot. By
+category on the critical path:
+
+| # | Item | s | §8.3 (r3q, 33.1 s) |
+|---|---|---|---|
+| 1 | SpringBoard's own guest code | 17.6 | 14.1 |
+| 2 | diagnosticd (the log path): waiting for a host CPU after wakeups 6.2, wakeup latency 3.3, event-lock waits in `kevent_id` 2.7, its `kevent_id` service 0.9, its run queue 0.5, other 0.8 | 14.4 | 6.7 |
+| 3 | SpringBoard waiting for a host CPU | 3.8 (+0.3 after wakeups) | 3.9 |
+| 4 | SpringBoard's port-lock waits and `mach_msg2` service | 1.5 | 0.7 |
+| 5 | Workqueue thread starts in SpringBoard | 0.5 | — |
+| 6 | SpringBoard's file and memory traps | 0.7 | 1.0 |
+| 7 | GPU | 0.01 | 0.04 |
+
+The path's shape is §8.3's. What grew is the log path: item 2 doubled, and
+items 2 and 3 are host CPU contention, which the shared host made worse.
+
+### 10.4 The hardware
+
+`scripts/host-probes/cpubench.c` (our C, one thread, `-O2`, best of three):
+the Mac of the reference measurements (Apple M3 Max) against one Thor core
+(pinned, load 13–20 from other work):
+
+| Part | Mac | Thor | Thor ÷ Mac |
+|---|---|---|---|
+| sort 200,000 path strings with `strcmp`, 5 times | 331 ms | 309 ms | 0.93 |
+| hash inserts, 20 M | 273 ms | 357 ms | 1.31 |
+| pointer chase in 1 MiB, 100 M hops | 743 ms | 1,353 ms | 1.82 |
+| unpredictable branches, 400 M | 1,007 ms | 924 ms | 0.92 |
+| all | 2,354 ms | 2,943 ms | 1.25 |
+
+Guest code runs at the Thor's native speed (`guest-cpu.md` §2), so
+SpringBoard's 17.6 s of guest code costs the Mac less in proportion to how
+much of it waits on memory: between 0.92 and 1.82 times less. The Mac runs
+its boot on more and faster cores as well (CPU-bound boots, §8.3).
+
+### 10.5 Agreed factor (proposal) and the next candidates
+
+The boot is CPU-bound on the host; Ycode's own overheads that BOOT-CP,
+SPAWN, KLOCK, PRIO-3 and GUEST-CPU measured have been cut, and the GPU is
+off the path. A factor that leaves Ycode's remaining overhead visible but
+does not ask the Thor to be a faster computer: **home_s ≤ 1.5 × the Mac's
+21.4 s = 32 s**, measured on a quiet Thor (load under 4 at the start, no
+other boot, `lean-boot.md` §9's method, n ≥ 5). The main line met it on
+2026-10-27 (30.1 s, 1.41 ×). The orchestrator or the owner decides.
+
+Candidates by size on today's path, for the owners named in §8.3:
+
+1. **The log path (KLOCK, scheduling): 6.7–14.4 s.** Every log message is a
+   Mach send to diagnosticd (`launchd-sim.md` §8.1), about 3,600 a second
+   in a boot, and runningboardd and cfprefsd, which SpringBoard waits for,
+   block on its full queue. diagnosticd is an Interactive daemon (its
+   plist's `POSIXSpawnType`), so its threads are not darwin-bg; they wait
+   for host CPUs and for each other. Measuring the reference's queue
+   limit and message rate (§8.6 questions 1–2) decides whether Ycode's
+   backpressure is the reference's.
+2. **Host CPU for SpringBoard (scheduling): 4 s.** Boot priority already
+   applies; the three switches of §10.2 did not shorten it.
+3. **SpringBoard's own guest code: 14–18 s.** Native speed; the loader's
+   algorithm (§5). Not Ycode's to shorten.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -1245,6 +1360,9 @@ boot reached the home screen; no host crash; `guest_fatal` 6–15 (base) and
 | `tlbi vmalle1is` invalidates the stage-1 entries of the current VMID on every PE of the inner shareable domain | 1 | Arm Architecture Reference Manual (TLBI VMALLE1IS) |
 | No `KVM_CAP_PRE_FAULT_MEMORY` on the Thor; THP `always`, `shmem_enabled = never`, no `CONFIG_READ_ONLY_THP_FOR_FS` | 3 | `KVM_CHECK_EXTENSION` on `/dev/kvm`, `/sys/kernel/mm/transparent_hugepage/*`, `/proc/config.gz` |
 | `thread_selfusage` returns mach absolute time; `CLOCK_THREAD_CPUTIME_ID` and `CLOCK_PROCESS_CPUTIME_ID` use it and `getrusage` (§7.5) | 1 | apple-oss-distributions/Libc `gen/clock_gettime.c`; xnu `bsd/kern/kern_resource.c` (getrusage fills `ru_utime`/`ru_stime`) |
+| Series S1, S2, profiled boot `prof1`, pipeline-cache growth (§10.1–§10.3) | 3 | B3-GPU's Thor runs (`ab-S1`, `ab-S2`, `prof1`: home-watch lines, exit summaries, `YCODE_METAL_STATS` lines, `scripts/ycode-frame-profile`) |
+| diagnosticd's `POSIXSpawnType` is Interactive (§10.5) | 2 | its launchd plist in the runtime, read as a property list |
+| Single-thread speed of the Mac and the Thor (§10.4) | 3 | `scripts/host-probes/cpubench.c` on both machines |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/` and Ghidra
 were not opened.

@@ -153,16 +153,22 @@ public struct AssetCompiler {
                 }
                 let src = IconBitmapSource(package: pkg, folder: folder)
                 if folder == nil { diag(.note, pkg.url, "drawn with Ycode's placeholder render (background and PNG layers); pass flattened images for the final look") }
-                addIcon(name: name, primary: primary, platform: platform, iconPlatform: ip, writer: &writer, diag: diag, result: &result) { a, px in
+                // The files go into their own Result: `diag` appends to `result`,
+                // which an inout access of `result` would overlap (exclusivity).
+                var written = Result()
+                addIcon(name: name, primary: primary, platform: platform, iconPlatform: ip, writer: &writer, diag: diag, result: &written) { a, px in
                     try src.bitmap(ip, a, pixels: px)
                 }
+                result.outputs += written.outputs
                 compiledIcons.append(name)
             } else if let set = catalogs.lazy.flatMap(\.appIconSets).first(where: { $0.name == name }) {
                 guard platform != .tvOS, platform != .visionOS else {
                     diag(.warning, set.url, "\(platform.rawValue) app icons (brand assets, image stacks) are not compiled by Ycode yet")
                     continue
                 }
-                addIconSet(set, primary: primary, platform: platform, writer: &writer, diag: diag, result: &result)
+                var written = Result()
+                addIconSet(set, primary: primary, platform: platform, writer: &writer, diag: diag, result: &written)
+                result.outputs += written.outputs
                 compiledIcons.append(name)
             } else if platform == .visionOS || platform == .tvOS {
                 continue

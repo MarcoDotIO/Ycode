@@ -152,6 +152,9 @@ extension VulkanMetalBackend {
         parked.removeAll()
         if let s = setup { oldChunks += s.chunks }
         setup = nil
+        // The stuck client's other command buffers fail with it
+        // (VulkanClientIsolation.swift); it may lose GPU access.
+        let blamed = blameStuckClient(&items)
         // Their after-completion steps (CPU reads of the lost work, probe
         // read-backs) end now, on the old device.
         for i in items.indices {
@@ -253,7 +256,8 @@ extension VulkanMetalBackend {
         yvk_context_destroy(ctx)
         phase("destroy")
         var opts = yvk_context_options(maxSampledImages: options.maxSampledImages, maxSamplers: options.maxSamplers,
-                                       maxStorageImages: options.maxStorageImages, validation: options.validation ? 1 : 0)
+                                       maxStorageImages: options.maxStorageImages, validation: options.validation ? 1 : 0,
+                                       queues: 1, second: 0)
         var err = [CChar](repeating: 0, count: 512)
         let created = yvk_context_create(ctx, &opts, &err, err.count) == 0
         fn = yvk_fns().pointee
@@ -352,7 +356,8 @@ extension VulkanMetalBackend {
             + "\(allocations.count) buffers and imports (\(moved) at a new device address), \(images.count) images, "
             + "\(textures.count) textures, \(samplerObjects.count) samplers, \(eventObjects.count) events, "
             + "\(renderPipelines.count) render and \(computePipelines.count) compute pipelines; "
-            + "\(items.filter(\.guilty).count) command buffer failed, \(resubmitted) recorded again"
+            + "\(items.filter(\.guilty).count) command buffer(s) failed"
+            + (blamed.map { " (\(knownClient($0.process))'s)" } ?? "") + ", \(resubmitted) recorded again"
             + (failures.isEmpty ? "" : "; failures: " + failures.joined(separator: "; "))
             + " (ms: " + phases.joined(separator: ", ") + ")"
         log(lastResetReport)
@@ -363,6 +368,10 @@ extension VulkanMetalBackend {
         let handler = deviceResetHandler
         cond.unlock()
         handler?()
+        if let b = blamed, b.revoked {
+            log("GPU access revoked for \(describeClient(b.process)) after \(options.revokeAfterHangs) GPU hangs: "
+                + "its later command buffers fail without running")
+        }
         finish(items, resubmit: true)
     }
 

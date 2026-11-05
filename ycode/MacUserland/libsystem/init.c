@@ -21,11 +21,14 @@ static const struct program_vars *vars;
 static int fallback_argc;
 static char **fallback_argv, **fallback_environ;
 static const char *fallback_progname = "";
+// The program name as the public variable <stdlib.h> code may read; it is
+// the storage _NSGetProgname points at once libSystem is initialized.
+YCL_EXPORT const char *__progname = "";
 
 YCL_EXPORT int *_NSGetArgc(void) { return vars ? vars->argc : &fallback_argc; }
 YCL_EXPORT char ***_NSGetArgv(void) { return vars ? vars->argv : &fallback_argv; }
 YCL_EXPORT char ***_NSGetEnviron(void) { return vars ? vars->environ : &fallback_environ; }
-YCL_EXPORT char **_NSGetProgname(void) { return (char **)(vars ? vars->progname : &fallback_progname); }
+YCL_EXPORT char **_NSGetProgname(void) { return (char **)(vars ? &__progname : &fallback_progname); }
 YCL_EXPORT const void *_NSGetMachExecuteHeader(void) { return vars ? vars->mh : 0; }
 YCL_EXPORT const char *getprogname(void) { return *_NSGetProgname(); }
 YCL_EXPORT void setprogname(const char *name) {
@@ -77,10 +80,12 @@ __attribute__((constructor)) static void libsystem_initializer(int argc, char **
     (void)argc;
     (void)argv;
     vars = program_vars;
+    if (program_vars && program_vars->progname && *program_vars->progname) __progname = *program_vars->progname;
     __libkernel_init(&kernel_functions, envp, apple, program_vars);
     __libplatform_init(0, envp, apple, program_vars);
     __pthread_init(&pthread_functions, envp, apple, program_vars);
     ycl_malloc_init();
+    ycl_ctype_init();
     long guard = 0;
     if (getentropy(&guard, sizeof guard) == 0 && guard != 0) __stack_chk_guard = guard;
     ycl_stdio_init();

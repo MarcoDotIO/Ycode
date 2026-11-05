@@ -3,14 +3,17 @@ import YcodeIDECore
 
 /// The Organizer (Window ▸ Organizer): Archives grouped by application,
 /// the selected archive's details, and Distribute App…. See
-/// `specs/ide/organizer.md`.
+/// `specs/ide/organizer.md`. Its state is the core's `OrganizerState`,
+/// which the Linux IDE's Organizer draws too.
 @MainActor
-public final class OrganizerController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+public final class OrganizerController: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSMenuItemValidation {
     public let archivesDirectory: URL
-    public private(set) var groups: [(app: String, archives: [ArchiveEntry])] = []
+    /// The shared state (archives, rows, selection, page and history).
+    public private(set) var state = OrganizerState()
+    public var groups: [(app: String, archives: [ArchiveEntry])] { state.groups }
     /// Rows: an application heading, or an archive.
-    public private(set) var rows: [(title: String, archive: ArchiveEntry?)] = []
-    public private(set) var selected: ArchiveEntry?
+    public var rows: [OrganizerState.Row] { state.rows }
+    public var selected: ArchiveEntry? { state.selected }
     /// The last Distribute App result (status, output).
     public private(set) var lastExport: (status: Int32, output: String)?
     let table = NSTableView()
@@ -20,68 +23,62 @@ public final class OrganizerController: NSViewController, NSTableViewDataSource,
     var emptyView: NSView?
     var archivesViews: [NSView] = []
     /// The page shown (sidebar selection) and its section.
-    public private(set) var page = "Archives"
-    public private(set) var pageSection = "Products"
+    public var page: String { state.page }
+    public var pageSection: String { state.section }
 
     /// Shows a sidebar page: Archives shows the archive list; the others
     /// show their empty state.
     public func showPage(_ page: String, section: String) {
         _ = view
-        if !navigatingHistory, !(history.indices.contains(historyIndex) && history[historyIndex] == (section, page)) {
-            if historyIndex + 1 < history.count { history.removeSubrange((historyIndex + 1)...) }
-            history.append((section, page))
-            historyIndex = history.count - 1
-        }
-        self.page = page
-        pageSection = section
-        let has = OrganizerSidebar.hasData(section: section)
+        state.showPage(page, section: section)
+        refreshPage()
+    }
+
+    /// Draws the current page: the list or the empty state, the titles,
+    /// the back/forward buttons and the sidebar selection.
+    private func refreshPage() {
+        let has = state.showsArchives
         archivesViews.forEach { $0.isHidden = !has }
         emptyView?.isHidden = has
-        let version = selected?.versionText ?? groups.first(where: { $0.app == selectedApp })?.archives.first?.versionText ?? "1.0"
-        let e = OrganizerSidebar.emptyState(page: page, version: version)
+        let e = state.emptyState
         emptyTitle.stringValue = e.title
         emptyMessage.stringValue = e.message
         view.window?.title = page
         pageTitle.stringValue = page
         backButton.isEnabled = canGoBack
         forwardButton.isEnabled = canGoForward
-        if let i = OrganizerSidebar.rows.firstIndex(where: { $0.section == section && $0.page == page }), sidebarTable.selectedRow != i {
+        if let i = state.sidebarRow, sidebarTable.selectedRow != i {
             sidebarTable.selectRowIndexes([i], byExtendingSelection: false)
         }
     }
     // MARK: Toolbar: back/forward, page title, notifications (§6)
 
     /// Visited pages (section, page) and the current position.
-    public private(set) var history: [(section: String, page: String)] = []
-    public private(set) var historyIndex = -1
-    private var navigatingHistory = false
+    public var history: [(section: String, page: String)] { state.history }
+    public var historyIndex: Int { state.historyIndex }
     public let backButton = NSButton()
     public let forwardButton = NSButton()
     public let bellButton = NSButton()
     let pageTitle = NSTextField(labelWithString: "Archives")
     /// Whether the notifications popover is shown (toggled by the bell).
-    public private(set) var notificationsShown = false
+    public var notificationsShown: Bool { state.notificationsShown }
     private var notificationsPopover: NSPopover?
     /// Ycode has no App Store Connect feed, so the list is always empty.
-    public static let noNotificationsText = "No Notifications"
+    public static let noNotificationsText = OrganizerState.noNotificationsText
 
-    public var canGoBack: Bool { historyIndex > 0 }
-    public var canGoForward: Bool { historyIndex < history.count - 1 }
+    public var canGoBack: Bool { state.canGoBack }
+    public var canGoForward: Bool { state.canGoForward }
 
     @objc public func goBack() { moveInHistory(-1) }
     @objc public func goForward() { moveInHistory(1) }
 
     private func moveInHistory(_ step: Int) {
-        let i = historyIndex + step
-        guard history.indices.contains(i) else { return }
-        historyIndex = i
-        navigatingHistory = true
-        defer { navigatingHistory = false }
-        showPage(history[i].page, section: history[i].section)
+        _ = view
+        if state.moveInHistory(step) { refreshPage() }
     }
 
     @objc public func toggleNotifications() {
-        notificationsShown.toggle()
+        state.notificationsShown.toggle()
         if notificationsShown, view.window?.isVisible == true {
             let vc = NSViewController()
             let l = NSTextField(labelWithString: Self.noNotificationsText)
@@ -139,6 +136,12 @@ public final class OrganizerController: NSViewController, NSTableViewDataSource,
         }
     }
 
+    /// The columns share the list's width, so all four show.
+    public override func viewDidLayout() {
+        super.viewDidLayout()
+        table.sizeToFit()
+    }
+
     public override func viewWillAppear() {
         super.viewWillAppear()
         installToolbar()
@@ -152,7 +155,7 @@ public final class OrganizerController: NSViewController, NSTableViewDataSource,
     }
 
     let details = NSStackView()
-    let distributeButton = NSButton(title: "Distribute App…", target: nil, action: nil)
+    let distributeButton = NSButton(title: OrganizerState.distributeTitle, target: nil, action: nil)
 
     public init(archivesDirectory: URL = Organizer.defaultArchivesDirectory) {
         self.archivesDirectory = archivesDirectory
@@ -182,15 +185,17 @@ public final class OrganizerController: NSViewController, NSTableViewDataSource,
         let empty = NSStackView(views: [emptyTitle, emptyMessage])
         empty.orientation = .vertical
         emptyView = empty
-        for (id, title, w) in [("name", "Name", 260.0), ("created", "Creation Date", 170.0), ("version", "Version", 90.0), ("status", "Status", 90.0)] {
-            let c = NSTableColumn(identifier: .init(id))
-            c.title = title
-            c.width = w
+        for col in OrganizerState.columns {
+            let c = NSTableColumn(identifier: .init(col.id))
+            c.title = col.title
+            c.width = col.width
             table.addTableColumn(c)
         }
         table.dataSource = self
         table.delegate = self
+        table.menu = rowMenu
         table.rowSizeStyle = .small
+        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         table.usesAlternatingRowBackgroundColors = true
         let scroll = NSScrollView()
         scroll.documentView = table
@@ -238,16 +243,14 @@ public final class OrganizerController: NSViewController, NSTableViewDataSource,
     public let appPicker = NSPopUpButton(frame: .zero, pullsDown: false)
     /// The application whose archives are listed; nil = none chosen yet
     /// (the first application is used).
-    public private(set) var selectedApp: String?
+    public var selectedApp: String? { state.selectedApp }
 
     /// The picker's titles for the current archives.
-    public var appPickerTitles: [String] { groups.map(\.app).ifEmpty(["No App"]) }
+    public var appPickerTitles: [String] { state.appPickerTitles }
 
     /// Chooses the application whose archives (and pages) are shown.
     public func chooseApp(_ app: String) {
-        guard groups.contains(where: { $0.app == app }) else { return }
-        selectedApp = app
-        if selected.map({ $0.appName != app }) ?? false { selected = nil }
+        state.chooseApp(app)
         reload()
     }
 
@@ -264,18 +267,11 @@ public final class OrganizerController: NSViewController, NSTableViewDataSource,
     }
 
     public func reload() {
-        groups = Organizer.grouped(Organizer.archives(in: archivesDirectory)).map { g in
-            var g = g
-            for i in g.archives.indices where Self.exportedPaths.contains(g.archives[i].url.standardizedFileURL.path) { g.archives[i].status = "Exported" }
-            return g
-        }
-        if let a = selectedApp, !groups.contains(where: { $0.app == a }) { selectedApp = nil }
-        if selectedApp == nil { selectedApp = groups.first?.app }
-        rows = groups.filter { $0.app == selectedApp }.flatMap { g in [(g.app, nil)] + g.archives.map { ($0.name, $0) } }
+        state.load(Organizer.archives(in: archivesDirectory), exported: Self.exportedPaths)
         refreshAppPicker()
         guard isViewLoaded else { return }
         table.reloadData()
-        if let s = selected, let i = rows.firstIndex(where: { $0.archive?.url == s.url }) { table.selectRowIndexes([i], byExtendingSelection: false) }
+        if let i = state.selectedRow { table.selectRowIndexes([i], byExtendingSelection: false) }
         showDetails()
     }
 
@@ -283,32 +279,15 @@ public final class OrganizerController: NSViewController, NSTableViewDataSource,
     public func select(archiveAt url: URL) {
         _ = view
         reload()
-        if let app = groups.first(where: { $0.archives.contains { $0.url.standardizedFileURL.path == url.standardizedFileURL.path } })?.app,
-           app != selectedApp {
-            selectedApp = app
-            reload()
-        }
-        if let i = rows.firstIndex(where: { $0.archive?.url.standardizedFileURL.path == url.standardizedFileURL.path }) {
-            selected = rows[i].archive
-            table.selectRowIndexes([i], byExtendingSelection: false)
-        }
+        state.select(archiveAt: url)
+        refreshAppPicker()
+        table.reloadData()
+        if let i = state.selectedRow { table.selectRowIndexes([i], byExtendingSelection: false) }
         showDetails()
     }
 
-    static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        return f
-    }()
-
     /// Detail rows for the selection: (label, value).
-    public var detailRows: [(String, String)] {
-        guard let a = selected else { return [("No Selection", "")] }
-        return [("Name", a.name), ("Creation Date", a.created.map(Self.dateFormatter.string(from:)) ?? ""),
-                ("Version", a.versionText), ("Identifier", a.bundleIdentifier ?? ""), ("Type", a.hasApplication ? "macOS App Archive" : "Generic Archive"),
-                ("Architectures", a.architectures.joined(separator: ", ")), ("Status", a.status), ("Comment", a.comment.isEmpty ? "No Description" : a.comment)]
-    }
+    public var detailRows: [(String, String)] { state.detailRows }
 
     func showDetails() {
         details.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -321,7 +300,7 @@ public final class OrganizerController: NSViewController, NSTableViewDataSource,
             details.addArrangedSubview(label)
             if !v.isEmpty { details.addArrangedSubview(value) }
         }
-        distributeButton.isEnabled = selected?.hasApplication == true
+        distributeButton.isEnabled = state.canDistribute
     }
 
     /// Distribute App → Copy App into `folder`. Returns the exported app.
@@ -332,13 +311,39 @@ public final class OrganizerController: NSViewController, NSTableViewDataSource,
         lastExport = result
         guard result.status == 0 else { return nil }
         Self.exportedPaths.insert(a.url.standardizedFileURL.path)
-        if let i = rows.firstIndex(where: { $0.archive?.url == a.url }) {
-            rows[i].archive?.status = "Exported"
-            selected = rows[i].archive
-        }
+        state.markExported(a.url)
         showDetails()
         table.reloadData()
         return folder.appendingPathComponent(a.appName + ".app")
+    }
+
+    // MARK: Show in Finder
+
+    /// The archive rows' context menu: Show in Finder.
+    private lazy var rowMenu: NSMenu = {
+        let m = NSMenu()
+        let item = NSMenuItem(title: OrganizerState.showInFilesTitle, action: #selector(showClickedInFinder), keyEquivalent: "")
+        item.target = self
+        m.addItem(item)
+        return m
+    }()
+
+    /// Shows the archive at a row (the clicked one, else the selection) in
+    /// the Finder, selected in its folder. Returns the archive.
+    @discardableResult
+    public func showInFinder(row: Int? = nil) -> URL? {
+        let r = row ?? state.selectedRow
+        guard let r, rows.indices.contains(r), let a = rows[r].archive else { return nil }
+        if view.window?.isVisible == true { NSWorkspace.shared.activateFileViewerSelecting([a.url]) }
+        return a.url
+    }
+
+    @objc private func showClickedInFinder() { showInFinder(row: table.clickedRow >= 0 ? table.clickedRow : nil) }
+
+    public func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard item.action == #selector(showClickedInFinder) else { return true }
+        let r = table.clickedRow >= 0 ? table.clickedRow : (state.selectedRow ?? -1)
+        return rows.indices.contains(r) && rows[r].archive != nil
     }
 
     @objc private func distributeClicked() {
@@ -371,7 +376,7 @@ public final class OrganizerController: NSViewController, NSTableViewDataSource,
             return
         }
         let r = table.selectedRow
-        selected = r >= 0 ? rows[r].archive : nil
+        state.selectRow(r >= 0 ? r : nil)
         showDetails()
     }
 
@@ -388,18 +393,10 @@ public final class OrganizerController: NSViewController, NSTableViewDataSource,
             l.font = .boldSystemFont(ofSize: 12)
             return l
         }
-        let text: String = switch c?.identifier.rawValue {
-        case "name": a.name
-        case "created": a.created.map(Self.dateFormatter.string(from:)) ?? ""
-        case "version": a.versionText
-        default: a.status
-        }
-        return NSTextField(labelWithString: text)
+        let cell = NSTextField(labelWithString: OrganizerState.cellText(a, column: c?.identifier.rawValue ?? "status"))
+        cell.lineBreakMode = .byTruncatingTail
+        return cell
     }
-}
-
-private extension Array {
-    func ifEmpty(_ other: [Element]) -> [Element] { isEmpty ? other : self }
 }
 
 @MainActor

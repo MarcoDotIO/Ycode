@@ -309,15 +309,16 @@ These follow `AGENTS.md` rule 4:
 | macOS previews | Canvas renders AppKit and SwiftUI | done (a long-lived Mac host renders PNGs) | `specs/ide/previews.md` | `YcodePreviews/PreviewMacHost.swift`, `YcodeUI/Model/PreviewRenderer.swift` | yes / n.a. / n.a. | – | P1 |
 | iOS live previews on the Ycode simulator | Live canvas | done: payloads loaded with `dlopen`; save to new pixels in about 0.6–0.8 s. Limits: package dependencies, resources. | `specs/ide/previews.md` | `YcodePreviews/PreviewHost.swift`, `YcodeUI/Session/RemotePreviewSession.swift` | yes / host side runs on Linux / no | M | P1 |
 | iOS previews without a Ycode simulator | Canvas with no setup | missing (no `simctl` preview path) | `specs/ide/previews.md` | `+LivePreviews.swift` | no / no / no | M | P2 |
-| UIKit and AppKit previews | `#Preview` returning a view or controller | done | `specs/ide/previews.md` | `YcodePreviews/PreviewPayload.swift` | yes / – / no | – | P2 |
+| UIKit and AppKit previews | `#Preview` returning a view or controller | done (B3-PREVIEWS, #84): a package file whose previews need UIKit runs on the simulator path; without a Ycode simulator the canvas shows a needs-a-simulator card, not a build error. Linux: on a paired simulator host (the payload travels in the preview app; one picture per update; an edit to new pixels about 26 s, verified end to end on the arm64 host), else a needs-a-simulator-host card | `specs/ide/previews.md` §Linux | `YcodePreviews/PreviewPayload.swift`, `PreviewIOSToolchain.swift`, `YcodeIDEShell/SimulatorPreviewEngine.swift` | yes / – / yes | – | P2 |
 | Live and Selectable modes, variants, devices | Interactive or selectable; variant grids; `#Preview(arguments:)` (27) | partial: Live by default; light/dark variants; one trait at a time | `specs/ide/previews.md` | `YcodeUI/Editor/PreviewCanvasChrome.swift` | partial / no / no | M | P2 |
-| Headless preview render on Linux | – | missing: `ycode preview --render` exits 3. It needs the OpenViews renderer (R5) or a simulator. | `specs/ide/previews.md` §Linux | `ycode/main.swift` | n.a. / no / no | XL | P2 |
-| IB: open, outline, structure edits | Storyboards and XIBs | done | `specs/ide/interface-builder.md` | `YcodeUI/Model/IBDocument.swift`, `IBStructureEditing.swift` | yes / no / no | – | P2 |
-| IB canvas fidelity | Real controls, per runtime | partial: labeled rectangles, scenes, segues | `specs/ide/interface-builder.md` | `YcodeUI/Editor/InterfaceBuilderController.swift` | partial / no / no | XL | P2 — could render through the simulator, like previews |
-| IB inspectors | Identity, Attributes, Size, Connections | partial: a subset of attributes | `specs/ide/interface-builder.md` | `YcodeUI/Model/IBInspectorModel.swift` | partial / no / no | L | P2 |
-| IB Auto Layout | Add, align, resolve, embed | partial: Add New Constraints, edit constant, delete. Align, Arrange, Embed and Resolve are u(). | `specs/ide/interface-builder.md` | `IBStructureEditing.swift`, `EditorMenu.swift` | partial / no / no | L | P2 |
-| IB connections | Control-drag to create outlets, actions and segues | partial: view and disconnect only | `specs/ide/interface-builder.md` | `YcodeUI/Editor/InterfaceBuilderInspectors.swift` | partial / no / no | L | P1 — the core IB workflow |
-| IB Library objects | All UIKit and AppKit objects | partial: 6 kinds | `specs/ide/library.md` | `YcodeUI/Model/LibraryItems.swift` | partial / no / no | M | P3 |
+| Headless preview render on Linux | – | done: `ycode preview --render` through OpenViews | `specs/ide/previews.md` §Linux | `YcodePreviews/PreviewRenderHost.swift` | n.a. / yes / yes | – | P2 |
+| SwiftUI previews in the Linux IDE's canvas | Canvas | done (B3-PREVIEWS, #78): a long-lived OpenViews host loads one payload per edit; edit to new pixels in about 1.1–1.3 s on the x86 (median 1.22–1.25 s; 2.0–2.7 s under heavy load); tabs, device frame, Grid, the three variant kinds, devices, zoom, settings, Selectable, errors as a card or a banner | `specs/ide/previews.md` §Linux | `YcodePreviews/PreviewOpenViewsHost.swift`, `YcodeIDEShell/PreviewCanvas*.swift`, `ycode-ide/PreviewCanvasView.swift` | n.a. / yes (`--render`) / yes | – | P1 |
+| IB: open, outline, structure edits | Storyboards and XIBs | done; both IDEs drive one editor model (`IBEditorSession`, `IBCanvasLayout`; B3-IB) | `specs/ide/interface-builder.md` | `YcodeIDECore/Model/IBDocument.swift`, `IBStructureEditing.swift`, `IBEditorSession.swift`; Linux: `YcodeIDEShell/InterfaceBuilderShellModel.swift`, `ycode-ide/InterfaceBuilderEditorView.swift` | yes / no / yes | – | P2 |
+| IB canvas fidelity | Real controls, per runtime | partial: labeled rectangles, scenes, segues, device bezels; the controller's scene objects in its title bar and the canvas overview (reference-ui-4.md §13 item 6) | `specs/ide/interface-builder.md` | `YcodeIDECore/Model/IBCanvasLayout.swift`, `YcodeUI/Editor/InterfaceBuilderController.swift`, `ycode-ide/InterfaceBuilderEditorView.swift` | partial / no / partial | XL | P2 — could render through the simulator, like previews |
+| IB inspectors | Identity, Attributes, Size, Connections | partial: §13's sections (view controller, label, view) and the Control block; button, text field, image view and stack view sections are not in the specs | `specs/ide/interface-builder.md` | `YcodeIDECore/Model/IBInspectorModel.swift`; Linux: `ycode-ide/InterfaceBuilderInspectors.swift` | partial / no / partial | L | P2 |
+| IB Auto Layout | Add, align, resolve, embed | partial: Add New Constraints, edit constant, delete. Align, Arrange, Embed and Resolve are u(). | `specs/ide/interface-builder.md` | `IBStructureEditing.swift`, `EditorMenu.swift` | partial / no / partial | L | P2 |
+| IB connections | Control-drag to create outlets, actions and segues | partial: view and disconnect only | `specs/ide/interface-builder.md` | `YcodeUI/Editor/InterfaceBuilderInspectors.swift`, `ycode-ide/InterfaceBuilderInspectors.swift` | partial / no / partial | L | P1 — the core IB workflow |
+| IB Library objects | All UIKit and AppKit objects | partial: the 6 kinds the specs list (Label, Button, Text Field, Image View, View, Stack View), each added, edited and saved on both IDEs; the rest of the UIKit set needs a dirty-room list (#84) | `specs/ide/library.md` | `YcodeIDECore/Model/IBLibraryObjects.swift` | partial / no / partial | M | P3 |
 | Library window | Views, modifiers, snippets, symbols, media, colors | partial: Snippets, Symbols, IB Objects. Open Library (⌥⇧⌘L) is u(). | `specs/ide/library.md` | `YcodeUI/Editor/LibraryController.swift` | partial / no / no | M | P3 |
 | Asset catalogs: image sets | Idioms, scales, appearances, slicing | partial: slots, drag-in (macOS), dark appearance. Device Image Reps, Quick Look and Slicing are u(). | `specs/ide/asset-catalog.md` | `YcodeIDECore/Model/AssetCatalog.swift`, `Editor/AssetCatalogEditorController.swift`; Linux: `YcodeIDEShell/AssetCatalogEditorModel.swift`, `ycode-ide/AssetCatalogEditorView.swift` | partial / no / partial (no drag-in) | M | P2 |
 | Asset catalogs: color sets, app icon sets | Components, appearances; icon sets per platform | done | `specs/ide/asset-catalog.md` | `AssetCatalogEditorController.swift`, `ycode-ide/AssetCatalogEditorView.swift` | yes / no / yes | – | P2 |
@@ -587,10 +588,16 @@ Device types: iPhone 18 Pro, iPhone Duo (foldable, 27.1 or later), iPad
 | Profiling (Gauge) | **done**: measured on iPhone 18 Pro (`specs/ide/profiler.md` §10.2) | partial: not measured | partial: not measured | partial: not measured | missing | missing |
 
 Other simulator gaps:
-- **Fidelity.** Ycode starts 498–506 programs against 631 on the reference
-  in the same window (`parity-ladder.md` §4.8).
-- **Hangs.** One stuck GPU submission stops every client
-  (`stage8-contract.md` §15.8).
+- **Fidelity.** Ycode starts 498–540 programs against 631 on the reference
+  in the same window (`parity-ladder.md` §4.8). The restart loops and the
+  kind of boot explain part of it; about 100 starts need the reference's
+  per-program counts (`service-fidelity.md` §15).
+- **Hangs.** One stuck GPU submission no longer stops every client: once
+  other clients wait behind it, it is ended after 2 s (stopped by the
+  driver in about 4.4 s), only its own client's command buffers fail, and a
+  client that hangs the GPU twice loses GPU access. The other clients wait
+  about 6.5 s in all; texture contents only the GPU held are still lost at
+  the reset (`metal-sim-protocol.md` §8.8).
 - **simctl verbs** that are missing are listed in §3.2.
 - **Device Hub 27.2 extras** are missing: shake, memory pressure, slow
   animations, Standby.
@@ -754,7 +761,7 @@ pixel-identical.
 | **L2 EditorKit v1** (first part done, §5.9) | Editable Swift files: storage, virtualized layout, carets, IME, undo, swift-syntax highlighting, find. Then LSP completion, hover, definition and diagnostics. | R14, L1 | XL (2–3 rounds) |
 | **L3 Run and debug** | lldb-dap debug area (`YcodeDebug` is portable). Console. Run on the Ycode simulator **locally** on arm64 Linux (no ssh) or remotely from x86-64. A device canvas from `YcodeDisplayStream`. **Remote from x86-64: done (REMOTE-X86, 2026-10-31, §5.11)**. **Debugging Swift packages on Linux: done (B2-DEBUG, 2026-11-04)**: gutter breakpoints, the Debug and Breakpoint navigators, the variables view, the `(lldb)` prompt, the debug bar and Debug menu (`YcodeIDEShell/ShellDebugModel.swift`, `ycode-ide/DebugViews.swift`, `DebugGutter.swift`). Local arm64 run and debugging on the simulator remain. | L1, R12 | L |
 | **L4 Editors and windows** | Project editor, scheme editor, plist and String Catalog editors, source control, Settings. Menus and toolbars. | R11, R12, R13 | XL |
-| **L5 Previews, Gauge, assistant, IB, asset catalogs** | Port the remaining bucket 2 screens. Previews on Linux use the Ycode simulator path; the OpenViews renderer later serves Linux-native previews. | L4 | XL |
+| **L5 Previews, Gauge, assistant, IB, asset catalogs** | Port the remaining bucket 2 screens. **Previews: done (B3-PREVIEWS, 2026-11-05)**: SwiftUI previews render with OpenViews in the canvas; UIKit previews use a paired simulator host. | L4 | XL |
 | **L6 Switch macOS to the SwiftUI shell** | Retire the AppKit shell screen by screen, once parity tests pass. | L4 | L |
 
 **Pre-condition for any of this to be useful on Linux:** iOS app builds on
@@ -1299,6 +1306,40 @@ Copyright 2016 The Inter Project Authors). Source: Noto Sans Mono (OFL
   13-point text is lighter than on macOS.
 - Settings ▸ Components and Simulators, the Report navigator (the build log has no home but the
   console), the six navigators the shell lacks.
+
+**The Organizer (B3-ORGANIZER, #77, 2026-11-05).** Window ▸ Organizer
+(Ctrl+Alt+Shift+O) opens a 900 × 552 window under a toolbar row (back,
+forward, page title, the bell with "No Notifications"): the app picker and
+the Products, Insights, Reports and Metrics pages, then on Archives the list
+(Name, Creation Date, Version, Status, grouped under the application) and
+the selection's details. Both IDEs draw `OrganizerState`
+(`YcodeIDECore`), so the columns and details are the same; the archives are
+read under `$HOME/Library/Developer/Xcode/Archives`, where `ycodebuild
+archive` puts them. A row's menu has Show in Files
+(`org.freedesktop.FileManager1.ShowItems`, else the folder opens) and the
+macOS IDE gained Show in Finder; the macOS list's columns now fit its width.
+Distribute App… is shown disabled (#43); the other pages show their empty
+states. Checked by `YCODE_IDE_ORGANIZER=<prefix>` (`OrganizerDriver.swift`)
+in light and dark with an archive made by `ycodebuild archive` on macOS;
+the macOS pairs come from `OrganizerParityProbeTests`
+(`YCODE_ORGANIZER_SHOTS`, `YCODE_ORGANIZER_ARCHIVES`). Product ▸ Archive
+stays macOS only: `ycodebuild` cannot build an app on Linux.
+
+**Interface Builder documents (B3-IB, #79, 2026-11-05).** Storyboards and
+xibs open in the Linux IDE's own editor: the jump bar strip, the Document
+Outline with its Filter, the canvas and its bottom bar, the Library's
+Objects tab (+ in the bar, or View ▸ Show Library), Add New Constraints,
+and the Identity, Attributes, Size and Connections inspectors after File,
+History and Quick Help. Both IDEs drive one model in `YcodeIDECore`
+(`IBEditorSession`, `IBCanvasLayout`), so they write the same bytes; a
+document only looked at is never written, and undoing every edit restores
+it byte for byte (`IBEditorSessionTests`, `InterfaceBuilderShellTests`).
+A storyboard edited on Linux (a button added, titled and constrained)
+opens unchanged in the macOS editor (`InterfaceBuilderLinuxRoundTripTests`).
+The walk is `YCODE_IDE_IB=<prefix>` (`InterfaceBuilderDriver.swift`). Not
+yet: dragging Library objects onto the canvas (double-click or Return
+inserts into the selected view), dragging rows in the outline (a Move Into
+context menu instead), and the overview's visible-area outline.
 
 ---
 

@@ -76,6 +76,7 @@ case "check":
     }
     guard problems.isEmpty else { fail(problems.joined(separator: "\n"), 1) }
     print("ok: \(configPath) — home \(config.home), tree \(config.tree), \(config.runtimes.count) runtime(s), ports \(config.controlPort)/tcp \(config.mediaPort)/udp")
+    if let why = config.appRunProblem() { print("note: " + why) }
 case "pair":
     let code = Pairing.newCode()
     do { try Pairing.open(code: code, store: store) } catch { fail("\(error)") }

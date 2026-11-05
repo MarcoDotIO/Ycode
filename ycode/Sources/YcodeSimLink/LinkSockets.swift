@@ -41,6 +41,12 @@ public enum LinkSockets {
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
     }
 
+    /// The host's sockets stay out of the devices it starts: a launcher that
+    /// inherited the listening port kept it bound after the service stopped.
+    public static func closeOnExec(_ fd: Int32) {
+        _ = fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC)
+    }
+
     public static func noDelay(_ fd: Int32) {
         var one: Int32 = 1
         setsockopt(fd, Int32(IPPROTO_TCP), TCP_NODELAY, &one, socklen_t(MemoryLayout<Int32>.size))
@@ -81,6 +87,7 @@ public final class LinkListener: @unchecked Sendable {
         guard var addr = LinkSockets.ipv4(host, port) else { throw DisplaySocketError(message: "cannot resolve \(host)") }
         let fd = socket(AF_INET, LinkSockets.streamType, 0)
         guard fd >= 0 else { throw DisplaySocketError("socket") }
+        LinkSockets.closeOnExec(fd)
         var one: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, socklen_t(MemoryLayout<Int32>.size))
         let r = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
@@ -109,6 +116,7 @@ public final class LinkListener: @unchecked Sendable {
                 #endif
             } }
             if c >= 0 {
+                LinkSockets.closeOnExec(c)
                 LinkSockets.noDelay(c)
                 return (DisplayConnection(fd: c), peer)
             }
@@ -133,6 +141,7 @@ public final class LinkDatagramSocket: @unchecked Sendable {
         guard var addr = LinkSockets.ipv4(host, port) else { throw DisplaySocketError(message: "cannot resolve \(host)") }
         let fd = socket(AF_INET, LinkSockets.datagramType, 0)
         guard fd >= 0 else { throw DisplaySocketError("socket") }
+        LinkSockets.closeOnExec(fd)
         var one: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, socklen_t(MemoryLayout<Int32>.size))
         var rb = receiveBuffer, sb = sendBuffer

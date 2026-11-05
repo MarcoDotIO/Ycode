@@ -56,10 +56,13 @@ final class PixelsObserver: DeviceLiveSessionObserver {
 extension WorkspaceWindowController {
     /// The platform the focused file's previews run on: the product's
     /// (a project's first target), or for a package the run destination's
-    /// (a Ycode simulator → iOS), else the Mac.
+    /// (a Ycode simulator → iOS), else the Mac. A package file whose
+    /// previews need UIKit runs on iOS (issue #84).
     public var previewPlatform: PreviewPlatform {
         if session.model.kind == .package {
-            return session.destination?.isYcodeRemoteSimulator == true ? .iOS : .macOS
+            if session.destination?.isYcodeRemoteSimulator == true { return .iOS }
+            if editor.fileURL?.pathExtension == "swift", PreviewDiscovery.needsUIKit(text: editor.text) { return .iOS }
+            return .macOS
         }
         return productPlatform.platform.flatMap(PreviewPlatform.init(destinationPlatform:)) ?? .macOS
     }
@@ -148,7 +151,7 @@ extension WorkspaceWindowController {
         guard !previews.isEmpty else { c.setState(.empty("No Previews")); return nil }
         guard !c.isPaused else { return nil }
         guard let sim = previewSimulator(platform: platform) else {
-            c.setState(.failed("Previews for \(platform.rawValue) run on a Ycode Simulator. Set one up in Settings ▸ Simulators."))
+            c.setState(.needsSimulator(Self.needsSimulatorMessage(platform: platform, uikit: PreviewDiscovery.needsUIKit(text: text, previews: previews))))
             return nil
         }
         let live = livePreview
@@ -317,6 +320,12 @@ extension WorkspaceWindowController {
         }
         live.task = task
         return task
+    }
+
+    /// What the canvas says when previews need a Ycode simulator and none is set up.
+    static func needsSimulatorMessage(platform: PreviewPlatform, uikit: Bool) -> String {
+        let what = uikit ? "UIKit previews" : "Previews for \(platform.rawValue)"
+        return "\(what) run on a Ycode Simulator. Set one up in Settings ▸ Simulators (a simulator host and a runtime), then choose Check Again."
     }
 
     static func describe(_ d: PreviewUpdate) -> String {

@@ -104,13 +104,15 @@ public enum ShellSimulatorDebug {
     /// opens the device window (ShellRemoteRun.start); with the debugger
     /// enabled and the host on this computer, waits for the launch and
     /// attaches. `started` gets the device window's process; `isCurrent`
-    /// turns false when Stop (or another Run) replaced it.
+    /// turns false when Stop (or another Run) replaced it. `phase` and
+    /// `cancel` are ShellRemoteRun's (the activity, Stop before the window).
     @MainActor
     public static func run(session: WorkspaceSession, scheme: String, destination: Destination, packageRoot: URL,
+                           phase: @escaping @Sendable (RemoteRunPhase) -> Void = { _ in }, cancel: RemoteRunCancel = RemoteRunCancel(),
                            started: (Process) -> Void, isCurrent: @escaping @MainActor (Process) -> Bool) async throws {
         let out: @Sendable (String) -> Void = { text in Task { @MainActor in session.appendConsole(text, kind: .debugger) } }
         let s = try await ShellRemoteRun.start(project: session.model.url.path, scheme: scheme, destination: destination, packageRoot: packageRoot,
-                                               debug: isEnabled(), output: out)
+                                               debug: isEnabled(), output: out, phase: phase, cancel: cancel)
         started(s.viewer)
         guard let socket = s.debugSocket else {
             if isEnabled(), !isThisMachine(s.host.host) {

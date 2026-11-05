@@ -21,14 +21,26 @@ struct InspectorColumn: View {
             // File, History and Quick Help follow the model (Quick Help can be
             // asked for from the editor); the asset catalog editor adds its
             // Attributes tab on top.
-            let tab = assetTab && assetModel != nil ? AssetInspectorTab.index : model.languageFeatures.inspectorTab.rawValue
-            InspectorTabs(selected: tab, extra: assetModel != nil ? AssetInspectorTab.symbol : nil) { i in
+            let ibTab = ibModel?.inspectorTab
+            let tab = ibTab.map { 3 + $0.rawValue }
+                ?? (assetTab && assetModel != nil ? AssetInspectorTab.index : model.languageFeatures.inspectorTab.rawValue)
+            // Interface Builder documents add Identity, Attributes, Size and
+            // Connections (InterfaceBuilderInspectors.swift).
+            let extras = ibModel != nil ? IBInspectorTab.allCases.map(\.symbol) : assetModel != nil ? [AssetInspectorTab.symbol] : []
+            InspectorTabs(selected: tab, extras: extras) { i in
+                if let ib = ibModel {
+                    ib.inspectorTab = IBInspectorTab(rawValue: i - 3)
+                    if i < 3 { model.showInspector(ShellLanguageFeatures.InspectorTab(rawValue: i) ?? .file) }
+                    return
+                }
                 assetTab = i == AssetInspectorTab.index
                 if !assetTab { model.showInspector(ShellLanguageFeatures.InspectorTab(rawValue: i) ?? .file) }
             }
                 .padding(.horizontal, CGFloat(WorkspaceChrome.selectorInset))
             Group {
-                if tab == AssetInspectorTab.index, let a = assetModel {
+                if let ib = ibModel, let t = ibTab {
+                    IBInspectorView(model: ib, tab: t)
+                } else if tab == AssetInspectorTab.index, let a = assetModel {
                     AssetAttributesInspector(model: a)
                 } else if tab == 2 {
                     QuickHelpInspector(model: model)
@@ -65,6 +77,11 @@ struct InspectorColumn: View {
 
     var assetModel: AssetCatalogEditorModel? {
         if case .assetCatalog(let m)? = model.structuredEditor { return m }
+        return nil
+    }
+
+    var ibModel: InterfaceBuilderShellModel? {
+        if case .interfaceBuilder(let m)? = model.structuredEditor { return m }
         return nil
     }
 
@@ -144,11 +161,12 @@ struct InspectorColumn: View {
 }
 
 /// The inspector's tab capsule: File, History, Quick Help; the selected
-/// tab in a 78 × 24 pill.
+/// tab in a 78 × 24 pill (narrower when an editor adds tabs).
 struct InspectorTabs: View {
     var selected: Int
-    /// A fourth tab's symbol (the asset catalog's Attributes inspector).
-    var extra: String?
+    /// Symbols of the tabs an editor adds (the asset catalog's Attributes
+    /// inspector; Interface Builder's Identity, Attributes, Size, Connections).
+    var extras: [String] = []
     var select: (Int) -> Void
     @Environment(\.colorScheme) private var scheme
 
@@ -156,11 +174,12 @@ struct InspectorTabs: View {
         let c = ShellColors(scheme)
         let pill = WorkspaceChrome.inspectorTabPillSize
         HStack(spacing: 0) {
-            ForEach(Array((WorkspaceChrome.inspectorSymbols + (extra.map { [$0] } ?? [])).enumerated()), id: \.offset) { pair in
+            ForEach(Array((WorkspaceChrome.inspectorSymbols + extras).enumerated()), id: \.offset) { pair in
                 let on = pair.offset == selected
+                let width: CGFloat = extras.isEmpty ? CGFloat(pill.width) : extras.count == 1 ? 58 : 30
                 Button { select(pair.offset) } label: {
                     ZStack {
-                        if on { Capsule(style: .continuous).fill(c.selectorPill).frame(width: extra == nil ? CGFloat(pill.width) : 58, height: CGFloat(pill.height)) }
+                        if on { Capsule(style: .continuous).fill(c.selectorPill).frame(width: width, height: CGFloat(pill.height)) }
                         Image(systemName: pair.element).font(.system(size: 13)).foregroundStyle(on ? c.accent : c.toolbarIcon)
                     }
                     .frame(maxWidth: .infinity)
@@ -168,7 +187,8 @@ struct InspectorTabs: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(["Show the File inspector", "Show the History inspector", "Show the Quick Help inspector", "Show the Attributes inspector"][pair.offset])
+                .help(pair.offset < 3 ? ["Show the File inspector", "Show the History inspector", "Show the Quick Help inspector"][pair.offset]
+                      : extras.count == 1 ? "Show the Attributes inspector" : "Show the \(IBInspectorTab(rawValue: pair.offset - 3)?.title ?? "") inspector")
                 .shellTarget("inspector tab \(pair.offset)")
             }
         }

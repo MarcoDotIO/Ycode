@@ -110,8 +110,12 @@ DATA=${YCODE_SIM_DATA:?YCODE_SIM_DATA is not set}
 LOCKS=${YCODE_SIM_LOCKS:-$DATA/locks}
 SLOTS=${YCODE_SIM_SLOTS:-3}
 SIMD=$Y/.build/release/ycode-simd
+# The shader translator: a source tree's Translator/build, else next to
+# ycode-simd (a release's lib/ycode-sim has it there).
+AIRC=$Y/Translator/build/ycode-airc
+[ -x "$AIRC" ] || [ ! -x "$Y/.build/release/ycode-airc" ] || AIRC=$Y/.build/release/ycode-airc
 HOST_ARGS=(--shim "$Y/SimShim/out/shim.bin" --host-stubs "$Y/SimShim/out/host_stubs.bin" --host-libs "$Y/SimHostLibs/out"
-           --runtime-paths --metal-translator "$Y/Translator/build/ycode-airc"
+           --runtime-paths --metal-translator "$AIRC"
            --gpu-cache-dir "${YCODE_SIM_GPU_CACHE:-$DATA/gpu-cache}" --timeout-ms "${YCODE_SIM_TIMEOUT_MS:-1500000}")
 [ -n "${YCODE_SIM_GUEST_TOOLS:-}" ] && HOST_ARGS+=(--guest-tools "$YCODE_SIM_GUEST_TOOLS")
 # say: a status line for Ycode's console (and the run log); note: the run log only.
@@ -328,7 +332,7 @@ fingerprint() {
     echo "ycode-sim warm boot 2"
     printf '%s\n' "${BASE_ARGS[@]}" "${HOST_ARGS[@]}"
     env | grep -E '^YCODE_LEAN_BOOT' | sort
-    stat -L -c '%n %s %Y' "$SIMD" "$Y/SimShim/out/shim.bin" "$Y/SimShim/out/host_stubs.bin" "$Y/Translator/build/ycode-airc" 2>&1
+    stat -L -c '%n %s %Y' "$SIMD" "$Y/SimShim/out/shim.bin" "$Y/SimShim/out/host_stubs.bin" "$AIRC" 2>&1
     find "$Y/SimHostLibs/out" "$Y/SimGuestFrameworks/out" -type f -printf '%p %s %T@\n' 2>/dev/null | sort
     stat -L -c '%n %s %Y' "$RR/System/Library/CoreServices/SystemVersion.plist" 2>&1
     # The runtime's platform and build by value (visionos.md §2.1: two

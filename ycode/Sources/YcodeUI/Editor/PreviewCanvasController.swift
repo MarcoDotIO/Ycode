@@ -17,6 +17,9 @@ public final class PreviewCanvasController: NSViewController {
         case failed(String)
         /// Tiles of a preview device's live picture (`previews.md` §Canvas).
         case live([PreviewLiveTile])
+        /// UIKit or iOS previews with no Ycode simulator set up: what to set
+        /// up, not an error (issue #84).
+        case needsSimulator(String)
     }
 
     public enum Layout: Int { case grid, single }
@@ -42,6 +45,10 @@ public final class PreviewCanvasController: NSViewController {
     public var onIssue: ((PreviewIssue) -> Void)?
     /// Selectable mode: a click on a tile reveals that preview's source.
     public var onRevealPreview: ((Int) -> Void)?
+    /// The needs-a-simulator card's button: Settings ▸ Simulators.
+    public var onOpenSimulatorSettings: (() -> Void)? = { SettingsWindowController.shared.show(pane: "Simulators") }
+    /// The needs-a-simulator card's button (tests).
+    public internal(set) var simulatorSettingsButton: NSButton?
     /// Pin (the header's pin button): the window keeps this preview shown
     /// while other files are focused, or unpins it.
     public var onPin: (() -> Void)?
@@ -437,6 +444,7 @@ public final class PreviewCanvasController: NSViewController {
         body.subviews.forEach { $0.removeFromSuperview() }
         liveTileViews = []
         bannerView = nil
+        simulatorSettingsButton = nil
         cardTitles = []
         framedCount = 0
         let content: NSView
@@ -456,6 +464,9 @@ public final class PreviewCanvasController: NSViewController {
         case .failed(let message):
             statusLabel.stringValue = "Build failed"
             content = errorCard(message)
+        case .needsSimulator(let message):
+            statusLabel.stringValue = "Needs a simulator"
+            content = needsSimulatorCard(message)
         case .live(let tiles):
             statusLabel.stringValue = isUpdating ? "Updating…" : ""
             content = liveContent(tiles)
@@ -612,6 +623,35 @@ public final class PreviewCanvasController: NSViewController {
         ])
         return box
     }
+
+    /// UIKit previews without a simulator: an iPhone, what is needed and
+    /// a button to Settings ▸ Simulators (no red: nothing failed).
+    private func needsSimulatorCard(_ message: String) -> NSView {
+        let icon = NSImageView(image: NSImage(systemSymbolName: "rectangle.portrait", accessibilityDescription: "Simulator") ?? NSImage())
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 28, weight: .light)
+        icon.contentTintColor = .secondaryLabelColor
+        let title = NSTextField(labelWithString: "Needs a Simulator")
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        let text = NSTextField(wrappingLabelWithString: message)
+        text.font = .systemFont(ofSize: 11)
+        text.textColor = .secondaryLabelColor
+        text.alignment = .center
+        text.preferredMaxLayoutWidth = 300
+        let button = NSButton(title: "Open Simulators Settings…", target: self, action: #selector(openSimulatorSettings))
+        button.controlSize = .small
+        simulatorSettingsButton = button
+        let again = NSButton(title: "Check Again", target: self, action: #selector(refreshClicked))
+        again.controlSize = .small
+        let buttons = NSStackView(views: [again, button])
+        buttons.spacing = 8
+        let stack = NSStackView(views: [icon, title, text, buttons])
+        stack.orientation = .vertical
+        stack.spacing = 8
+        stack.setCustomSpacing(12, after: text)
+        return centered(stack)
+    }
+
+    @objc private func openSimulatorSettings() { onOpenSimulatorSettings?() }
 
     /// The error card: a red-edged box with the first diagnostic.
     private func errorCard(_ message: String) -> NSView {

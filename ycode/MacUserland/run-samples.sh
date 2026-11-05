@@ -100,5 +100,17 @@ else
     echo "skip hello-swift (not built)"
 fi
 
+# The stage-B samples (swift/build.sh, on a Mac): FoundationEssentials and
+# Swift Concurrency. They need the Swift libraries in the userland root.
+foundation_sample="$dir/foundation"
+[ -f "$foundation_sample" ] || foundation_sample="$here/out/samples/foundation"
+if [ -f "$foundation_sample" ] && [ -f "${MACOS_ROOT:-$here/out/root}/usr/lib/swift/libFoundationEssentials.dylib" ]; then
+    check foundation 0 "$here/samples/foundation.expected" --macos "$foundation_sample"
+    concurrency_sample="$(dirname "$foundation_sample")/concurrency"
+    [ -f "$concurrency_sample" ] && check concurrency 0 "$here/samples/concurrency.expected" --macos "$concurrency_sample"
+else
+    echo "skip foundation and concurrency (not built: sh swift/build.sh on a Mac)"
+fi
+
 echo "run-samples: $passed passed, $failed failed"
 [ "$failed" -eq 0 ]

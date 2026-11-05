@@ -520,6 +520,9 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                         if ProcessInfo.processInfo.environment["YCODE_AIRC_PRESTART"] != "0" { pool.prestart() }
                         return pool
                     }
+                    // GPU hang messages name the client (metal-sim-protocol.md §8.8).
+                    let names = MetalClientNames(system: system)
+                    backendOptions.describeProcess = { names.describe($0) }
                     let backend = VulkanMetalBackend(translator: translator, options: backendOptions)
                     if backend.isAvailable {
                         // CPU access to a surface waits for GPU writes reported scheduled early.
@@ -545,6 +548,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                                     return Double(c.guestCounter) / Double(c.frequency)
                                 }
                             }
+                            names.service = metal
                             metal.start()
                             s.hostServices.append((MetalHostService.serviceNames[0], metal.servicePort))
                             metalService = metal

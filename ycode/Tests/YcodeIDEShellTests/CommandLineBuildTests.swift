@@ -69,7 +69,7 @@ import YcodeBuild
         let noSwbuild = #expect(throws: CommandLineBuild.Failure.self) {
             try CommandLineBuild.make(.swiftBuild, isLinux: true, locateSwbuild: { nil })
         }
-        #expect(noSwbuild?.description == "swbuild not found (set YCODE_SWBUILD). Swift packages build with --engine swiftpm, the default here.")
+        #expect(noSwbuild?.description == "swift-build not found (set YCODE_SWB to Ycode's ycode-swb, or YCODE_SWBUILD to swbuild). Swift packages build with --engine swiftpm, the default here.")
     }
 
     /// No `swift` on the host: the build fails at once with the toolchain

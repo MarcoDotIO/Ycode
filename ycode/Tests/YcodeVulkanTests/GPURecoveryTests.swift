@@ -53,6 +53,8 @@ struct GPURecoveryTests {
     /// here the add kernel's count (buffer 3) is unbound, reads 0, and
     /// nothing is written.
     @Test func unboundBufferReadsZerosInsteadOfHanging() throws {
+        GPUHangTests.lock.lock()
+        defer { GPUHangTests.lock.unlock() }
         let b = Self.backend(watchdog: 6)
         defer { b.shutdown() }
         let n = 256
@@ -86,6 +88,8 @@ struct GPURecoveryTests {
     /// (buffers over guest memory, a texture, a pipeline) work afterwards
     /// with the same GPU address and heap slot.
     @Test func watchdogEndsAHangAndTheDeviceComesBack() throws {
+        GPUHangTests.lock.lock()
+        defer { GPUHangTests.lock.unlock() }
         let b = Self.backend(watchdog: 2)
         defer { b.shutdown() }
         let n = 1000
@@ -158,6 +162,8 @@ struct GPURecoveryTests {
     /// With recovery off (`YCODE_GPU_RECOVER=0`) the watchdog still ends the
     /// hang, but the device stays lost: later work fails, as before.
     @Test func withoutRecoveryTheDeviceStaysLost() throws {
+        GPUHangTests.lock.lock()
+        defer { GPUHangTests.lock.unlock() }
         var o = VulkanMetalBackend.Options()
         o.log = { print($0) }
         o.watchdogSeconds = 2
@@ -193,6 +199,8 @@ struct GPURecoveryTests {
     /// smaller image and never completed on the Thor; the pass is now
     /// rendered at the smallest attachment's size.
     @Test func attachmentsOfDifferentSizesStayInsideTheSmallest() throws {
+        GPUHangTests.lock.lock()
+        defer { GPUHangTests.lock.unlock() }
         let b = Self.backend(watchdog: 6)
         defer { b.shutdown() }
         let big = VK.handle(), small = VK.handle()

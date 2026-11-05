@@ -34,9 +34,11 @@ public struct ArchiveEntry: Equatable, Sendable {
 /// The Organizer's Archives list: finding, reading and grouping
 /// `.xcarchive` bundles. See `specs/ide/organizer.md` §Archives.
 public enum Organizer {
-    /// `~/Library/Developer/Xcode/Archives`.
+    /// `~/Library/Developer/Xcode/Archives`, under `$HOME` as ycodebuild's
+    /// archive action puts them there (`specs/xcodebuild/archive.md` §3).
     public static var defaultArchivesDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Developer/Xcode/Archives")
+        let home = ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()
+        return URL(fileURLWithPath: home).appendingPathComponent("Library/Developer/Xcode/Archives")
     }
 
     /// Reads an archive's `Info.plist`; nil when it is not an archive.

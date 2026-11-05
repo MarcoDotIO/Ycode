@@ -130,7 +130,7 @@ package.targets += [
     // The device windows (compact window, canvas, frame, controls; specs/ide/device-hub.md), shared by the viewer and the IDE
     .target(name: "YcodeDeviceUI", dependencies: ["YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel"]),
     .testTarget(name: "YcodeDeviceUITests", dependencies: ["YcodeDeviceUI", "YcodeDeviceModel", "YcodeDisplayStream"]),
-    .executableTarget(name: "ycode-sim-viewer", dependencies: ["YcodeRelease", "YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeRemoteViewer"]),
+    .executableTarget(name: "ycode-sim-viewer", dependencies: ["YcodeRelease", "YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeRemoteViewer", "YcodeSimLink"]),
     .target(name: "YcodeUI", dependencies: ["YcodeMCP", "YcodeIDECore", "YcodeCompletion", "YcodePreviews", "YcodeProject", "YcodeWorkspace", "YcodeSettings", "YcodeBuild", "YcodeDebug", "YcodeLanguage", "YcodeXcodebuild", "YcodeSubprocess", "YcodeAssistant", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeProfiler"]),
     .executableTarget(name: "YcodeApp", dependencies: ["YcodeRelease", "YcodeUI"]),
     .testTarget(name: "YcodeUITests", dependencies: ["YcodeMCP", "YcodeUI", "YcodeIDECore", "YcodeCompletion", "YcodePreviews", "YcodeDisplayStream", "YcodeSimFeatures", "YcodeDeviceModel", "YcodeDeviceUI", "YcodeBuild", "YcodeDebug", "YcodeLanguage", "YcodeXcodebuild", "YcodeSubprocess", "YcodeAssistant", "YcodeProfiler", "YcodeBuildServer", "YcodeIDEShell"]),
@@ -271,8 +271,10 @@ package.products += [.library(name: "YcodeIDEShell", targets: ["YcodeIDEShell"])
 package.targets += [
     .target(name: "YcodeEditorKit", dependencies: ["YcodeSyntax"]),
     .testTarget(name: "YcodeEditorKitTests", dependencies: ["YcodeEditorKit", "YcodeSyntax"]),
-    .target(name: "YcodeIDEShell", dependencies: ["YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeXcodebuild", "YcodeSimLink", "YcodeEditorKit", "YcodeDebug", "YcodeAssistant"]),
-    .testTarget(name: "YcodeIDEShellTests", dependencies: ["YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeDebug", "YcodeAssistant"]),
+    .target(name: "YcodeIDEShell", dependencies: ["YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeXcodebuild", "YcodeSimLink", "YcodeEditorKit", "YcodeDebug", "YcodeAssistant",
+                                                  "YcodePreviews", "YcodeDeviceModel"]),
+    .testTarget(name: "YcodeIDEShellTests", dependencies: ["YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeDebug", "YcodeAssistant",
+                                                          "YcodePreviews"]),
 ]
 // Agent mode (specs/ide/coding-assistant.md, "Ycode implementation"): the
 // Ycode MCP server (`ycode mcp`, and in-process for the IDE's agents), the
@@ -294,6 +296,7 @@ if FileManager.default.fileExists(atPath: Context.packageDirectory + "/../framew
     package.products += [.executable(name: "ycode-ide", targets: ["ycode-ide"])]
     package.targets += [
         .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeAssistant",
+                                                          "YcodePreviews",
                                                           .product(name: "SwiftUI", package: "swiftui"),
                                                           .product(name: "OVPlatform", package: "swiftui"),
                                                           .product(name: "OVDBus", package: "swiftui")]),
@@ -302,6 +305,7 @@ if FileManager.default.fileExists(atPath: Context.packageDirectory + "/../framew
 #else
 package.products += [.executable(name: "ycode-ide", targets: ["ycode-ide"])]
 package.targets += [
-    .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeAssistant"]),
+    .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeAssistant",
+                                                      "YcodePreviews"]),
 ]
 #endif

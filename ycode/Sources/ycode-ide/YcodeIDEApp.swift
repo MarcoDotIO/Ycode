@@ -60,6 +60,14 @@ struct YcodeIDEApp: App {
         .defaultSize(width: ShellMetrics.windowSize.width, height: ShellMetrics.windowSize.height)
         .commands { ShellMenus(app: ShellApp.model) }
         Settings { ShellSettingsView().shellAppearance() }
+        // Window ▸ Organizer (OrganizerWindow.swift).
+        Window("Organizer", id: ShellAppModel.organizerWindowID) {
+            OrganizerWindowView(model: ShellApp.model.organizer).shellAppearance()
+        }
+        .defaultSize(width: OrganizerWindowView.windowSize.width, height: OrganizerWindowView.windowSize.height)
+        // Window ▸ Organizer is the command table's item; the toolkit's own
+        // entry for the scene would list it twice.
+        .commandsRemoved()
     }
 }
 
@@ -67,6 +75,7 @@ struct YcodeIDEApp: App {
 struct ShellRootView: View {
     @Bindable var app: ShellAppModel
     @Environment(\.openURL) private var openURL
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Group {
@@ -113,7 +122,8 @@ struct ShellRootView: View {
             Text(verbatim: "Your changes will be lost if you don't save them.")
         }
         .onAppear {
-            let app = app, openURL = openURL
+            let app = app, openURL = openURL, openWindow = openWindow
+            app.openWindow = { id in openWindow(id: id) }
             app.openExternally = { url in
                 openURL(url) { accepted in
                     if !accepted { app.linkCouldNotOpen(url) }

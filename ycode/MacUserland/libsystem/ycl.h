@@ -73,6 +73,7 @@ int __sigaction(int, const void *, void *);
 int sigprocmask(int, const void *, void *);
 void os_unfair_lock_lock(os_unfair_lock *);
 void os_unfair_lock_unlock(os_unfair_lock *);
+int os_unfair_lock_trylock(os_unfair_lock *);
 void *_platform_memmove(void *, const void *, size_t);
 void *_platform_memset(void *, int, size_t);
 int _platform_memcmp(const void *, const void *, size_t);
@@ -117,6 +118,7 @@ void ycl_malloc_init(void);
 void ycl_stdio_flush_all(void);
 void ycl_stdio_init(void);
 void ycl_dispatch_init(void);
+void ycl_ctype_init(void);
 void exit(int) YCL_NORETURN;
 void abort(void) YCL_NORETURN;
 size_t strlen(const char *);
@@ -158,7 +160,10 @@ typedef struct ycl_file {
     int flags2;          // 60: YCL_F_*
     struct ycl_file *next; // 64: the open-file list
     unsigned char small[2]; // 72
-    char reserved[78];   // to 152
+    char pad[6];         // 74
+    void *owner;         // 80: the thread holding the (recursive) lock
+    uint32_t depth;      // 88: its lock count
+    char reserved[60];   // 92, to 152
 } FILE;
 enum { YCL_SEOF = 0x20, YCL_SERR = 0x40 };
 enum { YCL_F_READ = 1, YCL_F_WRITE = 2, YCL_F_APPEND = 4, YCL_F_STATIC = 8, YCL_F_OWNBUF = 16, YCL_F_USED = 32 };

@@ -1,0 +1,13 @@
+diff --git a/Sources/FoundationEssentials/CMakeLists.txt b/Sources/FoundationEssentials/CMakeLists.txt
+index 727b436..a2e8e6f 100644
+--- a/Sources/FoundationEssentials/CMakeLists.txt
++++ b/Sources/FoundationEssentials/CMakeLists.txt
+@@ -82,7 +82,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR
+     list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+ endif()
+ 
+-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
++if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT SwiftFoundation_MODERN_DATA_ABI)
+     target_compile_options(FoundationEssentials PRIVATE
+         "SHELL:$<$<COMPILE_LANGUAGE:Swift>:-DDATA_LEGACY_ABI>")
+ endif()

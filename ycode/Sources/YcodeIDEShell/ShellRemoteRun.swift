@@ -56,7 +56,14 @@ public enum ShellRemoteRun {
                 continue
             }
             defer { c.close() }
-            guard let r = try? c.request(LinkRequest(op: "devices")), r.ok, let devices = r.devices, !devices.isEmpty else { continue }
+            guard let r = try? c.request(LinkRequest(op: "devices")), r.ok, let devices = r.devices else { continue }
+            if devices.isEmpty {
+                // A host just set up has no devices: offer one that Run makes.
+                let info = try? c.request(LinkRequest(op: "info"))
+                let row = newDeviceDestination(host: h.name, deviceTypes: info?.deviceTypes ?? [], runtime: info?.runtimes?.first)
+                groups.append(DestinationGroup(title: "Ycode Simulator, \(ExperimentalNotice.label) (\(h.name))", destinations: row.map { [$0] } ?? []))
+                continue
+            }
             groups.append(DestinationGroup(title: "Ycode Simulator, \(ExperimentalNotice.label) (\(h.name))", destinations: devices.map { destination(host: h.name, device: $0) }))
         }
         return groups
@@ -87,13 +94,13 @@ public enum ShellRemoteRun {
 
     /// The folder whose `scripts/` holds the iOS build script: next to the
     /// app's executable when packaged, else the `ycode/` folder above a
-    /// `.build/<config>/` executable.
+    /// `.build/<config>/` or `.build/out/Products/<config>/` executable.
     public static func toolsRoot(executable: String = Bundle.main.executableURL?.path ?? CommandLine.arguments[0]) -> URL {
         let exe = URL(fileURLWithPath: executable).resolvingSymlinksInPath().deletingLastPathComponent()
-        for dir in [exe, exe.deletingLastPathComponent(), exe.deletingLastPathComponent().deletingLastPathComponent(),
-                    exe.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()]
-        where FileManager.default.fileExists(atPath: dir.appendingPathComponent("scripts/ycode-ios-build-linux").path) {
-            return dir
+        var dir = exe
+        for _ in 0..<6 {
+            if FileManager.default.fileExists(atPath: dir.appendingPathComponent("scripts/ycode-ios-build-linux").path) { return dir }
+            dir = dir.deletingLastPathComponent()
         }
         return exe
     }
@@ -113,29 +120,43 @@ public enum ShellRemoteRun {
     /// Builds, uploads, installs and launches, then opens the device window.
     /// `output` gets console lines; returns the window's process (Stop ends it).
     public static func run(project: String, scheme: String, destination: Destination, packageRoot: URL,
-                           output: @escaping @Sendable (String) -> Void) async throws -> Process {
-        try await start(project: project, scheme: scheme, destination: destination, packageRoot: packageRoot, debug: false, output: output).viewer
+                           output: @escaping @Sendable (String) -> Void,
+                           phase: @escaping @Sendable (RemoteRunPhase) -> Void = { _ in },
+                           cancel: RemoteRunCancel = RemoteRunCancel()) async throws -> Process {
+        try await start(project: project, scheme: scheme, destination: destination, packageRoot: packageRoot, debug: false,
+                        output: output, phase: phase, cancel: cancel).viewer
     }
 
     /// `run`, and with `debug` the app runs with the debug stub (the link's
     /// `run` request with `debug`; ShellSimulatorDebug attaches to it).
     public static func start(project: String, scheme: String, destination: Destination, packageRoot: URL, debug: Bool,
-                             output: @escaping @Sendable (String) -> Void) async throws -> Started {
+                             output: @escaping @Sendable (String) -> Void,
+                             phase: @escaping @Sendable (RemoteRunPhase) -> Void = { _ in },
+                             cancel: RemoteRunCancel = RemoteRunCancel()) async throws -> Started {
         guard let (hostName, device) = target(of: destination) else { throw Failure(description: "not a Ycode simulator host destination") }
         guard !device.isEmpty else { throw Failure(description: offlineMessage(host: hostName)) }
+        phase(.building)
         let derived = derivedDataRoot().appendingPathComponent(scheme).path
         let script = ProcessInfo.processInfo.environment["YCODE_IOS_BUILD"] ?? packageRoot.appendingPathComponent("scripts/ycode-ios-build-linux").path
+        guard FileManager.default.isExecutableFile(atPath: script) else {
+            throw Failure(description: "the iOS Simulator build script was not found at \(script); set YCODE_IOS_BUILD to scripts/ycode-ios-build-linux of Ycode")
+        }
         output("Building \(scheme) for the iOS Simulator…\n")
-        let status = try await runProcess(buildCommand(project: project, scheme: scheme, derivedData: derived, script: script), output: output)
+        let status = try await runProcess(buildCommand(project: project, scheme: scheme, derivedData: derived, script: script), output: output,
+                                          started: cancel.started)
+        guard !cancel.isCancelled else { throw Failure(description: "stopped") }
         guard status == 0 else { throw Failure(description: "the build failed (status \(status))") }
         guard let app = builtApp(derivedData: derived, scheme: scheme) else { throw Failure(description: "no .app in \(derived)") }
+        phase(.launching)
         let client = try LinkClient()
         let host = try client.host(named: hostName)
         let c = try client.control(host)
         defer { c.close() }
+        _ = try ensureDevice(c, device: device, type: destination.deviceType, host: host.name, output: output)
         let up = try c.upload(app)
         guard up.ok else { throw Failure(description: up.error ?? "upload failed") }
         output("Uploaded \(up.message ?? app.lastPathComponent) to \(host.name)\n")
+        guard !cancel.isCancelled else { throw Failure(description: "stopped") }
         // The stub's socket is a path on the host: only a host on this
         // computer can be debugged until the link carries the stub.
         let debug = debug && ShellSimulatorDebug.isThisMachine(host.host)
@@ -146,6 +167,7 @@ public enum ShellRemoteRun {
         viewer.executableURL = URL(fileURLWithPath: SimRemoteCLI.viewerPath())
         viewer.arguments = SimRemoteCLI.viewerArguments(host: hostName, device: device, extra: [])
         try viewer.run()
+        watchBoot(host: host, device: device, app: scheme, client: client, output: output, phase: phase)
         return Started(viewer: viewer, app: app, bundleID: r.bundleID ?? up.bundleID, host: host, device: device, debugSocket: r.debugSocket)
     }
 
@@ -167,7 +189,8 @@ public enum ShellRemoteRun {
         return await HeadsetCLI.main(args, out: output) == 0
     }
 
-    static func runProcess(_ argv: [String], output: @escaping @Sendable (String) -> Void) async throws -> Int32 {
+    static func runProcess(_ argv: [String], output: @escaping @Sendable (String) -> Void,
+                           started: (Process) -> Void = { _ in }) async throws -> Int32 {
         try await withCheckedThrowingContinuation { (k: CheckedContinuation<Int32, Error>) in
             let p = Process()
             p.executableURL = URL(fileURLWithPath: argv[0])
@@ -183,7 +206,10 @@ public enum ShellRemoteRun {
                 pipe.fileHandleForReading.readabilityHandler = nil
                 k.resume(returning: proc.terminationStatus)
             }
-            do { try p.run() } catch { k.resume(throwing: error) }
+            do {
+                try p.run()
+                started(p)
+            } catch { k.resume(throwing: error) }
         }
     }
 }

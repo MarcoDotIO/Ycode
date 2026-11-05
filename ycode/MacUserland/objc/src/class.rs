@@ -143,7 +143,18 @@ pub fn name_of(cls: Class) -> *const c_char {
     if cls.is_null() {
         return c"nil".as_ptr();
     }
-    unsafe { (*ro(cls)).name }
+    let r = ro(cls);
+    let name = unsafe { (*r).name };
+    if !name.is_null() {
+        return name;
+    }
+    // A Swift generic class instance: named on first request (swift.rs).
+    let lazy = crate::swift::lazy_name(cls, r);
+    if lazy.is_null() {
+        c"".as_ptr()
+    } else {
+        lazy
+    }
 }
 
 #[inline(always)]
@@ -971,6 +982,10 @@ pub fn lookup_imp_nil(cls: Class, sel: Sel) -> Imp {
 /// Adds a class from an image to the name map (first wins). Runtime lock held.
 pub fn register_class(cls: Class) {
     let name = unsafe { (*ro(cls)).name };
+    if name.is_null() {
+        // Lazily named Swift classes are found through the get-class hook.
+        return;
+    }
     let h = crate::util::hash_cstr(name);
     let (_, existing) = reg().by_name.insert_if_absent(name, h, cls);
     if existing != cls {

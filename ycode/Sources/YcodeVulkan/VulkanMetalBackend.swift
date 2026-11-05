@@ -119,11 +119,34 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         /// buffer fails, and the device is made again
         /// (`YCODE_GPU_WATCHDOG_S`, default 10; 0: off, wait for ever).
         public var watchdogSeconds = ProcessInfo.processInfo.environment["YCODE_GPU_WATCHDOG_S"].flatMap { Double($0) } ?? 10
+        /// The blocking watchdog (metal-sim-protocol.md §8.8): a submission
+        /// still running after this many seconds while command buffers of
+        /// *other* client processes wait behind it is ended as by the
+        /// watchdog. Every client shares the GPU queue, and on the Thor work
+        /// on another queue of the same device does not run while one
+        /// submission is stuck, so the stuck client would stop every other
+        /// one (`YCODE_GPU_BLOCKING_WATCHDOG_S`, default 2; 0: off).
+        public var blockingWatchdogSeconds = ProcessInfo.processInfo.environment["YCODE_GPU_BLOCKING_WATCHDOG_S"]
+            .flatMap { Double($0) } ?? 2
+        /// A client process whose GPU work had to be ended this many times
+        /// loses GPU access: its later command buffers fail at once without
+        /// running (Metal's `MTLCommandBufferErrorAccessRevoked`), so it
+        /// cannot stall the others again (`YCODE_GPU_REVOKE_AFTER`,
+        /// default 2; 0: never).
+        public var revokeAfterHangs = ProcessInfo.processInfo.environment["YCODE_GPU_REVOKE_AFTER"].flatMap { Int($0) } ?? 2
+        /// Names a client process in GPU hang messages (for example
+        /// "WeatherPoster, guest pid 312"); called outside the back end's
+        /// lock. Nil: the service's process number only.
+        public var describeProcess: (@Sendable (MetalProcessID) -> String?)?
         /// After a device loss (or the watchdog) the device is made again and
         /// every object rebuilt in place (VulkanDeviceReset.swift);
         /// `YCODE_GPU_RECOVER=0`: the device stays lost and every later
         /// command buffer fails, as before.
         public var recoverDevice = ProcessInfo.processInfo.environment["YCODE_GPU_RECOVER"] != "0"
+        /// The watchdog ends stuck work by running an empty kernel on a second
+        /// device of ours (VulkanClientIsolation.swift `kickGPU`), not only by
+        /// waiting the device idle (`YCODE_GPU_KICK=0`: the wait alone).
+        public var kick = ProcessInfo.processInfo.environment["YCODE_GPU_KICK"] != "0"
         /// A buffer a function reads that its command buffer left unbound
         /// points at the dummy buffer (metal-shaders.md §4.11);
         /// `YCODE_GPU_UNBOUND_DUMMY=0`: at address 0, as before (experiments).
@@ -212,6 +235,23 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
     var lastResetReport = ""
     /// The watchdog ended the work being waited for (the reset's report says so).
     var watchdogFired = false
+    /// Client isolation (VulkanClientIsolation.swift), under the lock: GPU
+    /// work ended per client process, processes whose access is revoked,
+    /// their refused command buffers, names given by `describeProcess`, and
+    /// the last hang's report (tests, diagnostics).
+    var hangsByProcess: [MetalProcessID: Int] = [:]
+    var revokedProcesses: Set<MetalProcessID> = []
+    var refusedByProcess: [MetalProcessID: Int] = [:]
+    var clientNames: [MetalProcessID: String] = [:]
+    var lastHang = ""
+    /// `YCODE_GPU_INJECT_HANG` (VulkanHangInjection.swift), under the lock,
+    /// and when the back end started (monotonic ns).
+    var hangInjection = HangInjection(ProcessInfo.processInfo.environment["YCODE_GPU_INJECT_HANG"])
+    let startedAt = DispatchTime.now().uptimeNanoseconds
+    /// The kick's second device (completion thread only; VulkanClientIsolation.swift).
+    var kicker: UnsafeMutablePointer<yvk_context>?
+    /// Read without the lock: whether submissions look at `hangInjection` at all.
+    let injectsHangs = ProcessInfo.processInfo.environment["YCODE_GPU_INJECT_HANG"] != nil
     /// Command buffers refused while the device was lost, recorded again by
     /// the reset (VulkanDeviceReset.swift). Under the lock.
     var parked: [ResubmitItem] = []
@@ -337,7 +377,8 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         ctx = .allocate(capacity: 1)
         ctx.initialize(to: yvk_context())
         var opts = yvk_context_options(maxSampledImages: options.maxSampledImages, maxSamplers: options.maxSamplers,
-                                       maxStorageImages: options.maxStorageImages, validation: options.validation ? 1 : 0)
+                                       maxStorageImages: options.maxStorageImages, validation: options.validation ? 1 : 0,
+                                       queues: 1, second: 0)
         var err = [CChar](repeating: 0, count: 512)
         let r = yvk_context_create(ctx, &opts, &err, err.count)
         fn = yvk_fns().pointee
@@ -369,6 +410,7 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         completionThread = thread
         thread.start()
         loadPipelineCache()
+        prepareHangInjection()
         if let path = ProcessInfo.processInfo.environment["YCODE_METAL_TRACE"], !path.isEmpty {
             frameTrace = FrameTrace(path: path, ctx: ctx, fn: fn)
             log(frameTrace == nil ? "frame trace: cannot write \(path) or no timestamp queries" : "frame trace: \(path)")
@@ -432,6 +474,7 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         }
         _ = fn.vkDeviceWaitIdle!(ctx.pointee.device)
         destroyEverything()
+        destroyKicker()
         yvk_context_destroy(ctx)
     }
 
@@ -1254,6 +1297,9 @@ extension VulkanMetalBackend {
 /// Counters for logs and tests.
 public struct VulkanBackendStatistics: Sendable {
     public var buffers = 0, textures = 0, samplers = 0, imports = 0
+    /// Client isolation (VulkanClientIsolation.swift): GPU hangs charged to
+    /// a client, clients whose GPU access was revoked, command buffers refused.
+    public var clientHangs = 0, revokedClients = 0, revokedRefusals = 0
     public var renderPipelines = 0, computePipelines = 0
     public var submissions = 0, draws = 0, dispatches = 0, blits = 0, skipped = 0
     public var surfaceUploads = 0, surfaceDownloads = 0
@@ -1352,6 +1398,7 @@ extension VulkanMetalBackend {
             + (skips.isEmpty ? "" : " (skips by replay line: \(skips))")
             + (lost ? ", DEVICE LOST" : "")
             + (resets > 0 ? ", \(resets) device resets" : "")
+            + (s.clientHangs > 0 ? ", \(s.clientHangs) client GPU hangs, \(s.revokedClients) clients revoked (\(s.revokedRefusals) refused)" : "")
             + (badIndexReleases > 0 ? ", \(badIndexReleases) heap indices released twice" : "")
             + "; translations \(s.translations) + \(s.translationHits) cached, render compiles \(s.renderCompiles), "
             + "compute variants \(s.computeCompiles), pipeline waits \(s.pipelineWaits), recording \(s.recording), "

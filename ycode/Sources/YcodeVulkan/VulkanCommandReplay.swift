@@ -78,6 +78,8 @@ extension VulkanMetalBackend {
             completed(MetalCommandBufferStatus.completed)
             return
         }
+        // Debugging (YCODE_GPU_INJECT_HANG): a hang on demand.
+        let commandBuffer = injectsHangs ? injectHang(commandBuffer) : commandBuffer
         // Pipelines still translating or compiling are waited for here,
         // outside the lock (VulkanPipelines.swift).
         let enteredAt = DispatchTime.now().uptimeNanoseconds
@@ -90,6 +92,8 @@ extension VulkanMetalBackend {
             cond.unlock()
             flushEarlyScheduled()
         }
+        // A client that hung the GPU too often (VulkanClientIsolation.swift).
+        if refuseRevoked(commandBuffer, scheduled: scheduled, completed: completed) { return }
         if deviceLost {
             // A reset is coming (VulkanDeviceReset.swift): it records this one again.
             if !parkForReset(commandBuffer, scheduled: scheduled, completed: completed) {

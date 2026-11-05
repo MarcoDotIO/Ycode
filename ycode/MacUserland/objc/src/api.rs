@@ -49,15 +49,26 @@ pub fn is_kind(mut cls: Class, target: Class) -> bool {
 
 #[no_mangle]
 pub extern "C" fn objc_getClass(name: *const c_char) -> Class {
-    class::class_named(name)
+    named_or_hooked(name)
 }
 #[no_mangle]
 pub extern "C" fn objc_lookUpClass(name: *const c_char) -> Class {
-    class::class_named(name)
+    named_or_hooked(name)
+}
+
+/// The class registered under `name`, else the one the Swift runtime's
+/// get-class hook knows (swift.rs).
+fn named_or_hooked(name: *const c_char) -> Class {
+    let c = class::class_named(name);
+    if c.is_null() {
+        crate::swift::class_from_hook(name)
+    } else {
+        c
+    }
 }
 #[no_mangle]
 pub extern "C" fn objc_getRequiredClass(name: *const c_char) -> Class {
-    let c = class::class_named(name);
+    let c = named_or_hooked(name);
     if c.is_null() {
         let mut m = Msg::new();
         m.s("objc: link error: class '").cstr(name).s("' not found.");
@@ -67,7 +78,7 @@ pub extern "C" fn objc_getRequiredClass(name: *const c_char) -> Class {
 }
 #[no_mangle]
 pub extern "C" fn objc_getMetaClass(name: *const c_char) -> Class {
-    let c = class::class_named(name);
+    let c = named_or_hooked(name);
     if c.is_null() {
         return c;
     }

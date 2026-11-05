@@ -117,3 +117,55 @@ extension InspectorAreaController {
         return abs(r.maxY - content.bounds.maxY) <= 0.5 && abs(r.maxX - content.bounds.maxX) <= 0.5 && wc.inspectorItem.allowsFullHeightLayout
     }
 }
+
+/// metrics.md §15: the navigator's "+" circle holds a "+" alone, centred;
+/// the filter capsule's options glyph (lines in a circle and a chevron)
+/// starts 7.5 in, and the filter text keeps 28 at its leading end.
+@MainActor
+@Suite(.serialized) struct NavigatorBottomBarGlyphTests {
+    /// The ink's x range in `view` (alpha over 0.1), in points, or nil.
+    static func inkRange(_ view: NSView) -> ClosedRange<CGFloat>? {
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let scale = CGFloat(rep.pixelsWide) / max(view.bounds.width, 1)
+        var lo = Int.max, hi = Int.min
+        for x in 0..<rep.pixelsWide {
+            for y in 0..<rep.pixelsHigh where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.1 {
+                lo = min(lo, x); hi = max(hi, x)
+                break
+            }
+        }
+        guard lo <= hi else { return nil }
+        return CGFloat(lo) / scale...CGFloat(hi + 1) / scale
+    }
+
+    @Test func plusIsCentredWithNoArrow() throws {
+        guard #available(macOS 26, *) else { return }
+        let nav = NavigatorInspectorR45Tests().laidOutNavigator()
+        nav.view.setFrameSize(NSSize(width: 290, height: 600))
+        nav.view.layoutSubtreeIfNeeded()
+        let button = nav.addBreakpointButton
+        #expect((button.cell as? NSPopUpButtonCell)?.arrowPosition == .noArrow)
+        let ink = try #require(Self.inkRange(button))
+        let circle = nav.plusGlass.convert(nav.plusGlass.bounds, to: button)
+        let left = ink.lowerBound - circle.minX, right = circle.maxX - ink.upperBound
+        // A "+" alone: about 10.5 wide, with even gaps (the reference's are 9 and 9.5).
+        #expect(ink.upperBound - ink.lowerBound <= 12.5, "\(ink)")
+        #expect(abs(left - right) <= 1, "left \(left), right \(right)")
+    }
+
+    @Test func optionsGlyphAndTextStartWhereTheReferenceDoes() throws {
+        guard #available(macOS 26, *) else { return }
+        let nav = NavigatorInspectorR45Tests().laidOutNavigator()
+        nav.view.setFrameSize(NSSize(width: 290, height: 600))
+        nav.view.layoutSubtreeIfNeeded()
+        let options = nav.filterOptions
+        let ink = try #require(Self.inkRange(options))
+        let capsule = nav.filterGlass.convert(nav.filterGlass.bounds, to: options)
+        let start = ink.lowerBound - capsule.minX, end = ink.upperBound - capsule.minX
+        #expect(abs(start - 7.5) <= 1, "glyph starts \(start)")
+        #expect(abs(end - 27.5) <= 1.5, "glyph ends \(end)")
+        let field = try #require(nav.filter as? NavigatorFilterField)
+        #expect(field.leadingInset == NavigatorAreaController.filterTextInset)
+    }
+}

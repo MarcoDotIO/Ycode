@@ -161,9 +161,12 @@ import YcodeProject
             let f = field.frame
             let options = nav.filterOptions.alignmentRect(forFrame: nav.filterOptions.frame)
             #expect(f.contains(options), "navigator \(i): options \(options) inside \(f)")
-            #expect(options.minX - f.minX <= 4, "navigator \(i): at the leading end")
+            // Horizontally the frame, which the glyph fills (metrics.md §15).
+            let optionsFrame = nav.filterOptions.frame
+            let fieldAlign = field.alignmentRect(forFrame: f)
+            #expect(abs(optionsFrame.minX - fieldAlign.minX - NavigatorFilterField.optionsLeading) <= 0.5, "navigator \(i): at the leading end")
             let text = field.rectForSearchText(whenCentered: false).offsetBy(dx: f.minX, dy: f.minY)
-            #expect(text.minX >= options.maxX - 0.5, "navigator \(i): text after the options")
+            #expect(text.minX >= optionsFrame.maxX - 0.5, "navigator \(i): text after the options")
             let shown = nav.toggleButtons.filter { !$0.isHidden }
             #expect(shown.count == NavigatorBars.specs[i].toggles.count)
             for b in shown {

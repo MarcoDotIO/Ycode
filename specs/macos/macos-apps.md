@@ -1,12 +1,15 @@
 # Spec: running native macOS programs and apps with Ycode on Linux
 
 Status: **design and feasibility (round 1, 2026-10-29)**, with Milestone A
-implemented (§9.1). Ycode design, written in the clean room: it uses the
+implemented (§9.1) and stage B in part (§9.3, §9.4: the Swift runtime,
+Concurrency and FoundationEssentials run; URLSession does not yet). Ycode design, written in the clean room: it uses the
 existing Ycode specs, public documentation and the license texts of the open
 projects it names. No Apple binary was studied for it.
 
 Related: `specs/macos/dyld.md` (Ycode's dynamic linker for macOS
 processes), `specs/macos/libsystem.md` (Ycode's libSystem shim),
+`specs/macos/objc-runtime.md` (Ycode's Objective-C runtime),
+`specs/macos/swift-runtime.md` (the Swift runtime and Foundation),
 `specs/simulator/native-mode.md`, `docs/native-loader-evaluation.md`,
 `docs/SIMULATOR-LINUX.md`, `docs/FUTURE.md` (macOS is second in the platform
 order).
@@ -188,13 +191,14 @@ MIT):
 | libc | Apple `Libc` | APSL-2.0, with many files under BSD licenses | As above |
 | Kernel, platform, pthread libraries | Apple `xnu` (libsyscall), `libplatform`, `libpthread` | APSL-2.0 | As above; **Ycode already has its own** (`ycode/SimHostLibs`, MIT) |
 | malloc | Apple `libmalloc` | APSL-2.0 | Ycode's own is small (`libsystem.md` §5) |
-| libdispatch | `swift-corelibs-libdispatch` / Apple `libdispatch` | Apache-2.0 | Compatible with MIT (keep NOTICE and license text). Its Darwin build expects the real kevent/workqueue/Mach surface, which `YcodeDarwinKernel` provides; a stage-B task. Milestone A uses Ycode's small dispatch (`libsystem.md` §7) |
+| libdispatch | `swift-corelibs-libdispatch` / Apple `libdispatch` | Apache-2.0 | Compatible with MIT (keep NOTICE and license text). Its Darwin build is not maintained upstream and needs Apple's private headers (§9.4); Ycode's own dispatch in libSystem stands in (`libsystem.md` §7) |
 | Blocks runtime | LLVM `compiler-rt` BlocksRuntime | Apache-2.0 WITH LLVM-exception | Compatible; Milestone A uses Ycode's own (§7 of `libsystem.md`), written from the public Block ABI specification |
 | Objective-C runtime | Apple `objc4` | APSL-2.0 | Separate component built from upstream; or GNUstep's `libobjc2` (MIT) which implements a different ABI and does not run Apple-ABI binaries |
 | CoreFoundation | `swift-corelibs-foundation`'s CoreFoundation (CF-Lite lineage) | Apache-2.0 with the Swift Runtime Library Exception | Compatible |
 | Foundation | `swift-foundation` (FoundationEssentials, FoundationInternationalization) and `swift-corelibs-foundation` | Apache-2.0 with Runtime Library Exception | Compatible. Built for a Darwin target it would normally *be* Apple's Foundation's role; on Ycode it is the open Foundation (§9, stage B) |
 | ICU | `swift-foundation-icu` / ICU | Unicode License v3 (ICU) | Compatible |
-| Swift runtime and stdlib | `swift` repository | Apache-2.0 with Runtime Library Exception | Compatible; Milestone A uses Embedded Swift (no runtime library) |
+| Swift runtime and stdlib | `swift` repository | Apache-2.0 with Runtime Library Exception | Compatible; Milestone A used Embedded Swift; stage B builds the full runtime with Objective-C interop on Ycode's runtime (`swift-runtime.md`) |
+| C++ library, unwinder, libm | LLVM `libc++`, `libc++abi`, `libunwind`, `libc` (math, `strtod`), `compiler-rt` builtins | Apache-2.0 WITH LLVM-exception | Compatible; in use since stage B (`libsystem.md` §13, `swift-runtime.md` §6) |
 | AppKit | GNUstep `libs-gui` / `libs-base` | LGPL (version 2 or later per the GNUstep file headers; to be re-checked per release before any use) | **Reference only** (no code copied into Ycode). Linking LGPL libraries dynamically is allowed, but GNUstep's ABI is not Apple's: Apple-built app binaries cannot use it |
 | AppKit | **Ycode's own AppKit** (clean room, from Apple's public documentation and black-box behavior) | MIT (Ycode) | The recommended long-term path (§6); the `frameworks/` area already does this for SwiftUI and others |
 | Whole-system reference | Darling | GPL-3.0 (plus APSL-2.0 parts) | **Design reference only.** No code may be copied: GPL-3.0 is incompatible with releasing Ycode under MIT (`native-loader-evaluation.md` §6) |
@@ -452,28 +456,90 @@ owns a serial queue keeps draining it, `libsystem.md` §7.2); a 128-bit
 division needed a compiler-runtime helper (removed); Embedded Swift cannot
 print an `Array` directly (the sample prints the elements).
 
-### 9.3 Milestone B status
+### 9.3 Stage B status (2026-11-05, 1.0.0-beta.3, #87)
 
-- **Foundation CLI: not yet, for a structural reason.** Every open
-  Foundation (swift-corelibs-foundation, swift-foundation) needs the
-  non-embedded Swift runtime (`libswiftCore`) and the Swift standard
-  library built for a Darwin target. The open toolchains ship those for
-  Linux only, and on Darwin targets the Swift runtime is built with
-  Objective-C interoperability, which needs an Objective-C runtime (Apple's
-  `objc4`, APSL-2.0: owner decision 2, §6, or a clean-room one). The
-  CoreFoundation part also needs much more of libc (locales, `stat`
-  families, `readdir`, `pthread` keys, ICU) and the full libdispatch.
-  The plan is stage B (§9): build the Apache-2.0 libdispatch for
-  `arm64-apple-macos` against Ycode's libSystem first, then a Swift runtime
-  for Darwin without Objective-C interop (a non-standard configuration of
-  the open Swift build that must be tried), then swift-foundation's
-  FoundationEssentials, which has fewer dependencies than
-  swift-corelibs-foundation.
-- **Windowing prototype: design only this round** (§7). The display
-  stream today reads the simulator's frame record and IOSurfaces from the
-  IOSurface host service, which only device mode starts; a macOS process
-  has neither. The smallest working path is the window broker of §7.1 with
-  shared-memory surfaces, served by the same display-stream server.
+The plan was, in order: Apache-2.0 libdispatch for `arm64-apple-macos`; a
+Swift runtime for Darwin, with and without Objective-C interop;
+swift-foundation's FoundationEssentials, then FoundationInternationalization
+or swift-corelibs-foundation; the libc they need; packaging.
+
+| Step | Result |
+|---|---|
+| Swift runtime and standard library for Darwin | **Done.** Both configurations build and run; Ycode ships the Objective-C-interop one, on Ycode's Rust runtime (`swift-runtime.md` §2, `objc-runtime.md` §15) |
+| Concurrency, Synchronization, Observation, Regex | **Done** (`swift-runtime.md` §1) |
+| libc for the runtime, libc++ and FoundationEssentials | **Done**: libSystem's own exports grew from about 210 to 771, with LLVM libc's math and `strtod`, compiler-rt, libunwind and thread-local variables (`libsystem.md` §12-§14); LLVM's libc++ (`swift-runtime.md` §6) |
+| FoundationEssentials | **Done.** `Date`, `JSONEncoder`/`JSONDecoder`, `FileManager` and the rest of Essentials run (§9.4) |
+| Apache-2.0 libdispatch | **Not built**: why, and what it takes, below. Ycode's own dispatch grew what Concurrency needs (timer sources, wall-clock times, queue assertions; `libsystem.md` §7.3) |
+| FoundationInternationalization (ICU), swift-corelibs-foundation (`Foundation`, CoreFoundation), FoundationNetworking (`URLSession`) | **Not done**: below |
+| Packaging | **Done**: `MacUserland/swift/build.sh` (on a Mac) builds everything into `out/sdk` and `out/root`, with each project's licence and notice (`swift-runtime.md` §8) |
+
+The stage-B check (a CLI using `Date`, `JSONEncoder`, `FileManager` *and
+`URLSession` to localhost*) therefore passes **without its `URLSession`
+part**: `samples/foundation.swift` imports FoundationEssentials and checks
+the other three.
+
+### 9.4 Stage B results, and what URLSession needs
+
+Results on the arm64 Linux host (`ycode-simd --macos`), all with exit
+status 0 and the expected output: a hello-world with classes, generics and
+closures in both runtime configurations; a language test (generic classes,
+`deinit`, weak references, dynamic casts, `Mirror`, errors, Unicode
+strings, `Double(String)`); and `samples/foundation.swift`, checked by
+`run-samples.sh` against `samples/foundation.expected`.
+
+**Why Apache-2.0 libdispatch is not built.** swift-corelibs-libdispatch is
+maintained for Linux, Windows, FreeBSD and Android; its Darwin
+configuration is not exercised upstream:
+
+1. Its CMake build fails at configure time for Darwin (a malformed
+   generator expression in the `APPLE` branch of the module-map options;
+   `BlocksRuntime` is linked but only defined for non-Apple targets).
+   Both are one-line fixes.
+2. With `__APPLE__` defined, `internal.h` turns on Apple's SPI families
+   (Mach SPI, voucher creation and activity, firehose logging, layout SPI)
+   and includes headers that are not in the SDK and not in the repository:
+   `<firehose/tracepoint_private.h>`, `<pthread/workqueue_private.h>`,
+   `<pthread/qos_private.h>`, `<os/voucher_private.h>`' dependencies,
+   `<sys/guarded.h>`, `<voucher/ipc_pthread_priority_types.h>`. They are
+   Apple's (APSL-2.0) and Ycode does not copy them.
+3. Switching those families off (`DISPATCH_MACH_SPI=0`,
+   `OS_VOUCHER_*_SPI=0`, `OS_FIREHOSE_SPI=0`, `DISPATCH_LAYOUT_SPI=0`,
+   `HAVE_MACH=OFF`) leads to the portable code paths, which then collide
+   with the SDK's own definitions: libdispatch's generic shims define Mach
+   types and QoS enumerations that `<mach/*.h>` and `<sys/qos.h>` already
+   define (115 shadowing errors under `-Werror`, ~150 redefinitions), and
+   config macros such as `__DARWIN_NON_CANCELABLE` are defined empty where
+   the SDK tests their value.
+
+What it would take: a "Darwin without SPI" port of libdispatch, kept as
+Ycode patches: the CMake fixes; a platform header that keeps the SDK's
+Mach and QoS types and drops libdispatch's duplicates; the internal
+workqueue (`DISPATCH_USE_INTERNAL_WORKQUEUE`, already chosen by its
+configure step) over Ycode's pthreads; the kevent backend over Ycode's
+kernel (which implements `kevent` for the simulator); locks on
+`__ulock_wait`/`__ulock_wake` (exported by Ycode's libsystem_kernel); no
+vouchers or firehose. Estimate: several days, mostly in the shims and the
+event layer. Then libSystem re-exports it as
+`/usr/lib/system/libdispatch.dylib` (today's alias, `libsystem.md` §2),
+replacing Ycode's dispatch.
+
+**What URLSession needs.** `URLSession` is not in swift-foundation; it is
+in swift-corelibs-foundation's FoundationNetworking, which sits on the
+whole open Foundation stack:
+
+| Piece | Status and what remains |
+|---|---|
+| `Dispatch` Swift overlay (swift-corelibs-libdispatch `src/swift`) | Needs most of the libdispatch API at link time: dispatch data and I/O objects, file-descriptor read/write sources, `dispatch_block_*`, work items. With Ycode's dispatch that is a large addition; with the ported libdispatch above it comes for free |
+| FoundationInternationalization | Needs swift-foundation-icu (ICU 7x as C++); its C++ needs the full libc++, which links now (`swift-runtime.md` §6). Not attempted in this wave |
+| swift-corelibs-foundation: CoreFoundation | CF-Lite C sources: on a Darwin target they take the `TARGET_OS_MAC` paths (Mach-port run loops, `_dispatch_get_main_queue_port_4CF`, `notify`), which are Apple's private interfaces. It needs a configuration that uses the portable (Linux-like) run loop on dispatch with eventfd-like wake-ups (a pipe or kqueue user event), the same "Darwin without SPI" approach as libdispatch |
+| swift-corelibs-foundation: `Foundation` | Pure Swift with `#if os(macOS)` and `canImport(Darwin)` branches that assume Apple's Foundation is the one on Darwin (they import `Darwin` paths written for `FOUNDATION_FRAMEWORK`); needs an audit of those branches and Ycode patches |
+| FoundationNetworking | Uses libcurl (curl licence, MIT-style) with dispatch sources for socket readiness; libcurl builds for a Darwin target with `--without-ssl` for `http://localhost`, against Ycode's libSystem: sockets and `poll` exist (Ycode's kernel serves inet sockets on host sockets); `getaddrinfo` is missing from libSystem (localhost only needs numeric hosts) |
+
+Order of work for the next wave: the libdispatch port; then the Dispatch
+overlay; FoundationInternationalization with ICU; CoreFoundation and
+`Foundation`; libcurl and FoundationNetworking; then the full stage-B
+check with `URLSession` against a server on the host (ports 47930-47939 on
+the Thor for this agent's runs).
 
 ## 10. x86-64 macOS apps
 
@@ -536,4 +602,6 @@ user-mode arm64 translation on an x86-64 host, deferred).
 | Component licenses (§5.2) | Each project's published license file or statement; GNUstep's to be re-checked |
 | Darling and Kakehashi properties | `docs/native-loader-evaluation.md` |
 | Rosetta 2 behavior | 1 (Apple's public documentation) |
+| §9.3-§9.4 build findings (libdispatch, swift-corelibs-foundation, swift-foundation) | 1 (the open projects' sources and build files) and 2 (Ycode's own build attempts) |
+| §9.4 run results | 3 (Ycode's own programs under `ycode-simd --macos`) |
 | Everything marked "Ycode plan" or "Ycode-design" | Ycode design, no Apple evidence needed |

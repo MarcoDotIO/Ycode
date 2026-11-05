@@ -16,8 +16,35 @@ YCL_EXPORT FILE *__stderrp = &__sF[2];
 static os_unfair_lock list_lock;
 static FILE *open_files;
 
-static void lock_file(FILE *f) { os_unfair_lock_lock(&f->lock); }
-static void unlock_file(FILE *f) { os_unfair_lock_unlock(&f->lock); }
+// The stream lock is recursive, as flockfile(3) requires: a thread that
+// holds it (flockfile) can still call the stream functions, which lock too.
+pthread_t pthread_self(void);
+static void lock_file(FILE *f) {
+    void *self = pthread_self();
+    if (__atomic_load_n(&f->owner, __ATOMIC_RELAXED) == self) {
+        f->depth++;
+        return;
+    }
+    os_unfair_lock_lock(&f->lock);
+    __atomic_store_n(&f->owner, self, __ATOMIC_RELAXED);
+    f->depth = 1;
+}
+static int trylock_file(FILE *f) {
+    void *self = pthread_self();
+    if (__atomic_load_n(&f->owner, __ATOMIC_RELAXED) == self) {
+        f->depth++;
+        return 1;
+    }
+    if (!os_unfair_lock_trylock(&f->lock)) return 0;
+    __atomic_store_n(&f->owner, self, __ATOMIC_RELAXED);
+    f->depth = 1;
+    return 1;
+}
+static void unlock_file(FILE *f) {
+    if (--f->depth) return;
+    __atomic_store_n(&f->owner, 0, __ATOMIC_RELAXED);
+    os_unfair_lock_unlock(&f->lock);
+}
 
 static int is_terminal(int fd) {
     char termios[72];
@@ -419,6 +446,7 @@ YCL_EXPORT void clearerr(FILE *f) { f->_flags &= ~(YCL_SEOF | YCL_SERR); }
 YCL_EXPORT int fileno(FILE *f) { return f->_file; }
 YCL_EXPORT void flockfile(FILE *f) { lock_file(f); }
 YCL_EXPORT void funlockfile(FILE *f) { unlock_file(f); }
+YCL_EXPORT int ftrylockfile(FILE *f) { return trylock_file(f) ? 0 : -1; }
 
 YCL_EXPORT int setvbuf(FILE *f, char *buf, int mode, size_t size) {
     lock_file(f);

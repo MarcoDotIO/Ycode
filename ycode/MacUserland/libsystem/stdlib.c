@@ -135,34 +135,7 @@ YCL_EXPORT int atoi(const char *s) { return (int)strtol(s, 0, 10); }
 YCL_EXPORT long atol(const char *s) { return strtol(s, 0, 10); }
 YCL_EXPORT long long atoll(const char *s) { return strtoll(s, 0, 10); }
 
-// A simple decimal parser (not correctly rounded; libsystem.md §6).
-YCL_EXPORT double strtod(const char *s, char **end) {
-    const char *p = s;
-    while (is_space((unsigned char)*p)) p++;
-    int negative = 0;
-    if (*p == '+' || *p == '-') negative = *p++ == '-';
-    double v = 0;
-    int any = 0;
-    while (*p >= '0' && *p <= '9') v = v * 10 + (*p++ - '0'), any = 1;
-    if (*p == '.') {
-        p++;
-        double scale = 0.1;
-        while (*p >= '0' && *p <= '9') v += (*p++ - '0') * scale, scale /= 10, any = 1;
-    }
-    if (any && (*p | 0x20) == 'e') {
-        const char *q = p + 1;
-        int eneg = 0, e = 0;
-        if (*q == '+' || *q == '-') eneg = *q++ == '-';
-        if (*q >= '0' && *q <= '9') {
-            while (*q >= '0' && *q <= '9') e = e < 10000 ? e * 10 + (*q++ - '0') : (q++, e);
-            while (e--) v = eneg ? v / 10 : v * 10;
-            p = q;
-        }
-    }
-    if (end) *end = (char *)(any ? p : s);
-    return negative ? -v : v;
-}
-YCL_EXPORT double atof(const char *s) { return strtod(s, 0); }
+// strtod, strtof, strtold and atof are LLVM libc's (llvm_libc.cpp).
 
 YCL_EXPORT int abs(int v) { return v < 0 ? -v : v; }
 YCL_EXPORT long labs(long v) { return v < 0 ? -v : v; }

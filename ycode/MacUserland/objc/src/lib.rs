@@ -33,6 +33,7 @@ pub mod protocol;
 pub mod rr;
 pub mod sel;
 pub mod sync;
+pub mod swift;
 pub mod sys;
 pub mod tagged;
 pub mod util;
