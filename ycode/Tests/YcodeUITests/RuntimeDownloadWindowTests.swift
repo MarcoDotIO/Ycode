@@ -135,10 +135,13 @@ import Testing
         s.downloads.environment = ["YCODE_XCODEBUILD": ok, "PATH": "/usr/bin:/bin"]
         let transport = Transport()
         let installed = LockedFlag()
+        // A stand-in host for the confirmation's host line and the request, whatever Mac runs the test.
+        let host = RuntimeHostDescription(isMac: true, productName: "macOS", productVersion: "27.2", buildVersion: "26B1",
+                                          architecture: "arm64", macModel: "Mac15,10", client: "Ycode/1.0.0-beta.2")
+        s.downloads.host = host
         s.downloads.makeDirect = { folder in
             let d = RuntimeDirectDownload(folder: folder, transport: transport, expander: SystemAppleArchiveExpander(), reader: HdiutilImageReader(),
-                                          host: RuntimeHostDescription(isMac: true, productName: "macOS", productVersion: "27.2", buildVersion: "26B1",
-                                                                       architecture: "arm64", macModel: "Mac15,10", client: "Ycode/1.0.0-beta.2"))
+                                          host: host)
             // Room for the archive whatever the host's disk holds (§6.2's space check is the model's, not this volume's).
             d.freeSpace = { _ in 200 << 30 }
             d.query = { type, build in
