@@ -152,7 +152,7 @@ recovered by the decoder.
 
 On a `control` connection: one JSON request per line, one JSON response per
 line (`ok`, `error`, `message`, and per request `devices`, `deviceTypes`,
-`runtimes`, `log`, `host`, `bundleID`).
+`runtimes`, `log`, `host`, `bundleID`, `debugSocket`).
 
 | op | Fields | Does |
 |---|---|---|
@@ -161,6 +161,7 @@ line (`ok`, `error`, `message`, and per request `devices`, `deviceTypes`,
 | `create` | `device`, `deviceType` | copies the host's pristine device of that type |
 | `boot` | `device`, `cold` | starts the launcher with the device's display socket (warm boot: a saved device restores) |
 | `run` | `device`, `app`, `bundleID` (else read from the app's `Info.plist`) | a running device is stopped (saved) first; the launcher installs and launches the uploaded app |
+| `run` with `debug: true` | as `run` | the app runs with the debug stub (`--debug-server unix:<home>/run/<device>.debug.sock`, an app option outside the warm-boot fingerprint; `debug-stub.md`); the response's `debugSocket` is that path on the host. A client on the host itself attaches to it (`specs/ide/debug.md`, "The Linux IDE: apps on the simulator"); the link does not carry the stub's connection yet (#50). A stale socket of an earlier run is removed before the start |
 | `shutdown` | `device` | SIGTERM to the launcher (it saves the device), up to 150 s, then the process group is killed |
 | `log` | `device`, `lines` | the launcher's log tail |
 | `upload` | `app` (`X.app`), `size` | followed by `size` bytes of a directory archive (§6.2); replaces `<home>/apps/X.app` |
@@ -249,7 +250,8 @@ device of each paired host that answers within the connection's timeout is
 a destination "<device> (<host>)" (`YCODE_IDE_REMOTE_DESTINATIONS=0` leaves
 them out); Product ▸ Run on one builds the scheme for the iOS Simulator on
 this machine with `scripts/ycode-ios-build-linux` (the user's own SDK copy,
-`YCODE_USER_SDK`; `YCODE_IOS_BUILD` names another script), uploads,
+`YCODE_USER_SDK`; `YCODE_IOS_BUILD` names another script; derived data in
+`$XDG_CACHE_HOME/ycode/remote-run/<scheme>`, else `~/.cache/…`), uploads,
 installs, launches, and opens the device window (`ycode-sim-viewer --link`,
 an SDL window next to the IDE's; §11); Stop closes it.
 

@@ -40,6 +40,8 @@ public enum ShellCommand: String, CaseIterable, Sendable {
     case scmCommit, scmPush, scmPull, scmFetch, scmRefresh, scmStageAll, scmStageSelected, scmUnstageAll, scmUnstageSelected
     case scmMarkResolved, scmAddSelected, scmCherryPick, scmStash, scmDiscardAll, scmDiscardSelected
     case scmNewRepository
+    // Integrate ▸ Resolve Conflicts…, Continue, Abort (shown while an operation is stopped)
+    case scmResolveConflicts, scmContinueIntegration, scmAbortIntegration
     // View ▸ Navigators: Source Control (⌘2), Tests (⌘6), Reports (⌘9)
     case showSourceControlNavigator, showTestNavigator, showReportNavigator
     // Product ▸ Perform Action ▸ Test Again
@@ -172,6 +174,8 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         .scmUnstageSelected: "scmUnstageSelected:", .scmMarkResolved: "scmMarkResolved:", .scmAddSelected: "scmAddSelected:",
         .scmCherryPick: "scmCherryPick:", .scmStash: "scmStash:",
         .scmDiscardAll: "scmDiscardAll:", .scmDiscardSelected: "scmDiscardSelected:", .scmNewRepository: "scmNewRepository:",
+        .scmResolveConflicts: "scmResolveConflicts:", .scmContinueIntegration: "scmContinueIntegration:",
+        .scmAbortIntegration: "scmAbortIntegration:",
     ]
 
     /// Whether the command is one of Integrate's source-control items.

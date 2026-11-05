@@ -108,6 +108,14 @@ enum SettingsDriver {
             await shot(prefix, "appearance-scrolled")
         }
 
+        // Accounts: the empty list, and the sheet + shows (AccountsDriver
+        // checks the page in detail).
+        await open(.accounts)
+        await shot(prefix, "accounts")
+        await click("settings accounts add")
+        await shot(prefix, "accounts-sheet")
+        model.isAccountsSheetShown = false
+
         // Behaviors: the list, then an event's page with Notify checked.
         await open(.behaviors)
         await shot(prefix, "behaviors")

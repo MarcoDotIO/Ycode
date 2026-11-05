@@ -84,6 +84,7 @@ definitions must match them exactly.
 | `__block` variables | `isa`, `forwarding`, `int flags`, `int size`, then `keep`/`destroy` helpers when flag `1<<25`, then the variable | The copy helper calls `_Block_object_assign` with field kind 8 |
 | `_Block_object_assign` kinds | object 3, block 7, byref 8, weak 16, caller 128 | |
 | Stack protector | `__stack_chk_guard` is an exported `long`; `__stack_chk_fail` never returns | Programs built with `-fstack-protector` read it |
+| Stack probe | `__chkstk_darwin` (compiler-rt on a Mac, re-exported by libSystem): frame size in `x9`, only `x9` and the flags change | clang calls it in every function whose frame exceeds a page; Ycode's libSystem forwards it to libsystem_pthread's probe (`compiler_rt.c`) |
 | `ProgramVars` | five pointers (`dyld.md` §7.1) | |
 
 ## 5. malloc

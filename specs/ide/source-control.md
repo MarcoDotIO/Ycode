@@ -304,14 +304,43 @@ the Flatpak `git` is the host-tool wrapper (`HostTool.path("git")`).
   Repository…, enabled by `IntegrateMenuState`.
 - Paths: a workspace opened through a link is mapped to git's real paths
   and back (`repoPath`, `workspacePath`).
+- **Conflict editor** (B3-CONFLICT, 2026-11-05, #75) over the editor
+  area, as `comparison.md` describes the AppKit one: both IDEs draw the
+  core's `ConflictEditorState` (`YcodeIDECore/SourceControl/`: the files
+  and the shown one, its `MergeDocument`, the selected change, the
+  compared pair, hand editing, every title, count and enablement);
+  `YcodeIDEShell/ConflictEditorShellModel.swift` reads and writes git off
+  the main actor, `SourceControlShellModel+Conflicts.swift` opens and
+  closes it, and `ycode-ide/ConflictEditorView.swift` draws it: the top
+  row, the hunk bar (choices and pairs as capsule segments sized to their
+  titles), the two versions side by side with line numbers, "Edited
+  Change" while a change is written by hand, and the result, tinted per
+  change; clicking a result line selects its change. A conflicting merge,
+  rebase, cherry-pick, pull or stash apply opens it on the first
+  conflicted file (instead of a notice); one that completes, or an abort,
+  closes it. Selecting a conflicted change, its Resolve Conflicts… and
+  Integrate ▸ Resolve Conflicts… open it; Integrate's Mark Selected Files
+  as Resolved writes its result there. Integrate shows Resolve
+  Conflicts…, Continue <operation> and Abort <operation> only while an
+  operation is stopped or files conflict (`MenuConditions`). Abort, from
+  the editor, the banner or the menu, asks "Abort the <operation>?"
+  first.
 
 Tests: `YcodeIDEShellTests/SourceControlShellTests.swift` (repositories with
 a repository-local `user.name` and `user.email` and a bare repository as the
 remote: both trees, the commit editor, scopes, staging, amend, the sheet,
 discard, branches, checkout with stash, merge, delete, history, push, pull,
 Commit and Push, change bars, file history, the Integrate menu outside
-git). End to end on Linux: `ycode-ide` with `YCODE_IDE_SCM=<prefix>`
-(`ShellDriver+SourceControl.swift`).
+git); `ConflictEditorShellTests.swift` (a merge resolved by sides and by
+hand, then continued; markers refused; the row and Integrate items; a
+rebase aborted after the question; a cherry-pick continued) and
+`YcodeIDECoreTests/ConflictEditorStateTests.swift`. End to end on Linux:
+`ycode-ide` with `YCODE_IDE_SCM=<prefix>` (`ShellDriver+SourceControl.swift`)
+and `scripts/linux-conflict/run.sh` (`YCODE_IDE_CONFLICT`,
+`ShellDriver+Conflicts.swift`: the Merger repository's merge resolved
+through the pointer, one file by choosing sides and one by typing, the
+merge continued, a cherry-pick continued and a rebase aborted, then
+checked with git).
 
 ### Evidence
 
@@ -320,3 +349,5 @@ git). End to end on Linux: `ycode-ide` with `YCODE_IDE_SCM=<prefix>`
 - Layout and labels: `reference-ui-4.md` §2–§3 (level 3) through the AppKit
   IDE's implementation. The change-row menu items, the banner, the
   questions' wording and the push and pull fallbacks are Ycode's design.
+- The conflict editor: Ycode's design (`comparison.md`, "Ycode
+  implementation", and its open question on the reference's layout).

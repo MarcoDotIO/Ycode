@@ -195,6 +195,8 @@ public final class WorkspaceShellModel {
         c.isPaused = debug.isPaused
         c.breakpointsActive = debug.breakpoints.isActive
         c.caretLineBreakpointsEnabled = debug.caretLineBreakpointsEnabled
+        c.integrationVerb = sourceControl.snapshot.integration.verb
+        c.hasConflicts = sourceControl.snapshot.changes.contains { $0.status == .conflicted }
         return c
     }
 
@@ -468,11 +470,10 @@ public final class WorkspaceShellModel {
         debugPane = .console
         remoteViewer?.terminate()
         let session = session
-        let out: @Sendable (String) -> Void = { text in Task { @MainActor in session.appendConsole(text, kind: .debugger) } }
-        let packageRoot = ShellRemoteRun.toolsRoot()
         do {
-            remoteViewer = try await ShellRemoteRun.run(project: session.model.url.path, scheme: session.scheme ?? workspaceName,
-                                                        destination: d, packageRoot: packageRoot, output: out)
+            // Under the debugger when the host is this computer (ShellSimulatorDebug).
+            try await ShellSimulatorDebug.run(session: session, scheme: session.scheme ?? workspaceName, destination: d, packageRoot: ShellRemoteRun.toolsRoot(),
+                                              started: { remoteViewer = $0 }, isCurrent: { [weak self] in self?.remoteViewer === $0 })
         } catch {
             session.appendConsole("Run on \(d.name) failed: \(error)\n", kind: .debugger)
         }
@@ -496,7 +497,8 @@ public final class WorkspaceShellModel {
     public func stop() {
         remoteViewer?.terminate()
         remoteViewer = nil
-        session.stop()
+        // A simulator app's debugger detaches; the app runs on (ShellSimulatorDebug).
+        if session.isDebuggingSimulatorStub { session.detachFromSimulatorStub() } else { session.stop() }
     }
 
     // MARK: Commands

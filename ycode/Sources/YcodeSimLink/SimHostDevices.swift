@@ -95,10 +95,13 @@ public struct SimHostConfig: Sendable, Equatable {
     public var appsDirectory: String { home + "/apps" }
     public func socketPath(_ device: String) -> String { runDirectory + "/" + device + ".sock" }
     public func logPath(_ device: String) -> String { runDirectory + "/" + device + ".log" }
+    /// The debug stub's socket of a run with `debug` (debug-stub.md §3).
+    public func debugSocketPath(_ device: String) -> String { runDirectory + "/" + device + ".debug.sock" }
     public var simd: String { tree + "/.build/release/ycode-simd" }
 
     /// The launcher's environment and arguments for a run (`ycode-sim-serve start`'s).
-    public func launch(device: String, type: String, app: String?, bundleID: String?, cold: Bool) -> (env: [String: String], args: [String]) {
+    public func launch(device: String, type: String, app: String?, bundleID: String?, cold: Bool,
+                       debug: Bool = false) -> (env: [String: String], args: [String]) {
         var env = ["YCODE_SIM_TREE": tree, "YCODE_SIM_DATA": home, "YCODE_SIM_SLOTS": String(slots),
                    "YCODE_SIM_LOCKS": locks ?? home + "/locks", "YCODE_SIM_GPU_CACHE": gpuCache ?? home + "/gpu-cache",
                    "YCODE_SIM_TIMEOUT_MS": String(hours * 3600 * 1000), "YCODE_WARM_BOOT": "1"]
@@ -106,7 +109,12 @@ public struct SimHostConfig: Sendable, Equatable {
         if cold { env["YCODE_WARM_FORCE_COLD"] = "1" }
         var args = ["--device", devicesDirectory + "/" + device, "--runtime-root", runtime(for: type), "--display-server", "unix:" + socketPath(device)]
         if type != "iphone-duo" && !type.isEmpty { args += ["--device-type", type] }
-        if let app, let bundleID { args += ["--install-app", app, "--launch", bundleID, "--environment-overrides"] }
+        if let app, let bundleID {
+            args += ["--install-app", app, "--launch", bundleID, "--environment-overrides"]
+            // An app option (outside the warm-boot fingerprint), as the
+            // Mac's remote run passes it.
+            if debug { args += ["--debug-server", "unix:" + debugSocketPath(device)] }
+        }
         return (env, args)
     }
 }
@@ -188,7 +196,7 @@ public final class SimHostDevices: @unchecked Sendable {
     }
 
     /// Boots a device (with an app: installs and launches it).
-    public func start(_ name: String, app: String? = nil, bundleID: String? = nil, cold: Bool = false) throws {
+    public func start(_ name: String, app: String? = nil, bundleID: String? = nil, cold: Bool = false, debug: Bool = false) throws {
         guard isSafeName(name), FileManager.default.fileExists(atPath: config.devicesDirectory + "/" + name) else {
             throw LinkError.refused("no device \(name)")
         }
@@ -197,7 +205,10 @@ public final class SimHostDevices: @unchecked Sendable {
             stop(name)
         }
         let type = sidecar(name)?.deviceType ?? "iphone-duo"
-        let (env, args) = config.launch(device: name, type: type, app: app.map { config.appsDirectory + "/" + $0 }, bundleID: bundleID, cold: cold)
+        let (env, args) = config.launch(device: name, type: type, app: app.map { config.appsDirectory + "/" + $0 }, bundleID: bundleID, cold: cold,
+                                        debug: debug)
+        // A stale socket of an earlier run would look like a live stub.
+        if debug { unlink(config.debugSocketPath(name)) }
         try FileManager.default.createDirectory(atPath: config.runDirectory, withIntermediateDirectories: true)
         let logPath = config.logPath(name)
         if FileManager.default.fileExists(atPath: logPath) { _ = rename(logPath, logPath + ".1") }

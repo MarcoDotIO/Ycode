@@ -1,0 +1,37 @@
+classes Animal Dog super Animal meta-super Animal
+lookUp missing 0x0 getClass nil-name nil
+root meta isa self 1 root meta super NSObject 1
+sizes NSObject 8 Animal 56 Dog 64
+ivar flag c @8
+ivar weight d @16
+ivar owner @ @24
+ivar _legs i @32
+ivar friendObject @ @40
+ivar _loud @ @48
+Dog.bones @56 inherited weight weight
+property debugDescription T@"NSString",?,R,C
+property description T@"NSString",R,C
+property friendObject T@,R,VfriendObject
+property hash TQ,R
+property legs Ti,N,V_legs
+property loud T@,C,N,GisLoud,V_loud
+property superclass T#,R
+  attr T=i
+  attr N=
+  attr V=_legs
+  V=_legs
+protocols Greeter Named conforms A 1 D 0 NSObject 1 proto-proto 1
+descriptions name r*16@0:8 / optionalThing i16@0:8 / greeting i16@0:8
+-Animal methods (7): friendObject isLoud legs name setLegs: setLoud: speak:volume:
++Animal methods (1): greeting
+-Dog methods (1): name
+speak types v24@0:8i16f20 args 4 ret v arg2 i arg3 f
+selectors equal 1 name dynamicSelector:with: builtin 1
+allocate twice nil 1
+runtime class RuntimeDog size 80 extraB @72 magic 42 name dog kind 1
+object ivar roundtrip 1 getClass by name 1
+setClass old RuntimeDog now Dog
+respondsTo replaced 1
+replaceMethod prev 1 new 42
+class list has ours 3
+done

@@ -285,7 +285,7 @@ package.targets += [
     .testTarget(name: "YcodeMCPTests", dependencies: ["YcodeMCP", "YcodeIDECore", "YcodeAssistant", "YcodeCompletion", "YcodeBuild", "ycode"]),
 ]
 if let i = package.targets.firstIndex(where: { $0.name == "ycode" }) {
-    package.targets[i].dependencies.append("YcodeMCP")
+    package.targets[i].dependencies += ["YcodeMCP", "YcodeIDEShell"]
 }
 
 #if os(Linux)

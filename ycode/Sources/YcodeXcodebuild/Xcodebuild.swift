@@ -237,8 +237,18 @@ struct Plan {
     /// `regular` or `legacy` build locations, when not decided by the scheme.
     var locationStyle: String?
 
+    /// The build system's action for a command-line action: swift-build has
+    /// no test actions (a test run builds with `build`), and evaluates no
+    /// settings for an action it does not know.
+    static func buildSystemAction(_ action: BuildAction) -> String {
+        switch action {
+        case .test, .buildForTesting, .testWithoutBuilding: "build"
+        default: action.rawValue
+        }
+    }
+
     func parameters(action: BuildAction) -> BuildParameters {
-        var p = BuildParameters(action: action == .clean ? "clean" : action.rawValue == "build-for-testing" ? "build" : action.rawValue,
+        var p = BuildParameters(action: Self.buildSystemAction(action),
                                 configuration: configuration, arena: arena, runDestination: runDestination,
                                 overrides: overrides, xcconfigPath: xcconfig?.absolute)
         p.synthesized = synthesized

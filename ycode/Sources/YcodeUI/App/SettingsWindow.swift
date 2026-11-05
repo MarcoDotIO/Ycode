@@ -115,8 +115,7 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
     let history = History()
 
     /// Pane titles in order (Simulators is Ycode's own, before Locations).
-    public static let paneTitles = ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation", "Notifications",
-                                    "Editing", "Shortcuts", "Source Control", "Components", "Simulators", "Locations"]
+    public static let paneTitles = SettingsPaneOrder.all
     static let paneSymbols = ["gearshape", "paintpalette", "person.crop.circle", "sparkles", "bolt", "arrow.triangle.turn.up.right.diamond",
                               "bell", "text.cursor", "keyboard", "arrow.triangle.branch", "square.stack.3d.up", "server.rack", "externaldrive"]
 

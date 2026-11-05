@@ -25,6 +25,8 @@ public final class SourceControlShellModel {
         case commit(focus: String?)
         /// A branch's, tag's or stash's history; `branch` for a local branch.
         case history(ref: String, title: String, branch: String?)
+        /// The conflict editor (`conflictEditor`).
+        case conflicts
 
         public var isHistory: Bool { if case .history = self { true } else { false } }
     }
@@ -76,7 +78,10 @@ public final class SourceControlShellModel {
     /// The selected navigator row's id.
     public private(set) var selection: String?
     /// The commit editor or a history, over the editor area.
-    public private(set) var pane: Pane?
+    public internal(set) var pane: Pane?
+    /// The conflict editor while `pane` is `.conflicts`
+    /// (`SourceControlShellModel+Conflicts.swift`).
+    public internal(set) var conflictEditor: ConflictEditorShellModel?
     /// A command running in the background ("Pushing…").
     public private(set) var busy: String?
     /// The last command's failure, shown in an alert.
@@ -242,6 +247,7 @@ public final class SourceControlShellModel {
             if let q = queue { await q.value; if queue == q { queue = nil }; continue }
             if let l = loads.first { await l.value; loads.removeAll { $0 == l }; continue }
             if let t = regionTask { await t.value; if regionTask == t { regionTask = nil }; continue }
+            if let c = conflictEditor, c.isLoading { await c.idle(); continue }
             return
         }
     }
@@ -263,6 +269,7 @@ public final class SourceControlShellModel {
         switch pane {
         case .commit?: if before.changes != read.changes || before.head != read.head || cards.isEmpty { loadCards() }
         case .history?: if before.head != read.head || before.branches != read.branches || before.tags != read.tags { loadHistory() }
+        case .conflicts?: conflictEditor?.update(integration: read.integration, conflicted: read.changes.filter { $0.status == .conflicted }.map(\.path))
         case nil: break
         }
         if let p = fileHistoryPath, before.head != read.head { loadFileHistory(p) }
@@ -288,7 +295,7 @@ public final class SourceControlShellModel {
         guard repository != nil else { return }
         if id.hasPrefix("change:") {
             let p = String(id.dropFirst(7))
-            if snapshot.changes.contains(where: { $0.path == p && $0.status == .conflicted }) { openFile?(workspacePath(p)); return }
+            if snapshot.changes.contains(where: { $0.path == p && $0.status == .conflicted }) { showConflictEditor(path: p); return }
             showCommitEditor(focus: p)
         } else if id == "repository" {
             if mode == .changes { showCommitEditor(focus: nil) } else if let b = snapshot.currentBranch { showHistory(ref: "refs/heads/" + b, title: b, branch: b) }
@@ -375,7 +382,7 @@ public final class SourceControlShellModel {
         case .removeRemote(let r):
             confirmation = SourceControlConfirmation(title: "Remove \(q(r))?", message: "The remote and its remote branches are removed from this repository.",
                                                      choices: [.init(title: "Remove", isDestructive: true, action: .removeRemote(r))])
-        case .resolveConflicts(let p): openFile?(workspacePath(p))
+        case .resolveConflicts(let p): showConflictEditor(path: p)
         case .markResolved(let p): perform(.markResolved([p]))
         }
     }
@@ -424,17 +431,17 @@ public final class SourceControlShellModel {
         let current = snapshot.currentBranch
         let remotes = snapshot.remotes.map(\.name)
         let title = Self.busyTitle(op)
+        let outcome = IntegrationOutcome()
         enqueue(title, { repo in
             if case .newRepository = op {
                 _ = try GitRepository.initialize(at: folder)
                 return nil
             }
             guard let repo else { throw GitRepository.GitError(description: "The workspace is not in a git repository.") }
+            // Conflicts open the conflict editor (`integrated`), which
+            // explains them; no notice.
             func result(_ r: GitRepository.IntegrationResult) -> String? {
-                if case .conflicts(let files) = r {
-                    let names = files.map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
-                    return "\(files.count) file\(files.count == 1 ? " has" : "s have") conflicts: \(names). Resolve them, mark them resolved, then continue."
-                }
+                outcome.value = r
                 return nil
             }
             func remote(for branch: String) -> String? {
@@ -487,7 +494,7 @@ public final class SourceControlShellModel {
             case .newRepository: break
             }
             return nil
-        })
+        }, then: { [weak self] ok in self?.integrated(op, outcome.value, succeeded: ok) })
         if case .newRepository = op { known = nil }
     }
 
@@ -522,6 +529,7 @@ public final class SourceControlShellModel {
     /// The selected file: the Changes row while it is selected, else the
     /// open file (`source-control.md`, "Integrate menu enablement").
     public var selectedFile: String? {
+        if case .conflicts? = pane, let f = conflictEditor?.state.currentFile { return f }
         if let s = selection, s.hasPrefix("change:"), pane != nil { return String(s.dropFirst(7)) }
         return openPath.map(repoPath)
     }
@@ -567,6 +575,8 @@ public final class SourceControlShellModel {
         case "refreshFileStatus:": refresh()
         case "scmStageAll:": perform(.stageAll)
         case "scmUnstageAll:": perform(.unstageAll)
+        // In the conflict editor, Mark as Resolved writes its result first.
+        case "scmMarkResolved:" where conflictEditor?.state.canMarkResolved == true: Task { await conflictEditor?.markResolved() }
         case "scmStageSelected:", "scmAddSelected:", "scmMarkResolved:": if let p = selectedFile { perform(.stage([p])) }
         case "scmUnstageSelected:": if let p = selectedFile { perform(.unstage([p])) }
         case "scmCherryPick:": if let c = selectedCommit { perform(.cherryPick(c)) }
@@ -583,8 +593,9 @@ public final class SourceControlShellModel {
                     title: "Discard changes in \(q((p as NSString).lastPathComponent))?", message: "The file returns to its last commit; a new file moves to the Trash.",
                     choices: [.init(title: "Discard", isDestructive: true, action: .discard([p]))])
             }
+        case "scmResolveConflicts:": resolveConflicts()
         case "scmContinueIntegration:": perform(.continueIntegration)
-        case "scmAbortIntegration:": perform(.abortIntegration)
+        case "scmAbortIntegration:": askAbort()
         case "scmNewRepository:": perform(.newRepository)
         default: break
         }
@@ -630,6 +641,7 @@ public final class SourceControlShellModel {
     public func showCommitEditor(focus: String?) {
         saveEditors?()
         pane = .commit(focus: focus)
+        conflictEditor = nil
         if let focus { collapsedCards.remove(focus) }
         loadCards()
     }
@@ -637,6 +649,7 @@ public final class SourceControlShellModel {
     /// Opening a file hides the commit editor or history.
     public func hidePane() {
         pane = nil
+        conflictEditor = nil
     }
 
     private func track(_ t: Task<Void, Never>) {
@@ -705,6 +718,7 @@ public final class SourceControlShellModel {
 
     public func showHistory(ref: String, title: String, branch: String?) {
         pane = .history(ref: ref, title: title, branch: branch)
+        conflictEditor = nil
         history = []
         selectedCommit = nil
         commitDetail = nil

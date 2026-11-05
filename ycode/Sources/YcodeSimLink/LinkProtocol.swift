@@ -17,9 +17,13 @@ public struct LinkRequest: Codable, Sendable, Equatable {
     public var size: Int?
     public var lines: Int?
     public var from: String?
+    /// `run`: the app runs with the debug stub (debug-stub.md; debug.md
+    /// "The Linux IDE: apps on the simulator").
+    public var debug: Bool?
 
     public init(op: String, device: String? = nil, deviceType: String? = nil, runtime: String? = nil, app: String? = nil,
-                bundleID: String? = nil, cold: Bool? = nil, erase: Bool? = nil, size: Int? = nil, lines: Int? = nil, from: String? = nil) {
+                bundleID: String? = nil, cold: Bool? = nil, erase: Bool? = nil, size: Int? = nil, lines: Int? = nil, from: String? = nil,
+                debug: Bool? = nil) {
         self.op = op
         self.device = device
         self.deviceType = deviceType
@@ -31,6 +35,7 @@ public struct LinkRequest: Codable, Sendable, Equatable {
         self.size = size
         self.lines = lines
         self.from = from
+        self.debug = debug
     }
 }
 
@@ -57,6 +62,10 @@ public struct LinkResponse: Codable, Sendable, Equatable {
     public var log: [String]?
     public var host: String?
     public var bundleID: String?
+    /// `run` with `debug`: the host's path of the debug stub's socket. A
+    /// client on the host itself connects to it; another machine needs
+    /// the link to carry it (#50).
+    public var debugSocket: String?
 
     public init(ok: Bool, error: String? = nil, message: String? = nil) { (self.ok, self.error, self.message) = (ok, error, message) }
 

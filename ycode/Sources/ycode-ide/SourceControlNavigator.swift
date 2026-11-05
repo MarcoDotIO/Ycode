@@ -74,7 +74,7 @@ struct IntegrationBanner: View {
             Text(verbatim: conflicts > 0 ? "\(conflicts) file\(conflicts == 1 ? " has" : "s have") conflicts. Edit, then Mark as Resolved."
                  : "Every conflict is resolved.").font(ShellFonts.small).foregroundStyle(c.secondaryLabel)
             HStack {
-                Button("Abort") { scm.perform(.abortIntegration) }.shellTarget("scm abort")
+                Button("Abort") { scm.askAbort() }.shellTarget("scm abort")
                 Spacer()
                 Button("Continue") { scm.perform(.continueIntegration) }.disabled(conflicts > 0).shellTarget("scm continue")
             }

@@ -1,11 +1,12 @@
 import AppKit
 import YcodeIDECore
 
-/// Get a Simulator Runtime… (`specs/simulator/runtime-onboarding.md` §11;
-/// the headset wizard's layout, `device-hub.md` §I.12): the steps float on
-/// a glass panel at the left; the selected step's choices, runtimes and
-/// checks are plain text on the window's background, each check with its
-/// state, reason and one fix; Re-check, Back and Next are glass buttons.
+/// Get a Simulator Runtime… (`specs/simulator/runtime-onboarding.md` §11):
+/// the paged assistant the headset setup uses (`liquid-glass-ycode.md` §11).
+/// Page dots show every step's state and jump to it; each page has the
+/// step's glyph, title and summary, then its choices, runtimes and checks
+/// (in grouped boxes; each check with its state, reason and one fix); Back,
+/// Re-check and Continue (Done on the last step) are in the footer.
 /// Nothing changes a machine until the user confirms a sheet that shows the
 /// exact command. Get a Runtime (#55) is in `RuntimeSetupWindowController+Download.swift`.
 @MainActor
@@ -19,19 +20,13 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
     /// Picks a file instead of the open panel (tests).
     var pickFile: (() -> String?)?
 
-    private let stepList = NSStackView()
-    private let backdrop = HeadsetBackdropView()
-    private let content = NSStackView()
-    private let titleLabel = NSTextField(labelWithString: "")
-    private let summaryLabel = NSTextField(wrappingLabelWithString: "")
-    private let statusLabel = NSTextField(wrappingLabelWithString: "")
-    private let backButton = NSButton(title: "Back", target: nil, action: nil)
-    private let nextButton = NSButton(title: "Next", target: nil, action: nil)
-    private let recheckButton = NSButton(title: "Re-check", target: nil, action: nil)
-    private let spinner = NSProgressIndicator()
+    let assistant = SetupAssistant(footnote: ExperimentalNotice.runtimes, footnoteID: "runtime-experimental",
+                                   statusID: "runtime-status", dotsID: "runtime-steps-panel")
     /// The content's scroll view and the footer (tests check they do not overlap).
-    let scroll = NSScrollView()
-    let footer = NSStackView()
+    var scroll: NSScrollView { assistant.scroll }
+    var footer: NSStackView { assistant.footer }
+    /// The step the page shows (a change moves the page).
+    private var shownStep: RuntimeSetupStep?
     private var shownConfirmation: RuntimeConfirmation?
     // The choices' fields.
     let hostField = NSTextField()
@@ -78,14 +73,7 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
 
     public init(session: RuntimeSetupSession) {
         self.session = session
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 580), styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
-                         backing: .buffered, defer: false)
-        w.title = "Simulator Runtimes"
-        w.titleVisibility = .hidden
-        w.titlebarAppearsTransparent = true
-        if #available(macOS 11.0, *) { w.titlebarSeparatorStyle = .none }
-        w.isReleasedWhenClosed = false
-        w.contentMinSize = NSSize(width: 680, height: 460)
+        let w = SetupAssistant.makeWindow(title: "Simulator Runtimes")
         w.identifier = .init("runtime-setup")
         super.init(window: w)
         w.delegate = self
@@ -108,91 +96,19 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
     public func next() { if session.isLastStep { window?.close() } else { session.next() } }
     public func back() { session.back() }
 
-    var primaryButton: NSButton { nextButton }
+    var primaryButton: NSButton { assistant.continueButton }
+    var backButton: NSButton { assistant.backButton }
 
     // MARK: Views
 
-    static let sidebarWidth = HeadsetSetupWindowController.sidebarWidth
-    static let panelInset = HeadsetSetupWindowController.panelInset
-
     private func build() {
         guard let root = window?.contentView else { return }
-        stepList.orientation = .vertical
-        stepList.alignment = .leading
-        stepList.spacing = 2
-        stepList.edgeInsets = NSEdgeInsets(top: 44, left: 8, bottom: 12, right: 8)
-        let listHost = NSView()
-        stepList.translatesAutoresizingMaskIntoConstraints = false
-        listHost.addSubview(stepList)
-        NSLayoutConstraint.activate([
-            stepList.topAnchor.constraint(equalTo: listHost.topAnchor), stepList.leadingAnchor.constraint(equalTo: listHost.leadingAnchor),
-            stepList.trailingAnchor.constraint(equalTo: listHost.trailingAnchor),
-        ])
-        let side = GlassBars.panel(content: listHost, cornerRadius: 18)
-        side.identifier = .init("runtime-steps-panel")
-        titleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
-        summaryLabel.textColor = .secondaryLabelColor
-        content.orientation = .vertical
-        content.alignment = .leading
-        content.spacing = 12
-        let leading = Self.sidebarWidth + Self.panelInset
-        scroll.hasVerticalScroller = true
-        scroll.drawsBackground = false
-        scroll.automaticallyAdjustsContentInsets = false
-        // The content ends above the footer (it never runs under Re-check, Back and Next).
-        scroll.contentInsets = NSEdgeInsets(top: 28, left: leading, bottom: 12, right: 0)
-        scroll.scrollerInsets = NSEdgeInsets(top: 0, left: -leading, bottom: 0, right: 0)
-        let doc = FlippedStack()
-        doc.orientation = .vertical
-        doc.alignment = .leading
-        doc.spacing = 10
-        doc.edgeInsets = NSEdgeInsets(top: 0, left: 24, bottom: 16, right: 24)
-        let experimental = NSTextField(wrappingLabelWithString: ExperimentalNotice.runtimes)
-        experimental.font = .systemFont(ofSize: 11)
-        experimental.textColor = .secondaryLabelColor
-        experimental.identifier = .init("runtime-experimental")
-        for v in [experimental, titleLabel, summaryLabel, content] { doc.addArrangedSubview(v) }
-        scroll.documentView = doc
-        doc.translatesAutoresizingMaskIntoConstraints = false
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.font = .systemFont(ofSize: 11)
-        statusLabel.identifier = .init("runtime-status")
-        statusLabel.maximumNumberOfLines = 2
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
-        for (b, sel) in [(backButton, #selector(backClicked)), (nextButton, #selector(nextClicked)), (recheckButton, #selector(recheckClicked))] {
-            b.target = self
-            b.action = sel
-            GlassBars.style(b, primary: b === nextButton)
-            b.controlSize = .large
+        assistant.install(in: root, target: self, back: #selector(backClicked), next: #selector(nextClicked), recheck: #selector(recheckClicked))
+        assistant.footer.identifier = .init("runtime-footer")
+        assistant.dots.onSelect = { [weak self] i in
+            guard let self, i < self.session.steps.count else { return }
+            self.session.show(self.session.steps[i])
         }
-        nextButton.keyEquivalent = "\r"
-        let bar = footer
-        bar.setViews([spinner, statusLabel, NSView(), recheckButton, backButton, nextButton], in: .leading)
-        bar.spacing = 8
-        bar.identifier = .init("runtime-footer")
-        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        for v in [backdrop, scroll, side, bar] as [NSView] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            root.addSubview(v)
-        }
-        let inset = Self.panelInset
-        NSLayoutConstraint.activate([
-            backdrop.leadingAnchor.constraint(equalTo: root.leadingAnchor), backdrop.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            backdrop.topAnchor.constraint(equalTo: root.topAnchor), backdrop.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            side.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset), side.topAnchor.constraint(equalTo: root.topAnchor, constant: inset),
-            side.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -inset), side.widthAnchor.constraint(equalToConstant: Self.sidebarWidth),
-            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: root.topAnchor), scroll.bottomAnchor.constraint(equalTo: bar.topAnchor, constant: -8),
-            bar.leadingAnchor.constraint(equalTo: side.trailingAnchor, constant: 24), bar.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
-            bar.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12),
-            doc.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor, constant: leading), doc.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            doc.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
-            summaryLabel.widthAnchor.constraint(equalTo: doc.widthAnchor, constant: -48),
-            experimental.widthAnchor.constraint(equalTo: doc.widthAnchor, constant: -48),
-            content.widthAnchor.constraint(equalTo: doc.widthAnchor, constant: -48),
-        ])
         let h = session.choices.host
         hostField.stringValue = h.destination
         hostField.placeholderString = "user@sim-host"
@@ -224,14 +140,17 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
     @objc func nextClicked() { next() }
     @objc func recheckClicked() { session.recheck() }
 
-    static func symbol(_ s: SetupCheckState?) -> (String, NSColor) {
+    static func dotState(_ s: SetupCheckState?) -> SetupDotState {
         switch s {
-        case .ok: ("checkmark.circle.fill", .systemGreen)
-        case .missing: ("xmark.circle.fill", .systemRed)
-        case .notApplicable: ("minus.circle", .secondaryLabelColor)
-        default: ("questionmark.circle", .secondaryLabelColor)
+        case .ok?: .ok
+        case .missing?: .missing
+        case .unknown?: .unknown
+        case .notApplicable?: .notApplicable
+        case nil: .notChecked
         }
     }
+
+    static func symbol(_ s: SetupCheckState?) -> (String, NSColor) { SetupAssistant.mark(dotState(s)) }
 
     /// Rebuilds the window from the session.
     func refresh() {
@@ -240,28 +159,31 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         for (f, v) in [(hostField, h.destination), (dataField, h.dataDirectory), (linkField, h.linkName), (portsField, "\(h.tcpPort)/\(h.udpPort)")] where f.currentEditor() == nil && f.stringValue != v {
             f.stringValue = v
         }
+        let a = assistant
         let busy = session.isChecking || session.running != nil
-        if busy { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
-        recheckButton.isEnabled = !session.isChecking
-        statusLabel.stringValue = session.running ?? session.status ?? (session.isChecking ? "Checking…" : "")
-        stepList.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for (i, s) in session.steps.enumerated() {
-            let row = RuntimeStepRow(index: i, step: s, state: session.state(of: s), selected: s == session.step, target: self, action: #selector(stepClicked(_:)))
-            stepList.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: stepList.widthAnchor, constant: -16).isActive = true
+        if busy { a.spinner.startAnimation(nil) } else { a.spinner.stopAnimation(nil) }
+        a.recheckButton.isEnabled = !session.isChecking
+        a.statusLabel.stringValue = session.running ?? session.status ?? (session.isChecking ? "Checking…" : "")
+        let steps = session.steps
+        let index = steps.firstIndex(of: session.step) ?? 0
+        a.dots.update(steps.map { ($0.title, Self.dotState(session.state(of: $0))) }, current: index)
+        let fill = { [self] in
+            a.setHeader(glyph: session.step.glyph, title: session.step.title,
+                        summary: session.step.summary(machine: session.machine, target: session.choices.target))
+            var views = stepViews()
+            if session.report == nil { views.append(DevicesController.secondary(session.isChecking ? "Checking…" : "Not checked yet.")) }
+            a.setColumn(views)
         }
-        titleLabel.stringValue = session.step.title
-        summaryLabel.stringValue = session.step.summary(machine: session.machine, target: session.choices.target)
-        content.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for v in stepViews() { content.addArrangedSubview(v) }
-        if session.report == nil { content.addArrangedSubview(DevicesController.secondary(session.isChecking ? "Checking…" : "Not checked yet.")) }
-        backButton.isEnabled = !session.isFirstStep
-        nextButton.title = session.isLastStep ? "Done" : "Next"
+        if let shown = shownStep, shown != session.step {
+            let from = steps.firstIndex(of: shown) ?? shown.rawValue
+            a.turn(forward: index > from, fill: fill)
+        } else {
+            fill()
+        }
+        shownStep = session.step
+        a.backButton.isHidden = session.isFirstStep
+        a.continueButton.title = session.isLastStep ? "Done" : "Continue"
         if let c = session.confirmation, c != shownConfirmation { present(c) }
-    }
-
-    @objc func stepClicked(_ sender: NSButton) {
-        if let s = RuntimeSetupStep(rawValue: sender.tag) { session.show(s) }
     }
 
     // MARK: Step contents
@@ -282,23 +204,20 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         let checks = session.shownChecks
         if !checks.isEmpty {
             if session.step != .target && session.step != .host { out.append(heading("Checks")) }
-            out += checks.map(row)
+            out.append(SetupGroupBox(rows: checks.map(row), identifier: "runtime-checks"))
         }
         if session.logStep == session.step, !session.log.isEmpty { out.append(logView()) }
         return out
     }
 
-    func heading(_ t: String) -> NSTextField {
-        let l = NSTextField(labelWithString: t)
-        l.font = .systemFont(ofSize: 13, weight: .semibold)
-        return l
-    }
+    func heading(_ t: String) -> NSTextField { SetupAssistant.heading(t) }
 
     func note(_ t: String, id: String? = nil) -> NSTextField {
         let l = NSTextField(wrappingLabelWithString: t)
         l.font = .systemFont(ofSize: 11)
         l.textColor = .secondaryLabelColor
-        l.widthAnchor.constraint(lessThanOrEqualToConstant: 540).isActive = true
+        l.preferredMaxLayoutWidth = SetupAssistant.columnWidth
+        l.widthAnchor.constraint(lessThanOrEqualToConstant: SetupAssistant.columnWidth).isActive = true
         if let id { l.identifier = .init(id) }
         return l
     }
@@ -339,11 +258,15 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 10
-        let v = NSStackView(views: [grid, note(RuntimeSize.convention)])
+        grid.identifier = .init("runtime-target-form")
+        let n = note(RuntimeSize.convention)
+        n.alignment = .center
+        n.preferredMaxLayoutWidth = SetupAssistant.summaryWidth
+        let v = NSStackView(views: [grid, n])
         v.orientation = .vertical
-        v.alignment = .leading
-        v.spacing = 8
-        return v
+        v.alignment = .centerX
+        v.spacing = 14
+        return SetupCentered(v)
     }
 
     func label(_ t: String) -> NSTextField {
@@ -365,8 +288,14 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 8
-        for f in [hostField, dataField, linkField] { f.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true }
-        return grid
+        grid.identifier = .init("runtime-host-form")
+        for f in [hostField, dataField, linkField] { f.widthAnchor.constraint(equalToConstant: 320).isActive = true }
+        portsField.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        if let n = grid.cell(atColumnIndex: 1, rowIndex: 4).contentView as? NSTextField {
+            n.preferredMaxLayoutWidth = 320
+            n.widthAnchor.constraint(lessThanOrEqualToConstant: 320).isActive = true
+        }
+        return SetupCentered(grid)
     }
 
     private func prepareViews() -> [NSView] {
@@ -401,7 +330,7 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         t.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         t.isSelectable = true
         t.lineBreakMode = .byTruncatingMiddle
-        t.widthAnchor.constraint(lessThanOrEqualToConstant: 540).isActive = true
+        t.widthAnchor.constraint(lessThanOrEqualToConstant: SetupAssistant.columnWidth - 104).isActive = true
         let id = NSTextField(labelWithString: s.id)
         id.font = .systemFont(ofSize: 11, weight: .medium)
         id.textColor = .secondaryLabelColor
@@ -413,7 +342,8 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         let field = NSTextField(wrappingLabelWithString: cmd)
         field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         field.isSelectable = true
-        field.widthAnchor.constraint(lessThanOrEqualToConstant: 480).isActive = true
+        field.preferredMaxLayoutWidth = SetupGroupBox.textWidth - 72
+        field.widthAnchor.constraint(lessThanOrEqualToConstant: SetupGroupBox.textWidth - 72).isActive = true
         let copy = NSButton(title: "Copy", target: self, action: #selector(copyCommand(_:)))
         GlassBars.style(copy)
         copy.controlSize = .small
@@ -428,19 +358,20 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
     private func runtimeLists() -> [NSView] {
         var out: [NSView] = []
         let r = session.report
+        func box(_ rows: [NSView]) { if !rows.isEmpty { out.append(SetupGroupBox(rows: rows)) } }
         if session.choices.useHost {
             out.append(heading("On \(session.choices.host.hostName.isEmpty ? "the host" : session.choices.host.hostName)"))
             let host = r?.host ?? []
             if host.isEmpty { out.append(note(r == nil ? "Not checked yet." : "No runtimes on the host yet.")) }
-            out += host.map { runtimeRow($0, copy: false) }
+            box(host.map { runtimeRow($0, copy: false) })
             out.append(heading(session.machine.isMac ? "On this Mac" : "On this computer"))
             let local = session.copyableRuntimes
             if local.isEmpty { out.append(note("No runtimes here to copy. Use Add a Runtime to pick a runtime bundle or RuntimeRoot.")) }
-            out += local.map { runtimeRow($0, copy: true) }
+            box(local.map { runtimeRow($0, copy: true) })
         } else {
             let local = r?.local ?? []
             if local.isEmpty, r != nil { out.append(note("No runtimes yet.")) }
-            out += local.map { runtimeRow($0, copy: false) }
+            box(local.map { runtimeRow($0, copy: false) })
         }
         return out
     }
@@ -464,7 +395,10 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         let detail = NSTextField(wrappingLabelWithString: details.filter { !$0.isEmpty }.joined(separator: " · "))
         detail.textColor = .secondaryLabelColor
         detail.font = .systemFont(ofSize: 11)
-        detail.widthAnchor.constraint(lessThanOrEqualToConstant: 420).isActive = true
+        // Beside a button the details leave it room.
+        let room = SetupGroupBox.textWidth - (copy || rec.isRemovable ? 130 : 0)
+        detail.preferredMaxLayoutWidth = room
+        detail.widthAnchor.constraint(lessThanOrEqualToConstant: room).isActive = true
         let text = NSStackView(views: [title, detail])
         text.orientation = .vertical
         text.alignment = .leading
@@ -563,15 +497,19 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         if ready.isEmpty {
             out.append(note("No platform has a runtime yet. Go back to Add a Runtime, or finish now and come back from Settings ▸ Components."))
         }
+        var lines: [NSView] = []
         for p in SimPlatform.allCases where session.choices.platforms.contains(p) {
             let ok = ready.contains(p)
             let (sym, color) = Self.symbol(ok ? .ok : .missing)
-            let icon = NSImageView(image: NSImage(systemSymbolName: sym, accessibilityDescription: nil) ?? NSImage())
+            let icon = NSImageView(image: NSImage(systemSymbolName: sym, accessibilityDescription: ok ? "ready" : "no runtime") ?? NSImage())
             icon.contentTintColor = color
             let whereText = session.choices.useHost ? "on \(session.choices.host.hostName)" : (session.machine.isMac ? "on this Mac" : "on this computer")
             let t = NSTextField(labelWithString: ok ? "\(p.title) simulators run \(whereText)." : "\(p.title): no runtime yet.")
-            out.append(NSStackView(views: [icon, t]))
+            let line = NSStackView(views: [icon, t])
+            line.spacing = 8
+            lines.append(line)
         }
+        if !lines.isEmpty { out.append(SetupGroupBox(rows: lines, identifier: "runtime-finish-platforms")) }
         out += session.finishNotes.map { note($0, id: "runtime-finish-note") }
         return out
     }
@@ -584,6 +522,7 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         let reason = NSTextField(wrappingLabelWithString: c.reason)
         reason.textColor = .secondaryLabelColor
+        reason.preferredMaxLayoutWidth = SetupGroupBox.textWidth
         let text = NSStackView(views: [title, reason])
         text.orientation = .vertical
         text.alignment = .leading
@@ -594,7 +533,7 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         row.spacing = 8
         row.identifier = .init("runtime-check-\(c.id)")
         row.setAccessibilityLabel("\(c.title): \(c.state.title). \(c.reason)")
-        reason.widthAnchor.constraint(lessThanOrEqualToConstant: 500).isActive = true
+        reason.widthAnchor.constraint(lessThanOrEqualToConstant: SetupGroupBox.textWidth).isActive = true
         return row
     }
 
@@ -608,7 +547,8 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         case .instructions(let words):
             let l = NSTextField(wrappingLabelWithString: words)
             l.font = .systemFont(ofSize: 12)
-            l.widthAnchor.constraint(lessThanOrEqualToConstant: 500).isActive = true
+            l.preferredMaxLayoutWidth = SetupGroupBox.textWidth
+            l.widthAnchor.constraint(lessThanOrEqualToConstant: SetupGroupBox.textWidth).isActive = true
             return l
         case .step(let s):
             return button("Go to \(s.title)", #selector(goToStep(_:)), id: "runtime-fix-step-\(check.id)", tag: s.rawValue)
@@ -633,7 +573,7 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         tv?.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
         tv?.string = session.log
         tv?.scrollToEndOfDocument(nil)
-        scroll.widthAnchor.constraint(equalToConstant: 540).isActive = true
+        scroll.widthAnchor.constraint(equalToConstant: SetupAssistant.columnWidth).isActive = true
         scroll.heightAnchor.constraint(equalToConstant: 140).isActive = true
         scroll.borderType = .lineBorder
         return scroll
@@ -713,7 +653,7 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
     @objc func copyCommand(_ sender: NSButton) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(sender.toolTip ?? "", forType: .string)
-        statusLabel.stringValue = "Copied. Run it in your terminal."
+        assistant.statusLabel.stringValue = "Copied. Run it in your terminal."
     }
 
     // MARK: Confirmation
@@ -758,44 +698,4 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         a.accessoryView = field
         return a
     }
-}
-
-/// One step in the glass panel (the headset wizard's row, for this wizard's steps).
-@MainActor
-final class RuntimeStepRow: NSView {
-    init(index: Int, step: RuntimeSetupStep, state: SetupCheckState?, selected: Bool, target: AnyObject, action: Selector) {
-        super.init(frame: .zero)
-        translatesAutoresizingMaskIntoConstraints = false
-        let (name, color) = RuntimeSetupWindowController.symbol(state)
-        let mark = NSImageView(image: NSImage(systemSymbolName: name, accessibilityDescription: state?.title ?? "not checked") ?? NSImage())
-        mark.contentTintColor = color
-        let title = NSTextField(labelWithString: "\(index + 1). \(step.title)")
-        title.font = .systemFont(ofSize: 13, weight: selected ? .semibold : .regular)
-        title.textColor = .labelColor
-        let b = NSButton(title: "", target: target, action: action)
-        b.isBordered = false
-        b.isTransparent = true
-        b.tag = step.rawValue
-        b.identifier = .init("runtime-step-\(step.rawValue)")
-        b.setAccessibilityLabel("\(step.title): \(state?.title ?? "not checked")")
-        let pill = SelectionPillView()
-        pill.isHidden = !selected
-        for v in [pill, mark, title, b] as [NSView] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(v)
-        }
-        NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 30),
-            pill.leadingAnchor.constraint(equalTo: leadingAnchor), pill.trailingAnchor.constraint(equalTo: trailingAnchor),
-            pill.topAnchor.constraint(equalTo: topAnchor, constant: 2), pill.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
-            mark.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10), mark.centerYAnchor.constraint(equalTo: centerYAnchor),
-            title.leadingAnchor.constraint(equalTo: mark.trailingAnchor, constant: 7), title.centerYAnchor.constraint(equalTo: centerYAnchor),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -8),
-            b.leadingAnchor.constraint(equalTo: leadingAnchor), b.trailingAnchor.constraint(equalTo: trailingAnchor),
-            b.topAnchor.constraint(equalTo: topAnchor), b.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
 }

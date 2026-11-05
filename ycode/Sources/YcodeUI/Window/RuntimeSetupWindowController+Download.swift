@@ -54,7 +54,8 @@ extension RuntimeSetupWindowController {
         var out: [NSView] = [heading("With Xcode (recommended on a Mac)")]
         out.append(note("Apple's own tool downloads the runtime and installs it on this Mac, where Xcode and Ycode both use it."))
         let d = downloads.xcodeDownload
-        let cmd = NSTextField(labelWithString: d.shownCommand)
+        let cmd = NSTextField(wrappingLabelWithString: d.shownCommand)
+        cmd.preferredMaxLayoutWidth = SetupAssistant.columnWidth
         cmd.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         cmd.isSelectable = true
         cmd.identifier = .init("runtime-download-xcode-command")
@@ -162,7 +163,8 @@ extension RuntimeSetupWindowController {
         let text = NSTextField(wrappingLabelWithString: phase)
         text.font = .systemFont(ofSize: 12)
         text.identifier = .init("runtime-download-phase")
-        text.widthAnchor.constraint(lessThanOrEqualToConstant: 540).isActive = true
+        text.preferredMaxLayoutWidth = SetupAssistant.columnWidth
+        text.widthAnchor.constraint(lessThanOrEqualToConstant: SetupAssistant.columnWidth).isActive = true
         if case .failed = a.state { text.textColor = .systemRed }
         out.append(text)
         if case .failed(_, _, let refused) = a.state, refused {
@@ -184,7 +186,7 @@ extension RuntimeSetupWindowController {
             tv?.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
             tv?.string = downloads.log
             tv?.scrollToEndOfDocument(nil)
-            scroll.widthAnchor.constraint(equalToConstant: 540).isActive = true
+            scroll.widthAnchor.constraint(equalToConstant: SetupAssistant.columnWidth).isActive = true
             scroll.heightAnchor.constraint(equalToConstant: 110).isActive = true
             scroll.borderType = .lineBorder
             out.append(scroll)

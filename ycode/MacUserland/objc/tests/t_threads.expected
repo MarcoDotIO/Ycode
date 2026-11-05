@@ -1,0 +1,8 @@
+initialize ran 1 time(s), threads that saw it unfinished 0
+sends sum 1200000 (expected 1200000)
+retain/release rc 1 deallocs 0
+weak hits 160000 rc 1
+after release weak 0x0 deallocs 1
+pool deallocs 80000
+synchronized counter 80000
+done

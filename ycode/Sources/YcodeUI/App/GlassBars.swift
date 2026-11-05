@@ -33,34 +33,6 @@ enum GlassBars {
         return NSView()
     }
 
-    /// A floating glass panel holding `content` (macOS 26 and later: in the
-    /// glass's content view, so it gets the material's vibrancy); before,
-    /// the system's sidebar material with the same corners.
-    static func panel(content: NSView, cornerRadius: CGFloat) -> NSView {
-        if #available(macOS 26, *) {
-            let g = NSGlassEffectView()
-            g.cornerRadius = cornerRadius
-            g.style = .regular
-            g.contentView = content
-            return g
-        }
-        let v = NSVisualEffectView()
-        v.material = .sidebar
-        v.blendingMode = .withinWindow
-        v.state = .followsWindowActiveState
-        v.wantsLayer = true
-        v.layer?.cornerRadius = cornerRadius
-        v.layer?.cornerCurve = .continuous
-        v.layer?.masksToBounds = true
-        content.translatesAutoresizingMaskIntoConstraints = false
-        v.addSubview(content)
-        NSLayoutConstraint.activate([
-            content.leadingAnchor.constraint(equalTo: v.leadingAnchor), content.trailingAnchor.constraint(equalTo: v.trailingAnchor),
-            content.topAnchor.constraint(equalTo: v.topAnchor), content.bottomAnchor.constraint(equalTo: v.bottomAnchor),
-        ])
-        return v
-    }
-
     /// A control-layer button in the glass style (`liquid-glass-ycode.md` §5):
     /// a capsule of the system's `.glass` bezel, `primary` tinted with the
     /// accent; a push button before macOS 26.

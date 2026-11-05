@@ -271,7 +271,11 @@ place"): the developer folder holds `Platforms/iPhoneSimulator.platform`
 `ToolchainInfo.plist`, `usr/lib/swift/{iphonesimulator,apinotes,swiftToCxx,clang}`
 and `usr/lib/clang/<v>/lib/darwin`); the run sets `DEVELOPER_DIR` to it,
 `XCODE_EXTRA_PLATFORM_FOLDERS=$DEVELOPER_DIR/Platforms` (swift-build loads
-no Xcode platforms for a Swift toolchain otherwise), the Swift
+no Xcode platforms for a Swift toolchain otherwise; the swift-build that
+`Tools/ycode-swb` pins since beta 2 registers them itself and fails the
+session with "platform … already registered", so
+`scripts/ycode-ios-build-linux` then builds again without it, B3-SIMDEBUG,
+2026-11-05), the Swift
 toolchain's real `usr/bin` first on `PATH` (swift-build rejects swiftly's
 proxy folder), and the settings `SDKROOT=iphonesimulator`, `ARCHS=arm64`,
 `OTHER_SWIFT_FLAGS=-resource-dir <that toolchain>/usr/lib/swift` (the

@@ -944,9 +944,13 @@ live check, its reason and its exact fix.
   viewer takes the display (a second window, a script), the capsule says
   "Another viewer has this device" with **Take Back**.
 
-**The onboarding's look** is `liquid-glass-ycode.md` §11: the steps on a
-floating glass panel, glass buttons with the primary one tinted, the body
-text plain on the window's background.
+**The onboarding's look** is `liquid-glass-ycode.md` §11, the paged
+assistant: one centred page per step (glyph, title, summary, then the
+choices and the step's checks in a grouped box), page dots for progress
+that also jump between steps, and Back / Re-check / Continue (Finish on the
+last step) in the footer, with a push between pages (a crossfade under
+Reduce Motion). Step glyphs: Viewer Host `server.rack`, Workstation `shippingbox`,
+Headset `eyeglasses`, Tracking `hand.raised`, Connect `link`.
 
 #### I.12.2 The checklist (`HeadsetChecker`, YcodeIDECore)
 

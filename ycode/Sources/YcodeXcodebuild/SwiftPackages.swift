@@ -58,10 +58,15 @@ struct SwiftPackage {
         return r.output
     }
 
+    /// SwiftPM's state folder under the temporary folder, one per user: on a
+    /// machine several people share, `/tmp` is shared too, and a folder
+    /// another user made cannot be written.
+    static func scratchFolder(userID: uid_t) -> String { "ycodebuild-spm-\(userID)" }
+
     /// Reads the package in `dir`.
     static func load(directory dir: String, context ctx: XcodebuildContext) throws(XcodebuildFailure) -> SwiftPackage {
         let shown = PathText.withoutPrivatePrefix(URL(fileURLWithPath: dir).standardizedFileURL.path)
-        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("ycodebuild-spm/" + DerivedDataName.hash(shown)).path
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(scratchFolder(userID: getuid()) + "/" + DerivedDataName.hash(shown)).path
         var p = SwiftPackage(directory: shown, name: URL(fileURLWithPath: shown).lastPathComponent, products: [], targets: [],
                              dependencies: [], scratch: scratch, swift: swiftTool(ctx))
         let describe = try p.swiftPM(["describe", "--type", "json"], context: ctx)
@@ -216,18 +221,34 @@ enum PackageCommands {
             throw XcodebuildFailure("Scheme \(schemeName) is not currently configured for the test action.", exitCode: ExitCode.noInput, trailingBlank: true)
         }
         if let spec = inv.destinations.first { printDestinationWarning(spec, context: ctx) }
-        // The reference tool prints no build settings for package schemes.
         if inv.has("-showBuildSettings") {
-            if inv.json { console.out(JSONText.render([Any]())) }
-            return 0
+            return try PackageBuildSettings.run(inv, package: pkg, scheme: schemeName, sdk: sdk, container: container, context: ctx)
         }
         guard let spec = inv.destinations.first else {
             throw XcodebuildFailure("Building a Swift package requires that a destination is provided using the \"-destination\" option. The \"-showdestinations\" option can be used to list the available destinations.", exitCode: ExitCode.software)
         }
         let (pifPath, pifTargets) = try pkg.pif(context: ctx)
+        var plan = plan(inv, scheme: schemeName, sdk: sdk, container: container,
+                        runDestination: try Destinations.explicitDestination(spec, context: ctx), context: ctx)
+        plan.package = Plan.PackageBuild(pif: pifPath, build: pkg.buildTargets(scheme: schemeName, includeTests: false, pifTargets: pifTargets),
+                                         tests: pkg.buildTargets(scheme: schemeName, includeTests: true, pifTargets: pifTargets)
+                                             .filter { g in pifTargets.contains { $0.guid == g && $0.type.contains("unit-test") } },
+                                         targets: pkg.targets.map { ($0.name, $0.path, $0.type == "test") },
+                                         documentation: pkg.documentationTargets(scheme: schemeName, pifTargets: pifTargets),
+                                         coverageLibraries: pkg.coverageLibraries(scheme: schemeName, pifTargets: pifTargets))
+        return try BuildActions.run(inv, plan: plan, context: ctx)
+    }
+
+    /// What a package scheme's build or settings query uses: the scheme's
+    /// actions, `-configuration` (else Debug), the command-line settings,
+    /// `-xcconfig`, the package's DerivedData folder, the destination, and
+    /// code coverage for test actions unless `-enableCodeCoverage NO`.
+    static func plan(_ inv: Invocation, scheme schemeName: String, sdk: SDKEntry?, container: Container,
+                     runDestination: RunDestination?, context ctx: XcodebuildContext) -> Plan {
+        let actions = inv.actions.isEmpty ? [BuildAction.build] : inv.actions
         var overrides: [(String, String)] = []
         if !inv.archs.isEmpty { overrides.append(("ARCHS", inv.archs.joined(separator: " "))) }
-        if let sdk { overrides.append(("SDKROOT", inv.sdk!.contains("/") ? sdk.path : sdk.canonicalName)) }
+        if let sdk, let given = inv.sdk { overrides.append(("SDKROOT", given.contains("/") ? sdk.path : sdk.canonicalName)) }
         for (k, v) in inv.overrides { overrides.removeAll { $0.0 == k }; overrides.append((k, v)) }
         let derivedData = inv.derivedDataPath.map { PathText.withoutPrivatePrefix(URL(fileURLWithPath: $0.hasPrefix("/") ? $0 : ctx.cwd + "/" + $0).standardizedFileURL.path) }
         let arena = Arena.forContainer(container, derivedDataPath: derivedData, derivedDataRoot: ctx.derivedDataRoot)
@@ -235,16 +256,9 @@ enum PackageCommands {
                                             referencedContainer: "container:")
         var scheme = Scheme.autocreated(for: ref, isTestBundle: false, isRunnable: false)
         scheme.name = schemeName
-        let configuration = inv.configuration ?? "Debug"
-        var plan = Plan(container: container, scheme: scheme, actions: actions, targets: [], configuration: configuration,
+        var plan = Plan(container: container, scheme: scheme, actions: actions, targets: [], configuration: inv.configuration ?? "Debug",
                         overrides: overrides, xcconfig: inv.xcconfig.map { ($0, $0.hasPrefix("/") ? $0 : ctx.cwd + "/" + $0) },
-                        arena: arena, runDestination: try Destinations.explicitDestination(spec, context: ctx))
-        plan.package = Plan.PackageBuild(pif: pifPath, build: pkg.buildTargets(scheme: schemeName, includeTests: false, pifTargets: pifTargets),
-                                         tests: pkg.buildTargets(scheme: schemeName, includeTests: true, pifTargets: pifTargets)
-                                             .filter { g in pifTargets.contains { $0.guid == g && $0.type.contains("unit-test") } },
-                                         targets: pkg.targets.map { ($0.name, $0.path, $0.type == "test") },
-                                         documentation: pkg.documentationTargets(scheme: schemeName, pifTargets: pifTargets),
-                                         coverageLibraries: pkg.coverageLibraries(scheme: schemeName, pifTargets: pifTargets))
+                        arena: arena, runDestination: runDestination)
         // Package test runs gather code coverage unless turned off.
         if actions.contains(where: { $0 == .test || $0 == .testWithoutBuilding || $0 == .buildForTesting }),
            inv.value("-enableCodeCoverage").map({ $0.uppercased() == "YES" }) ?? true {
@@ -252,7 +266,7 @@ enum PackageCommands {
             let buildFolder = URL(fileURLWithPath: arena.buildProductsPath).deletingLastPathComponent().path
             plan.synthesized += [("CLANG_COVERAGE_MAPPING", "YES"), ("CLANG_PROFILE_DATA_DIRECTORY", buildFolder + "/ProfileData")]
         }
-        return try BuildActions.run(inv, plan: plan, context: ctx)
+        return plan
     }
 
     /// The "first of multiple matching destinations" warning for a macOS

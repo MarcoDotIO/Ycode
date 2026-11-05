@@ -1,0 +1,32 @@
+load Base (1)
+load Sub (2)
+load Base(Extra) (3)
+main
+initialize Base (self Base)
+initialize Sub (self Sub)
+value 105 twice 210
+classValue Base 7 Sub 8
+initialize SubSub (self SubSub)
+who Base Sub SubSub
+extra extra
+scale 8.00
+sum 55
+cached twice 210
+cached twice 210
+cached twice 210
+vec 1.25 2.50 3.75 5.00 big 10 11 12 13 14
+nil int 0 nil double 0.0 nil ptr 0x0
+isKindOfClass 1 0 1
+isMemberOfClass 1 0
+respondsToSelector 1 0 1
+instancesRespondToSelector 1
+class SubSub superclass Sub meta 1
+performSelector SubSub
+resolveInstanceMethod: triple:
+triple 42
+triple again 6
+before swizzle a 1 b 2
+after swizzle a 2 b 1
+setImplementation old==b-imp 1 now 15
+msgSendSuper value 5
+done

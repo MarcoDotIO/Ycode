@@ -12,9 +12,12 @@ public struct PackageBuildEngine: BuildEngine {
     public var name: String { "swiftpm" }
     /// The `swift` driver and any leading arguments. Tests replace it.
     public var swift: [String]
+    /// Where the default driver is looked for (`PATH`).
+    public var environment: [String: String]
 
-    public init(swift: [String] = ["/usr/bin/env", "swift"]) {
+    public init(swift: [String] = ["/usr/bin/env", "swift"], environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.swift = swift
+        self.environment = environment
     }
 
     /// The SwiftPM arguments for a request (without the driver); nil for a
@@ -55,7 +58,7 @@ public struct PackageBuildEngine: BuildEngine {
         guard let args = Self.arguments(for: request) else {
             return Self.failed("ycode: this engine builds Swift packages only; open the package folder.")
         }
-        if swift == ["/usr/bin/env", "swift"], ShellToolchain.locate("swift") == nil { return Self.failed(issue: ShellToolchain.noSwift) }
+        if swift == ["/usr/bin/env", "swift"], ShellToolchain.locate("swift", environment: environment) == nil { return Self.failed(issue: ShellToolchain.noSwift) }
         return SwiftPMRun.start(swift + args, currentDirectory: request.container.path)
     }
 
@@ -147,6 +150,7 @@ enum SwiftPMRun {
             var parser = DiagnosticParser()
             var counter = LogTaskCounter()
             var summaries: [Diagnostic] = []
+            var log: [String] = []
             var issues: [Diagnostic] = []
             func report(_ ds: [Diagnostic]) {
                 for d in ds {
@@ -157,6 +161,7 @@ enum SwiftPMRun {
             }
             func handle(_ raw: String) {
                 let line = stripANSI(raw)
+                log.append(line)
                 continuation.yield(.output(line))
                 if let p = counter.feed(line) { continuation.yield(.progress(done: p.done, total: p.total)) }
                 if let a = PackageBuildEngine.activity(for: line) { continuation.yield(.activity(a)) }
@@ -186,6 +191,10 @@ enum SwiftPMRun {
                 }
             }
             let code = process.terminationStatus
+            if let d = toolMissing(status: code, log: log, issues: issues) {
+                issues.append(d)
+                continuation.yield(.issue(d))
+            }
             let status: BuildStatus = cancelled.isSet ? .cancelled : (code == 0 ? .succeeded : .failed)
             continuation.yield(.finished(BuildResult(status: status, exitCode: code, issues: issues)))
             continuation.finish()
@@ -195,6 +204,16 @@ enum SwiftPMRun {
             cancelled.set()
             if process.isRunning { process.interrupt() }
         }
+    }
+
+    /// Exit status 127 with no error of its own: the tool did not run. The
+    /// shell says "command not found", and in the Flatpak the host-tool
+    /// wrapper says why (no Swift on the host, no way to reach the host,
+    /// `packaging/flatpak/host-tool.sh`). Its lines become the build's error.
+    static func toolMissing(status: Int32, log: [String], issues: [Diagnostic]) -> Diagnostic? {
+        guard status == 127, !issues.contains(where: { $0.severity == .error }) else { return nil }
+        let text = log.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+        return Diagnostic(severity: .error, message: text.isEmpty ? ShellToolchain.noSwift : text, location: nil)
     }
 
     /// A location-less error that only says a step or the build failed.

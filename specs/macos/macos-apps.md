@@ -286,7 +286,11 @@ The owner's answers (2026-11-05):
   agreed benchmarks (message send, class realization, method lookup
   with and without a cache, `retain`/`release`, `@autoreleasepool`), Ycode
   ships upstream `objc4` (APSL-2.0) as a separate part with its patches
-  published.
+  published. **Settled (2026-11-05):** Ycode's runtime is faster than or
+  tied with the Mac's shipped runtime (Apple's build of objc4) on all 16
+  benchmarks, run on the same Mac (`objc-runtime.md` §14). The owner
+  accepted that build as the baseline, so Ycode keeps its own runtime and
+  does not ship objc4.
 - **4. Windows:** both, as Linux windows and inside the IDE through the
   display stream.
 - **1. Apple's macOS libraries:** no decision; Ycode does not copy or use

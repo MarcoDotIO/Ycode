@@ -3,15 +3,19 @@
 #   out/root/usr/lib/dyld                         Ycode's dynamic linker (dyld.md)
 #   out/root/usr/lib/libSystem.B.dylib            Ycode's libSystem (libsystem.md)
 #   out/root/usr/lib/system/libsystem_*.dylib     SimHostLibs' three libraries, tagged macOS
+#   out/root/usr/lib/libobjc.A.dylib              Ycode's Objective-C runtime (objc-runtime.md; needs cargo)
 #   out/samples/hello-swift                       the Embedded Swift sample (if swiftc exists)
 #
 #   sh build.sh          build everything and run the host unit tests
 #   sh build.sh test     only the host unit tests
+#   sh build.sh objc     only libobjc.A.dylib (after a full build)
 #   sh build.sh clean    remove out/
 #
 # Needs SimHostLibs/out (sh SimHostLibs/build.sh) for the host libraries.
 # Linux: . ~/.local/share/swiftly/env.sh first. Tools (override with the
-# variables): CLANG LD64 NM AR SWIFTC PYTHON HOST_CC.
+# variables): CLANG LD64 NM AR SWIFTC PYTHON HOST_CC CARGO. The Objective-C
+# runtime needs a Rust toolchain with the aarch64-apple-darwin standard
+# library (rustup target add aarch64-apple-darwin); without cargo it is skipped.
 
 set -eu
 LC_ALL=C
@@ -30,6 +34,7 @@ AR=${AR:-llvm-ar}
 SWIFTC=${SWIFTC:-swiftc}
 PYTHON=${PYTHON:-python3}
 HOST_CC=${HOST_CC:-cc}
+CARGO=${CARGO:-cargo}
 
 MACOS_MIN=14.0
 TARGET=arm64-apple-macos$MACOS_MIN
@@ -99,6 +104,37 @@ build_libsystem() {
     say "libSystem: $(wc -l < "$t/libSystem.own.txt" | tr -d ' ') own exports"
 }
 
+# Ycode's Objective-C runtime (specs/macos/objc-runtime.md §11): the Rust
+# static library's members, platform tags stripped, linked as
+# /usr/lib/libobjc.A.dylib against libSystem, exporting objc/exports.txt.
+build_objc() {
+    if ! command -v "$CARGO" >/dev/null 2>&1; then
+        say "no cargo: libobjc.A.dylib is skipped"
+        return 0
+    fi
+    o="$out/obj/objc"
+    rm -rf "$o"
+    mkdir -p "$o/builtins"
+    (cd "$here/objc" && "$CARGO" build --release --target aarch64-apple-darwin --target-dir "$out/cargo") \
+        || die "building the Objective-C runtime failed (is the aarch64-apple-darwin target installed?)"
+    lib="$out/cargo/aarch64-apple-darwin/release/libycobjc.a"
+    (cd "$o" && "$AR" x "$lib") || die "extracting $lib failed"
+    rm -f "$o"/*.rmeta
+    # The crate is one object (LTO); compiler_builtins members go into an
+    # archive so only the ones it uses are linked.
+    for f in "$o"/compiler_builtins*.o; do
+        [ -f "$f" ] && mv "$f" "$o/builtins/"
+    done
+    "$PYTHON" -I "$strip_platform" "$o"/*.o "$o"/builtins/*.o || die "stripping the runtime's objects failed"
+    "$AR" rcs "$o/builtins.a" "$o"/builtins/*.o || die "archiving compiler_builtins failed"
+    # shellcheck disable=SC2086
+    "$LD64" $LINK -dylib -install_name /usr/lib/libobjc.A.dylib -current_version 1.0.0 \
+        -compatibility_version 1.0.0 -fixup_chains -dead_strip \
+        -exported_symbols_list "$here/objc/exports.txt" -o "$out/root/usr/lib/libobjc.A.dylib" \
+        "$o"/*.o "$o/builtins.a" "$out/tbd/libSystem.tbd" || die "linking libobjc failed"
+    say "libobjc: $("$NM" -g --defined-only -j "$out/root/usr/lib/libobjc.A.dylib" | wc -l | tr -d ' ') exports"
+}
+
 install_host_libraries() {
     mkdir -p "$out/root/usr/lib/system"
     for lib in kernel platform pthread; do
@@ -150,11 +186,13 @@ all)
     build_dyld
     build_libsystem
     install_host_libraries
+    build_objc
     build_swift_sample
     run_tests
     say "ok: $out/root"
     ;;
 test) run_tests ;;
+objc) build_objc ;;
 clean) rm -rf "$out" ;;
-*) die "usage: sh build.sh [all|test|clean]" ;;
+*) die "usage: sh build.sh [all|test|objc|clean]" ;;
 esac

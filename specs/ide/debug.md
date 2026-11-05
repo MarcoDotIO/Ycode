@@ -395,6 +395,98 @@ it for the OpenViews views.
 - Tests: `ShellDebugEditingTests` (a scripted adapter); end to end on
   x86-64 Linux with `YCODE_IDE_DEBUG2` (`DebugEditingDriver.swift`).
 
+### Apps on the simulator (B3-SIMDEBUG, 2026-11-05)
+
+Product ▸ Run on a Ycode simulator destination (a device of a paired
+`ycode-simhost`, `specs/simulator/sim-link.md` §10) runs the app under
+the debugger when the host is this computer, as Run on a Mac simulator
+does on macOS. The debug UI is the one above (gutter, Debug and Breakpoint
+navigators, variables view, console, debug bar, Debug menu).
+
+1. Run builds the app here and uploads it; the link's `run` request
+   carries `debug: true`, and the host starts the app with ycode-simd's
+   debug stub on `<home>/run/<device>.debug.sock` (`sim-link.md` §6,
+   `specs/simulator/debug-stub.md`). The response names the socket.
+2. The activity reads "Launching <app>" while the device boots or
+   restores and installs the app; the IDE asks the host's log (the link's
+   `log`, once a second) for "ylaunch: launched <bundle id> pid N".
+3. Then "Configuring Debugger Actions": a loopback forward
+   (`YcodeDebug.StubForward`, 127.0.0.1 and a port the system picks; it
+   accepts one connection and closes its listener, so no other user of a
+   shared host reaches the stub through it) carries lldb-dap's gdb-remote
+   connection to the socket. lldb-dap attaches with `gdb-remote-port`,
+   `program` = this computer's build of the executable, and the
+   `preRunCommands` of `debug-stub.md` §8.3. Breakpoints are sent on
+   `initialized`; the attach stop is resumed once.
+4. "Running <app> on <device> (<host>)"; a breakpoint stop reads "Paused
+   <app>", with the frames, the variables and the console as for a
+   package. Pause, Continue, Step Over/Into/Out work.
+5. Stop detaches (`disconnect` with `terminateDebuggee: false`) and closes
+   the forward and the device window; the app runs on on the device, as
+   after the Mac's remote run (`debug-stub.md` §8.2).
+
+- **lldb on Linux and Darwin signal numbers.** Swift 6.4's lldb on Linux
+  gives a gdb-remote process of an Apple OS (target `arm64-apple-ios`,
+  platform `remote-ios`) the host's signal table: the stub's SIGSTOP
+  (Darwin 17) reads as SIGCHLD, whose default is "do not stop, pass", so
+  lldb resumed the process right after the attach (observed: "Process N
+  stopped and restarted: thread 1 received signal: SIGCHLD"). The stub's
+  signals are Darwin's 4, 5, 8, 10, 11 and 17 (`debug-stub.md` §6.1); 4,
+  5, 8 and 11 mean the same on Linux. On Linux the IDE adds to the
+  `preRunCommands` `process handle -s true -p false -n true SIGCHLD` (17:
+  the attach and interrupt stops stop and are not passed on) and
+  `process handle -s true -p true -n true SIGUSR1` (10, Darwin's SIGBUS:
+  stops, and is passed on so the fault takes its course). lldb keeps
+  handle settings made before the attach for the process it creates. A
+  stop shown with a signal names Linux's (an interrupt reads "signal
+  SIGCHLD" in lldb's own output; the IDE shows Pause's stop as paused).
+  OPEN QUESTION: where lldb on Linux takes the signal table of a remote
+  Darwin process from (a fix there would show the right names).
+- **Symbols.** An app built on Linux (`scripts/ycode-ios-build-linux`,
+  `DEBUG_INFORMATION_FORMAT=dwarf`) keeps its debug information in the
+  object files its debug map names, under the derived data on this
+  computer; lldb reads them there (no dSYM: the Linux toolchains have no
+  `dsymutil`). The system images are read from the process's memory
+  ("libobjc.A.dylib is being read from process memory"), as on a Mac.
+- **Off:** `YCODE_IDE_SIM_DEBUGGER=0` runs without the debugger. A host on
+  another computer runs the app without it, with the console line "The
+  debugger attaches only to a simulator host on this computer; <host>
+  runs <app> without it." until the link carries the stub (#50).
+- Tests: `ShellSimulatorDebugTests` (host detection, the launch line, a
+  scripted lldb-dap attach: activities, the attach arguments, the stop,
+  Continue, the detach), `StubForwardTests`, `SimLinkTests` (the `debug`
+  field, the stub's socket); end to end on the arm64 Linux host with
+  `SimulatorDebugEndToEndTests` (gated by `YCODE_SIM_DEBUG_E2E`) and the
+  `YCODE_IDE_SIMDEBUG` walk (`SimDebugDriver.swift`).
+- **Results** (2026-11-05; the arm64 Linux host loaded by other agents,
+  load 30-100; iPhone Duo, iOS 27.1; TapCounter built on the x86-64 PC
+  with `ycode-ios-build-linux` into the same derived-data path, since the
+  host has no user SDK or Apple-capable `ld64.lld`; Swift 6.4's lldb-dap):
+  Run → "Launching TapCounter" (cold boot, home screen at 226 s) →
+  "Configuring Debugger Actions" (the attach: about 70 s, lldb reading the
+  system images from memory) → "Running TapCounter on tc (b3-simdebug)";
+  a tap on the button stopped the app at TapCounter.swift:72 ("Thread 1:
+  breakpoint 1.1 (1)", frames `CounterController.buttonTapped(_:)`, `@objc
+  CounterController.buttonTapped(_:)`, `-[UIApplication
+  sendAction:to:from:forEvent:]`, … `UIApplicationMain`), variables
+  `sender: UIButton`, `self: TapCounter.CounterController`; Step Over to
+  line 73 showed `step: Int = 1`; Continue ran it again; the next tap
+  stopped again with "(2)" and `step` 2 after a step; Stop detached
+  ("Finished running TapCounter on tc (b3-simdebug)") and the app ran on.
+  `SimulatorDebugEndToEndTests` passed the same steps without a window.
+- **Not done (lldb on Linux).** The members of a Swift class whose
+  superclass is an Objective-C class (`self` of a `UIViewController`
+  subclass) do not show: lldb answers "Could not compute start field
+  offset for typeref" (it needs the superclass's instance size, which
+  lldb on Linux does not read from the Objective-C runtime), so `self`
+  expands to nothing. Swift structs, arguments and locals show. Swift
+  expressions (`p`, `po`) fail: lldb cannot load the app's Swift module
+  ("failed to open explicit Swift module … prebuilt-modules", "Error
+  while searching for SDK: HostInfoError"), also with `target.sdk-path`
+  set to the user's SDK; C and Objective-C expressions work (`expression
+  -l c -- (int)getpid()` → the guest pid). OPEN QUESTION: whether a later
+  lldb on Linux reads Objective-C class layouts of a remote Darwin process.
+
 ## Evidence
 
 - Debug menu items and the breakpoint file format: `reference-ui-5.md`
@@ -469,3 +561,10 @@ it for the OpenViews views.
   and categories from `specs/simulator/simulator-features.md` §7.3 (level
   4 there); the pop-over layout and the in-app library are Ycode design
   (public UIKit trait overrides and status functions, level 1).
+- Simulator apps in the Linux IDE (B3-SIMDEBUG): lldb's signal handling
+  of a remote Darwin process on Linux, the attach stop restarted as
+  SIGCHLD and the `process handle` settings kept from before the attach,
+  observed with Swift 6.4's lldb and lldb-dap on arm64 Linux against
+  ycode-simd's stub (level 3); `process handle` and lldb-dap's
+  `preRunCommands`: LLDB's documentation (level 1). The rest is Ycode
+  design.

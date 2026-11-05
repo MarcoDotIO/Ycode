@@ -592,6 +592,16 @@ A bare RuntimeRoot (as Ycode's Linux route copies it, `docs/SIMULATOR-LINUX.md`
    route. If Apple's service refuses a route B query, Ycode says so and
    offers A or C (O1).
 
+7. **The wizard's look** (macOS window and the Linux IDE's sheet) is
+   `../ide/liquid-glass-ycode.md` §11, the paged assistant: one centred
+   page per step, page dots for progress and jumping, Back / Re-check /
+   Continue (Done on the last step). Step glyphs (`RuntimeSetupStep.glyph`,
+   names in Ycode's Linux symbol set too): Where to Run
+   `arrow.triangle.branch`, Simulator Host `cpu`, Prepare Host
+   `gearshape.2`, Runtimes `square.stack.3d.up`, Get a Runtime
+   `square.and.arrow.down`, Add a Runtime `plus.circle`, Ready
+   `checkmark.circle`.
+
 ## 12. To confirm by recording (GUI, once #56 allows it)
 
 1. First-launch sheet: layout, default selections, whether macOS is shown,

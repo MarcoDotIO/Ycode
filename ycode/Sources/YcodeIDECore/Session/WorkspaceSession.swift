@@ -690,6 +690,8 @@ public final class WorkspaceSession {
     /// True while the debugger attaches to a simulator app, until the app
     /// is resumed.
     var attachingSimulatorApp = false
+    /// The loopback forward to a simulator app's debug stub (StubDebugAttach.swift).
+    var stubForward: StubForward?
 
     /// The debugged process's ID, from lldb-dap's `process` event.
     public internal(set) var debuggedPID: Int?

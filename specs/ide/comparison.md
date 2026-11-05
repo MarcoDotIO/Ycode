@@ -73,6 +73,10 @@ by a space.
 
 ### Conflict editor (`YcodeUI/SourceControl/ConflictEditorController.swift`)
 
+Its state and every text it shows are the core's `ConflictEditorState`,
+which the Linux IDE's conflict editor draws too (`source-control.md`,
+"Ycode implementation: the Linux IDE").
+
 Shown over the editor area like the commit editor. Top row: "Conflicts in
 <file>", a pop-up of the conflicted files, the unresolved count ("1
 conflict unresolved", "Resolved", "All conflicts resolved"), **Mark as

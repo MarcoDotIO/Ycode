@@ -179,6 +179,8 @@ come from the host's `PATH`.
 ```sh
 flatpak install --user --bundle Ycode-<version>-x86_64.flatpak
 flatpak run --user --command=ycode io.github.MarcoDotIO.Ycode --version
+# In a Swift package folder under the home folder: builds with the host's SwiftPM.
+flatpak run --user --command=ycode io.github.MarcoDotIO.Ycode build
 # Under Xvfb on a desktop that also runs Wayland, ask for X11 for the test:
 DISPLAY=:97 flatpak run --user --socket=x11 --nosocket=wayland \
     --env=YCODE_IDE_WALK=$HOME/walk io.github.MarcoDotIO.Ycode [<package>]

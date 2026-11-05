@@ -144,6 +144,16 @@ public struct SettingsTarget {
 public protocol SettingsProvider {
     /// Exported settings per target, in order.
     func settings(container: Container, targets: [SettingsTarget], parameters: BuildParameters) throws -> [[String: String]]
+    /// Exported settings of targets of an existing build description (a
+    /// Swift package's, from SwiftPM), by target GUID, in order.
+    func settings(pif: URL, guids: [String], parameters: BuildParameters) throws -> [[String: String]]
+}
+
+extension SettingsProvider {
+    /// Only swift-build evaluates a build description it did not generate.
+    public func settings(pif: URL, guids: [String], parameters: BuildParameters) throws -> [[String: String]] {
+        throw SettingsError(description: "this settings provider cannot evaluate a Swift package's build description")
+    }
 }
 
 public struct SettingsError: Error, CustomStringConvertible {
@@ -184,8 +194,13 @@ public struct SwiftBuildSettingsProvider: SettingsProvider {
 
     /// Settings of targets of an existing build description (a Swift
     /// package's, from SwiftPM).
-    public func settings(pif pifURL: URL, guids: [String], parameters: BuildParameters, work: URL? = nil) throws -> [[String: String]] {
-        let work = work ?? scratch.appendingPathComponent("ycodebuild-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)")
+    public func settings(pif pifURL: URL, guids: [String], parameters: BuildParameters) throws -> [[String: String]] {
+        let work = scratch.appendingPathComponent("ycodebuild-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: work) }
+        return try settings(pif: pifURL, guids: guids, parameters: parameters, work: work)
+    }
+
+    func settings(pif pifURL: URL, guids: [String], parameters: BuildParameters, work: URL) throws -> [[String: String]] {
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         let request: [String: Any] = [
             "pif": pifURL.path,

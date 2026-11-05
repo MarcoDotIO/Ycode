@@ -21,25 +21,30 @@ enum ShowBuildSettings {
         } catch {
             throw XcodebuildFailure("Could not resolve build settings: \(error)", exitCode: ExitCode.software)
         }
-        let console = ctx.console
+        print(targets: plan.targets.map(\.name), settings: all, action: action, json: inv.json, console: ctx.console)
+        return 0
+    }
+
+    /// One section (text) or object (`-json`) per target, in order (§1),
+    /// after the warnings for SDKs this host does not have.
+    static func print(targets: [String], settings all: [[String: String]], action: BuildAction, json: Bool, console: Console) {
         #if !os(macOS)
         for w in unavailableSDKWarnings(all) { console.err(w) }
         #endif
-        if inv.json {
-            let list: [[String: Any]] = zip(plan.targets, all).map { t, s in
-                ["action": action.rawValue, "target": t.name, "buildSettings": s]
+        if json {
+            let list: [[String: Any]] = zip(targets, all).map { t, s in
+                ["action": action.rawValue, "target": t, "buildSettings": s]
             }
             console.out(JSONText.render(list))
-            return 0
+            return
         }
-        for (t, s) in zip(plan.targets, all) {
-            console.out("Build settings for action \(action.rawValue) and target \(ShellQuote.quote(t.name)):")
+        for (t, s) in zip(targets, all) {
+            console.out("Build settings for action \(action.rawValue) and target \(ShellQuote.quote(t)):")
             for k in s.keys.sorted(by: { Array($0.utf8).lexicographicallyPrecedes(Array($1.utf8)) }) {
                 console.out("    \(k) = \(s[k]!)")
             }
             console.out()
         }
-        return 0
     }
 
     /// One warning per `SDKROOT` that swift-build could not resolve to an

@@ -18,20 +18,24 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
     }
 
     /// Which two of the three versions the comparison view shows.
-    public enum Pair: Int, Sendable { case leftRight, baseLeft, baseRight }
-    public static let pairTitles = ["Left \u{2194} Right", "Base \u{2194} Left", "Base \u{2194} Right"]
-    public static let choiceTitles = ["Left", "Right", "Left + Right", "Right + Left", "Base", "Edit"]
+    public typealias Pair = ConflictEditorState.Pair
+    public static let pairTitles = ConflictEditorState.pairTitles
+    public static let choiceTitles = ConflictEditorState.choiceTitles
 
     public let source: Source
+    /// Everything the editor shows, shared with the Linux IDE
+    /// (`ConflictEditorState`).
+    public private(set) var state: ConflictEditorState
     /// Conflicted files (repository) and the shown one.
-    public private(set) var files: [String] = []
-    public private(set) var currentFile: String?
-    public private(set) var document: MergeDocument?
+    public var files: [String] { state.files }
+    public var currentFile: String? { state.currentFile }
+    public var document: MergeDocument? { state.document }
     /// The selected hunk (index into `document.hunks`).
-    public private(set) var currentHunk: Int?
-    public private(set) var pair: Pair = .leftRight
-    public private(set) var integration: GitRepository.IntegrationState = .none
-    public private(set) var lastError: String?
+    public var currentHunk: Int? { state.currentHunk }
+    public var pair: Pair { state.pair }
+    public var integration: GitRepository.IntegrationState { state.integration }
+    public var lastError: String? { state.lastError }
+    public var isEditing: Bool { state.isEditing }
 
     public let titleLabel = NSTextField(labelWithString: "")
     public let filePopUp = NSPopUpButton()
@@ -69,12 +73,14 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
 
     public init(repository: GitRepository, focus: String? = nil) {
         source = .repository(repository)
+        state = ConflictEditorState(source: .repository)
         self.focus = focus
         super.init(nibName: nil, bundle: nil)
     }
 
     public init(left: URL, right: URL, ancestor: URL? = nil) {
         source = .files(left: left, right: right, ancestor: ancestor)
+        state = ConflictEditorState(source: .files(hasAncestor: ancestor != nil))
         focus = nil
         super.init(nibName: nil, bundle: nil)
     }
@@ -84,7 +90,7 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
 
     var repository: GitRepository? { if case .repository(let r) = source { r } else { nil } }
     public var isComparingFiles: Bool { repository == nil }
-    var hasBase: Bool { if case .files(_, _, let a) = source { a != nil } else { true } }
+    var hasBase: Bool { state.hasBase }
 
     // MARK: View
 
@@ -193,24 +199,23 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
     public func reloadFiles() {
         switch source {
         case .files(let l, let r, let a):
-            lastError = nil
+            state.lastError = nil
             do {
                 let left = try String(contentsOf: l, encoding: .utf8), right = try String(contentsOf: r, encoding: .utf8)
                 if let a {
                     let base = try String(contentsOf: a, encoding: .utf8)
-                    document = MergeDocument(base: base, ours: left, theirs: right, oursLabel: l.lastPathComponent,
-                                             theirsLabel: r.lastPathComponent, baseLabel: a.lastPathComponent)
+                    state.load(MergeDocument(base: base, ours: left, theirs: right, oursLabel: l.lastPathComponent,
+                                             theirsLabel: r.lastPathComponent, baseLabel: a.lastPathComponent))
                 } else {
-                    document = MergeDocument(chunks: ThreeWayMerge.compare(left: LineDiff.lines(left), right: LineDiff.lines(right)),
-                                             oursLabel: l.lastPathComponent, theirsLabel: r.lastPathComponent, baseLabel: l.lastPathComponent)
+                    state.load(MergeDocument(chunks: ThreeWayMerge.compare(left: LineDiff.lines(left), right: LineDiff.lines(right)),
+                                             oursLabel: l.lastPathComponent, theirsLabel: r.lastPathComponent, baseLabel: l.lastPathComponent))
                 }
             } catch {
-                document = nil
-                lastError = error.localizedDescription
+                state.load(nil)
+                state.lastError = error.localizedDescription
             }
             titleLabel.stringValue = a.map { "\(l.lastPathComponent) \u{2194} \(r.lastPathComponent) (ancestor \($0.lastPathComponent))" }
                 ?? "\(l.lastPathComponent) \u{2194} \(r.lastPathComponent)"
-            currentHunk = document.flatMap { $0.step(from: nil, forward: true, unresolvedOnly: true) ?? $0.step(from: nil, forward: true) }
             render()
         case .repository(let repo):
             let wanted = currentFile ?? focus
@@ -219,10 +224,9 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
                     (repo.conflictedFiles(), repo.integrationState())
                 }.value
                 guard let self else { return }
-                self.files = read.0
-                self.integration = read.1
-                let target = wanted.flatMap { w in read.0.contains(w) ? w : nil } ?? read.0.first
-                await self.show(file: target)
+                self.state.files = read.0
+                self.state.integration = read.1
+                await self.show(file: ConflictEditorState.target(wanted: wanted, in: read.0))
             }
         }
     }
@@ -231,14 +235,9 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
     /// elsewhere without re-reading the shown file.
     public func update(integration: GitRepository.IntegrationState, conflicted: [String]) {
         guard repository != nil, loading == nil else { return }
-        self.integration = integration
-        if conflicted != files {
-            files = conflicted
-            if let f = currentFile, !conflicted.contains(f) {
-                let next = conflicted.first
-                track { [weak self] in await self?.show(file: next) }
-                return
-            }
+        if case .show(let next) = state.update(integration: integration, conflicted: conflicted) {
+            track { [weak self] in await self?.show(file: next) }
+            return
         }
         render()
     }
@@ -246,16 +245,15 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
     /// Shows one conflicted file (repository mode).
     public func show(file: String?) async {
         guard let repo = repository else { return }
-        currentFile = file
-        guard let file else { document = nil; currentHunk = nil; render(); return }
+        state.currentFile = file
+        guard let file else { state.load(nil); render(); return }
         showGeneration += 1
         let generation = showGeneration
         await track { [weak self] in
             let doc = await Task.detached { repo.mergeDocument(forConflictedFile: file) }.value
             // A later show replaced this one.
             guard let self, generation == self.showGeneration, self.currentFile == file else { return }
-            self.document = doc
-            self.currentHunk = doc?.step(from: nil, forward: true, unresolvedOnly: true) ?? doc?.step(from: nil, forward: true)
+            self.state.load(doc)
             self.render()
         }.value
     }
@@ -283,40 +281,26 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
 
     /// Selects a hunk and shows it.
     public func selectHunk(_ h: Int?) {
-        guard let doc = document, let h, doc.hunks.indices.contains(h) else { return }
-        currentHunk = h
+        state.selectHunk(h)
         render()
     }
 
-    @objc public func nextHunk(_ sender: Any?) { selectHunk(document?.step(from: currentHunk, forward: true)) }
-    @objc public func previousHunk(_ sender: Any?) { selectHunk(document?.step(from: currentHunk, forward: false)) }
+    @objc public func nextHunk(_ sender: Any?) { state.nextHunk(); render() }
+    @objc public func previousHunk(_ sender: Any?) { state.previousHunk(); render() }
 
-    /// Applies a choice to the selected hunk; `.custom` opens the editor
-    /// with the hunk's text.
+    /// Applies a choice to the selected hunk; after a decision the next
+    /// undecided conflict is selected.
     public func choose(_ choice: MergeDocument.Choice) {
-        guard var doc = document, let h = currentHunk else { return }
-        doc.choose(choice, hunk: h)
-        document = doc
+        state.choose(choice)
         render()
-        // After a decision, move on to the next undecided conflict.
-        if choice != .unresolved, !isEditing, let next = doc.step(from: h, forward: true, unresolvedOnly: true), next != h {
-            selectHunk(next)
-        }
     }
 
     /// Edit: the selected hunk's text becomes hand-written; the editor
     /// below the bar shows it.
     public func beginEditing() {
-        guard let doc = document, let h = currentHunk else { return }
-        let c = doc.chunks[doc.hunks[h]]
-        let start: [String] = switch doc.choices[h] {
-        case .unresolved: c.ours + c.theirs
-        case .custom(let l): l
-        default: doc.lines(forHunk: h)
-        }
-        isEditing = true
-        choose(.custom(start))
-        hunkEditor.string = start.isEmpty ? "" : start.joined(separator: "\n") + "\n"
+        state.beginEditing()
+        hunkEditor.string = state.editedText
+        render()
     }
 
     /// Replaces the selected hunk's hand-written text.
@@ -326,28 +310,23 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
         textDidChange(Notification(name: NSText.didChangeNotification, object: hunkEditor))
     }
 
-    public private(set) var isEditing = false
-
     public func textDidChange(_ notification: Notification) {
-        guard (notification.object as? NSTextView) === hunkEditor, isEditing, var doc = document, let h = currentHunk else { return }
-        doc.choose(.custom(LineDiff.lines(hunkEditor.string)), hunk: h)
-        document = doc
+        guard (notification.object as? NSTextView) === hunkEditor, isEditing else { return }
+        state.setEditedText(hunkEditor.string)
         renderResult()
         renderStatus()
     }
 
     @objc func choiceChanged() {
-        let choices: [MergeDocument.Choice] = [.ours, .theirs, .oursThenTheirs, .theirsThenOurs, .base]
-        let i = choiceControl.selectedSegment
-        if i == 5 { beginEditing(); return }
-        isEditing = false
-        if choices.indices.contains(i) { choose(choices[i]) }
+        state.chooseSegment(choiceControl.selectedSegment)
+        if isEditing { hunkEditor.string = state.editedText }
+        render()
     }
 
     @objc func pairChanged() { setPair(Pair(rawValue: pairControl.selectedSegment) ?? .leftRight) }
 
     public func setPair(_ p: Pair) {
-        pair = hasBase ? p : .leftRight
+        state.setPair(p)
         pairControl.selectedSegment = pair.rawValue
         renderComparison()
     }
@@ -372,12 +351,11 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
             let error = await Task.detached { () -> String? in
                 do { try repo.resolveConflict(file, text: text); return nil } catch { return "\(error)" }
             }.value
-            self?.lastError = error
+            self?.state.lastError = error
         }.value
         guard lastError == nil else { render(); return false }
-        isEditing = false
         onResolved?()
-        currentFile = nil
+        state.currentFile = nil
         reloadFiles()
         await idle()
         return true
@@ -412,22 +390,19 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
 
     func render() {
         guard isViewLoaded else { return }
-        let names = files.map { URL(fileURLWithPath: $0).lastPathComponent }
+        let names = state.fileNames
         if filePopUp.itemTitles != names {
             filePopUp.removeAllItems()
             filePopUp.addItems(withTitles: names)
         }
         if let f = currentFile, let i = files.firstIndex(of: f) { filePopUp.selectItem(at: i) }
-        if repository != nil {
-            titleLabel.stringValue = currentFile.map { "Conflicts in \(URL(fileURLWithPath: $0).lastPathComponent)" } ?? "No Conflicts"
-        }
+        if repository != nil { titleLabel.stringValue = state.title }
         pairControl.isHidden = !hasBase
         choiceControl.setEnabled(hasBase, forSegment: 4)
-        let verb = integration.verb
-        continueButton.title = verb.isEmpty ? "Continue" : "Continue \(verb)"
-        abortButton.title = verb.isEmpty ? "Abort" : "Abort \(verb)"
-        continueButton.isHidden = repository == nil || !integration.isInProgress
-        abortButton.isHidden = repository == nil || !integration.isInProgress
+        continueButton.title = state.continueTitle
+        abortButton.title = state.abortTitle
+        continueButton.isHidden = !state.showsIntegrationButtons
+        abortButton.isHidden = !state.showsIntegrationButtons
         continueButton.isEnabled = files.isEmpty
         renderStatus()
         renderHunkBar()
@@ -436,80 +411,43 @@ public final class ConflictEditorController: NSViewController, NSTextViewDelegat
     }
 
     func renderStatus() {
-        guard let doc = document else {
-            statusLabel.stringValue = lastError ?? (repository != nil && files.isEmpty ? "All conflicts resolved" : "")
-            resolveButton.isEnabled = false
-            return
-        }
-        let n = doc.unresolvedCount
-        statusLabel.stringValue = lastError ?? (n == 0 ? (doc.hunks.isEmpty ? "No differences" : "Resolved")
-            : "\(n) conflict\(n == 1 ? "" : "s") unresolved")
-        resolveButton.isEnabled = n == 0 && currentFile != nil
+        statusLabel.stringValue = state.statusText
+        resolveButton.isEnabled = state.canMarkResolved
     }
 
     func renderHunkBar() {
-        let total = document?.hunks.count ?? 0
-        let noun = isComparingFiles && !hasBase ? "Difference" : "Change"
-        if let h = currentHunk, total > 0 {
-            let conflict = document.map { $0.chunks[$0.hunks[h]].kind == .conflict } ?? false
-            hunkLabel.stringValue = "\(noun) \(h + 1) of \(total)" + (conflict ? " (conflict)" : "")
-        } else {
-            hunkLabel.stringValue = total == 0 ? "No \(noun.lowercased())s" : "\(total) \(noun.lowercased())\(total == 1 ? "" : "s")"
-        }
-        previousButton.isEnabled = total > 0
-        nextButton.isEnabled = total > 0
+        hunkLabel.stringValue = state.hunkLabel
+        previousButton.isEnabled = state.hasHunks
+        nextButton.isEnabled = state.hasHunks
         choiceControl.isEnabled = currentHunk != nil
-        let selected: Int = {
-            guard let doc = document, let h = currentHunk else { return -1 }
-            switch doc.choices[h] {
-            case .ours: return 0
-            case .theirs: return 1
-            case .oursThenTheirs: return 2
-            case .theirsThenOurs: return 3
-            case .base: return 4
-            case .custom: return 5
-            case .unresolved: return -1
-            }
-        }()
-        choiceControl.selectedSegment = selected
-        if selected != 5 { isEditing = false }
+        choiceControl.selectedSegment = state.selectedSegment ?? -1
+        if isEditing, hunkEditor.string != state.editedText, LineDiff.lines(hunkEditor.string) != LineDiff.lines(state.editedText) {
+            hunkEditor.string = state.editedText
+        }
         hunkEditorScroll.isHidden = !isEditing
         hunkEditorHeight?.constant = isEditing ? 90 : 0
     }
 
     func renderComparison() {
-        guard let doc = document else { comparison.show(old: "", new: "", oldTitle: "", newTitle: ""); return }
-        let (old, new, ot, nt): (String, String, String, String) = switch pair {
-        case .leftRight: (doc.oursText, doc.theirsText, "Left: " + doc.oursLabel, "Right: " + doc.theirsLabel)
-        case .baseLeft: (doc.baseText, doc.oursText, "Base: " + doc.baseLabel, "Left: " + doc.oursLabel)
-        case .baseRight: (doc.baseText, doc.theirsText, "Base: " + doc.baseLabel, "Right: " + doc.theirsLabel)
-        }
-        comparison.show(old: old, new: new, oldTitle: ot, newTitle: nt)
+        let c = state.comparison
+        comparison.show(old: c.old, new: c.new, oldTitle: c.oldTitle, newTitle: c.newTitle)
         // Scroll both columns to the selected hunk's first row.
-        guard let h = currentHunk else { return }
-        let starts = doc.sideStarts(forHunk: h)
-        let leftStart = pair == .leftRight ? starts.ours : starts.base
-        let row = comparison.rows.firstIndex { ($0.left?.number ?? 0) > leftStart } ?? 0
+        guard let row = state.comparisonRow(in: comparison.rows) else { return }
         scroll(comparison.leftView, toLine: row)
     }
 
     func renderResult() {
-        guard let doc = document else { resultView.textStorage?.setAttributedString(NSAttributedString()); return }
-        let (lines, ranges) = doc.layout()
         let s = NSMutableAttributedString()
-        var hunkOf: [Int: Int] = [:]
-        for (h, r) in ranges.enumerated() { for l in r { hunkOf[l] = h } }
-        for (i, line) in lines.enumerated() {
+        for line in state.resultLines {
             var attrs: [NSAttributedString.Key: Any] = [.font: Theme.font, .foregroundColor: NSColor.textColor]
-            if let h = hunkOf[i] {
-                let unresolved = doc.choices[h] == .unresolved
-                let base = unresolved ? NSColor.systemRed : NSColor.systemGreen
-                attrs[.backgroundColor] = base.withAlphaComponent(h == currentHunk ? 0.28 : 0.12)
+            if line.tint != .none {
+                let base = line.tint == .unresolved ? NSColor.systemRed : NSColor.systemGreen
+                attrs[.backgroundColor] = base.withAlphaComponent(line.isSelected ? 0.28 : 0.12)
             }
-            s.append(NSAttributedString(string: line + "\n", attributes: attrs))
+            s.append(NSAttributedString(string: line.text + "\n", attributes: attrs))
         }
         resultView.textStorage?.setAttributedString(s)
-        if let h = currentHunk, ranges.indices.contains(h) { scroll(resultView, toLine: ranges[h].lowerBound) }
+        if let l = state.resultStartLine { scroll(resultView, toLine: l) }
     }
 
     func scroll(_ tv: NSTextView, toLine line: Int) {

@@ -91,7 +91,7 @@ expect gaps. **Not yet** means it isn't there. The full audit against Xcode 27.1
 | Tests: run all, a suite or one test; results per test; failures at their lines | Experimental | Experimental: Swift packages (XCTest and Swift Testing) |
 | Organizer | Experimental | Not yet |
 | Coding assistant (local models, OpenAI, agent CLIs); you review each proposed change | Experimental | Experimental: new in this beta |
-| Settings, themes and key bindings | Experimental | Experimental: General, Appearance (theme editing), Behaviors, Navigation, Notifications, Editing, Shortcuts, Source Control, Locations; no Accounts |
+| Settings, themes and key bindings | Experimental | Experimental: General, Appearance (theme editing), Accounts, Behaviors, Navigation, Notifications, Editing, Shortcuts, Source Control, Locations |
 | Signing and distribution | Experimental: partial | Not yet |
 | Physical devices | Listed only | Not yet |
 
@@ -268,7 +268,7 @@ The full gap list is in [docs/PARITY.md](docs/PARITY.md) and the longer view in 
 
 ### 1.0 betas: finishing what is here
 
-- **Linux IDE:** what the macOS IDE has and the Linux one still lacks: Settings ▸ Accounts, the source-control conflict
+- **Linux IDE:** what the macOS IDE has and the Linux one still lacks: the source-control conflict
   editor, the Organizer, SwiftUI previews, Interface Builder documents, and debugging on a simulator. Language features,
   the navigators, the debugger, Source Control and the coding assistant arrived in 1.0.0-beta.2.
 - **Fixes from beta reports.** Please [file them](https://github.com/MarcoDotIO/Ycode/issues/new/choose).

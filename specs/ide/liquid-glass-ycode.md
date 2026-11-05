@@ -212,20 +212,67 @@ questions.
 A Ycode feature with no counterpart in `liquid-glass.md`, so these are Ycode's
 choices, all system materials through public API:
 
-- **Setup window** (`HeadsetSetupWindowController`): a full-size content
-  view with a transparent title bar. The steps are on a floating
-  `NSGlassEffectView` panel (`GlassBars.panel`, radius 18, 8 from the
-  window's edges, the window's buttons on it), not a flush split item: this is
-  a helper window, and §1's flush rule is the workspace's. The selected step
-  sits on `SelectionPillView`; marks are system colours, a different shape per
-  state; titles are the label colour.
-- **What the panel floats over** (`HeadsetBackdropView`): the window's
-  background with the running device's picture fading in from the leading
-  edge, or a quiet accent wash without one (glass over one flat colour reads as
-  a plain rectangle), gone before the text starts. Plain with Reduce
-  Transparency or Increase Contrast. The scroll view runs under the panel.
+- **Setup window** (`HeadsetSetupWindowController`, the runtime setup
+  window and the Linux IDE's runtime setup sheet): a **paged assistant**, one
+  centred page per step. Replaces (2026-11-05, beta 3) the step list in a
+  flush sidebar with the form at its right, which replaced a floating glass
+  panel earlier the same day.
+  - **Window**: about 760 × 600 points, at least 640 × 520, centred on
+    opening. Full-size content view, transparent title bar with no title and
+    no separator, the close button kept (a helper window). No sidebar: the
+    page sits on the window's plain background.
+  - **Progress**: a row of page dots, one per step, centred 20 points below
+    the window's top (their 20-point click targets end above the glyph).
+    Each dot shows its step's check state in system colours, each state with
+    its own shape so that colour is never the only cue: ok a filled green
+    circle, missing a filled orange diamond, unknown or not checked a grey
+    ring, not applicable a short grey bar. The current step's dot is larger
+    (10 points against 7). A dot's tooltip and accessibility label read
+    "Step N of M: Title, state"; clicking it shows that step. The row has the
+    identifier the old step list had (`headset-steps-panel`,
+    `runtime-steps-panel`) and is the only overview of the steps.
+  - **Header**, centred: the step's glyph (a system symbol at 64 points,
+    hierarchical rendering in the accent colour, 48 points below the top;
+    never a symbol that depicts an Apple product), the step title 12 points
+    under it (26 pt bold, label colour), then 6 points lower the summary
+    (13 pt, secondary label colour, centred, at most 480 wide). The glyphs
+    are Ycode's choice per step (`RuntimeSetupStep.glyph`,
+    `HeadsetSetupStep.glyph`).
+  - **Content**: a column at most 520 points wide (narrower windows leave
+    24-point margins), centred under the header, 20 points below the
+    summary. Forms (`NSGridView`) are centred in it with their labels
+    right-aligned on one axis. Check rows sit in a grouped inset box: corner
+    radius 10 (continuous), the quaternary system fill, hairline separators
+    between rows inset to the text; each row its mark, title, reason and
+    fix as before. The experimental notice ends the column as a centred
+    footnote. The column scrolls (the scroller at the window's edge) and
+    ends 12 points above the footer, so its last row is never under it.
+  - **Footer**, 20 points from the bottom and the sides: **Back** at the
+    leading side, hidden (not disabled) on the first step; the status line
+    and spinner after it; then **Re-check** (a secondary button) and the
+    primary **Continue** at the trailing side, the default button (Return),
+    which reads **Done** (runtimes) or **Finish** (headset) on the last step.
+    "Continue" replaces "Next" in both windows and the sheet.
+  - **Motion**: Continue pushes the next page in from the trailing edge while
+    the old one leaves to the leading edge; Back does the reverse; a dot
+    moves the same way as the direction of its step. 0.3 s ease-in-out; the
+    header and content move together, the dots and footer stay still. With
+    Reduce Motion the pages crossfade (0.2 s) instead. On macOS the old page
+    is a snapshot layer; `NSAnimationContext` groups the layer animations
+    (no timers). The step's content is already the new step's when the
+    animation starts, so input and tests never wait for it.
+  - **Linux** (`RuntimeSetupSheet`, OpenViews): the same structure in a
+    760 × 600 sheet: dots, header (Ycode's own symbol artwork for the
+    glyph, `09-open-design.md` §3.6), the 520-point column with the grouped
+    checks, and the footer, with Close before Re-check (a sheet has no close
+    button). The page change is a transition on the page (a push whose
+    direction both pages read when they move, or an opacity transition under
+    Reduce Motion) in one animated transaction. Open (2026-11-05): OpenViews
+    does not yet run animations inside a sheet (an offset animation there
+    does not move either), so on Linux the page changes at once until it
+    does; the code needs no change then.
 - **Buttons** (`GlassBars.style`): the `.glass` bezel, capsule; the primary
-  (Next / Finish, Install on Headset…, Connect, View in Headset) has
+  (Continue / Finish / Done, Install on Headset…, Connect, View in Headset) has
   `tintProminence = .primary`. Push buttons before macOS 26.
 - **Body text** stays plain on the window's background: no glass behind the
   checks, and no glass on glass.
@@ -234,7 +281,7 @@ choices, all system materials through public API:
   bezel.
 - **In Headset capsule**: `GlassCapsule` over the dimmed picture; its button is
   borderless with the accent colour, since it is already on glass (§3).
-- Before macOS 26: `NSVisualEffectView` (`.sidebar`) with the same corners.
+- Before macOS 26: push buttons; the page, dots and grouped box are the same.
 
 Seen in Ycode's own inactive windows over a real device picture
 (`device-hub.md` §I.12.8); the active look and the tint are not yet seen.
@@ -395,5 +442,21 @@ surfaces since §12. The targets are `liquid-glass.md` §8.
   targets it cites are level 3 in `liquid-glass.md` §7.
 - §13: the round 2 captures of Ycode's own windows; the targets it cites
   are level 3 in `liquid-glass.md` §8.
+- §11 setup window (the paged assistant, 2026-11-05): Ycode's own design,
+  level 1 only — Apple's Human Interface Guidelines pages Onboarding (keep
+  required setup brief, let people return to earlier steps), Layout (group
+  related items with space, containers or separators; align related items;
+  most important content at the top), Buttons (one prominent button for the
+  most likely action, which answers Return; a trailing ellipsis for a button
+  that opens another view; distinguish the preferred choice by style, not
+  size) and Motion (motion only where it helps, brief, a reverse movement
+  for the reverse action, never the only carrier of information, respect
+  the system's motion settings), read 2026-11-05; and the public AppKit
+  reference (`NSAnimationContext`, `NSImage.SymbolConfiguration`,
+  `NSWorkspace.accessibilityDisplayShouldReduceMotion`,
+  `NSColor.quaternarySystemFill`). No setup assistant of Apple's was opened
+  or watched. The Layout page's note against controls along a window's
+  bottom edge is weighed against the footer: the window opens centred and
+  small enough that its footer is on screen.
 - Apart from those cited targets, nothing here comes from observing the
   reference directly.

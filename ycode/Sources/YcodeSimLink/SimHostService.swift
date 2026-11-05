@@ -165,9 +165,13 @@ public final class SimHostService: @unchecked Sendable {
                 if bundle == nil { bundle = Self.bundleID(appDirectory: config.appsDirectory + "/" + app) }
                 guard bundle != nil else { return .failure("no CFBundleIdentifier in \(app)/Info.plist") }
             }
-            do { try devices.start(d, app: req.op == "run" ? req.app : nil, bundleID: bundle, cold: req.cold == true) } catch { return .failure("\(error)") }
+            let debug = req.op == "run" && req.debug == true
+            do { try devices.start(d, app: req.op == "run" ? req.app : nil, bundleID: bundle, cold: req.cold == true, debug: debug) } catch {
+                return .failure("\(error)")
+            }
             var r = LinkResponse(ok: true, message: "\(d) starting")
             r.bundleID = bundle
+            if debug { r.debugSocket = config.debugSocketPath(d) }
             return r
         case "shutdown":
             guard let d = req.device else { return .failure("shutdown needs a device") }

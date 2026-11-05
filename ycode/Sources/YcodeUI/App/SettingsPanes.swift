@@ -327,11 +327,13 @@ public final class GeneralSettingsPane: SettingsPane {
 
 @MainActor
 public final class AccountsSettingsPane: SettingsPane, NSTableViewDataSource {
-    public init(prefs: Preferences = .shared) { super.init("Accounts", prefs: prefs) }
+    public init(prefs: Preferences = .shared) { super.init(AccountsPage.title, prefs: prefs) }
     // Informational only: Ycode never asks for or stores credentials.
     /// The explanation shown by + (for tests).
-    public static let notSupported = "Ycode does not sign in to accounts. Signing uses identities already in your keychain; Ycode never asks for or stores passwords."
+    public static let notSupported = AccountsPage.explanation(keychain: true)
     public private(set) var shownMessage: String?
+    /// The App Store Connect API keys the list shows (none until #43).
+    var keyStore: any AppStoreConnectKeyStore = NoAppStoreConnectKeys()
 
     override func build() {
         let table = NSTableView()
@@ -343,23 +345,34 @@ public final class AccountsSettingsPane: SettingsPane, NSTableViewDataSource {
         scroll.borderType = .bezelBorder
         scroll.widthAnchor.constraint(equalToConstant: 220).isActive = true
         scroll.heightAnchor.constraint(equalToConstant: 240).isActive = true
-        let add = NSButton(image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Add account")!, target: self, action: #selector(addClicked))
+        let add = NSButton(image: NSImage(systemSymbolName: "plus", accessibilityDescription: AccountsPage.addLabel)!, target: self, action: #selector(addClicked))
         add.bezelStyle = .smallSquare
-        let empty = NSTextField(labelWithString: "No Accounts")
+        let empty = NSTextField(labelWithString: AccountsPage.emptyText)
         empty.textColor = .secondaryLabelColor
+        empty.isHidden = numberOfRows(in: table) > 0
         stack.addArrangedSubview(NSStackView(views: [scroll, empty]))
         stack.addArrangedSubview(add)
     }
 
-    public func numberOfRows(in tableView: NSTableView) -> Int { 0 }
+    public func numberOfRows(in tableView: NSTableView) -> Int { AccountsPage.rows(from: keyStore).count }
+
+    public func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        let r = AccountsPage.rows(from: keyStore)[row]
+        return "\(r.title) (\(r.detail))"
+    }
+
+    /// The sheet + shows.
+    public func makeAlert() -> NSAlert {
+        let a = NSAlert()
+        a.messageText = AccountsPage.sheetTitle
+        a.informativeText = Self.notSupported
+        return a
+    }
 
     @objc public func addClicked() {
         shownMessage = Self.notSupported
         guard view.window?.isVisible == true, let w = view.window else { return }
-        let a = NSAlert()
-        a.messageText = "Accounts Are Not Supported"
-        a.informativeText = Self.notSupported
-        a.beginSheetModal(for: w)
+        makeAlert().beginSheetModal(for: w)
     }
 }
 

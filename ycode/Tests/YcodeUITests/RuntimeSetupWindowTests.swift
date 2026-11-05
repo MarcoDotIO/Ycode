@@ -57,7 +57,8 @@ import Testing
         defer { wc.window?.close() }
         await s.recheck().value
         let root = try #require(wc.window?.contentView)
-        #expect(Self.find("runtime-step-0", in: root) != nil)
+        #expect(Self.find("setup-dot-0", in: root) != nil)
+        #expect(wc.backButton.isHidden && wc.primaryButton.title == "Continue")
         #expect(Self.find("runtime-platform-iOS", in: root) != nil)
         #expect(Self.find("runtime-check-machine", in: root) != nil)
         wc.next()
@@ -94,8 +95,33 @@ import Testing
         #expect(Self.find("runtime-host", in: root) != nil)
     }
 
+    /// The page dots stand for the steps: one per step of the target, each
+    /// with its state, the current one larger; a click jumps to its step.
+    @Test func pageDotsShowTheStepsAndJump() async throws {
+        let td = TestDefaults("runtime-wizard-dots")
+        defer { td.remove() }
+        let runner = Runner(answers: [("xcrun --find simctl", Self.ok("/x/simctl")), ("simctl runtime list -j", Self.ok(Self.images)),
+                                      ("simctl list runtimes -j", Self.ok("{\"runtimes\":[]}")), ("df -Pk", Self.ok("209715200"))])
+        let s = RuntimeSetupSession(machine: SetupMachine(isMac: true, architecture: "arm64"), defaults: td.defaults, folder: "/nonexistent", localRunner: runner)
+        let wc = window(s)
+        defer { wc.window?.close() }
+        let root = try #require(wc.window?.contentView)
+        let dots = try #require(Self.find("runtime-steps-panel", in: root) as? SetupPageDots)
+        #expect(dots.dots.count == s.steps.count && dots.dots.allSatisfy { $0.dotState == .notChecked })
+        await s.recheck().value
+        #expect(dots.dots.map(\.dotState) == s.steps.map { RuntimeSetupWindowController.dotState(s.state(of: $0)) })
+        #expect(dots.dots[0].isCurrent && dots.dots[0].dotDiameter > dots.dots[1].dotDiameter)
+        #expect(dots.dots[1].toolTip?.hasPrefix("Step 2 of \(s.steps.count): Runtimes, ") == true)
+        #expect(dots.dots[1].accessibilityLabel() == dots.dots[1].toolTip)
+        dots.dots[3].performClick(nil)
+        #expect(s.step == s.steps[3] && dots.dots[3].isCurrent && !dots.dots[0].isCurrent)
+        // A host's steps: more dots.
+        s.setUseHost(true)
+        #expect(dots.dots.count == s.steps.count)
+    }
+
     /// The content ends above the footer: the last row of a long step, scrolled
-    /// to the end, is above Re-check, Back and Next, and so is the status line's row.
+    /// to the end, is above Back, Re-check and Continue, and so is the status line's row.
     @Test func lastRowEndsAboveTheFooter() async throws {
         let td = TestDefaults("runtime-wizard-footer")
         defer { td.remove() }
@@ -130,14 +156,37 @@ import Testing
     nonisolated static let host = ProcessInfo.processInfo.environment["YCODE_RUNTIME_TEST_HOST"]
     nonisolated static let data = ProcessInfo.processInfo.environment["YCODE_RUNTIME_TEST_DATA"]
 
-    func shot(_ wc: RuntimeSetupWindowController, _ name: String, to out: URL) throws {
+    func shot(_ wc: RuntimeSetupWindowController, _ name: String, to out: URL) async throws {
         let win = try #require(wc.window)
+        let look = win.appearance
+        defer { win.appearance = look }
+        try await photograph(wc, name, to: out)
+        // Every step in the other appearance too.
+        win.appearance = NSAppearance(named: look?.name == .darkAqua ? .aqua : .darkAqua)
+        try await photograph(wc, name + (look?.name == .darkAqua ? "-light" : "-dark"), to: out)
+    }
+
+    /// As the window server draws it (the glass buttons need that), placed off
+    /// the screens and behind everything; the cached drawing if that fails.
+    func photograph(_ wc: RuntimeSetupWindowController, _ name: String, to out: URL) async throws {
+        let win = try #require(wc.window)
+        wc.assistant.finishTransition()
+        win.setFrameOrigin(NSPoint(x: -6000, y: -6000))
+        win.orderBack(nil)
         win.contentView?.layoutSubtreeIfNeeded()
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        let path = out.appendingPathComponent("mac-runtime-\(name).png")
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        p.arguments = ["-x", "-o", "-l", String(win.windowNumber), path.path]
+        try? p.run()
+        p.waitUntilExit()
+        if p.terminationStatus == 0, FileManager.default.fileExists(atPath: path.path) { return }
         let frame = try #require(win.contentView?.superview)
         frame.layoutSubtreeIfNeeded()
         let rep = try #require(frame.bitmapImageRepForCachingDisplay(in: frame.bounds))
         frame.cacheDisplay(in: frame.bounds, to: rep)
-        try #require(rep.representation(using: .png, properties: [:])).write(to: out.appendingPathComponent("mac-runtime-\(name).png"))
+        try #require(rep.representation(using: .png, properties: [:])).write(to: path)
     }
 
     func shot(alert c: RuntimeConfirmation, _ name: String, to out: URL) throws {
@@ -171,26 +220,21 @@ import Testing
         wc.answerConfirmation = { _ in nil }
         defer { wc.window?.close() }
         wc.window?.appearance = NSAppearance(named: .aqua)
-        wc.showWindow(nil)
         await settle(s)
-        try shot(wc, "1-target", to: out)
+        try await shot(wc, "1-target", to: out)
         s.show(.runtimes)
-        try shot(wc, "2-runtimes", to: out)
+        try await shot(wc, "2-runtimes", to: out)
         s.show(.add)
-        try shot(wc, "3-add", to: out)
+        try await shot(wc, "3-add", to: out)
         let dmg = work.appendingPathComponent("iOS 27.0 Simulator Runtime.dmg")
         try Data().write(to: dmg)
         s.pick(path: dmg.path)
-        try shot(wc, "3-add-picked", to: out)
+        try await shot(wc, "3-add-picked", to: out)
         s.request(try #require(s.pickedAction))
         try shot(alert: try #require(s.confirmation), "3-add-confirm", to: out)
         s.cancelConfirmation()
         s.show(.finish)
-        try shot(wc, "4-finish", to: out)
-        wc.window?.appearance = NSAppearance(named: .darkAqua)
-        s.show(.runtimes)
-        try shot(wc, "2-runtimes-dark", to: out)
-        wc.window?.appearance = NSAppearance(named: .aqua)
+        try await shot(wc, "4-finish", to: out)
 
         // A simulator host.
         guard let host = Self.host, let data = Self.data else { return }
@@ -202,19 +246,19 @@ import Testing
         s.show(.host)
         s.setHost(h)
         await settle(s)
-        try shot(wc, "5-host", to: out)
+        try await shot(wc, "5-host", to: out)
         // Offline: a host that does not answer.
         s.setHost(RuntimeHostSettings(destination: "nobody@192.0.2.1", dataDirectory: data))
         await settle(s, timeout: 60)
-        try shot(wc, "5-host-offline", to: out)
+        try await shot(wc, "5-host-offline", to: out)
         #expect(s.report?.check("host.reach")?.state == .unknown)
         s.setHost(h)
         await settle(s)
         s.show(.prepare)
-        try shot(wc, "6-prepare", to: out)
+        try await shot(wc, "6-prepare", to: out)
         s.runSetupReport()
         await settle(s)
-        try shot(wc, "6-prepare-report", to: out)
+        try await shot(wc, "6-prepare-report", to: out)
         let report = try #require(s.hostSetup)
         print("setup report: \(report.checks.map { "\($0.id)=\($0.state.rawValue)" }) steps=\(report.steps.map(\.id)) sve=\(report.sve ?? [:])")
         #expect(report.mode == "report")
@@ -223,11 +267,11 @@ import Testing
             try shot(alert: try #require(s.confirmation), "6-prepare-apply-confirm", to: out)
             s.confirm()
             await settle(s)
-            try shot(wc, "6-prepare-applied", to: out)
+            try await shot(wc, "6-prepare-applied", to: out)
             s.runSetupReport()
             await settle(s)
             #expect(s.hostSetup?.userSteps.isEmpty == true)
-            try shot(wc, "6-prepare-second-run", to: out)
+            try await shot(wc, "6-prepare-second-run", to: out)
         }
         // A fake runtime of 256 MB, copied, stopped, resumed, then removed.
         let bundle = work.appendingPathComponent("iOS 27.0.simruntime")
@@ -244,7 +288,7 @@ import Testing
         }
         s.show(.add)
         s.pick(path: bundle.path)
-        try shot(wc, "7-add-host-picked", to: out)
+        try await shot(wc, "7-add-host-picked", to: out)
         let copy = try #require(s.pickedAction)
         s.request(copy)
         try shot(alert: try #require(s.confirmation), "7-add-host-confirm", to: out)
@@ -255,10 +299,10 @@ import Testing
             try await Task.sleep(nanoseconds: 100_000_000)
             if case .copying(let kb) = s.transferState, kb > 0, Date().timeIntervalSince(began) > 1.5 { break }
         }
-        try shot(wc, "7-add-host-copying", to: out)
+        try await shot(wc, "7-add-host-copying", to: out)
         s.stop()
         await settle(s)
-        try shot(wc, "7-add-host-interrupted", to: out)
+        try await shot(wc, "7-add-host-interrupted", to: out)
         guard case .interrupted = s.transferState else { Issue.record("expected an interrupted copy, got \(s.transferState)"); return }
         #expect(s.report?.check("transfer") != nil)
         s.request(copy)
@@ -266,18 +310,18 @@ import Testing
         s.confirm()
         await settle(s)
         #expect(s.transferState == .finished)
-        try shot(wc, "7-add-host-finished", to: out)
+        try await shot(wc, "7-add-host-finished", to: out)
         s.show(.runtimes)
         let copied = try #require(s.report?.host.first { $0.isRemovable && $0.version == "27.0" })
         #expect(s.report?.check("host.runtime.iOS")?.state == .ok)
-        try shot(wc, "8-runtimes-host", to: out)
+        try await shot(wc, "8-runtimes-host", to: out)
         s.request(.remove(copied))
         try shot(alert: try #require(s.confirmation), "8-remove-confirm", to: out)
         s.confirm()
         await settle(s)
         #expect(s.report?.host.contains { $0.isRemovable } == false)
-        try shot(wc, "8-runtimes-host-removed", to: out)
+        try await shot(wc, "8-runtimes-host-removed", to: out)
         s.show(.finish)
-        try shot(wc, "9-finish-host", to: out)
+        try await shot(wc, "9-finish-host", to: out)
     }
 }

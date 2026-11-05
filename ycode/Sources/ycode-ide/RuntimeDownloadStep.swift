@@ -26,7 +26,7 @@ extension RuntimeSetupSheet {
             }
             heading("A runtime you have", c)
             note("An exported bundle, .simruntime bundle or RuntimeRoot from your own Xcode installation.", c)
-            Button("Go to Add a Runtime") { session.show(.add) }.buttonStyle(.bordered).shellTarget("runtime download go add")
+            Button("Go to Add a Runtime") { go(to: .add) }.buttonStyle(.bordered).shellTarget("runtime download go add")
         }
     }
 
@@ -126,17 +126,17 @@ extension RuntimeSetupSheet {
                 }
             }
             Text(verbatim: words).font(.system(size: 12)).foregroundStyle(failed ? c.error : c.label).fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 540, alignment: .leading)
+                .frame(maxWidth: Self.columnWidth, alignment: .leading)
                 .shellTarget("runtime download phase")
             if case .failed(_, _, let refused) = a.state, refused {
-                Button("Go to Add a Runtime") { session.show(.add) }.buttonStyle(.bordered).shellTarget("runtime download refused add")
+                Button("Go to Add a Runtime") { go(to: .add) }.buttonStyle(.bordered).shellTarget("runtime download refused add")
             }
             if !downloads.log.isEmpty {
                 ScrollView {
                     Text(verbatim: String(downloads.log.suffix(5000))).font(.system(size: 10, design: .monospaced)).foregroundStyle(c.label)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(6)
                 }
-                .frame(width: 540, height: 110)
+                .frame(width: Self.columnWidth, height: 110)
                 .background(c.fieldFill)
                 .overlay(Rectangle().stroke(c.fieldStroke, lineWidth: 1))
                 .shellTarget("runtime download log")

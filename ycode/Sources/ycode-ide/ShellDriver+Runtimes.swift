@@ -59,6 +59,7 @@ extension ShellDriver {
             s.show(step)
             await shot(String(format: "%02d-%@", i + 1, step.title.lowercased().replacingOccurrences(of: " ", with: "-")))
         }
+        await pagedAssistant(s, prefix: prefix, shot: shot)
         guard let dest = env["YCODE_IDE_RUNTIME_HOST"], let data = env["YCODE_IDE_RUNTIME_DATA"] else {
             app.closeRuntimeSetup()
             OpenViewsAutomation.terminate()
@@ -131,6 +132,40 @@ extension ShellDriver {
         app.closeRuntimeSetup()
         await pause(0.5)
         OpenViewsAutomation.terminate()
+    }
+
+    /// The paged assistant (`liquid-glass-ycode.md` §11): Back hidden on the
+    /// first step, the dots (count, state, a click jumps), Continue and Back
+    /// (a frame 0.1 s into each page change; with `OV_REDUCE_MOTION=1` the
+    /// crossfade's), and the header's centring.
+    static func pagedAssistant(_ s: RuntimeSetupSession, prefix: String, shot: (String) async -> Void) async {
+        s.show(.target)
+        await pause(0.6)
+        let dots = (0..<12).compactMap { frame("runtime dot \($0)") }
+        say("assistant: dots=\(dots.count) steps=\(s.steps.count) back=\(frame("runtime back") == nil ? "hidden" : "shown") "
+            + "window centre=\(OpenViewsAutomation.windowSize().map { "\($0.points.width / 2)" } ?? "-") "
+            + "title centre=\(frame("runtime title").map { "\($0.midX)" } ?? "-") glyph=\(frame("runtime glyph").map { "\($0)" } ?? "-") "
+            + "continue=\(frame("runtime continue").map { "\($0)" } ?? "-")")
+        say("assistant: states=\(s.steps.map { RuntimeSetupSheet.stateWords(s.state(of: $0)) }) dot frames=\(dots.map { "\(Int($0.midX))" })")
+        // Mid-page-change frames: clicked without the driver's usual pause.
+        func press(_ name: String) async {
+            guard let f = frame(name) else { say("no target \(name)"); return }
+            await OpenViewsAutomation.click(at: CGPoint(x: f.midX, y: f.midY))
+        }
+        await press("runtime continue")
+        await pause(0.1)
+        say("assistant: 0.1 s after Continue " + OpenViewsAutomation.screenshot(to: "\(prefix)-runtime-30-continue-0.1s.png"))
+        await pause(0.6)
+        say("assistant: after Continue step=\(s.step.title) back=\(frame("runtime back") == nil ? "hidden" : "shown")")
+        await press("runtime dot \(s.steps.count - 1)")
+        await pause(0.8)
+        say("assistant: after the last dot step=\(s.step.title) continue says Done=\(s.isLastStep)")
+        await shot("31-dot-jump")
+        await press("runtime back")
+        await pause(0.1)
+        say("assistant: 0.1 s after Back " + OpenViewsAutomation.screenshot(to: "\(prefix)-runtime-32-back-0.1s.png"))
+        await pause(0.6)
+        say("assistant: after Back step=\(s.step.title)")
     }
     #endif
 }

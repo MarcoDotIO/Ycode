@@ -43,7 +43,8 @@ scripts/make-app.sh                  # macOS: .build-ide/app/Ycode.app
 .build/debug/ycode dsc path/to/dyld_sim_shared_cache_arm64 [--images N] [--image /usr/lib/libobjc.A.dylib]
 .build/debug/ycode settings path/to/App.xcodeproj -target App -configuration Debug [--assigned-only] [--json] [NAME=value]
 .build/debug/ycode deps path/to/executable --root path/to/RuntimeRoot [--tree]
-.build/debug/ycode build path/to/App.xcodeproj -scheme App [--test] [--engine xcodebuild|swift-build]
+.build/debug/ycode build path/to/App.xcodeproj -scheme App [--test] [--engine xcodebuild|swift-build|swiftpm]
+.build/debug/ycode build path/to/Package [--test]     # Linux and the Flatpak: SwiftPM, as the Linux IDE builds packages
 .build/debug/ycode pif path/to/App.xcodeproj
 .build/debug/ycode profile record --linux -o out.gaugetrace -- path/to/executable   # Gauge, the profiler
 .build/debug/ycode profile summary|tree|flame|annotate|symbolicate out.gaugetrace ...

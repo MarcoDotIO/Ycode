@@ -52,10 +52,10 @@ final class ShellPreferences {
 }
 
 /// The panes of the Settings window, in the macOS IDE's order
-/// (`specs/ide/settings.md` §Window) without the panes the Linux IDE has
-/// nothing for yet (Accounts, Components, Simulators).
+/// (`specs/ide/settings.md` §Window, `SettingsPaneOrder.linux`) without the
+/// panes the Linux IDE has nothing for yet (Components, Simulators).
 enum ShellSettingsPane: String, CaseIterable, Identifiable {
-    case general, appearance, codingAssistant, behaviors, navigation, notifications, editing, shortcuts, sourceControl, locations
+    case general, appearance, accounts, codingAssistant, behaviors, navigation, notifications, editing, shortcuts, sourceControl, locations
 
     var id: String { rawValue }
 
@@ -63,6 +63,7 @@ enum ShellSettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: "General"
         case .appearance: "Appearance"
+        case .accounts: AccountsPage.title
         case .codingAssistant: "Coding Assistant"
         case .behaviors: "Behaviors"
         case .navigation: "Navigation"
@@ -79,6 +80,7 @@ enum ShellSettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .appearance: "sun.max"
+        case .accounts: "person.crop.circle"
         case .codingAssistant: "text.bubble"
         case .behaviors: "gearshape.2"
         case .navigation: "arrow.left.arrow.right"
@@ -104,6 +106,8 @@ final class ShellSettingsModel {
     var editingPage: EditingSettingsPane.Page = .main
     /// Behaviors' open event (nil: the event list).
     var behaviorEvent: Preferences.Event?
+    /// Accounts' sheet (+ shows it).
+    var isAccountsSheetShown = false
 
     /// Shows a pane (recorded for back/forward).
     func select(_ p: ShellSettingsPane) {
@@ -223,6 +227,7 @@ struct ShellSettingsView: View {
         switch model.pane {
         case .general: GeneralSettingsPane()
         case .appearance: AppearanceSettingsPane()
+        case .accounts: AccountsSettingsPane(model: model)   // SettingsPaneAccounts.swift
         case .codingAssistant: CodingAssistantSettingsPane()   // SettingsPaneCodingAssistant.swift
         case .behaviors: BehaviorsSettingsPane(model: model)
         case .navigation: NavigationSettingsPane()

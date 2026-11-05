@@ -13,6 +13,7 @@ import YcodeXcodebuild
 import YcodeAssetCatalog
 import YcodeStrings
 import YcodeMCP
+import YcodeIDEShell
 import YcodeIDECore
 import YcodeCompletion
 import YcodeSimLink
@@ -29,7 +30,7 @@ func usage() -> Never {
            ycode dsc <dyld_shared_cache> [--images N] [--image <install-path>]
            ycode build <path.xcodeproj|.xcworkspace|dir> [-scheme S] [-configuration C]
                        [-destination D] [-derivedDataPath P] [--clean|--test|--build-for-testing|--test-without-building] [--quiet]
-                       [--engine xcodebuild|swift-build] [NAME=value]...
+                       [--engine xcodebuild|swift-build|swiftpm] [NAME=value]...
            ycode pif <path.xcodeproj>
            ycode results <bundle.xcresult> [--json]     the tests a result bundle records (ycodebuild's bundles)
            ycode roundtrip [--print] <path.xcodeproj|.xcscheme|contents.xcworkspacedata>...
@@ -303,7 +304,7 @@ func resultsCommand(_ args: [String]) -> Int32 {
 func buildCommand(_ args: [String]) -> Int32 {
     var request = BuildRequest(container: .package(FileManager.default.currentDirectoryPath))
     var quiet = false
-    var engineName = "xcodebuild"
+    var engineName: String?
     var i = 0
     func value() -> String {
         i += 1
@@ -330,20 +331,16 @@ func buildCommand(_ args: [String]) -> Int32 {
         }
         i += 1
     }
+    // On Linux (and in the Flatpak) a package folder builds with SwiftPM, as
+    // in the Linux IDE; projects with ycodebuild. macOS keeps xcodebuild.
+    let isLinux = CommandLineBuild.isLinuxHost
+    guard let choice = CommandLineBuild.engine(named: engineName, container: request.container, isLinux: isLinux) else { usage() }
     let engine: BuildEngine
-    switch engineName {
-    case "xcodebuild": engine = XcodebuildEngine()
-    case "swift-build":
-        guard let tool = SwiftBuildEngine.locate() else {
-            FileHandle.standardError.write(Data("ycode: swbuild not found (set YCODE_SWBUILD)\n".utf8))
-            return 1
-        }
-        // The PIF of projects and workspaces is XcodePIF's, with the
-        // container's Swift packages (the IDE's PIF source).
-        var e = SwiftBuildEngine(swbuild: tool)
-        e.pifSource = XcodePIFSource()
-        engine = e
-    default: usage()
+    do {
+        engine = try CommandLineBuild.make(choice, isLinux: isLinux)
+    } catch {
+        FileHandle.standardError.write(Data("ycode: \(error)\n".utf8))
+        return 1
     }
     let op = engine.start(request)
     let isQuiet = quiet

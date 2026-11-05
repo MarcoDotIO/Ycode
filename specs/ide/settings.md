@@ -37,6 +37,21 @@ An empty account list and +. Ycode does not sign in: + shows a sheet
 explaining that signing uses identities already in the keychain and that
 Ycode never asks for or stores passwords. Nothing is stored.
 
+Layout (both IDEs): a bordered 220 × 240 list, "No Accounts" 8 points to
+its right (vertically centered) while it is empty, and a small square +
+10 points under the list. The sheet's title is "Accounts Are Not
+Supported"; its text is "Ycode does not sign in to accounts. Signing uses
+identities already in your keychain; Ycode never asks for or stores
+passwords." On Linux, where there is no keychain, "identities Ycode finds
+on this computer" replaces "identities already in your keychain". The
+texts are shared (`YcodeIDECore`'s `AccountsPage`).
+
+The list's rows will be App Store Connect API keys (Apple's public REST
+API; signing.md §8): the `.p8` file stays where the user keeps it, Ycode
+records only its path, key ID and issuer ID, and any secret goes to the
+keychain or the Secret Service. Until that work lands the list reads an
+`AppStoreConnectKeyStore` that has no keys, and nothing is stored.
+
 ## Behaviors
 A list of categories (Build, Testing, Running, Search, Localization
 Import / Export, File) with the number of events that have actions; each
@@ -144,8 +159,9 @@ Engines:
 
 **Default: swift-build**, since it now builds macOS apps, command-line
 tools and packages (`specs/ide/build-pif.md`) and falls back per request.
-The `ycode build` command keeps xcodebuild unless `--engine swift-build` is
-given.
+The `ycode build` command does not read this setting: on macOS it keeps
+xcodebuild unless `--engine` is given, and on Linux it builds packages with
+SwiftPM (`build.md`, "The command line").
 
 Run (⌘R) asks the active engine for the executable: xcodebuild via
 `-showBuildSettings`; swift-build from its derived-data layout
@@ -167,9 +183,9 @@ checkbox in Settings is future work (the Settings code is being moved).
 `SettingsPane*.swift` files) is one fixed 860 × 600 window: the pane list
 at the left (200 points, an icon and a title per pane), the selected pane
 at the right under a title row with back and forward buttons. Panes, in
-the macOS order: General, Appearance, Behaviors, Navigation,
-Notifications, Editing (with its Display, Completion and Indentation
-pages), Shortcuts, Source Control, Locations. Accounts, Coding Assistant,
+the macOS order: General, Appearance, Accounts, Coding Assistant,
+Behaviors, Navigation, Notifications, Editing (with its Display,
+Completion and Indentation pages), Shortcuts, Source Control, Locations.
 Components and Simulators are not offered on Linux.
 
 - The panes are the macOS IDE's form (`metrics.md` §8): OpenViews'
@@ -214,6 +230,9 @@ Components and Simulators are not offered on Linux.
   defaults per `reference-ui-5.md` §9 (level 3); the File extensions factory
   default (Hide All) per `reference-ui-5.md` §5.1 (level 3).
 
+- Accounts' layout, texts and the App Store Connect key seam are Ycode's
+  own (the macOS IDE's pane, ported); App Store Connect API keys are
+  Apple's public App Store Connect API documentation (level 1).
 - The Linux IDE's layout, its shortcut notation (Ctrl for ⌘, as the
   OpenViews menus write it) and its persistence are Ycode's own.
 - Xcode's settings live under the application menu with Locations among

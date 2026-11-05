@@ -11,7 +11,8 @@ not written to.
 
 ycodebuild runs the toolchain's open-source SwiftPM
 (`<toolchain>/usr/bin/swift package --package-path <dir> --scratch-path
-<tmp>/ycodebuild-spm/<hash> …`): `describe --type json` (name, products
+<tmp>/ycodebuild-spm-<uid>/<hash> …`, one folder per user, as `/tmp`
+may be shared): `describe --type json` (name, products
 with their type and targets, targets with type, folder and dependencies),
 `show-dependencies --format json` (dependency names, paths or URLs,
 versions) and, for builds, `dump-pif` (the build description swift-build
@@ -54,9 +55,10 @@ Finder sorts names (`greet`, `GreetKit`, `Tools-Package`). `-list`:
 | test action on a scheme without tests | `Scheme <name> is not currently configured for the test action.` | 66 |
 | build action without `-destination` | `Building a Swift package requires that a destination is provided using the "-destination" option. The "-showdestinations" option can be used to list the available destinations.` | 70 |
 
-**`-showBuildSettings -scheme`** prints no settings (text: nothing after
-the package report; `-json`: an empty array), as the reference tool does
-for package schemes.
+**`-showBuildSettings -scheme`**: the reference tool prints no settings
+(text: nothing after the package report; `-json`: an empty array).
+ycodebuild prints one block per target the scheme builds, from SwiftPM's
+build description (Ycode decision, `show-build-settings.md` §7).
 
 **Destination warning**: for `-destination platform=macOS[,arch=…]` the
 `Using the first of multiple matching destinations` warning lists My Mac

@@ -140,6 +140,19 @@ import YcodeDisplayStream
     /// so nothing on the owner's desktop changes. Falls back to the cached drawing.
     func shot(_ window: NSWindow, _ name: String) async {
         guard let dir = ProcessInfo.processInfo.environment["YCODE_XR_HUB_SHOTS"], !dir.isEmpty else { return }
+        // The setup assistant in both appearances.
+        if window.windowController is HeadsetSetupWindowController {
+            for (look, suffix) in [(NSAppearance.Name.aqua, ""), (.darkAqua, "-dark")] {
+                window.appearance = NSAppearance(named: look)
+                await capture(window, name + suffix, dir: dir)
+            }
+            window.appearance = nil
+            return
+        }
+        await capture(window, name, dir: dir)
+    }
+
+    func capture(_ window: NSWindow, _ name: String, dir: String) async {
         window.setFrameOrigin(NSPoint(x: -6000, y: -6000))
         window.orderBack(nil)
         window.contentView?.layoutSubtreeIfNeeded()
@@ -199,9 +212,16 @@ import YcodeDisplayStream
             #expect(setup.shownChecks.allSatisfy { $0.state == .ok }, "\(s)")
             await shot(setup.window!, "\(s.rawValue + 1)-\(s.title.lowercased().replacingOccurrences(of: " ", with: "-"))")
         }
+        // The page dots replace the step list: one per step, all passed now, the current one larger.
+        let dots = try #require(setup.window?.contentView?.descendant(id: "headset-steps-panel") as? SetupPageDots)
+        #expect(dots.dots.count == HeadsetSetupStep.allCases.count && dots.dots.allSatisfy { $0.dotState == .ok })
+        #expect(dots.dots.last?.isCurrent == true && dots.dots.last?.toolTip == "Step 5 of 5: Connect, passed")
+        #expect(setup.primaryButton.title == "Finish" && !setup.backButton.isHidden)
+        setup.show(.viewerHost)
+        #expect(setup.backButton.isHidden && setup.primaryButton.title == "Continue")
+        setup.show(.connect)
         if #available(macOS 26, *) {
-            // The control layer's glass: the panel, and Next tinted (the inactive window's captures draw it flat).
-            #expect(setup.window?.contentView?.descendant(id: "headset-steps-panel") is NSGlassEffectView)
+            // Continue tinted (the inactive window's captures draw it flat).
             #expect(setup.primaryButton.bezelStyle == .glass && setup.primaryButton.tintProminence == .primary)
         }
         setup.back()

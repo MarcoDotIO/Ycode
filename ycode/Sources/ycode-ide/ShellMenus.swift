@@ -76,6 +76,9 @@ struct MenuSpecItems: View {
             // performs (Jump to Line… is "when a source editor is open").
             case .command(let c) where c.isAlternate
                 || (c.condition != nil && !ShellCommand.allCases.contains { $0.action == (c.action, c.tag) }): continue
+            // Resolve Conflicts…, Continue and Abort: only while an operation is stopped.
+            case .command(let c) where c.condition == .integrationInProgress
+                && !MenuConditions.isShown(c.condition, in: app.workspace?.menuContext): continue
             case .separator:
                 if out.isEmpty || out.last == .separator { continue }
                 out.append(i)

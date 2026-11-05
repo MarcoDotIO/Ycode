@@ -67,6 +67,14 @@ public enum ShellRemoteRun {
         [script, project, scheme, derivedData]
     }
 
+    /// Where Run builds for a simulator host: `$XDG_CACHE_HOME/ycode/remote-run`,
+    /// else `~/.cache/ycode/remote-run` (one folder per scheme).
+    public static func derivedDataRoot(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+        let cache = environment["XDG_CACHE_HOME"].flatMap { $0.hasPrefix("/") ? URL(fileURLWithPath: $0) : nil }
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".cache")
+        return cache.appendingPathComponent("ycode/remote-run")
+    }
+
     /// The built app: `<derived data>/Products/Debug-iphonesimulator/<one>.app`.
     public static func builtApp(derivedData: String, scheme: String) -> URL? {
         let dir = URL(fileURLWithPath: derivedData).appendingPathComponent("Products/Debug-iphonesimulator")
@@ -90,13 +98,32 @@ public enum ShellRemoteRun {
         return exe
     }
 
+    /// What a started run left for the caller: the device window's process
+    /// (Stop ends it), the app as built here, and, for a run under the
+    /// debugger, the host's path of the debug stub's socket.
+    public struct Started: @unchecked Sendable {
+        public var viewer: Process
+        public var app: URL
+        public var bundleID: String?
+        public var host: LinkHost
+        public var device: String
+        public var debugSocket: String?
+    }
+
     /// Builds, uploads, installs and launches, then opens the device window.
     /// `output` gets console lines; returns the window's process (Stop ends it).
     public static func run(project: String, scheme: String, destination: Destination, packageRoot: URL,
                            output: @escaping @Sendable (String) -> Void) async throws -> Process {
+        try await start(project: project, scheme: scheme, destination: destination, packageRoot: packageRoot, debug: false, output: output).viewer
+    }
+
+    /// `run`, and with `debug` the app runs with the debug stub (the link's
+    /// `run` request with `debug`; ShellSimulatorDebug attaches to it).
+    public static func start(project: String, scheme: String, destination: Destination, packageRoot: URL, debug: Bool,
+                             output: @escaping @Sendable (String) -> Void) async throws -> Started {
         guard let (hostName, device) = target(of: destination) else { throw Failure(description: "not a Ycode simulator host destination") }
         guard !device.isEmpty else { throw Failure(description: offlineMessage(host: hostName)) }
-        let derived = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".cache/ycode/remote-run/" + scheme).path
+        let derived = derivedDataRoot().appendingPathComponent(scheme).path
         let script = ProcessInfo.processInfo.environment["YCODE_IOS_BUILD"] ?? packageRoot.appendingPathComponent("scripts/ycode-ios-build-linux").path
         output("Building \(scheme) for the iOS Simulator…\n")
         let status = try await runProcess(buildCommand(project: project, scheme: scheme, derivedData: derived, script: script), output: output)
@@ -109,14 +136,17 @@ public enum ShellRemoteRun {
         let up = try c.upload(app)
         guard up.ok else { throw Failure(description: up.error ?? "upload failed") }
         output("Uploaded \(up.message ?? app.lastPathComponent) to \(host.name)\n")
-        let r = try c.request(LinkRequest(op: "run", device: device, app: app.lastPathComponent, bundleID: up.bundleID))
+        // The stub's socket is a path on the host: only a host on this
+        // computer can be debugged until the link carries the stub.
+        let debug = debug && ShellSimulatorDebug.isThisMachine(host.host)
+        let r = try c.request(LinkRequest(op: "run", device: device, app: app.lastPathComponent, bundleID: up.bundleID, debug: debug ? true : nil))
         guard r.ok else { throw Failure(description: r.error ?? "run failed") }
         output("Installing and launching \(r.bundleID ?? "the app") on \(device)…\n")
         let viewer = Process()
         viewer.executableURL = URL(fileURLWithPath: SimRemoteCLI.viewerPath())
         viewer.arguments = SimRemoteCLI.viewerArguments(host: hostName, device: device, extra: [])
         try viewer.run()
-        return viewer
+        return Started(viewer: viewer, app: app, bundleID: r.bundleID ?? up.bundleID, host: host, device: device, debugSocket: r.debugSocket)
     }
 
     /// The headset hook (device-hub.md §I.12): a visionOS destination's

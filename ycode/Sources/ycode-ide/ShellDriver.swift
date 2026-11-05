@@ -43,6 +43,7 @@ import OVPlatform
 //                           (ShellDriverInputMethod.swift)
 //
 //   YCODE_IDE_SCM=<p>       source control's walk (ShellDriver+SourceControl.swift)
+//   YCODE_IDE_CONFLICT=<p>  the conflict editor's walk (ShellDriver+Conflicts.swift)
 //   YCODE_IDE_TESTS=<p>     testing's walk (ShellDriver+Tests.swift)
 //   YCODE_IDE_POLISH=<p>    the beta 2 polish pass (ShellDriver+Polish.swift)
 //   YCODE_IDE_WALK=<p>      a tester's walk: Welcome, About, Clone, New Project
@@ -82,7 +83,7 @@ enum ShellDriver {
                         "YCODE_IDE_DEBUG", "YCODE_IDE_SCM", "YCODE_IDE_TESTS", "YCODE_IDE_RUNTIME_WALK", "YCODE_IDE_SETTINGS",
                         "YCODE_IDE_SETTINGS_VERIFY", "YCODE_IDE_EDITORS", "YCODE_IDE_LSP",
                         "YCODE_IDE_IME", "YCODE_IDE_POLISH", "YCODE_IDE_DEBUG2", "YCODE_IDE_ASSISTANT",
-                        "YCODE_IDE_DOWNLOAD_WALK"]
+                        "YCODE_IDE_DOWNLOAD_WALK", "YCODE_IDE_ACCOUNTS", "YCODE_IDE_CONFLICT", "YCODE_IDE_SIMDEBUG"]
         guard switches.contains(where: { env[$0] != nil }) else { return }
         await pause(0.4)
         say("backend \(OpenViewsAutomation.backendName)")
@@ -99,13 +100,19 @@ enum ShellDriver {
         if let prefix = env["YCODE_IDE_WALK"] { await walk(app, prefix: prefix) }
         if let prefix = env["YCODE_IDE_EDITORS"] { await EditorsDriver.run(app, prefix: prefix) }
         if let prefix = env["YCODE_IDE_SETTINGS"] { await SettingsDriver.run(app, prefix: prefix) } else if env["YCODE_IDE_SETTINGS_VERIFY"] != nil { say(SettingsDriver.values()) }
+        if let prefix = env["YCODE_IDE_ACCOUNTS"] { await AccountsDriver.run(prefix: prefix) }   // AccountsDriver.swift
         if let prefix = env["YCODE_IDE_LSP"] { await LanguageDriver.run(app, prefix: prefix) }   // LanguageDriver.swift
         if env["YCODE_IDE_IME"] != nil { await prepareInputMethodTest(app) }  // ShellDriverInputMethod.swift
         if let prefix = env["YCODE_IDE_DEBUG"] { await DebugDriver.run(app, prefix: prefix) }
         if let prefix = env["YCODE_IDE_POLISH"] { await polish(app, prefix: prefix) }   // ShellDriver+Polish.swift
         if let prefix = env["YCODE_IDE_DEBUG2"] { await DebugEditingDriver.run(app, prefix: prefix) }   // DebugEditingDriver.swift
+        if let prefix = env["YCODE_IDE_SIMDEBUG"] { await SimDebugDriver.run(app, prefix: prefix) }   // SimDebugDriver.swift
         if let prefix = env["YCODE_IDE_SCM"] {
             await scmWalk(app, prefix: prefix)
+            OpenViewsAutomation.terminate()
+        }
+        if let prefix = env["YCODE_IDE_CONFLICT"] {   // ShellDriver+Conflicts.swift
+            await conflictWalk(app, prefix: prefix)
             OpenViewsAutomation.terminate()
         }
         if let prefix = env["YCODE_IDE_ASSISTANT"] {   // ShellDriver+Assistant.swift

@@ -1,0 +1,26 @@
+[package]
+name = "ycode-objc"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Ycode's Objective-C runtime (libobjc.A.dylib) for macOS programs on Ycode's userland (specs/macos/objc-runtime.md)"
+publish = false
+
+[lib]
+name = "ycobjc"
+path = "src/lib.rs"
+crate-type = ["staticlib"]
+
+[features]
+# The Mac benchmark build: also accept `__ycob_*` section names (objc-runtime.md §12).
+host-bench = []
+
+[profile.release]
+panic = "abort"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = false
+
+[profile.dev]
+panic = "abort"

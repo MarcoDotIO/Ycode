@@ -28,6 +28,8 @@ struct SourceControlPaneView: View {
                 switch scm.pane {
                 case .commit?: CommitEditorView(scm: scm)
                 case .history?: BranchHistoryView(scm: scm, model: model)
+                case .conflicts?:
+                    if let e = scm.conflictEditor { ConflictEditorView(editor: e) } else { Color.clear }
                 case nil: Color.clear
                 }
             }
@@ -50,6 +52,7 @@ struct SourceControlPathBar: View {
         let last: String = switch scm.pane {
         case .commit?: "Uncommitted Changes"
         case .history(_, let title, _)?: title
+        case .conflicts?: scm.conflictEditor?.state.title ?? "Conflicts"
         case nil: ""
         }
         HStack(spacing: 4) {
@@ -574,7 +577,7 @@ struct SourceControlInspector: View {
     var body: some View {
         let c = ShellColors(scheme)
         ScrollView {
-            if case .commit? = scm.pane {
+            if scm.pane?.isHistory == false {
                 changeInspector(c)
                     .padding(.horizontal, CGFloat(WorkspaceChrome.inspectorContentInset))
                     .padding(.top, CGFloat(WorkspaceChrome.inspectorContentTopInset))

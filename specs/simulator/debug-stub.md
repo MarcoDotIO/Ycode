@@ -483,6 +483,17 @@ at its first instruction), or connect before the launch and wait for it:
 The IDE passes all three as lldb-dap `preRunCommands`
 (`RemoteSimulator.debuggerSettings`).
 
+### 8.4 lldb on Linux
+
+The Linux IDE debugs apps on a simulator host on the same computer with
+Linux's lldb-dap (`specs/ide/debug.md`, "Apps on the simulator"). lldb on
+Linux gives the stub's process Linux's signal numbers (the attach stop's
+SIGSTOP, 17, reads as SIGCHLD and was resumed at once), so the IDE sets
+`process handle` for SIGCHLD and SIGUSR1 before the attach (there). The
+stub is unchanged: it speaks Darwin's numbers, as debugserver does.
+`process connect unix-connect://<socket>` reaches the stub's Unix socket
+directly from the lldb command line.
+
 ### 8.2 The IDE
 
 Run on a Ycode simulator destination now runs with the debugger, as Run on

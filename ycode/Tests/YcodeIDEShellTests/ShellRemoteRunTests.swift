@@ -27,6 +27,8 @@ struct ShellRemoteRunTests {
         #expect(ShellRemoteRun.builtApp(derivedData: dd.path, scheme: "A")?.lastPathComponent == "A.app")
         #expect(ShellRemoteRun.builtApp(derivedData: dd.path, scheme: "B")?.lastPathComponent == "A.app")
         #expect(ShellRemoteRun.builtApp(derivedData: "/nonexistent", scheme: "A") == nil)
+        #expect(ShellRemoteRun.derivedDataRoot(environment: ["XDG_CACHE_HOME": "/c"]).path == "/c/ycode/remote-run")
+        #expect(ShellRemoteRun.derivedDataRoot(environment: ["XDG_CACHE_HOME": "relative"]).path.hasSuffix("/.cache/ycode/remote-run"))
     }
 
     @Test func headsetHook() {

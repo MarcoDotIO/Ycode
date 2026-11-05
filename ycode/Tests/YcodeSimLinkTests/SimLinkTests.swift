@@ -299,9 +299,27 @@ struct SimLinkTests {
         #expect(env["YCODE_WARM_BOOT"] == "1" && env["YCODE_WARM_FORCE_COLD"] == "1" && env["YCODE_SIM_DATA"] == "/data/area")
         #expect(args == ["--device", "/data/area/devices/p18", "--runtime-root", "/rt/27.0", "--display-server", "unix:/data/area/run/p18.sock",
                          "--device-type", "iphone-18-pro", "--install-app", "/data/area/apps/A.app", "--launch", "com.x.a", "--environment-overrides"])
+        // Under the debugger (debug.md, "The Linux IDE: apps on the simulator"): the stub on a socket in the run folder.
+        let debugged = c.launch(device: "p18", type: "iphone-18-pro", app: "/data/area/apps/A.app", bundleID: "com.x.a", cold: false, debug: true).args
+        #expect(Array(debugged.suffix(2)) == ["--debug-server", "unix:/data/area/run/p18.debug.sock"])
+        #expect(c.debugSocketPath("p18") == "/data/area/run/p18.debug.sock")
+        #expect(!c.launch(device: "p18", type: "", app: nil, bundleID: nil, cold: false, debug: true).args.contains("--debug-server"))
         #expect(throws: LinkError.self) { try SimHostConfig.load(text: "", environment: [:]) }
         #expect(isSafeName("p18") && !isSafeName("../x") && !isSafeName(".hidden") && !isSafeName("a/b"))
         #expect(SimRemoteCLI.viewerArguments(host: "thor", device: "p18", extra: ["--status"]) == ["--link", "p18", "--host", "thor", "--status"])
+    }
+
+    @Test func runRequestsCarryTheDebuggerFlagAndTheStubSocket() throws {
+        let r = LinkRequest(op: "run", device: "tc", app: "T.app", bundleID: "x.t", debug: true)
+        let back = try JSONDecoder().decode(LinkRequest.self, from: JSONEncoder().encode(r))
+        #expect(back.debug == true && back == r)
+        // Requests and answers of hosts and clients without the fields still decode.
+        let old = try JSONDecoder().decode(LinkRequest.self, from: Data(#"{"op":"run","device":"tc","app":"T.app"}"#.utf8))
+        #expect(old.debug == nil)
+        var a = LinkResponse(ok: true, message: "tc starting")
+        a.debugSocket = "/h/run/tc.debug.sock"
+        #expect(try JSONDecoder().decode(LinkResponse.self, from: JSONEncoder().encode(a)).debugSocket == "/h/run/tc.debug.sock")
+        #expect(try JSONDecoder().decode(LinkResponse.self, from: Data(#"{"ok":true}"#.utf8)).debugSocket == nil)
     }
 
     @Test func splitterCutsWholeMessages() {

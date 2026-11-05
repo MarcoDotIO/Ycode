@@ -1,6 +1,6 @@
 # xcodebuild: -showBuildSettings
 
-Ycode: `YcodeXcodebuild` (`Plan`, `ShowBuildSettings`, `XcodePIF`,
+Ycode: `YcodeXcodebuild` (`Plan`, `ShowBuildSettings`, `PackageBuildSettings`, `XcodePIF`,
 `SwiftBuildSettingsProvider`, `Arena`, `DerivedDataName`, `Destinations`),
 plus the helper `ycode/Tools/ycode-swb`. The settings themselves are
 evaluated by swift-build (open source), from a PIF that Ycode generates; no
@@ -54,7 +54,8 @@ scheme's unskipped testables for testing), in scheme order. `-target` with
 `-scheme` selects that target instead. Configuration: `-configuration`, else
 the scheme action's `buildConfiguration` (LaunchAction for build).
 
-The action word printed is the first action (`build` when none).
+The action word printed is the first action (`build` when none). The
+test actions evaluate with swift-build's `build` action (§7.2).
 
 ## 3. Evaluation through swift-build
 
@@ -234,6 +235,75 @@ names and values matched exactly. The only systematic difference is the
 first element of `PATH`, which names the build service's own platform
 plug-in directory.
 
+## 7. Swift package schemes
+
+In a package folder (`packages.md`), `-showBuildSettings -scheme <scheme>`
+prints the settings of the targets the scheme builds, in the format of §1:
+the invocation header, the package report (`packages.md` §2), the
+command-line and configuration-file sections, then one
+`Build settings for action <action> and target <target>:` block per
+target; `-json` gives one object per target, `{"action", "buildSettings",
+"target"}`, and `-quiet` drops the header sections as for projects.
+
+Ycode decision: the reference tool prints no settings for package schemes
+(nothing after the package report, `[]` with `-json`). ycodebuild prints
+what a build of the scheme would evaluate, because scripts that read
+`BUILT_PRODUCTS_DIR`, `EXECUTABLE_PATH` or `TARGET_BUILD_DIR` need them for
+packages as much as for projects.
+
+### 7.1 Targets
+
+The targets are those of SwiftPM's build description (`swift package
+dump-pif`, the same PIF the build loads), named as in that PIF and in build
+logs:
+
+| Action (the first one) | Targets, in order |
+|---|---|
+| `build`, `analyze`, `archive`, `install`, other actions | the scheme's build targets (`packages.md` §3): each product's product target, `<product>-product` (a product without one: its package targets), in manifest order; `<Package>-Package` takes every product |
+| `test`, `build-for-testing`, `test-without-building` | those, then the scheme's test bundles (`<test>-product`, the unit-test product targets of `packages.md` §3's test rule) |
+| `docbuild` | the products' package targets (the modules, `PACKAGE-TARGET:<name>`), as documentation is built per module |
+
+`-target <name>` (repeatable) replaces that list: a package target (the
+module, `PACKAGE-TARGET:<name>`, not its `-dynamic` twin of the same name),
+else any build-description target with that name (`greet-product`). An
+unknown name fails with `The package '<Package>' does not contain a target
+named '<name>'.`, exit 65.
+
+Dependencies of those targets (other modules, other packages) get no block
+of their own, as for project schemes (§2).
+
+### 7.2 Parameters
+
+As for a package build (`packages.md` §3): configuration `-configuration`,
+else `Debug`; the command-line settings, `-arch`, `-sdk` and `-xcconfig`;
+the package's DerivedData folder (`-derivedDataPath`, else
+`<DerivedData>/<Package>-<hash>`, §4); and, for the test actions, the code
+coverage settings of `packages.md` §3 unless `-enableCodeCoverage NO`.
+
+Run destination: `-destination` as for a build, where `platform=Linux[,arch=…]`
+names this computer on Linux; `generic/…` gives none. A build needs a
+destination (`packages.md` §2), a settings query does not: without one it
+is this computer, My Mac (host architecture) on macOS and swift-build's
+`linux` platform and SDK on Linux, with Linux's name for the architecture
+(`x86_64`, `aarch64`). There swift-build evaluates the package for Linux
+(`PLATFORM_NAME = linux`, `SDK_NAME = linux`, `SDKROOT = /`, products in
+`Build/Products/<configuration>-linux-<arch>`), and the warning about the
+Xcode version placeholders (§5.1) is printed; no SDK is missing, so there
+is no SDK warning.
+
+The build system action is the first action, except that `test`,
+`build-for-testing` and `test-without-building` evaluate with `build`
+(swift-build has no test actions and exports no settings for an action it
+does not know; `ACTION = build`). The block header keeps the action word
+given. This holds for projects too (§2).
+
+### 7.3 Without swift-build
+
+Ycode's own resolver reads projects only. Without the helper the query
+fails: `Showing a Swift package's build settings needs the ycode-swb helper
+(swift-build), which was not found. It ships with Ycode; set YCODE_SWB to
+its path.`, exit 70.
+
 ## Evidence
 
 - Exported-settings API, build-parameter coding (`SWBBuildParameters`,
@@ -261,5 +331,13 @@ plug-in directory.
 - OPEN QUESTION: the PIF of package dependencies (the reference tool embeds
   SwiftPM's package projects); targets that depend on package products
   evaluate without them.
+- Package schemes (§7): the reference tool's empty output is black-box
+  (level 3, `packages.md`); what ycodebuild prints instead is a Ycode
+  decision. Target GUIDs and names, product and test-bundle targets: the
+  PIF of open-source SwiftPM's `dump-pif` (level 1). The `linux` platform
+  and SDK, the Linux architecture names, and the build actions swift-build
+  knows (`BuildAction`: no test action): open-source swift-build (level 1),
+  checked by running the helper on macOS and on x86-64 Linux (level 3,
+  Ycode only).
 - OPEN QUESTION: `IDECustomDerivedDataLocation` and other user defaults that
   move DerivedData are not read.

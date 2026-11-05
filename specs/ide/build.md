@@ -46,8 +46,43 @@ Status (2026-10-28): both engines are implemented in `YcodeBuild`. The
 IDE's default is swift-build (Settings ▸ Locations ▸ Build System,
 `settings.md`): it is wrapped in `FallbackEngine`, which uses xcodebuild
 for any request swift-build cannot describe, and the IDE uses xcodebuild
-outright when `swbuild` cannot be found. The `ycode build` command line
-uses xcodebuild unless `--engine swift-build` is given.
+outright when `swbuild` cannot be found.
+
+### The command line
+
+`ycode build [<container>] [--engine xcodebuild|swift-build|swiftpm]`
+(`CommandLineBuild`). The container is the path given, else the current
+folder. Without `--engine`:
+
+| Host | Package folder (a `Package.swift`, no `.xcodeproj` or `.xcworkspace`) | Project, workspace, other folder |
+|---|---|---|
+| macOS | xcodebuild (`xcrun xcodebuild`) | xcodebuild |
+| Linux, host build or Flatpak | `swiftpm` | xcodebuild, which on Linux is ycodebuild |
+
+This is the Linux IDE's choice (`ShellBuildSetup`), with the same switch:
+`YCODE_IDE_ENGINE=ycodebuild` sends packages to ycodebuild too. The
+`swiftpm` engine (`PackageBuildEngine`) runs the toolchain's SwiftPM:
+`swift build --package-path <dir>` (`-c release` for `-configuration
+Release`), `swift test` for `--test`, `swift build --build-tests` for
+`--build-for-testing`, `swift package clean` for `--clean`. `-scheme`,
+`-destination` and `-derivedDataPath` do not apply to it. In the Flatpak,
+`swift` is the host-tool wrapper, which runs the host's toolchain through
+the host bridge (`packaging/flatpak/host-tool.sh`), as the IDE's builds do.
+
+Missing tools are errors, exit 1:
+
+| Situation | Message |
+|---|---|
+| no `swift` on `PATH` (host build) | the build's one issue: `Ycode could not find a Swift toolchain. Install Swift 6 or later (swift.org/install), make sure \`swift\` is on your PATH, then build again.` |
+| no Swift on the host (Flatpak) | the wrapper's `Ycode: no Swift toolchain was found on this computer (swift is missing).` and how to install one, exit 127 from the wrapper |
+| the Flatpak cannot reach the host | the wrapper's message naming the `--talk-name=org.freedesktop.Flatpak` permission |
+
+When SwiftPM's driver exits 127 without an error of its own (it did not
+run: the shell's "command not found", or the wrapper's two cases above),
+its output lines, joined, are the build's one error issue, so the IDE's
+issue navigator and `ycode build --quiet` show the reason too.
+| ycodebuild not found (Linux) | `ycode: Ycode could not find its build tool, ycodebuild. …` |
+| `--engine swift-build` without `swbuild` | `ycode: swbuild not found (set YCODE_SWBUILD). Swift packages build with --engine swiftpm` (`, the default here.` on Linux) |
 
 Activity text: a log line that starts with a known step verb maps to a
 label plus the last path component on the line — `CompileSwift`,
@@ -121,6 +156,10 @@ Export and Import act on the project, or a workspace's first project
 - OPEN QUESTION: whether build-system `note:` lines without a location appear in the issue
   navigator. Needs a GUI observation pass.
 - OPEN QUESTION: exact cancel behavior of the IDE's Stop during a build.
+- `ycode build`'s engine choice and its messages are Ycode decisions that
+  follow the Linux IDE's (`ShellBuildSetup`); SwiftPM's commands and flags
+  are open source (level 1); checked with Ycode's host builds on macOS and
+  Linux and in its Flatpak (level 3, Ycode only).
 - IDE tool actions: the menu items and shortcuts from `reference-ui-5.md`
   §2.9; the commands from `specs/xcodebuild/localization.md` and
   `build-actions.md` §5. The panels, report titles, the documentation

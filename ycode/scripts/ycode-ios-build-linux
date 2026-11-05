@@ -29,9 +29,25 @@ SWIFT_BIN=${YCODE_SWIFT_BIN:-$(ls -d "$HOME"/.local/share/swiftly/toolchains/*/u
 TC=$YCODE_USER_SDK/Toolchains/XcodeDefault.xctoolchain
 RT=$(ls -1 "$TC"/usr/lib/clang/*/lib/darwin/libclang_rt.iossim.a 2>/dev/null | sort -V | tail -1)
 [ -f "$RT" ] || { echo "no libclang_rt.iossim.a in $TC/usr/lib/clang" >&2; exit 2; }
-export YCODE_SWB PATH="$SWIFT_BIN:$PATH" DEVELOPER_DIR=$YCODE_USER_SDK XCODE_EXTRA_PLATFORM_FOLDERS=$YCODE_USER_SDK/Platforms
-exec "$YCODE" build "$project" -scheme "$scheme" -destination "generic/platform=iOS Simulator" -derivedDataPath "$dd" \
-  --engine swift-build CODE_SIGNING_ALLOWED=NO SDKROOT=iphonesimulator ARCHS=arm64 \
-  "OTHER_SWIFT_FLAGS=-resource-dir $TC/usr/lib/swift" \
-  "OTHER_LDFLAGS=-fuse-ld=lld --ld-path=$LD64 $RT" \
-  DONT_RUN_SWIFT_STDLIB_TOOL=YES LM_SKIP_METADATA_EXTRACTION=YES "$@"
+export YCODE_SWB PATH="$SWIFT_BIN:$PATH" DEVELOPER_DIR=$YCODE_USER_SDK
+build() {
+  "$YCODE" build "$project" -scheme "$scheme" -destination "generic/platform=iOS Simulator" -derivedDataPath "$dd" \
+    --engine swift-build CODE_SIGNING_ALLOWED=NO SDKROOT=iphonesimulator ARCHS=arm64 \
+    "OTHER_SWIFT_FLAGS=-resource-dir $TC/usr/lib/swift" \
+    "OTHER_LDFLAGS=-fuse-ld=lld --ld-path=$LD64 $RT" \
+    DONT_RUN_SWIFT_STDLIB_TOOL=YES LM_SKIP_METADATA_EXTRACTION=YES "$@"
+}
+# Older swift-builds load no platforms from DEVELOPER_DIR for a Swift
+# toolchain and need XCODE_EXTRA_PLATFORM_FOLDERS; newer ones register them
+# themselves and refuse the second registration ("platform … already
+# registered"): then the build runs again without it.
+log=$(mktemp)
+trap 'rm -f "$log"' EXIT
+XCODE_EXTRA_PLATFORM_FOLDERS=$YCODE_USER_SDK/Platforms build "$@" 2>&1 | tee "$log"
+status=${PIPESTATUS[0]}
+if [ "$status" != 0 ] && grep -q "already registered" "$log"; then
+  echo "ycode-ios-build-linux: building again without XCODE_EXTRA_PLATFORM_FOLDERS"
+  build "$@"
+  status=$?
+fi
+exit "$status"
