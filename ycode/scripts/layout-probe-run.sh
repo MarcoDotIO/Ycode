@@ -13,8 +13,15 @@ show=${3:-0}
 timeout=${4:-120}
 rm -rf "$dir/shots" "$dir/probe.json" "$dir/probe.json.pid" "$dir/probe.log"
 mkdir -p "$dir"
-open -n -g --env "YCODE_LAYOUT_PROBE=$dir/probe.json" --env "YCODE_LAYOUT_PROBE_SHOTS=$dir/shots" \
-    --env "YCODE_LAYOUT_PROBE_SHOW=$show" --stdout "$dir/probe.log" --stderr "$dir/probe.log" "$app"
+if ! open -n -g --env "YCODE_LAYOUT_PROBE=$dir/probe.json" --env "YCODE_LAYOUT_PROBE_SHOTS=$dir/shots" \
+    --env "YCODE_LAYOUT_PROBE_SHOW=$show" --stdout "$dir/probe.log" --stderr "$dir/probe.log" "$app"; then
+    # LaunchServices can refuse a copy it has seen before (error -10810).
+    # From a shell inside the GUI session the executable runs directly.
+    echo "layout-probe: open failed; running the executable directly" >&2
+    exe=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
+    YCODE_LAYOUT_PROBE="$dir/probe.json" YCODE_LAYOUT_PROBE_SHOTS="$dir/shots" YCODE_LAYOUT_PROBE_SHOW="$show" \
+        "$app/Contents/MacOS/$exe" >"$dir/probe.log" 2>&1 &
+fi
 waited=0
 while [ ! -f "$dir/probe.json" ] && [ "$waited" -lt "$timeout" ]; do
     sleep 1

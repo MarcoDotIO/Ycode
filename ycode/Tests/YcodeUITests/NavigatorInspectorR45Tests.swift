@@ -149,11 +149,9 @@ import YcodeProject
 
     // MARK: N7, N8 — filter fields and selector titles
 
-    // Verified on macOS 27.2 here and on 27.0 with the layout probe
-    // (`specs/ide/metrics.md` §14); earlier systems are not measured yet.
-    @Test(.enabled(if: ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)),
-                   "positions verified on macOS 27.0 and 27.2 (metrics.md §14); earlier systems not measured"))
-    func filterOptionsAndTogglesSitInsideTheField() throws {
+    // Holds on every supported system: macOS 27.2 here, and 27.0, 26.6 and
+    // 15.6 with the layout probe (`specs/ide/metrics.md` §14.1).
+    @Test func filterOptionsAndTogglesSitInsideTheField() throws {
         let nav = laidOutNavigator()
         for i in 0..<9 {
             nav.select(i)

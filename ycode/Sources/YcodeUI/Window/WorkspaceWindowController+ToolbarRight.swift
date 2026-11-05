@@ -158,7 +158,8 @@ extension WorkspaceWindowController {
         return toolbar.items.filter { !$0.isHidden }.map(\.itemIdentifier)
             .filter { !visible.contains($0) && !Self.toolbarSpacers.contains($0) }.map(\.rawValue)
     }
-    static let toolbarSpacers: Set<NSToolbarItem.Identifier> = [.flexibleSpace, .space, .sidebarTrackingSeparator, .inspectorTrackingSeparator]
+    static let toolbarSpacers: Set<NSToolbarItem.Identifier> = [.flexibleSpace, .space, .sidebarTrackingSeparator, FlushSidebar.trackingSeparatorID,
+                                                                 .inspectorTrackingSeparator]
 
     /// Recovers room in the order of `ToolbarFit` (liquid-glass.md §8.2)
     /// until nothing but what the step allows sits in the overflow: the

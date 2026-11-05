@@ -127,9 +127,12 @@ import YcodeProject
                 let b = Self.box(bar)
                 #expect(b.height == DebugAreaController.bottomBarHeight)
                 #expect(abs(b.maxY - height) <= 0.5)
+                // The drawn control (its alignment rectangle): before macOS 26
+                // a small pop-up's frame reaches 2 below its bezel (metrics.md §14.1).
                 for v in bar.arrangedSubviews where !v.isHidden {
-                    let f = Self.box(v)
-                    #expect(height - f.maxY >= 3.5, "\(type(of: v)) is \(height - f.maxY) from the window's bottom edge")
+                    // Window coordinates: the origin is the bottom left.
+                    let bottom = (v.superview ?? bar).convert(v.alignmentRect(forFrame: v.frame), to: nil).minY
+                    #expect(bottom >= 3.5, "\(type(of: v)) is \(bottom) from the window's bottom edge")
                 }
             }
         }
@@ -159,12 +162,14 @@ import YcodeProject
 
     // MARK: §9 — Device Hub toolbar
 
-    // Verified on macOS 27.2 here and on 27.0 with the layout probe
-    // (`specs/ide/metrics.md` §14); earlier systems are not measured yet.
+    // Verified on macOS 27.2 here, and on 27.0 and 15.6 with the layout
+    // probe (`specs/ide/metrics.md` §14.1). macOS 26 floats the sidebar as an
+    // inset panel whose toolbar section ends the circle 5 points before the
+    // edge: a recorded deviation, so the test does not run there.
     /// The sidebar's toolbar group hugs the sidebar's edge (device-hub.md
     /// §3 items 2–4): the Hide Sidebar circle ends 7 points before x 240.
-    @Test(.enabled(if: ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)),
-                   "positions verified on macOS 27.0 and 27.2 (metrics.md §14); earlier systems not measured"))
+    @Test(.enabled(if: ProcessInfo.processInfo.operatingSystemVersion.majorVersion != 26,
+                   "macOS 26 floats the hub's sidebar; the circle ends 5 points before its edge (metrics.md §14.1)"))
     func hubSidebarGroupEndsAtTheSidebarEdge() throws {
         _ = NSApplication.shared
         let prefs = IsolatedPreferences("ui-spacing-hub")

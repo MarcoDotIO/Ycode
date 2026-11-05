@@ -469,8 +469,54 @@ Ycode keeps the system's layout.
 
 **Tests.** `UISpacingTests.hubSidebarGroupEndsAtTheSidebarEdge` and
 `NavigatorInspectorR45Tests.filterOptionsAndTogglesSitInsideTheField` now
-run on macOS 27.0 and later (they were limited to 27.2). macOS 26 and 15
-are not measured yet; run the probe there before widening them further.
+run on macOS 27.0 and later (they were limited to 27.2).
+
+### 14.1 macOS 26.6 and 15.6 (beta 2, #24)
+
+**Result** (both at 1x in virtual machines; numbers in
+`docs/LAYOUT-PROBE.md`): on 26.6, 11 of 175 measures were out of spec
+before and 1 after (Device Hub, below); on 15.6, 6 of 155 before and none of
+150 after. 27.2 still meets all 175.
+
+| Element | Before | Cause | Fix |
+|---|---|---|---|
+| Navigator on macOS 26 | x 8, y 8, 282 × 884: the selector, "+" and filter capsules 8 points in (x 14, 14, 50; bottoms 885) | macOS 26 draws a sidebar split item as a glass panel floating 8 points inside the window's leading, top and bottom edges (27 and 15 draw it flush) | On macOS 26 only, the navigator is a plain split item that behaves as a sidebar (collapses, holding priority 260), over the system's sidebar material (`.sidebar`, behind window), with a tracking separator of Ycode's over its divider (`FlushSidebar`). Its content reaches 1 point past the item over the divider, as the system's sidebar has no divider of its own; the item is 289 wide. Now x 0, 290 wide, and every capsule at its spec value |
+| Run \| Stop on macOS 26 | x 225–286 (61 × 28) | the floating sidebar's toolbar section draws smaller items (28 tall) | the same: without the sidebar item the section is gone; Run \| Stop 208–281, Back \| Forward 298–371, the activity icon 385 |
+| Inspector on macOS 15 | 259 wide | before macOS 26 the split's divider takes a point of its own; the inspector item starts after it | `applyDefaultLayout` moves the divider by what the inspector lacks: 260 |
+| Variables bar's scope pop-up on macOS 15 | frame 2 points above the window's bottom | a small pop-up's frame reaches 2 points below its bezel there; the stack view centres the bezel (alignment rectangle) | none needed: the measure (probe and `debugAreaBottomBarsShareOneHeight`) now reads the drawn control, its alignment rectangle: 5 points on 15.6, 4 on 26 and 27 |
+
+**Before macOS 26: glass-only measures.** The earlier layout draws none of
+the capsules (`liquid-glass-ycode.md` §3) and keeps the earlier toolbar
+(§2: bordered controls 40 tall at y 6 with the earlier segment widths, Run |
+Stop 204–284, Back | Forward 297–377). No spec gives positions for that
+design: §2 to §5 and `liquid-glass.md` describe the glass layout, and the
+reference has no other. So the selector bar, its pill, the "+" circle, the
+filter capsule, the inspector's tab bar and pill, and the toolbar's Run |
+Stop, Back | Forward and activity-icon positions are measured with the glass
+layout only ("-" on 15.6). What the specs do say of the earlier layout is
+measured: the outline's first row 7 below the selector (§2, the clipped
+layout), the 27-point debug bar (`liquid-glass-ycode.md` §4), the activity
+icon 14 after Back | Forward, and the areas' widths.
+
+**Deviation: Device Hub on macOS 26.** The hub keeps the system's sidebar
+item, so on 26 its sidebar floats (x 8, 232 wide) and its toolbar section
+draws Add Device, Filter and Hide Sidebar 28 tall; the circle ends 5
+points before x 240 (spec 7 ± 1.5). The workspace's fix does not carry
+over: the hub's window shows its title, which the toolbar places after the
+sidebar's section, and with a plain item at the toolbar's leading end,
+ahead of Add Device | Filter (measured on 27.2 with the plain item: Add
+Device at x 260, the circle ending at 373, past the sidebar). It
+needs the title moved into an item of its own; until then
+`hubSidebarGroupEndsAtTheSidebarEdge` and `LayoutProbeTests.deviceHubMeasuresMeetTheSpec`
+do not run on macOS 26. With a plain item and Ycode's own circle the
+circle ended 10 points before the edge on 26 (8 on 27.2): the system leaves
+2 more points before a tracking separator after an image item there.
+
+**Tests.** `filterOptionsAndTogglesSitInsideTheField` runs on every
+supported system (the probe met it on 27.2, 27.0, 26.6 and 15.6);
+`hubSidebarGroupEndsAtTheSidebarEdge` everywhere except macOS 26.
+`FlushSidebarTests` forces the plain navigator item on the system that
+runs the tests and checks every workspace measure against its spec.
 
 ## Evidence
 
@@ -484,6 +530,8 @@ are not measured yet; run the probe there before widening them further.
 | §12 council round 1 (reference values) | 3 | Council r1 1x stills and recordings of the reference: colour runs, glyph ink boxes, before/after differences (`research/tools/council-r1/measure_captures.py`, sections `navigator`, `inspector`; `research/notes/council-r1-2026-11-04.md`) |
 | §13 council round 2 (reference values, active window) | 3 | Council r2 1x stills and recordings of the reference, foreground: colour runs, ink boxes, row matching; `research/tools/council-r2/measure_r2.py` (`navigator`, `welcome`); `research/notes/council-r2-2026-11-04.md` |
 | §14 Ycode on macOS 27.0 and 27.2 | — | The layout probe's reports of Ycode's own windows (`scripts/layout-probe.sh`); no reference observed |
+| §14.1 Ycode on macOS 26.6 and 15.6; the floating sidebar of macOS 26 | — | The layout probe's reports of Ycode's own windows, and a minimal AppKit window of our own (sidebar item against plain item, both separators) on 27.2 and 26.6; no reference observed |
+| §14.1 split items, tracking separators, alignment rectangles | 1 | AppKit documentation and SDK headers (`NSSplitViewItem`, `NSTrackingSeparatorToolbarItem`, `NSSplitViewController`, `NSView.alignmentRect(forFrame:)`) |
 | §12.4 EditorConfig lookup rule | 1 | The EditorConfig specification (editorconfig.org: files are read from the file's folder upward until `root = true`) |
 
 Level 5 was not used. Reference behavior was observed only for §12 and §13

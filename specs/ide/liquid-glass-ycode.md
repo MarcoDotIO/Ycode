@@ -38,6 +38,12 @@ current SDK, so tests run with the new design.
   panel. Each area lays its first row out below the toolbar through its
   safe area. No line between navigator and editor; the inspector draws a
   1-point separator at its leading edge, full height.
+- macOS 26 draws the sidebar item as a panel floating 8 points inside the
+  window, with smaller toolbar items over it. There the navigator is a
+  plain split item over the system's sidebar material, covering its
+  divider, with Ycode's own tracking separator (`FlushSidebar`,
+  `metrics.md` §14.1). Device Hub keeps the system's item (a recorded
+  deviation on macOS 26).
 - The center column holds the editor / debug area split below its
   safe-area top, so the split's heights (the debug area's 135 points, the
   remembered height, `reference-ui-5.md` §8.2) are measured as before.

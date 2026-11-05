@@ -164,21 +164,27 @@ public enum LayoutProbe {
         let toolbarHeight = Double(r.root.bounds.height - win.contentLayoutRect.maxY)
         r.measure("toolbar.height", toolbarHeight, "=", 52, source: "\(src) §3")
         measureToolbar(win, into: r)
-        r.edges("toolbar.run", r.frames["toolbar.run"], x: 208.5, maxX: 281.5, source: "\(src) §3")
-        r.edges("toolbar.history", r.frames["toolbar.history"], x: 297.5, maxX: 370.5, source: "\(src) §3")
+        let glass = GlassBars.enabled
+        // The glass toolbar's positions. Before macOS 26 the toolbar keeps
+        // the earlier design (liquid-glass-ycode.md §2: bordered controls
+        // 40 tall at y 6, the earlier segment widths), which no spec gives
+        // positions for; only the activity icon's gap applies there.
+        if glass {
+            r.edges("toolbar.run", r.frames["toolbar.run"], x: 208.5, maxX: 281.5, source: "\(src) §3")
+            r.edges("toolbar.history", r.frames["toolbar.history"], x: 297.5, maxX: 370.5, source: "\(src) §3")
+        }
         // The activity icon 14 after Back | Forward: x 385 (liquid-glass.md §7.1).
         if let history = r.frames["toolbar.history"], wc.activityView.window != nil, !wc.activityView.isHiddenOrHasHiddenAncestor {
             let icon = r.frame("toolbar.activityIcon", r.box(wc.activityView.icon))
             r.measure("toolbar.activityIcon.gapAfterHistory", icon.x - history.maxX, "=", Double(ActivityView.gapAfterNeighbor),
                       source: "liquid-glass.md §7.1")
-            r.measure("toolbar.activityIcon.x", icon.x, "=", 385, source: "liquid-glass.md §7.1")
+            if glass { r.measure("toolbar.activityIcon.x", icon.x, "=", 385, source: "liquid-glass.md §7.1") }
         }
 
         // §2 Navigator.
         let nav = wc.navigator
         let navArea = r.frame("navigator.area", nav.view)
         r.edges("navigator.area", navArea, x: 0, w: Double(WorkspaceWindowController.navigatorWidth), source: "\(src) §2")
-        let glass = GlassBars.enabled
         r.edges("navigator.selector", r.frame("navigator.selector", nav.selectorView), x: glass ? 6 : nil, y: glass ? 51 : nil,
                 w: glass ? 278 : nil, h: glass ? 30 : nil, source: "\(src) §2")
         if glass {
@@ -276,8 +282,15 @@ public enum LayoutProbe {
         for (name, bar) in [("debug.variablesBar", d.variablesBarStack), ("debug.consoleBar", d.consoleBarStack)] {
             guard let bar, let b = r.frame(name, bar) else { continue }
             r.edges(name, b, maxY: height, h: Double(DebugAreaController.bottomBarHeight), source: "metrics.md §7")
+            // The drawn controls (their alignment rectangles, which the stack
+            // view centres): before macOS 26 a small pop-up's frame reaches
+            // 2 points further down than its bezel (metrics.md §14.1).
             var lowest = Double.infinity
-            for v in bar.arrangedSubviews where !v.isHidden { lowest = min(lowest, height - r.box(v).maxY) }
+            for (i, v) in bar.arrangedSubviews.enumerated() where !v.isHidden {
+                r.frame("\(name).control\(i)", r.box(v))
+                let drawn = r.frame("\(name).control\(i).drawn", r.rect(v.alignmentRect(forFrame: v.frame), in: v.superview ?? bar))
+                lowest = min(lowest, height - drawn.maxY)
+            }
             if lowest.isFinite { r.measure("\(name).controlsAboveBottom", lowest, ">=", 3.5, tolerance: 0, source: "UISpacingTests") }
         }
     }

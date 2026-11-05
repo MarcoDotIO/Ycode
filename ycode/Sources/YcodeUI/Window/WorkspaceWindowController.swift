@@ -275,7 +275,12 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         centerSplit.addSplitViewItem(editorItem)
         centerSplit.addSplitViewItem(debugItem)
 
-        navigatorItem = NSSplitViewItem(sidebarWithViewController: navigator)
+        // Flush with the window's edges on every system (FlushSidebar.swift);
+        // on macOS 26 the navigator covers its 1-point divider, so the
+        // editor and the toolbar's tracking separator start where they do
+        // with the system's sidebar item and there is no line between
+        // navigator and editor (liquid-glass-ycode.md §1).
+        navigatorItem = FlushSidebar.item(for: navigator, overhang: 1)
         navigatorItem.minimumThickness = 180
         navigatorItem.preferredThicknessFraction = Self.navigatorWidth / Self.defaultSize.width
         // The window's content runs under the toolbar (`.fullSizeContentView`,
@@ -473,9 +478,19 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         guard let w = window, let content = w.contentView else { return }
         mainSplit.view.frame = content.bounds
         mainSplit.view.layoutSubtreeIfNeeded()
-        let total = mainSplit.splitView.bounds.width
-        mainSplit.splitView.setPosition(Self.navigatorWidth, ofDividerAt: 0)
-        mainSplit.splitView.setPosition(total - Self.inspectorWidth, ofDividerAt: 1)
+        let split = mainSplit.splitView
+        let total = split.bounds.width
+        split.setPosition(FlushSidebar.position(forWidth: Self.navigatorWidth, of: navigatorItem), ofDividerAt: 0)
+        split.setPosition(total - Self.inspectorWidth, ofDividerAt: 1)
+        // The system's inspector item starts at its divider on macOS 26 and
+        // later; before, the divider takes a point of its own and the
+        // inspector came out 259 wide (`metrics.md` §14.1). Move the divider
+        // by what the inspector lacks.
+        mainSplit.view.layoutSubtreeIfNeeded()
+        let short = Self.inspectorWidth - inspector.view.frame.width
+        if !inspectorItem.isCollapsed, abs(short) >= 0.5, abs(short) <= split.dividerThickness + 0.5 {
+            split.setPosition(total - Self.inspectorWidth - short, ofDividerAt: 1)
+        }
         if !debugItem.isCollapsed {
             centerSplit.splitView.setPosition(centerSplit.splitView.bounds.height - debugAreaOpeningHeight, ofDividerAt: 0)
         }
@@ -1770,7 +1785,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     /// bordered items otherwise share one glass shape); Show Inspector sits
     /// in the inspector's section.
     public func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.leftPanesID, .flexibleSpace, Self.runID, .sidebarTrackingSeparator, Self.historyID, Self.activityID, .flexibleSpace,
+        [Self.leftPanesID, .flexibleSpace, Self.runID, FlushSidebar.separatorIdentifier, Self.historyID, Self.activityID, .flexibleSpace,
          Self.newConversationID, .space, Self.schemeID, Self.issuesID,
          .flexibleSpace, EditorOptionsMenu.addEditorID, EditorOptionsMenu.editorOptionsID, Self.editorModesID,
          .inspectorTrackingSeparator, .flexibleSpace, Self.inspectorToggleID]
@@ -1878,6 +1893,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
 
     public func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         if let item = rightGroupToolbarItem(id) { return item }  // reference-ui-4.md §14
+        if let item = FlushSidebar.trackingSeparator(id, splitView: mainSplit.splitView) { return item }
         func button(_ symbol: String, _ label: String, _ action: Selector) -> NSToolbarItem {
             let item = NSToolbarItem(itemIdentifier: id)
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
