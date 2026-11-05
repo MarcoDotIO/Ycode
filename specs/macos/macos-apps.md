@@ -275,6 +275,23 @@ Decisions only the owner can make:
 4. **Where windows appear** (§7): on the Mac through the display stream
    (fits the IDE), as Linux windows (fits "run Mac apps on Linux"), or both.
 
+The owner's answers (2026-11-05):
+
+- **3. AppKit:** Ycode's own AppKit subset (stage D).
+- **2. Objective-C runtime:** Ycode writes its own, in Rust, from the public
+  ABI (clang's Objective-C ABI, the Mach-O `__objc_*` sections, the runtime
+  functions the SDK headers declare). Upstream `objc4` is used only as a
+  benchmark baseline, built from source and not read for the
+  implementation. If Ycode's runtime cannot match or beat `objc4` on the
+  agreed benchmarks (message send, class realization, method lookup
+  with and without a cache, `retain`/`release`, `@autoreleasepool`), Ycode
+  ships upstream `objc4` (APSL-2.0) as a separate part with its patches
+  published.
+- **4. Windows:** both, as Linux windows and inside the IDE through the
+  display stream.
+- **1. Apple's macOS libraries:** no decision; Ycode does not copy or use
+  them.
+
 ## 7. Windowing, input, clipboard and file dialogs
 
 Ycode-design. Applies to option 2 (Ycode's AppKit); option 1 would need
