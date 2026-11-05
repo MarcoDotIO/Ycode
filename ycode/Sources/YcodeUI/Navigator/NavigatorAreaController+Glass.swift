@@ -43,14 +43,17 @@ extension NavigatorAreaController {
         // Without its bezel the text starts nearer the edge: keep it after
         // the options pull-down.
         (field as? NavigatorFilterField)?.leadingInset += 2
+        // The rows pass under the two capsules only (`liquid-glass.md`
+        // §8.4, `fidelity-council.md` row 35): the scroll view runs from the
+        // selector capsule's top to the filter capsule's bottom.
         underBarsScroll = [
-            scrollView.topAnchor.constraint(equalTo: root.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: selectorGlass.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: filterGlass.bottomAnchor),
         ]
     }
 
-    /// The outline runs under the bars to the window's top and bottom
-    /// edges; with header rows shown (Find, Source Control, Tests, Reports)
+    /// The outline runs under the bars, from the selector capsule's top to
+    /// the window's bottom edge; with header rows shown (Find, Source Control, Tests, Reports)
     /// it is clipped below them as before.
     func setOutlineUnderBars(_ under: Bool) {
         guard GlassBars.enabled, !underBarsScroll.isEmpty else { return }
@@ -90,26 +93,40 @@ extension NavigatorAreaController {
     /// §5.3 (N3), `specs/ide/metrics.md` §2.
     func updateOutlineInsets() {
         guard isViewLoaded else { return }
-        let root = view
         let pad = outlineTopPadding
         if GlassBars.enabled, underBarsScroll.first?.isActive == true {
-            // The scroll view starts at the area's top edge.
-            let selectorBottom = root.bounds.maxY - selectorView.frame.minY
+            // The scroll view runs from the selector capsule's top to the
+            // filter capsule's bottom (its constraints; its own frame may
+            // not be laid out yet when the area's layout ends).
+            let selectorBottom = selectorView.frame.height
+            let scrollBottom = filterGlass.frame.minY
             let top = selectorBottom + Self.firstRowGap - pad
-            let bottom = max(scrollClipView.frame.minY, filterGlass.frame.maxY + 2)
-            setOutlineInsets(NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0))
+            let bottom = max(scrollClipView.frame.minY, filterGlass.frame.maxY + 2) - scrollBottom
+            // The scroll bar's track: 3 below the selector capsule, 11 above
+            // the filter capsule (`metrics.md` §13.2, row 49).
+            let scroller = NSEdgeInsets(top: selectorBottom + Self.scrollerBelowSelector, left: 0,
+                                        bottom: filterGlass.frame.height + Self.scrollerAboveFilter, right: 0)
+            setOutlineInsets(NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0), scroller: scroller)
         } else {
             setOutlineInsets(NSEdgeInsets(top: Self.clipToFirstRow - pad, left: 0, bottom: 0, right: 0))
         }
     }
 
-    private func setOutlineInsets(_ insets: NSEdgeInsets) {
+    /// The scroll bar's track ends: 3 below the selector capsule, 11 above
+    /// the filter capsule.
+    static let scrollerBelowSelector: CGFloat = 3
+    static let scrollerAboveFilter: CGFloat = 11
+
+    private func setOutlineInsets(_ insets: NSEdgeInsets, scroller: NSEdgeInsets? = nil) {
         let scroll = scrollView
         let old = scroll.contentInsets
+        let scrollerInsets = scroller ?? insets
+        if abs(scroll.scrollerInsets.top - scrollerInsets.top) > 0.25 || abs(scroll.scrollerInsets.bottom - scrollerInsets.bottom) > 0.25 {
+            scroll.scrollerInsets = scrollerInsets
+        }
         guard abs(old.top - insets.top) > 0.25 || abs(old.bottom - insets.bottom) > 0.25 else { return }
         let atTop = scroll.contentView.bounds.minY <= -old.top + 0.5
         scroll.contentInsets = insets
-        scroll.scrollerInsets = insets
         if atTop {
             scroll.contentView.scroll(to: NSPoint(x: scroll.contentView.bounds.minX, y: -insets.top))
             scroll.reflectScrolledClipView(scroll.contentView)

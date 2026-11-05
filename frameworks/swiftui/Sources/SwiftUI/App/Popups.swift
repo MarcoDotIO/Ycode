@@ -34,10 +34,10 @@ final class WindowPopupPresenter: PopupPresenting {
         self.window = window
     }
 
-    func presentPopup(content: AnyView, origin: CGPoint, minWidth: CGFloat, chrome: PopupChrome,
+    func presentPopup(content: AnyView, origin: CGPoint, anchor: CGRect?, minWidth: CGFloat, chrome: PopupChrome,
                       fallbackKeys: ((KeyEvent) -> Bool)?, onDismiss: @escaping () -> Void) -> PopupHandle? {
         guard let host, let window else { return nil }
-        return host.presentPopup(from: window, content: content, origin: origin, minWidth: minWidth, chrome: chrome,
+        return host.presentPopup(from: window, content: content, origin: origin, anchor: anchor, minWidth: minWidth, chrome: chrome,
                                  fallbackKeys: fallbackKeys, onDismiss: onDismiss)
     }
 }
@@ -91,7 +91,7 @@ extension AppHost {
         return r
     }
 
-    func presentPopup(from owner: WindowHost, content: AnyView, origin: CGPoint, minWidth: CGFloat,
+    func presentPopup(from owner: WindowHost, content: AnyView, origin requested: CGPoint, anchor: CGRect? = nil, minWidth: CGFloat,
                       chrome kind: PopupChrome = .menu, fallbackKeys: ((KeyEvent) -> Bool)? = nil,
                       onDismiss: @escaping () -> Void) -> PopupHandle? {
         // One pop-up per owner window at a time: a new one replaces the
@@ -119,6 +119,18 @@ extension AppHost {
         size.width = max(size.width, minWidth).rounded(.up)
         size.height = size.height.rounded(.up)
         guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else { return nil }
+        // Kept inside the main window: the pop-up's owner chain gives its
+        // offset there (a submenu's owner is a pop-up).
+        var offset = CGPoint.zero
+        var main: WindowHost = owner
+        while main.isPopup, let o = main.popupOwner {
+            offset.x += main.popupOrigin.x
+            offset.y += main.popupOrigin.y
+            main = o
+        }
+        let placed = PopupPlacement.origin(requested.offsetBy(offset), size: size, anchor: anchor.map { $0.offsetBy(dx: offset.x, dy: offset.y) },
+                                           bounds: main.size)
+        let origin = CGPoint(x: placed.x - offset.x, y: placed.y - offset.y)
 
         let config = WindowConfiguration(title: "", size: size, resizable: false, vulkan: false,
                                          highPixelDensity: true, popupParent: owner.platform.id, popupOrigin: origin)
@@ -130,8 +142,6 @@ extension AppHost {
         let box = WeakWindowBox()
         env = owner.graph.environment
         // R11: items act on the main window that opened the chain.
-        var main: WindowHost = owner
-        while main.isPopup, let o = main.popupOwner { main = o }
         env._popupOwnerServices = main.services
         env._dismissPopup = { [weak self] in
             guard let self, let w = box.window else { return }
@@ -234,4 +244,38 @@ extension AppHost {
 @MainActor
 final class WeakWindowBox {
     weak var window: WindowHost?
+}
+
+/// Where a pop-up goes so that it stays inside its main window (points of
+/// that window). Below its anchor (at the requested origin) when it fits;
+/// otherwise above the anchor when it fits there, else as far up as it
+/// must go. A pop-up beside its anchor (a submenu, origin at the anchor's
+/// trailing edge) moves up to fit, and to the anchor's leading side when it
+/// does not fit on the trailing one. Never past the left or top edge.
+enum PopupPlacement {
+    static func origin(_ o: CGPoint, size: CGSize, anchor: CGRect?, bounds: CGSize) -> CGPoint {
+        var p = o
+        let beside = anchor.map { o.x >= $0.maxX - 4 && o.y < $0.maxY } ?? false
+        if p.y + size.height > bounds.height {
+            if let a = anchor, !beside {
+                let gap = max(0, o.y - a.maxY)
+                let above = a.minY - gap - size.height
+                p.y = above >= 0 ? above : max(0, bounds.height - size.height)
+            } else {
+                p.y = max(0, bounds.height - size.height)
+            }
+        }
+        if p.x + size.width > bounds.width {
+            if let a = anchor, beside, a.minX - size.width + 2 >= 0 {
+                p.x = a.minX - size.width + 2
+            } else {
+                p.x = max(0, bounds.width - size.width)
+            }
+        }
+        return CGPoint(x: max(0, p.x), y: max(0, p.y))
+    }
+}
+
+private extension CGPoint {
+    func offsetBy(_ d: CGPoint) -> CGPoint { CGPoint(x: x + d.x, y: y + d.y) }
 }

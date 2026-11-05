@@ -194,7 +194,7 @@ public struct BreakpointExtras: Codable, Equatable, Sendable {
     }
     public struct LineOptions: Codable, Equatable, Sendable {
         public var condition: String?
-        /// `{"log": text}` or `{"command": text}`.
+        /// `{"log": text}`, `{"command": text}` or `{"sound": name}`.
         public var actions: [[String: String]]?
     }
     public var symbolic: [Symbolic]?
@@ -250,6 +250,7 @@ public final class BreakpointPersistence {
                 b.actions = (o.actions ?? []).compactMap { a in
                     if let t = a["log"] { return .log(t) }
                     if let t = a["command"] { return .debuggerCommand(t) }
+                    if let t = a["sound"] { return .sound(t) }
                     return nil
                 }
             }
@@ -287,6 +288,7 @@ public final class BreakpointPersistence {
                 switch $0 {
                 case .log(let t): ["log": t]
                 case .debuggerCommand(let t): ["command": t]
+                case .sound(let t): ["sound": t]
                 }
             })
         }

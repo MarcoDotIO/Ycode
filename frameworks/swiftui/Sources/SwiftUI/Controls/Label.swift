@@ -195,6 +195,7 @@ public struct LabeledContent<Label: View, Content: View>: View {
     let content: Content
     @Environment(\._labeledContentStyle) private var style
     @Environment(\._labelsHidden) private var labelsHidden
+    @Environment(\._formColumnWidth) private var columnWidth
 
     public init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) {
         self.content = content()
@@ -208,6 +209,12 @@ public struct LabeledContent<Label: View, Content: View>: View {
             c.content
         } else if let style {
             style.make(c)
+        } else if let columnWidth {
+            // A `.columns` form row: the label in the labels' column.
+            ControlRowLayout(columnWidth: columnWidth) {
+                c.label.multilineTextAlignment(.trailing)
+                c.content
+            }
         } else {
             AutomaticLabeledContentStyle().makeBody(configuration: c)
         }

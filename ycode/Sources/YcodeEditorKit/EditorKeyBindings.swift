@@ -33,8 +33,9 @@ public struct EditorKeyModifiers: OptionSet, Sendable {
 
 /// The Linux desktop's text editing keys (OpenViews' text fields use the same):
 /// Ctrl+arrows by word, Ctrl+Home and End for the document, Ctrl+Backspace and
-/// Delete by word, Ctrl+A/C/X/V/Z, Ctrl+Shift+Z and Ctrl+Y redo, and the older
-/// Ctrl+Insert, Shift+Insert and Shift+Delete.
+/// Delete by word, Ctrl+A/C/X/V/Z, Ctrl+Shift+Z redo, and the older
+/// Ctrl+Insert, Shift+Insert and Shift+Delete. Ctrl+Y is not the editor's:
+/// it is ⌘Y, Debug ▸ Deactivate Breakpoints, so it goes on to the menu bar.
 public enum EditorKeyBindings {
     public static func command(_ key: EditorKey, _ m: EditorKeyModifiers) -> EditorKeyCommand? {
         let shift = m.contains(.shift), primary = m.contains(.primary)
@@ -68,7 +69,6 @@ public enum EditorKeyBindings {
             case "x" where !shift: return .cut
             case "v" where !shift: return .paste
             case "z": return shift ? .redo : .undo
-            case "y" where !shift: return .redo
             default: return nil
             }
         }

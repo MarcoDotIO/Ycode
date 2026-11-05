@@ -5,10 +5,11 @@
 // run read-only commands through a `HeadsetCommandRunner` (the same runner
 // protocol the headset checklist uses). Anything that changes a machine is
 // a `RuntimeAction`, which runs only after the user confirmed the exact
-// command. Ycode never downloads a runtime (#55): where the reference
-// would fetch one, the wizard explains how to get one with the user's own
-// Xcode. Portable: the macOS window, the Linux shell and the command line
-// show the same list.
+// command. Getting a runtime (#55, `runtime-downloads.md` §6.1) is the Get a
+// Runtime step: Xcode's own tool on a Mac (route C), Ycode's direct download
+// (route B), each only after a confirmation, or a runtime the user has
+// (route A, Add a Runtime). Portable: the macOS window, the Linux shell and
+// the command line show the same list.
 
 import Foundation
 
@@ -55,6 +56,12 @@ public enum RuntimeAction: Sendable, Equatable {
     case remove(SimRuntimeRecord)
     /// The provisioning script's steps that need no root, on the host (#70).
     case provisionApply
+    /// Route C: `xcodebuild -downloadPlatform` on this Mac.
+    case downloadWithXcode(XcodebuildDownload)
+    /// Route B: Ycode's own download of one runtime build.
+    case downloadDirect(RuntimeRequest)
+    /// Python environment with python-aea for route B's decryption (Linux).
+    case installDecryptor
 }
 
 /// The one way to put a check right.
@@ -129,7 +136,7 @@ public struct SetupMachine: Sendable, Equatable {
 
 /// The wizard's steps. Some are left out for a target (`steps(for:)`).
 public enum RuntimeSetupStep: Int, Sendable, CaseIterable, Codable {
-    case target, runtimes, add, host, prepare, finish
+    case target, runtimes, add, host, prepare, finish, download
 
     public var title: String {
         switch self {
@@ -139,13 +146,14 @@ public enum RuntimeSetupStep: Int, Sendable, CaseIterable, Codable {
         case .host: "Simulator Host"
         case .prepare: "Prepare Host"
         case .finish: "Ready"
+        case .download: "Get a Runtime"
         }
     }
 
     public func summary(machine: SetupMachine, target: RuntimeTarget) -> String {
         switch self {
         case .target:
-            return "Choose the platforms you build for and where their simulators run. Ycode uses runtimes you already have; it never downloads one."
+            return "Choose the platforms you build for and where their simulators run. Ycode uses the runtimes you have, or gets one from Apple when you ask."
         case .runtimes:
             if target.isHost { return "The runtimes on the simulator host, and the ones here that can be copied to it." }
             return machine.isMac ? "The simulator runtimes registered on this Mac. Runtimes that Xcode installed are listed here; manage them in Xcode."
@@ -160,12 +168,15 @@ public enum RuntimeSetupStep: Int, Sendable, CaseIterable, Codable {
             return "A setup script for the host. It only reports until you choose to apply it. Steps that need root run in your own terminal with sudo."
         case .finish:
             return "What is ready, and the run destinations it gives you."
+        case .download:
+            return machine.isMac ? "Get a runtime from Apple: with Xcode's own tool, or downloaded by Ycode. Each starts only after you confirm, and Cancel stops it."
+                : "Get a runtime from Apple: Ycode downloads it for you, checks it and puts its RuntimeRoot in its folder. It starts only after you confirm."
         }
     }
 
     /// The steps a target goes through, in order.
     public static func steps(for target: RuntimeTarget) -> [RuntimeSetupStep] {
-        target.isHost ? [.target, .host, .prepare, .runtimes, .add, .finish] : [.target, .runtimes, .add, .finish]
+        target.isHost ? [.target, .host, .prepare, .runtimes, .download, .add, .finish] : [.target, .runtimes, .download, .add, .finish]
     }
 
     /// The checks each step shows (ids; the platform rows go with `.runtimes`).
@@ -177,6 +188,7 @@ public enum RuntimeSetupStep: Int, Sendable, CaseIterable, Codable {
         case .host: check.id.hasPrefix("host.") && !check.id.hasPrefix("host.runtime.") && check.id != "host.disk"
         case .prepare: check.id.hasPrefix("setup.")
         case .finish: false
+        case .download: check.id.hasPrefix("download.")
         }
     }
 }
@@ -366,8 +378,8 @@ public struct RuntimeSetupChecker: Sendable {
             return RuntimeCheck(id, title, .ok, "\(best.title), \(best.sizeText)\(more).")
         }
         if let newest = SimctlRuntimeListing.sorted(usable).first, let minimum {
-            return RuntimeCheck(id, title, .missing, "The newest is \(p.title) \(newest.version), older than the deployment target \(minimum). Add a newer runtime or lower the target.",
-                                fix: .step(.add))
+            return RuntimeCheck(id, title, .missing, "The newest is \(p.title) \(newest.version), older than the deployment target \(minimum). Get a newer runtime or lower the target.",
+                                fix: .step(.download))
         }
         if let bad = mine.first {
             let why = bad.availabilityError ?? "its state is \(bad.state)"
@@ -375,13 +387,12 @@ public struct RuntimeSetupChecker: Sendable {
             return RuntimeCheck(id, title, .missing, "\(bad.title) cannot be used: \(why).", fix: fix)
         }
         let whereText = host.map { "on \($0)" } ?? (machine.isMac ? "on this Mac" : "in Ycode's folder")
-        return RuntimeCheck(id, title, .missing, "No \(p.title) runtime \(whereText).", fix: .step(.add))
+        return RuntimeCheck(id, title, .missing, "No \(p.title) runtime \(whereText).", fix: .step(.download))
     }
 
-    /// Where Xcode would offer a download (§11.6): how to get a runtime with
-    /// the user's own Apple tools; Ycode starts no download (#55).
+    /// Where Xcode would offer a download (§11.6): the routes, in order (#55).
     public static func acquisitionNote(_ p: SimPlatform) -> String {
-        "Runtimes come from your own copy of Apple's tools: on a Mac, Xcode ▸ Settings ▸ Components, or xcodebuild -downloadPlatform \(p.downloadName) in Terminal. Ycode then uses the runtime you have."
+        "Get a Runtime downloads one from Apple when you ask: with Xcode on a Mac (xcodebuild -downloadPlatform \(p.downloadName)), or with Ycode's own download. A runtime you already have is added here."
     }
 }
 

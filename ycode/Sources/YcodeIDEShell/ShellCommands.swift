@@ -24,6 +24,11 @@ public enum ShellCommand: String, CaseIterable, Sendable {
     // Debug (ShellDebugModel)
     case pauseOrContinue, stepOver, stepInto, stepOut, toggleBreakpointsActive, toggleBreakpointAtCurrentLine,
          toggleBreakpointsEnabledAtCurrentLine, deleteAllBreakpoints, clearConsole
+    // Debug ▸ Console ▸ Copy Row (ShellDebugModel+Console.swift)
+    case copyConsoleRowWithVisibleMetadata, copyConsoleRowWithAllMetadata, copyConsoleRowWithoutMetadata
+    // Debug ▸ Breakpoints and Debug Workflow (ShellDebugModel+Editing.swift)
+    case createSwiftErrorBreakpoint, createExceptionBreakpoint, createSymbolicBreakpoint
+    case toggleNavigateToSourceOnPause, toggleAlwaysShowDisassembly, viewMemory
     // Language features (WorkspaceShellModel+Language.swift)
     case jumpToDefinition, jumpToOriginalSource, renameSymbol, showQuickHelp, findSelectedSymbol, showCallHierarchy
     case showSymbolNavigator, showFileInspector, showQuickHelpInspector
@@ -39,6 +44,9 @@ public enum ShellCommand: String, CaseIterable, Sendable {
     case showSourceControlNavigator, showTestNavigator, showReportNavigator
     // Product ▸ Perform Action ▸ Test Again
     case testAgain
+    // The coding assistant (WorkspaceShellModel+Assistant.swift)
+    case showCodingAssistant, newConversation, jumpToNextActiveConversation
+    case codingToolExplain, codingToolDocument, codingToolGeneratePlayground, codingToolGeneratePreview
 
     /// The `CommandTable` action (and tag) of the command.
     public var action: (selector: String, tag: Int) {
@@ -90,6 +98,16 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .toggleBreakpointsEnabledAtCurrentLine: ("toggleBreakpointsEnabledAtCurrentLine:", 0)
         case .deleteAllBreakpoints: ("deleteAllBreakpoints:", 0)
         case .clearConsole: ("clearConsole:", 0)
+        case .copyConsoleRowWithVisibleMetadata: ("copyConsoleRowWithVisibleMetadata:", 0)
+        case .copyConsoleRowWithAllMetadata: ("copyConsoleRowWithAllMetadata:", 0)
+        case .copyConsoleRowWithoutMetadata: ("copyConsoleRowWithoutMetadata:", 0)
+        case .createSwiftErrorBreakpoint: ("createSwiftErrorBreakpoint:", 0)
+        case .createExceptionBreakpoint: ("createExceptionBreakpoint:", 0)
+        case .createSymbolicBreakpoint: ("createSymbolicBreakpoint:", 0)
+        case .toggleNavigateToSourceOnPause: ("toggleNavigateToSourceOnPause:", 0)
+        case .toggleAlwaysShowDisassembly: ("toggleAlwaysShowDisassembly:", 0)
+        // The AppKit IDE does not have it yet (its table entry is "unavailable").
+        case .viewMemory: ("ycodeUnavailableViewMemory:", 0)
         case .welcome: ("showWelcomeWindow:", 0)
         case .downloads: ("showDownloads:", 0)
         case .about: ("showAboutWindow:", 0)
@@ -111,7 +129,7 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .showSymbolNavigator: ("showNavigator:", ShellNavigator.symbols.selectorIndex)
         case .showFileInspector: ("showInspector:", 0)
         case .showQuickHelpInspector: ("showInspector:", 2)
-        default: (Self.integrateSelectors[self] ?? "", 0)
+        default: (Self.integrateSelectors[self] ?? Self.assistantActions[self]?.selector ?? "", 0)
         }
     }
 
@@ -127,7 +145,10 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .revealInProjectNavigator, .goBack, .goForward, .nextIssue, .previousIssue, .jumpToLine: "Navigate"
         case .run, .test, .stop, .build, .clean: "Product"
         case .pauseOrContinue, .stepOver, .stepInto, .stepOut, .toggleBreakpointsActive, .toggleBreakpointAtCurrentLine,
-             .toggleBreakpointsEnabledAtCurrentLine, .deleteAllBreakpoints, .clearConsole: "Debug"
+             .toggleBreakpointsEnabledAtCurrentLine, .deleteAllBreakpoints, .clearConsole,
+             .copyConsoleRowWithVisibleMetadata, .copyConsoleRowWithAllMetadata, .copyConsoleRowWithoutMetadata: "Debug"
+        case .createSwiftErrorBreakpoint, .createExceptionBreakpoint, .createSymbolicBreakpoint, .toggleNavigateToSourceOnPause,
+             .toggleAlwaysShowDisassembly, .viewMemory: "Debug"
         case .welcome, .downloads: "Window"
         case .about: "Ycode"
         case .help, .releaseNotes, .reportBug, .swiftBook: "Help"
@@ -139,7 +160,7 @@ public enum ShellCommand: String, CaseIterable, Sendable {
         case .showQuickHelp: "Help"
         case .findSelectedSymbol, .showCallHierarchy: "Find"
         case .showSymbolNavigator, .showFileInspector, .showQuickHelpInspector: "View"
-        default: "Integrate"
+        default: Self.assistantActions[self]?.menu ?? "Integrate"
         }
     }
 
@@ -246,12 +267,32 @@ public enum ShellNavigator: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .project: "folder"
         case .sourceControl: "arrow.triangle.branch"
-        case .symbols: WorkspaceChrome.navigatorSymbols[selectorIndex]
+        // Ycode's own navigator: its own symbol (a declaration and its
+        // members), not the Bookmark navigator's.
+        case .symbols: "list.bullet.indent"
         case .find: "magnifyingglass"
         case .issues: "exclamationmark.triangle"
         case .tests: "checkmark.diamond"
         case .reports: "list.bullet.rectangle"
         case .debug, .breakpoints: WorkspaceChrome.navigatorSymbols[selectorIndex]
+        }
+    }
+
+    /// The selector button's tooltip (`NavigatorBars.selectorToolTips`,
+    /// with the Symbol navigator's in the Bookmark navigator's place).
+    public var toolTip: String {
+        self == .symbols ? "Show the Symbol navigator" : NavigatorBars.selectorToolTips[selectorIndex]
+    }
+
+    /// The selector bar's buttons on Linux, in order: each place's symbol,
+    /// tooltip and accessibility title.
+    public static var selectorButtons: [(symbol: String, toolTip: String, title: String)] {
+        WorkspaceChrome.navigatorSymbols.indices.map { i in
+            guard let n = allCases.first(where: { $0.selectorIndex == i }) else {
+                return (WorkspaceChrome.navigatorSymbols[i], NavigatorBars.selectorToolTips[i], CommandTable.navigators[i])
+            }
+            return (n == .symbols ? n.symbolName : WorkspaceChrome.navigatorSymbols[i], n.toolTip,
+                    n == .symbols ? n.title : CommandTable.navigators[i])
         }
     }
 

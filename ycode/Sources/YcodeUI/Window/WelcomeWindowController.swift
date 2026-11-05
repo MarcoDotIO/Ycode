@@ -23,6 +23,23 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
     /// liquid-glass.md §2.10: the recent list's box, from the window's top
     /// left (macOS 26 and later).
     public static let recentsBoxFrame = NSRect(x: 60, y: 295, width: 360, height: 277)
+    /// metrics.md §13.4: the app name is bold with capitals 13 points
+    /// tall; its baseline 38 and the version line's 19 above the buttons.
+    public static let nameCapHeight: CGFloat = 13
+    public static let nameBaselineAboveButtons: CGFloat = 38
+    public static let versionBaselineAboveButtons: CGFloat = 19
+    /// metrics.md §13.4: recent rows on a 47-point pitch; the separators
+    /// run under the text (from its leading edge) to 14 points before the
+    /// box's right edge.
+    public static let recentRowPitch: CGFloat = 47
+    public static let recentTextLeading: CGFloat = 56
+    public static let recentSeparatorTrailing: CGFloat = 14
+
+    /// The bold system font whose capitals are `capHeight` tall.
+    static func nameFont(capHeight: CGFloat = nameCapHeight) -> NSFont {
+        let unit = NSFont.systemFont(ofSize: 100, weight: .bold).capHeight / 100
+        return .systemFont(ofSize: (capHeight / max(0.01, unit) * 4).rounded() / 4, weight: .bold)
+    }
 
     public let recents: RecentProjects
     /// The list's entries, newest first (the same as File ▸ Open Recent).
@@ -96,7 +113,7 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         guard let content = window?.contentView else { return }
         iconView.image = ProductIcon.image
         iconView.imageScaling = .scaleProportionallyUpOrDown
-        nameLabel.font = .systemFont(ofSize: 34, weight: .bold)
+        nameLabel.font = GlassBars.enabled ? Self.nameFont() : .systemFont(ofSize: 34, weight: .bold)
         nameLabel.alignment = .center
         versionLabel.stringValue = Self.versionText
         versionLabel.font = .systemFont(ofSize: 13)
@@ -163,8 +180,10 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("recent"))
         table.addTableColumn(column)
         table.headerView = nil
-        // liquid-glass.md §2.10: 48-point rows, the selection inset 8.
-        table.rowHeight = GlassBars.enabled ? 48 : 44
+        // metrics.md §13.4: rows on a 47-point pitch (no gap between
+        // them), the selection inset 8.
+        table.rowHeight = GlassBars.enabled ? Self.recentRowPitch : 44
+        if GlassBars.enabled { table.intercellSpacing = NSSize(width: table.intercellSpacing.width, height: 0) }
         // liquid-glass.md §2.10 (macOS 26+): the selection is a rounded
         // rectangle inset 8 with 8-point corners (`RecentRowView`).
         table.style = GlassBars.enabled ? .fullWidth : .inset
@@ -198,9 +217,13 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
             iconView.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 112),
             iconView.heightAnchor.constraint(equalToConstant: 112),
-            nameLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 10),
+            GlassBars.enabled
+                ? nameLabel.firstBaselineAnchor.constraint(equalTo: content.topAnchor, constant: Self.buttonsTop - Self.nameBaselineAboveButtons)
+                : nameLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 10),
             nameLabel.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            versionLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            GlassBars.enabled
+                ? versionLabel.firstBaselineAnchor.constraint(equalTo: content.topAnchor, constant: Self.buttonsTop - Self.versionBaselineAboveButtons)
+                : versionLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
             versionLabel.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             buttons.topAnchor.constraint(equalTo: content.topAnchor, constant: Self.buttonsTop),
             buttons.centerXAnchor.constraint(equalTo: content.centerXAnchor),
@@ -246,7 +269,10 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
     public func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
 
     public func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        GlassBars.enabled ? RecentRowView() : nil
+        guard GlassBars.enabled else { return nil }
+        let v = RecentRowView()
+        v.showsSeparator = row < entries.count - 1
+        return v
     }
 
     /// A row: the container's icon, its name without extension, and its
@@ -264,7 +290,8 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         folder.font = .systemFont(ofSize: 11)
         folder.textColor = .secondaryLabelColor
         folder.toolTip = folder.stringValue
-        folder.lineBreakMode = .byTruncatingMiddle
+        // metrics.md §13.4: the path keeps its end ("…/captures/…").
+        folder.lineBreakMode = .byTruncatingHead
         for v in [icon, name, folder] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(v)
@@ -272,7 +299,7 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
         cell.textField = name
         cell.imageView = icon
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: GlassBars.enabled ? 16 : 4),
+            icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: GlassBars.enabled ? Self.recentTextLeading - 40 : 4),
             icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 32), icon.heightAnchor.constraint(equalToConstant: 32),
             name.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
@@ -512,6 +539,27 @@ final class RecentsBoxView: NSView {
 final class RecentRowView: NSTableRowView {
     static let inset: CGFloat = 8
     static let cornerRadius: CGFloat = 8
+    /// metrics.md §13.4: a 1-point separator under the text, not under the
+    /// icon; none under the last row, and none touching a selected row.
+    var showsSeparator = false { didSet { needsDisplay = true } }
+
+    /// The separator's frame in the row (nil: none drawn).
+    var separatorRect: NSRect? {
+        guard showsSeparator, !isSelected, !isNextRowSelected else { return nil }
+        let x = WelcomeWindowController.recentTextLeading
+        let w = bounds.width - x - WelcomeWindowController.recentSeparatorTrailing
+        guard w > 0 else { return nil }
+        return NSRect(x: x, y: isFlipped ? bounds.maxY - 1 : bounds.minY, width: w, height: 1)
+    }
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        super.drawBackground(in: dirtyRect)
+        guard let r = separatorRect else { return }
+        NSColor.separatorColor.setFill()
+        r.fill()
+    }
+
+    override var isNextRowSelected: Bool { didSet { needsDisplay = true } }
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
         (isEmphasized ? NSColor.selectedContentBackgroundColor : NSColor.unemphasizedSelectedContentBackgroundColor).setFill()

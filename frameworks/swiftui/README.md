@@ -528,7 +528,9 @@ in `Controls/TextInput.swift`.
   paragraph (all of a field), shift-click and drags extend (by words after a
   double click). Keys (Linux conventions): arrows, Ctrl+arrows by word,
   Home/End (line in editors), Ctrl+Home/End, Shift to extend, Backspace and
-  Delete (Ctrl: by word), Ctrl+A/C/X/V, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
+  Delete (Ctrl: by word), Ctrl+A/C/X/V, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y
+  (Ctrl+Y only when no shortcut of the window takes it: an app's ⌘Y, such
+  as the Linux IDE's Deactivate Breakpoints, comes first).
   Keyboard focus selects all; a click does not.
 
 ### QA fixes (R8, desktop QA report of 2026-10-30)
@@ -1159,6 +1161,40 @@ design, stated here.
   multi-tap gesture waiting for its next press (a list row's double click)
   swallowed a press on other views (a button clicked at once after a row);
   such a press now ends the waiting gesture.
+
+### Desktop polish (Ycode beta 2)
+
+What the Linux IDE's polish pass needed (`Tests/OpenViewsTests/R13/DesktopPolishTests.swift`):
+
+- **Clipboard for views.** `OpenViewsClipboard` (OpenViews only, not
+  SwiftUI API; `App/Clipboard.swift`): `string`, `hasString` and
+  `copy(_:)` on the running app's back end clipboard, the one text fields
+  use (SDL's on a desktop). With no app running it keeps the text in
+  memory.
+- **Ctrl+Y.** A text field redoes on Ctrl+Y only when no enabled shortcut of
+  the window takes the keystroke (`ShortcutRegistry.hasEnabledShortcut`):
+  an app that maps ⌘Y to a command gets it. Ctrl+Shift+Z always redoes.
+- **Pop-ups inside the window.** A pop-up (menu, picker list, context menu,
+  popover) is placed in its main window's bounds (`PopupPlacement`): below
+  its button when it fits, otherwise above it (the same gap away), otherwise
+  as far up as it must go; a submenu that does not fit on its row's
+  trailing side opens on the leading side; never past the left or top edge.
+  `PopupPresenting` takes the opening view's frame (`anchor`).
+- **`preferredColorScheme(_:)`.** A preference the window applies to its
+  root environment: the in-window menu bar, the toolbar, presentations and
+  the pop-ups the window opens follow it; nil returns to the desktop's
+  scheme, and desktop changes keep a requested scheme.
+- **`.columns` forms.** `formStyle(.columns)` is the desktop settings form
+  (the macOS IDE's Settings panes, `specs/ide/metrics.md` §8): no groups;
+  20 points from the top and bottom, 28 from the sides; bold 12-point
+  headings; rows 10 apart; a control's label right-aligned in a 200-point
+  column (wrapping inside it), the control 8 points after it; a checkbox
+  after the empty column with its title; a menu picker as a pop-up button
+  (the choice and up/down chevrons on a filled bezel); a stepper as the
+  desktop's small one (up over down, 15 × 22); footers in 11-point
+  secondary text. `.grouped` (and `.automatic`) keep the grouped look.
+- **Symbol.** `list.bullet.indent`: a type's badge with two members under
+  a tree line (the Linux IDE's Symbol navigator).
 
 ### Engine design (R3)
 

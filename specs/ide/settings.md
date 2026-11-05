@@ -172,6 +172,13 @@ Notifications, Editing (with its Display, Completion and Indentation
 pages), Shortcuts, Source Control, Locations. Accounts, Coding Assistant,
 Components and Simulators are not offered on Linux.
 
+- The panes are the macOS IDE's form (`metrics.md` §8): OpenViews'
+  `.columns` form style, labels with a colon right-aligned in a 200-point
+  column, controls 8 points after it, checkboxes after the empty column,
+  bold headings, rows 10 apart, 20 / 28 points from the edges; menu
+  pickers are pop-up buttons. The appearance (System, Light, Dark) is the
+  window's `preferredColorScheme`, so the in-window menu bar and the
+  pop-ups follow it too.
 - The values are the same `Preferences` keys as on macOS, in the user
   defaults of the `ycode-ide` process (swift-corelibs-foundation keeps
   them in `$XDG_CONFIG_HOME/ycode-ide.plist`); every change is written at

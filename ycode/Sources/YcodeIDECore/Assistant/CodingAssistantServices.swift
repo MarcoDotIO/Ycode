@@ -1,15 +1,20 @@
+#if canImport(AppKit)
 import AppKit
+#endif
+import Foundation
 import YcodeAssistant
-import YcodeIDECore
 
 /// The app-wide parts of the coding assistant: where secrets are kept, the
-/// OpenAI account, and how providers are made. Tests replace them.
+/// OpenAI account, and how providers are made. Tests replace them. Shared
+/// by both IDEs (coding-assistant.md §7: the keychain on macOS, the 0600
+/// files of `FileSecretStore` on Linux).
 @MainActor
 public final class CodingAssistantServices {
     public static var shared = CodingAssistantServices()
 
-    /// Secrets: the login keychain (never user defaults or files in the
-    /// workspace). Tests and test processes use memory.
+    /// Secrets: the login keychain on macOS, `~/.config/ycode/secrets` on
+    /// Linux (never user defaults or files in the workspace). Test
+    /// processes use memory.
     public var store: SecretStore
     public let account: OpenAIAccount
     /// Replaces the real providers (tests).
@@ -21,14 +26,32 @@ public final class CodingAssistantServices {
     public var preferences: Preferences?
 
     public init(store: SecretStore? = nil, openURL: (@Sendable (URL) -> Bool)? = nil) {
-        let s = store ?? (WorkspaceWindowController.isTestProcess ? MemorySecretStore() : defaultSecretStore())
+        let s = store ?? (IDEProcess.isTestProcess ? MemorySecretStore() : defaultSecretStore())
         self.store = s
-        let open: @Sendable (URL) -> Bool = openURL ?? { url in
-            // The system browser (RFC 8252: no embedded web view).
-            DispatchQueue.main.async { NSWorkspace.shared.open(url) }
-            return true
-        }
-        account = OpenAIAccount(store: s, verifier: JWKSSignatureVerifier(), openURL: open)
+        #if canImport(Security)
+        let verifier: IDTokenSignatureVerifier? = JWKSSignatureVerifier()
+        #else
+        // Linux: the ID token is accepted on the strength of the direct TLS
+        // exchange (coding-assistant.md §3.3).
+        let verifier: IDTokenSignatureVerifier? = nil
+        #endif
+        account = OpenAIAccount(store: s, verifier: verifier, openURL: openURL ?? Self.openInBrowser)
+    }
+
+    /// Opens a URL in the system browser (RFC 8252: no embedded web view).
+    public static let openInBrowser: @Sendable (URL) -> Bool = { url in
+        #if canImport(AppKit)
+        DispatchQueue.main.async { NSWorkspace.shared.open(url) }
+        return true
+        #else
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        p.arguments = ["xdg-open", url.absoluteString]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return false }
+        return true
+        #endif
     }
 
     public func backends(_ prefs: Preferences = .shared) -> AssistantBackends {

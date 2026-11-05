@@ -70,6 +70,7 @@ struct EditorArea: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(palette.background.color)
             .overlay { LanguageNotice(model: model) }
+            .overlay { DebugEditorOverlay(model: model) }   // DebugEditors.swift
             DebugBar(model: model)
         }
         .shellTarget("editor")

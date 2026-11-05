@@ -310,7 +310,8 @@ are in the package README ("Controls design (R8)").
   5 points above and below.
 - **Keyboard.** Every control is focusable (Tab order = tree order), Space
   and Return activate, arrows adjust; Linux text-editing keys (Ctrl+arrows by
-  word, Ctrl+A/C/X/V/Z, Ctrl+Shift+Z and Ctrl+Y).
+  word, Ctrl+A/C/X/V/Z, Ctrl+Shift+Z and Ctrl+Y; Ctrl+Y only when no
+  shortcut of the window takes the keystroke: an app's ⌘Y wins).
 - **Text editing core.** An editing model independent of views (selection,
   movement units, undo with typing coalescing, marked text) and a geometry
   of OVText layouts (carets, hit testing, selection rectangles) — the base

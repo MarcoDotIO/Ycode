@@ -41,6 +41,11 @@ public final class ShellDebugModel {
     public private(set) var barPath = ""
     /// The console's text for `consoleFilter`.
     public private(set) var consoleText = ""
+    /// Watch expressions' values at this stop (listed first).
+    public private(set) var watchValues: [Variable] = []
+    /// Always Show Disassembly's instructions and the PC's index.
+    public private(set) var disassembly: [Instruction] = []
+    public private(set) var disassemblyPCIndex: Int?
 
     // MARK: View state
 
@@ -53,7 +58,7 @@ public final class ShellDebugModel {
     public var showsVariables = true
     public var showsConsole = true
     /// Expanded aggregates by row id, and their fetched children.
-    public private(set) var expandedVariables: Set<String> = []
+    public internal(set) var expandedVariables: Set<String> = []
     public private(set) var childVariables: [String: [Variable]] = [:]
     public var selectedVariable: String?
     /// The Debug and Breakpoint navigators' selected and collapsed rows.
@@ -61,6 +66,25 @@ public final class ShellDebugModel {
     public var collapsedDebugRows: Set<String> = []
     public var breakpointSelection: String?
     public var collapsedBreakpointRows: Set<String> = []
+    /// The console row a click selected (Debug ▸ Console ▸ Copy Row).
+    public var selectedConsoleRow: Int?
+    // Editing (ShellDebugModel+Editing.swift).
+    /// The breakpoint editor popover, when open.
+    public var breakpointEditor: BreakpointEditorState?
+    /// The gutter breakpoint under the pointer (its context menu's).
+    public var gutterMenuLine: Int?
+    /// The variables view row being edited in place, and its text.
+    public var editingVariable: String?
+    public var editText = ""
+    /// Add Expression…: the new expression's field.
+    public var isAddingExpression = false
+    public var expressionText = ""
+    /// View Memory's browser, when open.
+    public var memoryBrowser: MemoryBrowserState?
+    /// Debug ▸ Debug Workflow ▸ Navigate to Source File when Process Pauses.
+    public var navigatesToSourceOnPause = true
+    /// Copy and Copy Value (the toolkit's pasteboard, set by the app).
+    @ObservationIgnored public var pasteboard: (any DebugPasteboard)?
     /// Where ↑/↓ are in the console history (nil: the line being typed).
     @ObservationIgnored private var historyCursor: Int?
     @ObservationIgnored private var childrenTask: Task<Void, Never>?
@@ -108,6 +132,9 @@ public final class ShellDebugModel {
 
     private func syncStopState() {
         let newVariables = session.variables
+        let newWatches = session.watchValues
+        disassembly = session.disassembly
+        disassemblyPCIndex = session.disassemblyPCIndex
         stoppedThread = session.stoppedThread
         threads = session.threads
         frames = session.frames
@@ -117,9 +144,13 @@ public final class ShellDebugModel {
         frameArguments = frame.flatMap { f in f.file.map { Self.parameterNames(file: $0, line: f.line) } } ?? []
         isLoadingVariables = session.isLoadingVariables
         barPath = session.debugBarPath
-        if stoppedThread == nil { stopMark = nil }
-        if newVariables != variables {
+        if stoppedThread == nil {
+            stopMark = nil
+            editingVariable = nil
+        }
+        if newVariables != variables || newWatches != watchValues {
             variables = newVariables
+            watchValues = newWatches
             reloadExpandedChildren()
         }
     }
@@ -137,7 +168,7 @@ public final class ShellDebugModel {
         w.isNavigatorShown = true
         w.isDebugAreaShown = true
         debugSelection = frames.first.map { Self.frameRowID($0.id) }
-        if let loc = session.currentLocation { show(file: loc.file, line: loc.line) }
+        if navigatesToSourceOnPause, let loc = session.currentLocation { show(file: loc.file, line: loc.line) }
     }
 
     /// Opens a file at a line with the caret at the line's start (the
@@ -161,6 +192,11 @@ public final class ShellDebugModel {
         case .toggleBreakpointsEnabledAtCurrentLine: caretLineBreakpointsEnabled != nil
         case .deleteAllBreakpoints: !breakpoints.isEmpty
         case .showDebugNavigator, .showBreakpointNavigator, .toggleBreakpointsActive, .clearConsole: true
+        case .copyConsoleRowWithVisibleMetadata, .copyConsoleRowWithAllMetadata, .copyConsoleRowWithoutMetadata:
+            selectedConsoleRowValue != nil
+        case .createSwiftErrorBreakpoint: !breakpoints.exceptionFilters.contains("swift_throw")
+        case .createExceptionBreakpoint, .createSymbolicBreakpoint, .toggleNavigateToSourceOnPause, .toggleAlwaysShowDisassembly: true
+        case .viewMemory: isPaused && session.canReadMemory
         default: false
         }
     }
@@ -179,6 +215,14 @@ public final class ShellDebugModel {
         case .deleteAllBreakpoints:
             session.breakpoints = BreakpointStore()
         case .clearConsole: workspace?.clearConsole()
+        case .copyConsoleRowWithVisibleMetadata, .copyConsoleRowWithAllMetadata, .copyConsoleRowWithoutMetadata:
+            if let k = Self.copyKind(c) { copyConsoleRow(k) }
+        case .createSwiftErrorBreakpoint: addSwiftErrorBreakpoint()
+        case .createExceptionBreakpoint: addExceptionBreakpoint()
+        case .createSymbolicBreakpoint: addSymbolicBreakpoint()
+        case .toggleNavigateToSourceOnPause: navigatesToSourceOnPause.toggle()
+        case .toggleAlwaysShowDisassembly: toggleAlwaysShowDisassembly()
+        case .viewMemory: viewMemory(of: selectedVariable.flatMap { id in variableRows.first { $0.id == id } })
         default: break
         }
     }
@@ -327,9 +371,13 @@ public final class ShellDebugModel {
         if !store.symbolic.isEmpty {
             out.append(DebugNavigatorRow(id: "symbolic", level: 1, title: "Symbolic Breakpoints", symbol: "tag", tint: .secondary,
                                          isBold: true, kind: .group))
-            for s in store.symbolic {
-                out.append(DebugNavigatorRow(id: "symbolic:\(s.name)", level: 2, title: s.condition.isEmpty ? s.name : "\(s.name) [\(s.condition)]",
-                                             symbol: "tag.fill", tint: .accent, isDimmed: !(s.isEnabled && store.isActive), kind: .breakpoint))
+            for (i, s) in store.symbolic.enumerated() {
+                let name = s.name.isEmpty ? "Symbol" : s.name
+                var r = DebugNavigatorRow(id: "symbolic:\(i)", level: 2, title: s.condition.isEmpty ? name : "\(name) [\(s.condition)]",
+                                          symbol: "tag.fill", tint: .accent, isDimmed: !(s.isEnabled && store.isActive) || s.name.isEmpty,
+                                          kind: .breakpoint)
+                r.marker = s.isEnabled
+                out.append(r)
             }
         }
         var ordinal = 0
@@ -374,6 +422,10 @@ public final class ShellDebugModel {
 
     /// The enabled marker at a breakpoint row's end.
     public func toggleBreakpointEnabled(_ id: String) {
+        if id.hasPrefix("symbolic:"), let i = Int(id.dropFirst("symbolic:".count)), session.breakpoints.symbolic.indices.contains(i) {
+            session.breakpoints.symbolic[i].isEnabled.toggle()
+            return
+        }
         guard let loc = breakpointRows.first(where: { $0.id == id })?.location else { return }
         session.breakpoints.toggleEnabled(file: loc.file, line: loc.line)
     }
@@ -382,9 +434,9 @@ public final class ShellDebugModel {
     public func deleteBreakpoint(_ id: String) {
         if let loc = breakpointRows.first(where: { $0.id == id })?.location {
             session.breakpoints.remove(file: loc.file, line: loc.line)
-        } else if id.hasPrefix("symbolic:") {
-            let name = String(id.dropFirst("symbolic:".count))
-            session.breakpoints.symbolic.removeAll { $0.name == name }
+        } else if id.hasPrefix("symbolic:"), let i = Int(id.dropFirst("symbolic:".count)), session.breakpoints.symbolic.indices.contains(i) {
+            if breakpointEditor?.target == .symbolic(index: i) { breakpointEditor = nil }
+            session.breakpoints.symbolic.remove(at: i)
         } else if id.hasPrefix("exception:") {
             let f = String(id.dropFirst("exception:".count))
             session.breakpoints.exceptionFilters.removeAll { $0 == f }
@@ -398,14 +450,20 @@ public final class ShellDebugModel {
     public var variableRows: [VariableRow] {
         var out: [VariableRow] = []
         var seen = Set<String>()
-        func add(_ v: Variable, id: String, level: Int, badge: String?) {
+        func add(_ v: Variable, id: String, level: Int, badge: String?, container: Int? = nil, watch: Int? = nil) {
             guard seen.insert(id).inserted else { return }
             let open = expandedVariables.contains(id)
-            out.append(VariableRow(id: id, level: level, badge: badge, name: v.name, type: Self.typeText(v.type), value: v.value,
-                                   reference: v.variablesReference, isExpanded: open && v.variablesReference != 0))
+            var row = VariableRow(id: id, level: level, badge: badge, name: v.name, type: Self.typeText(v.type), value: v.value,
+                                  reference: v.variablesReference, isExpanded: open && v.variablesReference != 0)
+            row.container = container
+            row.memoryReference = v.memoryReference
+            row.watchIndex = watch
+            out.append(row)
             guard open, let kids = childVariables[id] else { return }
-            for k in kids { add(k, id: id + "/" + k.name, level: level + 1, badge: nil) }
+            for k in kids { add(k, id: id + "/" + k.name, level: level + 1, badge: nil, container: v.variablesReference) }
         }
+        // Watch expressions first (`debug.md` §Variables view depth).
+        for (i, v) in watchValues.enumerated() { add(v, id: Self.watchRowID(i), level: 0, badge: nil, watch: i) }
         let filter = variableFilter.lowercased()
         for v in variables where variableScope.includes(v.name) && (variableScope != .local || !v.name.hasPrefix("$"))
             && (filter.isEmpty || v.name.lowercased().contains(filter)) {
@@ -462,18 +520,18 @@ public final class ShellDebugModel {
 
     /// A new stop (or frame) has new references: the expanded aggregates'
     /// children are fetched again by name.
-    private func reloadExpandedChildren() {
+    func reloadExpandedChildren() {
         childrenTask?.cancel()
-        guard !expandedVariables.isEmpty, !variables.isEmpty else {
+        guard !expandedVariables.isEmpty, !variables.isEmpty || !watchValues.isEmpty else {
             childVariables = [:]
             return
         }
         let expanded = expandedVariables
-        let top = variables
+        let top = watchValues.enumerated().map { (Self.watchRowID($0.offset), $0.element) } + variables.map { ($0.name, $0) }
         let session = session
         childrenTask = Task {
             var fetched: [String: [Variable]] = [:]
-            var queue: [(String, Variable)] = top.map { ($0.name, $0) }
+            var queue: [(String, Variable)] = top
             while !queue.isEmpty {
                 let (id, v) = queue.removeFirst()
                 guard expanded.contains(id), v.variablesReference != 0 else { continue }
@@ -588,6 +646,14 @@ public struct VariableRow: Identifiable, Equatable, Sendable {
     public var reference: Int
     public var isExpanded: Bool
     public var isExpandable: Bool { reference != 0 }
+    /// The reference of the aggregate it is listed in (nil: a frame's own
+    /// variable), for `setVariable`.
+    public var container: Int?
+    /// Where its value is in memory (View Memory).
+    public var memoryReference: String?
+    /// The watch expression's index, for a watch row.
+    public var watchIndex: Int?
+    public var isWatch: Bool { watchIndex != nil }
 
     /// "name: Type = value" (the badge is drawn apart).
     public var text: String { name + (type.map { ": \($0)" } ?? "") + " = " + value }

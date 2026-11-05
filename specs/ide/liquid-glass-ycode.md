@@ -184,8 +184,8 @@ questions.
   text).
 - ~~The jump bar's height is the earlier specs'.~~ The band is now 31
   points, y 52–83, then the separator (`metrics.md` §4).
-- The inspector is 265 wide (`workspace-window.md`), 5 more than the
-  reference's 260, so its tab bar is 253 wide.
+- ~~The inspector is 265 wide.~~ Since beta 2 it is 260, the
+  reference's width, so its tab bar is 248 wide.
 - Organizer window: hand-built sidebar, not reviewed here. The Devices
   window is now Device Hub (`device-hub.md` "Ycode implementation"): a
   split view controller with system sidebar and inspector items, a
@@ -333,6 +333,42 @@ surfaces since §12. The targets are `liquid-glass.md` §8.
    moves the editor-mode group and the Notices circle into it, and drops
    the scheme capsule's titles (glyphs only) before truncating anything
    (`liquid-glass.md` §8.2).
+6. **What Ycode does since B2-GLASS2 (beta 2).**
+   - *Editor under the toolbar band (rows 5, 36).* The editor / debug
+     area split still starts below the toolbar, so the debug area keeps
+     exactly the height asked for (a taller or shorter window changes the
+     editor, not the debug area). The editor area's own view reaches up to
+     the window's top above the split, and nothing between it and the
+     center column clips. AppKit gives a view that reaches outside its
+     superview no safe area there, so the editor's top
+     `additionalSafeAreaInsets` follow the column's safe area (the
+     toolbar band; none when the toolbar is hidden). The window's titlebar
+     is transparent (`titlebarAppearsTransparent`, macOS 26+): with it
+     opaque, the system drew its own band (#FFDDDE over red in an inactive
+     probe window of ours) in front of any content.
+   - *The bars' veil.* One `NSVisualEffectView` (`.headerView`,
+     `.withinWindow`, state active) runs from the window's top to the jump
+     bar's separator, so the text shows through blurred and following its
+     shape. The jump bar lays 30 % of the editor's background over it; the
+     bottom bar keeps the same material under its 1-point #D7D7D7 line.
+     Measured on Ycode's window over `Bands.swift` (full-block rows, light,
+     inactive), as a share of a block row's darkness: toolbar band 8.7 %,
+     jump bar 4.9 %, bottom bar 6.1 %; the bottom bar matched the
+     reference's 12 % with this material in round 2, so the band and jump
+     bar sit near 17 % and 10 % on the reference's scale. A theme with
+     its own background colour keeps the flat 96.5 % fill (the material
+     follows the system appearance, not the theme).
+   - *The first line keeps its place.* `NSTextView` scrolls its insertion
+     point into view when a live resize ends (the inspector's slide is
+     one), ignoring the scroll view's content insets; with the caret on
+     line 1 that put lines 1–2 under the jump bar. The text view now keeps
+     its scroll position through it.
+   - *Navigator (rows 35, 49).* The outline's scroll view runs from the
+     selector capsule's top to the filter capsule's bottom; its scroll bar
+     track runs 3 below the selector and 11 above the filter capsule.
+   - *Toolbar (row 37).* The toggles' selected segments use a grey bezel
+     colour (`selectedSegmentBezelColor`), not the accent; the Stop, Go
+     Back and Go Forward segments are disabled while they cannot act.
 
 ## Evidence
 

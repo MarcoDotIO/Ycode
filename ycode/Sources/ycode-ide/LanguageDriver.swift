@@ -70,6 +70,18 @@ enum LanguageDriver {
         await clickSymbol(at: start + 1, in: w, modifiers: [.option])
         for _ in 0..<40 where w.languageFeatures.popover == nil { await pause(0.25) }
         await shot("quickhelp-popover")
+        // The declaration's menu copies it (the macOS IDE's selectable text).
+        if let f = ShellDriver.frame("quickhelp declaration") {
+            OpenViewsAutomation.press(.escape)
+            await pause(0.2)
+            await clickSymbol(at: start + 1, in: w, modifiers: [.option])
+            for _ in 0..<40 where w.languageFeatures.popover == nil { await pause(0.25) }
+            await OpenViewsAutomation.click(at: CGPoint(x: f.midX, y: f.midY), button: 3)
+            await pause(0.5)
+            await shot("quickhelp-copy-menu")
+            await ShellDriver.clickText("Copy", inPopup: true)
+            say("lsp: copied declaration=\"\(ShellPasteboard.lastCopied ?? "")\" clipboard=\"\(ShellClipboard.string ?? "")\"")
+        }
         if w.languageFeatures.popover != nil { OpenViewsAutomation.press(.escape) }
         await pause(0.4)
         say("lsp: popover after Escape=\(w.languageFeatures.popover != nil)")

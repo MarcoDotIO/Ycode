@@ -130,7 +130,9 @@ extension WindowHost {
         let chain = gestures.hitPath(at: point)
         guard let items = services.contextMenus.items(on: chain), let popups = services.popups else { return false }
         gestures.cancel()
-        guard popups.presentPopup(content: items, origin: point, minWidth: 160, chrome: .menu, onDismiss: {}) != nil else {
+        // Anchored at the point: near the window's bottom it opens upward.
+        guard popups.presentPopup(content: items, origin: point, anchor: CGRect(origin: point, size: .zero), minWidth: 160, chrome: .menu,
+                                  fallbackKeys: nil, onDismiss: {}) != nil else {
             return false
         }
         services.contextMenus.noteOpened()

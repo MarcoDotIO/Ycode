@@ -222,7 +222,7 @@ final class ShellFakeServer: DAPTransport, @unchecked Sendable {
         defer { pkg.remove() }
         let main = pkg.path("Sources/Demo/main.swift"), greeting = pkg.path("Sources/DemoCore/Greeting.swift")
         let caller: JSON = ["name": "main", "kind": 12, "uri": Self.uri(main), "range": Self.range(1, 0, 1, 31), "selectionRange": Self.range(1, 0, 1, 5)]
-        let (m, _) = try await model(pkg) { method, _ in
+        let (m, _) = try await model(pkg) { method, params in
             switch method {
             case "textDocument/references": [
                 ["uri": Self.uri(main), "range": Self.range(1, 6, 1, 14)],
@@ -230,7 +230,8 @@ final class ShellFakeServer: DAPTransport, @unchecked Sendable {
             ]
             case "textDocument/prepareCallHierarchy": [["name": "Greeting.init(name:)", "kind": 9, "uri": Self.uri(greeting),
                                                         "range": Self.range(0, 0, 4, 1), "selectionRange": Self.range(0, 14, 0, 22)]]
-            case "callHierarchy/incomingCalls": [["from": caller, "fromRanges": [Self.range(1, 6, 1, 14)]]]
+            // main has no callers of its own.
+            case "callHierarchy/incomingCalls": params["item"]?["name"]?.string == "main" ? [] : [["from": caller, "fromRanges": [Self.range(1, 6, 1, 14)]]]
             default: nil
             }
         }
@@ -246,12 +247,59 @@ final class ShellFakeServer: DAPTransport, @unchecked Sendable {
         #expect(m.document?.name == "Greeting.swift")
         _ = try openMain(m, pkg)
         #expect(await m.findCallHierarchy() == 1)
-        #expect(m.findCountText == "Callers of Greeting" && m.findRows.map(\.name) == ["main.swift"])
-        // A search of its own replaces the title.
+        // The tree under "Callers of Greeting": the initializer, then main.
+        #expect(m.findCountText == "Callers of Greeting" && m.findRows.isEmpty)
+        #expect(m.callHierarchy.rows.map(\.name) == ["Greeting.init(name:)", "main"])
+        #expect(m.callHierarchy.rows.map(\.detail) == ["Greeting.swift:1", "main.swift:2"])
+        // A row opens the function's declaration.
+        m.callHierarchy.selection = m.callHierarchy.rows[1].id
+        #expect(m.document?.name == "main.swift" && m.editor?.buffer.caretLine == 1)
+        // A search of its own replaces the title and the tree.
         m.findText = "Hello"
         m.runFind()
         await m.waitForFind()
-        #expect(m.findResultsTitle == nil && m.findCountText != "Callers of Greeting")
+        #expect(m.findResultsTitle == nil && m.findCountText != "Callers of Greeting" && m.callHierarchy.tree == nil)
+    }
+
+    /// `refactoring.md` §Find: two levels of callers, as the macOS IDE's
+    /// tree; a function already on the path is not followed again, and a
+    /// third level is not asked for.
+    @Test func callHierarchyIsTwoLevelsDeep() async throws {
+        let pkg = try TempPackage()
+        defer { pkg.remove() }
+        let main = pkg.path("Sources/Demo/main.swift"), greeting = pkg.path("Sources/DemoCore/Greeting.swift")
+        let item: @Sendable (String, String, Int) -> JSON = { name, path, line in
+            ["name": .string(name), "kind": 12, "uri": Self.uri(path), "range": Self.range(line, 0, line, 20), "selectionRange": Self.range(line, 0, line, 5)]
+        }
+        let asked = LockedNames()
+        let (m, _) = try await model(pkg) { method, params in
+            switch method {
+            case "textDocument/prepareCallHierarchy": return [item("greet", greeting, 0)]
+            case "callHierarchy/incomingCalls":
+                let name = params["item"]?["name"]?.string ?? ""
+                asked.add(name)
+                switch name {
+                case "greet": return [["from": item("printAll", main, 1), "fromRanges": [Self.range(1, 6, 1, 11), Self.range(1, 20, 1, 25)]],
+                                      ["from": item("greetAll", greeting, 3), "fromRanges": [Self.range(3, 8, 3, 13)]]]
+                case "printAll": return [["from": item("run", main, 0), "fromRanges": [Self.range(0, 2, 0, 10)]]]
+                // greetAll calls itself: not followed again.
+                case "greetAll": return [["from": item("greetAll", greeting, 3), "fromRanges": [Self.range(4, 2, 4, 10)]]]
+                default: return [["from": item("deeper", main, 5), "fromRanges": [Self.range(5, 0, 5, 3)]]]
+                }
+            default: return nil
+            }
+        }
+        _ = try openMain(m, pkg)
+        #expect(await m.findCallHierarchy() == 4)
+        let rows = m.callHierarchy.rows
+        #expect(rows.map(\.name) == ["greet", "printAll", "run", "greetAll", "greetAll"])
+        #expect(rows.map(\.level) == [0, 1, 2, 1, 2])
+        #expect(rows[1].detail == "main.swift:2  (2 calls)")
+        // The callers of the second level's functions are never asked for.
+        #expect(asked.names.sorted() == ["greet", "greetAll", "printAll"])
+        // Collapsing a caller hides its callers.
+        m.callHierarchy.setExpanded(rows[1].id, false)
+        #expect(m.callHierarchy.rows.map(\.name) == ["greet", "printAll", "greetAll", "greetAll"])
     }
 
     @Test func languageCommandsNeedAServerAndAFile() throws {
@@ -330,4 +378,12 @@ final class ShellFakeServer: DAPTransport, @unchecked Sendable {
         #expect(m.symbols.rows[1].kind == .function && m.symbols.rows[1].line == 2)
         #expect(SymbolNavigatorModel.kind(lsp: 23) == .struct && SymbolNavigatorModel.kind(lsp: 5) == .class)
     }
+}
+
+/// Names a scripted server was asked about, from its thread.
+final class LockedNames: @unchecked Sendable {
+    private let lock = NSLock()
+    private var list: [String] = []
+    func add(_ s: String) { lock.withLock { list.append(s) } }
+    var names: [String] { lock.withLock { list } }
 }

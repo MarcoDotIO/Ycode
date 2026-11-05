@@ -179,7 +179,10 @@ extension Picker: PrimitiveView {
                 let button = MenuPickerButton(options: options, selected: index, choose: choose)
                 presentation = env._labelsHidden || !env._inForm
                     ? AnyView(button)
-                    : AnyView(ControlRowLayout { label; button })
+                    : AnyView(ControlRowLayout(columnWidth: env._formColumnWidth) {
+                        label.modifier(ColumnLabelAlignment(inColumn: env._formColumnWidth != nil))
+                        button
+                    })
             }
         }
         node.reconcileChildren([(AnyHashable(0), content), (AnyHashable(1), presentation)], transaction: transaction)
@@ -379,6 +382,8 @@ struct MenuPickerButton: View {
     let choose: @MainActor (Int) -> Void
     @Environment(\._windowServices) private var services
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\._formColumnWidth) private var columnWidth
+    @Environment(\.colorScheme) private var scheme
     @State private var ref = NodeRef()
     @State private var box = PopupBox()
     @State private var isFocused = false
@@ -393,13 +398,31 @@ struct MenuPickerButton: View {
             }
             openPopup(services: services, ref: ref, box: box, submenu: false, content: AnyView(rows))
         }
-        HStack(spacing: 4) {
-            if let selected, options.indices.contains(selected) {
-                options[selected].view
+        Group {
+            if columnWidth != nil {
+                // A `.columns` form's pop-up button (the desktop's): the
+                // choice and up/down chevrons on a filled rounded bezel.
+                HStack(spacing: 6) {
+                    if let selected, options.indices.contains(selected) {
+                        options[selected].view.lineLimit(1)
+                    }
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundStyle(.primary)
+                .padding(.leading, 8)
+                .padding(.trailing, 6)
+                .frame(minWidth: 60, minHeight: 22)
+                .background { RoundedRectangle(cornerRadius: 5).fill(ControlPalette(scheme).fill) }
+            } else {
+                HStack(spacing: 4) {
+                    if let selected, options.indices.contains(selected) {
+                        options[selected].view
+                    }
+                    Image(systemName: "chevron.down").imageScale(.small)
+                }
+                .foregroundStyle(.tint)
             }
-            Image(systemName: "chevron.down").imageScale(.small)
         }
-        .foregroundStyle(.tint)
         .opacity(isPressed ? 0.4 : (isEnabled ? 1 : 0.4))
         .contentShape(Rectangle())
         .gesture(ControlPressGesture(onPressed: { p in isPressed = p }, onAction: { open() }))

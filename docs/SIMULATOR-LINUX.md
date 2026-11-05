@@ -149,9 +149,30 @@ Runtimes…, the destination menu's Get a Simulator Runtime…, and the first
 launch; Linux: Window ▸ Downloads and the first launch) lists the runtimes
 you have, copies a RuntimeRoot into Ycode's folder or to a simulator host
 (`<data>/runtimes/<token>-<version>-<build>`, resumable), and removes only
-the runtimes Ycode copied. It never downloads a runtime; on a Mac it adds a
-runtime image you picked with `xcrun simctl runtime add` only after you
-confirm the command. `ycode sim runtimes check` prints the same checklist.
+the runtimes Ycode copied. On a Mac it adds a runtime image you picked with
+`xcrun simctl runtime add` only after you confirm the command. `ycode sim
+runtimes check` prints the same checklist.
+
+Its Get a Runtime step (`specs/simulator/runtime-downloads.md` §6) gets one
+from Apple only when you ask, after a confirmation that shows the exact
+command. On a Mac with Xcode it runs Apple's own tool first
+(`xcodebuild -downloadPlatform <platform>`, with `-exportPath <folder>` for a
+copy to take to Linux; `ycode runtime xcodebuild <platform> --export <folder>`
+does the same from a terminal). Ycode's own download is the second route
+(`ycode runtime download <platform> [--build B | --version V]`): it asks
+Apple's asset service for the runtime with a truthful description of the
+computer (no Mac model fields on Linux), downloads it into
+`<runtimes>/.partial` (an interrupted download resumes), checks its size and
+SHA-256, decrypts it with the key Apple returns (macOS: the Apple Archive
+framework; Linux: python-aea, MIT, which the wizard installs on request into
+`<runtimes>/.tools/python-aea`), reads the disk image (macOS: `hdiutil`;
+Linux: 7-Zip 23 or later, run as a separate program), puts the RuntimeRoot
+in `<runtimes>/<token>-<version>-<build>` with `ycode-runtime.json`, and
+removes the archives. `ycode runtime list` shows what is there; `ycode runtime
+import <exportedBundle>` adds a bundle exported on a Mac. The runtime folder is
+`$YCODE_RUNTIMES_DIR`, else `$YCODE_DATA/runtimes`, else
+`~/.local/share/ycode/runtimes`. Ycode never shares, mirrors or keeps a runtime,
+key or index for anyone else, and never signs in to an Apple account.
 
 For a host, the wizard sends `ycode-host-setup` over ssh
 (`ycode sim runtimes script` prints it): `--report` (the default) changes

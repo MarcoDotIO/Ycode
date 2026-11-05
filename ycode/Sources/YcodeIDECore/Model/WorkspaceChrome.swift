@@ -12,7 +12,7 @@ public enum WorkspaceChrome {
     public static let windowWidth: Double = 1400
     public static let windowHeight: Double = 900
     public static let navigatorWidth: Double = 290
-    public static let inspectorWidth: Double = 265
+    public static let inspectorWidth: Double = 260
     /// The toolbar band (`metrics.md` §3): the areas' content starts below it.
     public static let toolbarHeight: Double = 52
     /// Toolbar items' shapes: 36 tall, 8 from the window's top.
@@ -115,8 +115,7 @@ public enum WorkspaceChrome {
         case .container:
             if path?.hasSuffix(".xcworkspace") == true { return "square.stack.3d.up" }
             return path?.hasSuffix(".xcodeproj") == true ? "folder.badge.gearshape" : "shippingbox"
-        case .group: return "folder"
-        case .folder: return "folder.fill"
+        case .group, .folder: return "folder.fill"
         case .file: return fileSymbol(name)
         }
     }
@@ -142,12 +141,16 @@ public enum WorkspaceChrome {
     /// follows the reference): Swift sources orange, folders and groups
     /// light blue, the project and images blue; other files keep the
     /// accent colour.
-    public enum IconTint: Equatable, Sendable { case orange, lightBlue, blue, accent }
+    /// Round 2 (`metrics.md` §13.1): a `PBXGroup` gets a neutral grey
+    /// filled folder, even with a folder on disk; synchronized folders and
+    /// the folders in them stay blue.
+    public enum IconTint: Equatable, Sendable { case orange, lightBlue, blue, grey, accent }
 
     public static func iconTint(kind: NavigatorNode.Kind, name: String) -> IconTint {
         switch kind {
         case .container: return .blue
-        case .group, .folder: return .lightBlue
+        case .group: return .grey
+        case .folder: return .lightBlue
         case .file:
             switch URL(fileURLWithPath: name).pathExtension {
             case "swift": return .orange

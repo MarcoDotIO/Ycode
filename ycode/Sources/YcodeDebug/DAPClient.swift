@@ -285,17 +285,21 @@ public struct Variable: Equatable, Sendable {
     public var type: String?
     /// Nonzero when the variable has children to fetch.
     public var variablesReference: Int
+    /// Where its value is in memory (DAP `memoryReference`), when known.
+    public var memoryReference: String?
     init(_ j: JSON) {
         name = j["name"]?.string ?? ""
         value = j["value"]?.string ?? ""
         type = j["type"]?.string
         variablesReference = j["variablesReference"]?.int ?? 0
+        memoryReference = j["memoryReference"]?.string
     }
-    public init(name: String, value: String, type: String? = nil, variablesReference: Int = 0) {
+    public init(name: String, value: String, type: String? = nil, variablesReference: Int = 0, memoryReference: String? = nil) {
         self.name = name
         self.value = value
         self.type = type
         self.variablesReference = variablesReference
+        self.memoryReference = memoryReference
     }
 }
 

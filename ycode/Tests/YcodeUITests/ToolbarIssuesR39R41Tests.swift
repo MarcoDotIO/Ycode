@@ -169,16 +169,12 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(row.attributedTitle == nil && popUp.titleOfSelectedItem == "iPhone 18 Pro")
     }
 
-    /// T1 (§2.2): the right group never overflows. With a long scheme
-    /// name, the issue capsule and a finished build, the editor modes fold
-    /// first, then the scheme name shortens, then the subtitle; Show
-    /// Inspector stays at the far right; a wider window undoes it.
-    /// With the full-height inspector of liquid-glass.md §2.1 the editor's
-    /// section is the window less both side areas: down to 1250 points
-    /// everything fits; narrower, only the low-priority items (Back |
-    /// Forward, the activity view, New Conversation) overflow, as §2.2
-    /// allows once every step is taken.
-    @Test func toolbarRightGroupNeverOverflows() throws {
+    /// Row 34 (liquid-glass.md §8.2): short of room, the scheme capsule
+    /// drops its titles, then the editor-mode group goes into the system's
+    /// "»" overflow, then the subtitle truncates in the middle. Add Editor, Editor Options, the scheme and the issue capsule
+    /// stay; Show Inspector stays at the far right; a wider window undoes
+    /// it all.
+    @Test func toolbarOverflowsInOrder() throws {
         let dir = scratch("t1")
         defer { try? FileManager.default.removeItem(at: dir) }
         let session = WorkspaceSession(model: try WorkspaceModel(url: try writeToolProject(at: dir)))
@@ -195,28 +191,57 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         wc.activityView.status = "Build Succeeded \u{2022} Today at 1:17 PM"
         let window = try #require(wc.window)
         var fits: [Int: ToolbarFit] = [:]
-        for w in [1600, 1400, 1250, 1150, 1050, 2000] {
+        for w in [1600, 1400, 1250, 1150, 1100, 1050, 2000] {
             window.setFrame(NSRect(x: 0, y: 0, width: CGFloat(w), height: 900), display: false)
             wc.fitToolbar()
-            if w >= 1250 {
-                #expect(wc.overflowedToolbarItems.isEmpty, "overflow at \(w): \(wc.overflowedToolbarItems)")
-            } else {
-                #expect(Set(wc.overflowedToolbarItems).isSubset(of: ["history", "activity", "newConversation"]), "overflow at \(w): \(wc.overflowedToolbarItems)")
+            let overflow = wc.overflowedToolbarItems
+            print("toolbar \(w): \(wc.toolbarFit) overflow \(overflow) scheme \(wc.schemeCapsuleWidth)")
+            #expect(Set(overflow).isSubset(of: ["editorModes", "history", "activity", "newConversation"]), "overflow at \(w): \(overflow)")
+            if overflow.contains(where: { $0 != "editorModes" }) {
+                #expect(wc.toolbarFit == ToolbarFit.steps(activityNatural: wc.activityView.naturalWidth).last, "at \(w)")
             }
             let visible = (window.toolbar?.visibleItems ?? []).map(\.itemIdentifier.rawValue)
             #expect(visible.last == "inspectorToggle")
-            #expect(Set(["addEditor", "editorOptions", "editorModes", "scheme", "issues"]).isSubset(of: Set(visible)))
+            #expect(Set(["addEditor", "editorOptions", "scheme", "issues"]).isSubset(of: Set(visible)))
+            #expect(wc.schemeShowsGlyphsOnly == wc.toolbarFit.schemeGlyphsOnly)
+            if w == 1100 { #expect(!visible.contains("editorModes")) }
             fits[w] = wc.toolbarFit
         }
-        #expect(fits[2000] == ToolbarFit())
-        #expect(fits[1050]?.editorModesCollapsed == true && fits[1050]?.schemeWidth != nil)
-        // Monotone: a narrower window never has less collapsed.
-        let order = [1600, 1400, 1250, 1150, 1050].compactMap { fits[$0] }
-        let steps = ToolbarFit.steps(schemeNatural: wc.schemeNaturalWidth, activityNatural: wc.activityView.naturalWidth)
+        #expect(fits[2000] == ToolbarFit() && wc.overflowedToolbarItems.isEmpty && !wc.schemeShowsGlyphsOnly)
+        // At 1100 (the reference's narrow window), with this long scheme
+        // and destination, the modes are in "»" and the scheme shows glyphs.
+        #expect(fits[1100]?.editorModesInOverflow == true && fits[1100]?.schemeGlyphsOnly == true)
+        // Monotone: a narrower window never gives up less.
+        let order = [1600, 1400, 1250, 1150, 1100, 1050].compactMap { fits[$0] }
+        let steps = ToolbarFit.steps(activityNatural: wc.activityView.naturalWidth)
         let ranks = order.compactMap { steps.firstIndex(of: $0) }
         #expect(ranks.count == order.count && ranks == ranks.sorted())
-        // The collapsed pull-down lists the three modes.
-        let pull = wc.toolbarControls.editorModesPullDown
-        #expect(pull.itemTitles.dropFirst() == ["Canvas", "Assistant", "Code Review"])
+        // In the "»" menu the group is "Editor Modes" with the three modes.
+        let item = try #require(window.toolbar?.items.first { $0.itemIdentifier.rawValue == "editorModes" })
+        #expect(item.visibilityPriority == .low)
+        #expect(item.menuFormRepresentation?.title == "Editor Modes")
+        #expect(item.menuFormRepresentation?.submenu?.items.map(\.title) == ["Canvas", "Assistant", "Code Review"])
+    }
+
+    /// Row 34: the glyphs-only scheme capsule is about 87 points wide
+    /// (target glyph, "›", destination glyph), and its titles become
+    /// tooltips.
+    @Test func schemeCapsuleGlyphsOnly() throws {
+        let dir = scratch("t1g")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let session = WorkspaceSession(model: try WorkspaceModel(url: try writeToolProject(at: dir)))
+        let wc = window(session)
+        wc.schemePopUp.removeAllItems()
+        wc.schemePopUp.addItem(withTitle: "A Rather Long Scheme Name For Testing")
+        wc.schemePopUp.lastItem?.image = NSImage(size: NSSize(width: 16, height: 16))
+        let full = wc.schemeCapsuleWidth
+        wc.setSchemeGlyphsOnly(true)
+        let glyphs = wc.schemeCapsuleWidth
+        print("scheme capsule: titles \(full), glyphs \(glyphs)")
+        #expect(glyphs < full)
+        if #available(macOS 26, *) { #expect(abs(glyphs - 87) <= 4, "glyphs-only capsule \(glyphs)") }
+        #expect(wc.schemePopUp.toolTip == "A Rather Long Scheme Name For Testing")
+        wc.setSchemeGlyphsOnly(false)
+        #expect(wc.schemeCapsuleWidth == full && wc.schemePopUp.toolTip == nil)
     }
 }

@@ -182,6 +182,14 @@ package final class ShortcutRegistry {
     /// The registered shortcuts (tests).
     package var registered: [Entry] { entries.map(\.entry) }
 
+    /// Whether an enabled shortcut (a view's or a menu command's) takes the
+    /// key press. Text fields leave such keys to it (Ctrl+Y: an app's ⌘Y
+    /// rather than the field's Redo).
+    package func hasEnabledShortcut(key: Key, modifiers: KeyModifiers) -> Bool {
+        guard let k = KeyEquivalent(platformKey: key) else { return false }
+        return entries.contains { $0.entry.shortcut.matches(key: k, modifiers: modifiers) && $0.entry.isEnabled() }
+    }
+
     /// Runs the first enabled shortcut matching the key press; true if one ran.
     package func perform(key: Key, modifiers: KeyModifiers) -> Bool {
         guard let k = KeyEquivalent(platformKey: key) else { return false }

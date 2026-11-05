@@ -40,6 +40,10 @@ extension WorkspaceWindowController {
             inspectorItem.minimumThickness = 1
         }
         inspector.beginRigidSlide(width: width)
+        // The contents are laid out and drawn at their width before the
+        // first frame, so the inspector never slides in blank.
+        inspector.view.layoutSubtreeIfNeeded()
+        inspector.view.displayIfNeeded()
         state.from = show ? total - divider - 1 : total - divider - width
         state.to = show ? total - divider - width : total - divider - 1
         state.show = show
@@ -85,10 +89,13 @@ final class InspectorSlideState: NSObject {
 
     @objc func step(_ link: CADisplayLink) {
         // Times are those of the frames being drawn; the first sets the
-        // clock (the last still frame), and motion follows on the next.
+        // clock (the press), and motion starts after the measured delay
+        // (editor-area.md §D.5), on the ease-in-out curve.
         let now = link.targetTimestamp
         guard let start else { start = now; onFrame?(0); return }
-        let t = min(1, (now - start) / Self.duration)
-        onFrame?(CGFloat(EditorMetrics.inspectorSlideProgress(t)))
+        let elapsed = now - start
+        let progress = elapsed >= EditorMetrics.inspectorSlideTotal(show: show) ? 1
+            : EditorMetrics.inspectorSlideProgress(elapsed: elapsed, show: show)
+        onFrame?(CGFloat(progress))
     }
 }

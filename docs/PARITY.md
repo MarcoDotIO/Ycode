@@ -827,7 +827,7 @@ queue on arm64 under a headless Weston (Wayland), in light and dark.
 
 **What the window does.**
 - It opens from the command line (`ycode-ide <project, workspace, Package.swift or package folder>`), from the Welcome screen's recent list, or from File ▸ Open…. Open shows the toolkit's file dialog (`fileImporter`; on Linux OpenViews' own, since R13: a folder listing with a Go to path field, projects and workspaces chosen like files). The macOS build uses the system's.
-- A `NavigationSplitView` holds the navigator (290), the editor over the debug area, and the inspector (265, `.inspector`). View ▸ Navigators / Debug Area / Inspectors and the toolbar toggle them.
+- A `NavigationSplitView` holds the navigator (290), the editor over the debug area, and the inspector (260, `.inspector`). View ▸ Navigators / Debug Area / Inspectors and the toolbar toggle them.
 - The selector bar has Project (⌘1), Find (⌘4) and Issues (⌘5), and they keep their indices in the full bar.
 - The **Project navigator** is `NavigatorTree` through `List` and `DisclosureGroup`s whose expansion lives in the model. It opens with `NavigatorTree.initiallyExpanded`. `OutlineGroup` was not used: its expansion belongs to the container and no SwiftUI API sets an initial state. Selecting a file opens it. Navigate ▸ Reveal in Project Navigator (⇧⌘J) expands the file's parents and selects it.
 - The **editor** was read-only for L1 (L2 replaced it, §5.9). It showed a jump bar, then the file's lines with a 48-point gutter, colored by `YcodeSyntax` (swift-syntax for Swift, line lexers for the others) as `Text` runs, built lazily. The colors are Ycode Paper in light mode and Ycode Dusk in dark mode, and keywords are bold. The line that Find or an issue points at gets the current-line color and is scrolled to. Go Back / Go Forward (⌃⌘← / ⌃⌘→, toolbar) use the core's `NavigationHistory`.
@@ -1056,7 +1056,8 @@ has unit tests.
   `textSurfaceScroll`, `09-open-design.md`): typed and committed text, the
   Linux text keys (arrows, Ctrl+arrows, Home/End, Ctrl+Home/End, Page
   Up/Down (not driven), Backspace and Delete by character or word, Ctrl+A/C/X/V/Z,
-  Ctrl+Shift+Z and Ctrl+Y, Ctrl+Insert, Shift+Insert, Shift+Delete), the
+  Ctrl+Shift+Z (Redo; Ctrl+Y is ⌘Y, Debug ▸ Deactivate Breakpoints, and goes
+  to the menu bar), Ctrl+Insert, Shift+Insert, Shift+Delete), the
   Edit menu's items, a context menu (Cut, Copy, Paste, Select All; not
   driven), the
   system clipboard, click, drag (scrolling at the edges), shift-click,
@@ -1235,7 +1236,7 @@ product-menu, sheet and settings.
 | 16 | Debug bar | ✔ | 36 points under the editor (at the window's bottom with the debug area hidden): the breakpoints glyph, "Line: 1  Col: 1", the debug-area toggle. |
 | 17 | Debug area | ✔ | Variables and console side by side over 28-point bottom bars ("Auto", eye, info, filter; eye, filter, trash, the layout toggles), 135 points when opened: the bar at y 728 and the area at y 764, as on macOS. The console shows the build log until a run writes there (no Report navigator on Linux yet). |
 | 18 | Inspector | ✔ | The tab capsule (File, History, Quick Help) with a 78 × 24 pill; the real File inspector (`WorkspaceShellModel.fileInspector`: Identity and Type — Name field, Type and Location pop-ups, the file name, Full Path with the reveal button — and Text Settings — encoding, line endings, indentation, widths), 12-point insets, an 80-point key column, 11-point text; "Not Applicable" without a file. |
-| 19 | Split dividers, separators, backgrounds | ✔ | 290 / 845 / 265 (OpenViews' flexible frame now answers an unspecified proposal with its ideal width, so the split view takes the ideal widths); sidebar and content colors and hairlines as sampled from the macOS window. |
+| 19 | Split dividers, separators, backgrounds | ✔ | 290 / 850 / 260 (OpenViews' flexible frame now answers an unspecified proposal with its ideal width, so the split view takes the ideal widths); sidebar and content colors and hairlines as sampled from the macOS window. |
 | 20 | Materials | ≈ | Flat: capsules are hairline outlines on the area's color, as the offscreen reference shows them (pixel identity with glass is a non-goal, §5.5). |
 | 21 | Fonts and sizes | ✔ | Desktop text styles (body 13, headline 13 bold, …) and Inter for the UI: 13-point widths match the macOS IDE's ("GreeterCoreTests" 104.7 points on both); 11 points and less get +0.35 tracking (the macOS font spaces small sizes wider). Inter renders a little lighter than the macOS text at 13 points; Medium would match the darkness but is wider and wraps rows, so rows stay Regular and only the bezel title is Bold. |
 | 22 | Menu bar and items | ✔ | Every menu of the AppKit menu bar from `CommandTable`: Ycode, File, Edit, View, Find, Navigate, Editor, Product, Debug, Integrate, Window, Help, with their items, order, separators, submenus, dynamic titles and shortcuts; the shell's commands enabled, the others listed disabled (as the AppKit IDE lists what it does not perform). OpenViews keeps its own Undo/Redo/pasteboard items and Quit. Menu item metrics are OpenViews' (26-point rows): the macOS menus could not be captured to measure. |

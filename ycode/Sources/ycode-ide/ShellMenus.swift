@@ -117,6 +117,12 @@ struct MenuSpecItems: View {
                 }
                 return AnyView(Button(title) { app.workspace?.performEditorAction(c.action, tag: c.tag) }.disabled(!state.enabled))
             }
+            // Debug Workflow's toggles carry a check mark.
+            if let shell, let on = app.isChecked(shell) {
+                return AnyView(Toggle(title, isOn: Binding(get: { on }, set: { _ in app.perform(shell) }))
+                    .keyboardShortcut(shortcut)
+                    .disabled(!app.isEnabled(shell)))
+            }
             return AnyView(Button(title) { if let shell { app.perform(shell) } }
                 .keyboardShortcut(shortcut)
                 .disabled(shell.map { !app.isEnabled($0) } ?? true))

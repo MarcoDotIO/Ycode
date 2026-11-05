@@ -10,10 +10,13 @@ formats, exit statuses and errors. It is written for the clean-room work in
 provisioning). Dirty-room notes: `research/notes/obs-runtime-onboarding-2026-11-04.md`.
 
 What this spec does **not** cover: how Apple delivers, packages, decrypts
-or unpacks runtime payloads, and any design for Ycode downloading runtimes.
-Whether Ycode ever downloads a runtime for the user is the owner's open
-decision (#55). Everything below about Apple's download buttons describes
-the reference's behavior only.
+or unpacks runtime payloads, and the design of Ycode's own downloader. Both
+are in `runtime-downloads.md`. The owner decided on 2026-11-04 (#55,
+decisions O1 and O2 in `runtime-downloads.md` §4.1 and §4.3) that Ycode may
+download runtimes from Apple itself, describing the machine honestly, and
+decrypt them with the key in the asset service's answer. Everything below
+about Apple's download buttons describes the reference's behavior; §2 and
+§11 say which Ycode route stands in for each.
 
 Markers: **Ycode guidance** marks advice for the implementer that is not a
 fact about the reference. **To confirm** marks reference behavior known
@@ -51,19 +54,22 @@ SDK lists and the GUI say `visionOS`. Simulator platform identifiers:
 
 | # | Route (reference) | Who starts it | Network | Ycode equivalent |
 |---|---|---|---|---|
-| R1 | First-launch sheet: choose platforms, Download & Install (§3) | User, once per Xcode | Apple | Wizard on first launch (#68), **without** the download step |
-| R2 | Settings ▸ Components ▸ Get on a platform row (§4) | User | Apple | none (policy #55) |
-| R3 | Components ▸ Add Platforms… ▸ select versions ▸ Download & Install (§4.4) | User | Apple | none (policy #55) |
+| R1 | First-launch sheet: choose platforms, Download & Install (§3) | User, once per Xcode | Apple | Wizard on first launch (#68), offering Ycode's routes C → B → A (§11.6) |
+| R2 | Settings ▸ Components ▸ Get on a platform row (§4) | User | Apple | Route C on a Mac, else B (`runtime-downloads.md` §6.1) |
+| R3 | Components ▸ Add Platforms… ▸ select versions ▸ Download & Install (§4.4) | User | Apple | Route C or B with a chosen version or build (`ycode runtime available`) |
 | R4 | Get next to a run destination / in the preview canvas (§5.1) | User, when a platform has no runtime | Apple | Wizard opened from the destination |
 | R5 | Get in the new-project template chooser banner (§5.4) | User | Apple | Wizard opened from the banner |
 | R6 | Run-time prompt "Download … support for <platform>?" (§5.2) | Xcode, on Run | Apple | Wizard opened from the prompt |
-| R7 | `xcodebuild -downloadPlatform` / `-downloadAllPlatforms` (§6.1) | User, Terminal | Apple | none (policy #55); the wizard may **show** the command for the user to run on a Mac |
+| R7 | `xcodebuild -downloadPlatform` / `-downloadAllPlatforms` (§6.1) | User, Terminal | Apple | Route C: Ycode runs it on a Mac with the user's confirmation (`ycode runtime xcodebuild`) |
 | R8 | `xcodebuild -importPlatform <dmg>` (§6.2) | User, Terminal | none | Wizard: "use a runtime file you have" |
 | R9 | `xcrun simctl runtime add <dmg>` (§7.2) | User, Terminal | none | Same as R8 |
 | R10 | A runtime already registered on this Mac (any of the above, any Xcode) | — | none | Wizard: "use the runtimes your Xcode has" (§8, §11) |
 
-R1–R7 fetch from Apple. R8–R10 need no network and are the routes the
-beta's wizard can follow (#68 "Out: downloading").
+R1–R7 fetch from Apple. R8–R10 need no network. Since the owner's
+decision of 2026-11-04, Ycode has its own counterparts for both kinds:
+route C (Apple's `xcodebuild` on a Mac), route B (Ycode's direct download)
+and route A (import an exported bundle or disk image), defined in
+`runtime-downloads.md` §6.1 and offered in that order on a Mac (§11.6).
 
 ## 3. First launch
 
@@ -572,10 +578,19 @@ A bare RuntimeRoot (as Ycode's Linux route copies it, `docs/SIMULATOR-LINUX.md`
 5. **Remote hosts (#69)**: the same row model per host, plus the
    RuntimeRoot size (≈2× the image) for the transfer and free-space check;
    offline hosts mark their rows unknown, not missing.
-6. **Never** fetch from Apple in the beta; where the reference would show
-   Get, Ycode explains how to get a runtime with the user's own Xcode
-   (Settings ▸ Components, or `xcodebuild -downloadPlatform <name>` on
-   their Mac) and offers to use it afterwards.
+6. **Getting a runtime** (owner decisions O1 and O2, 2026-11-04;
+   replaces the earlier "never fetch"). Where the reference shows Get,
+   Ycode offers its three routes of `runtime-downloads.md` §6.1, on a Mac
+   in this order: **C** (run Apple's `xcodebuild -downloadPlatform` on this
+   Mac, with confirmation, optionally `-exportPath` for a copy to a Linux
+   host), then **B** (Ycode downloads from Apple itself, describing this
+   machine honestly, verifies size and SHA-256, and decrypts with the key
+   in the asset service's answer), then **A** (import an exported bundle
+   or disk image the user already has). On Linux, where C is not
+   possible, B comes first, then A. Nothing is fetched without an explicit
+   click; the confirmation names the source (Apple), the size and the
+   route. If Apple's service refuses a route B query, Ycode says so and
+   offers A or C (O1).
 
 ## 12. To confirm by recording (GUI, once #56 allows it)
 
@@ -609,10 +624,11 @@ A bare RuntimeRoot (as Ycode's Linux route copies it, `docs/SIMULATOR-LINUX.md`
 
 ## 13. Open questions for the owner
 
-1. **#55**: may Ycode ever start a download from Apple on the user's
-   behalf (even only by running `xcodebuild -downloadPlatform` on the
-   user's own Mac, with their consent)? This decides whether R2–R7 have a
-   Ycode counterpart or only an explanation.
+1. ~~**#55**: may Ycode ever start a download from Apple on the user's
+   behalf?~~ **Answered 2026-11-04** by decisions O1 (an honest description
+   of the machine in the asset query) and O2 (Ycode decrypts with the key
+   in the answer), `runtime-downloads.md` §4.1 and §4.3. Routes C → B → A
+   are offered in that order on a Mac (§11.6).
 2. Should the wizard on a Mac run `xcodebuild -importPlatform` /
    `simctl runtime add` / `simctl runtime delete` itself (with consent), or
    only show the commands for the user to run?
@@ -680,5 +696,5 @@ observed (no screen takeover; recording waits on #56).
 | §8.3 bundle and RuntimeRoot keys | 2 | `Info.plist`, `profile.plist`, `SystemVersion.plist` read with `plutil` |
 | §9 rows | as cited in §3–§7 | — |
 | §10 exit statuses | 3 | the runs above |
-| §11 | — | Ycode guidance |
+| §11 | — | Ycode guidance; §11.6 and §13 Q1 follow the owner's decisions O1 and O2 of 2026-11-04 (#55, `runtime-downloads.md`) |
 | §12, §13 | — | open items |

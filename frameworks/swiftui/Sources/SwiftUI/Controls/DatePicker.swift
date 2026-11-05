@@ -29,6 +29,7 @@ public struct DatePicker<Label: View>: View {
     let components: DatePickerComponents
     let label: Label
     @Environment(\._labelsHidden) private var labelsHidden
+    @Environment(\._formColumnWidth) private var columnWidth
     @Environment(\._datePickerStyle) private var style
 
     public init(selection: Binding<Date>, displayedComponents: Components = [.hourAndMinute, .date],
@@ -55,8 +56,8 @@ public struct DatePicker<Label: View>: View {
                 CompactDateButtons(selection: selection, range: range, components: components)
             }
         }
-        ControlRowLayout {
-            if !labelsHidden { label }
+        ControlRowLayout(columnWidth: columnWidth) {
+            if !labelsHidden { label.modifier(ColumnLabelAlignment(inColumn: columnWidth != nil)) }
             control
         }
     }

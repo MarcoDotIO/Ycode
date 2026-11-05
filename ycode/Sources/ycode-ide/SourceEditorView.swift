@@ -61,8 +61,10 @@ struct SourceEditorView: View {
                 switch e {
                 case .down(let p, let t):
                     focused = true
-                    // ⌥-click: Quick Help; ⌘- or Ctrl-click: Jump to Definition.
-                    if let m = c.connection?.pointerModifiers, SymbolClick.handle(p, modifiers: m, controller: c, model: model) { return }
+                    // ⌥-click: Quick Help; ⌘- or Ctrl-click: Jump to Definition
+                    // (on a breakpoint: its editor).
+                    if let m = c.connection?.pointerModifiers, DebugGutter.commandClick(p, modifiers: m, controller: c, model: model)
+                        || SymbolClick.handle(p, modifiers: m, controller: c, model: model) { return }
                     c.pointerChanged(start: p, location: p, time: t, shift: c.connection?.pointerModifiers.contains(.shift) ?? false)
                 case .moved(let p, _): c.pointerChanged(start: p, location: p, time: 0, shift: false)
                 case .up, .cancelled: c.pointerEnded()
@@ -114,12 +116,18 @@ struct SourceEditorView: View {
                     model.checkOpenFilesOnDisk()
                 }
             }
+            .onContinuousHover { phase in DebugGutter.hover(phase, controller: c, model: model) }
             .contextMenu {
-                Button("Cut") { _ = c.perform(.cut, clipboard: Self.clipboard(c)) }.disabled(c.buffer.selection.isEmpty || c.buffer.isReadOnly)
-                Button("Copy") { _ = c.perform(.copy, clipboard: Self.clipboard(c)) }.disabled(c.buffer.selection.isEmpty)
-                Button("Paste") { _ = c.perform(.paste, clipboard: Self.clipboard(c)) }.disabled(c.buffer.isReadOnly)
-                Divider()
-                Button("Select All") { _ = c.perform(.selectAll, clipboard: Self.clipboard(c)) }
+                // A breakpoint under the pointer: its own menu (DebugEditors.swift).
+                if let b = model.debug.gutterMenuBreakpoint(file: c.document.path) {
+                    BreakpointMenuItems(model: model, breakpoint: b, controller: c)
+                } else {
+                    Button("Cut") { _ = c.perform(.cut, clipboard: Self.clipboard(c)) }.disabled(c.buffer.selection.isEmpty || c.buffer.isReadOnly)
+                    Button("Copy") { _ = c.perform(.copy, clipboard: Self.clipboard(c)) }.disabled(c.buffer.selection.isEmpty)
+                    Button("Paste") { _ = c.perform(.paste, clipboard: Self.clipboard(c)) }.disabled(c.buffer.isReadOnly)
+                    Divider()
+                    Button("Select All") { _ = c.perform(.selectAll, clipboard: Self.clipboard(c)) }
+                }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Source Editor")

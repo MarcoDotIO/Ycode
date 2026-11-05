@@ -107,7 +107,7 @@ struct SwiftLineLexer: LineLexer {
                         // `.default`, `.init` after a dot are member names.
                         if s > l.start, l[s - 1] == 46, l.string(s, i) != "init", l.string(s, i) != "self" { continue }
                         out.add(.keyword, s, i)
-                    } else if isUpper(c) {
+                    } else if isUpper(c), !inImportPath(l, before: s) {
                         out.add(.typeName, s, i)
                     }
                 }
@@ -115,6 +115,36 @@ struct SwiftLineLexer: LineLexer {
             }
             i += 1
         }
+    }
+
+    /// Declaration kinds an `import` can name (`import struct M.T`).
+    static let importKinds: Set<String> = ["struct", "class", "enum", "protocol", "typealias", "func", "var", "let", "actor", "macro"]
+
+    /// Whether the name at `s` is a component of an `import` path
+    /// (`import Foundation`, `import struct Foundation.Date`): the module
+    /// path is plain text, not a type (`editor-area.md` §D.1).
+    func inImportPath(_ l: LineText, before s: Int) -> Bool {
+        var j = s - 1
+        func skipSpaces() { while j >= l.start, isSpace(l[j]) { j -= 1 } }
+        // The word ending at `j` (inclusive), moving `j` before it.
+        func previousWord() -> String? {
+            let e = j + 1
+            while j >= l.start, isIdentPart(l[j]) { j -= 1 }
+            return e > j + 1 ? l.string(j + 1, e) : nil
+        }
+        skipSpaces()
+        // Earlier components: `Name.` before this one.
+        while j >= l.start, l[j] == 46 {
+            j -= 1
+            skipSpaces()
+            guard previousWord() != nil else { return false }
+            skipSpaces()
+        }
+        guard let w = previousWord() else { return false }
+        if w == "import" { return true }
+        guard Self.importKinds.contains(w) else { return false }
+        skipSpaces()
+        return previousWord() == "import"
     }
 
     /// The number of `#` before a `"` at `i`, or nil.

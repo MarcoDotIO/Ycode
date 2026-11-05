@@ -15,6 +15,32 @@ enum InspectorStyle {
     /// Multi-line values: a 14-point line pitch.
     static let pathLineHeight: CGFloat = 14
 
+    /// From the file name's line to the path's first line (with the
+    /// rows' own room): 18 apart (`metrics.md` §13.3).
+    static let fileNameToPath: CGFloat = 4
+
+    /// Section headings: bold, #858587 (`metrics.md` §13.3).
+    static var headingColor: NSColor {
+        NSColor(name: nil) { a in
+            a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .secondaryLabelColor
+                : NSColor(srgbRed: 0x85 / 255.0, green: 0x85 / 255.0, blue: 0x87 / 255.0, alpha: 1)
+        }
+    }
+
+    /// `s` in `font`, its letters drawn closer when it is wider than
+    /// `width` (at most 0.8 points per letter), right-aligned.
+    static func fitted(_ s: String, font: NSFont, width: CGFloat) -> NSAttributedString {
+        let para = NSMutableParagraphStyle()
+        para.alignment = .right
+        para.lineBreakMode = .byClipping
+        var attrs: [NSAttributedString.Key: Any] = [.font: font, .paragraphStyle: para, .foregroundColor: NSColor.labelColor]
+        let w = (s as NSString).size(withAttributes: attrs).width
+        // The label's own inset (2 points each side) is part of the column.
+        let room = width - 4
+        if w > room, s.count > 1 { attrs[.kern] = max(-0.8, (room - w) / CGFloat(s.count - 1)) }
+        return NSAttributedString(string: s, attributes: attrs)
+    }
+
     /// #A6A6A7 on the inspector's background.
     static var tableBorder: NSColor { NSColor.labelColor.withAlphaComponent(0.35) }
 

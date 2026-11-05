@@ -64,8 +64,8 @@ func openPopup(services: WindowServices?, ref: NodeRef, box: PopupBox, submenu: 
     }
     let origin = submenu ? CGPoint(x: frame.maxX - 2, y: frame.minY - MenuMetrics.verticalPadding)
                          : CGPoint(x: frame.minX, y: frame.maxY + 4)
-    box.handle = popups.presentPopup(content: content, origin: origin, minWidth: minWidth ?? (submenu ? 0 : frame.width),
-                                     onDismiss: onDismiss)
+    box.handle = popups.presentPopup(content: content, origin: origin, anchor: frame, minWidth: minWidth ?? (submenu ? 0 : frame.width),
+                                     chrome: .menu, fallbackKeys: nil, onDismiss: onDismiss)
 }
 
 enum MenuMetrics {

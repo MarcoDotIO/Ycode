@@ -288,6 +288,7 @@ final class DestinationPopUpButton: NSPopUpButton, NSMenuDelegate {
         probe.isBordered = isBordered
         probe.controlSize = controlSize
         probe.font = font
+        probe.imagePosition = imagePosition   // glyphs only when the toolbar is short of room
         if let arrow = (cell as? NSPopUpButtonCell)?.arrowPosition { (probe.cell as? NSPopUpButtonCell)?.arrowPosition = arrow }
         let item = NSMenuItem(title: selectedItem?.title ?? "", action: nil, keyEquivalent: "")
         item.image = selectedItem?.image

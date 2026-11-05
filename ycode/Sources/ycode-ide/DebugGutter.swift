@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 import YcodeIDEShell
+#if os(Linux)
+import OVPlatform
+#endif
 
 /// The debugger in the source editor (`specs/ide/debug.md`,
 /// `reference-ui-4.md` §5.2): breakpoints in the gutter (a tag pointing
@@ -15,7 +18,37 @@ enum DebugGutter {
         c.onGutterClick = { [weak model] line in model?.debug.gutterClick(file: path, line: line) }
         c.onGutterDrag = { [weak model] from, to in model?.debug.gutterDrag(file: path, from: from, to: to) }
         c.hasBreakpoint = { [weak model] line in model?.debug.breakpoints.breakpoint(file: path, line: line) != nil }
+        c.onGutterDoubleClick = { [weak model, weak c] line in
+            guard let model, let c else { return }
+            model.debug.editBreakpoint(file: path, line: line, anchor: anchor(c, line: line))
+        }
     }
+
+    /// The gutter's part of a line in window points: what the breakpoint
+    /// editor's arrow points at.
+    static func anchor(_ c: SourceEditorController, line: Int) -> CGRect {
+        CGRect(x: c.windowOrigin.x, y: c.windowOrigin.y + c.lineTop(line - 1) - c.top, width: c.gutterWidth - 4, height: c.lineHeight)
+    }
+
+    /// The pointer over the editor: the breakpoint under it in the gutter
+    /// (its context menu replaces the editor's).
+    static func hover(_ phase: HoverPhase, controller c: SourceEditorController, model: WorkspaceShellModel) {
+        switch phase {
+        case .active(let p): model.debug.pointerInGutter(file: c.document.path, line: p.x < c.gutterWidth ? c.lineNumber(at: p) : nil)
+        case .ended: model.debug.pointerInGutter(file: c.document.path, line: nil)
+        }
+    }
+
+    #if os(Linux)
+    /// ⌘-click (the Super key) on a breakpoint in the gutter opens its
+    /// editor. True when the click was one.
+    static func commandClick(_ p: CGPoint, modifiers m: KeyModifiers, controller c: SourceEditorController, model: WorkspaceShellModel) -> Bool {
+        guard m.contains(.command), p.x < c.gutterWidth, let line = c.lineNumber(at: p),
+              model.debug.breakpoints.breakpoint(file: c.document.path, line: line) != nil else { return false }
+        model.debug.editBreakpoint(file: c.document.path, line: line, anchor: anchor(c, line: line))
+        return true
+    }
+    #endif
 
     /// The breakpoint on a 1-based line, if any; true when one was drawn.
     @discardableResult

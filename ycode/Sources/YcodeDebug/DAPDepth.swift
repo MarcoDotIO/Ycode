@@ -6,6 +6,8 @@ public struct EvaluateResult: Equatable, Sendable {
     public var result: String
     public var type: String?
     public var variablesReference: Int
+    /// Where the value is in memory, when the adapter says.
+    public var memoryReference: String?
 }
 
 /// One disassembled instruction.
@@ -40,7 +42,8 @@ extension DAPClient {
         var args: [String: JSON] = ["expression": .string(expression), "context": .string(context)]
         if let frameID { args["frameId"] = .number(Double(frameID)) }
         let b = try await request("evaluate", .object(args))
-        return EvaluateResult(result: b["result"]?.string ?? "", type: b["type"]?.string, variablesReference: b["variablesReference"]?.int ?? 0)
+        return EvaluateResult(result: b["result"]?.string ?? "", type: b["type"]?.string, variablesReference: b["variablesReference"]?.int ?? 0,
+                              memoryReference: b["memoryReference"]?.string)
     }
 
     /// `setVariable`: assigns `value` to `name` inside the container

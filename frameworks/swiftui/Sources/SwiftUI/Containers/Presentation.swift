@@ -663,8 +663,8 @@ struct PopoverModifier: PrimitiveModifier {
                 guard let node, node.isAlive, box.handle.map({ !$0.isDismissed }) != true,
                       let f = HitTesting.frame(of: node, mirrorWidth: nil) else { return }
                 let chrome = AnyView(PopoverChrome(content: make()))
-                box.handle = popups.presentPopup(content: chrome, origin: CGPoint(x: f.minX, y: f.maxY + 6), minWidth: 0,
-                                                 chrome: .plain, onDismiss: {
+                box.handle = popups.presentPopup(content: chrome, origin: CGPoint(x: f.minX, y: f.maxY + 6), anchor: f, minWidth: 0,
+                                                 chrome: .plain, fallbackKeys: nil, onDismiss: {
                                                      if binding.wrappedValue { binding.wrappedValue = false }
                                                  })
             }

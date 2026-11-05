@@ -67,10 +67,13 @@ disk with their old text kept. The preview is the core's `RenamePreview`.
   the definition. (Jump to Definition is unchanged.)
 - The Linux IDE puts both in its Find navigator as a search's results:
   the query field holds the name, the count's place the title
-  (`greet — 3 references`, `Callers of greet`), files in path order with
-  their lines (`SymbolResults`, shared). Callers are one level: each
-  caller's call sites, by file. A search of the user's own clears the
-  title.
+  (`greet — 3 references`, `Callers of greet`). References are files in
+  path order with their lines (`SymbolResults`, shared). Callers are the
+  tree above, two levels deep (`CallerTree`, shared): the function, its
+  callers, their callers, each row a function badge, the name and
+  `file.swift:line` (with "(n calls)" when it calls its parent more than
+  once); a row opens the function's declaration, a triangle collapses its
+  callers. A search of the user's own clears the title and the tree.
 
 ## Code actions and fix-its
 

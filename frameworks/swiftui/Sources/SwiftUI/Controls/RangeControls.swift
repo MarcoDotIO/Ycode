@@ -234,6 +234,7 @@ public struct Stepper<Label: View>: View {
     let canIncrement: () -> Bool
     let canDecrement: () -> Bool
     @Environment(\._labelsHidden) private var labelsHidden
+    @Environment(\._formColumnWidth) private var columnWidth
 
     public init(@ViewBuilder label: () -> Label, onIncrement: (() -> Void)?, onDecrement: (() -> Void)?,
                 onEditingChanged: @escaping (Bool) -> Void = { _ in }) {
@@ -273,8 +274,8 @@ public struct Stepper<Label: View>: View {
 
     public var body: some View {
         let inc = onIncrement, dec = onDecrement
-        ControlRowLayout {
-            if !labelsHidden { label }
+        ControlRowLayout(columnWidth: columnWidth) {
+            if !labelsHidden { label.modifier(ColumnLabelAlignment(inColumn: columnWidth != nil)) }
             StepperControl(onIncrement: onIncrement, onDecrement: onDecrement, onEditingChanged: onEditingChanged,
                            canIncrement: canIncrement(), canDecrement: canDecrement())
                 .accessibilityHidden(true)
@@ -324,16 +325,24 @@ struct StepperControl: View {
     let canDecrement: Bool
     @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\._formColumnWidth) private var columnWidth
     @State private var pressed: Int?
     @State private var isFocused = false
+
+    /// In a `.columns` form: the desktop's small stepper, up over down in a
+    /// 15 × 22 rounded bezel.
+    static let compactSize = CGSize(width: 15, height: 22)
 
     private func half(_ index: Int, symbol: String, enabled: Bool, action: (() -> Void)?) -> some View {
         let palette = ControlPalette(scheme)
         let on = enabled && isEnabled && action != nil
         let editing = onEditingChanged
-        return Image(systemName: symbol)
+        let compact = columnWidth != nil
+        return Image(systemName: compact ? (index == 0 ? "chevron.down" : "chevron.up") : symbol)
+            .font(compact ? .system(size: 7, weight: .bold) : nil)
             .foregroundStyle(on ? AnyShapeStyle(Color.primary) : AnyShapeStyle(palette.placeholder))
-            .frame(width: StepperMetrics.size.width / 2, height: StepperMetrics.size.height)
+            .frame(width: compact ? Self.compactSize.width : StepperMetrics.size.width / 2,
+                   height: compact ? Self.compactSize.height / 2 : StepperMetrics.size.height)
             .background { if pressed == index { palette.subtleFill } }
             .contentShape(Rectangle())
             .gesture(ControlPressGesture(onPressed: { p in
@@ -345,15 +354,28 @@ struct StepperControl: View {
 
     var body: some View {
         let palette = ControlPalette(scheme)
-        HStack(spacing: 0) {
-            half(0, symbol: "minus", enabled: canDecrement, action: onDecrement)
-            half(1, symbol: "plus", enabled: canIncrement, action: onIncrement)
+        Group {
+            if columnWidth != nil {
+                VStack(spacing: 0) {
+                    half(1, symbol: "plus", enabled: canIncrement, action: onIncrement)
+                    half(0, symbol: "minus", enabled: canDecrement, action: onDecrement)
+                }
+                .frame(width: Self.compactSize.width, height: Self.compactSize.height)
+                .background(palette.fill, in: RoundedRectangle(cornerRadius: 5))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .focusRing(isFocused, RoundedRectangle(cornerRadius: 5))
+            } else {
+                HStack(spacing: 0) {
+                    half(0, symbol: "minus", enabled: canDecrement, action: onDecrement)
+                    half(1, symbol: "plus", enabled: canIncrement, action: onIncrement)
+                }
+                .overlay { Rectangle().fill(palette.separator).frame(width: 1, height: 18).allowsHitTesting(false) }
+                .frame(width: StepperMetrics.size.width, height: StepperMetrics.size.height)
+                .background(palette.fill, in: Capsule())
+                .clipShape(Capsule())
+                .focusRing(isFocused, Capsule())
+            }
         }
-        .overlay { Rectangle().fill(palette.separator).frame(width: 1, height: 18).allowsHitTesting(false) }
-        .frame(width: StepperMetrics.size.width, height: StepperMetrics.size.height)
-        .background(palette.fill, in: Capsule())
-        .clipShape(Capsule())
-        .focusRing(isFocused, Capsule())
         .controlFocus($isFocused) { k in
             guard k.isDown else { return false }
             switch k.key {

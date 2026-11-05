@@ -43,18 +43,24 @@ import Testing
         let nav = NavigatorInspectorR45Tests().laidOutNavigator()
         nav.view.setFrameSize(NSSize(width: 290, height: 600))
         nav.view.layoutSubtreeIfNeeded()
-        let h = nav.view.bounds.height
         let sel = nav.selectorView.frame
         #expect(sel.size == NSSize(width: 278, height: 30) && sel.minX == 6, "\(sel)")
         #expect(!nav.selectorPill.isHidden && nav.selectorPill.frame.size == NavigatorAreaController.selectorPillSize)
         let plus = nav.plusGlass.frame, field = nav.filterGlass.frame
         #expect(plus.size == NavigatorAreaController.plusSize && abs(plus.minX - 6) <= 0.5, "\(plus)")
         #expect(field.height == 30 && abs(field.minY - 7) <= 0.5 && abs(field.minX - plus.maxX - NavigatorAreaController.plusToFilter) <= 0.5 && field.width == 242 && abs(nav.view.bounds.maxX - field.maxX - 6) <= 0.5, "\(field)")
-        // Under the bars: the outline's scroll view spans the area's height.
+        // Under the bars: the outline's scroll view runs from the selector
+        // capsule's top (nothing shows above it) to the area's bottom.
         let scroll = nav.scrollView
         let inRoot = scroll.convert(scroll.bounds, to: nav.view)
-        #expect(abs(inRoot.maxY - h) <= 0.5 && abs(inRoot.minY) <= 0.5, "\(inRoot)")
-        #expect(scroll.contentInsets.top > 0 && scroll.contentInsets.bottom >= nav.filterGlass.frame.maxY)
+        #expect(abs(inRoot.maxY - sel.maxY) <= 0.5 && abs(inRoot.minY - field.minY) <= 0.5, "\(inRoot)")
+        // The scroll bar's track: 3 below the selector, 11 above the filter capsule.
+        #expect(abs(scroll.scrollerInsets.top - sel.height - 3) <= 0.5 && abs(scroll.scrollerInsets.bottom - field.height - 11) <= 0.5,
+                "\(scroll.scrollerInsets)")
+        // The first row sits 7 below the selector capsule.
+        let row0 = nav.outlineView.convert(nav.outlineView.rect(ofRow: 0), to: nav.view)
+        #expect(nav.outlineView.numberOfRows == 0 || abs(sel.minY - row0.maxY - NavigatorAreaController.firstRowGap) <= 0.5, "\(row0) \(sel)")
+        #expect(scroll.contentInsets.top > 0 && scroll.contentInsets.bottom >= nav.filterGlass.frame.height)
         #expect(!nav.scrollClipView.clipsToBounds)
         // The Find navigator's header: clipped below it, the scroll view
         // filling the clip and its inset putting the first row 4 points
@@ -97,7 +103,7 @@ import Testing
         let box = w.recentsBox.frame
         #expect(box.minX == 60 && box.width == 360 && h - box.maxY == 295 && box.height == 277, "\(box)")
         #expect(w.recentsBox.layer?.cornerRadius == 12 && w.recentsBox.layer?.borderWidth == 0 || NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast)
-        #expect(w.table.rowHeight == 48)
+        #expect(w.table.rowHeight == 47 && w.table.intercellSpacing.height == 0)   // metrics.md §13.4: a 47-point pitch
         #expect(w.tableView(w.table, rowViewForRow: 0) is RecentRowView)
         #expect([w.openButton, w.cloneButton].allSatisfy { $0.bezelStyle == .push && $0.borderShape == .capsule })
     }

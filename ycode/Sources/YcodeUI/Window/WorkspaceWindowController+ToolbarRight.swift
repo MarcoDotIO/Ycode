@@ -128,12 +128,6 @@ extension WorkspaceWindowController {
         leftAreaObservation.tokens.append(debugItem.observe(\.isCollapsed, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.updateAreaToggleTitles() }
         })
-        let p = toolbarControls.editorModesPullDown
-        p.isBordered = false
-        p.controlSize = .small
-        (p.cell as? NSPopUpButtonCell)?.arrowPosition = .arrowAtBottom
-        p.setAccessibilityTitle("Editor Modes")
-        p.toolTip = "Editor Modes"
         updateEditorModesPullDown()
         updateAreaToggleTitles()
     }
@@ -166,11 +160,14 @@ extension WorkspaceWindowController {
     }
     static let toolbarSpacers: Set<NSToolbarItem.Identifier> = [.flexibleSpace, .space, .sidebarTrackingSeparator, .inspectorTrackingSeparator]
 
-    /// Recovers room in the order of §2.2.2 until no item overflows: the
-    /// editor modes fold into one pull-down, then the scheme name
-    /// truncates, then the activity subtitle (in the middle). Each step is
-    /// tried after a layout of the window's frame; a wider window undoes
-    /// them. Item 11 (Show Inspector) has the highest visibility priority.
+    /// Recovers room in the order of `ToolbarFit` (liquid-glass.md §8.2)
+    /// until nothing but what the step allows sits in the overflow: the
+    /// editor-mode group goes into the "»" menu, then the scheme capsule
+    /// drops its titles, then the activity subtitle truncates in the
+    /// middle. Each step is tried after a layout of the window's frame; a
+    /// wider window undoes them. Show Inspector has the highest visibility
+    /// priority and the editor modes the lowest, so the system's overflow
+    /// takes them first.
     public func fitToolbar() {
         guard let window, let frame = window.contentView?.superview, window.toolbar != nil, !toolbarControls.fitting else { return }
         toolbarControls.fitting = true
@@ -178,70 +175,81 @@ extension WorkspaceWindowController {
         func fits(_ f: ToolbarFit) -> Bool {
             apply(f)
             frame.layoutSubtreeIfNeeded()
-            return overflowedToolbarItems.isEmpty
+            return f.accepts(overflowed: overflowedToolbarItems)
         }
-        let natural = (scheme: schemeNaturalWidth, activity: activityView.naturalWidth)
-        for f in ToolbarFit.steps(schemeNatural: natural.scheme, activityNatural: natural.activity) where fits(f) {
+        let steps = ToolbarFit.steps(activityNatural: activityView.naturalWidth)
+        for f in steps where fits(f) {
             toolbarControls.fit = f
             return
         }
-        // Nothing fits: keep the tightest step; the lowest-priority items
-        // (history, activity) overflow before the right group.
-        toolbarControls.fit = ToolbarFit.steps(schemeNatural: natural.scheme, activityNatural: natural.activity).last ?? ToolbarFit()
+        // Nothing fits: keep the tightest step; the remaining items
+        // overflow by visibility priority.
+        toolbarControls.fit = steps.last ?? ToolbarFit()
         apply(toolbarControls.fit)
     }
 
-    /// The scheme pop-up's width for its whole title.
-    var schemeNaturalWidth: CGFloat {
-        let probe = NSPopUpButton(frame: .zero, pullsDown: false)
-        probe.isBordered = schemePopUp.isBordered
-        probe.controlSize = schemePopUp.controlSize
-        probe.addItem(withTitle: schemePopUp.titleOfSelectedItem ?? "")
-        return ceil(probe.intrinsicContentSize.width)
-    }
-
     func apply(_ f: ToolbarFit) {
-        // Editor modes: the segmented control or the pull-down.
-        if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier == Self.editorModesID }) {
-            let view: NSView = f.editorModesCollapsed ? toolbarControls.editorModesPullDown : toolbarControls.editorModes
-            if item.view !== view { item.view = view }
-        }
-        // Scheme name cap.
-        if let cap = f.schemeWidth {
-            if let c = toolbarControls.schemeCap { c.constant = cap } else {
-                let c = schemePopUp.widthAnchor.constraint(lessThanOrEqualToConstant: cap)
-                c.isActive = true
-                toolbarControls.schemeCap = c
-            }
-        } else if let c = toolbarControls.schemeCap {
-            c.isActive = false
-            toolbarControls.schemeCap = nil
-        }
+        setSchemeGlyphsOnly(f.schemeGlyphsOnly)
         activityView.maximumWidth = f.activityWidth ?? .greatestFiniteMagnitude
     }
 
-    // MARK: Editor modes pull-down (§2.2.2.1)
+    /// The scheme capsule with its titles (the scheme's name, "›", the
+    /// destination's name) or, short of room, its glyphs only
+    /// (liquid-glass.md §8.2: about 87 points). The titles move to the
+    /// tooltips meanwhile; the accessibility titles stay.
+    func setSchemeGlyphsOnly(_ glyphsOnly: Bool) {
+        for p in [schemePopUp, destinationPopUp] {
+            let position: NSControl.ImagePosition = glyphsOnly ? .imageOnly : .imageLeading
+            if p.imagePosition != position {
+                p.imagePosition = position
+                p.invalidateIntrinsicContentSize()
+            }
+            let tip = glyphsOnly ? p.titleOfSelectedItem : nil
+            if p.toolTip != tip { p.toolTip = tip }
+        }
+        // The glyphs keep the reference's spacing: about 87 points in all.
+        if #available(macOS 26, *), let stack = schemePopUp.superview as? NSStackView {
+            let side: CGFloat = glyphsOnly ? 14 : 8
+            if stack.edgeInsets.left != side { stack.edgeInsets = NSEdgeInsets(top: 0, left: side, bottom: 0, right: side) }
+            stack.spacing = glyphsOnly ? 4 : 0
+        }
+    }
 
-    /// The collapsed editor modes: the current mode's glyph with a chevron;
-    /// its menu holds the three modes, the current one checked.
+    /// Whether the scheme capsule shows glyphs only (tests).
+    public var schemeShowsGlyphsOnly: Bool { schemePopUp.imagePosition == .imageOnly }
+
+    /// The scheme capsule's width (its content and side insets; tests).
+    public var schemeCapsuleWidth: CGFloat {
+        guard let v = window?.toolbar?.items.first(where: { $0.itemIdentifier == Self.schemeID })?.view else { return 0 }
+        v.layoutSubtreeIfNeeded()
+        return v.fittingSize.width
+    }
+
+    // MARK: Editor modes in the overflow menu (liquid-glass.md §8.2)
+
+    /// The editor-mode group's entry in the "»" menu: "Editor Modes" with
+    /// the three modes, the current one checked.
     func updateEditorModesPullDown() {
-        let p = toolbarControls.editorModesPullDown
+        guard let item = window?.toolbar?.items.first(where: { $0.itemIdentifier == Self.editorModesID }) else { return }
+        item.menuFormRepresentation = editorModesMenuItem()
+    }
+
+    func editorModesMenuItem() -> NSMenuItem {
         let mode = activeEditorMode
-        let symbols = ["rectangle.righthalf.inset.filled", "rectangle.split.2x1", "arrow.left.arrow.right"]
+        let symbols = WorkspaceChrome.editorModes.symbols
         let titles = ["Canvas", "Assistant", "Code Review"]
-        let menu = NSMenu()
-        let shown = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        shown.image = NSImage(systemSymbolName: symbols[mode?.rawValue ?? 0], accessibilityDescription: mode.map { titles[$0.rawValue] } ?? "Editor Modes")
-        menu.addItem(shown)
+        let menu = NSMenu(title: "Editor Modes")
         for m in EditorMode.allCases {
             let i = NSMenuItem(title: titles[m.rawValue], action: #selector(editorModeMenuChosen(_:)), keyEquivalent: "")
             i.target = self
             i.tag = m.rawValue
-            i.image = NSImage(systemSymbolName: symbols[m.rawValue], accessibilityDescription: nil)
+            if symbols.indices.contains(m.rawValue) { i.image = NSImage(systemSymbolName: symbols[m.rawValue], accessibilityDescription: nil) }
             i.state = m == mode ? .on : .off
             menu.addItem(i)
         }
-        p.menu = menu
+        let top = NSMenuItem(title: "Editor Modes", action: nil, keyEquivalent: "")
+        top.submenu = menu
+        return top
     }
 
     @objc func editorModeMenuChosen(_ item: NSMenuItem) {

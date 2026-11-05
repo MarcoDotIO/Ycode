@@ -32,6 +32,8 @@ struct YcodeIDEApp: App {
         YcodeRelease.handleVersionFlag(tool: "ycode-ide")
         YcodeRelease.adoptBundledHelpers()
         ShellLook.apply()
+        // The models' Copy commands (Debug ▸ Console ▸ Copy Row) write here.
+        ShellPasteboard.writer = { ShellClipboard.copy($0) }
         #if os(Linux)
         // Quit and the window's close button ask about unsaved changes first.
         ApplicationTermination.shouldTerminate = { ShellApp.model.shouldQuit() }

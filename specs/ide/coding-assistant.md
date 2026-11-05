@@ -3,11 +3,15 @@
 Ycode modules: `YcodeAssistant` (platform-neutral: providers, conversations,
 prompt building, change proposals, secret storage, OpenAI sign-in, the
 JSON-RPC layer, the ACP client; builds and tests on Linux), `YcodeMCP`
-(platform-neutral: the Ycode MCP server and its tools, `ycode mcp`; §10), `YcodeSubprocess` (`StreamingSubprocess`), `YcodeUI`
-(`Assistant/CodingAssistantModel`, `CodingAssistantViewController`,
-`ConversationView`, `NewConversationPrompt`, `ProposalReviewController`, `CodingAssistantServices`,
-`WorkspaceWindowController+CodingAssistant`, `+AgentMode`,
-`App/CodingAssistantSettingsPane`).
+(platform-neutral: the Ycode MCP server and its tools, `ycode mcp`; §10), `YcodeSubprocess` (`StreamingSubprocess`),
+`YcodeIDECore` (`Assistant/CodingAssistantModel`, `CodingAssistantServices`:
+the window's assistant, shared by both IDEs), `YcodeUI` (the macOS IDE:
+`CodingAssistantViewController`, `ConversationView`, `NewConversationPrompt`,
+`ProposalReviewController`, `WorkspaceWindowController+CodingAssistant`,
+`+AgentMode`, `App/CodingAssistantSettingsPane`), and the Linux IDE
+(§11: `YcodeIDEShell/ShellAssistantModel`, `WorkspaceShellModel+Assistant`;
+`ycode-ide/AssistantPane`, `AssistantTranscript`, `AssistantReviewSheet`,
+`SettingsPaneCodingAssistant`, `ShellDriver+Assistant`).
 
 The assistant answers questions about the user's code and proposes
 changes. It talks to a model through one of six back ends. It never writes
@@ -725,8 +729,10 @@ generated from the tool list.
   activity lines), session history across requests (`session/load`), ACP
   terminals, MCP `subscriptions/listen` and list-changed notifications
   (the tool list is fixed), elicitation and sampling (MRTR).
-- `ycode-ide` (the Linux shell) has no assistant pane yet; on Linux agents
-  use `ycode mcp`.
+- `ycode-ide` (the Linux shell) does not attach the MCP server to agents
+  (agent mode is the macOS IDE's); its agents run read-only and propose
+  (§11). On Linux an agent the user runs gets Ycode's tools with
+  `ycode mcp`.
 - No Generate Translations command in the String Catalog editor (agents
   translate through `strings_list` / `strings_set`).
 - Tests on the Ycode Simulator (`test` with a simulator destination) go
@@ -784,6 +790,69 @@ and device types), so a copied device goes there.
 | No ACP-capable agent CLI was installed on the Mac (Claude Code 2.1.316, Codex 0.163.0 and Antigravity offer MCP, not ACP); the ACP client is tested with stand-ins only | 3 | `--help` of each, 2026-10-31 |
 | Everything else in §10 (tool names, schemas, results, the review flow, the skill text) | — | Ycode's design |
 
+
+## 11. The Linux IDE (Ycode implementation, issue #18)
+
+`ycode-ide` shows the same pane over the same `CodingAssistantModel`
+(conversations, back ends, prompts, streaming, saving), through
+`ShellAssistantModel`, which has no toolkit types and is tested headless:
+
+- **Where it lives.** The navigator column's Navigators | Coding Assistant
+  control (clicking the shown one hides the area), View ▸ Navigators ▸
+  Show Coding Assistant (Ctrl+0; "Hide Coding Assistant" while shown),
+  File ▸ New ▸ Conversation, Navigate ▸ Jump to Next Active Conversation,
+  Editor ▸ Show Coding Tools ▸ Explain / Document / Generate a Playground
+  / Generate a Preview, and the toolbar's New Conversation prompt (a
+  pop-up under the button; sending starts a conversation in the pane).
+  Choosing a navigator leaves the pane.
+- **Layout.** As §4: the header (New Conversation with its provider
+  chevron, New Group), the list (groups, conversations, Archive last; a
+  context menu renames, files, archives and deletes; double-click renames),
+  the status note, the transcript, then the message field. Above the field
+  a line says what the request carries ("Sends: Greeting.swift · lines 3–4
+  selected · 2 issues · 1 other open file", following the Context
+  settings); attachment chips; under it the attach menu (Current File,
+  Selection), the "Provider · Model" pull-down and Send / Stop.
+- **Proposals in the transcript.** Each proposal (§5.3) is a card with its
+  title, "+a −r" and the change as a compact diff (old or new line number,
+  a bar beside added and removed lines on a tinted band, at most 40 lines;
+  Review… shows all), and Review…, Reject and Accept ("Create File" for a
+  new file; Accept is off when the proposal changes nothing). A response
+  with more than one undecided proposal also offers Accept All and Reject
+  All. Review… opens the side-by-side sheet of §5.3 (Reject on Esc,
+  Accept on Return). A decided card keeps the diff it was decided on,
+  dimmed, with "Applied" or "Rejected".
+- **Accept** applies the change in the file's editor (opened first) as one
+  undo step that replaces only the part that differs, left unsaved; a new
+  file is created and opened. The change applies only to the text it was
+  shown against: if the editor's text changed since, nothing is applied
+  and the pane says so. Nothing is written to disk until the user saves.
+- **Context** (§5.2) comes from the editor: the file's text with unsaved
+  edits, the caret line, the selection (lines and UTF-16 range), the other
+  open files, and the Issue navigator's issues.
+- **Settings ▸ Coding Assistant** has the sections of §6. Addresses and
+  paths apply on Return. Keys go to `FileSecretStore` (§7:
+  `$XDG_CONFIG_HOME/ycode/secrets`, 0700 folder, 0600 files); the field
+  shows only that a key is saved.
+- **Storage.** Conversations are saved in
+  `$XDG_DATA_HOME/Ycode/Conversations/<hash>.json` (Foundation's
+  Application Support folder on Linux).
+- **Not in the Linux IDE.** Agent mode's MCP attachment (agents run as in
+  §3.4); conversations in editor tabs or panes (Conversation in New Tab /
+  in Editor Pane); ⇧Return for a new line in the message field (OpenViews'
+  vertical text field sends on Return); dragging conversations between
+  groups (the context menu files them).
+- **Tests.** `ShellAssistantTests` (macOS and Linux): a stand-in
+  OpenAI-compatible server on 127.0.0.1 and a stand-in Claude Code script
+  printing its stream-json events; asking with the editor's context,
+  streaming, two proposals as diffs, accepting one and rejecting the other
+  (the disk untouched until Save All), Accept All and Reject All, review,
+  refusals, the commands and the list. The end-to-end walk
+  (`YCODE_IDE_ASSISTANT=<prefix>`, `ShellDriver+Assistant.swift`) does the
+  same in the running IDE with the pointer and keyboard against a stand-in
+  server it starts, saves a stand-in key through Settings, and checks the
+  files on disk, the key file's mode and that the request carried the key.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -802,4 +871,5 @@ and device types), so a copied device goes there.
 | Codex `exec --json` events, sandbox modes, flags | 1 | Codex documentation: non-interactive mode; `codex exec --help` |
 | Antigravity CLI print mode, stream-json events, `--mode plan`, `--sandbox` | 1 | Antigravity CLI documentation: headless mode, CLI reference; `agy --help` |
 | Each tool's real output matches the parsers | 3 | one read-only smoke prompt per installed tool (Claude Code 2.1.311 with no tools, Codex 0.163.0, Antigravity CLI 1.4.3) and one against Ollama 0.40.11 with qwen2.5-coder, 2026-10-27 |
+| The Linux IDE's pane (§11): the same placement and commands as §4, inline diffs with Accept / Reject / Accept All / Reject All, the context line | — | Ycode's design, over the shared model and the §4 commands (level 3 for the commands, as above) |
 | Everything else | — | Ycode's design |

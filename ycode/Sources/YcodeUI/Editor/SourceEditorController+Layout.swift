@@ -111,7 +111,11 @@ extension SourceEditorController {
         // Without wrapping the container is unbounded: no column limit.
         let columns = width.isFinite && width < 100_000 ? Int(width / advance) : 10_000
         minimap.textTopInset = CGFloat(EditorMetrics.firstLineInset)
-        minimap.rows = MinimapView.rows(of: storage, columns: columns, tabWidth: Preferences.shared.tabWidth, wraps: Preferences.shared.wrapLines)
+        // One bar per token (§D.6): the syntax document's tokens.
+        let doc = syntax.document.flatMap { $0.units.count == storage.length ? $0 : nil }
+        let tokens = doc.map { MinimapView.tokenInteriors($0.tokens(in: 0..<storage.length)) } ?? IndexSet()
+        minimap.rows = MinimapView.rows(of: storage, columns: columns, tabWidth: Preferences.shared.tabWidth, wraps: Preferences.shared.wrapLines,
+                                        tokens: tokens)
         updateMinimapViewport()
     }
 }

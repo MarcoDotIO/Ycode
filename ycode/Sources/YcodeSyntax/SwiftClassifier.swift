@@ -30,6 +30,10 @@ final class SwiftClassifier {
         for c in tree.classifications(in: range) {
             let a = c.range.lowerBound.utf8Offset, b = c.range.upperBound.utf8Offset
             guard b > a, let kind = Self.kind(c.kind, firstByte: source[a]) else { continue }
+            // A module name after `import` is plain text, not a type
+            // (`editor-area.md` §D.1).
+            if kind == .typeName, c.kind == .identifier,
+               tree.token(at: AbsolutePosition(utf8Offset: a))?.parent?.is(ImportPathComponentSyntax.self) == true { continue }
             out.append((kind, a, b))
         }
     }

@@ -40,7 +40,8 @@ public final class BreakpointEditorController: NSViewController {
         switch breakpoint.actions.first {
         case .log(let m)?: actionPopUp.selectItem(at: 1); actionField.stringValue = m
         case .debuggerCommand(let c)?: actionPopUp.selectItem(at: 2); actionField.stringValue = c
-        case nil: actionPopUp.selectItem(at: 0)
+        // A sound (set in the Linux IDE's editor) is kept as it is.
+        case .sound?, nil: actionPopUp.selectItem(at: 0)
         }
         continueCheckbox.state = breakpoint.autoContinue ? .on : .off
         for c in [conditionField, ignoreField, actionField] as [NSControl] {

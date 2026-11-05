@@ -15,6 +15,9 @@ struct NavigatorColumn: View {
 
     var body: some View {
         let index = shownIndex ?? model.navigator.selectorIndex
+        if model.assistant.isShown {
+            AssistantColumn(model: model)   // AssistantPane.swift
+        } else {
         VStack(spacing: 0) {
             NavigatorToolbar(model: model)
             SelectorBar(selected: index) { i in
@@ -47,10 +50,13 @@ struct NavigatorColumn: View {
             if shownIndex == nil, model.navigator == .symbols {
                 SymbolFilterBar(symbols: model.symbols)   // SymbolNavigatorView.swift
             } else {
-                NavigatorFilterBar(spec: NavigatorBars.specs[index])
+                NavigatorFilterBar(spec: NavigatorBars.specs[index],
+                                   addMenu: shownIndex == nil && model.navigator == .breakpoints
+                                       ? { AnyView(BreakpointAddMenuItems(model: model)) } : nil)   // DebugEditors.swift
             }
         }
         .onChange(of: model.navigator) { _, _ in shownIndex = nil }
+        }
     }
 }
 
@@ -65,7 +71,8 @@ struct SelectorBar: View {
         let c = ShellColors(scheme)
         let pill = WorkspaceChrome.selectorPillSize
         HStack(spacing: 0) {
-            ForEach(Array(WorkspaceChrome.navigatorSymbols.enumerated()), id: \.offset) { pair in
+            // The Linux places (the Symbol navigator's own symbol and tooltip at ⌘3).
+            ForEach(Array(ShellNavigator.selectorButtons.map(\.symbol).enumerated()), id: \.offset) { pair in
                 let on = pair.offset == selected
                 Button { select(pair.offset) } label: {
                     ZStack {
@@ -80,8 +87,8 @@ struct SelectorBar: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(NavigatorBars.selectorToolTips[pair.offset])
-                .accessibilityLabel(CommandTable.navigators[pair.offset])
+                .help(ShellNavigator.selectorButtons[pair.offset].toolTip)
+                .accessibilityLabel(ShellNavigator.selectorButtons[pair.offset].title)
                 .shellTarget("selector \(pair.offset)")
             }
         }
@@ -97,6 +104,8 @@ struct SelectorBar: View {
 /// the field and the navigator's toggles (`NavigatorBars.specs`).
 struct NavigatorFilterBar: View {
     var spec: NavigatorBarSpec
+    /// The "+" pull-down's items, for a navigator whose "+" works.
+    var addMenu: (() -> AnyView)?
     @State private var text = ""
     @Environment(\.colorScheme) private var scheme
 
@@ -104,7 +113,21 @@ struct NavigatorFilterBar: View {
         let c = ShellColors(scheme)
         let h = CGFloat(WorkspaceChrome.filterBarHeight)
         HStack(spacing: CGFloat(WorkspaceChrome.plusToFilter)) {
-            if spec.left != .none {
+            if let addMenu {
+                Menu { addMenu() } label: {
+                    HStack(spacing: 1) {
+                        Image(systemName: "plus").font(.system(size: 12))
+                        Image(systemName: "chevron.down").font(.system(size: 7))
+                    }
+                    .foregroundStyle(c.secondaryLabel)
+                    .frame(width: CGFloat(WorkspaceChrome.plusCircleWidth), height: h)
+                    .background { Capsule(style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Add")
+                .shellTarget("navigator add")
+            } else if spec.left != .none {
                 HStack(spacing: 1) {
                     Image(systemName: spec.left == .more ? "ellipsis" : "plus").font(.system(size: 12))
                     Image(systemName: "chevron.down").font(.system(size: 7))
@@ -360,10 +383,14 @@ struct FindNavigator: View {
             .padding(.trailing, 6)
             .frame(height: 14)
             .padding(.top, 4)
-            NavigatorOutline(rows: OutlineRows.find(model.findRows, collapsed: collapsed), selection: model.findSelection,
-                             select: { id in if model.findRows.contains(where: { $0.id == id }) { return }; model.findSelection = id },
-                             toggle: { id, on in if on { collapsed.remove(id) } else { collapsed.insert(id) } }, target: "find results")
-                .padding(.top, 1)
+            if model.callHierarchy.tree != nil {
+                CallHierarchyOutline(model: model.callHierarchy).padding(.top, 1)   // CallHierarchyView.swift
+            } else {
+                NavigatorOutline(rows: OutlineRows.find(model.findRows, collapsed: collapsed), selection: model.findSelection,
+                                 select: { id in if model.findRows.contains(where: { $0.id == id }) { return }; model.findSelection = id },
+                                 toggle: { id, on in if on { collapsed.remove(id) } else { collapsed.insert(id) } }, target: "find results")
+                    .padding(.top, 1)
+            }
         }
         // Find in Workspace asks for the field (also when it switched to
         // this navigator, so the request may predate the field).

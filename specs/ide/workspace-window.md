@@ -29,7 +29,7 @@ files and any changed project through the byte-exact pbxproj writer
 | Area | Toggle | Ycode default |
 |---|---|---|
 | Navigator (left, sidebar) | toolbar / View ▸ Navigators (no default shortcut; ⌘0 is Show Coding Assistant) | shown, 290 pt |
-| Inspector (right) | toolbar / View ▸ Inspectors (no default shortcut) | shown, 265 pt (260 observed in pass 5) |
+| Inspector (right) | toolbar / View ▸ Inspectors (no default shortcut) | shown, 260 pt (observed in pass 5 and in council round 1, `liquid-glass.md` §7) |
 | Debug area (below editor) | ⇧⌘Y | hidden; shown when a debug session starts or on ⇧⌘C |
 | Toolbar | ⌥⌘T | shown |
 
@@ -117,7 +117,7 @@ system issue group `gearshape.2`. A test enforces this (CLAUDE.md rule 5).
   Full Path with reveal, Text Encoding "No Explicit Encoding", Line
   Endings "No Explicit Line Endings", Indent Using, Tab/Indent steppers.
 - OPEN QUESTION: exact activity-view status strings and date format.
-- Window 1400 × 900, navigator 290, inspector 265, debug area 135 points
+- Window 1400 × 900, navigator 290, inspector 260, debug area 135 points
   (reference-ui.md §2, §5, §6). The debug bar sits under the editor and
   stays when the debug area is hidden; Continue and the step buttons show
   only during a debug session.

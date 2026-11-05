@@ -78,7 +78,7 @@ public enum ExperimentalNotice {
         + "Ycode does not include one."
     public static let simulatorSetup = "Add a host in Settings ▸ Simulators, or pair one with `ycode sim remote pair`."
     /// The runtime wizard (`runtime-onboarding.md` §11.6, #55).
-    public static let runtimes = "Simulator runtimes come from your own copy of Apple's tools. Ycode does not download or include one; it uses the runtimes you have."
+    public static let runtimes = "Simulator runtimes are Apple software. Ycode includes none and shares none; it gets one from Apple for you only when you ask, or uses one you have."
     public static let headset = "Viewing a device in a headset is experimental. It needs a Linux PC running the viewer and an OpenXR headset."
     public static let profiler = "Gauge, the profiler, is experimental. It records CPU samples and a few other tracks, and only apps on the Ycode simulator."
     public static let interfaceBuilder = "This editor is experimental: it shows and edits common properties, and may not show every object in the file."

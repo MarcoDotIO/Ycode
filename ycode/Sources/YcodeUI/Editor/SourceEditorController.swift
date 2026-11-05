@@ -8,6 +8,22 @@ import YcodeLanguage
 /// behind the text.
 @MainActor
 final class SourceTextView: NSTextView {
+    /// After a live resize (a window resize, the inspector's slide) the
+    /// text view scrolls its insertion point into view, ignoring the
+    /// scroll view's content insets: with the caret on line 1 that put
+    /// the first lines under the jump bar. The text keeps its place
+    /// instead (council round 2).
+    override func viewDidEndLiveResize() {
+        guard let scroll = enclosingScrollView else { return super.viewDidEndLiveResize() }
+        let clip = scroll.contentView
+        let before = clip.bounds.origin
+        super.viewDidEndLiveResize()
+        guard clip.bounds.origin != before else { return }
+        let kept = clip.constrainBoundsRect(NSRect(origin: before, size: clip.bounds.size)).origin
+        clip.scroll(to: kept)
+        scroll.reflectScrolledClipView(clip)
+    }
+
     var issues: [Int: [Diagnostic]] = [:] { didSet { needsDisplay = true } }
     /// The text changed since the issues were set: annotations draw grey.
     var issuesStale = false { didSet { if oldValue != issuesStale { needsDisplay = true } } }
@@ -399,8 +415,17 @@ final class JumpBar: NSView {
     /// scrolling beneath shows as a faint veil; then a 2-point separator
     /// (`metrics.md` §12.3, `liquid-glass.md` §7.3).
     override func draw(_ dirtyRect: NSRect) {
-        EditorVeil.fill.setFill()
-        NSRect(x: 0, y: Self.separatorHeight, width: bounds.width, height: bounds.height - Self.separatorHeight).fill(using: .copy)
+        // Over the blurred band backdrop: a part of the editor's background,
+        // so the band passes about 8.5 % of the content (liquid-glass.md
+        // §8.3); with a theme's own background, the nearly opaque veil.
+        let band = NSRect(x: 0, y: Self.separatorHeight, width: bounds.width, height: bounds.height - Self.separatorHeight)
+        if EditorBlurVeil.applies {
+            Theme.backgroundColor.withAlphaComponent(CGFloat(EditorMetrics.jumpBarOverBlur)).setFill()
+            band.fill(using: .copy)
+        } else {
+            EditorVeil.fill.setFill()
+            band.fill(using: .copy)
+        }
         EditorVeil.drawSeparator(NSRect(x: 0, y: 0, width: bounds.width, height: Self.separatorHeight))
     }
 
@@ -719,7 +744,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     /// Lines currently hidden by folds.
     public private(set) var hiddenLines: Set<Int> = []
     public var isShowingFindBar: Bool { findBarHeight.constant > 0 }
-    let scrollView = NSScrollView()
+    let scrollView: NSScrollView = EditorScrollView()   // the top bounce (editor-area.md §D.4), 1:1 line wheels (§D.3)
     let textView: SourceTextView
     let gutter: GutterView
     let minimap = MinimapView()
@@ -832,6 +857,8 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         }
         stickyHeader.isHidden = true
         minimap.onScrollTo = { [weak self] y in self?.scrollMinimapTarget(y) }
+        minimap.scrollTarget = scrollView
+        stickyHeader.scrollTarget = scrollView
         minimapWidth = minimap.widthAnchor.constraint(equalToConstant: 0)
         minimapTrailing = minimap.trailingAnchor.constraint(equalTo: root.trailingAnchor)
         stickyHeaderTrailing = stickyHeader.trailingAnchor.constraint(equalTo: root.trailingAnchor)
@@ -844,7 +871,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
             jumpBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             jumpBar.heightAnchor.constraint(equalToConstant: JumpBar.height),
             bandBackdrop.topAnchor.constraint(equalTo: root.topAnchor),
-            bandBackdrop.bottomAnchor.constraint(equalTo: jumpBar.topAnchor),
+            bandBackdrop.bottomAnchor.constraint(equalTo: jumpBar.bottomAnchor),
             bandBackdrop.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             bandBackdrop.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             findBar.topAnchor.constraint(equalTo: jumpBar.bottomAnchor),
@@ -1092,6 +1119,8 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
 
     /// Applies the current settings and theme (called on every change).
     public func applyPreferences() {
+        bandBackdrop.themeChanged()
+        jumpBar.needsDisplay = true
         _ = view
         let p = Preferences.shared
         showsLineNumbers = p.showLineNumbers

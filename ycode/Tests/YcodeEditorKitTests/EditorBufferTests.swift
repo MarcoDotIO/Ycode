@@ -383,7 +383,8 @@ import YcodeSyntax
         #expect(EditorKeyBindings.command(.backspace, [.primary]) == .deleteBackward(.word))
         #expect(EditorKeyBindings.command(.character("z"), [.primary]) == .undo)
         #expect(EditorKeyBindings.command(.character("z"), [.primary, .shift]) == .redo)
-        #expect(EditorKeyBindings.command(.character("y"), [.primary]) == .redo)
+        // Ctrl+Y is Debug ▸ Deactivate Breakpoints (⌘Y), not Redo.
+        #expect(EditorKeyBindings.command(.character("y"), [.primary]) == nil)
         #expect(EditorKeyBindings.command(.character("s"), [.primary]) == nil)      // The menu's.
         #expect(EditorKeyBindings.command(.character("a"), []) == nil)              // Text.
         #expect(EditorKeyBindings.command(.tab, [.shift]) == .tab(backward: true))

@@ -68,6 +68,9 @@ import Testing
         // Xcode's runtime has no Remove.
         #expect(!all.contains("Remove…"))
         wc.next()
+        // Get a Runtime (#55): the routes, before Add a Runtime.
+        #expect(s.step == .download && Self.find("runtime-download-platform", in: root) != nil)
+        wc.next()
         #expect(s.step == .add && Self.find("runtime-choose", in: root) != nil)
         // A disk image: the confirmation (answered No here) shows the exact command.
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

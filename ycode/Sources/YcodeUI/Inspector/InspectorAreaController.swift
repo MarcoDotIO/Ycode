@@ -29,6 +29,8 @@ public final class InspectorAreaController: NSViewController {
     public var onChooseLocation: ((URL, URL) -> Void)?
     /// The rules drawn between sections of the shown inspector (tests).
     public private(set) var sectionRuleCount = 0
+    /// Rules inside sections (tests).
+    public private(set) var innerRuleCount = 0
     /// The shown file's info and history (tests).
     public private(set) var shownInfo: FileInspectorInfo?
     public private(set) var historyCommits: [GitRepository.Commit] = []
@@ -259,6 +261,7 @@ public final class InspectorAreaController: NSViewController {
         centerLabel.isHidden = true
         sectionTitles = []
         sectionRuleCount = 0
+        innerRuleCount = 0
         rowValues = []
         if index >= CommandTable.inspectors.count, let provider = extraProvider {
             let v = provider(index - CommandTable.inspectors.count)
@@ -424,6 +427,7 @@ public final class InspectorAreaController: NSViewController {
         nameField = name
         content.addArrangedSubview(row("Name", name))
         content.addArrangedSubview(row("Type", popUp("Type", ["Default - " + Self.typeName(for: file)])))
+        addInnerRule()   // metrics.md §13.3: a rule after Type
         let info = fileInfo?(file) ?? FileInspectorInfo()
         shownInfo = info
         // reference-ui-6.md §6 (I1): a file in a synchronized folder has
@@ -444,15 +448,24 @@ public final class InspectorAreaController: NSViewController {
         if isProject { content.addArrangedSubview(row("", note("Containing directory"))) }
         let fileName = NSTextField(labelWithString: file.lastPathComponent)
         fileName.font = .systemFont(ofSize: 11)
-        content.addArrangedSubview(row("", fileName))
+        let fileNameRow = row("", fileName)
+        content.addArrangedSubview(fileNameRow)
+        // 18 from the file name's line to the path's (metrics.md §13.3).
+        content.setCustomSpacing(InspectorStyle.fileNameToPath, after: fileNameRow)
         let path = InspectorStyle.pathLabel(file.path)
         path.preferredMaxLayoutWidth = 140
         let reveal = NSButton(image: NSImage(systemSymbolName: "arrow.right.circle.fill", accessibilityDescription: "Show in Finder")!,
                               target: self, action: #selector(revealClicked))
         reveal.isBordered = false
         fileControls["Reveal"] = reveal
-        content.addArrangedSubview(row("Full Path", NSStackView(views: [path, reveal])))
+        let pathStack = NSStackView(views: [path, reveal])
+        pathStack.alignment = .top
+        let fullPath = row("Full Path", pathStack)
+        // The label is top-aligned with the path's first line.
+        (fullPath as? NSStackView)?.alignment = .firstBaseline
+        content.addArrangedSubview(fullPath)
         rowValues.append(("Full Path", file.path))
+        addInnerRule()   // and after Full Path
         if let wc = info.workingCopy, let rel = info.relativePath {
             for (k, v) in [("Working Copy", wc), ("Relative Path", rel)] {
                 content.addArrangedSubview(row(k, v))
@@ -471,7 +484,7 @@ public final class InspectorAreaController: NSViewController {
         // Settings.
         let isImage = ImageViewerController.handles(file)
         if !isProject && !info.isPackageFile {
-            onDemandResourceTags()
+            onDemandResourceTags(resource: isImage)
             if isImage { imageSections() }   // editor-area.md §C.6
             targetMembership(file, info)
         }
@@ -484,6 +497,7 @@ public final class InspectorAreaController: NSViewController {
             InspectorStyle.dimFirstTitle(pop)
             content.addArrangedSubview(row(key, pop))
         }
+        addInnerRule()   // and after Line Endings
         // Indentation from an EditorConfig file disables these controls
         // and says so; encoding and line endings stay enabled.
         let p = Preferences.shared
@@ -592,20 +606,40 @@ public final class InspectorAreaController: NSViewController {
             rowValues.append((k, v))
         }
         content.addArrangedSubview(heading("Localization"))
+        // editor-area.md §D.8: a pop-up-style button as wide as the value
+        // area, 16 tall, filled, its title centred.
         let localize = NSButton(title: "Localize…", target: nil, action: nil)
         localize.controlSize = .small
         localize.font = .systemFont(ofSize: 11)
+        localize.isBordered = false
+        localize.alignment = .center
+        localize.wantsLayer = true
+        localize.layer?.cornerRadius = 5
+        localize.layer?.cornerCurve = .continuous
+        localize.layer?.backgroundColor = InspectorStyle.popUpFill.cgColor
+        localize.heightAnchor.constraint(equalToConstant: 16).isActive = true
         fileControls["Localize"] = localize
         content.addArrangedSubview(localize)
+        localize.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -Self.horizontalInsets).isActive = true
     }
 
     // MARK: On Demand Resource Tags, Target Membership (§7.3)
 
-    private func onDemandResourceTags() {
+    private func onDemandResourceTags(resource: Bool = false) {
         content.addArrangedSubview(heading("On Demand Resource Tags"))
         let tags = NSTokenField()
-        tags.placeholderString = "Only resources are taggable"
-        tags.isEnabled = false
+        // An image is a resource: a "Tags" field (editor-area.md §D.8).
+        tags.placeholderString = resource ? "Tags" : "Only resources are taggable"
+        tags.isEnabled = resource
+        if resource {
+            tags.isBezeled = false
+            tags.isBordered = false
+            tags.drawsBackground = false
+            tags.wantsLayer = true
+            tags.layer?.cornerRadius = 6
+            tags.layer?.backgroundColor = InspectorStyle.fieldFill.cgColor
+            tags.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        }
         tags.controlSize = .small
         tags.font = .systemFont(ofSize: 11)
         fileControls["On Demand Resource Tags"] = tags
@@ -766,7 +800,19 @@ public final class InspectorAreaController: NSViewController {
         sectionTitles.append(s)
         let l = NSTextField(labelWithString: s)
         l.font = .boldSystemFont(ofSize: 11)
+        l.textColor = InspectorStyle.headingColor
         return InspectorRowBox(l, height: InspectorStyle.headingRowHeight, inset: -1)
+    }
+
+    /// A rule inside a section (after Type, Full Path and Line Endings,
+    /// metrics.md §13.3), 6 from the controls.
+    private func addInnerRule() {
+        if let last = content.arrangedSubviews.last { content.setCustomSpacing(InspectorStyle.ruleGap, after: last) }
+        let rule = NSBox.hairline()
+        content.addArrangedSubview(rule)
+        rule.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -Self.horizontalInsets).isActive = true
+        content.setCustomSpacing(InspectorStyle.ruleGap, after: rule)
+        innerRuleCount += 1
     }
 
     /// A thin rule across the inspector, 6 from the controls on each side.
@@ -829,11 +875,12 @@ public final class InspectorAreaController: NSViewController {
     private func keyLabel(_ key: String) -> NSTextField {
         let k = NSTextField(labelWithString: key)
         k.font = .systemFont(ofSize: 11)
-        k.textColor = .secondaryLabelColor
+        k.textColor = .labelColor   // dark labels (editor-area.md §D.8)
         k.alignment = .right
-        // A long key ("Alpha Channel") tightens rather than truncates.
-        k.allowsDefaultTighteningForTruncation = true
         k.lineBreakMode = .byClipping
+        // A long key ("Alpha Channel") is tightened to fit the column
+        // rather than clipped.
+        k.attributedStringValue = InspectorStyle.fitted(key, font: k.font!, width: Self.keyColumnWidth)
         k.widthAnchor.constraint(equalToConstant: Self.keyColumnWidth).isActive = true
         k.setContentCompressionResistancePriority(.required, for: .horizontal)
         return k

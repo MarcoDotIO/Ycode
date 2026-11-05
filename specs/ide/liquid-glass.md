@@ -64,8 +64,8 @@ record is `liquid-glass-ycode.md`; each gap:
   view draw no floating panel on macOS 27.2 (checked in a minimal AppKit
   window too). No line between navigator and editor; the inspector draws
   a 1-point separator at its leading edge, full height. No titlebar
-  separator. Ycode's inspector stays 265 wide (`workspace-window.md`), so
-  its section is 5 points wider than the reference's.
+  separator. Ycode's inspector is 260 wide since beta 2, the reference's
+  width.
 - *G3 closed.* Measured on Ycode's window (inactive, 1400 × 900):
   Navigators | Coding Assistant 95–173 (78 × 38, top 7), Run | Stop
   208–283 (75), Back | Forward 297–372 (75), New Conversation a 38 × 38

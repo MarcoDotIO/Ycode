@@ -28,7 +28,8 @@ import SwiftUICore
 // the caret blinks 0.53 s on, 0.53 s off and stops (shown) after 10 s
 // without activity; copy and cut act on the selection; secure fields do not
 // copy or cut. Keys use the Linux desktop conventions: Ctrl+arrows by word,
-// Ctrl+A/C/X/V/Z, Ctrl+Shift+Z and Ctrl+Y redo.
+// Ctrl+A/C/X/V/Z, Ctrl+Shift+Z and Ctrl+Y redo (Ctrl+Y only when no
+// shortcut of the window takes it).
 
 // MARK: - Styles
 
@@ -399,7 +400,12 @@ final class TextFieldState: TextInputClient, GeometryObserving {
                     if let s = services?.clipboard?.text, !s.isEmpty { model.paste(s) }
                 case "z":
                     if shift { model.redo() } else { model.undo() }
-                case "y": model.redo()
+                case "y":
+                    // Ctrl+Y redoes unless the app gives the keystroke a
+                    // command (the Linux IDE's ⌘Y, Deactivate Breakpoints);
+                    // Ctrl+Shift+Z always redoes.
+                    if services?.shortcuts.hasEnabledShortcut(key: event.key, modifiers: m) == true { return false }
+                    model.redo()
                 default: return false
                 }
             case .leftArrow: model.move(isSecure ? .document : .word, forward: false, extending: shift)

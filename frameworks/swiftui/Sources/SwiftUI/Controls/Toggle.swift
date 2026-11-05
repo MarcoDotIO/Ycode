@@ -163,6 +163,7 @@ enum SwitchMetrics {
 struct SwitchToggleBody: View {
     let configuration: ToggleStyleConfiguration
     @Environment(\._labelsHidden) private var labelsHidden
+    @Environment(\._formColumnWidth) private var columnWidth
     @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var isEnabled
     @State private var isPressed = false
@@ -172,8 +173,8 @@ struct SwitchToggleBody: View {
         let isOn = configuration.$isOn
         let on = isOn.wrappedValue
         let palette = ControlPalette(scheme)
-        ControlRowLayout {
-            if !labelsHidden { configuration.label }
+        ControlRowLayout(columnWidth: columnWidth) {
+            if !labelsHidden { configuration.label.modifier(ColumnLabelAlignment(inColumn: columnWidth != nil)) }
             ZStack(alignment: on ? .trailing : .leading) {
                 Capsule().fill(on ? AnyShapeStyle(.tint) : AnyShapeStyle(palette.switchOff))
                 Capsule()
@@ -215,6 +216,7 @@ struct CheckmarkShape: Shape {
 struct CheckboxToggleBody: View {
     let configuration: ToggleStyleConfiguration
     @Environment(\._labelsHidden) private var labelsHidden
+    @Environment(\._formColumnWidth) private var columnWidth
     @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var isEnabled
     @State private var isPressed = false
@@ -226,7 +228,7 @@ struct CheckboxToggleBody: View {
         let mixed = configuration.isMixed
         let palette = ControlPalette(scheme)
         let box = RoundedRectangle(cornerRadius: 4)
-        ControlRowLayout(controlLeading: true) {
+        ControlRowLayout(controlLeading: true, columnWidth: columnWidth) {
             ZStack {
                 box.fill(on || mixed ? AnyShapeStyle(.tint) : AnyShapeStyle(palette.fieldBackground))
                 if !(on || mixed) { box.strokeBorder(palette.outline, lineWidth: 1) }

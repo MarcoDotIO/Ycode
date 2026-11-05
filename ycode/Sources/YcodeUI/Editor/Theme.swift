@@ -158,6 +158,7 @@ public enum Theme {
             DefaultLightTheme.colorDeclarations(doc.tokens(in: r), in: storage, range: ns)
         }
         if range == nil { stylePlaceholders(storage) } else { stylePlaceholders(storage, in: ns) }
+        fixCellWidths(storage, in: ns)
         storage.endEditing()
     }
 

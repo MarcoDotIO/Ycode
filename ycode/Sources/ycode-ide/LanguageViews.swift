@@ -39,6 +39,9 @@ struct QuickHelpContent: View {
                         RoundedRectangle(cornerRadius: 5, style: .continuous).fill(c.tertiaryLabel.opacity(0.12))
                             .overlay { RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(c.tertiaryLabel.opacity(0.35), lineWidth: 1) }
                     }
+                    // The macOS IDE's declaration is selectable text with
+                    // the text menu's Copy; here the box's own menu copies it.
+                    .contextMenu { Button("Copy") { ShellPasteboard.copy(d.declaration) } }
                     .shellTarget("quickhelp declaration")
             }
             if let f = d.file {
@@ -57,6 +60,7 @@ struct QuickHelpContent: View {
                 section("Parameters", c)
                 ForEach(Array(d.parameters.enumerated()), id: \.offset) { pair in
                     Text(verbatim: pair.element.name).font(Font.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(c.label)
+                        .contextMenu { Button("Copy") { ShellPasteboard.copy(pair.element.name) } }
                     paragraph(pair.element.text, c)
                 }
             }
@@ -131,9 +135,11 @@ struct QuickHelpInspector: View {
     }
 }
 
-/// Quick Help over the editor: a popover hanging under the symbol, with a
-/// small arrow at the symbol's start. The editor closes it when the
-/// insertion point moves, on Escape and when it scrolls.
+/// Quick Help over the editor: a popover hanging under the symbol, its
+/// arrow pointing up at the symbol's start. The bubble and its arrow are one
+/// outline (one fill, one edge, one shadow), so the arrow reads in both
+/// appearances. The editor closes it when the insertion point moves, on
+/// Escape and when it scrolls.
 struct QuickHelpPopoverLayer: View {
     var model: WorkspaceShellModel
     let controller: SourceEditorController
@@ -144,44 +150,70 @@ struct QuickHelpPopoverLayer: View {
     var body: some View {
         // Raised over the editor: white in light mode, a lighter grey in dark.
         let fill = scheme == .dark ? Color(.sRGB, red: 0.19, green: 0.19, blue: 0.2) : Color.white
-        let edge = scheme == .dark ? Color.white.opacity(0.16) : Color.black.opacity(0.14)
+        let edge = scheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.2)
         GeometryReader { geo in
             if let p = model.languageFeatures.popover, p.path == controller.document.path {
                 let anchor = controller.symbolAnchor(p.offset)
-                let x = min(max(8, anchor.x - 24), max(8, geo.size.width - Self.width - 8))
-                let below = anchor.y + controller.lineHeight + 8
-                ZStack(alignment: .topLeading) {
-                    QuickHelpContent(document: p.document, model: model)
-                        .frame(width: Self.width - 28, alignment: .leading)
-                        .padding(14)
-                        .background {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous).fill(fill)
-                                .shadow(color: Color.black.opacity(scheme == .dark ? 0.5 : 0.18), radius: 12, y: 4)
-                                .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(edge, lineWidth: 1) }
-                        }
-                        .padding(.top, 7)
-                    // The arrow at the symbol, over the box's top edge.
-                    PopoverArrow().fill(fill)
-                        .overlay { PopoverArrow().stroke(edge, lineWidth: 1) }
-                        .frame(width: 16, height: 8)
-                        .padding(.leading, max(10, anchor.x - x - 4))
-                }
-                .offset(x: x, y: below - 8)
-                .onTapGesture {}
-                .shellTarget("quickhelp popover")
+                let place = Self.placement(anchorX: anchor.x, lineBottom: anchor.y + controller.lineHeight, width: geo.size.width)
+                let bubble = PopoverBubble(arrowX: place.arrowX)
+                QuickHelpContent(document: p.document, model: model)
+                    .frame(width: Self.width - 28, alignment: .leading)
+                    .padding(14)
+                    .padding(.top, PopoverBubble.arrowSize.height)
+                    .background {
+                        bubble.fill(fill)
+                            .shadow(color: Color.black.opacity(scheme == .dark ? 0.5 : 0.2), radius: 12, y: 4)
+                            .overlay { bubble.stroke(edge, lineWidth: 1) }
+                    }
+                    .offset(x: place.x, y: place.y)
+                    .onTapGesture {}
+                    .shellTarget("quickhelp popover")
             }
         }
         .allowsHitTesting(model.languageFeatures.popover != nil)
     }
+
+    /// The bubble's leading edge and top (the arrow's tip) in the editor,
+    /// and the arrow's tip from the bubble's leading edge: the tip just
+    /// under the symbol's line, at the symbol's start; the bubble 8 points
+    /// before it, kept inside the editor and with the arrow clear of its
+    /// rounded corners.
+    static func placement(anchorX: CGFloat, lineBottom: CGFloat, width: CGFloat) -> (x: CGFloat, y: CGFloat, arrowX: CGFloat) {
+        let tipX = anchorX + 6
+        let x = min(max(8, tipX - 28), max(8, width - Self.width - 8))
+        let inset = PopoverBubble.cornerRadius + PopoverBubble.arrowSize.width / 2 + 2
+        let arrowX = min(max(tipX - x, inset), Self.width - inset)
+        return (x, lineBottom + 1, arrowX)
+    }
 }
 
-/// The popover's arrow: a triangle pointing up.
-struct PopoverArrow: Shape {
+/// A popover's outline: a rounded rectangle with an arrow on its top edge
+/// whose tip is `arrowX` from the leading edge, at the shape's top. The
+/// rectangle starts `arrowSize.height` below the top.
+struct PopoverBubble: Shape {
+    static let arrowSize = CGSize(width: 20, height: 10)
+    static let cornerRadius: CGFloat = 10
+
+    var arrowX: CGFloat
+
     func path(in r: CGRect) -> Path {
+        let a = Self.arrowSize, k = Self.cornerRadius
+        let top = r.minY + a.height
+        let tip = min(max(r.minX + arrowX, r.minX + k + a.width / 2), r.maxX - k - a.width / 2)
         var p = Path()
-        p.move(to: CGPoint(x: r.minX, y: r.maxY))
-        p.addLine(to: CGPoint(x: r.midX, y: r.minY))
-        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        p.move(to: CGPoint(x: r.minX + k, y: top))
+        p.addLine(to: CGPoint(x: tip - a.width / 2, y: top))
+        p.addLine(to: CGPoint(x: tip, y: r.minY))
+        p.addLine(to: CGPoint(x: tip + a.width / 2, y: top))
+        p.addLine(to: CGPoint(x: r.maxX - k, y: top))
+        p.addArc(tangent1End: CGPoint(x: r.maxX, y: top), tangent2End: CGPoint(x: r.maxX, y: top + k), radius: k)
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY - k))
+        p.addArc(tangent1End: CGPoint(x: r.maxX, y: r.maxY), tangent2End: CGPoint(x: r.maxX - k, y: r.maxY), radius: k)
+        p.addLine(to: CGPoint(x: r.minX + k, y: r.maxY))
+        p.addArc(tangent1End: CGPoint(x: r.minX, y: r.maxY), tangent2End: CGPoint(x: r.minX, y: r.maxY - k), radius: k)
+        p.addLine(to: CGPoint(x: r.minX, y: top + k))
+        p.addArc(tangent1End: CGPoint(x: r.minX, y: top), tangent2End: CGPoint(x: r.minX + k, y: top), radius: k)
+        p.closeSubpath()
         return p
     }
 }

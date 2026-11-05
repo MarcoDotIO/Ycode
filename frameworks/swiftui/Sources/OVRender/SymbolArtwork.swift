@@ -503,7 +503,7 @@ extension SymbolArtwork {
                                         s(S.poly([(4, 18.5), (8.5, 13.5), (11.5, 16.5), (13.5, 14.5), (17, 18)]), 1.5), f(S.circle(13.5, 10.5, 1.4))]),
             make("character.book.closed", [s(S.roundedRect(5, 3, 14, 18, 2), 1.75), s(S.poly([(8, 3), (8, 21)]), 1.5),
                                            s(S.join([S.poly([(10.5, 15), (13, 8), (15.5, 15)]), S.poly([(11.4, 12.5), (14.6, 12.5)])]), 1.5)]),
-        ] + projectTemplateSymbols + debuggerSymbols + sourceControlSymbols
+        ] + projectTemplateSymbols + debuggerSymbols + sourceControlSymbols + navigatorSymbols
         var d: [String: SymbolArtwork] = [:]
         for a in list { d[a.name] = a }
         return d

@@ -1,11 +1,11 @@
-import AppKit
+import Foundation
 import YcodeAssistant
-import YcodeIDECore
 
 /// One workspace window's coding assistant: its conversations, the
-/// responses streaming into them, and the back ends' states. The view
-/// (`CodingAssistantViewController`) observes it through `onChange`.
-/// See specs/ide/coding-assistant.md §4.
+/// responses streaming into them, and the back ends' states. Shared by
+/// both IDEs: the macOS view (`CodingAssistantViewController`) and the
+/// Linux pane (`ShellAssistantModel`) observe it through `onChange` and
+/// `observe(owner:_:)`. See specs/ide/coding-assistant.md §4.
 @MainActor
 public final class CodingAssistantModel {
     public enum Change: Equatable {
@@ -478,7 +478,7 @@ public final class CodingAssistantModel {
     static let saveQueue = DispatchQueue(label: "dev.ycode.conversations", qos: .utility)
 
     /// The text shown for a failed response.
-    static func describe(_ error: Error) -> String {
+    public static func describe(_ error: Error) -> String {
         if let e = error as? AssistantError {
             return [e.errorDescription, e.recoverySuggestion].compactMap { $0 }.joined(separator: " ")
         }

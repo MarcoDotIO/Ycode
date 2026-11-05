@@ -205,11 +205,13 @@ public enum RuntimeFolders {
     }
 
     /// This machine's folder: `$YCODE_RUNTIMES_DIR`, else
+    /// `$YCODE_DATA/runtimes` (`runtime-downloads.md` §6.2), else
     /// `~/Library/Developer/Ycode/Runtimes` (macOS) or
     /// `$XDG_DATA_HOME/ycode/runtimes` (`~/.local/share/ycode/runtimes`).
     public static func local(environment: [String: String] = ProcessInfo.processInfo.environment,
                              home: String = NSHomeDirectory()) -> String {
         if let d = environment["YCODE_RUNTIMES_DIR"], !d.isEmpty { return d }
+        if let d = environment["YCODE_DATA"], !d.isEmpty { return (d.hasSuffix("/") ? String(d.dropLast()) : d) + "/runtimes" }
         #if os(macOS)
         return home + "/Library/Developer/Ycode/Runtimes"
         #else
@@ -241,6 +243,15 @@ public struct RuntimeMarker: Codable, Sendable, Equatable {
     public var source: String
     public var copiedAt: String
     public var sizeBytes: Int64?
+    /// How it came (`runtime-downloads.md` §6.2 step 6): "download" (route B),
+    /// "import" (route A); nil for a copy of a runtime the user had.
+    public var route: String?
+    public var architectures: [String]?
+    /// The index entry it was chosen from, the host it came from, and the
+    /// SHA-256 that was checked (route B).
+    public var indexIdentifier: String?
+    public var downloadHost: String?
+    public var sha256: String?
 
     public init(platform: String, version: String, build: String, identifier: String?, source: String, copiedAt: String, sizeBytes: Int64?) {
         self.platform = platform
@@ -381,13 +392,15 @@ public enum RuntimeBundleReader {
                             fileManager fm: FileManager = .default) -> SimRuntimeRecord? {
         guard let root = runtimeRoot(of: path, fileManager: fm),
               let sv = fm.contents(atPath: root + "/" + systemVersionPath) else { return nil }
-        let info = fm.contents(atPath: path + "/Contents/Info.plist")
-        let profile = fm.contents(atPath: path + "/Contents/Resources/profile.plist")
+        // A bundle's plists, or the copies Ycode keeps beside a RuntimeRoot (§6.2 step 5).
+        let info = fm.contents(atPath: path + "/Contents/Info.plist") ?? fm.contents(atPath: path + "/runtime-Info.plist")
+        let profile = fm.contents(atPath: path + "/Contents/Resources/profile.plist") ?? fm.contents(atPath: path + "/profile.plist")
         guard var r = record(systemVersion: sv, info: info, profile: profile, location: location, owner: owner ?? .coreSimulator) else { return nil }
         r.runtimeRoot = root
         if let m = fm.contents(atPath: path + "/" + RuntimeFolders.marker), let marker = try? JSONDecoder().decode(RuntimeMarker.self, from: m) {
             r.identifier = r.identifier ?? marker.identifier
             r.unpackedBytes = marker.sizeBytes
+            if let a = marker.architectures, !a.isEmpty { r.architectures = a }
         }
         if measure { r.unpackedBytes = directorySize(root, fileManager: fm) }
         return r

@@ -7,7 +7,7 @@ import YcodeIDEShell
 /// The workspace window (`workspace-window.md` §Areas), laid out as the
 /// AppKit IDE lays it out (`docs/PARITY.md` §5.10): three columns, the
 /// navigator (290), the editor over the debug area, and the inspector
-/// (265), each running the full height of the window with its part of the
+/// (260), each running the full height of the window with its part of the
 /// toolbar in a 52-point band at its top (the AppKit window's toolbar
 /// tracks the split view's columns the same way).
 struct WorkspaceView: View {
@@ -33,10 +33,12 @@ struct WorkspaceView: View {
             }
         }
         .overlay { BuildBezelOverlay(notifier: model.notifier) }
+        .overlay { BreakpointEditorLayer(model: model) }   // DebugEditors.swift
         .navigationTitle(model.windowTitle)
         .modifier(EditorPrompts(model: model))
         .modifier(LanguageSheets(model: model, app: app))
         .modifier(SourceControlDialogs(scm: model.sourceControl))
+        .modifier(AssistantPrompts(assistant: model.assistant))
     }
 }
 
@@ -50,10 +52,14 @@ struct NavigatorToolbar: View {
     var body: some View {
         let lp = WorkspaceChrome.leftPanes, rs = WorkspaceChrome.runStop
         HStack(spacing: 0) {
+            // Navigators | Coding Assistant: clicking the shown one hides the area.
+            let navigatorsOn = model.isNavigatorShown && !model.assistant.isShown
             GlassSegments(segments: [
-                .init(symbol: lp.symbols[0], help: model.isNavigatorShown ? "Hide the Navigator" : "Show the Navigator", isOn: model.isNavigatorShown,
-                      target: "tb navigator") { model.perform(.toggleNavigator) },
-                .init(symbol: lp.symbols[1], help: ShellText.notInBeta(lp.toolTips[1]), isEnabled: false, target: "tb assistant") {},
+                .init(symbol: lp.symbols[0], help: navigatorsOn ? "Hide the Navigator" : "Show the Navigator", isOn: navigatorsOn,
+                      target: "tb navigator") { model.showLeftPane(assistant: false) },
+                .init(symbol: lp.symbols[1], help: lp.toolTips[1], isOn: model.isAssistantPaneShown, target: "tb assistant") {
+                    model.showLeftPane(assistant: true)
+                },
             ], segmentWidth: 36, dividers: false)
             Spacer(minLength: 8)
             GlassSegments(segments: [
@@ -86,8 +92,7 @@ struct CenterToolbar: View {
                 ActivityView(model: model)
                     .padding(.leading, 4)
                 Spacer(minLength: 8)
-                GlassCircleButton(symbol: WorkspaceChrome.newConversation.symbols[0], help: ShellText.notInBeta(WorkspaceChrome.newConversation.toolTips[0]),
-                                  isEnabled: false, target: "tb new conversation") {}
+                NewConversationToolbarButton(assistant: model.assistant)   // AssistantPane.swift
                 SchemeCapsule(model: model, app: app)
                     .padding(.leading, 8)
                 Spacer(minLength: 8)

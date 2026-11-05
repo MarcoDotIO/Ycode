@@ -24,6 +24,8 @@ extension WorkspaceWindowController {
 
         inspector.imageProperties = nil
         inspector.show(file: url)
+        // No "Line: Col:" for an image (editor-area.md §D.7).
+        debugArea.setPosition(line: 0, column: 0)
     }
 }
 

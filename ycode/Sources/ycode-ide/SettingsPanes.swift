@@ -53,13 +53,13 @@ struct GeneralSettingsPane: View {
                 CasePicker(title: "Testing on Simulator", selection: setting(\.testParallelizationSimulator), target: "settings tests simulator")
             }
             Section("Report Navigator") {
-                Picker("Local report history", selection: setting(\.reportHistoryLimit)) {
+                Picker(formLabel("Local report history"), selection: setting(\.reportHistoryLimit)) {
                     ForEach(Preferences.reportHistoryChoices, id: \.self) { Text(verbatim: Preferences.reportHistoryTitle($0)).tag($0) }
                 }
                 .shellTarget("settings report history")
             }
             Section {
-                LabeledContent("Settings file") {
+                LabeledContent(formLabel("Settings file")) {
                     HStack(spacing: 8) {
                         Button("Export…") { exporting = true }.shellTarget("settings export")
                         Button("Import…") { importing = true }.shellTarget("settings import")
@@ -73,10 +73,10 @@ struct GeneralSettingsPane: View {
                 if let failure { FootNote(text: failure) }
             }
             Section("Reset Ycode") {
-                LabeledContent("Reset Settings") {
+                LabeledContent(formLabel("Reset Settings")) {
                     Button("Reset…") { confirmReset = true }.buttonStyle(.bordered).controlSize(.small).shellTarget("settings reset")
                 }
-                LabeledContent("\u{201C}Don\u{2019}t ask me\u{201D} warnings") {
+                LabeledContent(formLabel("\u{201C}Don\u{2019}t ask me\u{201D} warnings")) {
                     Button("Reset All") { confirmWarnings = true }.buttonStyle(.bordered).controlSize(.small).shellTarget("settings reset warnings")
                 }
             }
@@ -109,7 +109,7 @@ struct GeneralSettingsPane: View {
     }
 
     func detailPicker(_ title: String, _ key: ReferenceWritableKeyPath<Preferences, Int>) -> some View {
-        Picker(title, selection: setting(key)) {
+        Picker(formLabel(title), selection: setting(key)) {
             ForEach(Preferences.detailLineChoices, id: \.self) { Text(verbatim: Preferences.detailTitle($0)).tag($0) }
         }
         .shellTarget("settings \(title.lowercased())")
@@ -262,13 +262,13 @@ struct BehaviorEventPage: View {
                 BackRow(title: "Behaviors", target: "settings behaviors back", action: back)
             }
             Section(event.category) {
-                LabeledContent("Event") { Text(verbatim: event.rawValue) }
-                Picker("Show navigator", selection: binding(\.showNavigator, b)) {
+                LabeledContent(formLabel("Event")) { Text(verbatim: event.rawValue) }
+                Picker(formLabel("Show navigator"), selection: binding(\.showNavigator, b)) {
                     Text("None").tag(Int?.none)
                     ForEach(Array(CommandTable.navigators.enumerated()), id: \.offset) { Text(verbatim: $0.element).tag(Int?.some($0.offset)) }
                 }
                 .shellTarget("settings behavior navigator")
-                Picker("Debug area", selection: Binding(get: { Self.debugArea(b) }, set: { d in
+                Picker(formLabel("Debug area"), selection: Binding(get: { Self.debugArea(b) }, set: { d in
                     update { b in
                         b.showDebugArea = d == .show ? true : (d == .hide ? false : nil)
                         b.hideDebugAreaIfNoOutput = d == .hideIfNoOutput
@@ -277,7 +277,7 @@ struct BehaviorEventPage: View {
                     ForEach(DebugArea.allCases, id: \.self) { Text(verbatim: $0.rawValue).tag($0) }
                 }
                 .shellTarget("settings behavior debug area")
-                Picker("Play sound", selection: binding(\.sound, b)) {
+                Picker(formLabel("Play sound"), selection: binding(\.sound, b)) {
                     Text("None").tag(String?.none)
                     ForEach(Preferences.Behavior.soundNames, id: \.self) { Text(verbatim: $0).tag(String?.some($0)) }
                 }

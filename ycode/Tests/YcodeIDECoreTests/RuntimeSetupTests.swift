@@ -173,7 +173,7 @@ import Testing
         // Xcode's runtime is not Ycode's to remove: the fix is words.
         if case .instructions = vision?.fix {} else { Issue.record("expected instructions, got \(String(describing: vision?.fix))") }
         let tv = r.check("runtime.tvOS")
-        #expect(tv?.state == .missing && tv?.fix == .step(.add))
+        #expect(tv?.state == .missing && tv?.fix == .step(.download))
         #expect(r.check("disk")?.state == .ok)
         #expect(r.readyPlatforms == [.iOS])
         #expect(r.firstProblemStep(for: .thisMachine) == .runtimes)
@@ -221,8 +221,8 @@ import Testing
     }
 
     @Test func stepsPerTarget() {
-        #expect(RuntimeSetupStep.steps(for: .thisMachine) == [.target, .runtimes, .add, .finish])
-        #expect(RuntimeSetupStep.steps(for: .host(RuntimeHostSettings())) == [.target, .host, .prepare, .runtimes, .add, .finish])
+        #expect(RuntimeSetupStep.steps(for: .thisMachine) == [.target, .runtimes, .download, .add, .finish])
+        #expect(RuntimeSetupStep.steps(for: .host(RuntimeHostSettings())) == [.target, .host, .prepare, .runtimes, .download, .add, .finish])
         #expect(RuntimeSetupChecker.acquisitionNote(.visionOS).contains("xcodebuild -downloadPlatform visionOS"))
         #expect(RuntimeImportTool.simctl.command(file: "/tmp/iOS 27.dmg") == ["xcrun", "simctl", "runtime", "add", "/tmp/iOS 27.dmg"])
         #expect(RuntimeImportTool.xcodebuild.command(file: "/tmp/a.dmg") == ["xcodebuild", "-importPlatform", "/tmp/a.dmg"])
@@ -505,7 +505,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: dir) }
         let d = UserDefaults(suiteName: "ycode-runtime-tests-\(UUID().uuidString)")!
         let s = RuntimeSetupSession(machine: Self.mac, defaults: d, folder: dir.appendingPathComponent("rt").path, localRunner: R(answers: Self.macReady))
-        #expect(s.steps == [.target, .runtimes, .add, .finish])
+        #expect(s.steps == [.target, .runtimes, .download, .add, .finish])
         await s.recheck().value
         #expect(s.report?.check("runtime.iOS")?.state == .ok)
         s.next()
@@ -525,7 +525,7 @@ import Testing
         #expect(s.picked?.record?.title == "iOS 27.0 (24A434)" && s.pickedAction == nil)
         // Choosing a host adds its steps and keeps the choice.
         s.setUseHost(true)
-        #expect(s.steps == [.target, .host, .prepare, .runtimes, .add, .finish])
+        #expect(s.steps == [.target, .host, .prepare, .runtimes, .download, .add, .finish])
         #expect(RuntimeSetupChoices.load(d).useHost)
         s.setHost(Self.host)
         s.pick(path: b.path)

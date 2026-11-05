@@ -31,6 +31,21 @@ struct FormSectionMarker: NodeBehavior {
     }
 }
 
+/// The `.columns` look (Ycode's desktop form, the macOS IDE's Settings
+/// panes, `specs/ide/metrics.md` §8): no groups; the content 20 points
+/// from the top and bottom and 28 from the sides; headings in bold 12-point
+/// text; rows 10 points apart; each control's label right-aligned in a
+/// 200-point column with the control 8 points after it; footers in 11-point
+/// secondary text. The form's background is its container's.
+enum ColumnsFormMetrics {
+    static let top: CGFloat = 20
+    static let sides: CGFloat = 28
+    static let rowSpacing: CGFloat = 10
+    static let labelColumn: CGFloat = 200
+    static let headingSize: CGFloat = 12
+    static let footerSize: CGFloat = 11
+}
+
 enum FormMetrics {
     static let margin: CGFloat = 20
     static let rowInset: CGFloat = 20
@@ -87,11 +102,14 @@ public struct Form<Content: View>: View {
 
 extension Form: PrimitiveView {
     package func _makeChildren(node: ViewNode, old: Form?, transaction: Transaction) {
-        node.reconcileChildren([(AnyHashable(0), content.environment(\._inForm, true))], transaction: transaction)
+        let columns = node.environment._formStyleKind == 1
+        node.reconcileChildren([(AnyHashable(0), content.environment(\._inForm, true)
+            .environment(\._formColumnWidth, columns ? ColumnsFormMetrics.labelColumn : nil))], transaction: transaction)
     }
 
     package func _lower(node: ViewNode) -> [LayoutNode] {
         let env = node.environment
+        if env._formStyleKind == 1 { return [columnsLayout(node.lowerChildren())] }
         let palette = ControlPalette(env.colorScheme)
         var sections: [LayoutNode] = []
         var loose: [LayoutNode] = []
@@ -114,6 +132,17 @@ extension Form: PrimitiveView {
                                 bottom: FormMetrics.margin, trailing: FormMetrics.margin))
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
         return [stack.background(fillNode(palette.groupedBackground, environment: env))]
+    }
+}
+
+extension Form {
+    /// The `.columns` look: sections and loose rows in one column.
+    func columnsLayout(_ parts: [LayoutNode]) -> LayoutNode {
+        let rows = parts.map { $0.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading) }
+        return LayoutNode.vstack(alignment: .leading, spacing: ColumnsFormMetrics.rowSpacing, rows)
+            .padding(EdgeInsets(top: ColumnsFormMetrics.top, leading: ColumnsFormMetrics.sides,
+                                bottom: ColumnsFormMetrics.top, trailing: ColumnsFormMetrics.sides))
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -171,10 +200,20 @@ extension Section where Parent == Text, Content: View, Footer == EmptyView {
 
 extension Section: PrimitiveView where Parent: View, Content: View, Footer: View {
     package func _makeChildren(node: ViewNode, old: Section?, transaction: Transaction) {
+        if node.environment._formColumnWidth != nil {
+            // The columns look: bold headings in the label colour, small
+            // secondary footers.
+            node.reconcileChildren([
+                (AnyHashable(0), AnyView(header.font(.system(size: ColumnsFormMetrics.headingSize, weight: .bold)).foregroundStyle(.primary))),
+                (AnyHashable(1), AnyView(content)),
+                (AnyHashable(2), AnyView(footer.font(.system(size: ColumnsFormMetrics.footerSize)).foregroundStyle(.secondary))),
+            ], transaction: transaction)
+            return
+        }
         node.reconcileChildren([
-            (AnyHashable(0), header.font(.footnote).foregroundStyle(.secondary)),
-            (AnyHashable(1), content),
-            (AnyHashable(2), footer.font(.footnote).foregroundStyle(.secondary)),
+            (AnyHashable(0), AnyView(header.font(.footnote).foregroundStyle(.secondary))),
+            (AnyHashable(1), AnyView(content)),
+            (AnyHashable(2), AnyView(footer.font(.footnote).foregroundStyle(.secondary))),
         ], transaction: transaction)
     }
 
@@ -185,6 +224,13 @@ extension Section: PrimitiveView where Parent: View, Content: View, Footer: View
         let rows = node.children[1].lower()
         let footer = node.children[2].lower()
         guard env._inForm else { return header + rows + footer }
+        if env._formColumnWidth != nil {
+            // Columns: the heading, the rows and the footer, 10 apart.
+            let parts = (header + rows + footer).map { $0.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading) }
+            return [LayoutNode(FormSectionMarker(), children: [
+                LayoutNode.vstack(alignment: .leading, spacing: ColumnsFormMetrics.rowSpacing, parts),
+            ])]
+        }
         let inset = EdgeInsets(top: 0, leading: FormMetrics.rowInset, bottom: 0, trailing: FormMetrics.rowInset)
         var parts: [LayoutNode] = []
         if !header.isEmpty {
@@ -202,7 +248,7 @@ extension Section: PrimitiveView where Parent: View, Content: View, Footer: View
 
 // MARK: - Form styles
 
-/// How a form arranges its content (grouped is the only look on Linux).
+/// How a form arranges its content: grouped (the default) or columns.
 @MainActor @preconcurrency
 public protocol FormStyle {
     var _ovStyleKind: Int { get }
@@ -220,7 +266,7 @@ public struct GroupedFormStyle: FormStyle {
 
 public struct ColumnsFormStyle: FormStyle {
     public init() {}
-    public var _ovStyleKind: Int { 0 }
+    public var _ovStyleKind: Int { 1 }
 }
 
 extension FormStyle where Self == AutomaticFormStyle {
@@ -236,5 +282,10 @@ extension FormStyle where Self == ColumnsFormStyle {
 }
 
 extension View {
-    public func formStyle<S: FormStyle>(_ style: S) -> some View { self }
+    /// The look of forms below: grouped (the default) or columns (labels
+    /// right-aligned in a column, controls after it; the desktop's
+    /// settings form).
+    public func formStyle<S: FormStyle>(_ style: S) -> some View {
+        environment(\._formStyleKind, style._ovStyleKind)
+    }
 }

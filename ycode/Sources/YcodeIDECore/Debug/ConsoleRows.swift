@@ -11,7 +11,8 @@ public struct ConsoleRow: Equatable, Sendable {
 public enum ConsoleRows {
     /// The rows of the entries' text: one per line, in order. A line that
     /// spans several entries (output without a line break, then more)
-    /// belongs to the entry it starts in.
+    /// belongs to the entry it starts in. "\r\n" (a pseudo-terminal's line
+    /// end, one `Character`) ends a line as "\n" does.
     public static func rows(_ entries: [ConsoleEntry]) -> [ConsoleRow] {
         var out: [ConsoleRow] = []
         var line = ""
@@ -19,7 +20,7 @@ public enum ConsoleRows {
         for e in entries {
             for ch in e.text {
                 if owner == nil { owner = e }
-                if ch == "\n" {
+                if ch == "\n" || ch == "\r\n" {
                     out.append(ConsoleRow(text: line, entry: owner!))
                     line = ""
                     owner = nil

@@ -167,6 +167,9 @@ public struct ImageFileProperties: Equatable, Sendable {
     public var dpi: Double
     public var colorSpace: String
     public var hasAlpha: Bool
+    /// Whether the file records a resolution (`editor-area.md` §D.8:
+    /// "--" when it records none).
+    public var recordsResolution = true
 
     /// The size in points: pixels at the file's resolution (72 dpi is 1:1).
     public var pointSize: NSSize {
@@ -177,7 +180,7 @@ public struct ImageFileProperties: Equatable, Sendable {
     /// The inspector rows: Dimensions, Resolution, Color Space, Alpha Channel.
     public var rows: [(String, String)] {
         [("Dimensions", "\(pixelWidth) × \(pixelHeight) pixels"),
-         ("Resolution", "\(Int(dpi.rounded())) × \(Int(dpi.rounded())) DPI"),
+         ("Resolution", recordsResolution ? "\(Int(dpi.rounded())) × \(Int(dpi.rounded())) DPI" : "--"),
          ("Color Space", colorSpace),
          ("Alpha Channel", hasAlpha ? "Yes" : "No")]
     }
@@ -200,7 +203,8 @@ public struct ImageFileProperties: Equatable, Sendable {
         case .none, .noneSkipFirst, .noneSkipLast: false
         default: true
         }
-        return Decoded(image: image, properties: ImageFileProperties(pixelWidth: image.width, pixelHeight: image.height, dpi: dpi,
-                                                                     colorSpace: model, hasAlpha: alpha))
+        var properties = ImageFileProperties(pixelWidth: image.width, pixelHeight: image.height, dpi: dpi, colorSpace: model, hasAlpha: alpha)
+        properties.recordsResolution = props[kCGImagePropertyDPIWidth] != nil
+        return Decoded(image: image, properties: properties)
     }
 }

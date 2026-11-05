@@ -53,9 +53,9 @@ final class ShellPreferences {
 
 /// The panes of the Settings window, in the macOS IDE's order
 /// (`specs/ide/settings.md` §Window) without the panes the Linux IDE has
-/// nothing for yet (Accounts, Coding Assistant, Components, Simulators).
+/// nothing for yet (Accounts, Components, Simulators).
 enum ShellSettingsPane: String, CaseIterable, Identifiable {
-    case general, appearance, behaviors, navigation, notifications, editing, shortcuts, sourceControl, locations
+    case general, appearance, codingAssistant, behaviors, navigation, notifications, editing, shortcuts, sourceControl, locations
 
     var id: String { rawValue }
 
@@ -63,6 +63,7 @@ enum ShellSettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: "General"
         case .appearance: "Appearance"
+        case .codingAssistant: "Coding Assistant"
         case .behaviors: "Behaviors"
         case .navigation: "Navigation"
         case .notifications: "Notifications"
@@ -78,6 +79,7 @@ enum ShellSettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .appearance: "sun.max"
+        case .codingAssistant: "text.bubble"
         case .behaviors: "gearshape.2"
         case .navigation: "arrow.left.arrow.right"
         case .notifications: "bell"
@@ -221,6 +223,7 @@ struct ShellSettingsView: View {
         switch model.pane {
         case .general: GeneralSettingsPane()
         case .appearance: AppearanceSettingsPane()
+        case .codingAssistant: CodingAssistantSettingsPane()   // SettingsPaneCodingAssistant.swift
         case .behaviors: BehaviorsSettingsPane(model: model)
         case .navigation: NavigationSettingsPane()
         case .notifications: NotificationsSettingsPane()
@@ -241,15 +244,28 @@ struct SettingsForm<Content: View>: View {
 
     var body: some View {
         #if os(Linux)
+        // The macOS IDE's Settings form (`metrics.md` §8): labels
+        // right-aligned in a 200-point column, controls after it, bold
+        // headings, rows 10 apart, 20 / 28 points from the edges.
         ScrollView {
             Form { content }
-                .formStyle(.grouped)
-                .environment(\.defaultMinListRowHeight, 34)
+                .formStyle(.columns)
         }
         #else
         Form { content }.formStyle(.grouped)
         #endif
     }
+}
+
+/// A form row's label: on Linux, where the form is the macOS IDE's column
+/// form, it ends with a colon as the macOS IDE's labels do ("Navigator
+/// size:"); the grouped form on macOS shows it as is.
+func formLabel(_ s: String) -> String {
+    #if os(Linux)
+    s.isEmpty || s.hasSuffix(":") ? s : s + ":"
+    #else
+    s
+    #endif
 }
 
 /// A binding to one setting of `Preferences.shared`; setting it posts
@@ -266,7 +282,7 @@ struct CasePicker<T: RawRepresentable & CaseIterable & Hashable>: View where T.R
     var target: String
 
     var body: some View {
-        Picker(title, selection: selection) {
+        Picker(formLabel(title), selection: selection) {
             ForEach(Array(T.allCases), id: \.self) { Text(verbatim: $0.rawValue).tag($0) }
         }
         .shellTarget(target)
@@ -344,16 +360,13 @@ extension View {
 }
 
 struct ShellAppearanceModifier: ViewModifier {
-    @Environment(\.colorScheme) private var desktop
-
     func body(content: Content) -> some View {
         // swiftlint:disable:next redundant_discardable_let - a view builder (observes the revision)
         let _ = ShellPreferences.shared.revision
         let a = Preferences.shared.appearance
-        #if os(Linux)
-        content.environment(\.colorScheme, a == .system ? desktop : (a == .dark ? .dark : .light))
-        #else
+        // The whole window follows it: on Linux OpenViews applies the
+        // request to the window's root, so the in-window menu bar, the
+        // toolbar and the pop-ups take the forced appearance too.
         content.preferredColorScheme(a == .system ? nil : (a == .dark ? .dark : .light))
-        #endif
     }
 }

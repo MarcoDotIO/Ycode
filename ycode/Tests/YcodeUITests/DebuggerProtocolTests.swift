@@ -123,8 +123,9 @@ final class ScriptedAdapter: DAPTransport, @unchecked Sendable {
 
         // Disassembly and instruction stepping.
         wc.toggleAlwaysShowDisassembly(nil)
-        #expect(await waitUntil(60) { session.disassemblyPCIndex == 8 })
-        #expect(wc.editor.text.contains("0x1000  add w0, w0, w1"))
+        // (A frame whose source is not on this computer has its disassembly
+        // already; the editor shows it once the toggle is on.)
+        #expect(await waitUntil(60) { session.disassemblyPCIndex == 8 && wc.editor.text.contains("0x1000  add w0, w0, w1") })
         #expect(wc.editor.gutter.marks.currentLine == 9)
         await session.step("over")
         let step = try #require(adapter.requests.last { $0["command"]?.string == "next" })

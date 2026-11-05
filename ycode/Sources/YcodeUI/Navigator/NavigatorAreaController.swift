@@ -80,6 +80,10 @@ public final class OutlineItem: NSObject {
         switch t {
         case .orange: .systemOrange
         case .blue: .systemBlue
+        case .grey: NSColor(name: nil) { a in
+            a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.6, alpha: 1)
+                : NSColor(srgbRed: 0x7B / 255.0, green: 0x7B / 255.0, blue: 0x80 / 255.0, alpha: 1)
+        }
         case .lightBlue: NSColor(name: nil) { a in
             NSColor.systemBlue.blended(withFraction: a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? 0.2 : 0.4, of: .white) ?? .systemBlue
         }
@@ -1530,11 +1534,14 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
 
     public func outlineView(_ o: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let item = item as? OutlineItem else { return nil }
-        let cell = NSTableCellView()
+        let cell = NavigatorCellView()
+        cell.recolorsLabel = item.detail == nil && selectedIndex != 3
         let image = NSImageView(image: NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)
             ?? NSImage(systemSymbolName: "doc", accessibilityDescription: nil)!)
         image.contentTintColor = item.tint ?? .controlAccentColor
-        let label = NSTextField(labelWithString: item.title)
+        cell.iconTint = image.contentTintColor
+        let label = NavigatorRowLabel(labelWithString: item.title)
+        if cell.recolorsLabel { label.textColor = NavigatorCellView.rowLabelColor }
         label.lineBreakMode = .byTruncatingTail
         label.font = .systemFont(ofSize: Self.rowFontSize)
         if item.maxLines > 0 {
@@ -1545,7 +1552,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             label.preferredMaxLayoutWidth = max(80, o.bounds.width - o.indentationPerLevel * CGFloat(o.level(forItem: item) + 1) - 30)
         }
         if item.middleTruncation { label.lineBreakMode = .byTruncatingMiddle }
-        if item.dimmed { label.textColor = .secondaryLabelColor }
+        if item.dimmed { label.textColor = .secondaryLabelColor; cell.labelColor = .secondaryLabelColor }
         if let detail = item.detail {
             label.attributedStringValue = NSAttributedString(string: item.title, attributes: [.font: NSFont.systemFont(ofSize: Self.rowFontSize)])
                 + NSAttributedString(string: "  " + detail, attributes: [.font: NSFont.systemFont(ofSize: Self.rowFontSize - 1),
@@ -1580,7 +1587,21 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         if selectedIndex == 3 { decorateFindRow(item, cell: cell, image: image, label: label) }
         cell.textField = label
         cell.imageView = image
+        cell.labelColor = label.textColor ?? NavigatorCellView.rowLabelColor
+        if !cell.recolorsLabel { label.styledTitle = label.attributedStringValue }
+        cell.applyStyle()
         return cell
+    }
+
+    /// The row: the measured selection band, and an accessibility row
+    /// titled with the row's name (`navigators.md` "Council round 2" §4).
+    public func outlineView(_ o: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        let row = NavigatorRowView()
+        if let item = item as? OutlineItem {
+            row.setAccessibilityTitle(item.title)
+            row.setAccessibilityLabel(item.title)
+        }
+        return row
     }
 }
 

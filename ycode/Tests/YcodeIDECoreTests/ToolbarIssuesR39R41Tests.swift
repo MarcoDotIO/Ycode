@@ -30,15 +30,21 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(g.targetsOfFile(dir.appendingPathComponent("Package.swift").path).isEmpty)
     }
 
+    /// liquid-glass.md §8.2: the scheme capsule drops its titles, then the
+    /// editor modes may stay in the "»" overflow, then the subtitle
+    /// shortens down to its minimum.
     @Test func toolbarFitSteps() {
-        let steps = ToolbarFit.steps(schemeNatural: 200, activityNatural: 150)
-        #expect(steps.first == ToolbarFit() && steps[1] == ToolbarFit(editorModesCollapsed: true))
-        let schemeCaps = steps.compactMap(\.schemeWidth)
-        #expect(!schemeCaps.isEmpty && schemeCaps.first! < 200 && schemeCaps.last == ToolbarFit.schemeMinimum)
-        #expect(schemeCaps == schemeCaps.sorted(by: >))
-        #expect(steps.last?.activityWidth == ToolbarFit.activityMinimum && steps.last?.schemeWidth == ToolbarFit.schemeMinimum)
-        // Activity caps only after the scheme reached its minimum.
-        #expect(steps.filter { $0.activityWidth != nil }.allSatisfy { $0.schemeWidth == ToolbarFit.schemeMinimum })
-        #expect(ToolbarFit.steps(schemeNatural: 40, activityNatural: 60) == [ToolbarFit(), ToolbarFit(editorModesCollapsed: true)])
+        let steps = ToolbarFit.steps(activityNatural: 150)
+        #expect(steps.first == ToolbarFit())
+        #expect(steps[1] == ToolbarFit(schemeGlyphsOnly: true))
+        #expect(steps[2] == ToolbarFit(editorModesInOverflow: true, schemeGlyphsOnly: true))
+        let caps = steps.compactMap(\.activityWidth)
+        #expect(!caps.isEmpty && caps.first! < 150 && caps == caps.sorted(by: >) && caps.last == ToolbarFit.activityMinimum)
+        #expect(steps.dropFirst(2).allSatisfy { $0.schemeGlyphsOnly && $0.editorModesInOverflow })
+        #expect(ToolbarFit.steps(activityNatural: 60).count == 3)
+        // What each step lets the overflow hold.
+        #expect(!ToolbarFit().accepts(overflowed: ["editorModes"]) && ToolbarFit().accepts(overflowed: []))
+        #expect(!steps[1].accepts(overflowed: ["editorModes"]))
+        #expect(steps[2].accepts(overflowed: ["editorModes"]) && !steps[2].accepts(overflowed: ["editorModes", "history"]))
     }
 }

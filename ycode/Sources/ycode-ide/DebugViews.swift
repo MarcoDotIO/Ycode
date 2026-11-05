@@ -2,9 +2,6 @@ import Foundation
 import SwiftUI
 import YcodeIDECore
 import YcodeIDEShell
-#if !os(Linux)
-import AppKit
-#endif
 
 // The debugger's views (`specs/ide/debug.md`, `reference-ui-4.md` §5–§6,
 // `reference-ui-2.md` §9): the Debug and Breakpoint navigators, the debug
@@ -62,7 +59,9 @@ struct BreakpointNavigator: View {
         } else {
             DebugOutline(rows: rows, selection: d.breakpointSelection, select: { d.selectBreakpointRow($0) },
                          toggle: { d.setBreakpointRowExpanded($0, $1) }, target: "breakpoint navigator",
-                         contextMenu: { id in d.deleteBreakpoint(id) }) { row in
+                         contextMenu: { row in AnyView(BreakpointRowMenuItems(model: model, row: row)) },
+                         open: { d.editBreakpointRow($0) },
+                         rowFrame: { id, f in d.noteBreakpointRowFrame(id, f) }) { row in
                 if let on = row.marker {
                     Button { d.toggleBreakpointEnabled(row.id) } label: {
                         Image(systemName: on ? "tag.fill" : "tag").font(.system(size: 11))
@@ -86,7 +85,11 @@ struct DebugOutline<Accessory: View>: View {
     var select: (String) -> Void
     var toggle: (String, Bool) -> Void
     var target: String
-    var contextMenu: ((String) -> Void)?
+    var contextMenu: ((DebugNavigatorRow) -> AnyView)?
+    /// A double-click on a breakpoint row (Edit Breakpoint).
+    var open: ((String) -> Void)?
+    /// Rows report their window frames (the breakpoint editor's anchor).
+    var rowFrame: ((String, CGRect) -> Void)?
     @ViewBuilder var accessory: (DebugNavigatorRow) -> Accessory
     @Environment(\.colorScheme) private var scheme
 
@@ -99,11 +102,13 @@ struct DebugOutline<Accessory: View>: View {
                         .overlay(alignment: .leading) { letter(r) }
                         .overlay(alignment: .trailing) { trailing(r, c) }
                         .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { if r.kind == .breakpoint { open?(r.id) } }
                         .onTapGesture { if r.kind != .separator && r.kind != .gauge { select(r.id) } }
                         .contextMenu {
-                            if let contextMenu, r.kind == .breakpoint {
-                                Button("Delete Breakpoint") { contextMenu(r.id) }
-                            }
+                            if let contextMenu, r.kind == .breakpoint { contextMenu(r) }
+                        }
+                        .background {
+                            if let rowFrame, r.kind == .breakpoint { RowFrameReader(id: r.id, report: rowFrame) }
                         }
                         .shellTarget("row \(r.title)")
                 }
@@ -231,15 +236,14 @@ struct VariablesPane: View {
             ZStack {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
+                        if d.isAddingExpression { NewExpressionRow(model: model, colors: c) }
                         ForEach(d.variableRows) { r in
-                            VariableRowView(row: r, isSelected: d.selectedVariable == r.id, colors: c) { on in d.setVariableExpanded(r, on) }
+                            VariableRowView(row: r, isSelected: d.selectedVariable == r.id, colors: c, model: model) { on in d.setVariableExpanded(r, on) }
                                 .contentShape(Rectangle())
+                                .onTapGesture(count: 2) { d.selectedVariable = r.id; d.beginEditing(r) }
                                 .onTapGesture { d.selectedVariable = r.id }
-                                .contextMenu {
-                                    Button("Print Description of \"\(r.name)\"") { d.printDescription(r) }
-                                    Button("Copy Value") { ShellClipboard.copy(r.value, model: model) }
-                                }
-                                .shellTarget("variable \(r.name)")
+                                .contextMenu { VariableMenuItems(model: model, row: r) }
+                                .shellTarget("variable \(r.id)")
                         }
                     }
                     .padding(.vertical, 4)
@@ -250,6 +254,10 @@ struct VariablesPane: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contextMenu {
+                // The empty area: Add Expression… only.
+                Button("Add Expression…") { d.beginAddingExpression() }.disabled(!d.isPaused)
+            }
             HStack(spacing: 8) {
                 Menu {
                     ForEach(VariableScope.allCases, id: \.rawValue) { s in
@@ -276,6 +284,76 @@ struct VariablesPane: View {
             .frame(height: CGFloat(WorkspaceChrome.bottomBarHeight))
         }
         .shellTarget("variables view")
+        .onAppear { if d.pasteboard == nil { d.pasteboard = LocalDebugPasteboard(model: model) } }
+    }
+}
+
+/// A variable's context menu (`debug.md` §Variables view depth).
+struct VariableMenuItems: View {
+    var model: WorkspaceShellModel
+    var row: VariableRow
+
+    var body: some View {
+        let d = model.debug
+        let r = row
+        let name = d.expression(of: r)
+        Button("Print Description of \"\(name)\"") { d.printDescription(r) }.disabled(!d.isPaused)
+        Button("Copy") { d.copy(r) }
+        Button("Copy Value") { d.copyValue(r) }
+        Divider()
+        Button("View Memory of \"\(name)\"") { d.viewMemory(of: r) }.disabled(!d.isPaused || !d.session.canReadMemory)
+        if !r.isWatch || r.level > 0 {
+            Button("Watch \"\(name)\"") { d.watch(r) }.disabled(d.watchExpressions.contains(name))
+        }
+        Divider()
+        Button("Edit Value…") { d.selectedVariable = r.id; d.beginEditing(r) }.disabled(!d.isPaused || (r.isWatch && r.level == 0))
+        Button("Add Expression…") { d.beginAddingExpression() }.disabled(!d.isPaused)
+        if r.isWatch && r.level == 0 {
+            Button("Delete Expression") { d.deleteWatch(r) }
+        }
+    }
+}
+
+/// Add Expression…'s field at the top of the variables view: Return adds
+/// the watch expression, Escape cancels.
+struct NewExpressionRow: View {
+    var model: WorkspaceShellModel
+    var colors: ShellColors
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let d = model.debug
+        HStack(spacing: 4) {
+            Color.clear.frame(width: 12, height: 18).padding(.leading, 6)
+            TextField("Expression", text: Binding(get: { d.expressionText }, set: { d.expressionText = $0 }))
+                .textFieldStyle(.plain)
+                .font(.system(size: 11))
+                .focused($focused)
+                .onSubmit { d.commitExpression() }
+                .onKeyPress(.escape) { d.cancelExpression(); return .handled }
+                .padding(.horizontal, 3)
+                .frame(maxWidth: 320, minHeight: 16, maxHeight: 16)
+                .background {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous).stroke(DebugColors.breakpoint, lineWidth: 1)
+                }
+                .shellTarget("new expression")
+            Spacer(minLength: 0)
+        }
+        .frame(height: 18)
+        .onAppear { focused = true }
+    }
+}
+
+/// Reports a view's window frame as it changes.
+struct RowFrameReader: View {
+    var id: String
+    var report: (String, CGRect) -> Void
+
+    var body: some View {
+        GeometryReader { geo in
+            let f = geo.frame(in: .global)
+            Color.clear.onChange(of: f, initial: true) { _, new in report(id, new) }
+        }
     }
 }
 
@@ -283,6 +361,7 @@ struct VariableRowView: View {
     var row: VariableRow
     var isSelected: Bool
     var colors: ShellColors
+    var model: WorkspaceShellModel?
     var toggle: (Bool) -> Void
 
     var body: some View {
@@ -307,19 +386,56 @@ struct VariableRowView: View {
                 Text(verbatim: b).font(.system(size: 9, weight: .bold)).foregroundStyle(Color.white)
                     .frame(width: 13, height: 13)
                     .background { RoundedRectangle(cornerRadius: 3).fill(b == "A" ? DebugColors.argumentBadge : DebugColors.breakpoint) }
+            } else if row.isWatch && row.level == 0 {
+                // Watch expressions line up with the badged rows.
+                Color.clear.frame(width: 13, height: 13)
             }
-            (Text(verbatim: row.name).foregroundStyle(c.label)
-                + Text(verbatim: row.type.map { ": \($0)" } ?? "").foregroundStyle(c.secondaryLabel)
-                + Text(verbatim: " = ").foregroundStyle(c.secondaryLabel)
-                + Text(verbatim: row.value).foregroundStyle(c.label))
-                .font(.system(size: 11))
-                .lineLimit(1)
+            if let d = model?.debug, d.editingVariable == row.id {
+                // Edit Value: the value becomes a field (Return sets it).
+                (Text(verbatim: row.name).foregroundStyle(c.label)
+                    + Text(verbatim: row.type.map { ": \($0)" } ?? "").foregroundStyle(c.secondaryLabel)
+                    + Text(verbatim: " = ").foregroundStyle(c.secondaryLabel))
+                    .font(.system(size: 11))
+                    .lineLimit(1)
+                ValueEditField(model: model!)
+            } else {
+                (Text(verbatim: row.name).foregroundStyle(c.label)
+                    + Text(verbatim: row.type.map { ": \($0)" } ?? "").foregroundStyle(c.secondaryLabel)
+                    + Text(verbatim: " = ").foregroundStyle(c.secondaryLabel)
+                    + Text(verbatim: row.value).foregroundStyle(row.isWatch && row.value == "<unavailable>" ? c.secondaryLabel : c.label))
+                    .font(.system(size: 11))
+                    .lineLimit(1)
+            }
             Spacer(minLength: 0)
         }
         .frame(height: 18)
         .background {
             if isSelected { RoundedRectangle(cornerRadius: 4).fill(c.rowSelection).padding(.horizontal, 4) }
         }
+    }
+}
+
+/// Edit Value's field in a variables row.
+struct ValueEditField: View {
+    var model: WorkspaceShellModel
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let d = model.debug
+        TextField("", text: Binding(get: { d.editText }, set: { d.editText = $0 }))
+            .textFieldStyle(.plain)
+            .font(.system(size: 11))
+            .focused($focused)
+            .onSubmit { d.commitEditing() }
+            .onKeyPress(.escape) { d.cancelEditing(); return .handled }
+            .padding(.horizontal, 3)
+            .frame(minWidth: 80, maxWidth: 220, minHeight: 16, maxHeight: 16)
+            .background {
+                RoundedRectangle(cornerRadius: 3, style: .continuous).fill(Color.black.opacity(0.001))
+                    .overlay { RoundedRectangle(cornerRadius: 3, style: .continuous).stroke(DebugColors.breakpoint, lineWidth: 1) }
+            }
+            .onAppear { focused = true }
+            .shellTarget("variable value field")
     }
 }
 
@@ -408,19 +524,5 @@ struct DebugHalvesToggles: View {
             }
             .buttonStyle(.plain).help("Show or hide the console").shellTarget("toggle console")
         }
-    }
-}
-
-/// The clipboard, for Copy Value (on Linux through the editor's text
-/// surface, which holds the platform's clipboard).
-@MainActor
-enum ShellClipboard {
-    static func copy(_ s: String, model: WorkspaceShellModel) {
-        #if os(Linux)
-        if let e = model.editor { SourceEditorController.of(e).connection?.clipboardText = s }
-        #else
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(s, forType: .string)
-        #endif
     }
 }

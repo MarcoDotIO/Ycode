@@ -70,6 +70,14 @@ public enum EditorMetrics {
     /// no pixel by more than 7–8 levels of 255; a black glyph pixel under
     /// this fill changes by about 8.
     public static let barVeil = 0.035
+    /// Active window (`liquid-glass.md` §8.3): the jump bar's band lays this
+    /// much of the editor's background over the blurred material, so it
+    /// passes about 8.5 % of the content where the toolbar band passes the
+    /// material's own (the bottom bar's 12 %).
+    public static let jumpBarOverBlur = 0.3
+    /// The bottom bar's 1-point separator: black at this strength over the
+    /// editor's background (#D7D7D7 on white, `liquid-glass.md` §7.4).
+    public static let bottomBarSeparatorInk = 0.157
 
     // MARK: Minimap (§C.5)
 
@@ -109,6 +117,25 @@ public enum EditorMetrics {
         (0, 0), (21, 0.01), (41, 0.05), (63, 0.17), (86, 0.25), (108, 0.31), (127, 0.47),
         (147, 0.58), (165, 0.74), (183, 0.92), (202, 0.97), (221, 0.98), (225, 1),
     ]
+
+    // Round 2 (`editor-area.md` §D.5, key window, Long.swift open): this
+    // supersedes the duration and curve above.
+
+    /// From the press to the first motion: hide 43 ms, show 118 ms.
+    public static func inspectorSlideDelay(show: Bool) -> Double { show ? 0.118 : 0.043 }
+    /// The motion with fitted ends: hide 248 ms, show 240 ms.
+    public static func inspectorSlideMotion(show: Bool) -> Double { show ? 0.240 : 0.248 }
+    /// Ease-in-out, the working curve for both.
+    public static let inspectorSlideEaseInOut = (x1: 0.42, y1: 0.0, x2: 0.58, y2: 1.0)
+
+    /// The slide's progress `elapsed` seconds after the press.
+    public static func inspectorSlideProgress(elapsed: Double, show: Bool) -> Double {
+        let t = (elapsed - inspectorSlideDelay(show: show)) / inspectorSlideMotion(show: show)
+        let c = inspectorSlideEaseInOut
+        return cubicBezier(t, x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2)
+    }
+    /// The whole slide from the press.
+    public static func inspectorSlideTotal(show: Bool) -> Double { inspectorSlideDelay(show: show) + inspectorSlideMotion(show: show) }
 
     /// The slide's progress at `t` (0–1 of the duration): the measured
     /// table, interpolated (`editor-area.md` §C.7: "implement the table").

@@ -277,3 +277,56 @@ system's download service. They must be recorded on screen.
   internal flag, platform identifier, architectures, and the version as one
   integer with the major in the upper bits, 27.0 as 0x1B0000). It is
   CoreSimulator's private state; the public listing carries the same facts.
+
+## 8. The decrypted asset's container (follow-up, 2026-11-04)
+
+**Protocol deviation.** On 2026-11-04 a clean-room agent (the route B
+implementer) read decrypted asset data directly to learn its container
+format. That is dirty-room work done in the clean room. This round
+observed the format properly and `specs/simulator/runtime-downloads.md`
+§4.3 and §5.0 now carry it with evidence, so the clean code has a spec
+behind it.
+
+Context: the owner decided the same day that Ycode may download runtimes
+from Apple and decrypt them with the key in the asset service's answer
+(decisions O1 and O2 in the downloads spec).
+
+Method. One Metal Toolchain asset (27A266a, the one Xcode 27.1 maps to)
+was fetched by the downloads spec's §4 steps: a query to the asset service
+that describes this Mac with its own values, then the download from
+Apple's CDN (800 MiB in about 8 s), with the size and SHA-256 checked
+against the answer. macOS's own `aea` tool decrypted it with the key from
+the answer, kept in a private file in the git-ignored dirty folder and
+never printed. Apple's `aa list -v` was run on the plaintext, and the
+plaintext was read as bytes with small scripts of mine kept outside the
+repository, decompressing chunks with Python's standard `lzma`. Nothing was
+installed. The download, plaintext, key and answer were deleted
+afterwards.
+
+Findings, in prose:
+
+- The downloaded file is an encrypted-archive container: magic `AEA1`,
+  profile 1 (symmetric, unsigned), no auth data, padded to a whole number
+  of MiB.
+- The plaintext is not an archive of files but four Apple Archive
+  metadata entries, which Apple's `aa list` calls a manifest, two extract
+  parts and a "dst-fixup" part. The key that names the operation and a
+  "label" key (`main`) are not in Apple's public header. `aa extract` on
+  the plaintext extracts nothing.
+- The manifest lists the three later parts with their payload size, their
+  offset (from the end of the manifest entry) and their entry size; the
+  numbers match the file exactly.
+- Each later part's payload is a pbzx stream (4 MiB chunks, each either
+  one XZ stream or stored as is). Decompressed, it is again an Apple
+  Archive stream: in the extract parts, file entries with path, data and
+  an error-correcting-code blob; in the fix-up part, one entry per file
+  with owner, group, mode and SHA-256 and no data.
+- The mode values include the file-type bits.
+- Every file's SHA-256 matched the fix-up part. The files are the asset
+  folder of the downloads spec's §5.1: the disk image, the restore
+  plists, the firmware side files, and `Info.plist` and `version.plist`.
+- The asset record's unarchived size is the sum of the file sizes, each
+  rounded up to 4 KiB.
+
+A runtime asset was not downloaded in this round. That runtime assets use
+the same layout is expected but still to confirm.

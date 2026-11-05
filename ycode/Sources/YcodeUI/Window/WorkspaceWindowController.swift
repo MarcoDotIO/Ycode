@@ -34,11 +34,6 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     @MainActor final class ToolbarControls {
         let leftPanes = NSSegmentedControl(images: WorkspaceChrome.leftPanes.images, trackingMode: .selectAny, target: nil, action: nil)
         let editorModes = NSSegmentedControl(images: WorkspaceChrome.editorModes.images, trackingMode: .selectAny, target: nil, action: nil)
-        /// The editor modes folded into one pull-down when the toolbar is
-        /// short of room (reference-ui-6.md §2.2).
-        let editorModesPullDown = NSPopUpButton(frame: .zero, pullsDown: true)
-        /// The scheme pop-up's width cap while room is short (§2.2.2).
-        var schemeCap: NSLayoutConstraint?
         /// The fitting state (`ToolbarFit`) and its guards.
         var fit = ToolbarFit()
         var fitting = false
@@ -141,6 +136,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         if #available(macOS 26, *) {
             // No hard line under the glass toolbar (liquid-glass-ycode.md §1).
             window.titlebarSeparatorStyle = .none
+            // The system draws no band of its own behind the toolbar: each
+            // area shows through, and over the editor its text shows
+            // behind the editor's veil (fidelity-council.md row 5).
+            window.titlebarAppearsTransparent = true
         }
         window.minSize = NSSize(width: 700, height: 400)
         window.isRestorable = !Self.isTestProcess
@@ -191,8 +190,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         e.onQuickHelp = { [weak self] url, p, rect in self?.showQuickHelp(url: url, at: p, anchor: rect) }
         e.onJumpToDefinition = { [weak self] url, p in self?.jumpToDefinition(url: url, at: p) }
         wireEditorExtras(e)
-        e.onSelectionChange = { [weak self] url, p in
-            self?.debugArea.setPosition(line: p.line + 1, column: p.character + 1)
+        e.onSelectionChange = { [weak self, weak e] url, p in
+            // An editor showing another view (an image) has no position.
+            let text = e?.auxiliary == nil
+            self?.debugArea.setPosition(line: text ? p.line + 1 : 0, column: p.character + 1)
             guard let self, self.inspector.selectedIndex == 2, self.session.language != nil else { return }
             Task {
                 let text = await self.session.hover(url, at: p)
@@ -254,7 +255,6 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         let overlayBar = DebugAreaController.translucentBar
         if overlayBar { editorArea.view.additionalSafeAreaInsets = NSEdgeInsets(top: 0, left: 0, bottom: DebugAreaController.debugBarHeight, right: 0) }
         NSLayoutConstraint.activate([
-            editorArea.view.topAnchor.constraint(equalTo: column.topAnchor),
             editorArea.view.leadingAnchor.constraint(equalTo: column.leadingAnchor),
             editorArea.view.trailingAnchor.constraint(equalTo: column.trailingAnchor),
             overlayBar ? editorArea.view.bottomAnchor.constraint(equalTo: column.bottomAnchor)
@@ -268,6 +268,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         debugItem.canCollapse = true
         debugItem.minimumThickness = 80
         debugItem.isCollapsed = true
+        // A taller or shorter window changes the editor, not the debug
+        // area: it keeps the height asked for (metrics.md §7).
+        editorItem.holdingPriority = NSLayoutConstraint.Priority(rawValue: 249)
+        debugItem.holdingPriority = NSLayoutConstraint.Priority(rawValue: 260)
         centerSplit.addSplitViewItem(editorItem)
         centerSplit.addSplitViewItem(debugItem)
 
@@ -279,7 +283,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         // below it, at the center column's safe area, so its heights are
         // the ones the specs measure.
         let centerColumn = NSViewController()
-        centerColumn.view = NSView()
+        centerColumn.view = CenterColumnView()
         centerColumn.addChild(centerSplit)
         let centerView = centerSplit.view
         centerView.translatesAutoresizingMaskIntoConstraints = false
@@ -295,6 +299,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             centerView.trailingAnchor.constraint(equalTo: centerColumn.view.trailingAnchor),
             centerView.bottomAnchor.constraint(equalTo: centerColumn.view.bottomAnchor),
         ])
+        extendEditorUnderToolbar(column: column, centerColumn: centerColumn.view)
         let centerItem = NSSplitViewItem(viewController: centerColumn)
         inspectorItem = NSSplitViewItem(inspectorWithViewController: inspector)
         inspectorItem.minimumThickness = 220
@@ -308,6 +313,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
         window?.toolbar = toolbar
+        styleToolbarToggles()
         labelSchemePill()
         observeLeftArea()
         // A divider drag sets the debug area's remembered height (§8.2).
@@ -894,6 +900,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         // "Council round 1" item 3).
         navigator.selectOpenFileRow(path)
         updateCounterparts()
+        updateToolbarAvailability()
         updateWindowTitle()
     }
 
@@ -969,12 +976,14 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         guard let p = e.history.back() else { return }
         editorArea.withFocus(e) { display(path: p, line: nil); updateCounterparts() }
         updateWindowTitle()
+        updateToolbarAvailability()
     }
 
     func goForward(in e: SourceEditorController) {
         guard let p = e.history.forward() else { return }
         editorArea.withFocus(e) { display(path: p, line: nil); updateCounterparts() }
         updateWindowTitle()
+        updateToolbarAvailability()
     }
 
     /// Navigate ▸ Go Back (⌃⌘←) / Go Forward (⌃⌘→), in the focused editor.
@@ -1689,6 +1698,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
                 activityView.status = WorkspaceChrome.activityFinishedText(s, at: Date())
             }
             activityView.isBusy = session.isBusy
+            updateToolbarAvailability()
             if case .paused = session.activity { debugArea.setPaused(true) } else { debugArea.setPaused(false) }
             debugArea.setDebugging(session.debugClient != nil)
             refreshDebugChrome()
@@ -1843,6 +1853,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         for m in EditorMode.allCases { r.setSelected(m == mode, forSegment: m.rawValue) }
         updateEditorModesPullDown()
         updateAreaToggleTitles()
+        updateToolbarAvailability()
     }
 
     /// The left segments follow every way the left area changes: menu
@@ -1918,9 +1929,12 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             c.target = self
             c.action = #selector(editorModeChosen(_:))
             let item = NSToolbarItem(itemIdentifier: id)
-            item.view = toolbarControls.fit.editorModesCollapsed ? toolbarControls.editorModesPullDown : c
+            item.view = c
             item.label = "Editor Modes"
-            item.visibilityPriority = .high
+            // liquid-glass.md §8.2: the first group to go into the "»"
+            // overflow, where it is "Editor Modes" with the three modes.
+            item.visibilityPriority = .low
+            item.menuFormRepresentation = editorModesMenuItem()
             return item
         case Self.stopID: return button("stop.fill", "Stop", #selector(stopProduct(_:)))
         case Self.libraryID: return button("plus", "Library", #selector(showLibrary(_:)))

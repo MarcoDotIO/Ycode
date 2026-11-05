@@ -189,4 +189,7 @@ public final class ShellAppModel {
 
     /// The command's title in the current context.
     public func title(_ c: ShellCommand) -> String { c.title(in: workspace?.menuContext) }
+
+    /// A toggle's check mark (nil: the command is not a toggle).
+    public func isChecked(_ c: ShellCommand) -> Bool? { workspace?.debug.isChecked(c) }
 }

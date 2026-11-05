@@ -88,8 +88,10 @@ struct SymbolRowView: View {
     }
 }
 
-/// The Symbol navigator's bottom bar: the filter capsule with a working
-/// field (the other navigators' bars are `NavigatorFilterBar`).
+/// The Symbol navigator's bottom bar: the other navigators' filter capsule
+/// (`NavigatorFilterBar`: the filter options glyph with its chevron, the
+/// field, the same insets and outline), with a working field and a clear
+/// button. It has no "+" (there is nothing to add), as the Find navigator.
 struct SymbolFilterBar: View {
     @Bindable var symbols: SymbolNavigatorModel
     @Environment(\.colorScheme) private var scheme
@@ -97,7 +99,11 @@ struct SymbolFilterBar: View {
     var body: some View {
         let c = ShellColors(scheme)
         HStack(spacing: 6) {
-            Image(systemName: "line.3.horizontal.decrease").font(.system(size: 11)).foregroundStyle(c.tertiaryLabel)
+            HStack(spacing: 1) {
+                Image(systemName: "line.3.horizontal.decrease").font(.system(size: 11))
+                Image(systemName: "chevron.down").font(.system(size: 7))
+            }
+            .foregroundStyle(c.tertiaryLabel)
             TextField("Filter", text: $symbols.filterText)
                 .textFieldStyle(.plain)
                 .font(ShellFonts.row)

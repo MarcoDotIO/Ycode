@@ -45,6 +45,22 @@ COMPONENTS = [
     ("SPIRV-Headers", "vulkan-sdk-1.4.363.0", "https://github.com/KhronosGroup/SPIRV-Headers", "MIT-style (Khronos)", "aarch64 Flatpak only (compiled into ycode-airc)", [L + "spirv-headers-LICENSE.txt"]),
 ]
 
+# Programs Ycode runs when the user asks for a runtime download (#55) but
+# never ships or links: name, version, source, licence, how Ycode uses it.
+RUN_ONLY = [
+    ("python-aea", "1.1.0", "https://github.com/kinnay/AEA", "MIT",
+     "Decrypts a runtime archive on Linux (route B). Installed on request, with pip, into a Python environment in Ycode's runtime folder; run as a separate program."),
+    ("cryptography, lz4, pyliblzfse, cffi, pycparser (python-aea's dependencies)", "as pip resolves them", "https://pypi.org/project/python-aea/",
+     "Apache-2.0 OR BSD-3-Clause; BSD-3-Clause; MIT (LZFSE: BSD-3-Clause); MIT-0; BSD-3-Clause", "Installed by pip with python-aea, in the same environment."),
+    ("7-Zip (7zz or 7z)", "23 or later", "https://www.7-zip.org", "LGPL-2.1-or-later with the unRAR restriction; parts BSD-3-Clause",
+     "Reads the runtime's disk image (UDIF and APFS) on Linux. Installed by the user; run as a separate program, never linked."),
+    ("liblzma (XZ Utils)", "the system's", "https://github.com/tukaani-project/xz", "0BSD (public domain before 5.6)",
+     "Decodes XZ chunks of an asset archive; the system's library, loaded at run time."),
+    ("curl (the command)", "the system's", "https://github.com/curl/curl", "curl (MIT-style)", "Fetches Apple's index, asset answer and archive."),
+    ("Python 3", "3.11 or later, the system's", "https://www.python.org", "PSF-2.0", "Runs python-aea."),
+]
+RUN_ONLY_TEXTS = [("python-aea", L + "python-aea-LICENSE.txt")]
+
 
 def read_license(ref, checkouts):
     if ref.startswith("checkout:"):
@@ -86,6 +102,16 @@ def main():
     out += ["", "## Licence texts", ""]
     for key, text in texts.items():
         out += ["### " + ", ".join(users[key]), "", "```text", text.rstrip(), "```", ""]
+    out += ["## Programs Ycode runs but does not ship", "",
+            "Getting a simulator runtime (`specs/simulator/runtime-downloads.md` §6) uses these programs, only when the user",
+            "asks for a download. Ycode runs each as a separate program, or loads the system's library at run time; it links",
+            "none of them and no Ycode package contains them.", "",
+            "| Program | Version | Licence | How Ycode uses it |", "|---|---|---|---|"]
+    for name, version, url, licence, use in RUN_ONLY:
+        out.append("| [%s](%s) | %s | %s | %s |" % (name, url, version, licence, use))
+    out.append("")
+    for name, ref in RUN_ONLY_TEXTS:
+        out += ["### " + name, "", "```text", read_license(ref, checkouts).rstrip(), "```", ""]
     with open(os.path.join(ROOT, "THIRD_PARTY_NOTICES.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(out))
 

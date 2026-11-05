@@ -117,7 +117,7 @@ sets the item kinds and order (`liquid-glass-ycode.md` §2).
 
 | Element | Ycode (after) | Spec | Decision |
 |---|---|---|---|
-| Width | 265 | 265 (`workspace-window.md`); 260 observed (`liquid-glass.md`) | unchanged (`liquid-glass-ycode.md` §10) |
+| Width | 260 (beta 2) | 260 (`workspace-window.md`, `liquid-glass.md` §7) | matches |
 | Tab capsule | x 1141–1394 (253 × 30), 5 from the divider, 6 from the edge | 5 and 6 from the edges (248 at a 260-point inspector) | matches |
 | Selected tab's pill | 78 × 24 | about 78 × 24 | matches |
 | Content | 12 from the divider and from the window's edge (`contentInset`), 10 above the first heading (`contentTopInset`) | — | Ycode |

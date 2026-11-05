@@ -236,8 +236,8 @@ struct ScriptedEngine: BuildEngine {
         var seen: [ShellShortcut: ShellCommand] = [:]
         for c in ShellCommand.allCases {
             #expect(c.menuCommand != nil, "\(c) has no CommandTable entry")
-            // Save All: the AppKit IDE lists it unavailable; this shell performs it.
-            #expect(c.menuCommand?.isAvailable == true || c == .saveAll, "\(c) is unavailable in the core")
+            // Save All and View Memory: the AppKit IDE lists them unavailable; this shell performs them.
+            #expect(c.menuCommand?.isAvailable == true || c == .saveAll || c == .viewMemory, "\(c) is unavailable in the core")
             if let s = c.shortcut {
                 #expect(seen[s] == nil, "\(c) and \(seen[s].map { "\($0)" } ?? "") share \(s.text)")
                 seen[s] = c

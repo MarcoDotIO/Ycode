@@ -77,9 +77,24 @@ Sent with `setBreakpoints` per file:
 |---|---|
 | condition | `condition` |
 | ignore count N > 0 | `hitCondition` "N" (lldb-dap: ignore N hits) |
-| Log Message + automatically continue | `logMessage` (a log point: `{expr}` is interpolated, execution continues) |
-| Log Message without continue | not sent (DAP cannot log and stop); OPEN QUESTION |
-| Debugger Command | kept, not sent: DAP has no per-breakpoint command (OPEN QUESTION: lldb-dap's own extensions) |
+| One Log Message + automatically continue, no `%B`/`%H` | `logMessage` (a log point: `@expr@` is sent as `{expr}`, execution continues) |
+| Any other actions, or automatically continue alone | not sent; Ycode runs them at the stop (below) |
+
+Actions Ycode runs (B2-DEBUG2): when a `stopped` event with reason
+`breakpoint` names (in `hitBreakpointIds`, else "breakpoint n.m" in its
+description) a line breakpoint whose actions the adapter does not run,
+Ycode runs its actions in order in the top frame before showing the stop:
+**Log Message** prints the message to the console, `@expr@` and `{expr}`
+evaluated with `evaluate` context `watch`, `%B` as `<file>:<line>`, `%H` as
+the hit count (this stop included); **Debugger Command** is sent as
+`evaluate` context `repl` and its output printed (errors as `error: …`);
+**Sound** plays a sound of the computer's (freedesktop's stereo sound
+theme through `pw-play`, `paplay` or `canberra-gtk-play` on Linux, the
+system sounds through `afplay` on macOS; offered only when there are
+sounds and a player). With "Automatically continue" Ycode then sends
+`continue` and the stop is not shown (no Debug navigator, no annotation,
+the hit is still counted). Stored in `ycode-breakpoints.json` as
+`{"log": …}`, `{"command": …}`, `{"sound": …}`.
 
 Debug ▸ Breakpoints holds the reference's commands (Create Breakpoint at
 Current Line ⌘\, Enable / Disable Breakpoints at Current Line, Create
@@ -307,9 +322,78 @@ it for the OpenViews views.
   Deactivate Breakpoints (⌘Y), Breakpoints ▸ Create Breakpoint at Current
   Line (⌘\\), Enable/Disable Breakpoints at Current Line, Delete All
   Breakpoints, Console ▸ Clear Console; View ▸ Navigators ▸ Debug,
-  Breakpoints.
+  Breakpoints. Deactivate Breakpoints is Ctrl+Y on Linux, with the editor
+  focused too (the editor leaves Ctrl+Y to the menu bar; Redo is
+  Ctrl+Shift+Z).
+- **Copy items.** The variables' Copy Value and the console's rows: a
+  click selects a row of the run's output; its context menu and Debug ▸
+  Console ▸ Copy Row with Visible Metadata (⌥⇧C) / with All Metadata /
+  without Metadata copy it (`ConsoleRows.copyText`; the Linux console
+  shows no metadata columns, so "visible" is the bare row). The text goes
+  to the system clipboard through OpenViews (`OpenViewsClipboard`).
 - Tests: `ShellDebugTests` (a scripted adapter), `LLDBDAPLocateTests`;
   end to end on x86-64 Linux with `YCODE_IDE_DEBUG` (`DebugDriver.swift`).
+
+### Editing (B2-DEBUG2, 2026-11-04)
+
+- **Breakpoint editor popover.** Opened by a double-click or ⌘-click (the
+  Super key) on a breakpoint in the gutter, the gutter's context menu, a
+  double-click or the context menu of a Breakpoint navigator row. A card
+  beside the gutter (or the row) with an arrow pointing at it; changes
+  apply as they are typed; Done, Return in a field, Escape or a click
+  outside close it. Line breakpoint: the title "<file>:<line>",
+  Condition, Ignore [n] times before stopping, Action ("Add Action"; each
+  action a kind pop-up — Log Message, Debugger Command, Sound — with "+"
+  and "−", then its message field with the hint "@exp@ = expression %B =
+  breakpoint name %H = hit count", its command field, or the sound pop-up),
+  Options "Automatically continue after evaluating actions". Symbolic
+  breakpoint: Symbol and Condition. Exception breakpoint: the language and
+  Break (On Throw / On Catch, i.e. `*_throw` / `*_catch`).
+- **Context menus.** A breakpoint in the gutter (the breakpoint under the
+  pointer replaces the editor's Cut/Copy/Paste menu): Edit Breakpoint…,
+  Disable/Enable Breakpoint, Delete Breakpoint, Reveal in Breakpoint
+  Navigator. A Breakpoint navigator row: Edit Breakpoint…, Disable/Enable
+  Breakpoint, Delete Breakpoint. Symbolic rows have the enabled marker.
+- **The "+" menu** (the Breakpoint navigator's bottom bar) and Debug ▸
+  Breakpoints: Swift Error Breakpoint (`swift_throw`; disabled while it
+  exists), Exception Breakpoint… (`cpp_throw` on Linux, adding
+  `objc_throw` on macOS; its editor opens), Symbolic Breakpoint… (a new row
+  whose editor takes the symbol; a row left without a symbol is removed).
+  Left out on Linux: Runtime Issue, Constraint Error and Test Failure
+  breakpoints (Apple runtimes). A symbol is sent trimmed; empty ones are
+  not sent.
+- **Variables view.** Context menu: Print Description of "<expr>", Copy
+  ("(Type) name = value"), Copy Value, View Memory of "<expr>", Watch
+  "<expr>", Edit Value…, Add Expression…, and Delete Expression on a watch
+  row (`<expr>` is the row's path, "stats.total"; array elements "a[0]").
+  Watch expressions are listed first without a badge, evaluated (context
+  `watch`) at every stop and frame change and after an edit, expandable,
+  and kept while the workspace is open. Add Expression… is a field at the
+  top of the view. Edit Value (also a double-click) turns the value into a
+  field; Return sends `setVariable` in the row's container. Swift 6.4's
+  lldb-dap on Linux answers `setVariable` on Swift integers with "Invalid
+  encoding." (observed); Ycode then sends `evaluate` context `repl`
+  `expression -- <expr> = <value>`; a failure is printed in the console.
+  The clipboard: the editor's text surface, else `wl-copy` / `xclip`
+  (until OpenViews has a clipboard API).
+- **Debug ▸ Debug Workflow.** Navigate to Source File when Process Pauses
+  (check mark, on), Always Show Disassembly (check mark; DAP `disassemble`,
+  shown over the editor as "<address>  <instruction>    ; <symbol>" lines
+  with the program counter's line marked, Step Over/Into by instruction),
+  View Memory (enabled while paused when the adapter has
+  `supportsReadMemoryRequest`). A selected frame whose source is not on
+  this computer (a Swift error stops in the runtime's `swift_willThrow`)
+  also shows its disassembly. Left disabled: Synchronize Insertion Point
+  to Program Counter (on Linux the insertion point always follows the
+  stop), Show Library Info…, Load Symbols… (dSYM loading, Apple
+  platforms), Interrupt Debugger Operation.
+- **View Memory.** Covers the editor: the title ("Memory of "stats""), an
+  Address field (an address or an expression; its value's
+  `memoryReference`), Previous / Next Page (256 bytes), and 16 bytes a line:
+  the address (16 hex digits), the bytes in two groups of eight, and the
+  printable ASCII; "??" for unreadable bytes. DAP `readMemory`.
+- Tests: `ShellDebugEditingTests` (a scripted adapter); end to end on
+  x86-64 Linux with `YCODE_IDE_DEBUG2` (`DebugEditingDriver.swift`).
 
 ## Evidence
 
@@ -331,6 +415,14 @@ it for the OpenViews views.
   Registers, Globals and Statics" scope: `specs/ide/reference-ui-2.md` §9
   (level 3).
 - OPEN QUESTION: Xcode's thread row text.
+- Linux IDE editing (B2-DEBUG2): lldb-dap's capabilities, `hitBreakpointIds`,
+  `memoryReference` on variables and evaluate results, `readMemory`, the
+  `swift_throw` stop (reason `exception`, description "Swift Throw", top
+  frame `swift_willThrow`) and the `setVariable` refusal, observed with
+  Swift 6.4.2's lldb-dap (LLDB 21) on x86-64 Linux (level 3). The log
+  message tokens and action kinds: Apple's public Xcode Help (level 1).
+  Watch rows without a badge, the editor's field order and the memory
+  browser's layout are Ycode design (OPEN QUESTION: the reference's).
 - Breakpoint editing (condition, ignore, actions, auto-continue,
   exception/symbolic from the + menu): Apple's public Xcode Help (level 1);
   DAP fields from the DAP specification (level 1); verified against

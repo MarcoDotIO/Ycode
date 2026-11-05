@@ -34,6 +34,7 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
         consoleView.textColor = Theme.consoleTextColor
         consoleView.backgroundColor = Theme.consoleBackgroundColor
         consoleField.font = Theme.consoleFont
+        bottomBarBackdrop?.themeChanged()
     }
 
     /// The console's current font (tests).
@@ -66,6 +67,8 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
     /// the editor so it stays visible while the debug area is hidden
     /// (reference-ui.md §3, §5).
     public let debugBar = NSView()
+    /// The bar's background over the editor (macOS 26+).
+    public internal(set) var bottomBarBackdrop: EditorBottomBarBackdrop?
     /// The editor's bottom bar is translucent over the editor (macOS 26+).
     static var translucentBar: Bool { GlassBars.enabled }
     /// The debug bar's height with its separator: 36 with the Liquid
@@ -360,21 +363,27 @@ public final class DebugAreaController: NSViewController, NSOutlineViewDataSourc
         split.addArrangedSubview(varsColumn)
         split.addArrangedSubview(consoleColumn)
 
-        let topSep = NSBox.hairline()
+        // liquid-glass.md §7.3, §7.4 (fidelity-council.md row 13): over
+        // the editor the bar is the editor's background, nearly opaque, so
+        // the text scrolled beneath shows only as a faint veil, under a
+        // 1-point opaque separator (#D7D7D7 in an inactive light window).
+        // Before macOS 26 it sits below the editor with a hairline.
+        let topSep: NSView
         if Self.translucentBar {
-            // liquid-glass.md §2.6, §3.2: a translucent bar over the editor
-            // text scrolled beneath it, strongly blurred, with a hard edge
-            // (the separator above); the system's header material.
-            let material = NSVisualEffectView()
-            material.material = .headerView
-            material.blendingMode = .withinWindow
-            material.state = .active   // blurred in inactive windows too (§3.2 was observed inactive)
-            material.translatesAutoresizingMaskIntoConstraints = false
-            debugBar.addSubview(material)
+            let backdrop = EditorBottomBarBackdrop()
+            backdrop.translatesAutoresizingMaskIntoConstraints = false
+            debugBar.addSubview(backdrop)
             NSLayoutConstraint.activate([
-                material.topAnchor.constraint(equalTo: debugBar.topAnchor), material.bottomAnchor.constraint(equalTo: debugBar.bottomAnchor),
-                material.leadingAnchor.constraint(equalTo: debugBar.leadingAnchor), material.trailingAnchor.constraint(equalTo: debugBar.trailingAnchor),
+                backdrop.topAnchor.constraint(equalTo: debugBar.topAnchor), backdrop.bottomAnchor.constraint(equalTo: debugBar.bottomAnchor),
+                backdrop.leadingAnchor.constraint(equalTo: debugBar.leadingAnchor), backdrop.trailingAnchor.constraint(equalTo: debugBar.trailingAnchor),
             ])
+            bottomBarBackdrop = backdrop
+            // The separator is the backdrop's top point; this keeps the
+            // bar's controls below it.
+            topSep = NSView()
+            topSep.heightAnchor.constraint(equalToConstant: 1).isActive = true
+        } else {
+            topSep = NSBox.hairline()
         }
         for v in [topSep, bar] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false

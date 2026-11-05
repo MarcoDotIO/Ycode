@@ -191,6 +191,9 @@ package final class WindowHost {
     package let focusedValues: FocusedValuesCenter
     /// The scene storage of the window (R10).
     package let sceneStorage: SceneStorageStore
+    /// The color scheme applied for `preferredColorScheme(_:)` (nil: the
+    /// desktop's, `baseEnvironment`'s).
+    package private(set) var preferredColorScheme: ColorScheme?
 
     init(platform: any PlatformWindow, sceneIndex: Int, sceneID: String?, content: any View,
          environment: EnvironmentValues, clock: HostClock, presenter: (any FramePresenter)?,
@@ -253,13 +256,35 @@ package final class WindowHost {
             env._sceneStorage = self.sceneStorage
             env.scenePhase = phase
             env.displayScale = scale
+            if let p = self.preferredColorScheme { env.colorScheme = p }
         }
     }
 
-    /// Applies new desktop settings to the window's environment (R10).
+    /// Applies new desktop settings to the window's environment (R10); a
+    /// scheme a view asked for stays.
     func applySettings(_ apply: @escaping (inout EnvironmentValues) -> Void) {
         apply(&baseEnvironment)
-        graph.updateEnvironment(apply)
+        // A pop-up keeps the scheme its main window asked for.
+        var main: WindowHost = self
+        while main.isPopup, let o = main.popupOwner { main = o }
+        let preferred = main.preferredColorScheme
+        graph.updateEnvironment { env in
+            apply(&env)
+            if let preferred { env.colorScheme = preferred }
+        }
+    }
+
+    /// Applies a changed `preferredColorScheme(_:)` request to the whole
+    /// window; true if the environment changed.
+    @discardableResult
+    func applyPreferredColorScheme() -> Bool {
+        let wanted = requestedColorScheme
+        guard wanted != preferredColorScheme else { return false }
+        preferredColorScheme = wanted
+        let scheme = wanted ?? baseEnvironment.colorScheme
+        graph.updateEnvironment { $0.colorScheme = scheme }
+        needsDisplay = true
+        return true
     }
 
     func setPhase(_ p: ScenePhase) {
@@ -271,6 +296,7 @@ package final class WindowHost {
     /// Runs pending updates (bodies, layout) and applies focus changes.
     package func update() {
         graph.update()
+        if applyPreferredColorScheme() { graph.update() }
         services.focus.sync()
         if !isPopup { focusedValues.recompute(focused: services.focus.focusedNode) }
         if graph.needsUpdate {
@@ -296,6 +322,7 @@ package final class WindowHost {
         // frame in which the last animation ends is presented as well.
         let animating = graph.isAnimating
         graph.renderFrame()
+        if applyPreferredColorScheme() { graph.update() }
         services.focus.sync()
         if !isPopup { focusedValues.recompute(focused: services.focus.focusedNode) }
         if graph.needsUpdate { update() }
@@ -528,6 +555,9 @@ package final class AppHost: RunLoopClient {
     /// until quit.
     /// The host `App.main()` created (samples and tools find it here).
     package private(set) static weak var current: AppHost?
+    /// The host launched last (tests launch hosts without `App.main()`);
+    /// `OpenViewsClipboard` uses it when there is no `current`.
+    package private(set) static weak var lastLaunched: AppHost?
 
     package static func runMain<A: App>(_ type: A.Type) {
         let backend = Platform.makeDefaultBackend()
@@ -578,6 +608,7 @@ package final class AppHost: RunLoopClient {
     package func launch() {
         guard !launched, let makeRoot else { return }
         launched = true
+        Self.lastLaunched = self
         OpenURLAction.systemOpener = { [weak self] url in self?.backend.openExternally(url) ?? false }
         UIApplication.shared.applicationState = .background
         let root = makeRoot(self)

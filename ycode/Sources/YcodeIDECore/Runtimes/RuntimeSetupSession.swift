@@ -31,6 +31,8 @@ public final class RuntimeSetupSession {
     public private(set) var transferState: RuntimeTransferState = .idle
     /// A file or folder the user picked in Add a Runtime.
     public private(set) var picked: PickedRuntime?
+    /// Get a Runtime: routes C and B (#55).
+    public let downloads: RuntimeDownloadModel
 
     public struct PickedRuntime: Sendable, Equatable {
         public var path: String
@@ -67,8 +69,12 @@ public final class RuntimeSetupSession {
         // A computer that cannot run the simulator uses a host.
         if !machine.canRunSimulatorHere { c.useHost = true }
         choices = c
+        downloads = RuntimeDownloadModel(machine: machine, folder: folder, runner: localRunner)
+        downloads.setPlatform(c.platforms.sorted().first ?? .iOS, check: false)
         pairedHosts = { RuntimeSetupSession.linkHosts() }
         configuredRoots = { [] }
+        downloads.onChange = { [weak self] in self?.changed() }
+        downloads.onInstalled = { [weak self] in self?.recheck() }
     }
 
     func changed() { onChange?() }
@@ -80,6 +86,13 @@ public final class RuntimeSetupSession {
     public func show(_ s: RuntimeSetupStep) {
         guard steps.contains(s) else { return }
         step = s
+        if s == .download {
+            // The first platform without a runtime; its checks.
+            if let missing = SimPlatform.allCases.first(where: { choices.platforms.contains($0) && !(report?.readyPlatforms.contains($0) ?? false) }) {
+                downloads.setPlatform(missing, check: false)
+            }
+            Task { await downloads.checkPrerequisites() }
+        }
         changed()
     }
 
@@ -97,11 +110,18 @@ public final class RuntimeSetupSession {
     public var isFirstStep: Bool { step == steps.first }
 
     /// The checks of the step on screen.
-    public var shownChecks: [RuntimeCheck] { report?.checks(in: step) ?? [] }
+    public var shownChecks: [RuntimeCheck] { step == .download ? downloads.checks : report?.checks(in: step) ?? [] }
 
     /// The mark of a step in the list.
     public func state(of s: RuntimeSetupStep) -> SetupCheckState? {
         if s == .finish { return report.map { $0.readyPlatforms.isEmpty ? .missing : .ok } }
+        if s == .download {
+            switch downloads.activity?.state {
+            case .finished?: return .ok
+            case .failed?: return .missing
+            default: return nil
+            }
+        }
         return report?.state(of: s)
     }
 
@@ -222,7 +242,7 @@ public final class RuntimeSetupSession {
 
     /// Asks before an action: the confirmation shows the exact command.
     public func request(_ action: RuntimeAction) {
-        confirmation = confirmationFor(action)
+        confirmation = downloads.confirmation(for: action) ?? confirmationFor(action)
         changed()
     }
 
@@ -252,6 +272,8 @@ public final class RuntimeSetupSession {
             let shown = r.location == .thisMachine ? cmd : "ssh \(choices.host.destination.shellQuoted) \(cmd.shellQuoted)"
             return RuntimeConfirmation(title: "Remove \(r.title)?", message: "Ycode copied this runtime; removing it frees \(r.sizeText) on \(r.location.title). Devices that use it stop working until it is copied again.",
                                        command: shown, confirmTitle: "Remove", isDestructive: true, action: action)
+        case .downloadWithXcode, .downloadDirect, .installDecryptor:
+            return downloads.confirmation(for: action)!
         case .provisionApply:
             let steps = hostSetup?.userSteps.map { "# \($0.id)\n\($0.command)" }.joined(separator: "\n") ?? ""
             return RuntimeConfirmation(title: "Apply Setup on \(choices.host.hostName)", message: "Ycode will run the setup script with --apply on the host, as your user. It runs these steps and none that need root:",
@@ -296,6 +318,12 @@ public final class RuntimeSetupSession {
             }
         case .provisionApply:
             runSetup(mode: "apply")
+        case .downloadWithXcode, .downloadDirect:
+            downloads.start(action)
+        case .installDecryptor:
+            runLocal(["/bin/sh", "-c", PythonAEAExpander.installCommand(folder: folder)], title: "Setting up the decryptor…") { [weak self] _, _ in
+                Task { await self?.downloads.checkPrerequisites() }
+            }
         }
     }
 
@@ -303,6 +331,7 @@ public final class RuntimeSetupSession {
     public func stop() {
         stoppedByUser = true
         process?.terminate()
+        downloads.cancel()
     }
 
     @ObservationIgnored var stoppedByUser = false

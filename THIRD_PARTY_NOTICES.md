@@ -3236,3 +3236,44 @@ public licenses.
 
 Creative Commons may be contacted at creativecommons.org.
 ```
+
+## Programs Ycode runs but does not ship
+
+Getting a simulator runtime (`specs/simulator/runtime-downloads.md` §6) uses these programs, only when the user
+asks for a download. Ycode runs each as a separate program, or loads the system's library at run time; it links
+none of them and no Ycode package contains them.
+
+| Program | Version | Licence | How Ycode uses it |
+|---|---|---|---|
+| [python-aea](https://github.com/kinnay/AEA) | 1.1.0 | MIT | Decrypts a runtime archive on Linux (route B). Installed on request, with pip, into a Python environment in Ycode's runtime folder; run as a separate program. |
+| [cryptography, lz4, pyliblzfse, cffi, pycparser (python-aea's dependencies)](https://pypi.org/project/python-aea/) | as pip resolves them | Apache-2.0 OR BSD-3-Clause; BSD-3-Clause; MIT (LZFSE: BSD-3-Clause); MIT-0; BSD-3-Clause | Installed by pip with python-aea, in the same environment. |
+| [7-Zip (7zz or 7z)](https://www.7-zip.org) | 23 or later | LGPL-2.1-or-later with the unRAR restriction; parts BSD-3-Clause | Reads the runtime's disk image (UDIF and APFS) on Linux. Installed by the user; run as a separate program, never linked. |
+| [liblzma (XZ Utils)](https://github.com/tukaani-project/xz) | the system's | 0BSD (public domain before 5.6) | Decodes XZ chunks of an asset archive; the system's library, loaded at run time. |
+| [curl (the command)](https://github.com/curl/curl) | the system's | curl (MIT-style) | Fetches Apple's index, asset answer and archive. |
+| [Python 3](https://www.python.org) | 3.11 or later, the system's | PSF-2.0 | Runs python-aea. |
+
+### python-aea
+
+```text
+MIT License
+
+Copyright (c) 2024 Yannik Marchand
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

@@ -350,12 +350,18 @@ Bookmarks; the Linux IDE has no Bookmarks navigator yet), titled
 for every source file of the workspace (an edited open file as edited),
 off the main thread, when the navigator appears:
 
+- Selector button: Ycode's own symbol `list.bullet.indent` (a type's badge
+  with two members under a tree line, drawn for OpenViews), the tooltip
+  "Show the Symbol navigator" and the title "Symbols" (`ShellNavigator.
+  selectorButtons`); the other places keep the reference's.
 - Rows: one per file that declares something (its file icon and name in
   bold), then its declarations nested as the scan nests them, each with
   its letter badge (`DocumentSymbols.badge`) and name; the outline metrics
   of `metrics.md` (22-point rows, 12 points per level, the triangle at
   x 12, the badge at x 25, the name at x 45). Files and types collapse.
-- The bottom bar's filter keeps the declarations whose name contains it
+- The bottom bar is the other navigators' filter capsule (the filter
+  options glyph with its chevron, the field, a clear button), with no "+",
+  as the Find navigator's. Its filter keeps the declarations whose name contains it
   (any case), the types that hold them and their files, all expanded.
   With a language server running and two or more characters typed, the
   server's `workspace/symbol` answer (0.25 s after typing stops) joins

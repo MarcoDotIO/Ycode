@@ -383,8 +383,11 @@ package final class WindowServices {
 package protocol PopupPresenting: AnyObject {
     /// Shows `content` with its top-leading corner at `origin` (window
     /// points of the presenting window); `onDismiss` runs when it goes.
+    /// `anchor` is the frame of the view that opened it (same points): a
+    /// pop-up that does not fit below it in the window opens above it, one
+    /// beside it (a submenu) moves to its other side (`PopupPlacement`).
     /// Returns a handle that dismisses it.
-    func presentPopup(content: AnyView, origin: CGPoint, minWidth: CGFloat, chrome: PopupChrome,
+    func presentPopup(content: AnyView, origin: CGPoint, anchor: CGRect?, minWidth: CGFloat, chrome: PopupChrome,
                       fallbackKeys: ((KeyEvent) -> Bool)?, onDismiss: @escaping () -> Void) -> PopupHandle?
 }
 
@@ -393,6 +396,12 @@ package protocol PopupPresenting: AnyObject {
 package enum PopupChrome { case menu, plain }
 
 extension PopupPresenting {
+    func presentPopup(content: AnyView, origin: CGPoint, minWidth: CGFloat, chrome: PopupChrome,
+                      fallbackKeys: ((KeyEvent) -> Bool)?, onDismiss: @escaping () -> Void) -> PopupHandle? {
+        presentPopup(content: content, origin: origin, anchor: nil, minWidth: minWidth, chrome: chrome, fallbackKeys: fallbackKeys,
+                     onDismiss: onDismiss)
+    }
+
     func presentPopup(content: AnyView, origin: CGPoint, minWidth: CGFloat, onDismiss: @escaping () -> Void) -> PopupHandle? {
         presentPopup(content: content, origin: origin, minWidth: minWidth, chrome: .menu, fallbackKeys: nil, onDismiss: onDismiss)
     }

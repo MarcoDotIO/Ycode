@@ -207,7 +207,9 @@ package.targets += [
 package.targets += [
     .target(name: "YcodeIDECore", dependencies: ["YcodeRelease", "YcodeSyntax", "YcodeProject", "YcodeWorkspace", "YcodeSettings", "YcodePlist", "YcodeBuild", "YcodeDebug",
                                                  "YcodeLanguage", "YcodeXcodebuild", "YcodeSubprocess", "YcodeAssistant", "YcodeCompletion", "YcodeProfiler",
-                                                 "YcodePreviews", "YcodeDeviceModel", "YcodeSimFeatures", "YcodeStrings"]),
+                                                 "YcodePreviews", "YcodeDeviceModel", "YcodeSimFeatures", "YcodeStrings",
+                                                 // SHA-256 and the asset service's ES256 chain (runtime downloads, route B).
+                                                 .product(name: "Crypto", package: "swift-crypto")]),
     .testTarget(name: "YcodeIDECoreTests", dependencies: ["YcodeIDECore", "YcodeSyntax", "YcodeProject", "YcodeWorkspace", "YcodeSettings", "YcodePlist",
                                                           "YcodeBuild", "YcodeDebug", "YcodeLanguage", "YcodeXcodebuild", "YcodeSubprocess",
                                                           "YcodeAssistant", "YcodeProfiler", "YcodePreviews", "YcodeDeviceModel", "YcodeSimFeatures"],
@@ -269,8 +271,8 @@ package.products += [.library(name: "YcodeIDEShell", targets: ["YcodeIDEShell"])
 package.targets += [
     .target(name: "YcodeEditorKit", dependencies: ["YcodeSyntax"]),
     .testTarget(name: "YcodeEditorKitTests", dependencies: ["YcodeEditorKit", "YcodeSyntax"]),
-    .target(name: "YcodeIDEShell", dependencies: ["YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeXcodebuild", "YcodeSimLink", "YcodeEditorKit", "YcodeDebug"]),
-    .testTarget(name: "YcodeIDEShellTests", dependencies: ["YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeDebug"]),
+    .target(name: "YcodeIDEShell", dependencies: ["YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeXcodebuild", "YcodeSimLink", "YcodeEditorKit", "YcodeDebug", "YcodeAssistant"]),
+    .testTarget(name: "YcodeIDEShellTests", dependencies: ["YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeDebug", "YcodeAssistant"]),
 ]
 // Agent mode (specs/ide/coding-assistant.md, "Ycode implementation"): the
 // Ycode MCP server (`ycode mcp`, and in-process for the IDE's agents), the
@@ -291,7 +293,7 @@ if FileManager.default.fileExists(atPath: Context.packageDirectory + "/../framew
     package.dependencies += [.package(path: "../frameworks/swiftui")]
     package.products += [.executable(name: "ycode-ide", targets: ["ycode-ide"])]
     package.targets += [
-        .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion",
+        .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeAssistant",
                                                           .product(name: "SwiftUI", package: "swiftui"),
                                                           .product(name: "OVPlatform", package: "swiftui"),
                                                           .product(name: "OVDBus", package: "swiftui")]),
@@ -300,6 +302,6 @@ if FileManager.default.fileExists(atPath: Context.packageDirectory + "/../framew
 #else
 package.products += [.executable(name: "ycode-ide", targets: ["ycode-ide"])]
 package.targets += [
-    .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion"]),
+    .executableTarget(name: "ycode-ide", dependencies: ["YcodeRelease", "YcodeIDEShell", "YcodeIDECore", "YcodeSyntax", "YcodeBuild", "YcodeEditorKit", "YcodeCompletion", "YcodeAssistant"]),
 ]
 #endif

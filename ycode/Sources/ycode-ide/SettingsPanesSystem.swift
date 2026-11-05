@@ -16,8 +16,8 @@ struct SourceControlSettingsPane: View {
                 CheckRow(title: "Enable source control", isOn: setting(\.sourceControlEnabled), target: "settings source control")
             }
             Section {
-                LabeledContent("Author Name") { Text(verbatim: value(\.name)) }.shellTarget("settings git name")
-                LabeledContent("Author Email") { Text(verbatim: value(\.email)) }.shellTarget("settings git email")
+                LabeledContent(formLabel("Author Name")) { Text(verbatim: value(\.name)) }.shellTarget("settings git name")
+                LabeledContent(formLabel("Author Email")) { Text(verbatim: value(\.email)) }.shellTarget("settings git email")
             } header: {
                 Text("Git")
             } footer: {
@@ -49,7 +49,7 @@ struct LocationsSettingsPane: View {
         SettingsForm {
             #if !os(Linux)
             Section {
-                Picker("Build System", selection: Binding(get: { BuildSystemPreference.current() }, set: { p in
+                Picker(formLabel("Build System"), selection: Binding(get: { BuildSystemPreference.current() }, set: { p in
                     p.save()
                     ShellPreferences.shared.touch()
                 })) {
@@ -67,15 +67,15 @@ struct LocationsSettingsPane: View {
                 ForEach(tools ?? [], id: \.title) { t in
                     LabeledContent(t.title) { PathText(path: t.path) }
                 }
-                if tools == nil { LabeledContent("Tools") { Text("Looking\u{2026}") } }
+                if tools == nil { LabeledContent(formLabel("Tools")) { Text("Looking\u{2026}") } }
             } header: {
                 Text("Build and Code Tools")
             } footer: {
                 FootNote(text: Self.engineNote)
             }
             Section("Files") {
-                LabeledContent("Themes") { PathText(path: Preferences.shared.themesDirectory.path) }
-                LabeledContent("Package build products") { PathText(path: ".build inside each package") }
+                LabeledContent(formLabel("Themes")) { PathText(path: Preferences.shared.themesDirectory.path) }
+                LabeledContent(formLabel("Package build products")) { PathText(path: ".build inside each package") }
             }
         }
         .task {

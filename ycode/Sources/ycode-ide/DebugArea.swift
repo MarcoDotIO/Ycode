@@ -20,7 +20,11 @@ struct DebugArea: View {
             }
             if model.debug.showsConsole {
                 VStack(spacing: 0) {
-                    LogView(lines: shownLines, colors: c)
+                    if showsRunOutput {
+                        ConsoleRowsView(model: model, colors: c)   // DebugConsoleRows.swift
+                    } else {
+                        LogView(lines: shownLines, colors: c)
+                    }
                     if model.debug.isDebugging { ConsolePrompt(model: model) }
                     bar(c) {
                         ConsoleFilterMenu(model: model)
@@ -41,6 +45,13 @@ struct DebugArea: View {
         }
         .background(c.content)
         .shellTarget("debug area")
+    }
+
+    /// Whether the console shows the run's output (rows that can be
+    /// selected and copied) rather than the build log.
+    var showsRunOutput: Bool {
+        let console = model.debug.consoleFilter == .all ? model.console : model.debug.consoleText
+        return !console.isEmpty && (model.debugPane == .console || model.buildLog.isEmpty)
     }
 
     /// The console's lines: the run's output; the build log before a run.

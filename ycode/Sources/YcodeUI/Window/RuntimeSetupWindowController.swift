@@ -7,7 +7,7 @@ import YcodeIDECore
 /// checks are plain text on the window's background, each check with its
 /// state, reason and one fix; Re-check, Back and Next are glass buttons.
 /// Nothing changes a machine until the user confirms a sheet that shows the
-/// exact command. Ycode never downloads a runtime (#55).
+/// exact command. Get a Runtime (#55) is in `RuntimeSetupWindowController+Download.swift`.
 @MainActor
 public final class RuntimeSetupWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
     public let session: RuntimeSetupSession
@@ -38,6 +38,8 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
     let dataField = NSTextField()
     let linkField = NSTextField()
     let portsField = NSTextField()
+    /// Get a Runtime: where Xcode saves a copy (`-exportPath`).
+    let exportField = NSTextField()
 
     /// Shows the wizard (one at a time), on `step` when given, else on the first problem.
     @discardableResult
@@ -275,6 +277,7 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
         case .runtimes: out += runtimeLists()
         case .add: out += addViews()
         case .finish: out += finishViews()
+        case .download: out += downloadViews()
         }
         let checks = session.shownChecks
         if !checks.isEmpty {
@@ -544,11 +547,12 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
             out.append(NSStackView(views: line))
             out.append(label)
         }
-        // Where Xcode would download (§11.6): how to get one with your own tools.
+        // Where Xcode would download (§11.6): the Get a Runtime step.
         let missing = SimPlatform.allCases.filter { p in session.choices.platforms.contains(p) && !(session.report?.readyPlatforms.contains(p) ?? false) }
         if let p = missing.first {
             out.append(heading("Don't have a runtime?"))
             out.append(note(RuntimeSetupChecker.acquisitionNote(p), id: "runtime-acquisition"))
+            out.append(button("Go to Get a Runtime", #selector(goToStep(_:)), id: "runtime-go-download", tag: RuntimeSetupStep.download.rawValue))
         }
         return out
     }
@@ -614,6 +618,7 @@ public final class RuntimeSetupWindowController: NSWindowController, NSWindowDel
             switch a {
             case .remove: title = "Remove…"
             case .provisionApply: title = "Apply…"
+            case .installDecryptor: title = "Set Up…"
             default: title = "Fix…"
             }
             return button(title, #selector(fixActionClicked(_:)), id: "runtime-fix-\(check.id)", primary: true, tag: fixActions.count - 1)

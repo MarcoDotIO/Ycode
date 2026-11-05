@@ -27,20 +27,36 @@ public struct BreakpointStore: Equatable, Sendable {
         /// Whether anything beyond file and line is set (drawn darker).
         public var isCustomized: Bool { !condition.isEmpty || ignoreCount > 0 || !actions.isEmpty || autoContinue }
 
-        /// The DAP form. A log action with "automatically continue" becomes
-        /// a log point; a debugger-command action is not expressible in DAP
-        /// and is kept but not sent.
+        /// The DAP form. A single log action with "automatically continue"
+        /// (and no `%B` / `%H` token) becomes the adapter's log point; other
+        /// actions are run by Ycode when the breakpoint stops
+        /// (`runsActionsInIDE`, `WorkspaceSession+BreakpointActions.swift`).
         public var dap: SourceBreakpoint {
-            var log: String?
-            if autoContinue, case .log(let m)? = actions.first(where: { if case .log = $0 { true } else { false } }) { log = m }
-            return SourceBreakpoint(line: line, column: column, condition: condition.isEmpty ? nil : condition,
-                                    hitCondition: ignoreCount > 0 ? String(ignoreCount) : nil, logMessage: log)
+            SourceBreakpoint(line: line, column: column, condition: condition.isEmpty ? nil : condition,
+                             hitCondition: ignoreCount > 0 ? String(ignoreCount) : nil, logMessage: adapterLogMessage)
         }
+
+        /// The log point lldb-dap runs without stopping, when the
+        /// breakpoint's only action is a log message that continues.
+        public var adapterLogMessage: String? {
+            guard autoContinue, actions.count == 1, case .log(let m) = actions[0], !BreakpointMessage.needsIDE(m) else { return nil }
+            return BreakpointMessage.dapLogMessage(m)
+        }
+
+        /// Ycode runs the actions (and the automatic continue) at the
+        /// breakpoint's stops: everything the adapter's log point cannot.
+        public var runsActionsInIDE: Bool { adapterLogMessage == nil && (!actions.isEmpty || autoContinue) }
     }
 
+    /// A breakpoint action (`specs/ide/debug.md` §Breakpoint editing).
     public enum BreakpointAction: Equatable, Hashable, Sendable {
+        /// A message for the console; `@expr@` or `{expr}` show a value,
+        /// `%B` the breakpoint and `%H` its hit count.
         case log(String)
+        /// An LLDB command; its output goes to the console.
         case debuggerCommand(String)
+        /// A sound by name (`BreakpointSound.names`).
+        case sound(String)
     }
 
     /// A symbolic breakpoint (stop in functions with this name).
@@ -74,7 +90,12 @@ public struct BreakpointStore: Equatable, Sendable {
     }
 
     public var effectiveFunctionBreakpoints: [FunctionBreakpoint] {
-        isActive ? symbolic.filter(\.isEnabled).map { FunctionBreakpoint(name: $0.name, condition: $0.condition.isEmpty ? nil : $0.condition) } : []
+        guard isActive else { return [] }
+        // A symbol still being typed in the editor may be empty or padded.
+        return symbolic.compactMap { s in
+            let name = s.name.trimmingCharacters(in: .whitespaces), condition = s.condition.trimmingCharacters(in: .whitespaces)
+            return s.isEnabled && !name.isEmpty ? FunctionBreakpoint(name: name, condition: condition.isEmpty ? nil : condition) : nil
+        }
     }
 
     public private(set) var all: [Breakpoint] = []

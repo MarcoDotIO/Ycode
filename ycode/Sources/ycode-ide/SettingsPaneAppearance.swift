@@ -49,12 +49,12 @@ struct AppearanceSettingsPane: View {
                 AppearanceChooser()
             }
             Section("Theme") {
-                Picker("Theme", selection: setting(\.themeName)) {
+                Picker(formLabel("Theme"), selection: setting(\.themeName)) {
                     ForEach(prefs.themes.map(\.name), id: \.self) { Text(verbatim: $0).tag($0) }
                 }
                 .shellTarget("settings theme")
                 ThemePreview(palette: palette, fontSize: ShellPreferences.fontSize)
-                LabeledContent("Theme file") {
+                LabeledContent(formLabel("Theme file")) {
                     HStack(spacing: 6) {
                         Button("Duplicate") { run { try prefs.duplicate(theme) } }.shellTarget("settings theme duplicate")
                         Button("Delete") { prefs.deleteTheme(named: theme.name) }.disabled(builtIn).shellTarget("settings theme delete")
@@ -244,7 +244,7 @@ struct ThemeColorRow: View {
     var body: some View {
         let c = ShellColors(scheme)
         let valid = text.isEmpty || ThemeColor(hex: text) != nil
-        LabeledContent(title) {
+        LabeledContent(formLabel(title)) {
             HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill((ThemeColor(hex: text) ?? shown).color)

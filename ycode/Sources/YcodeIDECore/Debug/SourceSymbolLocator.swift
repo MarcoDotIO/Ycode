@@ -21,10 +21,20 @@ public enum SourceSymbolLocator {
     public static func symbol(in lines: [Substring], line: Int) -> (name: String, method: Bool)? {
         guard line >= 1, line <= lines.count else { return nil }
         var i = line - 1
+        // The least indentation of a "}" above the line: a declaration as
+        // far out as it was closed before the line (top-level code after
+        // functions belongs to none of them).
+        var closedAt = Int.max
         while i >= 0 {
             let l = lines[i]
+            let lead = l.prefix { $0 == " " || $0 == "\t" }.count
+            if i < line - 1, l.dropFirst(lead).hasPrefix("}") { closedAt = min(closedAt, lead) }
             if let name = swiftFunction(l) ?? cFunction(l) {
-                let indent = l.prefix { $0 == " " || $0 == "\t" }.count
+                let indent = lead
+                if indent >= closedAt {
+                    i -= 1
+                    continue
+                }
                 var method = false
                 if indent > 0 {
                     var j = i - 1

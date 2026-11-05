@@ -1,5 +1,6 @@
 import AppKit
 import YcodeIDECore
+import YcodeSyntax
 
 /// The editor's bars over its text (`specs/ide/liquid-glass.md` §7.3,
 /// `fidelity-council.md` row 5): the text scrolls under the toolbar band,
@@ -23,16 +24,101 @@ enum EditorVeil {
     }
 }
 
-/// The veil behind the toolbar band and the jump bar: from the editor's
-/// top (under the toolbar) to the jump bar's separator.
-final class EditorBandBackdrop: NSView {
-    override var isFlipped: Bool { true }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override func draw(_ dirtyRect: NSRect) {
+/// The blurred veil of the editor's bars in the active window
+/// (`liquid-glass.md` §8.3, `fidelity-council.md` row 5): the content
+/// beneath shows blurred (σ about 6) and faint, following its shape, with
+/// no gradient and no fade. The system's header material passes about
+/// 12 % of the content's darkness (the bottom bar matched the reference
+/// with it); the jump bar's band adds a fill of the editor's background
+/// over it, for about 8.5 %. A theme with its own background colour keeps
+/// the round-1 fill instead, since the material follows the system's
+/// appearance, not the theme.
+@MainActor
+enum EditorBlurVeil {
+    static var applies: Bool { EditorTheme.color(Theme.current.background) == nil }
+
+    static func material() -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = .headerView
+        v.blendingMode = .withinWindow
+        v.state = .active
+        return v
+    }
+}
+
+/// A backdrop view: the blurred material, or the theme's veil fill.
+public class EditorBlurBackdrop: NSView {
+    let blur = EditorBlurVeil.material()
+    public override var isFlipped: Bool { true }
+    public override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        blur.autoresizingMask = [.width, .height]
+        blur.frame = bounds
+        addSubview(blur)
+        themeChanged()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Follows the theme: the material for the default theme, the fill for
+    /// a theme with its own background.
+    public func themeChanged() {
+        blur.isHidden = !EditorBlurVeil.applies
+        needsDisplay = true
+    }
+
+    public override func draw(_ dirtyRect: NSRect) {
+        guard blur.isHidden else { return }
         EditorVeil.fill.setFill()
         dirtyRect.intersection(bounds).fill(using: .copy)
     }
 }
+
+/// The editor's bottom bar (the debug bar) over the text
+/// (`liquid-glass.md` §7.4, §8.3; `fidelity-council.md` rows 5, 13): the
+/// blurred veil, under a 1-point opaque separator.
+public final class EditorBottomBarBackdrop: EditorBlurBackdrop {
+    /// The separator's colour: #D7D7D7 on white (black at about 15.7 %),
+    /// the system separator in dark.
+    public static var separatorColor: NSColor {
+        NSColor(name: nil) { a in
+            a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .separatorColor
+                : NSColor.black.withAlphaComponent(CGFloat(EditorMetrics.bottomBarSeparatorInk))
+        }
+    }
+    private let line = SeparatorLine()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        line.autoresizingMask = [.width, .maxYMargin]
+        line.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 1)
+        addSubview(line)
+    }
+
+    public override func themeChanged() {
+        super.themeChanged()
+        line.needsDisplay = true
+    }
+
+    /// The opaque 1-point line at the bar's top.
+    final class SeparatorLine: NSView {
+        override var isFlipped: Bool { true }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func draw(_ dirtyRect: NSRect) {
+            Theme.backgroundColor.setFill()
+            bounds.fill(using: .copy)
+            EditorBottomBarBackdrop.separatorColor.setFill()
+            bounds.fill(using: .sourceOver)
+        }
+    }
+}
+
+/// The veil behind the toolbar band and the jump bar: from the editor's
+/// top (under the toolbar) to the jump bar's separator, one blurred veil.
+final class EditorBandBackdrop: EditorBlurBackdrop {}
 
 /// The sticky scope header (`editor-area.md` §C.3): the lines that open
 /// the declarations enclosing the first visible line, each with its line
@@ -40,6 +126,11 @@ final class EditorBandBackdrop: NSView {
 /// below a 2-point pad; a 2-point separator below. It spans the gutter and
 /// the text, not the minimap. No outline, no shadow.
 final class ScopeHeaderView: NSView {
+    /// The editor's scroll view: wheel events over this view scroll it.
+    weak var scrollTarget: NSScrollView?
+    override func scrollWheel(with event: NSEvent) {
+        if let t = scrollTarget { t.scrollWheel(with: event) } else { super.scrollWheel(with: event) }
+    }
     struct Row {
         var line: Int
         var text: NSAttributedString
@@ -92,6 +183,11 @@ final class ScopeHeaderView: NSView {
 /// than it.
 @MainActor
 final class MinimapView: NSView {
+    /// The editor's scroll view: wheel events over this view scroll it.
+    weak var scrollTarget: NSScrollView?
+    override func scrollWheel(with event: NSEvent) {
+        if let t = scrollTarget { t.scrollWheel(with: event) } else { super.scrollWheel(with: event) }
+    }
     /// One visual line: runs of (first column, length, colour).
     struct Run: Equatable {
         var column: Int
@@ -194,7 +290,12 @@ final class MinimapView: NSView {
 extension MinimapView {
     /// The visual lines of `text` at `columns` per line, with the colours
     /// of `storage` (wrapped lines continue at their indentation plus 4).
-    static func rows(of storage: NSAttributedString, columns: Int, tabWidth: Int, wraps: Bool) -> [[Run]] {
+    ///
+    /// One bar per token (`editor-area.md` §D.6): a space or tab inside
+    /// one of `tokens` (a comment, a string) does not break its bar, so a
+    /// whole comment is one bar; anywhere else whitespace separates bars.
+    /// Indentation and whitespace at a bar's end are never drawn.
+    static func rows(of storage: NSAttributedString, columns: Int, tabWidth: Int, wraps: Bool, tokens: IndexSet = IndexSet()) -> [[Run]] {
         let ns = storage.string as NSString
         var out: [[Run]] = []
         var lineStart = 0
@@ -208,16 +309,18 @@ extension MinimapView {
             var row: [Run] = []
             var col = 0
             var i = lineStart
+            var leading = true
             func flush() { out.append(row); row = [] }
             while i < end {
                 var range = NSRange()
                 let color = (storage.attribute(.foregroundColor, at: i, effectiveRange: &range) as? NSColor) ?? Theme.textColor
                 let runEnd = min(end, NSMaxRange(range))
-                var runStart: Int?
+                var open = false
                 var runCol = 0
+                var inkEnd = 0
                 func closeRun() {
-                    if runStart != nil, col > runCol { row.append(Run(column: runCol, length: col - runCol, color: color)) }
-                    runStart = nil
+                    if open, inkEnd > runCol { row.append(Run(column: runCol, length: inkEnd - runCol, color: color)) }
+                    open = false
                 }
                 while i < runEnd {
                     let c = ns.character(at: i)
@@ -227,11 +330,13 @@ extension MinimapView {
                         col = min(indent, cols / 2)
                     }
                     if c == 32 || c == 9 {
-                        closeRun()
+                        if leading || !tokens.contains(i) { closeRun() }
                         col += c == 9 ? tabWidth - col % max(1, tabWidth) : 1
                     } else {
-                        if runStart == nil { runStart = i; runCol = col }
+                        leading = false
+                        if !open { open = true; runCol = col }
                         col += 1
+                        inkEnd = col
                     }
                     i += 1
                 }
@@ -241,5 +346,13 @@ extension MinimapView {
             lineStart = end + 1
         }
         return out
+    }
+
+    /// The characters inside tokens that may hold whitespace (comments,
+    /// strings and the like), for `rows(of:…tokens:)`.
+    static func tokenInteriors(_ tokens: [SyntaxToken]) -> IndexSet {
+        var set = IndexSet()
+        for t in tokens where t.length > 1 && t.kind != .identifier { set.insert(integersIn: t.location..<t.end) }
+        return set
     }
 }

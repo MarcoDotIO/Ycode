@@ -45,6 +45,7 @@ func usage() -> Never {
            ycode sim remote pair|devices|boot|run|view ...   a simulator host over Ycode's own link (ycode sim remote for details)
            ycode sim headset check|view|desktop|state ...     a visionOS device in a headset and back (ycode sim headset for details)
            ycode sim runtimes check|script ...   simulator runtimes and host setup (ycode sim runtimes for details)
+           ycode runtime list|available|download|import|xcodebuild ...   get a simulator runtime (ycode runtime for details)
            ycode new --template <id> --name N [--org O] [--option key=value]... [--git] <dir>   New Project (ycode new --list)
            ycode --version
 
@@ -538,6 +539,9 @@ case "sim":
     guard args.first == "remote" else { usage() }
     if let switched = HeadsetCLI.remoteView(Array(args.dropFirst())) { exit(runHeadset(switched.headset, then: switched.viewer)) }
     exit(SimRemoteCLI.main(Array(args.dropFirst())))
+case "runtime":
+    // Getting simulator runtimes (specs/simulator/runtime-downloads.md §6): routes A, B and C.
+    exit(runRuntimeDownloads(args))
 case "new":
     // New Project from a template (specs/ide/templates.md, "Ycode implementation").
     exit(NewProjectCLI.run(args))
@@ -571,6 +575,18 @@ func runRuntimes(_ args: [String]) -> Int32 {
     let done = DispatchSemaphore(value: 0)
     Task.detached {
         box.status = await RuntimeCLI.main(args)
+        done.signal()
+    }
+    done.wait()
+    return box.status
+}
+
+/// `ycode runtime …` (blocking).
+func runRuntimeDownloads(_ args: [String]) -> Int32 {
+    let box = HeadsetExit()
+    let done = DispatchSemaphore(value: 0)
+    Task.detached {
+        box.status = await RuntimeDownloadCLI.main(args)
         done.signal()
     }
     done.wait()

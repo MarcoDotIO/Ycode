@@ -79,6 +79,9 @@ final class SourceEditorController {
     var onGutterDrag: ((_ from: Int, _ to: Int?) -> Void)?
     var hasBreakpoint: (Int) -> Bool = { _ in false }
     private var gutterPress: (line: Int, last: CGPoint)?
+    /// A double-click on a breakpoint opens its editor (DebugEditors.swift).
+    var onGutterDoubleClick: ((Int) -> Void)?
+    private var gutterPressCount = 1
     private var lastClick: (time: TimeInterval, point: CGPoint, count: Int)?
     private var dragStart: (range: Range<Int>, lines: Bool)?
     private var isPressed = false
@@ -416,6 +419,8 @@ final class SourceEditorController {
             }
         }
         onGutterClick?(line)
+        // The double-click's second click restored what its first changed.
+        if gutterPressCount == 2, hasBreakpoint(line) { onGutterDoubleClick?(line) }
     }
 
     private func press(_ p: CGPoint, time: TimeInterval, shift: Bool) {
@@ -444,6 +449,7 @@ final class SourceEditorController {
         if p.x < gutterWidth, !shift, onGutterClick != nil {
             // The gutter sets breakpoints (released in `pointerEnded`).
             if let line = lineNumber(at: p) { gutterPress = (line, p) }
+            gutterPressCount = count
             dragStart = nil
             return
         }

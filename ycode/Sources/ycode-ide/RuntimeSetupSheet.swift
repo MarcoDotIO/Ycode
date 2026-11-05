@@ -138,6 +138,7 @@ struct RuntimeSetupSheet: View {
         case .runtimes: runtimesStep(c)
         case .add: addStep(c)
         case .finish: finishStep(c)
+        case .download: downloadStep(c)
         }
     }
 
@@ -250,15 +251,19 @@ struct RuntimeSetupSheet: View {
         }
     }
 
-    /// A command to run by hand: in a read-only field, where it can be
-    /// selected and copied with the field's own Copy.
+    /// A command to run by hand: in a read-only field (it can be selected
+    /// there), with a Copy button that puts the whole command on the
+    /// clipboard, as the macOS window's.
     func commandLine(_ cmd: String, note words: String, _ c: ShellColors) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            TextField("", text: .constant(cmd))
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11, design: .monospaced))
-                .frame(width: 500)
-                .shellTarget("runtime command")
+            HStack(spacing: 6) {
+                TextField("", text: .constant(cmd))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(width: 440)
+                    .shellTarget("runtime command")
+                CopyButton(text: cmd, target: "runtime command copy")
+            }
             note(words, c)
         }
     }
@@ -326,6 +331,7 @@ struct RuntimeSetupSheet: View {
             if let p = missing.first {
                 heading("Don't have a runtime?", c)
                 note(RuntimeSetupChecker.acquisitionNote(p), c).shellTarget("runtime acquisition")
+                Button("Go to Get a Runtime") { session.show(.download) }.buttonStyle(.bordered).shellTarget("runtime go download")
             }
         }
     }
@@ -404,7 +410,9 @@ struct RuntimeSetupSheet: View {
         case .instructions(let words): Text(verbatim: words).font(.system(size: 12)).foregroundStyle(c.label).fixedSize(horizontal: false, vertical: true)
         case .step(let s): Button("Go to \(s.title)") { session.show(s) }.buttonStyle(.bordered).controlSize(.small)
         case .action(let a):
-            Button({ if case .remove = a { "Remove…" } else if case .provisionApply = a { "Apply…" } else { "Fix…" } }()) { session.request(a) }
+            Button({ if case .remove = a { "Remove…" } else if case .provisionApply = a { "Apply…" } else if case .installDecryptor = a { "Set Up…" } else { "Fix…" } }()) {
+                session.request(a)
+            }
                 .buttonStyle(.borderedProminent).controlSize(.small)
         }
     }

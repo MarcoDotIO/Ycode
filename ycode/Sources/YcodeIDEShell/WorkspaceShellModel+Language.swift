@@ -438,23 +438,26 @@ extension WorkspaceShellModel {
         return count
     }
 
-    /// Find ▸ Find Call Hierarchy (⌃⇧⌘H): the places that call the function
-    /// at the caret, in the Find navigator ("Callers of greet"). Returns how many.
+    /// Find ▸ Find Call Hierarchy (⌃⇧⌘H): the function at the caret, its
+    /// callers and their callers (two levels, `CallerTree`), as a tree in
+    /// the Find navigator under "Callers of greet". Returns how many callers
+    /// the tree holds.
     @discardableResult
     public func findCallHierarchy() async -> Int {
         guard let t = languageTarget() else { return 0 }
         let session = session
-        guard let found = await withLanguageTimeout(nil, timeout: 15, { await session.callers(t.url, at: t.position) }) else {
+        guard let tree = await withLanguageTimeout(nil, timeout: 15, { await session.callerTree(t.url, at: t.position) }) else {
             noteLanguage("Not a callable symbol")
             return 0
         }
-        let results = SymbolResults.fileResults(found.sites) { [weak self] in self?.currentText(of: $0) }
         // The name as written ("greet"), not the server's qualified one.
         let b = t.document.buffer
         var name = b.string(b.identifierStart(before: b.caret)..<identifierEnd(b, from: b.caret))
-        if name.isEmpty { name = found.name }
-        showFindResults(query: name, title: SymbolResults.callersTitle(name), results)
-        return found.sites.count
+        if name.isEmpty { name = tree.name }
+        showFindResults(query: name, title: SymbolResults.callersTitle(name), [])
+        callHierarchy.onOpen = { [weak self] path, line in self?.open(path, line: line) }
+        callHierarchy.show(tree)
+        return tree.callerCount
     }
 
     private func identifierEnd(_ b: EditorBuffer, from offset: Int) -> Int {

@@ -17,7 +17,8 @@ public final class WorkspaceShellModel {
 
     // MARK: Areas (workspace-window.md §Areas)
 
-    public var navigator: ShellNavigator = .project
+    /// Choosing a navigator leaves the Coding Assistant pane.
+    public var navigator: ShellNavigator = .project { didSet { assistant.isShown = false } }
     public var isNavigatorShown = true
     public var isInspectorShown = true
     /// Hidden at first; a build or run shows it (the build log is in it).
@@ -97,6 +98,9 @@ public final class WorkspaceShellModel {
     /// The title of results a language request put there ("greet — 3
     /// references"), in place of the count; a search clears it.
     public private(set) var findResultsTitle: String?
+    /// Find ▸ Find Call Hierarchy's tree, shown in place of the results
+    /// (CallHierarchyRows.swift).
+    public let callHierarchy = CallHierarchyModel()
     @ObservationIgnored private var findTask: Task<Void, Never>?
 
     // MARK: Issues, activity, logs
@@ -119,6 +123,8 @@ public final class WorkspaceShellModel {
     public let sourceControl: SourceControlShellModel
     /// The Test and Report navigators (TestShellModel.swift).
     public let testing: TestShellModel
+    /// The Coding Assistant pane (ShellAssistantModel.swift).
+    public let assistant = ShellAssistantModel()
 
     // MARK: Language features (WorkspaceShellModel+Language.swift)
 
@@ -153,6 +159,7 @@ public final class WorkspaceShellModel {
         session.observe { [weak self] change in self?.sessionChanged(change) }
         syncIssues()
         debug.workspace = self
+        assistant.workspace = self
         connectSourceControl()
     }
 
@@ -181,6 +188,7 @@ public final class WorkspaceShellModel {
         c.workspaceName = workspaceName
         c.fileName = document?.name
         c.navigatorShown = isNavigatorShown
+        c.codingAssistantShown = isAssistantPaneShown
         c.inspectorShown = isInspectorShown
         c.debugAreaShown = isDebugAreaShown
         c.isDebugging = session.debugClient != nil
@@ -311,6 +319,7 @@ public final class WorkspaceShellModel {
     public func runFind() {
         findTask?.cancel()
         findResultsTitle = nil
+        callHierarchy.show(nil)
         let text = findText
         find.query = FindQuery(text, ignoreCase: findIgnoreCase)
         find.begin()
@@ -358,6 +367,7 @@ public final class WorkspaceShellModel {
         findRows = FindMatchRow.rows(find.results)
         findSelection = nil
         findResultsTitle = title
+        callHierarchy.show(nil)
         navigator = .find
         isNavigatorShown = true
     }
@@ -509,8 +519,11 @@ public final class WorkspaceShellModel {
         case .jumpToDefinition, .jumpToOriginalSource, .renameSymbol, .showQuickHelp, .findSelectedSymbol, .showCallHierarchy:
             isLanguageCommandEnabled(c)
         case .pauseOrContinue, .stepOver, .stepInto, .stepOut, .toggleBreakpointAtCurrentLine, .toggleBreakpointsEnabledAtCurrentLine,
-             .deleteAllBreakpoints: debug.isEnabled(c)
+             .deleteAllBreakpoints, .copyConsoleRowWithVisibleMetadata, .copyConsoleRowWithAllMetadata, .copyConsoleRowWithoutMetadata,
+             .createSwiftErrorBreakpoint, .viewMemory:
+            debug.isEnabled(c)
         case .testAgain: !isBusy && session.lastTestRun != nil
+        case _ where c.isAssistant: isAssistantCommandEnabled(c)
         case _ where c.isSourceControl: sourceControl.isEnabled(c.action.selector)
         default: true
         }
@@ -527,7 +540,9 @@ public final class WorkspaceShellModel {
         case .showDebugNavigator: show(.debug)
         case .showBreakpointNavigator: show(.breakpoints)
         case .pauseOrContinue, .stepOver, .stepInto, .stepOut, .toggleBreakpointsActive, .toggleBreakpointAtCurrentLine,
-             .toggleBreakpointsEnabledAtCurrentLine, .deleteAllBreakpoints, .clearConsole:
+             .toggleBreakpointsEnabledAtCurrentLine, .deleteAllBreakpoints, .clearConsole,
+             .copyConsoleRowWithVisibleMetadata, .copyConsoleRowWithAllMetadata, .copyConsoleRowWithoutMetadata, .createSwiftErrorBreakpoint,
+             .createExceptionBreakpoint, .createSymbolicBreakpoint, .toggleNavigateToSourceOnPause, .toggleAlwaysShowDisassembly, .viewMemory:
             debug.perform(c)
         case .showSourceControlNavigator: show(.sourceControl)
         case .showTestNavigator: show(.tests)
@@ -557,6 +572,7 @@ public final class WorkspaceShellModel {
         case .save, .saveAll, .closeDocument, .revertToSaved, .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind,
              .jumpToLine, .commentSelection, .shiftLeft, .shiftRight, .moveLineUp, .moveLineDown:
             performEditing(c)
+        case _ where c.isAssistant: performAssistantCommand(c)
         default:
             if c.isSourceControl { sourceControl.performIntegrate(c.action.selector) }
         }

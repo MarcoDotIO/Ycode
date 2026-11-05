@@ -714,6 +714,8 @@ public final class WorkspaceSession {
                 temporaryBreakpoint = nil
                 await syncBreakpoints()
             }
+            // Breakpoint actions Ycode runs; "automatically continue" resumes.
+            if await runBreakpointActions(e.body) { return }
             var thread = e.body["threadId"]?.int
             if thread == nil { thread = try? await client.threads().first?.id }
             stoppedThread = thread
@@ -953,12 +955,34 @@ public final class WorkspaceSession {
         notify(.debugState)
     }
 
-    /// Assigns a new value to a shown variable (`setVariable`).
+    /// Assigns a new value to a shown variable (`setVariable`). When the
+    /// adapter cannot (Swift 6.4's lldb-dap on Linux answers "Invalid
+    /// encoding." for Swift integers) and the variable's `expression` is
+    /// known, LLDB assigns it: `expression -- <expression> = <value>`.
+    /// A failure is printed in the console.
     @discardableResult
-    public func setValue(_ value: String, of name: String, container: Int? = nil) async -> String? {
+    public func setValue(_ value: String, of name: String, container: Int? = nil, expression: String? = nil) async -> String? {
         guard let client = debugClient, let ref = container ?? variableContainers[name] else { return nil }
-        let r = try? await client.setVariable(reference: ref, name: name, value: value)
+        var r: String?
+        do {
+            r = try await client.setVariable(reference: ref, name: name, value: value)
+        } catch {
+            let message = (error as? DAPError)?.message ?? "\(error)"
+            if let expression {
+                do {
+                    _ = try await client.evaluateFull("expression -- \(expression) = \(value)", frameID: selectedFrameID, context: "repl")
+                    r = value
+                } catch {
+                    let m = (error as? DAPError)?.message ?? "\(error)"
+                    appendConsole(m.hasPrefix("error:") ? m + "\n" : "error: \(m)\n", kind: .debugger)
+                }
+            } else {
+                appendConsole("error: \(message)\n", kind: .debugger)
+            }
+        }
         await loadVariables(frameID: selectedFrameID)
+        // Watch expressions may read the new value.
+        if !watchExpressions.isEmpty { await refreshWatches() }
         return r
     }
 
@@ -989,15 +1013,26 @@ public final class WorkspaceSession {
         notify(.breakpoints)
     }
 
+    /// Whether a frame's source file is on this computer (a frame without
+    /// one is shown as its disassembly).
+    public static func hasLocalSource(_ f: StackFrame) -> Bool {
+        f.file.map { FileManager.default.fileExists(atPath: $0) } ?? false
+    }
+
     func refreshDisassembly() async {
-        guard alwaysShowDisassembly, let client = debugClient, stoppedThread != nil,
-              let frame = frames.first(where: { $0.id == selectedFrameID }) ?? frames.first, let pc = frame.instructionPointer else {
+        let selected = frames.first(where: { $0.id == selectedFrameID }) ?? frames.first
+        guard alwaysShowDisassembly || selected.map({ !Self.hasLocalSource($0) }) == true, let client = debugClient, stoppedThread != nil,
+              let frame = selected, let pc = frame.instructionPointer else {
             disassembly = []
             disassemblyPCIndex = nil
             notify(.debugState)
             return
         }
-        let list = (try? await client.disassemble(memoryReference: pc, instructionOffset: -8, count: 40)) ?? []
+        // Before a function's first instruction lldb-dap pads the list with
+        // invalid entries (address "-1"); they are left out.
+        let list = ((try? await client.disassemble(memoryReference: pc, instructionOffset: -8, count: 40)) ?? []).filter {
+            UInt64($0.address.lowercased().replacingOccurrences(of: "0x", with: ""), radix: 16) != nil
+        }
         disassembly = list
         disassemblyPCIndex = list.firstIndex { Self.sameAddress($0.address, pc) }
         notify(.debugState)

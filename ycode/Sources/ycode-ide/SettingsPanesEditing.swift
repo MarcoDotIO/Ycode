@@ -38,8 +38,8 @@ struct EditingSettingsPane: View {
                          target: "settings editing indentation") { model.editingPage = .indentation }
             }
             Section("Files") {
-                LabeledContent("Default text encoding") { Text(verbatim: "Unicode (UTF-8)") }
-                LabeledContent("Default line endings") { Text(verbatim: Self.lineEndings) }
+                LabeledContent(formLabel("Default text encoding")) { Text(verbatim: "Unicode (UTF-8)") }
+                LabeledContent(formLabel("Default line endings")) { Text(verbatim: Self.lineEndings) }
                 CheckRow(title: "Convert existing files on save", isOn: setting(\.convertExistingFilesOnSave), target: "settings convert on save")
             }
             Section("When Editing") {
@@ -99,7 +99,7 @@ struct EditingSettingsPane: View {
                 BackRow(title: "Editing", target: "settings editing back") { model.editingPage = .main }
             }
             Section("Indentation") {
-                Picker("Prefer indent using", selection: setting(\.indentWithTabs)) {
+                Picker(formLabel("Prefer indent using"), selection: setting(\.indentWithTabs)) {
                     Text("Spaces").tag(false)
                     Text("Tabs").tag(true)
                 }
@@ -109,7 +109,7 @@ struct EditingSettingsPane: View {
                 Stepper("Indent width: \(Preferences.shared.indentWidth) spaces", value: setting(\.indentWidth), in: 1...16)
                     .disabled(Preferences.shared.indentWithTabs)
                     .shellTarget("settings indent width")
-                Picker("Tab key", selection: setting(\.tabKeyBehavior)) {
+                Picker(formLabel("Tab key"), selection: setting(\.tabKeyBehavior)) {
                     ForEach(TabKeyBehavior.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
                 }
                 .shellTarget("settings tab key")
@@ -144,11 +144,11 @@ struct CompletionSettingsPage: View {
             }
             Section {
                 CheckRow(title: "Predictive code completion", isOn: $prediction.enabled, target: "settings prediction")
-                Picker("Model source", selection: $prediction.backend) {
+                Picker(formLabel("Model source"), selection: $prediction.backend) {
                     ForEach(PredictiveCompletionSettings.Backend.allCases, id: \.self) { Text(verbatim: $0.displayName).tag($0) }
                 }
                 .shellTarget("settings backend")
-                LabeledContent("Address") {
+                LabeledContent(formLabel("Address")) {
                     TextField("Address", text: Binding(get: { prediction.address ?? "" },
                                                        set: { prediction.address = $0.isEmpty ? nil : $0 }),
                               prompt: Text(verbatim: prediction.backend.defaultAddress))
@@ -156,7 +156,7 @@ struct CompletionSettingsPage: View {
                         .frame(maxWidth: 280)
                 }
                 .shellTarget("settings address")
-                LabeledContent("Model") {
+                LabeledContent(formLabel("Model")) {
                     TextField("Model", text: $prediction.model, prompt: Text("The server's choice"))
                         .multilineTextAlignment(.trailing)
                         .frame(maxWidth: 280)

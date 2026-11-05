@@ -80,6 +80,8 @@ struct ControlPalette {
 private enum LabelsHiddenKey: EnvironmentKey { static let defaultValue = false }
 private enum InFormKey: EnvironmentKey { static let defaultValue = false }
 private enum InMenuKey: EnvironmentKey { static let defaultValue = false }
+private enum FormStyleKindKey: EnvironmentKey { static let defaultValue = 0 }
+private enum FormColumnWidthKey: EnvironmentKey { static let defaultValue: CGFloat? = nil }
 
 extension EnvironmentValues {
     /// Set by `labelsHidden()`: controls show no label.
@@ -92,6 +94,19 @@ extension EnvironmentValues {
     package var _inForm: Bool {
         get { self[InFormKey.self] }
         set { self[InFormKey.self] = newValue }
+    }
+
+    /// The form style below (`FormStyle._ovStyleKind`: 0 grouped, 1 columns).
+    package var _formStyleKind: Int {
+        get { self[FormStyleKindKey.self] }
+        set { self[FormStyleKindKey.self] = newValue }
+    }
+
+    /// Inside a `.columns` form: the width of the labels' column (labels end
+    /// at it, controls start after it). Nil elsewhere.
+    package var _formColumnWidth: CGFloat? {
+        get { self[FormColumnWidthKey.self] }
+        set { self[FormColumnWidthKey.self] = newValue }
     }
 
     /// True inside a menu's pop-up (buttons become menu items).
@@ -116,10 +131,17 @@ extension View {
 /// The label sits at the leading edge, the control at the trailing edge,
 /// both centred vertically. A lone control (labels hidden) is its own size.
 /// The row is a standard view for spacing (golden spacing matrix).
+///
+/// In a `.columns` form (`columnWidth` set) the row is the desktop's form
+/// row instead: the label right-aligned in a column of that width (it wraps
+/// inside it), the control 8 points after the column at its natural size; a
+/// checkbox (control leading) sits after the empty column with its title.
 struct ControlRowLayout: Layout {
     var spacing: CGFloat = 8
     /// The control comes first (checkboxes).
     var controlLeading = false
+    /// The labels' column in a `.columns` form.
+    var columnWidth: CGFloat?
 
     private func parts(_ s: Subviews) -> (label: LayoutSubview?, control: LayoutSubview?) {
         switch s.count {
@@ -133,6 +155,7 @@ struct ControlRowLayout: Layout {
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let (label, control) = parts(subviews)
+        if let column = columnWidth { return columnsSize(label, control, column: column, proposal: proposal) }
         let c = control?.sizeThatFits(.unspecified) ?? .zero
         guard let label else { return c }
         if controlLeading {
@@ -156,6 +179,10 @@ struct ControlRowLayout: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let (label, control) = parts(subviews)
+        if let column = columnWidth {
+            placeColumns(label, control, column: column, in: bounds)
+            return
+        }
         let c = control?.sizeThatFits(.unspecified) ?? .zero
         if controlLeading {
             control?.place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(c))
@@ -168,6 +195,54 @@ struct ControlRowLayout: Layout {
         let w = max(0, bounds.width - c.width - spacing)
         label?.place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading,
                      proposal: ProposedViewSize(width: w, height: bounds.height))
+    }
+
+    // MARK: Columns form rows
+
+    /// The control's size after the column: its natural size, or for a
+    /// checkbox with its title, what is left of the proposed width.
+    private func columnsParts(_ label: LayoutSubview?, _ control: LayoutSubview?, column: CGFloat,
+                              proposal: ProposedViewSize) -> (label: CGSize, control: CGSize, title: CGSize) {
+        let c = control?.sizeThatFits(.unspecified) ?? .zero
+        if controlLeading {
+            let room = proposal.width.map { max(0, $0 - column - spacing - c.width - spacing) }
+            let t = label?.sizeThatFits(ProposedViewSize(width: room, height: nil)) ?? .zero
+            return (.zero, c, t)
+        }
+        let l = label?.sizeThatFits(ProposedViewSize(width: column, height: nil)) ?? .zero
+        return (CGSize(width: min(l.width, column), height: l.height), c, .zero)
+    }
+
+    private func columnsSize(_ label: LayoutSubview?, _ control: LayoutSubview?, column: CGFloat,
+                             proposal: ProposedViewSize) -> CGSize {
+        let p = columnsParts(label, control, column: column, proposal: proposal)
+        let title = p.title.width > 0 ? spacing + p.title.width : 0
+        let width = column + spacing + p.control.width + title
+        return CGSize(width: max(width, proposal.width ?? 0), height: max(p.label.height, p.control.height, p.title.height))
+    }
+
+    private func placeColumns(_ label: LayoutSubview?, _ control: LayoutSubview?, column: CGFloat, in bounds: CGRect) {
+        let p = columnsParts(label, control, column: column, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+        let x = bounds.minX + column + spacing
+        control?.place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading, proposal: ProposedViewSize(p.control))
+        if controlLeading {
+            label?.place(at: CGPoint(x: x + p.control.width + spacing, y: bounds.midY), anchor: .leading,
+                         proposal: ProposedViewSize(width: p.title.width, height: p.title.height))
+        } else {
+            label?.place(at: CGPoint(x: bounds.minX + column, y: bounds.midY), anchor: .trailing,
+                         proposal: ProposedViewSize(width: p.label.width, height: p.label.height))
+        }
+    }
+}
+
+/// A label in a `.columns` form's labels' column: its lines end at the
+/// column's edge. Elsewhere the alignment is left as it is.
+struct ColumnLabelAlignment: ViewModifier {
+    let inColumn: Bool
+    @Environment(\.multilineTextAlignment) private var current
+
+    func body(content: Content) -> some View {
+        content.environment(\.multilineTextAlignment, inColumn ? .trailing : current)
     }
 }
 
