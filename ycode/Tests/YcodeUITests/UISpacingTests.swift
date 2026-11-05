@@ -159,10 +159,12 @@ import YcodeProject
 
     // MARK: §9 — Device Hub toolbar
 
+    // Verified on macOS 27.2 here and on 27.0 with the layout probe
+    // (`specs/ide/metrics.md` §14); earlier systems are not measured yet.
     /// The sidebar's toolbar group hugs the sidebar's edge (device-hub.md
     /// §3 items 2–4): the Hide Sidebar circle ends 7 points before x 240.
-    @Test(.enabled(if: ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 27, minorVersion: 2, patchVersion: 0)),
-                   "positions measured on macOS 27.2; the AppKit of macOS 27.0 lays out search fields and toolbars differently"))
+    @Test(.enabled(if: ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)),
+                   "positions verified on macOS 27.0 and 27.2 (metrics.md §14); earlier systems not measured"))
     func hubSidebarGroupEndsAtTheSidebarEdge() throws {
         _ = NSApplication.shared
         let prefs = IsolatedPreferences("ui-spacing-hub")
@@ -175,6 +177,9 @@ import YcodeProject
         hub.splitView.autosaveName = nil
         defer { w.close() }
         w.contentView?.layoutSubtreeIfNeeded()
+        // What the window does when it first appears (the test keeps it
+        // off screen), as the layout probe does.
+        hub.placeFirstDividers()
         let frame = try #require(w.contentView?.superview)
         frame.layoutSubtreeIfNeeded()
         func buttons(_ v: NSView) -> [NSButton] { ((v as? NSButton).map { [$0] } ?? []) + v.subviews.flatMap(buttons) }

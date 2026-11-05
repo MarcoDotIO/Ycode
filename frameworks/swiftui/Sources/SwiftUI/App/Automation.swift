@@ -85,6 +85,18 @@ public enum OpenViewsAutomation {
         return out
     }
 
+    /// What a main window tells the input method (issue 23): whether text
+    /// input is on, the caret rectangle it was given in window points (the
+    /// candidate window opens below it), and the focused text field's marked
+    /// text (nil when the focused text is not a text field, such as a
+    /// `TextSurface` editor).
+    public static func textInput(_ index: Int = 0) -> (active: Bool, area: CGRect?, fieldMarkedText: String?) {
+        guard mainWindows.indices.contains(index) else { return (false, nil, nil) }
+        let w = mainWindows[index]
+        let field = w.services.focus.focusedClient as? TextFieldState
+        return (w.platform.isTextInputActive, w.textInputArea, field?.marked)
+    }
+
     /// Writes a main window's image (pop-ups drawn over it) as PNG.
     @discardableResult
     public static func screenshot(_ index: Int = 0, to path: String) -> String {

@@ -20,7 +20,23 @@ if ! command -v "$1" >/dev/null 2>&1; then
 fi
 exec "$@"'
 
-set -- /bin/sh -lc "$on_host" ycode-host-tool "$tool" "$@"
+# Runs on the host first, under a plain sh: picks the login shell that runs
+# $on_host. $1 is $on_host, then the tool and its arguments. The user's own shell
+# reads their profile the way their session does. A POSIX sh stops at the first
+# error in ~/.profile, and swiftly's installer adds a line there that sources a
+# bash-only env.sh, so on Ubuntu (sh is dash) `sh -l` never gets to the tool; a
+# profile that sh cannot read is skipped (swiftly's folders are added anyway).
+pick_shell='script=$1; shift
+shell=$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f7)
+case "$shell" in
+    */bash|*/zsh|*/ksh|*/ksh93|*/mksh) [ -x "$shell" ] && exec "$shell" -lc "$script" ycode-host-tool "$@" ;;
+esac
+if /bin/sh -lc : </dev/null >/dev/null 2>&1; then
+    exec /bin/sh -lc "$script" ycode-host-tool "$@"
+fi
+exec /bin/sh -c "$script" ycode-host-tool "$@"'
+
+set -- /bin/sh -c "$pick_shell" ycode-host-tool "$on_host" "$tool" "$@"
 
 # What a build needs from Ycode's environment (flatpak-spawn passes none by itself).
 for name in $(env | sed -n 's/^\(YCODE_[A-Za-z0-9_]*\|SWIFT[A-Za-z0-9_]*\|NO_COLOR\|TERM\|CC\|CXX\|SSH_AUTH_SOCK\|GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do

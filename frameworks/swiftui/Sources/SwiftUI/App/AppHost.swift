@@ -228,8 +228,29 @@ package final class WindowHost {
         services.requestDisplay = { [weak self] in self?.needsDisplay = true }
         services.focus.onTextClientChanged = { [weak self] client in
             guard let self else { return }
-            if let client { self.platform.startTextInput(caretRect: client.caretRect) } else { self.platform.stopTextInput() }
+            if let client {
+                textInputArea = client.caretRect
+                platform.startTextInput(caretRect: client.caretRect)
+            } else {
+                textInputArea = nil
+                platform.stopTextInput()
+            }
         }
+    }
+
+    /// The caret rectangle last given to the input method (the candidate
+    /// window opens below it), nil while no text field has focus.
+    package private(set) var textInputArea: CGRect?
+
+    /// Keeps the input method's area at the focused text's caret: typing,
+    /// clicking, arrow keys and scrolling move the caret without a focus
+    /// change, and the candidate window must follow it (issue 23).
+    func syncTextInputArea() {
+        guard let client = services.focus.focusedClient, platform.isTextInputActive else { return }
+        let r = client.caretRect
+        guard r != textInputArea else { return }
+        textInputArea = r
+        platform.startTextInput(caretRect: r)
     }
 
     package var size: CGSize { platform.size }
@@ -331,6 +352,7 @@ package final class WindowHost {
             presentedFrames += 1
             presenter?.present(self)
         }
+        syncTextInputArea()
     }
 
     func teardown() {

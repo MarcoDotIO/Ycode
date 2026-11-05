@@ -52,6 +52,16 @@ find_library(SPIRV_TOOLS_OPT_LIB SPIRV-Tools-opt HINTS ${SPIRV_TOOLS_LIBRARY_DIR
 find_library(SPIRV_TOOLS_LIB SPIRV-Tools HINTS ${SPIRV_TOOLS_LIBRARY_DIRS})
 target_link_libraries(ycode-airc PRIVATE ${AIRC_LLVM_LIBS} ${SPIRV_TOOLS_OPT_LIB} ${SPIRV_TOOLS_LIB})
 
+# A packaged build names the run-time search path (the Flatpak and the release
+# tarball: $ORIGIN/../../.., where libLLVM sits). The binary then carries only
+# that path, not the build machine's LLVM folder. Set here rather than in
+# LDFLAGS: CMake escapes $ORIGIN for the build tool, and Ninja would read it as
+# one of its own variables and drop it.
+set(YCODE_AIRC_RPATH "" CACHE STRING "Run-time search path of a packaged ycode-airc")
+if(YCODE_AIRC_RPATH)
+  set_target_properties(ycode-airc PROPERTIES BUILD_WITH_INSTALL_RPATH ON INSTALL_RPATH "${YCODE_AIRC_RPATH}")
+endif()
+
 # GPU test harness (Vulkan; tests/gpu).
 find_library(VULKAN_LIB vulkan)
 if(VULKAN_LIB AND EXISTS ${CMAKE_SOURCE_DIR}/tests/gpu/airc-gpu.c)

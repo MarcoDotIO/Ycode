@@ -425,6 +425,53 @@ and the rows 47 against 48. The whole window was not in the frame, so
 this needs a capture of the entire Welcome window (**Retina capture
 needed** for the 1-point differences).
 
+## 14. Layout on other macOS versions: the layout probe (beta 2, #24)
+
+Ycode's spacing was tuned on macOS 27.2. To check it on other systems
+without developer tools, Ycode.app has a **layout probe**: with
+`YCODE_LAYOUT_PROBE=<out.json>` it opens a workspace window on the Demo
+package (or `YCODE_LAYOUT_PROBE_PROJECT`) at 1400 × 900, a navigator alone
+at 280 × 600 (as `NavigatorInspectorR45Tests` lays it out) and Device Hub
+at 1100 × 800, lets each settle, writes every frame below in window points
+(origin at the top left) with each value against its spec value, and
+quits. `YCODE_LAYOUT_PROBE_SHOTS=<dir>` adds `cacheDisplay` snapshots (no
+screen capture, so no privacy permission). The windows stay off screen as
+in the tests (`YCODE_LAYOUT_PROBE_SHOW=1` orders them in; a screen smaller
+than the window then shortens it, and the report says so). The probe uses
+a preferences domain of its own and writes no window frames.
+
+`LayoutProbe` (YcodeUI) does the measuring for the app and for
+`LayoutProbeTests`, reading the same views as `UISpacingTests`,
+`NavigatorInspectorR45Tests` and `LiquidGlassTests`, so the probe tells on
+any system which of those checks would hold there. `scripts/layout-probe.sh
+<local | ssh-target>` copies the app to a Mac, runs the probe in its GUI
+session and fetches the report; `scripts/layout-probe-table.py` turns
+reports into the tables of `docs/LAYOUT-PROBE.md`.
+
+**Result, macOS 27.2 against 27.0** (both at 1x; a 2x run on 27.2 before the fixes agreed to half a point): 175
+measures each. After the fixes below every measure meets its spec on both,
+with the same values. Positions with no spec value differ by at most 1
+point (backing-pixel rounding), except the toolbar's centre group.
+
+| Element | Before on 27.0 | Cause | Fix |
+|---|---|---|---|
+| Activity icon | x 379 (27.2: 375); the reference x 385 | the system's gap before a view item: 8 points on 27.0, 4 on 27.2 | `ActivityView` pads its leading end so the icon sits 14 after Back \| Forward's control (`gapAfterNeighbor`): x 385 on both |
+| Filter toggles (Debug navigator's first) | y 869, 1 point above the 16-point field (27.2 at 2x: 870.5) | a 15-point glyph centred on the field lands on a half point; a 1x screen rounds it out of the field | the toggles are 16 tall with their frame as their alignment rectangle (`NavigatorFilterToggle`): y 870 on both |
+| Device Hub's Hide Sidebar circle | — | the probe kept the window off screen, so the first-appearance divider placement (sidebar 240) did not run | `DevicesController.placeFirstDividers()`, called on appearing and by the probe and the test; the circle ends 8 before x 240 on both |
+
+**Deviation (no fix).** The centre group (New Conversation, the scheme
+capsule) sits 3 points further right on 27.0: New Conversation x 588
+against 585, the scheme 632 against 629. The flexible spaces around it
+share out what the system's item gaps leave, and those gaps differ between
+the versions. No spec gives the group's position for this window (the
+reference's follows its activity title, `liquid-glass.md` §7.1 item 1), so
+Ycode keeps the system's layout.
+
+**Tests.** `UISpacingTests.hubSidebarGroupEndsAtTheSidebarEdge` and
+`NavigatorInspectorR45Tests.filterOptionsAndTogglesSitInsideTheField` now
+run on macOS 27.0 and later (they were limited to 27.2). macOS 26 and 15
+are not measured yet; run the probe there before widening them further.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -436,6 +483,7 @@ needed** for the 1-point differences).
 
 | §12 council round 1 (reference values) | 3 | Council r1 1x stills and recordings of the reference: colour runs, glyph ink boxes, before/after differences (`research/tools/council-r1/measure_captures.py`, sections `navigator`, `inspector`; `research/notes/council-r1-2026-11-04.md`) |
 | §13 council round 2 (reference values, active window) | 3 | Council r2 1x stills and recordings of the reference, foreground: colour runs, ink boxes, row matching; `research/tools/council-r2/measure_r2.py` (`navigator`, `welcome`); `research/notes/council-r2-2026-11-04.md` |
+| §14 Ycode on macOS 27.0 and 27.2 | — | The layout probe's reports of Ycode's own windows (`scripts/layout-probe.sh`); no reference observed |
 | §12.4 EditorConfig lookup rule | 1 | The EditorConfig specification (editorconfig.org: files are read from the file's folder upward until `root = true`) |
 
 Level 5 was not used. Reference behavior was observed only for §12 and §13

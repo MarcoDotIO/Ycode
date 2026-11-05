@@ -29,8 +29,21 @@ public final class ActivityView: NSView {
     /// The space before the icon and after the text: none (the activity
     /// view has no glass shape, `specs/ide/liquid-glass.md` §2.2).
     static let sideInset: CGFloat = 0
-    /// Where the text starts (after the icon).
+    /// Where the text starts (after the icon) with no leading pad.
     static var textInset: CGFloat { sideInset + iconSize + 8 }
+    /// From the toolbar item before this view (Back | Forward) to the icon:
+    /// the reference's control ends at x 371 and its icon starts at 385
+    /// (`liquid-glass.md` §7.1, `metrics.md` §14). The system's gap before
+    /// a view item differs between macOS versions (4 points on 27.2, 8 on
+    /// 27.0), so the view pads its leading end up to this gap.
+    static let gapAfterNeighbor: CGFloat = 14
+    /// The toolbar control before this view, whose trailing edge the icon
+    /// keeps `gapAfterNeighbor` from.
+    public weak var leadingNeighbor: NSView? { didSet { needsLayout = true } }
+    /// The room before the icon that makes up the system's smaller gap.
+    public private(set) var leadingPad: CGFloat = 0
+    /// Where the text starts.
+    var textStart: CGFloat { leadingPad + Self.textInset }
     static let nameFont = NSFont.boldSystemFont(ofSize: 13)
     static let statusFont = NSFont.systemFont(ofSize: 11)
     static func iconImage(package: Bool) -> NSImage? {
@@ -96,16 +109,31 @@ public final class ActivityView: NSView {
     public var naturalWidth: CGFloat {
         let name = (workspaceName as NSString).size(withAttributes: [.font: Self.nameFont]).width
         let line = (status as NSString).size(withAttributes: [.font: Self.statusFont]).width
-        return ceil(Self.textInset + max(name, line) + 2 + Self.sideInset)
+        return ceil(textStart + max(name, line) + 2 + Self.sideInset)
     }
 
-    public override var intrinsicContentSize: NSSize { NSSize(width: max(Self.textInset + 40, min(naturalWidth, maximumWidth)), height: 34) }
+    public override var intrinsicContentSize: NSSize { NSSize(width: max(textStart + 40, min(naturalWidth, maximumWidth)), height: 34) }
 
     public override func layout() {
         super.layout()
-        let r = NSRect(x: Self.sideInset, y: (bounds.height - Self.iconSize) / 2, width: Self.iconSize, height: Self.iconSize)
+        updateLeadingPad()
+        let r = NSRect(x: Self.sideInset + leadingPad, y: (bounds.height - Self.iconSize) / 2, width: Self.iconSize, height: Self.iconSize)
         icon.frame = r
         spinner.frame = r
+    }
+
+    /// Pads the leading end so the icon sits `gapAfterNeighbor` after the
+    /// item before it, whatever gap the system leaves between the items.
+    func updateLeadingPad() {
+        var pad: CGFloat = 0
+        if let n = leadingNeighbor, let w = window, n.window === w, !n.isHiddenOrHasHiddenAncestor {
+            let gap = convert(bounds, to: nil).minX - n.convert(n.bounds, to: nil).maxX
+            if gap >= 0 { pad = max(0, (Self.gapAfterNeighbor - gap).rounded()) }
+        }
+        if abs(pad - leadingPad) >= 0.5 {
+            leadingPad = pad
+            changed()
+        }
     }
 
     /// The subtitle as drawn in `width` points: truncated in the middle
@@ -126,13 +154,13 @@ public final class ActivityView: NSView {
     }
 
     /// The text shown as the subtitle at the current width (tests).
-    public var shownStatus: String { Self.truncatedStatus(status, width: max(0, bounds.width - Self.textInset - Self.sideInset)) }
+    public var shownStatus: String { Self.truncatedStatus(status, width: max(0, bounds.width - textStart - Self.sideInset)) }
 
     /// Two lines (reference-ui.md §5): the workspace name, and under it
     /// the activity. While idle only the name is drawn, centered
     /// vertically. No progress bar and no underline (§3.1.2).
     public override func draw(_ dirtyRect: NSRect) {
-        let width = max(0, bounds.width - Self.textInset - Self.sideInset)
+        let width = max(0, bounds.width - textStart - Self.sideInset)
         let para = NSMutableParagraphStyle()
         para.lineBreakMode = .byTruncatingTail
         // In an inactive window both lines dim to the same grey (#BCBDBD,
@@ -146,8 +174,8 @@ public final class ActivityView: NSView {
         let lineHeight = status.isEmpty ? 0 : line.size().height
         let top = (bounds.height - nameH - lineHeight) / 2
         // Flipped drawing is not used: y grows upward.
-        if !status.isEmpty { line.draw(at: NSPoint(x: Self.textInset, y: top)) }
-        name.draw(in: NSRect(x: Self.textInset, y: top + lineHeight, width: width, height: nameH))
+        if !status.isEmpty { line.draw(at: NSPoint(x: textStart, y: top)) }
+        name.draw(in: NSRect(x: textStart, y: top + lineHeight, width: width, height: nameH))
     }
 }
 

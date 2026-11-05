@@ -1904,6 +1904,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             let item = NSToolbarItem(itemIdentifier: id)
             item.view = c
             item.label = "Back/Forward"
+            activityView.leadingNeighbor = c   // the activity icon keeps its gap after it
             return item
         case Self.newConversationID:
             // §4.3.3: a new conversation in the Coding Assistant pane

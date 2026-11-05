@@ -1070,9 +1070,25 @@ has unit tests.
   international layout's dead keys compose, with the marked text shown, in
   the source editor and in the Find field. That test found CJK text drawn
   as nothing when the system's only CJK fonts were CFF; the font fallback
-  now prefers a face it can draw. **Not tried yet:** Fcitx 5, X11, and
-  where the shell draws the candidate window (the IDE reports the caret's
-  rectangle; the test's screenshots show the app's window only).
+  now prefers a face it can draw. Issue 23 (2026-11-04) ran the whole
+  matrix, IBus and Fcitx 5 on X11 (Xvfb, `run-isolated.sh x11`) and on
+  Wayland (IBus in a test GNOME Shell, `run.sh`; Fcitx 5 in a headless sway,
+  `run-isolated.sh sway`), each with a Chinese input method (Cangjie 5 or
+  Pinyin) and dead keys, in the editor and the Find field: all compose and
+  commit. It found and fixed three faults: the caret rectangle given to the
+  input method was set only when focus changed (the candidate window opened
+  at the first line of a new file), so the window now passes the caret on
+  after each frame where it moved; SDL's X11 driver asked XIM for no
+  composition events (the hint `SDL_IME_IMPLEMENTED_UI=composition` is now
+  set, so marked text shows at the caret on X11 too); and keys that reached
+  a text field during a composition edited or submitted it. The candidate
+  window's place was checked on the X11 screen (it opens at the caret's
+  bottom edge, Fcitx 5's 10 points lower with its shadow), in the rectangles
+  the IDE sends over text-input-v3, and in the rectangle sway gives Fcitx 5.
+  Left as they are: Fcitx 5's XIM keeps the composition in its own window
+  unless its "on the spot" option is on, and an engine's own shortcuts come
+  first (IBus Pinyin and Fcitx 5's traditional-Chinese switch take
+  Ctrl+Shift+F, Find in Workspace).
 - **The shell:** File ▸ Save (Ctrl+S), Save All (Ctrl+Alt+S), Revert to
   Saved… and Close Document (these two with unit tests only); the unsaved mark in the jump bar, on the file's
   navigator row and in the window title ("— Edited"); unsaved text stays

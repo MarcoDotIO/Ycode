@@ -41,6 +41,13 @@ public struct DeviceRow: Equatable, Sendable {
                          deviceTypeID: remote.target?.deviceType.id, deviceDirectory: remote.deviceDirectoryName,
                          isCreated: remote.target?.isCreated ?? false)
     }
+
+    /// A shut-down Ycode simulator row with no simulator behind it (the
+    /// layout probe's Device Hub, `LayoutProbe`).
+    public static func shutDownYcodeSimulator(name: String, identifier: String) -> DeviceRow {
+        DeviceRow(name: name, identifier: identifier, platform: "iOS", osVersion: "27.1", state: "Shutdown",
+                  model: "Ycode Simulator", isAvailable: true, isYcodeRemote: true, isFoldable: false)
+    }
 }
 public enum DevicesList {
     static let runtimePlatforms = ["iOS": "iOS", "watchOS": "watchOS", "tvOS": "tvOS", "xrOS": "visionOS", "visionOS": "visionOS"]

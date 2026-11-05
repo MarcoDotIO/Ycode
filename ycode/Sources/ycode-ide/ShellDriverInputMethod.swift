@@ -10,6 +10,10 @@ import YcodeIDEShell
 // whenever the composition or the text changes:
 //
 //   ime: marked="<preedit>" cursor=<n> line="<the caret's line>" find="<Find field>"
+//        field="<the focused text field's preedit>" area=<x>,<y>,<w>,<h>
+//
+// area is the caret rectangle the window last gave the input method, in
+// window points: its candidate window should open just below it.
 //
 // The keys come from outside, through the input method, as a person's
 // would (a test session's compositor). The driver sends none itself:
@@ -54,7 +58,10 @@ extension ShellDriver {
         guard let b = w.editor?.buffer else { return "ime: no editor" }
         let lines = b.text.split(separator: "\n", omittingEmptySubsequences: false)
         let line = lines.indices.contains(b.caretLine) ? String(lines[b.caretLine]) : ""
+        let input = OpenViewsAutomation.textInput()
+        let area = input.area.map { "\(Int($0.minX)),\(Int($0.minY)),\(Int($0.width)),\(Int($0.height))" } ?? "none"
         return "ime: marked=\"\(b.markedText)\" cursor=\(b.markedCursor) line=\"\(line)\" find=\"\(w.findText)\""
+            + " field=\"\(input.fieldMarkedText ?? "")\" area=\(input.active ? area : "off")"
     }
 }
 #endif

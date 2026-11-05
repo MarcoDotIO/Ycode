@@ -684,8 +684,9 @@ extension SourceEditorController: TextSurfaceClient {
 
     func surfaceHandleKey(_ e: KeyEvent) -> Bool {
         guard e.isDown else { return false }
-        // Keys belong to the input method while it composes.
-        if buffer.hasMarkedText { return false }
+        // Keys belong to the input method while it composes (no Tab focus
+        // change, no Escape); shortcuts still reach the app.
+        if buffer.hasMarkedText { return !(e.modifiers.contains(.control) || e.modifiers.contains(.command)) }
         guard let key = EditorKey(e.key) else { return false }
         var m: EditorKeyModifiers = []
         if e.modifiers.contains(.shift) { m.insert(.shift) }

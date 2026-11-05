@@ -72,6 +72,8 @@ final class NavigatorFilterField: NSSearchField {
     /// The options pull-down's width and a toggle's width.
     static let optionsWidth: CGFloat = 28
     static let toggleWidth: CGFloat = 18
+    /// A toggle's height: the small search field's.
+    static let toggleHeight: CGFloat = 16
     /// Room kept at the leading end (the options pull-down).
     var leadingInset: CGFloat = optionsWidth + 2 { didSet { needsLayout = true; needsDisplay = true } }
     /// Room kept at the trailing end (the shown toggles).
@@ -135,6 +137,15 @@ final class NavigatorFilterField: NSSearchField {
         image.accessibilityDescription = "Filter options"
         return image
     }()
+}
+
+/// An in-field toggle of the navigator's filter field: its frame is its
+/// alignment rectangle, so a 16-point toggle centred on the 16-point field
+/// covers exactly the field's height (a borderless button's frame otherwise
+/// reaches 3 points above and below, and its glyph's own height put it on a
+/// half point that a 1x screen rounded out of the field; `metrics.md` §14).
+final class NavigatorFilterToggle: NSButton {
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
 }
 
 /// The cell side of `NavigatorFilterField`'s layout (the field editor's

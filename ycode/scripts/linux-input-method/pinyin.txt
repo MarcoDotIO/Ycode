@@ -1,0 +1,24 @@
+# Pinyin (IBus libpinyin, Fcitx 5 pinyin): n i composes 你 (the first
+# candidate; Space commits it), in the source editor and then in the Find
+# navigator's field. Escape and Return first, as in cangjie.txt (the first
+# key can go to the window before the input method has it).
+until ime:.ready LOG
+wait 1
+key ff1b
+wait 0.5
+key ff0d
+wait 0.5
+text ni
+wait 1
+shot SHOTS/pinyin-1-editor-composing.png
+key 20
+wait 1
+shot SHOTS/pinyin-2-editor-committed.png
+key ffe3+ffe1+66
+wait 0.8
+text ni
+wait 1
+shot SHOTS/pinyin-3-field-composing.png
+key 20
+wait 1
+shot SHOTS/pinyin-4-field-committed.png

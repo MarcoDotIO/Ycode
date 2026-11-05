@@ -14,8 +14,13 @@ Notable changes to Ycode are recorded here. The format follows
 ### Fixed
 
 - **The Linux IDE:** Chinese, Japanese and Korean text was drawn as nothing on systems whose only CJK fonts are CFF (such as
-  Noto Sans CJK). Text from an input method (IBus, tested with Cangjie 5 and dead keys on Wayland) now shows in the editor
-  and in text fields.
+  Noto Sans CJK).
+- **The Linux IDE, input methods:** now tested with real ones, which beta 1 had not done: IBus and Fcitx 5, on X11 and
+  Wayland, with Chinese (Cangjie 5, Pinyin) and dead keys (US international), in the source editor and in text fields.
+  The candidate window now opens at the caret; before, it stayed where the caret was when the editor or field got focus.
+  On X11 the text being composed now shows at the caret as on Wayland, instead of only in the input method's window
+  (Fcitx 5 keeps it in its own window unless its XIM "on the spot" option is on). Keys that reach a text field while an
+  input method composes no longer edit, submit or leave it.
 - **Packages:** after the Linux IDE's window closed, a helper process kept the Flatpak's instance running.
 
 ## [1.0.0-beta.1] - 2026-11-04

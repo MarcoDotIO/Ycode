@@ -234,9 +234,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     public let filterOptions = NSPopUpButton(frame: .zero, pullsDown: true)
     /// The in-field toggles of the selected navigator, left to right
     /// (`NavigatorBars.specs`); unused ones are hidden.
-    public let recentToggle = NSButton()
-    public let sourceControlToggle = NSButton()
-    public let thirdToggle = NSButton()
+    public let recentToggle: NSButton = NavigatorFilterToggle()
+    public let sourceControlToggle: NSButton = NavigatorFilterToggle()
+    public let thirdToggle: NSButton = NavigatorFilterToggle()
     public var toggleButtons: [NSButton] { [recentToggle, sourceControlToggle, thirdToggle] }
     let rowMenu = NSMenu(title: "Row")
     /// The Test navigator's row menu (Run Repeatedly…; set by the window).
@@ -557,6 +557,11 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             filter.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: glass ? -6 - Self.filterInset : -6),
             toggleStack.trailingAnchor.constraint(equalTo: filter.trailingAnchor, constant: -4),
             toggleStack.centerYAnchor.constraint(equalTo: filter.centerYAnchor),
+        ])
+        // The toggles as tall as the small field, so they sit exactly
+        // inside it whatever the glyph's height and the screen's backing
+        // scale (`NavigatorFilterToggle`).
+        NSLayoutConstraint.activate(toggleButtons.map { $0.heightAnchor.constraint(equalToConstant: NavigatorFilterField.toggleHeight) } + [
             glass ? filter.centerYAnchor.constraint(equalTo: root.bottomAnchor, constant: -7 - GlassBars.height / 2)
                 : filter.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -4),
         ])

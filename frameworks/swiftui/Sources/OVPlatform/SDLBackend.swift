@@ -310,6 +310,12 @@ public final class SDLBackend: PlatformBackend {
         _ = sdl.SetHint("SDL_MOUSE_TOUCH_EVENTS", "0")
         _ = sdl.SetHint("SDL_QUIT_ON_LAST_WINDOW_CLOSE", "0")
         _ = sdl.SetHint("SDL_APP_NAME", "OpenViews")
+        // Text fields draw an input method's uncommitted text themselves
+        // (marked text at the caret) and leave the candidate list to the
+        // input method. Without this, SDL's X11 driver asks XIM for no
+        // composition events and the text being composed shows only in the
+        // input method's own window (issue 23).
+        _ = sdl.SetHint("SDL_IME_IMPLEMENTED_UI", "composition")
         guard sdl.Init(UInt32(SDL_INIT_VIDEO)) else {
             throw PlatformError.unavailable((sdl.GetError().map { String(cString: $0) } ?? ""))
         }

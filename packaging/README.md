@@ -127,8 +127,10 @@ boundary.** Treat it like any other program you run outside a sandbox.
 
 `libexec/ycode-host` comes first on the `PATH`. It holds a wrapper for each
 host tool (`swift`, `swiftc`, `sourcekit-lsp`, `lldb-dap`, `git`, `ssh`, ...). The
-wrapper finds the tool through a login shell and swiftly's folders. If the tool is
-missing it says what to install, and the message reaches the build log.
+wrapper finds the tool through a login shell (your own shell from the password
+database, so a profile written for bash still works where `sh` is dash) and
+swiftly's folders. If the tool is missing it says what to install, and the message
+reaches the build log.
 
 Projects outside your home folder and `/tmp` are not visible to the app. Add them
 with `flatpak override --user --filesystem=<path> io.github.MarcoDotIO.Ycode`.

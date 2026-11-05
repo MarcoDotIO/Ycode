@@ -383,6 +383,10 @@ final class TextFieldState: TextInputClient, GeometryObserving {
         guard event.isDown else { return false }
         let m = event.modifiers
         let primary = m.contains(.control) || m.contains(.command)
+        // While an input method composes, its keys are its own: Backspace,
+        // arrows, Return and Escape edit the composition, not the field (no
+        // submit, no focus change). Shortcuts still reach the app.
+        if model.hasMarkedText { return !primary }
         let shift = m.contains(.shift)
         if multiline, let g = geometry() { model.layout = g } else { model.layout = nil }
         if primary {

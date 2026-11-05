@@ -73,6 +73,12 @@ current SDK, so tests run with the new design.
   overflow, as §2.2 allows. A hidden issue item is not an overflow.
 - Before macOS 26 the earlier segment widths and the issue capsule's own
   fill stay.
+- The system's gap before a view item differs between versions (4 points
+  on 27.2, 8 on 27.0). The activity view pads its leading end so its icon
+  starts 14 after Back | Forward's control, x 385, on both (`metrics.md`
+  §14). The centre group still sits 3 points further right on 27.0: the
+  flexible spaces share out the system's gaps (a recorded deviation, no
+  spec value).
 
 ## 3. Floating bars (`liquid-glass.md` §2.3–§2.5)
 

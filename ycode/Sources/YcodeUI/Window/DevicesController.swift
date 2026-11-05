@@ -608,16 +608,21 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
 
     public override func viewDidAppear() {
         super.viewDidAppear()
-        // The sidebar 240 wide and the inspector 280 (§2.1) the first time
-        // (afterwards the saved widths).
+        placeFirstDividers()
+        statePoll?.invalidate()
+        statePoll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.pollRemoteRows() } }
+    }
+
+    /// The sidebar 240 wide and the inspector 280 (§2.1) the first time
+    /// the window appears (afterwards the saved widths). The layout probe
+    /// calls it for a window it keeps off screen.
+    func placeFirstDividers() {
         let saved = splitView.autosaveName.map { UserDefaults.standard.object(forKey: "NSSplitView Subview Frames \($0)") != nil } ?? false
         if !saved, !placedDividers {
             placedDividers = true
             splitView.setPosition(240, ofDividerAt: 0)
             splitView.setPosition(max(520, view.bounds.width - 280), ofDividerAt: 1)
         }
-        statePoll?.invalidate()
-        statePoll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.pollRemoteRows() } }
     }
 
     public override func viewWillDisappear() {

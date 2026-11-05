@@ -64,8 +64,10 @@ if [ "$arch" = aarch64 ]; then
     (cd ycode && sh SimShim/build.sh)
     (cd ycode && YCODE="$bin/ycode" sh SimHostLibs/build.sh)
     (cd ycode && sh SimGuestFrameworks/build.sh)
+    # libLLVM is in /app/lib, three levels up from ycode-airc. Not LDFLAGS: under
+    # Ninja the $ORIGIN in it is lost (the 1.0.0-beta.1 binary had /../../..).
     # shellcheck disable=SC2016 # $ORIGIN is for the dynamic linker
-    LDFLAGS='-Wl,-rpath,$ORIGIN/../../..' PKG_CONFIG_PATH=/app/lib/pkgconfig LLVM_DIR=/usr/lib/sdk/llvm22/lib/cmake/llvm \
+    YCODE_AIRC_RPATH='$ORIGIN/../../..' PKG_CONFIG_PATH=/app/lib/pkgconfig LLVM_DIR=/usr/lib/sdk/llvm22/lib/cmake/llvm \
         PATH="/usr/lib/sdk/llvm22/bin:$PATH" sh ycode/Translator/build.sh "$root/airc-build"
     install -d "$sim/.build/release" "$sim/scripts"
     install -m755 "$bin/ycode-simd" "$root/airc-build/ycode-airc" "$sim/.build/release/"
