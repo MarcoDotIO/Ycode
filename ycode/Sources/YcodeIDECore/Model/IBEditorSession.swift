@@ -59,6 +59,9 @@ public final class IBEditorSession {
     public private(set) var selectedConstraint: String?
     /// The outline's Filter (bottom of the column).
     public var outlineFilter = ""
+    /// The segment the Attributes inspector's Segment pop-up shows (a
+    /// segmented control's rows edit that segment).
+    public private(set) var inspectorSegment = 0
     /// The canvas layout of the current document.
     public private(set) var layout: IBCanvasLayout
     /// Why the last write failed, if it did.
@@ -100,6 +103,7 @@ public final class IBEditorSession {
 
     public func select(id: String?) {
         selectedConstraint = nil
+        if id != selectedID { inspectorSegment = 0 }
         selectedID = id.flatMap { document.byID[$0] != nil ? $0 : nil }
         revision += 1
     }
@@ -290,13 +294,15 @@ public final class IBEditorSession {
     /// goes on the document element.
     public func setAttribute(_ name: String, _ value: String?, of id: String) {
         if name == "initialViewController" { apply { try $0.settingInitial(value) }; return }
+        if name == "@segmentIndex" { inspectorSegment = value.flatMap(Int.init) ?? 0; revision += 1; return }
         apply { try $0.settingAttribute(name, value.flatMap { $0.isEmpty ? nil : $0 }, of: id) }
     }
 
     /// A toggle row of an inspector section, switched on or off.
     public func setToggle(_ row: IBInspectorRow, on: Bool) {
         switch row {
-        case .toggle(_, let target, let attr, _, let onValue, let offValue): setAttribute(attr, on ? onValue : offValue, of: target)
+        case .toggle(_, let target, let attr, _, let onValue, let offValue), .check(_, _, let target, let attr, _, let onValue, let offValue):
+            setAttribute(attr, on ? onValue : offValue, of: target)
         case .edgeToggle(_, let target, let edge, _): setExtendedEdge(edge, on, of: target)
         default: break
         }
@@ -305,8 +311,20 @@ public final class IBEditorSession {
     /// A choice row set to `value`; the first option is the default and is
     /// written as removal.
     public func setChoice(_ row: IBInspectorRow, _ value: String) {
-        guard case .choice(_, let target, let attr, let options, _) = row else { return }
-        setAttribute(attr, value == options.first ? nil : value, of: target)
+        switch row {
+        case .choice(_, let target, let attr, let options, _): setAttribute(attr, value == options.first ? nil : value, of: target)
+        case .popUp(_, let target, let attr, let values, let titles, _), .icons(_, let target, let attr, let values, let titles, _):
+            // `value` may be a stored value or its title.
+            let v = values.contains(value) ? value : titles.firstIndex(of: value).map { values[$0] } ?? value
+            setAttribute(attr, v, of: target)
+        default: break
+        }
+    }
+
+    /// A colour pop-up set to a choice by title ("Default" removes the colour).
+    public func setColor(_ row: IBInspectorRow, _ title: String) {
+        guard case .color(_, let target, let key, _) = row else { return }
+        apply { try $0.settingColor(title, key: key, of: target) }
     }
 
     public func addRuntimeAttribute(keyPath: String, type: String = "string", value: String = "") {
@@ -328,17 +346,30 @@ public final class IBEditorSession {
     /// The × on a connected outlet's capsule.
     public func disconnect(_ connectionID: String) { apply { try $0.removingConnection(connectionID) } }
 
-    /// Inserts a Library object into the view under a canvas point (or the
-    /// selected view, else the first root view), centered on the point, at
-    /// its default size. Selects and returns the new ID.
+    /// Inserts a Library object. A view goes into the view under a canvas
+    /// point (or the selected view, else the first root view), centered on
+    /// the point, at its default size (bars take the parent's width); a
+    /// cell's or effect view's content view takes it in their place. Other
+    /// kinds go next to the selection (`IBInserting.swift`). Selects and
+    /// returns the new ID; nil when nothing can hold the object.
     @discardableResult
     public func insert(_ kind: IBDocument.NewObject, atCanvasPoint p: CGPoint? = nil) -> String? {
+        let ios = document.isFlippedRuntime
         let target = p.flatMap { layout.view(at: $0) } ?? (selected?.isView == true ? selected : Self.firstView(in: document))
-        guard let parent = target, let parentRoot = layout.rect(of: parent), let pf = parent.frame else { return nil }
-        let size = kind.defaultSize
+        if ios && (kind.placement != .subview || target == nil) {
+            let near = p.flatMap { layout.view(at: $0)?.id } ?? selectedID
+            guard let (next, id) = try? document.inserting(kind, near: near), !id.isEmpty, commit(next) else { return nil }
+            select(id: id)
+            return id
+        }
+        guard let t = target else { return nil }
+        let parent = document.subviewContainer(t)
+        guard let parentRoot = layout.rect(of: parent), let pf = parent.frame else { return nil }
+        let size = ios ? kind.size(parentWidth: pf.width) : IBDocument.macSize(kind)
         let center = p ?? CGPoint(x: parentRoot.midX, y: parentRoot.midY)
         var local = CGRect(x: (center.x - parentRoot.minX - size.width / 2).rounded(), y: (center.y - parentRoot.minY - size.height / 2).rounded(),
                            width: size.width, height: size.height)
+        if ios && kind.info.width == nil { local.origin.x = 0 }
         if !document.isFlippedRuntime { local.origin.y = pf.height - local.maxY }
         guard let (next, id) = try? document.inserting(kind, into: parent.id, frame: local), !id.isEmpty, commit(next) else { return nil }
         select(id: id)
@@ -350,7 +381,7 @@ public final class IBEditorSession {
         guard let o = selected else { return [] }
         switch t {
         case .identity: return document.identitySections(o.id)
-        case .attributes: return document.attributesSections(o.id)
+        case .attributes: return document.attributesSections(o.id, segment: inspectorSegment)
         case .size: return document.sizeSections(o.id)
         case .connections: return document.connectionsSections(o.id)
         }

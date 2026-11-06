@@ -1,5 +1,6 @@
 // The Linux IDE's Interface Builder symbols (the Identity and Size
-// inspector tabs, outline rows for views and constraints), drawn for Ycode
+// inspector tabs, outline rows for views and constraints, the Library's
+// Objects, Color and Symbols tabs), drawn for Ycode
 // in the same plain style as SymbolArtwork.swift: outlines on the 24 × 24
 // grid, stroke 1.5 to 1.75. Licence: the repository's (MIT).
 
@@ -36,6 +37,21 @@ extension SymbolArtwork {
             dashes.append(S.poly([(x0, y0), (x1, y1)]))
         }
         let dashed = make("square.dashed", [s(S.join(dashes), 1.75)])
-        return [card, ruler, dashed]
+        // The Library's tabs (library.md §Panel): Objects (a square over a
+        // circle), Color (a palette with paint wells), Symbols (a star in a
+        // rounded square).
+        let objects = make("square.on.circle", [s(S.circle(14.5, 14.5, 6), 1.5), s(S.roundedRect(3, 3, 11, 11, 2), 1.75)])
+        var palette = RenderPath()
+        palette.move(to: CGPoint(x: 12, y: 3.5))
+        palette.cubic(to: CGPoint(x: 20.5, y: 11.5), control1: CGPoint(x: 17, y: 3.5), control2: CGPoint(x: 20.5, y: 7))
+        palette.cubic(to: CGPoint(x: 15, y: 15), control1: CGPoint(x: 20.5, y: 15), control2: CGPoint(x: 15, y: 12.5))
+        palette.cubic(to: CGPoint(x: 12, y: 20.5), control1: CGPoint(x: 15, y: 18), control2: CGPoint(x: 15, y: 20.5))
+        palette.cubic(to: CGPoint(x: 3.5, y: 12), control1: CGPoint(x: 7, y: 20.5), control2: CGPoint(x: 3.5, y: 17))
+        palette.cubic(to: CGPoint(x: 12, y: 3.5), control1: CGPoint(x: 3.5, y: 7), control2: CGPoint(x: 7, y: 3.5))
+        palette.close()
+        let paint = make("paintpalette", [s(palette, 1.75), .fill(S.join([S.circle(8, 9.5, 1.3), S.circle(12, 7.5, 1.3), S.circle(16, 9.5, 1.3),
+                                                                           S.circle(8, 14, 1.3)]), evenOdd: false)])
+        let star = make("star.square", [s(S.roundedRect(3, 3, 18, 18, 3), 1.75), s(S.star().applying(RenderTransform(a: 0.55, b: 0, c: 0, d: 0.55, tx: 5.4, ty: 5.6)), 1.5)])
+        return [card, ruler, dashed, objects, paint, star]
     }()
 }

@@ -1,6 +1,22 @@
 import Foundation
 import YcodeSyntax
 
+/// Characters drawn on the editor's cell grid however wide their face's
+/// glyph is (`editor-area.md` E.7: a full block advances one cell, 8.0 at
+/// the default size; a narrower glyph is centred in its cell and a wider
+/// one clipped). The same set as the macOS editor's.
+public enum EditorCellCharacters {
+    /// Box Drawing, Block Elements, Geometric Shapes; Braille Patterns.
+    public static func isCell(_ v: UInt32) -> Bool { (0x2500...0x25FF).contains(v) || (0x2800...0x28FF).contains(v) }
+
+    public static func isCell(_ c: Character) -> Bool {
+        c.unicodeScalars.count == 1 && isCell(c.unicodeScalars.first!.value)
+    }
+
+    /// Whether `s` has any cell character.
+    public static func contains(_ s: String) -> Bool { s.unicodeScalars.contains { isCell($0.value) } }
+}
+
 /// One colored stretch of a drawn line.
 public struct EditorRun: Equatable, Sendable {
     public var text: String
@@ -72,8 +88,12 @@ public final class EditorLineLayout {
         widths = [:]
     }
 
-    func width(of c: Character) -> CGFloat {
-        if c.isASCII { return advance }
+    /// A character's advance: one cell for ASCII and for the cell
+    /// characters (box drawing, block elements, geometric shapes, braille),
+    /// whatever face draws them (`editor-area.md` E.7, checklist row 75);
+    /// other characters their measured width.
+    public func width(of c: Character) -> CGFloat {
+        if c.isASCII || EditorCellCharacters.isCell(c) { return advance }
         if let w = widths[c] { return w }
         let w = characterWidth(c)
         widths[c] = w

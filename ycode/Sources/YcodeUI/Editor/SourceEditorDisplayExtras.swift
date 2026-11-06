@@ -81,6 +81,7 @@ extension SourceEditorController {
                 MainActor.assumeIsolated {
                     self?.updateStructureHeader()
                     self?.updateMinimapViewport()
+                    self?.contentMovedUnderBars()
                 }
             }
         }

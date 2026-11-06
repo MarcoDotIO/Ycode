@@ -35,10 +35,17 @@ public final class EmptyEditorView: NSView, NSTableViewDataSource, NSTableViewDe
         return Row(path: path, name: url.deletingPathExtension().lastPathComponent, breadcrumb: crumbs.joined(separator: " › "), line: line)
     }
 
+    /// The editor's background in the window's appearance (a colour
+    /// resolved once at creation stayed dark in a light window, against the
+    /// pure white of `editor-area.md` E.5).
+    public override var wantsUpdateLayer: Bool { true }
+    public override func updateLayer() {
+        layer?.backgroundColor = Theme.backgroundColor.cgColor
+    }
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
         field.placeholderString = "Open Quickly"
         field.font = .systemFont(ofSize: 15)
         field.delegate = self

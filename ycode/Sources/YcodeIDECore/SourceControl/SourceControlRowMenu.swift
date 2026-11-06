@@ -3,8 +3,9 @@ import Foundation
 /// The Source Control navigator's context menus as data, by row key
 /// ("branch:<name>", "remoteBranch:<remote>/<name>", "tag:<name>",
 /// "stash:<ref>", "remote:<name>", "group:<Branches|Tags|Remotes>",
-/// "repository", "change:<path>"). Ycode's design: the reference's menus
-/// were not observed (`specs/ide/source-control.md`, "Ycode
+/// "repository", "change:<path>"). A local branch's menu is the
+/// reference's (`specs/ide/merge-sheet.md` §1.1: 12 items in 6 groups);
+/// the others are Ycode's design (`specs/ide/source-control.md`, "Ycode
 /// implementation"). Both the macOS navigator and the Linux shell build
 /// their menus from this.
 public enum SourceControlRowMenu {
@@ -29,6 +30,14 @@ public enum SourceControlRowMenu {
         case removeRemote(String)
         case resolveConflicts(path: String)
         case markResolved(path: String)
+        /// Merge the current branch into this one (needs it checked out).
+        case mergeInto(String)
+        /// Create a repository on a hosting account for this one.
+        case newHostedRemote
+        /// The branch on its remote's web page.
+        case viewOnHost(branch: String)
+        /// A stash's changes as a patch file.
+        case exportStash(String)
     }
 
     /// One item; nil `action` is a separator.
@@ -50,17 +59,28 @@ public enum SourceControlRowMenu {
         public var remotes: [String] = []
         public var integration: GitRepository.IntegrationState = .none
         public var conflicted: Set<String> = []
+        /// The repository's folder name ("New “name” Remote…").
+        public var repositoryName = ""
+        /// Stash references, newest first.
+        public var stashes: [String] = []
+        /// The remotes' URLs (View on Host).
+        public var remoteURLs: [String] = []
         public init(currentBranch: String? = nil, remotes: [String] = [], integration: GitRepository.IntegrationState = .none,
-                    conflicted: Set<String> = []) {
+                    conflicted: Set<String> = [], repositoryName: String = "", stashes: [String] = [], remoteURLs: [String] = []) {
             self.currentBranch = currentBranch
             self.remotes = remotes
             self.integration = integration
             self.conflicted = conflicted
+            self.repositoryName = repositoryName
+            self.stashes = stashes
+            self.remoteURLs = remoteURLs
         }
 
         public init(_ s: SourceControlSnapshot) {
             self.init(currentBranch: s.currentBranch, remotes: s.remotes.map(\.name), integration: s.integration,
-                      conflicted: Set(s.changes.filter { $0.status == .conflicted }.map(\.path)))
+                      conflicted: Set(s.changes.filter { $0.status == .conflicted }.map(\.path)),
+                      repositoryName: s.repository?.root.lastPathComponent ?? "",
+                      stashes: s.stashes.map { String($0.prefix { $0 != ":" }) }, remoteURLs: s.remotes.map(\.url))
         }
     }
 
@@ -78,22 +98,7 @@ public enum SourceControlRowMenu {
         if key == "group:Branches" { return [creating[0]] }
         if key == "group:Tags" { return [creating[1]] }
         if key == "group:Remotes" { return [Item(title: "Add Remote…", action: .addRemote)] }
-        if key.hasPrefix("branch:") {
-            let b = String(key.dropFirst(7))
-            let isCurrent = b == ctx.currentBranch
-            var out: [Item] = []
-            if !isCurrent { out += [Item(title: "Check Out \(q(b))…", action: .checkout(b), isEnabled: idle), .separator] }
-            out += [Item(title: "New Branch from \(q(b))…", action: .newBranch(from: b)),
-                    Item(title: "New Tag from \(q(b))…", action: .newTag(at: b))]
-            if !isCurrent { out += [.separator] + integrate(b) }
-            if !ctx.remotes.isEmpty {
-                out += [.separator, Item(title: "Push \(q(b))…", action: .push(branch: b))]
-                if isCurrent { out.append(Item(title: "Pull…", action: .pull(branch: b), isEnabled: idle)) }
-            }
-            out += [.separator, Item(title: "Rename…", action: .renameBranch(b)),
-                    Item(title: "Delete…", action: .deleteBranch(b), isEnabled: !isCurrent)]
-            return out
-        }
+        if key.hasPrefix("branch:") { return branchItems(String(key.dropFirst(7)), ctx) }
         if key.hasPrefix("remoteBranch:") {
             let full = String(key.dropFirst(13))
             guard let slash = full.firstIndex(of: "/") else { return [] }
@@ -125,5 +130,65 @@ public enum SourceControlRowMenu {
             return [Item(title: "Resolve Conflicts…", action: .resolveConflicts(path: p)), Item(title: "Mark as Resolved", action: .markResolved(path: p))]
         }
         return []
+    }
+
+    /// A local branch (`merge-sheet.md` §1.1): Switch, New Branch, Rename,
+    /// Tag — the two merges — the two remote items — View on Host — the
+    /// two stash items — Delete. On the current branch (Ycode's choice,
+    /// open question 7) Switch and Delete are disabled, the merge group is
+    /// left out, and Pull and Push join the remote group.
+    static func branchItems(_ b: String, _ ctx: Context) -> [Item] {
+        let current = ctx.currentBranch ?? "HEAD"
+        let idle = !ctx.integration.isInProgress
+        let isCurrent = b == ctx.currentBranch
+        let stash = ctx.stashes.first
+        var out = [Item(title: "Switch to \(q(b))…", action: .checkout(b), isEnabled: idle && !isCurrent),
+                   Item(title: "New Branch from \(q(b))…", action: .newBranch(from: b)),
+                   Item(title: "Rename \(q(b))…", action: .renameBranch(b)),
+                   Item(title: "Tag \(q(b))…", action: .newTag(at: b)), .separator]
+        if !isCurrent {
+            out += [Item(title: "Merge \(q(b)) into \(q(current))…", action: .merge(b), isEnabled: idle && ctx.currentBranch != nil),
+                    Item(title: "Merge \(q(current)) into \(q(b))…", action: .mergeInto(b), isEnabled: false), .separator]
+        }
+        out += [Item(title: "New \(q(ctx.repositoryName.isEmpty ? "Repository" : ctx.repositoryName)) Remote…", action: .newHostedRemote, isEnabled: false),
+                Item(title: "Add Existing Remote…", action: .addRemote, isEnabled: false)]
+        if isCurrent, !ctx.remotes.isEmpty {
+            out += [Item(title: "Pull…", action: .pull(branch: b), isEnabled: idle), Item(title: "Push \(q(b))…", action: .push(branch: b))]
+        }
+        out += [.separator, Item(title: "View on Host…", action: .viewOnHost(branch: b), isEnabled: ctx.remoteURLs.contains { webURL(remote: $0) != nil }),
+                .separator,
+                Item(title: "Apply Stashed Changes…", action: .applyStash(stash ?? "stash@{0}"), isEnabled: stash != nil && idle),
+                Item(title: "Export Stashed Changes as Patch File…", action: .exportStash(stash ?? "stash@{0}"), isEnabled: stash != nil),
+                .separator, Item(title: "Delete…", action: .deleteBranch(b), isEnabled: !isCurrent)]
+        return out
+    }
+
+    /// The web page of a remote's repository: an https URL as it is, an
+    /// scp-style or ssh URL ("git@host:owner/repo.git") as https; nil for
+    /// a local path. ".git" is dropped.
+    public static func webURL(remote: String) -> String? {
+        var s = remote.trimmingCharacters(in: .whitespaces)
+        if s.hasSuffix(".git") { s.removeLast(4) }
+        if s.hasPrefix("https://") || s.hasPrefix("http://") {
+            guard let u = URLComponents(string: s), let host = u.host, !host.isEmpty else { return nil }
+            return "https://\(host)\(u.path)"
+        }
+        if s.hasPrefix("ssh://") {
+            guard let u = URLComponents(string: s), let host = u.host, !host.isEmpty else { return nil }
+            return "https://\(host)\(u.path)"
+        }
+        // user@host:path
+        if let at = s.firstIndex(of: "@"), let colon = s[at...].firstIndex(of: ":"), !s.hasPrefix("/") {
+            let host = s[s.index(after: at)..<colon], path = s[s.index(after: colon)...]
+            guard !host.isEmpty, !path.isEmpty else { return nil }
+            return "https://\(host)/\(path.hasPrefix("/") ? String(path.dropFirst()) : String(path))"
+        }
+        return nil
+    }
+
+    /// A branch's page on the first remote with a web address.
+    public static func hostURL(branch: String, remoteURLs: [String]) -> URL? {
+        guard let base = remoteURLs.lazy.compactMap(webURL(remote:)).first else { return nil }
+        return URL(string: base + "/tree/" + (branch.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? branch))
     }
 }

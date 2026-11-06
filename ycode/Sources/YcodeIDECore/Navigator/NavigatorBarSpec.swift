@@ -59,8 +59,10 @@ public enum NavigatorBars {
                 T("Files with source-control status", "Show only files with source-control status", "plusminus.circle",
                   menu: "Show Only Files with Source-Control Status"),
             ], emptyState: []),
-            // Source Control: Ycode keeps its "No Repository".
-            .init(left: .pullDown, toggles: [], emptyState: ["No Repository"]),
+            // Source Control: the filter alone across the bar, no "+" or
+            // options button (navigators.md round 3 §2); Ycode keeps its
+            // "No Repository".
+            .init(left: .none, toggles: [], emptyState: ["No Repository"]),
             // Bookmarks
             .init(left: .more, toggles: [
                 T("Incomplete Items", "Show only incomplete items", "checklist", menu: "Show Only Incomplete Items"),

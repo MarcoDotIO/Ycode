@@ -74,10 +74,19 @@ import Testing
         // View ▸ Show Library, then the Library's Button (double-click inserts).
         #expect(w.performEditorAction("showLibrary:"))
         #expect(m.isLibraryShown)
-        m.libraryFilter = "butt"
-        #expect(m.libraryObjects == [.button])
+        // The search rule (library.md §Search): every word in the name or class.
+        m.libraryFilter = "UIButton"
+        #expect(m.libraryObjects == [.button, .grayButton, .tintedButton, .filledButton, .pullDownButton, .popUpButton])
+        #expect(m.librarySelection == .button)   // filtering selects the first match
+        #expect(m.libraryDetail.hasPrefix("Button\nUIButton: "))
+        m.libraryFilter = "stack view"
+        #expect(m.libraryObjects == [.horizontalStackView, .verticalStackView] && m.librarySelection == .horizontalStackView)
+        m.libraryIsIconView = true
+        m.moveLibrarySelection(1)
+        #expect(m.librarySelection == .verticalStackView)
+        m.libraryFilter = ""
+        #expect(m.libraryObjects.count == 80)
         m.librarySelection = .button
-        #expect(m.libraryDetail.hasPrefix("Button (UIButton)"))
         m.select(id: "Rv1-aa-bb1")
         let id = try #require(m.insertFromLibrary())
         #expect(m.selectedID == id && m.document.byID[id]?.element == "button")

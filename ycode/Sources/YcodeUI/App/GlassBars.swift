@@ -55,6 +55,13 @@ enum TabGlyphTint {
         guard GlassBars.enabled else { return selected ? .controlAccentColor : .secondaryLabelColor }
         return NSColor.labelColor.withAlphaComponent(selected ? 0.39 : 0.35)
     }
+
+    /// The navigator's selector glyphs: the primary label colour, black in
+    /// light (`liquid-glass.md` §9.2, checklist row 69).
+    static func navigatorColor(selected: Bool) -> NSColor {
+        guard GlassBars.enabled else { return color(selected: selected) }
+        return .labelColor
+    }
 }
 
 /// The selected tab's recessed pill inside a glass bar (§2.3, §2.5): a

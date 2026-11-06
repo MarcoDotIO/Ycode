@@ -102,13 +102,19 @@ struct GitPackage {
         let m = try await model(g)
         let scm = m.sourceControl
         scm.mode = .repositories
+        // At first only Branches is open; no "(current)" (navigators.md round 3 §2).
+        #expect(scm.rows.map(\.title) == ["Demo", "Branches", "feature", "observe", "main", "Recents", "Tags", "Stashes", "Remotes"])
+        #expect(scm.rows.first { $0.id == "branch:main" }?.detail == nil)
+        let groupRows = scm.rows.filter { $0.id.hasPrefix("group:") }
+        #expect(groupRows.allSatisfy { $0.isExpandable })
+        scm.collapsed = []
         let titles = scm.rows.map(\.title)
         #expect(titles == ["Demo", "Branches", "feature", "observe", "main", "Recents", "Tags", "v1.0", "Stashes", "Remotes", "origin", "main"])
-        #expect(scm.rows.first { $0.id == "branch:main" }?.detail == "(current)")
         #expect(scm.rows.contains { $0.id == "branch:feature/observe" })
         #expect(scm.rows.contains { $0.id == "remoteBranch:origin/main" })
-        // Branch menus come from the core's table.
-        #expect(scm.menu(for: "branch:feature/observe").map(\.title).contains("Check Out \u{201C}feature/observe\u{201D}…"))
+        // Branch menus come from the core's table (the reference's set,
+        // `merge-sheet.md` §1.1).
+        #expect(scm.menu(for: "branch:feature/observe").map(\.title).contains("Switch to \u{201C}feature/observe\u{201D}…"))
     }
 
     // MARK: Commit editor
@@ -239,8 +245,10 @@ struct GitPackage {
         await scm.idle()
         #expect(scm.snapshot.currentBranch == "main")
         #expect(scm.snapshot.recentBranches == ["topic"])
+        // Merge “topic” into “main”…: the merge confirmation, then Merge.
         scm.choose(.merge("topic"))
-        scm.confirm(try #require(scm.confirmation).choices[0])
+        #expect(scm.mergeAlert?.branch == "topic" && scm.confirmation == nil)
+        scm.confirmMergeAlert()
         await scm.idle()
         #expect(scm.errorMessage == nil)
         #expect(try String(contentsOfFile: g.path("README.md"), encoding: .utf8) == "on topic\n")

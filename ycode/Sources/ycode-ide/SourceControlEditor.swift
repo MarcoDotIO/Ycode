@@ -28,9 +28,8 @@ struct SourceControlPaneView: View {
                 switch scm.pane {
                 case .commit?: CommitEditorView(scm: scm)
                 case .history?: BranchHistoryView(scm: scm, model: model)
-                case .conflicts?:
-                    if let e = scm.conflictEditor { ConflictEditorView(editor: e) } else { Color.clear }
-                case nil: Color.clear
+                // The merge sheet is an overlay over the window (MergeOverlay.swift).
+                case .conflicts?, nil: Color.clear
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -52,7 +51,7 @@ struct SourceControlPathBar: View {
         let last: String = switch scm.pane {
         case .commit?: "Uncommitted Changes"
         case .history(_, let title, _)?: title
-        case .conflicts?: scm.conflictEditor?.state.title ?? "Conflicts"
+        case .conflicts?: "Conflicts"
         case nil: ""
         }
         HStack(spacing: 4) {

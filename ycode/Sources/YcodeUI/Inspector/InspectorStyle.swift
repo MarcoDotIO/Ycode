@@ -19,6 +19,38 @@ enum InspectorStyle {
     /// rows' own room): 18 apart (`metrics.md` §13.3).
     static let fileNameToPath: CGFloat = 4
 
+    // Council round 3 (`metrics.md` §16.2, checklist row 79): the File
+    // inspector's top rows against the reference.
+
+    /// "Identity and Type" sits this much higher; Name stays.
+    static let firstHeadingRaise: CGFloat = 3.5
+    /// From Type's ink to Location's: 28 (the rule right under Type's row,
+    /// then 5).
+    static let afterTypeRule: CGFloat = 5
+    /// Between Location's row and the file name's.
+    static let afterLocation: CGFloat = 1
+    /// Between Full Path's rule and the tags section's rule.
+    static let pathRuleToTagsRule: CGFloat = 2
+    /// The tags field's box runs this much deeper than the field.
+    static let tagsBoxExtra: CGFloat = 12.5
+
+    /// A target's icon in Target Membership: a rounded square in the
+    /// accent colour (`metrics.md` §16.2: the target's app icon left of
+    /// its name). Ycode's own drawing.
+    static func targetIcon(side: CGFloat = 16) -> NSImage {
+        NSImage(size: NSSize(width: side, height: side), flipped: false) { r in
+            let box = r.insetBy(dx: 0.5, dy: 0.5)
+            let path = NSBezierPath(roundedRect: box, xRadius: side * 0.225, yRadius: side * 0.225)
+            NSGradient(starting: NSColor.controlAccentColor.blended(withFraction: 0.25, of: .white) ?? .controlAccentColor,
+                       ending: NSColor.controlAccentColor)?.draw(in: path, angle: -90)
+            NSColor.white.withAlphaComponent(0.9).setStroke()
+            let inner = NSBezierPath(roundedRect: box.insetBy(dx: side * 0.28, dy: side * 0.28), xRadius: side * 0.08, yRadius: side * 0.08)
+            inner.lineWidth = max(1, side / 14)
+            inner.stroke()
+            return true
+        }
+    }
+
     /// Section headings: bold, #858587 (`metrics.md` §13.3).
     static var headingColor: NSColor {
         NSColor(name: nil) { a in

@@ -114,7 +114,9 @@ private func find(_ items: [OutlineItem], _ title: String) -> OutlineItem? {
         #expect(groups.map(\.title) == ["Branches", "Recents", "Tags", "Stashes", "Remotes"])
         #expect(groups[0].children.map(\.title) == ["feature", "main"])
         #expect(groups[0].children[0].children.map(\.title) == ["observe", "x"])
-        #expect(groups[0].children[0].children[0].detail == "(current)" && groups[0].children[0].children[0].scmKey == "branch:feature/observe")
+        // No "(current)" (navigators.md round 3 §2); the repository row names the branch.
+        #expect(groups[0].children[0].children[0].detail == nil && groups[0].children[0].children[0].scmKey == "branch:feature/observe")
+        #expect(repos[0].detail == "feature/observe")
         #expect(groups[3].children.first?.title == "On main: parked" && groups[3].children.first?.scmKey == "stash:stash@{0}")
         #expect(groups[4].children[0].children[0].title == "release")
         #expect(groups[4].children[0].children[0].children[0].scmKey == "remoteBranch:origin/release/1")
@@ -209,7 +211,7 @@ private func find(_ items: [OutlineItem], _ title: String) -> OutlineItem? {
         // reference-ui-5.md §2.11: the generic (no-workspace) titles.
         #expect(titles == ["Commit…", "Push…", "Pull…", "Fetch Changes", "Refresh File Status",
                            "Stage All Changes", "Stage Selected Files", "Unstage All Changes", "Unstage Selected Files",
-                           "Mark as Resolved", "Add", "Cherry-Pick…", "Stash Changes…", "Resolve Conflicts…", "Continue", "Abort",
+                           "Mark as Resolved", "Add", "Cherry-Pick…", "Merge…", "Stash Changes…", "Resolve Conflicts…", "Continue", "Abort",
                            "Create Pull Request…",
                            "Discard All Changes…", "Discard Changes in Selected Files…", "Clone…", "New Git Repository…",
                            "Create Workflow…", "Manage Workflows…"])

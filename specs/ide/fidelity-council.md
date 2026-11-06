@@ -256,6 +256,163 @@ Since round 1 Ycode now matches rows 1 (SDK), 4 (pitch 18, code column
 | Split editor in the reference | menu labels in the script | use "Editor Pane On Right" |
 | Dark appearance | not captured | the session in dark mode |
 
+## Round 3 (2026-11-05)
+
+Both apps were captured at **Retina (2x)** on a 120 Hz display, in the
+foreground with the window key, at 120 fps; round 3 numbers compare only
+with round 3. Ycode was `0c3ae33f`, wrapped with the macOS 27 SDK so its
+glass layout ran. The session added three areas:
+- **the merge workflow and conflict editor** (a test repository with a
+  conflicting branch; the reference's path was the branch row's context
+  menu, the confirmation alert and the merge sheet; Ycode's merge had to
+  be started with `git merge` because its branch rows have no context
+  menu);
+- **Settings ▸ General**;
+- **the device window** (Device Hub with an iPhone Duo on iOS 27.1;
+  Ycode's simulators run on a remote host, so its canvas showed an
+  outline).
+
+Known artefacts: the Mac was under heavy load (load average 300–840 in the
+main session), so scroll and flick durations are weighed lightly; neither
+app rotated the device, so the landscape step is not scored; three steps
+were re-run (main 10–11 for Ycode, Settings and the Repositories still for
+the reference).
+
+### Scores
+
+| Step | Opus | Sol | Gemini | Mean |
+|---|---|---|---|---|
+| 01 select Long.swift | 7 | 7.8 | 8 | 7.6 |
+| 02 editor at rest | 6.5 | 7.4 | 7.5 | 7.1 |
+| 03 linear scroll 600 pt | 7 | 8 | 6.5 | 7.2 |
+| 04 momentum flick | 6 | 7.2 | 6.5 | 6.6 |
+| 05 select Stripes.png | 6 | 7 | 7 | 6.7 |
+| 06 open Stripes.png (open document) | 4 | 3.5 | 5.5 | 4.3 |
+| 07 select Bands.swift | 6 | 6 | 7 | 6.3 |
+| 08 bands under the bars | 5.5 | 7.8 | 6.5 | 6.6 |
+| 10 hide inspector | 8 | 9 | 8.5 | 8.5 |
+| 11 show inspector | 8.5 | 9.2 | 8.5 | 8.7 |
+| 12 inspector scroll | 6 | 7 | 9 | 7.3 |
+| 13 plain group | 8 | 5.8 | 8.5 | 7.4 |
+| 14 expand folder | 7 | 6.2 | 7 | 6.7 |
+| 15 navigator scroll | 7 | 7.8 | 4.5 | 6.4 |
+| 16 split editor | 6 | 5.8 | 5 | 5.6 |
+| 17 narrower window | 6 | 7 | 6 | 6.3 |
+| 18 Welcome window | 7.5 | 6 | 8.5 | 7.3 |
+| 20 Settings ▸ General | 2.5 | 4 | 4.5 | 3.7 |
+| Conflict 01 Repositories view | 5 | 6 | 7.5 | 6.2 |
+| Conflict 02 starting the merge | 2 | 1 | 2 | 1.7 |
+| Conflict 03 conflict at rest | 2.5 | 2.5 | 4 | 3.0 |
+| Conflict 04 Choose Right | 3 | 2.5 | 4.5 | 3.3 |
+| Device 01 Home at rest | 5 | 6 | 5 | 5.3 |
+| **Area: conflict editor** | **3.0** | **2.8** | **4.5** | **3.4** |
+| **Area: Settings** | **2.5** | **4.0** | **4.5** | **3.7** |
+| **Area: device window** | **5.0** | **6.0** | **5.0** | **5.3** |
+| **Overall** | **5.8** | **6.2** | **6.4** | **6.1** (round 2: 5.9) |
+
+The main-window steps scored in both rounds rose from a mean of 5.95 to
+6.97; the overall mean rose less because the three new areas score under 6.
+
+### Disputed values, settled by measurement
+
+| Item | Judges | Measured (reference) | Ycode |
+|---|---|---|---|
+| "The merge sheet animates in about 288 ms, ease-out" | Opus, Sol, the summary | The 288 ms segment is the **confirmation alert** appearing with the window's veil (veil about 255 ms, ease-out). The **sheet** comes about 1.1 s later, after Merge in the alert: it fades in over about 90 ms and slides down 32 points from under the toolbar over about 200 ms (`merge-sheet.md` §1.2, §10) | the editor appears in one frame |
+| "Choose Right takes 330 ms, ease-in-out" | all three | The 330 ms is the **Choose menu's dismissal** (item blink, a hold, a fade). The left pane's text then changes in **one frame**, 117 ms after the menu is gone; the change stays selected (`merge-sheet.md` §7) | the Result pane changes in 50 ms; the view moves to the next change |
+| Sheet inset "about 20 pt" | Sol | **24** from each side of the window; top at the toolbar's bottom (52.5); content box 20 inside the sheet | — |
+| Gutter "about 46 pt" | Opus | **46** (x 768–814), tokens 38.5 × 14 | — |
+| Conflict colours "#FADADD, light blue #D7E8FB" | Opus, summary | conflict rows **#FFDCDD**, changed words **#FF9A9D**, the selected change's rules **#DA5559** (#FF656A once decided); the clean change **#D6EBFE**; in the gutter #F9D5D5 and #D1E4F8 | pink to the end of the text; green #DDF5DD |
+| Split editor "200 ms ease-out" | Opus, Sol, Gemini | The split appears in **one frame**; 100 ms later the new pane's jump bar re-lays out once (truncation, issue stepper). No sliding animation (`editor-area.md` E.2) | one frame (12 ms): **matches** |
+| Minimap "auto-hides below about 350 pt" | Gemini | **No**: the reference keeps minimaps in split panes: 67 at a 424-point pane, 63 at 274 (`editor-area.md` E.6) | 67 and 45 |
+| Full-block glyph "wider in Ycode" | Gemini | Ycode's is **narrower**: 6.89 per block against the reference's 8.0 (one cell); a 110-block row is 758 against 884.5 (`editor-area.md` E.7) | 6.89 |
+| Keywords "coral red in Ycode" | Gemini | keywords are **#C4246E in both apps** | matches |
+| Ycode's jump bar "opaque #F6F6F6" | Gemini | Ycode's jump bar shows a **flat pink tint** (239–245 in the green channel over red bands), not an opaque fill; what it lacks is the content's structure (`liquid-glass.md` §9.1) | flat tint |
+| Settings window "680 × 400" / "708 × 453" / "710 × 452" | Gemini / Opus / summary | **710 × 452** (the capture's window frame) | 860 × 560 |
+| Settings sidebar "inset glass" | summary | **flush**: full height, #EDEDED, 179.5 wide plus a 0.5-point divider (`settings.md` R3.2) | flush, 200 |
+| Settings title "regular weight" | Opus | regular to medium (stems 1.5–2.0 at a 12-point cap height), colour **#4D4D4D**, not black | bold, #272727 |
+| "Loading…" for about 170 ms on selecting an image | Opus (about Ycode) | Reference round 3: **one frame, no Loading**; round 2 showed Loading for about 100 ms after 454 ms. Ycode: Loading for 192 ms (`editor-area.md` E.3) | 192 ms |
+| Device inspector rows | `device-hub.md` §6: 32–36 tall | **42 + 1** (43 pitch), in cards 260 wide, 10 apart (`device-hub.md` §11.3) | no cards |
+| Momentum flick | all three | confirmed: the reference has no start delay, overshoots **48 points (8 %)** and settles by 713 ms; Ycode holds still **85–98 ms**, overshoots 120 points (20 %), settles by 883 ms (`editor-area.md` E.1) | — |
+
+### Rows whose target changed
+
+| # | Area | New target | Ycode now | Spec |
+|---|---|---|---|---|
+| 3 | Image viewer | Keep the old content until the image is ready; one-frame swap. Show "Loading…" only if the image is still not ready after about 450 ms. | Loading for 192 ms | `editor-area.md` E.3 |
+| 8 | Minimap | Width **clamp(15.5 % of the pane, 63, about 140)**: 131 at 850, 67 at 424, **63 at 274** | 45 at 274 | `editor-area.md` E.6 |
+| 40 | Top bounce | No start delay; overshoot scales with the flick (48 for this 600-point flick, 8 %); critically damped return, ω about 11–12.6 rad/s | 85–98 ms delay; 20 % overshoot | `editor-area.md` E.1 |
+| 12 | Navigator selection | Accent band only while the outline has focus; the unfocused grey band as soon as an editor takes focus | stays accent blue | `navigators.md` round 3 §1 |
+
+Since round 2 Ycode now matches rows 9 (inspector hide 321 against 323 ms,
+show 295 against 296 ms, the same curve shape), 13 (plain-group order),
+25 (scroll travel 600 → 600) and 36 (the editor's top inset), and the
+split pane sizes. Row 35 is met for the toolbar band; the selector
+capsule still shows rows legibly (row 69).
+
+### New rows (round 3)
+
+| # | Area | Target (reference) | Ycode now | Spec | Level | Raised by | Impact |
+|---|---|---|---|---|---|---|---|
+| 52 | Starting a merge | A local branch row's context menu with 12 items in 6 groups, "Merge “b” into “current”…" enabled; then a centred **420 × 133** alert (title, message, Cancel and **Merge**, Merge the default); the veil darkens white to #CDCDCD over about 255 ms | no row menu on macOS; no Integrate ▸ Merge | `merge-sheet.md` §1 | 3 | Opus, Sol, Gemini | H |
+| 53 | Merge sheet frame | A modal sheet **24** in from each side of the window, top at the toolbar's bottom, corner radius about 16, over the veiled window; one bordered content box 20 inside it | an in-window three-pane editor with a Result pane | `merge-sheet.md` §2 | 3 | Opus, Sol, Gemini | H |
+| 54 | Merge sheet file list | 198 wide; "Hierarchical \| Flat" (Hierarchical default, a #D1E7FF pill); 24-point rows; flush full-width selection #0064E1; a red "C" badge in a white square; a Filter field at the bottom | none | `merge-sheet.md` §3 | 3 | Opus, Gemini | M |
+| 55 | Merge sheet panes | Two 523-point source panes with syntax colours, line numbers at +26 to +28, code at +41, current-line highlight on every wrapped visual line; corresponding lines at the same y; one shared jump bar with a conflict navigator; an overview ruler on the right pane | no syntax colour; 17 against 18 lines, misaligned; git markers in a Result pane | `merge-sheet.md` §4 | 3 | Opus, Sol, Gemini | H |
+| 56 | Centre gutter | **46** wide, #F5F5F4 between #D7D7D7 rules; one **38.5 × 14** capsule token per change ("?" undecided, a digit once decided, a down-chevron; the chevron in a circle once decided); #575757, the selected change's #6D2A2D with a red rim | connector shapes; no tokens | `merge-sheet.md` §5 | 3 | Opus, Sol, Gemini | H |
+| 57 | Row shading | **Full width** through the gutter, one 18-point row per line: conflicts #FFDCDD with changed words #FF9A9D (16 tall, cell-exact); the selected change with 1-point rules #DA5559 above and below; the clean change #D6EBFE | text-width pink and green (#DDF5DD) | `merge-sheet.md` §6 | 3 | Opus, Sol | H |
+| 58 | Choose menu | Choose Left, Choose Right, separator, Choose Left Then Right, Choose Right Then Left; opens from the token; the choice rewrites the **left pane** in one frame after a 330 ms menu dismissal; the change stays selected | "Left"/"Right" segments; the left pane not updated; jumps to the next change | `merge-sheet.md` §7 | 3 | Opus, Sol, Gemini | H |
+| 59 | Footers and stepper | A 27-point footer row: repository › branch › date, author, short hash ("(HEAD)" on the left) under each pane; "‹ n/m ›" centred on the gutter | none | `merge-sheet.md` §8 | 3 | Opus, Gemini | M |
+| 60 | Cancel and Merge | 84-wide buttons right-aligned with the content box, 12 apart, 21.5 below it; Merge disabled while a conflict is undecided | Mark as Resolved, Continue Merge, Abort Merge | `merge-sheet.md` §9 | 3 | Opus, Sol, Gemini | M |
+| 61 | Sheet transition | Fade in over about 90 ms while sliding down 32 points from under the toolbar over about 200 ms (keyframes in §10); the alert fades out in the same 90 ms | one frame | `merge-sheet.md` §10 | 3 | Sol, Opus | M |
+| 62 | Settings window | **710 × 452**; window buttons at x 19, 42, 65 on y 26, all enabled; one 73.5 × 34.5 glass back/forward capsule with a divider; the title at x 273.5, about 17 points, #4D4D4D, regular to medium | 860 × 560; minimize disabled; two circles; bold black title | `settings.md` R3.1 | 3 | Opus, Sol, Gemini | H |
+| 63 | Settings sidebar | Flush, **179.5** + a 0.5 divider #D4D4D4; **32-point rows**; a 160 × 32 selection #0070F5 inset 10; accent-tinted symbols centred on x 29; labels aligned at x 47; 12 items in the reference's order (Ycode's names where the protocol requires) | 200 wide, 26-point rows, grey symbols, labels at 42–47.5, 13 items | `settings.md` R3.2 | 3 | Opus, Sol | H |
+| 64 | Settings General pane | Section headers bold over **cards** x 200–690, #F7F7F7, radius about 12; rows 37.5 + 1-point separators #EBEBEB inset 10; labels left at x 211, no colons; help text #7C7C7C, 14-point pitch; pop-ups as value text plus a 20-point circular chevron button 13.5 inside the card; switches 10 inside; controls centred on the label's line | right-aligned labels with colons, checkboxes, no cards, no help | `settings.md` R3.3 | 3 | Opus, Sol, Gemini | H |
+| 65 | Device control capsules | Two glass capsules, **108** and **145.5** wide, **36.5** tall, 7.5 apart, floating 8 above the window's bottom edge, centred on the canvas; glyphs black on a 34-point pitch; the current Duo pose in the accent colour | missing | `device-hub.md` §11.1 | 3 | Opus, Sol, Gemini | H |
+| 66 | Device inspector | Settings rows in **cards** (x 830–1090, #E6E6E7, radius about 12, 10 apart), **43-point** row pitch, symbol, label, trailing control | one grey message; a full-height scroll track | `device-hub.md` §11.3 | 3 | Opus, Sol, Gemini | M |
+| 67 | Device canvas and toolbar | The frame centred between the toolbar and the capsules (no name or OS label under it); with the sidebar hidden no "+" and no Filter; no "»"; the resize toggle beside Capture Keyboard; a plain "i" tab | label under the frame; "+", "»"; "i" in a circle; frame high in the canvas | `device-hub.md` §11.2, §11.4 | 3 | Opus, Sol, Gemini | M |
+| 68 | Structure behind the bars | The toolbar band, the jump bar and the bottom bar each show the content behind them **blurred (σ about 6), with its shape**: two smears at the top, a fading band under the bottom bar | a flat tint in every region | `liquid-glass.md` §9.1 | 3 | Opus, Sol, Gemini | H |
+| 69 | Selector capsule | Rows under it blurred to smudges (no letter strokes), fill about #E8E8E9; glyphs **black** | rows legible; fill #F0F0F1; glyphs #858585–#9C9C9C | `liquid-glass.md` §9.2 | 3 | Opus, Gemini | M |
+| 70 | Flick start | Content follows the gesture's first event; no hold | 85–98 ms hold | `editor-area.md` E.1 | 3 | Opus, Sol, Gemini | M |
+| 71 | Split-pane jump bars | Close button at +14, issue stepper at the right in each pane; middle component truncated with a 4-point fade; the inactive pane's path #7F7F7F with grey icons (active #262626 in colour); the second layout within 100 ms | none of these | `editor-area.md` E.2 | 3 | Opus, Gemini | M |
+| 72 | Image selection | One-frame swap; no "Loading…" unless the image is not ready after about 450 ms | 192 ms of "Loading…" | `editor-area.md` E.3 | 3 | Opus, Sol, Gemini | M |
+| 73 | Open-document request | **Zero changed frames** for a file already open; keep the project's path (no `/private` resolution) and the jump bar's group | 100 ms flash; group lost; `/private/tmp` path | `editor-area.md` E.4 | 3 | Opus, Sol, Gemini | H |
+| 74 | Empty editor | Pure white: no minimap, separator, shade or scroll lane | separator, a #EDEDED block, the lane | `editor-area.md` E.5 | 3 | Opus | M |
+| 75 | Full-block and fallback glyphs | Every glyph advances one cell (8.0), fallback fonts included | 6.89 per full block | `editor-area.md` E.7 | 3 | Opus, Gemini | M |
+| 76 | First layout | Wrap with the final container width (edge about 986) from the first frame | first layout wraps one word later | `editor-area.md` E.7 | 3 | Opus, Sol | L |
+| 77 | Minimap floor | Never under about 63 points | 45 at a 274-point pane | `editor-area.md` E.6 | 3 | Opus, Gemini | M |
+| 78 | Jump bar text | Path ink y 59.5–72.5 (centred on 66) | 2.75 lower | `metrics.md` §16.1 | 3 | Opus | L |
+| 79 | File inspector rhythm | Heading at 90, Location at 168.5, the tags heading at 267, Target Membership at 334; the target's app icon in Target Membership | +3.5, +7, +10, −2.5; an empty checkbox | `metrics.md` §16.2 | 3 | Opus, Gemini | L |
+| 80 | Welcome icon | 98 × 98, its bottom 15.5 above the name's cap top | 90 × 90, 44 above | `metrics.md` §16.3 | 3 | Opus, Sol | L |
+| 81 | Unfocused selection | The navigator's band turns grey when an editor takes focus | stays blue | `navigators.md` round 3 §1 | 3 | Opus (runner) | M |
+| 82 | Repositories view | A full-width Changes \| Repositories control (x 9–281, 16 tall); grey filled group symbols; only Branches expanded at first; no "(current)"; a plain filter field; the empty inspector's line 38.5 lower | compact control, blue folders, Recents expanded, "(current)", an options button | `navigators.md` round 3 §2 | 3 | Opus, Sol, Gemini | M |
+
+**Top 10 new or changed rows by impact:**
+1. 52, starting a merge from the branch row and the alert.
+2. 53–58, the merge sheet: frame, panes, gutter tokens, full-width
+   shading and the Choose menu (build together).
+3. 64, Settings ▸ General as grouped cards.
+4. 62–63, the Settings window and sidebar.
+5. 65, the device window's floating control capsules.
+6. 68, content structure behind the toolbar, jump bar and bottom bar.
+7. 73, the open-document request repainting nothing.
+8. 70 and 40, the flick's start and spring.
+9. 71 and 81, split-pane jump bars and the unfocused selection.
+10. 66–67, the device inspector's cards and canvas placement.
+
+### Not settled by round 3
+
+| Item | Why not | Capture needed |
+|---|---|---|
+| The merge sheet's height and bottom margin; the buttons' height; Merge becoming the default | the sheet runs below the 880-point window's bottom edge | the merge sheet in a window 1000+ tall |
+| After Merge and after Cancel; the sheet's disappear animation | neither was clicked | complete one merge and cancel another, recorded |
+| The token glyph for each choice; Choose Left and the "Then" items; alignment of unequal blocks; whether word fills update after a choice | only Choose Right on one-line changes was captured | a file with a 1-line against 3-line conflict; each menu item once |
+| Context menus of the current branch, remote branches, tags and stashes; Integrate ▸ Merge | not captured | right-click each row kind; open Integrate |
+| Settings rows below the fold; other panes' sizes; on-state switch | one still of General | scroll General; one still per pane |
+| The Zoom to Fit scale rule in the device window | one device (a foldable), one window size | an iPhone 17-class device and an iPad at two window sizes |
+| Landscape layout and rotation animation | neither app rotated | a device that rotates, recorded |
+| The unfocused selection band's exact grey in an active window | the row was under the filter capsule | select a row in view, then click into the editor |
+| Inspector scrolled under its tab bar | the content fit in 880 | a shorter window |
+| Dark appearance | not captured | the session in dark mode |
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -263,6 +420,7 @@ Since round 1 Ycode now matches rows 1 (SDK), 4 (pitch 18, code column
 | Scores and the judges' claims | — | The council's three reports for rounds 1 and 2 (dirty room) |
 | Every reference value in the checklist | 3 | The cited spec sections. They are measured from the round-1 1x stills and recordings of the reference with `research/tools/council-r1/measure_captures.py`; the method is in `research/notes/council-r1-2026-11-04.md` |
 | Round 2 reference values | 3 | The round 2 1x stills and recordings (foreground, key window), measured with `research/tools/council-r2/measure_r2.py`; method in `research/notes/council-r2-2026-11-04.md` |
+| Round 3 reference values | 3 | The round 3 Retina stills and 120 fps recordings of the reference and Ycode (foreground, key window; the merge session, Settings and Device Hub added), measured in the dirty room with colour runs, ink boxes, per-frame column profiles and the capture tool's timing segments; full descriptions in the cited spec sections |
 | Ycode values | — | The same session's captures of Ycode; `otool -l` of the captured executable |
 | EditorConfig lookup | 1 | The EditorConfig specification (editorconfig.org) |
 | Scroller style API | 1 | AppKit documentation (`NSScroller.preferredScrollerStyle`, `NSScroller.preferredScrollerStyleDidChangeNotification`) |

@@ -6,7 +6,11 @@ import YcodeIDECore
 /// The editor for an image file (`specs/ide/editor-area.md` §C.6): the
 /// image scaled to fit and centred on the editor's background, with
 /// "Open with Preview" under it. No gutter, minimap, frame or scroll area.
-/// While the file decodes, "Loading…" is centred in its place.
+/// A file of ordinary size decodes before the viewer is shown, so the
+/// image replaces the old content in one frame (`editor-area.md` E.3,
+/// checklist row 72); a large one decodes off the main thread, and
+/// "Loading…" is centred in its place only if it is still not ready after
+/// `ImageViewerLayout.loadingDelay`.
 @MainActor
 public final class ImageViewerController: NSViewController {
     public let url: URL
@@ -19,10 +23,25 @@ public final class ImageViewerController: NSViewController {
     public let previewButton = NSButton(title: "Open with Preview", target: nil, action: nil)
     public let loadingLabel = NSTextField(labelWithString: "Loading…")
     private var loading: Task<Void, Never>?
+    /// The image decoded before the view loaded (an ordinary-size file).
+    private var decodedEarly: ImageFileProperties.Decoded?
+    /// Whether the image has decoded (or failed to).
+    public private(set) var isReady = false
+    /// Called once a file decoded off the main thread is ready (the window
+    /// swaps the viewer in then).
+    public var onReady: (() -> Void)?
 
-    public init(url: URL) {
+    /// `synchronousLimit`: files up to this many bytes decode here, before
+    /// the viewer is shown.
+    public init(url: URL, synchronousLimit: Int = ImageViewerLayout.synchronousDecodeLimit) {
         self.url = url
         super.init(nibName: nil, bundle: nil)
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? Int.max
+        if size <= synchronousLimit {
+            decodedEarly = ImageFileProperties.decode(url)
+            properties = decodedEarly?.properties
+            isReady = true
+        }
     }
 
     @available(*, unavailable)
@@ -44,6 +63,7 @@ public final class ImageViewerController: NSViewController {
         previewButton.action = #selector(openWithPreview(_:))
         ImageViewerLayout.stylePreviewButton(previewButton)
         imageView.isHidden = true
+        loadingLabel.isHidden = true
         for v in [imageView, loadingLabel, previewButton] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
@@ -64,24 +84,42 @@ public final class ImageViewerController: NSViewController {
         load()
     }
 
-    /// Decodes the file off the main thread; the image is drawn in one
-    /// frame when it is ready, with no fade.
+    /// Shows the image decoded early, or decodes the file off the main
+    /// thread; the image is drawn in one frame when it is ready, with no
+    /// fade. "Loading…" appears only once the delay has passed.
     private func load() {
+        if isReady {
+            show(decodedEarly)
+            decodedEarly = nil
+            return
+        }
         let url = url
         loading = Task { [weak self] in
             let decoded = await Task.detached(priority: .userInitiated) { ImageFileProperties.decode(url) }.value
             guard let self, !Task.isCancelled else { return }
-            self.loadingLabel.isHidden = true
-            guard let decoded else {
-                self.loadingLabel.stringValue = "Unable to open the image"
-                self.loadingLabel.isHidden = false
-                return
-            }
-            self.properties = decoded.properties
-            self.imageView.image = NSImage(cgImage: decoded.image, size: decoded.properties.pointSize)
-            self.imageView.isHidden = false
-            self.onLoaded?(decoded.properties)
+            self.isReady = true
+            self.show(decoded)
+            self.onReady?()
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + ImageViewerLayout.loadingDelay) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, !self.isReady else { return }
+                self.loadingLabel.isHidden = false
+            }
+        }
+    }
+
+    private func show(_ decoded: ImageFileProperties.Decoded?) {
+        loadingLabel.isHidden = true
+        guard let decoded else {
+            loadingLabel.stringValue = "Unable to open the image"
+            loadingLabel.isHidden = false
+            return
+        }
+        properties = decoded.properties
+        imageView.image = NSImage(cgImage: decoded.image, size: decoded.properties.pointSize)
+        imageView.isHidden = false
+        onLoaded?(decoded.properties)
     }
 
     /// Waits for the image to decode (tests).
@@ -104,6 +142,12 @@ public final class ImageViewerController: NSViewController {
 /// editor's height less 20 above and 60 below; the button is 20 tall,
 /// 20 above the bottom bar, so 20 below the box.
 public enum ImageViewerLayout {
+    /// "Loading…" shows only when the image is still not ready this long
+    /// after it was asked for (`editor-area.md` E.3: about 450 ms).
+    public static let loadingDelay: TimeInterval = 0.45
+    /// Files up to this size decode before the viewer is shown (a few
+    /// milliseconds), so the swap is one frame with the image in it.
+    public static let synchronousDecodeLimit = 24 * 1024 * 1024
     public static let topMargin: CGFloat = 20
     public static let bottomMargin: CGFloat = 60
     public static let sideMargin: CGFloat = 20

@@ -1331,6 +1331,73 @@ Candidates by size on today's path, for the owners named in §8.3:
 3. **SpringBoard's own guest code: 14–18 s.** Native speed; the loader's
    algorithm (§5). Not Ycode's to shorten.
 
+## 11. Plan: a cold boot as fast as the reference (1.0 ×) (agent B3-GPU, 2026-11-05)
+
+The owner set the target: **home_s ≤ 21.4 s** on a quiet Thor under
+`parity-ladder.md`'s conditions (full boot, device booted before at its
+path, load under 4 at the start, no other boot, n ≥ 5, median). The last
+quiet measurement is 30.1 s (`lean-boot.md` §9), so **8.7 s (29 %)** must go.
+This section is a plan only; nothing in it is implemented.
+
+### 11.1 The budget
+
+The critical path measured twice, with the same tool (`--backbone
+SpringBoard:main`, §8.1): BOOT-CP's `r3q` on a quiet host (33.1 s, §8.3) and
+`prof1` on today's shared host (40.7 s, §10.3).
+
+| Item | quiet (r3q) | shared (prof1) |
+|---|---|---|
+| SpringBoard's own guest code | 14.1 s | 17.6 s |
+| The log path through diagnosticd (CPU waits after wakeups, wakeup latency, event-lock waits, `kevent_id`) | 6.7 s | 14.4 s |
+| SpringBoard waiting for a host CPU | 3.9 s | 3.8 s |
+| Kernel-lock and port-lock waits, IPC service in SpringBoard | 2.4 s | 1.5 s |
+| Everything else (spawns, file and memory traps, thread starts, GPU) | 6.0 s | 3.1 s |
+
+The quiet column is the one the target is measured against; the shared
+column shows which items grow under contention (the log path doubles).
+
+### 11.2 Candidates
+
+Savings are estimates for a quiet-host boot, from the profile; each needs
+an A/B series (n ≥ 5 per arm, arms alternated, quiet Thor) before it
+counts.
+
+| Rank | Candidate | Expected saving | Risk | What to measure |
+|---|---|---|---|---|
+| 1 | **The log path.** Every `os_log` message is a send-only Mach message to diagnosticd (about 3,600 a second in a boot); runningboardd and cfprefsd, which SpringBoard waits for, block on its full queue (§8.5). Options, cheapest first: (a) a send-only message to a port whose receiver waits in a workloop hands off without the event lock and without a full wakeup round trip (the KLOCK items of §8.6); (b) diagnosticd's receive threads get a host CPU first while senders are blocked on its queue (send push exists; extend it to the host class of the receiving workloop thread); (c) if the reference's queue limit is larger than the one launchd_sim sets in Ycode (§8.6 question 1), match it | 3–6 s (most of 6.7 s; the queue limit alone is unknown) | Medium: IPC ordering and wakeups (lost wakeup, message order per port), lock order | `--blocked-sends 0x10000000` thread-seconds (196–295 s today), the log path's share of the backbone, home_s; message rate and queue limit on the reference (dirty room, §8.6 questions 1–2) |
+| 2 | **SpringBoard's CPU wait.** Its threads wait 3.9 s for a host CPU while about 190 daemons start. Reserve host CPUs for the UI class while the boot runs (a cpuset for the UI path, the rest for the others), or hold more of the non-UI starts until home. `YCODE_HOST_SCHED_BG_CPUS=4` and `cpu.idle` for class 0 did not help (§10.2), so the next try is the reverse: give SpringBoard, backboardd and their direct servers dedicated CPUs | 1–3 s | Low–medium: starving the daemons SpringBoard waits for (runningboardd, cfprefsd, diagnosticd) moves the time instead of removing it | the backbone's run-queue items, home_s, the hold's release reasons |
+| 3 | **Native mode** (`native-mode.md`): guest processes as Linux processes, system calls as function calls, no global lock for process-local work. It removes the trap exit (about 4 µs each, `guest-cpu.md` §5) and most kernel-lock waits on the path, and shortens the log path's hand-offs | 3–8 s (lock and IPC items on the path, and part of the log path), but only once stages 1–5 of `native-mode.md` §9 exist | High: months of work, TLS on a stock kernel, seccomp coverage, a second code path | stage 1's per-call cost against the micro-VM's; then the backbone's trap and lock items |
+| 4 | **SpringBoard's guest code** (14.1 s): dyld_sim's loader and SpringBoard's own start-up at native speed (§5, `guest-cpu.md` §2). Ycode's share is memory translation: file-backed memory is 4 KiB at stage 2; a hugetlbfs pool or `shmem_enabled = advise` (root on the Thor) would let the shared cache be block-mapped (`guest-cpu.md` §8) | 0.5–1.5 s | Low (needs the owner for root) | DTLB walks and cycles of SpringBoard to its Mercury request (`pmustat -g`), home_s |
+| 5 | **The Thor's core gap** (§10.4): one Thor core is 1.25 × slower than the Mac's on loader-like work overall (0.92 × on branches and string sorting, 1.82 × on memory latency). Not closable in software; it sets a floor | — | — | the same `cpubench` on any new host |
+
+### 11.3 What 1.0 × requires
+
+Ranks 1, 2 and 4 together give about 4.5–10.5 s; the middle of that range
+reaches 21.4 s only if the log path gives most of its 6.7 s. The core gap
+weighs on the 14 s of guest code: at the Mac's speed for memory-bound work
+it would be about 10 s, so with the same work as the Mac and today's
+overheads the Thor cannot reach 1.0 ×; Ycode has to remove overheads the
+Mac also has a little of (the log back-pressure, CPU contention) to make up
+for it. Native mode (rank 3) is the only candidate whose saving grows with
+the number of traps and processes, so it is the long-term route if ranks
+1, 2 and 4 stop short.
+
+### 11.4 The next wave
+
+1. **The log path, measured and cut** (rank 1): a frame-profile series on a
+   quiet Thor with `--blocked-sends` and the backbone, then option (a) behind
+   a switch, A/B n ≥ 5; in parallel the dirty room answers §8.6's two
+   questions about the reference (queue limit, message rate), which decide
+   option (c).
+2. **Native mode stage 1** (rank 3): the single-threaded native runner of
+   `native-mode.md` §9, with its per-call numbers against the micro-VM, so
+   that the size of the long-term route is measured before anyone commits to
+   stages 2–5.
+
+Both need a reserved Thor for their timed series (no other agents' boots
+or builds): today's shared host adds 10 s to a boot (§10.1) and makes a
+2 s gain invisible.
+
 ## Evidence
 
 | Claim | Level | Source |

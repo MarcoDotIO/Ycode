@@ -30,25 +30,25 @@ struct EditingSettingsPane: View {
 
     var main: some View {
         SettingsForm {
-            Section {
+            SettingsSection {
                 DrillRow(title: "Display", detail: "Line numbers, wrapping, guides", target: "settings editing display") { model.editingPage = .display }
                 DrillRow(title: "Completion", detail: Preferences.shared.predictiveCompletion.enabled ? "Predictive on" : "",
                          target: "settings editing completion") { model.editingPage = .completion }
                 DrillRow(title: "Indentation", detail: Preferences.shared.indentWithTabs ? "Tabs" : "\(Preferences.shared.indentWidth) spaces",
                          target: "settings editing indentation") { model.editingPage = .indentation }
             }
-            Section("Files") {
-                LabeledContent(formLabel("Default text encoding")) { Text(verbatim: "Unicode (UTF-8)") }
-                LabeledContent(formLabel("Default line endings")) { Text(verbatim: Self.lineEndings) }
+            SettingsSection("Files") {
+                ValueRow(title: "Default text encoding", value: "Unicode (UTF-8)")
+                ValueRow(title: "Default line endings", value: Self.lineEndings)
                 CheckRow(title: "Convert existing files on save", isOn: setting(\.convertExistingFilesOnSave), target: "settings convert on save")
             }
-            Section("When Editing") {
+            SettingsSection("When Editing") {
                 CheckRow(title: "Automatically trim trailing whitespace", isOn: setting(\.trimTrailingWhitespace), target: "settings trim whitespace")
                 CheckRow(title: "Including whitespace-only lines", isOn: setting(\.trimWhitespaceOnlyLines), target: "settings trim whitespace lines")
                     .disabled(!Preferences.shared.trimTrailingWhitespace)
                 CheckRow(title: "Predictive code completion", isOn: setting(\.predictiveCompletion.enabled), target: "settings prediction main")
             }
-            Section("Localized Strings") {
+            SettingsSection("Localized Strings") {
                 CheckRow(title: "Automatically generate string catalog comments", isOn: setting(\.generateStringCatalogComments),
                          target: "settings catalog comments")
             }
@@ -57,10 +57,8 @@ struct EditingSettingsPane: View {
 
     var display: some View {
         SettingsForm {
-            Section {
-                BackRow(title: "Editing", target: "settings editing back") { model.editingPage = .main }
-            }
-            Section("Display") {
+            BackRow(title: "Editing", target: "settings editing back") { model.editingPage = .main }
+            SettingsSection("Display") {
                 CheckRow(title: "Line numbers", isOn: setting(\.showLineNumbers), target: "settings line numbers")
                 CheckRow(title: "Code folding ribbon", isOn: setting(\.showFoldingRibbon), target: "settings folding ribbon")
                 CheckRow(title: "Code structure headers", isOn: setting(\.showCodeStructureHeaders), target: "settings structure headers")
@@ -68,25 +66,23 @@ struct EditingSettingsPane: View {
                 CheckRow(title: "Code coverage iteration counts", isOn: setting(\.showCoverageCounts), target: "settings coverage counts")
                 CheckRow(title: "Condition on #endif lines", isOn: setting(\.showEndifConditions), target: "settings endif conditions")
                 CasePicker(title: "Scope guides", selection: setting(\.scopeGuides), target: "settings scope guides")
-                Stepper("Reformat code at column: \(Preferences.shared.reformatColumn)", value: setting(\.reformatColumn), in: 1...400)
-                    .shellTarget("settings reformat column")
+                IntStepperRow(title: "Reformat code at column", value: setting(\.reformatColumn), range: 1...400, target: "settings reformat column")
                 CheckRow(title: "Show reformatting guide", isOn: setting(\.showReformattingGuide), target: "settings reformat guide")
                 CheckRow(title: "Automatically reformat when completing", isOn: setting(\.reformatWhenCompleting), target: "settings reformat completing")
                 CheckRow(title: "Dim inactive code", isOn: setting(\.dimInactiveCode), target: "settings dim inactive")
                 CheckRow(title: "Highlight instances of selected symbol", isOn: setting(\.highlightSelectedSymbol), target: "settings highlight symbol")
-                Stepper("Highlighting delay: \(String(format: "%.2f", Preferences.shared.highlightDelay)) s", value: setting(\.highlightDelay),
-                        in: 0...5, step: 0.05)
+                DoubleStepperRow(title: "Highlighting delay", value: setting(\.highlightDelay), range: 0...5, step: 0.05,
+                                 format: { String(format: "%.2f s", $0) }, target: "settings highlight delay")
                     .disabled(!Preferences.shared.highlightSelectedSymbol)
-                    .shellTarget("settings highlight delay")
                 CasePicker(title: "Editor overscroll", selection: setting(\.editorOverscroll), target: "settings overscroll")
             }
-            Section("Line Wrapping") {
+            SettingsSection("Line Wrapping") {
                 CheckRow(title: "Wrap lines to editor width", isOn: setting(\.wrapLines), target: "settings wrap lines")
-                Stepper("Indent wrapped lines by: \(Preferences.shared.wrappedLineIndent) spaces", value: setting(\.wrappedLineIndent), in: 0...16)
+                IntStepperRow(title: "Indent wrapped lines by", value: setting(\.wrappedLineIndent), range: 0...16, suffix: " spaces",
+                              target: "settings wrapped indent")
                     .disabled(!Preferences.shared.wrapLines)
-                    .shellTarget("settings wrapped indent")
             }
-            Section("Documentation Comments") {
+            SettingsSection("Documentation Comments") {
                 CheckRow(title: "Fade delimiters", isOn: setting(\.fadeDocCommentDelimiters), target: "settings fade doc delimiters")
                 CheckRow(title: "Fade comment delimiters", isOn: setting(\.fadeCommentDelimiters), target: "settings fade delimiters")
             }
@@ -95,26 +91,17 @@ struct EditingSettingsPane: View {
 
     var indentation: some View {
         SettingsForm {
-            Section {
-                BackRow(title: "Editing", target: "settings editing back") { model.editingPage = .main }
-            }
-            Section("Indentation") {
-                Picker(formLabel("Prefer indent using"), selection: setting(\.indentWithTabs)) {
-                    Text("Spaces").tag(false)
-                    Text("Tabs").tag(true)
-                }
-                .shellTarget("settings indent using")
-                Stepper("Tab width: \(Preferences.shared.tabWidth) spaces", value: setting(\.tabWidth), in: 1...16)
-                    .shellTarget("settings tab width")
-                Stepper("Indent width: \(Preferences.shared.indentWidth) spaces", value: setting(\.indentWidth), in: 1...16)
+            BackRow(title: "Editing", target: "settings editing back") { model.editingPage = .main }
+            SettingsSection("Indentation") {
+                PickerRow(title: "Prefer indent using", selection: setting(\.indentWithTabs), options: [(false, "Spaces"), (true, "Tabs")],
+                          target: "settings indent using")
+                IntStepperRow(title: "Tab width", value: setting(\.tabWidth), range: 1...16, suffix: " spaces", target: "settings tab width")
+                IntStepperRow(title: "Indent width", value: setting(\.indentWidth), range: 1...16, suffix: " spaces", target: "settings indent width")
                     .disabled(Preferences.shared.indentWithTabs)
-                    .shellTarget("settings indent width")
-                Picker(formLabel("Tab key"), selection: setting(\.tabKeyBehavior)) {
-                    ForEach(TabKeyBehavior.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
-                }
-                .shellTarget("settings tab key")
+                PickerRow(title: "Tab key", selection: setting(\.tabKeyBehavior), options: TabKeyBehavior.allCases.map { ($0, $0.title) },
+                          target: "settings tab key")
             }
-            Section("Typing") {
+            SettingsSection("Typing") {
                 CheckRow(title: "Syntax-aware indenting", isOn: setting(\.autoIndent), target: "settings auto indent")
                 CheckRow(title: "Automatically insert closing brackets and quotes", isOn: setting(\.autoInsertClosers), target: "settings closers")
                 CheckRow(title: "Enclose selection in matching delimiters", isOn: setting(\.encloseSelection), target: "settings enclose selection")
@@ -132,41 +119,34 @@ struct CompletionSettingsPage: View {
 
     var body: some View {
         SettingsForm {
-            Section {
-                BackRow(title: "Editing", target: "settings editing back", action: back)
+            BackRow(title: "Editing", target: "settings editing back", action: back)
+            SettingsSection("Code Completion") {
+                CheckRow(title: "Suggest completions after a period", isOn: $whileTyping, target: "settings completion",
+                         help: "Ctrl+Space or Escape asks at any time. Completions come from sourcekit-lsp, which must be on the PATH.")
             }
-            Section {
-                CheckRow(title: "Suggest completions after a period", isOn: $whileTyping, target: "settings completion")
-            } header: {
-                Text("Code Completion")
-            } footer: {
-                FootNote(text: "Ctrl+Space or Escape asks at any time. Completions come from sourcekit-lsp, which must be on the PATH.")
-            }
-            Section {
+            SettingsSection("Predictive Code Completion", content: {
                 CheckRow(title: "Predictive code completion", isOn: $prediction.enabled, target: "settings prediction")
-                Picker(formLabel("Model source"), selection: $prediction.backend) {
-                    ForEach(PredictiveCompletionSettings.Backend.allCases, id: \.self) { Text(verbatim: $0.displayName).tag($0) }
-                }
-                .shellTarget("settings backend")
-                LabeledContent(formLabel("Address")) {
+                PickerRow(title: "Model source", selection: $prediction.backend,
+                          options: PredictiveCompletionSettings.Backend.allCases.map { ($0, $0.displayName) }, target: "settings backend")
+                SettingsRow("Address") {
                     TextField("Address", text: Binding(get: { prediction.address ?? "" },
                                                        set: { prediction.address = $0.isEmpty ? nil : $0 }),
                               prompt: Text(verbatim: prediction.backend.defaultAddress))
+                        .labelsHidden()
                         .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: 280)
+                        .frame(maxWidth: 260)
                 }
                 .shellTarget("settings address")
-                LabeledContent(formLabel("Model")) {
+                SettingsRow("Model") {
                     TextField("Model", text: $prediction.model, prompt: Text("The server's choice"))
+                        .labelsHidden()
                         .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: 280)
+                        .frame(maxWidth: 260)
                 }
                 .shellTarget("settings model")
-            } header: {
-                Text("Predictive Code Completion")
-            } footer: {
+            }, footer: {
                 FootNote(text: "Used by ycode complete and the MCP tool; the Linux editor does not show predictions yet.")
-            }
+            })
         }
         .onChange(of: prediction) { _, v in
             v.save(to: Preferences.shared.defaults)

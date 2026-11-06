@@ -12,6 +12,8 @@ import YcodeIDEShell
 /// The chrome's colors for an appearance.
 struct ShellColors {
     let dark: Bool
+    /// Text and icons on the accent selection band: white.
+    var onAccent = false
 
     init(_ scheme: ColorScheme) { dark = scheme == .dark }
 
@@ -34,11 +36,11 @@ struct ShellColors {
     var separator: Color { gray(229, 57) }
     /// The navigator's and inspector's dividers.
     var sidebarDivider: Color { gray(227, 21) }
-    var label: Color { gray(23, 253) }
-    var secondaryLabel: Color { gray(128, 123) }
+    var label: Color { onAccent ? .white : gray(23, 253) }
+    var secondaryLabel: Color { onAccent ? .white : gray(128, 123) }
     var tertiaryLabel: Color { gray(170, 90) }
     var toolbarIcon: Color { gray(138, 126) }
-    var chevron: Color { gray(124, 152) }
+    var chevron: Color { onAccent ? .white : gray(124, 152) }
     var popUpFill: Color { gray(232, 46) }
     var fieldStroke: Color { gray(213, 49) }
     var fieldFill: Color { gray(255, 22) }
@@ -52,7 +54,8 @@ struct ShellColors {
     var success: Color { Color(.sRGB, red: 52 / 255, green: 199 / 255, blue: 89 / 255) }
 
     func tint(_ t: OutlineRow.Tint) -> Color {
-        switch t {
+        if onAccent { return .white }
+        return switch t {
         case .accent: accent
         case .secondary: secondaryLabel
         case .error: error

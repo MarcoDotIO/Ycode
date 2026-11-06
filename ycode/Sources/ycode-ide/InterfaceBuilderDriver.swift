@@ -84,15 +84,17 @@ enum InterfaceBuilderDriver {
         say("library: shown=\(m.isLibraryShown) objects=\(m.libraryObjects.map(\.rawValue))")
         await shot("library")
         await click("ib library Button")
+        // A single click is told from a double click after a short wait.
+        await ShellDriver.pause(0.5)
         OpenViewsAutomation.press(.return)
         await ShellDriver.pause(0.6)
         let button = m.selectedID ?? ""
         say("library insert: selected=\(button) element=\(m.selected?.element ?? "-") title=\(m.controlState?.title ?? "-") saves=\(m.saveCount)")
-        await click("ib library close")
+        await click("ib bar Library")
         await shot("inserted")
 
-        // Attributes ▸ Control ▸ Title, typed.
-        await click("ib control title")
+        // Attributes ▸ Button ▸ Title, typed.
+        await click("ib field @title")
         OpenViewsAutomation.press(.character("a"), modifiers: [.control])
         OpenViewsAutomation.type("Continue")
         OpenViewsAutomation.press(.return)
@@ -154,6 +156,13 @@ enum InterfaceBuilderDriver {
             + "constraints=\(saved?.constraints(involving: button).count ?? 0)")
         try? FileManager.default.removeItem(atPath: "\(prefix)-result.storyboard")
         try? FileManager.default.copyItem(atPath: p, toPath: "\(prefix)-result.storyboard")
+
+        // The Library's UIKit objects and their inspectors (#84).
+        await InterfaceBuilderLibraryDriver.run(m, prefix: prefix) {
+            if let root = m.document.byID["Rv1-aa-bb1"], let r = m.layout.rect(of: root) { await clickCanvas(CGPoint(x: r.minX + 20, y: r.minY + 40)) }
+        }
+        try? FileManager.default.removeItem(atPath: "\(prefix)-library.storyboard")
+        try? FileManager.default.copyItem(atPath: p, toPath: "\(prefix)-library.storyboard")
 
         // The xib: opened and left, never written.
         if let x = path("Card.xib") {

@@ -8,13 +8,32 @@
     "app_name": "Ycode",
     "reset_defaults": true,
     "stamp_sdk": true,
-    "require_current_sdk": true
+    "require_current_sdk": true,
+    "launch_args": [
+      "-ApplePersistenceIgnoreState",
+      "YES"
+    ]
   },
   "xcode": {
     "label": "Xcode 27.1",
     "app_env": "YCODE_REFERENCE_XCODE",
     "bundle_id": "com.apple.dt.Xcode",
     "app_name": "Xcode",
-    "needs_owner_ok": true
+    "needs_owner_ok": true,
+    "launch_args": [
+      "-ApplePersistenceIgnoreState",
+      "YES"
+    ]
+  },
+  "devicehub": {
+    "label": "Device Hub 27.1 (Xcode 27.1)",
+    "app_env": "YCODE_REFERENCE_DEVICEHUB",
+    "bundle_id": "com.apple.dt.Devices",
+    "app_name": "Device Hub",
+    "needs_owner_ok": true,
+    "launch_args": [
+      "-ApplePersistenceIgnoreState",
+      "YES"
+    ]
   }
 }

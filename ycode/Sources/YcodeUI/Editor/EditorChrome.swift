@@ -24,56 +24,47 @@ enum EditorVeil {
     }
 }
 
-/// The blurred veil of the editor's bars in the active window
-/// (`liquid-glass.md` §8.3, `fidelity-council.md` row 5): the content
-/// beneath shows blurred (σ about 6) and faint, following its shape, with
-/// no gradient and no fade. The system's header material passes about
-/// 12 % of the content's darkness (the bottom bar matched the reference
-/// with it); the jump bar's band adds a fill of the editor's background
-/// over it, for about 8.5 %. A theme with its own background colour keeps
-/// the round-1 fill instead, since the material follows the system's
-/// appearance, not the theme.
+/// The blurred veil of the editor's bars (`liquid-glass.md` §8.3, §9.1;
+/// `fidelity-council.md` rows 5 and 68): the content beneath shows
+/// blurred (σ about 6) and faint, **keeping its shape** (`StructureBlur`),
+/// at each bar's share of the content's darkness (`BarBlur`): toolbar band
+/// 18 %, jump bar 8.5 %, bottom bar 12 %. No gradient, no fade. A theme
+/// with its own background colour keeps the round-1 fill instead.
 @MainActor
 enum EditorBlurVeil {
     static var applies: Bool { EditorTheme.color(Theme.current.background) == nil }
-
-    static func material() -> NSVisualEffectView {
-        let v = NSVisualEffectView()
-        v.material = .headerView
-        v.blendingMode = .withinWindow
-        v.state = .active
-        return v
-    }
 }
 
-/// A backdrop view: the blurred material, or the theme's veil fill.
+/// A backdrop view: the content under it blurred with its shape, or the
+/// theme's veil fill.
 public class EditorBlurBackdrop: NSView {
-    let blur = EditorBlurVeil.material()
+    /// The views whose content shows through (the editor's text and minimap).
+    var sources: () -> [NSView] = { [] }
+    /// The bands of this view and their shares, top to bottom.
+    var regions: () -> [(rect: NSRect, share: CGFloat)] = { [] }
+    /// Whether the content's shape is drawn (tests; false: the theme's fill).
+    public var showsStructure: Bool { EditorBlurVeil.applies }
     public override var isFlipped: Bool { true }
     public override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        blur.autoresizingMask = [.width, .height]
-        blur.frame = bounds
-        addSubview(blur)
-        themeChanged()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    /// Follows the theme: the material for the default theme, the fill for
-    /// a theme with its own background.
+    /// Follows the theme.
     public func themeChanged() {
-        blur.isHidden = !EditorBlurVeil.applies
         needsDisplay = true
     }
 
     public override func draw(_ dirtyRect: NSRect) {
-        guard blur.isHidden else { return }
-        EditorVeil.fill.setFill()
+        guard EditorBlurVeil.applies else {
+            EditorVeil.fill.setFill()
+            dirtyRect.intersection(bounds).fill(using: .copy)
+            return
+        }
+        Theme.backgroundColor.setFill()
         dirtyRect.intersection(bounds).fill(using: .copy)
+        let views = sources()
+        for (rect, share) in regions() where share > 0 && rect.intersects(dirtyRect) {
+            guard let image = StructureBlur.image(of: rect, in: self, sources: views, background: Theme.backgroundColor) else { continue }
+            StructureBlur.draw(image, for: rect, in: self, share: share)
+        }
     }
 }
 
@@ -96,7 +87,15 @@ public final class EditorBottomBarBackdrop: EditorBlurBackdrop {
         line.autoresizingMask = [.width, .maxYMargin]
         line.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 1)
         addSubview(line)
+        // Below the separator, the bar's 12 % (liquid-glass.md §9.1).
+        regions = { [weak self] in
+            guard let self else { return [] }
+            return [(NSRect(x: 0, y: 1, width: self.bounds.width, height: max(0, self.bounds.height - 1)), CGFloat(BarBlur.bottomBarShare))]
+        }
     }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
 
     public override func themeChanged() {
         super.themeChanged()
@@ -117,8 +116,26 @@ public final class EditorBottomBarBackdrop: EditorBlurBackdrop {
 }
 
 /// The veil behind the toolbar band and the jump bar: from the editor's
-/// top (under the toolbar) to the jump bar's separator, one blurred veil.
-final class EditorBandBackdrop: EditorBlurBackdrop {}
+/// top (under the toolbar) to the jump bar's separator. The toolbar band
+/// and the jump bar are two smears, each with its own share (§9.1: two
+/// distinct blurred smears at the top).
+final class EditorBandBackdrop: EditorBlurBackdrop {
+    /// Where the jump bar's band starts (the toolbar's bottom).
+    var jumpBarTop: CGFloat = 0 { didSet { if oldValue != jumpBarTop { needsDisplay = true } } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        regions = { [weak self] in
+            guard let self else { return [] }
+            let top = min(self.jumpBarTop, self.bounds.height), sep = CGFloat(EditorMetrics.jumpBarSeparator)
+            return [(NSRect(x: 0, y: 0, width: self.bounds.width, height: top), CGFloat(BarBlur.toolbarBandShare)),
+                    (NSRect(x: 0, y: top, width: self.bounds.width, height: max(0, self.bounds.height - top - sep)), CGFloat(BarBlur.jumpBarShare))]
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+}
 
 /// The sticky scope header (`editor-area.md` §C.3): the lines that open
 /// the declarations enclosing the first visible line, each with its line

@@ -162,9 +162,13 @@ struct ThreeWayMergeTests {
         typealias M = SourceControlRowMenu
         func titles(_ key: String, _ ctx: M.Context) -> [String] { M.items(forKey: key, in: ctx).map { $0.action == nil ? "|" : $0.title } }
         let ctx = M.Context(currentBranch: "main", remotes: ["origin"])
-        #expect(titles("branch:main", ctx) == ["New Branch from \u{201C}main\u{201D}…", "New Tag from \u{201C}main\u{201D}…", "|",
-                                              "Push \u{201C}main\u{201D}…", "Pull…", "|", "Rename…", "Delete…"])
+        // The current branch (Ycode's choice): no merge group, Pull and Push.
+        #expect(titles("branch:main", ctx) == ["Switch to \u{201C}main\u{201D}…", "New Branch from \u{201C}main\u{201D}…",
+                                              "Rename \u{201C}main\u{201D}…", "Tag \u{201C}main\u{201D}…", "|",
+                                              "New \u{201C}Repository\u{201D} Remote…", "Add Existing Remote…", "Pull…", "Push \u{201C}main\u{201D}…", "|",
+                                              "View on Host…", "|", "Apply Stashed Changes…", "Export Stashed Changes as Patch File…", "|", "Delete…"])
         #expect(M.items(forKey: "branch:main", in: ctx).last?.isEnabled == false)
+        #expect(M.items(forKey: "branch:main", in: ctx).first?.isEnabled == false)
         #expect(M.items(forKey: "branch:dev", in: ctx).first?.action == .checkout("dev"))
         #expect(titles("remoteBranch:origin/dev", ctx).last == "Delete \u{201C}dev\u{201D} from \u{201C}origin\u{201D}…")
         #expect(M.items(forKey: "remoteBranch:origin/dev", in: ctx).first?.action == .checkout("origin/dev"))
@@ -175,12 +179,44 @@ struct ThreeWayMergeTests {
         #expect(titles("group:Tags", ctx) == ["New Tag…"] && titles("unknown", ctx).isEmpty)
         #expect(titles("change:/r/a.swift", ctx).isEmpty)
         #expect(titles("change:/r/a.swift", M.Context(conflicted: ["/r/a.swift"])) == ["Resolve Conflicts…", "Mark as Resolved"])
-        // While a merge is stopped, starting another integration is disabled.
+        // While a merge is stopped, switching and merging are disabled.
         let busy = M.Context(currentBranch: "main", integration: .merging(branch: "dev"))
         #expect(M.items(forKey: "branch:dev", in: busy).filter { $0.action != nil && !$0.isEnabled }.map(\.title)
-                == ["Check Out \u{201C}dev\u{201D}…", "Merge \u{201C}dev\u{201D} into \u{201C}main\u{201D}…", "Rebase \u{201C}main\u{201D} onto \u{201C}dev\u{201D}…"])
-        // Detached HEAD: no rebase.
-        #expect(M.items(forKey: "branch:dev", in: M.Context()).first { $0.title.hasPrefix("Rebase") }?.isEnabled == false)
+                == ["Switch to \u{201C}dev\u{201D}…", "Merge \u{201C}dev\u{201D} into \u{201C}main\u{201D}…", "Merge \u{201C}main\u{201D} into \u{201C}dev\u{201D}…",
+                    "New \u{201C}Repository\u{201D} Remote…", "Add Existing Remote…", "View on Host…", "Apply Stashed Changes…",
+                    "Export Stashed Changes as Patch File…"])
+        // Detached HEAD: no merge.
+        #expect(M.items(forKey: "branch:dev", in: M.Context()).first { $0.title.hasPrefix("Merge") }?.isEnabled == false)
+    }
+
+    /// `merge-sheet.md` §1.1: a branch that is not the current one, with no
+    /// remote and no stash: 12 items in 6 groups, which are enabled.
+    @Test func localBranchMenuMatchesTheReference() {
+        typealias M = SourceControlRowMenu
+        let ctx = M.Context(currentBranch: "main", repositoryName: "project")
+        let items = M.items(forKey: "branch:feature", in: ctx)
+        func q(_ s: String) -> String { "\u{201C}\(s)\u{201D}" }
+        #expect(items.map { $0.action == nil ? "|" : $0.title } == [
+            "Switch to \(q("feature"))…", "New Branch from \(q("feature"))…", "Rename \(q("feature"))…", "Tag \(q("feature"))…", "|",
+            "Merge \(q("feature")) into \(q("main"))…", "Merge \(q("main")) into \(q("feature"))…", "|",
+            "New \(q("project")) Remote…", "Add Existing Remote…", "|", "View on Host…", "|",
+            "Apply Stashed Changes…", "Export Stashed Changes as Patch File…", "|", "Delete…",
+        ])
+        #expect(items.filter { $0.action != nil }.count == 12 && items.filter { $0.action == nil }.count == 5)
+        #expect(items.filter { $0.action != nil }.map(\.isEnabled)
+                == [true, true, true, true, true, false, false, false, false, false, false, true])
+        #expect(items[5].action == .merge("feature"))
+        // A stash and a hosted remote enable their items.
+        let more = M.Context(currentBranch: "main", remotes: ["origin"], repositoryName: "project", stashes: ["stash@{0}"],
+                             remoteURLs: ["git@example.com:me/project.git"])
+        let m = M.items(forKey: "branch:feature", in: more)
+        #expect(m.first { $0.title == "View on Host…" }?.isEnabled == true)
+        #expect(m.first { $0.title == "Apply Stashed Changes…" }?.action == .applyStash("stash@{0}"))
+        #expect(m.first { $0.title.hasPrefix("Export") }?.isEnabled == true)
+        #expect(M.webURL(remote: "git@example.com:me/project.git") == "https://example.com/me/project")
+        #expect(M.webURL(remote: "https://example.com/me/project.git") == "https://example.com/me/project")
+        #expect(M.webURL(remote: "/tmp/origin.git") == nil)
+        #expect(M.hostURL(branch: "feature", remoteURLs: ["ssh://git@example.com/me/p.git"])?.absoluteString == "https://example.com/me/p/tree/feature")
     }
 
     @Test func integrateMenuConflictItems() {

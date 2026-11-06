@@ -48,25 +48,24 @@ struct EditorArea: View {
                     } else if let editor = model.editor {
                         let controller = SourceEditorController.of(editor)
                         PreviewEditorSplit(canvas: model.previewCanvas) {   // PreviewCanvasView.swift
-                            HStack(spacing: 0) {
-                                SourceEditorView(controller: controller, model: model, palette: palette, preferences: prefs)
-                                    .id(editor.path)
-                                Hairline(color: c.separator, vertical: true)
-                                Minimap(controller: controller, colors: c)
+                            GeometryReader { geo in
+                                HStack(spacing: 0) {
+                                    SourceEditorView(controller: controller, model: model, palette: palette, preferences: prefs)
+                                        .id(editor.path)
+                                    Hairline(color: c.separator, vertical: true)
+                                    // 15 % of the pane within 59…135 (editor-area.md E.6, row 77).
+                                    Minimap(controller: controller, colors: c, width: Minimap.width(forPane: geo.size.width))
+                                }
                             }
                             .overlay { QuickHelpPopoverLayer(model: model, controller: controller) }
                         }
                     }
                 } else {
-                    // Nothing open: the empty editor with its minimap column,
-                    // as the AppKit editor shows it ("No Selection" is the
-                    // jump bar's).
-                    HStack(spacing: 0) {
-                        Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
-                        Hairline(color: c.separator, vertical: true)
-                        Color.clear.frame(width: 112)
-                    }
-                    .shellTarget("no selection")
+                    // Nothing open: the editor's background alone, no
+                    // minimap, separator or scroll lane (editor-area.md E.5,
+                    // row 74; "No Selection" is the jump bar's).
+                    Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .shellTarget("no selection")
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -192,6 +191,11 @@ struct DebugBar: View {
 struct Minimap: View {
     let controller: SourceEditorController
     let colors: ShellColors
+    var width: CGFloat = 112
+
+    /// The column's width for an editor pane `pane` points wide
+    /// (`EditorMetrics.minimapWidth`, as the macOS editor).
+    static func width(forPane pane: CGFloat) -> CGFloat { CGFloat(EditorMetrics.minimapWidth(editorWidth: Double(pane))) }
 
     static let pitch: CGFloat = 1.6
     static let cell: CGFloat = 0.8
@@ -241,7 +245,7 @@ struct Minimap: View {
                 c.scroll(x: c.left, y: line * c.lineHeight - c.viewport.height / 2)
             })
         }
-        .frame(width: 112)
+        .frame(width: width)
         .frame(maxHeight: .infinity)
         .shellTarget("minimap")
     }

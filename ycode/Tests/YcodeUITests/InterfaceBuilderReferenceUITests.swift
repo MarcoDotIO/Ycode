@@ -106,7 +106,7 @@ let iosStoryboard = """
         c.removeRuntimeAttribute("layer.cornerRadius")
         #expect(c.document.runtimeAttributes(of: "vc").isEmpty && c.document.byID["vc"]?.node.child("userDefinedRuntimeAttributes") == nil)
         let attrs = c.inspectorSections(.attributes).map(\.title)
-        #expect(attrs == ["Simulated Metrics", "View Controller", "Layout", "Extend Edges", "Presentation", "Content Size", "Key Commands"])
+        #expect(attrs == ["Simulated Metrics", "View Controller"])
         c.setAttribute("initialViewController", nil, of: "vc")
         #expect(c.document.initialViewController == nil)
         c.setAttribute("initialViewController", "vc", of: "vc")

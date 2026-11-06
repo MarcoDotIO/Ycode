@@ -45,16 +45,13 @@ struct AppearanceSettingsPane: View {
         let builtIn = EditorTheme.builtIns.contains { $0.name == theme.name }
         let palette = SourcePalette.forAppearance(dark: scheme == .dark, theme: theme)
         SettingsForm {
-            Section {
-                AppearanceChooser()
+            SettingsSection {
+                SettingsContentRow { AppearanceChooser() }
             }
-            Section("Theme") {
-                Picker(formLabel("Theme"), selection: setting(\.themeName)) {
-                    ForEach(prefs.themes.map(\.name), id: \.self) { Text(verbatim: $0).tag($0) }
-                }
-                .shellTarget("settings theme")
-                ThemePreview(palette: palette, fontSize: ShellPreferences.fontSize)
-                LabeledContent(formLabel("Theme file")) {
+            SettingsSection("Theme") {
+                PickerRow(title: "Theme", selection: setting(\.themeName), options: prefs.themes.map { ($0.name, $0.name) }, target: "settings theme")
+                SettingsContentRow { ThemePreview(palette: palette, fontSize: ShellPreferences.fontSize) }
+                SettingsRow("Theme file") {
                     HStack(spacing: 6) {
                         Button("Duplicate") { run { try prefs.duplicate(theme) } }.shellTarget("settings theme duplicate")
                         Button("Delete") { prefs.deleteTheme(named: theme.name) }.disabled(builtIn).shellTarget("settings theme delete")
@@ -65,44 +62,34 @@ struct AppearanceSettingsPane: View {
                     .controlSize(.small)
                 }
             }
-            Section {
+            SettingsSection("Colors", content: {
                 ForEach(Self.colorRows, id: \.key) { row in
                     ThemeColorRow(title: row.title, key: row.key, theme: theme, shown: Self.shownColor(row.key, palette), editable: !builtIn)
                         .id("\(theme.name)/\(row.key)")
                 }
-            } header: {
-                Text("Colors")
-            } footer: {
+            }, footer: {
                 FootNote(text: builtIn ? "Built-in themes cannot be changed; duplicate one to edit it."
                     : "Colors are #RRGGBB; an empty field uses the system color.")
-            }
-            Section {
-                Stepper("Editor font size: \(Int(ShellPreferences.fontSize)) pt", value: Binding(get: { ShellPreferences.fontSize },
-                                                                                             set: { prefs.sourceFontSize = $0 }),
-                        in: Preferences.fontSizeRange, step: 1)
-                    .shellTarget("settings font size")
-                Stepper("Theme font size: \(Int(theme.fontSize)) pt", value: Binding(get: { theme.fontSize }, set: { v in
+            })
+            SettingsSection("Fonts", content: {
+                DoubleStepperRow(title: "Editor font size", value: Binding(get: { ShellPreferences.fontSize }, set: { prefs.sourceFontSize = $0 }),
+                                 range: Preferences.fontSizeRange, format: { "\(Int($0)) pt" }, target: "settings font size")
+                DoubleStepperRow(title: "Theme font size", value: Binding(get: { theme.fontSize }, set: { v in
                     prefs.editSelectedTheme { $0.fontSize = v }
-                }), in: Preferences.fontSizeRange, step: 1)
+                }), range: Preferences.fontSizeRange, format: { "\(Int($0)) pt" }, target: "settings theme font size")
                     .disabled(builtIn)
-                    .shellTarget("settings theme font size")
-                Stepper("Console font size: \(Int(theme.consoleFontSize)) pt", value: Binding(get: { theme.consoleFontSize }, set: { v in
+                DoubleStepperRow(title: "Console font size", value: Binding(get: { theme.consoleFontSize }, set: { v in
                     prefs.editSelectedTheme { $0.consoleFontSize = v }
-                }), in: Preferences.fontSizeRange, step: 1)
+                }), range: Preferences.fontSizeRange, format: { "\(Int($0)) pt" }, target: "settings console font size")
                     .disabled(builtIn)
-                    .shellTarget("settings console font size")
-            } header: {
-                Text("Fonts")
-            } footer: {
+            }, footer: {
                 if prefs.sourceFontSize != nil {
                     Button("Use the Theme\u{2019}s Size") { prefs.sourceFontSize = nil }.shellTarget("settings font size reset")
                 } else {
                     FootNote(text: "The editor font size applies to every theme (View \u{25B8} Editor \u{25B8} Font Size changes it too).")
                 }
-            }
-            if let failure {
-                Section {} footer: { FootNote(text: failure) }
-            }
+            })
+            if let failure { SettingsNote(text: failure) }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: ThemeDocument.readableContentTypes) { result in
             guard case .success(let url) = result else { return }
@@ -144,7 +131,7 @@ struct AppearanceChooser: View {
         let c = ShellColors(scheme)
         let current = Preferences.shared.appearance
         HStack(spacing: 22) {
-            Text("Appearance").foregroundStyle(c.label)
+            Text("Appearance").font(SettingsFonts.label).foregroundStyle(c.label)
             Spacer(minLength: 0)
             ForEach(Preferences.Appearance.allCases, id: \.self) { a in
                 Button { Preferences.shared.appearance = a } label: {
@@ -163,7 +150,6 @@ struct AppearanceChooser: View {
                 .shellTarget("settings appearance \(a.rawValue.lowercased())")
             }
         }
-        .padding(.vertical, 8)
     }
 
     /// A window drawn light, dark or split (System).
@@ -216,7 +202,6 @@ struct ThemePreview: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background { RoundedRectangle(cornerRadius: 8, style: .continuous).fill(palette.background.color) }
-        .padding(.vertical, 8)
         .shellTarget("settings theme preview")
     }
 }
@@ -244,7 +229,7 @@ struct ThemeColorRow: View {
     var body: some View {
         let c = ShellColors(scheme)
         let valid = text.isEmpty || ThemeColor(hex: text) != nil
-        LabeledContent(formLabel(title)) {
+        SettingsRow(title) {
             HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill((ThemeColor(hex: text) ?? shown).color)

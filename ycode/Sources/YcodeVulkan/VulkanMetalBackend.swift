@@ -138,6 +138,10 @@ public final class VulkanMetalBackend: MetalBackend, @unchecked Sendable {
         /// "WeatherPoster, guest pid 312"); called outside the back end's
         /// lock. Nil: the service's process number only.
         public var describeProcess: (@Sendable (MetalProcessID) -> String?)?
+        /// True for a client process that never loses GPU access (the
+        /// render server and SpringBoard, `MetalSystemUI`): its stuck work is
+        /// still ended, and it may submit again. Called outside the lock.
+        public var exemptFromRevocation: (@Sendable (MetalProcessID) -> Bool)?
         /// After a device loss (or the watchdog) the device is made again and
         /// every object rebuilt in place (VulkanDeviceReset.swift);
         /// `YCODE_GPU_RECOVER=0`: the device stays lost and every later
@@ -1299,7 +1303,7 @@ public struct VulkanBackendStatistics: Sendable {
     public var buffers = 0, textures = 0, samplers = 0, imports = 0
     /// Client isolation (VulkanClientIsolation.swift): GPU hangs charged to
     /// a client, clients whose GPU access was revoked, command buffers refused.
-    public var clientHangs = 0, revokedClients = 0, revokedRefusals = 0
+    public var clientHangs = 0, revokedClients = 0, revokedRefusals = 0, exemptFromRevocation = 0
     public var renderPipelines = 0, computePipelines = 0
     public var submissions = 0, draws = 0, dispatches = 0, blits = 0, skipped = 0
     public var surfaceUploads = 0, surfaceDownloads = 0

@@ -1,7 +1,7 @@
 # Spec: Device Hub (the simulator and device window)
 
 Status: **proposed** (OBS-DEVHUB, 2026-10-28); Ycode's implementation
-in §I (HUB-UI, 2026-10-28). It tells a clean
+in §I (HUB-UI, 2026-10-28; council round 3 in §I.13, 2026-11-05). It tells a clean
 implementer how the reference's Device Hub looks and behaves as a window,
 so that Ycode's simulator window can be rebuilt to match. Reference:
 Xcode 27.1 (Device Hub 27.1, build 255.6.6.1) on macOS 27.2. Dirty-room
@@ -207,7 +207,10 @@ the controls.
 ### 4.4 Device controls row
 
 Glass capsules and circles about 37 tall, 6–8 apart, centred under the
-device. Symbols in words:
+device. Correction (round 3, §11.1): in the hub window the row floats at
+the bottom of the canvas, 8 above the window's bottom edge and centred on
+the canvas, and the device is centred in the space above it. Symbols in
+words:
 
 | Device | Groups, left to right |
 |---|---|
@@ -327,7 +330,8 @@ its menu is open or a filter applies.
 280 wide, its own tab capsule in the toolbar over it (§3 item 11). Order:
 
 1. **Settings** (sliders symbol): the boxes of `simulator-features.md`
-   §7.1. Rows are 32–36 tall with a leading symbol, the label, and the
+   §7.1. Rows are 42 tall plus a 1-point separator (round 3, §11.3;
+   formerly given as 32–36), with a leading symbol, the label, and the
    control at the trailing edge (pop-ups show the value with a small
    up/down chevron; switches; sliders with tick marks); the rows of a box
    share one rounded group background with inset separators; boxes are
@@ -526,6 +530,88 @@ and Devices controls at the same time; coordinate file ownership.)
 - Q13. The full Orientation submenu. **Ycode decision** (I.5): Portrait,
   Portrait Upside Down, Landscape Left, Landscape Right, Face Up, Face
   Down.
+
+## 11. Council round 3 measurements (2026-11-05)
+
+One Retina still of the hub window, **1100 × 800**, sidebar hidden, an
+iPhone Duo simulator (iOS 27.1) running at its Home screen, the Settings
+inspector shown, active, light. Values in points from the window's
+top-left corner. Checklist rows 65–67 in `fidelity-council.md`. The Duo's
+frame is a foldable's, so frame proportions do not carry over to a classic
+iPhone; the layout rules do.
+
+### 11.1 The floating control capsules (§4.4, measured)
+
+| Element | Value |
+|---|---|
+| Placement | **floating at the bottom of the canvas**, not under the device: the pair's bottom edge **8 above the window's bottom edge** (y 792 of 800), the pair **centred on the canvas** (its centre x 410 of the 820.5-wide canvas) |
+| Capsule 1 | Home · Screenshot · Record; x **279.5–387.5 (108 wide)** |
+| Capsule 2 | Rotate │ the three Duo poses; x **395–540.5 (145.5 wide)** |
+| Gap | **7.5** between the capsules |
+| Height | **36.5** (y 755.5–792) |
+| Material | light glass: fill #FAFAFA–#FDFCFC over the white canvas, a faint rim (#EBEBEB at the top edge, #E7E7E7 at the bottom), a soft shadow; fully rounded ends |
+| Glyphs | black (#000000), about 12–15 wide; centres on a **34-point pitch**, the first 20 from the capsule's left edge (capsule 1: x 299.5, 334, 367.5; capsule 2: Rotate 415.5, then the poses 452.5, 486, 520.5) |
+| Divider | 1 point, #E9E9E9, between Rotate and the poses (x 434) |
+| Current pose | its glyph drawn in the accent colour (#007AFF outline, light accent fill #BFDDFE); the other poses black outlines with a grey (#BEBEBE) fill |
+
+Symbols in words: Home a 3 × 3 grid of dots; Screenshot a camera inside a
+viewfinder frame; Record a dot in a ring; Rotate a square with a curved
+arrow at two corners; the poses a closed phone, an open book seen from
+above, and a flat tablet.
+
+### 11.2 The device frame's position and scale
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| Canvas | x 0–820.5 (the inspector starts at 820.5), y 52 (toolbar bottom) to 800 | the same |
+| Frame's centre | x **411.5**, y **402.75**: centred horizontally on the canvas and **vertically in the space between the toolbar's bottom (52) and the capsules' top (755.5)** | x 409.5, y 316: high in the canvas |
+| Frame size at Zoom to Fit | the Duo frame **274 × 379.5**: 54 % of the 703.5-point free height, 33 % of the width. Zoom to Fit was the selected zoom segment. Fit therefore does **not** enlarge the device to fill the canvas here. | a generic phone outline 213 × 463 (66 % of the height) |
+| Label under the device | **none** | the device's name and "iOS 27.1" drawn under the frame (y 557–567 for the OS) |
+
+The scale rule at Zoom to Fit is not settled (§11.4). Until it is, Ycode
+should draw the frame at its point size (one device point to one Mac
+point) and shrink it only when it does not fit between the toolbar and the
+capsules with a margin.
+
+### 11.3 The Settings inspector's grouping (§6, measured)
+
+| Element | Value |
+|---|---|
+| Inspector | x 820.5–1100 (279.5 wide), fill #EDEDEE |
+| Cards | x **830–1090** (10 inset each side, 260 wide), fill **#E6E6E7**, corner radius about 12, no border; **10 apart** vertically; the first card's top at y 60 |
+| Rows | **42 tall + a 1-point separator** (43 pitch), not 32–36 as §6 had it. Separators #DCDCDD, inset to the label column |
+| Row parts | a symbol (13 wide, from x 843.5: 13.5 inside the card), the label from x 868 (38 inside the card), #000000, regular; the trailing control: a pop-up's value ends 18 before its up/down chevron, which ends 20 inside the card (x 1070); a switch ends 13 inside (x 1077); sliders span about x 869–977 of the row's trailing part with tick marks |
+| Grouping (iOS) | card 1: Appearance (pop-up), Liquid Glass (slider), Color Filter (pop-up), Text Size (slider), Reduce Motion, Increase Contrast, Show Borders, Reduce Transparency, VoiceOver (switches) — 9 rows, y 60–446; card 2: Location (pop-up), y 456–498; card 3: Sound (slider), Output (pop-up), Input (pop-up), y 508–636 |
+
+**Ycode now:** no cards; the inspector shows only the text that no
+settings are available, in #878788 at the top (x 832.5, y 65–107), with a
+full-height scroll track at the right (x 1086–1097). When Ycode cannot
+offer a setting it should still draw the cards, with the rows disabled,
+or one card holding the message; the empty scroll track should not show.
+
+### 11.4 Toolbar differences seen
+
+- The reference shows, left to right: the window buttons, the sidebar
+  toggle, the title and subtitle, a capsule holding Capture Keyboard and
+  the resize-mode toggle, the four zoom segments (Zoom to Fit selected),
+  a capsule holding Open in New Window and More Actions, then the
+  inspector tabs over the inspector (§3). With the sidebar hidden, **Add
+  Device and Filter are hidden too**.
+- Ycode adds a "+" circle left of the sidebar toggle with the sidebar
+  hidden, lacks the resize-mode toggle beside Capture Keyboard, shows a
+  "»" overflow circle after More Actions (the items should fit at 1100),
+  and draws the inspector's "i" tab inside a circle.
+
+### 11.5 Not settled by round 3
+
+- The Zoom to Fit scale rule (cap at the point size, physical size, or a
+  fixed margin). Capture an iPhone 17-class device and a large iPad at
+  Zoom to Fit in two window sizes.
+- Rotation: neither app rotated in round 3, so the landscape layout and
+  the turning animation (§10 Q8) are still open.
+- The capsules' pressed and hover states, and the Record button's
+  recording state.
+- Whether the capsules stay at the canvas bottom in the compact window.
 
 ## I. Ycode implementation (HUB-UI, 2026-10-28)
 
@@ -1232,6 +1318,110 @@ through real ssh from the Mac (view 0.46 s, stop 0.08 s) and locally on the x86
 **Not yet done:** the live run with a headset; the Linux viewer shows a tall
 picture whole (no crop; only the macOS canvas crops).
 
+### I.13 Council round 3: capsules, cards, canvas (B3-DEVWIN, 2026-11-05)
+
+Clean-room work from §11 (checklist rows 65–67 of `fidelity-council.md`,
+"Round 3") and the sections it corrects (§4.4, §6), with Apple's public
+AppKit documentation. No Apple binary, Xcode, Device Hub or Simulator was
+opened, run or observed; the glyphs on Linux are Ycode's own drawings.
+
+**Row 65, the control capsules (both device windows).** One layout for
+macOS and Linux, `DeviceControlsLayout` (YcodeDeviceModel): capsules 36.5
+tall, glyphs on a 34-point pitch with the first and last 20 from the
+capsule's edges (three controls make 108), a 1-point divider after Rotate
+that adds 3.5 (Rotate and the three poses make 145.5), 7.5 between the
+capsules, the pair centred on the canvas with its bottom 8 above the
+window's bottom edge. Groups: [Home · Screenshot · Record] and [Rotate │
+Closed · Partially Open · Open] (the poses for a foldable only); a watch
+[Screenshot · Record]; a Vision Pro [Home · Screenshot · Record] [Reset
+Camera] (§4.4's "Reset Camera"; its interaction modes are not built). The
+current pose's glyph is drawn in the accent colour (the recessed pill is
+gone); the other glyphs in the label colour (black in light).
+- macOS: `DeviceControlsRow` lays the buttons out on that pitch inside
+  `GlassCapsule`s (`NSGlassEffectView` on macOS 26 and later); the canvas
+  floats them at its bottom in the hub and the compact window. Each button
+  still sends its `DeviceCommand` to the canvas (Rotate: click left,
+  Option-click right; Option-drag on a pose: the hinge slider).
+- Linux (`ycode-sim-viewer`, the SDL window): `DeviceWindowChrome`
+  (YcodeRemoteViewer) gives the same rectangles and each control's state
+  and help; the window draws the glass (a soft shadow, a rim shaded #EBEBEB
+  → #E7E7E7, a fill #FDFCFC → #FAFAFA in light; Ycode's dark equivalents)
+  and Ycode's own glyphs (a 3 × 3 grid of dots, a camera in viewfinder
+  corners, a dot in a ring, a square with a curved arrow, the three poses,
+  a circular arrow), with the current pose in #007AFF on #BFDDFE. The pose
+  buttons send the stream's fold message (as the macOS window); Rotate
+  turns left, Alt-click right. **Record is shown disabled** with the
+  tooltip "Record Screen is not in this beta" (**Ycode decision**: the
+  Linux viewer cannot record yet; the screenshot path gives single PNGs
+  only). Tooltips show after 0.6 s over a control, above it.
+- Linux, the old push buttons (**Ycode decision**): the window has no
+  toolbar, so a 30-point glass circle "…" at its top right, 8 from the
+  edges, is More Actions: Lock, Volume Up / Down, Rotate Right, Mute /
+  Unmute Sound, Zoom to Fit / Point Accurate / Pixel Accurate (checked),
+  Hide / Show Bezels, Show Frame Rate, Refresh Display, with their Ctrl
+  shortcuts. A watch's crown, side and Action buttons stay on its frame.
+- Linux, light and dark: `--appearance light|dark`, else OpenViews' own
+  sources (`OV_COLOR_SCHEME`, the `color-scheme` of its settings file),
+  else SDL's system theme (the desktop's portal), else light. The canvas
+  is white in light and #1E1E1E in dark. The notices ("Screenshot Saved to
+  …", "Starting... N s" on the screen while a first boot is dark) are kept;
+  "Screenshot Saved" now shows in a glass capsule at the top.
+
+**Row 67, the canvas.** The device is centred both ways in the space
+between the toolbar's bottom (the window's top on Linux) and the capsules'
+top. The frame's scale is unchanged (**Ycode decision** while §11.5 is
+open): Zoom to Fit fits the frame into that space less 24 points on each
+side (Linux: 12), and a fitted device never brings up scroll bars. **No
+name or OS label is drawn on the canvas**: the toolbar's title and
+subtitle carry them. A stopped device is drawn at the same place and
+scale as a running one, and its **Start** (or a spinner and "Starting…"
+while it starts) sits in a glass capsule where the control capsules float;
+a simulator Ycode does not operate shows its picture alone. Toolbar
+(§11.4): with the sidebar hidden, Add Device and Filter are hidden too
+(macOS 15 and later); the resize-mode toggle shares Capture Keyboard's
+capsule (`rectangle.inset.filled`, "Enter resize mode", shown with a
+device and always disabled until resize mode is built, §4.7); the zoom
+segments and the inspector tabs never fold into a pop-up; the Info tab is
+a plain "i" (`info`); every item fits at 1100 points with the sidebar
+shown or hidden (no overflow "»").
+
+**Row 66, the Settings inspector.** `InspectorCard` (YcodeUI): cards 260
+wide, 10 inside the 280-point inspector on each side, the first 8 under
+the toolbar, 10 apart, radius 12, filled #E6E6E7 in light (a step lighter
+than the inspector in dark), no border. Rows 42 tall with a 1-point
+separator (#DCDCDD) inset to the label column: a 43-point pitch. Each row:
+the symbol 13 wide from 13.5 inside, the label (13 points, regular) from 38
+inside, the control at the trailing edge (a switch 13 inside, a borderless
+pop-up — its value and up/down chevron — about 14 inside, a slider 108
+wide). Cards: Appearance, Liquid Glass, Color Filter, Text Size and the
+five switches (9 rows); Location; Sound, Output, Input; then the Camera
+card with its note. A stopped Ycode simulator shows the same cards with
+every row disabled and "Start the simulator to customize behavior and
+appearance." under them; another device shows one card holding "No
+settings are available for the selected device. …". The inspector's
+scroller is an overlay that shows only when the cards are taller than it.
+
+Code: `YcodeDeviceModel/DeviceControlsLayout.swift`;
+`YcodeDeviceUI/DeviceControlsRow.swift`, `DeviceCanvasView.swift`;
+`YcodeUI/Window/DeviceInspectorCard.swift`,
+`DevicesController+Settings.swift`, `DevicesController+Camera.swift`,
+`DeviceHubToolbar.swift`; `YcodeRemoteViewer/DeviceWindowChrome.swift`,
+`ViewerLayout.swift` (the capsule band 44.5), `ViewerScript.swift`
+(`chrome more|close|hover <control>|click <control>|appearance
+light|dark`); `YcodeRemoteViewerSDL/RemoteDeviceWindow.swift`,
+`ViewerMain.swift` (`--appearance`), `SDL.swift` (`SDL_GetSystemTheme`).
+Tests: `DeviceControlsLayoutTests` (sizes, pitch, divider, position, the
+device's centre; also on Linux), `DeviceCanvasR3Tests` (the capsules'
+frames in a round-3-sized canvas, the order and each button's command, a
+watch's and a Vision Pro's capsules, the stopped device without a label
+and its Start capsule), `DeviceHubR3Tests` (the cards' x, width, radius,
+heights and 43-point pitch, the message card, the toolbar without overflow
+in both sidebar states, Add Device and Filter hidden with the sidebar, the
+resize toggle, the plain "i"; opt-in pictures), `DeviceWindowChromeTests`
+(the Linux capsules and controls, Record disabled with its help, the
+current pose, More Actions and its hit testing, the tooltip's place,
+appearance resolution, the light palette).
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -1247,6 +1437,7 @@ picture whole (no crop; only the macOS canvas crops).
 | Settings-window labels, "Quit and Shutdown Simulators" (§2.3) | 4 | strings of Device Hub (no level 1–3 source available) |
 | Key-combination preference values (§2.3) | 1 | Xcode 27 release notes |
 | "Quit and Keep Simulators Running", app menu without Settings… (§2.3) | 3 | menu bar |
+| §11 round 3: control capsules (size, position, material, glyph pitch), frame placement and size at Zoom to Fit, no label under the frame, inspector cards and row metrics, toolbar differences | 3 | Council round 3 Retina still of the hub window (1100 × 800, sidebar hidden, iPhone Duo on iOS 27.1, active) and Ycode's matching still; colour runs and ink boxes measured in the dirty room |
 | Toolbar items, order, accessibility names and frames (§3) | 3 | accessibility tree; drawn extents from the capture |
 | Resize toggle, Zoom to Fit selected, paired-watch capsule, Info/Apps layout (§3, §4.1, §6) | 1 | Apple documentation screenshots |
 | Canvas states: Start, View Screen, Pair, status picture (§4.1) | 1 | "Configuring the environment…", "Managing your simulated and physical devices…", "Interacting with your app…" and screenshots |
@@ -1270,6 +1461,7 @@ picture whole (no crop; only the macOS canvas crops).
 | Menus (§7) | 3 | menu bar read through accessibility; Device/Controls items beyond those seen come from OBS-FEATURES (`simulator-features.md` §7.1) and the documentation (Slow Animations, Shake, Stop Recording) |
 | Look (§8) | 1, 3 | capture; `liquid-glass.md` |
 | Gap list (§9) | — | comparison with `ycode-sim-viewer` and `specs/ide/devices.md`; Ycode decisions |
+| Ycode implementation, round 3 (§I.13): the capsules' layout, the Linux glyphs and More Actions, the cards, the canvas placement | — | §11's measurements; Ycode decisions; public AppKit API (`NSToolbarItemGroup.controlRepresentation`, `NSToolbarItem.isHidden`), SDL 3's public `SDL_GetSystemTheme` (level 1) |
 | Ycode implementation (§I): frame proportions, symbols, steps, banners, lifecycle, persistence, the answers to Q1–Q13 | — | Ycode decisions; public AppKit API (`NSSplitViewController`, `NSToolbarItemGroup`, `NSMenuToolbarItem`, `NSGlassEffectView`, `NSTrackingSeparatorToolbarItem`), public SF Symbols names, AVFoundation (`AVAssetWriter`) and Core Graphics (`CGDisplayScreenSize`) documentation (level 1) |
 | Device panel data (§I.1): pixels, scale, pixels per inch, corner radii | — | Ycode's own device types (`Sources/ycode-simd/DeviceTypes.swift`, `device-capabilities.md`, `foldable.md` §10) |
 | Pairs in the hub (§I.9): capsule on phone and watch, Info rows, menu items, forms, created devices | 1, 3 | §4.1 and §7 for the phone's capsule and Pair Apple Watch…; `device-pairing.md` §2 (level 2–3) for the rules; the rest Ycode decisions; `PairIDEHubTests` |

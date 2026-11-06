@@ -58,6 +58,9 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
         outline.dataSource = self
         outline.delegate = self
         outline.rowSizeStyle = .small
+        // About 20-point rows, 16 points of indent per level (§Reference outline details).
+        outline.rowHeight = 20
+        outline.indentationPerLevel = 16
         outline.registerForDraggedTypes([Self.rowType])
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.onDelete = { [weak self] in self?.deleteSelection() }
@@ -204,10 +207,11 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
     public func outlineView(_ o: NSOutlineView, viewFor c: NSTableColumn?, item: Any) -> NSView? {
         guard let r = item as? Row else { return nil }
         let cell = NSTableCellView()
-        let symbol = r.constraint != nil || r.title == "Constraints" ? "ruler" : r.object == nil ? "arrow.right"
-            : r.object?.element == "scene" ? "rectangle.on.rectangle"
-            : r.object?.isView == true ? "square.dashed" : "cube"
-        let image = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage())
+        // Ycode's own outline icons (`interface-builder.md` §Outline icons).
+        let icon: IBIcon = r.constraint != nil || r.title == "Constraints" ? .constraint
+            : r.object.map { IBIcon.of(object: $0, in: document) } ?? .entryPoint
+        let image = NSImageView(image: IBIconDrawing.image(icon, size: 16))
+        image.widthAnchor.constraint(equalToConstant: 16).isActive = true
         let label = NSTextField(labelWithString: r.title)
         label.font = .systemFont(ofSize: 11)
         label.lineBreakMode = .byTruncatingTail
@@ -271,7 +275,7 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
     }
 
     /// Shows the session's document and selection after a change.
-    private func refresh() {
+    func refresh() {
         canvas.layout = session.layout
         overview.needsDisplay = true
         reloadOutline()
@@ -355,7 +359,7 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
     /// selected view), centered on the point. Returns the new ID.
     @discardableResult
     public func insert(_ kind: IBDocument.NewObject, atCanvasPoint p: CGPoint? = nil) -> String? {
-        guard p != nil || selected?.isView == true, let id = session.insert(kind, atCanvasPoint: p) else { return nil }
+        guard p != nil || selected?.isView == true || kind.placement != .subview, let id = session.insert(kind, atCanvasPoint: p) else { return nil }
         refresh()
         return id
     }
@@ -453,7 +457,11 @@ public final class InterfaceBuilderController: NSViewController, NSOutlineViewDa
             addSections(sections, to: stack)
             return stack
         }
-        if t == .attributes { addSections(sections, to: stack) }
+        if t == .attributes {
+            addSections(sections, to: stack)
+            // iOS documents: the reference's sections are the whole inspector.
+            if document.isFlippedRuntime { return stack }
+        }
         if let o = selected, t == .size, let f = o.frame {
             stack.addArrangedSubview(label("Frame Rectangle", bold: true))
             for (name, v) in [("X", f.minX), ("Y", f.minY), ("Width", f.width), ("Height", f.height)] {

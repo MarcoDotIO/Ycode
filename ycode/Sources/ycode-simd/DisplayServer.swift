@@ -616,6 +616,8 @@ final class DisplayClientSession: @unchecked Sendable {
         defer { watcher?.stop() }
         var mirror: DisplayMirror?
         var encoder: TileEncoder?
+        // Lossless once still (§4.2.2): what this viewer has only lossy.
+        var still: StillRefinement?
         var video: VideoFrameEncoder?
         var videoFailed = false
         var videoNeedsKey = true
@@ -663,6 +665,7 @@ final class DisplayClientSession: @unchecked Sendable {
                 settleUntil = now + 300
                 unscanned = true
                 recordSeenNs = monotonicNanoseconds()
+                still?.screenChanged(at: recordSeenNs)
                 server.trace?.line("record \(record.frame) \(monotonicNanoseconds())"
                                    + (Self.abTest ? ((monotonicMilliseconds() / 1000) % 2 == 1 ? " poll" : " watch") : ""))
             }
@@ -837,6 +840,7 @@ final class DisplayClientSession: @unchecked Sendable {
                 if mirror == nil || mirror!.width != surface.width || mirror!.height != surface.height
                     || mirror!.tile != 32 * downscale {
                     mirror = DisplayMirror(width: surface.width, height: surface.height, tile: 32 * downscale)
+                    still = StillRefinement(width: surface.width, height: surface.height, tile: 32 * downscale)
                     condition.withLock { keyframeWanted = true }
                 }
                 if encoder == nil || encoder!.encoding != enc || encoder!.quality != s.quality || encoder!.downscale != downscale {
@@ -890,6 +894,9 @@ final class DisplayClientSession: @unchecked Sendable {
                     do { try connection.send(bytes) } catch { break }
                     let sentAt = monotonicNanoseconds()
                     condition.withLock { window.didSend(sequence: sequence, at: sentAt) }
+                    let sentRects = (isFull ? [PixelRect(x: 0, y: 0, width: surface.width, height: surface.height)] : rects)
+                        .map { StillRefinement.Rect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }
+                    if enc == .zlibBGRA { still?.sentLossless(sentRects) } else { still?.sentLossy(sentRects, at: sentAt) }
                     if s.timing == true {
                         let timing = DisplayFrameTiming(sequence: sequence, recordSeen: seenNs, captureStart: t0, encodeEnd: t1, sendEnd: monotonicNanoseconds())
                         do { try connection.send(.frameTiming(timing)) } catch { break }
@@ -903,6 +910,28 @@ final class DisplayClientSession: @unchecked Sendable {
                     framesSent += 1
                     bytesSent += bytes.count
                 }
+                continue
+            }
+            // Lossless once still (§4.2.2): the parts last sent lossy, again as zlib tiles.
+            if xrState == nil, s.stillLossless == true, flowOpen, let m = mirror, still?.isDue(at: nowNs) == true,
+               let rects = still?.take(), !rects.isEmpty {
+                let downscale = max(1, m.tile / 32)
+                let lossless = TileEncoder(encoding: .zlibBGRA, quality: s.quality, downscale: downscale)
+                let t0 = monotonicNanoseconds()
+                let tiles = lossless.encodeAll(rects.map { PixelRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }, mirror: m)
+                let t1 = monotonicNanoseconds()
+                sequence += 1
+                let isFull = rects.count == 1 && rects[0] == StillRefinement.Rect(x: 0, y: 0, width: m.width, height: m.height)
+                let frame = DisplayFrame(sequence: sequence, guestFrame: lastRecord?.frame ?? 0, serverNanoseconds: t1,
+                                         inputSequence: condition.withLock { lastInput },
+                                         width: (m.width + downscale - 1) / downscale, height: (m.height + downscale - 1) / downscale,
+                                         encoding: .zlibBGRA, isFull: isFull, tiles: tiles)
+                let bytes = DisplayMessage.frame(frame).encoded()
+                do { try connection.send(bytes) } catch { break }
+                condition.withLock { window.didSend(sequence: sequence, at: monotonicNanoseconds()) }
+                server.trace?.line("lossless \(sequence) \(t0) \(t1) \(bytes.count) \(tiles.count)")
+                framesSent += 1
+                bytesSent += bytes.count
                 continue
             }
             // Idle: poll the frame record every 4 ms (8 ms while nothing moves);
@@ -942,6 +971,7 @@ func startDisplayServer(config: ExecConfiguration, surfaces: IOSurfaceHostServic
     let screen = device.deviceType.screen
     let bridge = hid.map { HIDInputBridge(hid: $0, pointWidth: screen.pointWidth, pointHeight: screen.pointHeight) }
     bridge?.family = WatchInputCommand.buttonFamily(device.deviceType)
+    bridge?.pixelScale = Double(screen.scale)
     bridge?.vision = vision
     do {
         server = try DisplayServer(address: address, statePath: device.framebufferStatePath, surfaces: surfaces, started: started,

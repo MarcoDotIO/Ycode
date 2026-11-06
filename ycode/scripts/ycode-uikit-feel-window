@@ -1,0 +1,70 @@
+#!/bin/bash
+# ycode-uikit-feel-window: checks that the device window shows the device's
+# pixels exactly at 1:1 (specs/simulator/uikit-feel-ycode.md §8.4). The
+# UIKitFeel probe (Samples/UIKitFeelSamples) must be running on the device,
+# on its pixels page (`ycode-uikit-feel drive ... --suite pixels` leaves it
+# there). Runs the viewer of this platform with a script, saves the window at
+# each scale it offers and the server's own PNG, and looks for the probe's
+# 96 × 96 pixel pattern in each picture.
+#
+# usage: ycode-uikit-feel-window <display address> <guest.log of the probe> <out dir> [viewer options...]
+#   VIEWER   the viewer (default: .build/debug/ycode-sim-viewer next to this script's package)
+# Linux: the window is shot at Pixel Accurate (must be exact), Point Accurate and Fit.
+# macOS: the expanded window at Pixel Accurate (1:1, must be exact), zoom 1 and 0.75.
+set -u
+[ $# -ge 3 ] || { sed -n '2,15p' "$0"; exit 64; }
+addr=$1; log=$2; out=$3; shift 3
+here=$(cd "$(dirname "$0")" && pwd); pkg=$(cd "$here/.." && pwd)
+VIEWER=${VIEWER:-$pkg/.build/debug/ycode-sim-viewer}
+mkdir -p "$out"
+fail=0
+check() {  # check <png> <must be exact: 1|0>
+    if python3 -I "$here/ycode-uikit-feel" pattern "$1" "$log"; then
+        echo "window-check: $1: exact"
+    elif [ "$2" = 1 ]; then
+        echo "window-check: $1: NOT EXACT at 1:1"
+        fail=1
+    else
+        echo "window-check: $1: filtered (not 1:1, as expected)"
+    fi
+}
+if [ "$(uname -s)" = Linux ]; then
+    script=$out/window.script
+    {
+        echo "wait-live 120"
+        echo "wait-quiet 1000 30"
+        echo "server-shot $out/server.png"
+        for m in pixel point fit; do
+            echo "scale $m"
+            echo "sleep 1500"
+            echo "window-shot $out/linux-$m.png"
+        done
+        echo "quit"
+    } > "$script"
+    "$VIEWER" --connect "$addr" --script "$script" "$@" || fail=1
+    check "$out/server.png" 1
+    check "$out/linux-pixel.png" 1
+    check "$out/linux-point.png" 0
+    check "$out/linux-fit.png" 0
+else
+    # The expanded window, its canvas scrolled to the top: Pixel Accurate (one
+    # device pixel per display pixel, whatever the display's scale), 1 and 0.75.
+    for z in pixel 1 0.75; do
+        script=$out/window-$z.script
+        {
+            echo "wait-live 120"
+            echo "wait-quiet 1000 30"
+            [ "$z" = pixel ] && echo "server-shot $out/server.png"
+            echo "expand"
+            echo "window-content 1400 1250"
+            echo "zoom $z"
+            echo "sleep 1500"
+            echo "window-shot $out/macos-zoom-$z.png"
+            echo "quit"
+        } > "$script"
+        "$VIEWER" --connect "$addr" --script "$script" "$@" || fail=1
+        [ "$z" = pixel ] && check "$out/server.png" 1
+        check "$out/macos-zoom-$z.png" "$([ "$z" = pixel ] && echo 1 || echo 0)"
+    done
+fi
+exit $fail

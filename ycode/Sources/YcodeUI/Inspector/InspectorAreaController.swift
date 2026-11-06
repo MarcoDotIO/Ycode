@@ -199,6 +199,15 @@ public final class InspectorAreaController: NSViewController {
                 barGlass.heightAnchor.constraint(equalToConstant: GlassBars.height),
             ])
         }
+        // The empty inspector's line centres in the room below the tab bar
+        // (navigators.md round 3 §2: 38.5 lower than the inspector's centre).
+        let below = NSLayoutGuide()
+        root.addLayoutGuide(below)
+        NSLayoutConstraint.activate([
+            below.topAnchor.constraint(equalTo: glass ? barGlass.bottomAnchor : sep.bottomAnchor),
+            below.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            centerLabel.centerYAnchor.constraint(equalTo: below.centerYAnchor),
+        ])
         NSLayoutConstraint.activate([
             // Below the toolbar (the inspector runs the full height).
             bar.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: glass ? GlassBars.topOffset + 2 : 4),
@@ -210,7 +219,6 @@ public final class InspectorAreaController: NSViewController {
             divider.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             divider.widthAnchor.constraint(equalToConstant: 1),
             centerLabel.centerXAnchor.constraint(equalTo: slideGuide.centerXAnchor),
-            centerLabel.centerYAnchor.constraint(equalTo: root.centerYAnchor),
             sep.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 2),
             sep.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             sep.trailingAnchor.constraint(equalTo: slideGuide.trailingAnchor),
@@ -258,6 +266,7 @@ public final class InspectorAreaController: NSViewController {
         for b in buttons { b.contentTintColor = TabGlyphTint.color(selected: b.tag == index) }
         if isViewLoaded { view.needsLayout = true }   // the pill follows
         content.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        content.edgeInsets.top = Self.contentTopInset
         centerLabel.isHidden = true
         sectionTitles = []
         sectionRuleCount = 0
@@ -417,7 +426,11 @@ public final class InspectorAreaController: NSViewController {
         }
         // reference-ui.md §6.
         fileControls = [:]
-        content.addArrangedSubview(heading("Identity and Type"))
+        // metrics.md §16.2: the heading 3.5 higher, Name where it was.
+        content.edgeInsets.top = Self.contentTopInset - InspectorStyle.firstHeadingRaise
+        let identity = heading("Identity and Type")
+        content.addArrangedSubview(identity)
+        content.setCustomSpacing(InspectorStyle.firstHeadingRaise, after: identity)
         let name = NSTextField(string: file.lastPathComponent)
         name.font = .systemFont(ofSize: 11)
         InspectorStyle.fill(name)
@@ -426,8 +439,12 @@ public final class InspectorAreaController: NSViewController {
         name.widthAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
         nameField = name
         content.addArrangedSubview(row("Name", name))
-        content.addArrangedSubview(row("Type", popUp("Type", ["Default - " + Self.typeName(for: file)])))
-        addInnerRule()   // metrics.md §13.3: a rule after Type
+        let typeRow = row("Type", popUp("Type", ["Default - " + Self.typeName(for: file)]))
+        content.addArrangedSubview(typeRow)
+        let typeRule = addInnerRule()   // metrics.md §13.3: a rule after Type
+        // §16.2: 28 from Type's ink to Location's.
+        content.setCustomSpacing(0, after: typeRow)
+        content.setCustomSpacing(InspectorStyle.afterTypeRule, after: typeRule)
         let info = fileInfo?(file) ?? FileInspectorInfo()
         shownInfo = info
         // reference-ui-6.md §6 (I1): a file in a synchronized folder has
@@ -444,7 +461,9 @@ public final class InspectorAreaController: NSViewController {
         choose.isEnabled = !isProject
         choose.isHidden = info.inSynchronizedFolder
         fileControls["Choose Location"] = choose
-        content.addArrangedSubview(row("Location", NSStackView(views: [location, choose])))
+        let locationRow = row("Location", NSStackView(views: [location, choose]))
+        content.addArrangedSubview(locationRow)
+        content.setCustomSpacing(InspectorStyle.afterLocation, after: locationRow)
         if isProject { content.addArrangedSubview(row("", note("Containing directory"))) }
         let fileName = NSTextField(labelWithString: file.lastPathComponent)
         fileName.font = .systemFont(ofSize: 11)
@@ -465,7 +484,7 @@ public final class InspectorAreaController: NSViewController {
         (fullPath as? NSStackView)?.alignment = .firstBaseline
         content.addArrangedSubview(fullPath)
         rowValues.append(("Full Path", file.path))
-        addInnerRule()   // and after Full Path
+        let pathRule = addInnerRule()   // and after Full Path
         if let wc = info.workingCopy, let rel = info.relativePath {
             for (k, v) in [("Working Copy", wc), ("Relative Path", rel)] {
                 content.addArrangedSubview(row(k, v))
@@ -485,6 +504,11 @@ public final class InspectorAreaController: NSViewController {
         let isImage = ImageViewerController.handles(file)
         if !isProject && !info.isPackageFile {
             onDemandResourceTags(resource: isImage)
+            // §16.2: the tags section's rule 4 closer to Full Path's.
+            if let i = content.arrangedSubviews.firstIndex(of: pathRule), i + 1 < content.arrangedSubviews.count,
+               content.arrangedSubviews[i + 1] is NSBox {
+                content.setCustomSpacing(InspectorStyle.pathRuleToTagsRule, after: pathRule)
+            }
             if isImage { imageSections() }   // editor-area.md §C.6
             targetMembership(file, info)
         }
@@ -649,7 +673,11 @@ public final class InspectorAreaController: NSViewController {
 
     private func targetMembership(_ file: URL, _ info: FileInspectorInfo) {
         guard !info.memberships.isEmpty else { return }
+        let tags = fileControls["On Demand Resource Tags"]
+        let afterTags = tags != nil && content.arrangedSubviews.last === tags
         content.addArrangedSubview(heading("Target Membership"))
+        // §16.2: the tags box runs deeper (Target Membership 12.5 lower).
+        if afterTags, let tags { content.setCustomSpacing(InspectorStyle.ruleGap + InspectorStyle.tagsBoxExtra, after: tags) }
         let members = info.memberships.filter(\.isMember)
         selectedMemberships.formIntersection(members.map(\.targetID))
         // reference-ui-6.md §6 (I1): a bordered table, one row per target
@@ -678,8 +706,9 @@ public final class InspectorAreaController: NSViewController {
             text.orientation = .vertical
             text.alignment = .leading
             text.spacing = 0
-            let icon = NSImageView(image: NSImage(systemSymbolName: "app.dashed", accessibilityDescription: "Target") ?? NSImage())
-            icon.contentTintColor = .secondaryLabelColor
+            // The target's icon (metrics.md §16.2), not an empty outline.
+            let icon = NSImageView(image: InspectorStyle.targetIcon())
+            icon.setAccessibilityLabel("Target")
             let r = NSStackView(views: [icon, text])
             r.wantsLayer = true
             r.layer?.cornerRadius = 4
@@ -806,13 +835,15 @@ public final class InspectorAreaController: NSViewController {
 
     /// A rule inside a section (after Type, Full Path and Line Endings,
     /// metrics.md §13.3), 6 from the controls.
-    private func addInnerRule() {
+    @discardableResult
+    private func addInnerRule() -> NSView {
         if let last = content.arrangedSubviews.last { content.setCustomSpacing(InspectorStyle.ruleGap, after: last) }
         let rule = NSBox.hairline()
         content.addArrangedSubview(rule)
         rule.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -Self.horizontalInsets).isActive = true
         content.setCustomSpacing(InspectorStyle.ruleGap, after: rule)
         innerRuleCount += 1
+        return rule
     }
 
     /// A thin rule across the inspector, 6 from the controls on each side.

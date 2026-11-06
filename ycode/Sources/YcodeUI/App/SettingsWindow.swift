@@ -25,43 +25,45 @@ public final class SettingsController: NSViewController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The pane's card: Build System and the note under it as its help.
+    public private(set) var card: SettingsCardView?
+
     public override func loadView() {
-        let root = PanelBackgroundView(frame: NSRect(x: 0, y: 0, width: 560, height: 200))
+        let root = SettingsFillView(SettingsColors.detail)
+        root.frame = NSRect(x: 0, y: 0, width: SettingsMetrics.windowSize.width - SettingsMetrics.detailX,
+                            height: SettingsMetrics.windowSize.height - SettingsMetrics.titleAreaHeight)
         for p in BuildSystemPreference.allCases {
             buildSystemPopUp.addItem(withTitle: p == BuildSystemPreference.defaultValue ? "\(p.title) (Default)" : p.title)
             buildSystemPopUp.lastItem?.representedObject = p.rawValue
         }
+        let cell = SettingsCardPopUpCell(textCell: "", pullsDown: false)
+        cell.isBordered = false
+        cell.menu = buildSystemPopUp.menu
+        buildSystemPopUp.cell = cell
         buildSystemPopUp.selectItem(at: BuildSystemPreference.allCases.firstIndex(of: .current(defaults)) ?? 0)
         buildSystemPopUp.target = self
         buildSystemPopUp.action = #selector(chosen)
-
-        let note = noteLabel
         updateNote()
-        note.font = .systemFont(ofSize: 11)
-        note.textColor = .secondaryLabelColor
 
-        let grid = NSGridView(views: [
-            [label("Build System:"), buildSystemPopUp],
-            [NSGridCell.emptyContentView, note],
-        ])
-        grid.column(at: 0).xPlacement = .trailing
-        grid.rowSpacing = 8
-        grid.columnSpacing = 8
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(grid)
+        let header = SettingsHeaderView("Build")
+        let card = SettingsCardView()
+        let row = SettingsRowView(label: "Build System", controls: [buildSystemPopUp])
+        row.setHelp(noteLabel.stringValue)
+        card.add(row)
+        self.card = card
+        for v in [header, card] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            root.addSubview(v)
+        }
+        let inset = SettingsMetrics.cardInset
         NSLayoutConstraint.activate([
-            grid.topAnchor.constraint(equalTo: root.topAnchor, constant: 24),
-            grid.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 24),
-            grid.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -24),
-            note.widthAnchor.constraint(lessThanOrEqualToConstant: 360),
+            header.topAnchor.constraint(equalTo: root.topAnchor, constant: SettingsMetrics.firstHeaderCapTop - SettingsMetrics.titleAreaHeight - 3),
+            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset),
+            card.topAnchor.constraint(equalTo: header.bottomAnchor, constant: SettingsMetrics.headerToCard + 3 - 16),
+            card.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset),
+            card.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
         ])
         view = root
-    }
-
-    private func label(_ s: String) -> NSTextField {
-        let l = NSTextField(labelWithString: s)
-        l.alignment = .right
-        return l
     }
 
     /// The engine builds actually use with the current choice.
@@ -78,6 +80,10 @@ public final class SettingsController: NSViewController {
             noteLabel.stringValue = "swbuild: \(path)"
         } else {
             noteLabel.stringValue = "The swift-build helper was not found (it ships inside Ycode.app; for a build from source, see the README). Builds use xcodebuild until then."
+        }
+        // The card shows the note as its row's help text.
+        if let row = card?.rowViews.first as? SettingsRowView, let help = row.help {
+            help.attributedStringValue = SettingsRowView.helpText(noteLabel.stringValue)
         }
     }
 
@@ -97,27 +103,33 @@ public final class SettingsController: NSViewController {
     }
 }
 
-/// Ycode ▸ Settings… (⌘,): one shared sidebar window (reference-ui.md §4):
-/// the pane list at the left, the selected pane as a form at the right
-/// under its title and back/forward buttons.
+/// Ycode ▸ Settings… (⌘,): one shared sidebar window (reference-ui.md §4,
+/// `specs/ide/settings.md` R3.1–R3.3): 710 × 452, the pane list flush at
+/// the left (179.5 wide, 32-point rows, accent-tinted symbols), the
+/// selected pane's grouped cards at the right under the back/forward
+/// capsule and its title.
 @MainActor
 public final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     public static let shared = SettingsWindowController()
     /// The pane list's width.
-    public static let sidebarWidth: CGFloat = 200
+    public static let sidebarWidth: CGFloat = SettingsMetrics.sidebarWidth
     /// The panes (tabless; the sidebar selects).
     public let tabs = NSTabViewController()
     public let sidebar = NSTableView()
     let titleLabel = NSTextField(labelWithString: "")
-    let backButton = NSButton(image: NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Back")!, target: nil, action: nil)
-    let forwardButton = NSButton(image: NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Forward")!, target: nil, action: nil)
+    let capsule = SettingsNavigationCapsule()
+    var backButton: NSButton { capsule.back }
+    var forwardButton: NSButton { capsule.forward }
     final class History { var back: [Int] = []; var forward: [Int] = [] }
     let history = History()
 
-    /// Pane titles in order (Simulators is Ycode's own, before Locations).
+    /// Pane titles in order: the reference's, then Simulators (Ycode's own).
     public static let paneTitles = SettingsPaneOrder.all
-    static let paneSymbols = ["gearshape", "paintpalette", "person.crop.circle", "sparkles", "bolt", "arrow.triangle.turn.up.right.diamond",
-                              "bell", "text.cursor", "keyboard", "arrow.triangle.branch", "square.stack.3d.up", "server.rack", "externaldrive"]
+    /// The system's symbols, as the spec describes them (looked up at run
+    /// time; none depicts a product).
+    static let paneSymbols = ["gearshape", "circle.lefthalf.filled", "at.circle", "sparkles", "rectangle.on.rectangle",
+                              "arrow.triangle.turn.up.right.diamond", "bell", "square.and.pencil", "keyboard", "arrow.triangle.branch",
+                              "square.3.layers.3d", "externaldrive", "server.rack"]
 
     public init(prefs: Preferences = .shared, components: [ComponentsSettingsPane.Component]? = nil) {
         tabs.tabStyle = .unspecified
@@ -127,7 +139,7 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
             CodingAssistantSettingsPane(prefs: prefs), BehaviorsSettingsPane(prefs: prefs), NavigationSettingsPane(prefs: prefs),
             NotificationsSettingsPane(prefs: prefs), TextEditingSettingsPane(prefs: prefs), KeyBindingsSettingsPane(prefs: prefs),
             SourceControlSettingsPane(prefs: prefs), ComponentsSettingsPane(prefs: prefs, components: components),
-            SimulatorsSettingsPane(prefs: prefs), locations,
+            locations, SimulatorsSettingsPane(prefs: prefs),
         ]
         for (i, p) in panes.enumerated() {
             let item = NSTabViewItem(viewController: p)
@@ -137,57 +149,86 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
         }
         tabs.selectedTabViewItemIndex = 0
         let column = NSTableColumn(identifier: .init("pane"))
+        column.width = SettingsMetrics.sidebarWidth
         sidebar.addTableColumn(column)
         sidebar.headerView = nil
-        sidebar.style = .sourceList
-        sidebar.rowHeight = 26
+        sidebar.style = .plain
+        sidebar.backgroundColor = .clear
+        sidebar.rowHeight = SettingsMetrics.sidebarRowHeight
+        sidebar.intercellSpacing = .zero
+        sidebar.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        sidebar.focusRingType = .none
         let scroll = NSScrollView()
         scroll.documentView = sidebar
         scroll.drawsBackground = false
-        let bar = NSStackView(views: [backButton, forwardButton, titleLabel])
-        titleLabel.font = .boldSystemFont(ofSize: 15)
-        for b in [backButton, forwardButton] {
-            if #available(macOS 26, *) {
-                // Round glass buttons over the pane (liquid-glass-ycode.md §5).
-                b.bezelStyle = .glass
-                b.borderShape = .circle
-            } else {
-                b.bezelStyle = .texturedRounded
-            }
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsetsZero
+        // Thirteen rows are taller than the window: the list scrolls.
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+
+        // The window: the sidebar flush from the top edge to the bottom,
+        // a 0.5-point divider, the white detail pane with the capsule and
+        // the title in its title area and the pane under it.
+        let size = SettingsMetrics.windowSize
+        let root = NSView(frame: NSRect(origin: .zero, size: size))
+        let side = SettingsFillView(SettingsColors.sidebar)
+        let divider = SettingsFillView(SettingsColors.divider)
+        let detail = SettingsFillView(SettingsColors.detail)
+        for v in [side, divider, detail] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            root.addSubview(v)
         }
-        // The pane list is the system's sidebar (a floating glass sidebar
-        // on macOS 26 and later), 200 points wide; the detail runs under
-        // the transparent title bar (liquid-glass-ycode.md §5).
-        let sidebarVC = NSViewController()
-        sidebarVC.view = scroll
-        let detail = NSView(frame: NSRect(x: 0, y: 0, width: 660, height: 560))
-        for v in [bar, tabs.view] as [NSView] {
+        for v in [scroll] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            side.addSubview(v)
+        }
+        for v in [capsule, titleLabel, tabs.view] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             detail.addSubview(v)
         }
+        titleLabel.font = .systemFont(ofSize: SettingsMetrics.titleFontSize)
+        titleLabel.textColor = SettingsColors.title
+        let cap = SettingsMetrics.capsuleFrame
+        let detailX = SettingsMetrics.detailX
         NSLayoutConstraint.activate([
-            bar.leadingAnchor.constraint(equalTo: detail.leadingAnchor, constant: 12), bar.topAnchor.constraint(equalTo: detail.topAnchor, constant: 10),
+            side.leadingAnchor.constraint(equalTo: root.leadingAnchor), side.topAnchor.constraint(equalTo: root.topAnchor),
+            side.bottomAnchor.constraint(equalTo: root.bottomAnchor), side.widthAnchor.constraint(equalToConstant: SettingsMetrics.sidebarWidth),
+            divider.leadingAnchor.constraint(equalTo: side.trailingAnchor), divider.topAnchor.constraint(equalTo: root.topAnchor),
+            divider.bottomAnchor.constraint(equalTo: root.bottomAnchor), divider.widthAnchor.constraint(equalToConstant: SettingsMetrics.dividerWidth),
+            detail.leadingAnchor.constraint(equalTo: divider.trailingAnchor), detail.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            detail.topAnchor.constraint(equalTo: root.topAnchor), detail.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            scroll.topAnchor.constraint(equalTo: side.topAnchor, constant: SettingsMetrics.sidebarTop),
+            scroll.leadingAnchor.constraint(equalTo: side.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: side.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: side.bottomAnchor),
+            capsule.leadingAnchor.constraint(equalTo: detail.leadingAnchor, constant: cap.minX - detailX),
+            capsule.topAnchor.constraint(equalTo: detail.topAnchor, constant: cap.minY),
+            capsule.widthAnchor.constraint(equalToConstant: cap.width), capsule.heightAnchor.constraint(equalToConstant: cap.height),
+            // The title's ink starts about 1.5 points after its alignment rect.
+            titleLabel.leadingAnchor.constraint(equalTo: detail.leadingAnchor, constant: SettingsMetrics.titleX - detailX - 1.5),
+            titleLabel.centerYAnchor.constraint(equalTo: detail.topAnchor, constant: SettingsMetrics.titleCenterY),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: detail.trailingAnchor, constant: -SettingsMetrics.cardInset),
             tabs.view.leadingAnchor.constraint(equalTo: detail.leadingAnchor), tabs.view.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
-            tabs.view.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 6), tabs.view.bottomAnchor.constraint(equalTo: detail.bottomAnchor),
+            tabs.view.topAnchor.constraint(equalTo: detail.topAnchor, constant: SettingsMetrics.titleAreaHeight),
+            tabs.view.bottomAnchor.constraint(equalTo: detail.bottomAnchor),
         ])
-        let detailVC = NSViewController()
-        detailVC.view = detail
-        let split = NSSplitViewController()
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarVC)
-        sidebarItem.minimumThickness = Self.sidebarWidth
-        sidebarItem.maximumThickness = Self.sidebarWidth
-        sidebarItem.canCollapse = false
-        split.addSplitViewItem(sidebarItem)
-        split.addSplitViewItem(NSSplitViewItem(viewController: detailVC))
-        split.view.frame = NSRect(x: 0, y: 0, width: 860, height: 560)
-        let window = NSWindow(contentViewController: split)
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.contentView = root
         window.title = "General"
-        window.styleMask = [.titled, .closable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
-        // The pane's title row names it; the window title (Window menu,
-        // accessibility) is not drawn over the detail's title bar section.
+        // The pane's title in the detail names it; the window title (Window
+        // menu, accessibility) is not drawn.
         window.titleVisibility = .hidden
-        window.setContentSize(NSSize(width: 860, height: 560))
+        // An empty unified toolbar gives the 52-point title area, with the
+        // window buttons at x 19, 42 and 65 on y 26 (R3.1).
+        window.toolbar = NSToolbar(identifier: "YcodeSettings")
+        window.toolbarStyle = .unified
+        window.setContentSize(size)
+        // Fixed at 710 × 452 (the size on other panes is open, R3.4).
+        window.contentMinSize = size
+        window.contentMaxSize = size
+        window.isMovableByWindowBackground = true
         super.init(window: window)
         sidebar.dataSource = self
         sidebar.delegate = self
@@ -245,16 +286,10 @@ public final class SettingsWindowController: NSWindowController, NSTableViewData
     public func numberOfRows(in tableView: NSTableView) -> Int { Self.paneTitles.count }
 
     public func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = NSTableCellView()
-        let image = NSImageView(image: NSImage(systemSymbolName: Self.paneSymbols[row], accessibilityDescription: nil)!)
-        let text = NSTextField(labelWithString: Self.paneTitles[row])
-        let s = NSStackView(views: [image, text])
-        s.translatesAutoresizingMaskIntoConstraints = false
-        cell.addSubview(s)
-        cell.textField = text
-        NSLayoutConstraint.activate([s.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4), s.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
-        return cell
+        SettingsSidebarCellView(title: Self.paneTitles[row], symbolName: Self.paneSymbols[row])
     }
+
+    public func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SettingsSidebarRowView() }
 
     public func tableViewSelectionDidChange(_ notification: Notification) {
         if sidebar.selectedRow >= 0 { select(sidebar.selectedRow) }

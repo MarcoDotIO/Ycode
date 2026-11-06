@@ -80,7 +80,9 @@ struct IBOutlineColumn: View {
     var colors: ShellColors
     @FocusState private var hasKeyboard: Bool
 
-    static let rowHeight: CGFloat = 22
+    /// Rows about 20 points high, 16 points of indent per level
+    /// (`interface-builder.md` §Reference outline details).
+    static let rowHeight: CGFloat = 20
 
     var body: some View {
         let c = colors
@@ -112,16 +114,6 @@ struct IBOutlineColumn: View {
         .shellTarget("ib outline")
     }
 
-    func symbol(_ r: IBOutlineRow) -> String {
-        switch r.kind {
-        case .scene: "rectangle.on.rectangle"
-        case .view: "square.dashed"
-        case .object: "cube"
-        case .constraints, .constraint: "ruler"
-        case .entryPoint: "arrow.right"
-        }
-    }
-
     func row(_ v: InterfaceBuilderShellModel.VisibleRow, _ c: ShellColors) -> some View {
         let r = v.row
         let on = model.isSelected(r)
@@ -137,8 +129,7 @@ struct IBOutlineColumn: View {
                 }
             }
             .frame(width: 12, height: 16)
-            Image(systemName: symbol(r)).font(.system(size: 11)).foregroundStyle(r.kind == .scene ? c.warning : c.accent)
-                .frame(width: 16)
+            IBIconView(icon: IBIcon.of(row: r, in: model.document)).frame(width: 16, height: 16)
             Text(verbatim: r.title).font(ShellFonts.small).tracking(ShellFonts.smallTracking).foregroundStyle(c.label).lineLimit(1)
             if let b = r.badge {
                 Text(verbatim: b).font(.system(size: 9, weight: .medium)).foregroundStyle(c.secondaryLabel)
@@ -147,7 +138,7 @@ struct IBOutlineColumn: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.leading, 6 + CGFloat(v.depth) * 14)
+        .padding(.leading, 6 + CGFloat(v.depth) * 16)
         .padding(.trailing, 6)
         .frame(height: Self.rowHeight)
         .background {

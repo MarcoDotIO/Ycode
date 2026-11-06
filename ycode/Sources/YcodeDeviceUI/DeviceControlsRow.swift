@@ -1,15 +1,19 @@
-// The device-control row under the device (device-hub.md §4.4): glass
-// capsules about 37 points tall, 8 apart, centred under the device.
+// The device-control capsules (device-hub.md §4.4, §11.1; council round 3
+// row 65): two glass capsules 36.5 points tall floating at the bottom of the
+// canvas, 7.5 apart, glyphs on a 34-point pitch (DeviceControlsLayout, shared
+// with the Linux device window).
 //
 //   iPhone, iPad      [Home · Screenshot · Record] [Rotate]
 //   iPhone Duo        [Home · Screenshot · Record] [Rotate │ Closed · Partially Open · Open]
 //                     (Closed and Open are Ycode's own glyphs, DeviceGlyphs.swift)
-//   visionOS          [Home · Screenshot · Record]
+//   Apple Watch       [Screenshot · Record]
+//   visionOS          [Home · Screenshot · Record] [Reset Camera]
 //
 // Rotate: click = Rotate Left, Option-click = Rotate Right. The current
-// pose's button is highlighted; Option-dragging on a pose button shows the
-// hinge slider (the canvas draws it). Symbols are public SF Symbols chosen
-// to match the reference's descriptions (Ycode decision, §8).
+// pose's glyph is drawn in the accent colour; Option-dragging on a pose
+// button shows the hinge slider (the canvas draws it). Symbols are public
+// SF Symbols chosen to match the reference's descriptions (Ycode decision,
+// §8).
 
 #if os(macOS)
 import AppKit
@@ -22,7 +26,7 @@ public final class GlassCapsule: NSView {
     public let content: NSView
     private let glass: NSView
 
-    public init(content: NSView, height: CGFloat = 37) {
+    public init(content: NSView, height: CGFloat = 37, inset: CGFloat = 4) {
         self.content = content
         if #available(macOS 26, *) {
             let g = NSGlassEffectView()
@@ -47,7 +51,7 @@ public final class GlassCapsule: NSView {
         NSLayoutConstraint.activate([
             glass.leadingAnchor.constraint(equalTo: leadingAnchor), glass.trailingAnchor.constraint(equalTo: trailingAnchor),
             glass.topAnchor.constraint(equalTo: topAnchor), glass.bottomAnchor.constraint(equalTo: bottomAnchor),
-            content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4), content.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset), content.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
             content.centerYAnchor.constraint(equalTo: centerYAnchor),
             heightAnchor.constraint(equalToConstant: height),
         ])
@@ -55,24 +59,6 @@ public final class GlassCapsule: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
-}
-
-/// The recessed pill under a selected segment (the selected pose).
-@MainActor
-final class PillView: NSView {
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-    }
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-    override var wantsUpdateLayer: Bool { true }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override func updateLayer() {
-        layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
-        layer?.cornerRadius = bounds.height / 2
-        layer?.cornerCurve = .continuous
-    }
 }
 
 /// A row button. Option-drag on it reports the horizontal distance (the
@@ -96,16 +82,15 @@ final class RowButton: NSButton {
 
 @MainActor
 public final class DeviceControlsRow: NSView {
-    public static let height: CGFloat = 37
+    public static let height = CGFloat(DeviceControlsLayout.height)
     /// A control was used.
     public var onCommand: ((DeviceCommand) -> Void)?
     /// Option-drag on a pose button: the distance in points, then nil.
     public var onHingeDrag: ((CGFloat?) -> Void)?
 
-    private let stack = NSStackView()
     private var buttons: [DeviceCommand: RowButton] = [:]
-    private let pill = PillView()
-    private var poseGroup: NSView?
+    /// The capsules, left to right (tests: their frames).
+    public private(set) var capsules: [GlassCapsule] = []
     public private(set) var configuration = Configuration()
 
     public struct Configuration: Equatable {
@@ -118,8 +103,10 @@ public final class DeviceControlsRow: NSView {
         /// Home in the first group (a watch has none: its crown on the
         /// frame is its Home, and its row is [Screenshot · Record]).
         public var showsHome = true
+        /// A Vision Pro: Reset Camera in place of Rotate (§4.4).
+        public var spatial = false
         public init(foldable: Bool = false, canRotate: Bool = false, recording: Bool = false, posture: DevicePosture? = nil,
-                    enabled: Bool = false, showsRotate: Bool = true, showsHome: Bool = true) {
+                    enabled: Bool = false, showsRotate: Bool = true, showsHome: Bool = true, spatial: Bool = false) {
             self.foldable = foldable
             self.canRotate = canRotate
             self.recording = recording
@@ -127,19 +114,16 @@ public final class DeviceControlsRow: NSView {
             self.enabled = enabled
             self.showsRotate = showsRotate
             self.showsHome = showsHome
+            self.spatial = spatial
+        }
+
+        var device: DeviceControlsLayout.Device {
+            .init(showsHome: showsHome, rotates: showsRotate, foldable: foldable, spatial: spatial)
         }
     }
 
     public override init(frame: NSRect) {
         super.init(frame: frame)
-        stack.orientation = .horizontal
-        stack.spacing = 8
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor), stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         setAccessibilityLabel("Device Controls")
@@ -149,6 +133,8 @@ public final class DeviceControlsRow: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    public override var isFlipped: Bool { true }
+
     /// The symbol and help text of each control.
     static func look(_ c: DeviceCommand, recording: Bool) -> (symbol: String, help: String) {
         switch c {
@@ -156,6 +142,7 @@ public final class DeviceControlsRow: NSView {
         case .screenshot: ("camera.viewfinder", "Screenshot")
         case .recordScreen: recording ? ("stop.circle.fill", "Stop Recording") : ("record.circle", "Record Screen")
         case .rotateLeft: ("rotate.left", "Rotate (Option-click to rotate right)")
+        case .resetCamera: ("arrow.counterclockwise", "Reset Camera")
         case .poseClosed: ("", "Closed")
         case .posePartiallyOpen: ("book", "Partially Open (Option-drag to set any angle)")
         case .poseOpen: ("", "Open")
@@ -163,19 +150,12 @@ public final class DeviceControlsRow: NSView {
         }
     }
 
-    /// The controls shown, by group (tests).
-    public var groups: [[DeviceCommand]] {
-        var g: [[DeviceCommand]] = [(configuration.showsHome ? [.home] : []) + [.screenshot, .recordScreen]]
-        var second: [DeviceCommand] = configuration.showsRotate ? [.rotateLeft] : []
-        if configuration.foldable { second += [.poseClosed, .posePartiallyOpen, .poseOpen] }
-        if !second.isEmpty { g.append(second) }
-        return g
-    }
+    /// The controls shown, by capsule (tests).
+    public var groups: [[DeviceCommand]] { DeviceControlsLayout.groups(configuration.device) }
 
     public func configure(_ c: Configuration) {
         guard c != configuration else { return }
-        let rebuildNeeded = c.foldable != configuration.foldable || c.showsRotate != configuration.showsRotate
-            || c.showsHome != configuration.showsHome
+        let rebuildNeeded = c.device != configuration.device
         configuration = c
         if rebuildNeeded { rebuild() } else { update() }
     }
@@ -191,8 +171,7 @@ public final class DeviceControlsRow: NSView {
         b.imagePosition = .imageOnly
         b.imageScaling = .scaleNone
         b.refusesFirstResponder = true
-        b.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([b.widthAnchor.constraint(equalToConstant: 37), b.heightAnchor.constraint(equalToConstant: 33)])
+        b.identifier = .init("device-control-\(c.rawValue)")
         if [.poseClosed, .posePartiallyOpen, .poseOpen].contains(c) {
             b.onOptionDrag = { [weak self] d in self?.onHingeDrag?(d) }
         }
@@ -201,31 +180,33 @@ public final class DeviceControlsRow: NSView {
     }
 
     private func rebuild() {
-        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        capsules.forEach { $0.removeFromSuperview() }
+        capsules = []
         buttons = [:]
-        poseGroup = nil
         for (i, group) in groups.enumerated() {
-            let inner = NSStackView()
-            inner.orientation = .horizontal
-            inner.spacing = 0
-            for c in group {
-                if c == .poseClosed {
-                    let sep = NSBox()
-                    sep.boxType = .separator
-                    sep.translatesAutoresizingMaskIntoConstraints = false
-                    sep.heightAnchor.constraint(equalToConstant: 20).isActive = true
-                    inner.addArrangedSubview(sep)
-                    inner.setCustomSpacing(4, after: inner.arrangedSubviews.last!)
-                }
-                inner.addArrangedSubview(makeButton(c))
-                if c == .rotateLeft, configuration.foldable { inner.setCustomSpacing(4, after: inner.arrangedSubviews.last!) }
+            let inner = FlippedView()
+            let w = CGFloat(DeviceControlsLayout.width(of: group))
+            for (c, cx) in zip(group, DeviceControlsLayout.glyphCentres(of: group)) {
+                let b = makeButton(c)
+                b.frame = CGRect(x: CGFloat(cx - DeviceControlsLayout.buttonWidth / 2), y: 0,
+                                 width: CGFloat(DeviceControlsLayout.buttonWidth), height: Self.height)
+                inner.addSubview(b)
             }
-            let capsule = GlassCapsule(content: inner, height: Self.height)
+            if let d = DeviceControlsLayout.dividerCentre(of: group) {
+                let sep = DividerLine(frame: CGRect(x: CGFloat(d) - 0.5, y: (Self.height - 20) / 2, width: 1, height: 20))
+                sep.identifier = .init("device-controls-divider")
+                inner.addSubview(sep)
+            }
+            inner.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([inner.widthAnchor.constraint(equalToConstant: w), inner.heightAnchor.constraint(equalToConstant: Self.height)])
+            let capsule = GlassCapsule(content: inner, height: Self.height, inset: 0)
             capsule.identifier = .init(i == 0 ? "device-controls-capture" : "device-controls-orientation")
-            if configuration.foldable && i == 1 { poseGroup = inner; inner.addSubview(pill, positioned: .below, relativeTo: nil) }
-            stack.addArrangedSubview(capsule)
+            capsule.translatesAutoresizingMaskIntoConstraints = true
+            addSubview(capsule)
+            capsules.append(capsule)
         }
         update()
+        needsLayout = true
     }
 
     private func update() {
@@ -233,32 +214,45 @@ public final class DeviceControlsRow: NSView {
             let look = Self.look(c, recording: configuration.recording)
             // Closed and Open are Ycode's own glyphs (no product symbols, AGENTS.md rule 5).
             switch c {
-            case .poseClosed: b.image = DeviceGlyph.phone.image(height: 17)
-            case .poseOpen: b.image = DeviceGlyph.openFlat.image(height: 13)
+            case .poseClosed: b.image = DeviceGlyph.phone.image(height: 16, lit: true)
+            case .poseOpen: b.image = DeviceGlyph.openFlat.image(height: 13, lit: true)
             default:
                 b.image = NSImage(systemSymbolName: look.symbol, accessibilityDescription: look.help)?
-                    .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
+                    .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
             }
             b.toolTip = look.help
             b.setAccessibilityLabel(look.help)
-            b.contentTintColor = c == .recordScreen && configuration.recording ? .systemRed : nil
+            // Glyphs black (white in dark), the current pose in the accent colour (§11.1).
+            b.contentTintColor = c == .recordScreen && configuration.recording ? .systemRed
+                : Self.isCurrentPose(c, configuration.posture) ? .controlAccentColor : .labelColor
             switch c {
             case .rotateLeft: b.isEnabled = configuration.enabled && configuration.canRotate
             default: b.isEnabled = configuration.enabled
             }
         }
-        needsLayout = true
+    }
+
+    static func isCurrentPose(_ c: DeviceCommand, _ p: DevicePosture?) -> Bool {
+        switch (c, p) {
+        case (.poseClosed, .closed?), (.posePartiallyOpen, .halfOpen?), (.poseOpen, .openFlat?): true
+        default: false
+        }
+    }
+
+    /// The command whose glyph is drawn in the accent colour (tests).
+    public var highlightedPose: DeviceCommand? {
+        [DeviceCommand.poseClosed, .posePartiallyOpen, .poseOpen].first { Self.isCurrentPose($0, configuration.posture) }
     }
 
     public override func layout() {
         super.layout()
-        // The pill under the current pose's button.
-        guard let p = configuration.posture, let group = poseGroup,
-              let b = buttons[p == .closed ? .poseClosed : p == .halfOpen ? .posePartiallyOpen : .poseOpen] else { pill.isHidden = true; return }
-        group.layoutSubtreeIfNeeded()
-        let r = b.frame
-        pill.frame = NSRect(x: r.midX - 16, y: r.midY - 13, width: 32, height: 26)
-        pill.isHidden = false
+        // The capsules side by side, 7.5 apart, filling the row's height.
+        var x: CGFloat = 0
+        for (g, c) in zip(groups, capsules) {
+            let w = CGFloat(DeviceControlsLayout.width(of: g))
+            c.frame = CGRect(x: x, y: 0, width: w, height: Self.height)
+            x += w + CGFloat(DeviceControlsLayout.gap)
+        }
     }
 
     @objc private func clicked(_ sender: RowButton) {
@@ -267,6 +261,21 @@ public final class DeviceControlsRow: NSView {
         onCommand?(c)
     }
 
-    public override var intrinsicContentSize: NSSize { stack.fittingSize }
+    public override var intrinsicContentSize: NSSize {
+        NSSize(width: CGFloat(DeviceControlsLayout.totalWidth(groups)), height: Self.height)
+    }
+}
+
+/// The one-point line between Rotate and the poses (#E9E9E9 on the light glass).
+@MainActor
+final class DividerLine: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() { layer?.backgroundColor = NSColor.separatorColor.cgColor }
 }
 #endif

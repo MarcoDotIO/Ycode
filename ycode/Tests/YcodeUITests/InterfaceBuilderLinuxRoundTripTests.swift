@@ -95,7 +95,7 @@ import Testing
             let url = try copy(name)
             let c = try InterfaceBuilderController(url: url)
             _ = c.view
-            for kind in IBDocument.NewObject.allCases {
+            for kind in IBDocument.NewObject.list(for: c.document) where kind.placement == .subview {
                 c.select(IBEditorSession.firstView(in: c.document))
                 let id = try #require(c.insert(kind), "\(kind)")
                 #expect(c.selected?.id == id)

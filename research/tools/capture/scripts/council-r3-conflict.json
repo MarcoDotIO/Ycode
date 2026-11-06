@@ -1,0 +1,214 @@
+{
+  "name": "council-r3-conflict",
+  "issue": 81,
+  "title": "Council round 3 (#81): the conflict editor. Merge feature into main in the Merger test repository (two conflicts in Greeting.swift), each app by its own menu path.",
+  "targets": [
+    "xcode",
+    "ycode"
+  ],
+  "compare_order": [
+    "xcode",
+    "ycode"
+  ],
+  "project": {
+    "generator": "make-conflict-project.py",
+    "path": "Merger/Merger.xcodeproj"
+  },
+  "window": {
+    "size": [
+      1400,
+      880
+    ],
+    "display": "builtin",
+    "title": "{project}",
+    "timeout": 90
+  },
+  "focus": "foreground",
+  "launch_settle": 3.0,
+  "record": {
+    "fps": 120,
+    "codec": "prores4444",
+    "pre": 0.4,
+    "post": 1.2
+  },
+  "steps": [
+    {
+      "id": "scm-repositories",
+      "note": "The Source Control navigator's Repositories view with Merger's branches shown (cmd+2, Repositories).",
+      "do": [
+        {
+          "key": "cmd+2"
+        },
+        {
+          "wait": 1.0
+        },
+        {
+          "press": {
+            "role": "AXRadioButton",
+            "label": "Repositories"
+          }
+        },
+        {
+          "wait": 1.0
+        },
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "project|Merger"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        },
+        {
+          "wait": 0.6
+        },
+        {
+          "set": {
+            "role": "AXRow",
+            "text": "Branches"
+          },
+          "attr": "AXDisclosing",
+          "value": true
+        },
+        {
+          "wait": 0.6
+        }
+      ],
+      "record": false,
+      "still": "after"
+    },
+    {
+      "id": "merge-start",
+      "note": "Start the merge of feature into main by the app's own path. Reference: the feature row's context menu, Merge “feature” into “main”…, then Merge in the alert, then Greeting.swift in the merge sheet. Ycode: its branch rows have no context menu on macOS (a Ycode bug), so the merge is started with `git merge` and the conflict editor opened from Integrate ▸ Resolve Conflicts….",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "click": {
+                "role": "AXRow",
+                "text": "feature"
+              },
+              "button": "right"
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "click": [
+                227,
+                294
+              ]
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "press": {
+                "role": "AXButton",
+                "title": "Merge",
+                "scope": "app"
+              }
+            },
+            {
+              "wait": 3.0
+            },
+            {
+              "click": {
+                "role": "AXRow",
+                "text": "Greeting.swift|Greeting"
+              }
+            },
+            {
+              "wait": 2.0
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "run": [
+                "git",
+                "-c",
+                "user.name=Capture Test",
+                "-c",
+                "user.email=capture@example.invalid",
+                "merge",
+                "--no-edit",
+                "feature"
+              ],
+              "allow_fail": true
+            },
+            {
+              "menu": "Integrate > Refresh File Status"
+            },
+            {
+              "wait": 1.5
+            },
+            {
+              "menu": "Integrate > Resolve Conflicts…"
+            },
+            {
+              "wait": 2.5
+            }
+          ]
+        }
+      },
+      "record": {
+        "video": true,
+        "mode": "app",
+        "post": 1.5
+      },
+      "still": "none"
+    },
+    {
+      "id": "conflict-at-rest",
+      "note": "The conflict view at rest on Greeting.swift: two conflicts and one change that does not conflict.",
+      "record": {
+        "video": false,
+        "mode": "app"
+      },
+      "still": "after"
+    },
+    {
+      "id": "conflict-choose-right",
+      "note": "Choose the right side (feature) for the first conflict. Reference: the first conflict's token in the centre gutter, then Choose Right. Ycode: the Right segment of the change's choice control (the first conflict is selected).",
+      "per_target": {
+        "xcode": {
+          "do": [
+            {
+              "click": [
+                791,
+                281
+              ]
+            },
+            {
+              "wait": 1.0
+            },
+            {
+              "click": [
+                848,
+                321
+              ]
+            }
+          ]
+        },
+        "ycode": {
+          "do": [
+            {
+              "click": [
+                526,
+                96
+              ]
+            }
+          ]
+        }
+      },
+      "record": {
+        "video": true,
+        "mode": "app",
+        "post": 1.5
+      },
+      "still": "after"
+    }
+  ]
+}

@@ -86,7 +86,7 @@ public final class YcodeDocumentController: NSDocumentController {
         }
         if !Self.isWorkspaceContainer(url), let wc = Self.workspaceWindow(containing: url, among: workspaceWindows) {
             if displayDocument { wc.showWindow(nil) }
-            wc.open(path: url.path, line: nil)
+            wc.handleOpenRequest(url)   // editor-area.md E.4
             completionHandler(wc.document as? NSDocument, true, nil)
             return
         }

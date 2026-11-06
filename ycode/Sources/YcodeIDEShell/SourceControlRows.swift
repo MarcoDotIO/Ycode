@@ -62,7 +62,7 @@ public enum SourceControlRows {
 
     static func header(_ s: SourceControlSnapshot, collapsed: Set<String>) -> OutlineRow {
         OutlineRow(id: "repository", level: 0, title: repositoryName(s), detail: (s.currentBranch ?? "HEAD") + integrationSuffix(s.integration),
-                   symbol: "externaldrive", tint: .secondary, isBold: true, isExpandable: true, isExpanded: !collapsed.contains("repository"),
+                   symbol: RepositoriesViewStyle.repositorySymbol, tint: .secondary, isBold: true, isExpandable: true, isExpanded: !collapsed.contains("repository"),
                    detailIsSecondary: true)
     }
 
@@ -72,10 +72,13 @@ public enum SourceControlRows {
         guard s.repository != nil else { return [] }
         var out = [header(s, collapsed: collapsed)]
         guard !collapsed.contains("repository") else { return out }
+        // navigators.md round 3 §2: each group its own grey filled symbol,
+        // a disclosure triangle even when empty.
         func group(_ title: String, _ children: (Int) -> [OutlineRow], empty: Bool) {
             let id = "group:" + title
             let open = !collapsed.contains(id)
-            out.append(OutlineRow(id: id, level: 1, title: title, symbol: "folder", tint: .accent, isExpandable: !empty, isExpanded: open))
+            out.append(OutlineRow(id: id, level: 1, title: title, symbol: RepositoriesViewStyle.groupSymbols[title] ?? "folder.fill",
+                                  tint: .secondary, isExpandable: true, isExpanded: open))
             if open { out += children(2) }
         }
         group("Branches", { foldered(s.branches.map(\.name), current: s.currentBranch, key: "branch:", symbol: "arrow.triangle.branch",
@@ -117,8 +120,9 @@ public enum SourceControlRows {
                 if folders[head] == nil { order.append(head) }
                 folders[head, default: []].append(String(n[n.index(after: slash)...]))
             } else {
-                leaves.append(OutlineRow(id: key + n, level: level, title: n, detail: n == current ? "(current)" : nil, symbol: symbol,
-                                         tint: .secondary, isBold: n == current, detailIsSecondary: true))
+                // No "(current)" and no marking: the repository row names
+                // the current branch (navigators.md round 3 §2).
+                leaves.append(OutlineRow(id: key + n, level: level, title: n, symbol: symbol, tint: .secondary, detailIsSecondary: true))
             }
         }
         var out: [OutlineRow] = []
@@ -200,6 +204,8 @@ public struct SourceControlPrompt: Equatable, Sendable {
         case renameBranch(String)
         case addRemote
         case stash
+        /// Export Stashed Changes as Patch File…: the stash's reference.
+        case exportStash(String)
     }
 
     public struct Field: Equatable, Sendable {

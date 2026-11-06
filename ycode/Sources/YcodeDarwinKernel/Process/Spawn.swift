@@ -557,8 +557,9 @@ extension DarwinKernel {
             undo()
             throw error
         }
-        let label = request.argv.count > 1 && GuestPath.lastComponent(guestPath).hasPrefix("xpcproxy")
-            ? request.argv[1] : GuestPath.lastComponent(guestPath)
+        let viaProxy = request.argv.count > 1 && GuestPath.lastComponent(guestPath).hasPrefix("xpcproxy")
+        let label = viaProxy ? request.argv[1] : GuestPath.lastComponent(guestPath)
+        if viaProxy { record.launchdLabel = request.argv[1] }
         if hold {
             system.startHold(record, label: label)
         } else if demand {

@@ -591,6 +591,8 @@ import Testing
         let d = RuntimeDirectDownload(folder: folder, transport: t, expander: StandInExpander(plain: outer.bytes),
                                       reader: StandInImageReader(volume: volume), host: Self.linux,
                                       selectionHost: RuntimeSelectionHost(xcodeVersion: "50.0", macOSVersion: nil, architecture: "x86_64"))
+        // The stand-in runtime claims about 13.8 GB; this computer's free space is not the test's subject.
+        d.freeSpace = { _ in 100_000_000_000 }
         let asked = LockedText()
         d.query = { type, build in
             asked.append("\(type) \(build)")

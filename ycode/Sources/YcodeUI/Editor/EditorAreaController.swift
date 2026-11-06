@@ -153,6 +153,7 @@ public final class EditorAreaController: NSViewController {
         content.layoutSubtreeIfNeeded()
         if t.split.bounds.width > 0 { equalize(t); needsEqualize = false }
         reloadTabBar()
+        updatePaneChrome()   // +Panes.swift
     }
 
     private var needsEqualize = false

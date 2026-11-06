@@ -97,7 +97,7 @@ public final class SourceControlCoordinator {
                 remoteBranches: snapshot.remoteBranches))
         }
         if let c = commitEditor, c.isViewLoaded { c.reload() }
-        if let c = conflictEditor, c.isViewLoaded { c.update(integration: snapshot.integration, conflicted: snapshot.changes.filter { $0.status == .conflicted }.map(\.path)) }
+        if let c = mergeSheet, c.isViewLoaded { c.update(integration: snapshot.integration, conflicted: snapshot.changes.filter { $0.status == .conflicted }.map(\.path)) }
     }
 
     /// Re-reads git in the background, then updates the status letters,
@@ -159,7 +159,7 @@ public final class SourceControlCoordinator {
             if let t = refreshTask { await t.value; continue }
             if let c = commitEditor, c.loading != nil || c.working != nil { await c.idle(); continue }
             if let h = history, h.loading != nil || h.inspectorLoading != nil { await h.idle(); continue }
-            if let c = conflictEditor, c.loading != nil { await c.idle(); continue }
+            if let c = mergeSheet, c.loading != nil { await c.idle(); continue }
             return
         }
     }
@@ -286,6 +286,7 @@ public final class SourceControlCoordinator {
         }
         s.hasRepository = true
         s.hasRemote = !snapshot.remotes.isEmpty
+        s.otherBranchCount = snapshot.branches.filter { $0.name != snapshot.currentBranch }.count
         let changes = snapshot.changes
         s.hasStaged = changes.contains(where: \.isStaged)
         s.hasUnstaged = changes.contains(where: \.isUnstaged)

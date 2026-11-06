@@ -28,6 +28,7 @@ public enum PNG {
         z += be32(adler32(raw))
         var out: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
         out += chunk("IHDR", be32(UInt32(width)) + be32(UInt32(height)) + [8, 6, 0, 0, 0])
+        out += srgbChunk
         out += chunk("IDAT", z)
         out += chunk("IEND", [])
         return out
@@ -49,6 +50,11 @@ public enum PNG {
         }
         return out
     }
+
+    /// The sRGB chunk (rendering intent 0, perceptual): the guest draws in
+    /// sRGB, and the reference's screenshots carry this chunk and no ICC
+    /// profile (uikit-feel.md §8.1).
+    public static var srgbChunk: [UInt8] { chunk("sRGB", [0]) }
 
     static func be32(_ v: UInt32) -> [UInt8] { [UInt8(v >> 24), UInt8(v >> 16 & 0xFF), UInt8(v >> 8 & 0xFF), UInt8(v & 0xFF)] }
 

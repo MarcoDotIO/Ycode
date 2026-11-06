@@ -523,6 +523,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                     // GPU hang messages name the client (metal-sim-protocol.md §8.8).
                     let names = MetalClientNames(system: system)
                     backendOptions.describeProcess = { names.describe($0) }
+                    backendOptions.exemptFromRevocation = { names.isSystemUI($0) }
                     let backend = VulkanMetalBackend(translator: translator, options: backendOptions)
                     if backend.isAvailable {
                         // CPU access to a surface waits for GPU writes reported scheduled early.

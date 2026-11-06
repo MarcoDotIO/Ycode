@@ -105,6 +105,11 @@ extern void *calloc(size_t, size_t);
 extern void free(void *);
 extern char *getenv(const char *);
 extern uint64_t mach_absolute_time(void);
+struct mach_timebase_info {
+    uint32_t numer, denom;
+};
+extern int mach_timebase_info(struct mach_timebase_info *info);
+extern int mach_wait_until(uint64_t deadline);
 extern dispatch_queue_t dispatch_queue_create(const char *label, void *attr);
 extern void dispatch_async_f(dispatch_queue_t queue, void *context, dispatch_function_t work);
 extern void dispatch_once_f(dispatch_once_t *predicate, void *context, dispatch_function_t function);
@@ -999,9 +1004,27 @@ struct completion {
     int timed;
 };
 
+/* YCODE_FRAMEBUFFER_COMPLETION=vsync: a 60 Hz presentation grid (uikit-feel-ycode.md §7). */
+static int vsyncMode;          /* 1 vsync: completions at the next grid point; 2 vsync-block: Submit waits for it too */
+static uint64_t vsyncPeriod;   /* ticks */
+
+static uint64_t next_vsync(uint64_t t) {
+    if (!vsyncPeriod) {
+        struct mach_timebase_info tb = {0, 0};
+        if (mach_timebase_info(&tb) != 0 || !tb.numer || !tb.denom) tb.numer = 125, tb.denom = 3;
+        vsyncPeriod = (uint64_t)16666667 * tb.denom / tb.numer;
+    }
+    return (t / vsyncPeriod + 1) * vsyncPeriod;
+}
+
 static void complete(void *argument) {
     struct completion *c = argument;
     uint64_t now = mach_absolute_time();
+    if (vsyncMode) {
+        uint64_t v = next_vsync(c->submitted);
+        if (now < v) mach_wait_until(v);
+        now = v;
+    }
     if (c->timed) write_timing(c->frame, c->target, c->begun, c->submitted, now, c->surface);
     c->block(NULL, c->swapchain, c->target, now, c->context);
     _Block_release(c->block);
@@ -1012,6 +1035,8 @@ static void complete(void *argument) {
 /* Diagnostic (display-stream.md §10): YCODE_FRAMEBUFFER_COMPLETION=delay-<ms>
  * calls completion blocks that much later (does the render server wait for
  * them?); delay-<ms>-ab only in odd seconds of mach time (paired A/B).
+ * vsync: at the next point of a 60 Hz grid, reporting that time; vsync-block:
+ * SwapSubmit also waits for it (uikit-feel-ycode.md §7.2).
  * Unset: asynchronously at once, as spec §7 item 7 says. */
 static int64_t completionDelayNs = -1;
 static int completionAB;
@@ -1020,6 +1045,8 @@ static int64_t completion_delay(void) {
     if (completionDelayNs < 0) {
         const char *v = getenv("YCODE_FRAMEBUFFER_COMPLETION");
         int64_t ns = 0;
+        if (v && v[0] == 'v' && v[1] == 's' && v[2] == 'y' && v[3] == 'n' && v[4] == 'c')
+            vsyncMode = v[5] == '-' ? 2 : 1;
         if (v && v[0] == 'd' && v[1] == 'e' && v[2] == 'l' && v[3] == 'a' && v[4] == 'y' && v[5] == '-') {
             const char *d = v + 6;
             int64_t ms = 0;
@@ -1067,6 +1094,7 @@ EXPORT Boolean SFBSwapchainSwapSubmit(const void *sc, CFErrorRef *error) {
     c->timed = timed;
     int64_t delay = completion_delay();
     if (completionAB && (mach_absolute_time() / 24000000u) % 2 == 0) delay = 0;
+    if (vsyncMode == 2) mach_wait_until(next_vsync(submitted));
     if (delay > 0)
         dispatch_after_f(dispatch_time(0, delay), s->queue, c, complete);
     else

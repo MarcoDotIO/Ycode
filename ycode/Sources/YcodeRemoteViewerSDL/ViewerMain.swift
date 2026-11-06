@@ -14,7 +14,7 @@ extension RemoteDeviceWindow: ViewerScriptHost {}
 public enum LinuxViewer {
     public static let usage = """
         usage: ycode-sim-viewer [--connect <address> | --link <device> [--host <name>] [--media udp|tcp]] [--scale fit|point|pixel] [--fps N] [--encoding jpeg|zlib]
-                                [--quality Q] [--downscale N] [--no-bezels] [--status] [--timing]
+                                [--quality Q] [--downscale N] [--no-bezels] [--status] [--timing] [--appearance light|dark]
                                 [--script <file>] [--measure <file.tsv>] [--headless] [--verbose]
 
           --connect    the display server: <host>:<port>, <port> (127.0.0.1), or unix:<path>
@@ -35,12 +35,15 @@ public enum LinuxViewer {
           --measure    write every shown frame's stage times (client clock, ns) to a TSV file at exit
           --script     run a test script (ViewerScript.swift) and exit with its status
           --headless   no window: receive and decode only (with --script: waits, stats, shots)
+          --appearance light or dark (default: OV_COLOR_SCHEME, OpenViews' settings file, then the desktop's)
 
         Mouse: click and drag = one finger; Alt-drag = pinch/rotate about the centre; Alt-Shift-drag =
         two-finger pan; the wheel = a drag (a watch: the crown). Click the frame's buttons to press them.
         Keys go to the device; Ctrl shortcuts stay with the window: Ctrl+Shift+H home, Ctrl+L lock,
         Ctrl+Up/Down volume, Ctrl+Left/Right rotate, Ctrl+Shift+S screenshot, Ctrl+1/2/3 scale,
-        Ctrl+B bezels, Ctrl+F status line, Ctrl+R refresh, Ctrl+Q quit.
+        Ctrl+B bezels, Ctrl+F status line, Ctrl+R refresh, Ctrl+Q quit. The capsules at the bottom: Home,
+        Screenshot, Record (not in this beta), Rotate (Alt-click: right), an iPhone Duo's poses; the circle
+        at the top right: More Actions (Lock, volume, sound, scale, bezels, frame rate, Refresh Display).
         """
 
     public struct Options {
@@ -60,6 +63,7 @@ public enum LinuxViewer {
         public var audio = "pulse"
         public var audioLatency = 10.0
         public var audioWAV: String?
+        public var appearance: String?
         public init() {}
     }
 
@@ -120,6 +124,9 @@ public enum LinuxViewer {
             case "--audio-wav":
                 guard let v = value(a) else { return .exit(64, "--audio-wav <file.wav>") }
                 o.audioWAV = v
+            case "--appearance":
+                guard let v = value(a), ViewerAppearance(rawValue: v) != nil else { return .exit(64, "--appearance light|dark") }
+                o.appearance = v
             case "--headless": o.headless = true
             case "--verbose": o.verbose = true
             case "-h", "--help": return .exit(0, usage)
@@ -213,6 +220,10 @@ public enum LinuxViewer {
             session.log = { [weak script] s in if let script { script.log(s) } else { FileHandle.standardOutput.write(Data((s + "\n").utf8)) } }
         }
         guard win.open() else { return 69 }
+        let env = ProcessInfo.processInfo.environment
+        win.appearance = ViewerAppearance.resolve(argument: o.appearance, environment: env,
+                                                  settingsFileText: try? String(contentsOfFile: ViewerAppearance.settingsFilePath(environment: env), encoding: .utf8),
+                                                  systemDark: sdl.systemDark)
         if o.scale != .fit { win.setScale(o.scale) }
         session.start()
         script?.start { code in status.value = code; win.stop() }

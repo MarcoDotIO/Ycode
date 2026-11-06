@@ -280,7 +280,7 @@ struct SourceEditorPainter {
             if b.hasMarkedText, n == currentLine {
                 drawComposing(&ctx, line, y: y, x: x)
             } else if !line.runs.isEmpty {
-                ctx.draw(text(line.runs).font(f), at: CGPoint(x: x, y: y), anchor: .topLeading)
+                drawRuns(&ctx, line.runs, at: x, y: y, font: f)   // +CellGlyphs.swift
             }
         }
 
@@ -426,7 +426,7 @@ struct SourceEditorPainter {
         }
     }
 
-    private func text(_ runs: [EditorRun]) -> Text {
+    func text(_ runs: [EditorRun]) -> Text {
         runs.reduce(Text(verbatim: "")) { t, r in
             let piece = Text(verbatim: r.text).foregroundStyle(palette.color(r.role).color)
             return t + (r.role == .keyword ? piece.bold() : piece)

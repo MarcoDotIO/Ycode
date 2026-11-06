@@ -137,8 +137,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(abs(top(e.scrollView, in: content).top) <= 0.5)
         let backdrop = top(e.bandBackdrop, in: content)
         #expect(abs(backdrop.top) <= 0.5 && abs(backdrop.bottom - band - JumpBar.height) <= 0.5, "\(backdrop)")
-        // One blurred veil from the window's top to the jump bar's separator.
-        #expect(!e.bandBackdrop.blur.isHidden && e.bandBackdrop.blur.blendingMode == .withinWindow)
+        // One backdrop from the window's top to the jump bar's separator; it
+        // shows the content's shape (liquid-glass.md §9.1 replaced the flat
+        // material, row 68).
+        #expect(e.bandBackdrop.showsStructure && e.bandBackdrop.regions().count == 2)
         let jump = top(e.jumpBar, in: content)
         #expect(abs(jump.top - band) <= 0.5 && abs(jump.bottom - band - JumpBar.height) <= 0.5, "\(jump)")
         #expect(abs(e.scrollView.contentInsets.top - band - JumpBar.height) <= 0.5)
@@ -187,8 +189,8 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         _ = d.view
         let backdrop = try #require(d.bottomBarBackdrop)
         #expect(backdrop.superview === d.debugBar && backdrop.frame.size == d.debugBar.frame.size || d.debugBar.frame.isEmpty)
-        // The blurred material (the bottom bar matched at 12 %, liquid-glass.md §8.3).
-        #expect(!backdrop.blur.isHidden && backdrop.blur.material == .headerView)
+        // The content's shape at 12 % (liquid-glass.md §8.3, §9.1).
+        #expect(backdrop.showsStructure && backdrop.regions().map(\.share) == [CGFloat(BarBlur.bottomBarShare)])
     }
 
     // MARK: Council round 2, defect 2: the first line keeps its inset

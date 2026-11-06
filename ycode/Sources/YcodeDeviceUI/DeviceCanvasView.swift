@@ -1,7 +1,10 @@
-// The canvas (device-hub.md §4): the device in Ycode's frame, centred, the
-// device-control row under it, and the canvas's states — the live screen,
-// the status view of a stopped simulator (its picture, name, OS and
-// Start), the problems while the display connects, "No Selection",
+// The canvas (device-hub.md §4, §11.2): the device in Ycode's frame,
+// centred between the top of the canvas and the control capsules, which
+// float at its bottom (8 above the window's bottom edge), and the canvas's
+// states — the live screen, a stopped simulator (its picture in the same
+// place, with Start in a glass capsule where the controls float; no name or
+// OS under it: the toolbar's title and subtitle say them), the problems
+// while the display connects, "No Selection",
 // "Multiple Devices Selected" — plus the feedback banners ("Screenshot
 // Saved", "Capturing Keyboard"), the hinge slider and the debug status
 // line. Used by the compact window (the window's size sets the scale) and
@@ -58,9 +61,11 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
     private let scroll = NSScrollView()
     private let document = FlippedView()
     private let messageLabel = NSTextField(labelWithString: "")
+    /// A stopped device's capsule where the controls float: Start, or a
+    /// spinner and "Starting…" while it starts (Q1).
     private let statusStack = NSStackView()
-    private let statusName = NSTextField(labelWithString: "")
-    private let statusOS = NSTextField(labelWithString: "")
+    private var statusCapsule: GlassCapsule!
+    private let statusLabel = NSTextField(labelWithString: "")
     private let actionButton = NSButton(title: "Start", target: nil, action: nil)
     private let spinner = NSProgressIndicator()
     private let problemLabel = NSTextField(wrappingLabelWithString: "")
@@ -83,6 +88,8 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
     static let pairedHeight: CGFloat = 28
     private var statusAction: String?
     private var statusBusy = false
+    /// The stopped device's name (accessibility of its picture).
+    private var stoppedName = ""
     /// The headset or another viewer has the display (device-hub.md §I.12):
     /// the last picture dimmed under a capsule with its button.
     public private(set) var takenOverCapsule: GlassCapsule?
@@ -101,6 +108,10 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         scroll.hasVerticalScroller = mode == .hub
         scroll.hasHorizontalScroller = mode == .hub
         scroll.autohidesScrollers = true
+        // The canvas sits under the toolbar already (topInset): no automatic
+        // inset, so a fitted device never brings up scroll bars.
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsetsZero
         scroll.documentView = document
         scroll.contentView.drawsBackground = false
         addSubview(scroll)
@@ -115,23 +126,26 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         messageLabel.maximumNumberOfLines = 0
         messageLabel.lineBreakMode = .byWordWrapping
         addSubview(messageLabel)
-        statusName.font = .systemFont(ofSize: 17, weight: .semibold)
-        statusName.alignment = .center
-        statusOS.textColor = .secondaryLabelColor
-        statusOS.alignment = .center
-        actionButton.bezelStyle = .push
-        actionButton.controlSize = .large
+        statusLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        statusLabel.textColor = .secondaryLabelColor
+        // On the capsule's glass, so no bezel of its own: the accent says it acts.
+        actionButton.isBordered = false
+        actionButton.font = .systemFont(ofSize: 13, weight: .semibold)
+        actionButton.contentTintColor = .controlAccentColor
+        actionButton.identifier = .init("canvas-action-button")
         actionButton.target = self
         actionButton.action = #selector(actionClicked)
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
-        statusStack.orientation = .vertical
-        statusStack.alignment = .centerX
-        statusStack.spacing = 6
-        for v in [statusName, statusOS, spinner, actionButton] { statusStack.addArrangedSubview(v) }
-        statusStack.setCustomSpacing(14, after: statusOS)
-        addSubview(statusStack)
+        statusStack.orientation = .horizontal
+        statusStack.spacing = 8
+        statusStack.edgeInsets = NSEdgeInsets(top: 0, left: 18, bottom: 0, right: 18)
+        for v in [spinner, statusLabel, actionButton] { statusStack.addArrangedSubview(v) }
+        statusCapsule = GlassCapsule(content: statusStack, height: DeviceControlsRow.height)
+        statusCapsule.identifier = .init("canvas-status-capsule")
+        statusCapsule.translatesAutoresizingMaskIntoConstraints = true
+        addSubview(statusCapsule)
         statsLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
         statsLabel.textColor = .secondaryLabelColor
         statsLabel.isHidden = true
@@ -173,14 +187,16 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         refreshState()
     }
 
-    /// A device that is not running: its picture, name, OS, and the action
-    /// button (`action` nil: none; `busy`: a spinner instead, Q1).
+    /// A device that is not running: its picture where the live device
+    /// shows, and the action button where the controls float (`action` nil:
+    /// none; `busy`: a spinner and "Starting…" instead, Q1). `name` and `os`
+    /// are the toolbar's title and subtitle, not drawn on the canvas (§11.2).
     public func showStopped(spec: DeviceFrameSpec, name: String, os: String, action: String?, busy: Bool = false) {
         detachSession()
         stoppedSpec = spec
         message = nil
-        statusName.stringValue = name
-        statusOS.stringValue = busy ? "\(os) — Starting…" : os
+        stoppedName = name
+        statusLabel.stringValue = busy ? "Starting…" : ""
         statusAction = action
         statusBusy = busy
         refreshGeometry()
@@ -203,6 +219,10 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         setCapturesKeyboard(false)
     }
 
+    /// The stopped device's capsule and its button (tests).
+    public var statusActionCapsule: GlassCapsule { statusCapsule }
+    public var statusActionButton: NSButton { actionButton }
+
     /// The canvas's current state, for tests: "message: …", "stopped",
     /// "live", "connecting: …".
     public var stateDescription: String {
@@ -218,9 +238,12 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         messageLabel.stringValue = message ?? ""
         messageLabel.isHidden = message == nil
         scroll.isHidden = !hasDevice
-        statusStack.isHidden = stoppedSpec == nil
+        statusCapsule.isHidden = stoppedSpec == nil || (statusAction == nil && !statusBusy)
         actionButton.title = statusAction ?? ""
+        actionButton.setAccessibilityLabel(statusAction)
         actionButton.isHidden = statusAction == nil || statusBusy
+        statusLabel.isHidden = !statusBusy
+        frameView.setAccessibilityLabel(stoppedSpec != nil ? stoppedName : nil)
         if statusBusy { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
         controls.isHidden = session == nil
         let problem = session.flatMap { $0.hasImage ? nil : $0.problemText }
@@ -228,7 +251,8 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         problemLabel.isHidden = problem == nil
         if let s = session {
             controls.configure(.init(foldable: s.isFoldable, canRotate: s.canRotate, recording: s.isRecording, posture: s.posture,
-                                     enabled: s.isLive, showsRotate: s.spec.rotates, showsHome: s.spec.family != .watch))
+                                     enabled: s.isLive, showsRotate: s.spec.rotates, showsHome: s.spec.family != .watch,
+                                     spatial: s.isSpatial || s.spec.family == .vision))
         }
         statsLabel.isHidden = !showsStatistics || session == nil
         updateStatistics()
@@ -335,14 +359,15 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
     /// The device's size in device points (frame included).
     public var deviceSize: CGSize { frameView.geometry.size }
 
-    /// The area the device may take (the canvas less the control row).
+    /// The area the device is centred in (§11.2): from the toolbar's bottom
+    /// to the floating capsules' top, less the paired-device capsule above
+    /// them. A stopped device takes the same place as a running one.
     var deviceArea: CGRect {
         let b = bounds
         if mode == .compact { return CGRect(x: 0, y: topInset, width: b.width, height: max(1, b.height - topInset)) }
-        let paired = pairedCapsule != nil ? Self.pairedHeight + CompactWindowLayout.controlsGap : 0
-        let bottom = session != nil ? DeviceControlsRow.height + 2 * CompactWindowLayout.controlsGap + paired : 0
-        if stoppedSpec != nil { return CGRect(x: 0, y: topInset, width: b.width, height: max(1, (b.height - topInset) * 0.62 - paired)) }
-        return CGRect(x: 0, y: topInset, width: b.width, height: max(1, b.height - topInset - bottom))
+        var area = DeviceControlsLayout.deviceArea(canvasWidth: Double(b.width), canvasHeight: Double(b.height), top: Double(topInset))
+        if pairedCapsule != nil { area.size.height = max(1, area.height - Self.pairedHeight - CompactWindowLayout.controlsGap) }
+        return area
     }
 
     /// Points per inch of the screen the canvas is on (nil: unknown).
@@ -378,11 +403,14 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         messageLabel.frame.origin = CGPoint(x: ((b.width - messageLabel.frame.width) / 2).rounded(),
                                             y: (topInset + (b.height - topInset - messageLabel.frame.height) / 2).rounded())
         let area = deviceArea
-        let scale = stoppedSpec != nil ? DeviceZoom.fit(deviceSize, in: area.size, margin: 32) : effectiveScale
+        let scale = effectiveScale
         frameView.scale = scale
         let size = CGSize(width: (deviceSize.width * scale).rounded(), height: (deviceSize.height * scale).rounded())
         scroll.frame = area
-        let doc = CGSize(width: max(area.width, size.width + 2 * DeviceZoom.fitMargin), height: max(area.height, size.height + 2 * DeviceZoom.fitMargin))
+        // Larger than the area only when the device does not fit (zoomed in):
+        // a fitted device never scrolls.
+        let need = CGSize(width: size.width + 2 * DeviceZoom.fitMargin, height: size.height + 2 * DeviceZoom.fitMargin)
+        let doc = CGSize(width: need.width > area.width + 1 ? need.width : area.width, height: need.height > area.height + 1 ? need.height : area.height)
         document.frame = CGRect(origin: .zero, size: doc)
         var origin = CGPoint(x: ((doc.width - size.width) / 2).rounded(), y: ((doc.height - size.height) / 2).rounded())
         if mode == .compact {
@@ -392,25 +420,22 @@ public final class DeviceCanvasView: NSView, DeviceLiveSessionObserver {
         frameView.needsLayout = true
         let screenRect = frameView.screen.frame
         problemLabel.frame = screenRect.insetBy(dx: 12, dy: max(0, screenRect.height / 2 - 30))
-        // The control row: under the device, inside the canvas.
+        // The capsules float at the bottom of the canvas, centred, 8 above
+        // the window's bottom edge (§11.1); the stopped device's Start
+        // capsule takes their place.
         let cs = controls.intrinsicContentSize
-        let deviceBottom = area.minY + min(area.height, origin.y + size.height - scroll.contentView.bounds.minY)
-        var cy = deviceBottom + CompactWindowLayout.controlsGap
+        let cy = b.height - CGFloat(DeviceControlsLayout.bottomMargin) - DeviceControlsRow.height
+        controls.frame = CGRect(x: ((b.width - cs.width) / 2).rounded(), y: cy, width: cs.width, height: DeviceControlsRow.height)
         if let pairedCapsule {
             let w = pairedCapsule.fittingSize.width
-            let py = stoppedSpec != nil ? area.maxY + 6 : min(cy, b.height - CompactWindowLayout.bottomMargin - DeviceControlsRow.height - Self.pairedHeight - CompactWindowLayout.controlsGap)
+            let py = cy - CompactWindowLayout.controlsGap - Self.pairedHeight
             pairedCapsule.frame = CGRect(x: ((b.width - w) / 2).rounded(), y: py.rounded(), width: w, height: Self.pairedHeight)
             pairedCapsule.isHidden = session == nil && stoppedSpec == nil
-            cy = py + Self.pairedHeight + CompactWindowLayout.controlsGap
         }
-        cy = min(cy, b.height - CompactWindowLayout.bottomMargin - DeviceControlsRow.height)
-        if mode == .compact { cy = b.height - CompactWindowLayout.bottomMargin - DeviceControlsRow.height }
-        controls.frame = CGRect(x: ((b.width - cs.width) / 2).rounded(), y: cy.rounded(), width: cs.width, height: DeviceControlsRow.height)
-        // The status view under the picture.
         if stoppedSpec != nil {
-            let fs = statusStack.fittingSize
-            let below = pairedCapsule.map { $0.frame.maxY + 6 } ?? area.maxY + 12
-            statusStack.frame = CGRect(x: ((b.width - fs.width) / 2).rounded(), y: below.rounded(), width: fs.width, height: fs.height)
+            // The capsule's content sits 4 inside each end (GlassCapsule).
+            let w = statusStack.fittingSize.width + 8
+            statusCapsule.frame = CGRect(x: ((b.width - w) / 2).rounded(), y: cy, width: w, height: DeviceControlsRow.height)
         }
         statsLabel.frame = CGRect(x: 10, y: b.height - 18, width: max(10, b.width - 20), height: 16)
         if let banner {

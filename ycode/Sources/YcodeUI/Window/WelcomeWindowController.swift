@@ -28,6 +28,21 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
     public static let nameCapHeight: CGFloat = 13
     public static let nameBaselineAboveButtons: CGFloat = 38
     public static let versionBaselineAboveButtons: CGFloat = 19
+    /// metrics.md §16.3 (checklist row 80): the icon's drawn square is 98
+    /// points, its bottom 15.5 above the name's capitals. The image keeps
+    /// its own margin (the field spans 100–924 of 1024), so its view is
+    /// larger by that.
+    public static let iconVisibleSide: CGFloat = 98
+    public static let iconGapAboveName: CGFloat = 15.5
+    static var iconMarginFraction: CGFloat { CGFloat(ProductIconGeometry.fieldMin / ProductIconGeometry.side) }
+    public static var iconFrameSide: CGFloat {
+        iconVisibleSide / CGFloat((ProductIconGeometry.fieldMax - ProductIconGeometry.fieldMin) / ProductIconGeometry.side)
+    }
+    /// The icon view's top, from the window's top.
+    public static var iconFrameTop: CGFloat {
+        let capTop = buttonsTop - nameBaselineAboveButtons - nameCapHeight
+        return capTop - iconGapAboveName + iconFrameSide * iconMarginFraction - iconFrameSide
+    }
     /// metrics.md §13.4: recent rows on a 47-point pitch; the separators
     /// run under the text (from its leading edge) to 14 points before the
     /// box's right edge.
@@ -213,10 +228,10 @@ public final class WelcomeWindowController: NSWindowController, NSTableViewDataS
             content.addSubview(v)
         }
         NSLayoutConstraint.activate([
-            iconView.topAnchor.constraint(equalTo: content.topAnchor, constant: 48),
+            iconView.topAnchor.constraint(equalTo: content.topAnchor, constant: GlassBars.enabled ? Self.iconFrameTop : 48),
             iconView.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 112),
-            iconView.heightAnchor.constraint(equalToConstant: 112),
+            iconView.widthAnchor.constraint(equalToConstant: GlassBars.enabled ? Self.iconFrameSide : 112),
+            iconView.heightAnchor.constraint(equalToConstant: GlassBars.enabled ? Self.iconFrameSide : 112),
             GlassBars.enabled
                 ? nameLabel.firstBaselineAnchor.constraint(equalTo: content.topAnchor, constant: Self.buttonsTop - Self.nameBaselineAboveButtons)
                 : nameLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 10),

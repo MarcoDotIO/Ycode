@@ -45,9 +45,7 @@ extension SourceControlCoordinator {
         case .deleteBranch(let b):
             guard confirm("Delete the branch \(q(b))?", "A branch with commits that are not merged is deleted only after a second confirmation.", "Delete") else { return }
             deleteBranch(b, force: false)
-        case .merge(let ref):
-            guard confirm("Merge \(q(ref)) into \(q(current))?", "Conflicts open the conflict editor.", "Merge") else { return }
-            merge(ref)
+        case .merge(let ref): presentMergeAlert(branch: ref)
         case .rebaseOnto(let ref):
             guard confirm("Rebase \(q(current)) onto \(q(ref))?", "Replays the commits of \(q(current)) on top of \(q(ref)).", "Rebase") else { return }
             rebase(onto: ref)
@@ -82,6 +80,10 @@ extension SourceControlCoordinator {
             perform { try $0.removeRemote(r) }
         case .resolveConflicts(let p): showConflictEditor(path: p)
         case .markResolved(let p): perform { try $0.markResolved([p]) }
+        case .mergeInto, .newHostedRemote: NSSound.beep()
+        case .viewOnHost(let b):
+            if let url = SourceControlRowMenu.hostURL(branch: b, remoteURLs: snapshot.remotes.map(\.url)) { NSWorkspace.shared.open(url) }
+        case .exportStash(let ref): exportStash(ref)
         }
     }
 
@@ -178,42 +180,13 @@ extension SourceControlCoordinator {
             self.integrationResult = box.value
             switch box.value {
             case .conflicts(let files)?: self.showConflictEditor(path: files.first)
-            case .some: if self.conflictEditor != nil { self.closeConflictEditor() }
-            case nil: break
+            case .some: self.closeConflictEditor()
+            case nil: if self.mergeOverlay?.sheet == nil { self.mergeOverlay?.close() }
             }
         })
     }
 
     final class ResultBox: @unchecked Sendable { var value: GitRepository.IntegrationResult? }
-
-    // MARK: Conflict editor
-
-    public var conflictEditor: ConflictEditorController? { editorOverlay as? ConflictEditorController }
-
-    /// Shows the conflict editor over the editor area, on `path` or the
-    /// first conflicted file.
-    @discardableResult
-    public func showConflictEditor(path: String? = nil) -> ConflictEditorController? {
-        guard let repo = repository else { return nil }
-        try? owner.editor.save()
-        let c = ConflictEditorController(repository: repo, focus: path)
-        c.onResolved = { [weak self] in self?.owner.refreshFileStatus(nil) }
-        c.onContinue = { [weak self] in self?.continueIntegration() }
-        c.onAbort = { [weak self] in
-            guard let self else { return }
-            let verb = self.snapshot.integration.verb
-            guard self.confirm("Abort the \(verb.lowercased())?", "Returns the branch to where it was before the \(verb.lowercased()).", "Abort") else { return }
-            self.abortIntegration()
-        }
-        install(c)
-        setInspector(nil)
-        return c
-    }
-
-    func closeConflictEditor() {
-        guard conflictEditor != nil else { return }
-        hideEditor()
-    }
 
     // MARK: Show Last Change for Line
 
@@ -250,21 +223,4 @@ final class SourceControlMenuItem: NSMenuItem {
 
 extension SourceControlMenuItem: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool { rowEnabled }
-}
-
-extension WorkspaceWindowController {
-    /// Integrate ▸ Resolve Conflicts…: the conflict editor on the selected
-    /// conflicted file, else the first one.
-    @objc public func scmResolveConflicts(_ sender: Any?) {
-        let selected = sourceControl.selectedFile.flatMap { f in sourceControl.snapshot.changes.contains { $0.path == f && $0.status == .conflicted } ? f : nil }
-        sourceControl.showConflictEditor(path: selected)
-    }
-    /// Integrate ▸ Continue <operation>.
-    @objc public func scmContinueIntegration(_ sender: Any?) { sourceControl.continueIntegration() }
-    /// Integrate ▸ Abort <operation>.
-    @objc public func scmAbortIntegration(_ sender: Any?) {
-        let verb = sourceControl.snapshot.integration.verb.lowercased()
-        guard sourceControl.confirm("Abort the \(verb)?", "Returns the branch to where it was before the \(verb).", "Abort") else { return }
-        sourceControl.abortIntegration()
-    }
 }

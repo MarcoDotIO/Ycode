@@ -88,6 +88,18 @@ func waitFor<T: Sendable>(_ what: String, seconds: Double = 180, sourceLocation:
     return value
 }
 
+/// Polls `condition` until it holds, for at most `seconds`.
+@MainActor
+func eventually(_ what: String, seconds: Double = 60, sourceLocation: SourceLocation = #_sourceLocation,
+                _ condition: @MainActor () async -> Bool) async {
+    let deadline = Date().addingTimeInterval(seconds)
+    while Date() < deadline {
+        if await condition() { return }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+    }
+    Issue.record("\(what) did not happen within \(Int(seconds)) s", sourceLocation: sourceLocation)
+}
+
 private final class Latch: @unchecked Sendable {
     private let lock = NSLock()
     private var value = false
@@ -142,10 +154,14 @@ private func find(_ items: [OutlineItem], key: String) -> OutlineItem? {
         let menu = NSMenu()
         wc.navigator.rebuildRowMenu(menu)
         #expect(menu.items.map { $0.isSeparatorItem ? "|" : $0.title } == [
-            "Check Out \u{201C}feature\u{201D}…", "|", "New Branch from \u{201C}feature\u{201D}…", "New Tag from \u{201C}feature\u{201D}…", "|",
-            "Merge \u{201C}feature\u{201D} into \u{201C}main\u{201D}…", "Rebase \u{201C}main\u{201D} onto \u{201C}feature\u{201D}…", "|",
-            "Push \u{201C}feature\u{201D}…", "|", "Rename…", "Delete…",
+            "Switch to \u{201C}feature\u{201D}…", "New Branch from \u{201C}feature\u{201D}…", "Rename \u{201C}feature\u{201D}…",
+            "Tag \u{201C}feature\u{201D}…", "|",
+            "Merge \u{201C}feature\u{201D} into \u{201C}main\u{201D}…", "Merge \u{201C}main\u{201D} into \u{201C}feature\u{201D}…", "|",
+            "New \u{201C}scm-ui-branches\u{201D} Remote…", "Add Existing Remote…", "|", "View on Host…", "|",
+            "Apply Stashed Changes…", "Export Stashed Changes as Patch File…", "|", "Delete…",
         ])
+        // The navigator's outline carries the row menu (merge-sheet.md §1.1).
+        #expect(wc.navigator.hasRowMenu)
         #expect(scm.rowMenuItems(forKey: "branch:main").first { $0.title == "Delete…" }?.isEnabled == false)
         #expect(scm.rowMenuItems(forKey: "group:Remotes").map(\.title) == ["Add Remote…"])
         #expect(scm.rowMenuItems(forKey: "remote:origin").map { $0.isSeparatorItem ? "|" : $0.title } == ["Fetch \u{201C}origin\u{201D}", "|", "Remove \u{201C}origin\u{201D}…"])
@@ -189,7 +205,7 @@ private func find(_ items: [OutlineItem], key: String) -> OutlineItem? {
         #expect(scm.rowMenuItems(forKey: "remoteBranch:origin/main").first?.title == "Check Out \u{201C}main\u{201D}…")
     }
 
-    @Test func conflictEditorResolvesAMergeAndContinues() async throws {
+    @Test func mergeSheetResolvesAMergeAndCompletesIt() async throws {
         let s = try Sandbox("scm-ui-conflict")
         defer { s.cleanUp() }
         try s.makeConflict()
@@ -200,16 +216,16 @@ private func find(_ items: [OutlineItem], key: String) -> OutlineItem? {
         scm.merge("feature")
         await waitFor("source control") { await scm.idle() }
         #expect(scm.lastIntegrationResult == .conflicts([file]))
-        let editor = try #require(scm.conflictEditor)
-        await waitFor("the conflict editor") { await editor.idle() }
-        #expect(editor.files == [file] && editor.currentFile == file)
-        #expect(editor.titleLabel.stringValue == "Conflicts in main.swift")
-        #expect(editor.statusLabel.stringValue == "1 conflict unresolved")
-        #expect(editor.hunkLabel.stringValue == "Change 1 of 1 (conflict)")
-        #expect(!editor.resolveButton.isEnabled && editor.choiceControl.selectedSegment == -1)
-        #expect(!editor.continueButton.isHidden && editor.continueButton.title == "Continue Merge" && !editor.continueButton.isEnabled)
-        #expect(editor.resultText.contains("<<<<<<< main\nlet b = 200\n=======\nlet b = 20\n>>>>>>> feature\n"))
-        #expect(editor.comparison.rows.contains { $0.kind == .changed })
+        let sheet = try #require(scm.mergeSheet)
+        await waitFor("the merge sheet") { await sheet.idle() }
+        #expect(sheet.state.files == [file] && sheet.state.currentFile == file)
+        #expect(sheet.state.stepperText == "1/1" && sheet.state.token(forHunk: 0)?.glyph == "?")
+        #expect(!sheet.mergeButton.isEnabled && sheet.mergeButton.title == "Merge")
+        // The panes: the current branch on the left, never git's markers.
+        #expect(sheet.canvas.rows.map { $0.left?.text } == ["let a = 1", "let b = 200", "let c = 3"])
+        #expect(sheet.canvas.rows.map { $0.right?.text } == ["let a = 1", "let b = 20", "let c = 3"])
+        #expect(sheet.state.leftFooter?.branch == "main" && sheet.state.rightFooter?.branch == "feature")
+        #expect(sheet.state.leftFooter?.isHead == true && sheet.state.leftFooter?.author == "Ycode Test")
 
         // The window's state: navigator header, Integrate menu, menu titles.
         scm.setMode(.changes)
@@ -217,40 +233,73 @@ private func find(_ items: [OutlineItem], key: String) -> OutlineItem? {
         #expect(scm.rowMenuItems(forKey: "change:" + file).map(\.title) == ["Resolve Conflicts…", "Mark as Resolved"])
         let state = scm.menuState()
         #expect(state.isEnabled("scmResolveConflicts:") && state.isEnabled("scmAbortIntegration:") && !state.isEnabled("scmContinueIntegration:"))
+        #expect(!state.isEnabled("scmMerge:"))
         #expect(wc.menuContext.integrationVerb == "Merge" && wc.menuContext.hasConflicts)
         #expect(MenuTitles.title(generic: "Continue", in: wc.menuContext) == "Continue Merge")
         #expect(scm.rowMenuItems(forKey: "branch:feature").first { $0.title.hasPrefix("Merge") }?.isEnabled == false)
 
-        // Base / ours / theirs, two at a time.
-        editor.setPair(.baseLeft)
-        #expect(editor.comparison.leftView.string.contains("let b = 2\n") && editor.comparison.rightView.string.contains("let b = 200"))
-        editor.setPair(.baseRight)
-        #expect(editor.comparison.rightView.string.contains("let b = 20\n"))
-        editor.setPair(.leftRight)
+        // Choose: Right, then both; the change stays selected.
+        sheet.choose(.theirs)
+        #expect(sheet.state.currentHunk == 0 && sheet.canvas.rows[1].left?.text == "let b = 20")
+        #expect(sheet.mergeButton.isEnabled && sheet.state.token(forHunk: 0)?.glyph == "1")
+        sheet.choose(.oursThenTheirs)
+        #expect(sheet.canvas.rows.compactMap { $0.left?.text } == ["let a = 1", "let b = 200", "let b = 20", "let c = 3"])
+        // By hand (double-click a change's left lines).
+        sheet.beginEditing()
+        #expect(sheet.state.isEditing && !sheet.canvas.handEditorScroll.isHidden)
+        sheet.setEditedText("let b = 2_000\n")
+        #expect(sheet.state.document?.result == "let a = 1\nlet b = 2_000\nlet c = 3\n")
 
-        // Per hunk: right, both, then a hand edit.
-        editor.choose(.theirs)
-        #expect(editor.resultText == "let a = 1\nlet b = 20\nlet c = 3\n" && editor.resolveButton.isEnabled)
-        #expect(editor.choiceControl.selectedSegment == 1 && editor.statusLabel.stringValue == "Resolved")
-        editor.choose(.oursThenTheirs)
-        #expect(editor.resultText == "let a = 1\nlet b = 200\nlet b = 20\nlet c = 3\n")
-        editor.beginEditing()
-        #expect(editor.isEditing && editor.choiceControl.selectedSegment == 5 && !editor.hunkEditorScroll.isHidden)
-        editor.setEditedText("let b = 2_000\n")
-        #expect(editor.resultText == "let a = 1\nlet b = 2_000\nlet c = 3\n")
-
-        // Mark as Resolved, then Continue Merge.
-        #expect(await waitFor("Mark as Resolved") { await editor.markResolved() } == true)
-        await waitFor("source control") { await scm.idle() }
-        #expect(editor.files.isEmpty && editor.statusLabel.stringValue == "All conflicts resolved")
-        #expect(editor.continueButton.isEnabled)
-        #expect(scm.menuState().isEnabled("scmContinueIntegration:"))
-        editor.continueButton.performClick(nil)
-        await waitFor("source control") { await scm.idle() }
+        // Merge: writes, stages and commits; the sheet closes.
+        sheet.mergeButton.performClick(nil)
+        await eventually("the merge commit") { await scm.idle(); return scm.mergeSheet == nil }
         guard case .completed? = scm.lastIntegrationResult else { Issue.record("expected the merge commit"); return }
-        #expect(scm.conflictEditor == nil && scm.snapshot.integration == .none)
+        #expect(scm.mergeSheet == nil && scm.mergeOverlay == nil && scm.snapshot.integration == .none)
         #expect(try s.read("Sources/App/main.swift") == "let a = 1\nlet b = 2_000\nlet c = 3\n")
         #expect(try s.git("rev-list", "--parents", "-n", "1", "HEAD").split(separator: " ").count == 3)
+    }
+
+    /// Mark as Resolved (the change row's item, Integrate) still writes and
+    /// stages one file; Continue then makes the commit.
+    @Test func markAsResolvedThenContinue() async throws {
+        let s = try Sandbox("scm-ui-resolved")
+        defer { s.cleanUp() }
+        try s.makeConflict()
+        let wc = try await s.window()
+        let scm = wc.sourceControl
+        scm.merge("feature")
+        await waitFor("source control") { await scm.idle() }
+        let sheet = try #require(scm.mergeSheet)
+        await waitFor("the merge sheet") { await sheet.idle() }
+        sheet.choose(.ours)
+        #expect(await waitFor("Mark as Resolved") { await sheet.markResolved() } == true)
+        await waitFor("source control") { await scm.idle() }
+        #expect(sheet.state.files.isEmpty && sheet.state.canMerge)
+        #expect(scm.menuState().isEnabled("scmContinueIntegration:"))
+        wc.scmContinueIntegration(nil)
+        await eventually("the merge commit") { await scm.idle(); return scm.mergeSheet == nil }
+        #expect(scm.snapshot.integration == .none && scm.mergeSheet == nil)
+        #expect(try s.read("Sources/App/main.swift") == "let a = 1\nlet b = 200\nlet c = 3\n")
+    }
+
+    /// Cancel asks, then aborts the merge (off screen the question is
+    /// answered at once).
+    @Test func cancelAbortsTheMerge() async throws {
+        let s = try Sandbox("scm-ui-cancel")
+        defer { s.cleanUp() }
+        try s.makeConflict()
+        let wc = try await s.window()
+        let scm = wc.sourceControl
+        let before = try s.git("rev-parse", "HEAD")
+        scm.merge("feature")
+        await waitFor("source control") { await scm.idle() }
+        let sheet = try #require(scm.mergeSheet)
+        await waitFor("the merge sheet") { await sheet.idle() }
+        sheet.cancelButton.performClick(nil)
+        await eventually("the abort") { await scm.idle(); return scm.mergeSheet == nil }
+        #expect(scm.snapshot.integration == .none && scm.mergeOverlay == nil)
+        #expect(try s.git("rev-parse", "HEAD") == before)
+        #expect(try s.read("Sources/App/main.swift") == "let a = 1\nlet b = 200\nlet c = 3\n")
     }
 
     /// Regression: `idle()` once waited on a wrapper task that finished
@@ -293,15 +342,15 @@ private func find(_ items: [OutlineItem], key: String) -> OutlineItem? {
         let before = try s.git("rev-parse", "HEAD")
         scm.rebase(onto: "main")
         await waitFor("source control") { await scm.idle() }
-        let editor = try #require(scm.conflictEditor)
-        await waitFor("the conflict editor") { await editor.idle() }
+        let sheet = try #require(scm.mergeSheet)
+        await waitFor("the merge sheet") { await sheet.idle() }
         guard case .rebasing(let branch, _, _, _) = scm.snapshot.integration else { Issue.record("expected rebasing"); return }
         #expect(branch == "feature")
-        #expect(editor.abortButton.title == "Abort Rebase" && wc.menuContext.integrationVerb == "Rebase")
-        #expect(editor.document?.theirsLabel == "feature")
+        #expect(sheet.state.primaryTitle == "Continue Rebase" && wc.menuContext.integrationVerb == "Rebase")
+        #expect(sheet.state.document?.theirsLabel == "feature")
         wc.scmAbortIntegration(nil)
-        await waitFor("source control") { await scm.idle() }
-        #expect(scm.snapshot.integration == .none && scm.conflictEditor == nil)
+        await eventually("the abort") { await scm.idle(); return scm.mergeSheet == nil }
+        #expect(scm.snapshot.integration == .none && scm.mergeSheet == nil)
         #expect(try s.git("rev-parse", "HEAD") == before)
 
         // A cherry-pick of a clean commit from another branch.

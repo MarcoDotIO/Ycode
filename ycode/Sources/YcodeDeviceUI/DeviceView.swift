@@ -74,19 +74,34 @@ public final class DeviceView: NSView {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             layer?.contents = image
-            if let image, image.width != oldValue?.width { updateFilter() }
+            if let image, image.width != oldValue?.width || image.height != oldValue?.height { updateFilter() }
             CATransaction.commit()
         }
     }
 
-    /// Trilinear filtering makes Core Animation build mipmaps of every new
-    /// frame (an 11 MB image at full resolution); it is used only when the
-    /// image is shrunk by more than half, where bilinear would alias.
+    /// One image pixel per display pixel: the picture is shown as it is,
+    /// with no filter (uikit-feel-ycode.md §8.4); at any other size it is
+    /// filtered. Trilinear filtering makes Core Animation build mipmaps of
+    /// every new frame (an 11 MB image at full resolution); it is used only
+    /// when the image is shrunk by more than half, where bilinear would alias.
     private func updateFilter() {
         guard let image, bounds.width > 0 else { return }
         let backing = window?.backingScaleFactor ?? 2
         let shrink = CGFloat(image.width) / (bounds.width * backing)
-        layer?.minificationFilter = shrink > 2 ? .trilinear : .linear
+        let exact = Self.showsPixelsOneToOne(image: CGSize(width: image.width, height: image.height), view: bounds.size, backing: backing)
+        layer?.magnificationFilter = exact ? .nearest : .linear
+        layer?.minificationFilter = exact ? .nearest : shrink > 2 ? .trilinear : .linear
+    }
+
+    /// Whether an image of `image` pixels fills a view of `view` points
+    /// with one image pixel per display pixel.
+    public static func showsPixelsOneToOne(image: CGSize, view: CGSize, backing: CGFloat) -> Bool {
+        abs(image.width - view.width * backing) < 0.01 && abs(image.height - view.height * backing) < 0.01
+    }
+
+    public override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updateFilter()
     }
 
     public override init(frame: NSRect) {

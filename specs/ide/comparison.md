@@ -73,6 +73,10 @@ by a space.
 
 ### Conflict editor (`YcodeUI/SourceControl/ConflictEditorController.swift`)
 
+Since B3-MERGE (2026-11-05) a repository's conflicts are resolved in the
+merge sheet (`merge-sheet.md`, §12 for Ycode's implementation); this
+controller remains Compare Files' view.
+
 Its state and every text it shows are the core's `ConflictEditorState`,
 which the Linux IDE's conflict editor draws too (`source-control.md`,
 "Ycode implementation: the Linux IDE").

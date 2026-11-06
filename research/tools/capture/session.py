@@ -57,7 +57,7 @@ sys.path.insert(0, str(REPO / "tools" / "capture"))
 # scroll bars) work in the background.
 FOCUS_ACTIONS = {"menu", "key", "text", "click", "drag"}
 ACTION_KINDS = {"open", "press", "set", "select", "menu", "key", "text", "click", "hover", "scroll", "drag", "wait",
-                "resize"}
+                "resize", "run", "move"}
 COUNCIL_FPS = 120
 
 
@@ -278,13 +278,20 @@ class Session:
                              + "\n  ".join(chain))
 
     def project_copy(self, target_dir: pathlib.Path) -> pathlib.Path:
+        """A fresh copy of the test project. With --project-dir it goes there
+        (a folder outside any git repository: the apps would otherwise show
+        the enclosing repository, this one, in their source control views)."""
         p = self.script["project"]
         source_root = REPO / "research" / "dirty" / "test-projects"
         if "generator" in p:
             subprocess.run([sys.executable, "-I", str(HERE / p["generator"]), str(source_root)], check=True,
                            stdout=subprocess.DEVNULL)
         src = source_root / p["path"].split("/")[0]
-        dest = target_dir / "project"
+        if self.args.project_dir:
+            dest = pathlib.Path(self.args.project_dir).resolve() / self.name / target_dir.name / "project"
+            dest.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            dest = target_dir / "project"
         if dest.exists():
             shutil.rmtree(dest)
         shutil.copytree(src, dest)
@@ -409,6 +416,19 @@ class Session:
             d = a["drag"]
             return ax.run("drag", "--from", f"{d['from'][0]},{d['from'][1]}", "--to", f"{d['to'][0]},{d['to'][1]}",
                           "--duration", str(a.get("duration", 0.4)), *window, *route, check=False)
+        if kind == "run":
+            # A command in the project copy (for example `git merge`), for an
+            # app that has no menu path for that step.
+            start = time.time()
+            proc = subprocess.run([str(x) for x in a["run"]], cwd=project_dir, capture_output=True, text=True)
+            return {"ok": proc.returncode == 0 or a.get("allow_fail", False), "wall_start": start, "wall": time.time(),
+                    "exit_status": proc.returncode, "output": (proc.stdout + proc.stderr)[-400:]}
+        if kind == "move":
+            # Put another window of the app (Settings) on the session's display:
+            # [x, y] from the display's top left; "window" picks it by title.
+            dx, dy = self.display["frame"][:2]
+            x, y = a["move"]
+            return ax.run("window", *window, "--position", f"{dx + x},{dy + y}", "--raise", check=False)
         if kind == "resize":
             w, h = a["resize"]
             return ax.run("window", "--size", f"{w},{h}", *window, check=False)
@@ -416,16 +436,16 @@ class Session:
 
     # ------------------------------------------------------------ capture
 
-    def still(self, pid, path, mode):
-        r = subprocess.run([str(self.wincap), "still", "--pid", str(pid), "--mode", mode, *self.window_select,
+    def still(self, pid, path, mode, select=None):
+        r = subprocess.run([str(self.wincap), "still", "--pid", str(pid), "--mode", mode, *(select or self.window_select),
                             "-o", str(path)], capture_output=True, text=True)
         if r.returncode != 0:
             log(f"still failed: {r.stderr.strip()}")
             return None
         return path.name
 
-    def start_recording(self, pid, path, rec):
-        cmd = [str(self.wincap), "record", "--pid", str(pid), *self.window_select, "-o", str(path),
+    def start_recording(self, pid, path, rec, select=None):
+        cmd = [str(self.wincap), "record", "--pid", str(pid), *(select or self.window_select), "-o", str(path),
                "--fps", str(rec.get("fps", 60)), "--codec", rec.get("codec", "prores4444"),
                "--mode", rec.get("mode", "window"), "--duration", str(rec.get("max", 30))]
         if rec.get("margin"):
@@ -464,15 +484,22 @@ class Session:
         target_dir.mkdir(parents=True, exist_ok=True)
         app = target.resolve_app(REPO / "research" / "dirty" / "apps")
         display = choose_display(Driver(self.axdrive), win_display(self.script), self.args.allow_1x)
+        self.display = display
         self.fps = self.frame_rate(display)
-        project_dir = self.project_copy(target_dir)
-        project_file = project_dir / self.script["project"]["path"].split("/", 1)[1]
-        names = {"app": spec.get("app_name", target.label), "project": project_file.stem, "app_path": app}
+        if "project" in self.script and target.name in self.script.get("project_targets", [target.name]):
+            project_dir = self.project_copy(target_dir)
+            project_file = project_dir / self.script["project"]["path"].split("/", 1)[1]
+            documents = [project_file]
+        else:
+            project_dir, project_file, documents = target_dir, None, []
+        names = {"app": spec.get("app_name", target.label), "project": project_file.stem if project_file else "",
+                 "app_path": app}
+        names.update(self.script.get("names", {}).get(target.name, {}))
         win = self.script.get("window", {})
         title = substitute(win.get("title", "{project}"), names)
         self.window_select = ["--title", title]
 
-        pid, frontmost = self.launch(target, [project_file])
+        pid, frontmost = self.launch(target, documents)
         log(f"{target.label}: PID {pid}")
         ax = Driver(self.axdrive, pid)
         manifest = {
@@ -485,11 +512,23 @@ class Session:
             "display": display, "steps": [],
         }
         try:
-            ax.run("wait", "--window", title, "--timeout", str(win.get("timeout", 60)))
+            if "wait_title" in win and win["wait_title"] is None:
+                # The first window's title is not known in advance (a tool
+                # window showing whatever it showed last): wait for any.
+                time.sleep(float(win.get("first_window_wait", 5.0)))
+            else:
+                ax.run("wait", "--window", substitute(win.get("wait_title", title), names), "--timeout",
+                       str(win.get("timeout", 60)))
             self.ax_window = []
             time.sleep(float(self.script.get("launch_settle", 2.0)))
-            for action in self.script.get("setup", []):
-                r = self.act(ax, action, names, project_dir, "background")
+            setup = self.script.get("setup", [])
+            setup = self.script.get("per_target_setup", {}).get(target.name, setup)
+            if focus == "foreground" and setup:
+                # Setup menus and keys (opening a tool window) need the front.
+                ax.run("activate", check=False)
+                time.sleep(0.5)
+            for action in setup:
+                r = self.act(ax, action, names, project_dir, focus)
                 if not r.get("ok"):
                     log(f"setup {action}: {r}")
             time.sleep(float(self.script.get("setup_settle", 1.0)))
@@ -502,6 +541,8 @@ class Session:
             for index, step in enumerate(self.script["steps"], 1):
                 if step.get("only") and target.name not in step["only"]:
                     continue
+                if self.args.steps and step["id"] not in self.args.steps.split(","):
+                    continue  # a re-run of some steps keeps their numbers
                 step = {**step, **step.get("per_target", {}).get(target.name, {})}
                 step = {**step, **step.get("per_focus", {}).get(focus, {})}
                 manifest["steps"].append(self.run_step(index, step, ax, pid, names, project_dir, focus, target_dir))
@@ -521,9 +562,13 @@ class Session:
         sid = f"{index:02d}-{step['id']}"
         log(f"step {sid}")
         rec = {**self.script.get("record", {}), **(step.get("record") or {}), "fps": self.fps}
-        record = step.get("record", True) is not False
+        # "record": {"video": false, "mode": "app"} keeps the still's mode without a video.
+        record = step.get("record", True) is not False and rec.get("video", True)
         stills = step.get("still", "both")
         mode = rec.get("mode", "window")
+        # "capture_title": this step records another window of the app (Settings),
+        # chosen by title, instead of the session window.
+        select = ["--title", substitute(step["capture_title"], names)] if step.get("capture_title") else None
         entry = {"index": index, "id": step["id"], "note": step.get("note", ""), "actions": [], "ok": True}
         if focus == "foreground":
             # Something else may have taken the front since the last step;
@@ -532,11 +577,11 @@ class Session:
                 log("  could not bring the app to the front")
             time.sleep(0.3)
         if stills in ("before", "both"):
-            entry["still_before"] = self.still(pid, target_dir / f"{sid}-before.png", mode)
+            entry["still_before"] = self.still(pid, target_dir / f"{sid}-before.png", mode, select)
         proc = None
         if record:
             video = target_dir / f"{sid}.mov"
-            proc, first_wall = self.start_recording(pid, video, rec)
+            proc, first_wall = self.start_recording(pid, video, rec, select)
             entry["video"] = video.name
             entry["video_first_frame_wall"] = first_wall
             time.sleep(float(rec.get("pre", 0.4)))
@@ -560,7 +605,7 @@ class Session:
             entry["t_action_in_video"] = round(first - entry["video_first_frame_wall"], 4)
         time.sleep(float(step.get("settle", 0.3)))
         if stills in ("after", "both"):
-            entry["still_after"] = self.still(pid, target_dir / f"{sid}-after.png", mode)
+            entry["still_after"] = self.still(pid, target_dir / f"{sid}-after.png", mode, select)
         return entry
 
     def frame_rate(self, display):
@@ -601,6 +646,8 @@ def main():
     ap.add_argument("--allow-1x", action="store_true", help="capture on a 1x display when no free Retina one exists")
     ap.add_argument("--owner-approved", action="store_true", help="the owner agreed to this session (needed for Xcode)")
     ap.add_argument("--keep-open", action="store_true", help="leave the app running afterwards")
+    ap.add_argument("--steps", help="run only these step ids (comma-separated), to redo invalid captures")
+    ap.add_argument("--project-dir", help="put the project copies here (a folder outside any git repository)")
     ap.add_argument("--no-compare", action="store_true")
     args = ap.parse_args()
     Session(args.script, args).run()

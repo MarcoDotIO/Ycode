@@ -599,6 +599,53 @@ exists on disk) whose `children` list
    edge. Ycode drew rows over the toolbar band and the window buttons
    (`liquid-glass.md` §8.4).
 
+## Council round 3 measurements (2026-11-05)
+
+Round 3 captured both apps at Retina (2x), foreground, key window. The
+selector capsule's look is in `liquid-glass.md` §9.2. Checklist rows 81
+and 82 in `fidelity-council.md`.
+
+### 1. The selection turns grey when the editor takes focus
+
+Step 16 added an editor pane on the right; the new pane took keyboard
+focus. The selected row (Long.swift) lay under the filter capsule, so its
+band was seen through the glass:
+
+| | Before the split (outline focused) | After (editor focused) |
+|---|---|---|
+| Reference, through the filter capsule | accent blue glow (#85D0FF) | **neutral grey** (#EBEBEC): the band has switched to the unfocused selection colour |
+| Ycode | blue | **still blue** |
+
+Target: when focus leaves the outline (to an editor, a split pane, the
+inspector), the selection band changes from the accent colour (#0070F5,
+white label) to the unfocused selection colour (light grey band, label
+and icon keep their normal colours), in the same frame as the focus
+change; it returns to the accent colour when the outline is focused
+again. This answers round 2's §3 in kind; the exact grey of the band in
+an active window is still to be read from a row not covered by glass.
+
+### 2. Source Control navigator: the Repositories view
+
+Conflict session step 01 (a repository with branches `main`, current, and
+`feature`; no tags, stashes or remotes). Rows are on a 22-point pitch in
+both apps.
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| Changes / Repositories control | spans the navigator: **x 9–281** (9 in from each side), 16 tall (y 90–106), two equal segments; the selected segment filled with the accent colour (#0075FA), white label | a compact control centred (x 59.5–230.5, 171 wide), 21 tall |
+| Repository row | a grey filled square symbol with a source-control mark, the name, then the current branch in secondary grey ("project main") | a blue outline drive symbol |
+| Group rows | Branches, Recents, Tags, Stashes, Remotes, each with **its own grey filled symbol** (in words: a stacked drive for Branches, a clock in a filled circle for Recents, a tag in a filled square for Tags, a tray for Stashes, a globe for Remotes) | blue outline folders for all five |
+| Expansion at first view | **Branches expanded; Recents, Tags, Stashes and Remotes collapsed**, each with a disclosure triangle even when empty | Branches and Recents expanded; Tags, Stashes and Remotes without a triangle |
+| Branch rows | a blue branch symbol (a fork with round ends) and the name | a blue Y-shaped symbol |
+| Current branch | **no suffix and no visible marking** in the row; the current branch is named on the repository row | "main (current)" |
+| Filter bar | the filter field alone across the bar (a filter symbol at x 19–24, "Filter" from x 51); **no "+" or options button** | an options button with a chevron at x 54–62, then the field |
+| Inspector with nothing selected | a single grey line (#878788) at y 473.5–486.5 | the same line at y 435–447.5: **38.5 higher** |
+| Editor with nothing open | white | the empty-editor minimap (`editor-area.md` E.5) |
+
+Recents in the reference lists recently checked-out branches (here
+`feature`, hidden while collapsed); its content rule is
+`source-control.md`'s.
+
 ## Evidence
 
 - Find, Symbol and Report navigator roles: Apple's public Xcode Help
@@ -680,3 +727,6 @@ exists on disk) whose `children` list
   group's `children` order from the test project's `project.pbxproj`
   (level 2). `research/tools/council-r2/measure_r2.py`,
   `research/notes/council-r2-2026-11-04.md`.
+- Council round 3 section, level 3: the round 3 Retina stills of both apps
+  (main step 16 before and after; conflict step 01 with the reference's
+  re-run still), colour runs and ink boxes measured in the dirty room.

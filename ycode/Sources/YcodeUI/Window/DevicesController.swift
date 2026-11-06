@@ -41,12 +41,13 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
     public let canvas = DeviceCanvasView(mode: .hub)
     private let sidebarVC = NSViewController()
     private let canvasVC = NSViewController()
-    private let inspectorVC = NSViewController()
+    let inspectorVC = NSViewController()
     private let inspectorContent = FlippedStack()
     private let noResults = NSStackView()
     private var tableRows: [HubSidebarRow] = []
     private var inspectorItem: NSSplitViewItem?
     private var sidebarItem: NSSplitViewItem?
+    private var sidebarCollapseObservation: NSKeyValueObservation?
     private var statePoll: Timer?
     private lazy var toolbarController = DeviceHubToolbar(owner: self)
 
@@ -602,6 +603,10 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         for i in [side, center, inspector] { addSplitViewItem(i) }
         sidebarItem = side
         inspectorItem = inspector
+        // Add Device and Filter hide with the sidebar (device-hub.md §11.4).
+        sidebarCollapseObservation = side.observe(\.isCollapsed) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.toolbarController.updateSidebarItems() }
+        }
         reloadSidebar()
         if selected == nil { select(row: 0) } else { showDetails() }
     }
@@ -751,11 +756,15 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
+        // No empty scroll track (§11.3): the scroller shows only when the cards are taller.
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
         scroll.documentView = inspectorContent
         inspectorContent.orientation = .vertical
         inspectorContent.alignment = .leading
         inspectorContent.spacing = 10
-        inspectorContent.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 12, right: 12)
+        // The cards 10 inside the inspector, the first 8 under the toolbar (§11.3).
+        inspectorContent.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 12, right: 10)
         inspectorContent.translatesAutoresizingMaskIntoConstraints = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(scroll)
@@ -886,9 +895,12 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
                     if headset.report == nil, headset.checkTask == nil { checkHeadset() }
                 }
             } else {
-                let text = selected == nil ? "No Selection"
-                    : "No settings are available for the selected device. Ycode changes the settings of its own simulators."
-                inspectorContent.addArrangedSubview(Self.secondary(text))
+                // §11.3: one card holding the message when Ycode offers no settings.
+                if selected == nil {
+                    inspectorContent.addArrangedSubview(Self.secondary("No Selection"))
+                } else {
+                    inspectorContent.addArrangedSubview(InspectorCard(message: Self.noSettingsMessage, identifier: "settings-unavailable"))
+                }
             }
         case .reports:
             inspectorContent.addArrangedSubview(Self.secondary(selected == nil ? "No Selection" : "No Diagnostic Reports"))
@@ -898,7 +910,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
             seg.segmentDistribution = .fillEqually
             seg.translatesAutoresizingMaskIntoConstraints = false
             inspectorContent.addArrangedSubview(seg)
-            seg.widthAnchor.constraint(equalTo: inspectorContent.widthAnchor, constant: -24).isActive = true
+            seg.widthAnchor.constraint(equalTo: inspectorContent.widthAnchor, constant: -20).isActive = true
             switch infoTab {
             case .info: buildInfo()
             case .apps: inspectorContent.addArrangedSubview(Self.secondary(selected == nil ? "No Selection" : "No Apps"))
@@ -942,7 +954,7 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         }
         let group = GroupBoxView(content: details)
         inspectorContent.addArrangedSubview(group)
-        group.widthAnchor.constraint(equalTo: inspectorContent.widthAnchor, constant: -24).isActive = true
+        group.widthAnchor.constraint(equalTo: inspectorContent.widthAnchor, constant: -20).isActive = true
         let edit = NSButton(title: editingInfoVisibility ? "Done" : "Edit Visibility", target: self, action: #selector(editVisibility(_:)))
         edit.bezelStyle = .push
         edit.controlSize = .small
@@ -951,6 +963,8 @@ public final class DevicesController: NSSplitViewController, NSTableViewDataSour
         // Centred under the box.
         edit.centerXAnchor.constraint(equalTo: group.centerXAnchor).isActive = true
     }
+
+    static let noSettingsMessage = "No settings are available for the selected device. Ycode changes the settings of its own simulators."
 
     static func secondary(_ text: String) -> NSTextField {
         let l = NSTextField(wrappingLabelWithString: text)

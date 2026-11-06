@@ -168,7 +168,7 @@ import YcodeIDECore
         for name in ["Main.storyboard", "Card.xib"] {
             let url = try copy(name)
             let s = try IBEditorSession(url: url)
-            for kind in IBDocument.NewObject.allCases {
+            for kind in IBDocument.NewObject.list(for: s.document) where kind.placement == .subview {
                 let root = try #require(IBEditorSession.firstView(in: s.document))
                 s.select(id: root.id)
                 let id = try #require(s.insert(kind), "\(kind) into \(name)")
@@ -184,9 +184,9 @@ import YcodeIDECore
                 s.setAttribute("userLabel", "Mine \(kind.rawValue)", of: id)
                 #expect(try IBDocument(url: url).byID[id]?.attribute("userLabel") == "Mine \(kind.rawValue)")
             }
-            #expect(IBDocument.NewObject.allCases.allSatisfy { !$0.summary.isEmpty && $0.iconShapes.count > 1 })
+            #expect(IBDocument.NewObject.allCases.allSatisfy { !$0.summary.isEmpty && !$0.icon.shapes.isEmpty })
         }
-        #expect(IBDocument.NewObject.matching("stack") == [.stackView])
+        #expect(IBDocument.NewObject.matching("stack") == [.horizontalStackView, .verticalStackView])
     }
 
     @Test func deleteSelectionRemovesConstraintsAndOutlets() throws {

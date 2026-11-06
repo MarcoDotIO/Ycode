@@ -286,7 +286,8 @@ import YcodeProject
         let expected: [Row] = [
             Row(left: .some(nil), toggles: ["Recent files", "Files with source-control status"],
                 tips: ["Show only recent files", "Show only files with source-control status"], on: [false, false], empty: []),
-            Row(left: .some(nil), toggles: [], tips: [], on: [], empty: ["No Repository"]),
+            // Source Control: the filter alone, no options button (navigators.md round 3 §2).
+            Row(left: nil, toggles: [], tips: [], on: [], empty: ["No Repository"]),
             Row(left: .some("More"), toggles: ["Incomplete Items"], tips: ["Show only incomplete items"], on: [false],
                 empty: ["No Bookmarks", "Click the '…' button to add bookmarks"]),
             Row(left: nil, toggles: [], tips: [], on: [], empty: []),

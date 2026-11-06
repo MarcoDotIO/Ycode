@@ -7,7 +7,8 @@ import Testing
 @testable import YcodeMetalHost
 @testable import YcodeVulkan
 
-@Suite(.serialized, .enabled(if: VK.available, "needs a Vulkan GPU with VK_EXT_external_memory_host"))
+@Suite(.serialized, .enabled(if: VK.available, "needs a Vulkan GPU with VK_EXT_external_memory_host"),
+       .disabled(if: IsolationGPU.drivesDisplay, "GPU drives a display"))
 struct GPURecoveryTests {
     /// The add kernel (`out[i] = a[i] + b[i]` for i < count) with a
     /// reflection that lists its four buffers as used, as ycode-airc's does.

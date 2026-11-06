@@ -13,6 +13,12 @@ import Testing
 
     func labels(_ sections: [IBInspectorSection], _ title: String) -> [String] { sections.first { $0.title == title }?.rows.map(\.label) ?? [] }
 
+    /// The values of a numbers row.
+    func numbers(_ s: IBInspectorSection, _ key: String) -> [String] {
+        for case .numbers(let k, let fields) in s.rows where k == key { return fields.map(\.value) }
+        return []
+    }
+
     @Test func identitySectionForEveryObject() throws {
         let c = try controller()
         c.select(id: "lbl")
@@ -24,15 +30,17 @@ import Testing
         let c = try controller()
         c.select(id: "lbl")
         let a = c.inspectorSections(.attributes)
-        #expect(labels(a, "Label") == ["Text", "", "Color", "Font", "Dynamic Type", "Alignment", "Lines", "Enabled", "Highlighted", "Tooltip",
-                                       "Baseline", "Line Break", "Strategy", "Autoshrink", "Tighten Letter Spacing", "Sizing Rule",
-                                       "Highlighted Color", "Shadow", "Shadow Offset"])
+        // interface-builder.md §Per kind ▸ Label: the row labels on the left.
+        #expect(a.first { $0.title == "Label" }?.rows.map(\.key) == ["Text", "", "Color", "Font", "Dynamic Type", "Alignment", "Lines", "Behavior", "",
+                                                                     "Tooltip", "Baseline", "Line Break", "Strategy", "Autoshrink", "", "Sizing Rule",
+                                                                     "Highlighted", "Shadow", "Shadow Offset"])
         let label = try #require(a.first { $0.title == "Label" })
-        #expect(label.rows.contains(.info(label: "Color", value: "Default (Label Color)")) && label.rows.contains(.info(label: "Font", value: "Default")))
-        #expect(label.rows.contains(.info(label: "Shadow Offset", value: "0, -1")))
+        #expect(label.rows.contains(.color(key: "Color", target: "lbl", colorKey: "textColor", value: "Default (Label Color)")))
+        #expect(label.rows.contains { if case .popUp("Font", _, _, _, _, "System 17.0") = $0 { return true } else { return false } })
+        #expect(numbers(label, "Shadow Offset") == ["0", "-1"])
         let view = labels(a, "View")
         for l in ["Content Mode", "Semantic", "Tag", "Alpha", "Background", "Tint", "Stretching"] { #expect(view.contains(l), "\(l)") }
-        #expect(a.first { $0.title == "View" }?.rows.contains(.info(label: "Stretching", value: "0, 0, 1, 1")) == true)
+        #expect(numbers(try #require(a.first { $0.title == "View" }), "Stretching") == ["0", "0", "1", "1"])
         // Tooltip and Sizing Rule write attributes.
         c.setAttribute("toolTip", "Greeting", of: "lbl")
         c.setAttribute("sizingRule", "oversize", of: "lbl")
@@ -49,9 +57,9 @@ import Testing
         let c = InterfaceBuilderController(document: try IBDocument(data: Data(text.utf8)))
         c.select(id: "lbl")
         let label = try #require(c.inspectorSections(.attributes).first { $0.title == "Label" })
-        #expect(label.rows.contains(.info(label: "Font", value: "System 17.0")))
-        #expect(label.rows.contains(.info(label: "Color", value: "Secondary Label Color")))
-        #expect(label.rows.contains(.info(label: "Shadow Offset", value: "1, 2")))
+        #expect(label.rows.contains { if case .popUp("Font", _, _, _, _, "System 17.0") = $0 { return true } else { return false } })
+        #expect(label.rows.contains(.color(key: "Color", target: "lbl", colorKey: "textColor", value: "Secondary Label Color")))
+        #expect(numbers(label, "Shadow Offset") == ["1", "2"])
     }
 
     @Test func sizeFrameFieldsEditTheFrame() throws {
@@ -70,9 +78,11 @@ import Testing
     @Test func extendEdgesToggles() throws {
         let c = try controller()
         c.select(id: "vc")
-        let edges = try #require(c.inspectorSections(.attributes).first { $0.title == "Extend Edges" })
-        #expect(edges.rows.prefix(2) == [.edgeToggle(label: "Under Top Bars", target: "vc", edge: "top", isOn: true),
-                                         .edgeToggle(label: "Under Bottom Bars", target: "vc", edge: "bottom", isOn: true)])
+        // Extend Edges is a group of the View Controller section.
+        let vc = try #require(c.inspectorSections(.attributes).first { $0.title == "View Controller" })
+        let edges = vc.rows.filter { if case .edgeToggle = $0 { return true } else { return false } }
+        #expect(edges == [.edgeToggle(label: "Under Top Bars", target: "vc", edge: "top", isOn: true),
+                          .edgeToggle(label: "Under Bottom Bars", target: "vc", edge: "bottom", isOn: true)])
         c.setExtendedEdge("top", false, of: "vc")
         let src = String(decoding: c.document.source, as: UTF8.self)
         #expect(src.contains("<extendedEdge key=\"edgesForExtendedLayout\" left=\"YES\" bottom=\"YES\" right=\"YES\"/>"))
@@ -81,7 +91,10 @@ import Testing
         #expect(c.document.extendedEdge(c.document.byID["vc"]!, "top"))
         // The file still parses after each edit.
         #expect((try? IBDocument(data: Data(c.document.source))) != nil)
-        let content = try #require(c.inspectorSections(.attributes).first { $0.title == "Content Size" })
-        #expect(content.rows.map(\.label) == ["Use Preferred Explicit Size", "Width", "Height"])
+        let rows = try #require(c.inspectorSections(.attributes).first { $0.title == "View Controller" }).rows
+        let i = try #require(rows.firstIndex { $0.label == "Use Preferred Explicit Size" })
+        #expect(rows[i].key == "Content Size")
+        #expect(rows[i + 1] == .numbers(key: "", fields: [IBNumberField("Width", target: "vc>size@preferredContentSize", attribute: "width", value: "0", placeholder: "0"),
+                                                          IBNumberField("Height", target: "vc>size@preferredContentSize", attribute: "height", value: "0", placeholder: "0")]))
     }
 }

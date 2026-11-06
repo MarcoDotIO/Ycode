@@ -94,6 +94,20 @@ struct RemoteViewerTests {
         #expect(ViewerScaleMode(argument: "1:1") == .point)
     }
 
+    /// Pixel Accurate draws the stream 1:1, unfiltered (uikit-feel-ycode.md §8.4).
+    @Test func pixelAccurateIsOneToOneOnWholePixels() {
+        let g = DeviceFrameGeometry(spec: .iPhone18Pro)
+        for density in [1.0, 1.5, 2.0] {
+            // An odd window size centres the drawing on a fraction of a unit.
+            let l = ViewerLayout(geometry: g, mode: .pixel, windowWidth: 1001, windowHeight: 3001, pixelDensity: density, deviceScale: 3)
+            let s = l.screen
+            #expect(abs((s.x * density).rounded() - s.x * density) < 1e-9 && abs((s.y * density).rounded() - s.y * density) < 1e-9)
+            #expect(l.showsPixelsOneToOne(imageWidth: 1206, imageHeight: 2622))
+            #expect(!l.showsPixelsOneToOne(imageWidth: 603, imageHeight: 1311))
+        }
+        #expect(!ViewerLayout(geometry: g, mode: .fit, windowWidth: 460, windowHeight: 900).showsPixelsOneToOne(imageWidth: 1206, imageHeight: 2622))
+    }
+
     @Test func frameButtonsAreHitInWindowUnits() {
         let g = DeviceFrameGeometry(spec: .iPhone18Pro)
         let l = ViewerLayout(geometry: g, mode: .fit, windowWidth: 460, windowHeight: 900)

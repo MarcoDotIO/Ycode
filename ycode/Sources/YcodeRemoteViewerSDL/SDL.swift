@@ -65,6 +65,7 @@ public enum SDLConst {
     public static let pixelFormatNV12: UInt32 = 0x3231_564E
     public static let textureStreaming: Int32 = 1
     public static let blendModeBlend: UInt32 = 1
+    public static let scaleNearest: Int32 = 0
     public static let scaleLinear: Int32 = 1
 
     public static let quit: UInt32 = 0x100
@@ -132,6 +133,9 @@ public final class SDL: @unchecked Sendable {
     let RenderReadPixels: @convention(c) (VP, UnsafeRawPointer?) -> VP?
     let ConvertSurface: @convention(c) (VP, UInt32) -> VP?
     let DestroySurface: @convention(c) (VP) -> Void
+    /// SDL_GetSystemTheme (0 unknown, 1 light, 2 dark; it follows the
+    /// desktop's portal); optional: nil when the library lacks it.
+    let GetSystemTheme: (@convention(c) () -> Int32)?
 
     /// The library's path when loaded.
     public let path: String
@@ -204,9 +208,19 @@ public final class SDL: @unchecked Sendable {
         (UpdateTexture, UpdateNVTexture, SetTextureScaleMode, SetRenderDrawColor, SetRenderDrawBlendMode) = (x, x2, y, z, aa)
         (RenderClear, RenderFillRect, RenderRect, RenderTexture, RenderTextureRotated, RenderGeometry) = (ab, ac, ac2, ad, ae, af)
         (RenderDebugText, SetRenderScale, RenderPresent, RenderReadPixels, ConvertSurface, DestroySurface) = (ag, ah, ai, aj, ak, al)
+        GetSystemTheme = f("SDL_GetSystemTheme")
     }
 
     public var error: String { GetError().map { String(cString: $0) } ?? "" }
+
+    /// The desktop's colour scheme (nil: unknown; call after Init).
+    public var systemDark: Bool? {
+        switch GetSystemTheme?() {
+        case 1: false
+        case 2: true
+        default: nil
+        }
+    }
 
     /// SDL_Surface: flags, format, w, h, pitch, pixels (SDL_surface.h).
     public static func surfaceInfo(_ s: UnsafeMutableRawPointer) -> (format: UInt32, w: Int, h: Int, pitch: Int, pixels: UnsafeRawPointer?) {

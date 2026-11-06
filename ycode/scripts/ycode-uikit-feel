@@ -1,0 +1,1689 @@
+#!/usr/bin/env python3
+# ycode-uikit-feel: drives the UIKitFeel probe app (Samples/UIKitFeelSamples)
+# on a Ycode simulator device through the display stream, and turns its log
+# into the values of specs/simulator/uikit-feel.md, compared with the spec
+# (specs/simulator/uikit-feel-ycode.md). Python standard library only; run
+# with `python3 -I`. Original Ycode code.
+#
+# usage:
+#   ycode-uikit-feel drive --connect unix:<socket> --app-tmp <DEV/data/tmp> --out <dir> [--suite s1,s2,...] [--runs N]
+#       Runs the trials of the chosen suites (default: all) against the probe,
+#       which must be running in the device. Writes <dir>/guest.log (the
+#       probe's log), <dir>/host.jsonl (inputs and frames as the driver saw
+#       them) and <dir>/screen.png (the pixels page, from the server).
+#       Suites: info flick rubber edge paging top highlight long double pan
+#       swipe pinch keyboard rotation display pixels
+#   ycode-uikit-feel analyze <dir> [--json <file>] [--check]
+#       Prints the comparison table (markdown); --check exits 1 when a value
+#       that should match does not.
+#   ycode-uikit-feel pattern <png> <guest.log> [--scale S] [--crop x,y]
+#       Finds the probe's pixel-exact pattern in an image (a screenshot, or a
+#       capture of a device window at 1:1) and reports how many of its pixels
+#       differ from the expected values.
+import json
+import math
+import os
+import re
+import socket
+import struct
+import sys
+import threading
+import time
+import zlib
+
+
+def now():
+    return time.monotonic()
+
+
+# ---------------------------------------------------------------- the stream
+
+class Stream:
+    """A display-stream client (specs/simulator/display-stream.md §2–§5)."""
+
+    def __init__(self, address):
+        if address.startswith("unix:"):
+            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.sock.connect(address[5:])
+        else:
+            host, port = address.rsplit(":", 1)
+            self.sock = socket.create_connection((host, int(port)))
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.lock = threading.Lock()
+        self.cond = threading.Condition()
+        self.hello = None
+        self.frames = []        # (host time, guest frame, input seq)
+        self.notices = []
+        self.shots = {}
+        self.seq = 0
+        self.token = 0
+        self.closed = False
+        self.inputs = []        # (host time, seq, kind, detail)
+        threading.Thread(target=self._reader, daemon=True).start()
+        self._send(0x81, json.dumps({"protocol": "ycode-display/1", "client": "ycode-uikit-feel", "maxFPS": 120,
+                                     "encoding": "jpeg", "quality": 40, "downscale": 4}).encode())
+
+    def _send(self, kind, payload):
+        data = struct.pack("<IB", len(payload) + 1, kind) + payload
+        with self.lock:
+            self.sock.sendall(data)
+
+    def _reader(self):
+        buf = b""
+        while True:
+            try:
+                chunk = self.sock.recv(1 << 20)
+            except OSError:
+                chunk = b""
+            if not chunk:
+                with self.cond:
+                    self.closed = True
+                    self.cond.notify_all()
+                return
+            buf += chunk
+            while len(buf) >= 5:
+                n = struct.unpack_from("<I", buf)[0]
+                if len(buf) < 4 + n:
+                    break
+                kind, payload, buf = buf[4], buf[5:4 + n], buf[4 + n:]
+                t = now()
+                with self.cond:
+                    if kind == 0x01:
+                        self.hello = json.loads(payload)
+                    elif kind == 0x03:
+                        _seq, gframe, _srv, iseq = struct.unpack_from("<QQQI", payload)
+                        self.frames.append((t, gframe, iseq))
+                    elif kind == 0x05 and len(payload) >= 4:
+                        self.shots[struct.unpack_from("<I", payload)[0]] = payload[4:]
+                    elif kind == 0x06:
+                        self.notices.append((t, payload.decode(errors="replace")))
+                        print("notice:", payload.decode(errors="replace"), flush=True)
+                    self.cond.notify_all()
+
+    def wait_live(self, timeout=120):
+        end = now() + timeout
+        with self.cond:
+            while (not self.frames or self.hello is None) and not self.closed and now() < end:
+                self.cond.wait(0.5)
+        if not self.frames:
+            sys.exit("ycode-uikit-feel: no frame from the display server")
+
+    def _input(self, kind, body, detail):
+        with self.lock:
+            self.seq += 1
+            s = self.seq
+        t = now()
+        self._send(kind, struct.pack("<I", s) + body)
+        self.inputs.append((t, s, kind, detail))
+        return t
+
+    def touches(self, contacts):
+        """contacts: [(finger, phase, x, y)]; phase 0 began 1 moved 2 ended."""
+        body = struct.pack("<IB", 0, len(contacts))[4:]
+        for f, ph, x, y in contacts:
+            body += struct.pack("<BBHff", f, ph, 0, x, y)
+        return self._input(0x82, body, [(f, ph, round(x, 3), round(y, 3)) for f, ph, x, y in contacts])
+
+    def touch(self, phase, x, y):
+        return self.touches([(0, phase, x, y)])
+
+    def rotate(self, orientation):
+        return self._input(0x88, struct.pack("<B", orientation), {"rotate": orientation})
+
+    def screenshot(self, path, timeout=30):
+        self.token += 1
+        tok = self.token
+        self._send(0x87, struct.pack("<I", tok))
+        end = now() + timeout
+        with self.cond:
+            while tok not in self.shots and not self.closed and now() < end:
+                self.cond.wait(0.5)
+            png = self.shots.pop(tok, None)
+        if png:
+            with open(path, "wb") as f:
+                f.write(png)
+        return bool(png)
+
+
+def sleep_until(t):
+    d = t - now()
+    if d > 0:
+        time.sleep(d)
+
+
+# ---------------------------------------------------------------- the probe
+
+class Probe:
+    """The probe app's command file and log (in the device's DEV/data/tmp)."""
+
+    def __init__(self, tmp):
+        self.dir = os.path.join(tmp, "uikitfeel")
+        self.log_path = os.path.join(self.dir, "log.txt")
+        self.cmd_path = os.path.join(self.dir, "cmd.txt")
+        self.pos = 0
+
+    def command(self, line):
+        with open(self.cmd_path, "a") as f:
+            f.write(line + "\n")
+
+    def lines(self):
+        try:
+            with open(self.log_path) as f:
+                return f.read().splitlines()
+        except OSError:
+            return []
+
+    def wait_for(self, pattern, timeout=20, after=None):
+        """The first log line matching `pattern` after line index `after`."""
+        rx = re.compile(pattern)
+        end = now() + timeout
+        start = self.count() if after is None else after
+        while now() < end:
+            ls = self.lines()
+            for line in ls[start:]:
+                if rx.search(line):
+                    return line
+            time.sleep(0.05)
+        return None
+
+    def count(self):
+        return len(self.lines())
+
+    def rects(self):
+        r = {}
+        for line in self.lines():
+            p = line.split()
+            if len(p) == 7 and p[1] == "rect":
+                r[p[2]] = tuple(float(v) for v in p[3:7])
+        return r
+
+
+class Driver:
+    def __init__(self, stream, probe, runs):
+        self.s = stream
+        self.p = probe
+        self.runs = runs
+        h = stream.hello or {}
+        self.mark_at = 0
+        self.W = float(h.get("pointWidth", 402))
+        self.H = float(h.get("pointHeight", 874))
+
+    def mark(self, name):
+        n = self.p.count()
+        self.p.command("mark " + name)
+        self.p.wait_for(r" cmd mark " + re.escape(name) + "$", 10, after=max(0, n - 1))
+        self.mark_at = self.p.count()
+
+    def page(self, name):
+        n = self.p.count()
+        self.p.command("page " + name)
+        self.p.wait_for(r" page ", 10, after=n)
+        time.sleep(0.8)
+
+    def settle(self, s):
+        time.sleep(s)
+
+    # -- touch shapes (60 Hz samples, as XCUITest's 16.7 ms cadence, §4.4)
+
+    def drag(self, x0, y0, dx, dy, speed, press_ms=50, hold_ms=0, hz=60.0):
+        """Down at (x0, y0), still for press_ms, then a straight move of
+        (dx, dy) at `speed` pt/s sampled on a hz grid (the last sample, on
+        the first grid time at or after the end, is the end point: a shorter
+        step, as a 60 Hz sampler gives), hold_ms still, then up."""
+        length = math.hypot(dx, dy)
+        ux, uy = (dx / length, dy / length) if length else (0, 0)
+        t0 = self.s.touch(0, x0, y0)
+        start = t0 + press_ms / 1000.0
+        sleep_until(start)
+        dur = length / speed
+        k = 1
+        while True:
+            t = k / hz
+            done = t >= dur
+            d = length if done else speed * t
+            sleep_until(start + t)
+            self.s.touch(1, x0 + ux * d, y0 + uy * d)
+            if done:
+                break
+            k += 1
+        end = now()
+        if hold_ms:
+            if os.environ.get("UIKITFEEL_HOLD_SAMPLES"):
+                k = 1
+                while k / hz < hold_ms / 1000.0:
+                    sleep_until(end + k / hz)
+                    j = float(os.environ.get("UIKITFEEL_HOLD_SAMPLES")) * (k % 2)
+                    self.s.touch(1, x0 + dx + j, y0 + dy)
+                    k += 1
+            sleep_until(end + hold_ms / 1000.0)
+        return self.s.touch(2, x0 + dx, y0 + dy)
+
+    def tap(self, x, y, ms=75):
+        t = self.s.touch(0, x, y)
+        sleep_until(t + ms / 1000.0)
+        return self.s.touch(2, x, y)
+
+    def pinch(self, cx, cy, d0, d1, seconds, hz=60.0):
+        """Two fingers on a horizontal line through (cx, cy), their distance
+        going from d0 to d1 in `seconds`."""
+        def pair(d, ph):
+            return [(0, ph, cx - d / 2, cy), (1, ph, cx + d / 2, cy)]
+        t0 = self.s.touches(pair(d0, 0))
+        start = t0 + 0.05
+        n = max(1, int(seconds * hz))
+        for k in range(1, n + 1):
+            sleep_until(start + k / hz)
+            self.s.touches(pair(d0 + (d1 - d0) * k / n, 1))
+        time.sleep(0.1)
+        self.s.touches(pair(d1, 2))
+
+    # -- suites
+
+    def suite_info(self):
+        self.mark("info")
+        self.p.command("info")
+        time.sleep(0.5)
+
+    def scroll_page(self):
+        self.page("scroll")
+        self.p.wait_for(r" scroll-config ", 10)
+
+    def suite_flick(self):
+        self.scroll_page()
+        for speed in (600, 2300, 6000):
+            for r in range(self.runs):
+                self.p.command("offset 8000")
+                time.sleep(0.6)
+                self.mark(f"flick v={speed} run={r}")
+                x = self.W / 2
+                y0 = self.H * 0.7
+                self.drag(x, y0, 0, -0.35 * self.H, speed, press_ms=50)
+                self.wait_end(8)
+
+    def wait_end(self, timeout):
+        """Until the scroll view of this trial stops (after its mark)."""
+        if not self.p.wait_for(r" did-end-(decel|drag decelerate=0)", timeout, after=max(0, self.mark_at - 2)):
+            time.sleep(1)
+        time.sleep(0.4)
+
+    def suite_rubber(self):
+        self.scroll_page()
+        for edge in ("top", "bottom"):
+            for dist in (100, 200, 400):
+                for r in range(self.runs):
+                    self.p.command("offset " + edge)
+                    time.sleep(0.6)
+                    self.mark(f"rubber edge={edge} d={dist} run={r}")
+                    x = self.W / 2
+                    if edge == "top":
+                        self.drag(x, self.H * 0.25, 0, dist, 300, press_ms=50, hold_ms=600)
+                    else:
+                        self.drag(x, self.H * 0.75, 0, -dist, 300, press_ms=50, hold_ms=600)
+                    self.wait_end(5)
+
+    def suite_edge(self):
+        self.scroll_page()
+        for edge in ("top", "bottom"):
+            for speed in (2500, 6000):
+                for r in range(self.runs):
+                    self.p.command("offset top" if edge == "top" else "offset bottom")
+                    time.sleep(0.4)
+                    # 600 pt away from the edge
+                    lines = self.p.lines()
+                    cfg = [ln for ln in lines if " scroll-config " in ln][-1]
+                    off = float(re.search(r"off=[-\d.]+,([-\d.]+)", cfg).group(1))
+                    self.p.command(f"offset {off + 600 if edge == 'top' else off - 600}")
+                    time.sleep(0.6)
+                    self.mark(f"edge edge={edge} v={speed} run={r}")
+                    x = self.W / 2
+                    if edge == "top":
+                        self.drag(x, self.H * 0.3, 0, 0.3 * self.H, speed, press_ms=50)
+                    else:
+                        self.drag(x, self.H * 0.7, 0, -0.3 * self.H, speed, press_ms=50)
+                    self.wait_end(6)
+
+    def suite_paging(self):
+        self.page("paging")
+        self.p.wait_for(r" scroll-config paging=1", 10)
+        cases = [("drag30", 0.30, 300, 300), ("drag60", 0.60, 300, 300), ("flick15", 0.15, 2000, 0)]
+        for name, frac, speed, hold in cases:
+            for r in range(self.runs):
+                self.p.command("offset page 3")
+                time.sleep(0.6)
+                self.mark(f"paging case={name} run={r}")
+                self.drag(0.8 * self.W, self.H / 2, -frac * self.W, 0, speed, press_ms=50, hold_ms=hold)
+                self.wait_end(4)
+
+    def suite_top(self):
+        self.scroll_page()
+        for start in (8000, 600):
+            for r in range(self.runs):
+                self.p.command(f"offset {start}")
+                time.sleep(0.8)
+                self.mark(f"top start={start} run={r}")
+                self.tap(self.W / 2, 12, 75)
+                time.sleep(2.6)
+
+    def gestures_page(self):
+        self.page("gestures")
+        self.p.wait_for(r" rect pinch ", 10)
+        time.sleep(0.3)
+        return self.p.rects()
+
+    @staticmethod
+    def center(r):
+        return r[0] + r[2] / 2, r[1] + r[3] / 2
+
+    def suite_highlight(self):
+        rects = self.gestures_page()
+        for target in ("plain", "inner"):
+            x, y = self.center(rects[target])
+            for kind, ms in (("press", 600), ("tap", 75)):
+                for r in range(self.runs):
+                    self.mark(f"highlight target={target} kind={kind} run={r}")
+                    self.tap(x, y, ms)
+                    time.sleep(0.6)
+
+    def suite_long(self):
+        rects = self.gestures_page()
+        x, y = self.center(rects["long"])
+        for ms in (1000, 424, 465, 559):
+            for r in range(self.runs):
+                self.mark(f"long ms={ms} run={r}")
+                self.tap(x, y, ms)
+                time.sleep(0.6)
+
+    def suite_double(self):
+        rects = self.gestures_page()
+        x, y = self.center(rects["tap"])
+        for r in range(self.runs):
+            self.mark(f"double kind=single run={r}")
+            self.tap(x, y, 72)
+            time.sleep(0.8)
+        for r in range(self.runs):
+            self.mark(f"double kind=double run={r}")
+            self.tap(x, y, 60)
+            time.sleep(0.02)
+            self.tap(x, y, 60)
+            time.sleep(0.8)
+
+    def suite_pan(self):
+        rects = self.gestures_page()
+        rx, ry, rw, rh = rects["pan"]
+        for r in range(self.runs):
+            self.mark(f"pan run={r}")
+            self.drag(rx + rw / 2, ry + 20, 0, 80, 100, press_ms=0, hold_ms=100)
+            time.sleep(0.5)
+
+    def suite_swipe(self):
+        rects = self.gestures_page()
+        rx, ry, rw, rh = rects["swipe"]
+        cases = [(10, 1500), (20, 1500), (40, 1500), (60, 1500), (100, 1500), (200, 1500),
+                 (200, 100), (200, 200), (200, 400), (200, 800)]
+        for dist, speed in cases:
+            for r in range(self.runs):
+                self.mark(f"swipe d={dist} v={speed} run={r}")
+                self.drag(rx + rw - 10, ry + rh / 2, -dist, 0, speed, press_ms=20, hold_ms=0)
+                time.sleep(0.5)
+
+    def suite_pinch(self):
+        rects = self.gestures_page()
+        x, y = self.center(rects["pinch"])
+        w = rects["pinch"][2]
+        # Slow enough (0.5 pt of finger distance per 60 Hz sample) that the
+        # sample step does not hide the threshold.
+        for kind, d0, d1 in (("spread", 6.0, 46.0), ("pinch", 160.0, 120.0)):
+            for r in range(self.runs):
+                self.mark(f"pinch kind={kind} run={r}")
+                self.pinch(x, y, d0, d1, abs(d1 - d0) / 30.0)
+                time.sleep(0.6)
+
+    def suite_keyboard(self):
+        self.page("keyboard")
+        self.p.wait_for(r" rect field ", 10)
+        x, y = self.center(self.p.rects()["field"])
+        for r in range(self.runs):
+            self.mark(f"keyboard show run={r}")
+            self.tap(x, y, 75)
+            time.sleep(1.6)
+            self.mark(f"keyboard hide run={r}")
+            self.p.command("kb-hide")
+            time.sleep(1.6)
+
+    def suite_rotation(self):
+        self.page("rotation")
+        if not (self.s.hello or {}).get("rotation"):
+            self.mark("rotation unsupported")
+        for r in range(self.runs):
+            for name, o in (("landscape", 3), ("portrait", 1)):
+                self.mark(f"rotation to={name} run={r}")
+                self.s.rotate(o)
+                time.sleep(1.5)
+        self.s.rotate(1)
+        time.sleep(1.0)
+
+    def suite_display(self):
+        self.page("display")
+        for variant in ("default", "max"):
+            self.p.command(f"dl {variant}")
+            time.sleep(0.3)
+            for r in range(self.runs):
+                self.mark(f"display variant={variant} phase=idle run={r}")
+                time.sleep(1.6)
+            for r in range(self.runs):
+                self.mark(f"display variant={variant} phase=animating run={r}")
+                self.p.command("animate")
+                time.sleep(2.3)
+            self.p.command("dl-stop")
+            time.sleep(0.3)
+        # Tracking a drag and decelerating, on the scroll page.
+        self.scroll_page()
+        self.p.command("dl default")
+        for r in range(self.runs):
+            self.p.command("offset 8000")
+            time.sleep(0.5)
+            self.mark(f"display variant=default phase=tracking run={r}")
+            self.drag(self.W / 2, self.H * 0.7, 0, -0.3 * self.H, 150, press_ms=50, hold_ms=300)
+            self.wait_end(3)
+            self.mark(f"display variant=default phase=decelerating run={r}")
+            self.drag(self.W / 2, self.H * 0.7, 0, -0.35 * self.H, 2500, press_ms=50)
+            self.wait_end(5)
+        self.p.command("dl-stop")
+        self.mark("display idle-host")
+        time.sleep(3.0)
+
+    def suite_pixels(self, out):
+        self.page("pixels")
+        self.p.wait_for(r" pixels-ready ", 10)
+        time.sleep(1.5)
+        self.mark("pixels")
+        ok = self.s.screenshot(os.path.join(out, "screen.png"))
+        print("screenshot:", "ok" if ok else "none", flush=True)
+
+
+SUITES = ["info", "flick", "rubber", "edge", "paging", "top", "highlight", "long", "double", "pan", "swipe",
+          "pinch", "keyboard", "rotation", "display", "pixels"]
+
+
+def drive(argv):
+    args = {"--suite": ",".join(SUITES), "--runs": "3"}
+    it = iter(argv)
+    for a in it:
+        args[a] = next(it)
+    stream = Stream(args["--connect"])
+    stream.wait_live()
+    probe = Probe(args["--app-tmp"])
+    out = args["--out"]
+    os.makedirs(out, exist_ok=True)
+    if not probe.wait_for(r" ready$", 120, after=0):
+        sys.exit("ycode-uikit-feel: the probe is not running (no 'ready' in its log)")
+    d = Driver(stream, probe, int(args["--runs"]))
+    print(f"device {d.W:g} x {d.H:g} pt, hello {json.dumps(stream.hello)}", flush=True)
+    for name in args["--suite"].split(","):
+        t = now()
+        print(f"suite {name} ...", flush=True)
+        if name == "pixels":
+            d.suite_pixels(out)
+        else:
+            getattr(d, "suite_" + name)()
+        print(f"suite {name}: {now() - t:.1f} s", flush=True)
+    d.mark("end")
+    probe.command("flush")
+    time.sleep(0.5)
+    with open(os.path.join(out, "guest.log"), "w") as f:
+        f.write("\n".join(probe.lines()) + "\n")
+    with open(os.path.join(out, "host.jsonl"), "w") as f:
+        f.write(json.dumps({"hello": stream.hello}) + "\n")
+        for t, s, k, det in stream.inputs:
+            f.write(json.dumps({"t": t, "input": s, "kind": k, "detail": det}) + "\n")
+        for t, g, i in stream.frames:
+            f.write(json.dumps({"t": t, "frame": g, "inputSeq": i}) + "\n")
+        for t, n in stream.notices:
+            f.write(json.dumps({"t": t, "notice": n}) + "\n")
+    print("done:", out, flush=True)
+
+
+# ---------------------------------------------------------------- analysis
+
+def parse_log(path):
+    """→ list of trials: (name, [(t, kind, fields dict, raw)])."""
+    trials = []
+    cur = ("start", [])
+    with open(path) as f:
+        for raw in f:
+            p = raw.rstrip("\n").split(" ")
+            if len(p) < 2:
+                continue
+            try:
+                t = float(p[0])
+            except ValueError:
+                continue
+            kind = p[1]
+            if kind == "cmd" and len(p) > 2 and p[2] == "mark":
+                trials.append(cur)
+                cur = (" ".join(p[3:]), [])
+                continue
+            fields = {}
+            words = []
+            for w in p[2:]:
+                if "=" in w:
+                    k, v = w.split("=", 1)
+                    fields[k] = v
+                else:
+                    words.append(w)
+            fields["_words"] = words
+            cur[1].append((t, kind, fields, raw))
+    trials.append(cur)
+    return trials
+
+
+def med(v):
+    v = sorted(v)
+    if not v:
+        return None
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
+def mmm(v, fmt="{:.3f}"):
+    v = [x for x in v if x is not None]
+    if not v:
+        return "—"
+    return (fmt.format(med(v)) + " [" + fmt.format(min(v)) + ".." + fmt.format(max(v)) + "]") if len(v) > 1 else fmt.format(v[0])
+
+
+def trial_args(name):
+    return dict(w.split("=", 1) for w in name.split()[1:] if "=" in w)
+
+
+def touches(events):
+    return [(t, f) for t, k, f, _ in events if k == "touch"]
+
+
+class Report:
+    def __init__(self):
+        self.rows = []      # (section, item, spec, ycode, verdict, note)
+        self.failed = 0
+
+    def row(self, section, item, spec, ycode, verdict, note=""):
+        self.rows.append((section, item, spec, ycode, verdict, note))
+        if verdict == "mismatch":
+            self.failed += 1
+
+    def compare(self, section, item, spec_value, value, tol, fmt="{:.3f}", spec_text=None, rel=False, note=""):
+        if value is None:
+            self.row(section, item, spec_text or fmt.format(spec_value), "not measured", "open", note)
+            return
+        ok = abs(value - spec_value) <= (tol * abs(spec_value) if rel else tol)
+        self.row(section, item, spec_text or fmt.format(spec_value), fmt.format(value) if not isinstance(value, str) else value,
+                 "match" if ok else "mismatch", note)
+
+    def markdown(self):
+        out = ["| § | Value | Spec (reference) | Ycode | Verdict | Note |", "|---|---|---|---|---|---|"]
+        for r in self.rows:
+            out.append("| " + " | ".join(str(x) for x in r) + " |")
+        return "\n".join(out)
+
+
+def scroll_series(events):
+    return [(t, float(f["off"])) for t, k, f, _ in events if k == "did-scroll"]
+
+
+def first(events, kind, pred=None):
+    for e in events:
+        if e[1] == kind and (pred is None or pred(e[2])):
+            return e
+    return None
+
+
+def analyze_flick(trials, rep, scale):
+    rows = {}
+    for name, ev in trials:
+        if not name.startswith("flick "):
+            continue
+        a = trial_args(name)
+        we = first(ev, "will-end-drag")
+        de = first(ev, "did-end-decel")
+        if not we or not de:
+            continue
+        v0 = -float(we[2]["vel"])     # UIKit reports pt/ms; moving content up = positive offset change
+        v0 = abs(float(we[2]["vel"]))
+        target = float(we[2]["target"])
+        off_rel = float(we[2]["off"])
+        series = [(t, o) for t, o in scroll_series(ev) if we[0] <= t <= de[0]]
+        if len(series) < 5:
+            continue
+        travel = abs(target - off_rel)
+        t_end = de[0] - we[0]
+        final = float(de[2]["off"])
+        # fitted factor: per-frame velocities from 30 ms after release until 0.05 pt/ms
+        vel = []
+        for (t1, o1), (t2, o2) in zip(series, series[1:]):
+            if t2 - t1 <= 0:
+                continue
+            v = abs(o2 - o1) / ((t2 - t1) * 1000)
+            tm = ((t1 + t2) / 2 - we[0]) * 1000
+            if tm >= 30 and v >= 0.05:
+                vel.append((tm, math.log(v)))
+        factor = None
+        if len(vel) >= 4:
+            n = len(vel)
+            mx = sum(x for x, _ in vel) / n
+            my = sum(y for _, y in vel) / n
+            sxx = sum((x - mx) ** 2 for x, _ in vel)
+            sxy = sum((x - mx) * (y - my) for x, y in vel)
+            factor = math.exp(sxy / sxx) if sxx else None
+        # fraction of travel at fixed times
+        fr = {}
+        for ms in (100, 250, 500, 1000, 2000):
+            tt = we[0] + ms / 1000
+            o = next((o for t, o in series if t >= tt), series[-1][1])
+            fr[ms] = abs(o - off_rel) / travel if travel else None
+        last_step = abs(series[-1][1] - series[-2][1]) if len(series) >= 2 else None
+        # did-scroll interval
+        iv = [(b[0] - a[0]) * 1000 for a, b in zip(series, series[1:])]
+        on_pixel = abs(final * scale - round(final * scale)) < 0.01
+        rows.setdefault(int(a["v"]), []).append(dict(v0=v0, travel=travel, ratio=travel / v0 if v0 else None, t_end=t_end,
+                                                       factor=factor, fr=fr, final_target=abs(final - target), last=last_step,
+                                                       iv=med(iv) if iv else None, on_pixel=on_pixel,
+                                                       end_v=v0 * 0.998 ** (t_end * 1000)))
+    if not rows:
+        rep.row("3.1", "flick deceleration", "0.998 per ms", "not measured", "open")
+        return
+    allr = [r for v in rows.values() for r in v]
+    rep.compare("3.1", "velocity factor per ms (fit)", 0.998, med([r["factor"] for r in allr if r["factor"]]), 0.0005, "{:.5f}",
+                note="all flicks, " + ", ".join(f"{k} pt/s: {mmm([r['factor'] for r in v], '{:.5f}')}" for k, v in sorted(rows.items())))
+    for k, v in sorted(rows.items()):
+        rv = med([r["v0"] for r in v])
+        exp_ratio = 498.0 if rv > 2 else 491.4
+        rep.compare("3.1", f"travel ÷ release velocity, drag {k} pt/s (release {mmm([r['v0'] for r in v])} pt/ms)", exp_ratio,
+                    med([r["ratio"] for r in v]), 8, "{:.1f}", spec_text=f"491–499 ms (≈{exp_ratio:g} at this speed)")
+        exp_t = math.log(0.0108 / rv) / math.log(0.998) / 1000 if rv else None
+        rep.compare("3.1", f"release → end of deceleration, release {rv:.3f} pt/ms", exp_t, med([r["t_end"] for r in v]), 0.1,
+                    "{:.3f} s", spec_text=f"{exp_t:.3f} s (model: 0.998^t·v₀ = 0.0108)")
+    rep.compare("3.1", "end velocity at end of deceleration", 0.0108, med([r["end_v"] for r in allr]), 0.003, "{:.4f} pt/ms",
+                spec_text="0.0103–0.0126 pt/ms")
+    rep.compare("3.1", "final offset − target (largest)", 0.0, max(r["final_target"] for r in allr), 0.01, "{:.3f} pt",
+                spec_text="0 (on a pixel)", note="per flick: " + ", ".join(f"{r['final_target']:.2f} at {r['v0']:.2f} pt/ms" for r in allr))
+    rep.row("3.1", "final offset on a whole pixel", "yes", "yes" if all(r["on_pixel"] for r in allr) else "no",
+            "match" if all(r["on_pixel"] for r in allr) else "mismatch")
+    rep.compare("3.1", "last step before the end", 1 / scale, med([r["last"] for r in allr]), 0.01, "{:.3f} pt",
+                spec_text=f"1 px ({1 / scale:.3f} pt)")
+    for ms, spec in ((100, 0.18), (250, 0.395), (500, 0.635), (1000, 0.875), (2000, 0.99)):
+        rep.compare("3.1", f"fraction of travel at {ms} ms", spec, med([r["fr"][ms] for r in allr if r["fr"][ms] is not None]),
+                    0.03, "{:.2f}")
+    rep.compare("3.1", "scrollViewDidScroll interval (median)", 16.667, med([r["iv"] for r in allr if r["iv"]]), 0.5, "{:.2f} ms",
+                note="frames the guest drew; a longer median means dropped frames")
+
+
+def finger_travel(ev, t_limit, axis="y"):
+    ts = touches(ev)
+    if not ts:
+        return None
+    t0, f0 = ts[0]
+    last = None
+    for t, f in ts:
+        if t > t_limit:
+            break
+        last = f
+    if last is None:
+        return None
+    return abs(float(last[axis]) - float(f0[axis]))
+
+
+def analyze_rubber(trials, rep, height, scale):
+    by = {}
+    ret = {}
+    for name, ev in trials:
+        if not name.startswith("rubber "):
+            continue
+        a = trial_args(name)
+        wb = first(ev, "will-begin-drag")
+        ed = first(ev, "did-end-drag")
+        de = first(ev, "did-end-decel")
+        cfg_rest = None
+        series = scroll_series(ev)
+        if not wb or not ed or not series:
+            continue
+        rest = float(wb[2]["off"])
+        before = finger_travel(ev, wb[0])
+        down = [s for s in series if s[0] <= ed[0]]
+        exc = max(abs(o - rest) for _, o in down) if down else 0
+        ts = touches(ev)
+        total = abs(float(ts[-1][1]["y"]) - float(ts[0][1]["y"])) if ts else None
+        x = total - before if total is not None and before is not None else None
+        model = (1 - 1 / (x * 0.55 / height + 1)) * height if x else None
+        by.setdefault(int(a["d"]), []).append(dict(before=before, exc=exc, model=model, edge=a["edge"]))
+        after = [(t - ed[0], abs(o - rest)) for t, o in series if t >= ed[0]]
+        fr = {}
+        for ms in (100, 200, 300, 400):
+            v = next((o for t, o in after if t >= ms / 1000), 0.0)
+            fr[ms] = v / exc if exc else None
+        within = next((t for t, o in after if o <= 0.5), None)
+        # Past rest on the way back: below the top edge's rest (offsets grow
+        # into the content), above the bottom edge's.
+        into = (lambda o: o - rest) if a["edge"] == "top" else (lambda o: rest - o)
+        stop = de[0] if de else float("inf")
+        ret.setdefault(int(a["d"]), []).append(dict(fr=fr, within=within, end=(de[0] - ed[0]) if de else None,
+                                                    over=any(into(o) > 0.01 for t, o in series if ed[0] <= t <= stop),
+                                                    v=abs(float(first(ev, "will-end-drag")[2]["vel"])) if first(ev, "will-end-drag") else None,
+                                                    decel=ed[2].get("decelerate")))
+    if not by:
+        rep.row("3.2", "rubber band", "c = 0.55", "not measured", "open")
+        return
+    spec_exc = {100: 46.7, 200: 93.3, 400: 172.3}
+    spec_before = {100: 13.0, 200: 11.7, 400: 11.0}
+    spec_ret = {100: (0.548, 0.251, 0.107, 0.043, 0.517, 0.568), 200: (0.448, 0.185, 0.076, 0.029, 0.535, 0.585),
+                400: (0.408, 0.160, 0.062, 0.023, 0.567, 0.619)}
+    for d, v in sorted(by.items()):
+        # The pan threshold (10 pt) plus at most one touch sample (5 pt at 300 pt/s).
+        before = [r["before"] for r in v if r["before"] is not None]
+        ok = bool(before) and all(9.99 <= b <= 15.01 for b in before)
+        rep.row("3.2", f"movement before scrolling starts, {d} pt drag", f"{spec_before.get(d, 12)} pt (10 pt + ≤ 1 sample of 5 pt)",
+                mmm(before, "{:.1f}") + " pt", "match" if ok else "mismatch")
+        rep.compare("3.2", f"excursion, {d} pt drag (model c = 0.55, d = {height:g}: {mmm([r['model'] for r in v], '{:.1f}')})",
+                    med([r["model"] for r in v if r["model"]]) or spec_exc[d], med([r["exc"] for r in v]), 1.0, "{:.1f} pt",
+                    spec_text=f"{spec_exc[d]} pt on 874 pt; model for this run")
+    # fitted c
+    pts = [(r, d) for d, v in by.items() for r in v if r["model"] and r["before"] is not None]
+    best = None
+    for c1000 in range(400, 701):
+        c = c1000 / 1000
+        err = 0
+        for r, d in pts:
+            x = None
+            # recompute x from the model inversion of the logged total
+            x = (r["model"] and (height / (1 - r["model"] / height) - height) / 0.55)
+            m = (1 - 1 / (x * c / height + 1)) * height
+            err += (m - r["exc"]) ** 2
+        if best is None or err < best[1]:
+            best = (c, err)
+    if best:
+        rep.compare("3.2", "fitted c (both edges)", 0.55, best[0], 0.01, "{:.3f}", spec_text="0.555 (iPhone), 0.550 (iPad)")
+    for d, v in sorted(ret.items()):
+        s = spec_ret.get(d)
+        for i, ms in enumerate((100, 200, 300, 400)):
+            rep.compare("3.3", f"remaining at {ms} ms after release, {d} pt drag", s[i],
+                        med([r["fr"][ms] for r in v if r["fr"][ms] is not None]), 0.03, "{:.3f}")
+        rep.compare("3.3", f"within 0.5 pt of rest, {d} pt drag", s[4], med([r["within"] for r in v if r["within"]]), 0.05, "{:.3f} s")
+        rep.compare("3.3", f"didEndDecelerating after release, {d} pt drag", s[5], med([r["end"] for r in v if r["end"]]), 0.05,
+                    "{:.3f} s")
+        rep.row("3.3", f"overshoot past rest, {d} pt drag", "none", "yes" if any(r["over"] for r in v) else "none",
+                "mismatch" if any(r["over"] for r in v) else "match")
+        vs = [r["v"] for r in v if r["v"] is not None]
+        rep.row("3.3", f"release velocity after the 0.6 s hold, {d} pt drag", "not logged (0 assumed)", mmm(vs, "{:.3f}") + " pt/ms",
+                "info", "the drag's speed: a held finger sends nothing; the return times match only with it (uikit-feel-ycode.md §3.3)")
+
+
+def analyze_edge(trials, rep, inset_top, inset_bottom, content_h, view_h):
+    by = {}
+    for name, ev in trials:
+        if not name.startswith("edge "):
+            continue
+        a = trial_args(name)
+        we = first(ev, "will-end-drag")
+        de = first(ev, "did-end-decel")
+        series = scroll_series(ev)
+        if not we or not series:
+            continue
+        if a["edge"] == "top":
+            rest = -inset_top
+            past = [(t, rest - o) for t, o in series]
+        else:
+            rest = content_h + inset_bottom - view_h
+            past = [(t, o - rest) for t, o in series]
+        cross = next((t for t, p in past if p > 0), None)
+        if cross is None:
+            by.setdefault((a["edge"], int(a["v"])), []).append(dict(v0=abs(float(we[2]["vel"])), peak=0, tpeak=None,
+                                                                    within=None, end=None))
+            continue
+        peak_t, peak = max(((t, p) for t, p in past if t >= cross), key=lambda x: x[1])
+        within = next((t - cross for t, p in past if t > peak_t and abs(p) <= 0.5), None)
+        by.setdefault((a["edge"], int(a["v"])), []).append(dict(v0=abs(float(we[2]["vel"])), peak=peak,
+                                                                tpeak=(peak_t - cross) * 1000, within=within,
+                                                                end=(de[0] - cross) if de else None))
+    if not by:
+        rep.row("3.4", "flick into an edge", "peak 67–83 ms after the crossing", "not measured", "open")
+        return
+    for (edge, v), rs in sorted(by.items()):
+        rep.row("3.4", f"{edge} edge, drag {v} pt/s: release velocity", "2.35–6.5 pt/ms", mmm([r["v0"] for r in rs]) + " pt/ms",
+                "info")
+        rep.compare("3.4", f"{edge} edge, drag {v} pt/s: time from crossing to peak", 83, med([r["tpeak"] for r in rs if r["tpeak"]]),
+                    17, "{:.0f} ms", spec_text="83 [67..84] ms")
+        rep.row("3.4", f"{edge} edge, drag {v} pt/s: peak past edge", "47–84 pt (iPhone, 2.4–3.2 pt/ms)",
+                mmm([r["peak"] for r in rs], "{:.1f}") + " pt", "info", "grows with the velocity at the edge")
+        rep.row("3.4", f"{edge} edge, drag {v} pt/s: within 0.5 pt / didEndDecelerating", "0.65–0.70 s / 0.70–0.77 s",
+                mmm([r["within"] for r in rs]) + " / " + mmm([r["end"] for r in rs]) + " s", "info")
+
+
+def analyze_paging(trials, rep, width):
+    by = {}
+    for name, ev in trials:
+        if not name.startswith("paging "):
+            continue
+        a = trial_args(name)
+        we = first(ev, "will-end-drag")
+        de = first(ev, "did-end-decel")
+        series = scroll_series(ev)
+        if not we or not de:
+            continue
+        start = 3 * width
+        off = float(we[2]["off"])
+        final = float(de[2]["off"])
+        page = round(final / width)
+        rem = final - off
+        fr = {}
+        for ms in (50, 100, 200, 300):
+            o = next((o for t, o in series if t >= we[0] + ms / 1000), final)
+            fr[ms] = (o - off) / rem if rem else None
+        by.setdefault(a["case"], []).append(dict(at=(off - start) / width, v=abs(float(we[2]["vel"])), page=page - 3,
+                                                 snap=de[0] - we[0], fr=fr))
+    spec = {"drag30": (0.275, 0, 0.367, (0.185, 0.51, 0.88, 0.99)), "drag60": (0.575, 1, 0.383, (0.185, 0.51, 0.88, 0.99)),
+            "flick15": (0.094, 1, 0.367, (0.23, 0.54, 0.90, 0.99))}
+    if not by:
+        rep.row("3.5", "paging", "50 % rule", "not measured", "open")
+        return
+    for case, rs in sorted(by.items()):
+        s = spec[case]
+        rep.row("3.5", f"{case}: offset at release (pages)", f"{s[0]} pages", mmm([r["at"] for r in rs]) + " pages", "info")
+        vs = [r["v"] for r in rs]
+        if case != "flick15":
+            rep.row("3.5", f"{case}: release velocity after the 0.3 s hold", "0", mmm(vs) + " pt/ms",
+                    "match" if max(vs) < 0.02 else "mismatch", "UIKit reports the last step's speed (uikit-feel-ycode.md §3.5)")
+        else:
+            rep.row("3.5", f"{case}: release velocity", "0.475 pt/ms (XCUITest 2000 pt/s)", mmm(vs) + " pt/ms", "info")
+        moved = [r["page"] for r in rs]
+        rep.row("3.5", f"{case}: result", "next page" if s[1] else "same page",
+                ", ".join("next" if p == 1 else "same" if p == 0 else f"{p:+d}" for p in moved),
+                "match" if all(p == s[1] for p in moved) else "mismatch")
+        rep.compare("3.5", f"{case}: snap, release → didEndDecelerating", s[2], med([r["snap"] for r in rs]), 0.03, "{:.3f} s")
+        for i, ms in enumerate((50, 100, 200, 300)):
+            rep.compare("3.5", f"{case}: fraction of the snap at {ms} ms", s[3][i],
+                        med([r["fr"][ms] for r in rs if r["fr"][ms] is not None]), 0.04, "{:.2f}")
+
+
+def analyze_top(trials, rep, inset_top):
+    by = {}
+    for name, ev in trials:
+        if not name.startswith("top "):
+            continue
+        a = trial_args(name)
+        st = first(ev, "should-scroll-top")
+        dt = first(ev, "did-scroll-top")
+        if not st:
+            by.setdefault(int(a["start"]), []).append(None)
+            continue
+        s0 = float(st[2]["off"])
+        rest = -inset_top
+        dist = s0 - rest
+        series = [(t - st[0], o) for t, o in scroll_series(ev) if t >= st[0]]
+
+        def at(frac):
+            return next((t * 1000 for t, o in series if (s0 - o) >= frac * dist), None)
+        last = series[-1][0] * 1000 if series else None
+        by.setdefault(int(a["start"]), []).append(dict(p50=at(0.5), p90=at(0.9), p99=at(0.99), last=last,
+                                                       did=(dt[0] - st[0]) * 1000 if dt else None))
+    if not by:
+        rep.row("3.6", "scroll to top", "fixed-length ease-out", "not measured", "open")
+        return
+    for start, rs in sorted(by.items()):
+        fired = [r for r in rs if r]
+        rep.row("3.6", f"start {start}: status-bar taps that scrolled", "5/5 (10/10 on the Duo: 9)",
+                f"{len(fired)}/{len(rs)}", "match" if fired and len(fired) == len(rs) else "mismatch")
+        if not fired:
+            continue
+        rep.compare("3.6", f"start {start}: 50 % reached", 80, med([r["p50"] for r in fired if r["p50"]]), 12, "{:.0f} ms")
+        rep.compare("3.6", f"start {start}: 90 % reached", 248, med([r["p90"] for r in fired if r["p90"]]), 17, "{:.0f} ms")
+        rep.compare("3.6", f"start {start}: 99 % reached", 498, med([r["p99"] for r in fired if r["p99"]]), 25, "{:.0f} ms")
+        rep.compare("3.6", f"start {start}: scrollViewDidScrollToTop", 1614, med([r["did"] for r in fired if r["did"]]), 25,
+                    "{:.0f} ms")
+
+
+def touch_down_up(ev):
+    ts = touches(ev)
+    down = next((t for t, f in ts if f["phase"] == "began"), None)
+    up = next((t for t, f in ts if f["phase"] in ("ended", "cancelled")), None)
+    downts = next((float(f["ts"]) for t, f in ts if f["phase"] == "began"), None)
+    upts = next((float(f["ts"]) for t, f in ts if f["phase"] in ("ended", "cancelled")), None)
+    return down, up, downts, upts
+
+
+def analyze_highlight(trials, rep):
+    by = {}
+    for name, ev in trials:
+        if not name.startswith("highlight "):
+            continue
+        a = trial_args(name)
+        down, up, dts, uts = touch_down_up(ev)
+        if dts is None:
+            continue
+        b = first(ev, "button-began")
+        on = first(ev, "highlight", lambda f: f.get("on") == "1")
+        off = first(ev, "highlight", lambda f: f.get("on") == "0")
+        upin = first(ev, "up-inside")
+        # From the moment the window received the touch (spec §1: both are logged;
+        # these sub-millisecond values are from the window's receipt).
+        by.setdefault((a["target"], a["kind"]), []).append(dict(
+            began=(b[0] - down) * 1000 if b else None, on=(on[0] - down) * 1000 if on else None,
+            off=(off[0] - up) * 1000 if off and up else None, upts=(up - down) * 1000 if up else None, fired=bool(upin),
+            delivery=(down - dts) * 1000))
+    if not by:
+        rep.row("4.1", "tap highlight", "", "not measured", "open")
+        return
+    spec = {("plain", "press"): (0.2, 0.3, 0.2), ("inner", "press"): (150.9, 151.1, 0.9),
+            ("plain", "tap"): (0.2, 0.2, 0.1), ("inner", "tap"): (None, None, 0.5)}
+    for key, rs in sorted(by.items()):
+        s = spec[key]
+        label = f"{key[0]} button, {key[1]}"
+        if s[0] is not None:
+            rep.compare("4.1", f"{label}: touch-down → touchesBegan", s[0], med([r["began"] for r in rs if r["began"] is not None]),
+                        5 if s[0] > 100 else 2.5, "{:.1f} ms")
+            rep.compare("4.1", f"{label}: touch-down → highlight on", s[1], med([r["on"] for r in rs if r["on"] is not None]),
+                        5 if s[1] > 100 else 2.5, "{:.1f} ms")
+        else:
+            at_up = [r["began"] - r["upts"] for r in rs if r["began"] is not None and r["upts"] is not None]
+            rep.compare("4.1", f"{label}: touchesBegan relative to touch-up", 0.3, med(at_up), 3, "{:.1f} ms",
+                        spec_text="at touch-up (+0.3 ms)")
+        rep.compare("4.1", f"{label}: touch-up → highlight off", s[2], med([r["off"] for r in rs if r["off"] is not None]), 3,
+                    "{:.1f} ms")
+        n = sum(r["fired"] for r in rs)
+        rep.row("4.1", f"{label}: .touchUpInside", "every time", f"{n}/{len(rs)}", "match" if n == len(rs) else "mismatch")
+        rep.row("4.1", f"{label}: touch event timestamp → the window has it", "—", mmm([r["delivery"] for r in rs], "{:.1f}") + " ms",
+                "info", "backboardd → app delivery in the guest")
+
+
+def analyze_long(trials, rep):
+    by = {}
+    for name, ev in trials:
+        if not name.startswith("long "):
+            continue
+        a = trial_args(name)
+        down, up, dts, uts = touch_down_up(ev)
+        b = first(ev, "long", lambda f: f.get("state") == "began")
+        by.setdefault(int(a["ms"]), []).append(dict(len=(uts - dts) * 1000 if dts and uts else None,
+                                                    began=(b[0] - dts) * 1000 if b and dts else None))
+    cfg = next((e for _, ev in trials for e in ev if e[1] == "long-config"), None)
+    if cfg:
+        rep.compare("4.2", "minimumPressDuration", 0.5, float(cfg[2]["minimum"]), 0.0001, "{:.3f} s")
+        rep.compare("4.2", "allowableMovement", 10, float(cfg[2]["movement"]), 0.001, "{:.1f} pt")
+    spec = {1000: True, 424: False, 465: False, 559: True}
+    for ms, rs in sorted(by.items()):
+        n = sum(1 for r in rs if r["began"] is not None)
+        rep.row("4.2", f"press of {mmm([r['len'] for r in rs], '{:.0f}')} ms: recognized", f"{'5/5' if spec[ms] else '0/5'}",
+                f"{n}/{len(rs)}", "match" if (n == len(rs)) == spec[ms] and (n in (0, len(rs))) else "mismatch")
+        if spec[ms] and n:
+            rep.compare("4.2", f"press of {ms} ms: touch-down → .began", 501.5, med([r["began"] for r in rs if r["began"]]), 5,
+                        "{:.1f} ms", spec_text="501.5 [500.6..506] ms")
+
+
+def analyze_double(trials, rep):
+    singles, doubles = [], []
+    for name, ev in trials:
+        if not name.startswith("double "):
+            continue
+        a = trial_args(name)
+        down, up, dts, uts = touch_down_up(ev)
+        st = first(ev, "single-tap")
+        dt = first(ev, "double-tap")
+        if a["kind"] == "single":
+            singles.append(dict(delay=(st[0] - up) * 1000 if st and up else None, double=bool(dt),
+                                from_ts=(st[0] - uts) * 1000 if st and uts else None))
+        else:
+            doubles.append(dict(double=bool(dt), single=bool(st)))
+    if singles:
+        rep.compare("4.3", "single tap that waits for a double tap: delay after touch-up (the window's receipt)", 351.0,
+                    med([r["delay"] for r in singles if r["delay"] is not None]), 5, "{:.1f} ms", spec_text="351 [350.4..352.1] ms",
+                    note="from the touch-up event's timestamp: " + mmm([r["from_ts"] for r in singles], "{:.1f}") + " ms")
+    if doubles:
+        n = sum(r["double"] and not r["single"] for r in doubles)
+        rep.row("4.3", "double tap (taps of 60 ms, 20 ms apart)", "recognized 5/5; single never", f"{n}/{len(doubles)}",
+                "match" if n == len(doubles) else "mismatch")
+
+
+def analyze_pan(trials, rep):
+    rs = []
+    for name, ev in trials:
+        if not name.startswith("pan "):
+            continue
+        down, up, dts, uts = touch_down_up(ev)
+        b = first(ev, "pan", lambda f: f.get("state") == "began")
+        if not b or dts is None:
+            continue
+        ts = touches(ev)
+        y0 = float(ts[0][1]["y"])
+        # the touch sample delivered in the same pass as .began
+        last = None
+        for t, f in ts:
+            if t <= b[0]:
+                last = f
+        moved = abs(float(last["y"]) - y0) if last else None
+        rs.append(dict(moved=moved, t=(b[0] - dts) * 1000, tr=(float(b[2]["tx"]), float(b[2]["ty"]))))
+    if not rs:
+        rep.row("4.4", "pan threshold", "10 pt", "not measured", "open")
+        return
+    rep.compare("4.4", "finger movement when .began fires", 10.0, med([r["moved"] for r in rs if r["moved"] is not None]), 1.7,
+                "{:.2f} pt", spec_text="10.00 pt (first sample ≥ 10 pt)")
+    rep.row("4.4", "touch-down → .began (drag at 100 pt/s)", "191 [187..199] ms (XCUITest's press first)",
+            mmm([r["t"] for r in rs], "{:.0f}") + " ms", "info", "10 pt at 100 pt/s is 100 ms; the rest is the driver's press before the drag")
+    tz = all(abs(r["tr"][0]) < 0.01 and abs(r["tr"][1]) < 0.01 for r in rs)
+    rep.row("4.4", "translation at .began", "(0, 0)", "(0, 0)" if tz else ", ".join(f"({x:g}, {y:g})" for x, y in [r["tr"] for r in rs][:3]),
+            "match" if tz else "mismatch")
+
+
+def analyze_swipe(trials, rep):
+    by = {}
+    for name, ev in trials:
+        if not name.startswith("swipe "):
+            continue
+        a = trial_args(name)
+        down, up, dts, uts = touch_down_up(ev)
+        s = first(ev, "swipe")
+        travel = None
+        if s and dts is not None:
+            ts = touches(ev)
+            x0 = float(ts[0][1]["x"])
+            last = None
+            for t, f in ts:
+                if t <= s[0]:
+                    last = f
+            travel = abs(float(last["x"]) - x0) if last else None
+        by.setdefault((int(a["d"]), int(a["v"])), []).append(dict(ok=bool(s), travel=travel,
+                                                                  t=(s[0] - dts) * 1000 if s and dts is not None else None,
+                                                                  at_up=bool(s and up and s[0] >= up)))
+    spec = {(10, 1500): None, (20, 1500): None, (40, 1500): None, (60, 1500): (52.7, 67), (100, 1500): (51.7, 67),
+            (200, 1500): (47.0, 67), (200, 100): (33.0, 400), (200, 200): (40.0, 250), (200, 400): (43.3, 150),
+            (200, 800): (50.7, 100)}
+    for key in sorted(by, key=lambda k: (k[1] != 1500, k[1], k[0])):
+        rs = by[key]
+        s = spec.get(key)
+        n = sum(r["ok"] for r in rs)
+        label = f"{key[0]} pt at {key[1]} pt/s"
+        if s is None:
+            rep.row("4.5", f"{label}: recognized", "0/5", f"{n}/{len(rs)}", "match" if n == 0 else "mismatch")
+        else:
+            trv = med([r["travel"] for r in rs if r["travel"] is not None])
+            ok = n == len(rs) and trv is not None and abs(trv - s[0]) <= max(6, key[1] / 60 * 1.1)
+            rep.row("4.5", f"{label}: recognized, travel at recognition, time", f"5/5, {s[0]} pt, {s[1]} ms",
+                    f"{n}/{len(rs)}, " + (f"{trv:.1f} pt, " if trv is not None else "— , ") + mmm([r["t"] for r in rs if r["t"]], "{:.0f}") + " ms",
+                    "match" if ok else "mismatch", "within one touch sample")
+
+
+def analyze_pinch(trials, rep):
+    by = {}
+    for name, ev in trials:
+        if not name.startswith("pinch "):
+            continue
+        a = trial_args(name)
+        ts = touches(ev)
+        b = first(ev, "pinch", lambda f: f.get("state") == "began")
+        if not b or not ts:
+            by.setdefault(a["kind"], []).append(None)
+            continue
+        # distance at touch-down and in the pass of .began, from the window's touch log
+        downs = [f for t, f in ts if f["phase"] == "began"]
+        d0 = math.hypot(float(downs[0]["x"]) - float(downs[1]["x"]), float(downs[0]["y"]) - float(downs[1]["y"])) if len(downs) >= 2 else None
+        dist_b = float(b[2]["distance"]) if "distance" in b[2] else None
+        t_down = ts[0][0]
+        by.setdefault(a["kind"], []).append(dict(d0=d0, change=(dist_b - d0) if (dist_b is not None and d0 is not None) else None,
+                                                 scale=float(b[2]["scale"]), t=(b[0] - t_down) * 1000))
+    for kind, rs in sorted(by.items()):
+        ok = [r for r in rs if r]
+        rep.row("4.6", f"{kind}: recognized", "all", f"{len(ok)}/{len(rs)}", "match" if len(ok) == len(rs) else "mismatch")
+        if ok:
+            rep.compare("4.6", f"{kind}: change in finger distance at .began", 8.3, med([abs(r["change"]) for r in ok if r["change"] is not None]),
+                        2.0, "{:.2f} pt", spec_text="about 8–9 pt")
+            rep.compare("4.6", f"{kind}: scale at .began", 1.0, med([r["scale"] for r in ok]), 0.05, "{:.3f}",
+                        spec_text="≈ 1.0 (1.018 / 1.000)")
+
+
+def analyze_keyboard(trials, rep, scale, height):
+    shows, hides = [], []
+    for name, ev in trials:
+        if not name.startswith("keyboard "):
+            continue
+        kb = [(t, f) for t, k, f, _ in ev if k == "kb"]
+        pos = [(t, float(f["y"])) for t, k, f, _ in ev if k == "kb-pos"]
+        def note(label):
+            return next(((t, f) for t, f in kb if f["_words"] and f["_words"][0] == label), None)
+        if " show " in " " + name + " ":
+            will, did = note("will-show"), note("did-show")
+            target = shows
+        else:
+            will, did = note("will-hide"), note("did-hide")
+            target = hides
+        target.append(dict(will=will, did=did, pos=pos, kb=kb))
+    if not shows:
+        rep.row("5.1", "software keyboard", "shows on focus", "not measured", "open")
+        return
+    shown = [s for s in shows if s["will"]]
+    rep.row("5.1", "software keyboard on focus (hardware keyboard reported connected)", "shows every time",
+            f"{len(shown)}/{len(shows)}", "match" if len(shown) == len(shows) else "mismatch")
+    if not shown:
+        return
+    f = shown[0]["will"][1]
+    durs = [float(s["will"][1]["duration"]) for s in shown] + [float(h["will"][1]["duration"]) for h in hides if h["will"]]
+    rep.compare("5.1", "duration in user info", 0.38333, med(durs), 0.002, "{:.5f} s")
+    curves = sorted(set(s["will"][1]["curve"] for s in shown))
+    rep.row("5.1", "curve in user info", "7", ", ".join(curves), "match" if curves == ["7"] else "mismatch")
+    begin = shown[0]["will"][1]["begin"] if "begin" in shown[0]["will"][1] else None
+    words = shown[0]["will"][1]["_words"]
+    # begin=x y w h is split: the rect values follow in words
+    raw = next(r for t, k, ff, r in [e for _, ev in trials for e in ev] if k == "kb" and "will-show" in r)
+    m = re.search(r"begin=([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+) end=([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)", raw)
+    if m:
+        b = tuple(float(x) for x in m.groups()[:4])
+        e = tuple(float(x) for x in m.groups()[4:])
+        rep.row("5.1", "keyboardFrameBegin on show", "(0, 0, 0, 0)", "(" + ", ".join(f"{x:g}" for x in b) + ")",
+                "match" if b == (0, 0, 0, 0) else "mismatch")
+        rep.row("5.1", "keyboardFrameEnd on show (portrait)", "(0, 546, 402, 328) on 402 × 874",
+                "(" + ", ".join(f"{x:g}" for x in e) + ")", "match" if e == (0, 546, 402, 328) else "info",
+                "same device size only")
+    wd = [(s["did"][0] - s["will"][0]) * 1000 for s in shown if s["did"]]
+    rep.compare("5.1", "will-show → did-show", 403.7, med(wd), 25, "{:.1f} ms", spec_text="403.7 [389.6..586.1] ms")
+    wh = [(h["did"][0] - h["will"][0]) * 1000 for h in hides if h["will"] and h["did"]]
+    rep.compare("5.1", "will-hide → did-hide", 401.2, med(wh), 25, "{:.1f} ms", spec_text="401.2 ms (Duo: 8–10 ms also allowed)")
+    # §5.2 visible motion: fraction of the travel per frame since the first movement
+    spec_show = (0.080, 0.197, 0.350, 0.484, 0.694, 0.874, 0.951, 0.993, 1.0)
+    spec_hide = (0.115, 0.273, 0.416, 0.542, 0.737, 0.892, 0.959, 0.995, 1.0)
+    frames = (1, 2, 3, 4, 6, 9, 12, 18, 24)
+    for label, items, spec in (("show", shown, spec_show), ("hide", [h for h in hides if h["will"]], spec_hide)):
+        curves, lags, omegas, rms, drops = [], [], [], [], []
+        for s_ in items:
+            pos = [(t, y) for t, y in s_["pos"] if t >= s_["will"][0] - 0.05]
+            if len(pos) < 3:
+                continue
+            y0, y1 = pos[0][1], pos[-1][1]
+            if abs(y1 - y0) < 1:
+                continue
+            samples = [(t, (y - y0) / (y1 - y0)) for t, y in pos]
+            will = s_["will"][0]
+            # p(t) = 1 − (1 + ω(t − t0)) e^(−ω(t − t0)): ω and the start t0 free.
+            best = None
+            for w10 in range(150, 360, 2):
+                w = w10 / 10
+                for lag_ms in range(-20, 200):
+                    t0 = will + lag_ms / 1000
+                    err = 0.0
+                    for t, p in samples:
+                        tt = max(0.0, t - t0)
+                        err += (1 - (1 + w * tt) * math.exp(-w * tt) - p) ** 2
+                    if best is None or err < best[0]:
+                        best = (err, w, t0)
+            err, w, t0 = best
+            omegas.append(w)
+            lags.append((t0 - will) * 1000)
+            rms.append(math.sqrt(err / len(samples)))
+            moving = [t for t, p in samples if 0.001 < p < 0.999]
+            frames_expected = (moving[-1] - moving[0]) * 60 + 1 if len(moving) > 1 else 0
+            drops.append(max(0, round(frames_expected) - len(moving)))
+            # the curve at n frames after the start, from the samples (linear between them)
+            frac = {}
+            for n in frames:
+                tt = t0 + n / 60.0
+                prev = None
+                v = samples[-1][1]
+                for t, p in samples:
+                    if t >= tt:
+                        v = p if prev is None else prev[1] + (p - prev[1]) * (tt - prev[0]) / max(t - prev[0], 1e-9)
+                        break
+                    prev = (t, p)
+                frac[n] = v
+            curves.append(frac)
+        if not curves:
+            rep.row("5.2", f"{label}: visible motion", "critically damped, ω ≈ 24", "no movement sampled", "mismatch")
+            continue
+        for i, n in enumerate(frames):
+            rep.compare("5.2", f"{label}: fraction {n} frame{'s' if n > 1 else ''} after the start", spec[i], med([c[n] for c in curves]), 0.04,
+                        "{:.3f}")
+        rep.compare("5.2", f"{label}: fitted ω (start time fitted too; RMS {mmm(rms)})", 24.0, med(omegas), 1.5, "{:.1f} rad/s",
+                    spec_text="23.7–24.3 rad/s")
+        rep.compare("5.2", f"{label}: motion starts after the notification", 12, med(lags), 17, "{:.0f} ms",
+                    spec_text="within 1 frame (6–18 ms)", note=f"frames not drawn during the motion: {mmm(drops, '{:.0f}')}")
+
+
+def analyze_rotation(trials, rep, hello, notices):
+    rots = [(n, ev) for n, ev in trials if n.startswith("rotation ")]
+    if not rots or any(n.startswith("rotation unsupported") for n, _ in trials):
+        rep.row("6", "rotation (90°)", "0.3 s, curve 0, ease-in-ease-out bounds", "not offered for this device type",
+                "mismatch", "the display server refuses rotation for non-foldable devices")
+        return
+    rs = []
+    for name, ev in rots:
+        w = first(ev, "will-transition")
+        c = first(ev, "transition-completion")
+        if not w:
+            rs.append(None)
+            continue
+        rs.append(dict(duration=float(w[2]["duration"]), curve=w[2]["curve"], to_completion=(c[0] - w[0]) * 1000 if c else None,
+                       pos=[(t, float(f["w"]), float(f["h"])) for t, k, f, _ in ev if k == "rot-pos"], will=w[0]))
+    ok = [r for r in rs if r]
+    rep.row("6.1", "rotations that reached the app", "every one", f"{len(ok)}/{len(rs)}", "match" if ok and len(ok) == len(rs) else "mismatch")
+    if not ok:
+        return
+    rep.compare("6.1", "transitionDuration (90°)", 0.3, med([r["duration"] for r in ok]), 0.001, "{:.3f} s",
+                spec_text="0.3 s (iPhone), 0.4 s (iPad)")
+    curves = sorted(set(r["curve"] for r in ok))
+    rep.row("6.1", "completionCurve", "0", ", ".join(curves), "match" if curves == ["0"] else "mismatch")
+    rep.compare("6.1", "willTransition → completion", 339, med([r["to_completion"] for r in ok if r["to_completion"]]), 40,
+                "{:.0f} ms", spec_text="339 [327..620] ms (iPhone)")
+    lens = []
+    for r in ok:
+        pos = r["pos"]
+        if len(pos) >= 3:
+            lens.append((pos[-1][0] - pos[0][0]) * 1000)
+    rep.compare("6.2", "bounds animation length", 300, med(lens), 34, "{:.0f} ms", spec_text="300 [295..620] ms, ease-in-ease-out")
+
+
+def analyze_display(trials, rep, info, host):
+    if info:
+        rep.compare("7.1", "UIScreen.maximumFramesPerSecond", 60, float(info["maxFPS"]), 0, "{:.0f}")
+    by = {}
+    for name, ev in trials:
+        if not name.startswith("display variant"):
+            continue
+        a = trial_args(name)
+        dl = [(t, float(f["ts"]), float(f["target"]), float(f["dur"])) for t, k, f, _ in ev if k == "dl"]
+        by.setdefault((a["variant"], a["phase"]), []).append(dl)
+    for (variant, phase), runs in sorted(by.items()):
+        iv, lat, durs, tgt = [], [], [], []
+        for dl in runs:
+            for a, b in zip(dl, dl[1:]):
+                iv.append((b[1] - a[1]) * 1000)
+            lat += [(t - ts) * 1000 for t, ts, _, _ in dl]
+            durs += [d * 1000 for _, _, _, d in dl]
+            tgt += [(tg - ts) * 1000 for _, ts, tg, _ in dl]
+        if not iv:
+            rep.row("7.2", f"{variant}, {phase}: display-link interval", "16.667 ms", "no callbacks", "mismatch")
+            continue
+        iv.sort()
+        m = med(iv)
+        longs = sum(1 for x in iv if x > 1.5 * 16.667)
+        p5, p95 = iv[int(0.05 * (len(iv) - 1))], iv[int(0.95 * (len(iv) - 1))]
+        rep.compare("7.2", f"{variant}, {phase}: display-link interval (p5–p95 {p5:.3f}–{p95:.3f}, n = {len(iv)}, {longs} long)",
+                    16.667, m, 0.05, "{:.3f} ms")
+        if phase == "idle" and variant == "default":
+            rep.compare("7.2", "duration and targetTimestamp − timestamp", 16.667, med(durs), 0.05, "{:.3f} ms")
+            rep.compare("7.2", "callback after timestamp", 17.19, med(lat), 2.0, "{:.2f} ms", spec_text="17.19 ms (0.5 ms after target)")
+        if variant == "max":
+            short = sum(1 for x in iv if x < 16.0)
+            rep.row("7.2", f"max, {phase}: intervals shorter than 16.66 ms", "none", str(short), "match" if short == 0 else "mismatch")
+    # §7.3 what the host receives
+    frames = host.get("frames", [])
+    marks = host.get("marks", [])
+    if frames:
+        moving = []
+        for (t0, t1) in host.get("moving", []):
+            fr = [t for t in frames if t0 <= t <= t1]
+            moving += [(b - a) * 1000 for a, b in zip(fr, fr[1:])]
+        if moving:
+            moving.sort()
+            rep.compare("7.3", f"host frame interval while content moves (n = {len(moving)}, p5 {moving[int(0.05 * (len(moving) - 1))]:.1f}, "
+                        f"p95 {moving[int(0.95 * (len(moving) - 1))]:.1f})", 16.667, med(moving), 1.0, "{:.2f} ms")
+        idle = host.get("idle")
+        if idle:
+            t0, t1 = idle
+            n = sum(1 for t in frames if t0 <= t <= t1)
+            rep.row("7.3", f"frames sent while nothing moves ({t1 - t0:.1f} s)", "none", str(n), "match" if n == 0 else "mismatch")
+
+
+def read_png(path):
+    """→ (width, height, channels, rows as bytearray list) for 8-bit PNGs."""
+    with open(path, "rb") as f:
+        data = f.read()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
+    pos = 8
+    idat = b""
+    chunks = []
+    while pos < len(data):
+        n = struct.unpack(">I", data[pos:pos + 4])[0]
+        typ = data[pos + 4:pos + 8]
+        body = data[pos + 8:pos + 8 + n]
+        chunks.append(typ.decode())
+        if typ == b"IHDR":
+            w, h, depth, ctype, _c, _f, inter = struct.unpack(">IIBBBBB", body)
+        elif typ == b"IDAT":
+            idat += body
+        pos += 12 + n
+    assert depth == 8 and inter == 0, "only 8-bit non-interlaced PNGs"
+    ch = {0: 1, 2: 3, 4: 2, 6: 4}[ctype]
+    raw = zlib.decompress(idat)
+    stride = w * ch
+    rows = []
+    prev = bytearray(stride)
+    i = 0
+    for _ in range(h):
+        ft = raw[i]
+        line = bytearray(raw[i + 1:i + 1 + stride])
+        i += 1 + stride
+        if ft == 1:
+            for x in range(ch, stride):
+                line[x] = (line[x] + line[x - ch]) & 0xFF
+        elif ft == 2:
+            for x in range(stride):
+                line[x] = (line[x] + prev[x]) & 0xFF
+        elif ft == 3:
+            for x in range(stride):
+                left = line[x - ch] if x >= ch else 0
+                line[x] = (line[x] + ((left + prev[x]) >> 1)) & 0xFF
+        elif ft == 4:
+            for x in range(stride):
+                a = line[x - ch] if x >= ch else 0
+                b = prev[x]
+                c = prev[x - ch] if x >= ch else 0
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 0xFF
+        rows.append(line)
+        prev = line
+    return w, h, ch, rows, chunks
+
+
+def pattern_pixels(n):
+    """The probe's pattern (UIKitFeel.swift, PixelsPage.pattern)."""
+    s = 12345
+    out = []
+    for _ in range(n * n):
+        s = (s * 1103515245 + 12345) & 0xFFFFFFFF
+        out.append((s >> 16) & 0xFF)
+    return out
+
+
+def find_pattern(img, expected, n, hint=None):
+    """Searches the image for the n × n pattern; → (x, y, mismatched pixels, max error)."""
+    w, h, ch, rows = img[:4]
+    first_row = expected[:n]
+
+    def px(x, y):
+        r = rows[y]
+        return r[x * ch]
+
+    cands = []
+    if hint:
+        hx, hy = hint
+        cands = [(x, y) for y in range(max(0, hy - 4), min(h - n, hy + 5)) for x in range(max(0, hx - 4), min(w - n, hx + 5))]
+    else:
+        cands = [(x, y) for y in range(0, h - n) for x in range(0, w - n)]
+    for x, y in cands:
+        if all(abs(px(x + i, y) - first_row[i]) <= 2 for i in range(8)):
+            bad = 0
+            worst = 0
+            for j in range(n):
+                for i in range(n):
+                    d = abs(px(x + i, y + j) - expected[j * n + i])
+                    if ch >= 3:
+                        r = rows[y + j]
+                        d = max(d, abs(r[(x + i) * ch + 1] - expected[j * n + i]), abs(r[(x + i) * ch + 2] - expected[j * n + i]))
+                    worst = max(worst, d)
+                    if d > 0:
+                        bad += 1
+            return x, y, bad, worst
+    return None
+
+
+def analyze_pixels(dirpath, rep, info, rects, scale):
+    path = os.path.join(dirpath, "screen.png")
+    if not os.path.exists(path):
+        rep.row("8", "screenshot", "native pixels", "not taken", "open")
+        return
+    img = read_png(path)
+    w, h, ch, rows, chunks = img
+    bw, bh = info and tuple(float(v) for v in info["_bounds"]) or (0, 0)
+    rep.row("8.1", "screenshot size", f"{int(bw * scale)} × {int(bh * scale)} px (points × scale)", f"{w} × {h} px",
+            "match" if (w, h) == (int(bw * scale), int(bh * scale)) else "mismatch")
+    alpha_ok = ch == 4 and all(rows[y][x * 4 + 3] == 255 for y in range(0, h, 7) for x in range(0, w, 7))
+    rep.row("8.1", "screenshot format", "RGBA, sRGB chunk, opaque", f"{'RGBA' if ch == 4 else 'channels ' + str(ch)}, "
+            f"{'sRGB chunk' if 'sRGB' in chunks else 'no sRGB chunk'}, {'opaque' if alpha_ok else 'not opaque'}",
+            "match" if ch == 4 and alpha_ok and "sRGB" in chunks else "mismatch")
+
+    def crop(name, pad=0):
+        if name not in rects:
+            return None
+        x, y, rw, rh = rects[name]
+
+        def lo(v):
+            return int(round(v)) if abs(v - round(v)) < 0.02 else int(math.floor(v))
+
+        def hi(v):
+            return int(round(v)) if abs(v - round(v)) < 0.02 else int(math.ceil(v))
+        x0, y0 = lo(x * scale) - pad, lo(y * scale) - pad
+        x1, y1 = hi((x + rw) * scale) + pad, hi((y + rh) * scale) + pad
+        return [[tuple(rows[yy][xx * ch:xx * ch + 3]) for xx in range(max(0, x0), min(w, x1))] for yy in range(max(0, y0), min(h, y1))]
+
+    for name in ("text9", "text17", "text34"):
+        c = crop(name)
+        if not c:
+            continue
+        partial = [p for row in c for p in row if 0 < sum(p) < 765]
+        colored = sum(1 for p in partial if max(p) - min(p) > 2)
+        rep.row("8.2", f"{name}: partially covered pixels with an R/G/B difference", "0 (grayscale)", f"{colored} of {len(partial)}",
+                "match" if partial and colored == 0 else "mismatch")
+    c = crop("text17")
+    if c:
+        levels = len(set(p[0] for row in c for p in row))
+        rep.row("8.2", "text17: distinct gray levels", "254–256", str(levels), "match" if levels >= 200 else "mismatch")
+    a, b = crop("text17"), crop("text17-1px")
+    if a and b:
+        # b's crop starts one pixel to the right: equal pixels mean the same rendering moved by 1 px.
+        n = min(len(a), len(b))
+        m = min(len(a[0]), len(b[0]))
+        diff = sum(abs(a[y][x][0] - b[y][x][0]) for y in range(n) for x in range(m)) / (n * m)
+        rep.compare("8.2", "label moved by 1 px = the original moved", 0.0, diff, 0.05, "{:.3f}", spec_text="mean difference 0.000")
+    a, hp = crop("text17"), crop("text17-halfpx")
+    if a and b and hp:
+        n = min(len(a), len(b), len(hp))
+        m = min(len(a[0]), len(b[0]), len(hp[0]))
+        # 3×: glyphs are rasterized again at the fractional origin (spec: 7.8 from either, 15.4 from their average).
+        d_orig = sum(abs(hp[y][x][0] - a[y][x][0]) for y in range(n) for x in range(m)) / (n * m)
+        d_avg = sum(abs(hp[y][x][0] - (a[y][x][0] + (a[y][x - 1][0] if x else 255)) / 2) for y in range(n) for x in range(m)) / (n * m)
+        rep.row("8.2", "label moved by ½ px: mean difference from the original, from the 1-px average",
+                "7.76, 15.41 (3×: re-rasterized)", f"{d_orig:.2f}, {d_avg:.2f}", "match" if d_orig > 1 and d_avg > 1 else "mismatch",
+                "the guest's own rendering; compared, not required to be equal")
+    c = crop("text17")
+    if c:
+        # Stem hinting: a vertical stem's columns are not snapped (partial coverage on both sides).
+        cols = [sum(1 for row in c if row[x][0] < 128) for x in range(len(c[0]))]
+        partial = sum(1 for row in c for p in row if 30 < p[0] < 225)
+        rep.row("8.2", "text17: partially covered pixels (no stem hinting)", "many (stems 2.4–3.6 px wide)", str(partial),
+                "match" if partial > 100 else "mismatch")
+    c = crop("magnified")
+    if c:
+        levels = sorted(set(p[0] for row in c[1:-1] for p in row[1:-1]))
+        rep.row("8.3", "scale-1 bitmap at its point size (3×)", "levels 0, 85, 170, 255 (linear)", ", ".join(map(str, levels[:8])),
+                "match" if any(0 < v < 255 for v in levels) else "mismatch")
+    c = crop("stretched")
+    if c:
+        levels = len(set(p[0] for row in c for p in row))
+        rep.row("8.3", "16-px scale-1 bitmap stretched to 37 pt", "254 levels (smooth)", str(levels), "match" if levels > 100 else "mismatch")
+    c = crop("checker")
+    if c:
+        vals = set(p[0] for row in c[1:-1] for p in row[1:-1])
+        rep.row("8.3", "checkerboard at the screen scale, pixel-aligned", "only 0 and 255", ", ".join(str(v) for v in sorted(vals)[:6]),
+                "match" if vals <= {0, 255} else "mismatch")
+    c = crop("checker-halfpx")
+    if c:
+        inner = [p[0] for row in c[2:-2] for p in row[1:-1]]
+        rep.compare("8.3", "same image ½ px lower (bilinear: uniform 128)", 128, med(inner), 3, "{:.0f}")
+    c = crop("line-1px", 1)
+    if c:
+        black_rows = sum(1 for row in c if all(p[0] < 8 for p in row[2:-2]))
+        gray_rows = sum(1 for row in c if any(8 <= p[0] < 247 for p in row[2:-2]))
+        rep.row("8.3", "1-px solid view at a ½-px offset", "one fully black row, no gray", f"{black_rows} black, {gray_rows} gray",
+                "match" if black_rows == 1 and gray_rows == 0 else "mismatch")
+    c = crop("line-1pt", 1)
+    if c:
+        black_rows = sum(1 for row in c if all(p[0] < 8 for p in row[2:-2]))
+        rep.row("8.3", "1 pt solid view at a ½-px offset", f"{int(scale)} fully black rows", f"{black_rows}",
+                "match" if black_rows == int(scale) else "mismatch")
+    if "pattern" in rects:
+        x, y = rects["pattern"][:2]
+        r = find_pattern(img, pattern_pixels(96), 96, (round(x * scale), round(y * scale)))
+        rep.row("8.3", "pixel-exact pattern (96 × 96 device pixels)", "exact", "not found" if not r else f"{r[2]} pixels differ (max {r[3]})",
+                "match" if r and r[2] == 0 else "mismatch")
+
+
+def load_host(dirpath, trials_times):
+    path = os.path.join(dirpath, "host.jsonl")
+    frames = []
+    notices = []
+    hello = {}
+    if os.path.exists(path):
+        with open(path) as f:
+            for line in f:
+                j = json.loads(line)
+                if "frame" in j:
+                    frames.append(j["t"])
+                elif "hello" in j:
+                    hello = j["hello"] or {}
+                elif "notice" in j:
+                    notices.append(j["notice"])
+    return frames, hello, notices
+
+
+def analyze(argv):
+    dirpath = argv[0]
+    check = "--check" in argv
+    trials = parse_log(os.path.join(dirpath, "guest.log"))
+    rep = Report()
+    allev = [e for _, ev in trials for e in ev]
+    info_e = next((e for e in allev if e[1] == "info"), None)
+    info = None
+    scale = 3.0
+    if info_e:
+        raw = info_e[3]
+        info = dict(info_e[2])
+        m = re.search(r"bounds=([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)", raw)
+        info["_bounds"] = (m.group(3), m.group(4)) if m else (0, 0)
+        scale = float(info["scale"])
+        rep.row("1", "device", "iPhone 17 Pro 402 × 874 pt @3 (iOS 27.2)",
+                f"{float(info['_bounds'][0]):g} × {float(info['_bounds'][1]):g} pt @{scale:g}", "info")
+        rep.row("5.3", "GameController hardware keyboard at launch", "connected",
+                "connected" if info.get("gcKeyboard") == "1" or any(e[1] == "gc-keyboard" for e in allev) else "not connected",
+                "match" if info.get("gcKeyboard") == "1" or any(e[1] == "gc-keyboard" and e[2].get("connected") == "1" for e in allev)
+                else "mismatch")
+    cfg = next((e for e in allev if e[1] == "scroll-config" and e[2].get("paging") == "0"), None)
+    inset_top = inset_bottom = 0.0
+    view_h = content_h = None
+    if cfg:
+        m = re.search(r"inset=([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)", cfg[3])
+        inset_top, inset_bottom = float(m.group(1)), float(m.group(3))
+        sz = re.search(r"size=([-\d.]+)x([-\d.]+) content=([-\d.]+)x([-\d.]+)", cfg[3])
+        view_h, content_h = float(sz.group(2)), float(sz.group(4))
+        rep.compare("3", "decelerationRate .normal", 0.998, float(cfg[2]["rate"]), 0.0000005, "{:.6f}")
+        rep.compare("3", "decelerationRate .fast", 0.99, float(cfg[2]["fast"]), 0.0000005, "{:.6f}")
+        rep.row("3", "delaysContentTouches, scrollsToTop", "true, true", f"{cfg[2]['delays'] == '1'}, {cfg[2]['toTop'] == '1'}".lower(),
+                "match" if cfg[2]["delays"] == "1" and cfg[2]["toTop"] == "1" else "mismatch")
+        rep.row("3", "adjusted content inset (top, bottom), portrait", "62, 34 pt (402 × 874 iPhone)",
+                f"{inset_top:g}, {inset_bottom:g} pt", "match" if (inset_top, inset_bottom) == (62, 34) else "info")
+    analyze_flick(trials, rep, scale)
+    if view_h:
+        analyze_rubber(trials, rep, view_h, scale)
+        analyze_edge(trials, rep, inset_top, inset_bottom, content_h, view_h)
+    pcfg = next((e for e in allev if e[1] == "scroll-config" and e[2].get("paging") == "1"), None)
+    if pcfg:
+        pw = float(re.search(r"size=([-\d.]+)x", pcfg[3]).group(1))
+        analyze_paging(trials, rep, pw)
+    analyze_top(trials, rep, inset_top)
+    analyze_highlight(trials, rep)
+    analyze_long(trials, rep)
+    analyze_double(trials, rep)
+    analyze_pan(trials, rep)
+    analyze_swipe(trials, rep)
+    analyze_pinch(trials, rep)
+    analyze_keyboard(trials, rep, scale, float(info["_bounds"][1]) if info else 874)
+    frames, hello, notices = load_host(dirpath, None)
+    analyze_rotation(trials, rep, hello, notices)
+    # host frame windows: the flick trials (moving) and the final idle phase, in host time
+    host = {"frames": frames}
+    hostlog = os.path.join(dirpath, "host.jsonl")
+    host["moving"], host["idle"] = host_windows(hostlog, trials)
+    analyze_display(trials, rep, info, host)
+    rects = {}
+    for e in allev:
+        if e[1] == "rect":
+            p = e[3].split()
+            rects[p[2]] = tuple(float(v) for v in p[3:7])
+    analyze_pixels(dirpath, rep, info, rects, scale)
+    print(rep.markdown())
+    j = argv[argv.index("--json") + 1] if "--json" in argv else None
+    if j:
+        with open(j, "w") as f:
+            json.dump(rep.rows, f, indent=1)
+    print(f"\n{sum(1 for r in rep.rows if r[4] == 'match')} match, {rep.failed} mismatch, "
+          f"{sum(1 for r in rep.rows if r[4] == 'open')} open, {sum(1 for r in rep.rows if r[4] == 'info')} info")
+    if check and rep.failed:
+        sys.exit(1)
+
+
+def host_windows(hostlog, trials):
+    """Host-time windows: while a flick decelerates (moving), and the
+    driver's last idle phase. The guest and host clocks differ, so these come
+    from the driver's own input times: a flick's release + 1.5 s is moving."""
+    moving = []
+    idle = None
+    if not os.path.exists(hostlog):
+        return moving, idle
+    inputs = []
+    with open(hostlog) as f:
+        for line in f:
+            j = json.loads(line)
+            if "input" in j:
+                inputs.append(j)
+    # releases of single-finger drags longer than 100 pt (flicks)
+    downs = {}
+    for j in inputs:
+        det = j.get("detail")
+        if isinstance(det, list) and len(det) == 1:
+            finger, ph, x, y = det[0]
+            if ph == 0:
+                downs[finger] = (j["t"], x, y)
+            elif ph == 2 and finger in downs:
+                t0, x0, y0 = downs.pop(finger)
+                if abs(y - y0) > 200 and j["t"] - t0 < 0.4:
+                    moving.append((j["t"] + 0.05, j["t"] + 1.2))
+    last = inputs[-1]["t"] if inputs else None
+    if last:
+        idle = (last + 4.0, last + 4.0)
+    return moving, idle
+
+
+# ---------------------------------------------------------------- pattern check
+
+def pattern_cmd(argv):
+    png, logp = argv[0], argv[1]
+    scale = float(argv[argv.index("--scale") + 1]) if "--scale" in argv else None
+    rects = {}
+    with open(logp) as f:
+        for line in f:
+            p = line.split()
+            if len(p) == 7 and p[1] == "rect":
+                rects[p[2]] = tuple(float(v) for v in p[3:7])
+            if len(p) > 2 and p[1] == "info" and scale is None:
+                m = re.search(r"scale=([\d.]+)", line)
+                scale = float(m.group(1)) if m else 3.0
+    img = read_png(png)
+    r = find_pattern(img, pattern_pixels(96), 96)
+    if not r:
+        print(f"{png}: pattern not found ({img[0]} × {img[1]} px)")
+        sys.exit(1)
+    x, y, bad, worst = r
+    print(f"{png}: pattern at ({x}, {y}): {bad} of {96 * 96} pixels differ (max {worst})")
+    sys.exit(0 if bad == 0 else 1)
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print(open(__file__).read().split("\nimport ")[0])
+        return
+    cmd = sys.argv[1]
+    if cmd == "drive":
+        drive(sys.argv[2:])
+    elif cmd == "analyze":
+        analyze(sys.argv[2:])
+    elif cmd == "pattern":
+        pattern_cmd(sys.argv[2:])
+    else:
+        sys.exit(f"unknown command {cmd}")
+
+
+if __name__ == "__main__":
+    main()

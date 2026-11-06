@@ -23,7 +23,9 @@
 // 3. A process whose work had to be ended `revokeAfterHangs` times (2)
 //    loses GPU access: its later command buffers fail at once without
 //    running (Metal's `MTLCommandBufferErrorAccessRevoked`, "the process was
-//    denied access to the GPU"), so it cannot stall the others again.
+//    denied access to the GPU"), so it cannot stall the others again. The
+//    system UI (the render server and SpringBoard, `MetalSystemUI`) is
+//    exempt: its stuck work is ended each time, and it may submit again.
 
 import CVulkan
 import Foundation
@@ -98,9 +100,8 @@ extension VulkanMetalBackend {
 
     /// The reset's share (VulkanDeviceReset.swift): every command buffer of
     /// the stuck item's process fails with it, and the process is charged
-    /// one hang (and loses GPU access at `revokeAfterHangs`). Returns the
-    /// process and whether its access was revoked now. Under the lock.
-    func blameStuckClient(_ items: inout [ResubmitItem]) -> (process: MetalProcessID, failed: Int, revoked: Bool)? {
+    /// one hang. Returns the process and its hangs so far. Under the lock.
+    func blameStuckClient(_ items: inout [ResubmitItem]) -> (process: MetalProcessID, failed: Int, hangs: Int)? {
         guard let guilty = items.first(where: \.guilty), let p = guilty.commandBuffer?.process else { return nil }
         var failed = 0
         for i in items.indices where items[i].commandBuffer?.process == p {
@@ -109,13 +110,31 @@ extension VulkanMetalBackend {
         }
         hangsByProcess[p, default: 0] += 1
         statistics.clientHangs += 1
-        var revoked = false
-        if options.revokeAfterHangs > 0, hangsByProcess[p]! >= options.revokeAfterHangs, !revokedProcesses.contains(p) {
-            revokedProcesses.insert(p)
+        return (p, failed, hangsByProcess[p]!)
+    }
+
+    /// After a reset that blamed `process` (its `hangs`th): revokes its GPU
+    /// access at `revokeAfterHangs`, unless it is the system UI. Not under
+    /// the lock (the exemption check may take the Metal service's lock).
+    func revokeIfDue(_ process: MetalProcessID, hangs: Int) {
+        guard options.revokeAfterHangs > 0, hangs >= options.revokeAfterHangs else { return }
+        let exempt = options.exemptFromRevocation?(process) ?? false
+        cond.lock()
+        let already = revokedProcesses.contains(process)
+        if exempt {
+            statistics.exemptFromRevocation += 1
+        } else if !already {
+            revokedProcesses.insert(process)
             statistics.revokedClients += 1
-            revoked = true
         }
-        return (p, failed, revoked)
+        cond.unlock()
+        if exempt {
+            log("GPU access kept for \(describeClient(process)) after \(hangs) GPU hangs: the system UI is never revoked "
+                + "(its stuck work is ended each time)")
+        } else if !already {
+            log("GPU access revoked for \(describeClient(process)) after \(hangs) GPU hangs: "
+                + "its later command buffers fail without running")
+        }
     }
 
     /// A command buffer of a process whose GPU access was revoked: it fails

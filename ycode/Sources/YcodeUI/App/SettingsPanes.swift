@@ -6,7 +6,11 @@ import YcodeSettings
 import YcodeWorkspace
 import YcodeSubprocess
 
-/// Shared form helpers for the settings panes.
+/// Shared form helpers for the settings panes: the grouped-card form of
+/// `specs/ide/settings.md` R3.3. A heading starts a section (its header
+/// over a new card); rows go into the current card, separated by lines;
+/// notes become the help text of the row before them; anything else (a
+/// preview, a list, a way back) sits between the cards.
 @MainActor
 public class SettingsPane: NSViewController {
     let prefs: Preferences
@@ -21,23 +25,40 @@ public class SettingsPane: NSViewController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// The form's row titles in order (labels without their colon, or the
-    /// checkbox or button title for rows without a label); headings are
-    /// listed as "# <title>". Rebuilt with the form (for tests and the spec).
+    /// The form's row titles in order (labels, or the button title for
+    /// rows without a label); headings are listed as "# <title>". Rebuilt
+    /// with the form (for tests and the spec).
     public private(set) var rowTitles: [String] = []
+    /// The rows by title, for tests that drive controls.
+    private var rowsByTitle: [(title: String, row: SettingsRowView)] = []
+    /// The cards in order (for tests and the geometry checks).
+    public private(set) var cards: [SettingsCardView] = []
+    /// The section headers in order.
+    public private(set) var headers: [NSTextField] = []
+    private var currentCard: SettingsCardView?
+    private enum Kind { case header, card, footnote, loose }
+    private var lastKind: Kind?
 
     public override func loadView() {
-        let root = PanelBackgroundView(frame: NSRect(x: 0, y: 0, width: 640, height: 420))
+        let root = SettingsFillView(SettingsColors.detail)
+        root.frame = NSRect(x: 0, y: 0, width: SettingsMetrics.windowSize.width - SettingsMetrics.detailX,
+                            height: SettingsMetrics.windowSize.height - SettingsMetrics.titleAreaHeight)
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 10
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 28, bottom: 20, right: 28)
+        stack.spacing = 0
+        // The first header's cap top is 76 down the window (24 under the
+        // title area; a 13-point label's cap top is 3 inside its frame).
+        stack.edgeInsets = NSEdgeInsets(top: SettingsMetrics.firstHeaderCapTop - SettingsMetrics.titleAreaHeight - 3,
+                                        left: SettingsMetrics.cardInset, bottom: SettingsMetrics.cardInset, right: SettingsMetrics.cardInset)
         stack.translatesAutoresizingMaskIntoConstraints = false
         // Long forms (General, Editing ▸ Display) scroll.
         let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.hasHorizontalScroller = false
+        scroll.horizontalScrollElasticity = .none
         let doc = FlippedView()
         doc.translatesAutoresizingMaskIntoConstraints = false
         doc.addSubview(stack)
@@ -48,9 +69,11 @@ public class SettingsPane: NSViewController {
             scroll.topAnchor.constraint(equalTo: root.topAnchor), scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             doc.topAnchor.constraint(equalTo: scroll.contentView.topAnchor), doc.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-            doc.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            // The cards keep x 200–690 whatever the scroller style: a
+            // legacy scroller's track covers the right margin (R3.3).
+            doc.widthAnchor.constraint(equalTo: scroll.widthAnchor),
             stack.topAnchor.constraint(equalTo: doc.topAnchor), stack.leadingAnchor.constraint(equalTo: doc.leadingAnchor),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: doc.trailingAnchor), stack.bottomAnchor.constraint(equalTo: doc.bottomAnchor),
+            stack.trailingAnchor.constraint(equalTo: doc.trailingAnchor), stack.bottomAnchor.constraint(equalTo: doc.bottomAnchor),
         ])
         view = root
         build()
@@ -61,79 +84,157 @@ public class SettingsPane: NSViewController {
     func rebuild() {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         rowTitles = []
+        rowsByTitle = []
+        cards = []
+        headers = []
+        currentCard = nil
+        lastKind = nil
         build()
     }
 
-    /// The right-aligned label column of a form row.
-    static let labelColumnWidth: CGFloat = 200
-
-    /// A form row: the label right-aligned in its column, the control after
-    /// it. A label wider than the column wraps onto a second line instead
-    /// of being cut off (`specs/ide/metrics.md` §8), and the control then
-    /// centers on the two lines.
-    func row(_ label: String, _ control: NSView) {
-        let l = NSTextField(labelWithString: label)
-        let wraps = l.intrinsicContentSize.width > Self.labelColumnWidth
-        if wraps {
-            l.cell?.wraps = true
-            l.cell?.isScrollable = false
-            l.lineBreakMode = .byWordWrapping
-            l.maximumNumberOfLines = 2
-            l.preferredMaxLayoutWidth = Self.labelColumnWidth
+    /// Adds a view to the form with the measured spacing before it: a card
+    /// 33 to the next header's cap top, a header's cap top 22.5 above its
+    /// card, 12 around anything else.
+    private func append(_ v: NSView, _ kind: Kind) {
+        if let last = stack.arrangedSubviews.last, let lastKind {
+            let gap: CGFloat
+            switch (lastKind, kind) {
+            case (.card, .header): gap = SettingsMetrics.cardToHeader - 3
+            case (.header, .card): gap = SettingsMetrics.headerToCard + 3 - 16
+            case (.card, .card): gap = 20
+            case (.card, .footnote): gap = 6
+            case (.footnote, .header): gap = SettingsMetrics.cardToHeader - 3
+            default: gap = 12
+            }
+            stack.setCustomSpacing(gap, after: last)
         }
-        l.alignment = .right
-        l.widthAnchor.constraint(equalToConstant: Self.labelColumnWidth).isActive = true
-        let r = NSStackView(views: [l, control])
-        r.alignment = wraps ? .centerY : .firstBaseline
-        stack.addArrangedSubview(r)
+        v.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(v)
+        if kind != .loose {
+            v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -2 * SettingsMetrics.cardInset).isActive = true
+        }
+        lastKind = kind
+    }
+
+    /// The card rows go into, started when there is none.
+    private var card: SettingsCardView {
+        if let currentCard { return currentCard }
+        let c = SettingsCardView()
+        append(c, .card)
+        cards.append(c)
+        currentCard = c
+        return c
+    }
+
+    /// The width of a card (and of the views between them).
+    static var contentWidth: CGFloat { SettingsMetrics.cardWidth }
+
+    /// A row of the current card: the label at the left (no colon), the
+    /// control at the right. An empty label takes the title of a switch
+    /// or button control.
+    func row(_ label: String, _ control: NSView) {
         var t = label
         if t.hasSuffix(":") { t.removeLast() }
+        var controls = [control]
+        if let s = control as? NSStackView { controls = s.arrangedSubviews; s.arrangedSubviews.forEach { s.removeView($0) } }
+        var shown = t
+        if t.isEmpty, let sw = control as? ClosureSwitch { t = sw.title; shown = sw.title }
         if t.isEmpty, let b = control as? NSButton { t = b.title }
-        if t.isEmpty, let s = control as? NSStackView, let b = s.arrangedSubviews.first as? NSButton { t = b.title }
+        if t.isEmpty, let b = controls.first as? NSButton { t = b.title }
+        let r = SettingsRowView(label: shown, controls: controls)
+        card.add(r)
         rowTitles.append(t)
+        rowsByTitle.append((t, r))
     }
 
+    /// Help text under the last row's label; a card of its own when the
+    /// section has no row yet.
     func note(_ s: String) {
-        let n = NSTextField(wrappingLabelWithString: s)
-        n.font = .systemFont(ofSize: 11)
-        n.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(n)
+        if let r = currentCard?.rowViews.last as? SettingsRowView, !r.isContent {
+            r.setHelp(s)
+            return
+        }
+        let r = SettingsRowView(label: "", controls: [])
+        r.setHelp(s)
+        card.add(r)
     }
 
-    /// A button that opens a sub-page (drill-down row).
+    /// A row that opens a sub-page: its title and a chevron; the whole row
+    /// is the button.
     func drill(_ title: String, _ action: @escaping () -> Void) {
-        let b = ClosureButton(title: title + "  ›", target: nil, action: nil)
-        b.bezelStyle = .inline
-        b.onChange = { _ in action() }
-        stack.addArrangedSubview(b)
+        let chevron = NSTextField(labelWithString: "\u{203A}")
+        chevron.font = .systemFont(ofSize: 17)
+        chevron.textColor = .tertiaryLabelColor
+        let r = SettingsRowView(label: title, controls: [chevron])
+        r.onClick = action
+        r.setAccessibilityRole(.button)
+        r.setAccessibilityLabel(title)
+        card.add(r)
     }
 
+    /// A sub-page's way back ("‹ Editing"), above its cards.
     func backRow(_ title: String, _ action: @escaping () -> Void) {
-        let b = ClosureButton(title: "‹ " + title, target: nil, action: nil)
+        let b = ClosureButton(title: "\u{2039} " + title, target: nil, action: nil)
         b.bezelStyle = .inline
         b.onChange = { _ in action() }
-        stack.addArrangedSubview(b)
+        loose(b)
     }
+
+    /// A view between the cards (it ends the current card).
+    func loose(_ v: NSView) {
+        currentCard = nil
+        append(v, .loose)
+    }
+
+    /// A note under the current card, in the help style (it ends the card).
+    func footnote(_ text: String) {
+        let f = NSTextField(wrappingLabelWithString: "")
+        f.attributedStringValue = SettingsRowView.helpText(text)
+        f.preferredMaxLayoutWidth = SettingsMetrics.cardWidth - 2 * SettingsMetrics.labelInset
+        let box = NSView()
+        f.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(f)
+        NSLayoutConstraint.activate([
+            f.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: SettingsMetrics.labelInset),
+            f.trailingAnchor.constraint(lessThanOrEqualTo: box.trailingAnchor),
+            f.topAnchor.constraint(equalTo: box.topAnchor), f.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+        ])
+        currentCard = nil
+        append(box, .footnote)
+    }
+
+    /// A card that holds one view (a list, a preview), inset `inset`.
+    func cardContent(_ v: NSView, inset: CGFloat = SettingsMetrics.labelInset) {
+        card.add(SettingsRowView(content: v, inset: inset))
+    }
+
+    /// Ends the current card: the next row starts a new one.
+    func endCard() { currentCard = nil }
 
     func heading(_ s: String) {
-        let h = NSTextField(labelWithString: s)
-        h.font = .boldSystemFont(ofSize: 12)
-        stack.addArrangedSubview(h)
+        let h = SettingsHeaderView(s)
+        currentCard = nil
+        append(h, .header)
+        headers.append(h.label)
         rowTitles.append("# " + s)
     }
 
-    /// The pop-up in the row titled `title` (tests drive controls by row).
+    /// The control in the row titled `title` (tests drive controls by row).
     public func control<T: NSView>(_ type: T.Type, inRow title: String) -> T? {
         _ = view
-        for r in stack.arrangedSubviews.compactMap({ $0 as? NSStackView }) {
-            guard let l = r.arrangedSubviews.first as? NSTextField else { continue }
-            var t = l.stringValue
-            if t.hasSuffix(":") { t.removeLast() }
-            let views = r.arrangedSubviews.dropFirst().flatMap { ($0 as? NSStackView)?.arrangedSubviews ?? [$0] }
-            if t == title, let c = views.first(where: { $0 is T }) as? T { return c }
-            if t.isEmpty, let c = views.first(where: { ($0 as? NSButton)?.title == title && $0 is T }) as? T { return c }
+        for (t, r) in rowsByTitle where t == title {
+            if let c = r.controls.first(where: { $0 is T }) as? T { return c }
+        }
+        for (_, r) in rowsByTitle {
+            if let c = r.controls.first(where: { ($0 as? NSButton)?.title == title && $0 is T }) as? T { return c }
         }
         return nil
+    }
+
+    /// The row titled `title`.
+    public func rowView(_ title: String) -> SettingsRowView? {
+        _ = view
+        return rowsByTitle.first { $0.title == title }?.row
     }
 
     /// Selects a pop-up item in a row and fires its action, as a click would.
@@ -143,33 +244,50 @@ public class SettingsPane: NSViewController {
         if let a = p.action { _ = (p.target as AnyObject?)?.perform(a, with: p) }
     }
 
-    /// Toggles a checkbox row, as a click would.
+    /// Flips a switch (or checkbox) row, as a click would.
     public func toggle(_ title: String) {
+        if let s = control(NSSwitch.self, inRow: title) {
+            s.state = s.state == .on ? .off : .on
+            if let a = s.action { _ = (s.target as AnyObject?)?.perform(a, with: s) }
+            return
+        }
         guard let b = control(NSButton.self, inRow: title) else { return }
         b.state = b.state == .on ? .off : .on
         if let a = b.action { _ = (b.target as AnyObject?)?.perform(a, with: b) }
     }
 
+    /// A card pop-up: the value and a circular chevron button.
     func popUp(_ titles: [String], selected: String, _ action: @escaping (String) -> Void) -> NSPopUpButton {
-        let p = ClosurePopUp(frame: .zero, pullsDown: false)
+        let p = ClosurePopUp(frame: .zero, pullsDown: false, card: true)
         p.addItems(withTitles: titles)
         p.selectItem(withTitle: selected)
         p.onChange = action
         return p
     }
 
-    func check(_ title: String, _ on: Bool, _ action: @escaping (Bool) -> Void) -> NSButton {
-        let b = ClosureButton(checkboxWithTitle: title, target: nil, action: nil)
-        b.state = on ? .on : .off
-        b.onChange = { action($0.state == .on) }
-        return b
+    /// A switch; a row with an empty label takes its title.
+    func check(_ title: String, _ on: Bool, _ action: @escaping (Bool) -> Void) -> NSSwitch {
+        let s = ClosureSwitch(title: title)
+        s.state = on ? .on : .off
+        s.onChange = { action($0.state == .on) }
+        return s
     }
 
     func number(_ value: Int, _ action: @escaping (Int) -> Void) -> NSTextField {
         let f = ClosureField(string: "\(value)")
+        f.alignment = .right
         f.widthAnchor.constraint(equalToConstant: 50).isActive = true
         f.onCommit = { if let n = Int($0.stringValue) { action(n) } }
         return f
+    }
+
+    /// A trailing value (read-only text) in the label colour.
+    func value(_ s: String) -> NSTextField {
+        let l = NSTextField(labelWithString: s)
+        l.textColor = .secondaryLabelColor
+        l.lineBreakMode = .byTruncatingMiddle
+        l.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return l
     }
 }
 
@@ -177,6 +295,16 @@ final class ClosurePopUp: NSPopUpButton {
     var onChange: ((String) -> Void)?
     override init(frame: NSRect, pullsDown: Bool) {
         super.init(frame: frame, pullsDown: pullsDown)
+        target = self
+        action = #selector(fire)
+    }
+    /// A card's pop-up (`SettingsCardPopUpCell`).
+    convenience init(frame: NSRect, pullsDown: Bool, card: Bool) {
+        self.init(frame: frame, pullsDown: pullsDown)
+        guard card else { return }
+        let c = SettingsCardPopUpCell(textCell: "", pullsDown: pullsDown)
+        c.isBordered = false
+        cell = c
         target = self
         action = #selector(fire)
     }
@@ -210,6 +338,7 @@ public final class GeneralSettingsPane: SettingsPane {
         row("Restore open projects and workspaces:", popUp(Preferences.RestoreWindows.allCases.map(\.rawValue), selected: prefs.restoreWindows.rawValue) { [prefs] in
             prefs.restoreWindows = Preferences.RestoreWindows(rawValue: $0) ?? .system
         })
+        note(Self.restoreHelp)
 
         heading("Navigation and Files")
         row("Navigator size:", popUp(Preferences.NavigatorSize.allCases.map(\.rawValue), selected: prefs.navigatorSize.rawValue) { [prefs] in
@@ -225,6 +354,7 @@ public final class GeneralSettingsPane: SettingsPane {
             })
         }
         row("", check("Window tabs have independent sidebar widths", prefs.independentSidebarWidths) { [prefs] in prefs.independentSidebarWidths = $0 })
+        note(Self.sidebarWidthsHelp)
         row("", check("Automatically unlock files", prefs.autoUnlockFiles) { [prefs] in prefs.autoUnlockFiles = $0 })
         row("File extensions:", popUp(Preferences.FileExtensions.allCases.map(\.rawValue), selected: prefs.fileExtensions.rawValue) { [prefs] in
             prefs.fileExtensions = Preferences.FileExtensions(rawValue: $0) ?? .hide
@@ -258,6 +388,13 @@ public final class GeneralSettingsPane: SettingsPane {
         row("Reset Settings:", button("Reset…") { [weak self] in self?.resetClicked() })
         row("\u{201C}Don\u{2019}t ask me\u{201D} warnings:", button("Reset All") { [weak self] in self?.resetWarningsClicked() })
     }
+
+    /// The help under Restore open projects and workspaces (Ycode's words).
+    public static let restoreHelp = "Use System Setting reopens them unless \u{201C}Close windows when quitting an application\u{201D} is on in "
+        + "System Settings \u{25B8} Desktop & Dock."
+    /// The help under Window tabs have independent sidebar widths.
+    public static let sidebarWidthsHelp = "Each tab of a window keeps its own navigator and inspector widths, so the tab bar moves when you "
+        + "switch between tabs."
 
     func button(_ title: String, _ action: @escaping () -> Void) -> NSButton {
         let b = ClosureButton(title: title, target: nil, action: nil)
@@ -335,23 +472,53 @@ public final class AccountsSettingsPane: SettingsPane, NSTableViewDataSource {
     /// The App Store Connect API keys the list shows (none until #43).
     var keyStore: any AppStoreConnectKeyStore = NoAppStoreConnectKeys()
 
+    /// The list's card: the list, then a bar with + under a separator.
+    public static let listHeight: CGFloat = 240
+    public static let barHeight: CGFloat = 28
+    /// The empty list's text (for tests).
+    public private(set) var emptyLabel: NSTextField?
+    public private(set) var addButton: NSButton?
+
     override func build() {
         let table = NSTableView()
         table.addTableColumn(NSTableColumn(identifier: .init("a")))
         table.headerView = nil
         table.dataSource = self
+        table.backgroundColor = .clear
+        table.style = .plain
         let scroll = NSScrollView()
         scroll.documentView = table
-        scroll.borderType = .bezelBorder
-        scroll.widthAnchor.constraint(equalToConstant: 220).isActive = true
-        scroll.heightAnchor.constraint(equalToConstant: 240).isActive = true
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
         let add = NSButton(image: NSImage(systemSymbolName: "plus", accessibilityDescription: AccountsPage.addLabel)!, target: self, action: #selector(addClicked))
-        add.bezelStyle = .smallSquare
+        add.isBordered = false
+        add.toolTip = AccountsPage.addLabel
         let empty = NSTextField(labelWithString: AccountsPage.emptyText)
         empty.textColor = .secondaryLabelColor
         empty.isHidden = numberOfRows(in: table) > 0
-        stack.addArrangedSubview(NSStackView(views: [scroll, empty]))
-        stack.addArrangedSubview(add)
+        let line = SettingsSeparatorView()
+        let box = NSView()
+        for v in [scroll, empty, line, add] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            box.addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            box.widthAnchor.constraint(equalToConstant: SettingsMetrics.cardWidth),
+            box.heightAnchor.constraint(equalToConstant: Self.listHeight),
+            scroll.topAnchor.constraint(equalTo: box.topAnchor, constant: 4), scroll.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 4),
+            scroll.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -4),
+            scroll.bottomAnchor.constraint(equalTo: line.topAnchor),
+            empty.centerXAnchor.constraint(equalTo: scroll.centerXAnchor), empty.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
+            line.leadingAnchor.constraint(equalTo: box.leadingAnchor), line.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            line.heightAnchor.constraint(equalToConstant: 1),
+            line.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -Self.barHeight),
+            add.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: SettingsMetrics.labelInset),
+            add.centerYAnchor.constraint(equalTo: box.bottomAnchor, constant: -Self.barHeight / 2),
+            add.widthAnchor.constraint(equalToConstant: 20), add.heightAnchor.constraint(equalToConstant: 20),
+        ])
+        emptyLabel = empty
+        addButton = add
+        cardContent(box, inset: 0)
     }
 
     public func numberOfRows(in tableView: NSTableView) -> Int { AccountsPage.rows(from: keyStore).count }
@@ -435,27 +602,30 @@ public final class BehaviorsSettingsPane: SettingsPane {
         heading(category)
         let list = events(in: category)
         if list.isEmpty { note("Ycode has no events in this category.") }
+        // One card per event: its name with a disclosure button, its
+        // actions with −, and + to add one.
         for e in list {
-            // A disclosure triangle collapses the event's group.
             let disclose = ClosureButton(title: "", target: nil, action: nil)
             disclose.bezelStyle = .disclosure
             disclose.setButtonType(.pushOnPushOff)
             disclose.state = isCollapsed(e) ? .off : .on
             disclose.onChange = { [weak self] _ in self?.toggleCollapsed(e) }
-            let title = NSTextField(labelWithString: e.rawValue)
-            title.font = .boldSystemFont(ofSize: 12)
-            stack.addArrangedSubview(NSStackView(views: [disclose, title]))
-            guard !isCollapsed(e) else { continue }
-            for t in prefs.behavior(e).actionTitles {
-                let minus = ClosureButton(title: "−", target: nil, action: nil)
-                minus.bezelStyle = .inline
-                minus.onChange = { [weak self] _ in self?.remove(t, from: e) }
-                stack.addArrangedSubview(NSStackView(views: [NSTextField(labelWithString: "    " + t), minus]))
+            disclose.setAccessibilityLabel(e.rawValue)
+            row(e.rawValue, disclose)
+            if !isCollapsed(e) {
+                for t in prefs.behavior(e).actionTitles {
+                    let minus = ClosureButton(title: "−", target: nil, action: nil)
+                    minus.bezelStyle = .inline
+                    minus.setAccessibilityLabel("Remove \(t)")
+                    minus.onChange = { [weak self] _ in self?.remove(t, from: e) }
+                    row(t, minus)
+                }
+                let plus = ClosurePopUp(frame: .zero, pullsDown: true)
+                plus.addItems(withTitles: ["+"] + Self.addableActions())
+                plus.onChange = { [weak self] t in self?.add(t, to: e) }
+                row("Add an action", plus)
             }
-            let plus = ClosurePopUp(frame: .zero, pullsDown: true)
-            plus.addItems(withTitles: ["+"] + Self.addableActions())
-            plus.onChange = { [weak self] t in self?.add(t, to: e) }
-            stack.addArrangedSubview(plus)
+            endCard()
         }
     }
 
@@ -482,7 +652,7 @@ public final class NotificationsSettingsPane: SettingsPane {
                 prefs.setBehavior(b, for: e)
             })
         }
-        note("Notifications bounce the Dock icon while Ycode is in the background.")
+        footnote("Notifications bounce the Dock icon while Ycode is in the background.")
     }
 }
 
@@ -580,11 +750,12 @@ public final class ThemesSettingsPane: SettingsPane {
         }
         let thumbs = NSStackView(views: appearanceButtons)
         thumbs.spacing = 18
-        stack.addArrangedSubview(thumbs)
+        cardContent(thumbs)
+        endCard()
         buildPreview()
         let seg = NSSegmentedControl(labels: ["Theme", "Fonts", "Editor"], trackingMode: .selectOne, target: self, action: #selector(segmentChosen(_:)))
         seg.selectedSegment = segment.rawValue
-        stack.addArrangedSubview(seg)
+        loose(seg)
         switch segment {
         case .theme: buildTheme()
         case .fonts: buildFonts()
@@ -629,13 +800,12 @@ public final class ThemesSettingsPane: SettingsPane {
         preview.backgroundColor = Theme.backgroundColor
         if let ts = preview.textStorage { Theme.highlight(ts, language: .swift) }
         preview.translatesAutoresizingMaskIntoConstraints = false
-        preview.widthAnchor.constraint(equalToConstant: 520).isActive = true
+        preview.widthAnchor.constraint(equalToConstant: SettingsMetrics.cardWidth).isActive = true
         preview.heightAnchor.constraint(equalToConstant: 120).isActive = true
         preview.wantsLayer = true
-        preview.layer?.cornerRadius = 6
-        preview.layer?.borderWidth = 1
-        preview.layer?.borderColor = NSColor.separatorColor.cgColor
-        stack.addArrangedSubview(preview)
+        preview.layer?.cornerRadius = SettingsMetrics.cardRadius
+        preview.layer?.cornerCurve = .continuous
+        loose(preview)
     }
 
     @objc func segmentChosen(_ c: NSSegmentedControl) { segment = Segment(rawValue: c.selectedSegment) ?? .theme }
@@ -665,17 +835,14 @@ public final class ThemesSettingsPane: SettingsPane {
         }
         heading("Console")
         row("Font size:", number(Int(t.consoleFontSize)) { [weak self] n in self?.edit { $0.consoleFontSize = Double(max(6, min(48, n))) } })
-        if builtIn {
-            let note = NSTextField(labelWithString: "Built-in themes cannot be changed; duplicate one to edit it.")
-            note.textColor = .secondaryLabelColor
-            stack.addArrangedSubview(note)
-        }
+        if builtIn { note("Built-in themes cannot be changed; duplicate one to edit it.") }
+        heading("Theme File")
         let dup = NSButton(title: "Duplicate", target: self, action: #selector(duplicateClicked))
         let del = NSButton(title: "Delete", target: self, action: #selector(deleteClicked))
         del.isEnabled = !builtIn
         let imp = NSButton(title: "Import…", target: self, action: #selector(importClicked))
         let exp = NSButton(title: "Export…", target: self, action: #selector(exportClicked))
-        stack.addArrangedSubview(NSStackView(views: [dup, del, imp, exp]))
+        row("", NSStackView(views: [dup, del, imp, exp]))
     }
 
     /// One font row per token kind: the font's name and an editable size.
@@ -778,8 +945,9 @@ public final class TextEditingSettingsPane: SettingsPane {
         switch page {
         case .main:
             for p in [Page.display, .completion, .indentation] { drill(p.rawValue) { [weak self] in self?.page = p } }
-            row("Default text encoding:", NSTextField(labelWithString: "Unicode (UTF-8)"))
-            row("Default line endings:", NSTextField(labelWithString: "macOS / Unix (LF)"))
+            heading("Files")
+            row("Default text encoding:", value("Unicode (UTF-8)"))
+            row("Default line endings:", value("macOS / Unix (LF)"))
             row("", check("Convert existing files on save", prefs.convertExistingFilesOnSave) { [prefs] in prefs.convertExistingFilesOnSave = $0 })
             heading("When Editing")
             row("", check("Automatically trim trailing whitespace", prefs.trimTrailingWhitespace) { [prefs] in prefs.trimTrailingWhitespace = $0 })
@@ -797,6 +965,7 @@ public final class TextEditingSettingsPane: SettingsPane {
         case .display:
             // reference-ui-5.md §9.3, in order. The minimap is Editor ▸ Minimap.
             backRow("Editing") { [weak self] in self?.page = .main }
+            heading("Display")
             row("", check("Line numbers", prefs.showLineNumbers) { [prefs] in prefs.showLineNumbers = $0 })
             row("", check("Code folding ribbon", prefs.showFoldingRibbon) { [prefs] in prefs.showFoldingRibbon = $0 })
             row("", check("Code structure headers", prefs.showCodeStructureHeaders) { [prefs] in prefs.showCodeStructureHeaders = $0 })
@@ -826,16 +995,19 @@ public final class TextEditingSettingsPane: SettingsPane {
             row("", check("Fade comment delimiters", prefs.fadeCommentDelimiters) { [prefs] in prefs.fadeCommentDelimiters = $0 })
         case .completion:
             backRow("Editing") { [weak self] in self?.page = .main }
+            heading("Code Completion")
             note("Completions come from the language server as you type.")
             buildPredictionRows()
         case .indentation:
             backRow("Editing") { [weak self] in self?.page = .main }
+            heading("Indentation")
             row("Prefer indent using:", popUp(["Spaces", "Tabs"], selected: prefs.indentWithTabs ? "Tabs" : "Spaces") { [prefs] in prefs.indentWithTabs = $0 == "Tabs" })
             row("Tab width:", number(prefs.tabWidth) { [prefs] in prefs.tabWidth = $0 })
             row("Indent width:", number(prefs.indentWidth) { [prefs] in prefs.indentWidth = $0 })
             row("Tab key:", popUp(TabKeyBehavior.allCases.map(\.title), selected: prefs.tabKeyBehavior.title) { [prefs] t in
                 prefs.tabKeyBehavior = TabKeyBehavior.allCases.first { $0.title == t } ?? .indentsInLeadingWhitespace
             })
+            heading("Typing")
             row("", check("Syntax-aware indenting", prefs.autoIndent) { [prefs] in prefs.autoIndent = $0 })
             row("", check("Automatically insert closing brackets and quotes", prefs.autoInsertClosers) { [prefs] in prefs.autoInsertClosers = $0 })
             row("", check("Enclose selection in matching delimiters", prefs.encloseSelection) { [prefs] in prefs.encloseSelection = $0 })
@@ -860,7 +1032,7 @@ public final class KeyBindingsSettingsPane: SettingsPane, NSTableViewDataSource,
         search.placeholderString = "Filter"
         search.delegate = self
         search.widthAnchor.constraint(equalToConstant: 300).isActive = true
-        for (id, title, w) in [("command", "Command", 260.0), ("key", "Key", 120.0), ("menu", "Menu", 180.0)] {
+        for (id, title, w) in [("command", "Command", 200.0), ("key", "Key", 100.0), ("menu", "Menu", 140.0)] {
             let c = NSTableColumn(identifier: .init(id))
             c.title = title
             c.width = w
@@ -872,12 +1044,15 @@ public final class KeyBindingsSettingsPane: SettingsPane, NSTableViewDataSource,
         let scroll = NSScrollView()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
-        scroll.widthAnchor.constraint(equalToConstant: 580).isActive = true
-        scroll.heightAnchor.constraint(equalToConstant: 280).isActive = true
+        scroll.drawsBackground = false
+        table.backgroundColor = .clear
+        table.style = .plain
+        scroll.widthAnchor.constraint(equalToConstant: SettingsMetrics.cardWidth - 2 * SettingsMetrics.labelInset).isActive = true
+        scroll.heightAnchor.constraint(equalToConstant: 250).isActive = true
         conflictLabel.textColor = .systemRed
-        stack.addArrangedSubview(search)
-        stack.addArrangedSubview(scroll)
-        stack.addArrangedSubview(conflictLabel)
+        loose(search)
+        cardContent(scroll)
+        loose(conflictLabel)
         reload()
     }
 
@@ -973,11 +1148,9 @@ public final class SourceControlSettingsPane: SettingsPane {
     override func build() {
         row("", check("Enable source control", prefs.sourceControlEnabled) { [prefs] in prefs.sourceControlEnabled = $0 })
         heading("Git")
-        row("Author Name:", NSTextField(labelWithString: authorName))
-        row("Author Email:", NSTextField(labelWithString: authorEmail))
-        let note = NSTextField(labelWithString: "From git's global configuration (read-only).")
-        note.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(note)
+        row("Author Name:", value(authorName))
+        row("Author Email:", value(authorEmail))
+        note("From git's global configuration (read-only).")
     }
 }
 
@@ -1053,8 +1226,8 @@ public final class ComponentsSettingsPane: SettingsPane {
 
     override func build() {
         heading("Installed (read-only)")
-        if components.isEmpty && loaded { stack.addArrangedSubview(NSTextField(labelWithString: "None found")) }
-        for c in components { row("\(c.kind):", NSTextField(labelWithString: "\(c.name)  \(c.version)")) }
+        if components.isEmpty && loaded { note("None found") }
+        for c in components { row("\(c.kind):", value("\(c.name)  \(c.version)")) }
         // The runtime wizard: add, copy and remove runtimes (runtime-onboarding.md §11.4).
         let get = NSButton(title: Self.runtimesTitle, target: self, action: #selector(showRuntimes(_:)))
         get.identifier = .init("components-runtimes")
@@ -1070,6 +1243,8 @@ public final class ComponentsSettingsPane: SettingsPane {
 @MainActor
 public final class SimulatorsSettingsPane: SettingsPane {
     public init(prefs: Preferences = .shared) { super.init("Simulators", prefs: prefs) }
+    /// The text fields' width (the labels keep the rest of the card).
+    static let fieldWidth: CGFloat = 250
 
     public var settings: RemoteSimulatorSettings { RemoteSimulatorSettings.load(prefs.defaults) }
 
@@ -1083,10 +1258,8 @@ public final class SimulatorsSettingsPane: SettingsPane {
 
     override func build() {
         heading("Ycode Simulator (\(ExperimentalNotice.label))")
-        let note = NSTextField(wrappingLabelWithString: ExperimentalNotice.simulator + " Runs apps on the Ycode iOS simulator on an arm64 Linux host over SSH (keys only; Ycode never asks for a password). These values stay in your user settings.")
-        note.preferredMaxLayoutWidth = 480
-        note.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(note)
+        note(ExperimentalNotice.simulator + " Runs apps on the Ycode iOS simulator on an arm64 Linux host over SSH (keys only; Ycode never asks for a password). These values stay in your user settings.")
+        endCard()
         let s = settings
         let fields: [(String, String, String)] = [("SSH destination:", s.destination, "user@host"), ("Remote data directory:", s.dataDirectory, "/data/ycode"),
                                                   ("Runtime root:", s.runtimeRoot, "/data/ycode/runtime"), ("ycode-simd path:", s.simdPath, "/data/ycode/bin/ycode-simd"),
@@ -1096,7 +1269,7 @@ public final class SimulatorsSettingsPane: SettingsPane {
         for (key, (label, value, placeholder)) in fields.enumerated() {
             let f = ClosureField(string: value)
             f.placeholderString = placeholder
-            f.widthAnchor.constraint(equalToConstant: 320).isActive = true
+            f.widthAnchor.constraint(equalToConstant: Self.fieldWidth).isActive = true
             f.onCommit = { [weak self] field in
                 let v = field.stringValue.trimmingCharacters(in: .whitespaces)
                 self?.update { s in
@@ -1117,25 +1290,23 @@ public final class SimulatorsSettingsPane: SettingsPane {
         // a destination per device type that runs on it.
         let others = ClosureField(string: s.otherRuntimeRoots.joined(separator: ", "))
         others.placeholderString = "/data/ycode/runtimes/iOS-27.0, …"
-        others.widthAnchor.constraint(equalToConstant: 320).isActive = true
+        others.widthAnchor.constraint(equalToConstant: Self.fieldWidth).isActive = true
         others.onCommit = { [weak self] field in
             let roots = RemoteSimulatorSettings.runtimeRoots(fromText: field.stringValue)
             self?.update { $0.otherRuntimeRoots = roots }
         }
         row("Other runtime roots:", others)
-        let rootsHelp = NSTextField(wrappingLabelWithString: RemoteSimulatorSettings.runtimesHelp)
-        rootsHelp.font = .systemFont(ofSize: 11)
-        rootsHelp.textColor = .secondaryLabelColor
-        rootsHelp.preferredMaxLayoutWidth = 420
-        row("", rootsHelp)
+        note(RemoteSimulatorSettings.runtimesHelp)
+        heading("Boot")
         // Lean boot (off by default: a full boot, as the reference simulator) with its help text (run.md).
         let lean = check("Lean boot", s.leanBoot) { [weak self] on in self?.update { $0.leanBoot = on } }
         row("", lean)
-        let help = NSTextField(wrappingLabelWithString: RemoteSimulatorSettings.leanBootHelp)
-        help.font = .systemFont(ofSize: 11)
-        help.textColor = .secondaryLabelColor
-        help.preferredMaxLayoutWidth = 420
-        row("", help)
+        note(RemoteSimulatorSettings.leanBootHelp)
+        // Warm boot (on by default): restore a snapshot of the booted device (run.md §Warm boot).
+        let warm = check("Warm boot from snapshot", s.warmBoot) { [weak self] on in self?.update { $0.warmBoot = on } }
+        row("", warm)
+        note(RemoteSimulatorSettings.warmBootHelp)
+        heading("Camera")
         // The device's camera (off by default, as the reference; camera.md "Ycode implementation").
         let camera = popUp(["Off", "Host webcam", "Synthetic pattern"],
                            selected: ["off": "Off", "on": "Host webcam", "synthetic": "Synthetic pattern"][s.camera] ?? "Off") { [weak self] title in
@@ -1146,18 +1317,6 @@ public final class SimulatorsSettingsPane: SettingsPane {
             }
         }
         row("Camera:", camera)
-        let cameraHelp = NSTextField(wrappingLabelWithString: RemoteSimulatorSettings.cameraHelp)
-        cameraHelp.font = .systemFont(ofSize: 11)
-        cameraHelp.textColor = .secondaryLabelColor
-        cameraHelp.preferredMaxLayoutWidth = 420
-        row("", cameraHelp)
-        // Warm boot (on by default): restore a snapshot of the booted device (run.md §Warm boot).
-        let warm = check("Warm boot from snapshot", s.warmBoot) { [weak self] on in self?.update { $0.warmBoot = on } }
-        row("", warm)
-        let warmHelp = NSTextField(wrappingLabelWithString: RemoteSimulatorSettings.warmBootHelp)
-        warmHelp.font = .systemFont(ofSize: 11)
-        warmHelp.textColor = .secondaryLabelColor
-        warmHelp.preferredMaxLayoutWidth = 420
-        row("", warmHelp)
+        note(RemoteSimulatorSettings.cameraHelp)
     }
 }

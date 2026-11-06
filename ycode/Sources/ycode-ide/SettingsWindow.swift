@@ -51,11 +51,12 @@ final class ShellPreferences {
     static var fontSize: Double { Preferences.shared.sourceFontSize ?? Preferences.shared.theme.fontSize }
 }
 
-/// The panes of the Settings window, in the macOS IDE's order
-/// (`specs/ide/settings.md` §Window, `SettingsPaneOrder.linux`) without the
-/// panes the Linux IDE has nothing for yet (Components, Simulators).
+/// The panes of the Settings window, in the reference's order
+/// (`specs/ide/settings.md` R3.2, `SettingsPaneOrder.linux`): the macOS
+/// IDE's without Simulators (Ycode's own pane, macOS only). Components
+/// shows its empty state.
 enum ShellSettingsPane: String, CaseIterable, Identifiable {
-    case general, appearance, accounts, codingAssistant, behaviors, navigation, notifications, editing, shortcuts, sourceControl, locations
+    case general, appearance, accounts, codingAssistant, behaviors, navigation, notifications, editing, shortcuts, sourceControl, components, locations
 
     var id: String { rawValue }
 
@@ -71,6 +72,7 @@ enum ShellSettingsPane: String, CaseIterable, Identifiable {
         case .editing: "Editing"
         case .shortcuts: "Shortcuts"
         case .sourceControl: "Source Control"
+        case .components: "Components"
         case .locations: "Locations"
         }
     }
@@ -79,16 +81,17 @@ enum ShellSettingsPane: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .general: "gearshape"
-        case .appearance: "sun.max"
+        case .appearance: "circle.lefthalf.filled"
         case .accounts: "person.crop.circle"
-        case .codingAssistant: "text.bubble"
-        case .behaviors: "gearshape.2"
-        case .navigation: "arrow.left.arrow.right"
+        case .codingAssistant: "sparkles"
+        case .behaviors: "rectangle.on.rectangle"
+        case .navigation: "arrow.triangle.turn.up.right.diamond"
         case .notifications: "bell"
-        case .editing: "doc.text"
-        case .shortcuts: "square.grid.2x2"
+        case .editing: "square.and.pencil"
+        case .shortcuts: "keyboard"
         case .sourceControl: "arrow.triangle.branch"
-        case .locations: "folder"
+        case .components: "square.stack.3d.up"
+        case .locations: "externaldrive"
         }
     }
 }
@@ -130,97 +133,95 @@ final class ShellSettingsModel {
     }
 }
 
-/// The Settings window (Ctrl+,): the pane list at the left, the selected
-/// pane as a grouped form at the right under its title and back/forward
-/// buttons, as the macOS IDE's (`specs/ide/settings.md`). The settings are
-/// the portable `Preferences` (user defaults under `Ycode.` keys) both
-/// IDEs and `ycode complete` read; every change applies at once.
+/// The Settings window (Ctrl+,), as the macOS IDE's (`specs/ide/settings.md`
+/// R3.1–R3.3): 710 × 452, the pane list flush at the left (179.5 wide,
+/// 32-point rows, accent-tinted symbols, labels aligned), a 0.5-point
+/// divider, and the selected pane's grouped cards under the back/forward
+/// capsule and the pane's title. The settings are the portable
+/// `Preferences` (user defaults under `Ycode.` keys) both IDEs and
+/// `ycode complete` read; every change applies at once.
 struct ShellSettingsView: View {
     @Bindable var model = ShellSettingsModel.shared
     @Environment(\.colorScheme) private var scheme
 
-    /// The window's size (the macOS IDE's 860 × 560, plus room for the
-    /// title row).
-    static let size = CGSize(width: 860, height: 600)
-    static let sidebarWidth: CGFloat = 200
+    /// The window's size (the macOS IDE's).
+    static let size = SettingsLayout.windowSize
+    static let sidebarWidth = SettingsLayout.sidebarWidth
 
     var body: some View {
-        let c = ShellColors(scheme)
+        let p = SettingsPalette(scheme)
         HStack(spacing: 0) {
-            sidebar(c)
-                .frame(width: Self.sidebarWidth)
-                .frame(maxHeight: .infinity)
-                .background(c.sidebar)
-            Hairline(color: c.sidebarDivider, vertical: true)
+            sidebar(p)
+                .frame(width: SettingsLayout.sidebarWidth)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .background(p.sidebar)
+            Rectangle().fill(p.divider).frame(width: SettingsLayout.dividerWidth)
             VStack(spacing: 0) {
-                titleRow(c)
+                titleRow(p)
                 pane
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .background(Self.formBackground(c))
+            .background(p.detail)
         }
         .frame(width: Self.size.width, height: Self.size.height)
         .shellTarget("settings")
     }
 
-    /// The title row's height.
-    static let titleHeight: CGFloat = 48
+    /// The title area's height.
+    static let titleHeight = SettingsLayout.titleAreaHeight
 
-    /// Behind the panes: the grouped form's own background (OpenViews draws
-    /// its grouped forms on the system grouped background), so the title
-    /// row, the form and the space under a short form are one surface.
-    static func formBackground(_ c: ShellColors) -> Color {
-        #if os(Linux)
-        let v: (Double, Double) = c.dark ? (0, 0) : (242 / 255, 247 / 255)
-        return Color(.sRGB, red: v.0, green: v.0, blue: v.1)
-        #else
-        c.content
-        #endif
-    }
-
-    func sidebar(_ c: ShellColors) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(ShellSettingsPane.allCases) { p in
-                let on = p == model.pane
-                Button { model.select(p) } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: p.symbol)
-                            .font(.system(size: 13))
-                            .foregroundStyle(on ? c.accent : c.secondaryLabel)
-                            .frame(width: 20)
-                        Text(verbatim: p.title).font(ShellFonts.row).foregroundStyle(c.label)
-                        Spacer(minLength: 0)
+    func sidebar(_ p: SettingsPalette) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(ShellSettingsPane.allCases) { pane in
+                let on = pane == model.pane
+                Button { model.select(pane) } label: {
+                    ZStack(alignment: .leading) {
+                        if on {
+                            RoundedRectangle(cornerRadius: SettingsLayout.selectionRadius, style: .continuous)
+                                .fill(p.selection)
+                                .padding(.horizontal, SettingsLayout.selectionInset)
+                        }
+                        // The symbol centred on x 29, the label at x 47 on every row.
+                        SettingsSidebarSymbol(pane: pane, color: on ? Color.white : p.symbol)
+                            .frame(width: 2 * SettingsLayout.symbolCenterX, alignment: .center)
+                        Text(verbatim: pane.title)
+                            .font(SettingsFonts.label)
+                            .foregroundStyle(on ? Color.white : p.label)
+                            .lineLimit(1)
+                            .padding(.leading, SettingsLayout.sidebarLabelX)
+                            .padding(.trailing, SettingsLayout.selectionInset + 4)
                     }
-                    .padding(.horizontal, 8)
-                    .frame(height: 28)
-                    .background { if on { RoundedRectangle(cornerRadius: 6, style: .continuous).fill(c.rowSelection) } }
+                    .frame(width: SettingsLayout.sidebarWidth, height: SettingsLayout.sidebarRowHeight, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(p.title)
-                .shellTarget("settings pane \(p.rawValue)")
+                .accessibilityLabel(pane.title)
+                .shellTarget("settings pane \(pane.rawValue)")
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 14)
+        .padding(.top, SettingsLayout.sidebarTop)
     }
 
-    func titleRow(_ c: ShellColors) -> some View {
-        HStack(spacing: 6) {
-            GlassSegments(segments: [
-                .init(symbol: "chevron.left", help: "Back", isEnabled: !model.back.isEmpty, target: "settings back") { model.goBack() },
-                .init(symbol: "chevron.right", help: "Forward", isEnabled: !model.forward.isEmpty, target: "settings forward") { model.goForward() },
-            ], segmentWidth: 22, symbolSize: 12)
+    /// The title area: the back/forward capsule at x 187.5 (7.5 into the
+    /// detail pane) and the pane's title 12.5 after it, centred on y 26.
+    func titleRow(_ p: SettingsPalette) -> some View {
+        let cap = SettingsLayout.capsuleFrame
+        return HStack(spacing: 0) {
+            SettingsNavigationCapsule(model: model)
+                .frame(width: cap.width, height: cap.height)
+                .padding(.leading, cap.minX - SettingsLayout.detailX)
             Text(verbatim: model.pane.title)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(c.label)
-                .padding(.leading, 4)
+                .font(SettingsFonts.title)
+                .foregroundStyle(p.title)
+                .lineLimit(1)
+                .padding(.leading, SettingsLayout.titleX - cap.maxX)
                 .shellTarget("settings title")
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
-        .frame(height: Self.titleHeight)
+        // The capsule's centre (y 25.75) on the title's line (y 26).
+        .padding(.top, cap.minY)
+        .frame(height: Self.titleHeight, alignment: .top)
     }
 
     @ViewBuilder var pane: some View {
@@ -235,127 +236,160 @@ struct ShellSettingsView: View {
         case .editing: EditingSettingsPane(model: model)
         case .shortcuts: ShortcutsSettingsPane()
         case .sourceControl: SourceControlSettingsPane()
+        case .components: ComponentsSettingsPane()
         case .locations: LocationsSettingsPane()
         }
     }
 }
 
-// MARK: Shared pieces of the panes
-
-/// A pane's grouped form. OpenViews' `Form` does not scroll yet, so on
-/// Linux it sits in a scroll view.
-struct SettingsForm<Content: View>: View {
-    @ViewBuilder var content: Content
+/// A pane's sidebar symbol: OpenViews' artwork where it has one, else
+/// Ycode's own drawing of the spec's description (a circle half light, half
+/// dark; a diamond sign with a turning arrow; a keyboard; a drive).
+struct SettingsSidebarSymbol: View {
+    var pane: ShellSettingsPane
+    var color: Color
 
     var body: some View {
-        #if os(Linux)
-        // The macOS IDE's Settings form (`metrics.md` §8): labels
-        // right-aligned in a 200-point column, controls after it, bold
-        // headings, rows 10 apart, 20 / 28 points from the edges.
-        ScrollView {
-            Form { content }
-                .formStyle(.columns)
+        let line = StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round)
+        switch pane {
+        case .appearance:
+            ZStack {
+                Circle().stroke(color, style: line)
+                SettingsHalfDisc().fill(color)
+            }
+            .frame(width: 15, height: 15)
+        case .navigation:
+            ZStack {
+                RoundedRectangle(cornerRadius: 2.5, style: .continuous).stroke(color, style: line)
+                    .frame(width: 12, height: 12)
+                    .rotationEffect(.degrees(45))
+                SettingsTurnArrow().stroke(color, style: line).frame(width: 7, height: 7)
+            }
+            .frame(width: 17, height: 17)
+        case .shortcuts:
+            ZStack {
+                RoundedRectangle(cornerRadius: 2.5, style: .continuous).stroke(color, style: line)
+                SettingsKeyboardKeys().fill(color)
+            }
+            .frame(width: 19, height: 13)
+        case .locations:
+            ZStack(alignment: .trailing) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous).stroke(color, style: line)
+                Circle().fill(color).frame(width: 2.5, height: 2.5).padding(.trailing, 3.5)
+            }
+            .frame(width: 18, height: 11)
+        default:
+            Image(systemName: pane.symbol)
+                .font(.system(size: SettingsLayout.symbolPointSize))
+                .foregroundStyle(color)
         }
-        #else
-        Form { content }.formStyle(.grouped)
-        #endif
     }
 }
 
-/// A form row's label: on Linux, where the form is the macOS IDE's column
-/// form, it ends with a colon as the macOS IDE's labels do ("Navigator
-/// size:"); the grouped form on macOS shows it as is.
-func formLabel(_ s: String) -> String {
-    #if os(Linux)
-    s.isEmpty || s.hasSuffix(":") ? s : s + ":"
-    #else
-    s
-    #endif
+/// The left half of a disc.
+struct SettingsHalfDisc: Shape {
+    nonisolated func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.midX, y: r.minY))
+        p.addArc(center: CGPoint(x: r.midX, y: r.midY), radius: r.width / 2, startAngle: .degrees(-90), endAngle: .degrees(90), clockwise: true)
+        p.closeSubpath()
+        return p
+    }
 }
+
+/// An arrow going up, then turning right.
+struct SettingsTurnArrow: Shape {
+    nonisolated func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.minX, y: r.midY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.midY))
+        p.move(to: CGPoint(x: r.maxX - 2.5, y: r.midY - 2.5))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.midY))
+        p.addLine(to: CGPoint(x: r.maxX - 2.5, y: r.midY + 2.5))
+        return p
+    }
+}
+
+/// A keyboard's keys: two rows of small keys and a space bar.
+struct SettingsKeyboardKeys: Shape {
+    nonisolated func path(in r: CGRect) -> Path {
+        var p = Path()
+        let key: CGFloat = 1.8
+        for row in 0..<2 {
+            for i in 0..<5 {
+                p.addRect(CGRect(x: r.minX + 3 + CGFloat(i) * 3, y: r.minY + 2.6 + CGFloat(row) * 3, width: key, height: key))
+            }
+        }
+        p.addRect(CGRect(x: r.minX + 5.5, y: r.maxY - 3.6, width: r.width - 11, height: 1.5))
+        return p
+    }
+}
+
+/// The back/forward capsule: a near-white capsule with a faint rim and a
+/// soft shadow, a divider at its centre, a chevron in each half (#AEAEAE
+/// when there is no history).
+struct SettingsNavigationCapsule: View {
+    var model: ShellSettingsModel
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let p = SettingsPalette(scheme)
+        HStack(spacing: 0) {
+            half(left: true, enabled: !model.back.isEmpty, p) { model.goBack() }
+            Rectangle().fill(p.capsuleDivider).frame(width: 1, height: 20)
+            half(left: false, enabled: !model.forward.isEmpty, p) { model.goForward() }
+        }
+        .background {
+            Capsule(style: .continuous)
+                .fill(p.capsuleFill)
+                .overlay { Capsule(style: .continuous).stroke(p.capsuleRim, lineWidth: 0.5) }
+                .shadow(color: Color.black.opacity(0.12), radius: 3, y: 1)
+        }
+    }
+
+    func half(left: Bool, enabled: Bool, _ p: SettingsPalette, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            SettingsChevron(left: left)
+                .stroke(enabled ? p.chevron : p.chevronDisabled, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .frame(width: 8, height: 14.5)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(left ? "Back" : "Forward")
+        .accessibilityLabel(left ? "Back" : "Forward")
+        .shellTarget(left ? "settings back" : "settings forward")
+    }
+}
+
+/// A chevron, 8 × 14.5, pointing left or right.
+struct SettingsChevron: Shape {
+    var left: Bool
+
+    nonisolated func path(in r: CGRect) -> Path {
+        var p = Path()
+        if left {
+            p.move(to: CGPoint(x: r.maxX - 1, y: r.minY + 1))
+            p.addLine(to: CGPoint(x: r.minX + 1, y: r.midY))
+            p.addLine(to: CGPoint(x: r.maxX - 1, y: r.maxY - 1))
+        } else {
+            p.move(to: CGPoint(x: r.minX + 1, y: r.minY + 1))
+            p.addLine(to: CGPoint(x: r.maxX - 1, y: r.midY))
+            p.addLine(to: CGPoint(x: r.minX + 1, y: r.maxY - 1))
+        }
+        return p
+    }
+}
+
+// MARK: Shared pieces of the panes (the cards: SettingsCards.swift)
 
 /// A binding to one setting of `Preferences.shared`; setting it posts
 /// `Preferences.didChange`.
 @MainActor
 func setting<T>(_ key: ReferenceWritableKeyPath<Preferences, T>) -> Binding<T> {
     Binding(get: { Preferences.shared[keyPath: key] }, set: { Preferences.shared[keyPath: key] = $0 })
-}
-
-/// A pop-up of an enumeration's cases, titled by their raw values.
-struct CasePicker<T: RawRepresentable & CaseIterable & Hashable>: View where T.RawValue == String {
-    var title: String
-    var selection: Binding<T>
-    var target: String
-
-    var body: some View {
-        Picker(formLabel(title), selection: selection) {
-            ForEach(Array(T.allCases), id: \.self) { Text(verbatim: $0.rawValue).tag($0) }
-        }
-        .shellTarget(target)
-    }
-}
-
-/// A checkbox row.
-struct CheckRow: View {
-    var title: String
-    var isOn: Binding<Bool>
-    var target: String
-
-    var body: some View {
-        Toggle(title, isOn: isOn).toggleStyle(.checkbox).shellTarget(target)
-    }
-}
-
-/// A row that opens a sub-page: its title, an optional value and a chevron.
-struct DrillRow: View {
-    var title: String
-    var detail = ""
-    var target: String
-    var action: () -> Void
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        let c = ShellColors(scheme)
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Text(verbatim: title).foregroundStyle(c.label)
-                Spacer(minLength: 8)
-                if !detail.isEmpty { Text(verbatim: detail).font(ShellFonts.small).foregroundStyle(c.secondaryLabel).lineLimit(1) }
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(c.tertiaryLabel)
-            }
-            .frame(maxWidth: .infinity, minHeight: 22)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .shellTarget(target)
-    }
-}
-
-/// A sub-page's way back ("‹ Editing").
-struct BackRow: View {
-    var title: String
-    var target: String
-    var action: () -> Void
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        let c = ShellColors(scheme)
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
-                Text(verbatim: title)
-            }
-            .foregroundStyle(c.accent)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .shellTarget(target)
-    }
-}
-
-/// A small note under a section (the form's footer style).
-struct FootNote: View {
-    var text: String
-    var body: some View { Text(verbatim: text).font(ShellFonts.small) }
 }
 
 extension View {

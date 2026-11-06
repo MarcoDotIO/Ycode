@@ -484,6 +484,176 @@ for "Add Editor Pane on Right", which is why the split failed. Ycode's
 items are "Add Editor Tab", "Add Editor Pane on Right" and "Add Editor
 Pane Below".
 
+## Council round 3 measurements (2026-11-05)
+
+Round 3 captured both apps at **Retina (2x)**, foreground, key window,
+120 fps, 1400 × 880 (1100 × 880 after the narrow-window step), with the
+same grid as rounds 1 and 2 (editor x 290–1139, content from y 86).
+Values are in points with half-point precision. The Mac was under heavy
+load during the scroll and flick steps, so durations there are weighed
+lightly; shapes and amplitudes are reliable. Checklist rows 70–77 in
+`fidelity-council.md`. These values supersede §C and §D where they
+differ.
+
+### E.1 Momentum flick: start and spring (supersedes D.4 in part)
+
+Step 04: a momentum flick back up 600 points.
+
+| Time from the first moved frame | Reference: travel (pt) | Ycode: travel (pt) |
+|---|---|---|
+| 0–85 ms | 80 at 17 ms, 280 at 33, 445 at 50, 537 at 67, 580 at 82 | **0 (no movement)** |
+| 97–112 ms | 617, 634 | 240, 352 |
+| 128–160 ms | 642, 645, **647.5 (peak at 157 ms)** | 494, 660, 679 |
+| 188–215 ms | 644, 638 | 710, **724 (peak at 202 ms)** |
+| 245–300 ms | 632, 631 | 714, 696 |
+| 342–408 ms | 621, 614, 609 | 660, 645 |
+| 452–508 ms | 606, 603 | 626, 616 |
+| 597 ms | 601 | 607 |
+| 713 ms | 600 (rest) | 604 (rest at 883 ms) |
+
+1. **No start delay.** The reference moves in the first frame after the
+   gesture; Ycode holds still for **85–98 ms**. Remove the delay: content
+   must follow the gesture's first event.
+2. **Overshoot 8 %.** The reference runs **48 points** past the end of a
+   600-point flick (8.0 %), peaking 157 ms after it starts; Ycode runs
+   120 points (20 %), peaking at 202 ms.
+3. **Return.** From the peak the reference returns as a critically damped
+   spring with ω about **11–12.6 rad/s** (half the overshoot gone about
+   150 ms after the peak, within 1 point at 440 ms after it). Round 2's
+   ω 12.6 still holds; its 83-point overscroll came from a faster input.
+   The whole-motion fit the judges quote (response 0.16 s, damping
+   fraction 0.69) describes the same curve including the input-driven
+   rise; implement it as momentum + the critically damped return, not as
+   one underdamped spring.
+4. Ycode's whole-motion fit (response 0.47 s, damping fraction 0.45) is
+   too soft: overshoot and return both need the reference's values.
+
+### E.2 Split editor: the change is one frame (supersedes the judges' 200 ms)
+
+Step 16: View ▸ Editor ▸ "Editor Pane On Right" with Long.swift open.
+
+1. **Timing.** The reference draws the split in **one frame** (both
+   panes, the divider and both jump bars), and **100 ms later** re-lays
+   out the new pane's jump bar once (the middle component truncates and
+   the issue stepper appears). There is no sliding or growing animation.
+   The judges' "200 ms ease-out" spans the frame before the change to
+   that second frame. Ycode's one-frame change (12 ms) matches; the
+   follow-up jump-bar layout should come in the same frame or within
+   100 ms.
+2. **Panes.** Left pane x 290–713.5, a divider 713.5–716 (2.5 wide,
+   #D7D7D7), right pane 716–1140: equal halves of the editor. Ycode
+   matches (its divider is a 1-point line at 715).
+3. **Each pane's jump bar** (y 45–84, as the editor's):
+
+| Item | Position from the pane's left edge | Reference | Ycode now |
+|---|---|---|---|
+| Close button | +14 to +25 (an "×" 11 × 11) | present in both panes, #7F7F7F | missing |
+| Grid button | +36 to +49 | present | present |
+| Divider | +58 to +59 | 1 point | — |
+| Path | from +71.5: project › group › file › symbol | | |
+| Issue stepper | ends 15.5–17 before the pane's right edge: back chevron, a warning triangle, forward chevron (each about 7–11 wide, 8 apart) | present in both panes | missing |
+
+4. **Middle truncation.** When the path does not fit, the **middle
+   component** (the group) is cut to its first letters ("Gla") with a
+   fade over its last **about 4 points**, and keeps its icon and its
+   chevron; the first component and the file keep their full names.
+   Ycode does not truncate.
+5. **Inactive pane.** The pane without focus draws its jump bar dimmed:
+   path text **#7F7F7F** (active **#262626**), path icons **desaturated
+   to grey** (the project and Swift icons lose their colour), chevrons
+   #7F7F7F in both. The warning triangle keeps its yellow in both panes.
+   The close button is #7F7F7F in both. Ycode draws both panes alike.
+6. **Minimaps stay** in split panes (67 points in a 424-point pane, E.6);
+   Gemini's "auto-hide below 350 points" does not hold.
+7. **Focus.** The new pane takes focus, so the navigator's selection turns
+   to its unfocused colour (`navigators.md`, round 3).
+
+### E.3 Selecting an image: one frame, no "Loading…" (supersedes D.7 for the target)
+
+Step 05, a click on Stripes.png after Long.swift:
+
+| | Reference (round 3) | Ycode now |
+|---|---|---|
+| Editor | the image replaces the text in **one frame** (the recording's single changed frame) | clears to a blank editor with "Loading…" centred, for **192 ms**, then the image |
+| Jump bar, status bar | in the same frame | in the blank frame |
+
+Round 2 saw the reference clear the editor and show "Loading…" for about
+100 ms, 454 ms after the click. Together: the reference **keeps the old
+content until the image is ready** and shows "Loading…" only when the
+image is still not ready after about 450 ms. Target: never clear the
+editor first; show the placeholder only after that delay.
+
+### E.4 The open-document request repaints nothing
+
+Step 06: an open-document request (the system's "open this file" event)
+for Stripes.png, which is already open in the window.
+
+- Reference: **zero changed frames**. No reload, no flash, the jump bar
+  and the inspector unchanged.
+- Ycode: the editor flashes blank and repaints over **100 ms**; the jump
+  bar drops the group component ("GlassScroll › Stripes" instead of
+  "GlassScroll › GlassScroll › Stripes"); the inspector's Full Path
+  changes from `/tmp/…` to the resolved `/private/tmp/…`.
+- Target: when the requested file is already the window's open document
+  (compare by the resolved path), only bring the window forward. Keep the
+  project's own path for the file (do not replace it with the symlink-
+  resolved path) and keep the navigator item it was opened from, so the
+  jump bar keeps its group.
+
+### E.5 The empty editor draws no minimap
+
+With no file open (step 01's "before" still; the conflict session's
+Repositories view), the reference's editor area is **pure white** from
+x 290 to 1140: no minimap, no minimap separator, no scroll lane. Ycode
+draws the minimap's separator (a 1-point #E5E5E5 line at x 995), the
+visible-region shade as a grey block (#EDEDED, x 996–1126, y 86–212),
+and the scroll lane (#F3F3F3,
+x 1126–1137). Draw neither the minimap nor its lane until a text document
+is open.
+
+### E.6 Minimap width: a floor (refines D.6)
+
+Measured from the minimap's separator to the start of the scroll lane:
+
+| Editor pane width | Reference | Ycode now |
+|---|---|---|
+| 850 (one pane, window 1400) | **131** | 131 |
+| 424 (split, window 1400) | **67** | 67 |
+| 274 (split, window 1100) | **63** | **45** |
+| 551 (round 2) | 83 | — |
+| 1110 (round 2, inspector hidden) | 139 | — |
+
+The widths fit **clamp(15.5 % of the pane's width, 63, about 140)**: the
+reference never makes the minimap narrower than about 63. Ycode follows
+the percentage below the floor, so at 274 its minimap is 18 points
+narrower and its text column 18 points wider, which makes its lines wrap
+about 2 characters later than the reference's. The scroll lane (x 1126–
+1137 in a full-width pane) is the same in both.
+
+### E.7 Text layout
+
+1. **Full-block characters take one cell.** In Bands.swift every band row
+   is 110 full-block characters (U+2588) after "// ". The reference draws
+   them **8.0 points apart**, the editor's cell width (C.1): the band's
+   first visual row is 611 wide (x 373–984) and its continuation 273.5,
+   884.5 in all. Ycode draws them **6.89 apart** (622 + 136 = 758): its
+   fallback font's own advance. Every glyph, including glyphs from a
+   fallback font, must advance exactly one cell (8.0 at the default
+   size); centre a narrower fallback glyph in its cell and clip a wider
+   one. The blocks are 13 tall in both apps; Ycode draws them 1 point
+   lower (y 152–165 against 151–164).
+2. **Wrap edge.** The band's first row ends at x 984 in the reference
+   (the container edge of C.1, about 986) and at x 995 in Ycode, which
+   wraps against the minimap's separator. Ycode's container is about 11
+   points too wide.
+3. **First layout.** Ycode's first layout of Long.swift wraps one word
+   later ("width so") than every later layout; the reference wraps the
+   same way from the first frame. Lay out with the final container width
+   before the first draw.
+4. **Wrapped current line.** The reference's current-line highlight
+   covers every visual line of a wrapped line (also in the merge sheet,
+   `merge-sheet.md` §4.2); Ycode's covers only the first.
+
 ## Evidence
 
 - Commands, shortcuts and the assistant/counterparts behavior: Apple's
@@ -515,3 +685,11 @@ Pane Below".
   `research/tools/council-r2/measure_r2.py`; the method is
   `research/notes/council-r2-2026-11-04.md`. The harness's input
   parameters come from its manifest.
+- Council round 3 (E.1–E.7), level 3: the round 3 session's Retina stills
+  and 120 fps recordings of both apps (foreground, key window). The
+  recorder writes a frame only on change, so single changed frames and
+  their times come from the frame list; travel from the harness's
+  per-frame displacement (rows matched between frames); widths and
+  colours from colour runs and ink boxes on the stills. The band length
+  per character uses the test project's own generator (110 blocks per
+  row). Measured in the dirty room; prose only here.

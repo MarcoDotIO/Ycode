@@ -62,18 +62,36 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
     private let lock = NSLock()
     private var edges = [HIDHostService.Edge](repeating: .none, count: maxContacts + 1)
     private var down = [Bool](repeating: false, count: maxContacts + 1)
-    // Move coalescing (§7.4): at most one move-only message per 16 ms.
-    private var pendingMove: [HIDHostService.Contact]?
-    private var lastTouchSend: UInt64 = 0
-    private var flushScheduled = false
-    private let queue = DispatchQueue(label: "ycode-hid-input")
     private var lastPoint = [(x: Double, y: Double)](repeating: (0, 0), count: maxContacts + 1)
     private var keysDown = Set<UInt32>()      // page << 16 | usage
     private var buttonsDown = Set<HIDUsagePair>()
+    /// The panel's pixels per point (a resting contact's one-pixel step).
+    var pixelScale = 3.0
     /// The device's buttons (DeviceButtonTable; watchos.md §5.2 on a watch).
     var family: DeviceButtonTable.Family = .phone
     /// A Vision Pro's pose, selection and dial (VisionInput.swift); nil elsewhere.
     weak var vision: VisionInputController?
+
+    // Delivery (TouchPacing; uikit-feel-ycode.md §4.0): touches, keys and
+    // buttons are stamped on receipt and sent, in order, by one thread with
+    // their age, so the display server's receive thread never waits for the
+    // guest and a held-up delivery keeps its timing.
+    private struct Outgoing {
+        var event: HIDHostService.Event
+        var received: UInt64
+        var moveOnly: Bool
+    }
+    private var outbox: [Outgoing] = []
+    private let outboxCondition = NSCondition()
+    private var senderStarted = false
+    /// When the last touch message went out, and how many rest reports since (sender thread only).
+    private var lastTouchSent: UInt64 = 0
+    private var restReports = 0
+    /// What a resting contact sends every 16.7 ms: "off" (the default:
+    /// nothing, as the reference; uikit-feel-ycode.md §3.3), "pixel" (one
+    /// device pixel apart, alternately, as a digitizer's noise: UIKit then
+    /// sees the finger stop) or "unchanged" (phase 3 records). An experiment's switch.
+    static let restMode = ProcessInfo.processInfo.environment["YCODE_HID_REST"] ?? "off"
 
     init(hid: HIDHostService, pointWidth: Double, pointHeight: Double) {
         self.hid = hid
@@ -101,13 +119,15 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
         case .key(_, let down, let page, let usage):
             let id = UInt32(page) << 16 | UInt32(usage)
             lock.withLock { if down { keysDown.insert(id) } else { keysDown.remove(id) } }
-            return hid.send(.key(usagePage: UInt32(page), usage: UInt32(usage), down: down))
+            enqueue(.key(usagePage: UInt32(page), usage: UInt32(usage), down: down), moveOnly: false)
+            return hid.isRegistered
         case .button(_, let button, let down):
             // A button this device lacks (a watch's volume, a non-Ultra's
             // Action) is dropped (watchos.md §5.2).
             guard let pair = DeviceButtonTable.usage(of: button, for: family) else { return false }
             lock.withLock { if down { buttonsDown.insert(pair) } else { buttonsDown.remove(pair) } }
-            return hid.send(.button(usagePage: pair.page, usage: pair.usage, down: down))
+            enqueue(.button(usagePage: pair.page, usage: pair.usage, down: down), moveOnly: false)
+            return hid.isRegistered
         case .pose(_, let pose):
             return vision?.send(pose: pose) ?? false
         case .selection(_, let selection):
@@ -127,7 +147,6 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
 
     func reset() {
         vision?.reset()
-        flush()
         let (contacts, keys, buttons) = lock.withLock { () -> ([HIDHostService.Contact], Set<UInt32>, Set<HIDUsagePair>) in
             var c: [HIDHostService.Contact] = []
             for slot in 1...Self.maxContacts where down[slot] {
@@ -138,9 +157,9 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
             defer { keysDown.removeAll(); buttonsDown.removeAll() }
             return (c, keysDown, buttonsDown)
         }
-        if !contacts.isEmpty { _ = sendTouch(contacts) }
-        for k in keys { hid.send(.key(usagePage: k >> 16, usage: k & 0xFFFF, down: false)) }
-        for b in buttons { hid.send(.button(usagePage: b.page, usage: b.usage, down: false)) }
+        if !contacts.isEmpty { enqueue(.touch(display: panel().display, contacts: contacts), moveOnly: false) }
+        for k in keys { enqueue(.key(usagePage: k >> 16, usage: k & 0xFFFF, down: false), moveOnly: false) }
+        for b in buttons { enqueue(.button(usagePage: b.page, usage: b.usage, down: false), moveOnly: false) }
     }
 
     private func touch(_ contacts: [TouchContact]) -> Bool {
@@ -170,40 +189,76 @@ final class HIDInputBridge: GuestInputSink, @unchecked Sendable {
             }
         }
         guard !records.isEmpty else { return hid.isRegistered }
-        let moveOnly = records.allSatisfy { $0.phase == .moved }
-        let now = Self.monotonicNanos()
-        if moveOnly {
-            let deferIt = lock.withLock { () -> Bool in
-                if now - lastTouchSend < 16_000_000 {
-                    pendingMove = records
-                    if !flushScheduled {
-                        flushScheduled = true
-                        let wait = 16_000_000 - (now - lastTouchSend)
-                        queue.asyncAfter(deadline: .now() + .nanoseconds(Int(wait))) { [weak self] in self?.flush() }
-                    }
-                    return true
-                }
-                return false
+        enqueue(.touch(display: panel().display, contacts: records), moveOnly: records.allSatisfy { $0.phase == .moved })
+        return hid.isRegistered
+    }
+
+    private func enqueue(_ event: HIDHostService.Event, moveOnly: Bool) {
+        let item = Outgoing(event: event, received: Self.monotonicNanos(), moveOnly: moveOnly)
+        outboxCondition.withLock {
+            outbox.append(item)
+            if !senderStarted {
+                senderStarted = true
+                let t = Thread { [self] in senderLoop() }
+                t.name = "ycode-hid-input"
+                t.qualityOfService = .userInteractive
+                t.start()
             }
-            if deferIt { return hid.isRegistered }
-        } else {
-            flush()
+            outboxCondition.signal()
         }
-        return sendTouch(records)
     }
 
-    private func flush() {
-        let pending = lock.withLock { () -> [HIDHostService.Contact]? in
-            flushScheduled = false
-            defer { pendingMove = nil }
-            return pendingMove
+    /// The sender thread: the outbox in order (a move another move replaces
+    /// within 8 ms is dropped), each with its age; while a contact rests,
+    /// a report every 16.7 ms.
+    private func senderLoop() {
+        while true {
+            outboxCondition.lock()
+            var item: Outgoing?
+            while item == nil {
+                if !outbox.isEmpty {
+                    let first = outbox.removeFirst()
+                    let next = outbox.first.map { (moveOnly: $0.moveOnly, received: $0.received) }
+                    if TouchPacing.isSuperseded(moveOnly: first.moveOnly, received: first.received, next: next) { continue }
+                    item = first
+                    break
+                }
+                let anyDown = lock.withLock { down.contains(true) }
+                let now = Self.monotonicNanos()
+                if Self.restMode != "off", TouchPacing.restReportDue(anyDown: anyDown, lastTouchSent: lastTouchSent, now: now) { break }
+                let wait = anyDown ? TouchPacing.restInterval - min(TouchPacing.restInterval, now &- lastTouchSent) : 1_000_000_000
+                _ = outboxCondition.wait(until: Date(timeIntervalSinceNow: Double(max(wait, 1_000_000)) / 1e9))
+            }
+            outboxCondition.unlock()
+            if let item {
+                _ = hid.send(item.event, age: TouchPacing.ageMicroseconds(received: item.received, now: Self.monotonicNanos()))
+                if case .touch = item.event {
+                    lastTouchSent = Self.monotonicNanos()
+                    restReports = 0
+                }
+            } else {
+                sendRestReport()
+            }
         }
-        if let pending { _ = sendTouch(pending) }
     }
 
-    private func sendTouch(_ records: [HIDHostService.Contact]) -> Bool {
-        lock.withLock { lastTouchSend = Self.monotonicNanos() }
-        return hid.send(.touch(display: panel().display, contacts: records))
+    /// Every resting contact again, as a digitizer reports a still finger.
+    private func sendRestReport() {
+        let p = panel()
+        restReports += 1
+        let contacts: [HIDHostService.Contact] = lock.withLock {
+            (1...Self.maxContacts).filter { down[$0] }.map { slot in
+                let x = lastPoint[slot].x / p.pointWidth, y = lastPoint[slot].y / p.pointHeight
+                if Self.restMode == "unchanged" {
+                    return .init(index: UInt32(slot), phase: .unchanged, edge: edges[slot], x: x, y: y)
+                }
+                let r = TouchPacing.restPosition(x: x, y: y, count: restReports, pixelWidth: p.pointWidth * pixelScale)
+                return .init(index: UInt32(slot), phase: .moved, edge: edges[slot], x: r.x, y: r.y)
+            }
+        }
+        lastTouchSent = Self.monotonicNanos()
+        guard !contacts.isEmpty else { return }
+        _ = hid.send(.touch(display: p.display, contacts: contacts))
     }
 
     static func monotonicNanos() -> UInt64 {

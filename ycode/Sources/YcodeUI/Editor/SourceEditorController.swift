@@ -384,6 +384,8 @@ final class JumpBar: NSView {
     /// The right end: Show Previous Issue, the Issues pull-down, Show Next Issue.
     let issueStack = NSStackView()
     var onToggleMinimap: (() -> Void)?
+    /// Split panes: focus and the close button (JumpBar+Panes.swift).
+    let paneState = JumpBarPaneState()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -395,7 +397,9 @@ final class JumpBar: NSView {
         }
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            // The path's ink centres on the band's centre less 0.5
+            // (metrics.md §16.1, row 78: it sat 2.75 lower).
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor, constant: Self.pathRaise),
             {
                 let c = stack.trailingAnchor.constraint(lessThanOrEqualTo: issueStack.leadingAnchor, constant: -6)
                 c.priority = .defaultLow
@@ -415,14 +419,11 @@ final class JumpBar: NSView {
     /// scrolling beneath shows as a faint veil; then a 2-point separator
     /// (`metrics.md` §12.3, `liquid-glass.md` §7.3).
     override func draw(_ dirtyRect: NSRect) {
-        // Over the blurred band backdrop: a part of the editor's background,
-        // so the band passes about 8.5 % of the content (liquid-glass.md
-        // §8.3); with a theme's own background, the nearly opaque veil.
+        // Over the band backdrop, which draws the content beneath at the
+        // jump bar's 8.5 % with its shape (liquid-glass.md §9.1), the band
+        // adds nothing; with a theme's own background, the nearly opaque veil.
         let band = NSRect(x: 0, y: Self.separatorHeight, width: bounds.width, height: bounds.height - Self.separatorHeight)
-        if EditorBlurVeil.applies {
-            Theme.backgroundColor.withAlphaComponent(CGFloat(EditorMetrics.jumpBarOverBlur)).setFill()
-            band.fill(using: .copy)
-        } else {
+        if !EditorBlurVeil.applies {
             EditorVeil.fill.setFill()
             band.fill(using: .copy)
         }
@@ -449,7 +450,7 @@ final class JumpBar: NSView {
     private(set) var modeMenu: NSPopUpButton?
     /// The title of the related-files pull-down (the mode's name).
     var relatedTitle = "Counterparts"
-    private var lastComponents: [(String, String)] = []
+    private(set) var lastComponents: [(String, String)] = []
     /// The symbol component after the path ("No Selection" outside a declaration).
     var symbolTitle: String? { didSet { if oldValue != symbolTitle { setPath(lastComponents) } } }
 
@@ -463,6 +464,7 @@ final class JumpBar: NSView {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         closeButton = nil
         relatedItemsButton = nil
+        if showsPaneCloseButton, !showsCloseButton { addPaneCloseButton() }   // JumpBar+Panes.swift
         if showsCloseButton {
             let b = iconButton("xmark", "Close this Editor Pane")
             b.target = self
@@ -477,6 +479,7 @@ final class JumpBar: NSView {
             relatedItemsButton = b
             stack.addArrangedSubview(b)
         }
+        if showsPaneCloseButton { addPaneDivider() }
         counterpartsMenu = nil
         modeMenu = nil
         if !modes.isEmpty {
@@ -512,30 +515,31 @@ final class JumpBar: NSView {
         }
         if components.isEmpty { stack.addArrangedSubview(label("No Selection", secondary: true)) }
         for (i, (title, symbol)) in components.enumerated() {
-            if i > 0 { stack.addArrangedSubview(label("›", secondary: true)) }
+            if i > 0 { stack.addArrangedSubview(chevronLabel()) }
             if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
                 let iv = NSImageView(image: img)
-                iv.contentTintColor = .secondaryLabelColor
+                iv.contentTintColor = pathIconTint(symbol: symbol, title: title)
                 stack.addArrangedSubview(iv)
             }
-            stack.addArrangedSubview(label(title, secondary: false))
+            // The middle components give way first (E.2 item 4).
+            stack.addArrangedSubview(pathLabel(title, middle: i > 0 && i < components.count - 1))
         }
         if let symbolTitle, !components.isEmpty {
-            stack.addArrangedSubview(label("›", secondary: true))
+            stack.addArrangedSubview(chevronLabel())
             stack.addArrangedSubview(label(symbolTitle, secondary: symbolTitle == "No Selection"))
         }
     }
 
-    private func label(_ s: String, secondary: Bool) -> NSTextField {
+    func label(_ s: String, secondary: Bool) -> NSTextField {
         let l = NSTextField(labelWithString: s)
         l.font = .systemFont(ofSize: 11)
-        l.textColor = secondary ? .tertiaryLabelColor : .labelColor
+        l.textColor = secondary ? .tertiaryLabelColor : pathTextColor
         return l
     }
 
     @objc private func modeChosen(_ p: NSPopUpButton) { if let t = p.titleOfSelectedItem { onPickMode?(t) } }
     @objc private func relatedItemsClicked() { onRelatedItems?() }
-    @objc private func closeClicked() { onClose?() }
+    @objc func closeClicked() { onClose?() }
 
     /// The titles of the controls in order, left to right (tests): tooltips
     /// of buttons, titles of pop-ups and labels.
@@ -616,7 +620,7 @@ final class JumpBar: NSView {
         if let path = p.selectedItem?.representedObject as? String { onPickCounterpart?(path) }
     }
 
-    private func iconButton(_ symbol: String, _ name: String) -> NSButton {
+    func iconButton(_ symbol: String, _ name: String) -> NSButton {
         let b = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: name) ?? NSImage(), target: nil, action: nil)
         b.identifier = NSUserInterfaceItemIdentifier(symbol)
         b.isBordered = false
@@ -725,6 +729,8 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     let emptyHolder = EmptyStateHolder()
     /// The editor stopped showing a document (the window shows Recent Files).
     public var onBecameEmpty: (() -> Void)?
+    /// The text under the bars moved or changed (the window's bottom bar redraws).
+    public var onContentMovedUnderBars: (() -> Void)?
     final class SymbolCache {
         var symbols: [SymbolScanner.Symbol]?
         var highlightTimer: Timer?
@@ -819,8 +825,10 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         textView.backgroundColor = .textBackgroundColor
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
-        // The system's scroller style, not a forced one (metrics.md §12.2).
-        scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
+        // The system's scroller style, not a forced one (metrics.md §12.2),
+        // as it will settle, from the first layout (editor-area.md E.7).
+        scrollView.scrollerStyle = EditorScrollerStyle.initial
+        EditorScrollerStyle.follow(scrollView)
         scrollView.drawsBackground = true
         // The text runs under the toolbar band, the jump bar and the
         // bottom bar; the insets keep it clear of them at rest
@@ -841,6 +849,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         gutter.onEdit = { [weak self] l in self?.fileURL.map { self?.onBreakpointEdit?($0.path, l) } }
         gutter.onRunTest = { [weak self] l in self?.fileURL.map { self?.onRunTest?($0.path, l) } }
         textView.textLayoutManager?.textContentManager?.delegate = self
+        textView.textLayoutManager?.delegate = self   // over-long words (+LineBreaks.swift)
 
         findBar.onChange = { [weak self] in self?.findChanged() }
         findBar.onStep = { [weak self] f in self?.findStep(forward: f) }
@@ -856,6 +865,9 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
             root.addSubview(v)
         }
         stickyHeader.isHidden = true
+        // The bars show the text and the minimap beneath them, blurred
+        // with their shape (liquid-glass.md §9.1, row 68).
+        bandBackdrop.sources = { [weak self] in self.map { [$0.scrollView, $0.minimap] } ?? [] }
         minimap.onScrollTo = { [weak self] y in self?.scrollMinimapTarget(y) }
         minimap.scrollTarget = scrollView
         stickyHeader.scrollTarget = scrollView
@@ -923,6 +935,11 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
             noDocument.value = newValue
             scrollView.rulersVisible = !newValue
             if newValue { textView.isEditable = false }
+            // Pure white: no minimap, its separator or shade, and no scroll
+            // lane until a document is open (editor-area.md E.5, row 74).
+            minimap.isHidden = newValue || auxiliary != nil || !comparison.isHidden
+            scrollView.hasVerticalScroller = !newValue
+            if isViewLoaded { view.needsLayout = true }
         }
     }
     let noDocument = NoDocumentFlag()
@@ -932,6 +949,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
     /// minimap.
     public override func viewDidLayout() {
         super.viewDidLayout()
+        bandBackdrop.jumpBarTop = view.safeAreaInsets.top
         if minimapWidth.constant > 0 {
             let w = MinimapView.width(forEditorWidth: view.bounds.width)
             if minimapWidth.constant != w { minimapWidth.constant = w }
@@ -977,7 +995,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         auxiliary = nil
         auxiliaryFile = nil
         scrollView.isHidden = false
-        minimap.isHidden = false
+        minimap.isHidden = showsNoDocument
     }
 
     // MARK: Comparison
@@ -997,7 +1015,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         comparison.onWorkingCopyEdit = nil
         comparison.isHidden = true
         scrollView.isHidden = false
-        minimap.isHidden = false
+        minimap.isHidden = showsNoDocument
     }
 
     // MARK: Find bar
@@ -1159,7 +1177,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
             textView.frame.size.width = scrollView.contentSize.width
             updateTextContainerWidth()
         }
-        scrollView.scrollerStyle = NSScroller.preferredScrollerStyle
+        scrollView.scrollerStyle = EditorScrollerStyle.initial
         recolorAll()
         updateMinimapRows()
         textView.textStorage?.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: textView.textStorage!.length))
@@ -1291,6 +1309,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         textView.scrollRangeToVisible(NSRange(location: 0, length: 0))
         textViewDidChangeSelection(Notification(name: NSTextView.didChangeSelectionNotification, object: textView))
+        contentMovedUnderBars()
     }
 
     /// Shows read-only text that is not a file (a build log).
@@ -1376,6 +1395,7 @@ public final class SourceEditorController: NSViewController, NSTextViewDelegate,
         updateDisplayExtras()
         refreshInlineComparison()
         scheduleSourceChangesRefresh()
+        contentMovedUnderBars()
         if let url = fileURL { onDocumentChanged?(url, textView.string) }
         let caret = textView.selectedRange().location
         let ns = textView.string as NSString

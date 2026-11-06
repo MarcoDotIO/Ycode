@@ -1520,13 +1520,56 @@ not done.
    `MTLCommandBufferErrorAccessRevoked` describes ("the process was denied
    access to the GPU device", level 1). A client that hangs the GPU on
    every frame therefore stalls the others at most twice.
+   **The system UI is exempt** (owner's decision, 2026-11-05): the render
+   server (backboardd) and SpringBoard never lose access. Their stuck work
+   is still ended by the watchdog and the kick, its command buffers still
+   fail, and they may submit again (log: `GPU access kept for … after N GPU
+   hangs`). They are recognised by their launchd job label
+   (`com.apple.backboardd`, `com.apple.SpringBoard`; the kernel records the
+   label `xpcproxy_sim` was spawned with on the process, kept across the
+   exec) or, when there is none (a process launchd started otherwise, or
+   after a snapshot restore), by their executable path ending in
+   `/usr/libexec/backboardd` or
+   `/System/Library/CoreServices/SpringBoard.app/SpringBoard`; never by a
+   pid (`MetalSystemUI`, `Options.exemptFromRevocation`).
 
 `YCODE_GPU_INJECT_HANG=<name>@<s>[x<n>]` (debugging) puts a kernel that
 never ends in front of the first command buffer of a client whose name
 contains `<name>`, `<s>` seconds after the back end started, `<n>` times.
 
 **Tests** (`GPUClientIsolationTests`, the Thor, run alone: a shared back
-end in the same process makes the driver's stop slower). Client 1's
+end in the same process makes the driver's stop slower).
+In a boot (`inj-bbd2`, the Thor shared, another agent's simulator
+running, `YCODE_GPU_INJECT_HANG=backboardd@20x3`, injections now at least
+15 s apart) the client was named `backboardd, guest pid 124, job
+com.apple.backboardd`; its three hangs were each ended (stopped in
+2.3–2.4 s), its access was kept after the second and the third, and the
+boot reached a live home screen (71 s on that host; screenshot at 110 s:
+wallpaper, clock, Safari; the Settings icon drawn as the placeholder, a
+texture lost at a reset). Without spacing, injections queued during the
+first hang were failed with it (one reset, not three).
+
+`systemUIKeepsGPUAccess`: a client marked as the system UI hangs three
+times; each hang is ended, the client is never refused, and its next
+command buffer runs; another client keeps drawing. `MetalSystemUITests`
+checks the label and path rules.
+
+**Where the GPU-hang tests run.** `GPURecoveryTests` and
+`GPUClientIsolationTests` skip with "GPU drives a display" when the test
+GPU can present to the user's window-system session: one of its graphics
+queue families has presentation support
+(`vkGetPhysicalDeviceWaylandPresentationSupportKHR` for the compositor of
+`$WAYLAND_DISPLAY`, or `wayland-0`, in `$XDG_RUNTIME_DIR`; otherwise
+`vkGetPhysicalDeviceXcbPresentationSupportKHR` for the X server of
+`$DISPLAY`; CVulkan's `yvk_presents_to_session`). A hang there stalls that
+desktop, and the compositor's GPU work makes the driver end the stuck
+context early, so the tests' timings and blame do not hold (on the x86-64
+workstation, 1 of 2 runs failed that way). Display planes
+(`VK_KHR_display`) were not usable as the signal: the Thor's GPU and the
+workstation's both report 4 planes and 0 displays. Over SSH the Thor has
+no session for the test user (0: the suites run); the workstation's GPU
+presents to its Wayland desktop (1: they skip). `YCODE_TEST_GPU_HANGS=1`
+runs them anyway, `=0` never. Client 1's
 kernel never ends; clients 2 and 3 submit a frame every 50 ms (clear to a
 colour that changes per frame, draw a triangle), plain watchdog 30 s,
 blocking limit 1 s. In 3 of 3 runs: client 1's command buffer failed;
@@ -1803,6 +1846,7 @@ was not applied to its connections.
 | The render server's abort on a failed command buffer; the loss loop of run `x7` (§8.7) | 3 | XR-VIEWER's run `ide-remote/xr-viewer/runs/x7` (host log, guest crash annotations), Ycode's own boots |
 | Ycode's watchdog and device recovery (§8.7) | — | Ycode design; `GPURecoveryTests` on the Thor's GPU; GPU-SIRI's boots |
 | A second queue of the device does not run while one submission is stuck; a second device does after 3.9–4.3 s; the device wait alone ends it in 4–59 s, after the second device's kernel in 10–20 ms (§8.8) | 3 | B3-GPU's probe `scripts/gpu-probes/queuekick.c` (our C and GLSL) on the Thor; Vulkan specification (queue submission order, device loss) level 1 |
+| The Thor's and the x86-64 workstation's GPUs both report 4 display planes and 0 displays; only the workstation's presents to a session of the test user (§8.8) | 3 | B3-GPU's probes (our C) with `VK_KHR_display` and `yvk_presents_to_session` on both machines |
 | Blocking watchdog, kick, blame, revocation (§8.8) | — | Ycode design; `GPUClientIsolationTests` on the Thor's GPU; B3-GPU's boots `inj1`, `inj2`; `MTLCommandBufferErrorAccessRevoked` (Metal documentation, level 1) |
 | Requirements (§12) | — | derived from the above; Ycode design |
 

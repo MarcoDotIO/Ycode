@@ -71,18 +71,37 @@ public enum SourceControlNavigatorModel {
             i.scmKey = "remote:" + r.name
             return i
         }
+        // navigators.md round 3 §2: each group its own grey filled symbol,
+        // a disclosure triangle even when empty.
         let groups = [("Branches", branchRows), ("Recents", recentRows), ("Tags", tagRows), ("Stashes", stashRows), ("Remotes", remoteRows)]
             .map { g -> OutlineItem in
-                let i = OutlineItem(title: g.0, symbol: "folder", children: g.1)
+                let i = OutlineItem(title: g.0, symbol: groupSymbols[g.0] ?? "folder.fill", tint: groupTint, children: g.1)
+                i.alwaysExpandable = true
                 // Context menus only (New Branch…, New Tag…, Add Remote…).
                 i.scmKey = "group:" + g.0
                 return i
             }
         let h = header(repository: repository, branch: branch)
-        let top = OutlineItem(title: h.title, symbol: "externaldrive", children: groups)
+        let top = OutlineItem(title: h.title, symbol: repositorySymbol, tint: groupTint, children: groups)
         top.detail = h.detail
         top.scmKey = "repository"
         return [top]
+    }
+
+    /// The Repositories view's group symbols (navigators.md round 3 §2: a
+    /// stacked drive, a clock in a filled circle, a tag in a filled square,
+    /// a tray, a globe), all grey.
+    static let groupSymbols = RepositoriesViewStyle.groupSymbols
+    /// The repository row: a grey filled square.
+    static let repositorySymbol = RepositoriesViewStyle.repositorySymbol
+    static var groupTint: NSColor? { OutlineItem.color(.grey) }
+
+    /// Which Repositories rows are expanded at first: the repository and
+    /// Branches (with its folders); Recents, Tags, Stashes and Remotes stay
+    /// collapsed.
+    public static func expandsInitially(_ item: OutlineItem) -> Bool {
+        guard let key = item.scmKey else { return !item.children.isEmpty }
+        return key == "repository" || (key.hasPrefix("group:") && !RepositoriesViewStyle.initiallyCollapsed.contains(key))
     }
 
     /// Names split on `/` into folders ("feature/observe" → feature ▸ observe).
@@ -98,7 +117,8 @@ public enum SourceControlNavigatorModel {
             } else {
                 let i = OutlineItem(title: n, symbol: symbol)
                 i.scmKey = prefixKey + n
-                if n == current { i.detail = "(current)" }
+                // No "(current)": the repository row names the current
+                // branch (navigators.md round 3 §2).
                 leaves.append(i)
             }
         }

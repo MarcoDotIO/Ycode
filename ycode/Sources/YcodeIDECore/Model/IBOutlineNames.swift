@@ -30,8 +30,43 @@ extension IBDocument {
         if o.element == "viewLayoutGuide", o.key == "safeArea" { return "Safe Area" }
         if o.element == "placeholder", o.attribute("placeholderIdentifier") == "IBFirstResponder" { return "First Responder" }
         if o.element == "exit" { return "Exit" }
-        if isSubview(o) { return content(of: o) ?? o.attribute("customClass") ?? Self.words(o.element) }
+        if isSubview(o) { return content(of: o) ?? o.attribute("customClass") ?? kindName(o) }
+        // Bar items and menu elements: their title, else the system item
+        // ("Fixed Space", "Favorites"), else the kind.
+        if ["navigationItem", "barButtonItem", "tabBarItem", "command", "menu"].contains(o.element) {
+            if let t = o.attribute("title"), !t.isEmpty { return t }
+            if let s = o.attribute("systemItem") { return Self.words(s) }
+            return o.attribute("customClass") ?? kindName(o)
+        }
+        if o.element != "scene", !isController(o), o.attribute("customClass") == nil, (o.attribute("title") ?? o.attribute("text")) == nil {
+            return kindName(o)
+        }
         return o.displayName
+    }
+
+    /// Element names that stand for one Library kind, by the kind's name.
+    static let kindNames: [String: String] = {
+        var count: [String: Int] = [:]
+        for k in NewObject.allCases { count[k.element, default: 0] += 1 }
+        var out: [String: String] = [:]
+        for k in NewObject.allCases where count[k.element] == 1 { out[k.element] = k.rawValue }
+        return out
+    }()
+
+    /// An object's kind in words, as the Library names it (`library.md`
+    /// §Outline names): "Content View", "Content Layout Guide", "Map Kit
+    /// View", "Long Press Gesture Recognizer"; else the element in words.
+    public func kindName(_ o: Object) -> String {
+        switch (o.element, o.key) {
+        case ("viewLayoutGuide", "contentLayoutGuide"): return "Content Layout Guide"
+        case ("viewLayoutGuide", "frameLayoutGuide"): return "Frame Layout Guide"
+        case ("view", "contentView"): return "Content View"
+        case ("stackView", _): return o.attribute("axis") == "vertical" ? "Vertical Stack View" : "Horizontal Stack View"
+        case ("menu", _): return o.node.child("menuOptions")?["displayInline"] == "YES" ? "Inline Section Menu" : "Menu"
+        case ("visualEffectView", _): return "Visual Effect View"
+        case ("barButtonItem", _): return "Bar Button Item"
+        default: return Self.kindNames[o.element] ?? Self.words(o.element)
+        }
     }
 
     /// The kind badge after a subview named by its content ("Label").

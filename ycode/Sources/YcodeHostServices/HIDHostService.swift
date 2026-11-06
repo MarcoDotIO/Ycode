@@ -223,7 +223,12 @@ public final class HIDHostService: @unchecked Sendable {
     }
 
     /// The message body of one event (§7.3).
-    public static func body(_ event: Event, sequence: UInt64) -> [UInt8] {
+    /// `age`: microseconds since the host received the input (touch, key
+    /// and button records' reserved word, uikit-feel-ycode.md §4.0): the
+    /// bundle stamps the event that much earlier than its arrival, so a
+    /// delivery held up on the way keeps the time the input was made.
+    /// 0 (older hosts): the arrival time.
+    public static func body(_ event: Event, sequence: UInt64, age: UInt32 = 0) -> [UInt8] {
         var b: [UInt8] = []
         func u32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { b += $0 } }
         func u64(_ v: UInt64) { withUnsafeBytes(of: v.littleEndian) { b += $0 } }
@@ -253,7 +258,7 @@ public final class HIDHostService: @unchecked Sendable {
                 u32(c.index)
                 u32(c.phase.rawValue)
                 u32(c.edge.rawValue)
-                u32(0)
+                u32(age)
                 f64(min(1, max(0, c.x)))
                 f64(min(1, max(0, c.y)))
             }
@@ -261,7 +266,7 @@ public final class HIDHostService: @unchecked Sendable {
             u32(page)
             u32(usage)
             u32(down ? 1 : 0)
-            u32(0)
+            u32(age)
         case .keyboardAttach(let attached):
             u32(attached ? 1 : 0)
             u32(0)
@@ -306,14 +311,14 @@ public final class HIDHostService: @unchecked Sendable {
     /// Sends one event to the registered bundle. False when none is
     /// registered or the send failed (a dead port clears the registration, §7.5).
     @discardableResult
-    public func send(_ event: Event) -> Bool {
+    public func send(_ event: Event, age: UInt32 = 0) -> Bool {
         // One sender at a time keeps the order (§7.4).
         lock.lock()
         defer { lock.unlock() }
         guard let port = client else { return false }
         sequence += 1
         let message = MachHostOutgoingMessage(remotePort: port, remoteDisposition: MachMsgType.copySend, id: Self.eventID,
-                                              body: Self.body(event, sequence: sequence))
+                                              body: Self.body(event, sequence: sequence, age: age))
         do {
             try host.send(message, timeout: 250_000_000)
             if sequence <= 5 { log("hid: event \(sequence) sent (\(message.body.count) bytes)") }

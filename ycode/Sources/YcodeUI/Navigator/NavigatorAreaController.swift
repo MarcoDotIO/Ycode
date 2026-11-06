@@ -31,6 +31,9 @@ public final class OutlineItem: NSObject {
     public var enabledMarker: Bool?
     /// Source Control navigator routing key (see SourceControlNavigatorModel).
     public var scmKey: String?
+    /// A disclosure triangle even with no children (the Repositories
+    /// view's groups, navigators.md round 3 §2).
+    public var alwaysExpandable = false
     /// Project navigator rows: the row's kind and its key for the saved
     /// expansion (`NavigatorNode.expansionKey`).
     public var nodeKind: NavigatorNode.Kind?
@@ -128,7 +131,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     /// The selected navigator's rows with its filter applied (navigators
     /// other than Project; Project filters through `applyProjectFilter`).
     private var filteredRoots: [OutlineItem]?
-    private var shownRoots: [OutlineItem] { filteredRoots ?? roots[selectedIndex] }
+    var shownRoots: [OutlineItem] { filteredRoots ?? roots[selectedIndex] }
 
     /// The rows the selected navigator shows (tests).
     public var shownRows: [OutlineItem] { shownRoots }
@@ -169,7 +172,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     }
     private let selector = NSStackView()
     private var buttons: [NSButton] = []
-    private let outline = NavigatorOutlineView()
+    let outline = NavigatorOutlineView()
     /// The outline and the selector (tests: row metrics).
     var outlineView: NSOutlineView { outline }
     var navigatorOutline: NavigatorOutlineView { outline }
@@ -181,6 +184,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     let selectorGlass = GlassBars.capsule()
     let plusGlass = GlassBars.capsule()
     let filterGlass = GlassBars.capsule()
+    /// The blurred rows under the selector capsule (+SelectorBackdrop.swift).
+    let selectorBackdrop = SelectorBackdropView()
+    let selectorBackdropObserver = ObserverBox()
     let selectorPill = SelectionPillView()
     /// The outline runs under the glass bars (no header shown) or is
     /// clipped below the header rows (§3.1, §2.7).
@@ -502,6 +508,7 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
                 root.addSubview(g, positioned: .above, relativeTo: scrollClip)
             }
             root.addSubview(selector, positioned: .above, relativeTo: selectorGlass)
+            installSelectorBackdrop(in: root)   // liquid-glass.md §9.2 (+SelectorBackdrop.swift)
             root.addSubview(selectorPill, positioned: .below, relativeTo: selector)
             sep.alphaValue = 0   // no line under the floating bar
         }
@@ -537,7 +544,9 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
             reportScopeTop,
             reportScope.centerXAnchor.constraint(equalTo: root.centerXAnchor),
             sourceControlMode.topAnchor.constraint(equalTo: reportScope.topAnchor),
-            sourceControlMode.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            // Across the navigator, 9 from each side (navigators.md round 3 §2).
+            sourceControlMode.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Self.modeControlInset),
+            sourceControlMode.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Self.modeControlInset),
             sourceControlMode.heightAnchor.constraint(equalTo: reportScope.heightAnchor),
             testHeader.topAnchor.constraint(equalTo: reportScope.topAnchor),
             testHeader.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
@@ -587,6 +596,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         reportScope.isHidden = true
         configureTestHeader()
         sourceControlMode.controlSize = .small
+        sourceControlMode.segmentDistribution = .fillEqually
+        sourceControlMode.selectedSegmentBezelColor = .controlAccentColor
         sourceControlMode.selectedSegment = 0
         sourceControlMode.isHidden = true
         sourceControlMode.target = self
@@ -1317,13 +1328,23 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
 
     /// Replaces the Source Control navigator's tree (Changes or Repositories).
     public func setSourceControlRoots(_ items: [OutlineItem]) {
+        let expanded = expandedSourceControlKeys()
         roots[1] = items
         reloadIfShowing(1)
-        if selectedIndex == 1 { outline.expandItem(nil, expandChildren: true) }
+        if selectedIndex == 1 { expandSourceControlRows(keeping: expanded) }   // +Repositories.swift
     }
 
     /// Selects the Source Control row with `key` (shown navigator only);
     /// false when it is not there.
+    /// Whether the outline carries the row context menu (tests).
+    public var hasRowMenu: Bool { outline.menu === rowMenu }
+
+    /// The selected Source Control row's key (branch:<name>, …).
+    public var selectedSourceControlKey: String? {
+        guard isViewLoaded, selectedIndex == 1, outline.selectedRow >= 0 else { return nil }
+        return (outline.item(atRow: outline.selectedRow) as? OutlineItem)?.scmKey
+    }
+
     @discardableResult
     public func selectSourceControlRow(key: String) -> Bool {
         guard isViewLoaded, selectedIndex == 1 else { return false }
@@ -1440,9 +1461,10 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         reportScope.isHidden = index != 8
         sourceControlMode.isHidden = index != 1
         testHeader.isHidden = index != 5
-        // Bookmark rows (Mark as Done) and project rows (the file
-        // operations) have a context menu.
-        outline.menu = index == 2 || index == 0 || index == 5 ? rowMenu : nil
+        // Bookmark rows (Mark as Done), project rows (the file operations),
+        // test rows and Source Control rows (merge-sheet.md §1.1) have a
+        // context menu.
+        outline.menu = [0, 1, 2, 5].contains(index) ? rowMenu : nil
         configureProjectOperations(index)
         findScope.isHidden = index != 3
         findField.isHidden = index != 3
@@ -1450,11 +1472,11 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
         applyFindVisibility(index == 3)
         rebuildAddMenu()
         configureToggles(index)
-        for b in buttons { b.state = b.tag == index ? .on : .off; b.contentTintColor = TabGlyphTint.color(selected: b.tag == index) }
+        for b in buttons { b.state = b.tag == index ? .on : .off; b.contentTintColor = TabGlyphTint.navigatorColor(selected: b.tag == index) }
         setOutlineUnderBars(GlassBars.enabled && !(headerBar || index == 3))
         view.needsLayout = true
         outline.reloadData()
-        if index != 0 { outline.expandItem(nil, expandChildren: true) } else if projectFilterActive { outline.expandItem(nil, expandChildren: true) } else { restoreProjectExpansion() }
+        if index == 1 { expandSourceControlRows(keeping: nil) } else if index != 0 { outline.expandItem(nil, expandChildren: true) } else if projectFilterActive { outline.expandItem(nil, expandChildren: true) } else { restoreProjectExpansion() }
         updateEmpty()
     }
 
@@ -1539,7 +1561,8 @@ public final class NavigatorAreaController: NSViewController, NSOutlineViewDataS
     }
 
     public func outlineView(_ o: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        !((item as? OutlineItem)?.children.isEmpty ?? true)
+        guard let item = item as? OutlineItem else { return false }
+        return item.alwaysExpandable || !item.children.isEmpty
     }
 
     public func outlineView(_ o: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {

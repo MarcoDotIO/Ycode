@@ -196,7 +196,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         #expect(pane.rowTitles.suffix(2) == ["# Localized Strings", "Automatically generate string catalog comments"])
         pane.page = .display
         #expect(pane.rowTitles == [
-            "Line numbers", "Code folding ribbon", "Code structure headers", "MARK separators", "Code coverage iteration counts",
+            "# Display", "Line numbers", "Code folding ribbon", "Code structure headers", "MARK separators", "Code coverage iteration counts",
             "Condition on #endif lines", "Scope guides", "Reformat code at column", "Show reformatting guide",
             "Automatically reformat when completing", "Dim inactive code", "Highlight instances of selected symbol", "Highlighting delay",
             "Editor overscroll", "# Line Wrapping", "Wrap lines to editor width", "Indent wrapped lines",
@@ -267,7 +267,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let wc = SettingsWindowController(prefs: Preferences(defaults: t.defaults), components: [])
         #expect(SettingsWindowController.paneTitles == ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation",
                                                         "Notifications", "Editing", "Shortcuts", "Source Control", "Components",
-                                                        "Simulators", "Locations"])
+                                                        "Locations", "Simulators"])
         let sims = wc.pane(SimulatorsSettingsPane.self)!
         _ = sims.view
         #expect(sims.rowTitles.contains("Warm boot from snapshot") && sims.rowTitles.contains("Lean boot"))

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Writes the "Merger" package in a git repository whose branch "feature"
-# conflicts with "main" in two files, for the Linux IDE's conflict-editor
+# conflicts with "main" in two files, for the Linux IDE's merge-sheet
 # walk (YCODE_IDE_CONFLICT, ShellDriver+Conflicts.swift):
 #
 #   Sources/Merger/Colors.swift   two conflicts (resolved by choosing sides)

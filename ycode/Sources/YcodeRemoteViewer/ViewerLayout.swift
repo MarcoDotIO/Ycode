@@ -35,7 +35,7 @@ public struct ViewerLayout: Equatable, Sendable {
     public var geometry: DeviceFrameGeometry
 
     /// Space reserved under the device for the control row (window units).
-    public static let controlBar: Double = 36
+    public static let controlBar: Double = DeviceControlsLayout.height + DeviceControlsLayout.bottomMargin
     public static let margin: Double = 12
 
     /// The layout of `geometry` in a window of `windowWidth` × `windowHeight`
@@ -55,6 +55,24 @@ public struct ViewerLayout: Equatable, Sendable {
         // Centred; a drawing larger than the window starts at the margin.
         originX = max(Self.margin, (windowWidth - gw * scale) / 2)
         originY = max(Self.margin, (windowHeight - (controls ? Self.controlBar : 0) - gh * scale) / 2)
+        // The screen picture starts on a whole output pixel, so that at Pixel
+        // Accurate it is drawn 1:1 (uikit-feel-ycode.md §8.4).
+        self.pixelDensity = max(pixelDensity, 0.1)
+        let sx = originX + Double(geometry.screen.minX) * scale, sy = originY + Double(geometry.screen.minY) * scale
+        originX += (sx * self.pixelDensity).rounded() / self.pixelDensity - sx
+        originY += (sy * self.pixelDensity).rounded() / self.pixelDensity - sy
+    }
+
+    /// Output pixels per window unit.
+    public var pixelDensity: Double
+
+    /// Whether a stream image of `imageWidth` × `imageHeight` pixels (as
+    /// shown, after any turn) fills the screen with one image pixel per
+    /// output pixel: the front end then draws it unfiltered.
+    public func showsPixelsOneToOne(imageWidth: Int, imageHeight: Int) -> Bool {
+        let s = screen
+        return abs(s.width * pixelDensity - Double(imageWidth)) < 0.01 && abs(s.height * pixelDensity - Double(imageHeight)) < 0.01
+            && abs((s.x * pixelDensity).rounded() - s.x * pixelDensity) < 0.01 && abs((s.y * pixelDensity).rounded() - s.y * pixelDensity) < 0.01
     }
 
     /// The window size that shows the drawing in this mode with nothing cut off.

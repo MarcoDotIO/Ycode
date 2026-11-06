@@ -368,10 +368,7 @@ extension VulkanMetalBackend {
         let handler = deviceResetHandler
         cond.unlock()
         handler?()
-        if let b = blamed, b.revoked {
-            log("GPU access revoked for \(describeClient(b.process)) after \(options.revokeAfterHangs) GPU hangs: "
-                + "its later command buffers fail without running")
-        }
+        if let b = blamed { revokeIfDue(b.process, hangs: b.hangs) }
         finish(items, resubmit: true)
     }
 

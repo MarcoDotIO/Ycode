@@ -32,6 +32,9 @@
 //   expand / compact                 the window's expanded or compact form
 //   window-size <width>              the compact window's content width (the device scales)
 //   window-shot <path.png>           the viewer's own window (screencapture -l with its id)
+//   zoom <scale>|pixel               the expanded window's zoom (view points per device point);
+//                                    pixel: one device pixel per display pixel (uikit-feel-ycode.md §8.4)
+//   window-content <width> <height>  the window's content size in points
 //   expect-banner <text>             the feedback banner shows that text (within 3 s)
 //   shot <path.png>                  the image the viewer shows
 //   server-shot <path.png>           a full-resolution PNG from the server
@@ -350,6 +353,23 @@ final class ScriptRunner: @unchecked Sendable {
             click(.leftMouseUp)
         case "expand", "compact":
             onMain { controller.windowController.switchKind(to: words[0] == "expand" ? .expanded : .compact) }
+            pause(300)
+        case "zoom":
+            guard words.count > 1 else { throw ScriptError(description: "zoom <scale>|pixel") }
+            let z = words[1] == "pixel" ? nil : try number(words, 1)
+            let applied = onMain { () -> Double in
+                let c = controller.canvas
+                let deviceScale = c.session.map { $0.spec.panels[min($0.panelIndex, $0.spec.panels.count - 1)].scale } ?? 3
+                let s = z ?? Double(deviceScale) / Double(controller.window.backingScaleFactor)
+                c.zoom = .scale(s)
+                c.layoutSubtreeIfNeeded()
+                return s
+            }
+            log("zoom \(applied) (backing \(onMain { controller.window.backingScaleFactor }))")
+            pause(500)
+        case "window-content":
+            let w = try number(words, 1), h = try number(words, 2)
+            onMain { controller.window.setContentSize(NSSize(width: w, height: h)) }
             pause(300)
         case "window-size":
             let w = try number(words, 1)

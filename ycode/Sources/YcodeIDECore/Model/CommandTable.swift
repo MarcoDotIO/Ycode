@@ -821,6 +821,8 @@ public enum CommandTable {
             sep,
             c("Add", "", "scmAddSelected:"),
             c("Cherry-Pick…", "", "scmCherryPick:"),
+            // Ycode's place for it (merge-sheet.md, open question 7).
+            c("Merge…", "", "scmMerge:"),
             c("Stash Changes…", "", "scmStash:"),
             c("Resolve Conflicts…", "", "scmResolveConflicts:", when: .integrationInProgress),
             c("Continue", "", "scmContinueIntegration:", when: .integrationInProgress),

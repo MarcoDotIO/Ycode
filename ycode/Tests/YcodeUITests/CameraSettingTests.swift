@@ -58,7 +58,8 @@ import Testing
         #expect(c.cameraControlsShown && c.cameraTitle == "Off" && c.inspectorTab == .settings)
         let box = c.cameraControls()
         #expect(box.identifier?.rawValue == "camera-controls")
-        let popUp = (box as? NSBox)?.contentView?.subviews.compactMap { $0 as? NSPopUpButton }.first
+        let card = (box as? NSStackView)?.arrangedSubviews.compactMap { $0 as? InspectorCard }.first
+        let popUp = card?.subviews.compactMap { $0 as? NSPopUpButton }.first
         #expect(popUp?.itemTitles == DevicesController.cameraTitles && popUp?.titleOfSelectedItem == "Off")
         c.chooseCamera("Host webcam")
         s = RemoteSimulatorSettings.load(t.defaults)

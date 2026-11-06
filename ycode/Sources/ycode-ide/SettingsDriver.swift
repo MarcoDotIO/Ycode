@@ -40,8 +40,25 @@ enum SettingsDriver {
 
     static func frame(_ name: String) -> CGRect? { OpenViewsAutomation.identifiedFrames(1)[name] }
 
+    /// Scrolls the pane until a named view is in the window (the cards
+    /// run past the 452-point window).
+    static func reveal(_ name: String) async {
+        let height = OpenViewsAutomation.windowSize(1)?.points.height ?? SettingsLayout.windowSize.height
+        let top = SettingsLayout.titleAreaHeight + 4
+        for _ in 0..<12 {
+            let f = frame(name)
+            if let f, f.minY >= top, f.maxY <= height - 4 { return }
+            // Scroll by the distance (points), or a screenful when the view is not laid out yet.
+            let dy = f.map { $0.maxY > height - 4 ? -($0.maxY - height + 60) : top + 40 - $0.minY } ?? -200
+            OpenViewsAutomation.scroll(at: CGPoint(x: SettingsLayout.windowSize.width - 120, y: height / 2),
+                                       delta: CGSize(width: 0, height: dy), window: 1)
+            await ShellDriver.pause(0.25)
+        }
+    }
+
     /// Clicks a named view of the Settings window.
     static func click(_ name: String, dx: CGFloat? = nil) async {
+        await reveal(name)
         guard let f = frame(name) else {
             say("settings: no target \(name)")
             return
@@ -70,6 +87,38 @@ enum SettingsDriver {
         say("settings pane \(pane.rawValue): shown=\(ShellSettingsModel.shared.pane.rawValue)")
     }
 
+    /// Checks the window's measured layout and prints one line per check
+    /// and "settings layout: ok" or "settings layout: FAILED …".
+    static func checkLayout() {
+        var failures: [String] = []
+        func near(_ a: CGFloat?, _ b: CGFloat, _ what: String, _ tolerance: CGFloat = 0.6) {
+            let ok = a.map { abs($0 - b) <= tolerance } ?? false
+            say("settings layout: \(what) \(a.map { "\($0)" } ?? "missing") (\(b)) \(ok ? "yes" : "NO")")
+            if !ok { failures.append(what) }
+        }
+        if let s = OpenViewsAutomation.windowSize(1) {
+            near(s.points.width, SettingsLayout.windowSize.width, "window width")
+            near(s.points.height, SettingsLayout.windowSize.height, "window height")
+        }
+        for (i, p) in ShellSettingsPane.allCases.enumerated() {
+            let f = frame("settings pane \(p.rawValue)")
+            near(f?.minY, SettingsLayout.sidebarTop + CGFloat(i) * SettingsLayout.sidebarRowHeight, "\(p.rawValue) row top")
+            near(f?.height, SettingsLayout.sidebarRowHeight, "\(p.rawValue) row height")
+        }
+        near(frame("settings pane general")?.minX, 0, "sidebar flush")
+        near(frame("settings pane general")?.width, SettingsLayout.sidebarWidth, "sidebar width")
+        near(frame("settings back")?.minX, SettingsLayout.capsuleFrame.minX, "capsule x")
+        near(frame("settings forward")?.maxX, SettingsLayout.capsuleFrame.maxX, "capsule end")
+        near(frame("settings back")?.height, SettingsLayout.capsuleFrame.height, "capsule height")
+        near(frame("settings title")?.minX, SettingsLayout.titleX, "title x", 1)
+        // The General pane: controls end 10 inside the card (x 680).
+        let cardEnd = SettingsLayout.windowSize.width - SettingsLayout.cardInset
+        near(frame("settings navigator size")?.maxX, cardEnd - SettingsLayout.controlInset, "pop-up end")
+        near(frame("settings sidebar widths")?.maxX, cardEnd - SettingsLayout.controlInset, "switch end")
+        near(frame("settings sidebar widths")?.width, 36, "switch width")
+        say(failures.isEmpty ? "settings layout: ok" : "settings layout: FAILED \(failures)")
+    }
+
     static func run(_ app: ShellAppModel, prefix: String) async {
         say(values())
         OpenViewsAutomation.press(.character(","), modifiers: [.control])
@@ -87,9 +136,11 @@ enum SettingsDriver {
         await ShellDriver.pause(0.6)
         say("settings workspace: " + OpenViewsAutomation.screenshot(to: "\(prefix)-workspace-light.png"))
 
-        // General: a checkbox, and File extensions through the model.
+        // The window, sidebar and General cards (settings.md R3.1–R3.3).
+        checkLayout()
+        // General: a switch, and File extensions through the model.
         await shot(prefix, "general")
-        await click("settings stop on error", dx: 8)
+        await click("settings stop on error")
         prefs.fileExtensions = .show
         await shot(prefix, "general-changed")
 
@@ -120,7 +171,7 @@ enum SettingsDriver {
         await open(.behaviors)
         await shot(prefix, "behaviors")
         await click("settings behavior buildStarts")
-        await click("settings behavior notify", dx: 8)
+        await click("settings behavior notify")
         await shot(prefix, "behaviors-event")
         model.behaviorEvent = nil
 
@@ -131,14 +182,14 @@ enum SettingsDriver {
 
         // Notifications.
         await open(.notifications)
-        await click("settings notify runStarts", dx: 8)
+        await click("settings notify runStarts")
         await shot(prefix, "notifications")
 
         // Editing and its pages.
         await open(.editing)
         await shot(prefix, "editing")
         await click("settings editing display")
-        await click("settings line numbers", dx: 8)
+        await click("settings line numbers")
         await shot(prefix, "editing-display")
         await click("settings editing back")
         await click("settings editing indentation")
@@ -166,10 +217,14 @@ enum SettingsDriver {
 
         // Source Control and Locations.
         await open(.sourceControl)
-        await click("settings source control", dx: 8)
+        await click("settings source control")
         await ShellDriver.pause(1)
         await shot(prefix, "source-control")
         prefs.sourceControlEnabled = true
+        await open(.components)
+        await ShellDriver.pause(0.5)
+        say("settings components empty: \(frame("settings components empty") != nil)")
+        await shot(prefix, "components")
         await open(.locations)
         await ShellDriver.pause(1)
         await shot(prefix, "locations")
@@ -182,6 +237,10 @@ enum SettingsDriver {
         await shot(prefix, "dark-shortcuts")
         await open(.general)
         await shot(prefix, "dark-general")
+        await open(.navigation)
+        await shot(prefix, "dark-navigation")
+        await open(.accounts)
+        await shot(prefix, "dark-accounts")
         await open(.editing)
         await shot(prefix, "dark-editing")
 

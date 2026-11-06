@@ -106,7 +106,7 @@ public final class RemoteDeviceSession: @unchecked Sendable {
         wake()
     }
 
-    private func post(_ e: DisplayClientEvent) {
+    func post(_ e: DisplayClientEvent) {
         if case .frame(let f) = e { onFrame?(f) }
         lock.withLock { events.append(e) }
         wake()
@@ -257,6 +257,23 @@ public final class RemoteDeviceSession: @unchecked Sendable {
         let posture: DevicePosture? = spec.isFoldable ? (panel.flatMap { DevicePosture(rawValue: $0.posture) } ?? .closed) : nil
         return DeviceFrameGeometry(spec: spec, panelIndex: panelIndex, clockwiseQuarterTurns: orientation.clockwiseQuarterTurns,
                                    posture: posture, bezels: bezels)
+    }
+
+    /// The device frame the window was last sized for (nil: not yet).
+    public private(set) var fittedGeometry: DeviceFrameGeometry?
+
+    /// The window size that shows the whole device frame, with room for the
+    /// control capsules, at the layout's current scale, when the frame
+    /// changed since the window was last sized for it: on connect (the
+    /// hello names the device; an iPhone Duo in the default 460 × 900
+    /// window), a foldable's other panel or turn. Nil before the hello and
+    /// while the frame is the same, so the person's own resizing stays.
+    public func windowFitIfNeeded() -> (width: Double, height: Double)? {
+        guard hello != nil else { return nil }
+        let g = geometry
+        guard g != fittedGeometry else { return nil }
+        fittedGeometry = g
+        return ViewerLayout.windowSize(geometry: g, scale: layout.scale)
     }
 
     public var layout: ViewerLayout {

@@ -28,7 +28,7 @@ struct IBInspectorView: View {
                     if pair.offset > 0 { Hairline(color: c.separator).padding(.top, 10).padding(.bottom, 8) }
                     section(pair.element, c)
                 }
-                if tab == .attributes, let state = model.controlState {
+                if tab == .attributes, !model.document.isFlippedRuntime, let state = model.controlState {
                     Hairline(color: c.separator).padding(.top, 10).padding(.bottom, 8)
                     controlBlock(state, c)
                 }
@@ -104,11 +104,11 @@ struct IBInspectorView: View {
     func row(_ r: IBInspectorRow, _ c: ShellColors) -> some View {
         switch r {
         case .text(let l, let target, let attr, let value, let ph):
-            keyed(l, c) { field(value, placeholder: ph, c, target: "ib field \(l)") { model.setAttribute(attr, $0, of: target) } }
+            keyed(l, c) { field(value, placeholder: ph, c, target: "ib field \(l.isEmpty ? attr : l)") { model.setAttribute(attr, $0, of: target) } }
         case .toggle(let l, _, _, let on, _, _):
             keyed("", c) { check(l, on, c, target: "ib toggle \(l)") { model.setToggle(r, on: $0) } }
-        case .edgeToggle(let l, _, _, let on):
-            keyed("", c) { check(l, on, c, target: "ib toggle \(l)") { model.setToggle(r, on: $0) } }
+        case .edgeToggle(let l, _, let edge, let on):
+            keyed(edge == "top" ? "Extend Edges" : "", c) { check(l, on, c, target: "ib toggle \(l)") { model.setToggle(r, on: $0) } }
         case .choice(let l, _, _, let options, let value):
             keyed(l, c) {
                 CellPopUp(title: value, choices: options) { model.setChoice(r, $0) }.shellTarget("ib choice \(l)")
@@ -154,6 +154,84 @@ struct IBInspectorView: View {
                 Spacer(minLength: 0)
                 Image(systemName: other.isEmpty ? "circle" : "circle.fill").font(.system(size: 10)).foregroundStyle(other.isEmpty ? c.secondaryLabel : c.accent)
             }
+        case .check(let key, let title, _, let attr, let on, _, _):
+            keyed(key, c) { check(title, on, c, target: "ib check \(attr)") { model.setToggle(r, on: $0) } }
+        case .popUp(let key, _, let attr, let values, let titles, let value):
+            keyed(key, c) {
+                CellPopUp(title: values.firstIndex(of: value).map { titles[$0] } ?? value, choices: titles) { model.setChoice(r, $0) }
+                    .shellTarget("ib popup \(attr)")
+            }
+        case .number(let key, let target, let attr, let value, let ph):
+            keyed(key, c) { numberField(value, ph, c, target: target, attribute: attr) }
+        case .numbers(let key, let fields):
+            keyed(key, c) {
+                HStack(alignment: .top, spacing: 6) {
+                    ForEach(Array(fields.enumerated()), id: \.offset) { pair in
+                        VStack(spacing: 1) {
+                            field(pair.element.value, placeholder: pair.element.placeholder, c, target: "ib number \(pair.element.attribute)") {
+                                model.setAttribute(pair.element.attribute, $0, of: pair.element.target)
+                            }
+                            Text(verbatim: pair.element.caption).font(.system(size: 9)).foregroundStyle(c.secondaryLabel).lineLimit(1)
+                        }
+                    }
+                }
+            }
+        case .combo(let key, let target, let attr, let value, let ph):
+            keyed(key, c) {
+                HStack(spacing: 2) {
+                    field(value, placeholder: ph, c, target: "ib combo \(attr)") { model.setAttribute(attr, $0, of: target) }
+                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(c.secondaryLabel).frame(width: 12)
+                }
+            }
+        case .color(let key, _, let colorKey, let value):
+            keyed(key, c) {
+                HStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous).fill(IBLibraryPanel.swatch(value)).frame(width: 22, height: 14)
+                        .overlay { RoundedRectangle(cornerRadius: 3, style: .continuous).stroke(c.fieldStroke, lineWidth: 1) }
+                    CellPopUp(title: value, choices: IBDocument.colorChoices.map(\.title)) { model.setColor(r, $0) }
+                }
+                .shellTarget("ib color \(colorKey)")
+            }
+        case .icons(let key, _, let attr, let values, let titles, let value):
+            keyed(key, c) {
+                HStack(spacing: 2) {
+                    ForEach(Array(values.enumerated()), id: \.offset) { pair in
+                        Button { model.setChoice(r, pair.element) } label: {
+                            Group {
+                                // Ycode's own glyph for the choice (IBLibraryObjects.swift).
+                                if let g = IBIcon.choiceGlyph(attribute: attr, value: pair.element, ink: pair.element == value ? .white : (scheme == .dark ? .lightGray : .dark)) {
+                                    IBIconView(icon: g).frame(width: 14, height: 14)
+                                } else {
+                                    Text(verbatim: String(titles[pair.offset].prefix(1))).font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(pair.element == value ? Color.white : c.label)
+                                }
+                            }
+                                .frame(width: 20, height: 18)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous).fill(pair.element == value ? c.accent : c.popUpFill)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .help(titles[pair.offset])
+                        .accessibilityLabel(titles[pair.offset])
+                        .accessibilityValue(pair.element == value ? "on" : "off")
+                        .shellTarget("ib icon \(attr) \(titles[pair.offset])")
+                    }
+                }
+            }
+        case .subheading(let t):
+            Text(verbatim: t).font(ShellFonts.smallBold).foregroundStyle(c.secondaryLabel).padding(.top, 4)
+        case .list(let key, let items):
+            keyed(key, c) {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { Text(verbatim: $0.element).font(ShellFonts.small).foregroundStyle(c.label).lineLimit(1) }
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus").font(.system(size: 9, weight: .semibold))
+                        Image(systemName: "minus").font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(c.tertiaryLabel)
+                }
+            }
         case .frameValue(let l, let target, let component, let value):
             keyed(l, c) {
                 HStack(spacing: 4) {
@@ -163,6 +241,16 @@ struct IBInspectorView: View {
                             down: { model.setFrameComponent(component, CGFloat((Double(value) ?? 0) - 1), of: target) })
                 }
             }
+        }
+    }
+
+    /// A number field with its stepper (one step up or down from the value).
+    func numberField(_ value: String, _ ph: String, _ c: ShellColors, target: String, attribute: String) -> some View {
+        let v = Double(value) ?? Double(ph) ?? 0
+        func text(_ x: Double) -> String { x == x.rounded() ? String(Int(x)) : String(x) }
+        return HStack(spacing: 4) {
+            field(value, placeholder: ph, c, target: "ib number \(attribute)") { model.setAttribute(attribute, $0, of: target) }
+            stepper(c, up: { model.setAttribute(attribute, text(v + 1), of: target) }, down: { model.setAttribute(attribute, text(v - 1), of: target) })
         }
     }
 
@@ -200,126 +288,6 @@ struct IBInspectorView: View {
                 }
             }
         }
-    }
-}
-
-// MARK: Library
-
-/// The Library (`library.md`) over the Interface Builder editor: the
-/// Objects tab with its filter, the list (Ycode's own icons, name and
-/// description) and the detail area. Double-click or Return inserts the
-/// object into the selected view; Escape closes the panel.
-struct IBLibraryPanel: View {
-    var model: InterfaceBuilderShellModel
-    @Environment(\.colorScheme) private var scheme
-    @FocusState private var hasKeyboard: Bool
-
-    var body: some View {
-        let c = ShellColors(scheme)
-        let list = model.libraryObjects
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                Text(verbatim: "Objects").font(ShellFonts.smallBold).foregroundStyle(c.label)
-                    .padding(.horizontal, 12).frame(height: 22)
-                    .background { Capsule(style: .continuous).fill(c.selectorPill) }
-                Spacer(minLength: 0)
-                Button { model.isLibraryShown = false } label: {
-                    Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).foregroundStyle(c.secondaryLabel).frame(width: 20, height: 20)
-                }
-                .buttonStyle(.plain)
-                .help("Close the Library")
-                .shellTarget("ib library close")
-            }
-            .padding(8)
-            HStack(spacing: 4) {
-                Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(c.secondaryLabel)
-                InlineField(text: model.libraryFilter, placeholder: "Filter") { model.libraryFilter = $0 }
-                    .shellTarget("ib library filter")
-            }
-            .padding(.horizontal, 6)
-            .frame(height: 24)
-            .background {
-                RoundedRectangle(cornerRadius: 6, style: .continuous).fill(c.fieldFill)
-                    .overlay { RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(c.fieldStroke, lineWidth: 1) }
-            }
-            .padding(.horizontal, 8)
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(list, id: \.self) { o in item(o, selected: model.librarySelection == o, c) }
-                }
-                .padding(.vertical, 6)
-            }
-            .focusable()
-            .focused($hasKeyboard)
-            .onKeyPress(.downArrow) { model.moveLibrarySelection(1); return .handled }
-            .onKeyPress(.upArrow) { model.moveLibrarySelection(-1); return .handled }
-            .onKeyPress(.return) { model.insertFromLibrary(); return .handled }
-            .onKeyPress(.escape) { model.isLibraryShown = false; return .handled }
-            Hairline(color: c.separator)
-            Text(verbatim: model.libraryDetail).font(ShellFonts.small).foregroundStyle(c.secondaryLabel).lineLimit(3)
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .topLeading)
-                .padding(10)
-                .shellTarget("ib library detail")
-        }
-        .frame(width: 340, height: 420)
-        .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(c.content)
-                .overlay { RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(c.capsuleStroke, lineWidth: 1) }
-                .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
-        }
-        .onAppear { hasKeyboard = true }
-        .shellTarget("ib library")
-    }
-
-    func item(_ o: IBDocument.NewObject, selected: Bool, _ c: ShellColors) -> some View {
-        HStack(spacing: 8) {
-            IBObjectIcon(object: o, accent: c.accent).frame(width: 26, height: 26)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(verbatim: o.rawValue).font(Font.system(size: 12, weight: .bold)).foregroundStyle(c.label)
-                Text(verbatim: o.summary).font(ShellFonts.small).foregroundStyle(c.secondaryLabel).lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-        .frame(height: 40)
-        .background { if selected { RoundedRectangle(cornerRadius: 6, style: .continuous).fill(c.rowSelection) } }
-        .padding(.horizontal, 6)
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { model.insertFromLibrary(o) }
-        .onTapGesture { model.librarySelection = o; hasKeyboard = true }
-        .accessibilityLabel(o.rawValue)
-        .shellTarget("ib library \(o.rawValue)")
-    }
-}
-
-/// A Library object's icon, drawn from the shared shapes
-/// (`IBLibraryObjects.swift`) in the accent colour.
-struct IBObjectIcon: View {
-    var object: IBDocument.NewObject
-    var accent: Color
-
-    var body: some View {
-        let shapes = object.iconShapes
-        Canvas { ctx, size in
-            ctx.scaleBy(x: size.width / 26, y: size.height / 26)
-            for s in shapes {
-                switch s {
-                case .backdrop(let r, let radius): ctx.fill(Path(roundedRect: r, cornerRadius: radius, style: .continuous), with: .color(accent.opacity(0.12)))
-                case .fillRoundedRect(let r, let radius): ctx.fill(Path(roundedRect: r, cornerRadius: radius, style: .continuous), with: .color(accent))
-                case .strokeRect(let r): ctx.stroke(Path(r), with: .color(accent), lineWidth: 1)
-                case .fillRect(let r): ctx.fill(Path(r), with: .color(accent))
-                case .fillOval(let r): ctx.fill(Path(ellipseIn: r), with: .color(accent))
-                case .fillPolygon(let pts):
-                    var p = Path()
-                    p.addLines(pts)
-                    p.closeSubpath()
-                    ctx.fill(p, with: .color(accent))
-                case .text(let t, let at, let size):
-                    ctx.draw(Text(verbatim: t).font(.system(size: size, weight: .bold)).foregroundStyle(accent), at: at, anchor: .topLeading)
-                }
-            }
-        }
-        .accessibilityHidden(true)
     }
 }
 

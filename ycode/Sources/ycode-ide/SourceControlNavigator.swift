@@ -16,10 +16,13 @@ struct SourceControlNavigator: View {
         let scm = model.sourceControl
         let c = ShellColors(scheme)
         VStack(spacing: 0) {
-            TextSegments(titles: SourceControlRows.modeTitles, selected: scm.mode.rawValue, target: "scm mode") { i in
+            // Across the navigator, 9 from each side, the selected half in
+            // the accent colour (navigators.md round 3 §2).
+            TextSegments(titles: SourceControlRows.modeTitles, selected: scm.mode.rawValue, target: "scm mode",
+                         accentHeight: CGFloat(RepositoriesViewStyle.modeControlHeight)) { i in
                 scm.mode = SourceControlShellModel.Mode(rawValue: i) ?? .changes
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, CGFloat(RepositoriesViewStyle.modeControlInset))
             .padding(.top, 8)
             .padding(.bottom, 4)
             if !scm.hasRead {
@@ -31,7 +34,8 @@ struct SourceControlNavigator: View {
                         .shellTarget("scm new repository")
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if scm.mode == .changes, scm.snapshot.changes.isEmpty, scm.collapsed.isEmpty {
+            } else if scm.mode == .changes, scm.snapshot.changes.isEmpty, !scm.collapsed.contains("repository"),
+                      !scm.collapsed.contains("group:Uncommitted Changes") {
                 VStack(spacing: 0) {
                     SourceControlOutline(scm: scm, model: model)
                         .frame(height: 56)
@@ -95,6 +99,9 @@ struct TextSegments: View {
     var titles: [String]
     var selected: Int
     var target: String
+    /// A segment height: the selected segment filled with the accent
+    /// colour and a white label (nil: the quiet pill, 20 tall).
+    var accentHeight: CGFloat?
     var select: (Int) -> Void
     @Environment(\.colorScheme) private var scheme
 
@@ -105,14 +112,14 @@ struct TextSegments: View {
                 let on = pair.offset == selected
                 Button { select(pair.offset) } label: {
                     Text(verbatim: pair.element)
-                        .font(on ? ShellFonts.small.weight(.semibold) : ShellFonts.small)
-                        .foregroundStyle(c.label)
+                        .font(on && accentHeight == nil ? ShellFonts.small.weight(.semibold) : ShellFonts.small)
+                        .foregroundStyle(on && accentHeight != nil ? Color.white : c.label)
                         .lineLimit(1)
                         .padding(.horizontal, 10)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 20)
+                        .frame(height: accentHeight ?? 20)
                         .background {
-                            if on { Capsule(style: .continuous).fill(c.selectorPill) }
+                            if on { Capsule(style: .continuous).fill(accentHeight != nil ? c.accent : c.selectorPill) }
                         }
                         .contentShape(Rectangle())
                 }

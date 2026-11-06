@@ -42,6 +42,7 @@ public final class DarwinProcess: @unchecked Sendable, CustomStringConvertible {
         var exiting = false
         var pidVersion: UInt32 = 0
         var zombieExecutableUUID: [UInt8]?
+        var launchdLabel = ""
     }
     private let fieldsLock = DescriptorTableLock(name: "process record")
     nonisolated(unsafe) private var fields: Fields
@@ -95,6 +96,14 @@ public final class DarwinProcess: @unchecked Sendable, CustomStringConvertible {
     public internal(set) var executablePath: String {
         get { fieldsLock.withLock { fields.executablePath } }
         set { fieldsLock.withLock { fields.executablePath = newValue } }
+    }
+    /// The launchd job this process was started for: the label `xpcproxy_sim`
+    /// was spawned with (its argv[1]), kept across the exec into the job's
+    /// program; empty for processes launchd did not start that way. Used to
+    /// name a process robustly (metal-sim-protocol.md §8.8).
+    public internal(set) var launchdLabel: String {
+        get { fieldsLock.withLock { fields.launchdLabel } }
+        set { fieldsLock.withLock { fields.launchdLabel = newValue } }
     }
     /// `p_comm` (≤ 15 bytes) and `p_name` (≤ 31 bytes).
     var comm: String {

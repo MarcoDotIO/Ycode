@@ -21,6 +21,10 @@
 //   shot <path.png>                    the stream image
 //   server-shot <path.png>             the server's full-resolution PNG
 //   window-shot <path.png>             the window as drawn (frame, controls)
+//   chrome more|close|hover <control>|click <control>|appearance light|dark
+//                                      the window's chrome: open or close More Actions, hover a
+//                                      capsule control until its tooltip shows, click one (a
+//                                      DeviceCommand name: home, screenshot, recordScreen, …)
 //   stats-begin / stats-end [label]    frames, bytes, guest frames, and the stage medians over the span
 //   latency-summary [label]            the input latencies so far
 //   audio-summary                      the sound's packets, losses and timing so far
@@ -41,6 +45,12 @@ public protocol ViewerScriptHost: AnyObject, Sendable {
     func captureWindow(to path: String, done: @escaping @Sendable (Bool) -> Void)
     func setScale(_ m: ViewerScaleMode)
     func stop()
+    /// A `chrome` step (the window's controls); false: not understood.
+    func chrome(_ words: [String]) -> Bool
+}
+
+extension ViewerScriptHost {
+    public func chrome(_ words: [String]) -> Bool { false }
 }
 
 public final class ViewerScript: @unchecked Sendable {
@@ -246,6 +256,11 @@ public final class ViewerScript: @unchecked Sendable {
             host.captureWindow(to: w[1]) { ok in box.value = ok; sem.signal() }
             guard sem.wait(timeout: .now() + 10) == .success, box.value == true else { throw Failure(description: "window-shot failed") }
             log("wrote \(w[1])")
+        case "chrome":
+            let words = Array(w.dropFirst())
+            let done = onWindow { [host] in host?.chrome(words) ?? false }
+            guard done else { throw Failure(description: "chrome \(rest): not done") }
+            if words.first == "hover" { Thread.sleep(forTimeInterval: DeviceWindowChrome.tooltipDelay + 0.2) }
         case "stats-begin":
             lock.withLock { statFrames = 0; statBytes = 0; statFirstGuest = nil; statStart = viewerNanoseconds() }
             statShownIndex = onWindow { [session] in session.shown.count }

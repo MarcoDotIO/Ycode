@@ -70,7 +70,8 @@ private func git(_ dir: URL, _ args: String...) throws -> String {
         let scm = try #require(wc.navigator.rows(1).first)
         #expect(scm.children.map(\.title) == ["Branches", "Recents", "Tags", "Stashes", "Remotes"])
         #expect(scm.children[0].children.map(\.title) == ["feature", "main"])
-        #expect(scm.children[0].children[1].detail == "(current)")
+        // No "(current)": the repository row names the branch (navigators.md round 3 §2).
+        #expect(scm.children[0].children[1].detail == nil && scm.detail == "main")
         #expect(scm.children[2].children.map(\.title) == ["v1.0"])
         #expect(scm.children[4].children.map(\.title) == ["origin"])
         _ = try WindowSnapshotTests().render(wc.window!.contentView!.superview!, to: "source-control-navigator.png")

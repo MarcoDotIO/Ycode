@@ -105,4 +105,33 @@ extension NavigatorNode {
         }
         return walk(self)
     }
+
+    /// The workspace's own path for a file named by an open-document
+    /// request (`editor-area.md` E.4, checklist row 73): the request may
+    /// name it through a symbolic link resolved (`/private/tmp/…` for the
+    /// project's `/tmp/…`); the project keeps its own spelling, so the
+    /// inspector's Full Path and the jump bar's groups stay. nil when the
+    /// workspace does not hold the file.
+    public func projectPath(forOpening file: URL) -> String? {
+        let target = OpenRequestKey.path(file)
+        func resolved(_ p: String) -> String { OpenRequestKey.path(URL(fileURLWithPath: p)) }
+        var inFolder: String?
+        func walk(_ n: NavigatorNode) -> String? {
+            if let p = n.path {
+                switch n.kind {
+                case .file: if resolved(p) == target { return p }
+                case .folder, .container:
+                    let r = resolved(p)
+                    if inFolder == nil, n.kind == .folder || NavigatorTree.isPackageRoot(n), target.hasPrefix(r + "/") {
+                        inFolder = (p as NSString).appendingPathComponent(String(target.dropFirst(r.count + 1)))
+                    }
+                case .group: break
+                }
+            }
+            for c in n.children { if let hit = walk(c) { return hit } }
+            return nil
+        }
+        // A file row wins over a folder that holds it.
+        return walk(self) ?? inFolder
+    }
 }

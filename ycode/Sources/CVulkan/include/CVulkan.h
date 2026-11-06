@@ -500,6 +500,14 @@ VkSemaphore yvk_timeline_create(yvk_context *ctx, uint64_t initial);
    never ends (a context-switch timeout, about 4 s), after which that
    context's waits report VK_ERROR_DEVICE_LOST at once. VkResult. */
 VkResult yvk_kick(yvk_context *ctx, uint64_t timeoutNs);
+/* Whether the GPU named deviceName (NULL: any) can present to the user's
+   window-system session: a graphics queue family with presentation support
+   (vkGet…WaylandPresentationSupportKHR for the compositor of
+   $WAYLAND_DISPLAY or wayland-0 in $XDG_RUNTIME_DIR, else
+   vkGet…XcbPresentationSupportKHR for the X server of $DISPLAY). True means
+   the GPU drives the desktop the caller runs beside (metal-sim-protocol.md
+   §8.8). 1, 0 (also: no session), or -1 without a Vulkan loader. */
+int yvk_presents_to_session(const char *deviceName);
 /* Diagnostic checkpoints (VK_NV_device_diagnostic_checkpoints; nothing
    without it): a marker in the command stream, and after device loss the
    last markers the queue passed, top and bottom of the pipe. Returns the

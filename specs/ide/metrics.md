@@ -149,9 +149,8 @@ content less the two insets.
 
 | Element | Ycode | Spec | Decision |
 |---|---|---|---|
-| Settings sidebar | 200 wide | not observed | `liquid-glass-ycode.md` §7 |
-| Settings form | 20 above, 28 at the sides, rows 10 apart, labels in a 200-point right-aligned column (`SettingsPane.labelColumnWidth`) | not observed | Ycode |
-| Long labels | wrap onto a second line inside the column; the control centers on the two lines | — | fixed (§1 item 7) |
+| Settings sidebar | 179.5 wide + 0.5 divider, 32-point rows | the same (`settings.md` R3.2) | matches (`SettingsWindowR3Tests`) |
+| Settings form | grouped cards x 200–690, rows 37.5, labels left at x 211, help text under them | the same (`settings.md` R3.3) | matches (`SettingsWindowR3Tests`) |
 | Welcome window | 480 × 632; close circle at (20, 20); buttons 107 / 107 / 130 × 36, 8 apart, top at 242; recent box x 60–420, y 295–572; selected row inset 8 | the same (`reference-ui-6.md` §1.4, `liquid-glass.md` §2.10) | matches (`NavigatorInspectorR45Tests.welcomeGeometry`) |
 
 ## 9. Device Hub
@@ -542,6 +541,64 @@ capsule's. The field keeps 28 at its leading end
 bar (`NavigatorFilterBar`): the "+" alone, the circled lines with the
 chevron in the secondary colour, the text 34 in.
 
+## 16. Council round 3: jump bar, inspector and Welcome offsets (2026-11-05)
+
+Measured from the round 3 Retina stills of both apps (foreground, key
+window, 1400 × 880, editor at rest on Long.swift; points are pixels ÷ 2).
+Checklist rows 78–80 in `fidelity-council.md`.
+
+### 16.1 Jump bar
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| Bar band | y 45–84, a 1.5-point separator #E5E5E5 at 84 | the same (separator 2 points) |
+| Path text ink | **y 59.5–72.5** (centred on y 66) | y 62.5–75: **2.75 lower** |
+| Path start (grid button's ink) | x 310 | x 314.5 |
+
+Move the path's text and icons up 2.75 so they centre on y 66, the bar's
+centre less 0.5.
+
+### 16.2 File inspector, top rows
+
+Ink tops of the labels and headings in the file inspector (Long.swift):
+
+| Row | Reference | Ycode now | Difference |
+|---|---|---|---|
+| "Identity and Type" heading | **90.0** | 93.5 | +3.5 |
+| Name | 117.0 | 117.0 | 0 |
+| Type | 140.5 | 140.5 | 0 |
+| Location | **168.5** | 175.5 | +7.0 |
+| The file name above Full Path | 188.0 | 194.0 | +6.0 |
+| Full Path (first line) | 206.0 | 212.0 | +6.0 |
+| "On Demand Resource Tags" heading | **267.0** | 277.0 | +10.0 |
+| "Target Membership" heading | **334.0** | 331.5 | −2.5 |
+
+So: the first heading sits 3.5 too low; the gap between Type and Location
+is 7 too large (the rule after Type plus its 6-point spacing, §13.3, is
+28 from Type's ink to Location's in the reference: 140.5 → 168.5); the
+tags heading 4 too low beyond that; and the Target Membership heading
+2.5 too high, since Ycode's tags box is shorter. Target Membership shows
+the target's app icon in the reference (a rounded-square icon left of the
+target's name and "Default") where Ycode draws an empty checkbox.
+
+### 16.3 Welcome window
+
+The Welcome window was captured over the workspace window, at slightly
+different window positions in the two apps, so positions are given
+relative to the app name.
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| App icon | **98 × 98** | 90 × 90 |
+| Icon's bottom to the name's cap top | **15.5** | 44 |
+| Icon's top to the name's cap top | **113.5** | 134 |
+| Name's cap top to the buttons' top | 50.5 | 49 |
+| Buttons' ink height | 28.5 | 36 |
+
+Ycode's icon sits about 26.5 points higher than the reference's relative
+to the window, and its name about 6 points higher. Put the icon 15.5
+above the name's cap top and draw it at 98 points.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -555,6 +612,7 @@ chevron in the secondary colour, the text 34 in.
 | §13 council round 2 (reference values, active window) | 3 | Council r2 1x stills and recordings of the reference, foreground: colour runs, ink boxes, row matching; `research/tools/council-r2/measure_r2.py` (`navigator`, `welcome`); `research/notes/council-r2-2026-11-04.md` |
 | §14 Ycode on macOS 27.0 and 27.2 | — | The layout probe's reports of Ycode's own windows (`scripts/layout-probe.sh`); no reference observed |
 | §15 the navigator's bottom bar: the "+" circle's contents and the options glyph | 3 | Council round 3 captures of the reference and Ycode (2x, foreground), measured by the dirty room; prose only |
+| §16 round 3: jump bar text offset, file-inspector row offsets, Welcome icon size and position | 3 | Council round 3 Retina stills of both apps (steps 02 and 18), ink boxes and colour runs measured in the dirty room; prose only |
 | §14.1 Ycode on macOS 26.6 and 15.6; the floating sidebar of macOS 26 | — | The layout probe's reports of Ycode's own windows, and a minimal AppKit window of our own (sidebar item against plain item, both separators) on 27.2 and 26.6; no reference observed |
 | §14.1 split items, tracking separators, alignment rectangles | 1 | AppKit documentation and SDK headers (`NSSplitViewItem`, `NSTrackingSeparatorToolbarItem`, `NSSplitViewController`, `NSView.alignmentRect(forFrame:)`) |
 | §12.4 EditorConfig lookup rule | 1 | The EditorConfig specification (editorconfig.org: files are read from the file's folder upward until `root = true`) |

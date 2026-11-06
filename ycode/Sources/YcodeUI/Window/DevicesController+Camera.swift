@@ -44,33 +44,28 @@ extension DevicesController {
         if let title = sender.titleOfSelectedItem { chooseCamera(title) }
     }
 
-    /// The Camera box of the Settings tab (laid out as FEAT-IMPL's boxes:
-    /// symbol, label, control; the note below).
+    /// The Camera card of the Settings tab (as the settings cards: symbol,
+    /// label, pop-up; device-hub.md §11.3), with its note under it.
     func cameraControls() -> NSView {
-        let image = NSImageView(image: NSImage(systemSymbolName: "camera", accessibilityDescription: "Camera") ?? NSImage())
-        image.contentTintColor = .secondaryLabelColor
-        let label = NSTextField(labelWithString: "Camera")
-        label.font = .systemFont(ofSize: 12)
         let popUp = NSPopUpButton(frame: .zero, pullsDown: false)
         popUp.addItems(withTitles: Self.cameraTitles)
         popUp.selectItem(withTitle: cameraTitle)
         popUp.target = self
         popUp.action = #selector(cameraChosen(_:))
-        popUp.controlSize = .small
+        popUp.isBordered = false
         popUp.setAccessibilityLabel("Camera")
         popUp.toolTip = RemoteSimulatorSettings.cameraHelp
+        let card = InspectorCard(rows: [.init(symbol: "camera", title: "Camera", control: popUp)], identifier: "camera-card")
         let note = NSTextField(wrappingLabelWithString: Self.cameraNote)
         note.font = .systemFont(ofSize: 11)
         note.textColor = .secondaryLabelColor
-        let grid = NSGridView(views: [[image, label, popUp], [NSGridCell.emptyContentView, NSGridCell.emptyContentView, note]])
-        grid.rowSpacing = 6
-        grid.columnSpacing = 8
-        grid.column(at: 0).width = 18
-        grid.column(at: 1).xPlacement = .leading
-        let box = NSBox()
-        box.titlePosition = .noTitle
-        box.contentView = grid
-        box.identifier = .init("camera-controls")
-        return box
+        note.preferredMaxLayoutWidth = InspectorCard.width - 20
+        let stack = NSStackView(views: [card, note])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 4
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        stack.identifier = .init("camera-controls")
+        return stack
     }
 }

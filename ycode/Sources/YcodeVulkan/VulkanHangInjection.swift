@@ -2,7 +2,8 @@
 // `YCODE_GPU_INJECT_HANG=<name>@<seconds>[x<count>]` the first command
 // buffer of a client whose name (Options.describeProcess) contains <name>,
 // submitted at least <seconds> after the back end started, gets a kernel
-// in front of its work that never ends; <count> times (default 1). It
+// in front of its work that never ends; <count> times (default 1), at
+// least 15 s apart. It
 // checks in a real boot that one client's stuck submission does not stop
 // the others (the blocking watchdog ends it, its client's command buffers
 // fail, and after `revokeAfterHangs` hangs the client loses GPU access).
@@ -16,6 +17,11 @@ extension VulkanMetalBackend {
         var name: String
         var afterNs: UInt64
         var remaining: Int
+        /// When the last kernel went in (monotonic ns): the next one waits
+        /// `spacingNs`, so that each hang is ended before the next one
+        /// (otherwise the reset fails the queued ones with the first).
+        var lastAt: UInt64 = 0
+        let spacingNs: UInt64 = 15_000_000_000
         let function = MetalHandle(0xFFFF_FFFF_FFFF_FF01)
         let pipeline = MetalHandle(0xFFFF_FFFF_FFFF_FF02)
 
@@ -140,13 +146,15 @@ extension VulkanMetalBackend {
     /// injection is armed and due for this client. Not under the lock.
     func injectHang(_ mcb: MetalCommandBuffer) -> MetalCommandBuffer {
         cond.lock()
-        guard let inj = hangInjection, inj.remaining > 0,
-              DispatchTime.now().uptimeNanoseconds &- startedAt >= inj.afterNs else { cond.unlock(); return mcb }
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard let inj = hangInjection, inj.remaining > 0, now &- startedAt >= inj.afterNs,
+              inj.lastAt == 0 || now &- inj.lastAt >= inj.spacingNs else { cond.unlock(); return mcb }
         cond.unlock()
         guard describeClient(mcb.process).contains(inj.name) else { return mcb }
         cond.lock()
         guard var armed = hangInjection, armed.remaining > 0 else { cond.unlock(); return mcb }
         armed.remaining -= 1
+        armed.lastAt = DispatchTime.now().uptimeNanoseconds
         hangInjection = armed
         cond.unlock()
         log("hang injection: a kernel that never ends goes in front of command buffer \(mcb.commandBufferRef) of \(describeClient(mcb.process))")

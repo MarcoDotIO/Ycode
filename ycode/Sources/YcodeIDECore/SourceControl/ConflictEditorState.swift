@@ -38,6 +38,12 @@ public struct ConflictEditorState: Equatable, Sendable {
     public var integration: GitRepository.IntegrationState = .none
     /// The last failed write (shown in place of the status).
     public var lastError: String?
+    /// The merge sheet's other files, with the choices made in them while
+    /// another file is shown (`ConflictEditorState+Sheet.swift`).
+    public internal(set) var otherDocuments: [String: MergeDocument] = [:]
+    /// The sheet's footers: the current side and the incoming side.
+    public var leftFooter: MergeSheetFooter?
+    public var rightFooter: MergeSheetFooter?
 
     public init(source: Source = .repository) {
         self.source = source
@@ -135,6 +141,7 @@ public struct ConflictEditorState: Equatable, Sendable {
         self.integration = integration
         guard conflicted != files else { return .keep }
         files = conflicted
+        otherDocuments = otherDocuments.filter { conflicted.contains($0.key) }
         if let f = currentFile, !conflicted.contains(f) { return .show(conflicted.first) }
         return .keep
     }

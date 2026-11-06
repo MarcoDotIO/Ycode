@@ -12,17 +12,15 @@ struct SourceControlSettingsPane: View {
     var body: some View {
         let _ = ShellPreferences.shared.revision
         SettingsForm {
-            Section {
+            SettingsSection {
                 CheckRow(title: "Enable source control", isOn: setting(\.sourceControlEnabled), target: "settings source control")
             }
-            Section {
-                LabeledContent(formLabel("Author Name")) { Text(verbatim: value(\.name)) }.shellTarget("settings git name")
-                LabeledContent(formLabel("Author Email")) { Text(verbatim: value(\.email)) }.shellTarget("settings git email")
-            } header: {
-                Text("Git")
-            } footer: {
+            SettingsSection("Git", content: {
+                ValueRow(title: "Author Name", value: value(\.name), target: "settings git name")
+                ValueRow(title: "Author Email", value: value(\.email), target: "settings git email")
+            }, footer: {
                 FootNote(text: "From git\u{2019}s global configuration (git config --global user.name and user.email); Ycode only reads it.")
-            }
+            })
         }
         .task {
             guard author == nil else { return }
@@ -48,34 +46,27 @@ struct LocationsSettingsPane: View {
         let _ = ShellPreferences.shared.revision
         SettingsForm {
             #if !os(Linux)
-            Section {
-                Picker(formLabel("Build System"), selection: Binding(get: { BuildSystemPreference.current() }, set: { p in
+            SettingsSection("Build") {
+                PickerRow(title: "Build System", selection: Binding(get: { BuildSystemPreference.current() }, set: { p in
                     p.save()
                     ShellPreferences.shared.touch()
-                })) {
-                    ForEach(BuildSystemPreference.allCases, id: \.self) { p in
-                        Text(verbatim: p == BuildSystemPreference.defaultValue ? "\(p.title) (Default)" : p.title).tag(p)
-                    }
-                }
-                .shellTarget("settings build system")
-            } footer: {
-                FootNote(text: BuildSystemPreference.current() == .xcodebuild ? "Builds use xcodebuild."
-                    : (SwiftBuildEngine.locate().map { "swbuild: \($0)" } ?? "The swift-build helper was not found; builds use xcodebuild."))
+                }), options: BuildSystemPreference.allCases.map { ($0, $0 == BuildSystemPreference.defaultValue ? "\($0.title) (Default)" : $0.title) },
+                          target: "settings build system",
+                          help: BuildSystemPreference.current() == .xcodebuild ? "Builds use xcodebuild."
+                              : (SwiftBuildEngine.locate().map { "swbuild: \($0)" } ?? "The swift-build helper was not found; builds use xcodebuild."))
             }
             #endif
-            Section {
+            SettingsSection("Build and Code Tools", content: {
                 ForEach(tools ?? [], id: \.title) { t in
-                    LabeledContent(t.title) { PathText(path: t.path) }
+                    SettingsRow(t.title) { PathText(path: t.path) }
                 }
-                if tools == nil { LabeledContent(formLabel("Tools")) { Text("Looking\u{2026}") } }
-            } header: {
-                Text("Build and Code Tools")
-            } footer: {
+                if tools == nil { ValueRow(title: "Tools", value: "Looking\u{2026}") }
+            }, footer: {
                 FootNote(text: Self.engineNote)
-            }
-            Section("Files") {
-                LabeledContent(formLabel("Themes")) { PathText(path: Preferences.shared.themesDirectory.path) }
-                LabeledContent(formLabel("Package build products")) { PathText(path: ".build inside each package") }
+            })
+            SettingsSection("Files") {
+                SettingsRow("Themes") { PathText(path: Preferences.shared.themesDirectory.path) }
+                SettingsRow("Package build products") { PathText(path: ".build inside each package") }
             }
         }
         .task {
@@ -94,6 +85,39 @@ struct LocationsSettingsPane: View {
     nonisolated static func locateTools() -> [(title: String, path: String?)] {
         [("Swift", ShellToolchain.locate("swift")), ("Language server", ShellToolchain.locate("sourcekit-lsp")),
          ("Project builds", TestRunnerSelection.locateYcodebuild()), ("Git", ShellToolchain.locate("git"))]
+    }
+}
+
+/// Settings ▸ Components: the reference's pane, shown with its empty state
+/// (the Linux IDE lists no SDKs; the simulator runtimes are the runtime
+/// wizard's, which the button opens).
+struct ComponentsSettingsPane: View {
+    @Environment(\.colorScheme) private var scheme
+
+    static let emptyTitle = "No Components"
+    static let emptyText = "Ycode on Linux builds with the Swift toolchain on the PATH (Settings \u{25B8} Locations). Simulator runtimes are added with the runtime wizard."
+
+    var body: some View {
+        let p = SettingsPalette(scheme)
+        SettingsForm {
+            SettingsSection("Installed") {
+                SettingsContentRow(inset: 0) {
+                    VStack(spacing: 6) {
+                        Text(verbatim: Self.emptyTitle).font(SettingsFonts.header).foregroundStyle(p.help)
+                            .shellTarget("settings components empty")
+                        SettingsHelpText(text: Self.emptyText).multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 30)
+                    .frame(maxWidth: .infinity, minHeight: 140)
+                }
+                SettingsRow("Simulator runtimes") {
+                    Button("Simulator Runtimes\u{2026}") { ShellApp.model.showRuntimeSetup(step: .runtimes) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .shellTarget("settings components runtimes")
+                }
+            }
+        }
     }
 }
 

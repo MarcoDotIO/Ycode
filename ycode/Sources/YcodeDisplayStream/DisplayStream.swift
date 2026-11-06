@@ -243,6 +243,12 @@ public struct DisplayClientHello: Codable, Sendable, Equatable {
     /// Flow control (§4.2): at most this many frames sent and not yet
     /// acknowledged (0x8F). Nil or 0: as fast as the transport takes them.
     public var frameWindow: Int?
+    /// Lossless once still (§4.2.2): once the screen has not changed for a
+    /// moment, the server sends the parts it last sent lossy (JPEG, video)
+    /// again as zlib tiles, so a still picture is exact (pixel-exact text at
+    /// 1:1). Ycode's viewers ask for it (the initializer's default); nil
+    /// (older clients) or false: lossy pictures stay as they are.
+    public var stillLossless: Bool?
 
     public init(client: String, maxFPS: Int = 60, encoding: String = "jpeg", quality: Int = 75, downscale: Int = 1) {
         self.client = client
@@ -250,6 +256,7 @@ public struct DisplayClientHello: Codable, Sendable, Equatable {
         self.encoding = encoding
         self.quality = quality
         self.downscale = downscale
+        stillLossless = true
     }
 }
 

@@ -133,23 +133,15 @@ extension DevicesController {
 
     // MARK: The controls
 
-    /// The three settings boxes (or the stopped message).
+    /// The three settings cards (device-hub.md §11.3: Appearance … VoiceOver;
+    /// Location; Sound, Output, Input). A stopped device shows the same
+    /// cards with every row disabled, and the reason under them.
     func settingsControls() -> NSView {
-        guard settingsControlsEnabled else {
-            let l = NSTextField(wrappingLabelWithString: Self.settingsStoppedMessage)
-            l.textColor = .secondaryLabelColor
-            l.identifier = .init("settings-stopped")
-            return l
-        }
         let snap = settingsSnapshot
-        let enabled = snap != nil && settingsTask == nil
-        func row(_ symbol: String, _ title: String, _ control: NSView) -> [NSView] {
-            let image = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: title) ?? NSImage())
-            image.contentTintColor = .secondaryLabelColor
-            let label = NSTextField(labelWithString: title)
-            label.font = .systemFont(ofSize: 12)
+        let enabled = settingsControlsEnabled && snap != nil && settingsTask == nil
+        func row(_ symbol: String, _ title: String, _ control: NSView) -> InspectorCard.Row {
             if let c = control as? NSControl { c.isEnabled = enabled; c.setAccessibilityLabel(title) }
-            return [image, label, control]
+            return InspectorCard.Row(symbol: symbol, title: title, control: control)
         }
         func popup(_ titles: [String], selected: Int, action: Selector) -> NSPopUpButton {
             let p = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -157,25 +149,14 @@ extension DevicesController {
             p.selectItem(at: selected)
             p.target = self
             p.action = action
-            p.controlSize = .small
+            p.isBordered = false
             return p
-        }
-        func box(_ rows: [[NSView]], id: String) -> NSView {
-            let grid = NSGridView(views: rows)
-            grid.rowSpacing = 6
-            grid.columnSpacing = 8
-            grid.column(at: 0).width = 18
-            grid.column(at: 1).xPlacement = .leading
-            let b = NSBox()
-            b.titlePosition = .noTitle
-            b.contentView = grid
-            b.identifier = .init(id)
-            return b
         }
         let st = snap?.state ?? SimSettingsState()
         let appearance = popup(Appearance.allCases.map(\.title), selected: st.appearance == .dark ? 1 : 0, action: #selector(appearanceChosen(_:)))
         let glass = NSSlider(value: st.glassOpacity ?? 0, minValue: 0, maxValue: 1, target: self, action: #selector(liquidGlassMoved(_:)))
         glass.isContinuous = false
+        glass.controlSize = .small
         glass.toolTip = "Liquid Glass opacity: translucent … opaque"
         let filter = popup(ColorFilter.allCases.map(\.title), selected: ColorFilter.allCases.firstIndex(of: st.colorFilter) ?? 0,
                            action: #selector(colorFilterChosen(_:)))
@@ -183,9 +164,10 @@ extension DevicesController {
         text.numberOfTickMarks = 12
         text.allowsTickMarkValuesOnly = true
         text.isContinuous = false
+        text.controlSize = .small
         text.toolTip = st.contentSize.title
-        var first: [[NSView]] = [row("circle.lefthalf.filled", "Appearance", appearance), row("drop", "Liquid Glass", glass),
-                                 row("camera.filters", "Color Filter", filter), row("textformat.size", "Text Size", text)]
+        var first: [InspectorCard.Row] = [row("circle.lefthalf.filled", "Appearance", appearance), row("drop", "Liquid Glass", glass),
+                                          row("camera.filters", "Color Filter", filter), row("textformat.size", "Text Size", text)]
         let symbols: [AccessibilitySwitch: String] = [.reduceMotion: "circle.dotted.and.circle", .increaseContrast: "circle.righthalf.filled",
                                                       .showBorders: "square.dashed", .reduceTransparency: "square.on.square.intersection.dashed",
                                                       .voiceOver: "speaker.wave.2.bubble"]
@@ -199,7 +181,7 @@ extension DevicesController {
             first.append(row(symbols[s] ?? "circle", s.title, sw))
         }
         let location = NSPopUpButton(frame: .zero, pullsDown: false)
-        location.controlSize = .small
+        location.isBordered = false
         location.autoenablesItems = false
         for c in Self.locationChoices {
             if c.title == "-" { location.menu?.addItem(.separator()); continue }
@@ -215,9 +197,10 @@ extension DevicesController {
         let volume = NSSlider(value: Double(snap?.volume ?? SimAudio.defaultVolume), minValue: 0, maxValue: 100, target: self,
                               action: #selector(volumeMoved(_:)))
         volume.isContinuous = false
+        volume.controlSize = .small
         func audioPopup(_ devices: [(uid: String, name: String)], current: String, action: Selector) -> NSPopUpButton {
             let p = NSPopUpButton(frame: .zero, pullsDown: false)
-            p.controlSize = .small
+            p.isBordered = false
             for (title, value) in [("None", "none"), ("System", "system")] + devices.map({ ($0.name, $0.uid) }) {
                 let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
                 item.representedObject = value
@@ -231,35 +214,36 @@ extension DevicesController {
         let output = audioPopup(SimAudio.outputDevices, current: snap?.output ?? "system", action: #selector(outputChosen(_:)))
         let input = audioPopup(SimAudio.inputDevices, current: snap?.input ?? "system", action: #selector(inputChosen(_:)))
         let stack = NSStackView(views: [
-            box(first, id: "settings-appearance"),
-            box([row("location", "Location", location)], id: "settings-location"),
-            box([row("speaker.wave.2", "Sound", volume), row("hifispeaker", "Output", output), row("mic", "Input", input)], id: "settings-sound"),
+            InspectorCard(rows: first, identifier: "settings-appearance"),
+            InspectorCard(rows: [row("location", "Location", location)], identifier: "settings-location"),
+            InspectorCard(rows: [row("speaker.wave.2", "Sound", volume), row("hifispeaker", "Output", output), row("mic", "Input", input)],
+                          identifier: "settings-sound"),
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 8
+        stack.spacing = Self.cardSpacing
         stack.identifier = .init("settings-controls")
-        if snap == nil {
+        if !settingsControlsEnabled {
+            let l = NSTextField(wrappingLabelWithString: Self.settingsStoppedMessage)
+            l.textColor = .secondaryLabelColor
+            l.font = .systemFont(ofSize: 11)
+            l.identifier = .init("settings-stopped")
+            l.preferredMaxLayoutWidth = InspectorCard.width - 20
+            stack.addArrangedSubview(l)
+        } else if snap == nil {
             let reading = NSTextField(labelWithString: "Reading the device’s settings…")
             reading.textColor = .secondaryLabelColor
+            reading.font = .systemFont(ofSize: 11)
             stack.insertArrangedSubview(reading, at: 0)
         }
-        // The boxes can be taller than the pane: they scroll.
-        let scroll = NSScrollView()
-        scroll.documentView = stack
-        scroll.hasVerticalScroller = true
-        scroll.drawsBackground = false
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-            stack.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
-            stack.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
-            scroll.widthAnchor.constraint(equalToConstant: Self.settingsPaneWidth),
-            scroll.heightAnchor.constraint(lessThanOrEqualToConstant: 520),
-            scroll.heightAnchor.constraint(equalTo: stack.heightAnchor).withPriority(.defaultLow),
-        ])
-        scroll.identifier = .init("settings-scroll")
-        return scroll
+        return stack
+    }
+
+    /// Between the inspector's cards (§11.3).
+    static let cardSpacing: CGFloat = 10
+
+    /// The stopped device's reason under its disabled cards (tests).
+    static func stoppedNote(in v: NSView) -> NSTextField? {
+        (v as? NSStackView)?.arrangedSubviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == "settings-stopped" }
     }
 }

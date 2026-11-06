@@ -38,17 +38,13 @@ struct CodingAssistantSettingsPane: View {
         let _ = secretsRevision
         let s = prefs.codingAssistant
         SettingsForm {
-            Section {
-                Picker("Use", selection: value(\.provider)) {
-                    ForEach(ProviderKind.allCases, id: \.self) { Text(verbatim: $0.displayName).tag($0) }
-                }
-                .shellTarget("settings assistant provider")
-            } header: {
-                Text("Model Provider")
-            } footer: {
+            SettingsSection("Model Provider", content: {
+                PickerRow(title: "Use", selection: value(\.provider), options: ProviderKind.allCases.map { ($0, $0.displayName) },
+                          target: "settings assistant provider")
+            }, footer: {
                 FootNote(text: "Choose the model itself in the Coding Assistant pane's model menu.")
-            }
-            Section {
+            })
+            SettingsSection("Local Models", content: {
                 CommitField(title: "Ollama address", value: s.ollamaURL, placeholder: OllamaProvider.defaultBaseURL, target: "settings assistant ollama") {
                     value(\.ollamaURL).wrappedValue = $0.isEmpty ? OllamaProvider.defaultBaseURL : $0
                 }
@@ -58,18 +54,15 @@ struct CodingAssistantSettingsPane: View {
                 }
                 SecretRow(title: "llama.cpp API key", account: SecretAccount.llamaCppKey, placeholder: "Only if llama-server uses --api-key",
                           target: "settings assistant llamacpp key", saved: changed)
-            } header: {
-                Text("Local Models")
-            } footer: {
+            }, footer: {
                 FootNote(text: "Ollama's API (default \(OllamaProvider.defaultBaseURL); to add a model, run `ollama pull \(OllamaProvider.suggestedModel)`) and any server with /v1/models and /v1/chat/completions, such as llama-server. Press Return to apply an address.")
-            }
-            Section {
-                Picker("Sign-in method", selection: value(\.openAIAuth)) {
-                    ForEach(AssistantSettings.OpenAIAuth.allCases, id: \.self) { Text(verbatim: Self.openAIAuthTitles[$0] ?? $0.rawValue).tag($0) }
-                }
-                .shellTarget("settings assistant openai auth")
+            })
+            SettingsSection("OpenAI", content: {
+                PickerRow(title: "Sign-in method", selection: value(\.openAIAuth),
+                          options: AssistantSettings.OpenAIAuth.allCases.map { ($0, Self.openAIAuthTitles[$0] ?? $0.rawValue) },
+                          target: "settings assistant openai auth")
                 if s.openAIAuth == .chatGPT {
-                    LabeledContent("Account") {
+                    SettingsRow("Account") {
                         HStack(spacing: 8) {
                             Text(verbatim: accountText).font(ShellFonts.small)
                             Button(isSignedIn ? "Sign Out" : "Continue with ChatGPT") { isSignedIn ? signOut() : signIn() }
@@ -83,17 +76,15 @@ struct CodingAssistantSettingsPane: View {
                 CommitField(title: "OpenAI address", value: s.openAIURL, placeholder: OpenAIProvider.defaultBaseURL, target: "settings assistant openai url") {
                     value(\.openAIURL).wrappedValue = $0.isEmpty ? OpenAIProvider.defaultBaseURL : $0
                 }
-            } header: {
-                Text("OpenAI")
-            } footer: {
+            }, footer: {
                 FootNote(text: s.openAIAuth == .chatGPT
                     ? "Uses OpenAI's sign-in for open-source apps: your browser opens OpenAI's page, and eligible requests use your ChatGPT plan. Tokens are kept in Ycode's secrets folder, readable only by you."
                     : "Requests are billed to the API key's organization. The key is kept in Ycode's secrets folder (~/.config/ycode/secrets), readable only by you.")
-            }
-            Section {
+            })
+            SettingsSection("Agent Tools", content: {
                 ForEach(CLIAgentKind.allCases, id: \.self) { agent in
                     let kind = agent.providerKind
-                    LabeledContent(agent.displayName) {
+                    SettingsRow(agent.displayName) {
                         PathText(path: services.locator.find(agent.executableName, override: s.toolPaths[kind.rawValue])?.path)
                     }
                     CommitField(title: "\(agent.displayName) path", value: s.toolPaths[kind.rawValue] ?? "", placeholder: "Search PATH and the usual folders",
@@ -109,42 +100,34 @@ struct CodingAssistantSettingsPane: View {
                         prefs.codingAssistant = t
                     }
                 }
-            } header: {
-                Text("Agent Tools")
-            } footer: {
+            }, footer: {
                 FootNote(text: "Ycode runs these tools in the workspace folder with their own editing turned off; they answer with proposals you review. Ycode never reads their sign-in or settings. Sign in to each tool once in a terminal.")
-            }
-            Section {
+            })
+            SettingsSection("ACP Agent", content: {
                 CommitField(title: "Command", value: s.acpCommand, placeholder: "<agent> <arguments for its ACP mode>", target: "settings assistant acp") {
                     value(\.acpCommand).wrappedValue = $0
                 }
-                LabeledContent("Found") {
+                SettingsRow("Found") {
                     let acp = ACPAgentProvider(command: s.acpCommand, locator: services.locator)
                     if s.acpCommand.isEmpty { Text(verbatim: "Not set").font(ShellFonts.small) } else { PathText(path: acp.executable?.path) }
                 }
-            } header: {
-                Text("ACP Agent")
-            } footer: {
+            }, footer: {
                 FootNote(text: "An agent that speaks the Agent Client Protocol, started with this command line in the workspace folder. Its file writes are proposals you review.")
-            }
-            Section {
+            })
+            SettingsSection("Agent Mode", content: {
                 CheckRow(title: "Let agents use Ycode's tools and change files", isOn: value(\.agentMode), target: "settings assistant agent mode")
-            } header: {
-                Text("Agent Mode")
-            } footer: {
+            }, footer: {
                 FootNote(text: "The macOS IDE attaches its MCP server to agents in this mode. In the Linux IDE agents run read-only and propose changes; to give an agent you run yourself Ycode's tools, add `ycode mcp` to it (claude mcp add ycode -- ycode mcp).")
-            }
-            Section {
+            })
+            SettingsSection("Context") {
                 CommitField(title: "Context limit (tokens)", value: String(s.contextLimit), placeholder: "32768", target: "settings assistant context limit") {
                     if let n = Int($0) { value(\.contextLimit).wrappedValue = max(1024, n) }
                 }
                 CheckRow(title: "Send the current file", isOn: value(\.context.includeCurrentFile), target: "settings assistant send file")
                 CheckRow(title: "Send the other open files", isOn: value(\.context.includeOpenFiles), target: "settings assistant send open files")
                 CheckRow(title: "Send the workspace's issues", isOn: value(\.context.includeIssues), target: "settings assistant send issues")
-            } header: {
-                Text("Context")
             }
-            Section {
+            SettingsSection("Output", content: {
                 CommitField(title: "Most output tokens", value: s.generation.maxOutputTokens.map(String.init) ?? "", placeholder: "no limit",
                             target: "settings assistant max tokens") { v in value(\.generation.maxOutputTokens).wrappedValue = Int(v).flatMap { $0 > 0 ? $0 : nil } }
                 CommitField(title: "Temperature", value: s.generation.temperature.map { String($0) } ?? "", placeholder: "server default",
@@ -155,16 +138,12 @@ struct CodingAssistantSettingsPane: View {
                             target: "settings assistant top k") { v in value(\.generation.topK).wrappedValue = Int(v) }
                 CommitField(title: "Repeat penalty", value: s.generation.repeatPenalty.map { String($0) } ?? "", placeholder: "server default",
                             target: "settings assistant repeat penalty") { v in value(\.generation.repeatPenalty).wrappedValue = Double(v) }
-            } header: {
-                Text("Output")
-            } footer: {
+            }, footer: {
                 FootNote(text: "Empty fields are not sent: the server's own value applies. Top K and the repeat penalty are for Ollama and llama.cpp only.")
-            }
-            Section {
-                Text(verbatim: Self.privacyText).font(ShellFonts.small).fixedSize(horizontal: false, vertical: true)
-                if !message.isEmpty { Text(verbatim: message).font(ShellFonts.small).shellTarget("settings assistant message") }
-            } header: {
-                Text("Privacy")
+            })
+            SettingsSection("Privacy") {
+                SettingsContentRow { SettingsHelpText(text: Self.privacyText) }
+                if !message.isEmpty { SettingsContentRow { Text(verbatim: message).font(ShellFonts.small).shellTarget("settings assistant message") } }
             }
         }
         .task(id: secretsRevision) { accountStatus = await services.account.status }
@@ -230,11 +209,11 @@ struct CommitField: View {
     @State private var text: String?
 
     var body: some View {
-        LabeledContent(title) {
+        SettingsRow(title) {
             TextField(title, text: Binding(get: { text ?? value }, set: { text = $0 }), prompt: Text(verbatim: placeholder))
                 .labelsHidden()
                 .multilineTextAlignment(.trailing)
-                .frame(maxWidth: 300)
+                .frame(maxWidth: 260)
                 .onSubmit {
                     commit((text ?? value).trimmingCharacters(in: .whitespaces))
                     text = nil
@@ -257,12 +236,12 @@ struct SecretRow: View {
     var body: some View {
         let store = CodingAssistantServices.shared.store
         let isSaved = store.readString(account) != nil
-        LabeledContent(title) {
+        SettingsRow(title) {
             HStack(spacing: 6) {
                 SecureField(title, text: $text, prompt: Text(verbatim: isSaved ? "Saved (hidden)" : placeholder))
                     .labelsHidden()
                     .multilineTextAlignment(.trailing)
-                    .frame(maxWidth: 220)
+                    .frame(maxWidth: 150)
                     .onSubmit { save(store) }
                     .shellTarget(target)
                 Button("Save") { save(store) }.buttonStyle(.bordered).disabled(text.isEmpty).shellTarget(target + " save")

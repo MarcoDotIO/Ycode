@@ -203,9 +203,12 @@ struct NavigatorOutline: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(rows) { r in
-                    OutlineRowView(row: r, isSelected: r.id == selection, colors: c, toggle: toggle)
+                    // The accent band only while the outline has the keyboard;
+                    // grey once an editor has it (navigators.md round 3 §1).
+                    OutlineRowView(row: r, isSelected: r.id == selection, colors: c, toggle: toggle, isFocused: hasKeyboard)
                         .contentShape(Rectangle())
-                        .onTapGesture { select(r.id) }
+                        // A click gives the outline the keyboard (its band turns accent).
+                        .onTapGesture { hasKeyboard = true; select(r.id) }
                         .shellTarget("row \(r.title)")
                 }
             }
@@ -242,9 +245,11 @@ struct OutlineRowView: View {
     var isSelected: Bool
     var colors: ShellColors
     var toggle: (String, Bool) -> Void
+    /// Whether the outline has the keyboard (the selection's accent band).
+    var isFocused = false
 
     var body: some View {
-        let c = colors
+        let c = colors.onSelection(isSelected && isFocused)   // +SelectionFocus.swift
         let indent = CGFloat(WorkspaceChrome.indentationPerLevel) * CGFloat(row.level)
         HStack(alignment: .top, spacing: 0) {
             Group {
@@ -280,7 +285,7 @@ struct OutlineRowView: View {
         .opacity(row.isDimmed ? 0.55 : 1)
         .background {
             if isSelected {
-                RoundedRectangle(cornerRadius: 5, style: .continuous).fill(c.rowSelection).padding(.horizontal, 6)
+                RoundedRectangle(cornerRadius: 5, style: .continuous).fill(isFocused ? colors.accent : c.rowSelection).padding(.horizontal, 6)
             }
         }
     }

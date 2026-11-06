@@ -15,6 +15,8 @@ public struct IntegrateMenuState: Equatable, Sendable {
     public var integration: GitRepository.IntegrationState = .none
     /// Files with unresolved conflicts.
     public var conflictCount = 0
+    /// Local branches other than the current one (Merge…).
+    public var otherBranchCount = 0
 
     public init() {}
 
@@ -33,6 +35,7 @@ public struct IntegrateMenuState: Equatable, Sendable {
         case "scmMarkResolved:": hasRepository && selectedStatus == .conflicted
         case "scmAddSelected:": hasRepository && selectedStatus == .untracked
         case "scmCherryPick:": hasRepository && selectedCommit != nil
+        case "scmMerge:": hasRepository && !integration.isInProgress && otherBranchCount > 0
         case "scmStash:", "scmDiscardAll:": hasRepository && hasChanges
         case "scmTrashSelected:": selectedFileExists
         case "scmClone:": true
@@ -48,6 +51,6 @@ public struct IntegrateMenuState: Equatable, Sendable {
 
     public static let actions = ["showCommitSheet:", "scmPush:", "scmPull:", "scmFetch:", "refreshFileStatus:", "scmStageAll:",
                                  "scmStageSelected:", "scmUnstageAll:", "scmUnstageSelected:", "scmMarkResolved:", "scmAddSelected:",
-                                 "scmCherryPick:", "scmStash:", "scmDiscardAll:", "scmTrashSelected:", "scmClone:", "scmNewRepository:",
+                                 "scmCherryPick:", "scmMerge:", "scmStash:", "scmDiscardAll:", "scmTrashSelected:", "scmClone:", "scmNewRepository:",
                                  "scmResolveConflicts:", "scmContinueIntegration:", "scmAbortIntegration:"]
 }

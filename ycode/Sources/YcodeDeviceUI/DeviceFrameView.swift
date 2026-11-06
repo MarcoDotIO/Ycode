@@ -57,6 +57,22 @@ public final class DeviceFrameView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The screen's rectangle on whole backing pixels, its size rounded to
+    /// pixels rather than points: at a scale that shows one device pixel
+    /// per display pixel (1.5 for a 3× device on a 2× display) the picture
+    /// keeps exactly its pixel size, so it is drawn 1:1 and sharp
+    /// (uikit-feel-ycode.md §8.4). `integral` could grow it by a point.
+    public static func pixelAligned(_ r: CGRect, backing: CGFloat) -> CGRect {
+        let k = max(backing, 1)
+        return CGRect(x: (r.minX * k).rounded() / k, y: (r.minY * k).rounded() / k,
+                      width: (r.width * k).rounded() / k, height: (r.height * k).rounded() / k)
+    }
+
+    public override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        needsLayout = true
+    }
+
     public override var isFlipped: Bool { true }
     public override var intrinsicContentSize: NSSize { NSSize(width: geometry.size.width * scale, height: geometry.size.height * scale) }
 
@@ -90,7 +106,7 @@ public final class DeviceFrameView: NSView {
         pressedLayer.path = g.buttons.first { $0.kind == pressed }.map { Self.path(r($0.rect), radii: Self.buttonRadii($0, scale: s)) }
         ridgesLayer.path = g.buttons.first { $0.kind == .crown }.map { Self.ridges(r($0.rect), scale: s) }
         ridgesLayer.lineWidth = max(0.5, 0.6 * s)
-        let screenRect = r(g.screen).integral
+        let screenRect = Self.pixelAligned(r(g.screen), backing: window?.backingScaleFactor ?? 2)
         screen.frame = screenRect
         screenMask.frame = screen.bounds
         screenMask.path = Self.path(screen.bounds, radii: g.screenRadii.scaled(by: s))

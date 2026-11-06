@@ -1,14 +1,17 @@
 #!/bin/sh
-# The Linux IDE's conflict editor end to end (issue #75): makes the
-# Merger repository (make-conflict.sh), runs ycode-ide on it with
-# YCODE_IDE_CONFLICT (ShellDriver+Conflicts.swift), which merges
-# "feature", resolves Colors.swift by choosing sides and Greeting.swift by
-# hand, continues the merge, then cherry-picks "pick" through the editor
-# and aborts a rebase of "topic"; then checks the repository with git.
+# The Linux IDE's merge workflow and merge sheet end to end
+# (specs/ide/merge-sheet.md; issue #75): makes the Merger repository
+# (make-conflict.sh), runs ycode-ide on it with YCODE_IDE_CONFLICT
+# (ShellDriver+Conflicts.swift), which starts the merge of "feature" from
+# its branch row's menu and the alert, resolves Colors.swift through the
+# tokens' Choose menus and Greeting.swift by hand, clicks Merge (the merge
+# commit), then cherry-picks "pick" through the sheet and cancels a rebase
+# of "topic" from it (Abort); then checks the repository with git.
 #
 #     WAYLAND_DISPLAY=… XDG_RUNTIME_DIR=… run.sh <ycode-ide> <work folder> <shots prefix>
 #
-# Exit 0 when every check passes.
+# OV_COLOR_SCHEME=dark runs it in the dark appearance. Exit 0 when every
+# check passes.
 set -u
 IDE=$1; WORK=$2; SHOTS=$3
 HERE=$(cd "$(dirname "$0")" && pwd)

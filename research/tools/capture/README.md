@@ -11,7 +11,8 @@ council. The generic recorder, timing measurer and sheet maker are in
 | `axdrive/` | Swift tool: drives one app by PID through Accessibility and events posted to that process only |
 | `targets.json` | The apps: Ycode (the `swift build` binary, SDK-stamped and wrapped as a bundle with its own ID) and Xcode |
 | `make-test-project.py` | Writes the GlassScroll test project (our own content) |
-| `scripts/*.json` | Session scripts: `council-r2.json` (the review council's round 2, `specs/ide/fidelity-council.md`), `glass-scroll-edges.json` (#57) |
+| `make-conflict-project.py` | Writes Merger: GlassScroll cut down, in a git repository whose `feature` branch conflicts with `main` in `Greeting.swift` (fixed test identity and dates) |
+| `scripts/*.json` | Session scripts: `council-r2.json` (the review council's round 2, `specs/ide/fidelity-council.md`), `council-r3.json` (round 3: round 2's steps, then Settings ▸ General), `council-r3-conflict.json` (the conflict editor), `council-r3-device.json` (the device window: Device Hub against Ycode's Device Hub), `glass-scroll-edges.json` (#57) |
 
 ## Procedure
 
@@ -117,6 +118,26 @@ and `axdrive` build themselves on first use. Output: `<target>/manifest.json`,
 ```
 
 (The comments are for this README; scripts are plain JSON.)
+
+Round 3 additions:
+- `--project-dir DIR` puts the project copies outside the repository (and
+  outside any path that names a person): otherwise the apps' source control
+  views show this repository, and inspectors show the copy's full path.
+- `--steps a,b` re-runs only those steps (they keep their numbers), to redo
+  an invalid capture into another `--out` folder.
+- Step fields: `"capture_title"` records and stills another window of the
+  app chosen by title (Settings); `"record": {"video": false, "mode": "app"}`
+  takes a still in that mode without a video.
+- Actions: `run` (a command in the project copy, for example `git merge`,
+  for an app without a menu path for that step) and `move` (`[x, y]` from
+  the session display's top left, `"window"` by title).
+- Script fields: `per_target_setup`, `project_targets` (targets that open
+  the project; the others launch without a document), `names` (extra
+  substitutions per target), and `window.wait_title: null` for an app whose
+  first window title is not known (Device Hub reopens on the last device).
+- Targets launch with `-ApplePersistenceIgnoreState YES`, so no window from
+  an earlier session is restored. The `devicehub` target is Xcode's Device
+  Hub (`YCODE_REFERENCE_DEVICEHUB`); it needs `--owner-approved`.
 
 `{app}` (the target's app name, "Xcode" or "Ycode") and `{project}` are
 replaced in every string. After the setup actions the session picks the

@@ -162,7 +162,7 @@ let sampleXib = """
         _ = lib.view
         #expect(lib.objectsAvailable)
         lib.select(tab: .objects)
-        #expect(lib.objects.map(\.rawValue) == ["Label", "Button", "Text Field", "Image View", "View", "Stack View"])
+        #expect(lib.objects.map(\.rawValue) == ["Label", "Button", "Text Field", "Image View", "View", "Horizontal Stack View", "Vertical Stack View"])
         ib.select(id: "root")
         #expect(lib.insert(row: 0))
         let written = try String(contentsOf: file, encoding: .utf8)
@@ -231,11 +231,13 @@ let sampleXib = """
         let id = try #require(c.insert(.button))
         #expect(id.range(of: "^[A-Za-z0-9]{3}-[A-Za-z0-9]{2}-[A-Za-z0-9]{3}$", options: .regularExpression) != nil)
         let t = String(decoding: c.document.source, as: UTF8.self)
-        #expect(changed(sampleXib, t).count == 4)
+        #expect(changed(sampleXib, t).count == 6, "\(changed(sampleXib, t))")
         #expect(t.contains("""
-                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" translatesAutoresizingMaskIntoConstraints="NO" id="\(id)">
-                                <rect key="frame" x="5" y="24" width="90" height="32"/>
+                            <button opaque="NO" contentMode="scaleToFill" fixedFrame="YES" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="\(id)">
+                                <rect key="frame" x="13" y="23" width="75" height="35"/>
+                                <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                                 <state key="normal" title="Button"/>
+                                <buttonConfiguration key="configuration" style="plain" title="Button"/>
                             </button>
                         </subviews>
     """))

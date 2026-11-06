@@ -3,10 +3,12 @@ import QuartzCore
 import YcodeIDECore
 
 /// The source editor's scroll view. It adds the top bounce of
-/// `editor-area.md` §D.4 (checklist row 40): when momentum would carry the
-/// text past the top, the text runs on and springs back on
-/// `TopBounce`'s critically damped spring (ω 12.6 rad/s), instead of the
-/// system's short elastic stop. Everything else is the system's.
+/// `editor-area.md` §D.4 and E.1 (checklist rows 40, 70): when momentum
+/// would carry the text past the top, the text runs on and springs back
+/// (`TopBounce`: about 8 % past the end of a 600-point flick, then a
+/// critically damped return at ω 12.6 rad/s), instead of the system's
+/// short elastic stop. Everything else is the system's, and the text
+/// follows a gesture from its first event (no hold).
 final class EditorScrollView: NSScrollView {
     let topBounce = EditorTopBounce()
 
@@ -21,7 +23,28 @@ final class EditorScrollView: NSScrollView {
     override func scrollWheel(with event: NSEvent) {
         if topBounce.handle(event, in: self) { return }
         if scrollByLineWheel(event) { return }
+        let before = contentView.bounds.origin
         super.scrollWheel(with: event)
+        followFirstEvent(event, from: before)
+    }
+
+    /// A gesture's first event moves the text by its own delta
+    /// (`editor-area.md` E.1 item 1, checklist row 70: the content follows
+    /// the gesture's first event, no hold). The system starts its gesture
+    /// on it but leaves its delta out.
+    func followFirstEvent(_ event: NSEvent, from before: NSPoint) {
+        guard event.phase.contains(.began), event.momentumPhase.isEmpty, event.hasPreciseScrollingDeltas,
+              contentView.bounds.origin == before else { return }
+        let dy = event.scrollingDeltaY, dx = hasHorizontalScroller ? event.scrollingDeltaX : 0
+        guard dx != 0 || dy != 0 else { return }
+        let clip = contentView
+        var origin = clip.bounds.origin
+        origin.x -= dx
+        origin.y += clip.isFlipped ? -dy : dy
+        let kept = clip.constrainBoundsRect(NSRect(origin: origin, size: clip.bounds.size)).origin
+        guard kept != clip.bounds.origin else { return }
+        clip.scroll(to: kept)
+        reflectScrolledClipView(clip)
     }
 
     /// Wheel events without precise deltas (a mouse wheel: line-based, no
@@ -164,7 +187,7 @@ final class EditorTopBounce: NSObject {
         if start == nil { start = now - frame }
         let t = now - (start ?? now)
         let x = CGFloat(TopBounce.overscroll(from: startOverscroll, velocity: v, at: t))
-        if t >= TopBounce.peakTime, Double(x) < TopBounce.restThreshold {
+        if TopBounce.isAtRest(from: startOverscroll, velocity: v, at: t) {
             finish(at: 0)
             return
         }

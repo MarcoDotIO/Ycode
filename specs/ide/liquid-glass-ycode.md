@@ -161,9 +161,10 @@ selected tab (a quiet semantic fill set in `updateLayer`).
 
 `liquid-glass.md` §5 did not observe these; Ycode keeps system materials:
 
-- Settings: an `NSSplitViewController` with a 200-point sidebar item;
-  round glass back / forward buttons; the window title is not drawn over
-  the pane's title row.
+- Settings: superseded by `settings.md` R3.1–R3.3 (council round 3): a
+  flush 179.5-point sidebar (no floating glass sidebar), one back / forward
+  capsule drawn with the measured near-white fill, rim and shadow, and the
+  window title not drawn over the pane's title.
 - Open Quickly: a borderless floating panel on `NSGlassEffectView` (radius
   20) over the window's upper part, closing on Return, Escape or losing
   key; a sheet before macOS 26.

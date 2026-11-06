@@ -83,7 +83,7 @@ public enum CompactWindowLayout {
     public static let sideMargin: Double = 17
     /// The control row: its height, the gap above it and its distance from
     /// the window's bottom edge.
-    public static let controlsHeight: Double = 37
+    public static let controlsHeight: Double = DeviceControlsLayout.height
     public static let controlsGap: Double = 10
     public static let bottomMargin: Double = 8
     /// The smallest window width: room for the window buttons, the title

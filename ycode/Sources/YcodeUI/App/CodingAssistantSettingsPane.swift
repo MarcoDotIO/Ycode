@@ -178,7 +178,7 @@ public final class CodingAssistantSettingsPane: SettingsPane {
         f.isSelectable = true
         f.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         f.lineBreakMode = .byTruncatingMiddle
-        f.widthAnchor.constraint(equalToConstant: 300).isActive = true
+        f.widthAnchor.constraint(equalToConstant: 230).isActive = true
         let copy = ClosureButton(title: "Copy", target: nil, action: nil)
         copy.bezelStyle = .rounded
         copy.onChange = { _ in
@@ -215,7 +215,7 @@ public final class CodingAssistantSettingsPane: SettingsPane {
         let saved = try? services.store.read(account)
         let f = NSSecureTextField()
         f.placeholderString = saved == nil ? placeholder : "Saved in the keychain"
-        f.widthAnchor.constraint(equalToConstant: 200).isActive = true
+        f.widthAnchor.constraint(equalToConstant: 150).isActive = true
         let save = ClosureButton(title: "Save", target: nil, action: nil)
         save.bezelStyle = .rounded
         save.onChange = { [weak self, weak f] _ in

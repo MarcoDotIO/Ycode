@@ -206,6 +206,33 @@ Depth, timing and sound are not counted. `ycode-xr-viewer` asks for 3
 Over the link the transport's queue is also bounded now (16 MB: past that the TCP
 reader waits, so the socket pushes back).
 
+#### 4.2.2 Lossless once still (B3-UIKITFEEL, 2026-11-05)
+
+JPEG tiles and video pictures are lossy, and a stream only sends a picture
+when the screen changes, so before this a still screen stayed blurred and
+text was never exact at 1:1. A client whose hello carries `stillLossless`
+(true in every Ycode viewer: the hello initializer's default; older clients
+and the Python probes leave it out) gets, once the screen is still, the parts
+it last received lossy again as zlib tiles at the stream's downscale:
+
+- The server keeps, per viewer, the tiles of its grid (32 × downscale device
+  pixels) that it last sent lossy (`StillRefinement` in
+  `YcodeDisplayStream`). A lossy frame marks the tiles its rectangles touch
+  (an IDR picture all of them); a zlib frame clears those it covers.
+- Due when nothing lossy went out and no new frame record arrived for
+  **200 ms**, and the flow-control window is open. Then the marked tiles go
+  as one frame of disjoint rectangles (runs of tiles per tile row, equal runs
+  of consecutive rows joined), encoding 2, and are forgotten. A screen that
+  keeps moving never pays for it; 200 ms looks immediate once it stops.
+- The viewers need nothing new: a frame's encoding is per frame, and the
+  portable canvas already converts a video picture to BGRX before tiles
+  are drawn over it (§13.1); the next video picture shows again.
+
+Checked with the UIKitFeel probe's 96 × 96 pattern of random grey levels
+(`uikit-feel-ycode.md` §8.4): through JPEG q80 and H.264 the Linux window at
+Pixel Accurate and the macOS window at one device pixel per display pixel
+show it exactly.
+
 ### 4.3 Frame message (0x03)
 
 | Bytes | Field |
@@ -253,7 +280,7 @@ u32 sequence, u8 count, then count × {u8 finger (0-based), u8 phase
 points** (origin top-left, portrait). A message lists every finger that is
 down or ending. The bridge maps finger f to HID slot f + 1, normalizes by the
 point size, marks edge contacts (`hid-input.md` §8.2: within 10 points of an
-edge at began), and coalesces move-only messages to one per 16 ms.
+edge at began), and sends every message with its age from one thread (`hid-input.md` §14.3; until 2026-11-05 it coalesced move-only messages to one per 16 ms).
 
 ### 5.2 Key (0x83)
 
@@ -375,7 +402,7 @@ after `ycode-simd` starts (`snapshot.md` §12.4).
 |---|---|
 | `YCODE_DISPLAY_TIMING=1` (host environment of `ycode-simd`) | three files in the memory directory (`frame-profile.md` §8.1; while the device runs, links of the same names in `DEV/data/tmp` point to them, and the run's end leaves copies there): `ycode-framebuffer.timing` (the framebuffer library: one 48-byte entry per swap in a ring of 8192 — frame, SwapBegin's target time, mach time at SwapBegin, at SwapSubmit, when the completion block ran, surface id); `ycode-simhid.timing` (the HID bundle: one 32-byte entry per event in a ring of 4096 — host sequence, mach time taken from the port, after dispatch to the event system, kind); `ycode-display.trace` (the server, text: `sync <host ns> <guest ticks>` once a second, `input`, `record`, `frame` lines with host `CLOCK_MONOTONIC` times). The guest variables are set at boot, so a restored device keeps the setting of the boot that was saved |
 | `YCODE_DISPLAY_AB=1` | paired A/B of the server's latency features: the record watcher is ignored in odd seconds, banded encoding is used on even frame sequence numbers; trace lines carry the arm |
-| `YCODE_FRAMEBUFFER_COMPLETION=delay-<ms>[-ab]` | the framebuffer library calls swap completion blocks that much later (with `-ab`, only in odd seconds of mach time); a diagnostic for §10.3 |
+| `YCODE_FRAMEBUFFER_COMPLETION=delay-<ms>[-ab]` | the framebuffer library calls swap completion blocks that much later (with `-ab`, only in odd seconds of mach time); a diagnostic for §10.3. `vsync`: completions at the next point of a 60 Hz grid, with that time; `vsync-block`: `SwapSubmit` also waits for it (B3-UIKITFEEL: neither moves the display link's timestamps, `uikit-feel-ycode.md` §7.2) |
 | `scripts/ycode-display-probe` | a headless display-stream client (Python standard library; run with `python3 -I` on the simulator host or through a forward): scripted swipes, taps, keys, Home; per phase it prints received and guest frame rates, input → first frame, the swap cadence from the framebuffer log (`--timing`), and with `--trace <DEV/data/tmp>` the input → photon breakdown below |
 | `SimShim/guest-tests/stageperf/p_frameclock` | a guest probe: can a guest thread keep a 60 Hz cadence with `mach_wait_until`, `nanosleep`, dispatch timers (leeway 0 and default), an `EVFILT_TIMER` kevent, and `mach_msg` receive timeouts; also the mach-time rate against `CLOCK_MONOTONIC` |
 

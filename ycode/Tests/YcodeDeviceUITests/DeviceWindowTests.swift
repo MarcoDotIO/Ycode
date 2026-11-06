@@ -193,8 +193,9 @@ import YcodeDisplayStream
         canvas.showStopped(spec: .iPhone18Pro, name: "iPhone 18 Pro (Ycode)", os: "iOS 27.0", action: "Start")
         #expect(canvas.stateDescription == "stopped" && canvas.controls.isHidden)
         canvas.layoutSubtreeIfNeeded()
-        let start = canvas.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSButton }.first { $0.title == "Start" }
-        start?.performClick(nil)
+        let start = canvas.statusActionButton
+        #expect(start.title == "Start" && !canvas.statusActionCapsule.isHidden)
+        start.performClick(nil)
         #expect(started)
         canvas.showStopped(spec: .iPhone18Pro, name: "x", os: "iOS 27.0", action: nil, busy: true)
         #expect(canvas.stateDescription == "starting")

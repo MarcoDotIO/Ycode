@@ -363,9 +363,10 @@ serves host Mach services (as for `com.apple.IOSurface.Remote`).
 4. **Invariants.** One host sender per device. Messages are not batched
    across kinds. For each contact slot the host sends exactly one began,
    then moved/unchanged, then exactly one ended or cancelled; a slot is not
-   reused until its contact has ended. Moves are coalesced to at most one
-   touch message per display frame (60 Hz); began, ended, cancelled, keys,
-   and buttons are never dropped or coalesced. The host sends a key's up
+   reused until its contact has ended. Moves are delivered as the viewer
+   sends them; only a backed-up move followed within 8 ms by another is
+   dropped (§14.3; until 2026-11-05: one per display frame); began, ended,
+   cancelled, keys, and buttons are never dropped or coalesced. The host sends a key's up
    before sending the same key's next down.
 5. **Restart.** A send failing with a dead port (backboardd exited) clears
    the registration; the next backboardd's bundle registers again, and a
@@ -629,7 +630,46 @@ display server → message sent 0.07 ms; sent → taken by the bundle in
 `backboardd` 0.1 ms; taken → dispatched 1–2 ms median, with single
 outliers of 280–340 ms per session in which the dispatch call itself did
 not return (inside `backboardd`'s event system). The 16 ms move
-coalescing of §7 item 4 is kept (`display-stream.md` §10.4).
+coalescing of §7 item 4 was kept then (`display-stream.md` §10.4); §14.3
+replaced it.
+
+### 14.3 Input keeps its timing (B3-UIKITFEEL, 2026-11-05; `uikit-feel-ycode.md` §4.0)
+
+Measured with the UIKitFeel probe: a 60 Hz drag sent with even 16.7 ms
+spacing reached UIKit with gaps of 25–80 ms and samples missing. The display
+server's receive thread called the HID send, which can wait for the guest's
+port (up to 250 ms when `backboardd` is busy); the moves queued behind it
+then arrived in a burst, and the 16 ms coalescing of §7 item 4 dropped all
+but the last, each stamped with its arrival time. Since then:
+
+- The input bridge stamps every touch, key and button message when the
+  display server receives it and hands it to one sender thread
+  (`ycode-hid-input`), which sends them in order. The receive thread never
+  waits for the guest.
+- Each message carries its **age**, microseconds from receipt to send, in
+  the reserved word of every touch record (offset 12 of the record) and of
+  the key and button bodies (offset 12 of the kind-specific part). The
+  bundle stamps the event `age` earlier than its arrival (clamped so that
+  timestamps never decrease; the guest timebase from `mach_timebase_info`).
+  0 means the arrival time, as before, so older hosts and bundles still
+  agree. Ages are clamped to 5 s.
+- Moves are no longer coalesced by time when the guest keeps up: every
+  sample the viewer sends is delivered. Only when the outbox backs up is a
+  move dropped, and only when the next queued message is also a move
+  received less than 8 ms later (above 120 Hz). Began, ended, cancelled,
+  keys and buttons are never dropped. (§7 item 4's "one move per display
+  frame" no longer holds; `TouchPacing` in `YcodeHostServices`.)
+- A resting finger: a mouse or a script sends nothing while still, and the
+  guest drops a report at the same device pixel, so UIKit keeps the last
+  drag velocity across a pause. `YCODE_HID_REST=pixel` makes the bridge
+  report every resting contact each 16.7 ms, one device pixel apart
+  alternately (a digitizer's noise); UIKit then sees the finger stop. It is
+  **off** by default: with it the rubber band returned faster than the
+  reference (`uikit-feel-ycode.md` §3.3), which matched only without it.
+
+Result: the touch timestamps UIKit logs keep the sender's spacing
+(16.7 ms ± 1), and the gesture timings of `uikit-feel.md` §4 match from the
+window's receipt (`uikit-feel-ycode.md` §4).
 
 ## 15. Foldable devices (FOLD-IMPL, 2026-10-27; `foldable.md` §8.2, §10)
 

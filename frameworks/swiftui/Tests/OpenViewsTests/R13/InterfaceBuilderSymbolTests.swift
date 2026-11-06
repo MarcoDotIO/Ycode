@@ -9,6 +9,8 @@ import Testing
         "sidebar.left", "plus", "checkmark.circle", "moon", "iphone", "rectangle.split.2x1", "minus", "arrow.clockwise", "line.3.horizontal",
         "plus.rectangle.on.rectangle", "exclamationmark.triangle", "square.stack.3d.up", "line.3.horizontal.decrease.circle",
         "rectangle.portrait.and.arrow.right", "checkmark.circle.fill", "circle", "circle.fill", "xmark", "magnifyingglass",
+        // The Library panel (B3-IB2): tabs and header toggles.
+        "square.on.circle", "photo", "paintpalette", "star.square", "square.grid.2x2", "list.bullet", "sidebar.right", "chevron.down",
     ]
 
     @Test func everySymbolIsDrawn() {

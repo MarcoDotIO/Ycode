@@ -33,6 +33,32 @@ public enum IBInspectorRow: Equatable {
     /// Extend Edges ▸ Under Top / Bottom Bars: one edge of the controller's
     /// `edgesForExtendedLayout`.
     case edgeToggle(label: String, target: String, edge: String, isOn: Bool)
+    // The Attributes inspector's controls (`interface-builder.md` §Reference
+    // Attributes inspector). `key` is the row's label on the left (empty when
+    // a check box continues the group above). `target` is an object ID, or a
+    // path to a keyed child element (`id>textInputTraits@textInputTraits`,
+    // see `IBValueEditing.swift`); attributes starting with "@" are edits
+    // Ycode works out (segment count, font, child elements).
+    /// A check box titled `title`; `onValue` / `offValue` are written (nil removes).
+    case check(key: String, title: String, target: String, attribute: String, isOn: Bool, onValue: String?, offValue: String?)
+    /// A pop-up showing `titles` for the stored `values`; choosing writes the
+    /// value (an empty value removes the attribute).
+    case popUp(key: String, target: String, attribute: String, values: [String], titles: [String], value: String)
+    /// A number field with a stepper (an empty field removes the attribute).
+    case number(key: String, target: String, attribute: String, value: String, placeholder: String)
+    /// Two or four captioned number fields on one row.
+    case numbers(key: String, fields: [IBNumberField])
+    /// A combo box (image or scene name): a field with the name as its grey
+    /// placeholder and a pop-up arrow.
+    case combo(key: String, target: String, attribute: String, value: String, placeholder: String)
+    /// A colour pop-up (a swatch and a name) for `<color key=colorKey>`.
+    case color(key: String, target: String, colorKey: String, value: String)
+    /// A row of icon toggles; one value is selected.
+    case icons(key: String, target: String, attribute: String, values: [String], titles: [String], value: String)
+    /// A sub-heading inside a section ("Background Configuration").
+    case subheading(String)
+    /// A table with + and − (Key Commands, Scope Titles), as its rows.
+    case list(key: String, items: [String])
 
     public var label: String {
         switch self {
@@ -41,7 +67,48 @@ public enum IBInspectorRow: Equatable {
         case .constraint(let t, _): return t
         case .connection(let n, _, _): return n
         case .frameValue(let l, _, _, _), .edgeToggle(let l, _, _, _): return l
+        case .check(_, let t, _, _, _, _, _): return t
+        case .popUp(let k, _, _, _, _, _), .number(let k, _, _, _, _), .numbers(let k, _), .combo(let k, _, _, _, _), .color(let k, _, _, _),
+             .icons(let k, _, _, _, _, _), .list(let k, _): return k
+        case .subheading(let t): return t
         }
+    }
+
+    /// The left-hand label (check boxes and edge toggles show theirs in
+    /// the box's title).
+    public var key: String {
+        switch self {
+        case .check(let k, _, _, _, _, _, _): return k
+        case .toggle, .edgeToggle: return ""
+        default: return label
+        }
+    }
+
+    /// The object or path the row edits, and the attribute.
+    public var binding: (target: String, attribute: String)? {
+        switch self {
+        case .text(_, let t, let a, _, _), .toggle(_, let t, let a, _, _, _), .choice(_, let t, let a, _, _), .check(_, _, let t, let a, _, _, _),
+             .popUp(_, let t, let a, _, _, _), .number(_, let t, let a, _, _), .combo(_, let t, let a, _, _), .icons(_, let t, let a, _, _, _):
+            return (t, a)
+        case .color(_, let t, let k, _): return (t, "color." + k)
+        default: return nil
+        }
+    }
+}
+
+/// One field of a `numbers` row.
+public struct IBNumberField: Equatable, Sendable {
+    public var caption: String
+    public var target: String
+    public var attribute: String
+    public var value: String
+    public var placeholder: String
+    public init(_ caption: String, target: String, attribute: String, value: String, placeholder: String) {
+        self.caption = caption
+        self.target = target
+        self.attribute = attribute
+        self.value = value
+        self.placeholder = placeholder
     }
 }
 
@@ -61,6 +128,9 @@ extension IBDocument {
 
     /// Sets (nil removes) one attribute of an object.
     public func settingAttribute(_ name: String, _ value: String?, of id: String) throws -> IBDocument {
+        if name.hasPrefix("@") { return try settingVirtual(name, value, of: id) }
+        if name.hasPrefix("color.") { return try settingColor(value, key: String(name.dropFirst(6)), of: id) }
+        if id.contains(">") { return try settingPathAttribute(name, value, path: id) }
         guard let o = byID[id] else { return self }
         return try edited([XMLEdit.setAttribute(name, value, on: o.node, in: source)])
     }
@@ -169,82 +239,6 @@ extension IBDocument {
             .info(label: "Lock", value: "Inherited - (Nothing)"),
             .text(label: "Localizer Hint", target: id, attribute: "comment", value: o.attribute("comment") ?? "", placeholder: "Comment For Localizer"),
         ]))
-        return out
-    }
-
-    /// The Attributes inspector's sections for object `id`; empty when unknown.
-    public func attributesSections(_ id: String) -> [IBInspectorSection] {
-        guard let o = byID[id] else { return [] }
-        func t(_ l: String, _ a: String, _ ph: String = "") -> IBInspectorRow { .text(label: l, target: id, attribute: a, value: o.attribute(a) ?? "", placeholder: ph) }
-        func b(_ l: String, _ a: String, default on: Bool = false) -> IBInspectorRow {
-            let v = o.attribute(a)
-            return .toggle(label: l, target: id, attribute: a, isOn: v.map { $0 == "YES" } ?? on, onValue: on ? nil : "YES", offValue: on ? "NO" : nil)
-        }
-        func c(_ l: String, _ a: String, _ opts: [String]) -> IBInspectorRow { .choice(label: l, target: id, attribute: a, options: opts, value: o.attribute(a) ?? opts[0]) }
-        if isController(o) {
-            let metric = ["Inferred"]
-            return [
-                IBInspectorSection("Simulated Metrics", ["Size", "Top Bar", "Bottom Bar", "Keyboard"].map { .info(label: $0, value: metric[0]) }),
-                IBInspectorSection("View Controller", [
-                    t("Title", "title"),
-                    .toggle(label: "Is Initial View Controller", target: id, attribute: "initialViewController", isOn: initialViewController == id, onValue: id, offValue: nil),
-                    t("Activity Name", "userActivityType"),
-                ]),
-                IBInspectorSection("Layout", [b("Adjust Scroll View Insets", "automaticallyAdjustsScrollViewInsets", default: true),
-                                              b("Hide Bottom Bar on Push", "hidesBottomBarWhenPushed"),
-                                              b("Resize View From NIB", "autoresizesArchivedViewToFullSize", default: true),
-                                              b("Use Full Screen (Deprecated)", "wantsFullScreenLayout")]),
-                IBInspectorSection("Extend Edges", [.edgeToggle(label: "Under Top Bars", target: id, edge: "top", isOn: extendedEdge(o, "top")),
-                                                    .edgeToggle(label: "Under Bottom Bars", target: id, edge: "bottom", isOn: extendedEdge(o, "bottom")),
-                                                    b("Under Opaque Bars", "extendedLayoutIncludesOpaqueBars")]),
-                IBInspectorSection("Presentation", [c("Transition Style", "modalTransitionStyle", ["coverVertical", "flipHorizontal", "crossDissolve", "partialCurl"]),
-                                                    c("Presentation", "modalPresentationStyle", ["automatic", "fullScreen", "pageSheet", "formSheet", "currentContext", "overFullScreen", "overCurrentContext", "popover"]),
-                                                    b("Defines Context", "definesPresentationContext"),
-                                                    b("Provides Context", "providesPresentationContextTransitionStyle")]),
-                IBInspectorSection("Content Size", [b("Use Preferred Explicit Size", "usesPreferredContentSize"),
-                                                    .info(label: "Width", value: property(o, "size", key: "preferredContentSize")?["width"] ?? "0"),
-                                                    .info(label: "Height", value: property(o, "size", key: "preferredContentSize")?["height"] ?? "0")]),
-                IBInspectorSection("Key Commands", keyCommands(o).flatMap { [.info(label: "Key", value: $0.input), .info(label: "Selector", value: $0.action)] }),
-            ]
-        }
-        var out: [IBInspectorSection] = []
-        if o.element == "label" {
-            let offset = property(o, "size", key: "shadowOffset")
-            out.append(IBInspectorSection("Label", [
-                .info(label: "Text", value: o.node.child("attributedString") != nil ? "Attributed" : "Plain"), t("", "text"),
-                .info(label: "Color", value: colorDescription(o, key: "textColor", default: "Default (Label Color)")),
-                .info(label: "Font", value: fontDescription(o)),
-                b("Dynamic Type", "adjustsFontForContentSizeCategory"),
-                c("Alignment", "textAlignment", ["natural", "left", "center", "right", "justified"]),
-                t("Lines", "numberOfLines", "1"),
-                b("Enabled", "enabled", default: true), b("Highlighted", "highlighted"),
-                t("Tooltip", "toolTip"),
-                c("Baseline", "baselineAdjustment", ["alignBaselines", "alignCenters", "none"]),
-                c("Line Break", "lineBreakMode", ["tailTruncation", "headTruncation", "middleTruncation", "wordWrap", "characterWrap", "clip"]),
-                c("Strategy", "lineBreakStrategy", ["standard", "pushOut", "hangulWordPriority", "none"]),
-                b("Autoshrink", "adjustsFontSizeToFit"),
-                b("Tighten Letter Spacing", "allowsDefaultTighteningForTruncation"),
-                c("Sizing Rule", "sizingRule", ["typographic", "oversize"]),
-                .info(label: "Highlighted Color", value: colorDescription(o, key: "highlightedColor", default: "Default")),
-                .info(label: "Shadow", value: colorDescription(o, key: "shadowColor", default: "Default")),
-                .info(label: "Shadow Offset", value: "\(offset?["width"] ?? "0"), \(offset?["height"] ?? "-1")"),
-            ]))
-        }
-        if o.isView {
-            out.append(IBInspectorSection("View", [
-                c("Content Mode", "contentMode", ["scaleToFill", "scaleAspectFit", "scaleAspectFill", "redraw", "center", "top", "bottom", "left", "right"]),
-                c("Semantic", "semanticContentAttribute", ["unspecified", "playback", "spatial", "forceLeftToRight", "forceRightToLeft"]),
-                t("Tag", "tag", "0"),
-                b("User Interaction Enabled", "userInteractionEnabled", default: true), b("Multiple Touch", "multipleTouchEnabled"),
-                t("Alpha", "alpha", "1"),
-                b("Opaque", "opaque", default: true), b("Hidden", "hidden"), b("Clears Graphics Context", "clearsContextBeforeDrawing", default: true),
-                b("Clips to Bounds", "clipsSubviews"),
-                .info(label: "Background", value: colorDescription(o, key: "backgroundColor", default: "Default")),
-                .info(label: "Tint", value: colorDescription(o, key: "tintColor", default: "Default")),
-                .info(label: "Stretching", value: ["x", "y", "width", "height"].map { property(o, "rect", key: "contentStretch")?[$0] ?? ($0 == "width" || $0 == "height" ? "1" : "0") }
-                    .joined(separator: ", ")),
-            ]))
-        }
         return out
     }
 

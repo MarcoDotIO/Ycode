@@ -33,7 +33,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         let wc = SettingsWindowController(prefs: Preferences(defaults: t.defaults), components: [])
         #expect(wc.tabs.tabViewItems.map(\.label) == ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation",
                                                        "Notifications", "Editing", "Shortcuts", "Source Control", "Components",
-                                                       "Simulators", "Locations"])
+                                                       "Locations", "Simulators"])
         #expect(wc.sidebar.numberOfRows == 13 && wc.selectedPane == "General")
         wc.select(7)
         wc.select(4)

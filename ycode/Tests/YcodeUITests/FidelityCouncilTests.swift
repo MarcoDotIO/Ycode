@@ -135,7 +135,7 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
 
     @Test func minimapWidthRule() {
         #expect(EditorMetrics.minimapWidth(editorWidth: 850) == 127)
-        #expect(EditorMetrics.minimapWidth(editorWidth: 962) == 128)
+        #expect(EditorMetrics.minimapWidth(editorWidth: 962) == 135)   // ceiling raised by editor-area.md E.6
         #expect(EditorMetrics.minimapWidth(editorWidth: 480) == 72)
         #expect(MinimapView.width(forEditorWidth: 850) == 128)   // with its 1-point separator
         #expect(EditorMetrics.minimapOffset(contentHeight: 900, viewHeight: 700, fraction: 0.5) == 100)

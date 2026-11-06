@@ -85,8 +85,17 @@ final class MetalClientNames: @unchecked Sendable {
 
     func describe(_ process: MetalProcessID) -> String? {
         guard let pid = service?.guestPID(of: process) else { return nil }
-        let path = system.process(pid: pid)?.executablePath ?? ""
+        let record = system.process(pid: pid)
+        let path = record?.executablePath ?? ""
         let name = path.split(separator: "/").last.map(String.init) ?? "?"
-        return "\(name), guest pid \(pid)"
+        let label = record?.launchdLabel ?? ""
+        return "\(name), guest pid \(pid)" + (label.isEmpty || label == name ? "" : ", job \(label)")
+    }
+
+    /// The render server or SpringBoard, by launchd label or executable
+    /// path (`MetalSystemUI`): they never lose GPU access.
+    func isSystemUI(_ process: MetalProcessID) -> Bool {
+        guard let pid = service?.guestPID(of: process), let record = system.process(pid: pid) else { return false }
+        return MetalSystemUI.isSystemUI(label: record.launchdLabel, executablePath: record.executablePath)
     }
 }

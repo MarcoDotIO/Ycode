@@ -14,12 +14,35 @@ import Testing
 /// its own beyond each test's back end. Run it alone
 /// (`--filter GPUClientIsolationTests`) for the timings of the spec.
 enum IsolationGPU {
-    static let available: Bool = {
+    /// The name of the device the back end would use, or nil without one.
+    static let deviceName: String? = {
         var c = yvk_context()
         var err = [CChar](repeating: 0, count: 256)
-        guard yvk_context_create(&c, nil, &err, err.count) == 0 else { return false }
+        guard yvk_context_create(&c, nil, &err, err.count) == 0 else { return nil }
+        let name = withUnsafeBytes(of: c.properties.deviceName) { raw in
+            String(cString: raw.bindMemory(to: CChar.self).baseAddress!)
+        }
         yvk_context_destroy(&c)
-        return true
+        return name
+    }()
+
+    static var available: Bool { deviceName != nil }
+
+    /// Whether the GPU-hang tests skip because the GPU drives a display
+    /// (metal-sim-protocol.md §8.8): one of its graphics queue families can
+    /// present to the user's window-system session (Wayland, else X11;
+    /// `yvk_presents_to_session`). A hang there stalls that desktop, and its
+    /// compositor's work makes the driver end stuck contexts on its own,
+    /// which makes the tests' timings meaningless. Over SSH the Thor has no
+    /// session for the test user and runs them; the x86-64 workstation's
+    /// GPU presents to its Wayland desktop and skips them.
+    /// `YCODE_TEST_GPU_HANGS=1` runs them anyway, `=0` never.
+    static let drivesDisplay: Bool = {
+        switch ProcessInfo.processInfo.environment["YCODE_TEST_GPU_HANGS"] {
+        case "1": return false
+        case "0": return true
+        default: return deviceName.map { yvk_presents_to_session($0) == 1 } ?? false
+        }
     }()
 }
 
@@ -31,7 +54,8 @@ enum GPUHangTests {
     static let lock = NSLock()
 }
 
-@Suite(.serialized, .enabled(if: IsolationGPU.available, "needs a Vulkan GPU with VK_EXT_external_memory_host"))
+@Suite(.serialized, .enabled(if: IsolationGPU.available, "needs a Vulkan GPU with VK_EXT_external_memory_host"),
+       .disabled(if: IsolationGPU.drivesDisplay, "GPU drives a display"))
 struct GPUClientIsolationTests {
     static func translator() -> PrebuiltShaderTranslator {
         let t = GPURecoveryTests.translator()
@@ -241,11 +265,14 @@ struct GPUClientIsolationTests {
         // watchdog's 30 s.
         #expect(c2.longestGap < 20 && c3.longestGap < 20, "gaps \(c2.longestGap) \(c3.longestGap)")
         if b.lastHangReport.isEmpty {
-            // A GPU that also drives a display (the x86-64 workstation): its
-            // driver ended the stuck context before the blocking limit, and
-            // the reset handled it as a device loss, with the same blame.
+            // The driver ended the stuck context before the blocking limit
+            // (another device of the test process, VK.backend, needed the
+            // GPU), and the reset handled it as a device loss, with the same
+            // blame.
             #expect(b.lastDeviceResetReport.contains("after a device loss"), "\(b.lastDeviceResetReport)")
-            #expect(b.lastDeviceResetReport.contains("process 1 (spinner, guest pid 101)'s"), "\(b.lastDeviceResetReport)")
+            // (Named only if the client was described before: a driver-ended
+            // hang skips the watchdog's line.)
+            #expect(b.lastDeviceResetReport.contains("failed (process 1"), "\(b.lastDeviceResetReport)")
         } else {
             #expect(b.lastHangReport.contains("process 1 (spinner, guest pid 101)"), "\(b.lastHangReport)")
             #expect(b.lastHangReport.contains("other client"), "\(b.lastHangReport)")
@@ -287,6 +314,51 @@ struct GPUClientIsolationTests {
         spinner.release(b)
         c2.release(b)
         c3.release(b)
+    }
+
+    /// The system UI (here client 1, marked by `exemptFromRevocation`, as
+    /// ycode-simd marks the render server and SpringBoard) never loses GPU
+    /// access: each of its three hangs is ended and fails its command buffer,
+    /// client 2 keeps drawing, and after the third its next command buffer
+    /// runs (it is not refused).
+    @Test func systemUIKeepsGPUAccess() throws {
+        GPUHangTests.lock.lock()
+        defer { GPUHangTests.lock.unlock() }
+        let log = Log()
+        var o = VulkanMetalBackend.Options()
+        o.log = { log.add($0) }
+        o.watchdogSeconds = 30
+        o.blockingWatchdogSeconds = 1
+        o.revokeAfterHangs = 2
+        o.describeProcess = { $0 == 1 ? "backboardd, guest pid 124" : "client \($0)" }
+        o.exemptFromRevocation = { $0 == 1 }
+        let b = VulkanMetalBackend(translator: Self.translator(), options: o)
+        defer { b.shutdown() }
+        let server = Spinner(process: 1)
+        let c2 = Client(process: 2)
+        try server.setUp(b)
+        try c2.setUp(b)
+        for round in 0..<3 {
+            let start = DispatchTime.now()
+            server.hang(b)
+            usleep(100_000)
+            c2.draw(b, count: 10, interval: 0.05, start: start)
+            #expect(server.done.wait(timeout: .now() + 60) == .success, "hang \(round + 1) was not ended")
+            #expect(server.status(round) == MetalCommandBufferStatus.error)
+            #expect(c2.waitFor(10 * (round + 1), seconds: 60))
+            #expect(!b.gpuAccessRevoked(1), "the system UI lost GPU access after hang \(round + 1)")
+        }
+        #expect(b.deviceResetCount == 3)
+        #expect(log.contains("GPU access kept for process 1 (backboardd, guest pid 124) after 2 GPU hangs"))
+        #expect(b.stats.revokedRefusals == 0)
+        #expect(b.stats.exemptFromRevocation == 2)
+        // Its next command buffer runs (an empty compute pass completes).
+        server.harmless(b)
+        #expect(server.done.wait(timeout: .now() + 10) == .success)
+        #expect(server.status(3) == MetalCommandBufferStatus.completed)
+        #expect(c2.statuses.allSatisfy { $0 == MetalCommandBufferStatus.completed }, "client 2: \(c2.statuses)")
+        server.release(b)
+        c2.release(b)
     }
 
     /// A long submission with nobody behind it is left alone until the

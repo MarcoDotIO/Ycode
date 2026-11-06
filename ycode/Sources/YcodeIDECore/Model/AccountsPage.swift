@@ -88,11 +88,14 @@ public struct NoAppStoreConnectKeys: AppStoreConnectKeyStore {
 
 /// The Settings window's panes in order (`specs/ide/settings.md` §Window).
 public enum SettingsPaneOrder {
-    /// The macOS IDE's panes.
+    /// The macOS IDE's panes: the reference's twelve in its order (Ycode's
+    /// names for Accounts and Coding Assistant), then Simulators, Ycode's
+    /// own pane, at the end (council round 3, R3.2).
     public static let all = ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation", "Notifications",
-                             "Editing", "Shortcuts", "Source Control", "Components", "Simulators", "Locations"]
-    /// The panes the Linux IDE does not offer yet.
-    public static let notOnLinux: Set = ["Components", "Simulators"]
+                             "Editing", "Shortcuts", "Source Control", "Components", "Locations", "Simulators"]
+    /// The panes the Linux IDE does not offer (Components is offered with
+    /// its empty state).
+    public static let notOnLinux: Set = ["Simulators"]
     /// The Linux IDE's panes: the same order without those.
     public static var linux: [String] { all.filter { !notOnLinux.contains($0) } }
 }

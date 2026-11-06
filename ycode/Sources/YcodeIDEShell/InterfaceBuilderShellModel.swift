@@ -39,7 +39,17 @@ public final class InterfaceBuilderShellModel {
     public var device: String
     /// The Library (⇧⌘L) is shown over the editor.
     public var isLibraryShown = false
-    public var libraryFilter = ""
+    /// The Library's search text; a change selects the first match
+    /// (`library.md` §Panel, Selection).
+    public var libraryFilter = "" {
+        didSet { if libraryFilter != oldValue { librarySelection = libraryObjects.first } }
+    }
+    /// The Library's tab: Objects, Image, Color, Symbols.
+    public var libraryTab: IBLibraryTab = .objects
+    /// The list shows icons only, four to a row (the header's first toggle).
+    public var libraryIsIconView = false
+    /// The detail area is shown (the header's second toggle).
+    public var libraryShowsDetails = true
     /// The Library row the keyboard and the detail area follow.
     public var librarySelection: IBDocument.NewObject? = .label
     /// Editor ▸ Add New Constraints… is shown.
@@ -179,6 +189,7 @@ public final class InterfaceBuilderShellModel {
     public func setAttribute(_ name: String, _ value: String?, of id: String) { edit { session.setAttribute(name, value, of: id) } }
     public func setToggle(_ row: IBInspectorRow, on: Bool) { edit { session.setToggle(row, on: on) } }
     public func setChoice(_ row: IBInspectorRow, _ value: String) { edit { session.setChoice(row, value) } }
+    public func setColor(_ row: IBInspectorRow, _ title: String) { edit { session.setColor(row, title) } }
     public func setFrameComponent(_ c: String, _ v: CGFloat, of id: String) { edit { session.setFrameComponent(c, v, of: id) } }
     public func setConstant(_ v: CGFloat, ofConstraint id: String) { edit { session.setConstant(v, ofConstraint: id) } }
     public func addRuntimeAttribute() { edit { session.addRuntimeAttribute(keyPath: session.nextRuntimeKeyPath) } }
@@ -202,16 +213,24 @@ public final class InterfaceBuilderShellModel {
 
     // MARK: Library (Objects tab)
 
-    /// The Objects the Library lists under its filter.
+    /// The Objects the Library lists for this document under its search
+    /// (`library.md` §Search: every word in the name or the class name).
     public var libraryObjects: [IBDocument.NewObject] {
-        let q = libraryFilter.lowercased().trimmingCharacters(in: .whitespaces)
-        return IBDocument.NewObject.allCases.filter { q.isEmpty || $0.rawValue.lowercased().contains(q) }
+        let d = document
+        return IBDocument.NewObject.matching(libraryFilter, in: IBDocument.NewObject.list(for: d), iOS: d.isFlippedRuntime)
     }
 
-    /// The detail area's text for the Library selection.
+    /// The detail area for the Library selection: name, `Class: summary`,
+    /// and the description.
+    public var libraryDetailParts: (name: String, subtitle: String, description: String)? {
+        guard let o = librarySelection, libraryObjects.contains(o) else { return nil }
+        return (o.rawValue, o.subtitle(iOS: document.isFlippedRuntime), o.details)
+    }
+
+    /// The detail area's text (tests and the walk).
     public var libraryDetail: String {
-        guard let o = librarySelection, libraryObjects.contains(o) else { return "" }
-        return "\(o.rawValue) (\(o.className(iOS: document.isFlippedRuntime)))\n\(o.summary)"
+        guard let p = libraryDetailParts else { return "" }
+        return "\(p.name)\n\(p.subtitle)\n\(p.description)"
     }
 
     /// Double-click or Return: inserts the object into the selected view.
@@ -222,7 +241,8 @@ public final class InterfaceBuilderShellModel {
         return insert(kind)
     }
 
-    /// Up and Down in the Library list.
+    /// Up and Down in the Library list (in the icon view, Up and Down move
+    /// a row of four, Left and Right one item).
     public func moveLibrarySelection(_ d: Int) {
         let list = libraryObjects
         guard !list.isEmpty else { return }
@@ -262,4 +282,13 @@ public final class InterfaceBuilderShellModel {
         }
         return true
     }
+}
+
+/// The Library's tabs while an Interface Builder document is focused
+/// (`library.md` §Panel, Tabs).
+public enum IBLibraryTab: Int, CaseIterable, Sendable {
+    case objects, image, color, symbols
+    public var title: String { ["Objects", "Image", "Color", "Symbols"][rawValue] }
+    /// The tab's symbol (the platform's symbol set; Ycode's drawings on Linux).
+    public var symbol: String { ["square.on.circle", "photo", "paintpalette", "star.square"][rawValue] }
 }

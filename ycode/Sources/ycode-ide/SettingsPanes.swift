@@ -30,36 +30,35 @@ struct GeneralSettingsPane: View {
     var body: some View {
         let _ = ShellPreferences.shared.revision
         SettingsForm {
-            Section("Starting Points") {
-                CasePicker(title: "Restore open projects and workspaces", selection: setting(\.restoreWindows), target: "settings restore windows")
+            SettingsSection("Starting Points") {
+                CasePicker(title: "Restore open projects and workspaces", selection: setting(\.restoreWindows), target: "settings restore windows",
+                           help: Self.restoreHelp)
             }
-            Section("Navigation and Files") {
+            SettingsSection("Navigation and Files") {
                 CasePicker(title: "Navigator size", selection: setting(\.navigatorSize), target: "settings navigator size")
                 detailPicker("Bookmark navigator detail", \.bookmarkNavigatorDetail)
                 detailPicker("Find navigator detail", \.findNavigatorDetail)
                 detailPicker("Issue navigator detail", \.issueNavigatorDetail)
-                CasePicker(title: "File extensions", selection: setting(\.fileExtensions), target: "settings file extensions")
                 CheckRow(title: "Window tabs have independent sidebar widths", isOn: setting(\.independentSidebarWidths),
-                         target: "settings sidebar widths")
+                         target: "settings sidebar widths", help: Self.sidebarWidthsHelp)
                 CheckRow(title: "Automatically unlock files", isOn: setting(\.autoUnlockFiles), target: "settings unlock files")
+                CasePicker(title: "File extensions", selection: setting(\.fileExtensions), target: "settings file extensions")
             }
-            Section("Issues") {
+            SettingsSection("Issues") {
                 CasePicker(title: "Issue presentation", selection: setting(\.issuePresentation), target: "settings issue presentation")
                 CheckRow(title: "Predictive Issues", isOn: setting(\.showLiveIssues), target: "settings live issues")
                 CheckRow(title: "Stop build on first error", isOn: setting(\.stopBuildOnFirstError), target: "settings stop on error")
             }
-            Section("Test Parallelization") {
+            SettingsSection("Test Parallelization") {
                 CasePicker(title: Self.hostTestingTitle, selection: setting(\.testParallelizationMac), target: "settings tests host")
                 CasePicker(title: "Testing on Simulator", selection: setting(\.testParallelizationSimulator), target: "settings tests simulator")
             }
-            Section("Report Navigator") {
-                Picker(formLabel("Local report history"), selection: setting(\.reportHistoryLimit)) {
-                    ForEach(Preferences.reportHistoryChoices, id: \.self) { Text(verbatim: Preferences.reportHistoryTitle($0)).tag($0) }
-                }
-                .shellTarget("settings report history")
+            SettingsSection("Report Navigator") {
+                PickerRow(title: "Local report history", selection: setting(\.reportHistoryLimit),
+                          options: Preferences.reportHistoryChoices.map { ($0, Preferences.reportHistoryTitle($0)) }, target: "settings report history")
             }
-            Section {
-                LabeledContent(formLabel("Settings file")) {
+            SettingsSection("Settings Import & Export", content: {
+                SettingsRow("Settings file") {
                     HStack(spacing: 8) {
                         Button("Export…") { exporting = true }.shellTarget("settings export")
                         Button("Import…") { importing = true }.shellTarget("settings import")
@@ -67,16 +66,14 @@ struct GeneralSettingsPane: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
-            } header: {
-                Text("Settings Import & Export")
-            } footer: {
+            }, footer: {
                 if let failure { FootNote(text: failure) }
-            }
-            Section("Reset Ycode") {
-                LabeledContent(formLabel("Reset Settings")) {
+            })
+            SettingsSection("Reset Ycode") {
+                SettingsRow("Reset Settings") {
                     Button("Reset…") { confirmReset = true }.buttonStyle(.bordered).controlSize(.small).shellTarget("settings reset")
                 }
-                LabeledContent(formLabel("\u{201C}Don\u{2019}t ask me\u{201D} warnings")) {
+                SettingsRow("\u{201C}Don\u{2019}t ask me\u{201D} warnings") {
                     Button("Reset All") { confirmWarnings = true }.buttonStyle(.bordered).controlSize(.small).shellTarget("settings reset warnings")
                 }
             }
@@ -109,11 +106,21 @@ struct GeneralSettingsPane: View {
     }
 
     func detailPicker(_ title: String, _ key: ReferenceWritableKeyPath<Preferences, Int>) -> some View {
-        Picker(formLabel(title), selection: setting(key)) {
-            ForEach(Preferences.detailLineChoices, id: \.self) { Text(verbatim: Preferences.detailTitle($0)).tag($0) }
-        }
-        .shellTarget("settings \(title.lowercased())")
+        PickerRow(title: title, selection: setting(key), options: Preferences.detailLineChoices.map { ($0, Preferences.detailTitle($0)) },
+                  target: "settings \(title.lowercased())")
     }
+
+    /// The help under Restore open projects and workspaces (the macOS
+    /// IDE's text, with the desktop's own setting named).
+    #if os(Linux)
+    static let restoreHelp = "Use System Setting reopens them, as the desktop restores its other apps' windows."
+    #else
+    static let restoreHelp = "Use System Setting reopens them unless \u{201C}Close windows when quitting an application\u{201D} is on in "
+        + "System Settings \u{25B8} Desktop & Dock."
+    #endif
+    /// The help under Window tabs have independent sidebar widths.
+    static let sidebarWidthsHelp = "Each tab of a window keeps its own navigator and inspector widths, so the tab bar moves when you "
+        + "switch between tabs."
 }
 
 /// A file of bytes for the file dialogs' Export.
@@ -137,25 +144,25 @@ struct NavigationSettingsPane: View {
     var body: some View {
         let _ = ShellPreferences.shared.revision
         SettingsForm {
-            Section {
+            SettingsSection {
                 CasePicker(title: "New Editor Tabs Open With", selection: setting(\.newEditorTabsOpenWith), target: "settings new tabs")
                 CasePicker(title: "New Editor Panes Open With", selection: setting(\.newEditorPanesOpenWith), target: "settings new panes")
                 CasePicker(title: "Pin Editor Tabs", selection: setting(\.pinEditorTabs), target: "settings pin tabs")
             }
-            Section("Click on Code") {
+            SettingsSection("Click on Code") {
                 CasePicker(title: "With \(Self.option)", selection: setting(\.optionClickOnCode), target: "settings click option")
                 CasePicker(title: "With \(Self.command)", selection: setting(\.commandClickOnCode), target: "settings click command")
                 CasePicker(title: "With \(Self.command) & \(Self.control)", selection: setting(\.commandControlClickOnCode),
                            target: "settings click command control")
             }
-            Section("Navigation") {
+            SettingsSection("Navigation") {
                 CasePicker(title: "Destination", selection: setting(\.navigationDestination), target: "settings destination")
                 CasePicker(title: "With \(Self.option)", selection: setting(\.navigationWithOption), target: "settings navigation option")
                 CasePicker(title: "With \(Self.option) & Shift", selection: setting(\.navigationWithOptionShift),
                            target: "settings navigation option shift")
                 CasePicker(title: "With Double-click", selection: setting(\.navigationWithDoubleClick), target: "settings navigation double")
             }
-            Section {
+            SettingsSection {
                 CheckRow(title: "Use Window Tabs In Full Screen", isOn: setting(\.useWindowTabsInFullScreen), target: "settings full screen tabs")
                 CheckRow(title: "Animate Open Quickly With Multiple Editor Panes", isOn: setting(\.animateOpenQuickly),
                          target: "settings animate open quickly")
@@ -181,7 +188,7 @@ struct NotificationsSettingsPane: View {
         let _ = ShellPreferences.shared.revision
         SettingsForm {
             ForEach(["Build", "Testing", "Running"], id: \.self) { category in
-                Section(category) {
+                SettingsSection(category) {
                     ForEach(Preferences.Event.allCases.filter { $0.category == category }, id: \.self) { e in
                         CheckRow(title: e.notificationTitle, isOn: Binding(get: { Preferences.shared.behavior(e).notify }, set: { on in
                             var b = Preferences.shared.behavior(e)
@@ -191,9 +198,7 @@ struct NotificationsSettingsPane: View {
                     }
                 }
             }
-            Section {} footer: {
-                FootNote(text: "A notification is the result bezel over the workspace window, or a desktop notification when Ycode is not in front.")
-            }
+            SettingsNote(text: "A notification is the result bezel over the workspace window, or a desktop notification when Ycode is not in front.")
         }
     }
 }
@@ -217,7 +222,7 @@ struct BehaviorsSettingsPane: View {
                 ForEach(Self.categories, id: \.self) { c in
                     let events = Preferences.Event.allCases.filter { $0.category == c }
                     let n = events.filter { !Preferences.shared.behavior($0).actionTitles.isEmpty }.count
-                    Section("\(c)  \u{00B7}  \(n) behavior\(n == 1 ? "" : "s")") {
+                    SettingsSection("\(c)  \u{00B7}  \(n) behavior\(n == 1 ? "" : "s")") {
                         ForEach(events, id: \.self) { e in
                             DrillRow(title: e.rawValue, detail: Self.summary(Preferences.shared.behavior(e)), target: "settings behavior \(e)") {
                                 model.behaviorEvent = e
@@ -225,10 +230,7 @@ struct BehaviorsSettingsPane: View {
                         }
                     }
                 }
-                Section {} footer: {
-                    let others = Preferences.behaviorCategories.filter { !Self.categories.contains($0) }
-                    FootNote(text: "Ycode raises no events in \(others.joined(separator: ", ")) yet.")
-                }
+                SettingsNote(text: "Ycode raises no events in \(Preferences.behaviorCategories.filter { !Self.categories.contains($0) }.joined(separator: ", ")) yet.")
             }
         }
     }
@@ -258,38 +260,32 @@ struct BehaviorEventPage: View {
         let _ = ShellPreferences.shared.revision
         let b = Preferences.shared.behavior(event)
         SettingsForm {
-            Section {
-                BackRow(title: "Behaviors", target: "settings behaviors back", action: back)
-            }
-            Section(event.category) {
-                LabeledContent(formLabel("Event")) { Text(verbatim: event.rawValue) }
-                Picker(formLabel("Show navigator"), selection: binding(\.showNavigator, b)) {
-                    Text("None").tag(Int?.none)
-                    ForEach(Array(CommandTable.navigators.enumerated()), id: \.offset) { Text(verbatim: $0.element).tag(Int?.some($0.offset)) }
-                }
-                .shellTarget("settings behavior navigator")
-                Picker(formLabel("Debug area"), selection: Binding(get: { Self.debugArea(b) }, set: { d in
+            BackRow(title: "Behaviors", target: "settings behaviors back", action: back)
+            SettingsSection(event.category) {
+                ValueRow(title: "Event", value: event.rawValue)
+                PickerRow(title: "Show navigator", selection: binding(\.showNavigator, b),
+                          options: [(Int?.none, "None")] + CommandTable.navigators.enumerated().map { (Int?.some($0.offset), $0.element) },
+                          target: "settings behavior navigator")
+                PickerRow(title: "Debug area", selection: Binding(get: { Self.debugArea(b) }, set: { d in
                     update { b in
                         b.showDebugArea = d == .show ? true : (d == .hide ? false : nil)
                         b.hideDebugAreaIfNoOutput = d == .hideIfNoOutput
                     }
-                })) {
-                    ForEach(DebugArea.allCases, id: \.self) { Text(verbatim: $0.rawValue).tag($0) }
-                }
-                .shellTarget("settings behavior debug area")
-                Picker(formLabel("Play sound"), selection: binding(\.sound, b)) {
-                    Text("None").tag(String?.none)
-                    ForEach(Preferences.Behavior.soundNames, id: \.self) { Text(verbatim: $0).tag(String?.some($0)) }
-                }
-                .shellTarget("settings behavior sound")
+                }), options: DebugArea.allCases.map { ($0, $0.rawValue) }, target: "settings behavior debug area")
+                PickerRow(title: "Play sound", selection: binding(\.sound, b),
+                          options: [(String?.none, "None")] + Preferences.Behavior.soundNames.map { (String?.some($0), $0) }, target: "settings behavior sound")
                 CheckRow(title: "Notify with bezel or desktop notification", isOn: binding(\.notify, b), target: "settings behavior notify")
             }
-            Section {
-                Button("Restore Default Actions") {
-                    Preferences.shared.setBehavior(Preferences.defaultBehaviors[event] ?? Preferences.Behavior(), for: event)
+            SettingsSection {
+                SettingsRow("Default actions") {
+                    Button("Restore Default Actions") {
+                        Preferences.shared.setBehavior(Preferences.defaultBehaviors[event] ?? Preferences.Behavior(), for: event)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(b == (Preferences.defaultBehaviors[event] ?? Preferences.Behavior()))
+                    .shellTarget("settings behavior restore")
                 }
-                .disabled(b == (Preferences.defaultBehaviors[event] ?? Preferences.Behavior()))
-                .shellTarget("settings behavior restore")
             }
         }
     }

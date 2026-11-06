@@ -146,16 +146,13 @@ import YcodeProject
         let wc = SettingsWindowController(prefs: Preferences(defaults: t.defaults), components: [])
         let pane = try #require(wc.pane(GeneralSettingsPane.self))
         pane.view.layoutSubtreeIfNeeded()
-        var labels: [NSTextField] = []
-        for r in pane.stack.arrangedSubviews.compactMap({ $0 as? NSStackView }) {
-            if let l = r.arrangedSubviews.first as? NSTextField { labels.append(l) }
-        }
-        let restore = try #require(labels.first { $0.stringValue.hasPrefix("Restore open projects") })
-        #expect(restore.alignmentRect(forFrame: restore.frame).width == SettingsPane.labelColumnWidth)
-        // It wraps onto two lines inside its column instead of being cut off.
-        #expect(restore.frame.height > 20 && restore.cell?.wraps == true)
-        for l in labels where l.cell?.wraps != true {
-            #expect(l.intrinsicContentSize.width <= l.frame.width + 0.5, "\(l.stringValue) is cut off")
+        // The card rows (settings.md R3.3): left-aligned labels in full,
+        // the help text wrapping under them.
+        let rows = pane.cards.flatMap(\.rowViews).compactMap { $0 as? SettingsRowView }
+        let restore = try #require(rows.first { $0.label.stringValue.hasPrefix("Restore open projects") })
+        #expect(restore.help.map { $0.frame.height > 20 } == true)
+        for r in rows where !r.label.stringValue.isEmpty {
+            #expect(r.label.intrinsicContentSize.width <= r.label.frame.width + 0.5, "\(r.label.stringValue) is cut off")
         }
         wc.window?.close()
     }

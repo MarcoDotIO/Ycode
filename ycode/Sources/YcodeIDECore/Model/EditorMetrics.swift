@@ -82,9 +82,15 @@ public enum EditorMetrics {
     // MARK: Minimap (§C.5)
 
     /// The minimap's width (its separator not included): 15 % of the
-    /// editor, at most 128 (127 in an 850-point editor, 72 in a 480-point
-    /// split).
-    public static func minimapWidth(editorWidth: Double) -> Double { max(0, min(128, (editorWidth * 0.15).rounded(.down))) }
+    /// editor (127 in an 850-point editor, 63 in a 424-point split), never
+    /// under 59 nor over 135 (`editor-area.md` E.6, checklist row 77: from
+    /// the separator to the scroll lane, which starts 3 points into the
+    /// scroll bar, that is 63 to 139, the reference's floor and ceiling).
+    public static let minimapWidthRange = 59.0...135.0
+    public static func minimapWidth(editorWidth: Double) -> Double {
+        guard editorWidth > 0 else { return 0 }
+        return min(minimapWidthRange.upperBound, max(minimapWidthRange.lowerBound, (editorWidth * 0.15).rounded(.down)))
+    }
     public static let minimapSeparator = 1.0
     /// Text at 1/6 scale: a 2-point bar on a 3-point pitch per visual line.
     public static let minimapScale = 1.0 / 6

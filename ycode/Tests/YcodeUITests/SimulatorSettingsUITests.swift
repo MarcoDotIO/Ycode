@@ -54,7 +54,16 @@ import YcodeSimFeatures
         #expect(sent == [["settings"]] && c.settingsSnapshot?.state.appearance == .dark)
         #expect(c.settingsControlsShown && c.settingsControlsEnabled)
         let boxes = c.settingsControls()
-        #expect(boxes.identifier?.rawValue == "settings-scroll")
+        // Three cards (device-hub.md §11.3): 9, 1 and 3 rows on a 43-point pitch, every control enabled.
+        #expect(boxes.identifier?.rawValue == "settings-controls")
+        let cards = (boxes as? NSStackView)?.arrangedSubviews.compactMap { $0 as? InspectorCard } ?? []
+        #expect(cards.map(\.rows.count) == [9, 1, 3])
+        let heights: [CGFloat] = cards.map(\.frame.height)
+        let expected: [CGFloat] = [386, 42, 128]
+        #expect(heights == expected)
+        let controls: [NSControl] = cards.flatMap(\.rows).compactMap { $0.control as? NSControl }
+        #expect(controls.count == 13 && controls.allSatisfy(\.isEnabled))
+        #expect(DevicesController.stoppedNote(in: boxes) == nil)
         // Appearance, accessibility, text size, sound: one command each, then a read.
         await c.applySetting(["ui", "appearance", "light"], failureTitle: "Failed to Set Appearance")?.value
         #expect(sent.suffix(2) == [["ui", "appearance", "light"], ["settings"]] && failures.isEmpty)
@@ -91,8 +100,12 @@ import YcodeSimFeatures
         c.deviceSettings = { _, _ in (true, "ok") }
         c.show(.simulators)
         #expect(c.settingsControlsShown && !c.settingsControlsEnabled && c.settingsTask == nil)
-        let v = c.settingsControls() as? NSTextField
-        #expect(v?.stringValue == DevicesController.settingsStoppedMessage)
+        // The same cards, every row disabled, the reason under them (§11.3).
+        let v = c.settingsControls()
+        #expect(DevicesController.stoppedNote(in: v)?.stringValue == DevicesController.settingsStoppedMessage)
+        let cards = (v as? NSStackView)?.arrangedSubviews.compactMap { $0 as? InspectorCard } ?? []
+        let controls: [NSControl] = cards.flatMap(\.rows).compactMap { $0.control as? NSControl }
+        #expect(cards.count == 3 && controls.count == 13 && !controls.contains(where: \.isEnabled))
         #expect(c.applySetting(["ui", "appearance", "dark"], failureTitle: "x") == nil)
     }
 

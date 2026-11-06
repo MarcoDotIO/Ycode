@@ -25,7 +25,8 @@ public final class SourceControlShellModel {
         case commit(focus: String?)
         /// A branch's, tag's or stash's history; `branch` for a local branch.
         case history(ref: String, title: String, branch: String?)
-        /// The conflict editor (`conflictEditor`).
+        /// Kept for compatibility; the merge sheet (`conflictEditor`) is an
+        /// overlay over the window, not a pane.
         case conflicts
 
         public var isHistory: Bool { if case .history = self { true } else { false } }
@@ -73,15 +74,21 @@ public final class SourceControlShellModel {
     /// Whether git has been read once.
     public private(set) var hasRead = false
     public var mode: Mode = .changes
-    /// Collapsed rows of the navigator (everything starts expanded).
-    public var collapsed: Set<String> = []
+    /// Collapsed rows of the navigator: everything starts expanded but the
+    /// Repositories groups after Branches (navigators.md round 3 §2).
+    public var collapsed: Set<String> = RepositoriesViewStyle.initiallyCollapsed
     /// The selected navigator row's id.
     public private(set) var selection: String?
     /// The commit editor or a history, over the editor area.
     public internal(set) var pane: Pane?
-    /// The conflict editor while `pane` is `.conflicts`
-    /// (`SourceControlShellModel+Conflicts.swift`).
+    /// The merge sheet while it is up (`SourceControlShellModel+Conflicts.swift`).
     public internal(set) var conflictEditor: ConflictEditorShellModel?
+    /// The merge confirmation, and a merge it started still running
+    /// (`SourceControlShellModel+Merge.swift`).
+    public internal(set) var mergeAlert: MergeAlertState?
+    public internal(set) var isMerging = false
+    /// Opens a web address (View on Host…; set by the window).
+    @ObservationIgnored public var openExternally: (URL) -> Void = { _ in }
     /// A command running in the background ("Pushing…").
     public private(set) var busy: String?
     /// The last command's failure, shown in an alert.
@@ -269,9 +276,9 @@ public final class SourceControlShellModel {
         switch pane {
         case .commit?: if before.changes != read.changes || before.head != read.head || cards.isEmpty { loadCards() }
         case .history?: if before.head != read.head || before.branches != read.branches || before.tags != read.tags { loadHistory() }
-        case .conflicts?: conflictEditor?.update(integration: read.integration, conflicted: read.changes.filter { $0.status == .conflicted }.map(\.path))
-        case nil: break
+        case .conflicts?, nil: break
         }
+        conflictEditor?.update(integration: read.integration, conflicted: read.changes.filter { $0.status == .conflicted }.map(\.path))
         if let p = fileHistoryPath, before.head != read.head { loadFileHistory(p) }
     }
 
@@ -354,9 +361,7 @@ public final class SourceControlShellModel {
         case .deleteBranch(let b):
             confirmation = SourceControlConfirmation(title: "Delete \(q(b))?", message: "The branch is deleted from this repository. Its commits stay reachable from other branches that contain them.",
                                                      choices: [.init(title: "Delete", isDestructive: true, action: .deleteBranch(b, force: false))])
-        case .merge(let r):
-            confirmation = SourceControlConfirmation(title: "Merge \(q(r)) into \(q(current))?", message: "A merge commit is made unless \(q(current)) can fast-forward.",
-                                                     choices: [.init(title: "Merge", isDestructive: false, action: .merge(r))])
+        case .merge(let r): presentMergeAlert(branch: r)
         case .rebaseOnto(let r):
             confirmation = SourceControlConfirmation(title: "Rebase \(q(current)) onto \(q(r))?", message: "The commits of \(q(current)) are replayed on top of \(q(r)).",
                                                      choices: [.init(title: "Rebase", isDestructive: false, action: .rebase(r))])
@@ -384,6 +389,7 @@ public final class SourceControlShellModel {
                                                      choices: [.init(title: "Remove", isDestructive: true, action: .removeRemote(r))])
         case .resolveConflicts(let p): showConflictEditor(path: p)
         case .markResolved(let p): perform(.markResolved([p]))
+        case .mergeInto, .newHostedRemote, .viewOnHost, .exportStash: chooseMore(action)
         }
     }
 
@@ -399,6 +405,7 @@ public final class SourceControlShellModel {
         case .renameBranch(let b): perform(.renameBranch(b, to: first))
         case .addRemote: perform(.addRemote(name: first, url: second))
         case .stash: perform(.stash(message: first))
+        case .exportStash(let ref): exportStash(ref, to: first)
         }
     }
 
@@ -529,7 +536,7 @@ public final class SourceControlShellModel {
     /// The selected file: the Changes row while it is selected, else the
     /// open file (`source-control.md`, "Integrate menu enablement").
     public var selectedFile: String? {
-        if case .conflicts? = pane, let f = conflictEditor?.state.currentFile { return f }
+        if let f = conflictEditor?.state.currentFile { return f }
         if let s = selection, s.hasPrefix("change:"), pane != nil { return String(s.dropFirst(7)) }
         return openPath.map(repoPath)
     }
@@ -554,6 +561,7 @@ public final class SourceControlShellModel {
         if case .history? = pane { m.selectedCommit = selectedCommit }
         m.integration = s.integration
         m.conflictCount = s.changes.filter { $0.status == .conflicted }.count
+        m.otherBranchCount = mergeableBranches.count
         return m
     }
 
@@ -594,6 +602,7 @@ public final class SourceControlShellModel {
                     choices: [.init(title: "Discard", isDestructive: true, action: .discard([p]))])
             }
         case "scmResolveConflicts:": resolveConflicts()
+        case "scmMerge:": showMergeFromMenu()
         case "scmContinueIntegration:": perform(.continueIntegration)
         case "scmAbortIntegration:": askAbort()
         case "scmNewRepository:": perform(.newRepository)
@@ -641,15 +650,14 @@ public final class SourceControlShellModel {
     public func showCommitEditor(focus: String?) {
         saveEditors?()
         pane = .commit(focus: focus)
-        conflictEditor = nil
         if let focus { collapsedCards.remove(focus) }
         loadCards()
     }
 
-    /// Opening a file hides the commit editor or history.
+    /// Opening a file hides the commit editor or history (the merge sheet
+    /// stays: it is modal over the window).
     public func hidePane() {
         pane = nil
-        conflictEditor = nil
     }
 
     private func track(_ t: Task<Void, Never>) {
@@ -718,7 +726,6 @@ public final class SourceControlShellModel {
 
     public func showHistory(ref: String, title: String, branch: String?) {
         pane = .history(ref: ref, title: title, branch: branch)
-        conflictEditor = nil
         history = []
         selectedCommit = nil
         commitDetail = nil

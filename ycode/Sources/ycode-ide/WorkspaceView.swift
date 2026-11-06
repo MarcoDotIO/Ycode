@@ -34,6 +34,7 @@ struct WorkspaceView: View {
         }
         .overlay { BuildBezelOverlay(notifier: model.notifier) }
         .overlay { BreakpointEditorLayer(model: model) }   // DebugEditors.swift
+        .overlay { MergeOverlayLayer(scm: model.sourceControl, app: app) }   // MergeOverlay.swift: the merge alert and sheet
         .navigationTitle(model.windowTitle)
         .modifier(EditorPrompts(model: model))
         .modifier(LanguageSheets(model: model, app: app))

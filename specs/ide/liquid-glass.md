@@ -634,6 +634,71 @@ y 0–44), and below the filter capsule. The outline must be clipped at the
 selector capsule's top edge. Its content may pass under the two capsules
 only.
 
+## 9. Council round 3 measurements (2026-11-05)
+
+Retina (2x) captures of both apps, foreground, key window, 120 fps; the
+same 1400 × 880 grid as §8. Ycode now declares the macOS 27 SDK, so its
+glass layout is the one compared. Checklist rows 68–69 in
+`fidelity-council.md`.
+
+### 9.1 Structure behind the toolbar, the jump bar and the bottom bar
+
+Step 08 again (Bands.swift, 1200 points over 2 s). For each app the frame
+with the reddest band under the bars was taken, and each row's
+upper-quartile green level was read across the editor's width
+(x 300–1130; 255 = untouched white, lower = more red showing through).
+
+| Row (y) | Reference | Ycode now |
+|---|---|---|
+| Toolbar band above the shapes, 0–6 | 226–231 | 241, flat |
+| Toolbar shapes' row, 9–42 | 252–255 (the white capsules) | 247–255 |
+| Jump bar, 45 | 235 | 239 |
+| Jump bar, 51 | 247 | 240 |
+| Jump bar, 54–63 | **251–253** | 242–245 |
+| Jump bar, 66 | 248 | 244 |
+| Jump bar, 72 | 236 | 244 |
+| Jump bar, 78–81 | **226–228** | 245 |
+| Jump bar's separator, 84 | 204 | 230 |
+| Bottom bar, 844–874 (another frame, band below its separator) | 238, 234, 231, **230 at 853**, 232, 237, 243, 248, 252, 254, 255 | 219 at the separator, then **237–240 flat** to the bottom |
+
+1. **The reference keeps the content's structure.** Behind the jump bar
+   the red darkens towards its lower edge (226 at y 81), lightens in its
+   middle (253 at y 57–63) and darkens again at its top (235 at y 45),
+   following the bands under it, blurred over about 15 points (§8.3:
+   σ about 6). The toolbar band above the shapes is a second, separate
+   red smear (226–231). Under the bottom bar the red fades from 230 near
+   the separator to white about 20 points down. Seen together, the top
+   shows **two distinct blurred smears, one behind the toolbar row and one
+   behind the jump bar, each about 15 points tall**.
+2. **Ycode draws a uniform wash.** Its jump bar is 239–245 at every row
+   (a flat pink tint with no bands in it), its toolbar band 241, and its
+   bottom bar 237–240 at every row. The tint is present (Gemini's
+   "opaque jump bar" does not hold) but the content's shape is not.
+3. **Target.** Each bar region shows the content behind it **blurred,
+   not averaged**: a Gaussian of σ about 6 points over the content that is
+   actually under that region (the editor's text layer must extend under
+   the toolbar, the jump bar and the bottom bar), scaled to the shares of
+   §8.3 (toolbar band about 18 %, jump bar about 8.5 %, bottom bar about
+   12 % of the content's darkness). No vertical gradient by height.
+
+### 9.2 The navigator's selector bar
+
+Step 15 (the navigator scrolled 500 points so that rows pass under the
+selector capsule):
+
+| Element | Reference | Ycode now |
+|---|---|---|
+| Capsule fill over scrolled rows | about **#E8E8E9** | about #F0F0F1 |
+| Rows under the capsule | **blurred to colour smudges**: a row's text changes the fill only to #DFDFE0–#E3E1E0 in soft bands; an orange file icon tints it to #F1DED9; **no letter strokes** | **legible**: "Model16" shows as crisp 1-point strokes (#D1D1D3–#D6D5D5 on #F0F0F1) |
+| Navigator glyphs | **black (#000000)** | mid-grey (#858585 to #9C9C9C) |
+| Selected segment's pill | #D3D3D4, x 10–36 | #D7D7D9, x 10.5–39.5 |
+| Capsule edges | rim at y 55–56 and 75–76 over the pane's #EDEDEE | rim at y 53–54 and 77–78 |
+
+Target: the selector capsule blurs what passes under it as the toolbar
+does (§9.1, σ about 6) and is a little more opaque (#E8E8E9 over white
+rows); its glyphs are drawn in the primary label colour, not secondary.
+§8.4 (rows never draw above the capsule's top) still applies.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -660,3 +725,4 @@ only.
 | §7.4 pane colours | 3 | Still 01: colour runs (fully covered pixels, sRGB) |
 | §7.5 toolbar during the inspector slide | 3 | Recording 08: per-frame changed regions |
 | §8 round 2: active glass, narrow toolbar, bands, navigator | 3 | Council r2 1x stills and recordings (foreground, key window). Column runs; capsule rims located as local minima; per-frame region means over the bands scroll; before/after differences. `research/tools/council-r2/measure_r2.py` (`bars`, `navigator`); the narrow still's scale from its alpha channel |
+| §9 round 3: structure behind the bars, the selector capsule | 3 | Council round 3 Retina recordings of step 08 (per-row upper-quartile green across the editor at the reddest frame of each app) and stills of step 15 (colour runs through the selector capsule), both apps; measured in the dirty room |

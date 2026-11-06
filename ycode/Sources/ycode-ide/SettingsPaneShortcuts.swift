@@ -76,15 +76,15 @@ struct ShortcutsSettingsPane: View {
                 }
                 .shellTarget("settings shortcuts list")
             }
-            .background { RoundedRectangle(cornerRadius: 8, style: .continuous).fill(c.content) }
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(c.fieldStroke, lineWidth: 1) }
+            // A card (settings.md R3.3).
+            .background { RoundedRectangle(cornerRadius: SettingsLayout.cardRadius, style: .continuous).fill(SettingsPalette(scheme).card) }
+            .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.cardRadius, style: .continuous))
             editor(current, c)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
+        .padding(.horizontal, SettingsLayout.cardInset)
+        .padding(.top, 12)
         .padding(.bottom, 16)
-        .background(ShellSettingsView.formBackground(c))
+        .background(SettingsPalette(scheme).detail)
     }
 
     func header(_ c: ShellColors) -> some View {
@@ -112,7 +112,7 @@ struct ShortcutsSettingsPane: View {
             .foregroundStyle(c.label)
             .padding(.horizontal, 10)
             .frame(height: Self.rowHeight)
-            .background(on ? c.rowSelection : (odd ? c.sidebar : Color.clear))
+            .background(on ? c.rowSelection : (odd ? SettingsPalette(scheme).separator.opacity(0.5) : Color.clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

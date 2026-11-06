@@ -189,6 +189,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         }
         e.onQuickHelp = { [weak self] url, p, rect in self?.showQuickHelp(url: url, at: p, anchor: rect) }
         e.onJumpToDefinition = { [weak self] url, p in self?.jumpToDefinition(url: url, at: p) }
+        e.onContentMovedUnderBars = { [weak self] in self?.debugArea.bottomBarBackdrop?.needsDisplay = true }
         wireEditorExtras(e)
         e.onSelectionChange = { [weak self, weak e] url, p in
             // An editor showing another view (an image) has no position.
@@ -253,6 +254,10 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         // the debug bar, a translucent bar with a hard edge; the editor's
         // safe area ends at the bar, so its text scrolls clear of it.
         let overlayBar = DebugAreaController.translucentBar
+        // The bottom bar shows the editors' text beneath it (liquid-glass.md §9.1).
+        debugArea.bottomBarBackdrop?.sources = { [weak self] in
+            self.map { $0.editorArea.tab.editors.flatMap { [$0.scrollView, $0.minimap] as [NSView] } } ?? []
+        }
         if overlayBar { editorArea.view.additionalSafeAreaInsets = NSEdgeInsets(top: 0, left: 0, bottom: DebugAreaController.debugBarHeight, right: 0) }
         NSLayoutConstraint.activate([
             editorArea.view.leadingAnchor.constraint(equalTo: column.leadingAnchor),
@@ -829,7 +834,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     func updateInterfaceInspectors() {
         guard let ib = interfaceEditor else {
             inspector.setExtraInspectors([], provider: nil)
-            library?.objectsAvailable = false
+            library?.setObjects(for: nil)
             return
         }
         let tabs = InterfaceBuilderController.InspectorTab.allCases
@@ -837,7 +842,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
             ib?.inspectorView(tabs[i]) ?? NSView()
         }, select: CommandTable.inspectors.count + InterfaceBuilderController.InspectorTab.attributes.rawValue)
         ib.onChange = { [weak self] in self?.inspector.refresh() }
-        library?.objectsAvailable = true
+        library?.setObjects(for: ib.document)
     }
 
     /// The String Catalog editor, while it is shown.
@@ -983,6 +988,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     func editorFocused(_ e: SourceEditorController) {
         if let url = e.fileURL { inspector.show(file: url) }
         editorArea.reloadTabBar()
+        editorArea.updatePaneChrome()   // editor-area.md E.2
         updateWindowTitle()
         updateToolbarState()
     }
@@ -1034,6 +1040,9 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         let current = editor.history.current
         let e = editorArea.split(sideBySide: sideBySide)
         if Preferences.shared.newEditorPanesOpenWith == .sameDocument, let current { open(path: current, line: nil, in: e) } else { showEmptyEditor(e); updateWindowTitle() }
+        // The new pane takes keyboard focus, so the navigator's selection
+        // turns grey (editor-area.md E.2 item 7, navigators.md round 3 §1).
+        window?.makeFirstResponder(e.textView)
     }
 
     /// View ▸ Show / Hide Editor Tab Bar.
@@ -2099,7 +2108,7 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
     @objc public func showLibrary(_ sender: Any?) -> LibraryController {
         let lib = library ?? LibraryController()
         library = lib
-        lib.objectsAvailable = interfaceEditor != nil
+        lib.setObjects(for: interfaceEditor?.document)
         lib.onInsertObject = { [weak self] kind in
             guard self?.interfaceEditor?.insert(kind) != nil else { NSSound.beep(); return }
         }
@@ -2110,14 +2119,15 @@ public final class WorkspaceWindowController: NSWindowController, NSToolbarDeleg
         if window?.isVisible == true {
             let panel = libraryPanel ?? {
                 let p = NSPanel(contentViewController: lib)
-                p.styleMask = [.titled, .closable, .resizable, .utilityWindow]
+                // A fixed-size floating panel (`library.md` §Panel).
+                p.styleMask = [.titled, .closable, .utilityWindow]
                 p.title = "Library"
                 p.isFloatingPanel = true
                 p.hidesOnDeactivate = true
                 return p
             }()
             libraryPanel = panel
-            if let w = window { panel.setFrameTopLeftPoint(NSPoint(x: w.frame.midX - 210, y: w.frame.maxY - 60)) }
+            if let w = window { panel.setFrameTopLeftPoint(NSPoint(x: w.frame.midX - panel.frame.width / 2, y: w.frame.maxY - 60)) }
             panel.makeKeyAndOrderFront(nil)
         }
         return lib

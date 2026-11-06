@@ -118,6 +118,10 @@ extern int open(const char *path, int flags, ...);
 extern long write(int fd, const void *buf, size_t n);
 extern long pwrite(int fd, const void *buf, size_t n, int64_t offset);
 extern uint64_t mach_absolute_time(void);
+struct mach_timebase_info {
+    uint32_t numer, denom;
+};
+extern int mach_timebase_info(struct mach_timebase_info *info);
 extern dispatch_queue_t dispatch_queue_create(const char *label, void *attr);
 extern void dispatch_async_f(dispatch_queue_t queue, void *context, dispatch_function_t work);
 extern dispatch_time_t dispatch_time(dispatch_time_t when, int64_t delta);
@@ -631,8 +635,29 @@ static struct {
 static uint32_t nextIdentity = 1;
 static uint64_t lastTimestamp;
 
+/* The host's age of the event being handled, in microseconds (the touch,
+ * key and button records' reserved word; uikit-feel-ycode.md §4.0): the
+ * event is stamped that much before its arrival, so input the guest took
+ * late keeps the spacing it was made with. 0: the arrival time. */
+static uint32_t eventAge;
+static uint32_t timebaseNumer, timebaseDenom;
+
 static uint64_t timestamp(void) {
-    uint64_t t = mach_absolute_time();
+    uint64_t now = mach_absolute_time();
+    uint64_t t = now;
+    if (eventAge) {
+        if (!timebaseDenom) {
+            struct mach_timebase_info tb = {0, 0};
+            if (mach_timebase_info(&tb) == 0 && tb.numer && tb.denom) {
+                timebaseNumer = tb.numer;
+                timebaseDenom = tb.denom;
+            } else {
+                timebaseNumer = 125, timebaseDenom = 3; /* the 24 MHz guest timebase */
+            }
+        }
+        uint64_t ticks = (uint64_t)eventAge * 1000u * timebaseDenom / timebaseNumer;
+        t = ticks < now ? now - ticks : 0;
+    }
     if (t < lastTimestamp) t = lastTimestamp;
     lastTimestamp = t;
     return t;
@@ -1243,16 +1268,22 @@ static void handle_event(const uint8_t *body, uint32_t size) {
         }
         /* Display 0: the main display; 1: the second (foldable.md §8.2 I1). */
         uint32_t display = le32(k);
+        eventAge = le32(k + 8 + 12);
         touch(display == 1 ? &innerTouchscreen : &touchscreen, k + 8, count);
+        eventAge = 0;
         return;
     }
     case 2:
         if (size < 32) break;
+        eventAge = le32(k + 12);
         key(&keyboard, le32(k), le32(k + 4), le32(k + 8));
+        eventAge = 0;
         return;
     case 3:
         if (size < 32) break;
+        eventAge = le32(k + 12);
         button(le32(k), le32(k + 4), le32(k + 8));
+        eventAge = 0;
         return;
     case 4:
         if (size < 24) break;

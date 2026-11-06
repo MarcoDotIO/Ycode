@@ -50,7 +50,9 @@ import YcodeIDECore
     @Test func paneOrder() {
         #expect(SettingsPaneOrder.all.count == 13)
         #expect(Array(SettingsPaneOrder.all.prefix(4)) == ["General", "Appearance", "Accounts", "Coding Assistant"])
+        // The reference's twelve in its order, then Simulators (Ycode's own, macOS only).
+        #expect(SettingsPaneOrder.all.last == "Simulators")
         #expect(SettingsPaneOrder.linux == ["General", "Appearance", "Accounts", "Coding Assistant", "Behaviors", "Navigation",
-                                            "Notifications", "Editing", "Shortcuts", "Source Control", "Locations"])
+                                            "Notifications", "Editing", "Shortcuts", "Source Control", "Components", "Locations"])
     }
 }

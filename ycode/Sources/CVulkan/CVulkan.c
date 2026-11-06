@@ -1086,6 +1086,105 @@ VkResult yvk_submit_on(yvk_context *ctx, uint32_t queue, VkCommandBuffer cb, VkS
     return g_vk.vkQueueSubmit2(ctx->queues[queue], 1, &si, VK_NULL_HANDLE);
 }
 
+/* The user's window-system session, if any: the Wayland compositor named by
+   $WAYLAND_DISPLAY (or wayland-0) in $XDG_RUNTIME_DIR, else the X server of
+   $DISPLAY. Each library is opened at run time; nothing is linked. */
+typedef void *(*yvk_wl_connect_fn)(const char *);
+typedef void (*yvk_wl_disconnect_fn)(void *);
+typedef void *(*yvk_xcb_connect_fn)(const char *, int *);
+typedef int (*yvk_xcb_error_fn)(void *);
+typedef void (*yvk_xcb_disconnect_fn)(void *);
+typedef const void *(*yvk_xcb_setup_fn)(void *);
+typedef struct { void *data; int rem; int index; } yvk_xcb_screen_iterator;
+typedef yvk_xcb_screen_iterator (*yvk_xcb_roots_fn)(const void *);
+typedef VkBool32 (*yvk_wl_support_fn)(VkPhysicalDevice, uint32_t, void *);
+typedef VkBool32 (*yvk_xcb_support_fn)(VkPhysicalDevice, uint32_t, void *, uint32_t);
+
+int yvk_presents_to_session(const char *deviceName) {
+    char err[64];
+    if (yvk_load(err, sizeof err) != 0) return -1;
+    void *wl = NULL, *wlLib = NULL, *xcb = NULL, *xcbLib = NULL;
+    uint32_t visual = 0;
+    const char *runtime = getenv("XDG_RUNTIME_DIR");
+    if (runtime && *runtime) {
+        const char *name = getenv("WAYLAND_DISPLAY");
+        char path[512];
+        snprintf(path, sizeof path, "%s/%s", runtime, name && *name ? name : "wayland-0");
+        if (access(path, F_OK) == 0 && (wlLib = dlopen("libwayland-client.so.0", RTLD_NOW | RTLD_LOCAL))) {
+            yvk_wl_connect_fn connect = (yvk_wl_connect_fn)dlsym(wlLib, "wl_display_connect");
+            if (connect) wl = connect(name && *name ? name : "wayland-0");
+        }
+    }
+    const char *x = getenv("DISPLAY");
+    if (!wl && x && *x && (xcbLib = dlopen("libxcb.so.1", RTLD_NOW | RTLD_LOCAL))) {
+        yvk_xcb_connect_fn connect = (yvk_xcb_connect_fn)dlsym(xcbLib, "xcb_connect");
+        yvk_xcb_error_fn failed = (yvk_xcb_error_fn)dlsym(xcbLib, "xcb_connection_has_error");
+        yvk_xcb_setup_fn setup = (yvk_xcb_setup_fn)dlsym(xcbLib, "xcb_get_setup");
+        yvk_xcb_roots_fn roots = (yvk_xcb_roots_fn)dlsym(xcbLib, "xcb_setup_roots_iterator");
+        if (connect && failed && setup && roots) {
+            int screen = 0;
+            xcb = connect(NULL, &screen);
+            if (xcb && failed(xcb)) xcb = NULL; /* the failed connection is freed with the process */
+            if (xcb) {
+                yvk_xcb_screen_iterator it = roots(setup(xcb));
+                void (*next)(yvk_xcb_screen_iterator *) = (void (*)(yvk_xcb_screen_iterator *))dlsym(xcbLib, "xcb_screen_next");
+                for (int k = 0; k < screen && it.rem > 0 && next; k++) next(&it);
+                /* xcb_screen_t: root_visual is the u32 at byte 32 (the X11 protocol's SCREEN). */
+                if (it.data) memcpy(&visual, (char *)it.data + 32, 4);
+            }
+        }
+    }
+    int result = 0;
+    if (wl || xcb) {
+        const char *exts[2] = {"VK_KHR_surface", wl ? "VK_KHR_wayland_surface" : "VK_KHR_xcb_surface"};
+        VkApplicationInfo app = {VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "ycode-display-check", 1, "ycode", 1,
+                                 VK_API_VERSION_1_3};
+        VkInstanceCreateInfo ici = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, NULL, 0, &app, 0, NULL, 2, exts};
+        VkInstance instance = VK_NULL_HANDLE;
+        if (g_vk.vkCreateInstance(&ici, NULL, &instance) == VK_SUCCESS) {
+            PFN_vkEnumeratePhysicalDevices enumerate =
+                (PFN_vkEnumeratePhysicalDevices)g_vk.vkGetInstanceProcAddr(instance, "vkEnumeratePhysicalDevices");
+            PFN_vkGetPhysicalDeviceProperties properties =
+                (PFN_vkGetPhysicalDeviceProperties)g_vk.vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceProperties");
+            PFN_vkGetPhysicalDeviceQueueFamilyProperties families = (PFN_vkGetPhysicalDeviceQueueFamilyProperties)
+                g_vk.vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceQueueFamilyProperties");
+            yvk_wl_support_fn wlSupport = (yvk_wl_support_fn)
+                g_vk.vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceWaylandPresentationSupportKHR");
+            yvk_xcb_support_fn xcbSupport = (yvk_xcb_support_fn)
+                g_vk.vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceXcbPresentationSupportKHR");
+            PFN_vkDestroyInstance destroy = (PFN_vkDestroyInstance)g_vk.vkGetInstanceProcAddr(instance, "vkDestroyInstance");
+            if (enumerate && properties && families && (wl ? (void *)wlSupport : (void *)xcbSupport)) {
+                uint32_t n = 0;
+                enumerate(instance, &n, NULL);
+                VkPhysicalDevice devices[16];
+                if (n > 16) n = 16;
+                enumerate(instance, &n, devices);
+                for (uint32_t i = 0; i < n && !result; i++) {
+                    VkPhysicalDeviceProperties p;
+                    properties(devices[i], &p);
+                    if (deviceName && strcmp(deviceName, p.deviceName) != 0) continue;
+                    uint32_t nf = 0;
+                    families(devices[i], &nf, NULL);
+                    VkQueueFamilyProperties qf[32];
+                    if (nf > 32) nf = 32;
+                    families(devices[i], &nf, qf);
+                    for (uint32_t f = 0; f < nf && !result; f++) {
+                        if (!(qf[f].queueFlags & VK_QUEUE_GRAPHICS_BIT)) continue;
+                        result = wl ? wlSupport(devices[i], f, wl) == VK_TRUE : xcbSupport(devices[i], f, xcb, visual) == VK_TRUE;
+                    }
+                }
+            }
+            if (destroy) destroy(instance, NULL);
+        }
+    }
+    if (wl) ((yvk_wl_disconnect_fn)dlsym(wlLib, "wl_display_disconnect"))(wl);
+    if (xcb) {
+        yvk_xcb_disconnect_fn disconnect = (yvk_xcb_disconnect_fn)dlsym(xcbLib, "xcb_disconnect");
+        if (disconnect) disconnect(xcb);
+    }
+    return result;
+}
+
 /* An empty compute kernel (GLSL: layout(local_size_x = 1) in; void main() {}). */
 static const uint32_t kickKernel[] = {
     0x07230203, 0x00010600, 0x0008000b, 0x0000000a, 0x00000000, 0x00020011, 0x00000001, 0x0006000b,

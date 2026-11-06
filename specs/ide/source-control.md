@@ -120,10 +120,37 @@ is refused before git runs; a path outside the repository is refused.
   verified on a repository created by the test (level 3).
 - Navigator groups, commit editor, history and inspector labels:
   `reference-ui-4.md` (level 3).
+- Merge workflow and the merge sheet: council round 3 captures (level 3),
+  in `merge-sheet.md`.
 - OPEN QUESTION: Xcode's exact badge letters for renamed/conflicted files;
   what "Recents" lists exactly (Ycode uses the reflog); per-hunk staging;
   the Commit button menu's items; Push/Pull option sheets (remote and
   branch choice).
+
+## Merging from the Source Control navigator (council round 3, 2026-11-05)
+
+The reference starts a merge from a branch row's context menu ("Merge
+“feature” into “main”…"), asks in a centred confirmation alert (default
+button **Merge**), and resolves conflicts in a **modal merge sheet** over
+the veiled window: a file list, two aligned panes with full-width row
+shading, a centre gutter of choice tokens with a Choose menu, per-pane
+commit footers with a change stepper, and Cancel and Merge buttons. The
+measured description, with the menu's items and order, the alert's text
+and timings, the sheet's geometry, colours and transitions, is
+**`merge-sheet.md`**. It replaces the in-window three-pane conflict editor
+described under "Ycode implementation" below (and in `comparison.md`);
+the git operations underneath are unchanged.
+
+**Ycode implementation (B3-MERGE, 2026-11-05).** Both IDEs now start a
+merge this way and resolve every conflict (merge, rebase, cherry-pick,
+pull, stash apply) in the merge sheet, drawn from the shared model
+(`MergeSheet.swift`, `ConflictEditorState+Sheet.swift`); the macOS
+navigator's Source Control rows gained their context menu, and
+Integrate gained **Merge…** after Cherry-Pick…. Details, tests and every
+"Ycode's choice, open question" are in `merge-sheet.md` §12. The local
+branch row's menu below is replaced by `merge-sheet.md` §1.1's; the
+current branch's row follows §12; Rebase stays on remote branch rows.
+Compare Files keeps the three-pane `ConflictEditorController`.
 
 ## Ycode implementation: branch workflows (SCM-BRANCHES, 2026-10-31)
 
@@ -199,8 +226,8 @@ Rows carry keys; groups get `group:Branches|Tags|Remotes`, remotes
 |---|---|
 | Repository | New Branch…, New Tag… — Add Remote… |
 | Branches / Tags / Remotes group | New Branch… / New Tag… / Add Remote… |
-| Branch (not current) | Check Out “b”… — New Branch from “b”…, New Tag from “b”… — Merge “b” into “current”…, Rebase “current” onto “b”… — Push “b”… (with a remote) — Rename…, Delete… |
-| Current branch | New Branch from…, New Tag from… — Push “b”…, Pull… (with a remote) — Rename…, Delete… (disabled) |
+| Branch (not current) | `merge-sheet.md` §1.1 (12 items in 6 groups) |
+| Current branch | `merge-sheet.md` §12 (Ycode's choice, open question 7) |
 | Remote branch | Check Out “b”… — New Branch from “r/b”… — Merge…, Rebase… — Delete “b” from “r”… |
 | Tag | New Branch from “t”…, Push “t”… (with a remote) — Delete… |
 | Stash | Apply Stashed Changes, Apply and Delete Stash — Delete… |
@@ -209,9 +236,9 @@ Rows carry keys; groups get `group:Branches|Tags|Remotes`, remotes
 
 Check out, merge, rebase and the stash items are disabled while an
 operation is stopped. Selecting a conflicted change opens the conflict
-editor instead of the commit editor. A conflicting merge, rebase,
-cherry-pick, pull or stash apply opens it on the first conflicted file;
-one that completes closes it.
+editor (now the merge sheet) instead of the commit editor. A conflicting
+merge, rebase, cherry-pick, pull or stash apply opens it on the first
+conflicted file; one that completes closes it.
 
 ### Integrate menu additions
 
@@ -304,27 +331,24 @@ the Flatpak `git` is the host-tool wrapper (`HostTool.path("git")`).
   Repository…, enabled by `IntegrateMenuState`.
 - Paths: a workspace opened through a link is mapped to git's real paths
   and back (`repoPath`, `workspacePath`).
-- **Conflict editor** (B3-CONFLICT, 2026-11-05, #75) over the editor
-  area, as `comparison.md` describes the AppKit one: both IDEs draw the
-  core's `ConflictEditorState` (`YcodeIDECore/SourceControl/`: the files
-  and the shown one, its `MergeDocument`, the selected change, the
-  compared pair, hand editing, every title, count and enablement);
-  `YcodeIDEShell/ConflictEditorShellModel.swift` reads and writes git off
-  the main actor, `SourceControlShellModel+Conflicts.swift` opens and
-  closes it, and `ycode-ide/ConflictEditorView.swift` draws it: the top
-  row, the hunk bar (choices and pairs as capsule segments sized to their
-  titles), the two versions side by side with line numbers, "Edited
-  Change" while a change is written by hand, and the result, tinted per
-  change; clicking a result line selects its change. A conflicting merge,
-  rebase, cherry-pick, pull or stash apply opens it on the first
-  conflicted file (instead of a notice); one that completes, or an abort,
-  closes it. Selecting a conflicted change, its Resolve Conflicts… and
-  Integrate ▸ Resolve Conflicts… open it; Integrate's Mark Selected Files
-  as Resolved writes its result there. Integrate shows Resolve
-  Conflicts…, Continue <operation> and Abort <operation> only while an
-  operation is stopped or files conflict (`MenuConditions`). Abort, from
-  the editor, the banner or the menu, asks "Abort the <operation>?"
-  first.
+- **Merge sheet** (B3-MERGE, 2026-11-05; it replaces B3-CONFLICT's
+  in-window conflict editor of #75): the alert and the sheet of
+  `merge-sheet.md` over the window (`ycode-ide/MergeOverlay.swift`,
+  `MergeAlertCard.swift`, `MergeSheetView.swift`,
+  `MergeComparisonView.swift`), drawn from the core's
+  `ConflictEditorState`; `YcodeIDEShell/ConflictEditorShellModel.swift`
+  reads and writes git off the main actor and performs Merge and Cancel,
+  `SourceControlShellModel+Conflicts.swift` opens and closes it and
+  `SourceControlShellModel+Merge.swift` shows the alert and handles View
+  on Host and Export Stashed Changes. A conflicting merge, rebase,
+  cherry-pick, pull or stash apply opens it on the first conflicted file
+  (instead of a notice); one that completes, or an abort, closes it.
+  Selecting a conflicted change, its Resolve Conflicts… and Integrate ▸
+  Resolve Conflicts… open it; Integrate's Mark Selected Files as Resolved
+  writes its result there. Integrate shows Resolve Conflicts…, Continue
+  <operation> and Abort <operation> only while an operation is stopped or
+  files conflict (`MenuConditions`). Abort, from the sheet's Cancel, the
+  banner or the menu, asks "Abort the <operation>?" first.
 
 Tests: `YcodeIDEShellTests/SourceControlShellTests.swift` (repositories with
 a repository-local `user.name` and `user.email` and a bare repository as the
@@ -337,10 +361,11 @@ rebase aborted after the question; a cherry-pick continued) and
 `YcodeIDECoreTests/ConflictEditorStateTests.swift`. End to end on Linux:
 `ycode-ide` with `YCODE_IDE_SCM=<prefix>` (`ShellDriver+SourceControl.swift`)
 and `scripts/linux-conflict/run.sh` (`YCODE_IDE_CONFLICT`,
-`ShellDriver+Conflicts.swift`: the Merger repository's merge resolved
-through the pointer, one file by choosing sides and one by typing, the
-merge continued, a cherry-pick continued and a rebase aborted, then
-checked with git).
+`ShellDriver+Conflicts.swift`: the Merger repository's merge started
+from the branch row's menu and resolved in the merge sheet through the
+pointer, one file by choosing sides and one by typing, completed with
+Merge; a cherry-pick through the sheet and a rebase cancelled and
+aborted, then checked with git).
 
 ### Evidence
 
@@ -349,5 +374,5 @@ checked with git).
 - Layout and labels: `reference-ui-4.md` §2–§3 (level 3) through the AppKit
   IDE's implementation. The change-row menu items, the banner, the
   questions' wording and the push and pull fallbacks are Ycode's design.
-- The conflict editor: Ycode's design (`comparison.md`, "Ycode
-  implementation", and its open question on the reference's layout).
+- The merge sheet: `merge-sheet.md` (level 3, council round 3) and its
+  §12 choices.
