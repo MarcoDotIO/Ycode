@@ -307,8 +307,22 @@ public enum DefaultHostServices {
                 log("warning: cannot start the audio host service: \(error)")
             }
         }
+        if !SimIdentityHostService.disabled {
+            do {
+                let s = try SimIdentityHostService(host: host, log: log)
+                s.start()
+                simIdentity = s
+                out.append((SimIdentityHostService.serviceName, s.servicePort))
+            } catch {
+                log("warning: cannot start the simulator identity host service: \(error)")
+            }
+        }
         return out
     }
+
+    /// The simulator identity service of this run, if it started
+    /// (`SimIdentityHostService.swift`).
+    nonisolated(unsafe) public private(set) static var simIdentity: SimIdentityHostService?
 
     /// The audio service of this run, if it started (audio-host.md).
     nonisolated(unsafe) public private(set) static var audio: AudioHostService?

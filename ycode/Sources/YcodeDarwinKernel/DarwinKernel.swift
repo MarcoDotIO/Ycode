@@ -472,6 +472,10 @@ public final class DarwinKernel {
     var ulocks: [UInt64: ULockQueue] = [:]
     /// The process record of this image (`schedProcess`).
     weak var schedProcessCache: DarwinProcess?
+    /// The image's program is on the UI path (`HostSched.uiPathPrograms`):
+    /// its host threads may use the host CPUs kept for it
+    /// (`YCODE_HOST_SCHED_UI_CPUS`). Set by the launcher before the image runs.
+    public var hostUIPath = false
     /// Senders blocked on a full queue of a port this image receives, 16
     /// bits per class (class c at bit 16·c): the send push of
     /// `scheduling-policy.md` §4.6. Changed by the senders without L0.
@@ -635,13 +639,13 @@ public final class DarwinKernel {
             let start = KernelClock.now()
             defer {
                 profile.noteHandler(key, KernelClock.now() &- start)
-                if HostSched.backend != .none { HostSched.apply(max(context.schedClass, sendPushClass)) }
+                applyHostPolicy(context)
             }
             return handleTrap(&frame, context: context, memory: memory, beforeTrap: beforeTrap)
         }
         let outcome = handleTrap(&frame, context: context, memory: memory, beforeTrap: beforeTrap)
         // The host priority follows the class (scheduling-policy.md §4.7), outside the lock.
-        if HostSched.backend != .none { HostSched.apply(max(context.schedClass, sendPushClass)) }
+        applyHostPolicy(context)
         return outcome
     }
 

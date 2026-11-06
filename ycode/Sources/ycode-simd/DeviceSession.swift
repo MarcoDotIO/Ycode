@@ -115,8 +115,10 @@ final class DeviceSession: @unchecked Sendable {
     /// The file-event service too: a client whose look-up fails goes on
     /// without events (fsevents-host.md §7), and the first clients
     /// (fileindexerd, UserEventAgent) start after the session is bound.
+    /// The simulator identity service too: its one client (apsd) starts
+    /// after the session is bound (SimIdentityHostService.swift).
     static let lateHostServices: Set<String> = [PowerManagementHostService.serviceName, AudioHostService.serviceName,
-                                                FSEventsHostService.serviceName]
+                                                FSEventsHostService.serviceName, SimIdentityHostService.serviceName]
     private var deferredRegistrations: [(name: String, port: UInt32)] = []
 
     /// The control channel arrived (service thread): start the session thread.

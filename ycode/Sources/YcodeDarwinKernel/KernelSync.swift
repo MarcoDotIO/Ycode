@@ -327,7 +327,30 @@ public final class KernelLock: @unchecked Sendable {
     /// one: `HostSched.apply` (at the end of its trap) moves it back to its
     /// own class, after the demotion delay.
     @inline(__always) private func withdrawHolder() {
+        finishWithdrawal(takeHolderWord())
+    }
+
+    /// The first half of `withdrawHolder`, under the lock: the holder word
+    /// goes to 0 (no waiter can raise this hold any more). Returns the old
+    /// word when the hold was raised, else 0.
+    @inline(__always) private func takeHolderWord() -> UInt64 {
         let old = holderWord.exchange(0, ordering: .sequentiallyConsistent)
+        return (old >> 36) & 0xF == 0 ? 0 : old
+    }
+
+    /// `YCODE_LOCK_WITHDRAW_AFTER_UNLOCK` (default on; `=0` off): a raised
+    /// holder waits for the waiters still raising it, and lowers its class
+    /// weight, after it has released the mutex. Before, it waited with the
+    /// lock still held: a raise is a cgroup write (microseconds to
+    /// milliseconds on a busy host), and 10 % of the port lock's hold time
+    /// in a boot was this wait (`sched_yield`, boot-profile.md §12).
+    nonisolated(unsafe) static var withdrawAfterUnlock =
+        getenv("YCODE_LOCK_WITHDRAW_AFTER_UNLOCK").map { String(cString: $0) != "0" } ?? true
+
+    /// The second half: once no waiter is still raising the old hold, its
+    /// class weight goes back (or the raised class is recorded as applied).
+    /// Holds no lock of its own; a word of 0 does nothing.
+    @inline(__always) private func finishWithdrawal(_ old: UInt64) {
         let raised = Int((old >> 36) & 0xF) - 1
         guard raised >= 0 else { return }
         var spins = 0
@@ -428,8 +451,15 @@ public final class KernelLock: @unchecked Sendable {
         if HostSched.promoting { publishHolder() }
     }
 
-    fileprivate func noteReleasing() {
-        if HostSched.promoting { withdrawHolder() }
+    /// Bookkeeping as the holder lets go (lock still held). Returns a raised
+    /// hold's old holder word for `finishWithdrawal` after the unlock
+    /// (`YCODE_LOCK_WITHDRAW_AFTER_UNLOCK`), else 0.
+    @discardableResult
+    fileprivate func noteReleasing() -> UInt64 {
+        var withdrawn: UInt64 = 0
+        if HostSched.promoting {
+            if Self.withdrawAfterUnlock { withdrawn = takeHolderWord() } else { withdrawHolder() }
+        }
         let held = KernelClock.now() &- holdStart
         if trapProfile != nil || tracksHolder {
             holderTID.store(0, ordering: .relaxed)
@@ -456,6 +486,7 @@ public final class KernelLock: @unchecked Sendable {
             trapProfile.noteHold(TrapProfile.key(for: currentContext), held, usage: usage)
         }
         if slowHoldNanoseconds > 0, held >= slowHoldNanoseconds, let r = slowHoldReporter { r(currentContext, held) }
+        return withdrawn
     }
 
     public convenience init() {
@@ -548,12 +579,13 @@ public final class KernelLock: @unchecked Sendable {
         currentContext = context
         noteAcquired()
         defer {
-            noteReleasing()
+            let withdrawn = noteReleasing()
             currentContext = nil
             depth = 0
             owner.store(0, ordering: .relaxed)
             let wakes = takeDeferredWakes()
             pthread_mutex_unlock(mutex)
+            finishWithdrawal(withdrawn)
             Self.signal(wakes)
         }
         return try body()
@@ -660,12 +692,13 @@ public final class KernelLock: @unchecked Sendable {
             defer { KernelThreadLocks.current.held.append(self) }
         }
         let saved = currentContext
-        noteReleasing()
+        let withdrawn = noteReleasing()
         owner.store(0, ordering: .relaxed)
         depth = 0
         currentContext = nil
         let wakes = takeDeferredWakes()
         pthread_mutex_unlock(mutex)
+        finishWithdrawal(withdrawn)
         Self.signal(wakes)
         sched_yield()
         lockMutex(for: saved)
@@ -691,12 +724,13 @@ public final class KernelLock: @unchecked Sendable {
         }
         defer { if isSplit { KernelThreadLocks.current.held.append(self) } }
         let saved = currentContext
-        noteReleasing()
+        let withdrawn = noteReleasing()
         owner.store(0, ordering: .relaxed)
         depth = 0
         currentContext = nil
         let wakes = takeDeferredWakes()
         pthread_mutex_unlock(mutex)
+        finishWithdrawal(withdrawn)
         Self.signal(wakes)
         defer {
             lockMutex(for: saved)
@@ -739,7 +773,9 @@ public final class KernelLock: @unchecked Sendable {
         // signals go out first, still under the lock.
         Self.signal(takeDeferredWakes())
         let saved = currentContext
-        noteReleasing()
+        // The condition wait releases the mutex itself: the withdrawal is
+        // finished first, as before.
+        finishWithdrawal(noteReleasing())
         owner.store(0, ordering: .relaxed)
         depth = 0
         currentContext = nil
@@ -1214,12 +1250,13 @@ extension KernelLock {
 
     /// Gives up ownership and the mutex, then sends the deferred wakeups.
     fileprivate func releaseRaw() {
-        noteReleasing()
+        let withdrawn = noteReleasing()
         currentContext = nil
         depth = 0
         owner.store(0, ordering: .relaxed)
         let wakes = takeDeferredWakes()
         pthread_mutex_unlock(mutex)
+        finishWithdrawal(withdrawn)
         Self.signal(wakes)
     }
 

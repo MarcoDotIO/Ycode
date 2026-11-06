@@ -430,11 +430,12 @@ IOKitUser's `powermanagement` subsystem that grants every assertion),
 `com.apple.audio.audiohald` (`audio-host.md` §13: Ycode's audio server;
 `com.apple.audio.coreaudiod` stays unregistered, no guest uses it) and
 `com.apple.FSEvents` (`fsevents-host.md` §10: the file-event service, with
-events from Ycode's VFS). The
+events from Ycode's VFS) and `com.apple.CoreSimulator.SimIdentityService`
+(`boot-profile.md` §14.3: connections accepted, requests never answered). The
 host queues its 701 requests on the control channel before launchd_sim
 reads it, and the channel holds five messages: names that do not fit are
 registered by the session thread after the queued replies, and the
-power-management, audio and file-event names are queued last (`lateHostServices`) so
+power-management, audio, file-event and simulator-identity names are queued last (`lateHostServices`) so
 that the GPU, surface and HID names always fit. Audio clients that look
 the name up before its registration retry about once a second
 (`audio-host.md` §1), so a late registration costs nothing. A name that
@@ -460,7 +461,7 @@ registration list).
 | `com.apple.audio.audiohald` | SpringBoard (look-up, at boot) | **missing** |
 | `com.apple.FileProvider.sim2host` | fileindexerd (XPC, when it scans; it then logs "simulator host support level 2") | **missing** |
 | `com.apple.fpsd.sim` | assistantd, amsengagementd (look-up) | **missing** |
-| `com.apple.CoreSimulator.SimIdentityService` | apsd (XPC) | **missing** |
+| `com.apple.CoreSimulator.SimIdentityService` | apsd (XPC) | registered since B3-BOOT2 (2026-11-06): connections accepted, requests left unanswered (no simulator identity on a Linux host); without the name apsd reconnected to the push courier about three times a second (`boot-profile.md` §14) |
 | `com.apple.CoreSimulator.NearbyInteraction` | sharingd (XPC) | **missing** |
 | `com.apple.modelmanager.simulator` | HostInferenceProviderService (XPC) | **missing** |
 | `com.apple.metal.simulator.SpringBoard`, `.backboardd` | SpringBoard, backboardd (look-up and XPC) | not registered; the clients fall back to `com.apple.metal.simulator` (Ycode registers that one) |

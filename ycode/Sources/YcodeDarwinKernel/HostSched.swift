@@ -79,7 +79,8 @@ public enum HostSched {
             + "lock holders promoted \(promotions.load(ordering: .relaxed)) "
             + "(\(promotionWaits.load(ordering: .relaxed)) waits past the delay, \(promotionRestores.load(ordering: .relaxed)) let go raised; "
             + "\(groupWrites.load(ordering: .relaxed)) class weight writes, \(groupWriteNanoseconds.load(ordering: .relaxed) / 1_000_000) ms)"
-            + (bgCPUMasks == nil ? "" : "; affinity failures \(affinityFailures.load(ordering: .relaxed))")
+            + (bgCPUMasks == nil && uiCPUMasks == nil ? "" : "; affinity failures \(affinityFailures.load(ordering: .relaxed))")
+            + placementReport
     }
     /// `YCODE_LOCK_HOLDER_PROMOTION` (default on with a backend; `=0` off):
     /// a thread that finds a kernel lock taken raises the holder's host
@@ -313,7 +314,7 @@ public enum HostSched {
         case .none:
             break
         }
-        if ok, backend != .none, let bg = bgCPUMasks { _ = setAffinity(tid, cls == 0 ? bg.background : bg.all) }
+        if ok, backend != .none, uiCPUMasks == nil, let bg = bgCPUMasks { _ = setAffinity(tid, cls == 0 ? bg.background : bg.all) }
         let took = KernelClock.now() &- start
         moveNanoseconds.wrappingAdd(took, ordering: .relaxed)
         if !isSelf {

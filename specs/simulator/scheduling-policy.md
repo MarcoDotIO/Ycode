@@ -488,6 +488,11 @@ skipped. A waiter in a condition wait that takes the mutex back
 | `YCODE_HOST_SCHED_SELF_ZERO` | 1 | §4.7: a thread moves itself by writing `0`; `0` writes its id |
 | `YCODE_LOCK_HOLDER_PROMOTION` | `group` | §4.7 lock holders: `group`, `thread`, `0` (off) |
 | `YCODE_LOCK_PROMOTION_DELAY_US` | 200 | §4.7: a waiter raises the holder after waiting this long |
+| `YCODE_LOCK_WITHDRAW_AFTER_UNLOCK` | 1 | §4.7: a raised holder waits for the waiters still raising it, and lowers its class weight, after it releases the mutex (`boot-profile.md` §12.3); `0` as before (waits while it still holds the lock) |
+| `YCODE_FAST_TRAP_HOST_CLASS` | 0 | §4.7 host class at the end of fast traps (IPC, BSD descriptor, task-local): `1` the whole class, `push` only a raise to the image's send push; off by default (`boot-profile.md` §12.3) |
+| `YCODE_HOST_SCHED_UI_CPUS` | unset | host threads of the UI-path programs run on every online CPU, every other guest thread's host thread on all but the last N (`boot-profile.md` §12.3) |
+| `YCODE_HOST_SCHED_UI_PROGRAMS` | `SpringBoard,backboardd` | the UI-path programs (executable names) for `YCODE_HOST_SCHED_UI_CPUS` |
+| `YCODE_HOST_SCHED_UI_PUSHED` | unset | with `YCODE_HOST_SCHED_UI_CPUS`: an image whose send push (§4.6) is at least this class also runs on the UI path's CPUs while it lasts |
 | `YCODE_BOOT_PRIORITY` | 1 for device runs (since 2026-10-27; was 0) | device runs (`--device`) only: with `YCODE_SCHED_QOS` unset, set it to 1 and `YCODE_HOST_SCHED` (if unset) to `cgroup` before the VMM starts (§7.4, §7.5); `0` turns it off. The cgroup backend re-executes the VMM in a delegated user scope only when the user's service manager is reachable (`$XDG_RUNTIME_DIR/systemd/private`); otherwise it reports itself unavailable and the run goes on without host scheduling |
 
 ## 7. Measurements

@@ -832,6 +832,7 @@ final class GuestImageInstance: @unchecked Sendable {
         if !TrapProfile.programFilter.isEmpty {
             kernel.trapProfileSelected = TrapProfile.programFilter.contains((execPath as NSString).lastPathComponent)
         }
+        kernel.hostUIPath = HostSched.uiPathPrograms.contains((execPath as NSString).lastPathComponent)
         let verbose = trace || (serial == 1 && !config.quietRuns)
         record = ImageRecord(serial: serial, pid: kernel.pid, executable: execPath)
         if BootProfile.shared != nil {
@@ -1435,6 +1436,7 @@ final class GuestImageInstance: @unchecked Sendable {
             if outcome != nil {
                 // (handleTaskLocal only ever answers .resume.)
                 taskLocalTrapCount.wrappingAdd(1, ordering: .relaxed)
+                kernel.applyHostPolicyAfterFastTrap(context)
                 context.trapCount += 1
                 context.trapRing.record(fullX16, entryX0, entryX1, frame.carry ? (1 << 63) | frame.x[0] : frame.x[0])
                 return .resume
@@ -1457,6 +1459,7 @@ final class GuestImageInstance: @unchecked Sendable {
             if outcome != nil {
                 if mmapPending != nil { noteCacheMapping(mmapPending, frame, context: context, verbose: verbose) }
                 // (handleBSDFast only ever answers .resume.)
+                kernel.applyHostPolicyAfterFastTrap(context)
                 context.trapCount += 1
                 context.trapRing.record(fullX16, entryX0, entryX1, frame.carry ? (1 << 63) | frame.x[0] : frame.x[0])
                 return .resume
@@ -1471,6 +1474,7 @@ final class GuestImageInstance: @unchecked Sendable {
             let outcome = kernel.handleIPCFast(&frame, context: context, memory: space)
             context.trapInProgress = nil
             if let outcome {
+                kernel.applyHostPolicyAfterFastTrap(context)
                 context.trapCount += 1
                 context.trapRing.record(fullX16, entryX0, entryX1, frame.carry ? (1 << 63) | frame.x[0] : frame.x[0])
                 return .resume  // (handleIPCFast only ever answers .resume)

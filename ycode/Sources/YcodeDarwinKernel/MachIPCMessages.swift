@@ -374,6 +374,7 @@ extension MachIPC {
                 return (MachMsgReturn.success, nil, "")
             }
             if let deadline, KernelClock.now() >= deadline { return (MachMsgReturn.sendTimedOut, m, "") }
+            if FullQueueReport.enabled { FullQueueReport.blocked(p, sender: self, id: m.id) }
             // SNAPSHOT hook (agent SNAP, specs/simulator/snapshot.md §4.2): the
             // message a blocked sender holds, so a snapshot can queue it.
             let caller = lock.callerContext

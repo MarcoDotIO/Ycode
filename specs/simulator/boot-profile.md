@@ -5,7 +5,13 @@ Status: **implemented 2026-10-17 (agent PROF)**. §1 is a diagnostic
 which are on by default and why. Measurements are in §2 and §4. §6
 (agent PROF3, 2026-10-19) compares the Mac and Ycode process by process
 and adds C21. §9 (agent SPAWN, 2026-10-23) measures process creation and
-adds SP1–SP4.
+adds SP1–SP4. §12 (agent B3-BOOT, 2026-11-05) measures the log path and the
+UI path's CPUs against the reference's logging path (§13), and finds a
+10 s that guest networking and the Duo's inner panel added since
+2026-10-27. §14 (agent B3-BOOT2, 2026-11-06) finds that networking's share
+was apsd reconnecting to the push courier about three times a second
+(a missing host-side name; Ycode now registers it) and that the inner
+panel's is SpringBoard's own work for a second display.
 
 This is Ycode's own design. It names no Apple internals. The Linux facts
 (KVM memslots, `mremap`, transparent huge pages, `/proc` accounting) come
@@ -1441,6 +1447,239 @@ and 4, and the micro-VM's own lock work on the process-local traps of
 §8.3 item 6, are cheaper ways to the same items. Stage 1 stays behind its
 switch as the measured base.
 
+## 12. The log path and the UI path's CPUs, measured (agent B3-BOOT, 2026-11-05)
+
+§11's ranks 1 and 2, with the reference's answers of §13 (rate 2 900
+messages/s, per-connection queues of 6 that fill, senders blocked 1–4 % of
+the time, diagnosticd at the default priority). Every timed number below
+is from series that follow `parity-ladder.md`'s conditions.
+
+### 12.1 Conditions
+
+- Thor; one copy of the golden device in the agent's own folder, booted
+  three times at that path before the first series; full boot, default
+  switches (start hold, boot priority), `YCODE_HOME_WATCH`, stopped 5 s
+  after home, no save.
+- Every timed series ran under the shared boot-timing lock (one holder at
+  a time, no other `ycode-simd`); each boot started only when no other
+  `ycode-simd` ran and the 1-minute load was under 4 (it was 1.0–3.99;
+  10–28 at the home screen, the boot's own load); arms rotated each round,
+  n = 5 per arm.
+- Builds: the main line `a906b5f6` (series S1) and the same merged with
+  `m2-workspace-settings` of 2026-11-05 evening plus this section's changes
+  (S2, S3, the profiles after). Arms of one series are one binary with
+  switches.
+- Profiles: `YCODE_FRAME_PROFILE_BOOT=120` (boot window), analysed with
+  `scripts/ycode-frame-profile --boot --backbone SpringBoard:main` and
+  `--blocked-sends 0x10000000`; one trap profile per build with lock-holder
+  stacks (`YCODE_TRAP_PROFILE_STACKS=300`). Profiled boots are not timed
+  boots (the profile slows them, and some started at load 10–20).
+
+### 12.2 Profile before (`b1`, home 40.95 s)
+
+- **Backbone** (SpringBoard's main thread to the home frame): SpringBoard's
+  guest code 18.5 s; SpringBoard waiting for a host CPU 5.3 s (+0.4 after
+  wakeups); **the log path 11.4 s**: diagnosticd's threads runnable after
+  their wakeups 4.7 s, their wakeup latency 2.6 s, event-lock waits in
+  `kevent_id` 2.5 s, `kevent_id` service 0.7 s, its run queue 0.4 s,
+  `workq_kernreturn` event-lock waits 0.4 s; port-lock waits in
+  SpringBoard's `mach_msg2` 1.0 s.
+- **Blocked log sends**: 185 684 sends of id 0x10000000 in the window,
+  392 thread-seconds blocked by 184 programs; runningboardd 34.3 s
+  (5 057 of 14 909 sends blocked: 79 % of the window as thread-seconds,
+  against 1–4 % of a thread's time on the reference, §13.4), SpringBoard
+  27.7 s, apsd 76.9 s, cfprefsd 4.9 s.
+- **Queue limits** (`YCODE_DEBUG_FULL_QUEUES=1`, the first blocked send on
+  each port): every blocked log send waited on a per-connection receive
+  right of diagnosticd with `qlimit` **6**, the reference's value (§13.4);
+  54 448 blocked sends to diagnosticd by home. So §11.2 option (c) has
+  nothing to match: Ycode's port code keeps the guest's limit.
+- **diagnosticd itself** (frame-profile summary): 0.40 cores of host CPU,
+  of it 0.06 guest code, 0.24 VMM code and 0.10 host kernel; 0.79 cores'
+  worth of its threads runnable and waiting for a CPU; 598 000 timeslices
+  and 571 000 voluntary switches for about 130 000 messages. A trace slice
+  (8 ms at 15.5 s) shows the guest's own design: per message one thread
+  receives it in a `workq_kernreturn` return (and wakes the blocked
+  sender), its handler hands work to another of diagnosticd's threads
+  through a workloop sync wait and wake (`kevent_id`), about 1.5 thread
+  hand-offs and 3–4 traps per message, each trap 10–30 µs, each hand-off
+  10–20 µs when CPUs are free. At 3 600 messages a second the per-message
+  cost of Mach IPC itself is small (a 1 KB send 2.9 µs, its EVFILT_MACHPORT
+  receive 1.6 µs on the Mac, release build); the time is in the hand-offs:
+  a woken thread waits for a host CPU, and the chain stalls whenever one
+  of its locks is held by a thread the host does not run.
+- **Lock stalls** (contended acquisitions of the window): port lock G
+  294 792, 64.8 s summed, p50 14 µs but p99 5.1 ms, 7 670 waits of 2 ms or
+  more (42.5 s summed), and at least one waiter of 2 ms or more during
+  14.3 s of the 41 s; L0 and the event locks the same shape (7.9 s and
+  10.9 s of such stalls). One stall seen in diagnosticd at 12.0 s: a
+  thread waited 8.3 ms for G inside `workq_kernreturn` while holding
+  diagnosticd's event lock, and two more of its threads waited 8–9 ms for
+  that event lock.
+- **What the port-lock holder does** (holder stacks, 4 475 samples):
+  10.4 % in `sched_yield` from the lock-holder promotion's withdrawal
+  (`KernelLock.withdrawHolder`: a raised holder waited, still holding the
+  mutex, for the waiters still raising it, i.e. for their cgroup weight
+  writes); 10.3 % in futex waits: the EVFILT_MACHPORT receive's write into
+  the guest's buffer under G (`writeReceived`, which takes the receiving
+  task's address-space lock), glibc malloc and free (arena locks), and
+  port routines' out-parameter writes; the rest Swift and malloc work of
+  `take`, `copyoutReceived` and `deliver`.
+
+### 12.3 Changes
+
+| Change | Switch | Default | Test |
+|---|---|---|---|
+| An EVFILT_MACHPORT receive writes the message after the port lock (`mach-ipc-locking.md` §4.3) | `YCODE_KEVENT_WRITE_AFTER_PORT_LOCK` | **on** | `keventReceiveWritesAfterThePortLock` |
+| A raised lock holder finishes its withdrawal (waits for promoters, lowers the class weight) after it releases the mutex (`scheduling-policy.md` §4.7) | `YCODE_LOCK_WITHDRAW_AFTER_UNLOCK` | **on** | the promotion tests of `SchedPolicyTests` |
+| The host class is also applied at the end of fast traps (IPC, BSD descriptor, task-local): `1` the whole class, `push` a raise to the send push only | `YCODE_FAST_TRAP_HOST_CLASS` | off | `fastTrapEndsApplyTheSendPush` |
+| Host CPUs kept for the UI path: SpringBoard and backboardd (`YCODE_HOST_SCHED_UI_PROGRAMS`) on every CPU, every other guest thread on all but the last N | `YCODE_HOST_SCHED_UI_CPUS=N` | off | `masksKeepTheLastCPUsForTheUIPath`, `placementChangesOnlyWhenTheSideChanges` |
+| With the above: an image pushed by blocked senders of class ≥ c (diagnosticd during the boot) also runs on those CPUs while the push lasts | `YCODE_HOST_SCHED_UI_PUSHED=c` | off | `fastTrapEndsApplyTheSendPush` |
+| Diagnostic: the first blocked send per port (receiver, `qlimit`, queued) and blocked sends per receiver at home | `YCODE_DEBUG_FULL_QUEUES=1` | off | — |
+
+Tried and removed: a guest thread of a pushed image spinning up to 200 µs
+before it sleeps on a fine lock's queue (the hand-off without a wakeup).
+In one profiled boot 112 599 waits spun and only 4 903 (4 %) were woken
+while spinning; 23.8 s of CPU went into spinning and blocked log sends
+rose (392 → 612 thread-s): diagnosticd's waits are not microseconds long,
+because its wakers are themselves waiting for CPUs and locks.
+
+`YCODE_FAST_TRAP_HOST_CLASS=1` in one profiled boot: diagnosticd's run
+queue after wakeups 4.7 → 3.3 s on the backbone, but cgroup moves rose
+from 3 927 to 12 385 at 1.8 ms each (22 s of moving), so it stays off.
+A larger glibc arena count (`GLIBC_TUNABLES=glibc.malloc.arena_max=1024`,
+against the malloc waits under G) was 3.2 s slower in S2 and is not used.
+
+### 12.4 Timed series
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|
+| S1 (`a906b5f6`) | main line | 5 | **42.52** | 42.61 ± 2.01 | 40.25–45.74 | 8.8 s | 1–4 |
+| S1 | `UI_CPUS=3` | 5 | 43.77 | 44.31 ± 2.54 | 41.33–48.16 | 9.4 s | 1–5 |
+| S1 | `UI_CPUS=3`, `UI_PUSHED=2` | 5 | 42.18 | 42.12 ± 0.64 | 41.12–42.88 | 10.7 s | 1–2 |
+| S2 (merged) | both port-lock changes off | 5 | **39.82** | 39.31 ± 1.59 | 36.91–41.12 | 8.5 s | 1–3 |
+| S2 | new defaults (both on) | 5 | **38.39** | 39.32 ± 2.01 | 37.44–41.93 | 7.1 s | 1–4 |
+| S2 | new defaults, `arena_max=1024` | 5 | 43.00 | 43.18 ± 1.29 | 41.80–45.32 | 8.0 s | 1–5 |
+| S3 | new defaults | 5 | **39.44** | 40.37 ± 1.65 | 38.68–42.19 | 7.8 s | 1–3 |
+| S3 | new defaults, `UI_CPUS=3`, `UI_PUSHED=2` | 5 | 42.80 | 42.51 ± 1.74 | 40.81–45.11 | 9.9 s | 1–4 |
+| SVC | the 2026-10-27 build (`5f74ef9`, `lean-boot.md` §9) | 2 | **30.79** | 30.79 ± 0.34 | 30.55–31.03 | 5.6 s | 1–3 |
+| SVC | new defaults | 2 | 41.36 | 41.36 ± 0.69 | 40.87–41.84 | 8.0 s | 1 |
+
+- The two port-lock changes: −1.4 s by the median, the same mean, the
+  kernel lock held 1.4 s less by home; inside the spread. They are exact
+  and remove two kinds of multi-millisecond port-lock holds, so they stay
+  on.
+- **Removing the log back-pressure does not shorten the boot.** With
+  diagnosticd on the UI path's CPUs while it is pushed (`onp`), blocked log
+  sends fell 500 → 120 thread-seconds and runningboardd's 43.9 → 7.4 s
+  (15 % of the window), the log path left the backbone (11.4 → 2.5 s), and
+  SpringBoard's run queue fell 4.0 → 2.3 s, yet home came 3.4 s later
+  (S3) and SpringBoard's own guest code on the backbone grew 17.7 → 23.0 s.
+  The back-pressure throttles the other 180 programs; without it they take
+  the CPUs and memory bandwidth that SpringBoard's loader-bound start-up
+  needs (§10.4: the Thor's memory latency). The UI path's CPUs alone
+  (`ui3`) and with the push (`ui3p`, S1) are within noise.
+- **The main line got 9–10 s slower since 2026-10-27, and two features
+  that the reference also has account for it** (§12.5).
+
+### 12.5 Where the 10 s since 2026-10-27 went: networking and the inner panel
+
+The build that measured 30.1 s on 2026-10-27 (`lean-boot.md` §9, main line
+`5f74ef9`) boots the same device copy in **30.8 s** today under the same
+conditions (series SVC above), against 41.4 s for today's code. A bisection
+over the 232 first-parent commits `5f74ef9..a906b5f6` (each step a release
+build, one untimed boot, two timed boots under the lock):
+
+| First-parent commit | home_s (2 boots) | |
+|---|---|---|
+| `63071fcc` (OBS-FOLD2 merge, 2026-10-27 evening) | 30.46, 32.38 | good |
+| `8c04d20f` NET-IMPL: host passthrough networking | 36.49, 36.25 | **+5 s** |
+| `41859581` (two specification merges later) | 34.25, 38.52 | as NET-IMPL |
+| `33ee30f4` FOLD-IMPL2: the iPhone Duo unfolds (inner panel on by default for foldables) | 40.72, 38.08 | **+3 s** |
+| `fc308f06`, `63c2d4f6`, `fe82203c`, `117eee37` (later) | 39.46–42.18 | as FOLD-IMPL2 |
+
+Today's code with each feature switched off (series S4, n = 3 per arm,
+same conditions):
+
+| Arm | median home_s | mean ± sd | range | kernel lock held at home |
+|---|---|---|---|---|
+| new defaults | 39.93 | 40.56 ± 1.25 | 39.74–42.00 | 8.1 s |
+| `YCODE_NO_NETWORK=1` | 33.91 | 34.07 ± 1.29 | 32.86–35.43 | 6.0 s |
+| `YCODE_FOLD_DISPLAYS=0` (cover panel only) | 36.04 | 35.97 ± 0.98 | 34.96–36.91 | 6.9 s |
+| both off | **31.58** | 32.45 ± 2.04 | 30.98–34.78 | 6.1 s |
+
+So the boot did not regress by accident: guest networking (about 6 s) and
+the Duo's second panel (about 4 s) were added for parity, and the
+reference has both (its simulator shares the host's network, and §13's
+and `parity-ladder.md`'s reference boots are iPhone Duo boots). The
+comparison with 21.4 s is therefore with both on; 30.1 s (2026-10-27) was
+a boot without them. What each costs on Ycode beyond what it costs the
+reference is the next question (§12.8).
+
+### 12.6 The whole boot is throughput-bound
+
+Summed over all programs in the boot window (frame-profile summary,
+profiles `b1` and `off2`): 9.6–9.7 cores of host CPU on average out of 14
+(guest code 7.2, VMM code 1.3, host kernel 0.9), and 10.5–11.9 cores'
+worth of guest threads runnable and waiting for a CPU. About 420 CPU
+seconds are spent before home; at 14 fully used cores that alone is 30 s.
+So the boot cannot reach 21.4 s by moving waits between threads (every
+measured attempt moved them: §12.4, §10.2); it needs less work before the
+home screen.
+
+### 12.7 Service fidelity
+
+`scripts/ycode-launchd-spawns` over 700 s of a full boot (as
+`service-fidelity.md` §15 counts), the main-line binary (`a906b5f6`)
+against the new defaults, one boot each on the same device copy, one
+after the other:
+
+| | main line | new defaults |
+|---|---|---|
+| all starts | 511 (238 labels) | 508 (235 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 67, 66, 63, 68, 9, 1 | 67, 66, 64, 68, 8, 1 |
+| other daemons and agents | 176 | 174 |
+| per-process domains | 58 | 57 |
+| apps | 3 | 3 |
+
+The labels that differ differ by one start each (feedbackd,
+intelligenceplatformd, stickersd, nanoappregistryd, a widget extension:
+on-demand starts late in the window). Fidelity is unchanged. A first
+count of the main line right after the 2026-10-27 build had booted the
+device gave 569: PosterBoard's descriptor batch ran again (each poster
+extension 3–4 times instead of once) and 20 Metal compiler instances
+started; a boot by a different build changes the device's own caches, so
+counts compare only boots that follow a boot of the same build.
+
+### 12.8 How far from 21.4 s, and the next step
+
+- Today's quiet median with the new defaults is **38.4–39.9 s** (S2, S3,
+  S4): 1.8–1.9 × the reference's 21.4 s. §11's ranks 1 and 2 gave about
+  1 s (the port-lock changes, inside the spread); removing the log
+  back-pressure made the boot slower (§12.4). The reference's senders do
+  block on diagnosticd's queues of 6 too (§13.4); Ycode's block for longer
+  because every hand-off waits for a host CPU on a saturated host, and
+  with the CPUs given to diagnosticd the other programs take them instead.
+- Without networking and the Duo's inner panel the same code boots in
+  31.6 s (§12.5); 1.5 × the reference.
+- The work before home is about 420 CPU seconds on 14 cores (§12.6): the
+  floor is about 30 s even with every core busy, so 1.0 × needs less work
+  before home, not other waits.
+
+Next, in order of size:
+
+1. **What networking costs before home** (about 6 s): which daemons do
+   network work during the boot, and how much of it is Ycode's socket
+   path (`sendto`, `recvfrom`, `ioctl` and the readiness scans run under
+   L0: 15 414, 12 496 and 54 518 calls by home in the trap profile `t1`)
+   against the guest's own work. A profile with `YCODE_NO_NETWORK=1`
+   against the default, process by process (§1.1's per-program CPU), and
+   on the reference the same daemons' CPU in the first 30 s.
+2. **What the inner panel costs before home** (about 4 s): SpringBoard,
+   backboardd and the render path drawing two panels; their CPU and the
+   GPU host's work with `YCODE_FOLD_DISPLAYS=0` against the default.
+3. Then the log path again: with less CPU contention its hand-offs get
+   cheaper by themselves (§12.4's profiles show its cost is CPU waits).
 ## 13. Reference logging path (agent B3-SIMOBS, 2026-11-05)
 
 Black-box answers to the questions of §8.6 and §11.2 item 1 about the
@@ -1603,6 +1842,268 @@ boot):
 4. Priority: the reference gives diagnosticd's threads no standing boost;
    (b) of §11.2 item 1 is a Ycode-specific remedy, not parity.
 
+## 14. Guest networking and the inner panel, measured (agent B3-BOOT2, 2026-11-06)
+
+§12.8's next steps 1–3: what guest networking (about 6 s) and the iPhone
+Duo's inner panel (about 4 s) cost before home, with both kept on, and the
+log path after that. Target: home_s ≤ 21.4 s, full boot, every service on.
+
+### 14.1 Conditions
+
+- Thor; a copy of the golden device in the agent's own folder (the
+  `parity-ladder.md` device type, iPhone Duo, iOS 27.1), booted at that
+  path four times before the first series; full boot, default switches,
+  `YCODE_HOME_WATCH`, stopped 5 s after home, no save.
+- Timed series under the shared boot-timing lock; each boot started only
+  when no other `ycode-simd` ran and the 1-minute load was under 4 (it was
+  0.4–3.99); arms rotated each round, n = 5 per arm.
+- Builds: *base* = the main line `17c71c17` (§12's changes included);
+  *tree* = this section's change on top. Arms of one series are one binary
+  with switches.
+- Profiles: `YCODE_FRAME_PROFILE_BOOT=120` and `YCODE_TRAP_PROFILE` in the
+  same boot (no holder sampler), analysed with `scripts/ycode-frame-profile`
+  (`--boot --backbone SpringBoard:main`, `--blocked-sends 0x10000000`,
+  `--thread`) and two small readers of the window's trace (log sends and
+  traps per program up to a given time). Profiled boots are not timed.
+  Guest log lines come from a `log stream` one-shot in separate, untimed
+  boots.
+
+### 14.2 Networking: apsd's reconnect storm, not Ycode's socket path
+
+Profiles `p-on` (home 42.1 s) and `p-nonet` (`YCODE_NO_NETWORK=1`, 33.8 s):
+
+| | p-on | p-nonet |
+|---|---|---|
+| traps by the trap profile's end (56 s, 49 s) | 3.32 M | 2.63 M |
+| `socket` (97) / `ioctl` (54) / `sendto` (133) / `recvfrom` (29) in the boot window | 5 631 / 39 607 / 6 625 / 6 079 | 639 / 784 / 5 309 / 4 745 |
+| of them apsd's | 4 548 / 35 057 / 261 / 185 | 0 / 0 / 0 / 0 |
+| L0 held by those four traps (trap profile) | 0.81 s of 10.0 s (L0 17.8 % busy) | 0.48 s of 8.4 s |
+| log messages (id 0x10000000) in the window | 180 776 | 130 953 |
+| of them apsd's | 19 303 | none |
+
+Ycode's own socket path is cheap: the four socket traps hold L0 0.8 s in
+a 56 s profile (an `ioctl` 3 µs, a `socket` 9 µs, a `sendto` 16 µs), the
+host socket poller does not show, and almost all of the IP socket and
+interface `ioctl` calls are apsd's. The extra 0.7 M traps
+and 50 000 log messages come from **apsd**: in a log stream of the same
+boot apsd opened its courier stream to `courier.sandbox.push.apple.com`
+171 times in 60 s (2.9 a second): resolve, TCP, a TLS 1.3 handshake (187
+completed, 208 trust evaluations by trustd), then
+
+1. "activating connection … name=com.apple.CoreSimulator.SimIdentityService",
+   "failed to do a bootstrap look-up: xpc_error=[3: No such process]"
+   (once; every later certificate request fails at once);
+2. "Could not get certificate from simulator with error … Code=100
+   "Connection invalid" … Aborting…", "Refreshing cert/nonce/sig failed,
+   not sending a presence";
+3. "_disconnectStream … with reason: 14", "Connection closed", and at once
+   "attempting to _connectStream … consecutiveFailures 0": a disconnect
+   for this reason does not count as a failure, so there is no back-off.
+
+Each round also tells apsd's clients ("Dispatching xpc to client", about 25
+a round), which wake and log ("Delivering connectionStatusChange from
+apsd: NO" in mobileassetd and others). The reference's apsd logs 1 843 messages
+before home (§13.3), Ycode's 19 303: the storm is Ycode's, caused by the
+host-side name `com.apple.CoreSimulator.SimIdentityService`, which the
+reference's host registers (`launchd-sim.md` §6.3) and Ycode did not.
+
+The boot is throughput-bound (§12.6), so the storm costs home time through
+the CPU and the log path it takes from everything else: in the first 30 s
+of each profile the whole guest made 2.45–2.51 M traps and 101 000–111 000
+log sends whatever the arm, but SpringBoard got 68 543 of the traps and
+5 703 of the log sends in `p-on` against 155 253 and 17 008 in `p-nonet`.
+
+Timed (series T1, base binary): apsd alone off (`YCODE_LEAN_BOOT=1` with
+every default label kept and only `com.apple.apsd` disabled, a diagnostic
+arm) is as fast as no networking at all: the whole networking cost is the
+storm.
+
+### 14.3 The change: a host-side simulator identity service
+
+`SimIdentityHostService` (`ycode/Sources/YcodeHostServices/`) registers
+`com.apple.CoreSimulator.SimIdentityService` with the other host-side
+names (queued with the late ones, `DeviceSession.lateHostServices`). It
+speaks the XPC connection protocol Ycode's Metal host already serves
+(hand-shake 0x77303074: the connection port and the client's send right;
+requests 0x10000000 with one `!CPX` dictionary). A Linux host has no
+Apple-issued simulator identity to give, so the service **keeps each
+request's reply right and never answers**; the rights go when the
+connection ends (no-senders). apsd's request (keys `operation`, `version`,
+logged once by name) then never completes, apsd does not abort and does
+not reconnect: in a log stream of the tree's boot apsd opened one courier
+connection ("Connected to courier …"), sent its presence request to the
+service and logged 2 053 lines in the whole run, against 49 728 before;
+"Could not get certificate" did not appear. Push notifications do not work
+either way (no identity), as before.
+
+| | |
+|---|---|
+| Switch | `YCODE_SIM_IDENTITY_SERVICE=0`: not registered (the behaviour before) |
+| Default | on |
+| Snapshot | a `sim-identity` host-service record (connection ports, client rights, held reply rights); the restored service keeps them unanswered |
+| Tests | `SimIdentityHostServiceTests` (no reply and no dead reply right while the connection lives, released at its end, one log line per key set; a restored service keeps its connections and held requests; other messages on the service port are dropped) |
+
+This is not the reference's answer: the reference gives apsd a
+certificate. What the service is asked and answers on the reference
+(the request and reply keys and values, and whether apsd stays connected)
+is a dirty-room question (§14.8).
+
+### 14.4 The inner panel: SpringBoard's own work, not Ycode's display path
+
+- **Frames.** The frame records at home: the cover 87–114 frames, the inner
+  panel 35–55 (it is dark while closed; the guest draws it only when its
+  content changes, `simframebuffer.md` §5.1). The guest's swaps cost Ycode
+  one 96-byte `pwrite` of the record each.
+- **No viewer, no encoding.** The display server encodes and sends frames
+  only inside a viewer session (`DisplayServer.swift`), and then only the
+  panel shown; the timed boots run without a display server. Nothing in
+  the host watches or copies the inner panel's frames.
+- **Where the time goes.** Two pairs of profiles, before and after the
+  change of §14.3, with and without the inner panel
+  (`YCODE_FOLD_DISPLAYS=0`):
+
+  | | `p-on` / `p-nofold` (base) | `p-tree` / `p-tree-nofold` (tree) |
+  |---|---|---|
+  | windows (home) | 44.8 s (42.1) / 42.0 s (39.3) | 36.8 s (34.2) / 36.6 s (33.9) |
+  | all guest programs' CPU in the window | 430 / 386 s | 317 / 315 s |
+  | SpringBoard: CPU (guest code) | 23.7 (17.9) / 20.6 (15.5) s | 22.9 (17.4) / 20.8 (15.3) s |
+  | backboardd: CPU | 2.4 / 1.8 s | 2.4 / 1.9 s |
+  | AegirPoster (draws the panels' poster): minor faults | 3 725 / 313 | — |
+
+  SpringBoard does 2.1–2.4 s more guest code with the second display, and
+  its main thread is the boot's backbone; backboardd and PosterBoard add
+  about half a second each. That is the guest's own work for a second
+  display (its scenes, layout and poster), which the reference does too
+  (§13's reference boots are iPhone Duo boots).
+
+No change: the inner panel's cost is the guest's code at native speed;
+Ycode adds nothing per frame that could be skipped. The GPU host's share
+(35–55 frames of 2007 × 2853) was not measured separately and is not
+changed here.
+
+### 14.5 The log path, after the storm
+
+Profile `p-tree` (the tree, home 34.2 s) against `p-on` (§14.2):
+
+| | p-on | p-tree |
+|---|---|---|
+| CPU of all guest programs in the boot window (window) | 430 s (44.8 s) | 317 s (36.8 s) |
+| log messages in the window | 180 776 | 139 378 (3 800 a second) |
+| apsd's / mobileassetd's | 19 303 / 8 682 | 1 921 / 8 423 |
+| thread-seconds blocked in log sends | 530 | 300 |
+| diagnosticd's CPU: all / guest / VMM | 20.8 / 3.0 / 12.8 s | 14.4 / 2.1 / 8.9 s |
+| diagnosticd's share of the boot's critical path (`--boot`, by program) | 18.9 of 41.8 s | 10.4 of 33.8 s |
+
+- apsd now logs as much as the reference's (1 921 against 1 843, §13.3);
+  mobileassetd still logs 4–5 times the reference's 1 804, most of it
+  Biome storage errors ("Failed to move temporary segment … Replace
+  failed", "Failed to instantiate framestore") for its asset-delivery
+  stream: a candidate fidelity bug in the file calls biomed makes for
+  Biome's segment replacement (§14.8).
+- **diagnosticd is latency-bound, not CPU-bound.** Its 45 threads spent,
+  from 5 to 30 s, 56 % of their time waiting for another diagnosticd
+  thread (the workloop sync waits and wakes of §12.2), 35 % waiting for a
+  message or a timer, 3.7 % in lock waits, and 0.2 % in guest code. Each
+  message costs about 100 µs of host CPU (64 µs VMM, 15 µs guest, the rest
+  host kernel), so its CPU is not the limit; the hand-offs, each a futex
+  wake that waits for a host CPU on a saturated host, are. On xnu the same
+  hand-off is a direct switch to the woken thread.
+- With the storm gone, diagnosticd's share of the critical path fell from
+  18.9 to 10.4 s (`p-nonet`: 10.9 s); it is still the largest item on the
+  path. The rest of the path is other daemons' guest code and run-queue
+  waits, a different set in every profile (the host is saturated: 10–12
+  cores busy and as many threads runnable).
+
+### 14.6 Timed series
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|
+| T1 (base) | default | 5 | **37.17** | 37.43 ± 2.98 | 34.97–42.42 | 7.2 s | 3–4 |
+| T1 | apsd disabled (diagnostic) | 5 | **32.18** | 31.92 ± 0.64 | 31.10–32.68 | 6.0 s | 3–5 |
+| T1 | `YCODE_NO_NETWORK=1` | 5 | 31.81 | 31.89 ± 0.74 | 31.00–33.06 | 6.0 s | 4–6 |
+| T2 (tree) | default (identity service on) | 5 | **33.93** | 33.74 ± 0.75 | 32.43–34.33 | 6.6 s | 4–5 |
+| T2 | `YCODE_SIM_IDENTITY_SERVICE=0` | 5 | 35.95 | 35.78 ± 0.67 | 35.03–36.68 | 6.8 s | 3–4 |
+| T2 | `YCODE_FOLD_DISPLAYS=0` | 5 | 32.35 | 32.26 ± 0.60 | 31.35–32.97 | 6.6 s | 3–6 |
+TBD-T3
+
+- **The identity service: −2.0 s by the median** (T2: 33.93 against 35.95,
+  ranges apart), every service on, networking and the inner panel on.
+- **Networking costs nothing beyond apsd's storm** (T1: apsd alone off
+  32.18, networking off 31.81; base 37.17).
+- **The inner panel costs 1.6 s** with the storm gone (T2: 32.35 without
+  it), against 3.9 s in §12.5's S4.
+- The storm's cost varied from series to series (T1's default arm
+  34.97–42.42, its first boot the slowest; T2's `idoff` 35.03–36.68),
+  probably with how fast the courier answered (each round is a TLS
+  handshake with it).
+
+### 14.7 Service fidelity
+
+`scripts/ycode-launchd-spawns` over 700 s of a full boot (as §12.7), the
+base binary against the tree, each after a boot of the same build, on the
+same device copy:
+
+| | base | tree |
+|---|---|---|
+| all starts | 620 (218 labels) | 623 (217 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 67, 66, 64, 68, 5, 1 | 67, 67, 64, 68, 7, 1 |
+| other daemons and agents | 309 | 309 |
+| per-process domains | 37 | 37 |
+| apps | 3 | 3 |
+| starts by reason (xpc event, demand, Mach IPC, speculative) | 316, 150, 106, 32 | 318, 151, 106, 32 |
+
+The labels that differ differ by one or two starts each
+(intelligencetasksd +2, PosterBoard, managedappdistributiond,
+imageplaygroundd and a key-sync agent +1; backgroundassets.user, fitcore,
+intelligenceplatformd −1: on-demand starts and the throttle loop's
+phase). Fidelity is unchanged. (§12.7's 508–511 were counted on another
+device copy, whose state differs: counts compare only boots of one
+device.)
+
+### 14.8 How far from 21.4 s, and the next steps
+
+- With every service on, guest networking on and the inner panel on, the
+  quiet median is now **33.9 s** (T2): **1.59 ×** the reference's 21.4 s,
+  12.5 s short. Before this change it was 36.0–37.2 s (T1, T2).
+- The boot is still throughput-bound: 366–373 CPU seconds before home at
+  about 11 busy cores (`cpu_s_at_home` of the tree's profiled and fidelity
+  boots, home at 34.2 and 33.7 s). At 14 fully busy cores the same work takes 26 s, so
+  1.0 × on the Thor needs about a third less work before home, not other
+  waits.
+- Ycode's own share of that work is about a quarter (VMM 46 s and host
+  kernel 31 s of 317 s in `p-tree`'s window); the rest is guest code at
+  native speed (§10.4: one Thor core is 0.9–1.8 × slower than the Mac's).
+  Removing all of Ycode's overhead would not reach 21.4 s by itself.
+
+Next, in order of size:
+
+1. **Guest work the reference does not do.** Before home, Ycode's guest
+   sends 129 500 log messages (`p-tree`), the reference about 89 000
+   (§13.3). The programs with the largest excess against §13.3's table are
+   leads like apsd's: SpringBoard 21 800 (reference 11 500), mobileassetd
+   8 400 (1 800; Biome's "Replace failed", §14.5), dasd 7 200 (under 1 600;
+   mostly "com.apple.coreduetd.context … lookup error 3", a name no launchd
+   plist in the runtime publishes, so the reference may fail the same way
+   and why it logs less there is open) and biomed 4 300 (under 1 600). Each
+   needs a log stream and, where a Ycode call fails, a fix of that call.
+2. **The log path's hand-offs** (10.4 s of the critical path, §14.5):
+   diagnosticd's threads wait for each other 56 % of the time; a direct
+   hand-off for a workloop sync wake (the woken thread gets the waker's
+   host CPU) would make each hand-off cheap as on xnu. §12.4's lesson
+   applies: measure the whole boot, since a faster log path also lets the
+   other daemons take more CPU.
+3. **Ycode's per-trap CPU** (about 100 µs of host CPU per log message in
+   diagnosticd, 64 µs of it VMM code; event-lock holds of 43 µs in
+   `workq_kernreturn` and 24 µs in `kevent_id` on average): less work under
+   the event lock and per trap.
+4. **For the orchestrator, a dirty-room question:** what
+   `com.apple.CoreSimulator.SimIdentityService` is asked and answers on the
+   reference (request and reply keys and value types; whether apsd then
+   stays connected to the courier, and how often it reconnects), so that
+   Ycode's service can answer as the reference does where an identity
+   exists, or confirm that leaving the request unanswered is the closest
+   behaviour on a host without one.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -1642,7 +2143,16 @@ boot):
 | No loss, no quarantine (§13.4) | 3 | counter against store; event types in the store; `diagnosticd.0.log`, `logd.0.log` |
 | Thread priorities (§13.5) | 3 | `ps -M` |
 | Host end of `.sim_diagnosticd_socket` (§13.5) | 3 | `launchctl print system/com.apple.diagnosticd`, `ps`, `ls -l` |
+| Profiles, lock stalls, holder stacks, queue limits, timed series S1–S3 and SVC, service counts (§12) | 3 | B3-BOOT's Thor runs (`fp/b1`, `off2`, `on2`, `onp2`, `t1`, `s200` and trap profiles `tp/t1`, `tp/t2` with `YCODE_TRAP_PROFILE_STACKS`; `ab-S1`, `ab-S2`, `ab-S3`, `ab-SVC`; `scripts/ycode-frame-profile`, `scripts/ycode-launchd-spawns`, `llvm-symbolizer` on Ycode's own binary) |
+| Bisection of `5f74ef9..a906b5f6` and the switch-off series S4 (§12.5) | 3 | B3-BOOT's Thor runs (`bisect.txt`, `ab-B<commit>`, `ab-S4`): release builds of each commit's `ycode/`, `specs/` and `frameworks/` (no `research/`) |
+| The reference's simulator uses the host's network (§12.5) | 1 | Apple's public Simulator documentation |
+| Per-message send and EVFILT_MACHPORT receive cost (§12.2) | 3 | a release-build micro-benchmark of Ycode's kernel on the Mac (SplitWorld, 20 000 messages of 1 KB) |
 | Native mode stage 1, per-call costs and whole-program times in both modes (§11.5) | 3 | B3-NATIVE's series `s2` on the Thor (`ycnative`, `nt_bench`, `nt_probe`, Milestone A samples; `native-mode.md` §10) |
+| Networking's cost is apsd's reconnect storm; Ycode's socket traps and their L0 time; log sends, traps and socket calls per program; the inner panel's frames and SpringBoard's extra guest code; diagnosticd's thread time (§14.2, §14.4, §14.5) | 3 | B3-BOOT2's Thor runs: profiles `fp/p-on`, `p-nonet`, `p-nofold`, `p-tree`, `p-tree-nofold` with trap profiles `tp/…` (`scripts/ycode-frame-profile`, two trace readers of our own), frame records at home |
+| apsd's log lines: the failed look-up of `com.apple.CoreSimulator.SimIdentityService`, "Could not get certificate", disconnect reason 14, reconnects with "consecutiveFailures 0"; one connection with the identity service (§14.2, §14.3) | 3 | guest `log stream` one-shots of Ycode's own simulator (runs `diag-apsd`, `diag-tree-apsd`, `diag-tree-busy`) |
+| The reference's host registers `com.apple.CoreSimulator.SimIdentityService`; apsd is its guest user (§14.2) | 3 | `launchd-sim.md` §6.3, §6.4 (OBS-FSEVENTS's recorder) |
+| XPC connection hand-shake and request framing of the identity service (§14.3) | 3 | as Ycode's Metal host (`metal-sim-protocol.md` §2.1); the request's key names from Ycode's own log of the guest's request |
+| Timed series T1, T2, T3 and service counts (§14.6, §14.7) | 3 | B3-BOOT2's Thor runs (`ab-T1`, `ab-T2`, `ab-T3`, `runs/fid-base`, `runs/fid-tree`; `scripts/ycode-launchd-spawns`) |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/` and Ghidra
 were not opened.
@@ -1651,3 +2161,7 @@ only as a black box through `simctl`, `top`, `lsmp`, `ps`, `log` and
 `sample` on devices named `ycode-test-simobs-*`, which were deleted
 afterwards; no binary was disassembled or decompiled. Its raw data stays in
 the git-ignored `research/dirty/simobs/`.
+§14 (agent B3-BOOT2) is clean-room work: only Ycode's own simulator ran
+(on the Thor, with the runtime copy as a black box), and only `specs/`,
+Ycode's code and the runtime's launchd plists (read as property lists)
+were read.

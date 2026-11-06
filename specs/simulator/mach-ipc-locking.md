@@ -220,6 +220,16 @@ changes anything. It holds no L0.
 | the port routine traps (§4.10) | G only | the pid-to-task traps (not fast traps) |
 | all of them | | tracing; the image is ending; the thread is not bound to the image; the host thread holds a kernel lock |
 
+An EVFILT_MACHPORT receive that a kevent or workqueue call delivers
+(`receiveForKevent`, under the event lock) also writes the message into
+the guest's buffer after the port lock is released
+(`YCODE_KEVENT_WRITE_AFTER_PORT_LOCK`, default on since 2026-11-05; `=0`
+writes it under G as before). The write takes the address-space lock L1,
+which a thread of the receiving task that changes its mappings can hold
+for milliseconds; under G that stalled every Mach message in the system
+(`boot-profile.md` §12.2). A failed write still answers
+`MACH_RCV_INVALID_DATA` with the message gone.
+
 Inside a fast path, work that needs L0, or the event lock of another image,
 is **deferred** (4.5); the fast trap's own effects (its return registers,
 the messages it queued or received, the rights it moved, the events it

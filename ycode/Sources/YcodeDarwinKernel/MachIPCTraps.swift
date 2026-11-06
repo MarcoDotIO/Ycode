@@ -882,7 +882,14 @@ extension MachIPC {
     /// buffer+size) without waiting.
     public func receiveForKevent(port: UInt32, options: UInt32, buffer: UInt64, size: UInt64,
                                  context: ThreadContext, memory: any GuestVirtualMemory) -> KeventMachReceive? {
-        lock.withLock {
+        // The message is written into the guest's buffer after the port
+        // lock is released, as on the fast mach_msg path: the write takes
+        // the address-space lock, which a thread changing its mappings may
+        // hold for milliseconds (boot-profile.md §12).
+        let threadLocks = KernelThreadLocks.current
+        let deferWrite = Self.keventWriteAfterPortLock && lock.root != nil && !threadLocks.deferReceiveWrite
+        if deferWrite { threadLocks.deferReceiveWrite = true }
+        var answer = lock.withLock {
             var r = MachReceiveRequest(name: port, options: UInt64(options), buffer: buffer, size: size, timeout: 0)
             r.mayBlock = false
             let result = receive(r, context: context, memory: memory)
@@ -890,6 +897,13 @@ extension MachIPC {
             return KeventMachReceive(returnCode: result.code, size: result.size, auxiliarySize: result.auxSize,
                                      data: result.code == MachMsgReturn.rcvTooLarge ? UInt64(result.identity) : 0)
         }
+        guard deferWrite else { return answer }
+        threadLocks.deferReceiveWrite = false
+        if let w = threadLocks.pendingReceiveWrite {
+            threadLocks.pendingReceiveWrite = nil
+            if (try? w.memory.write(va: w.va, bytes: w.bytes)) == nil { answer.returnCode = MachMsgReturn.rcvInvalidData }
+        }
+        return answer
     }
 }
 

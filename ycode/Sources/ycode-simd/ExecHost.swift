@@ -618,6 +618,19 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                 g.list(ST_HostService.sessions, events.snapshotStreams.map(FSEventsSnapshot.fields))
                 out.append(g)
             }
+            // The simulator identity service's connections and held requests.
+            if let identity = DefaultHostServices.simIdentity {
+                var g = SnapshotFields()
+                g.string(ST_HostService.name, "sim-identity")
+                g.list(ST_HostService.sessions, identity.snapshotConnections.map { c in
+                    var e = SnapshotFields()
+                    e.u64(1, UInt64(c.port))
+                    e.u64(2, UInt64(c.client))
+                    e.u64s(3, c.held.map(UInt64.init))
+                    return e
+                })
+                out.append(g)
+            }
             return out
         }
         // IOSurface and Metal (§8 option 2): read with the guest quiesced and
@@ -708,6 +721,14 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
                 DefaultHostServices.fsEvents?.restoreStreams(list)
                 snapLog("restore: file events: \(list.count) streams")
             }
+            for r in records where r.string(ST_HostService.name) == "sim-identity" {
+                let list = r.list(ST_HostService.sessions).map { e in
+                    SimIdentityHostService.ConnectionRecord(port: e.u32(1), client: e.u32(2),
+                                                            held: e.u64s(3).map { UInt32(truncatingIfNeeded: $0) })
+                }
+                DefaultHostServices.simIdentity?.restoreConnections(list)
+                snapLog("restore: simulator identity: \(list.count) connections")
+            }
             for r in records where r.string(ST_HostService.name) == "device-session" {
                 session?.reattach(channel: r.u32(ST_HostService.channel), session: r.u32(ST_HostService.session))
             }
@@ -724,6 +745,7 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
         let (held, count) = system.lock.withLock { (system.lock.totalHeldNanoseconds, system.lock.acquisitions) }
         return "kernel lock held \(held / 1_000_000) ms (\(count) acquisitions)"
             + (SchedPolicy.holdEnabled || SchedPolicy.qosEnabled ? "; sched: " + system.schedReport + "; " + HostSched.report : "")
+            + (FullQueueReport.summary.map { "; " + $0 } ?? "")
     }
     HomeWatch.startIfRequested(statePath: config.device?.framebufferStatePath, surfaces: ioSurfaceService)
     // visionOS: Siri's assistant daemon starts after the shell's home view
