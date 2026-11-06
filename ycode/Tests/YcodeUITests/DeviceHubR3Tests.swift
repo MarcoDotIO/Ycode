@@ -108,15 +108,17 @@ import YcodeDisplayStream
         // A plain "i" for Info.
         let tabs = try #require(item(DeviceHubToolbar.tabs) as? NSToolbarItemGroup)
         #expect(tabs.subitems.last?.image?.accessibilityDescription == "Info" && DeviceHubToolbar.tabSymbols.last == "info")
-        // "Nothing overflows at 1100" was measured on macOS 27.2; 27.0's toolbar
-        // items are wider (CI's 27.0.1 runner overflows two items), so there
-        // it is a known issue that still reports what overflowed.
-        let measuredSystem = ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 27, minorVersion: 2, patchVersion: 0))
+        // "Nothing overflows at 1100" needs the window 1100 wide. A smaller
+        // screen clamps it (CI's runner has a 1024-point screen, where two
+        // items overflow); then it is a known issue that reports what
+        // overflowed. The layout probe measures the same on other systems
+        // (hub.booted.toolbar.overflowedAt1100: none on macOS 27.0 and 27.2).
+        let fullWidth = w.frame.width >= 1100
         func expectFits(_ what: String) {
             let over = Self.overflowed(tb).map(\.rawValue)
-            withKnownIssue("toolbar widths differ before macOS 27.2", isIntermittent: true) {
+            withKnownIssue("the screen clamps the window below 1100 points", isIntermittent: true) {
                 #expect(over.isEmpty, "\(what): \(over), window \(w.frame.width) wide")
-            } when: { !measuredSystem }
+            } when: { !fullWidth }
         }
         expectFits("with the sidebar")
         // Hide the sidebar: Add Device and Filter go with it; everything else fits (no "»").

@@ -304,12 +304,37 @@ public enum LayoutProbe {
     /// Add Device | Filter at the sidebar's edge.
     public static func measureDeviceHub(_ w: NSWindow, into r: Recorder) {
         measureToolbar(w, prefix: "hub.toolbar", into: r)
+        measureHubOverflow(w, prefix: "hub.toolbar", into: r)
         let toggle = toolbarControls(w).first { ($0 as? NSButton)?.action == #selector(NSSplitViewController.toggleSidebar(_:)) }
         let edge = 240.0
         if let toggle {
             let t = r.frame("hub.hideSidebar", r.box(toggle))
             r.measure("hub.hideSidebar.gapToSidebarEdge", edge - t.maxX, "=", 7, tolerance: 1.5, source: "metrics.md §9, UISpacingTests")
         }
+    }
+
+    /// The toolbar's items in its overflow menu ("»") with the window 1100
+    /// wide (device-hub.md §I.13: none). The window keeps its own width
+    /// afterwards.
+    static func measureHubOverflow(_ w: NSWindow, prefix: String, into r: Recorder) {
+        guard let tb = w.toolbar else { return }
+        let old = w.frame
+        w.setContentSize(NSSize(width: 1100, height: w.contentLayoutRect.height))
+        w.contentView?.layoutSubtreeIfNeeded()
+        w.displayIfNeeded()
+        let shown = tb.items.filter { i in
+            if #available(macOS 15.0, *), i.isHidden { return false }
+            return ![.flexibleSpace, .space, .sidebarTrackingSeparator, .inspectorTrackingSeparator].contains(i.itemIdentifier)
+        }
+        let visible = Set((tb.visibleItems ?? []).map(\.itemIdentifier))
+        let over = shown.map(\.itemIdentifier.rawValue).filter { !visible.contains(NSToolbarItem.Identifier($0)) }
+        r.measure("\(prefix).overflowedAt1100", Double(over.count), "=", 0, tolerance: 0, source: "device-hub.md §I.13, DeviceHubR3Tests")
+        for id in over {
+            r.measure("\(prefix).overflowed.\(id.split(separator: ".").last.map(String.init) ?? id)", 1, "=", 0, tolerance: 0,
+                      source: "device-hub.md §I.13 (window \(Int(w.frame.width)) wide)")
+        }
+        w.setFrame(old, display: false)
+        w.contentView?.layoutSubtreeIfNeeded()
     }
 
     /// The toolbar's controls (outside the content view, in the top 60
@@ -514,7 +539,16 @@ public enum LayoutProbe {
 
         func openDeviceHub() {
             let row = DeviceRow.shutDownYcodeSimulator(name: "Phone (Ycode)", identifier: "layout-probe-1")
-            let hub = DevicesController(devices: [], simulators: [row])
+            // A booted foldable on a simulator host (as DeviceHubR3Tests selects):
+            // its controls widen the toolbar (no connection is made).
+            var booted = DeviceRow.shutDownYcodeSimulator(name: "Foldable (Ycode)", identifier: "h:/layout-probe-2")
+            booted.state = "Booted"
+            booted.osVersion = "27.1"
+            booted.model = "Foldable, Ycode Simulator (Linux)"
+            booted.isYcodeRemote = true
+            booted.isFoldable = true
+            booted.deviceTypeID = "iphone-duo"
+            let hub = DevicesController(devices: [], simulators: [row, booted])
             let w = hub.makeWindow()
             w.setFrameAutosaveName("")
             hub.splitView.autosaveName = nil
@@ -531,6 +565,11 @@ public enum LayoutProbe {
         func measureHubState() {
             guard let w = hubWindow, let r = recorder(w) else { return finish() }
             LayoutProbe.measureDeviceHub(w, into: r)
+            if let hub, let i = hub.rows.firstIndex(where: { $0.identifier == "h:/layout-probe-2" }) {
+                hub.select(row: i)
+                RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+                LayoutProbe.measureHubOverflow(w, prefix: "hub.booted.toolbar", into: r)
+            }
             merge(r, window: "device-hub", w)
             w.close()
             finish()

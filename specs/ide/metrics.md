@@ -517,6 +517,19 @@ supported system (the probe met it on 27.2, 27.0, 26.6 and 15.6);
 `FlushSidebarTests` forces the plain navigator item on the system that
 runs the tests and checks every workspace measure against its spec.
 
+### 14.2 macOS 27.0 (beta 3, 2026-11-05)
+
+The probe on macOS 27.0 (26A434, a virtual machine at 2x) and on 27.2 (1x)
+met all 176 measures on both. It now also widens the Device Hub to 1100
+points and counts the toolbar items in its overflow menu, once with a stopped
+simulator selected and once with a booted foldable on a simulator host
+(`hub.toolbar.overflowedAt1100`, `hub.booted.toolbar.overflowedAt1100`):
+none on either system. The toolbar's items are within a point of each other
+on the two systems. CI's macOS runner reported two overflowing items
+because its 1024-point screen clamps the 1100-point window, not because of
+the system version; `DeviceHubR3Tests` treats a clamped window as a known
+issue.
+
 ## 15. Council round 3: the navigator's bottom bar (2026-11-05)
 
 Measured from the round 3 captures (2x, foreground, editor at rest; points
