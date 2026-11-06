@@ -963,7 +963,8 @@ latency 0.9 s.
   (send push), classes are recomputed off L0, and `YCODE_BOOT_PRIORITY`
   is the default for device runs.
 
-**Questions for the reference** (black-box, for the dirty room):
+**Questions for the reference** (black-box, for the dirty room; answered
+in §13):
 
 1. The queue limit of `com.apple.diagnosticd`'s service port in a booted
    simulator device, and whether log senders ever block on it during a boot
@@ -1366,7 +1367,7 @@ counts.
 |---|---|---|---|---|
 | 1 | **The log path.** Every `os_log` message is a send-only Mach message to diagnosticd (about 3,600 a second in a boot); runningboardd and cfprefsd, which SpringBoard waits for, block on its full queue (§8.5). Options, cheapest first: (a) a send-only message to a port whose receiver waits in a workloop hands off without the event lock and without a full wakeup round trip (the KLOCK items of §8.6); (b) diagnosticd's receive threads get a host CPU first while senders are blocked on its queue (send push exists; extend it to the host class of the receiving workloop thread); (c) if the reference's queue limit is larger than the one launchd_sim sets in Ycode (§8.6 question 1), match it | 3–6 s (most of 6.7 s; the queue limit alone is unknown) | Medium: IPC ordering and wakeups (lost wakeup, message order per port), lock order | `--blocked-sends 0x10000000` thread-seconds (196–295 s today), the log path's share of the backbone, home_s; message rate and queue limit on the reference (dirty room, §8.6 questions 1–2) |
 | 2 | **SpringBoard's CPU wait.** Its threads wait 3.9 s for a host CPU while about 190 daemons start. Reserve host CPUs for the UI class while the boot runs (a cpuset for the UI path, the rest for the others), or hold more of the non-UI starts until home. `YCODE_HOST_SCHED_BG_CPUS=4` and `cpu.idle` for class 0 did not help (§10.2), so the next try is the reverse: give SpringBoard, backboardd and their direct servers dedicated CPUs | 1–3 s | Low–medium: starving the daemons SpringBoard waits for (runningboardd, cfprefsd, diagnosticd) moves the time instead of removing it | the backbone's run-queue items, home_s, the hold's release reasons |
-| 3 | **Native mode** (`native-mode.md`): guest processes as Linux processes, system calls as function calls, no global lock for process-local work. It removes the trap exit (about 4 µs each, `guest-cpu.md` §5) and most kernel-lock waits on the path, and shortens the log path's hand-offs | 3–8 s (lock and IPC items on the path, and part of the log path), but only once stages 1–5 of `native-mode.md` §9 exist | High: months of work, TLS on a stock kernel, seccomp coverage, a second code path | stage 1's per-call cost against the micro-VM's; then the backbone's trap and lock items |
+| 3 | **Native mode** (`native-mode.md`): guest processes as Linux processes, system calls as function calls, no global lock for process-local work. **Stage 1 measured (§11.5, `native-mode.md` §10)**: a process-local call 30 × cheaper, but on the path it removes only trap service, process-local lock waits, spawns and wakeups | 1.4–7.1 s (central about 4), of which 2.2–3.6 s no other rank reaches; only once stages 2–5 exist | High: months of work, foreign code in the runtime's process, signal emulation, cross-process Mach semantics, a second code path | done: stage 1's per-call costs against the micro-VM (§11.5) |
 | 4 | **SpringBoard's guest code** (14.1 s): dyld_sim's loader and SpringBoard's own start-up at native speed (§5, `guest-cpu.md` §2). Ycode's share is memory translation: file-backed memory is 4 KiB at stage 2; a hugetlbfs pool or `shmem_enabled = advise` (root on the Thor) would let the shared cache be block-mapped (`guest-cpu.md` §8) | 0.5–1.5 s | Low (needs the owner for root) | DTLB walks and cycles of SpringBoard to its Mercury request (`pmustat -g`), home_s |
 | 5 | **The Thor's core gap** (§10.4): one Thor core is 1.25 × slower than the Mac's on loader-like work overall (0.92 × on branches and string sorting, 1.82 × on memory latency). Not closable in software; it sets a floor | — | — | the same `cpubench` on any new host |
 
@@ -1392,11 +1393,215 @@ the number of traps and processes, so it is the long-term route if ranks
 2. **Native mode stage 1** (rank 3): the single-threaded native runner of
    `native-mode.md` §9, with its per-call numbers against the micro-VM, so
    that the size of the long-term route is measured before anyone commits to
-   stages 2–5.
+   stages 2–5. *Done (B3-NATIVE, §11.5): not continued toward 21.4 s.*
 
 Both need a reserved Thor for their timed series (no other agents' boots
 or builds): today's shared host adds 10 s to a boot (§10.1) and makes a
 2 s gain invisible.
+
+### 11.5 Native mode, measured (agent B3-NATIVE, 2026-11-05)
+
+The stage-1 implementation is on the long-lived `native-mode` branch, not
+on the main line (owner's decision, 2026-11-05: iterate on it across
+betas). The measurements below were made from that branch.
+
+Stage 1 of `native-mode.md` §9 exists (`native-mode.md` §10): `ycnative`
+runs Ycode's macOS userland programs as plain Linux processes, behind
+`YCODE_NATIVE=1` for `ycode-simd --macos` (off by default; the micro-VM
+path is unchanged). The guest's `svc` sites in Ycode's images become
+function calls, the program's own go through seccomp, and the TLS reads are
+rewritten at load time (`TPIDRRO_EL0` → `TPIDR_EL0`, one word each, no run
+time cost, no kernel patch). All six Milestone A samples and `nt_probe`
+pass in both modes.
+
+Medians of 7 runs, the same binaries in both modes, the same four Thor
+cores, under the boot-timing lock (`native-mode.md` §10.5–§10.6):
+
+| | micro-VM | native | ratio |
+|---|---|---|---|
+| `getppid` (a BSD call that does some work) | 4.31 µs | 136 ns | 31.7 |
+| a Mach trap with no work | 4.25 µs | 15 ns | 289 |
+| file call (`open`/`fstat`/`pread`/`close`) | 6.88 µs | 553 ns | 12.5 |
+| stray `svc` (seccomp) | 4.28 µs | 957 ns | 4.5 |
+| first write to a fresh 16 KiB page | 319 ns | 274 ns | 1.2 |
+| thread hand-off | 10.4 µs | 4.6 µs | 2.3 |
+| `hello` start to exit | 77 ms | 4.9 ms | 15.7 |
+
+A Swift personality would add 16–19 ns per call (the heavy entry: the TLS
+switch and the FP registers).
+
+Applied item by item to the quiet critical path of §8.3, stages 2–5 would
+save **1.4–7.1 s (central about 4 s)**; 2.2–3.6 s of it is what no other
+rank reaches (trap service and the global lock of process-local calls,
+spawns, wakeups), the rest overlaps ranks 1 and 2 (`native-mode.md`
+§10.7). That does not make 8.7 s on its own, and it costs months of
+high-risk work (§10.8–§10.9: stage 2 alone about 2–3 agent-weeks).
+**Recommendation: do not continue native mode toward 21.4 s.** Ranks 1, 2
+and 4, and the micro-VM's own lock work on the process-local traps of
+§8.3 item 6, are cheaper ways to the same items. Stage 1 stays behind its
+switch as the measured base.
+
+## 13. Reference logging path (agent B3-SIMOBS, 2026-11-05)
+
+Black-box answers to the questions of §8.6 and §11.2 item 1 about the
+reference: how fast the guest's processes log during a boot, where the
+messages queue in diagnosticd, what happens when the queues fill, and how
+long the boot takes on this Mac.
+
+### 13.1 Conditions
+
+| Item | Value |
+|---|---|
+| Host | arm64 Mac, 14 cores, 36 GB, macOS 27.2 (26B5112a), Xcode 27.1 (27A9269) |
+| Runtime and device | iOS 27.1 (24A94401), iPhone Duo: the runtime and device type of Ycode's golden device and of `parity-ladder.md` §2 |
+| Devices | a new device per run (`ycode-test-simobs-boot-1` … `-5`), first boot to the home screen, `simctl shutdown`, 3 s, then the measured **second (subsequent) boot**, all headless (`simctl bootstatus -b`); a sixth, untimed probe boot (§13.4) on another throwaway device |
+| End point | `home_s` of `parity-ladder.md` §1 (first primary-display screenshot with mean brightness > 60, polled about once a second). In 4 of 5 boots the Settings icon and the wallpaper appeared in the same screenshot; in run 3 the icons came 3.9 s earlier (23.9 s) |
+| Counters | diagnosticd's own Mach receive counter (`top -stats msgrecv`, every 1–3 s; the host was too loaded for 1 s), its port space (`lsmp`, about 8 samples a second: `qlimit` and `msgcount` of every receive right), its thread priorities (`ps -M`, every 0.5 s); the device's log store read afterwards with `simctl spawn … log show --info --debug` (every event with its process and timestamp) |
+| Host load | **Very high**: 1-minute load average 463–690 at the boot starts (other agents' builds, an Android emulator, VMs); no other simulator device booted. The times are therefore slower than `parity-ladder.md` §3.1's (load 4–10); the rates per second are counts and less sensitive |
+
+### 13.2 Time to the home screen
+
+| Run | home_s | bootstatus_s | diagnosticd running at | load (1 min) at start |
+|---|---|---|---|---|
+| 1 | 25.7 | 14.2 | 1.8 s | 576 |
+| 2 | 29.0 | 13.8 | 1.7 s | 547 |
+| 3 | 27.8 | 12.8 | 1.2 s | 690 |
+| 4 | 30.0 | 10.9 | 2.3 s | 573 |
+| 5 | 24.7 | 8.4 | 1.7 s | 463 |
+| **median** | **27.8** (mean 27.4 ± 2.2) | 12.8 | 1.7 s | — |
+
+`parity-ladder.md` §3.1 measured 21.4 ± 2.3 s for the same boot on a much
+less loaded host; both are reference figures, and 21.4 s stays the one to
+compare Ycode's 30 s with (`lean-boot.md` §9), because the host load here
+was 50–100 times higher.
+
+### 13.3 Message rate
+
+diagnosticd receives **one Mach message per log event**: its receive
+counter tracks the number of events the log store holds for the same
+interval (activity-creation events included) to within 0.2–2 k messages
+(1–7 %), a constant offset made by the events logged before diagnosticd
+was running. So the reference's processes forward every message to
+diagnosticd during the boot, as in Ycode (`launchd-sim.md` §8.1). The
+log filter it writes is the same as in Ycode:
+`DEV/data/Library/Preferences/Logging/com.apple.diagnosticd.filter.plist`,
+`global` = 0x9_0007_0000 (38 655 164 416), and its own log records the
+same system-mode client of itself (mode 0x9, empty filter).
+
+| Measure (second boot) | Runs 1–5 | Median |
+|---|---|---|
+| Events in the first 30 s | 77 510, 80 872, 90 602, 87 128, 99 396 | 87 128 |
+| **Mean rate, first 30 s (messages/s)** | 2 584, 2 696, 3 020, 2 904, 3 313 | **2 904** |
+| Median of the 1-s counts, boot start to home | 2 720, 2 768, 2 961, 2 769, 3 348 | 2 769 |
+| **Peak 1-s count** (in the first 10–15 s) | 6 041, 6 152, 7 705, 5 459, 9 492 | **6 152** |
+| diagnosticd's receive counter at home | 83 224 … 89 861 | about 89 000 |
+| Programs that logged before home | 129, 150, 162, 161, 160 | 160 |
+| After home (30–60 s) | 50–400 a second, falling | — |
+
+Ycode's 3 600 a second (§8.5) is within the reference's range; the
+message volume is not the difference.
+
+By process (boot start to home; medians over the 5 runs):
+
+| Process | Messages | Share | Mean/s | Peak 1-s | Median 1-s |
+|---|---|---|---|---|---|
+| runningboardd | 12 404 | 14.0 % | 418 | 1 513 | 299 |
+| SpringBoard | 11 525 | 13.4 % | 400 | 2 391 | 109 |
+| PosterBoard | 4 110 | 4.6 % | 147 | 1 183 | 0 |
+| launchd_sim | 4 107 | 4.6 % | 138 | 575 | 95 |
+| locationd | 3 379 | 3.9 % | 122 | 1 130 | 25 |
+| cfprefsd | 2 962 | 3.5 % | 103 | 274 | 100 |
+| sharingd | 2 368 | 2.7 % | 85 | 1 263 | 0 |
+| apsd | 1 843 | 2.3 % | 71 | 540 | 18 |
+| chronod | 1 784 | 2.3 % | 72 | 601 | 3 |
+| mobileassetd | 1 804 | 2.2 % | 62 | 773 | 0 |
+| callservicesd | 1 703 | 2.0 % | 61 | 880 | 0 |
+| UserEventAgent | 1 580 | 1.9 % | 60 | 356 | 2 |
+
+Most senders log in short bursts (median 1-s count 0); runningboardd,
+SpringBoard, cfprefsd and launchd_sim log steadily through the boot.
+
+### 13.4 Where the messages queue, and the queue limit
+
+diagnosticd's port space during a boot (`lsmp`, all 5 runs and the probe
+boot):
+
+| Receive right | Count | `qlimit` | Held as a send right by |
+|---|---|---|---|
+| The service port (`com.apple.diagnosticd`; flags guarded, strict, importance) | 1 | **16** | 156 of the device's 177 processes |
+| **One receive right per client connection** (importance flag) | 134–166 (one per connected process; grows with the boot) | **6** | exactly one process each |
+| Others (notifyd's, diagnosticd's own, 4 unused) | 6 | 5 or 16 | 0–1 |
+
+- The log messages queue on the **per-connection** receive rights, not on
+  the service port: every receive right seen full had exactly one sender
+  process holding a send right to it (28 of 28 in the probe boot), and the
+  service port's queue held at most one message in any sample.
+- **The per-connection queues fill.** In 23–29 % of the samples from boot
+  start to home at least one connection queue held 6 of 6 messages
+  (msgcount = qlimit); per run 56–83 full-queue observations. The messages
+  queued in all of diagnosticd's ports together: median 1–2, maximum
+  23–51. The connections seen full in the probe boot belonged to
+  runningboardd (9 observations), SpringBoard (7), chronod (4), locationd,
+  sharingd (3 each), and 23 other processes (1–2 each); cfprefsd's was full
+  once.
+- **Senders block; nothing is dropped.** No message is lost: the receive
+  counter equals the store's event count (§13.3), the store shows no loss
+  events, and neither diagnosticd's nor logd's own log
+  (`DEV/data/var/db/diagnostics/{diagnosticd,logd}.0.log`) reports a drop,
+  quarantine or throttle. Call-stack samples (`sample`, 1 ms, 2 s) of
+  senders during the boot show the send in the kernel's message send
+  under the log-streaming path (`_os_log_impl_stream` →
+  `_xpc_send_serializer` → `mach_msg2_trap`), i.e. a blocking send:
+  runningboardd at 4 s: 15 of about 1 500 samples of its busiest thread
+  (1 %); at 19 s: 67 (about 4 %); cfprefsd at 9 s: 1 of 1 758. So the
+  reference's senders do wait on diagnosticd, but briefly: a few percent of
+  a thread's time, against runningboardd's 27.8 s of 36 s in Ycode (§8.5).
+- SpringBoard at 14 s spent 402 of its home-screen queue's 1 045 samples in
+  the log-streaming path, only 17 of them in the send: the stream costs the
+  sender CPU (formatting and encoding each message), not waiting.
+- **The limit itself is the guest's**: per-connection queues of 6 and a
+  service port of 16 on the reference. Ycode's guest software is the same,
+  so a per-connection queue limit in Ycode that differs from 6 would be
+  Ycode's port code, not launchd_sim's setting; compare with the
+  `MACH_PORT_LIMITS_INFO` of the same rights in a Ycode boot.
+
+### 13.5 diagnosticd's threads and the host end
+
+- **No elevated priority.** `ps -M` over the boot (about 45 samples per
+  run, up to 34 threads): 31 in 87–96 % of thread samples, 28–30 otherwise
+  (timeshare decay), and 36, 37, 46 or 47 in 1–5 thread samples per run
+  (short overrides while a higher-priority sender waits). 31 is the
+  default QoS priority; no thread runs at user-interactive (47) or
+  user-initiated (37) priority for more than a sample.
+- The receiving threads are dispatch workloop threads, as in Ycode
+  (`launchd-sim.md` §8.1): idle samples of diagnosticd show its message
+  handler waiting in `dispatch_sync` for its own queue (`kevent_id`).
+- **The host end exists on the Mac.** `/private/var/run/.sim_diagnosticd_socket`
+  (owner root:daemon) is a socket of the host's `com.apple.diagnosticd`
+  launchd job (`launchctl print system/com.apple.diagnosticd`: `sockets`,
+  path as above). The host's diagnosticd (root) starts on demand about 1 s
+  after the simulator's diagnosticd starts and connects; during the first
+  boot of the exploratory device it used 38 s of CPU in 2.5 min, the
+  simulator's diagnosticd 50 s. So on the Mac the simulator's whole log
+  stream is forwarded and consumed on the host during the boot (Ycode
+  leaves its host end off by default, `launchd-sim.md` §8.1).
+- The device also runs its own `logd` (store in
+  `DEV/data/var/db/diagnostics/`, with `logdata.statistics.0.jsonl`, logd's
+  byte counts per process at each file rotation).
+
+### 13.6 Consequences for Ycode
+
+1. The message rate is the same (2 900/s reference, 3 600/s Ycode); Ycode
+   must not reduce it, it must carry it.
+2. The reference's senders block on full 6-message per-connection queues
+   too, but for 1–4 % of a sender thread's time; in Ycode runningboardd
+   blocked 77 % of the boot (§8.5). The difference is diagnosticd's
+   drain rate per connection, i.e. the cost of one receive and wake-up in
+   Ycode (§11.2 item 1, options a and b), not the queue limit.
+3. Option (c) of §11.2 item 1 (match the queue limit) has nothing to match
+   if Ycode's per-connection rights also have `qlimit` 6; check that first.
+4. Priority: the reference gives diagnosticd's threads no standing boost;
+   (b) of §11.2 item 1 is a Ycode-specific remedy, not parity.
 
 ## Evidence
 
@@ -1430,6 +1635,19 @@ or builds): today's shared host adds 10 s to a boot (§10.1) and makes a
 | Series S1, S2, profiled boot `prof1`, pipeline-cache growth (§10.1–§10.3) | 3 | B3-GPU's Thor runs (`ab-S1`, `ab-S2`, `prof1`: home-watch lines, exit summaries, `YCODE_METAL_STATS` lines, `scripts/ycode-frame-profile`) |
 | diagnosticd's `POSIXSpawnType` is Interactive (§10.5) | 2 | its launchd plist in the runtime, read as a property list |
 | Single-thread speed of the Mac and the Thor (§10.4) | 3 | `scripts/host-probes/cpubench.c` on both machines |
+| Reference home_s, bootstatus_s, load (§13.2) | 3 | `research/dirty/simobs` boot runs: `simctl bootstatus -b`, `simctl io … screenshot --display=primary` brightness, host load average |
+| Message rate, per process, one message per event (§13.3) | 3 | diagnosticd's `msgrecv` (`top`), `simctl spawn … log show --info --debug --style ndjson` event timestamps; the filter plist read as a property list (2) |
+| Receive rights, `qlimit` 16 and 6, full queues, owners (§13.4) | 3 | `lsmp` of diagnosticd and of every device process (send rights matched by object id) |
+| Blocking sends on the log-streaming path (§13.4) | 4 | `sample` call stacks of runningboardd, cfprefsd and SpringBoard (public function names only) |
+| No loss, no quarantine (§13.4) | 3 | counter against store; event types in the store; `diagnosticd.0.log`, `logd.0.log` |
+| Thread priorities (§13.5) | 3 | `ps -M` |
+| Host end of `.sim_diagnosticd_socket` (§13.5) | 3 | `launchctl print system/com.apple.diagnosticd`, `ps`, `ls -l` |
+| Native mode stage 1, per-call costs and whole-program times in both modes (§11.5) | 3 | B3-NATIVE's series `s2` on the Thor (`ycnative`, `nt_bench`, `nt_probe`, Milestone A samples; `native-mode.md` §10) |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/` and Ghidra
 were not opened.
+§13 is a dirty-room observation (agent B3-SIMOBS): Apple's simulator ran
+only as a black box through `simctl`, `top`, `lsmp`, `ps`, `log` and
+`sample` on devices named `ycode-test-simobs-*`, which were deleted
+afterwards; no binary was disassembled or decompiled. Its raw data stays in
+the git-ignored `research/dirty/simobs/`.

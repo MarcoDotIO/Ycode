@@ -395,7 +395,7 @@ Each stage has a done-criterion that can be checked on the Thor.
 | **C** | Process model: `posix_spawn`/`exec` of macOS binaries from macOS binaries, a Ycode launchd-lite for the `system` and `gui/<uid>` domains on Ycode's bootstrap server, XPC to Ycode services, `cfprefsd`-equivalent defaults | A shell (built from source) runs pipelines of our CLIs; `defaults read/write` round-trips |
 | **D** | Windowing prototype then Ycode's AppKit subset: the window broker (§7.1) on one Linux display and on the display stream; `NSApplication`, `NSWindow`, `NSView`, events, text drawing | A test program shows one window with text, takes keyboard input and closes cleanly; then a small document-based app |
 | **E** | Graphics: Ycode's macOS `Metal.framework` on the existing protocol; `CAMetalLayer` windows | A Metal triangle sample renders in a window |
-| **F** | Speed: native mode for all-Ycode processes (no foreign `TPIDRRO_EL0` readers); x86-64 support decisions (§10) | Measured per-call cost against the micro-VM |
+| **F** | Speed: native mode for all-Ycode processes (no foreign `TPIDRRO_EL0` readers); x86-64 support decisions (§10) | Measured per-call cost against the micro-VM. *Stage 1 done on the `native-mode` branch (`native-mode.md` §10, 2026-11-05): the Milestone A samples run natively with `YCODE_NATIVE=1`; a BSD call 30 × and a whole small program 9–17 × faster than in the micro-VM* |
 
 ### 9.1 Milestone A (implemented this round)
 

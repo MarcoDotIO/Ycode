@@ -9,6 +9,12 @@ as a black box (evidence level 3). Where public UIKit documentation states a
 value, the documentation is cited as well (level 1). The spec has no Apple
 code, no decompiler output and no images.
 
+**Update (B3-SIMOBS, 2026-11-05):** §12 adds frame timestamps, the
+rotation mechanism for devices that do not fold, and two corrections:
+a 3× label at a half-pixel origin is composited like the 2× one (§8.2 was
+an analysis error, §12.3), and the release after a 0.6 s hold keeps the
+drag's velocity (§3.3, §12.4).
+
 It builds on `display-stream.md`, `hid-input.md`, `ipad.md`,
 `iphone-types.md` and `foldable.md`, and does not repeat them.
 
@@ -174,8 +180,10 @@ view's size along the scroll axis. The excursion is rounded to whole pixels
 
 ### 3.3 Return to the edge after release
 
-Same trigger as §3.2. The release has zero velocity because of the 0.6 s
-hold. The table gives the fraction of the excursion that remains at fixed
+Same trigger as §3.2. **The release does not have zero velocity**
+(corrected 2026-11-05, §12.4): XCUITest sends no touch events during the
+0.6 s hold, so UIKit reports the velocity of the last movement, −0.24, −0.20
+and −0.17 pt/ms for the three rows (the same as with no hold). The table gives the fraction of the excursion that remains at fixed
 times after touch-up.
 
 | Device | Excursion (pt) | 100 ms | 200 ms | 300 ms | 400 ms | Within 0.5 pt of rest (s) | `scrollViewDidEndDecelerating` after release (s) | Overshoot past rest |
@@ -557,7 +565,8 @@ behaviour.
 Other display-link facts (all runs):
 - `duration` = 16.667 ms, and `targetTimestamp − timestamp` = 16.667 ms.
 - The callback runs a median of 17.19 ms after `timestamp`, which is about
-  0.5 ms after `targetTimestamp`.
+  0.5 ms after `targetTimestamp`. This is one of two stable modes; in the
+  other the callback runs 0.5–1.1 ms after `timestamp` (§12.1).
 - Asking for 120 Hz changes nothing: no interval shorter than 16.66 ms was
   ever seen.
 
@@ -606,15 +615,12 @@ cut out.
 | Distinct gray levels in a 17 pt line | 254 | 256 |
 | Stem hinting | none: an `l` stem at 17 pt covers 218, 0, 0, 65 (about 2.4 px wide) | none: 72, 0, 0, 0, 98 (about 3.6 px wide) |
 | Label moved by 1 px | identical to the original, moved by 1 px (mean difference 0.000) | identical (0.000) |
-| Label moved by ½ px | equals the average of the original and the 1-px-shifted original (mean difference 0.06 of 255): the label's bitmap is composited at a half-pixel offset with bilinear filtering, not re-rasterized | differs from both whole-pixel renderings (7.8 of 255) and does not equal their average (15.4): glyphs are re-rasterized at the fractional origin |
+| Label moved by ½ px | equals the average of the original and the 1-px-shifted original (mean difference 0.06 of 255): the label's bitmap is composited at a half-pixel offset with bilinear filtering, not re-rasterized | **the same** (corrected 2026-11-05, §12.3): equals the average to 0.04 of 255. The earlier "7.8 / 15.4, re-rasterized" came from a crop one pixel off |
 
 The iPhone 17 Pro (3×, iOS 27.2) gave **pixel-identical** results to the
-iPhone Duo (3×, iOS 27.1) on every row of this table and of §8.3. The
-numbers match exactly, including the mean differences 7.76 and 15.41 for
-the half-pixel label. So the different half-pixel behaviour depends on the
-**scale**, not the runtime. At 2× a label at a half-pixel origin is
-resampled bilinearly. At 3× it is rasterized again at the fractional
-position.
+iPhone Duo (3×, iOS 27.1) on every row of this table and of §8.3. At every
+scale a label at a fractional origin is its whole-pixel bitmap resampled
+bilinearly at that offset (§12.3).
 
 ### 8.3 Images and solid layers
 
@@ -723,6 +729,181 @@ with the cover's size, as the models predict.
    the hide animation (§10), and whether the runtime or the device type
    causes it. The iPhone 17 Pro on 27.1 cannot be created, so a same-device
    comparison is not possible with the installed runtimes.
+8. What puts a display link into mode A or mode B (§12.1), and whether
+   `timestamp` is a presentation time (the simulator SDK offers no
+   presentation feedback to check against).
+9. How Simulator.app's Rotate reaches the guest (§12.2 found the XCUITest
+   and `devicectl` routes; the window stayed closed).
+
+## 12. Frame timestamps, rotation, and two corrections (B3-SIMOBS, 2026-11-05)
+
+Same conditions as §1 (Xcode 27.1, iOS 27.2 24B8117, iPhone 17 Pro and
+iPad Pro 11-inch (M5), headless, devices `ycode-test-simobs-*`), with a new
+build of the probe. The host's 1-minute load average was 300–600
+throughout.
+
+### 12.1 `CADisplayLink` timestamps
+
+Trigger: the app (launched with `simctl launch`, no XCUITest, so no
+queries) runs a display link on the main run loop in common modes, moves a
+view by 1 pt every frame and, in most runs, clears and presents a
+`CAMetalLayer` drawable in the callback. Each callback logs `timestamp`,
+`targetTimestamp`, `duration`, `CACurrentMediaTime()` on entry and on exit.
+Load is a busy loop at the end of the callback: 0, 8, 14 or 20 ms every
+frame, or 40 ms every 10th frame. 3 launches × 7 s per setting on the
+iPhone 17 Pro; the first 30 callbacks of a launch are dropped.
+
+**Two stable modes.** Idle and up to 14 ms of work per frame, the callback
+runs at one of two delays:
+
+| Mode | Callback − `timestamp` (ms) | Callback − `targetTimestamp` (ms) | Callbacks (idle, 8 and 14 ms runs) |
+|---|---|---|---|
+| A | median 0.76 (p5 0.45, p95 1.08) | −15.9 | 2 665 (62 %) |
+| B | median 17.16 (p5 17.13, p95 17.19) | +0.49 | 1 650 (38 %) |
+
+- A launch stays in one mode for hundreds of frames. Of 12 launches (idle
+  with and without Metal, 8 ms, 14 ms), 5 stayed in A, 3 stayed in B and 4
+  moved from B to A once or twice; the callback before such a switch was
+  often late or long (a 114 ms stall, a 37 ms one, 8 ms of work arriving
+  8 ms after the previous), but not always. No lasting move from A to B
+  was seen after the first frames. With 14 ms of work every frame all
+  three launches were in A. What picks the mode was not found.
+- In both modes the callbacks come every 16.667 ms on one 60 Hz grid,
+  0.5–1 ms after a grid point; the modes differ only in which grid point
+  `timestamp` names: A the one 0.5–1 ms ago, B the one before it.
+  §7.2's 17.19 ms is mode B. **Ycode's 0.56 ms (uikit-feel-ycode §7.2) is
+  mode A**, which the reference shows too.
+- **`timestamp` is the previous callback's `targetTimestamp`**:
+  `timestamp[n] == targetTimestamp[n−1]` in 1 045 of 1 049, 1 136 of 1 146,
+  1 062 of 1 063 and 1 045 of 1 045 consecutive pairs (idle with and
+  without Metal, 8 ms, 14 ms); the exceptions follow stalls.
+- **`targetTimestamp − timestamp` = `duration` = 16.667 ms** in every
+  callback of every run, stalled and loaded ones included.
+- Whether `timestamp` is the *presentation* time of the previous frame
+  cannot be observed from the app: the simulator SDK's Metal headers
+  declare neither `addPresentedHandler` nor `presentedTime` (the handler
+  typedef remains), so an app gets no presentation time. A command buffer
+  committed in the callback completes 1.1–1.3 ms (median) after the
+  callback starts.
+- Metal on or off does not change the modes or the intervals.
+
+**Under load:**
+
+| Work in the callback | Intervals between `timestamp`s | Callback − `timestamp` | `timestamp` on the 60 Hz grid |
+|---|---|---|---|
+| 8 ms every frame | 16.667 ms; 1 skipped frame in 3 launches | mode A or B as idle | yes |
+| 14 ms every frame | 16.667 ms; none skipped | mode A, 0.75 ms (p95 1.05) | yes |
+| 20 ms every frame | median 33.33 ms (every other frame); 484 frames skipped of 542 | median 13.2 ms (p5 4.2, p95 14.5) | **no**: off by 4.0 ms (median) |
+| 40 ms every 10th frame | 16.667 ms except the long frame (40.8 ms) | the callback after the long one: 9.8 ms; then mode A again | the callback after the long one is off the grid; the next one is back on it |
+
+- After a callback overruns a vsync, the next callback's `timestamp` is not
+  a vsync time: it is the moment the long callback returned plus 0.17 ms
+  (median, 89 cases), and its `targetTimestamp` is that plus 16.667 ms. The
+  callback itself runs at the next vsync (9.9 ms after the long one
+  returned, median). The callback after that is on the grid again (mode A).
+- When every callback overruns (20 ms), the link fires every other vsync;
+  `timestamp` advances by one `duration` per callback while that keeps it
+  within a frame of real time and is re-based (off grid) otherwise.
+
+### 12.2 Rotation of devices that do not fold
+
+**Triggers that work headless** (iPhone 17 Pro and iPad Pro 11 (M5), iOS
+27.2):
+
+1. `XCUIDevice.shared.orientation = …` in an XCUITest (as in §6).
+2. `xcrun devicectl device orientation set --device <udid> <orientation>`
+   (orientations portrait, portraitUpsideDown, landscapeLeft,
+   landscapeRight, faceUp, faceDown); `… orientation get` reads it back.
+   It rotated a running app on both devices (4 of 4 turns each).
+
+`simctl` has no orientation command (`simctl ui` sets appearance,
+contrast and content size only); Simulator.app's Rotate was not observed
+(no window may be opened).
+
+**Path inside the guest**, from the guest's log (`simctl spawn … log
+stream`) during each trigger; times from the first line of the turn
+(`devicectl`: from backboardd's change, with the first `devicectl` turn's
+start-up before it):
+
+| ms | XCUITest trigger | `devicectl` trigger |
+|---|---|---|
+| 0 (`devicectl`: −830 ms) | `testmanagerd` (guest) handles the runner's `_XCT_updateDeviceOrientation:completion:` request and logs that it sends a rotation request for device orientation 3 | CoreDevice on the host reaches the guest Mach service `com.apple.coredevice.feature.remote.devicecontrol.orientation`; launchd starts its job `com.apple.coredevice.dthidd` (`/usr/libexec/dthidd`) on demand, for a Mach message (`launchd.log`); the job plist ships in CoreSimulator's iphoneos platform folder, not in the runtime) |
+| 0.8 (`devicectl`: −360 ms) | SpringBoard's test-automation service logs a client request to unlock the interface orientation | backboardd refuses dthidd's orientation-lock query (the caller lacks the entitlement `com.apple.backboard.client`); the rotation still happens |
+| 2.2 (`devicectl`: 0) | **backboardd** logs that its raw device orientation changed to landscapeLeft (3), then its effective and last-unambiguous device orientation | the same three backboardd changes |
+| 2.3 | backboardd sends the orientation event to its accelerometer clients (SpringBoard, which `wantsOrientationEvents`) and a passive HID event to SpringBoard's HID connection | the same |
+| 2.4 | SpringBoard's accelerometer input reports the new device orientation; its traits arbiter picks the new interface orientation and starts a rotation transition with a 0.30 s animation (iPhone) | the same |
+| 3.9 | testmanagerd sees the accelerometer client report orientation 3 and completes the request (XCUITest returns) | — |
+
+So both triggers set backboardd's **raw device orientation** (the value
+its accelerometer pipeline would produce), and everything after that is
+the guest's ordinary rotation: SpringBoard decides the interface
+orientation and rotates the app's scene. Neither goes through the
+`PurpleWorkspacePort` event of `hid-input.md` §10. For Ycode: running
+`testmanagerd` and `dthidd` unchanged gives both triggers if the guest's
+backboardd accepts their requests; a host Rotate button needs a host-side
+sender of the same request (the `devicectl` route: a client of the guest
+Mach service above).
+
+**What the app sees** is the same for both triggers and matches §6:
+
+| Device, trigger | `transitionDuration`, curve | Bounds animation (fit to the presentation layer) | `willTransition` → completion |
+|---|---|---|---|
+| iPhone 17 Pro, XCUITest (8 turns of 90°) | 0.3 s, 0 | ease-in-ease-out, 300 ms (RMS 0.0007–0.004 in 6 of 7; one slow 370 ms), starts 22–38 ms after `willTransition` | 340–354 ms (one 408) |
+| iPhone 17 Pro, `devicectl` (4 turns) | 0.3 s, 0 | ease-in-ease-out, 300–305 ms (RMS 0.0009–0.0044), starts 20–23 ms after | 321–337 ms |
+| iPad Pro 11, XCUITest (8 turns) | 0.4 s, 0 | ease-in-ease-out, 400 ms where no frames were dropped (RMS 0.0008, 0.0027); 440–505 ms with dropped frames (host load) | 467–932 ms |
+| iPad Pro 11, `devicectl` (4 turns) | 0.4 s, 0 | ease-in-ease-out 400 ms (RMS 0.0028); 440 ms with dropped frames | 455–610 ms |
+
+A 180° turn (landscapeLeft → landscapeRight) by XCUITest reports 0.6 s
+(iPhone) / 0.8 s (iPad) and completes in 4–7 ms, as in §6.1.
+
+### 12.3 Correction: the 3× label at a half-pixel origin (§8.2)
+
+Trigger: a page of triples (the item at a whole pixel, moved by 1 px,
+moved by the fraction) captured with `simctl io … screenshot`; each crop
+starts at the triple's whole-pixel origin, so the 1-px item is the
+original moved by exactly one pixel. Classified by the mean difference
+over non-white pixels between the fractional item and the linear blend
+(1 − f)·A + f·B of the two whole-pixel items.
+
+| Variant (17 pt system font unless named) | iPhone 17 Pro (3×) | iPad Pro 11 (2×) |
+|---|---|---|
+| ½ px in x; ½ px in y | blend, 0.15; 0.11 | blend, 0.19; 0.15 |
+| ⅓ px, ¼ px in x | blend with f = ⅓, ¼: 0.16, 0.14 | 0.23, 0.20 |
+| text "l"; Courier 17; bold 34; system 12 | blend, 0.06–0.19 | blend, 0.08–0.24 |
+| `shouldRasterize` (scale = screen); `alpha` 0.999; size rounded to whole pixels; inside a container at the fraction; moved by a transform instead of the frame | blend, 0.15 each | blend, 0.19 each |
+| `CATextLayer` (contentsScale = screen); a `UIImageView` of the label's image; a view drawing the string in `draw(_:)` | blend, 0.14–0.15 | blend, 0.19 |
+| the label's layer `contentsScale` set to the other scale (2 on 3×, 3 on 2×) | blurred: drawn at the other scale and resampled (5.3; 18.5) | — |
+
+**No variant re-rasterizes the glyphs at the fractional position**, on
+either scale: the label is drawn once at the whole-pixel grid of its own
+layer and composited at the fractional offset with linear filtering. The
+earlier result for 3× was an analysis error: the half-pixel label's origin,
+48.500000000000014 px in floating point, rounded to 49 instead of 48, so
+its crop was a pixel off; re-cropping the 2026-11-05 screenshot of §8.2's
+own page gives 0.037 from the average (and 7.6 from either whole-pixel
+rendering, as before). The iPhone Duo figures (§8.2, §10) came from the same
+arithmetic. **Ycode's composite (uikit-feel-ycode §8, 0.04 of 255) matches
+the reference.**
+
+### 12.4 Correction: release velocity after a hold (§3.3)
+
+Trigger: §3.2's drag at the top edge (300 pt/s, XCUITest
+`press(forDuration:thenDragTo:withVelocity:thenHoldForDuration:)`), hold
+0, 0.1, 0.3, 0.6 and 1.0 s for a 200 pt drag and 0.6 s for 100 and 400 pt;
+5 drags each, iPhone 17 Pro.
+
+| Drag | Hold (s) | Touch events during the hold | Gap from last move to touch-up (ms) | `willEndDragging` velocity (pt/ms) |
+|---|---|---|---|---|
+| 200 pt | 0 | — | 0.3–0.7 | −0.194 … −0.198 |
+| 200 pt | 0.1 / 0.3 / 0.6 / 1.0 | **none** (no moved or stationary touches) | 100–114 / 300–318 / 600–601 / 1000–1016 | −0.193 … −0.203 at every hold |
+| 100 pt | 0.6 | none | 598–617 | −0.241 … −0.244 |
+| 400 pt | 0.6 | none | 617–669 | −0.172 … −0.175 |
+
+The velocity is the last movement's (content speed under the rubber band,
+smaller than the finger's 0.3 pt/ms), whatever the hold. A held XCUITest
+finger delivers nothing, and UIKit does not decay the velocity with time
+since the last movement. §3.3's return curves therefore start from these
+velocities, not from rest; uikit-feel-ycode §3.3's reading was right.
 
 ## Evidence
 
@@ -752,9 +933,18 @@ with the cover's size, as the models predict.
 | Screenshot sizes and format (§8.1) | 3 | `simctl io screenshot` files, read with an image library |
 | Text antialiasing, hinting, half-pixel behaviour (§8.2) | 3 | pixel statistics of our screenshots |
 | Image filtering and pixel-snapping of solid layers (§8.3) | 3 | pixel statistics of our screenshots |
+| Display-link modes, timestamp chain, behaviour under load (§12.1) | 3 | probe log (`simctl launch`), 3 launches per setting |
+| No presentation time in the simulator SDK (§12.1) | 1 | the iOS Simulator SDK's `Metal.framework/Headers/MTLDrawable.h` |
+| Rotation triggers and the guest path (§12.2) | 3 | `devicectl device orientation`; guest `log stream` during XCUITest and `devicectl` turns; `launchd.log`; the `dthidd` job plist read as a property list (2) |
+| Rotation timing and curve for both triggers (§12.2) | 3 | presentation-layer samples; the fit is ours |
+| Half-pixel composite at 2× and 3×; the crop error (§12.3) | 3 | pixel statistics of our screenshots, and the earlier page re-captured |
+| Release velocity after holds (§12.4) | 3 | probe touch and scroll-delegate log |
 
 Levels 4 and 5 were not used. No Apple binary was opened, disassembled or
 decompiled, and Ghidra was not used. Apple's simulator and `xcodebuild` ran
 only as black boxes on devices that we created (`ycode-test-uikit-*`). The
 probe app, its UI tests, logs, screenshots and analysis scripts stay in the
-git-ignored `research/dirty/uikit-feel/` and are not committed.
+git-ignored `research/dirty/uikit-feel/` and are not committed. §12
+(B3-SIMOBS) used the same rules with devices `ycode-test-simobs-*`, also
+deleted afterwards; its probe, logs and screenshots stay in
+`research/dirty/simobs/`.

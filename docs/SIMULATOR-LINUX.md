@@ -108,7 +108,10 @@ Each stage has a contract or spec in `specs/simulator/`.
 - **GPU faults.** A stuck GPU submission stops every client
   (`stage8-contract.md` §15.8).
 - **x86-64 hosts** need user-mode arm64 translation on top of all this. That
-  is deferred, and `native-mode.md` is a feasibility study only. An x86-64 PC can
+  is deferred. Native mode (`native-mode.md`) is arm64-only; its stage 1, on the
+  `native-mode` branch, runs macOS command-line programs without a VM (§10).
+  It is developed there across betas and is not the route to the boot
+  target. An x86-64 PC can
   run the IDE and a viewer against an arm64 host (`specs/simulator/sim-link.md`).
 - **Host kernels** without upstream commit `fbc7e61195e2` can corrupt host
   SVE state; see [postmortem-kvm-sve.md](postmortem-kvm-sve.md).
