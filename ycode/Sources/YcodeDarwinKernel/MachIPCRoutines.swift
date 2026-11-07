@@ -107,6 +107,10 @@ extension MachIPC {
             if apply {
                 // A request's reply sent with its right ends the request's boost (§4.11).
                 if !p.replyBoosts.isEmpty { replyRightLeft(p, answered: slot == .destination) }
+                if !p.replyPushes.isEmpty {
+                    // Moved on as another message's reply right, the push goes with it (§4.12).
+                    if slot == .reply { replyPushMoved(p) } else { replyPushRightLeft(p, answered: slot == .destination) }
+                }
                 freeName(i)
             }
             return .success(.sendOnce(p))

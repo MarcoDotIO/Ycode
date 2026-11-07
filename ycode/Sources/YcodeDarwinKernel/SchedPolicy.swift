@@ -311,6 +311,7 @@ extension DarwinKernel {
         } else {
             p = schedProcess
         }
+        var changed = false
         t.schedPushes.withLock { pushes in
             let inputs = SchedInputs(baseQoS: t.baseQoS, overrideQoS: t.overrideQoS, clampQoS: p?.clampQoS ?? 0,
                                      darwinBG: (p?.isDarwinBG ?? false) || t.threadDarwinBG, push: pushes.maxClass)
@@ -321,7 +322,19 @@ extension DarwinKernel {
             }
             // A thread waiting at the background band's gate leaves it when its class rises.
             if c > SchedClass.background, old == SchedClass.background, BackgroundBand.active { BackgroundBand.poke(t) }
+            changed = old != c
         }
+        // The requests the thread waits on carry its new class (§4.12).
+        if changed, SchedPolicy.replyPushEnabled, t.waitsOnRequest.load(ordering: .acquiring), let ipc = machIPC as? MachIPC {
+            ipc.lock.withLock { ipc.passThreadClass(t) }
+        }
+    }
+
+    /// Diagnostics (the frame profile's trap events): the image's process is
+    /// darwin-bg now. A read without a lock; false before the record is cached.
+    public var processIsDarwinBG: Bool {
+        guard let p = schedProcessCache, p.kernel === self else { return false }
+        return p.isDarwinBG
     }
 
     /// Recomputes every live thread of this image. Lock held.
@@ -438,7 +451,11 @@ extension MachIPC {
         }
         if SchedPolicy.qosEnabled, options & MachMsgOption.rcvMsg != 0, case .sendOnce = m.reply, let ctx {
             m.pushClass = Int8(ctx.schedClass)
-            if SchedPolicy.syncPushEnabled { makeSyncPush(&m, ctx: ctx) }
+            if SchedPolicy.syncPushEnabled || SchedPolicy.replyPushEnabled { makeSyncPush(&m, ctx: ctx) }
+        } else if SchedPolicy.replyPushActive, options & MachMsgOption.rcvMsg == 0, case let .sendOnce(reply) = m.reply,
+                  reply.isSpecialReply, let ctx {
+            // A request on the thread's special reply port, its reply awaited by a later receive (§4.12).
+            makeReplyPush(&m, ctx: ctx, reply: reply)
         }
     }
 
@@ -480,6 +497,8 @@ extension MachIPC {
             if let t = m.syncPush {
                 syncPushReceived(t, by: context)
                 cls = max(cls, t.cls)
+                // Held in this space until the reply is sent (§4.12).
+                if SchedPolicy.replyPushEnabled, case let .sendOnce(reply) = m.reply { holdReplyPush(t, reply: reply, image: k, context: context) }
             }
             context.ipcPushClass = cls
             k.refreshSchedClass(context)
@@ -659,7 +678,7 @@ extension DarwinSystem {
                 + "(\(SchedStats.fastRefreshes.load(ordering: .relaxed)) recomputations without L0); "
                 + "importance: \(s.donationPorts) receiving ports, \(s.tempOwnerPorts) temporary owners, "
                 + "\(s.importanceMessages) messages, \(s.refusedByPort) donor sends to other ports; "
-                + "send pushes \(SchedStats.sendPushes.load(ordering: .relaxed))" + SchedStats.syncPushReport + SchedStats.replyImportanceReport + AsyncQoS.report
+                + "send pushes \(SchedStats.sendPushes.load(ordering: .relaxed))" + SchedStats.syncPushReport + SchedStats.replyPushReport + SchedStats.replyImportanceReport + AsyncQoS.report
             line += "; " + lock.admissionReport
             return line
         }

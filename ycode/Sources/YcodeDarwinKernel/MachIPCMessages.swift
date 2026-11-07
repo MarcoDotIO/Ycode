@@ -150,6 +150,10 @@ extension MachIPC {
         m.aux = s.aux
         m.sender = senderIdentity
         if SchedPolicy.importanceEnabled || SchedPolicy.qosEnabled { annotateForScheduling(&m, options: options, priority: s.priority) }
+        if let moved = movedReplyPush {
+            movedReplyPush = nil
+            carryReplyPush(moved, in: &m)
+        }
         if options & MachMsgOption.sendNotify != 0, case let .send(p) = m.destination {
             armSendPossible(p, name: s.remote)
         }
@@ -443,10 +447,16 @@ extension MachIPC {
         if let context, context.hasServicingState { kernel?.endServicing(context) }
         let deadline: UInt64? = r.options & MachMsgOption.rcvTimeout != 0
             ? KernelClock.deadline(afterNanoseconds: UInt64(r.timeout) * 1_000_000) : nil
+        let result: MachReceiveResult
         switch awaitMessage(name: r.name, slot: i, port: port, set: set, deadline: deadline, mayBlock: r.mayBlock) {
-        case let .failure(e): return MachReceiveResult(code: e.code)
-        case let .success(source): return take(from: source, request: r, trailer: trailer, memory: memory, context: context)
+        case let .failure(e): result = MachReceiveResult(code: e.code)
+        case let .success(source): result = take(from: source, request: r, trailer: trailer, memory: memory, context: context)
         }
+        // The thread's wait for the reply to its special-reply request is over (§4.12).
+        if r.options & MachMsgOption.rcvSyncWait != 0, let port, let context, context.replyWait != nil {
+            replyWaitReturned(context, on: port)
+        }
+        return result
     }
 
     /// Waits until the receive right `port` or the port set `set` (the

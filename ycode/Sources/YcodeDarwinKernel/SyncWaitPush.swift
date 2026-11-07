@@ -66,6 +66,11 @@ final class SyncWaitPush {
     /// An on-demand start's push once its message was taken: the image it
     /// is credited to directly (no port any more).
     weak var creditedImage: DarwinKernel?
+    /// The reply port of a request on a special reply port, or of a request
+    /// whose push is held in the receiving space (§4.12).
+    weak var replyPort: IPCPort?
+    /// Where the received request's push is held until it is answered (§4.12).
+    var hold: ReplyPushHold?
 
     init(sender: ThreadContext?, image: DarwinKernel?, cls: Int) {
         self.sender = sender
@@ -252,6 +257,7 @@ extension MachIPC {
         let t = SyncWaitPush(sender: ctx, image: k, cls: cls)
         m.syncPush = t
         ctx.syncWait = t
+        ctx.waitsOnRequest.store(true, ordering: .releasing)
         k.syncWaiters[ObjectIdentifier(t)] = t
         SchedStats.syncPushRequests.wrappingAdd(1, ordering: .relaxed)
     }
@@ -308,8 +314,10 @@ extension MachIPC {
     }
 
     func endSyncWait(_ ctx: ThreadContext, _ t: SyncWaitPush) {
-        ctx.syncWait = nil
+        if ctx.syncWait === t { ctx.syncWait = nil }
+        if ctx.syncWait == nil, ctx.replyWait == nil || ctx.replyWait === t { ctx.waitsOnRequest.store(false, ordering: .releasing) }
         t.senderImage?.syncWaiters.removeValue(forKey: ObjectIdentifier(t))
+        if t.hold != nil { releaseReplyPush(t, reason: 2) }
         if case let .queued(p) = t.state {
             SchedStats.syncPushEndedQueued.wrappingAdd(1, ordering: .relaxed)
             t.state = .ended
@@ -351,6 +359,8 @@ extension MachIPC {
             if after > SchedClass.background, after > before, BackgroundBand.active { BackgroundBand.poke(kernel: k) }
             if after != before { repropagateSyncPush(k, depth: depth + 1) }
         case let .received(c):
+            // A push held until the reply moves both ways (§4.12).
+            if t.hold != nil { moveHeldReplyPush(t, to: cls, depth: depth) }
             // The serving thread's push only rises here; it ends with its episode.
             guard cls > old else { return }
             t.cls = cls
@@ -359,7 +369,7 @@ extension MachIPC {
                 c.ipcPushClass = cls
                 ck.refreshSchedClass(c)
             }
-            guard let next = c.syncWait else { return }
+            guard let next = c.syncWait ?? c.replyWait else { return }
             guard depth < SchedPolicy.syncPushDepth else {
                 SchedStats.syncPushDepthStops.wrappingAdd(1, ordering: .relaxed)
                 return

@@ -291,6 +291,7 @@ public enum BackgroundBand {
         }
         let waited = KernelClock.now() &- start
         Stats.note(exit, waited)
+        if let traced = KernelTrace.bandWaited { traced(waited, Int32(exit.rawValue)) }
         if !tracedPrograms.isEmpty, waited >= 100_000_000, let name = kernel.bandTraceName {
             stderrLine("ycode-simd: bg band: \(name) thread \(context.threadID) waited \(waited / 1_000_000) ms (\(exit))"
                        + " at \(String(format: "%.2f", Double(KernelClock.now() &- origin) / 1e9)) s")

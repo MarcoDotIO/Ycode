@@ -46,7 +46,13 @@ that the person opens, so it can stay on for a whole interactive session.
   - `<path>.<n>.trace`: the events, binary, 32 bytes each, little-endian:
     u64 time, u64 arg, i32 pid, u32 guest thread id, i32 trap, u8 kind
     (1 trap enter, 2 trap exit, 3 block, 4 unblock, 5 wake, 6 present,
-    7 timer fired), u8 thread kind (1 main, 2 pthread, 3 workqueue), u16 0;
+    7 timer fired; boot windows also 8–13, §9, and 14, a wait at the
+    background band's gate ended: arg ns waited, trap how it ended, 0 room,
+    1 raised, 2 image end or suspension, 3 bound), u8 thread kind (1 main,
+    2 pthread, 3 workqueue), u16 the thread's scheduling state on trap enter
+    and exit (bits 0–3 its host class + 1, 4–7 its own class + 1, 8–11 its
+    image's push class + 1, bit 12 its process darwin-bg; `scheduling-policy.md`
+    §4.4–§4.12), else 0;
   - `<path>.<n>.names`: pid → program; `host <tid> <name>` for each host
     thread that woke a guest thread (a thread that fired timers is named
     `kernel-timers`; others by their Linux thread name, e.g.
@@ -94,6 +100,14 @@ It prints:
    `display-receive`, a new burst after 300 ms without input), the time to
    the first present and that present's critical path back to the input,
    with consecutive steps of one program merged.
+
+Boot windows add (`boot-profile.md` §24): `--wait-tree P[:kind]` (each wait
+of P's threads of at least `--long-ms`, its kind from the trap and its
+options, the thread that ended it with its host class and its time at the
+band's gate, and recursively that thread's waits inside the span), `--join`
+(a wait is followed into its waker only back to the moment the woken thread
+began to wait; waits for work are followed whole) and `--edge-list` (every
+hand-off of the boot's path with the same columns).
 
 How the other frame agents use it: FPS-GPU reads the "host thread:
 DispatchWorker" and "ycode-simd (woke backboardd in mach_msg2)" steps

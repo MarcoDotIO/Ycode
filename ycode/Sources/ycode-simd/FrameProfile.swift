@@ -84,6 +84,26 @@ enum FrameEventKind {
     /// A guest thread trapped on a host thread other than the one it last
     /// used. pid/tid: the guest thread; arg: the Linux tid.
     static let bind: UInt8 = 13
+    /// A wait at the background band's gate ended (`scheduling-policy.md`
+    /// §4.9). pid/tid: the waiter; arg: ns waited; trap: how it ended (0
+    /// room, 1 raised, 2 image end or suspension, 3 bound).
+    static let bandWait: UInt8 = 14
+}
+
+extension FrameEvent {
+    /// The `pad` field of trap enter and exit events: the thread's
+    /// scheduling state then (`scheduling-policy.md` §4.4, §4.7): bits 0–3 its
+    /// host class + 1, bits 4–7 its own class + 1, bits 8–11 its image's push
+    /// class (send and sync-wait pushes) + 1, bit 12 set while its process is
+    /// darwin-bg. 0: unknown.
+    static func schedBits(_ c: ThreadContext) -> UInt16 {
+        let own = c.schedClass
+        guard let k = c.kernel else { return UInt16(own + 1) & 0xF | UInt16(own + 1) & 0xF << 4 }
+        let push = k.imagePushClass
+        let host = max(own, push)
+        return UInt16(host + 1) & 0xF | (UInt16(own + 1) & 0xF) << 4 | (UInt16(push + 1) & 0xF) << 8
+            | (k.processIsDarwinBG ? 1 << 12 : 0)
+    }
 }
 
 final class FrameProfile: @unchecked Sendable {
@@ -216,7 +236,8 @@ final class FrameProfile: @unchecked Sendable {
         }
         let arg = number == -47 ? (frame.x[4] & 0xFFFF_FFFF_0000_0000) | (frame.x[1] & 0xFFFF_FFFF) : frame.x[0]
         record(FrameEvent(time: monotonicNanoseconds(), arg: arg, pid: pid, tid: UInt32(truncatingIfNeeded: Self.traceID(context)),
-                          trap: number, kind: FrameEventKind.trapEnter, threadKind: Self.threadKind(context)))
+                          trap: number, kind: FrameEventKind.trapEnter, threadKind: Self.threadKind(context),
+                          pad: FrameEvent.schedBits(context)))
     }
 
     /// The trap returns. arg: x0 (bit 63 set when the carry flag reports an error).
@@ -224,7 +245,7 @@ final class FrameProfile: @unchecked Sendable {
         pthread_setspecific(Self.currentKey, nil)
         record(FrameEvent(time: monotonicNanoseconds(), arg: frame.carry ? (1 << 63) | frame.x[0] : frame.x[0], pid: pid,
                           tid: UInt32(truncatingIfNeeded: Self.traceID(context)), trap: number, kind: FrameEventKind.trapExit,
-                          threadKind: Self.threadKind(context)))
+                          threadKind: Self.threadKind(context), pad: FrameEvent.schedBits(context)))
     }
 
     private func noteWake(_ wakee: ThreadContext?) {
@@ -450,6 +471,12 @@ final class FrameProfile: @unchecked Sendable {
         }
         KernelTrace.lockWaited = { [unowned self] level, waited in
             if Self.active.load(ordering: .relaxed) { noteLockWait(level: level, waited: waited) }
+        }
+        KernelTrace.bandWaited = { [unowned self] waited, exit in
+            guard Self.active.load(ordering: .relaxed) else { return }
+            let (rp, rt) = requester()
+            record(FrameEvent(time: monotonicNanoseconds(), arg: waited, pid: rp, tid: rt, trap: exit,
+                              kind: FrameEventKind.bandWait, threadKind: 0))
         }
     }
 

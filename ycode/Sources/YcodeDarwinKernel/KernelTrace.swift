@@ -26,6 +26,11 @@ public enum KernelTrace {
     /// lock, 2: the port lock) waited `waited` ns. Called on the waiter's
     /// host thread with the lock just taken; same rules as `wake`.
     nonisolated(unsafe) public static var lockWaited: ((_ level: Int32, _ waited: UInt64) -> Void)?
+    /// A wait at the background band's gate (`BackgroundBand`) ended after
+    /// `waited` ns; `exit` is how (0 room, 1 raised, 2 image end or
+    /// suspension, 3 bound). Called on the waiter's host thread, outside
+    /// every kernel lock; same rules as `wake`.
+    nonisolated(unsafe) public static var bandWaited: ((_ waited: UInt64, _ exit: Int32) -> Void)?
 }
 
 extension DarwinKernel {

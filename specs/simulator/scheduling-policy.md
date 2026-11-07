@@ -436,7 +436,8 @@ skipped. A waiter in a condition wait that takes the mutex back
 - Transitive pushes outside synchronous IPC: a raised ulock owner or lock
   holder does not raise the holder of a lock it waits for, and a send push
   (§4.6) is not passed on. Chains of synchronous requests are modelled
-  (§4.10).
+  (§4.10), and with §4.12 a raised thread passes its class on to the
+  request it waits on.
 - The clutch scheduler's warp, quanta and per-cluster runqueues. Only the
   WCEL bounds are used.
 - `getpriority` still answers as before.
@@ -654,8 +655,8 @@ both are modelled without them:
   thread services the workloop raises that thread's *kevent override*
   (§4.4 step 2, cleared with its next request). `ext[2]` of a delivered
   machport event carries the message's priority and the override. Not
-  modelled: the kqworkq buckets' overrides (their QoS stays the knote's),
-  the special reply port's sync IPC override.
+  modelled: the kqworkq buckets' overrides (their QoS stays the knote's).
+  The special reply port's sync IPC push is §4.12.
 
 Neither lifts a darwin-bg thread by itself (§2.2): the first ends darwin-bg
 by boosting the process, the second only raises QoS within the classes the
@@ -667,6 +668,74 @@ it or not, the reply), each request boost tied to a reply right and its end
 (answered or the right gone, after N ms), and each change of a listed
 program between boosted and darwin-bg. The `sched:` report adds `request
 boosts N (answered N, dropped N, held N; mean N ms, longest N ms)`.
+
+### 4.12 The reply push (`YCODE_REPLY_PUSH`)
+
+The reference (xnu, level 1; behaviour read from the open-source
+`osfmk/ipc/ipc_port.c` special reply port linkage, `osfmk/kern/turnstile.c`
+and `osfmk/kern/thread_policy.c`, and libdispatch's synchronous send in
+`src/mach.c`; nothing copied). A thread that sends a request and waits for its
+reply pushes its priority onto whoever holds the request for as long as it
+waits. libdispatch does a synchronous send (every
+`xpc_connection_send_message_with_reply_sync`) in two calls: a send whose
+reply is a send-once right to the thread's special reply port
+(`thread_get_special_reply_port`), then a receive on that port with
+`MACH_RCV_SYNC_WAIT` naming the destination. The kernel links the special
+reply port's turnstile to the destination's send turnstile while the request
+is queued, and, once a thread or a workloop has received it, to that
+receiver, until the reply goes back through the send-once right or the right
+is destroyed. A turnstile push lifts a darwin-bg or background-QoS thread
+above its throttle ("promote above task", §4.11). §4.6 and §4.10 cover only
+the one-call form (`MACH_RCV_MSG` in the sending call), and only until the
+receiving thread's servicing episode ends; an XPC daemon hands the request
+to a queue and serves it after that episode. `boot-profile.md` §24.1:
+SpringBoard's main thread waits in the two-call form on runningboardd, whose
+serving thread runs at class bg (its work's QoS, not darwin-bg) and waits at
+the band's gate (§4.9) for most of the wait.
+
+Ycode (`ReplyPush.swift`, under the port lock G):
+
+- **The two-call form.** A send without `MACH_RCV_MSG` whose reply right is
+  a send-once right to the sending thread's own special reply port gets a
+  push record as a one-call request does (§4.10: the sender's host class).
+  The thread keeps it until a receive with `MACH_RCV_SYNC_WAIT` on that port
+  returns (the reply came, or the receive failed or timed out), its next
+  such send, or its end.
+- **Queued**: the record credits the image that will receive the request
+  (§4.10), for both forms (§4.10's queued credit is made for every request
+  when either switch is on).
+- **Held until the reply.** When a thread takes the request (either form),
+  besides §4.6's push on that thread for its episode, the record is tied to
+  the send-once reply right in the receiving space until the right leaves
+  that space (it is sent as the reply's destination or deallocated; the
+  space ends), the reply port dies, or the sender's wait ends, whichever
+  comes first. While held it pushes, as xnu's turnstile does, **the workloop
+  the request came through**: a thread that took it while servicing a
+  workloop (a kevent delivery, the workloop's event lock held) puts it on
+  that workloop, and whichever thread services the workloop carries it (it
+  is part of the thread's pushes, §4.4 step 6, from its bind to its unbind),
+  so the handler that libdispatch runs later on the workloop is pushed and
+  the image's other threads are not. A request taken otherwise (a plain
+  receive) pushes the thread that took it until the reply.
+  `YCODE_REPLY_PUSH=image` pushes the whole receiving image instead (§4.10's
+  image credit); `boot-profile.md` §24.4: that form brings unrelated work
+  forward and slows the boot.
+- **Moved on.** A reply right moved on as the reply right of another message
+  (libdispatch's resend of a pseudo-received request) takes the push with
+  it: queued with that message, held again where it is received. A right
+  moved in a message body ends it.
+- **Chains** (§4.10): a change of the sender's class moves a held push both
+  ways; a serving thread that sends a request of its own passes its class,
+  held pushes included, on. **A change of a waiting thread's own class** (a
+  ulock push, a boost, a QoS change, a held push) re-evaluates the request it
+  waits on (xnu's turnstile chain through a lock owner into its request);
+  before, only a change of an image's push did (§4.8).
+- **Lock order**: G only, as §4.10; the band's mutex is a leaf.
+
+Diagnostics: the `sched:` report adds `reply pushes: special-reply requests
+N, held N (on workloops N) (answered N, right gone N, wait ended N, moved on
+N; mean N ms, longest N ms)`; with `YCODE_SYNC_PUSH_TRACE` each hold (and
+what it pushes) and its release. Measurements: `boot-profile.md` §24.
 
 ## 5. Diagnostics
 
@@ -741,6 +810,7 @@ boosts N (answered N, dropped N, held N; mean N ms, longest N ms)`.
 | `YCODE_REPLY_IMPORTANCE` | 0 | §4.11 a request's importance lasts until its reply right leaves the receiving space; `1` on |
 | `YCODE_ASYNC_QOS` | 0 | §4.11 a queued message's QoS overrides the workloop that drains its port, and its event's `ext[2]` carries it (with `YCODE_SCHED_QOS`); `1` on |
 | `YCODE_IMPORTANCE_TRACE` | unset | §4.11 trace lines for the listed programs |
+| `YCODE_REPLY_PUSH` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.12 a waiting sender's request pushes whoever holds it until the reply (queued: the receiving image; received: the workloop it came through, else the thread that took it), in both the one-call and libdispatch's two-call form (with `YCODE_SCHED_QOS`); `1` on, `image` on with the whole receiving image pushed |
 | `YCODE_HOST_SCHED_UI_PUSHED` | unset | with `YCODE_HOST_SCHED_UI_CPUS`: an image whose send push (§4.6) is at least this class also runs on the UI path's CPUs while it lasts |
 | `YCODE_BOOT_PRIORITY` | 1 for device runs (since 2026-10-27; was 0) | device runs (`--device`) only: with `YCODE_SCHED_QOS` unset, set it to 1 and `YCODE_HOST_SCHED` (if unset) to `cgroup` before the VMM starts (§7.4, §7.5); `0` turns it off. The cgroup backend re-executes the VMM in a delegated user scope only when the user's service manager is reachable (`$XDG_RUNTIME_DIR/systemd/private`); otherwise it reports itself unavailable and the run goes on without host scheduling |
 
@@ -1032,5 +1102,7 @@ fileindexerd and intelligencetasksd crashes (`service-fidelity.md` §11,
 | Importance moved into the receiving voucher with `MACH_RCV_VOUCHER`, dropped otherwise; a darwin-bg Adaptive thread lifted only by a turnstile promotion (§4.11) | 1 (xnu `osfmk/ipc/ipc_importance.c` `ipc_importance_receive`; `osfmk/kern/thread_policy.c` "promote above task", `task_policy.c` adaptive darwin-bg) |
 | A message's priority and override at send, the override raised towards the queue's head, the machport knote's event QoS and `ext[2]` (§4.11) | 1 (xnu `osfmk/ipc/ipc_kmsg.c` `ipc_kmsg_set_qos`, `ipc_kmsg_enqueue`; `osfmk/ipc/ipc_pset.c` `filt_machport_adjust_qos`, `filt_machportprocess`; `osfmk/mach/message.h` `mach_msg_priority_t`) |
 | Request importance, message QoS and the ease window in boots (§4.9, §4.11) | 3 (Thor, `boot-profile.md` §22: series X1, X2, trace boots `tr1-*`, profiles) |
+| libdispatch's synchronous send in two calls (special reply port, then `MACH_RCV_SYNC_WAIT`); the special reply port's turnstile linked to the destination while queued and to the receiving thread or workloop until the reply; a turnstile push promoting a throttled thread (§4.12) | 1 (xnu `osfmk/ipc/ipc_port.c` special reply port linkage, `osfmk/kern/turnstile.c`, `osfmk/kern/thread_policy.c`; libdispatch `src/mach.c`, as open source) and 3 (the options of SpringBoard's sends and receives in Ycode's own frame profiles, `boot-profile.md` §24.1) |
+| The reply push in boots: the edge list, series Z1, Z3, Z4 (§4.12) | 3 (Thor, `boot-profile.md` §24) |
 
 No disassembly or decompilation was used (level 5 not used).

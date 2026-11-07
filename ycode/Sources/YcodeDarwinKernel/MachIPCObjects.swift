@@ -104,6 +104,9 @@ final class IPCPort {
     /// Boosts of requests answered with send-once rights to this port,
     /// held until the right leaves the space that received it (§4.11).
     var replyBoosts: [ReplyBoost] = []
+    /// Pushes of requests answered with send-once rights to this port, held
+    /// until the right leaves the space that received it (§4.12).
+    var replyPushes: [SyncWaitPush] = []
     var mscount: UInt32 = 0
     var seqno: UInt32 = 0
     var qlimit = MachIPCLimits.qlimitDefault

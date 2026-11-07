@@ -321,6 +321,9 @@ final class KQueue {
     // Workloop
     var workloopID: UInt64 = 0
     var servicer: ThreadContext?
+    /// Requests received through this workloop and not answered yet (§4.12):
+    /// the thread that services it carries their push.
+    var heldPush: HeldPushCounter?
     var owner: ThreadContext?
     var requested = false
     var requestQoS = 4

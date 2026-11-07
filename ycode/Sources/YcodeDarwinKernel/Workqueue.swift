@@ -572,6 +572,7 @@ extension DarwinKernel {
         if let bucket { kq.buckets[bucket, default: .init()].boundWorker = ctx } else {
             kq.servicer = ctx
             kq.logRequest(.bound, thread: ctx.threadID)
+            if let h = kq.heldPush { h.attach(ctx) }
         }
     }
 
@@ -594,6 +595,7 @@ extension DarwinKernel {
         } else if kq.servicer === ctx {
             kq.servicer = nil
             kq.logRequest(.unbound, thread: ctx.threadID)
+            if let h = kq.heldPush { h.detach(ctx) }
         }
         w.boundQueue = nil
         let bucket = w.boundBucket

@@ -783,6 +783,15 @@ if CommandLine.arguments.contains("--device"), getenv("YCODE_BG_BAND") == nil {
     setenv("YCODE_BG_BAND", "1", 0)
     BackgroundBand.enabled = true
 }
+// The reply push (scheduling-policy.md §4.12, boot-profile.md §23–§24): on by
+// default for device runs since 2026-11-07. The reference serves SpringBoard's
+// and backboardd's synchronous requests to runningboardd boosted (§23); with
+// the band, home in 25.0 s against 30.9 s, fidelity unchanged over 700 s.
+// `YCODE_REPLY_PUSH=0` turns it off.
+if CommandLine.arguments.contains("--device"), getenv("YCODE_REPLY_PUSH") == nil {
+    setenv("YCODE_REPLY_PUSH", "1", 0)
+    SchedPolicy.replyPushEnabled = true
+}
 // A command for a running device (FoldControl.swift, SettingsClient.swift): nothing else starts.
 if isHealthClient(CommandLine.arguments) { runHealthClient(CommandLine.arguments) }
 if isSettingsClient(CommandLine.arguments) { runSettingsClient(CommandLine.arguments) }

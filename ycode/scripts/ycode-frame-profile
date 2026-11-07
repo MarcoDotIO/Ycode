@@ -22,10 +22,21 @@
 #   --wake-stats wakeups that woke a thread for nothing (it slept again in the same trap)
 #   --blocked-sends ID  time blocked in send-only mach_msg2 of message id ID (0x10000000: log messages)
 #   --stop-at S  (with --boot) end the walk S seconds after ycode-simd started
+#   --wait-tree P[:main|wq|pthread|tN]  P's waits from --from to --to of --long-ms M or more (default
+#                100), each with its kind and the thread that ended it, and recursively that thread's
+#                waits inside the span (--depth D, default 4; --fan F longest per level, default 4),
+#                with the waker's host class and its time at the band's gate (boot-profile.md §24)
+#   --join       (with --boot) follow a wait into its waker only back to the moment the woken
+#                thread began to wait, then return to it (waits for work: parked workqueue threads,
+#                receive-only Mach waits, and thread starts are followed without a join)
 #   --anchor P[,Q]  (with --boot) also walk back from the first launch of each program
 #   --edges N    (with --boot/--launch) print the path's last N hand-offs between threads
 #   --min-ms M   (with --boot/--launch) timeline steps shorter than M ms are summed (default 50)
 #   --top N      (with --boot/--launch) categories listed (default 40)
+#   --edge-list P[,Q...]  (with --boot) every hand-off on the path: the woken thread's wait (its
+#                trap, the wait's kind, how long), the waker, the waker's host class and its time at
+#                the background band's gate during the wait, and the path's time on the waker's side;
+#                rows that touch a listed program (all: '*'), then a summary by edge (boot-profile.md §24)
 #
 # Output: frame intervals; per program and thread: time in guest code, in
 # trap handlers (not sleeping), sleeping; traps by number with their service
@@ -110,7 +121,9 @@ def pct(v, q):
 # Critical path of a boot or an app launch (frame-profile.md §9,
 # boot-profile.md §8): --boot / --launch <program>.
 
-START_REQ, IMAGE_LAUNCH, LOCK_WAIT, SCREEN_CHECK, SCHED_SAMPLE, BIND = 8, 9, 10, 11, 12, 13
+START_REQ, IMAGE_LAUNCH, LOCK_WAIT, SCREEN_CHECK, SCHED_SAMPLE, BIND, BAND_WAIT = 8, 9, 10, 11, 12, 13, 14
+CLASS_NAMES = {0: "bg", 1: "ut", 2: "df", 3: "ui"}
+PARK_TRAPS = {363, 368, 369, 374, 375}  # kevent, workq_kernreturn, kevent64, kevent_qos, kevent_id: waits for work
 DEBUG = False
 LOCK_NAMES = {0: "L0", 1: "event lock", 2: "port lock"}
 
@@ -147,6 +160,8 @@ def owner_of(cat):
     """The campaign owner of a critical-path category (boot-profile.md §8)."""
     if cat.startswith("lock wait") or cat.startswith("wakeup latency"):
         return "KLOCK"
+    if cat.startswith("band gate"):
+        return "SCHED (band)"
     if cat.startswith("thread start") or cat.startswith("process start"):
         return "SPAWN"
     if cat.startswith("start hold") or cat.startswith("timed wait") or cat.startswith("timer"):
@@ -249,10 +264,20 @@ def critical_path_mode(base, opt):
     presents, checks, pw_all = [], [], []
     binds = collections.defaultdict(list)    # guest thread -> [(t, host tid)]
     samples = collections.defaultdict(list)  # host tid -> [(t, cpu us mod 2^32, run-queue ns)]
+    bands = collections.defaultdict(list)    # thread -> [(t ended, waited, exit)]
+    cbits = collections.defaultdict(list)    # thread -> [(t, sched bits)] at trap enter and exit
+    enters = collections.defaultdict(list)   # thread -> [(t, trap, arg)] trap enters
     for e in events:
-        t, arg, pid, tid, trap, kind, tk, _ = e
+        t, arg, pid, tid, trap, kind, tk, bits = e
         if kind in (TRAP_ENTER, TRAP_EXIT, BLOCK, UNBLOCK):
             threads[(pid, tid)].append(e)
+            if kind == TRAP_ENTER:
+                enters[(pid, tid)].append((t, trap, arg))
+            if bits and kind in (TRAP_ENTER, TRAP_EXIT):
+                cbits[(pid, tid)].append((t, bits))
+        elif kind == BAND_WAIT:
+            if pid != 0:
+                bands[(pid, tid)].append((t, arg, trap))
         elif kind == WAKE:
             if arg:
                 wakes[unpack_key(arg)].append((t, pid, tid))
@@ -334,6 +359,80 @@ def critical_path_mode(base, opt):
     for v in pid_exits.values():
         v.sort()
     lock_t = {k: [x[0] for x in v] for k, v in locks.items()}
+    band_t = {k: [x[0] for x in v] for k, v in bands.items()}
+    cbits_t = {k: [x[0] for x in v] for k, v in cbits.items()}
+    enter_t = {k: [x[0] for x in v] for k, v in enters.items()}
+
+    def band_waits_in(key, a, b):
+        """Waits at the band's gate that ended in (a, b]: total ns (clipped to the span)."""
+        bt = band_t.get(key)
+        if not bt:
+            return 0
+        tot = 0
+        i = bisect.bisect_right(bt, a)
+        while i < len(bt) and bt[i] <= b:
+            t, w, ex = bands[key][i]
+            tot += min(w, t - a)
+            i += 1
+        return tot
+
+    def band_overlap(key, a, b):
+        """Time of [a, b] the thread spent at the band's gate (waits overlapping the span)."""
+        bt = band_t.get(key)
+        if not bt:
+            return 0
+        tot = 0
+        i = bisect.bisect_right(bt, a)
+        while i < len(bt):
+            t, w, ex = bands[key][i]
+            s0 = t - w
+            if s0 >= b:
+                break
+            tot += max(0, min(t, b) - max(s0, a))
+            i += 1
+        return tot
+
+    def class_profile(key, a, b):
+        """The thread's host class over [a, b] from its trap events: ({class: ns}, darwin-bg ns,
+        pushed ns), each event's bits holding until the next event."""
+        ct = cbits_t.get(key)
+        hist, dbg, pushed = collections.Counter(), 0, 0
+        if not ct:
+            return hist, 0, 0
+        lst = cbits[key]
+        i = max(0, bisect.bisect_right(ct, a) - 1)
+        while i < len(lst):
+            t, bits = lst[i]
+            if t >= b:
+                break
+            t_next = lst[i + 1][0] if i + 1 < len(lst) else b
+            lo, hi = max(a, t), min(b, t_next)
+            if hi > lo:
+                hist[(bits & 0xF) - 1] += hi - lo
+                if bits & 0x1000:
+                    dbg += hi - lo
+                if ((bits >> 8) & 0xF) > ((bits >> 4) & 0xF):
+                    pushed += hi - lo
+            i += 1
+        return hist, dbg, pushed
+
+    def waits_for_work(key, a, trap):
+        """A wait for work, not for a result: a parked workqueue or workloop thread, or a Mach
+        receive with no send in the same call (a run loop or a server waiting for requests)."""
+        if trap in PARK_TRAPS:
+            return True
+        if trap in (-47, -31):
+            en = enter_at(key, a)
+            return en is not None and en[1] == trap and (en[2] & 3) == 2 and not en[2] & 0x4000
+        return False
+
+    def enter_at(key, t):
+        """The thread's last trap enter at or before t: (t, trap, arg) or None."""
+        et = enter_t.get(key)
+        if not et:
+            return None
+        i = bisect.bisect_right(et, t) - 1
+        return enters[key][i] if i >= 0 else None
 
     def seg_at(key, t):
         st = starts.get(key)
@@ -384,10 +483,14 @@ def critical_path_mode(base, opt):
             self.blocks = []
             self.total = collections.Counter()
             self.edges = []
+            self.seq = []
+            self.edge_info = []
+            self.joins = 0
 
         def add(self, t0, ns, cat, where):
             if ns <= 0:
                 return
+            self.seq.append((t0, ns, cat, where))
             self.total[cat] += ns
             bl = self.blocks
             if bl and bl[-1][2] == where:
@@ -397,20 +500,36 @@ def critical_path_mode(base, opt):
             else:
                 bl.append([t0, ns, where, collections.Counter({cat: ns})])
 
-    def walk(key, t, stop):
-        """The critical path from (key, t) back to stop."""
+    def walk(key, t, stop0, joins=False):
+        """The critical path from (key, t) back to stop0. With joins, a wait is followed into
+        its waker only back to the moment the woken thread began to wait (it was busy itself
+        before): the walk then returns to the woken thread there. Waits for work (a parked
+        workqueue or workloop thread) and thread starts are followed without a join."""
         out = Steps()
         add = out.add
         guard = 0
         limit = int(opt.get("--max-steps") or 300000000)
-        while t > stop and guard < limit:
+        stack, maxs = [], []
+        while t > stop0 and guard < limit:
             guard += 1
+            while stack and t <= maxs[-1]:
+                c = maxs[-1]
+                while stack:
+                    ae, ke = stack.pop()
+                    maxs.pop()
+                    if ae == c:
+                        break
+                key, t = ke, c
+                out.joins += 1
+            stop = max(stop0, maxs[-1]) if maxs else stop0
+            if t <= stop0:
+                break
             i = seg_at(key, t)
             p = prog(key[0], t)
             if i is None:
                 add(stop, t - stop, "untraced: " + p, p)
                 t = stop
-                break
+                continue
             a, b, st, trap, info = segs[key][i]
             a2 = max(a, stop)
             if DEBUG and guard > limit - 40:
@@ -426,7 +545,9 @@ def critical_path_mode(base, opt):
                 for lvl, ns in lock_waits_in(key, a2, t):
                     add(a2, ns, "lock wait %s: %s %s" % (LOCK_NAMES.get(lvl, lvl), p, tname(trap)), p)
                     waited += ns
-                add(a2, max(0, span - waited), "trap: %s %s" % (p, tname(trap)), p)
+                g = min(max(0, span - waited), band_waits_in(key, a2, t))
+                add(a2, g, "band gate: %s %s" % (p, tname(trap)), p)
+                add(a2, max(0, span - waited - g), "trap: %s %s" % (p, tname(trap)), p)
                 t = a
             elif st == "sleep":
                 if info is None or info[0] >= t:
@@ -449,7 +570,7 @@ def critical_path_mode(base, opt):
                 add(w0, int((t - w0) * rq), "host run queue (after a wakeup): " + p, p)
                 if wt <= stop:
                     t = stop
-                    break
+                    continue
                 if wp == 0:
                     hn = hname(wtid)
                     if hn == "kernel-timers":
@@ -459,6 +580,11 @@ def critical_path_mode(base, opt):
                     t = a
                 else:
                     out.edges.append((wt, prog(wp, wt), p, tname(trap), TKIND.get(tk_of.get(key, 0), "?"), wtid, key[1]))
+                    out.edge_info.append({"t": wt, "a": a, "woken": key, "waker": (wp, wtid), "trap": trap,
+                                          "enter": enter_at(key, a), "seq": len(out.seq), "start": False})
+                    if joins and not waits_for_work(key, a, trap):
+                        stack.append((a, key))
+                        maxs.append(max(maxs[-1], a) if maxs else a)
                     key, t = (wp, wtid), wt
             else:  # start
                 rp, rt, main, tk = info
@@ -466,9 +592,11 @@ def critical_path_mode(base, opt):
                 add(a2, t - a2, ("process start: %s" % p) if main else ("thread start: %s %s" % (p, kind)), p)
                 if a <= stop:
                     t = stop
-                    break
+                    continue
                 if rp != 0:
                     out.edges.append((a, prog(rp, a), p, "start " + kind, kind, rt, key[1]))
+                    out.edge_info.append({"t": a, "a": a, "woken": key, "waker": (rp, rt), "trap": None,
+                                          "enter": None, "seq": len(out.seq), "start": kind})
                     key, t = (rp, rt), a
                     continue
                 # A host thread started it: a released start hold, the root, a restore.
@@ -488,7 +616,7 @@ def critical_path_mode(base, opt):
                     if j < 0 or lst[j][0] <= stop:
                         add(stop, t - stop, "untraced: %s (thread started by %s)" % (p, hn), p)
                         t = stop
-                        break
+                        continue
                     lt, lkey = lst[j]
                     add(lt, a - lt, ("timer: %s (thread start)" % p) if hn == "kernel-timers"
                         else "host service: %s (started a thread of %s)" % (hn, p), p if hn == "kernel-timers" else "host:" + hn)
@@ -498,15 +626,15 @@ def critical_path_mode(base, opt):
                     add(max(launch[0], stop), a - max(launch[0], stop), "start hold: %s (released by %s)" % (p, hn), p)
                     t = launch[0]
                     if t <= stop:
-                        break
+                        continue
                     if launch[1] != 0:
                         key = (launch[1], launch[2])
                         continue
                 add(stop, t - stop, "before the root process (ycode-simd, host thread %s)" % hn, "ycode-simd")
                 t = stop
-                break
-        if t > stop:
-            add(stop, t - stop, "untraced: walk limit", "?")
+                continue
+        if t > stop0:
+            add(stop0, t - stop0, "untraced: walk limit", "?")
         return out
 
     def report(title, steps, total_ns, t_end):
@@ -543,6 +671,94 @@ def critical_path_mode(base, opt):
         for o, ns in byprog.most_common(20):
             print("%8.3f %5.1f %%  %s" % (ns / 1e9, 100 * ns / max(1, total_ns), o))
 
+    def wait_kind(info):
+        """The kind of wait an edge ends: (kind, trap detail)."""
+        if info["start"]:
+            return "thread start", "start %s" % info["start"]
+        trap = info["trap"]
+        en = info["enter"]
+        arg = en[2] if en and en[1] == trap else None
+        name = tname(trap)
+        if trap in (-47, -31) and arg is not None:
+            opts, mid = arg & 0xFFFFFFFF, arg >> 32
+            if opts & 1 and opts & 2:
+                return "sync request (send+receive)", "%s id %d" % (name, mid)
+            if opts & 2 and opts & 0x4000:
+                # MACH_RCV_SYNC_WAIT: the reply to a request sent before on the thread's special reply port
+                return "sync request (2 calls, sync-wait)", "%s rcv %#x" % (name, opts)
+            if opts & 2:
+                return "Mach receive", "%s id %d" % (name, mid)
+            return "Mach send (queue full)", "%s id %#x" % (name, mid)
+        if trap in (515, 544) and arg is not None:
+            op = arg & 0xFF
+            kinds = {1: "ulock compare-and-wait", 2: "ulock unfair lock (owner)",
+                     3: "ulock compare-and-wait shared", 5: "ulock compare-and-wait64"}
+            return kinds.get(op, "ulock op %d" % op), "%s op %d" % (name, op)
+        if trap in (363, 368, 369, 374, 375):
+            return "workqueue park (work arrives)", name
+        if trap in (-36, -37, -38, -39):
+            return "semaphore", name
+        if 301 <= trap <= 312:
+            return "pthread mutex/cv", name
+        if trap in (-44, -45, -46):
+            return "task port look-up", name
+        return name, name
+
+    def edge_list(steps, which, stop):
+        """Every hand-off on the walked path, oldest first, with the waker's class and gate time
+        during the wait, and the path's time on the waker's side (until the next older hand-off)."""
+        want = set(x for x in which.split(",") if x)
+        allp = "*" in want
+        info = steps.edge_info
+        seq = steps.seq
+        print("\n## edge list: %d hand-offs on the path (oldest first); %d joins" % (len(info), steps.joins))
+        print("# t s | wait ms | woken prog kind tid | wait kind, trap detail | waker prog kind tid | waker's host class "
+              "during the wait (ms by class; darwin-bg ms; pushed ms) | waker's gate ms in the wait | "
+              "path on the waker's side: ms, of it gate, guest, run queue, trap")
+        rows = []
+        for i in range(len(info) - 1, -1, -1):
+            e = info[i]
+            j0 = e["seq"]
+            j1 = info[i + 1]["seq"] if i + 1 < len(info) else len(seq)
+            side = collections.Counter()
+            sideprog = collections.Counter()
+            for (t0, ns, cat, where) in seq[j0:j1]:
+                side[cat.split(":", 1)[0]] += ns
+                sideprog[where] += ns
+            a = max(e["a"], stop)
+            wt = e["t"]
+            wk = e["waker"]
+            hist, dbg, pushed = class_profile(wk, a, wt)
+            gate = band_overlap(wk, a, wt)
+            kind, detail = wait_kind(e)
+            wp, wpp = prog(e["woken"][0], wt), prog(wk[0], wt)
+            rows.append((kind, wp, wpp, hist, gate, side))
+            if not allp and wp not in want and wpp not in want and not any(x in want for x in sideprog):
+                continue
+            cl = " ".join("%s %.0f" % (CLASS_NAMES.get(c, c), ns / 1e6) for c, ns in sorted(hist.items()))
+            print("%8.3f %8.1f  %-18s %-4s t%-6d %-30s %-22s | %-18s %-4s t%-6d | %s; dbg %.0f; pushed %.0f | gate %.0f | "
+                  "%.0f: gate %.0f guest %.0f rq %.0f trap %.0f" % (
+                      rel(wt), (wt - a) / 1e6, wp[:18], TKIND.get(tk_of.get(e["woken"], 0), "?"), e["woken"][1] & 0xFFFFFF,
+                      kind[:30], detail[:22], wpp[:18], TKIND.get(tk_of.get(wk, 0), "?"), wk[1] & 0xFFFFFF, cl or "-",
+                      dbg / 1e6, pushed / 1e6, gate / 1e6, sum(side.values()) / 1e6, side["band gate"] / 1e6,
+                      side["guest code"] / 1e6, (side["host run queue"] + side["host run queue (after a wakeup)"]) / 1e6,
+                      side["trap"] / 1e6))
+        agg = collections.defaultdict(lambda: [0, 0, 0, 0, collections.Counter()])
+        for (kind, wp, wpp, hist, gate, side) in rows:
+            r = agg[(wpp, kind, wp)]
+            r[0] += 1
+            r[1] += sum(side.values())
+            r[2] += side["band gate"]
+            r[3] += gate
+            r[4].update(hist)
+        print("# by (waker, wait kind, woken): hand-offs, path s on the waker's side, of it at the gate, "
+              "the waker's gate s during the waits, the waker's host class over the waits")
+        for k, r in sorted(agg.items(), key=lambda x: -x[1][1])[:int(opt.get("--top") or 40)]:
+            tot = sum(r[4].values()) or 1
+            cls = " ".join("%s %d%%" % (CLASS_NAMES.get(c, c), 100 * v // tot) for c, v in sorted(r[4].items()))
+            print("%-20s %-30s -> %-20s %4d %8.3f %8.3f %8.3f  %s" % (
+                k[0][:20], k[1][:30], k[2][:20], r[0], r[1] / 1e9, r[2] / 1e9, r[3] / 1e9, cls or "-"))
+
     # frame-record writes (pwrite by the presenting program): exits
     wanted = opt.get("--program") or "backboardd"
     pw = []
@@ -558,9 +774,10 @@ def critical_path_mode(base, opt):
             print("\n## %s: no frame-record write before the present at %.3f s" % (title, rel(tp)))
             return
         t, key = pw[j]
-        steps = walk(key, t, stop)
+        steps = walk(key, t, stop, joins="--join" in opt)
         steps.total["present detection (1 ms poll)"] += tp - t
         report(title, steps, tp - stop, tp)
+        return steps
 
     print("# window opened %.3f s after ycode-simd started; %d events, %d presents, %d surface checks, %d images launched" % (
         (t_win - t_proc) / 1e9, len(events), len(presents), len(checks), sum(len(v) for v in launches.values())))
@@ -583,9 +800,92 @@ def critical_path_mode(base, opt):
         print("# home screen: frame %d presented at %.3f s (dark %.1f %%, mean %.1f)" % (home[1], rel(tp), home[2] / 10, home[3]))
         first_lit = next((c for c in checks if c[2] < 900), None)
         stop_at = t_proc + float(opt["--stop-at"]) * 1e9 if opt.get("--stop-at") else t_win
-        walk_from_present(tp, stop_at, "boot: %s -> first home-screen frame" % (
+        steps = walk_from_present(tp, stop_at, "boot: %s -> first home-screen frame" % (
             "%.3f s" % rel(stop_at) if opt.get("--stop-at") else "ycode-simd start"))
+        if steps is not None and opt.get("--edge-list"):
+            edge_list(steps, opt["--edge-list"], stop_at)
         print("# (plus %.3f s from ycode-simd's start to the window: device preparation before the root spawn)" % ((t_win - t_proc) / 1e9))
+    if opt.get("--wait-tree"):
+        # The waits of one thread from --from to --to (seconds after start), each with the
+        # thread that ended it, and recursively that thread's own waits inside the wait's span
+        # (boot-profile.md §24): who waits, on what kind of wait, for how long, and what the
+        # waking thread did meanwhile (its host class, its time at the band's gate).
+        name, _, which = opt["--wait-tree"].partition(":")
+        lo = t_proc + float(opt.get("--from") or 0) * 1e9
+        hi = t_proc + float(opt.get("--to") or 1e6) * 1e9
+        long_ns = float(opt.get("--long-ms") or 100) * 1e6
+        depth_max = int(opt.get("--depth") or 4)
+        fan = int(opt.get("--fan") or 4)
+        roots = []
+        for key, sg in segs.items():
+            if not sg or prog(key[0], sg[-1][1]) != name:
+                continue
+            kind = TKIND.get(tk_of.get(key, 0), "?")
+            if which and which not in (kind, "t%d" % (key[1] & 0xFFFFFF)):
+                continue
+            roots.append(key)
+        agg = collections.defaultdict(lambda: [0, 0, 0, 0])
+
+        def thread_label(key, t):
+            return "%s %s t%d" % (prog(key[0], t), TKIND.get(tk_of.get(key, 0), "?"), key[1] & 0xFFFFFF)
+
+        def node(key, a, b, depth, path):
+            """Prints the thread's waits of at least long_ns inside [a, b], recursively."""
+            sg = segs.get(key, [])
+            i = max(0, bisect.bisect_right(starts.get(key, []), a) - 1)
+            waits = []
+            while i < len(sg):
+                (sa, sb, st, trap, info) = sg[i]
+                i += 1
+                if sa >= b:
+                    break
+                if st != "sleep" or sb <= a:
+                    continue
+                s0, s1 = max(sa, a), min(sb, b)
+                if s1 - s0 < long_ns:
+                    continue
+                waits.append((s1 - s0, sa, sb, s0, s1, trap, info))
+            waits.sort(key=lambda w: -w[0])
+            for (d, sa, sb, s0, s1, trap, info) in waits[:fan]:
+                kind, detail = wait_kind({"start": False, "trap": trap, "enter": enter_at(key, sa)})
+                ind = "  " * depth
+                if info is None or info[0] > sb:
+                    print("%s%8.3f %8.1f ms  %-26s %-30s %-22s timed out" % (ind, rel(s0), d / 1e6, thread_label(key, s0)[:26], kind[:30], detail[:22]))
+                    agg[(prog(key[0], s0), kind, "(timed out)")][0] += 1
+                    agg[(prog(key[0], s0), kind, "(timed out)")][1] += d
+                    continue
+                wt, wp, wtid = info
+                if wp == 0:
+                    print("%s%8.3f %8.1f ms  %-26s %-30s %-22s woken by host:%s" % (ind, rel(s0), d / 1e6, thread_label(key, s0)[:26], kind[:30], detail[:22], hname(wtid)))
+                    agg[(prog(key[0], s0), kind, "host:" + hname(wtid))][0] += 1
+                    agg[(prog(key[0], s0), kind, "host:" + hname(wtid))][1] += d
+                    continue
+                wk = (wp, wtid)
+                w0, w1 = max(sa, a), min(wt, b)
+                hist, dbg, pushed = class_profile(wk, w0, w1)
+                gate = band_overlap(wk, w0, w1)
+                cl = " ".join("%s %.0f" % (CLASS_NAMES.get(c, c), ns / 1e6) for c, ns in sorted(hist.items()))
+                print("%s%8.3f %8.1f ms  %-26s %-30s %-22s woken by %-26s | %s; dbg %.0f; pushed %.0f | gate %.0f" % (
+                    ind, rel(s0), d / 1e6, thread_label(key, s0)[:26], kind[:30], detail[:22], thread_label(wk, wt)[:26],
+                    cl or "-", dbg / 1e6, pushed / 1e6, gate / 1e6))
+                r = agg[(prog(key[0], s0), kind, prog(wp, wt))]
+                r[0] += 1
+                r[1] += d
+                r[2] += gate
+                r[3] += hist.get(0, 0)
+                if depth + 1 < depth_max and wk not in path and wk != key:
+                    node(wk, w0, w1, depth + 1, path | {wk})
+
+        print("\n## wait tree of %s from %.3f to %.3f s (waits >= %.0f ms, %d per level, depth %d)" % (
+            opt["--wait-tree"], rel(lo), rel(hi), long_ns / 1e6, fan, depth_max))
+        print("# start s, ms, the waiting thread, the wait's kind and trap, the thread that ended it | its host class "
+              "during the wait (ms by class; ms darwin-bg; ms pushed) | its ms at the band's gate")
+        for key in sorted(roots, key=lambda k: k[1]):
+            print("# %s" % thread_label(key, hi))
+            node(key, lo, hi, 0, {key})
+        print("# by (waiting program, kind, waking program): waits, s, waker's s at the gate, waker's s in class bg")
+        for k, r in sorted(agg.items(), key=lambda x: -x[1][1])[:int(opt.get("--top") or 40)]:
+            print("%-22s %-30s %-24s %4d %8.3f %8.3f %8.3f" % (k[0][:22], k[1][:30], k[2][:24], r[0], r[1] / 1e9, r[2] / 1e9, r[3] / 1e9))
     if opt.get("--thread"):
         # One thread's time between --from and --to (seconds since ycode-simd
         # started): guest code, traps (lock waits apart), sleeps by waker.
@@ -827,13 +1127,14 @@ def main():
     opt = {"--program": "backboardd", "--frames": "12", "--chains": "14", "--from": None, "--to": None}
     i = 1
     while i < len(args):
-        if args[i] in ("--boot", "--debug", "--wake-stats"):
+        if args[i] in ("--boot", "--debug", "--wake-stats", "--join"):
             opt[args[i]] = True
             i += 1
             continue
         opt[args[i]] = args[i + 1]
         i += 2
-    if any(k in opt for k in ("--boot", "--launch", "--anchor", "--thread", "--backbone", "--wake-stats", "--blocked-sends")):
+    if any(k in opt for k in ("--boot", "--launch", "--anchor", "--thread", "--backbone", "--wake-stats", "--blocked-sends",
+                              "--wait-tree")):
         global DEBUG
         DEBUG = "--debug" in opt
         return critical_path_mode(base, opt)

@@ -4212,6 +4212,741 @@ after a boot of the same build, on the same device copy:
      neither §4.10 nor §4.11 reaches it; what biomed waits for on its side
      (a lock or a stream it shares) is not identified.
 
+## 23. Reference: the home path's waits on background daemons (agent B3-SIMOBS5, 2026-11-07)
+
+Dirty-room answer to §22.4 and §22.7 item 1. In Ycode, a band strict
+enough to hold dasd back until home makes the boot 2–5× slower, because
+Ycode's path to home waits, one after another, on healthd, swcd,
+eligibilityd, cloudd, maild, runningboardd (its `task_name_for_pid` calls)
+and the DeviceConfiguration pair (DeviceConfigurationAgent and
+deviceconfigurationd), all of them darwin-bg in Ycode. The question: does
+the reference's home path wait on them, and at what priority do they run?
+
+### 23.1 Conditions
+
+| Item | Value |
+|---|---|
+| Host | as §19.1: Apple M3 Max, 14 CPUs, macOS 27.2, Xcode 27.1; two macOS test VMs running throughout |
+| Rule before each boot | wait until the 1-minute load is under 6, for 20 minutes at most. The floor stayed at 6.0–7.0 (lowest load seen in each wait), so every timed boot started after the full 20 minutes, at a load of 6.9–11.8 (median 8.5) |
+| Runtime and device | iOS 27.1 (24A94401), iPhone Duo; every boot headless (`simctl bootstatus -b`); nothing was shown on the screen |
+| Timed boots | device `ycode-test-simobs5-a`: boot a1 as created (fresh), a2–a4 aged; devices `-b` to `-e`: one fresh boot each (b1–e1). So 5 fresh and 3 aged boots. Two more boots of device `-s` (s1 fresh, home 54.0 s; s2 aged, home 27.9 s; started by the same load rule) carried `sample` of runningboardd and SpringBoard (§23.6) and are not in the tables; the sampler slows the processes it samples, but their other figures follow the tables' pattern (s2's healthd and swcd checked in 51 s and 48 s after home). A first untimed pilot device `-p` (load 23–162 at its start) tested the samplers. All devices were deleted afterwards |
+| Window | fresh 240 s, aged 150 s from the `simctl boot` call |
+| Per boot | the 1-minute load every second; every 0.5 s, for every child of the device's `launchd_sim`: task CPU time, task base priority, thread count, running threads and Mach message counts, and for the daemons below every thread's current, base and maximum priority, run state and CPU time (public `proc_pidinfo` calls, no root); `ps -M` of the same daemons every 2 s (cross-check); `lsmp` of runningboardd every 2 s; home_s as §13; at the window's end `launchctl print` of the jobs inside the device, `log show --info --debug` of the window and the device's `launchd.log` |
+| Times | seconds from the `simctl boot` call |
+
+Home and the load: fresh boots home_s 47.5–53.9 (median 49.1), aged 18.1,
+26.4 and 26.9. The 1-minute load from the boot call to home: median 69–108
+in the fresh boots (maximum 224–283), 18–53 in the aged ones (maximum
+47–119): as in §19.1, the boot saturates the host itself.
+
+Terms used below:
+
+- **Spawn** and its reason: `launchd.log`'s "launching: …" and "spawned
+  with pid" lines (speculative, event publisher, xpc event, `ipc (mach)`
+  shown as IPC).
+- **Check-in**: launchd_sim's "uncorking exec source" line for the pid,
+  the job's first contact with launchd after its executable started. The
+  daemon's first log line follows within 0–4 s (median 0.02 s). Between
+  spawn and check-in the job is starting (loading, initialisers).
+- **Listener**: the daemon's first "activating connection: mach=true
+  listener=true" line for one of its own launchd endpoints (the endpoint
+  list is `launchctl print`'s). Clients' connections to that endpoint are
+  accepted (the daemon's "peer=true name=<endpoint>.peer[<client pid>]"
+  line) only after it.
+- **Idle**: the first sample after which the daemon's CPU time grows by
+  less than 20 ms for 5 s with none of its threads running or runnable.
+- **At 4**: the share of samples before home in which the task's base
+  priority was 4. On the reference this is the darwin-bg state: whenever
+  the task's base priority is 4, every thread's maximum priority is 4 too
+  (8 boots, all but one of about 32 000 process samples). The base
+  priority of every sampled daemon was either 4 or 31; at 31 the threads'
+  maximum is 63.
+- **Above 4**: runs of samples with the task at 31, before home, with the
+  CPU time it used in them.
+
+Every one of the eight jobs is `spawn type = adaptive (6)` in
+`launchctl print` (runningboardd also `keepalive`, `runatload`);
+SpringBoard is `app (1)`, role `ui (2)`; backboardd and dasd are
+`interactive (4)`.
+
+### 23.2 The home path's own connections
+
+SpringBoard, backboardd and runningboardd open 115–119 outgoing XPC
+connections before home in every boot. Matched with the server's
+acceptance line:
+
+- **The only one of the eight they connect to before home is
+  runningboardd** (all 8 boots): backboardd at 1.5–2.5 s, accepted
+  0.19–0.60 s later (median 0.47 s), when runningboardd's listener comes
+  up; SpringBoard twice at 6.7–8.0 s, accepted in 0–6 ms (runningboardd at
+  31 in every case).
+- No connection from SpringBoard, backboardd or runningboardd names an
+  endpoint of healthd, swcd, eligibilityd, cloudd, maild,
+  DeviceConfigurationAgent or deviceconfigurationd before home (0 of 8
+  boots). Their log lines name none of them before home either, except
+  maild in SpringBoard's FrontBoard lines ("Asked to bootstrap a new
+  process for handle: [osservice<com.apple.email.maild>…]"): maild's own
+  call into SpringBoard, served by SpringBoard.
+- SpringBoard does not wait for every connection it opens. Some of its
+  connections were accepted only after home: searchd (7 boots), dasd
+  (`com.apple.duetactivityscheduler`, 6), intelligencecontextd (6),
+  axassetsd (6), mobiletimerd's alarm and timer servers (5 fresh boots),
+  routined (1); 18–75 s after the connection (axassetsd's from 0.5 s, just
+  before home). Home does not wait for them.
+- 29–31 connections per boot (Metal, IOSurface and power services of the
+  host, CoreTelephony's absent service) have no acceptance line on either
+  side.
+
+### 23.3 Per daemon
+
+Rows a1–e1 are fresh boots, a2–a4 aged. "—": not reached in the window, or
+no sample.
+
+#### healthd
+
+| Boot | home | spawn (reason) | check-in | first line | listener | idle | CPU s at home / +10 s | at 4 before home | above 4 before home: start–end (CPU s) |
+|---|---|---|---|---|---|---|---|---|---|
+| a1 | 47.5 | 0.9 (speculative) | 80.0 | 80.0 | 83.3 | 109.5 | 0.11 / 0.11 | 100 % | none |
+| b1 | 53.9 | 0.9 (speculative) | 93.8 | 93.8 | 97.2 | 151.5 | 0.02 / 0.03 | 100 % | none |
+| c1 | 53.6 | 1.0 (speculative) | 104.2 | 104.8 | 106.5 | 143.5 | 0.07 / 0.10 | 100 % | none |
+| d1 | 49.1 | 0.9 (speculative) | 80.9 | 80.9 | 85.1 | 124.0 | 0.08 / 0.11 | 100 % | none |
+| e1 | 48.0 | 0.7 (speculative) | 82.2 | 82.2 | 87.0 | 125.5 | 0.10 / 0.12 | 100 % | none |
+| a2 | 18.1 | 0.9 (speculative) | 53.1 | 53.1 | 54.4 | 62.5 | 0.06 / 0.09 | 100 % | none |
+| a3 | 26.4 | 1.0 (speculative) | 68.7 | 70.5 | 120.7 | 142.5 | 0.06 / 0.17 | 100 % | none |
+| a4 | 26.9 | 0.9 (speculative) | 52.1 | 53.6 | 104.2 | 124.0 | 0.05 / 0.17 | 100 % | none |
+
+- **Not on the home path; background.** Started speculatively at
+  0.7–1.0 s, healthd stays at priority 4 (100 % of the samples before
+  home, its threads at 4 with maximum 4) and reaches its check-in 25–51 s
+  **after** home (fresh +31.8 to +50.6 s, aged +25.2 to +42.3 s); it opens
+  its listener 36–94 s after home. Until its check-in a thread is runnable
+  in 97–100 % of the samples and gets a trickle of CPU (0.02–0.11 CPU s by
+  home, 0.39–0.59 CPU s by its check-in): its start-up runs at priority 4
+  for 51–103 s.
+- Its clients before home (`com.apple.healthd.server`): sleepd (1.8–3.2 s)
+  and mobiletimerd (2.1–3.8 s) and fitnesscoachingd (12.9–18.4 s) in every
+  boot; in fresh boots also fitnessintelligenced, SleepWidgetExtension and
+  FitnessIntelligenceInferenceService. None was accepted before home
+  (fitnesscoachingd's, SleepWidgetExtension's and
+  FitnessIntelligenceInferenceService's 38–109 s after they were made;
+  sleepd's and mobiletimerd's have no acceptance line in the window), and
+  **none raised healthd above 4**, although sleepd and mobiletimerd ran at
+  31 when they connected (every boot).
+- §19's 12 log-only boots agree: healthd's first line came 9.8–30.8 s
+  after home in the aged boots and 37–185 s after it (or not within 200 s,
+  3 of 7) in the fresh ones.
+
+#### swcd
+
+| Boot | home | spawn (reason) | check-in | first line | listener | idle | CPU s at home / +10 s | at 4 before home | above 4 before home: start–end (CPU s) |
+|---|---|---|---|---|---|---|---|---|---|
+| a1 | 47.5 | 17.6 (IPC) | 17.9 | 18.0 | 18.0 | 94.5 | 0.42 / 0.43 | 86 % | 18.0–21.0 (0.16); 36.5–36.5 (0.01) |
+| b1 | 53.9 | 19.5 (IPC) | 19.8 | 19.8 | 19.8 | 90.5 | 0.47 / 0.48 | 93 % | 20.0–21.0 (0.14); 24.5–24.5 (0.05); 45.5–45.5 (0.01) |
+| c1 | 53.6 | 19.6 (IPC) | 19.8 | 19.8 | 19.8 | 117.5 | 0.42 / 0.42 | 90 % | 20.0–23.0 (0.17) |
+| d1 | 49.1 | 31.4 (IPC) | 78.1 | 78.2 | 78.2 | 86.0 | 0.10 / 0.14 | 94 % | 31.5–32.0 (0.07) |
+| e1 | 48.0 | 20.4 (IPC) | 77.5 | 77.5 | 77.6 | 104.5 | 0.12 / 0.12 | 98 % | 20.5–20.5 (0.07) |
+| a2 | 18.1 | 12.6 (IPC) | 40.4 | 42.0 | 44.7 | 51.5 | 0.14 / 0.18 | 91 % | 13.0–13.0 (0.03) |
+| a3 | 26.4 | 13.4 (IPC) | 64.2 | 68.1 | 70.5 | 92.0 | 0.06 / 0.17 | 96 % | 13.5–13.5 (0.05) |
+| a4 | 26.9 | 12.1 (IPC) | 55.0 | 55.0 | 57.8 | 73.0 | 0.01 / 0.12 | 100 % | none |
+
+- **Not on the home path; background.** swcd is started on demand by
+  passd's (`com.apple.SharedWebCredentials`, 12.0–31.4 s) or
+  amsengagementd's (17.6–19.6 s, three fresh boots) first message.
+- Started by amsengagementd (a1, b1, c1), it runs at 31 from the spawn,
+  checks in 0.2–0.3 s later and accepts amsengagementd 1.3–3.3 s after its
+  connection, then returns to 4 (1–3 s above 4 in all, 0.14–0.17 CPU s).
+- Started by passd (d1, e1, a2–a4), it is at 31 in at most two samples (≤
+  1 s) at the spawn, then at 4, and reaches its check-in 28–57 s after the
+  spawn (22–38 s after home in the aged boots, 29–30 s after it in d1 and
+  e1). passd's connection is accepted 21–65 s after it was made, after
+  home in 7 of 8 boots (b1: 8 s before). passd was at 31 when it connected
+  in 7 of 8 boots.
+- §19's log-only boots: aged first line 24.7–40.5 s after home.
+
+#### eligibilityd
+
+| Boot | home | spawn (reason) | check-in | first line | listener | idle | CPU s at home / +10 s | at 4 before home | above 4 before home: start–end (CPU s) |
+|---|---|---|---|---|---|---|---|---|---|
+| a1 | 47.5 | 2.6 (xpc event) | 15.9 | 16.0 | 16.2 | 30.5 | 0.64 / 0.64 | 88 % | 12.5–16.0 (0.32); 20.5–21.0 (0.15); 30.0–30.0 (0.05) |
+| b1 | 53.9 | 2.5 (xpc event) | 13.5 | 13.5 | 13.7 | 73.5 | 0.72 / 0.72 | 94 % | 12.5–13.5 (0.33); 20.5–21.5 (0.29) |
+| c1 | 53.6 | 2.7 (xpc event) | 14.3 | 14.3 | 14.5 | 63.5 | 0.71 / 0.71 | 94 % | 13.5–14.0 (0.31); 22.0–23.0 (0.31); 40.5–40.5 (0.04) |
+| d1 | 49.1 | 2.6 (xpc event) | 13.5 | 13.6 | 13.8 | 64.5 | 0.72 / 0.74 | 94 % | 13.0–13.5 (0.28); 21.0–22.5 (0.31) |
+| e1 | 48.0 | 2.2 (xpc event) | 14.2 | 14.2 | 14.3 | 61.5 | 0.59 / 0.60 | 95 % | 13.5–14.0 (0.33); 19.0–19.5 (0.17); 26.0–26.0 (0.04) |
+| a2 | 18.1 | 2.7 (xpc event) | 12.3 | 12.3 | 12.4 | 42.0 | 0.33 / 0.37 | 94 % | 11.5–12.0 (0.30) |
+| a3 | 26.4 | 3.3 (xpc event) | 11.9 | 11.9 | 11.9 | 31.5 | 0.43 / 0.44 | 96 % | 11.5–12.0 (0.36) |
+| a4 | 26.9 | 2.7 (xpc event) | 13.8 | 13.8 | 13.9 | 45.5 | 0.30 / 0.42 | 100 % | none |
+
+- **Works before home, but not for the home path; background, boosted only
+  while serving a request.** Launched for an XPC event at 2.2–3.3 s
+  (UserEventAgent compares its path-state paths 2–141 ms before), it is at
+  4 from its first sample and starts at 4: check-in at 11.9–15.9 s, 6–15 s
+  before home in aged boots.
+- Its clients before home are countryd (11.3–13.5 s, accepted 0.4–3.8 s
+  later) and assistantd (11.5–22.0 s, accepted in 0–0.9 s). Around each
+  burst of requests it is at 31 for up to 3.5 s (one to eight samples,
+  0.04–0.36 CPU s each); otherwise at 4 (88–100 % of the samples before
+  home). It spends 0.3–0.7 CPU s before home, 44 % of it at priority 4.
+- Neither client puts it on the home path: SpringBoard's own connections
+  to assistantd (`com.apple.assistant.settings`) are accepted 1.2–1.65 s
+  after they are made (9.3–10.1 s, aged), before assistantd's first
+  request to eligibilityd (11.5–13.6 s); in fresh boots they come at
+  27–31 s, long after eligibilityd served assistantd, and are accepted in
+  2–26 ms.
+
+#### cloudd
+
+| Boot | home | spawn (reason) | check-in | first line | listener | idle | CPU s at home / +10 s | at 4 before home | above 4 before home: start–end (CPU s) |
+|---|---|---|---|---|---|---|---|---|---|
+| a1 | 47.5 | 4.0 (IPC) | 7.6 | 7.6 | 77.4 | 8.5 | 0.34 / 0.34 | 0 % | 4.5–47.5 |
+| b1 | 53.9 | 3.4 (IPC) | 4.7 | 4.7 | 89.9 | 5.0 | 0.34 / 0.34 | 0 % | 3.5–53.9 |
+| c1 | 53.6 | 4.2 (IPC) | 6.2 | 6.3 | 96.7 | 7.0 | 0.35 / 0.35 | 0 % | 4.5–53.6 |
+| d1 | 49.1 | 3.8 (IPC) | 5.4 | 5.5 | 77.7 | 5.5 | 0.34 / 0.35 | 0 % | 4.0–49.1 |
+| e1 | 48.0 | 2.3 (IPC) | 3.3 | 3.3 | 77.0 | 4.0 | 0.32 / 0.32 | 0 % | 2.5–48.0 |
+| a2 | 18.1 | 3.7 (IPC) | 4.9 | 4.9 | 33.6 | 5.5 | 0.30 / 0.31 | 0 % | 4.0–18.1 |
+| a3 | 26.4 | 3.7 (IPC) | 4.9 | 5.0 | 38.0 | 5.5 | 0.32 / 0.32 | 0 % | 4.0–26.4 |
+| a4 | 26.9 | 3.7 (IPC) | 5.1 | 5.2 | 41.3 | 5.5 | 0.31 / 0.31 | 0 % | 4.0–26.9 |
+
+- **Not on the home path. Boosted (31) the whole time, but idle.** Started
+  on demand by securityd's connection (`com.apple.cloudd`, 3.4–4.2 s),
+  cloudd checks in 1.0–3.6 s later, spends 0.30–0.35 CPU s and is idle
+  from 4.0–8.5 s on. It **opens its main listener only 12–43 s after
+  home** (aged +11.6 to +15.5 s, fresh +28.6 to +43.1 s). The connections
+  of 10–17 clients made before home (securityd, identityservicesd,
+  findmylocated, homed, syncdefaultsd, SafariBookmarksSyncAgent, passd,
+  ScreenTimeSettingsAgent, financed, suggestd, gamed, biomesyncd and
+  others) are all accepted within 5 s of it (21–24 connections), 13–93 s
+  after they were made.
+- Its task is at 31 from its first sample (0.1–0.5 s after securityd's
+  connection) to the end of the window in every boot (0 % at 4), before
+  and after its listener opens, with threads at 20–37, while it is idle.
+  What keeps it there (the queued connections, then the accepted ones, or
+  something else) the samples cannot tell.
+- What opens the listener is not visible; in a1 it came 0.3 s after dasd
+  logged a burst of activity decisions following failed `isPluggedIn` and
+  `batterySaver` reads (§19.2).
+
+#### maild
+
+| Boot | home | spawn (reason) | check-in | first line | listener | idle | CPU s at home / +10 s | at 4 before home | above 4 before home: start–end (CPU s) |
+|---|---|---|---|---|---|---|---|---|---|
+| a1 | 47.5 | 4.2 (xpc event) | 16.7 | 16.7 | 21.0 | 107.5 | 2.65 / 2.69 | 59 % | 4.5–21.0 (2.57); 30.0–30.0 (0.02) |
+| b1 | 53.9 | 12.8 (xpc event) | 18.8 | 18.8 | 21.4 | 83.0 | 2.87 / 2.90 | 77 % | 13.0–21.5 (2.69); 44.0–44.0 (0.01) |
+| c1 | 53.6 | 8.2 (xpc event) | 18.0 | 18.1 | 22.9 | 84.5 | 2.87 / 2.88 | 67 % | 8.5–23.0 (2.77) |
+| d1 | 49.1 | 9.2 (xpc event) | 16.7 | 16.8 | 22.1 | 80.5 | 2.69 / 2.79 | 66 % | 9.5–22.0 (2.67); 24.0–24.0 (0.01) |
+| e1 | 48.0 | 4.9 (xpc event) | 15.2 | 15.2 | 19.7 | 72.0 | 2.71 / 2.71 | 65 % | 5.0–19.5 (2.67) |
+| a2 | 18.1 | 4.7 (xpc event) | 17.6 | 17.6 | 19.9 | 42.0 | 2.60 / 2.79 | 4 % | 5.0–17.5 (2.51) |
+| a3 | 26.4 | 4.9 (xpc event) | 17.8 | 17.9 | 24.8 | 49.0 | 2.82 / 3.01 | 37 % | 5.0–18.0 (2.65) |
+| a4 | 26.9 | 5.8 (xpc event) | 13.4 | 13.4 | 21.8 | 57.5 | 2.72 / 2.89 | 62 % | 6.0–13.5 (2.53) |
+
+- **Not on the home path; boosted at its start, by its launch event.**
+  launchd_sim launches maild "because xpc event" 9–42 ms after
+  UserEventAgent initiates one of maild's XPC activities
+  (`com.apple.mobilemail.activity.reset-device-activity-alarms` or
+  `com.apple.mobilemail.scheduledFetches`; 7 of 8 boots). From the spawn
+  to its check-in 6–13 s later, and on for 0–0.2 s (aged) or 2.7–5.3 s
+  (fresh) after it, maild is at 31 (threads at 20–31) and uses
+  2.5–2.8 CPU s; then it is at 4 except for single samples. Its start-up,
+  not its service, is the boosted part.
+- Clients before home: only suggestd in two fresh boots
+  (`com.apple.email.maild`, accepted in 0.3 s). Its listeners open 5.1 s
+  before to 1.8 s after home (aged). It calls SpringBoard (FrontBoard's
+  `osservice` bootstrap) 0.2–1.3 s after its check-in (aged) or 11–14 s
+  after it (fresh); SpringBoard does not call it.
+- maild uses 2.6–2.9 CPU s before home in every boot, more than any of the
+  other six (and more than runningboardd in the aged boots), but nothing
+  on the home path waits for it.
+
+#### runningboardd
+
+| Boot | home | spawn (reason) | check-in | first line | listener | idle | CPU s at home / +10 s | at 4 before home | above 4 before home: start–end (CPU s) |
+|---|---|---|---|---|---|---|---|---|---|
+| a1 | 47.5 | 0.9 (speculative) | 2.6 | 2.6 | 3.0 | 139.5 | 2.36 / 4.07 | 9 % | 2.5–12.0 (0.24); 13.5–15.0 (0.03); 16.0–46.0 (1.86) |
+| b1 | 53.9 | 0.9 (speculative) | 2.7 | 2.7 | 2.8 | 138.0 | 3.74 / 4.28 | 9 % | 2.5–13.0 (0.36); 14.0–14.5 (0.01); 16.0–18.0 (0.01); 20.0–22.5 (0.07); +1 |
+| c1 | 53.6 | 1.0 (speculative) | 2.8 | 2.8 | 3.1 | 152.5 | 3.45 / 4.47 | 13 % | 3.0–8.5 (0.12); 9.5–10.5 (0.01); 11.5–12.5 (0.03); 13.5–14.0 (0.00); +5 |
+| d1 | 49.1 | 0.9 (speculative) | 2.6 | 2.6 | 2.9 | 135.5 | 2.77 / 3.88 | 12 % | 2.5–15.0 (0.31); 16.5–17.0 (0.00); 19.0–19.0 (0.00); 21.0–38.0 (1.08); +1 |
+| e1 | 48.0 | 0.7 (speculative) | 1.8 | 1.8 | 1.8 | 134.0 | 2.58 / 4.35 | 10 % | 2.0–8.5 (0.10); 9.5–10.5 (0.02); 11.5–15.5 (0.04); 17.0–17.5 (0.00); +3 |
+| a2 | 18.1 | 0.9 (speculative) | 2.6 | 2.6 | 2.7 | 89.0 | 0.88 / 1.35 | 14 % | 3.0–5.0 (0.03); 6.0–18.1 (0.73) |
+| a3 | 26.4 | 1.0 (speculative) | 2.7 | 2.7 | 2.8 | 98.5 | 1.19 / 1.29 | 6 % | 2.5–26.4 (1.15) |
+| a4 | 26.9 | 0.9 (speculative) | 2.7 | 2.8 | 2.8 | 99.5 | 1.21 / 1.31 | 6 % | 2.5–26.9 (1.24) |
+
+- **On the home path; boosted by its callers.** Launched speculatively at
+  0.7–1.0 s, it starts at 4 (every sample until 2.0–3.0 s). backboardd
+  connects to `com.apple.runningboard` at 1.5–2.5 s; within the next
+  sample (≤ 0.5 s) runningboardd is at 31, checks in 0.07–0.36 s after the
+  connection and accepts it 0.19–0.60 s after it was made. That is the one
+  wait of the home path on these daemons, and it is spent in
+  runningboardd's own start, which runs at 4 until the waiter's message
+  arrives.
+- From then until home it is at 31 for 86–94 % of the samples (fresh
+  87–91 %, aged 86–94 %); 68 % of its CPU before home is spent at
+  priorities 32–46 (most threads at 37), 18 % at 31, 6 % at 4 or below.
+  Between bursts it drops to 4 for 0.5–1.5 s and is raised again within
+  one sample by the next client: 125–135 client connections before a fresh
+  home, 51–81 before an aged one, all but backboardd's first accepted
+  within 0.27 s (most within 0.05 s).
+- Its own wait: its first connection to lsd (`com.apple.lsd.mapdb`,
+  1.8–3.2 s) is accepted 0.9–1.0 s later in aged boots, 5.4–7.9 s later in
+  fresh ones.
+
+#### DeviceConfigurationAgent
+
+| Boot | home | spawn (reason) | check-in | first line | listener | idle | CPU s at home / +10 s | at 4 before home | above 4 before home: start–end (CPU s) |
+|---|---|---|---|---|---|---|---|---|---|
+| a1 | 47.5 | 14.5 (IPC) | 22.9 | 22.9 | 23.0 | 58.5 | 0.29 / 0.29 | 95 % | 23.0–23.0 (0.02); 29.5–30.0 (0.01) |
+| b1 | 53.9 | 12.0 (IPC) | 23.2 | 23.2 | 23.3 | 73.0 | 0.32 / 0.33 | 98 % | 23.0–23.5 (0.21) |
+| c1 | 53.6 | 9.1 (IPC) | 24.1 | 24.2 | 24.2 | 40.0 | 0.28 / 0.28 | 93 % | 22.0–22.5 (0.01); 24.0–25.5 (0.14) |
+| d1 | 49.1 | 12.3 (IPC) | 23.7 | 23.8 | 23.8 | 31.0 | 0.31 / 0.32 | 96 % | 21.0–21.0 (0.01); 23.5–24.0 (0.15) |
+| e1 | 48.0 | 13.3 (IPC) | 22.1 | 22.1 | 22.3 | 58.0 | 0.33 / 0.33 | 96 % | 21.5–22.0 (0.18); 37.0–37.0 (0.01) |
+| a2 | 18.1 | 33.9 (IPC) | 34.2 | 34.2 | 34.3 | 41.0 | 0.00 / 0.00 | — | none |
+| a3 | 26.4 | 38.3 (IPC) | 38.8 | 38.9 | 38.9 | 66.5 | 0.00 / 0.00 | — | none |
+| a4 | 26.9 | 41.6 (IPC) | 42.0 | 42.0 | 42.0 | 53.0 | 0.00 / 0.00 | — | none |
+
+#### deviceconfigurationd
+
+| Boot | home | spawn (reason) | check-in | first line | listener | idle | CPU s at home / +10 s | at 4 before home | above 4 before home: start–end (CPU s) |
+|---|---|---|---|---|---|---|---|---|---|
+| a1 | 47.5 | 0.9 (event publisher) | 80.8 | 84.8 | 92.1 | 99.5 | 0.12 / 0.14 | 97 % | 23.0–23.0 (0.02); 29.5–30.0 (0.04) |
+| b1 | 53.9 | 0.9 (event publisher) | 23.7 | 23.7 | 23.8 | 68.5 | 0.28 / 0.28 | 99 % | 23.5–23.5 (0.12) |
+| c1 | 53.6 | 1.0 (event publisher) | 76.2 | 79.3 | 82.2 | 99.0 | 0.24 / 0.25 | 97 % | 24.5–25.5 (0.04) |
+| d1 | 49.1 | 0.9 (event publisher) | 77.9 | 78.0 | 81.5 | 100.5 | 0.14 / 0.17 | 99 % | 24.0–24.0 (0.01) |
+| e1 | 48.0 | 0.7 (event publisher) | 91.8 | 91.8 | 91.8 | 119.0 | 0.05 / 0.06 | 99 % | 37.0–37.0 (0.00) |
+| a2 | 18.1 | 0.9 (event publisher) | 46.2 | 47.2 | 48.6 | 51.0 | 0.06 / 0.09 | 100 % | none |
+| a3 | 26.4 | 1.0 (event publisher) | 42.5 | 42.5 | 42.5 | 49.0 | 0.04 / 0.15 | 100 % | none |
+| a4 | 26.9 | 0.9 (event publisher) | 46.2 | 46.2 | 46.2 | 52.5 | 0.13 / 0.24 | 100 % | none |
+
+- **Neither is on the home path; background, boosted step by step by a
+  chain of requests that does not start at SpringBoard.** In the fresh
+  boots DeviceConfigurationAgent is launched (IPC) at 9.1–14.5 s, 12–30 ms
+  after generativeexperiencesd connects to `…consumer.async` (its
+  connection to `…publisher`, 0.7–5.8 s earlier, did not launch it); it
+  stays at 4 from its first sample and does not check in until the chain
+  ScreenTimeSettingsAgent → ManagedSettingsAgent (21.0–23.8 s) →
+  DeviceConfigurationAgent (`com.apple.DeviceConfigurationAgent.provider`,
+  21.2–23.9 s) reaches it. Then it is at 31 for up to 1.5 s, checks in
+  0.25–0.89 s after ManagedSettingsAgent's connection, accepts it
+  0.36–1.15 s after it was made and generativeexperiencesd's 8.5–27.7 s
+  after they were made, and sends two asynchronous requests to
+  deviceconfigurationd
+  (`com.apple.deviceconfigurationd.user.private.async`,
+  `….consumer.private.async`, 22.3–24.3 s).
+- deviceconfigurationd, started by its event publisher at 0.7–1.0 s, sits
+  at 4 (97–100 % of the samples). DeviceConfigurationAgent's requests
+  raise it to 31 for one to three samples (≤ 1 s); in b1 that was enough
+  to check in at once (23.7 s, requests accepted in 0.5 s); in a1, c1, d1
+  and e1 it went back to 4 and checked in 23–44 s after home, so the
+  requests waited 58–69 s. DeviceConfigurationAgent does not block on
+  them: it went on accepting ManagedSettingsAgent's connections meanwhile.
+- In the aged boots the whole chain runs after home:
+  ScreenTimeSettingsAgent is launched at 22.5–24.9 s; its request to
+  ManagedSettingsAgent at 33.8–41.6 s is followed within 40 ms by
+  ManagedSettingsAgent's, which launches DeviceConfigurationAgent (12–16 s
+  after home; 31 in at most its first sample, then 4; check-in 0.35–0.5 s
+  after the spawn) and deviceconfigurationd checks in at 42.5–46.2 s
+  (16–28 s after home). §19's log-only boots: DeviceConfigurationAgent
+  launched 34.6–40.6 s, deviceconfigurationd's first line 28.5–29.3 s
+  after home (aged).
+
+### 23.4 How the reference raises a background daemon
+
+From the 8 boots (task base priority, 0.5 s samples, against the
+connection lines):
+
+1. An Adaptive daemon that nobody has asked for anything is at 4 with
+   every thread capped at 4, from its spawn: healthd,
+   deviceconfigurationd, runningboardd until backboardd's message. Its
+   start-up runs at 4, and on a host saturated by the boot takes 28–103 s
+   from spawn to check-in (healthd 51–103 s, deviceconfigurationd 41–91 s,
+   swcd started by passd 28–57 s).
+2. A job started on demand (IPC) shows 31 in at most its first two samples
+   (≤ 1 s), then 4: swcd started by passd, DeviceConfigurationAgent
+   started by ManagedSettingsAgent (aged boots). DeviceConfigurationAgent
+   started for generativeexperiencesd (fresh boots), and eligibilityd,
+   started for an XPC event, are at 4 from their first sample. Rule 3
+   overrides this.
+3. While a message that carries importance waits in its queue, the daemon
+   stays at 31: runningboardd from backboardd's first message (queued
+   before its check-in); maild from its launch event until about its
+   check-in; swcd from amsengagementd's message until it is served. cloudd
+   is at 31 from securityd's first message to the end of the window, idle,
+   its listener closed until 12–43 s after home and open afterwards.
+4. A request from a client that is not an importance donor does not raise
+   it, whatever the client's own priority: healthd stays at 4 under
+   sleepd's and mobiletimerd's connections; swcd under passd's;
+   deviceconfigurationd gets one to three samples of 31 from
+   DeviceConfigurationAgent's asynchronous requests. Which clients donate
+   cannot be read without root; `scheduling-policy.md` §2.1–§2.3 gives the
+   rule (donors: apps, Interactive and Standard daemons, and boosted
+   receivers through the request's voucher).
+5. When the request is served the daemon returns to 4 within 0.5–3.5 s
+   (eligibilityd around countryd's and assistantd's requests;
+   runningboardd between bursts; DeviceConfigurationAgent).
+6. A capped thread can still be promoted: healthd's and
+   deviceconfigurationd's threads show a current priority of 46 with base
+   and maximum 4 in 7–8 thread samples each before home (about 1 % of
+   their samples; for example a waiter's push on a lock the thread holds),
+   and those samples carry 5–14 % of the two daemons' CPU before home.
+
+### 23.5 Answers
+
+| Daemon | On the home path? | Its priority before home | What raises it |
+|---|---|---|---|
+| healthd | No. Not called by the home path; checks in 25–51 s after home | background (4) throughout | nothing before home; its early clients (sleepd, mobiletimerd) do not |
+| swcd | No. Its clients are passd and amsengagementd; started by passd it checks in 22–38 s (aged) or 29–30 s (fresh) after home | background; 31 for 1–3 s when started by amsengagementd | amsengagementd's queued message (fresh a1–c1); passd's does not |
+| eligibilityd | No. Serves countryd and assistantd before home | background, 31 for up to 3.5 s around each burst of requests (88–100 % at 4) | its clients' requests (countryd, assistantd) |
+| cloudd | No. Accepts no connection until 12–43 s after home | boosted (31) from its first client's message to the end of the window, but idle from 4–9 s on | securityd's connection (its first client); what keeps it at 31 is not visible |
+| maild | No. Nobody on the home path calls it | 31 during its start (spawn to about its check-in, 6–13 s, 2.5–2.8 CPU s), then background | its XPC-activity launch event |
+| runningboardd | **Yes.** backboardd waits 0.19–0.60 s for its listener (1.8–3.1 s); SpringBoard's calls are served in ≤ 6 ms | background (4) from spawn until backboardd's message; then 31, threads mostly 37, for 86–94 % of the samples before home | backboardd's first message (queued before its check-in), then each client's request |
+| DeviceConfigurationAgent | No. Chain ScreenTimeSettingsAgent → ManagedSettingsAgent → it, before home only in fresh boots; after home in aged ones | background; 31 for ≤ 1.5 s | ManagedSettingsAgent's request |
+| deviceconfigurationd | No. Only DeviceConfigurationAgent's asynchronous requests; checks in 16–44 s after home (b1: 30 s before) | background (97–100 %) | DeviceConfigurationAgent's requests, for ≤ 1 s |
+
+### 23.6 runningboardd's task-name look-ups, and SpringBoard's own waits
+
+- **runningboardd does look up other processes' task names before home.**
+  It logs "Now tracking process" for 121–132 processes before a fresh home
+  and 53–83 before an aged one, and "Resolved pid" 97–101 times (68–71
+  distinct pids) and 67–85 times (42–53) respectively, from 1.8–3.1 s on.
+  The probe samples show where the look-up sits: `task_name_for_pid` under
+  `+[RBSMachPortTaskNameRight taskNameForPID:]`, called when runningboardd
+  starts tracking a process.
+- **The look-ups cost no measurable time.** `sample` at 1 ms of
+  runningboardd from 2.5 s to 47.5 s in the fresh probe boot s1 (home
+  54.0 s) and from 2.0 s to 47.0 s in the aged one, s2 (home 27.9 s):
+  `task_name_for_pid` is in 1 of 287 607 thread samples (s1) and 1 of
+  303 061 (s2), never at the top of 5 or more samples; the pilot's 15 s
+  sample from 2.5 s also shows it once. So all of runningboardd's look-ups
+  before home take about 1 ms in total (of the order of 10 µs each over
+  80–130 tracking starts), and none blocks.
+- **SpringBoard's own waits.** In the same probes, SpringBoard's main
+  thread (sampled from 1.5 s for 45 s) waited synchronously on no daemon
+  of this section. In the fresh boot 45 % of its samples were one
+  synchronous XPC call: its system-shell check-in with backboardd
+  (`-[BKSSystemShellService _checkInWithServerForReason:waitForDataMigration:]`),
+  which in fresh boots waits for backboardd's data migration ("Migration
+  necessary", 35 plug-ins, from 2.9–4.4 s to 24.7–28.0 s, 20–23 s in all 5
+  fresh timed boots and s1). In the aged boots the migration is not
+  necessary (0.4–0.6 s) and the aged sample shows no synchronous XPC wait
+  on the main thread at all (14 samples); 68 % of it is idle in its run
+  loop. The 20–23 s of migration are of the size of the difference between
+  fresh and aged home_s (21–36 s). (The sampler adds image-list
+  notification waits of its own, 2.5–3.4 % of the main thread.)
+
+### 23.7 Summary for the clean side
+
+Behaviour to reproduce (no internals):
+
+1. **The reference's home path waits on none of healthd, swcd,
+   eligibilityd, cloudd, maild, DeviceConfigurationAgent or
+   deviceconfigurationd.** SpringBoard and backboardd never call them
+   before home; healthd, deviceconfigurationd and (in aged boots) swcd and
+   DeviceConfigurationAgent have not reached their check-in when the home
+   screen appears; cloudd accepts nothing until well after home. So each
+   of §22.4's waits on these seven in Ycode is Ycode's own: a client that
+   waits where the reference's does not (a synchronous wait for something
+   the reference sends asynchronously, or a call the reference makes after
+   home, or not at all). Find the waiting client in `p-ease` and compare
+   it with §23.2–§23.3; do not push these daemons.
+2. **runningboardd is on the home path, and it runs boosted.** It starts
+   at 4, and backboardd's first message to `com.apple.runningboard`
+   (queued before runningboardd checks in) raises it to 31 at once; from
+   then until home it is at 31 for 86–94 % of the time, its threads mostly
+   at 37, and answers SpringBoard within 6 ms. In Ycode it must get the
+   boost from a message queued on its launchd-held port before its
+   check-in (`scheduling-policy.md` §2.3, watchports) and keep it while
+   any client's request is queued or being served.
+3. **Adaptive daemons nobody on the home path calls stay at 4 until home,
+   and their start-up runs at 4.** On a host saturated by the boot this
+   delays their check-in by 28–103 s with no effect on home. Ycode's band
+   can keep them back the same way once item 1's waits are gone.
+4. **A queued importance message keeps its receiver boosted**, before its
+   check-in (runningboardd under backboardd's first message; maild for its
+   6–13 s start under its launch event), and a request from a non-donor
+   does not boost it (healthd, swcd under passd). Ycode should reproduce
+   both directions: §22.2's request importance follows the first; the
+   second means no boost from darwin-bg or non-donor clients, even at
+   priority 31.
+5. **SpringBoard blocks on backboardd, not on these daemons.** Its main
+   thread's one long synchronous wait before home is its system-shell
+   check-in with backboardd, which waits for data migration: 20–23 s on a
+   fresh device, 0.4–0.6 s on an aged one (§23.6). On an aged device the
+   main thread has no synchronous XPC wait before home.
+6. Starts per boot before home, for comparison with Ycode's critical path:
+   eligibilityd check-in 11.9–15.9 s and 0.3–0.7 CPU s; maild
+   2.5–2.9 CPU s; cloudd 0.3 CPU s; runningboardd 0.9–3.7 CPU s.
+
+### 23.8 Open questions
+
+1. **Which clients donate.** sleepd, mobiletimerd and passd ran at 31 when
+   they connected and did not raise their server; amsengagementd and
+   securityd did. Without root the donor state is not visible; the
+   observed rule is enough for Ycode if it follows `scheduling-policy.md`
+   §2.1–§2.3.
+2. **cloudd.** What opens its listener 12–43 s after home, and what keeps
+   it at 31 while idle for the whole window.
+3. **Ycode's waiting clients.** This section names the reference's clients
+   of each daemon; the matching Ycode client of each `p-ease` edge is for
+   the clean side to identify.
+
+## 24. The home path's waits on background daemons, the reply push (agent B3-BOOT8, 2026-11-07)
+
+§22.7's first step: which waits of the home path end on darwin-bg or
+background daemons, of what kind, and the push the reference gives each
+kind; then the fix in the scheduling model (`scheduling-policy.md` §4.12).
+Target: home_s ≤ 21.4 s, full boot, every service on (networking and the
+Duo's inner panel included). §23 is the reference observer's (B3-SIMOBS5).
+
+### 24.1 The edge list
+
+**Conditions.** Thor; a fresh copy of the golden device (the same source as
+§20–§22), aged nine times at its path before any timed series (five boots
+held 5 s after home, four held 120 s; home 117.8, 30.1, 31.9, 35.2, 30.0,
+29.2, 32.2, 28.6, 31.7 s); full boot, `YCODE_HOME_WATCH`. Builds: *tree* =
+`2bfc40d0` (the instrumentation below, nothing else changed), *tree2* =
+`383b8f94` (§24.3's reply push), *tree3* = `ff8d5228` (with the waiting
+thread's class passed on), *tree4* = `cafefddd` (with moved reply rights),
+*tree5* = `02c49ce1` (the held push on the workloop or the receiving thread
+instead of the whole image). With the new switches off every build is the
+main line's program.
+Frame-profile boots `p-band` (the band, default) and `p-ease` (the band
+with a 500 ms ease window, §22.4), `YCODE_FRAME_PROFILE_BOOT=120`, home at
+31.2 s and 60.7 s.
+
+**Instruments** (diagnostics only). The frame profile's trap events now
+carry the thread's scheduling state (host class, own class, its image's
+push class, the process darwin-bg; `frame-profile.md` §1's `pad` field) and
+a new event marks each wait at the band's gate (kind 14: who, how long, how
+it ended). `scripts/ycode-frame-profile` gained `--wait-tree P[:kind]`
+(each wait of P's threads, its kind from the trap and its options, the
+thread that ended it, and recursively that thread's waits inside the span,
+with its host class and its time at the gate), `--join` and `--edge-list`
+for the boot's critical path.
+
+**Method, and what §22.4's list was.** §22.4's list (healthd, swcd,
+eligibilityd, cloudd, maild, runningboardd's `task_name_for_pid`, the
+DeviceConfiguration pair) came from the critical-path walk of
+`frame-profile.md` §9, which follows each wakeup back into the waker. Re-read
+with the edge list, every one of those daemons enters `p-ease` (§22's, home
+59.1 s) through the wakeup of a *parked* worker of a shared server: healthd
+woke launchd_sim's workqueue thread 7 times (11.8 s of path on healthd's
+side), swcd diagnosticd's (2.2 s), maild and cloudd cfprefsd's (1.4 s, 1.2
+s), eligibilityd launchd_sim's and notifyd's (2.1 s), DeviceConfigurationAgent
+launchd_sim's and notifyd's (2.2 s), deviceconfigurationd
+DeviceConfigurationAgent's (0.5 s); runningboardd's `task_name_for_pid`
+(1.4 s) is a wait at the band's gate at that trap's end (the call itself
+never waits). A parked worker woken by such a message then serves whatever
+else arrives without parking again, and the walk charges the next waiter
+with the sender's history from before that waiter even sent its request.
+With `--join` (a wait is followed into its waker only back to the moment
+the woken thread began to wait; waits for work excepted) none of them is
+left, and none ends a wait of any SpringBoard or backboardd thread in either
+profile (all threads, waits ≥ 300 ms, four levels). The edge list below is
+therefore taken from the waits themselves: SpringBoard's main thread before
+home (waits ≥ 100 ms, three levels), checked against every SpringBoard and
+backboardd thread.
+
+| # | Who waits | On what (kind) | Ends on | `p-band`: waits, s; server bg s, gate s | `p-ease`: waits, s; server bg s, gate s | Reference's push for the kind; what Ycode dropped |
+|---|---|---|---|---|---|---|
+| 1 | SpringBoard main thread | synchronous XPC request in two calls: a send (options `0x100231`) whose reply right is a send-once right to the thread's special reply port, then a receive on that port with `MACH_RCV_SYNC_WAIT` (options `0x700420e`) | runningboardd's workqueue threads | 18, 7.69 s; 7.03, 5.24 | 19, 33.60 s; 28.86, 20.86 | turnstile push from the special reply port onto whoever holds the request, until the reply, lifting the throttle (§4.12). Ycode had **no push for the two-call form** (§4.6 and §4.10 covered send+receive in one call only). Importance: SpringBoard is a donor; runningboardd was boosted (not darwin-bg) for over 95 % of these waits, but its serving threads run at class bg from their work's QoS, which importance does not lift |
+| 2 | SpringBoard workqueue thread (the main thread waits for it in `kevent_id`) | the same | runningboardd | 1, 1.55 s; 1.55, 1.49 | 1, 3.15 s; 3.15, 2.66 | the same |
+| 3 | runningboardd workqueue thread, inside #1 | the same | containermanagerd (darwin-bg throughout) | 3, 1.80 s; 1.33, 1.21 (all threads) | 1, 2.15 s; 2.15, 1.74 | turnstile chain #1 → #3. Ycode: no push; runningboardd's own boost ended with the receiving thread's episode (§4.3; `YCODE_REPLY_IMPORTANCE` off), so its request carried no importance to containermanagerd either |
+| 4 | liveactivitiesd workqueue thread, inside SpringBoard main → liveactivitiesd (same kind, 1.13 s, liveactivitiesd at df) | the same | runningboardd | — | 2, 1.09 s; 1.09, 1.06 | turnstile chain |
+| 5 | runningboardd's threads among themselves, inside #1 | work handed to another of its threads (`workq_kernreturn`, `kevent_id`); its unfair locks (`ulock_wait2` op 2) | runningboardd | 3, 0.62 s; 0.47, 0.30 | 12 + 3, 6.14 + 1.54 s; 5.68, 3.82 | the push of #1 reaches every thread of the serving workloop; Ycode's ulock push carries the waiters' class (bg), nothing |
+| 6 | SpringBoard main thread | its unfair lock, whose owner (a SpringBoard workqueue thread) waits in #1's kind | runningboardd | — | 1, 0.87 s | turnstile chain lock → IPC; Ycode passes no lock push on (§4.8) |
+| 7 | SpringBoard main thread | synchronous request in one call (message id 6001013) | backboardd (class df/ui) | 1, 1.59 s; 0, 0 | — | not a background edge |
+
+So the one large background edge of the home path is SpringBoard's own
+synchronous requests to runningboardd (and through it containermanagerd),
+waits of a kind the reference pushes: the missing push is Ycode's. Whether
+the edge itself is the reference's (SpringBoard waiting on runningboardd as
+often, before home) is §23's to tell (§24.2). With the band
+alone its server waits at the gate 5.2 s of the 7.7 s; with the ease window
+21 s of 34 s, which is §22.4's 2× slowdown.
+
+After the reply push (§24.3, profiles `p-rpe` with the ease window on
+*tree2*, `p-rpe3` on *tree3*) the list changed twice:
+
+| Profile | SpringBoard main's waits on background servers | Why the push missed |
+|---|---|---|
+| `p-rpe` (*tree2*, home 34.2 s) | runningboardd gone; SpringBoard main → its unfair lock → a SpringBoard workqueue thread → biomed (two-call request), 3.8 s, biomed at the gate 3.4 s | the workqueue thread sent its request at class bg; the main thread's lock push raised it afterwards, and that rise was not passed on to the request (xnu's turnstile chain is) |
+| `p-rpe3` (*tree3*, home 37.8 s) | SpringBoard → biomed (two-call), 4 waits, 4.6 s, biomed at the gate 4.5 s; cfprefsd (darwin-bg) → containermanagerd (two-call) 1.5 s, gate 1.5 s | biomed moves the request's reply right into a message to one of its own ports (libdispatch's resend of a pseudo-received message, `MachIPCMessageTests.specialReplyPort`); the push ended there |
+
+### 24.2 Against the reference (§23)
+
+Written by the orchestrator after §23 and this section were merged
+(2026-11-07), from the two sections only.
+
+| Edge (§24.1) | The reference (§23) | So |
+|---|---|---|
+| 1, 2: SpringBoard → runningboardd, two-call synchronous requests | The reference's own edge: runningboardd is the one daemon of the eight that the home path waits on (§23.2, §23.7 item 2). SpringBoard connects twice at 6.7–8.0 s and is answered within 6 ms; runningboardd is at 31 (threads mostly 37) for 86–94 % of the samples before home, from backboardd's first message on | Ycode needs the push: §4.12, on by default for device runs since 2026-11-07 (§24.6). Still to match: runningboardd's boost from a message queued before its check-in (§23.7 item 2, `scheduling-policy.md` §2.3) |
+| 3: runningboardd → containermanagerd | Not observed (containermanagerd is not among §23's daemons) | Open |
+| 4: liveactivitiesd → runningboardd | Not observed | Covered by the same push |
+| §22.4's list (healthd, swcd, eligibilityd, cloudd, maild, the DeviceConfiguration pair) | Off the home path: never called by SpringBoard or backboardd before home; healthd and deviceconfigurationd check in after home (§23.7 item 1) | Agrees with §24.1 (walk artifacts in Ycode); nothing to do |
+| 7: SpringBoard → backboardd, one-call synchronous request (2.4 s in `p-rp5`, 6.4 s in `p-rpe5`) | SpringBoard's one long synchronous wait is its system-shell check-in with backboardd, which waits for data migration: 20–23 s on a fresh device, 0.4–0.6 s on an aged one, where the main thread makes **no** synchronous XPC wait before home (§23.6, §23.7 item 5) | Probably Ycode's own on an aged device: find what backboardd does while SpringBoard waits (migration repeated on each boot of the aged copy, or other work) |
+
+### 24.3 The fix by kind: the reply push (`YCODE_REPLY_PUSH`, `scheduling-policy.md` §4.12)
+
+One mechanism, the reference's for every synchronous request, named by
+kind and never by service: the waiting sender's class pushes whoever holds
+its request, from the send to the reply, in both forms (one call, or
+libdispatch's send on the special reply port followed by a
+`MACH_RCV_SYNC_WAIT` receive).
+
+- Queued, the request credits the image that will receive it (§4.10's
+  credit, now made for every synchronous request).
+- Received, it is tied to the send-once reply right in the receiving space
+  until the right leaves it (the reply, a deallocation), and pushes **the
+  workloop it came through**: whichever thread services that workloop
+  carries it, so the handler libdispatch runs there later is pushed and the
+  image's other threads are not. A request taken by a plain receive pushes
+  the thread that took it.
+- Chains: a change of a waiting thread's own class (a lock push, a boost, a
+  held push) reaches the request it waits on, and a reply right moved on as
+  another message's reply takes the push with it.
+
+It was built in three steps, each from what the previous profile showed
+(§24.1's second table): the two-call form with the push held on the whole
+receiving image (*tree2*), the waiting thread's class passed on (*tree3*),
+moved reply rights (*tree4*); then the target narrowed from the image to the
+workloop or thread (*tree5*, `02c49ce1`), because the image-wide form slowed
+the boot (§24.4). Tests: `ReplyPushTests` (the two-call form pushes the
+server until it is answered and past the receiving thread's episode; the
+right going ends it; the client's wait ending ends a held push; the
+one-call form is held until answered; a held request passes the push along
+a chain; the waiting thread's class changes reach its request; a moved reply
+right takes the push along; the whole-image form; a workloop's held push
+follows its servicer; off by default nothing is held), with
+`SyncWaitPushTests`, `AsyncRequestTests`, `MachIPCMessageTests`,
+`MachIPCLockSplitTests`, `BackgroundBandTests`, `BandEaseTests`.
+
+In a boot (smoke boots of *tree5*): about 3 000–3 800 requests on special
+reply ports and 17 000–20 000 held pushes by home, 98 % of them on
+workloops, nearly all ended by the reply (1 by the right going, 0–1 by the
+client's wait, none moved on).
+
+### 24.4 Timed series
+
+Under the shared boot-timing lock, each boot started with no other
+`ycode-simd` and a 1-minute load under 4, arms rotated each round, n = 5 per
+arm, on the device copy of §24.1 (Z1 12:00–12:10, Z3 12:16–12:53, Z4
+12:53–13:28). Z1 ran *tree4* (the whole-image form) and was stopped after six
+boots when the narrowed form was ready; Z3 and Z4 ran *tree5*.
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | CPU s at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|---|
+| Z1 | band (default) | 1 | 28.98 | — | — | 4.0 s | 361 | 1 |
+| Z1 | band + reply push, whole image (`YCODE_REPLY_PUSH=image` in *tree5*'s terms) | 2 | 31.54 | 31.54 ± 1.01 | 30.82–32.25 | 4.9 s | 400 | 1–2 |
+| Z1 | the same + request importance | 2 | 36.88 | 36.88 ± 3.05 | 34.72–39.04 | 5.9 s | 429 | 1–3 |
+| Z1 | look-up hold until 40 s, band off | 1 | 28.29 | — | — | 4.0 s | 353 | 0 |
+| Z3 | band (default) | 5 | **30.94** | 30.58 ± 1.51 | 28.59–32.02 | 4.3 s | 381 | 2–3 |
+| Z3 | band + reply push (`YCODE_REPLY_PUSH=1`) | 5 | **25.03** | 25.04 ± 0.25 | 24.64–25.28 | 3.6 s | 323 | 0–1 |
+| Z3 | band + reply push + request importance (`YCODE_REPLY_IMPORTANCE=1`) | 5 | 25.57 | 25.49 ± 0.33 | 24.96–25.86 | 3.8 s | 331 | 0–1 |
+| Z3 | look-up hold until 40 s, band off | 5 | **27.83** | 27.81 ± 0.41 | 27.30–28.43 | 4.4 s | 341 | 0 |
+| Z4 | band, ease window 500 ms, + reply push | 5 | 35.10 | 35.52 ± 1.65 | 34.12–38.25 | 3.2 s | 260 | 0 |
+| Z4 | the same + request importance | 5 | 33.91 | 34.85 ± 2.44 | 32.26–38.20 | 3.4 s | 277 | 0–3 |
+| Z4 | band + reply push | 5 | **24.89** | 25.06 ± 0.54 | 24.52–25.87 | 3.7 s | 321 | 0–1 |
+| Z4 | look-up hold until 40 s, band off | 5 | **28.25** | 28.25 ± 0.40 | 27.70–28.71 | 4.6 s | 334 | 0–2 |
+
+- **The reply push: −5.9 s by the median** against the band (Z3), the
+  ranges apart (24.6–25.3 against 28.6–32.0 s), 58 CPU s less before home,
+  the kernel lock held 0.7 s less, and at most one guest fatal. It is the
+  first change since §20 that **beats the look-up hold**: 2.8 s ahead of
+  it, ranges apart, 18 CPU s less, with no service named and the band on.
+  The spread is the smallest of any arm in §20–§24 (sd 0.25 s).
+- **Request importance adds nothing** on top (+0.5 s, ranges overlapping,
+  8 CPU s more), as in §22.3.
+- **The whole-image form is slower** (Z1: +2.6 s and, with request
+  importance, +7.9 s against the band, 40–70 CPU s more): pushing every
+  thread of a server while it holds a request brings its unrelated work
+  forward, as §21.5's on-demand forms did; xnu pushes only the workloop or
+  thread that holds the request, and so does `YCODE_REPLY_PUSH=1`.
+- **Z4 repeats it**: band + reply push 24.89 s against the hold's 28.25 s
+  (−3.4 s, ranges apart).
+- **The strict band is still slower, but no longer starved.** With the
+  ease window the reply push takes the boot from §22.3's 60.6 s to 35.1 s
+  (−25 s), and it uses the least CPU of any arm (260 CPU s at home: dasd's
+  backlog and the other background work do wait until after home, the
+  reference's shape), but it stays 10 s behind the band with the push. In
+  its profile (`p-rpe5`, home 33.1 s) SpringBoard's main thread still
+  waits on background servers whose serving threads sit at the gate:
+  linkd (3 two-call requests, 2.1 s, 2.1 s at the gate), donotdisturbd (1.5
+  s, all at the gate), biomed (0.5 s), runningboardd (1.6 s, 0.6 s at the
+  gate), liveactivitiesd → runningboardd (0.5 s); and backboardd (6.4 s, a
+  one-call request, backboardd at ui and waiting on its own threads). §24.6
+  says where the push still misses.
+
+### 24.5 Service fidelity
+
+`scripts/ycode-launchd-spawns` over 700 s, one boot each (*tree5*), one after
+another on the same device copy:
+
+| | band (default) | band + reply push | ease 500 ms + reply push |
+|---|---|---|---|
+| home_s of the boot | 32.10 | 24.54 | 35.29 |
+| all starts | 533 (246 labels) | 509 (235 labels) | 501 (235 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 67, 65, 63, 68, 11, 1 | 67, 64, 62, 68, 11, 1 | 67, 61, 59, 68, 11, 1 |
+| other daemons and agents | 194 | 173 | 173 |
+| per-process domains | 61 | 60 | 58 |
+| apps | 3 | 3 | 3 |
+| starts by reason (xpc event, Mach IPC, demand, speculative) | 329, 118, 38, 32 | 317, 106, 38, 32 | 312, 103, 38, 32 |
+
+The one label that differs by more than one start between the band and the
+reply push is **pairedsyncd, 12 → 1**: its Mach-IPC restart loop (§18.7,
+§20.9), which appeared in the band boot and not with the push; on the
+reference it starts once. Twelve one-off jobs (geocorrectiond, mapssyncd,
+idcredd, parsec-fbf, agentstored, cksharingmanagementd, businessservicesd,
+imageplaygroundd, AssetCacheLocatorService, a key-syncing agent, an
+embedded-speech instance) started once in the band boot and not in 700 s
+with the push, as §20.9 saw for the same labels between other arms; the
+throttled loops differ by their phase (the ease arm's by 4: its loops start
+later). Fidelity is otherwise unchanged.
+
+### 24.6 How far from 21.4 s, and the recommendation
+
+- **Default switches (the band): 30.9 s** (Z3), 1.45 × the reference.
+  **With the reply push: 24.9–25.0 s** (Z3, Z4), **1.16–1.17 ×**, 3.5 s short
+  of 21.4 s, 320 CPU s before home; 2.8–3.4 s faster than the look-up hold
+  (27.8–28.3 s), which it therefore retires.
+- **Where the rest is.** The critical path of `p-rp5` (band + reply push,
+  home 24.7 s, `--join`) is 70 % guest code: SpringBoard 13.7 s, chronod
+  3.4 s, localizationswitcherd 0.6 s; host run queue 1.3 s; band gate
+  0.3 s; kernel-lock and trap time under 1 s. SpringBoard's main thread
+  waits on background servers for 0.8 s in all (runningboardd 0.5 s, biomed
+  0.2 s). What is left is mostly the guest's own work at the Thor's speed
+  (§10.4: the Thor's core is about 1.25 × slower than the reference Mac's
+  for this code), chronod's widget work before home, and SpringBoard's
+  one-call wait on backboardd (2.4 s in `p-rp5`, 6.4 s in `p-rpe5`, which
+  waits on its own threads: not a background edge, not yet traced).
+- **The strict band** (ease window) with the push is 35 s: holding dasd
+  back until home now costs about 10 s instead of 30 s, and the profile
+  names the waits that still miss the push (linkd, donotdisturbd, biomed,
+  part of runningboardd, all two-call requests whose serving threads stay at
+  the gate). The trace boot `tr-rpe5` (`YCODE_SYNC_PUSH_TRACE`,
+  `YCODE_BG_BAND_TRACE`; home 33.7 s) shows the way it misses: SpringBoard's
+  main thread's request to donotdisturbd is held on the workloop that took
+  it for 1 011 ms (21.75 → 22.76 s), while the thread that does the work, a
+  different donotdisturbd thread that does not service that workloop, waits
+  at the gate for 1 003 ms of it: the server hands the request from the
+  workloop to another queue, and the push does not follow the hand-off.
+  Whether xnu's push follows it (through the work item's QoS, which
+  libdispatch takes from the dispatching thread) is the next question for
+  the model; Ycode gives the hand-off no class at all.
+- **Recommendation (the owner decides).** Turn **`YCODE_REPLY_PUSH=1` on by
+  default for device runs**, with the band: the reference's mechanism for
+  every synchronous request, no service named, −5.9 s, less CPU, the
+  smallest spread of any arm, fidelity as below. **Retire the look-up hold**
+  as a recommendation (keep the switch as an experiment; it is now 3 s
+  slower). Keep `YCODE_REPLY_IMPORTANCE` off (no gain on top, §24.4) and
+  `YCODE_BG_BAND_EASE_MS` off (the strict band is still 10 s slower).
+  Keep `YCODE_REPLY_PUSH=image` only as the comparison it was.
+- Next, in order of size: (1) the hand-offs inside servers that the push
+  does not follow (`tr-rpe5`), which is what still keeps the strict band
+  10 s behind; (2) SpringBoard's one-call wait on backboardd; (3) guest
+  code on the path (SpringBoard, chronod); (4) §24.2's comparison when §23
+  lands (done; §24.2 now puts (2) first: the reference's aged SpringBoard
+  has no such wait).
+- **Adopted 2026-11-07:** `YCODE_REPLY_PUSH=1` is on by default for
+  `--device` runs, with the band (`ycode-simd/main.swift`);
+  `YCODE_REPLY_PUSH=0` turns it off.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -4300,6 +5035,17 @@ after a boot of the same build, on the same device copy:
 | liveactivitiesd's spawn, first line, start-up burst and CPU (§19.7) | 3 | `launchd.log`; `log show`; `ps -M` per-thread times |
 | The band's default state, series S1, W1–W3, CPU at home, the sync-wait push's and the band's counters, trace lines, the class 10 query timings, fidelity counts (§21) | 3 | B3-BOOT6's Thor runs of Ycode's own simulator (`ab-S1.txt`, `ab-W1.txt`, `ab-W2.txt`, `ab-W3.txt`, `runs/smoke-push`, `runs/trace-push`, `runs/trace3`, `runs/diag-cm-*`, `runs/cm2-*`, `runs/cm3-demand`, `runs/cm4-timed`, `runs/fid-band`, `runs/fid-pushd`, `fp/p-band.1`, `fp/p-push.1`; `scripts/ycode-launchd-spawns`, `scripts/ycode-frame-profile`) |
 | Send turnstiles, special reply port linkage, task watchports, message QoS overrides of workloops (§21.3, §21.7) | 1 | xnu `osfmk/ipc/ipc_port.c`, `osfmk/kern/turnstile.c`, `osfmk/kern/task.c`, `bsd/pthread/workqueue` / `bsd/kern/kern_event.c` (open source) |
+| Task base priority, threads' current, base and maximum priority, run states and CPU times of the reference's daemons during the boot (§23.1, §23.3, §23.4) | 3 | `research/dirty/simobs5` boots: `proc_pidinfo` (`PROC_PIDTASKINFO`, `PROC_PIDLISTTHREADS`/`PROC_PIDTHREADINFO`, `PROC_PIDWORKQUEUEINFO`; public `libproc.h`/`sys/proc_info.h`, same user, no root) of every `launchd_sim` child every 0.5 s; `ps -M` every 2 s as a cross-check |
+| Spawn times and reasons, check-in ("uncorking exec source"), job types (`spawn type = adaptive (6)`), endpoints (§23.1, §23.3) | 3 | the device's `launchd.log`; `simctl spawn … launchctl print` of each job at the window's end |
+| Client connections, listeners and acceptances, the home path's outgoing connections, FrontBoard's `osservice` lines, launch events (§23.2–§23.4) | 3 | `simctl spawn … log show --info --debug --style ndjson` of each window: libxpc's "activating connection" lines (mach, listener, peer flags, endpoint names, peer pids), matched by endpoint and client pid |
+| home_s, load (§23.1) | 3 | as §13 and §19 (screenshots, `getloadavg` every second) |
+| runningboardd's tracking and pid resolutions before home (§23.6) | 3 | runningboardd's "Now tracking process" and "Resolved pid" lines in `log show` |
+| runningboardd's and SpringBoard's call stacks during the boot (§23.6) | 4 | `sample` at 1 ms of runningboardd and SpringBoard in the two probe boots (public symbol names only) |
+| §19's boots re-read for start and first-line times (§23.3) | 3 | `research/dirty/simobs4` `launchd.log` and `log show` output |
+| Importance donors and receivers (§23.4) | 1 | via `scheduling-policy.md` §2.1–§2.3 (xnu, open source) |
+| Waits of SpringBoard's and backboardd's threads, their kinds (trap and options), the serving threads' classes and gate time; §22.4's list re-read; the critical paths with `--join` (§24.1) | 3 | B3-BOOT8's Thor runs of Ycode's own simulator: profiles `fp/p-band`, `p-ease`, `p-rpe`, `p-rpe3`, `p-rp5`, `p-rpe5` (frame profile with scheduling state and gate events), §22's `p-ease` re-read; `ycode-frame-profile --wait-tree`, `--join`, `--edge-list`; `ana/*.txt` |
+| runningboardd, containermanagerd, biomed, cfprefsd and the others' process types (§24.1) | 2 | the runtime's launchd plists, read as property lists |
+| The reply push's counters, series Z1, Z3, Z4, CPU at home, fidelity counts (§24.3–§24.5) | 3 | B3-BOOT8's Thor runs (`ab-Z1-image.txt`, `ab-Z3.txt`, `ab-Z4.txt`, `runs/smoke-*`, `runs/fid-*`; `scripts/ycode-launchd-spawns`) |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/` and Ghidra
 were not opened.
@@ -4350,9 +5096,22 @@ cores) were read.
 (on the Thor, with the runtime copy as a black box), and only `specs/`,
 Ycode's code and xnu's open-source scheduler, turnstile and IPC behaviour
 (as cited, nothing copied) were used.
+§24 (agent B3-BOOT8) is clean-room work: only Ycode's own simulator ran
+(on the Thor, with the runtime copy as a black box, and three of its launchd
+plists read as property lists), and only `specs/`, Ycode's code and xnu's
+and libdispatch's open-source special-reply-port, turnstile and
+thread-policy behaviour (as cited in `scheduling-policy.md` §4.12, nothing
+copied) were used.
 §22 (agent B3-BOOT7) is clean-room work: only Ycode's own simulator ran
 (on the Thor, with the runtime copy as a black box), and only `specs/`,
 Ycode's code and xnu's open-source importance, IPC-message QoS, kevent and
 thread-policy behaviour (`osfmk/ipc/ipc_importance.c`, `ipc_kmsg.c`,
 `ipc_pset.c`, `osfmk/kern/thread_policy.c`, `task_policy.c`; as cited in
 `scheduling-policy.md` §4.11, nothing copied) were used.
+§23 is a dirty-room observation (agent B3-SIMOBS5): Apple's simulator ran
+headless and only through `simctl`, `launchctl` and `log` inside the
+device, `ps`, `lsmp`, `sample` and the public `proc_pidinfo` calls, on
+devices named `ycode-test-simobs5-*`, deleted afterwards. No binary was
+disassembled or decompiled, Ghidra was not opened, and the Simulator
+app's window and Xcode's GUI were not used. Its raw data stays in the
+git-ignored `research/dirty/simobs5/`.

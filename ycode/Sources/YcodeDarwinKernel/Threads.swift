@@ -134,7 +134,13 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible, 
     struct SchedPushes {
         var ulock: [UInt64: Int] = [:]
         var ipc = -1
-        var maxClass: Int { max(ipc, ulock.values.max() ?? -1) }
+        /// Requests held by this thread until their reply (§4.12), 16 bits per class.
+        var held: UInt64 = 0
+        /// The held requests of the workloop this thread services (§4.12).
+        var workloop: HeldPushCounter?
+        var maxClass: Int {
+            max(ipc, ulock.values.max() ?? -1, HeldPushCounter.maxClass(held), workloop.map { HeldPushCounter.maxClass($0.counts.load(ordering: .relaxed)) } ?? -1)
+        }
     }
     let schedPushes = Mutex<SchedPushes>(SchedPushes())
     /// The sync-IPC push (a class; −1 none).
@@ -155,6 +161,11 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible, 
     var carriedImportance: DarwinProcess?
     /// The synchronous request this thread waits on (§4.10; port lock G).
     var syncWait: SyncWaitPush?
+    /// The request it sent on its special reply port and waits on (§4.12; G).
+    var replyWait: SyncWaitPush?
+    /// True while `syncWait` or `replyWait` is set (read without G, §4.12:
+    /// a change of the thread's own class is passed on to its request).
+    let waitsOnRequest = Atomic<Bool>(false)
     /// The on-demand start push this thread took over with its first message (§4.10; G).
     var demandServing: SyncWaitPush?
     /// The thread's servicing episode carries something to end (§4.3, §4.6, §4.10).
