@@ -103,6 +103,23 @@ def tool(directory: pathlib.Path, name: str) -> pathlib.Path:
     return binary
 
 
+def alert_buttons(tree_result):
+    """The buttons inside AXSheet and AXDialog elements of an axdrive tree."""
+    found = []
+
+    def walk(node, inside):
+        role = node.get("role", "")
+        here = inside or role == "AXSheet" or node.get("subrole") in ("AXDialog", "AXSystemDialog")
+        if here and role == "AXButton":
+            found.append(node.get("title") or node.get("description") or "")
+        for child in node.get("children", []):
+            walk(child, here)
+
+    for root in tree_result.get("tree", []):
+        walk(root, False)
+    return {"alert_buttons": found}
+
+
 class Driver:
     """axdrive, bound to one PID."""
 
@@ -595,6 +612,24 @@ class Session:
         try:
             for action in step.get("do", []):
                 t = time.time()
+                if "tree" in action:
+                    # The app's accessibility tree at this moment, as another
+                    # process sees it (an alert's buttons): NN-step-<name>-tree.json,
+                    # with the buttons inside sheets and dialogs counted.
+                    name = f"{sid}-{action['tree']}-tree.json"
+                    r = ax.run("tree", "--scope", "app", "--depth", str(action.get("depth", 12)), check=False)
+                    (target_dir / name).write_text(json.dumps(r, indent=1))
+                    entry.setdefault("trees", {})[action["tree"]] = {"file": name, **alert_buttons(r)}
+                    continue
+                if action.get("fallback"):
+                    # Runs only when the action before it failed (a key press in
+                    # place of an AX press whose element was not found).
+                    last = entry["actions"][-1]["result"] if entry["actions"] else {"ok": False}
+                    if last.get("ok"):
+                        entry["actions"].append({"spec": action, "result": {"ok": True, "skipped": "fallback not needed",
+                                                                            "wall_start": t, "wall": t}})
+                        continue
+                    entry["fallback_used"] = True
                 if "snap" in action:
                     # A still in the middle of a step (an alert before its
                     # button is pressed): NN-step-<name>.png.

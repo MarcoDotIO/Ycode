@@ -792,6 +792,21 @@ if CommandLine.arguments.contains("--device"), getenv("YCODE_REPLY_PUSH") == nil
     setenv("YCODE_REPLY_PUSH", "1", 0)
     SchedPolicy.replyPushEnabled = true
 }
+// Pushes through ports in transit and the watch-port credit
+// (scheduling-policy.md §4.13, boot-profile.md §25): on by default for device
+// runs since 2026-11-07. As in xnu; no gain at the default (24.3 s against
+// 24.5 s), 4.4 s under the strict band, fidelity unchanged over 700 s.
+// `YCODE_TRANSIT_PUSH=0` or `YCODE_WATCH_PUSH=0` turns each off.
+if CommandLine.arguments.contains("--device") {
+    if getenv("YCODE_TRANSIT_PUSH") == nil {
+        setenv("YCODE_TRANSIT_PUSH", "1", 0)
+        SchedPolicy.transitPushEnabled = true
+    }
+    if getenv("YCODE_WATCH_PUSH") == nil {
+        setenv("YCODE_WATCH_PUSH", "1", 0)
+        SchedPolicy.watchPushEnabled = true
+    }
+}
 // A command for a running device (FoldControl.swift, SettingsClient.swift): nothing else starts.
 if isHealthClient(CommandLine.arguments) { runHealthClient(CommandLine.arguments) }
 if isSettingsClient(CommandLine.arguments) { runSettingsClient(CommandLine.arguments) }

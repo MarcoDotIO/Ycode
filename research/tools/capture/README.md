@@ -12,7 +12,7 @@ council. The generic recorder, timing measurer and sheet maker are in
 | `targets.json` | The apps: Ycode (the `swift build` binary, SDK-stamped and wrapped as a bundle with its own ID) and Xcode |
 | `make-test-project.py` | Writes the GlassScroll test project (our own content) |
 | `make-conflict-project.py` | Writes Merger: GlassScroll cut down, in a git repository whose `feature` branch conflicts with `main` in `Greeting.swift` (fixed test identity and dates) |
-| `scripts/*.json` | Session scripts: `council-r2.json` (the review council's round 2, `specs/ide/fidelity-council.md`), `council-r3.json` (round 3: round 2's steps, then Settings ▸ General), `council-r3-conflict.json` (the conflict editor), `council-r3-device.json` (the device window: Device Hub against Ycode's Device Hub), `council-r4*.json` (round 4: round 3's steps and ids, plus Settings ▸ Text Editing, a navigator bottom-bar crop and the merge alert; Ycode's merge now goes through its own UI), `council-r5*.json` (round 5: round 4's steps and ids, then Settings ▸ Components, then the Appearance pane, General, Text Editing and Components with each app's own Appearance set to Light, then Appearance back to System; the conflict session leaves room for the reference's merge sheet), `glass-scroll-edges.json` (#57) |
+| `scripts/*.json` | Session scripts: `council-r2.json` (the review council's round 2, `specs/ide/fidelity-council.md`), `council-r3.json` (round 3: round 2's steps, then Settings ▸ General), `council-r3-conflict.json` (the conflict editor), `council-r3-device.json` (the device window: Device Hub against Ycode's Device Hub), `council-r4*.json` (round 4: round 3's steps and ids, plus Settings ▸ Text Editing, a navigator bottom-bar crop and the merge alert; Ycode's merge now goes through its own UI), `council-r5*.json` (round 5: round 4's steps and ids, then Settings ▸ Components, then the Appearance pane, General, Text Editing and Components with each app's own Appearance set to Light, then Appearance back to System; the conflict session leaves room for the reference's merge sheet), `council-r6*.json` (round 6: round 5's steps and ids; alert buttons pressed through Accessibility), `glass-scroll-edges.json` (#57) |
 | `extra_sheets.py` | Sheets for `snap` stills and `crop` details (see Round 4 additions) |
 
 ## Procedure
@@ -160,6 +160,19 @@ Round 5 additions:
   `AppearanceLight` and `AppearanceAuto`) and set back to System in the
   same session; the reference's Settings window frame and last pane are
   restored with `defaults` afterwards, as in round 4.
+
+Round 6 additions:
+- Action `{"tree": "<name>", "depth": D}` writes the app's whole
+  accessibility tree, as another process sees it, to
+  `NN-step-<name>-tree.json`; the manifest's step `trees` lists the buttons
+  found inside sheets and dialogs (`alert_buttons`), so a test can tell
+  whether an alert's buttons are reachable from outside the app.
+- An action with `"fallback": true` runs only when the action before it
+  failed (Return after an AX press that found no button); the step records
+  `fallback_used` when it ran.
+- `council-r6*.json`: round 5's steps and ids; the conflict session presses
+  both apps' alert Merge buttons through Accessibility and keeps Return
+  only as the fallback.
 
 `{app}` (the target's app name, "Xcode" or "Ycode") and `{project}` are
 replaced in every string. After the setup actions the session picks the

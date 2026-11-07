@@ -524,7 +524,7 @@ extension DarwinKernel {
         var queuedAtSpawn = 0
         if let ipc = child.machIPC as? MachIPC { withPorts {
             queuedAtSpawn = ipc.pendingWatchPorts.reduce(0) { $0 + ($1.active ? $1.messages.count : 0) }
-            if SchedPolicy.syncPushActive { ipc.bindSyncPushWatchPorts(ipc.pendingWatchPorts, to: record) }
+            if SchedPolicy.watchPortCreditActive { ipc.bindSyncPushWatchPorts(ipc.pendingWatchPorts, to: record) }
             if SchedPolicy.importanceEnabled {
                 ipc.bindImportanceWatchPorts(ipc.pendingWatchPorts, to: record)
                 if SchedPolicy.holdTrace, record.importanceBoosts > 0 {
@@ -618,7 +618,7 @@ extension DarwinKernel {
         next.applySpawnPolicy(request.attributes, record: me, isExec: true)
         if let ipc = next.machIPC as? MachIPC { withPorts {
             if SchedPolicy.importanceEnabled { ipc.bindImportanceWatchPorts(ipc.pendingWatchPorts, to: me) }
-            if SchedPolicy.syncPushActive {
+            if SchedPolicy.watchPortCreditActive {
                 ipc.bindSyncPushWatchPorts(ipc.pendingWatchPorts, to: me)
                 // The credits of the old image move to the new one (§4.10).
                 ipc.retargetSyncPushes(from: self)

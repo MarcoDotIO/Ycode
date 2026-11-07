@@ -138,8 +138,10 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible, 
         var held: UInt64 = 0
         /// The held requests of the workloop this thread services (§4.12).
         var workloop: HeldPushCounter?
+        /// The push a dispatched item carried to this servicer of its workloop (§4.14).
+        var handoff = -1
         var maxClass: Int {
-            max(ipc, ulock.values.max() ?? -1, HeldPushCounter.maxClass(held), workloop.map { HeldPushCounter.maxClass($0.counts.load(ordering: .relaxed)) } ?? -1)
+            max(ipc, handoff, ulock.values.max() ?? -1, HeldPushCounter.maxClass(held), workloop.map { HeldPushCounter.maxClass($0.counts.load(ordering: .relaxed)) } ?? -1)
         }
     }
     let schedPushes = Mutex<SchedPushes>(SchedPushes())

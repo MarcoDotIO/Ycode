@@ -573,6 +573,7 @@ extension DarwinKernel {
             kq.servicer = ctx
             kq.logRequest(.bound, thread: ctx.threadID)
             if let h = kq.heldPush { h.attach(ctx) }
+            if kq.handoffClass >= 0 { takeWorkloopHandoff(kq, by: ctx) }
         }
     }
 
@@ -596,6 +597,7 @@ extension DarwinKernel {
             kq.servicer = nil
             kq.logRequest(.unbound, thread: ctx.threadID)
             if let h = kq.heldPush { h.detach(ctx) }
+            if SchedPolicy.handoffPushEnabled { endWorkloopHandoff(ctx) }
         }
         w.boundQueue = nil
         let bucket = w.boundBucket

@@ -737,6 +737,91 @@ N, held N (on workloops N) (answered N, right gone N, wait ended N, moved on
 N; mean N ms, longest N ms)`; with `YCODE_SYNC_PUSH_TRACE` each hold (and
 what it pushes) and its release. Measurements: `boot-profile.md` §24.
 
+### 4.13 Ports in transit and watch ports (`YCODE_TRANSIT_PUSH`, `YCODE_WATCH_PUSH`)
+
+The reference (xnu, level 1; behaviour read from the open-source
+`osfmk/ipc/ipc_port.c`, the send turnstile's inheritor and the importance
+delta of a port, and `osfmk/ipc/ipc_importance.c`; nothing copied). While
+the receive right of a port travels inside a message queued on another port,
+the first port is *in transit* and the second is its destination. A
+synchronous request queued on a port in transit pushes the destination's send
+turnstile, so whoever will receive the carrying message is pushed; the
+importance of the messages queued on it goes down the same chain of
+destinations to the task that holds (or, as a watch port, is bound to) the
+last one. An XPC client opens a connection by sending a new port's receive
+right in its first message to the service's listener and sends its requests
+to that port at once: until the server takes the first message, every
+request waits on a port in transit. A launchd service port given to a job at
+spawn (task watchports, §2.3) pushes the job's main thread.
+
+Ycode before (`boot-profile.md` §25.2): a port in transit had no target
+(§4.10's target and §4.3's credit look at the space holding the receive
+right), so such a request pushed nobody and its importance boosted nobody;
+and with the reply push alone (the device default, `YCODE_SYNC_PUSH` off) no
+spawn bound the job's watch ports for the queued credit, so a request queued
+on a service port before the job checked in pushed launchd_sim.
+
+- **Transit** (`YCODE_TRANSIT_PUSH=1`, `TransitPush.swift`, under the port
+  lock G). A port whose receive right is in transit (the port whose queue
+  holds the carrying message is known) and that is no job's watch port takes
+  the target of that port, following such ports at most
+  `YCODE_SYNC_PUSH_DEPTH` hops: for the sync-wait credit (§4.10, §4.12's
+  queued credit: the receiving image) and for importance (§4.3). The credit
+  moves when the right goes into transit (the carrying message is queued),
+  when it lands in a space (copied out), and when a spawn binds the carrying
+  port as a watch port. Not modelled: other changes of the carrying port's
+  own target (its receive right moving) reach the ports in transit in its
+  queue only at their next enqueue, dequeue or copy-out.
+- **Watch ports** (`YCODE_WATCH_PUSH=1`). With the reply push on, a spawn
+  binds the job's watch ports for the queued credit and an exec moves the
+  old image's credits to the new one, as with `YCODE_SYNC_PUSH` (§4.10).
+
+Diagnostics: the `sched:` report adds `transit credits N` (credits moved to a
+target through a port in transit); with `YCODE_SYNC_PUSH_TRACE` a request
+queued on a port in transit says so (`the port in transit to <program>`).
+Measurements: `boot-profile.md` §25.
+
+### 4.14 The hand-off push (`YCODE_HANDOFF_PUSH`)
+
+The reference (libdispatch, level 1; behaviour read from the open-source
+`src/queue.c`, `src/inline_internal.h`, `src/event/event_kevent.c`,
+`src/voucher.c`; nothing copied). `dispatch_async` captures with the work
+item the dispatching thread's priority (for an XPC handler, the request's
+priority from its kevent, §4.11) and its voucher (the request's importance).
+Pushing the item onto a queue that a workloop drains pokes that workloop with
+a thread request at the item's QoS (`EVFILT_WORKLOOP`,
+`NOTE_WL_THREAD_REQUEST`); the thread bound to the workloop runs the item at
+that priority with the voucher adopted, so its task stays boosted. A request
+taken on one workloop and handed to a queue of another is therefore served
+at the class its sender pushed. Ycode has no vouchers and no work items: a
+thread's turnstile pushes (§4.6, §4.12) are not part of the QoS its process
+asks for, so a handler running under a held push hands its work to a thread
+request at its own QoS, and the thread that runs it waits at the band's gate
+while the sender waits (`boot-profile.md` §24.6, `tr-rpe5`).
+
+Ycode (`HandoffPush.swift`, under the image's event lock; the thread's push
+lock is a leaf):
+
+- When a thread that carries a push (§4.6's sync-IPC push, §4.12's held
+  pushes, its own or its workloop's, or a hand-off push of its own) makes a
+  workloop thread request (new, or with its QoS updated) on a workloop of its
+  image other than the one it services, the workloop keeps the highest such
+  class above bg as its *hand-off push*.
+- The thread that next services that workloop carries it from its bind to its
+  unbind (the item's drain), and so does the one servicing it at that moment,
+  if any. It is one of the thread's pushes (§4.4 step 6), above darwin-bg like
+  the push it came from.
+- `YCODE_HANDOFF_PUSH=held` carries only held reply pushes (§4.12), not a
+  sync-IPC push or a hand-off push of the dispatching thread's own, so
+  hand-offs do not chain.
+- Not modelled: hand-offs through the workqueue's own buckets
+  (`workq_kernreturn` thread requests, dispatch overrides), and a hand-off
+  that outlives the drain.
+
+Diagnostics: `hand-off pushes N (taken N)` in the `sched:` report; with
+`YCODE_SYNC_PUSH_TRACE` a line for each hand-off and each servicer that takes
+one. Measurements: `boot-profile.md` §25 (slower at the band default in both forms).
+
 ## 5. Diagnostics
 
 - `ycode-simd: sched: start hold on|off, thread QoS on|off, lock admission
@@ -811,6 +896,9 @@ what it pushes) and its release. Measurements: `boot-profile.md` §24.
 | `YCODE_ASYNC_QOS` | 0 | §4.11 a queued message's QoS overrides the workloop that drains its port, and its event's `ext[2]` carries it (with `YCODE_SCHED_QOS`); `1` on |
 | `YCODE_IMPORTANCE_TRACE` | unset | §4.11 trace lines for the listed programs |
 | `YCODE_REPLY_PUSH` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.12 a waiting sender's request pushes whoever holds it until the reply (queued: the receiving image; received: the workloop it came through, else the thread that took it), in both the one-call and libdispatch's two-call form (with `YCODE_SCHED_QOS`); `1` on, `image` on with the whole receiving image pushed |
+| `YCODE_TRANSIT_PUSH` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.13 a request or importance queued on a port in transit credits the target of the port that carries it; `1` on |
+| `YCODE_WATCH_PUSH` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.13 with the reply push alone, spawns bind watch ports for the queued credit (and execs move it); `1` on |
+| `YCODE_HANDOFF_PUSH` | 0 | §4.14 a pushed thread's workloop thread request carries its push to the workloop's next servicer for its drain (with `YCODE_SCHED_QOS`); `1` on, `held` only held reply pushes |
 | `YCODE_HOST_SCHED_UI_PUSHED` | unset | with `YCODE_HOST_SCHED_UI_CPUS`: an image whose send push (§4.6) is at least this class also runs on the UI path's CPUs while it lasts |
 | `YCODE_BOOT_PRIORITY` | 1 for device runs (since 2026-10-27; was 0) | device runs (`--device`) only: with `YCODE_SCHED_QOS` unset, set it to 1 and `YCODE_HOST_SCHED` (if unset) to `cgroup` before the VMM starts (§7.4, §7.5); `0` turns it off. The cgroup backend re-executes the VMM in a delegated user scope only when the user's service manager is reachable (`$XDG_RUNTIME_DIR/systemd/private`); otherwise it reports itself unavailable and the run goes on without host scheduling |
 

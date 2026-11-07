@@ -324,6 +324,8 @@ final class KQueue {
     /// Requests received through this workloop and not answered yet (§4.12):
     /// the thread that services it carries their push.
     var heldPush: HeldPushCounter?
+    /// The push a pushed thread's thread request left for the next servicer (§4.14); −1 none.
+    var handoffClass = -1
     var owner: ThreadContext?
     var requested = false
     var requestQoS = 4
@@ -1153,6 +1155,7 @@ extension DarwinKernel {
             if isNew || cmd & NoteWorkloop.updateQoS != 0 {
                 guard PthreadPriority.qos(c.qos) != nil else { result.errno = Errno.ERANGE; return result }
                 kn.qos = c.qos
+                if SchedPolicy.handoffPushEnabled { noteWorkloopHandoff(wl, from: context) }
             }
             if isNew {
                 kn.kq = wl

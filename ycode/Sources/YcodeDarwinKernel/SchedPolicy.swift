@@ -414,6 +414,8 @@ extension MachIPC {
     func importanceTarget(_ p: IPCPort) -> DarwinProcess? {
         if let r = p.receiver?.kernel?.schedProcess, r.isImportanceReceiver, !r.isZombie { return r }
         if let w = p.watchProcess, w.isImportanceReceiver, !w.isZombie, w.kernel != nil { return w }
+        // In transit: down the chain of destinations (§4.13).
+        if p.watchProcess == nil, let d = transitDestination(p) { return importanceTarget(d) }
         return nil
     }
 
@@ -521,6 +523,7 @@ extension MachIPC {
             p.creditedProcess = nil
             p.watchProcess = child
             rebalanceImportance(p)
+            transitRetarget(p)
         }
     }
 }
@@ -678,7 +681,7 @@ extension DarwinSystem {
                 + "(\(SchedStats.fastRefreshes.load(ordering: .relaxed)) recomputations without L0); "
                 + "importance: \(s.donationPorts) receiving ports, \(s.tempOwnerPorts) temporary owners, "
                 + "\(s.importanceMessages) messages, \(s.refusedByPort) donor sends to other ports; "
-                + "send pushes \(SchedStats.sendPushes.load(ordering: .relaxed))" + SchedStats.syncPushReport + SchedStats.replyPushReport + SchedStats.replyImportanceReport + AsyncQoS.report
+                + "send pushes \(SchedStats.sendPushes.load(ordering: .relaxed))" + SchedStats.syncPushReport + SchedStats.replyPushReport + SchedStats.transitPushReport + SchedStats.handoffPushReport + SchedStats.replyImportanceReport + AsyncQoS.report
             line += "; " + lock.admissionReport
             return line
         }

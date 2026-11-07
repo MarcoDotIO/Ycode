@@ -4947,6 +4947,204 @@ later). Fidelity is otherwise unchanged.
   `--device` runs, with the band (`ycode-simd/main.swift`);
   `YCODE_REPLY_PUSH=0` turns it off.
 
+## 25. backboardd's wait, runningboardd's start, the hand-off (agent B3-BOOT9, 2026-11-07)
+
+§24.6's next steps: SpringBoard's one-call wait on backboardd (§24.1 edge
+7), runningboardd's boost before its check-in (§23.7 item 2), and the
+hand-off inside a server that the reply push does not follow (§24.6,
+`tr-rpe5`). Target: home_s ≤ 21.4 s, full boot, every service on.
+
+### 25.1 Conditions
+
+Thor; a fresh copy of the golden device (the source of §20–§24), aged nine
+times at its path before any timed series (five boots held 5 s after home,
+four held 120 s; home 85.6, 28.6, 29.8, 35.5, 29.4, 27.7, 24.1, 24.9, 25.9 s; the
+first boot of the copy ran the data migration, 35 plug-ins, 27 s, the reference's
+fresh boot, §23.6; no later boot did). Builds: *base* = `0f1408a4` (the main
+line, band and reply push on by default); *tree* = this section's commits,
+every new switch off by default, so with no variable set it is the main
+line's program. Frame-profile boots as §24 (`YCODE_FRAME_PROFILE_BOOT=120`).
+Timed series as §24.4: the shared boot-timing lock, no other `ycode-simd`, a
+1-minute load under 4 before each boot, arms rotated each round, n = 5 per
+arm. A (15:50–16:27), A2 (16:32–16:59), B (16:59–17:24).
+
+### 25.2 Step 0: the new default
+
+One boot of *base* with no scheduling variable (`s0-default`; started while a
+build of *tree* used 6 cores, load 11): home 26.4 s; at home the band had made
+150 674 waits and the reply push 3 819 special-reply requests and 18 784 held
+pushes (18 419 on workloops). Both are on; the series below put the default
+at 24.5 s (A, A2), §24.4's range.
+
+### 25.3 SpringBoard's wait on backboardd (§24.1 edge 7)
+
+- **Not a migration.** The device's migration record (`com.apple.migration`
+  preferences) was written once, by the copy's first boot (35 plug-ins,
+  27 s); on every later boot `datamigrator` runs for about 3 000 traps and
+  exits. backboardd's own threads run at df and ui (not a low class).
+- **Work waiting on another process: biomed, unpushed.** In `p-def` (*tree*,
+  defaults, home 25.0 s) SpringBoard's main thread waits 3.68 s in message
+  6001013 on backboardd, and backboardd's main thread waits 6.26 s (7.0 →
+  13.3 s) on biomed (a two-call request), biomed's serving thread at class bg
+  and at the band's gate for 6.22 s of it. The trace boot `tr-off`
+  (`YCODE_SYNC_PUSH_TRACE=backboardd,biomed`) shows why the reply push missed
+  it: the request was *queued for nobody, the port in transit to biomed*, for
+  5.2 s. backboardd opens an XPC connection by sending a new port's receive
+  right in its first message to biomed's listener and sends its request to
+  that port at once; until biomed takes the first message, the request's port
+  is in transit, and Ycode's credit (§4.10) looked only at the space holding
+  the receive right. xnu pushes (and gives importance to) the destination of
+  a port in transit, down the chain (`scheduling-policy.md` §4.13). The same
+  hole held backboardd's first request to runningboardd (below) and 697–901
+  other credits per boot.
+- **Fix: `YCODE_TRANSIT_PUSH`** (`scheduling-policy.md` §4.13): a port in
+  transit takes the target of the port whose queue carries it, for the
+  sync-wait credit and for importance. In `tr-on` the request to biomed is
+  credited at once and served in 0.9 s; in `p-tr` (home 27.9 s, one noisy
+  boot) SpringBoard's 6001013 wait is 0.86 s (from 3.68 s) and backboardd no
+  longer waits on biomed. What is left of the system-shell check-in is
+  backboardd's wait on `datamigrator`'s check-in (1.73 s: datamigrator is
+  launched on demand at 12.7 s and runs 0.69 s of guest code, its loader,
+  before its first trap of its own; it answers at 14.2 s), the reference's
+  0.4–0.6 s on an aged device (§23.6) at the Thor's speed.
+
+### 25.4 runningboardd before its check-in (§23.7 item 2)
+
+- **The boost is there.** runningboardd's start is held at spawn (Adaptive,
+  unboosted, §4.2) and released by backboardd's first message (`boost`, from
+  backboardd, message 1999646836) 1.0–1.2 s later, as on the reference (31
+  from backboardd's message on).
+- **The push was not.** backboardd's first request to runningboardd
+  (1.4–1.6 s) waits on a port in transit in a message to runningboardd's
+  launchd-held service port: queued for nobody, 4.0 s (`tr-off`). With the
+  transit push it was credited to launchd_sim (0.9 s), not to runningboardd:
+  with the reply push alone (the default; `YCODE_SYNC_PUSH` off) no spawn
+  bound the job's watch ports for the queued credit, and no exec moved
+  `xpcproxy_sim`'s credits to the daemon. **Fix: `YCODE_WATCH_PUSH`**
+  (`scheduling-policy.md` §4.13): the watch ports are bound with the reply
+  push on, as xnu's task watchports push the job's main thread; credits in
+  transit follow when a spawn binds the carrying port.
+- **Kept while a request is queued or served: partly.** Between requests
+  runningboardd is darwin-bg again: by the importance trace it is boosted
+  23–44 % of the time from its start to home (`tr-on`, `tr-off`), the
+  reference 86–94 %. §4.3 ends a boost with the servicing episode;
+  `YCODE_REPLY_IMPORTANCE` (§4.11) keeps a request's until it is answered
+  and gained nothing in §24.4; asynchronous requests' importance after the
+  episode (xnu keeps it on the work item's voucher) is not modelled. The
+  serving threads' class is what the push lifts (§24.1); left as is.
+
+### 25.5 The hand-off (§24.6, `tr-rpe5`)
+
+libdispatch carries a work item's priority (an XPC handler's: the request's)
+and voucher (its importance) to the thread that runs it: the item's queue's
+workloop gets a thread request at the item's QoS and the bound thread adopts
+the voucher (`scheduling-policy.md` §4.14). In `p-rpe5`'s donotdisturbd
+(BOOT8's ease profile) the handler thread, at ui under the held push, made
+two workloop thread requests on another workloop and parked; the thread
+bound to that workloop ran the request at class bg, darwin-bg, and waited at
+the gate for 910 ms (in an os_log send) before replying. **`YCODE_HANDOFF_PUSH`**
+leaves the dispatching thread's pushes to the next servicer of the workloop it
+asks a thread for, for that drain; `=held` carries only held reply pushes (no
+chains of hand-offs). In the trace boot `tr-twhe` (ease 500 ms + transit +
+watch + hand-off) SpringBoard's main thread waited 4 ms in all on
+donotdisturbd (8 requests; §24.4's `p-rpe5`: 1.5 s) and 8 ms on biomed.
+
+### 25.6 Timed series
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | CPU s at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|---|
+| A | default (band + reply push) | 5 | **24.54** | 24.67 ± 0.46 | 24.33–25.45 | 3.5 s | 321 | 0–1 |
+| A | + transit | 5 | 24.28 | 24.59 ± 0.57 | 24.21–25.56 | 3.8 s | 323 | 0–2 |
+| A | + transit + watch | 5 | **24.32** | 24.31 ± 0.43 | 23.64–24.80 | 3.9 s | 322 | 0 |
+| A | + transit + watch + hand-off | 5 | 29.53 | 29.95 ± 3.28 | 25.95–33.58 | 4.9 s | 381 | 0–4 |
+| A2 | default | 5 | 24.51 | 25.55 ± 2.09 | 24.13–29.05 | 3.7 s | 325 | 0–2 |
+| A2 | + transit + watch | 5 | 24.81 | 24.59 ± 0.80 | 23.49–25.33 | 4.0 s | 327 | 0–1 |
+| A2 | + transit + watch + hand-off (held) | 5 | 27.19 | 27.07 ± 0.36 | 26.47–27.35 | 4.6 s | 359 | 0–1 |
+| B | ease 500 ms (the strict band) | 5 | 34.50 | 35.41 ± 1.88 | 33.43–37.81 | 3.2 s | 266 | 0 |
+| B | ease 500 ms + transit + watch | 5 | **30.10** | 29.90 ± 1.21 | 28.30–31.42 | 3.6 s | 262 | 0–1 |
+| B | ease 500 ms + transit + watch + hand-off (held) | 5 | **27.16** | 27.05 ± 2.21 | 23.65–29.84 | 3.9 s | 320 | 0–4 |
+
+- **At the band default, transit + watch changes nothing measurable**: 24.3
+  and 24.8 s against 24.5 and 24.5 s in the same series (pooled over A and
+  A2: 24.4 against 24.5 s, ranges overlapping, the same CPU). With the band
+  alone the gate lets biomed's and runningboardd's threads run whenever the
+  14 CPUs have room, so the unpushed waits of §25.3–§25.4 cost about what
+  the pushed ones do: SpringBoard's wait moves from backboardd's biomed edge
+  to its datamigrator edge.
+- **The hand-off push is slower at the band default**: +5.0 s (full form,
+  60 CPU s more, the slowdown growing with the number of hand-offs: 3 600 →
+  25.9 s, 6 600 → 33.6 s) and +2.7 s (`held`, 35 CPU s more), ranges apart.
+  It brings work forward that the band would have left for later, as the
+  image-wide forms of §21.5 and §24.4 did: Ycode cannot tell a work item made
+  for the pushed request from the other items that thread dispatches.
+- **With the strict band both help.** Transit + watch: −4.4 s (34.5 → 30.1 s,
+  ranges apart, the same CPU). With the held hand-off: −7.3 s against the
+  strict band (27.2 s; one boot 23.7 s), 2.7 s behind the band default
+  instead of §24.4's 10 s, at 320 CPU s.
+
+### 25.7 Service fidelity
+
+`scripts/ycode-launchd-spawns` over 700 s, one boot each (*tree*), one after
+another on the same device copy:
+
+| | default (band + reply push) | + transit + watch |
+|---|---|---|
+| home_s of the boot | 24.76 | 23.35 |
+| all starts | 537 (243 labels) | 526 (234 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 67, 64, 62, 68, 10, 1 | 67, 64, 62, 68, 10, 1 |
+| other daemons and agents | 182 | 194 |
+| per-process domains | 80 | 57 |
+| apps | 3 | 3 |
+| starts by reason (xpc event, Mach IPC, demand, speculative) | 325, 104, 59, 32 | 317, 123, 37, 32 |
+
+Two differences of more than one start: **pairedsyncd 1 → 22**, its Mach-IPC
+restart loop (§18.7, §20.9), which §24.5 saw in the band boot and not with the
+reply push (12 → 1): it comes and goes with the boot's phase in either arm; on
+the reference it starts once. And PosterBoard with its 22 poster extensions
+started twice in the default boot and once with the fixes (23 of the 80 →
+57 per-process domains). Ten one-off jobs started once in one boot and not in
+the other (geocorrectiond, mapssyncd, agentstored, idcredd, parsec-fbf,
+cksharingmanagementd, businessservicesd, imageplaygroundd,
+AssetCacheLocatorService, an embedded-speech instance in the default boot;
+nanomapscd and a key-syncing agent with the fixes), the labels of §20.9 and
+§24.5. Fidelity is otherwise unchanged.
+
+### 25.8 How far from 21.4 s, and the recommendation
+
+- **The default (band + reply push): 24.5 s**, 1.15 × the reference, 3.1 s
+  short. Transit + watch: 24.3–24.8 s, the same. Neither the hand-off nor
+  the strict band beats the default.
+- **What the fixes did.** They remove two holes of the push model that
+  §24's numbers hid: requests on ports in transit (every new XPC connection's
+  first requests) and on service ports before check-in pushed nobody or
+  launchd_sim. On the reference both are pushed. At the band default the
+  boot is not faster, because the band then admits the gated threads soon
+  anyway; with the strict band they are worth 4.4 s.
+- **Where the rest is.** The profile `p-tw` (transit + watch, home 24.7 s,
+`--join`): the critical path is 63 % SpringBoard's own guest code (15.3 s),
+host run queue 1.7 s (SpringBoard) and 0.5 s (diagnosticd), the band's gate
+0.6 s in all (runningboardd, donotdisturbd), kernel-lock waits and traps
+under 2 s. SpringBoard's main thread has no wait on backboardd of 100 ms or
+more any longer (`p-def`: 3.68 s in 6001013); its waits of 100 ms or more
+add up to 1.3 s (runningboardd 0.62 s in four requests, its own lock
+0.34 s). What is left is the guest's own work at the Thor's speed (§10.4,
+about 1.25 × slower per core than the reference Mac for this code): 24.5 s
+/ 1.25 ≈ 19.6 s.
+- **Recommendation (the owner decides).** Turn on `YCODE_TRANSIT_PUSH=1` and
+  `YCODE_WATCH_PUSH=1` for device runs: the reference's behaviour for two
+  kinds of request the push model missed, no service named, no cost at the
+  default (same home, same CPU, fidelity as §25.7) and −4.4 s under the strict
+  band. Keep `YCODE_HANDOFF_PUSH` off (both forms are slower at the default;
+  `held` is the best strict-band arm but still 2.7 s behind the default) and
+  `YCODE_BG_BAND_EASE_MS` off. Next: SpringBoard's own guest code and
+  chronod's widget work (§24.6), datamigrator's on-demand start inside the
+  system-shell check-in, and a hand-off that knows which work item belongs to
+  the pushed request (a voucher-like tag on thread requests) before the
+  strict band can be the default.
+- **Adopted 2026-11-07:** `YCODE_TRANSIT_PUSH=1` and `YCODE_WATCH_PUSH=1`
+  are on by default for `--device` runs, with the band and the reply push
+  (`ycode-simd/main.swift`); setting either to `0` turns it off.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -4955,6 +5153,9 @@ later). Fidelity is otherwise unchanged.
 | KVM binary statistics (`KVM_GET_STATS_FD`, `exits`, `wfi_exit_stat`, `wfe_exit_stat`) | 1 | Linux KVM API documentation §4.133 |
 | Memslot changes wait for an SRCU grace period; KVM follows host mappings through MMU notifiers | 1, 3 | Linux KVM API documentation (KVM_SET_USER_MEMORY_REGION); holder samples `D __synchronize_srcu` in our trap profile |
 | `mremap` with `MREMAP_FIXED` replaces the target range | 1 | mremap(2) |
+| A port in transit pushes and gives importance to its destination's receiver; task watchports (§25.3, §25.4) | 1 | xnu open source (`osfmk/ipc/ipc_port.c`, `ipc_importance.c`), read for behaviour |
+| libdispatch carries a work item's priority and voucher to the thread that runs it (§25.5) | 1 | libdispatch open source (`src/queue.c`, `src/event/event_kevent.c`, `src/voucher.c`), read for behaviour |
+| Ycode's waits, credits and hand-offs (§25.2–§25.6) | 3 | frame-profile and trace boots on Ycode itself |
 | Stage-2 block mappings for THP-backed memory | 1 | Linux KVM arm64 documentation; Arm ARM (stage-2 block descriptors) |
 | What `loadDependents`, `matchesPath`, `getLoader` and the mach_o image and header classes do (§5.2) | 1 | apple-oss-distributions/dyld (`dyld/JustInTimeLoader.cpp`, `dyld/Loader.cpp`, `mach_o/Image.cpp`) |
 | Function names at the sampled `dyld_sim` offsets (§5.2) | 4 | `dyld_sim`'s symbol table (`llvm-nm`); no disassembly |

@@ -188,6 +188,8 @@ extension MachIPC {
            p.receiver == nil || p.receiver === p.pushWatchHolder || p.receiver?.kernel === wk {
             return wk
         }
+        // In transit: the target of the port whose queue carries it (§4.13).
+        if let d = transitDestination(p) { return syncPushTarget(d) }
         guard let k = p.receiver?.kernel, !k.isTerminating else { return nil }
         return k
     }
@@ -269,8 +271,10 @@ extension MachIPC {
         creditSyncPush(p, t.cls, sign: 1)
         if !SchedPolicy.syncPushTraced.isEmpty {
             t.queuedAt = KernelClock.now()
-            traceSyncPush(t, "queued for \(Self.programName(p.syncPushImage)) (its push now \(p.syncPushImage.map { SchedClass.name($0.syncPushClass) } ?? "-"))",
-                          also: p.syncPushImage)
+            let transit = p.receiver == nil && p.transitHolder != nil
+                ? ", the port in transit to \(Self.programName(p.transitHolder?.receiver?.kernel))" : ""
+            traceSyncPush(t, "queued for \(Self.programName(p.syncPushImage)) (its push now \(p.syncPushImage.map { SchedClass.name($0.syncPushClass) } ?? "-")\(transit))",
+                          also: p.syncPushImage ?? p.transitHolder?.receiver?.kernel)
         }
     }
 
@@ -386,6 +390,7 @@ extension MachIPC {
             p.pushWatchProcess = child
             p.pushWatchHolder = p.receiver
             rebalanceSyncPush(p)
+            transitRetarget(p)
             if let cls = SchedPolicy.demandStartClass, SchedPolicy.demandStartNanoseconds > 0, !p.messages.isEmpty,
                let k = child.kernel, k.demandStartUntil.load(ordering: .relaxed) == 0 {
                 // The timed form: the job's image runs at `cls` for the bound.

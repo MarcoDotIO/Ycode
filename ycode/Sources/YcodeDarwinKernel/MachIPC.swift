@@ -479,6 +479,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
             if let name = reverse[ObjectIdentifier(p)], let i = slot(of: name) {
                 entries[i].bits |= MachPortType.receive
                 p.receiver = self
+                if SchedPolicy.transitPushEnabled { transitMoved([p]) }
                 return (name, true)
             }
             guard let name = newEntry(bits: MachPortType.receive, urefs: 0, port: p) else {
@@ -486,6 +487,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
                 return (0, false)
             }
             p.receiver = self
+            if SchedPolicy.transitPushEnabled { transitMoved([p]) }
             return (name, true)
         }
     }
@@ -681,6 +683,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     func enqueue(_ m: KMessage, on p: IPCPort) {
         if MachTrafficStats.enabled { MachTrafficStats.count(from: self, to: p, id: m.id, inline: m.inline) }
         for r in m.receiveRights { r.transitHolder = p }
+        if SchedPolicy.transitPushEnabled { transitMoved(m.receiveRights) }
         if p.messages.isEmpty { p.readyStamp = nextStamp() }
         p.messages.append(m)
         if m.importance { importanceQueued(on: p, id: m.id) }
