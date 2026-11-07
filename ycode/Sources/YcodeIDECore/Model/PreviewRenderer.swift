@@ -409,6 +409,12 @@ final class MacPreviewHostProcess: @unchecked Sendable {
     /// How long a request may take before the host is considered hung and
     /// is killed (a first render compiles nothing; 120 s is generous).
     nonisolated(unsafe) static var requestTimeout: TimeInterval = 120
+    /// This host's request timeout: `requestTimeout` when it started.
+    var requestTimeout: TimeInterval {
+        get { ioLock.lock(); defer { ioLock.unlock() }; return ownTimeout }
+        set { ioLock.lock(); ownTimeout = newValue; ioLock.unlock() }
+    }
+    private var ownTimeout: TimeInterval = MacPreviewHostProcess.requestTimeout
 
     init(executable: URL) throws {
         input = try SpawnPipe(childReads: true)
@@ -515,7 +521,7 @@ final class MacPreviewHostProcess: @unchecked Sendable {
         let ok = line.withUnsafeBytes { b in write(input.fileHandleForWriting.fileDescriptor, b.baseAddress, b.count) == b.count }
         ioLock.unlock()
         guard ok else { stop(); return nil }
-        let deadline = Date().addingTimeInterval(Self.requestTimeout)
+        let deadline = Date().addingTimeInterval(requestTimeout)
         while let line = readLine(deadline: deadline) {
             guard let report = PreviewHost.parseReport(line) else { continue }
             switch report {

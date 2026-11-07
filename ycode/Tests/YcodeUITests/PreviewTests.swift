@@ -258,8 +258,9 @@ func nonBlankPixels(_ png: URL) throws -> Int {
         let exe = try script("trap '' TERM\nwhile :; do sleep 1; done")
         defer { try? FileManager.default.removeItem(at: exe) }
         let h = try MacPreviewHostProcess(executable: exe)
-        MacPreviewHostProcess.requestTimeout = 1.5
-        defer { MacPreviewHostProcess.requestTimeout = 120; h.stop(grace: 0.2) }
+        // This host's own timeout: other suites set the default for theirs.
+        h.requestTimeout = 1.5
+        defer { h.stop(grace: 0.2) }
         // Timed on the thread that sends: the code under test, not how soon a thread was free.
         let (r, took) = try await offMain { Self.timed { h.send(Self.request, newPayload: true) } }
         #expect(r == nil)
@@ -276,8 +277,9 @@ func nonBlankPixels(_ png: URL) throws -> Int {
         let marker = exe.path + ".closed"
         defer { try? FileManager.default.removeItem(at: exe); try? FileManager.default.removeItem(atPath: marker) }
         let h = try MacPreviewHostProcess(executable: exe)
-        MacPreviewHostProcess.requestTimeout = 20
-        defer { MacPreviewHostProcess.requestTimeout = 120; h.stop(grace: 0.2) }
+        // This host's own timeout: other suites set the default for theirs.
+        h.requestTimeout = 20
+        defer { h.stop(grace: 0.2) }
         #expect(await waitUntil(30) { FileManager.default.fileExists(atPath: marker) })
         let (r, took) = try await offMain { Self.timed { h.send(Self.request, newPayload: true) } }
         #expect(r == nil && !h.process.isRunning)
@@ -343,16 +345,21 @@ func nonBlankPixels(_ png: URL) throws -> Int {
         try? FileManager.default.removeItem(at: work)
         defer { try? FileManager.default.removeItem(at: work) }
         let exe = try await offMain { try PreviewMacHost.build(deploymentTarget: PreviewMacHost.deploymentTarget(sdkVersion: PreviewRenderer.macSDKVersion()), workDirectory: work) }
-        final class PidBox: @unchecked Sendable { var pid: pid_t = 0 }
+        final class PidBox: @unchecked Sendable { var pid: pid_t = 0; var host: MacPreviewHostProcess? }
         let box = PidBox()
         let test = try #require(Test.current)
-        // A test body that starts a host and forgets it: the check records an
-        // issue (expected here) and kills the host.
+        // A test body that starts a host and leaves it running: the check
+        // records an issue (expected here) and kills the host. The body keeps
+        // the host object, as a real leak does: a host whose object is
+        // released sees end of input and ends by itself.
         await withKnownIssue("the check reports the host the body left running") {
             try await PreviewHostCheckTrait().provideScope(for: test, testCase: Test.Case.current) {
-                box.pid = try MacPreviewHostProcess(executable: exe).pid
+                let host = try MacPreviewHostProcess(executable: exe)
+                box.host = host
+                box.pid = host.pid
             }
         }
+        box.host = nil
         #expect(box.pid > 0)
         #expect(await waitUntil(10) { ProcessAudit.children().allSatisfy { $0.pid != box.pid } })
     }
