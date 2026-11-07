@@ -3229,6 +3229,556 @@ Next, in order of size:
    on top of the hold gains nothing measurable (T2: −0.1 s); the per-trap
    cost of §14.8 item 3 is the remaining lever there.
 
+## 19. Reference on a quiet host: dasd's wait and other §18 questions (agent B3-SIMOBS4, 2026-11-07)
+
+Dirty-room answers to §17.9 item 1 and §18.8 items 1, 3 and 4: is the
+reference's 20–71 s wait in dasd's failing context read (§17.6) an effect
+of the host's load, and therefore should Ycode keep `YCODE_LOOKUP_HOLD`
+(§18.4)? Also: how the reference keeps LaunchServices' `privacy` and
+`datasep` info messages out of the log, whether containermanagerd runs
+before lsd queries it, and how long liveactivitiesd takes to start.
+
+### 19.1 Conditions
+
+| Item | Value |
+|---|---|
+| Host | as §13.1: Apple M3 Max, 14 CPUs (10 performance, 4 efficiency, `hw.perflevel0/1`), macOS 27.2, Xcode 27.1; swap 39.6 of 40 GB in use |
+| The host's idle floor | 1-minute load 7.75–9 with no simulator booted: two macOS test VMs (two processes each, about 4 CPUs together, all the time) and Spotlight indexing. A load under 4 cannot be reached on this Mac without stopping other people's VMs, which this observer did not do |
+| Rule before each boot | wait until the 1-minute load is under 4, or, after at least 180 s, within 1.0 of the lowest load seen in any wait (7.75), or 20 minutes at most |
+| Runtime and device | iOS 27.1 (24A94401), iPhone Duo; all boots headless (`simctl bootstatus -b`) |
+| Boots | device `ycode-test-simobs4-a`: boot 1 as created (fresh), boots 2–4 (aged); devices `-b` to `-g`: one fresh boot each; `-ls`: one fresh boot, then one untimed boot with a log stream (§19.5). All deleted afterwards |
+| Per boot (window 200 s) | the 1-minute load every second; every CPU's busy fraction every 0.5 s (`host_processor_info`, no root); `ps -M` of dasd, liveactivitiesd, containermanagerd, lsd and SpringBoard about every second (2–60 s apart while the host was saturated); home_s as §13; `log config --status` in the device at the window's end; `log show --info --debug` of the window; the device's `launchd.log` |
+| Times | seconds from the `simctl boot` call |
+
+"Quiet" below means the boot started at the floor (load 7.9–12.0); "busy"
+means other programs (Swift builds) were running and the 20-minute
+limit started the boot at load 135–267. The system volume filled up (other
+programs) during g1: its CPU samples end at 139 s and its `ps` samples at
+about 150 s.
+
+**The boot is its own load.** In every quiet boot the 1-minute load went
+from about 8 to a peak of 108–411 within 24–100 s, and all 14 CPUs were
+busy (mean busy fraction ≥ 0.97) from about 1.5 s until the boot's burst
+eased: 23.8–31.2 s in the aged boots, that is about home, and 53.9–61.4 s
+in the fresh ones. CPUs 0–3 (a cluster of four, taken to be the
+efficiency cluster) stayed fully busy for the whole 60 s after the boot
+started in every boot with CPU samples, including the time after home. So "a quiet host" can only mean a quiet host at the boot's
+start: during the boot, any Mac of this size is saturated by the boot itself
+(the reference's second boot uses about 500 device CPU seconds in its first
+120 s, `parity-ladder.md` §3.1). §17's loads of 90–690 were measured the
+same way and included the boot's own load.
+
+### 19.2 dasd's failing read on a quiet and on a busy host
+
+"Wait" is the longest read: from dasd's "Fetching uncached value for
+/device/system/isPluggedIn" (or "CoreDuet: ClientContext
+objectForContextualKeyPath:") to "error getting value for …isPluggedIn
+… Connection init failed at lookup with error 3" on the same thread. In
+every boot it is an `isPluggedIn` or `batterySaver` read and starts
+dasd's silence (§17.6); in f1 and g1 two such reads followed each
+other. launchd_sim logs the look-up failure for dasd at 1.8–9.2 s (one line per boot), and dasd's first read fails at once (its
+failure line follows within 10 ms in every boot).
+
+| Boot | Load at start | Load in the wait (median / max) | home_s | Wait: start → end (s) | Wait | End − home | Other reads ≥ 1 s |
+|---|---|---|---|---|---|---|---|
+| a1 fresh, quiet | 8.3 | 199 / 372 | 53.1 | 8.8 → 64.0 | **55.2** | +10.9 | 9 (to 4.3 s) |
+| d1 fresh, quiet | 12.0 | 130 / 300 | 91.5 | 6.5 → 60.7 | **54.2** | −30.8 | 11 (to 18.1 s) |
+| f1 fresh, quiet | 8.7 | 199 / 330 | 40.6 | 5.3 → 21.4 (`isPluggedIn`), then 23.0 → 61.1 (`batterySaver`) | **16.0 + 38.1** | +20.5 | 7 (to 1.4 s) |
+| g1 fresh, quiet | 8.6 | 172 / 282 | 41.7 | 6.4 → 16.3 (`batterySaver`), then 20.6 → 57.8 (`batterySaver`) | **10.0 + 37.2** | +16.1 | 11 (to 20.9 s); two `batterySaver` reads from 144.4 and 149.5 s had not ended at the read-out |
+| a2 aged, quiet | 8.7 | 60 / 98 | 30.7 | 13.4 → 30.1 | **16.7** | −0.6 | 4 (to 5.1 s) |
+| a3 aged, quiet | 8.5 | 97 / 166 | 30.8 | 7.7 → 32.6 | **25.0** | +1.8 | 1 (2.5 s) |
+| a4 aged, quiet | 7.9 | 71 / 146 | 23.5 | 4.0 → 24.4 | **20.4** | +0.9 | 1 (1.6 s) |
+| b1 fresh, busy | 134.6 | 374 / 736 | 73.3 | 12.6 → 107.8 | **95.1** | +34.5 | 2 (to 36.8 s); a new `isPluggedIn` read from 249.6 s had not ended at the read-out |
+| c1 fresh, busy | 266.5 | 386 / 583 | 151.2 | 8.2 → 77.1 | **68.9** | −74.1 | 1; a new `isPluggedIn` read from 78.2 s had not ended at 200 s |
+| e1 fresh, busy | 217.2 | 337 / 526 | 77.9 | 8.6 → 121.7 | **113.0** | +43.8 | 6 (to 36.9 s); a `batterySaver` read from 265.1 s had not ended at the read-out |
+
+- **Aged device, quiet start: 16.7–25.0 s, median 20.4 s (n = 3), ending
+  0.6 s before to 1.8 s after home (median +0.9 s).** Fresh device, quiet
+  start (n = 4): the longest read 37.2–55.2 s (median 46.2 s), and dasd
+  blocked from 5–9 s until 57.8–64.0 s in a1, d1, f1 and g1 alike; the end
+  falls 30.8 s before to 20.5 s after home, because a first boot keeps the
+  CPUs saturated after home. Busy start: 68.9–113.0 s (n = 3), and in
+  two of them a further read was still waiting at the end of the window.
+- The wait is never "at once" and never a fixed length: it ranges over a
+  factor of 7 and grows with the load the host carries during it.
+
+### 19.3 What ends the wait: dasd's threads get no CPU
+
+`ps -M` of dasd, sampled during each wait (9 boots with samples; d1's
+sampler stalled from 5 to 62 s):
+
+| Boot | Samples in the wait | dasd threads runnable (`R`) at priority 4 | Runnable above 4 | dasd CPU accrued during the wait |
+|---|---|---|---|---|
+| a1 | 26 | 2–3 | 0 | 0.00 s |
+| a2 | 6 | 1–2 | 0 | 0.00 s |
+| a3 | 8 | 1 | 0 | 0.00 s |
+| a4 | 3 | 3 | 0 | 0.00 s |
+| b1 | 42 | 1–4 | 0–1 | 0.00 s |
+| c1 | 24 | 1 | 0 | 0.00 s |
+| e1 | 53 | 1–3 | 0 | 0.01 s |
+| f1 (second read) | 17 | 1 | 0 | 0.00 s |
+| g1 (second read) | 16 | 1 | 0 | 0.00 s |
+
+- **During the whole wait dasd is not blocked; it is not running.** One to
+  four of its threads are runnable at priority 4 (the background band;
+  §17.6 saw the same states) and none of them gets CPU: dasd's total CPU
+  time does not move (resolution 10 ms) for 17–113 s, and resumes within
+  a second of the failure line. The look-up's failure reply is not being
+  held by anyone; the thread that would take it, or the one the reading
+  thread waits for, simply does not run.
+- **When it gets to run.** Saturated stretches below are runs of 0.5 s
+  samples in which the 14 CPUs' mean busy fraction is at least 0.97, for
+  2 s or more. In the three aged quiet boots the read ended −0.2, +1.4
+  and +0.6 s from the end of the boot's long saturated stretch (30.3, 31.2,
+  23.8 s), that is when the boot's CPU burst eased, which is also about
+  when the home screen appears. In the fresh quiet boots: f1's two reads
+  ended 0.1 s after the CPUs first had a spare moment (21.3 s) and 0.35 s
+  before the end of the next stretch (61.4 s); d1's ended 6.8 s after a
+  stretch ended (53.9 s); g1's ended inside a stretch (16.3 s) and 3.3 s
+  after one ended (54.4 s). In the busy boots the read ended inside a
+  stretch (b1, c1) or 3.6 s after one ended (e1): with the CPUs busy
+  throughout, the starved thread gets a slice at an unpredictable time.
+- **No other trigger.** As in §17.6, no timer, notification or service
+  start precedes the end, and launchd_sim logs nothing about dasd or
+  CoreDuet's names in the second before it (10 boots); the end does not
+  follow home (it came before home in three boots). It follows the availability of
+  CPU to a background-priority thread.
+
+**Answer to the main question.** The reference's read fails neither at
+once nor after a fixed wait. It fails when dasd's background-priority
+threads next get CPU, so its length is set by how long the host's CPUs stay
+saturated: on this Mac, from a quiet start, an aged device's boot saturates
+every CPU until about home and the read fails 16.7–25.0 s after it started
+(median 20.4 s), 0.9 s after home (median; −0.6 to +1.8 s); a fresh
+device's longer first boot, which keeps the CPUs saturated past home,
+holds it 37–55 s per read and until 58–64 s in all; a host that is
+already busy holds it 69–113 s, with no relation to home. It is a load
+effect, but the load that matters on a quiet host is the boot's own, so
+the effect is part of the reference's normal behaviour on this class of
+Mac, not an artefact of §17's busy host.
+
+### 19.4 SpringBoard's notification server
+
+| Boot | home_s | dasd "SUBMITTED …BundleLibrarianVacuum…" | SpringBoard "notificationSourcesDidInstall … initialLoad=1" |
+|---|---|---|---|
+| a2, a3, a4 (aged, quiet) | 30.7, 30.8, 23.5 | 39.3, 38.0, 33.2 (home + 8.6, + 7.2, + 9.7) | 39.7, 38.4, 33.7 (home + 9.0, + 7.6, + 10.2) |
+| a1, d1 (fresh, quiet) | 53.1, 91.5 | 93.8, 125.0 (home + 40.7, + 33.5) | 106.8, 133.0 (home + 53.7, + 41.5) |
+| f1 (fresh, quiet) | 40.6 | 87.3 (home + 46.7) | 90.3 (home + 49.7) |
+| g1 (fresh, quiet) | 41.7 | not within 200 s | not within 200 s |
+| b1, c1, e1 (fresh, busy) | 73.3, 151.2, 77.9 | not within 200 s (e1: 261.9, during the read-out) | not within 200 s |
+
+- On an aged device from a quiet start, dasd accepts SpringBoard's task
+  **7–10 s after home** (median 8.6 s), 5.3–9.2 s after its read failed,
+  and SpringBoard's initial load follows 0.4–0.5 s later. The order of
+  §17.7 holds in every boot.
+
+### 19.5 LaunchServices' `privacy` and `datasep` categories
+
+- **The configuration.** The runtime's
+  `System/Library/Preferences/Logging/Subsystems/com.apple.launchservices.plist`
+  (§18.2: `DEFAULT-OPTIONS` `Level`/`Enable` = `Info`; `privacy` and
+  `datasep` `Level`/`Enable` = `Default`, `Persist` = `Default`) is the only
+  logging preference involved. The runtime has no `Library/Preferences/Logging`;
+  its `System/Library/Preferences/Logging/Processes` holds two unrelated
+  process files; a new device's `data/Library/Preferences/Logging` is an
+  empty folder (checked before its first boot).
+- **The guest honours it.** `log config --status` in the booted device
+  (every boot, at the window's end): system mode `INFO STREAM_LIVE
+  PRIVATE_DATA`; subsystem `com.apple.launchservices` `INFO
+  PERSIST_DEFAULT`; categories `privacy` and `datasep` `DEFAULT
+  PERSIST_DEFAULT`; category `binding` (not in the plist) `INFO`. So the
+  per-category level overrides both the subsystem's and the system's
+  `INFO`.
+- **From the first second.** `log show --info --debug` of each 200 s
+  window (12 boots, fresh and aged, from t = 0): **no** message of either
+  category from any process, while the same subsystem's other categories
+  log at info level (an aged boot: `default` 55 info messages, `db` 51,
+  `dmfsupport` 2). The two Ycode patterns of §15.7 are absent as in §17.3.
+- **A live info stream makes them appear.** Untimed experiment (device
+  `-ls`, second boot): `log stream --info --debug` with the predicate
+  `subsystem == "com.apple.launchservices"` started 0.86 s after the boot
+  call and ran 90 s. The stream received 4 378 `privacy` and 1 245
+  `datasep` info messages ("constructing bundle record for …" 4 378,
+  "application record search init. …" 1 225, "bundle record search with
+  …" 20), from 2.9 s on: PosterBoard 3 142, SpringBoard 1 153 (978 of them
+  by 30 s), linkd 294, WidgetRenderer 216, runningboardd 212, and others.
+  `log show --info --debug` of the same window, read afterwards, holds
+  **none** of them (355 LaunchServices messages, none of either category),
+  and the system mode read during and after the stream was the same
+  (`INFO STREAM_LIVE PRIVATE_DATA`).
+- So the reference's clients send a `privacy` or `datasep` info message
+  only while a live stream asks for info (or debug) messages, and then only
+  to that stream: such messages are neither kept in memory nor stored.
+  Without that stream they are not sent at all, from process start. The
+  `STREAM_LIVE` flag alone (present in every boot, with no stream of ours)
+  does not make them be sent.
+- For Ycode (§18.2): a stream-less Ycode boot behaves like a reference
+  boot with an info-level live stream attached (the same two patterns, in
+  the same programs, about 3 000 in SpringBoard by home). The expected
+  behaviour: with no live stream asking for info, a client drops an info
+  message in a category whose configured level is `Default` before it is
+  sent, even though the system mode reads `INFO` and `STREAM_LIVE`; with
+  such a stream it sends it to the stream only. What in Ycode's guest
+  looks like an info-level live stream is the thing to find (§19.9).
+
+### 19.6 containermanagerd and lsd's first query
+
+| Boot | lsd's class 10 "Query" → "Query result" (s) | Duration | per-user containermanagerd "launching: ipc (mach)" | its first log line |
+|---|---|---|---|---|
+| a1 | 3.337 → 3.614 | 277 ms | 3.337 | 3.570 |
+| a2 | 3.874 → 4.414 | 541 ms | 3.874 | 4.376 |
+| a3 | 3.755 → 4.036 | 281 ms | 3.755 | 3.997 |
+| a4 | 2.165 → 2.415 | 250 ms | 2.165 | 2.382 |
+| d1 | 4.504 → 4.798 | 295 ms | 4.504 | 4.759 |
+| b1, c1, e1 (busy) | 9.359 → 9.642, 5.732 → 6.003, 6.390 → 6.764 | 283, 271, 375 ms | 9.359, 5.733, 6.390 | 9.598, 5.960, 6.701 |
+| f1 | 3.711 → 5.155 | 1 444 ms | 3.712 | 5.115 |
+| g1 | 3.782 → 4.447 | 665 ms | 3.782 | 4.411 |
+
+- **containermanagerd is not running when lsd first queries it.** In every
+  boot launchd_sim launches the per-user `com.apple.containermanagerd`
+  ("launching: ipc (mach)") in the same millisecond as lsd's class 10
+  query: the query starts it, as in Ycode (§18.2). (Earlier, lsd's class
+  12 look-up of its own system container is answered by the system
+  instance, `com.apple.containermanagerd.system`, launched on demand
+  0.3–0.7 s before.)
+- **The query takes 250–1 444 ms, median 289 ms (n = 10)**, of which
+  0.22–0.50 s is containermanagerd's start to its first line, against
+  Ycode's 4.8 s (§18.2), with the host saturated in both.
+
+### 19.7 liveactivitiesd's start
+
+| Boot | Spawned (launchd_sim) | First log line | End of its start-up burst (last line before ≥ 5 s of silence) | Spawn → end | CPU at the first sample after spawn | CPU at 60 s |
+|---|---|---|---|---|---|---|
+| a1–a4 | 3.88, 4.35, 4.05, 2.37 | 6.32, 6.75, 6.41, 4.40 | 8.66, 9.69, 11.27, 7.73 | 4.8, 5.3, 7.2, 5.4 s | — (sampler times not exact) | 2.08, 2.05, 2.15, 1.93 s |
+| b1, c1, d1, e1 | 9.70, 6.14, 4.86, 6.84 | 11.94, 8.67, 7.09, 9.09 | 14.36, 11.17, 9.86, 11.58 | 4.7, 5.0, 5.0, 4.7 s | 1.92 s at 11.78; 2.22 s at 9.11; —; 2.19 s at 10.38 | 2.07, 2.41, 2.09 (at 62.6), 2.21 s |
+| f1 | 4.94 | 7.18 | 10.69 | 5.8 s | 0.88 s at 6.06 | 2.04 s |
+| g1 | 4.22 | 6.32 | 8.96 | 4.7 s | 1.23 s at 5.57 | 2.00 s |
+
+- **From start to idle: 4.7–7.2 s wall (median 5.0 s, n = 10), and about
+  2.0 CPU s in all (1.93–2.41, median 2.08).** The idle state is the
+  first silence of 5 s or more; liveactivitiesd then stays quiet until other processes
+  call it (16.6 s in a4).
+- **Most of the CPU comes before its first log line.** In the boots with
+  exact sampler times, 0.88 CPU s were spent 1.1 s after the spawn (f1),
+  1.23 s after 1.35 s (g1), and 1.9–2.2 CPU s after 2.1–3.5 s (b1, c1, e1); the first line ("MallocStackLogging: could not tag …",
+  then its own greeting) appears 2.0–2.5 s after the spawn, and the
+  2.5–5 s of logging that follow cost little CPU. So the reference's
+  liveactivitiesd also does about two seconds of computation in one
+  stretch at its start, before or at the top of `main`, without log output.
+- Against Ycode (§18.8: 3.4 s of guest code without a trap on its main
+  thread; 3.6–4.0 CPU s in all): with the Thor's core 1.25 × slower than
+  the Mac's on loader-like work (§10.4), the reference's 2.1 CPU s would
+  be about 2.6 s on the Thor, so Ycode spends about 1.0–1.5 CPU s (about
+  40–55 %) more. The phase is real on the reference; the excess, not the
+  phase, is what to look for.
+
+### 19.8 Recommendation for `YCODE_LOOKUP_HOLD`
+
+**Keep the behaviour; change the release.** The reference does hold
+dasd's failing read from a quiet start (§19.2), so a Ycode boot without
+the hold does work before home that the reference does after it. But the
+reference's release is not a time: it is the moment dasd's
+background-priority threads get CPU, which on a quiet Mac is when the
+boot's CPU burst ends, about home.
+
+1. Preferred (general, no service names): **model the background band.**
+   A guest thread at priority 4 or below does not run while every host CPU
+   available to the simulator is busy with guest threads of higher
+   priority; it runs as soon as one is free. That is what the reference
+   shows (§19.3); in Ycode it would give dasd's wait without a timer or a
+   service name, and delay any other background-band work the same way.
+2. Until then, keep `YCODE_LOOKUP_HOLD=com.apple.coreduetd.context` on by
+   default, but **release the held failure replies when the home screen is
+   first shown, plus 1 s** (reference: release 0.6 s before to 1.8 s after
+   home, median 0.9 s after, n = 3), not at a fixed 40 s. With Ycode's
+   home at 27.6–27.9 s (§18.5) a 40 s release is 12 s later than the
+   reference's; §18.5 found 30 s and 40 s equal for home_s, so the
+   home-relative release should keep the −5.6 s while matching the
+   reference's order after home: dasd's backlog starts at about home + 1
+   s and accepts SpringBoard's notification task about 7–9 s later
+   (§19.4). If the kernel cannot see home, the next best fixed value is
+   the reference's median end on an aged device, **about 30 s** after
+   the boot starts (24.4, 30.1, 32.6 s).
+3. Do not reproduce the busy-host values (69–113 s) or the fresh-device
+   values (37–55 s) as defaults: they measure the host, not the boot of an
+   aged device that `parity-ladder.md` benchmarks.
+
+### 19.9 Open questions
+
+1. **Which thread is starved.** Without root, `sample` and `ps -M` cannot
+   show whether the runnable priority-4 thread is the reading thread
+   itself (waiting for its reply's delivery) or a queue it waits for; the
+   observable rule (no CPU for the background band while the host is
+   saturated) does not depend on it.
+2. **A Mac without the VMs.** This host's floor (load 7.75) comes from
+   about 4 CPUs of VMs; on an idle Mac of the same size the boot's burst,
+   and so dasd's wait, may end a little earlier. A repeat of the aged
+   boots on a Mac with nothing else running would refine the 30 s
+   fallback.
+3. **liveactivitiesd's two seconds**: what it computes before its first
+   log line is not visible from outside (no log output in that stretch);
+   a `sample` of it 0.5–2 s after the spawn would name the frames.
+4. The system mode `STREAM_LIVE` in every boot (no stream of ours
+   running at the time): which host client keeps that live stream open and
+   at what level; on the reference it does not make `Default`-level
+   categories send info messages (§19.5), so in Ycode check what level the
+   guest's clients believe the live stream asks for.
+
+## 20. The background band, LaunchServices' categories, containermanagerd, liveactivitiesd, decmpfs (agent B3-BOOT5, 2026-11-07)
+
+§19.8's recommendation (model the background band) and §19.5–§19.7's
+questions, with Ycode's own simulator; and the LZBITMAP asset files of
+§18.3 with `lzbitmap.md`. Target: home_s ≤ 21.4 s, full boot, every service
+on (networking and the Duo's inner panel included).
+
+### 20.1 Conditions
+
+- Thor; one copy of the golden device in the agent's own folder (iPhone
+  Duo, iOS 27.1), booted three times at that path before series V1 (two
+  plain boots, one smoke boot of the band) and two more after the rebuild
+  before V2; full boot, default switches, `YCODE_HOME_WATCH`, stopped 5 s
+  after home (diagnostic boots 10–700 s), no save.
+- Builds: *tree* = `e6555da0` plus this section's changes, every new switch
+  off by default, so the default arm is the main line's program. V1 ran the
+  build of `1e443870` without decmpfs; V2 the build with §20.6 (decmpfs) and
+  `YCODE_BG_BAND_BG_CPUS`.
+- Timed series under the shared boot-timing lock, every boot started with
+  no other `ycode-simd` and a 1-minute load under 4 (3.38–3.99), arms
+  rotated each round, n = 5 per arm (V1 02:59–03:39, V2 03:55–04:35).
+- Profiles (`YCODE_FRAME_PROFILE_BOOT=120`) `p-tree` and `p-band`, started
+  right after another boot (load about 20): their CPU and wall figures are
+  high, their shapes are what is used.
+
+### 20.2 The background band (`YCODE_BG_BAND`, `scheduling-policy.md` §4.9)
+
+A run gate in Ycode's kernel: guest threads are counted as runnable by
+host class from a trap's end until they block in the kernel or end; at the
+end of each trap a class-bg thread goes on only while fewer than the host's
+online CPUs (14) threads are runnable, else it waits, oldest first, until
+one blocks, its class rises (boost, ulock or sync-IPC push, send push), its
+image ends or its gate closes, or 60 s pass. It replaces no timer and names
+no service: dasd's context read waits because dasd's threads are class bg
+(an unboosted Adaptive daemon is darwin-bg, §2.2) while the boot keeps
+more than 14 higher-class threads runnable.
+
+What it does in a boot (smoke boot, `YCODE_BG_BAND_SAMPLE_MS=500`): runnable
+non-bg threads 30–41 in the first 10 s (up to 146 bg threads waiting), then
+6–14 from about 10 s to home, with bg threads filling the rest (2–10
+runnable, 10–40 waiting); after home 0–5. dasd's threads waited 3–4 s at a
+time until 10.2 s and then ran (`YCODE_BG_BAND_TRACE=dasd`): by Ycode's own
+count the boot saturates the CPUs with higher-class work for its first
+10 s, not until home as on the reference (§19.3). About 350 000–500 000 gate
+waits a boot, 1 000 of them ended by a class rise, none by the bound.
+
+### 20.3 Timed series
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | CPU s at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|---|
+| V1 | default | 5 | **38.62** | 38.71 ± 1.55 | 36.66–40.74 | 8.2 s | 456 | 1–5 |
+| V1 | band (`YCODE_BG_BAND=1`) | 5 | **30.77** | 30.85 ± 1.06 | 29.43–32.40 | 4.1 s | 379 | 1–2 |
+| V1 | band, 10 CPUs (`YCODE_BG_BAND_CPUS=10`) | 5 | 35.96 | 35.11 ± 3.02 | 31.03–38.28 | 3.9 s | 347 | 1–3 |
+| V1 | look-up hold until 40 s (§18.4) | 5 | **28.14** | 28.03 ± 0.60 | 27.17–28.64 | 4.5 s | 354 | 0 |
+| V2 | default | 5 | **36.83** | 36.38 ± 1.24 | 34.47–37.63 | 6.9 s | 426 | 1–5 |
+| V2 | band | 5 | **29.95** | 30.39 ± 1.93 | 28.61–33.63 | 4.2 s | 361 | 2 |
+| V2 | band, background on 4 CPUs (`YCODE_BG_BAND_BG_CPUS=4`) | 5 | 33.16 | 32.86 ± 1.33 | 30.77–34.38 | 3.6 s | 314 | 1–2 |
+| V2 | look-up hold until 40 s | 5 | **28.22** | 28.30 ± 0.49 | 27.94–29.15 | 4.2 s | 340 | 0 |
+
+- **The band: −7.9 s (V1) and −6.9 s (V2) by the median**, ranges apart
+  from the default's in both series, 65–77 CPU s less before home and the
+  kernel lock held half as long. It gives 75–80 % of the hold's gain
+  (−10.5 s, −8.6 s) without naming a service and without a release time.
+- **The hold is still 1.7–2.6 s faster than the band.** With the band dasd
+  runs from about 10 s (§20.2), so part of its backlog and the work it
+  starts still come before home: in the profiles, dasd sent 5 529 log
+  messages in the first 29 s with the band against 9 561 by default and 10
+  with the hold (§18.6); SpringBoard 20 480 (home inside the window) against
+  14 595.
+- **A stricter band is slower, not faster.** Fewer CPUs for the count (10)
+  or at most 4 background threads at once (the reference Mac's efficiency
+  cores) keep more background work back, and home comes 3–5 s later than
+  with the plain band. The critical path of `p-band` shows why: from 5.7 to
+  18.0 s it runs through siriinferenced, whose threads (class bg) spent
+  most of that time at the gate (3.1 s of it in `thread_selfid`, the first
+  trap of new workqueue threads, which is where the gate catches them)
+  while biomed and then the home path waited for it. On the reference such
+  a dependency would push the waited-for thread (turnstiles, importance);
+  Ycode's pushes cover ulock owners, synchronous IPC receivers once they
+  receive, and full queues (`scheduling-policy.md` §4.6), not a server
+  thread that has not received yet, nor transitive chains (§4.8). The
+  stricter the gate, the more such unpushed waits land on the path.
+- The default arm is 3–5 s slower than §18.5's (33.2–33.6 s) with the same
+  code: this device copy was booted 3–5 times before the series, against 9
+  in §18 (§16.6: a copy's early boots do follow-up work); compare arms
+  within a series. V2's default is 1.8 s faster than V1's and uses 30 CPU s
+  less; the program differs only by §20.6, whose first boot installed the
+  mobile assets (no extraction ran in any V2 boot, one ran in every V1
+  boot), so part of that is likely §20.6, inside the spread.
+
+### 20.4 Does the band replace the hold?
+
+Not yet. The band reproduces the mechanism §19.3 found (a background
+thread gets no CPU while every CPU is taken by higher work) and wins most
+of the hold's time, but in Ycode the higher-class demand falls below the
+CPU count about 10 s into the boot, so dasd's read fails at about 10 s
+instead of at about home (the reference's 0.9 s after home, §19.2).
+Making the gate stricter to keep dasd back longer slows the boot (§20.3),
+because Ycode then also starves background work the reference pushes.
+
+Recommendation, adopted 2026-11-07 (`ycode-simd` sets `YCODE_BG_BAND=1`
+for `--device` runs unless the variable is set; the owner may reverse it): **turn the band on by default for
+device runs** (`YCODE_BG_BAND=1` with `YCODE_BOOT_PRIORITY`): it is the
+reference's mechanism, −7 to −8 s, fidelity unchanged except
+pairedsyncd's known loop (§20.9); and **keep
+`YCODE_LOOKUP_HOLD` off by default** as a service-specific experiment. If
+the extra 2 s matter before the push model is extended, §19.8's fallback
+(the hold released at home + 1 s, or at 30 s) remains, but with the band
+on it would also hold a read the band already delays. The next step that
+should close the band's gap to the hold is the missing push: a sync-IPC
+request queued on a port pushes the thread (or workloop) that will receive
+it, before it receives (xnu's send turnstile), transitively. Not done here.
+
+### 20.5 LaunchServices' `privacy` and `datasep` categories (§19.5)
+
+- **The guest's configuration is the reference's.** One-shots in a Ycode
+  boot (20 s after the bind): `log config --status` → `System mode = INFO
+  STREAM_LIVE PRIVATE_DATA`; `com.apple.launchservices` → `INFO
+  PERSIST_DEFAULT …`; its `privacy` category → `DEFAULT PERSIST_DEFAULT …`;
+  `binding` → `INFO …`: the same words as §19.5's, in every field.
+- **The store is the reference's.** `log show --info --debug --last 3m` 45 s
+  into a boot: 0 messages of `privacy` and `datasep` (176 of the
+  subsystem's `default` category), as on the reference. Ycode's logd keeps
+  them out exactly as the reference's does.
+- **So the difference is only on the wire, and the reference's wire is
+  not measured.** §19.5 concluded the reference's clients do not send them
+  from the store alone. The reference's diagnosticd receive counter
+  (§13.3) exceeds its store by 0.2–2 k messages (1–7 %), and Ycode with the
+  hold matched the reference's total exactly (89 808 against about 89 000,
+  §18.6) while still sending about 4 300 such messages: both say the
+  reference's clients may send them too and diagnosticd drop them.
+  Nothing in Ycode's log path tells the guest that an info stream is
+  attached (the system mode, the filter plist and the levels are the
+  reference's), and no Ycode change is indicated. The dirty-room check that
+  decides it: SpringBoard's sends to diagnosticd (its connection's receive
+  count, or `sample` stacks in `_os_log_impl_stream` while it logs
+  "constructing bundle record") on the reference without a stream. The cost
+  if it is Ycode's: under 0.5 s of diagnosticd CPU (§18.2).
+
+### 20.6 Mobile-asset files: decmpfs on Ycode's volume (`lzbitmap.md`)
+
+`LZBitmap.swift` decodes LZBITMAP streams and decmpfs payloads (types 13
+and 14), written from `lzbitmap.md` §2–§3; `DecmpfsVolume.swift` makes the
+writer's calls work (`file-system-features.md` §3.1): resource forks are
+position-addressed and held by the volume (any size), and
+`fchflags(UF_COMPRESSED)` with a valid header decompresses the file into
+its data and removes the two attributes. Tests: `LZBitmapTests` (the
+spec's worked example, stored chunks, the end chunk, copies across chunks,
+both container types and their faults), `DecmpfsVolumeTests` (the writer's
+call order for both types, a fork written at position 12 then 0, an
+invalid header).
+
+In the first boot of the new build 118 compressed files were decompressed
+(`ycode-simd: decmpfs:` at exit) and the Siri text-to-speech,
+understanding and dialog assets were installed under
+`private/var/MobileAsset/AssetsV2`; in the 25 boots after it no extraction
+ran (`STExtractionService` started in every default boot of V1 and in none since), so
+the per-boot download-and-fail loop of §18.3 is gone. `lzbitmap.md` §5
+question 1 (why the extractor compresses at all) was not traced: on this
+device the extractor no longer runs; a fresh copy's first boot would show
+it.
+
+### 20.7 containermanagerd (§19.6)
+
+A `log stream` boot with the device's `launchd.log` (seconds after lsd's
+query, which is the reference's "same millisecond" event):
+
+| Step | Ycode | Reference (§19.6) |
+|---|---|---|
+| lsd's query → launchd_sim "launching: ipc (mach)" | 0.03 s | 0.000 s |
+| → xpcproxy_sim spawned, the daemon executed | 0.06, 0.19 s | — |
+| → containermanagerd's first log line | 2.27 s | 0.22–0.50 s |
+| → it starts on the query | 4.18 s | — |
+| → lsd's "Query result" | 4.70 s | 0.25–1.44 s (median 0.29) |
+
+- In this boot the launch followed the query by 0.03 s, as prompt as on
+  the reference (in §18.2's boot it came 2.1 s after the query). The 4.5 s after it are containermanagerd
+  starting and initialising on a saturated host: alone on a quiet Thor
+  (`--exec`, the simulator's environment variables) the same program uses
+  0.37 CPU s from start to idle (0.25 s of guest code). In `p-tree` the
+  waker's path behind lsd's 3.6 s wait is launchd_sim's `posix_spawn`
+  (0.59 s) and host run-queue time behind other programs (routined 0.44 s,
+  followupd 0.27 s, biomed 0.18 s, launchd_sim 0.16 s): containermanagerd
+  waits for CPUs.
+- **Ycode's part is its priority.** On the reference an on-demand start runs
+  at priority 46 while it starts (`scheduling-policy.md` §3, above the
+  default 31 of the daemons it competes with), the likely result of the
+  waiting client's push (SpringBoard → lsd → containermanagerd: xnu
+  turnstiles are transitive). In Ycode containermanagerd runs at class df
+  like the ~30 other df threads, and lsd's push reaches it only once it
+  receives the query. The same missing push as §20.4; with the band on,
+  the boot's first 10 s have fewer competitors.
+
+### 20.8 liveactivitiesd (§19.7)
+
+| Run | CPU s from start to idle | of it guest code |
+|---|---|---|
+| Ycode in a boot (`p-tree`, §18's `p-tree`) | 4.0 | 3.6 |
+| Ycode alone, quiet Thor (`--exec`, simulator environment) | 3.15 | 2.86 |
+| Reference (Mac) | 2.08 median | — |
+| Reference scaled to the Thor's core (× 1.25, §10.4) | about 2.6 | — |
+
+Alone, liveactivitiesd is idle 3.5 s after its start, having used 3.15 CPU
+s: 2.86 s of guest code (dyld's loading and initialisers, then its own
+start; without `SIMULATOR_SHARED_RESOURCES_DIRECTORY` it stops in an
+initializer after 2.67 s of guest code) and 0.29 s of host kernel and VMM
+time. So Ycode's own share is about 0.3 s of host time and 0.3 s of guest
+code beyond the scaled reference (the 1.25 factor is the loader's ratio;
+it may be larger for this code). The other 0.8 s in a boot is the
+saturated host: the same guest code runs slower while every core and the
+memory system are busy, which the reference's priority bands spare it no
+more than Ycode's (it is an on-demand daemon at default priority on both).
+
+### 20.9 Service fidelity
+
+`scripts/ycode-launchd-spawns` over 700 s, one boot each (V2's build), each
+after a boot of the same build, on the same device copy:
+
+| | default | band |
+|---|---|---|
+| home_s of the boot | 36.05 | 30.49 |
+| all starts | 516 (239 labels) | 555 (236 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 67, 66, 64, 68, 12, 1 | 67, 65, 63, 68, 12, 1 |
+| other daemons and agents | 178 | 219 |
+| per-process domains | 57 | 57 |
+| apps | 3 | 3 |
+| starts by reason (xpc event, Mach IPC, demand, speculative) | 329, 102, 37, 32 | 322, 148, 37, 32 |
+
+The one label that differs by more than one start is **pairedsyncd, 1 →
+45**: the Mach-IPC restart every 10 s that §18.7 saw in its *default* boot
+(47) and not with the hold (1), one of Ycode's own restart loops
+(`parity-ladder.md` §3.3; on the Mac it starts once). Its trigger depends on
+the order of the post-home work, which both the hold and the band move; it
+is not the band's (§18.7's default boot had it). Every other label differs
+by one start (geocorrectiond, mapssyncd, idcredd, parsec-fbf,
+agentstored, cksharingmanagementd −1; fitcore, backgroundassets.user, a
+key-syncing agent +1; the throttle loops' phase). Fidelity is otherwise
+unchanged.
+
+### 20.10 How far from 21.4 s, and what is left
+
+- Default switches: **36.8–38.6 s** on this device copy tonight (V1, V2).
+  With the band: **30.0–30.8 s, 1.40–1.44 ×** the reference, 8.6–9.4 s short.
+  With the look-up hold (for comparison): 28.1–28.2 s.
+- The band's remaining gap to the hold is dasd's backlog before home
+  (§20.3). The step that should close it, and help containermanagerd
+  (§20.7): a push from a waiting synchronous sender onto the thread or
+  workloop that will receive its message, before it receives, and through
+  chains.
+- Then, in order of size: the critical path of `p-band` after 18 s runs
+  through diagnosticd's hand-offs (2.2 s, §16.5), PosterBoard's
+  `getattrlist` (0.6 s), searchd's timer and DockFolderViewService's guest
+  code (3.4 s at the end, the home screen's dock); LaunchServices' messages
+  wait for the dirty-room check of §20.5.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -3302,6 +3852,19 @@ Next, in order of size:
 | AppleArchive's compressed-file writes (types 13/14, resource fork at position 12), the extraction errors, the asset downloads retried (§18.3) | 3 | trap traces of `STExtractionService` (`trace-stx`, `trace-stx2`, the latter with the trace text of commit `725c2dc6`), guest streams `diag-assets`, `diag-assets2`; the host's ext4 attribute limit by a probe of our own |
 | Look-ups of unknown names answered by launchd_sim, not the host bootstrap (§18.4) | 3 | the device's `ycode-host-bootstrap.log` (only the 708 request) |
 | Series T1 (and T2), profiles `p-tree` and `p-hold40`, log messages and CPU per program, critical paths, fidelity counts (§18.5–§18.8) | 3 | B3-BOOT4's Thor runs (`ab-T1.txt`, `ab-T2.txt`, `fp/`, `runs/fid-tree`, `runs/fid-hold40`; `scripts/ycode-frame-profile`, `scripts/ycode-launchd-spawns`, §16's `logcount.py`) |
+| Host load, per-CPU busy fractions, the host's idle floor and what holds it (§19.1, §19.3) | 3 | `research/dirty/simobs4` boots: `os.getloadavg` every second; `host_processor_info(PROCESSOR_CPU_LOAD_INFO)` every 0.5 s (public Mach call, no root); `top`; `hw.perflevel0/1` |
+| dasd's long reads, their start and end, launchd_sim's failed look-up, dasd's silences, home_s (§19.2) | 3 | `simctl spawn … log show --info --debug` of each 200 s window (thread ids and timestamps); the device's `launchd.log`; screenshots as §13 |
+| dasd's threads runnable at priority 4 with no CPU during the wait (§19.3) | 3 | `ps -M` of dasd about every second (state, priority, user and system time per thread) |
+| dasd's acceptance of SpringBoard's task and SpringBoard's initial load (§19.4) | 3 | the same `log show` output |
+| The background band's runnable counts, gate waits and dasd's waits; series V1 and V2; the profiles `p-tree`, `p-band` (critical paths, log messages per program) (§20.2–§20.4) | 3 | B3-BOOT5's Thor runs of Ycode's own simulator (`ab-V1.txt`, `ab-V2.txt`, `runs/smoke-band`, `fp/p-tree.1`, `fp/p-band.1`; `scripts/ycode-frame-profile`, `bin/logcount.py`) |
+| The guest's logging configuration and the store's LaunchServices messages (§20.5) | 3 | one-shots `log config --status` and `log show` in Ycode boots (`runs/diag-logcfg`, `runs/diag-logshow`) |
+| LZBITMAP and decmpfs formats (§20.6) | 1 (via `lzbitmap.md`) | `lzbitmap.md` §2–§4; the worked example of its §2.10 as a test vector |
+| Files decompressed, assets installed, extractor starts per boot (§20.6) | 3 | `ycode-simd: decmpfs:` exit line; the device's `AssetsV2` listing; image lines of every run log |
+| containermanagerd's and lsd's timeline; standalone starts of containermanagerd and liveactivitiesd (§20.7, §20.8) | 3 | `runs/diag-cm` (`log stream`, the device's `launchd.log`); `--exec` runs with the VMM's `/proc` CPU times (`runs/exec-cm`, `runs/exec-liveact`, `runs/exec-liveact2`) |
+| The LaunchServices logging preference and the runtime's and device's logging folders (§19.5) | 2 | the runtime's `System/Library/Preferences/Logging/Subsystems/com.apple.launchservices.plist` read as a property list; directory listings of the runtime and the device's data folder |
+| The guest's effective levels, the absence of `privacy` and `datasep` messages, the stream experiment (§19.5) | 3 | `simctl spawn … log config --status` (system, subsystem, three categories) in each booted device; `log show` counts by subsystem, category and level; the untimed `log stream --info --debug` boot against `log show` of the same window |
+| containermanagerd launched by lsd's class 10 query; the query's duration (§19.6) | 3 | `launchd.log` ("launching: ipc (mach)") against lsd's `com.apple.containermanager` lines in `log show` |
+| liveactivitiesd's spawn, first line, start-up burst and CPU (§19.7) | 3 | `launchd.log`; `log show`; `ps -M` per-thread times |
 
 Level 5 was not used. `.claude/Xcode.app`, `research/dirty/` and Ghidra
 were not opened.
@@ -3336,3 +3899,15 @@ Xcode's GUI were not used. Its raw data stays in the git-ignored
 (on the Thor, with the runtime copy as a black box), and only `specs/`,
 Ycode's code, public xnu headers and man pages (as cited) and one of the
 runtime's logging property lists were read.
+§19 is a dirty-room observation (agent B3-SIMOBS4): Apple's simulator ran
+headless and only through `simctl`, `log` and `ps` on devices named
+`ycode-test-simobs4-*`, deleted afterwards; the host was observed with
+`uptime`/`getloadavg`, `top` and `host_processor_info`; one runtime
+property list was read and the runtime's and devices' folders were listed.
+No binary was disassembled or decompiled, Ghidra was not opened, `sample`
+was not used, and the Simulator app's window and Xcode's GUI were not used.
+Its raw data stays in the git-ignored `research/dirty/simobs4/`.
+§20 (agent B3-BOOT5) is clean-room work: only Ycode's own simulator ran
+(on the Thor, with the runtime copy as a black box), and only `specs/`,
+Ycode's code, and Apple's public performance documentation (efficiency
+cores) were read.

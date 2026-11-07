@@ -891,6 +891,8 @@ public final class VCPUPool: @unchecked Sendable {
                 terminate(status: 1, message: "vCPU \(worker.index): \(error)", vcpuIndex: worker.index)
             }
 
+            // The guest thread no longer runs on this host thread.
+            Self.runEndedHook?()
             lock.lock()
             worker.running = false
             detachLocked(worker)
@@ -917,6 +919,11 @@ public final class VCPUPool: @unchecked Sendable {
     /// number, is its vCPU index modulo this count, so every CPU number the
     /// guest sees is below the CPU count it is told.
     nonisolated(unsafe) public static var guestCPUCount = 1
+
+    /// Called on a vCPU's host thread when the guest thread it ran ended
+    /// or parked (set by the VMM before the first image: the kernel's
+    /// background band stops counting that host thread).
+    nonisolated(unsafe) public static var runEndedHook: (() -> Void)?
 
     /// The CPU number (TPIDR_EL0) of a thread on `worker`: the state's own
     /// when it has one, else the vCPU index modulo the guest CPU count.

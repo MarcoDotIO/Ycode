@@ -443,8 +443,16 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     if SchedPolicy.holdEnabled || SchedPolicy.qosEnabled {
         HostSched.threadID = { ckvmThreadID() }
         stderrLine("ycode-simd: sched: start hold \(SchedPolicy.holdEnabled ? "on" : "off"), thread QoS \(SchedPolicy.qosEnabled ? "on" : "off")"
-            + (SchedPolicy.qosEnabled ? ", lock admission \(SchedPolicy.admissionEnabled ? "on" : "off"), host \(HostSched.configure())" : ""))
+            + (SchedPolicy.qosEnabled ? ", lock admission \(SchedPolicy.admissionEnabled ? "on" : "off"), host \(HostSched.configure())" : "")
+            + (BackgroundBand.active ? ", bg band on \(BackgroundBand.cpus) CPUs" : ""))
         system.holdLog = { stderrLine("ycode-simd: sched: " + $0) }
+    }
+    // The background band (scheduling-policy.md §4.9): a vCPU host thread
+    // whose guest thread ended is no longer counted as runnable.
+    if BackgroundBand.active {
+        BackgroundBand.origin = KernelClock.now()
+        VCPUPool.runEndedHook = { BackgroundBand.stopped() }
+        BackgroundBand.startSampler()
     }
     if config.trace || !config.options.tracePIDs.isEmpty || !config.options.traceNames.isEmpty {
         MachIPC.traceMessageStrings = true
@@ -1206,6 +1214,8 @@ func runRootProcess(_ config: ExecConfiguration, quietSummary: Bool = false) -> 
     }
     if !quietSummary {
         stderrLine("ycode-simd: host: \(HostStats.current())" + (stillAlive > 0 ? "; \(stillAlive) images not torn down" : ""))
+        let decompressed = DarwinFileSystem.decompressedFiles.load(ordering: .relaxed)
+        if decompressed > 0 { stderrLine("ycode-simd: decmpfs: \(decompressed) compressed files decompressed on the volume") }
     }
     // The GPU back end ends in order before exit() (stage8-contract.md §12):
     // exit() runs the driver's own teardown, and a back-end thread still

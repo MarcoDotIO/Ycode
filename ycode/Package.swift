@@ -313,3 +313,16 @@ package.targets += [
                                                       "YcodePreviews"]),
 ]
 #endif
+
+// The offscreen guard (README.md, "Nothing on screen"): linked into every
+// macOS test target, it keeps every window, panel, alert and menu of a test
+// process off the displays (YCODE_TESTS_ON_SCREEN=1 turns it off).
+#if os(macOS)
+package.targets += [
+    .target(name: "CYcodeTestOffscreen", path: "Tests/CYcodeTestOffscreen",
+            linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("CoreGraphics")]),
+]
+for i in package.targets.indices where package.targets[i].type == .test {
+    package.targets[i].dependencies.append("CYcodeTestOffscreen")
+}
+#endif

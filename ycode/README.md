@@ -128,6 +128,39 @@ ssh <user>@<linux-host> 'cd Ycode/ycode && swift build && swift test'
 `.build-ide` holds test and IDE scratch output. Tests write into their own
 temporary directories, so it can be deleted at any time.
 
+### Nothing on screen
+
+On macOS no test may put a window, panel, sheet, alert or menu on a
+display: the owner works on the Mac while agents run the suites. Every
+macOS test target links `Tests/CYcodeTestOffscreen`, which installs itself
+when the test bundle loads, before any test:
+
+- Every window ordered in, and every frame given to a visible window, is
+  moved left of all displays (only when it would touch one; its size and
+  height stay), and AppKit's constraint to a screen is off, so it stays
+  there. Ordering in and out runs without AppKit's window animations,
+  which draw a document window's fade on a display even when the window is
+  off every display. Tests still order windows in when they need the window
+  server (accessibility, `screencapture -l`, sheets); they never need a
+  screen.
+- App-modal alerts and panels (`runModal`, open and save panels) answer
+  Cancel without showing; menus do not pop up; the app is not activated;
+  Finder and other apps are not asked to open anything. Give such code a
+  hook the test can set (as `DevicesController.pairing.confirm` does) rather
+  than relying on this. A process that loads several test bundles shares one
+  guard.
+- A sentinel checks the window server every 100 ms, from the first window
+  on, for a window of the test process on a display. It moves the window
+  off, prints `OffscreenGuard: …`, and at exit fails the run (status 1),
+  naming the window. `OffscreenGuardTests` checks each of the above.
+
+Measure positions against the window (`convert`, `contentLayoutRect`) or
+against `NSScreen` frames computed by hand, never against where a window
+landed on a real display. The escape hatch is `YCODE_TESTS_ON_SCREEN=1`, for
+a recording the owner runs by hand (`FlickRecordingTests`); nothing in CI or
+an agent's run sets it. `YCODE_OFFSCREEN_TRACE=1` prints every window the
+guard moves, with the test that showed it.
+
 ### Tests in a full run
 
 A full run executes each test bundle's suites in parallel, and other runs may

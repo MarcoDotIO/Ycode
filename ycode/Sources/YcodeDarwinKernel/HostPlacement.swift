@@ -162,6 +162,7 @@ extension DarwinKernel {
     /// (`boot-profile.md` §12).
     @inline(__always)
     public func applyHostPolicyAfterFastTrap(_ context: ThreadContext) {
+        if BackgroundBand.active { BackgroundBand.afterTrap(context, kernel: self) }
         guard HostSched.fastTrapClass != .off || HostSched.uiCPUMasks != nil || HostSched.placeHook != nil else { return }
         let push = sendPushClass
         HostSched.applyAfterFastTrap(threadClass: context.schedClass, push: push)

@@ -155,6 +155,8 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible, 
     /// thread itself changes it). Not kept by snapshots.
     var workInterval: KernelWorkInterval?
     let schedClassStore = Atomic<Int>(SchedClass.default)
+    /// The thread waits at the background band's gate (`BackgroundBand`).
+    let bandWaiting = Atomic<Bool>(false)
 
     public init(threadID: UInt64, portName: UInt32, vcpuIndex: Int, kind: Kind, pthreadAddress: UInt64 = 0) {
         self.threadID = threadID

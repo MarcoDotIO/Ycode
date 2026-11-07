@@ -13,8 +13,8 @@ import Testing
 /// capture tool's driver does it.
 ///
 /// The accessibility test orders the workspace window in **off every
-/// display** (origin −6000, −6000; `Offscreen` stops AppKit from moving it
-/// onto a screen) so the window server serves it to accessibility; nothing
+/// display** (origin −6000, −6000; the offscreen guard stops AppKit from
+/// moving it onto a screen) so the window server serves it to accessibility; nothing
 /// appears on screen, and the window is ordered out before anything could
 /// ask a question.
 @MainActor
@@ -175,19 +175,12 @@ import Testing
 
     // MARK: Row 130: accessibility from outside the view tree
 
-    /// Keeps windows where they are put: AppKit moves a titled window onto
-    /// a display when it is ordered in; while this is on, it does not.
+    /// Kept for the suites that call it: the process-wide offscreen guard
+    /// (`CYcodeTestOffscreen`, README "Nothing on screen") already keeps
+    /// every window where it is put, off every display, for the whole run.
     enum Offscreen {
-        nonisolated(unsafe) static var saved: (Method, IMP)?
-        static func on() {
-            guard saved == nil, let m = class_getInstanceMethod(NSWindow.self, #selector(NSWindow.constrainFrameRect(_:to:))) else { return }
-            let keep: @convention(block) (AnyObject, NSRect, AnyObject?) -> NSRect = { _, r, _ in r }
-            saved = (m, method_setImplementation(m, imp_implementationWithBlock(keep)))
-        }
-        static func off() {
-            if let (m, imp) = saved { method_setImplementation(m, imp) }
-            saved = nil
-        }
+        static func on() {}
+        static func off() {}
     }
 
     /// The outside tool: a Swift script run by `xcrun swift` in a process

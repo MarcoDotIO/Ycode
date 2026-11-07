@@ -279,6 +279,7 @@ extension DarwinKernel {
     /// A sender of class `cls` blocks on a full queue this image receives.
     func addSendPush(_ cls: Int) {
         sendPushCounts.wrappingAdd(KernelLock.unit(cls), ordering: .relaxed)
+        if cls > SchedClass.background, BackgroundBand.active { BackgroundBand.poke(kernel: self) }
     }
 
     /// That sender stopped waiting.
@@ -309,9 +310,12 @@ extension DarwinKernel {
             let inputs = SchedInputs(baseQoS: t.baseQoS, overrideQoS: t.overrideQoS, clampQoS: p?.clampQoS ?? 0,
                                      darwinBG: (p?.isDarwinBG ?? false) || t.threadDarwinBG, push: pushes.maxClass)
             let c = inputs.schedClass
-            if t.schedClassStore.exchange(c, ordering: .relaxed) != c {
+            let old = t.schedClassStore.exchange(c, ordering: .relaxed)
+            if old != c {
                 SchedStats.classChanges.wrappingAdd(1, ordering: .relaxed)
             }
+            // A thread waiting at the background band's gate leaves it when its class rises.
+            if c > SchedClass.background, old == SchedClass.background, BackgroundBand.active { BackgroundBand.poke(t) }
         }
     }
 

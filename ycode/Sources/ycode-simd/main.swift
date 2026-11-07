@@ -776,6 +776,13 @@ if CommandLine.arguments.contains("--device"), getenv("YCODE_BOOT_PRIORITY").map
     setenv("YCODE_HOST_SCHED", "cgroup", 0)
     SchedPolicy.qosEnabled = true
 }
+// The background band (scheduling-policy.md §4.9, boot-profile.md §20): on by
+// default for device runs since 2026-11-07 (−7 to −8 s to home on the Thor,
+// fidelity unchanged over 700 s). `YCODE_BG_BAND=0` turns it off.
+if CommandLine.arguments.contains("--device"), getenv("YCODE_BG_BAND") == nil {
+    setenv("YCODE_BG_BAND", "1", 0)
+    BackgroundBand.enabled = true
+}
 // A command for a running device (FoldControl.swift, SettingsClient.swift): nothing else starts.
 if isHealthClient(CommandLine.arguments) { runHealthClient(CommandLine.arguments) }
 if isSettingsClient(CommandLine.arguments) { runSettingsClient(CommandLine.arguments) }

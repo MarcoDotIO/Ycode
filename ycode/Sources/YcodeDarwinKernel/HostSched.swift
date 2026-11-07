@@ -82,6 +82,7 @@ public enum HostSched {
             + (bgCPUMasks == nil && uiCPUMasks == nil ? "" : "; affinity failures \(affinityFailures.load(ordering: .relaxed))")
             + placementReport
             + (SyncHandoff.report.isEmpty ? "" : "; " + SyncHandoff.report)
+            + (BackgroundBand.report.isEmpty ? "" : "; " + BackgroundBand.report)
     }
     /// `YCODE_LOCK_HOLDER_PROMOTION` (default on with a backend; `=0` off):
     /// a thread that finds a kernel lock taken raises the holder's host

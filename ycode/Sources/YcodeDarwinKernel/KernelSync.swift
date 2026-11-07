@@ -790,8 +790,8 @@ public final class KernelLock: @unchecked Sendable {
     /// One condition wait on `mutex` (held), until signalled or `deadline`
     /// (absolute host monotonic ns). Returns the pthread result (ETIMEDOUT
     /// at the deadline).
-    fileprivate static func conditionWait(_ cond: UnsafeMutablePointer<pthread_cond_t>,
-                                          _ mutex: UnsafeMutablePointer<pthread_mutex_t>, deadline: UInt64?) -> Int32 {
+    static func conditionWait(_ cond: UnsafeMutablePointer<pthread_cond_t>,
+                              _ mutex: UnsafeMutablePointer<pthread_mutex_t>, deadline: UInt64?) -> Int32 {
         guard let deadline else { return pthread_cond_wait(cond, mutex) }
         let now = KernelClock.now()
         if now >= deadline { return ETIMEDOUT }
@@ -936,6 +936,7 @@ public struct WaitQueue: @unchecked Sendable {
         beforeSleeping?()
         if w.result == nil, let context {
             context.blockedInKernel = true
+            if BackgroundBand.active { BackgroundBand.stopped() }
             lock.blockingObserver?(context, true)
             KernelTrace.blocking?(context, true)
         }
@@ -1475,6 +1476,7 @@ extension WaitQueue {
         beforeSleeping?()
         if w.result == nil, let context {
             context.blockedInKernel = true
+            if BackgroundBand.active { BackgroundBand.stopped() }
             root.blockingObserver?(context, true)
             KernelTrace.blocking?(context, true)
         }

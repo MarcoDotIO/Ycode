@@ -68,6 +68,23 @@ revisiond) are not produced.
 `FSOPT_ATTR_CMN_EXTENDED` in `getattrlist` (EINVAL otherwise; xnu
 `getattrlist_internal`); `getattrlistbulk` always has it.
 
+### 3.1 Compressed files (decmpfs, `UF_COMPRESSED`)
+
+`lzbitmap.md` §4.2 gives the reference's behaviour. Ycode's host volume has
+no transparent compression, so Ycode's design is to **decompress a file when
+its flag is set** (`DecmpfsVolume.swift`, decoder `LZBitmap.swift`):
+
+| Call | Behaviour |
+|---|---|
+| `setxattr`/`fsetxattr` of `com.apple.ResourceFork` | Position-addressed (any position; gaps zero-filled; a write at 0 does not truncate), any size. The volume holds the fork, keyed by the host file's device and inode (ext4 attributes hold about 4 KB), until the file is decompressed or the attribute removed; `getxattr`, `listxattr` and `removexattr` see it. Not kept across a restart of the simulator. A non-zero position on any other name: EINVAL. |
+| `setxattr` of `com.apple.decmpfs` | An ordinary attribute. |
+| `chflags`/`fchflags`/`setattrlist` with UF_COMPRESSED | When `com.apple.decmpfs` is 16–3 802 bytes and starts with `fpmc`: types 13 and 14 (LZBITMAP or stored, `lzbitmap.md` §3) are decoded, the decoded bytes become the file's data, both attributes are removed. The flag is not kept: the file is an ordinary file from then on (on the reference it stays compressed until a writer opens it, then is decompressed the same way). Any other header: nothing happens (the reference also leaves the flag clear). A file that does not decode (unknown type, bad fork table) is left as it is. |
+
+Deviation: `st_flags` never shows UF_COMPRESSED and `st_blocks` counts the
+decoded bytes; `getxattr(…, XATTR_SHOWCOMPRESSION)` of a decompressed file
+finds no decmpfs attribute. Types 3/4, 7/8 and 11/12 (zlib, LZVN, LZFSE) are
+not decoded.
+
 ## 4. Write generation counts (`VOL_CAP_FMT_WRITE_GENERATION_COUNT`)
 
 `ATTR_CMN_GEN_COUNT` of a regular file or directory is a nonzero value that

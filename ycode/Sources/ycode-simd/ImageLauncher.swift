@@ -833,6 +833,8 @@ final class GuestImageInstance: @unchecked Sendable {
             kernel.trapProfileSelected = TrapProfile.programFilter.contains((execPath as NSString).lastPathComponent)
         }
         kernel.hostUIPath = HostSched.uiPathPrograms.contains((execPath as NSString).lastPathComponent)
+        let programName = (execPath as NSString).lastPathComponent
+        if BackgroundBand.tracedPrograms.contains(programName) { kernel.bandTraceName = programName }
         let verbose = trace || (serial == 1 && !config.quietRuns)
         record = ImageRecord(serial: serial, pid: kernel.pid, executable: execPath)
         if BootProfile.shared != nil {

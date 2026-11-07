@@ -392,6 +392,9 @@ extension DarwinFileSystem {
         if (flags ^ old) & (VolumeMetadata.sfSettable | VolumeMetadata.ufDataVault) != 0 {
             throw DarwinErrnoError(DarwinErrnoCode.EPERM)
         }
+        // UF_COMPRESSED with a valid decmpfs attribute: the volume
+        // decompresses the file (DecmpfsVolume.swift); the flag stays clear.
+        if flags & VolumeMetadata.ufCompressed != 0 { try decompressOnFlag(target) }
         let userBits = VolumeMetadata.ufSettable & ~VolumeMetadata.ufCompressed
         record.flags = (flags & userBits) | (old & ~userBits)
         let tracked = record.flags & VolumeMetadata.ufTracked != 0

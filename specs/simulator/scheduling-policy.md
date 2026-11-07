@@ -437,6 +437,45 @@ skipped. A waiter in a condition wait that takes the mutex back
   WCEL bounds are used.
 - `getpriority` still answers as before.
 
+### 4.9 The background band (`YCODE_BG_BAND`)
+
+The reference: a darwin-bg thread (priority 4, §2.2) is runnable and gets
+no CPU at all while every CPU is busy with higher-priority work; during a
+boot dasd's threads waited so 17–113 s (`boot-profile.md` §19.3). The host
+weights of §4.7 give a class-bg host thread a small share, never none.
+
+Ycode's model (`BackgroundBand.swift`, a run gate in Ycode itself):
+
+- **Runnable threads.** A guest thread counts as runnable, by its host class
+  (class raised to the image's send push), from the end of a trap until it
+  blocks in the kernel (`WaitQueue`) or its guest thread ends (the vCPU
+  pool's run ends). A thread waiting for a kernel lock or for a host CPU
+  counts: on xnu it would be running or on a run queue. Counts are 16-bit
+  fields of one atomic word; each host thread changes only its own entry.
+- **The gate.** At the end of every trap that resumes the thread (locked
+  and fast paths, outside every kernel lock), a class-bg thread leaves its
+  place and asks again: it goes on while fewer than `YCODE_BG_BAND_CPUS`
+  (default: the host's online CPUs) threads are runnable, else it waits,
+  first in, first out. A thread that blocks or changes class gives its place
+  to the oldest waiter. A running background thread is thus preempted at
+  its trap ends; one in a long stretch of guest code with no trap is not.
+- **Background CPUs** (`YCODE_BG_BAND_BG_CPUS=N`, unset: no limit): at
+  most N class-bg threads are runnable at once, as Apple silicon runs
+  background work on its efficiency cores only (the reference Mac: 4 of
+  14, `boot-profile.md` §19.1; Apple's public performance-tuning
+  documentation, level 1).
+- **Leaving early.** A waiter leaves when its host class rises (a boost, a
+  ulock or sync-IPC push, a send push: the class recomputation and
+  `addSendPush` wake it), when its image ends or its Mach suspension gate
+  closes, or after `YCODE_BG_BAND_MAX_MS` (default 60 000; 0 none), the
+  starvation guard. Waiters also wake every 100 ms to check these.
+- **Lock order.** The gate holds no kernel lock; its mutex is a leaf.
+
+Statistics are part of the `sched:` report (waits, time, longest, how they
+ended, runnable counts by class). `YCODE_BG_BAND_TRACE=<program>,…` prints
+waits of 100 ms or more of the named programs; `YCODE_BG_BAND_SAMPLE_MS=N`
+prints the runnable counts every N ms. Measurements: `boot-profile.md` §20.
+
 ## 5. Diagnostics
 
 - `ycode-simd: sched: start hold on|off, thread QoS on|off, lock admission
@@ -492,6 +531,11 @@ skipped. A waiter in a condition wait that takes the mutex back
 | `YCODE_FAST_TRAP_HOST_CLASS` | 0 | §4.7 host class at the end of fast traps (IPC, BSD descriptor, task-local): `1` the whole class, `push` only a raise to the image's send push; off by default (`boot-profile.md` §12.3) |
 | `YCODE_HOST_SCHED_UI_CPUS` | unset | host threads of the UI-path programs run on every online CPU, every other guest thread's host thread on all but the last N (`boot-profile.md` §12.3) |
 | `YCODE_HOST_SCHED_UI_PROGRAMS` | `SpringBoard,backboardd` | the UI-path programs (executable names) for `YCODE_HOST_SCHED_UI_CPUS` |
+| `YCODE_BG_BAND` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.9 the background band (with `YCODE_SCHED_QOS`) |
+| `YCODE_BG_BAND_CPUS` | online CPUs | §4.9 runnable threads before a background thread waits |
+| `YCODE_BG_BAND_BG_CPUS` | unset | §4.9 the most class-bg threads runnable at once |
+| `YCODE_BG_BAND_MAX_MS` | 60000 | §4.9 the longest one wait; 0 none |
+| `YCODE_BG_BAND_TRACE`, `YCODE_BG_BAND_SAMPLE_MS` | unset | §4.9 diagnostics |
 | `YCODE_HOST_SCHED_UI_PUSHED` | unset | with `YCODE_HOST_SCHED_UI_CPUS`: an image whose send push (§4.6) is at least this class also runs on the UI path's CPUs while it lasts |
 | `YCODE_BOOT_PRIORITY` | 1 for device runs (since 2026-10-27; was 0) | device runs (`--device`) only: with `YCODE_SCHED_QOS` unset, set it to 1 and `YCODE_HOST_SCHED` (if unset) to `cgroup` before the VMM starts (§7.4, §7.5); `0` turns it off. The cgroup backend re-executes the VMM in a delegated user scope only when the user's service manager is reachable (`$XDG_RUNTIME_DIR/systemd/private`); otherwise it reports itself unavailable and the run goes on without host scheduling |
 

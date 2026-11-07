@@ -63,6 +63,7 @@ extension DarwinKernel {
         if t.suspendCount > 0 || taskSuspendCount > 0 || t.debugHold {
             if !t.gate.isClosed { t.gate.close() }
             threadHost?.kickThread(t)
+            if BackgroundBand.active { BackgroundBand.poke(t) }
         } else if t.gate.isClosed {
             t.gate.open()
         }

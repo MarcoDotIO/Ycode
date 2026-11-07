@@ -7,14 +7,22 @@ import Testing
 private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 private let recordDir = ProcessInfo.processInfo.environment["YCODE_FLICK_RECORD_DIR"]
 private let wincapPath = ProcessInfo.processInfo.environment["YCODE_WINCAP"]
+private let onScreenRun = ProcessInfo.processInfo.environment["YCODE_TESTS_ON_SCREEN"] == "1"
 
 /// Row 40 measured on screen: a 1400 × 880 workspace window showing a long
 /// file, a momentum flick toward the top delivered as scroll events, and
 /// the window recorded with `tools/capture/wincap` for
 /// `tools/capture/motion.py`. Opt-in: set `YCODE_FLICK_RECORD_DIR` (the
 /// output folder) and `YCODE_WINCAP` (the wincap binary).
+///
+/// The only suite that truly needs a display: the recording is the window
+/// as the window server composites it at the display's refresh, which a
+/// window off every display does not get. So it also needs
+/// `YCODE_TESTS_ON_SCREEN=1` (README "Nothing on screen"), set only by the
+/// owner for a recording they run by hand; the window then appears at
+/// (60, 60) for about ten seconds.
 @MainActor
-@Suite(.serialized, .enabled(if: recordDir != nil && wincapPath != nil)) struct FlickRecordingTests {
+@Suite(.serialized, .enabled(if: recordDir != nil && wincapPath != nil && onScreenRun)) struct FlickRecordingTests {
     @Test(arguments: [false, true]) func recordFlick(bounce: Bool) throws {
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory)

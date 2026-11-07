@@ -480,6 +480,11 @@ public final class DarwinKernel {
     /// bits per class (class c at bit 16·c): the send push of
     /// `scheduling-policy.md` §4.6. Changed by the senders without L0.
     let sendPushCounts = Atomic<UInt64>(0)
+    /// Threads of this image waiting at the background band's gate
+    /// (`BackgroundBand`), and the program name its trace lines use (set by
+    /// the launcher for a program in `YCODE_BG_BAND_TRACE`).
+    let bandWaiters = Atomic<Int>(0)
+    public var bandTraceName: String?
     /// `vm_purgable_control` states by page address (Ycode never purges).
     /// Its own leaf lock: the call is a task-local trap (`bsd-locking.md` §6).
     var purgeableStates: [UInt64: Int32] {
@@ -637,16 +642,29 @@ public final class DarwinKernel {
             let key = TrapProfile.filtered(frame.x.count > 16 ? Int64(Int32(truncatingIfNeeded: frame.x[16])) : 0,
                                            kernel: self)
             let start = KernelClock.now()
-            defer {
-                profile.noteHandler(key, KernelClock.now() &- start)
-                applyHostPolicy(context)
-            }
-            return handleTrap(&frame, context: context, memory: memory, beforeTrap: beforeTrap)
+            let outcome = handleTrap(&frame, context: context, memory: memory, beforeTrap: beforeTrap)
+            profile.noteHandler(key, KernelClock.now() &- start)
+            applyHostPolicy(context)
+            if BackgroundBand.active { bandAfterTrap(context, outcome) }
+            return outcome
         }
         let outcome = handleTrap(&frame, context: context, memory: memory, beforeTrap: beforeTrap)
         // The host priority follows the class (scheduling-policy.md §4.7), outside the lock.
         applyHostPolicy(context)
+        if BackgroundBand.active { bandAfterTrap(context, outcome) }
         return outcome
+    }
+
+    /// The background band at the end of a locked trap (`BackgroundBand`):
+    /// a thread that goes on is counted (and a background one may wait);
+    /// one that ends is not counted any more.
+    private func bandAfterTrap(_ context: ThreadContext, _ outcome: Outcome) {
+        switch outcome {
+        case .threadExit, .exit, .fatal, .imageReplaced:
+            BackgroundBand.stopped()
+        default:
+            BackgroundBand.afterTrap(context, kernel: self)
+        }
     }
 
     private func handleTrap(_ frame: inout TrapFrame, context: ThreadContext, memory: any KernelGuestMemory,
@@ -695,6 +713,7 @@ public final class DarwinKernel {
         if system.isImplicit { lock.terminate() } else { lock.terminate(kernel: self) }
         withEvents { kevents.timerWake.wakeAll() }
         signalWaiters.wakeAll()
+        if BackgroundBand.active { BackgroundBand.poke(kernel: self) }
         threadHost?.stopAllThreads()
     }
 

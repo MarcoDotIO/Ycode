@@ -2445,6 +2445,7 @@ extension DarwinFileSystem {
     /// getxattr / fgetxattr: the attribute's value. ENOATTR when it is missing.
     public func getExtendedAttribute(_ t: XattrTarget, name: String) throws -> [UInt8] {
         try Self.checkName(name)
+        if name == Decmpfs.resourceForkName, let fork = heldResourceFork(t) { return fork }
         let host = try xattrHost(t)
         guard host.path != nil || host.fd != nil else { throw DarwinErrnoError(Self.ENOATTR) }
         let key = Self.xattrPrefix + name
@@ -2471,6 +2472,11 @@ extension DarwinFileSystem {
     /// `create`: XATTR_CREATE; `replace`: XATTR_REPLACE.
     public func setExtendedAttribute(_ t: XattrTarget, name: String, value: [UInt8], create: Bool, replace: Bool) throws {
         try Self.checkName(name)
+        // Resource forks are position-addressed and held by the volume (DecmpfsVolume.swift).
+        if name == Decmpfs.resourceForkName {
+            try writeResourceFork(t, value: value, position: 0, create: create, replace: replace)
+            return
+        }
         let host = try xattrHost(t)
         guard host.writable, host.path != nil || host.fd != nil else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
         let key = Self.xattrPrefix + name
@@ -2494,6 +2500,10 @@ extension DarwinFileSystem {
     /// read-only prefix.
     public func removeExtendedAttribute(_ t: XattrTarget, name: String) throws {
         try Self.checkName(name)
+        if name == Decmpfs.resourceForkName, removeHeldResourceFork(t) {
+            if let host = try? xattrHost(t) { try? removeHostAttribute(host, name: name) }
+            return
+        }
         let host = try xattrHost(t)
         guard host.path != nil || host.fd != nil else { throw DarwinErrnoError(Self.ENOATTR) }
         guard host.writable else { throw DarwinErrnoError(DarwinErrnoCode.EROFS) }
@@ -2527,7 +2537,7 @@ extension DarwinFileSystem {
                 if errno == ENOTSUP || errno == EPERM { return [] }
                 throw DarwinErrnoError(Self.xattrErrno())
             }
-            if size == 0 { return [] }
+            if size == 0 { return heldResourceFork(t) != nil ? [Decmpfs.resourceForkName] : [] }
             var buffer = [CChar](repeating: 0, count: size)
             let n = buffer.withUnsafeMutableBufferPointer { call($0.baseAddress, size) }
             if n < 0 {
@@ -2535,8 +2545,10 @@ extension DarwinFileSystem {
                 continue
             }
             let bytes = buffer.prefix(n).map { UInt8(bitPattern: $0) }
-            return bytes.split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
+            var names = bytes.split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
                 .filter { $0.hasPrefix(Self.xattrPrefix) }.map { String($0.dropFirst(Self.xattrPrefix.count)) }
+            if !names.contains(Decmpfs.resourceForkName), heldResourceFork(t) != nil { names.append(Decmpfs.resourceForkName) }
+            return names
         }
         throw DarwinErrnoError(DarwinErrnoCode.EIO)
     }
