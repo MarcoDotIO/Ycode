@@ -238,7 +238,10 @@ private let ycodeDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent
         // frames are sparse (a loaded machine) and never above it.
         #expect(peak < 65, "peak \(peak)")
         if frames.count >= 15 { #expect(peak > 40, "peak \(peak) over \(frames.count) frames") }
-        // The text really moved past the top by the peak.
-        #expect(abs(deepest - peak) < 0.5, "deepest \(deepest), peak \(peak)")
+        // The text really moved past the top by the peak, within a device
+        // pixel: the clip view's origin snaps to the backing (whole points on
+        // a 1x CI runner: 55.0 drawn for a 54.497 peak).
+        let pixel = 1 / (scroll.window?.backingScaleFactor ?? 1)
+        #expect(abs(deepest - peak) <= pixel, "deepest \(deepest), peak \(peak), pixel \(pixel)")
     }
 }

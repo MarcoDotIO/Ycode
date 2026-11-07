@@ -136,7 +136,11 @@ extension WorkspaceWindowController {
     /// bursts: a build's activity text, issue counts).
     func scheduleToolbarFit() {
         // The inspector's slide fits the toolbar once, at its end (row 106).
-        guard !toolbarControls.fitScheduled, !isInspectorSliding else { return }
+        // A request made while the fit runs comes from the fit's own steps
+        // (the issue capsule's counts appear and go as each step is tried):
+        // the fit measures after them, so it needs no second fit, and one
+        // would try the steps again and ask again, every turn (B6).
+        guard !toolbarControls.fitScheduled, !toolbarControls.fitting, !isInspectorSliding else { return }
         toolbarControls.fitScheduled = true
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
@@ -174,7 +178,14 @@ extension WorkspaceWindowController {
         guard let window, let frame = window.contentView?.superview, window.toolbar != nil, !toolbarControls.fitting, !isInspectorSliding else { return }
         toolbarControls.fitting = true
         toolbarControls.fitRuns += 1
-        defer { toolbarControls.fitting = false }
+        // The steps follow the activity view's natural width; when the
+        // fit's own layout changed it (the gap before the view), one more
+        // fit uses the new width.
+        let natural = activityView.naturalWidth
+        defer {
+            toolbarControls.fitting = false
+            if abs(activityView.naturalWidth - natural) >= 1 { scheduleToolbarFit() }
+        }
         // The first try lays out the whole frame (the toolbar's room follows
         // the areas' dividers); the steps only change toolbar items, so later
         // tries lay out the title bar alone, not the editor's text again
