@@ -196,6 +196,11 @@ extension DarwinProcess {
         let wasBG = isDarwinBG
         importanceBoosts = max(0, importanceBoosts + delta)
         let release = importanceBoosts > 0 && holdActive.load(ordering: .acquiring)
+        if !SchedPolicy.importanceTraced.isEmpty, wasBG != isDarwinBG, SchedPolicy.importanceTraced.contains(name) {
+            let at = Double(KernelClock.now() &- BackgroundBand.origin) / 1e9
+            FileHandle.standardError.write(Data(("ycode-simd: importance: \(name) pid \(pid) \(isDarwinBG ? "darwin-bg" : "boosted") "
+                + "(boosts \(importanceBoosts)\(reason.description.isEmpty ? "" : ", \(reason)")) at \(String(format: "%.2f", at)) s\n").utf8))
+        }
         // A darwin-bg flip changes classes only with QoS on (`refreshSchedClasses`);
         // without it there is nothing to do under L0 (`bsd-locking.md` §12).
         let flipped = wasBG != isDarwinBG && SchedPolicy.qosEnabled
@@ -226,7 +231,7 @@ extension ThreadContext {
 
     /// The highest override (explicit, dispatch).
     var overrideQoS: Int {
-        max(dispatchOverrideQoS, maxExplicitOverride)
+        max(dispatchOverrideQoS, maxExplicitOverride, keventOverrideQoS)
     }
 
     /// The class the host runs this thread at (§4.6, §4.7, §4.10): its class,
@@ -412,7 +417,7 @@ extension MachIPC {
     }
 
     /// Marks a user message at send time (§4.3, §4.6). Lock held.
-    func annotateForScheduling(_ m: inout KMessage, options: UInt64) {
+    func annotateForScheduling(_ m: inout KMessage, options: UInt64, priority: UInt32 = 0) {
         // On a fast path L0 is not held: the trap's thread is the fast path's
         // (L0's own context belongs to whichever thread holds L0).
         let ctx = SchedPolicy.qosEnabled ? lock.callerContext : nil
@@ -424,6 +429,12 @@ extension MachIPC {
             } else {
                 kernel?.system.schedStats.refusedByPort &+= 1
             }
+        }
+        if !SchedPolicy.importanceTraced.isEmpty, let p = m.destination.port, !p.isKernelObject {
+            traceImportanceSend(m, to: p, donor: kernel?.schedProcess?.isImportanceDonor ?? false)
+        }
+        if AsyncQoS.active, let ctx, let p = m.destination.port, !p.isKernelObject {
+            AsyncQoS.set(&m, sender: ctx, options: options, priority: priority)
         }
         if SchedPolicy.qosEnabled, options & MachMsgOption.rcvMsg != 0, case .sendOnce = m.reply, let ctx {
             m.pushClass = Int8(ctx.schedClass)
@@ -455,9 +466,14 @@ extension MachIPC {
     func receivedForScheduling(_ m: KMessage, by context: ThreadContext?) {
         guard let context, let k = context.kernel else { return }
         if m.importance, let p = k.schedProcess, p.isImportanceReceiver {
-            if let old = context.carriedImportance { old.changeImportance(-1) }
-            context.carriedImportance = p
-            p.changeImportance(1)
+            if SchedPolicy.replyImportanceEnabled, case let .sendOnce(reply) = m.reply, reply.active, !reply.isKernelObject {
+                // A request: its boost lasts until it is answered (§4.11).
+                attachReplyBoost(reply, process: p, messageID: m.id)
+            } else {
+                if let old = context.carriedImportance { old.changeImportance(-1) }
+                context.carriedImportance = p
+                p.changeImportance(1)
+            }
         }
         if m.pushClass >= 0, SchedPolicy.qosEnabled {
             var cls = Int(m.pushClass)
@@ -643,7 +659,7 @@ extension DarwinSystem {
                 + "(\(SchedStats.fastRefreshes.load(ordering: .relaxed)) recomputations without L0); "
                 + "importance: \(s.donationPorts) receiving ports, \(s.tempOwnerPorts) temporary owners, "
                 + "\(s.importanceMessages) messages, \(s.refusedByPort) donor sends to other ports; "
-                + "send pushes \(SchedStats.sendPushes.load(ordering: .relaxed))" + SchedStats.syncPushReport
+                + "send pushes \(SchedStats.sendPushes.load(ordering: .relaxed))" + SchedStats.syncPushReport + SchedStats.replyImportanceReport + AsyncQoS.report
             line += "; " + lock.admissionReport
             return line
         }

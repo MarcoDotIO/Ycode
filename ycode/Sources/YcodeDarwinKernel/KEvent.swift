@@ -1378,6 +1378,8 @@ extension DarwinKernel {
             for kn in kq.knotes where deliverable(kn, in: kq) {
                 anyActive = true
                 if let q = PthreadPriority.qos(kn.qos) { highest = max(highest ?? q, q) }
+                // The queue's override raises the request (§4.11).
+                if AsyncQoS.active, case let o = machPortOverrideQoS(kn), o > 0 { highest = max(highest ?? o, o) }
                 if kn.qos & PthreadPriority.overcommit != 0 { overcommit = true }
             }
             if anyActive && kq.owner == nil {
@@ -1570,6 +1572,7 @@ extension DarwinKernel {
         for kn in machportKnotes(named: name) {
             kn.active = true
             activated(kn)
+            if AsyncQoS.active { overrideServicer(of: kn) }
         }
     }
 

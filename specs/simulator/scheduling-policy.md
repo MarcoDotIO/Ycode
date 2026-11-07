@@ -430,7 +430,9 @@ skipped. A waiter in a condition wait that takes the mutex back
 
 - I/O throttling tiers, background sockets, the jetsam bands.
 - Live-donor apps changing with their UI state. Apps are donors.
-- Importance carried by vouchers past the end of the servicing episode.
+- Importance carried by vouchers past the end of the servicing episode,
+  except a request's, which §4.11 ties to its reply right
+  (`YCODE_REPLY_IMPORTANCE`).
 - Transitive pushes outside synchronous IPC: a raised ulock owner or lock
   holder does not raise the holder of a lock it waits for, and a send push
   (§4.6) is not passed on. Chains of synchronous requests are modelled
@@ -466,6 +468,18 @@ Ycode's model (`BackgroundBand.swift`, a run gate in Ycode itself):
   background work on its efficiency cores only (the reference Mac: 4 of
   14, `boot-profile.md` §19.1; Apple's public performance-tuning
   documentation, level 1).
+- **Ease window** (`YCODE_BG_BAND_EASE_MS=N`, unset or 0: off; added
+  2026-11-07, `boot-profile.md` §22): a free place goes to a class-bg
+  thread only once the runnable threads *above* class bg have stayed below
+  `YCODE_BG_BAND_CPUS` for N ms. On the reference a priority-4 thread runs
+  when the boot's CPU burst eases (`boot-profile.md` §19.3: the host's
+  load stays far above its CPU count until about home), not at every
+  momentary dip, which Ycode's lower thread count produces often after the
+  first 10 s. The burst is stamped whenever a thread above bg is counted
+  with the CPUs full, or a background thread finds them full; background
+  threads filling the places themselves do not stamp it (a first version
+  counted them, and background threads then kept each other out: a boot
+  stalled).
 - **Leaving early.** A waiter leaves when its host class rises (a boost, a
   ulock or sync-IPC push, a send push: the class recomputation and
   `addSendPush` wake it), when its image ends or its Mach suspension gate
@@ -576,6 +590,84 @@ two waits it was meant for are asynchronous XPC requests, not synchronous
 ones), and the on-demand forms make the boot slower (more work before
 home); all stay off by default.
 
+### 4.11 Asynchronous requests (`YCODE_REPLY_IMPORTANCE`, `YCODE_ASYNC_QOS`)
+
+The reference (xnu, level 1; behaviour read from the open-source
+`osfmk/ipc/ipc_importance.c`, `ipc_kmsg.c`, `ipc_pset.c` and
+`osfmk/kern/thread_policy.c`, `task_policy.c`; nothing copied). An XPC
+client that sends with a reply handler does not wait in the kernel, so
+neither §4.6 nor §4.10 applies (`boot-profile.md` §21.3). Two other
+mechanisms carry its priority to the server:
+
+1. **Importance on the voucher.** A message that carries importance
+   boosts the receiving task while it is queued (§4.3). A receiver that
+   asks for the message's voucher (`MACH_RCV_VOUCHER`; libdispatch does for
+   every dispatch_mach channel, so every XPC connection) gets the boost
+   moved into a new voucher (`ipc_importance_receive`). The task stays
+   boosted while that voucher lives: libdispatch keeps it with the received
+   message and with each work item made while it is adopted, so the boost
+   outlives the receiving thread's servicing episode and lasts until the
+   request has been handled. An unboosted Adaptive daemon is darwin-bg
+   (§2.2); xnu lifts a darwin-bg thread of an Adaptive task above that
+   clamp only for a synchronous waiter's turnstile push (`thread_policy.c`,
+   "promote above task"), never for a QoS override. So importance is what
+   lets such a daemon serve an asynchronous request outside the background
+   band.
+2. **The message's QoS.** At send a message gets a priority (the sending
+   work item's, from the voucher's pthread-priority attribute, or the
+   `MACH_SEND_OVERRIDE` argument in its encoded `mach_msg_priority_t` form)
+   and an override QoS (that priority's QoS, raised to the override
+   argument's). Each queued message raises the override of the messages
+   ahead of it, so the head carries the queue's highest. An EVFILT_MACHPORT
+   knote that receives the message (`MACH_RCV_MSG`) adjusts its event QoS
+   to the head's override: the workloop's thread request asks for that
+   QoS, and a thread already servicing the workloop is overridden to it,
+   until the queue drains. The delivered event carries `(priority << 32) |
+   override` in `ext[2]`, and libdispatch runs the handler at that
+   priority. Only that workloop or thread is raised, not the receiving
+   task's other threads.
+
+Ycode has no voucher objects (`host_create_mach_voucher` answers 0), so
+both are modelled without them:
+
+- **Request importance** (`YCODE_REPLY_IMPORTANCE=1`, `ReplyImportance.swift`).
+  When a thread of an importance receiver takes a message that carries
+  importance and a send-once reply right, the boost (§4.3) is tied to that
+  reply right in the receiving space instead of to the thread: it lasts
+  until the right leaves that space (the reply is sent with it, it is
+  deallocated, moved on in a message, or the space ends), the reply port
+  dies, or the process ends. The reply right stands for the voucher's life:
+  an XPC server answers through it when the request has been handled, and
+  destroys it if it never answers. A message without a send-once reply
+  keeps §4.3's rule (the boost ends with the servicing episode). The
+  boosts are per right (a port keeps the boosts of the rights to it, each
+  with the space that holds it); a right sent on does not take the boost
+  with it. Port-lock (G) state, as the rest of §4.3.
+- **Message QoS** (`YCODE_ASYNC_QOS=1`, with `YCODE_SCHED_QOS`;
+  `AsyncQoS.swift`). The send records the message's priority and override
+  as xnu does, with the sending thread's requested QoS (§4.4 step 1) in
+  place of the voucher's priority. A port's queue keeps the count of its
+  messages per override QoS; its highest is the head's override. A
+  workloop's thread request (§4.4 step 1: the bound thread's base QoS)
+  takes the highest of its deliverable knotes' QoS and, for machport knotes
+  with `MACH_RCV_MSG`, their queues' overrides; a message queued while a
+  thread services the workloop raises that thread's *kevent override*
+  (§4.4 step 2, cleared with its next request). `ext[2]` of a delivered
+  machport event carries the message's priority and the override. Not
+  modelled: the kqworkq buckets' overrides (their QoS stays the knote's),
+  the special reply port's sync IPC override.
+
+Neither lifts a darwin-bg thread by itself (§2.2): the first ends darwin-bg
+by boosting the process, the second only raises QoS within the classes the
+process may use, as in xnu.
+
+Diagnostics: `YCODE_IMPORTANCE_TRACE=<program>,…` prints each user message
+to a listed program (sender, donor or not, importance, the port accepting
+it or not, the reply), each request boost tied to a reply right and its end
+(answered or the right gone, after N ms), and each change of a listed
+program between boosted and darwin-bg. The `sched:` report adds `request
+boosts N (answered N, dropped N, held N; mean N ms, longest N ms)`.
+
 ## 5. Diagnostics
 
 - `ycode-simd: sched: start hold on|off, thread QoS on|off, lock admission
@@ -638,6 +730,7 @@ home); all stay off by default.
 | `YCODE_BG_BAND` | 1 for `--device` runs (since 2026-11-07), else 0 | §4.9 the background band (with `YCODE_SCHED_QOS`) |
 | `YCODE_BG_BAND_CPUS` | online CPUs | §4.9 runnable threads before a background thread waits |
 | `YCODE_BG_BAND_BG_CPUS` | unset | §4.9 the most class-bg threads runnable at once |
+| `YCODE_BG_BAND_EASE_MS` | unset | §4.9 a free place goes to a background thread only after the threads above bg stayed below the CPU count this long |
 | `YCODE_BG_BAND_MAX_MS` | 60000 | §4.9 the longest one wait; 0 none |
 | `YCODE_BG_BAND_TRACE`, `YCODE_BG_BAND_SAMPLE_MS` | unset | §4.9 diagnostics |
 | `YCODE_SYNC_PUSH` | 0 | §4.10 the sync-wait push (with `YCODE_SCHED_QOS`); `1` on |
@@ -645,6 +738,9 @@ home); all stay off by default.
 | `YCODE_DEMAND_START_PUSH` | unset | §4.10 on-demand starts pushed at this class (`bg`, `ut`, `df`, `ui`) until their first request is served |
 | `YCODE_DEMAND_START_MS` | unset | §4.10 the timed form of the on-demand start push: N ms from the spawn |
 | `YCODE_SYNC_PUSH_TRACE` | unset | §4.10 trace lines for the listed programs |
+| `YCODE_REPLY_IMPORTANCE` | 0 | §4.11 a request's importance lasts until its reply right leaves the receiving space; `1` on |
+| `YCODE_ASYNC_QOS` | 0 | §4.11 a queued message's QoS overrides the workloop that drains its port, and its event's `ext[2]` carries it (with `YCODE_SCHED_QOS`); `1` on |
+| `YCODE_IMPORTANCE_TRACE` | unset | §4.11 trace lines for the listed programs |
 | `YCODE_HOST_SCHED_UI_PUSHED` | unset | with `YCODE_HOST_SCHED_UI_CPUS`: an image whose send push (§4.6) is at least this class also runs on the UI path's CPUs while it lasts |
 | `YCODE_BOOT_PRIORITY` | 1 for device runs (since 2026-10-27; was 0) | device runs (`--device`) only: with `YCODE_SCHED_QOS` unset, set it to 1 and `YCODE_HOST_SCHED` (if unset) to `cgroup` before the VMM starts (§7.4, §7.5); `0` turns it off. The cgroup backend re-executes the VMM in a delegated user scope only when the user's service manager is reachable (`$XDG_RUNTIME_DIR/systemd/private`); otherwise it reports itself unavailable and the run goes on without host scheduling |
 
@@ -933,5 +1029,8 @@ fileindexerd and intelligencetasksd crashes (`service-fidelity.md` §11,
 | Sync requests push their destination's servicer from the moment they are queued, through the reply port's link to the send turnstile; watch ports push the spawned job's main thread; turnstile chains are bounded per update (§4.10) | 1 (xnu `osfmk/ipc/ipc_port.c`: send turnstile inheritor, special reply port linkage, watchport elements; `osfmk/kern/turnstile.c`; `osfmk/kern/task.c`, as open source) |
 | Everything in §4–§6 | Ycode design |
 | Shell-ready holds; the boost's source; background CPUs (§4.2, §4.7) | Ycode design; `SchedPolicyTests.shellReadyHoldWaitsForTheShell`; Thor boots of `visionos.md` §10.26 |
+| Importance moved into the receiving voucher with `MACH_RCV_VOUCHER`, dropped otherwise; a darwin-bg Adaptive thread lifted only by a turnstile promotion (§4.11) | 1 (xnu `osfmk/ipc/ipc_importance.c` `ipc_importance_receive`; `osfmk/kern/thread_policy.c` "promote above task", `task_policy.c` adaptive darwin-bg) |
+| A message's priority and override at send, the override raised towards the queue's head, the machport knote's event QoS and `ext[2]` (§4.11) | 1 (xnu `osfmk/ipc/ipc_kmsg.c` `ipc_kmsg_set_qos`, `ipc_kmsg_enqueue`; `osfmk/ipc/ipc_pset.c` `filt_machport_adjust_qos`, `filt_machportprocess`; `osfmk/mach/message.h` `mach_msg_priority_t`) |
+| Request importance, message QoS and the ease window in boots (§4.9, §4.11) | 3 (Thor, `boot-profile.md` §22: series X1, X2, trace boots `tr1-*`, profiles) |
 
 No disassembly or decompilation was used (level 5 not used).

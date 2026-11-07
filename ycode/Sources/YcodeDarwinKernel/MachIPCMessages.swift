@@ -19,6 +19,8 @@ struct MachSendRequest {
     var body: [UInt8]
     /// The auxiliary data block of a vector send.
     var aux: [UInt8]?
+    /// The `mach_msg_priority_t` argument (used with `MACH_SEND_OVERRIDE`).
+    var priority: UInt32 = 0
 }
 
 /// A receive, decoded from the trap arguments.
@@ -47,6 +49,8 @@ struct MachReceiveResult {
     var auxSize: UInt64 = 0
     /// A one-line summary for the trace.
     var note = ""
+    /// `(priority << 32) | override` of the received message (§4.11; kevent `ext[2]`).
+    var priorityAndQoS: UInt64 = 0
 }
 
 /// One parsed descriptor before copyin.
@@ -145,7 +149,7 @@ extension MachIPC {
         m.inline = inline
         m.aux = s.aux
         m.sender = senderIdentity
-        if SchedPolicy.importanceEnabled || SchedPolicy.qosEnabled { annotateForScheduling(&m, options: options) }
+        if SchedPolicy.importanceEnabled || SchedPolicy.qosEnabled { annotateForScheduling(&m, options: options, priority: s.priority) }
         if options & MachMsgOption.sendNotify != 0, case let .send(p) = m.destination {
             armSendPossible(p, name: s.remote)
         }
@@ -521,6 +525,7 @@ extension MachIPC {
             return MachReceiveResult(code: MachMsgReturn.rcvTooLarge, size: UInt64(size + trailer),
                                      note: " [too large: \(size)+\(trailer), destroyed]")
         }
+        let headOverride = source.messages.maxOverride
         let (m, seqno) = dequeue(source)
         if m.importance || m.pushClass >= 0 { receivedForScheduling(m, by: context) }
         if source.demandPush != nil { handOverDemandStartPush(source, to: context) }
@@ -544,7 +549,8 @@ extension MachIPC {
         }
         let code = out.resource == 0 ? MachMsgReturn.success : MachMsgReturn.rcvBodyError | out.resource
         return MachReceiveResult(code: code, size: UInt64(out.bytes.count + trailer), auxSize: auxSize,
-                                 note: tracesCalls ? " [id \(m.id) size \(out.bytes.count) seqno \(seqno) from \(hx(sourceName))]" : "")
+                                 note: tracesCalls ? " [id \(m.id) size \(out.bytes.count) seqno \(seqno) from \(hx(sourceName))]" : "",
+                                 priorityAndQoS: AsyncQoS.receivedPriorityAndQoS(m, headOverride: headOverride))
     }
 
     /// The header written for a too-large message received without

@@ -101,6 +101,9 @@ final class IPCPort {
     /// Send rights in existence (entries counted once, plus rights in messages).
     var srights = 0
     var sorights = 0
+    /// Boosts of requests answered with send-once rights to this port,
+    /// held until the right leaves the space that received it (§4.11).
+    var replyBoosts: [ReplyBoost] = []
     var mscount: UInt32 = 0
     var seqno: UInt32 = 0
     var qlimit = MachIPCLimits.qlimitDefault
@@ -304,6 +307,10 @@ struct KMessage {
     var pushClass: Int8 = -1
     /// The push of a synchronous request (`scheduling-policy.md` §4.10), shared by copies.
     var syncPush: SyncWaitPush?
+    /// The message's QoS (`scheduling-policy.md` §4.11): its priority as a
+    /// `pthread_priority_t` (0 unspecified) and its override QoS (0 none).
+    var ppriority: UInt32 = 0
+    var qosOverride: UInt8 = 0
 
     /// The received size without trailer (§2.5).
     var size: Int {
@@ -329,17 +336,32 @@ struct KMessage {
 struct MessageQueue {
     private var items: [KMessage] = []
     private var head = 0
+    /// Queued messages by override QoS (1…6; §4.11).
+    private var overrides = SIMD8<UInt16>()
+
+    /// The highest override QoS of the queued messages (xnu raises each
+    /// queued message's override towards the head, so the head carries the
+    /// queue's highest); 0 none.
+    var maxOverride: Int {
+        guard overrides != SIMD8<UInt16>() else { return 0 }
+        for q in stride(from: 7, through: 1, by: -1) where overrides[q] > 0 { return q }
+        return 0
+    }
 
     var count: Int { items.count - head }
     // swiftlint:disable:next empty_count - this is isEmpty
     var isEmpty: Bool { count == 0 }
     var first: KMessage? { isEmpty ? nil : items[head] }
 
-    mutating func append(_ m: KMessage) { items.append(m) }
+    mutating func append(_ m: KMessage) {
+        if m.qosOverride > 0 { overrides[Int(min(m.qosOverride, 7))] &+= 1 }
+        items.append(m)
+    }
 
     mutating func popFirst() -> KMessage? {
         guard !isEmpty else { return nil }
         let m = items[head]
+        if m.qosOverride > 0 { overrides[Int(min(m.qosOverride, 7))] &-= 1 }
         head += 1
         if head > 64 && head * 2 > items.count {
             items.removeFirst(head)
@@ -352,6 +374,7 @@ struct MessageQueue {
         let all = Array(items[head...])
         items = []
         head = 0
+        overrides = SIMD8<UInt16>()
         return all
     }
 

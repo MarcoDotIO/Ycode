@@ -104,7 +104,11 @@ extension MachIPC {
                 return .success(.dead)
             }
             guard e.bits & T.sendOnce != 0, let p = e.port else { return .failure(.noRight) }
-            if apply { freeName(i) }
+            if apply {
+                // A request's reply sent with its right ends the request's boost (§4.11).
+                if !p.replyBoosts.isEmpty { replyRightLeft(p, answered: slot == .destination) }
+                freeName(i)
+            }
             return .success(.sendOnce(p))
 
         case MachMsgType.makeSend:

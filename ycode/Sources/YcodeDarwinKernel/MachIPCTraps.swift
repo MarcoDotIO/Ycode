@@ -376,7 +376,7 @@ extension MachIPC {
                 local: bytes.readLE(UInt32.self, at: 12), voucher: bytes.readLE(UInt32.self, at: 16),
                 id: bytes.readLE(Int32.self, at: 20),
                 descriptorCount: complex && sendSize >= 28 ? bytes.readLE(UInt32.self, at: 24) : 0,
-                body: Array(bytes[bodyStart...]))
+                body: Array(bytes[bodyStart...]), priority: UInt32(truncatingIfNeeded: a[6]))
             call += " [bits=\(hx(bits)) remote=\(hx(request.remote)) local=\(hx(request.local)) id=\(request.id)]"
             let (code, pseudo, sendNote) = send(request, options: options, timeout: timeout, msg2: false, memory: memory)
             note += sendNote
@@ -469,7 +469,8 @@ extension MachIPC {
                 return finish(MachMsgReturn.sendInvalidData)
             }
             let request = MachSendRequest(bits: bits, size: sendSize, remote: lo(3), local: hi(3), voucher: lo(4),
-                                          id: Int32(bitPattern: hi(4)), descriptorCount: lo(5), body: body, aux: aux)
+                                          id: Int32(bitPattern: hi(4)), descriptorCount: lo(5), body: body, aux: aux,
+                                          priority: hi(6))
             if Self.traceMessageStrings {
                 // Diagnostics: the printable runs of the body and aux data
                 // (os_log payloads, XPC keys and strings).
@@ -899,7 +900,8 @@ extension MachIPC {
             r.mayBlock = false
             let result = receive(r, context: context, memory: memory)
             trace("kevent machport receive \(hx(port)) -> \(MachMsgReturn.name(result.code))\(result.note)")
-            return KeventMachReceive(returnCode: result.code, size: result.size, auxiliarySize: result.auxSize,
+            return KeventMachReceive(returnCode: result.code, size: result.size, priorityAndQoS: result.priorityAndQoS,
+                                     auxiliarySize: result.auxSize,
                                      data: result.code == MachMsgReturn.rcvTooLarge ? UInt64(result.identity) : 0)
         }
         guard deferWrite else { return answer }

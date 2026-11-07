@@ -422,6 +422,7 @@ extension DarwinKernel {
         if SchedPolicy.qosEnabled {
             ctx.requestedQoS = 0
             ctx.dispatchOverrideQoS = 0
+            ctx.keventOverrideQoS = 0
             ctx.removeAllExplicitOverrides()
             refreshSchedClass(ctx)
         }

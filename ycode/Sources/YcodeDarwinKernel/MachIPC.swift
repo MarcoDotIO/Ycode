@@ -364,6 +364,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
     func freeName(_ i: Int) {
         let name = nameOf(i)
         if let p = entries[i].port {
+            if entries[i].bits & MachPortType.sendOnce != 0, !p.replyBoosts.isEmpty { replyRightLeft(p, answered: false) }
             p.spRequests[dn(name)] = nil
             if let so = p.dnRequests.removeValue(forKey: dn(name)) {
                 if p.active {
@@ -593,6 +594,7 @@ public final class MachIPC: MachIPCHandling, @unchecked Sendable {
             p.creditedProcess = nil
         }
         dropSyncPush(p)
+        if !p.replyBoosts.isEmpty { dropReplyBoosts(p) }
         for m in queued { destroyMessage(m) }
         p.receiveWaiters.wakeAll()
         p.sendWaiters.wakeAll()

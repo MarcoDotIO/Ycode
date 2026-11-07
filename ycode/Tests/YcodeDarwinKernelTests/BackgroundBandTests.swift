@@ -98,6 +98,30 @@ extension KernelSwitchSuites {
         }
     }
 
+    /// `YCODE_BG_BAND_EASE_MS`: a place freed by a thread that blocks goes
+    /// to a waiter only once the CPUs have not been full for the window.
+    @Test func withAnEaseWindowAFreedPlaceWaitsForTheBurstToEase() {
+        with(cpus: 2) {
+            let saved = BackgroundBand.easeNanoseconds
+            BackgroundBand.easeNanoseconds = 300_000_000
+            defer { BackgroundBand.easeNanoseconds = saved }
+            let a = Runner(context(SchedClass.default, 1), kernel: kernel)
+            let b = Runner(context(SchedClass.interactive, 2), kernel: kernel)
+            #expect(a.wentOn.wait(timeout: .now() + 5) == .success)
+            #expect(b.wentOn.wait(timeout: .now() + 5) == .success)
+            let bg = Runner(context(SchedClass.background, 3), kernel: kernel)
+            waitForWaiters(1)
+            let freed = KernelClock.now()
+            a.finish()
+            // Not at once: the CPUs were full a moment ago.
+            #expect(bg.wentOn.wait(timeout: .now() + 0.15) == .timedOut)
+            #expect(bg.wentOn.wait(timeout: .now() + 5) == .success)
+            #expect(bg.wentOnAt.load(ordering: .relaxed) &- freed >= 250_000_000)
+            b.finish()
+            bg.finish()
+        }
+    }
+
     @Test func aBackgroundThreadGoesOnWhenACPUIsFree() {
         with(cpus: 2) {
             let a = Runner(context(SchedClass.default, 1), kernel: kernel)

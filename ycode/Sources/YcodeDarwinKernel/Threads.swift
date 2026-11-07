@@ -102,6 +102,9 @@ public final class ThreadContext: @unchecked Sendable, CustomStringConvertible, 
     /// thread's own darwin-bg, and the resulting class.
     var requestedQoS = 0
     var dispatchOverrideQoS = 0
+    /// The override QoS of the messages queued for the workloop this thread
+    /// services (`scheduling-policy.md` §4.11); cleared with its next request.
+    var keventOverrideQoS = 0
     /// QOS_OVERRIDE_START overrides by resource. Changed by `bsdthread_ctl`
     /// of any thread of the image (under L0) and by the thread's workqueue
     /// return (under its event lock only, on the fast path), so it has a

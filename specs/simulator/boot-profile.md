@@ -3971,6 +3971,247 @@ Fidelity is unchanged.
      s from launch to first line (0.25 s of guest code alone, §20.7) and
      liveactivitiesd (§20.8).
 
+## 22. Asynchronous requests, dasd's backlog and the band, start-up costs (agent B3-BOOT7, 2026-11-07)
+
+§21.7's next steps with Ycode's own simulator: the asynchronous-request
+mechanisms (`scheduling-policy.md` §4.11), dasd's backlog before home, and
+the start-up costs of containermanagerd and liveactivitiesd. Target:
+home_s ≤ 21.4 s, full boot, every service on (networking and the Duo's
+inner panel included).
+
+### 22.1 Conditions
+
+- Thor; a fresh copy of the golden device (the same source as §20's and
+  §21's) in the agent's own folder, booted nine times at that path before
+  any timed series (five held 5 s after home, four held 120 s; home
+  85, 32, 30, 33, 34, 30, 29, 28, 30 s); full boot, `YCODE_HOME_WATCH`,
+  stopped 5 s after home (trace boots 10 s, fidelity boots 700 s), no save.
+- Builds: *base* = `0645840a` (§21 merged; the band on by default);
+  *tree* = `f7204902` (§4.11's two switches and the importance trace, off
+  by default); *tree3* = `124a2322` (the band's ease window, off by
+  default, and report lines). With the new switches off every build is
+  the main line's program.
+- Timed series under the shared boot-timing lock, each boot started with
+  no other `ycode-simd` and a 1-minute load under 4, arms rotated each
+  round, n = 5 per arm: X1 08:42–09:20, X2 09:49–10:29 (after a first X2 with the ease window's flawed first version was stopped, §22.4).
+- Trace boots `tr1-*` (`YCODE_IMPORTANCE_TRACE` and `YCODE_BG_BAND_TRACE`
+  for containermanagerd, siriinferenced, lsd, biomed, dasd), frame-profile
+  windows `p-band`, `p-reply`, `p-ease` (`YCODE_FRAME_PROFILE_BOOT=120`,
+  started right after a series, so their figures are high).
+
+### 22.2 Asynchronous requests (`scheduling-policy.md` §4.11)
+
+Built as §4.11 describes, both off by default: `YCODE_REPLY_IMPORTANCE`
+(a received request's importance is tied to its send-once reply right
+until the right leaves the receiving space, the stand-in for xnu's voucher)
+and `YCODE_ASYNC_QOS` (a message's priority and override at send; the
+queue's highest override raises the draining workloop's thread request or
+its servicing thread, and `ext[2]` of the delivered event carries them).
+Tests: `AsyncRequestTests` (the boost until the reply is sent, until the
+right is deallocated, until the reply port dies; the episode rule without a
+reply and with the switch off; the message's priority and override from the
+sender and from both forms of the override argument; a queued message
+raising a workloop's thread request and the event's `ext[2]`).
+
+What the traces show (`tr1-dflt`, `tr1-reply`):
+
+- **lsd's query does carry importance.** lsd (boosted, a donor) sends the
+  XPC connection's first message to containermanagerd's service port with
+  importance (`port accepts`), and the requests that follow on the new
+  connection carry importance and a send-once reply.
+- **Without the switch the boost ends before the request is served.**
+  containermanagerd flips between boosted and darwin-bg several times in
+  the same millisecond as each message is taken: the listener's thread
+  carries the boost only until it returns to the workqueue (§4.3), and the
+  request is served afterwards at class bg.
+- **With it, containermanagerd serves lsd's requests boosted and answers
+  in 257 and 285 ms** after taking them (7.12 → 7.38, 7.41 s; later
+  requests 3–19 ms), the reference's 0.25–1.44 s (median 0.29 s, §19.6).
+  What is left of lsd's wait is containermanagerd's start: the first
+  message was queued at 5.08 s, the requests were taken at 7.12 s
+  (§22.4).
+- **lsd's query → result** (one `log stream` boot each, `cm-band`,
+  `cm-reply`; the stream slows the boot): the result served by
+  containermanagerd came 3.27 s (band) and 3.02 s (request importance)
+  after lsd's first query; containermanagerd's first line came 2.68 s
+  and 2.11 s after it, its own "Query result" 0.57 s and 0.89 s after
+  that (reference: 0.25–1.44 s in all, §19.6). Its start, not its
+  service, is the wait (§22.5).
+- **siriinferenced is biomed's client, not its server.** Its requests go
+  to biomed (and dasd) with a send-once reply and carry no importance
+  (siriinferenced is darwin-bg, not a donor); biomed's replies go to
+  reply ports, which take no importance. So neither mechanism of §4.11
+  reaches siriinferenced's threads; with the switch it was boosted 3.2 s
+  in all by UserEventAgent's requests (0 s without), and its workqueue
+  threads still waited 3.3–3.5 s at the band's gate until 10.2 s.
+- By home about 3 200–3 600 request boosts (mean 79–104 ms, the longest
+  9–12 s; at the exit 4 400–4 800, 3–6 ended by the right going without
+  an answer).
+
+### 22.3 Timed series
+
+| Series | Arm | n | median home_s | mean ± sd | range | kernel lock held at home, median | CPU s at home, median | guest fatal |
+|---|---|---|---|---|---|---|---|---|
+| X1 | band (default) | 5 | **30.72** | 30.77 ± 1.33 | 29.22–32.84 | 4.2 s | 379 | 1–2 |
+| X1 | band + request importance (`YCODE_REPLY_IMPORTANCE=1`) | 5 | 30.76 | 30.52 ± 0.75 | 29.39–31.21 | 4.4 s | 394 | 1 |
+| X1 | band + request importance + message QoS (`YCODE_ASYNC_QOS=1`) | 5 | 35.27 | 33.87 ± 4.04 | 27.75–38.50 | 5.4 s | 410 | 1–2 |
+| X1 | look-up hold until 40 s, band off | 5 | **27.63** | 27.66 ± 0.35 | 27.25–28.17 | 4.5 s | 347 | 0 |
+| X2 | band (default) | 5 | **29.93** | 30.45 ± 2.33 | 28.59–34.36 | 4.0 s | 372 | 2–4 |
+| X2 | band, ease window 500 ms (`YCODE_BG_BAND_EASE_MS=500`) | 5 | 60.61 | 58.48 ± 3.71 | 54.00–62.15 | 4.3 s | 390 | 2–3 |
+| X2 | band, ease window 2000 ms | 5 | 142.30 | 138.23 ± 10.79 | 120.94–147.85 | 4.6 s | 392 | 2–6 |
+| X2 | look-up hold until 40 s, band off | 5 | **27.81** | 27.65 ± 0.33 | 27.20–28.01 | 4.4 s | 337 | 0 |
+
+- **Request importance: no change in home_s** (+0.04 s by the median,
+  −0.25 s by the mean, inside the spread), 15 CPU s more before home. It
+  is the reference's behaviour where Ycode had none and it makes
+  containermanagerd's service the reference's (§22.2), but the waits on
+  the boot's critical path are elsewhere (§22.5).
+- **Message QoS: slower and erratic** (+4.6 s by the median, 27.8–38.5
+  s, 31 CPU s more). Raising every workloop that drains a message from a
+  higher-QoS sender brings work forward, as §21's on-demand push did; the
+  band's gate then holds background threads longer (2.5–3.3 M ms of gate
+  waits against 1.3 M ms with the band alone, in fewer, longer waits).
+- **The ease window: far slower** (+30.7 s with 500 ms, +112 s with
+  2000 ms, by the median), §22.4.
+- **The hold is still the fastest** in both series (27.6 s, 27.8 s;
+  2.0–3.1 s ahead of the band, 25–35 CPU s less before home, no guest
+  fatal), as in §18, §20 and §21.
+- The band arm's spread in X2 (28.6–34.4 s) is one slow boot (34.4 s,
+  409 CPU s); compare arms within a series.
+
+### 22.4 dasd's backlog and the band (§20.3, §20.4)
+
+The hold's lead over the band is dasd's backlog: its activities start
+about 20 programs before home (§18.6) and put some of them on the home
+path (in `p-band` ScreenTimeAgent's guest code is 3.1 s of the critical
+path, from 14.2 s; with the hold it starts after home). dasd runs before
+home because the band gives a background thread a place whenever fewer
+than 14 guest threads above class bg are runnable, which after the first
+10 s is most of the time (6–14 runnable, §20.2), while on the reference
+the host's load stays far above its CPU count until about home (1-minute
+load 60–200 on 14 CPUs during dasd's wait, §19.2–§19.3) and a priority-4
+thread gets no CPU until the burst eases.
+
+Tried in the band: **the ease window** (`YCODE_BG_BAND_EASE_MS`,
+`scheduling-policy.md` §4.9): a free place goes to a background thread
+only once the threads above bg have stayed below the CPU count for the
+window, the reference's "burst eases" instead of every momentary dip.
+Tests: `BackgroundBandTests` (a freed place waits out the window),
+`BandEaseTests` (background threads filling the places themselves do not
+keep each other out).
+
+- The first version counted the background threads themselves as the
+  burst; background threads then kept each other out. One boot stalled
+  (no guest thread runnable, 120–190 waiting at the gate, 1 400 waits in
+  49 s against about 400 000 in a normal boot) and the first X2 was
+  stopped; `BandEaseTests` reproduces it. Fixed in `124a2322`.
+- Fixed, the window makes the boot **2× to 5× slower** (X2: 60.6 s with
+  500 ms, 142.3 s with 2000 ms). The critical path of `p-ease` (home at
+  59.1 s) runs almost entirely through darwin-bg programs, one after
+  another, each step a wait at the gate of about the window's length:
+  healthd's start hold (14.4 s, released by the quiet test), healthd
+  (11.9 s), swcd, eligibilityd, assistantd, cloudd, maild,
+  runningboardd's `task_name_for_pid`, DeviceConfigurationAgent,
+  ScreenTimeSettingsAgent, deviceconfigurationd. In the middle of it
+  (16 s in the stalled boot) no thread above bg was runnable at all.
+- So Ycode's home path depends on background daemons that run at
+  priority 4 on the reference (§3: unboosted Adaptive jobs; in its first
+  boot healthd and deviceconfigurationd did not even start until 254 s,
+  long after home), through waits that carry no push in Ycode. Any band strict enough
+  to keep dasd back until home starves them, as §20.3 found for the
+  stricter CPU counts; dasd's backlog can only move after home once those
+  waits are found and either pushed or shown to be Ycode's own. The edges
+  are in `p-ease` (`ycode-frame-profile --boot`, each step's waker).
+
+### 22.5 Start-up costs on a saturated host (§20.7, §20.8)
+
+From the profiles (`p-band`, `p-reply`; seconds over the 33–34 s window):
+
+| Program | CPU s | of it guest code | host kernel + VMM (Ycode's share) | host run queue |
+|---|---|---|---|---|
+| containermanagerd | 0.86–0.92 | 0.45–0.46 | 0.40–0.41 | 1.5 |
+| liveactivitiesd | 3.76–3.80 | 3.27–3.39 | 0.34–0.40 | 2.0–2.6 |
+
+- **containermanagerd's start is mostly waiting for a CPU.** Its main
+  thread from the spawn to its first receive (`p-reply`, 2.08 s traced):
+  1.23 s host run queue (59 %), 0.56 s guest code, 0.10 s thread start,
+  traps 0.2 s. Its first workqueue threads then waited 4.1–4.3 s at the
+  band's gate in their first trap (`thread_selfid`, 5.8 → 10.1 s), while
+  it was darwin-bg between requests. Ycode's own share of its CPU is
+  large (0.40 of 0.9 s, mostly VMM time: faults and mappings of a new
+  image), but the wall time is the run queue: at class df it competes
+  with about 30 other df threads on a saturated host, where the reference
+  starts on-demand jobs at priority 46 (§3). §21.4's start priority
+  forms brought too much work forward; with request importance its
+  service, once started, is the reference's (§22.2).
+- **liveactivitiesd**: 0.34–0.40 s of host kernel and VMM time (9–10 %),
+  3.3–3.4 s of guest code (§20.8's 2.9 s alone; the reference about 2.6 s
+  scaled), 2.0–2.6 s in the run queue. Ycode's share is the 0.3–0.4 s;
+  the rest is guest code slowed by a saturated host.
+
+### 22.6 Service fidelity
+
+`scripts/ycode-launchd-spawns` over 700 s, one boot each (tree3), each
+after a boot of the same build, on the same device copy:
+
+| | band | band + request importance |
+|---|---|---|
+| home_s of the boot | 32.97 | 32.85 |
+| all starts | 560 (243 labels) | 503 (231 labels) |
+| restart loops (facetimemessagestored, managedappdistributiond, mlhostd, proactiveeventtrackerd, intelligencetasksd, fileindexerd) | 67, 65, 63, 68, 16, 1 | 67, 65, 63, 68, 9, 1 |
+| other daemons and agents | 183 | 172 |
+| per-process domains | 94 | 55 |
+| apps | 3 | 3 |
+| starts by reason (xpc event, Mach IPC, demand, speculative) | 333, 107, 71, 32 | 317, 102, 35, 32 |
+
+- Most of the difference is the band boot's own, not the switch's: it
+  started PosterBoard twice and about 43 poster-extension instances (none
+  in the other boot), most of its 39 extra per-process domains and 36
+  extra demand starts; §20.9 and §21.6 saw 57–58 per-process domains with
+  the band, about what the request-importance boot has. SetStoreUpdateService (3 → 0), eligibilityd (0 → 2) and
+  intelligencetasksd (16 → 9, its throttled loop's phase) are the other
+  labels that differ by more than one start; 16 differ by one.
+- pairedsyncd started once in each boot.
+- With request importance, the boosts by program over the run (to the
+  exit): usernotificationsd 134 s, runningboardd 57 s, searchd 21 s,
+  mobileassetd 18 s, syncdefaultsd 18 s, cloudd 9 s; 3 372 boosts by
+  home, mean 92 ms, the longest 12.7 s.
+
+### 22.7 How far from 21.4 s, and what is left
+
+- Default switches (the band): **29.9–30.7 s** (X1, X2), **1.40–1.43 ×**
+  the reference, 8.5–9.3 s short, 372–379 CPU s before home. The look-up
+  hold: 27.6–27.8 s, 1.29–1.30 ×. This evening's band arm is 0.5–1.3 s
+  slower than §21's (29.4 s) on a fresh copy of the same device, inside
+  §21's W3 spread.
+- **Changes and their effect.** Request importance
+  (`YCODE_REPLY_IMPORTANCE`): the reference's behaviour, containermanagerd
+  answers lsd's requests in 0.26–0.29 s once it has them, home_s
+  unchanged. Message QoS (`YCODE_ASYNC_QOS`): +4.6 s, erratic. The band's
+  ease window: +30 to +112 s. None retires the hold.
+- **Recommendation (the owner decides).** Keep the band on by default,
+  and `YCODE_ASYNC_QOS` and `YCODE_BG_BAND_EASE_MS` off. Keep
+  `YCODE_REPLY_IMPORTANCE` off for now: it is the reference's mechanism
+  and serves containermanagerd's requests at the reference's speed, but it
+  does not shorten the boot and costs about 15 CPU s before home; turn it
+  on together with the next step, which needs daemons that serve requests
+  kept out of the gate for as long as the reference keeps them out. Keep
+  the look-up hold off by default as a service-specific experiment; it is
+  still 2–3 s faster than the band and cannot be retired yet.
+- Next, in order of size:
+  1. **The waits of the home path on darwin-bg daemons** (§22.4): which
+     waits carry no push (`p-ease`'s edges: healthd, swcd, eligibilityd,
+     cloudd, maild, runningboardd's `task_name_for_pid`, the
+     DeviceConfiguration pair), and whether each is the reference's
+     (then it needs the push the reference has) or Ycode's own (a
+     dependency the reference does not have). Only then can the band keep
+     dasd back until home without starving the boot.
+  2. **containermanagerd's 2 s start** (§22.5): CPU contention at class df;
+     Ycode's own 0.4 CPU s of kernel and VMM work for a new image.
+  3. siriinferenced (§22.2): it is a darwin-bg client of biomed, so
+     neither §4.10 nor §4.11 reaches it; what biomed waits for on its side
+     (a lock or a stream it shares) is not identified.
+
 ## Evidence
 
 | Claim | Level | Source |
@@ -4109,3 +4350,9 @@ cores) were read.
 (on the Thor, with the runtime copy as a black box), and only `specs/`,
 Ycode's code and xnu's open-source scheduler, turnstile and IPC behaviour
 (as cited, nothing copied) were used.
+§22 (agent B3-BOOT7) is clean-room work: only Ycode's own simulator ran
+(on the Thor, with the runtime copy as a black box), and only `specs/`,
+Ycode's code and xnu's open-source importance, IPC-message QoS, kevent and
+thread-policy behaviour (`osfmk/ipc/ipc_importance.c`, `ipc_kmsg.c`,
+`ipc_pset.c`, `osfmk/kern/thread_policy.c`, `task_policy.c`; as cited in
+`scheduling-policy.md` §4.11, nothing copied) were used.

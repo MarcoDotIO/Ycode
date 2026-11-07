@@ -51,6 +51,15 @@ public enum BackgroundBand {
         if let v = getenv("YCODE_BG_BAND_BG_CPUS").flatMap({ Int(String(cString: $0)) }), v > 0 { return v }
         return Int.max
     }()
+    /// `YCODE_BG_BAND_EASE_MS=N` (default 0: off): a background thread
+    /// takes a free place only once the runnable threads above class bg
+    /// have stayed below `cpus` for N ms, not at a momentary dip (§4.9: on the
+    /// reference a priority-4 thread runs when the boot's CPU burst eases,
+    /// `boot-profile.md` §19.3, §22).
+    nonisolated(unsafe) public static var easeNanoseconds =
+        UInt64(max(0, getenv("YCODE_BG_BAND_EASE_MS").flatMap { Double(String(cString: $0)) } ?? 0) * 1_000_000)
+    /// When the runnable threads last filled the CPUs (host monotonic ns).
+    static let lastSaturated = Atomic<UInt64>(0)
     /// `YCODE_BG_BAND_MAX_MS` (default 60 000; 0 none): the longest one wait.
     nonisolated(unsafe) public static var maxWaitNanoseconds =
         UInt64(max(0, getenv("YCODE_BG_BAND_MAX_MS").flatMap { Double(String(cString: $0)) } ?? 60_000) * 1_000_000)
@@ -73,6 +82,10 @@ public enum BackgroundBand {
     @inline(__always) static func total(_ w: UInt64) -> Int {
         Int(w & 0xFFFF) + Int((w >> 16) & 0xFFFF) + Int((w >> 32) & 0xFFFF) + Int(w >> 48)
     }
+    /// The runnable threads above class bg in a packed word: the burst the
+    /// ease window waits out (background threads filling the CPUs do not
+    /// count, or they would keep each other out).
+    @inline(__always) static func aboveBackground(_ w: UInt64) -> Int { total(w) - Int(w & 0xFFFF) }
     /// Runnable threads now, by class (bg, ut, df, ui).
     public static var runnableByClass: [Int] {
         let w = runnable.load(ordering: .relaxed)
@@ -95,7 +108,8 @@ public enum BackgroundBand {
     @inline(__always) static func count(_ cls: Int) {
         let old = counted()
         guard old != cls else { return }
-        runnable.wrappingAdd(unit(cls), ordering: .sequentiallyConsistent)
+        let now = runnable.wrappingAdd(unit(cls), ordering: .sequentiallyConsistent).newValue
+        if easeNanoseconds > 0, aboveBackground(now) >= cpus { lastSaturated.store(KernelClock.now(), ordering: .relaxed) }
         setCounted(cls)
         if old >= 0 {
             runnable.wrappingSubtract(unit(old), ordering: .sequentiallyConsistent)
@@ -218,6 +232,14 @@ public enum BackgroundBand {
     /// already are; false when there was no free place.
     @inline(__always) static func tryCount() -> Bool {
         var w = runnable.load(ordering: .sequentiallyConsistent)
+        if easeNanoseconds > 0 {
+            let now = KernelClock.now()
+            if aboveBackground(w) >= cpus {
+                lastSaturated.store(now, ordering: .relaxed)
+                return false
+            }
+            if now &- lastSaturated.load(ordering: .relaxed) < easeNanoseconds { return false }
+        }
         while total(w) < cpus, Int(w & 0xFFFF) < backgroundCPUs {
             let (done, now) = runnable.compareExchange(expected: w, desired: w &+ unit(SchedClass.background),
                                                        ordering: .sequentiallyConsistent)
@@ -314,7 +336,8 @@ public enum BackgroundBand {
     /// The band's part of the scheduling report ("" when off).
     public static var report: String {
         guard active else { return "" }
-        return "bg band on \(cpus) CPUs" + (backgroundCPUs == Int.max ? "" : " (background on \(backgroundCPUs))") + ": \(Stats.waits.load(ordering: .relaxed)) waits, "
+        return "bg band on \(cpus) CPUs" + (backgroundCPUs == Int.max ? "" : " (background on \(backgroundCPUs))")
+            + (easeNanoseconds == 0 ? "" : " (ease \(easeNanoseconds / 1_000_000) ms)") + ": \(Stats.waits.load(ordering: .relaxed)) waits, "
             + "\(Stats.waitNanoseconds.load(ordering: .relaxed) / 1_000_000) ms (longest \(Stats.longest.load(ordering: .relaxed) / 1_000_000) ms; "
             + "ended by room \(Stats.room.load(ordering: .relaxed)), raised \(Stats.raised.load(ordering: .relaxed)), "
             + "image end or suspension \(Stats.ended.load(ordering: .relaxed)), bound \(Stats.bound.load(ordering: .relaxed))); "
