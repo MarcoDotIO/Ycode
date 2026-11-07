@@ -65,18 +65,18 @@ public final class LoopbackServer: @unchecked Sendable {
 
     public typealias Handler = @Sendable (Request) -> Response
 
-    private let fd: Int32
     public let port: UInt16
-    private let handler: Handler
-    private let lock = NSLock()
-    private var stopped = false
+    private let listener: Listener
 
     /// Binds 127.0.0.1:`port` (0 = any free port) and starts accepting.
     public init(port: UInt16 = 0, handler: @escaping Handler) throws {
+        // Close-on-exec, so that a child process never holds the listener
+        // or a connection open after this server has closed it.
         #if canImport(Glibc)
-        let s = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+        let s = socket(AF_INET, Int32(SOCK_STREAM.rawValue) | Int32(SOCK_CLOEXEC.rawValue), 0)
         #else
         let s = socket(AF_INET, SOCK_STREAM, 0)
+        if s >= 0 { _ = fcntl(s, F_SETFD, FD_CLOEXEC) }
         #endif
         guard s >= 0 else { throw AssistantError.signIn("Cannot open a local socket.") }
         var yes: Int32 = 1
@@ -95,10 +95,12 @@ public final class LoopbackServer: @unchecked Sendable {
         var got = sockaddr_in()
         var len = socklen_t(MemoryLayout<sockaddr_in>.size)
         _ = withUnsafeMutablePointer(to: &got) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(s, $0, &len) } }
-        fd = s
         self.port = UInt16(bigEndian: got.sin_port)
-        self.handler = handler
-        Thread.detachNewThread { [self] in acceptLoop() }
+        listener = Listener(fd: s, port: self.port, handler: handler)
+        // The accept thread holds the listener, not this server, so a server
+        // nobody holds any more is released, and its `deinit` stops it.
+        let listener = listener
+        Thread.detachNewThread { listener.acceptLoop() }
     }
 
     deinit { stop() }
@@ -106,7 +108,24 @@ public final class LoopbackServer: @unchecked Sendable {
     /// `http://127.0.0.1:<port>`.
     public var baseURL: String { "http://127.0.0.1:\(port)" }
 
-    public func stop() {
+    public func stop() { listener.stop() }
+}
+
+/// The socket and its threads.
+private final class Listener: @unchecked Sendable {
+    private let fd: Int32
+    private let port: UInt16
+    private let handler: LoopbackServer.Handler
+    private let lock = NSLock()
+    private var stopped = false
+
+    init(fd: Int32, port: UInt16, handler: @escaping LoopbackServer.Handler) {
+        self.fd = fd
+        self.port = port
+        self.handler = handler
+    }
+
+    func stop() {
         lock.lock()
         let was = stopped
         stopped = true
@@ -115,7 +134,7 @@ public final class LoopbackServer: @unchecked Sendable {
         shutdown(fd, Int32(SHUT_RDWR))
         // Wake a blocked accept() (close alone does not on every system).
         #if canImport(Glibc)
-        let w = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+        let w = socket(AF_INET, Int32(SOCK_STREAM.rawValue) | Int32(SOCK_CLOEXEC.rawValue), 0)
         #else
         let w = socket(AF_INET, SOCK_STREAM, 0)
         #endif
@@ -134,13 +153,14 @@ public final class LoopbackServer: @unchecked Sendable {
 
     private var isStopped: Bool { lock.lock(); defer { lock.unlock() }; return stopped }
 
-    private func acceptLoop() {
+    func acceptLoop() {
         while !isStopped {
             let c = accept(fd, nil, nil)
             if c < 0 {
                 if errno == EINTR { continue }
                 return
             }
+            _ = fcntl(c, F_SETFD, FD_CLOEXEC)
             #if canImport(Darwin)
             var one: Int32 = 1
             setsockopt(c, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
@@ -186,7 +206,7 @@ public final class LoopbackServer: @unchecked Sendable {
         }
     }
 
-    private func readRequest(_ c: Int32) -> Request? {
+    private func readRequest(_ c: Int32) -> LoopbackServer.Request? {
         var data = Data()
         var buf = [UInt8](repeating: 0, count: 8192)
         var headerEnd: Range<Data.Index>?
@@ -214,6 +234,6 @@ public final class LoopbackServer: @unchecked Sendable {
             if n <= 0 { break }
             body.append(contentsOf: buf[0..<n])
         }
-        return Request(method: String(first[0]), target: String(first[1]), headers: headers, body: body)
+        return LoopbackServer.Request(method: String(first[0]), target: String(first[1]), headers: headers, body: body)
     }
 }

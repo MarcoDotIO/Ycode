@@ -1,4 +1,5 @@
 import Foundation
+import YcodeSubprocess
 
 // The Agent Client Protocol (agentclientprotocol.com, protocol version 1,
 // Apache-2.0): Ycode is the client (the editor); the agent runs as a
@@ -121,14 +122,18 @@ public final class ACPConnection: @unchecked Sendable {
         // Node-based agents need `node` next to them.
         env["PATH"] = ([executable.deletingLastPathComponent().path] + (env["PATH"].map { [$0] } ?? ["/usr/bin:/bin"])).joined(separator: ":")
         p.environment = env
-        let toAgent = Pipe(), fromAgent = Pipe(), errors = Pipe()
-        p.standardInput = toAgent
-        p.standardOutput = fromAgent
-        p.standardError = errors
-        try p.run()
-        self.init(readFrom: fromAgent.fileHandleForReading.fileDescriptor, writeTo: toAgent.fileHandleForWriting.fileDescriptor, handlers: handlers)
+        // Close-on-exec pipes (`SpawnPipe`): with `Pipe`s, a child another
+        // thread starts at the same moment can hold the agent's input open.
+        let toAgent = try SpawnPipe(childReads: true), fromAgent = try SpawnPipe(childReads: false), errors = try SpawnPipe(childReads: false)
+        p.standardInput = toAgent.childEnd
+        p.standardOutput = fromAgent.childEnd
+        p.standardError = errors.childEnd
+        defer { [toAgent, fromAgent, errors].forEach { $0.closeChildEnd() } }
+        // Unblocked signals, so that `close()` can stop the agent.
+        try p.runWithSignalsUnblocked()
+        self.init(readFrom: fromAgent.parentEnd.fileDescriptor, writeTo: toAgent.parentEnd.fileDescriptor, handlers: handlers)
         lock.withLock { process = p }
-        errors.fileHandleForReading.readabilityHandler = { [weak self] h in
+        errors.parentEnd.readabilityHandler = { [weak self] h in
             let d = h.availableData
             guard !d.isEmpty, let self else { h.readabilityHandler = nil; return }
             self.lock.withLock { self.stderrTail = String((self.stderrTail + String(decoding: d, as: UTF8.self)).suffix(2000)) }
@@ -137,7 +142,7 @@ public final class ACPConnection: @unchecked Sendable {
         keptPipes = [toAgent, fromAgent, errors]
     }
 
-    private var keptPipes: [Pipe] = []
+    private var keptPipes: [SpawnPipe] = []
 
     /// The agent's last standard-error output (for failure messages).
     public var errorOutput: String { lock.withLock { stderrTail } }
@@ -298,12 +303,16 @@ public final class ACPConnection: @unchecked Sendable {
         open.forEach { $0.finish(throwing: error) }
     }
 
-    /// Ends the agent process.
+    /// Ends the agent process and whatever it started (its process group):
+    /// SIGINT, then SIGTERM and SIGKILL two seconds apart while it runs.
     public func close() {
-        let p = lock.withLock { process }
-        if let p, p.isRunning {
-            p.interrupt()
-            DispatchQueue.global().asyncAfter(deadline: .now() + 2) { if p.isRunning { p.terminate() } }
+        guard let p = lock.withLock({ process }), p.isRunning else { return }
+        let pid = p.processIdentifier
+        ChildSignals.send(SIGINT, to: pid)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+            guard p.isRunning else { return }
+            ChildSignals.send(SIGTERM, to: pid)
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2) { if p.isRunning { ChildSignals.send(SIGKILL, to: pid) } }
         }
     }
 

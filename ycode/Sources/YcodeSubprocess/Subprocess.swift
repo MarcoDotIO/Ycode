@@ -26,11 +26,21 @@ public enum Subprocess {
         p.arguments = arguments
         if let environment { p.environment = environment }
         if let currentDirectory { p.currentDirectoryURL = currentDirectory }
-        let out = Pipe(), err = Pipe()
-        p.standardOutput = out
-        p.standardError = captureStderr ? err : FileHandle.nullDevice
+        // Close-on-exec pipes: a `Pipe` can leak into a child another thread
+        // starts at the same time, and the read below would then wait for
+        // that child too (`SpawnPipe`).
+        let out = try SpawnPipe(childReads: false), err = try SpawnPipe(childReads: false)
+        p.standardOutput = out.childEnd
+        p.standardError = captureStderr ? err.childEnd : FileHandle.nullDevice
         p.standardInput = FileHandle.nullDevice
-        try p.run()
+        do {
+            try p.runWithSignalsUnblocked()
+        } catch {
+            out.closeChildEnd(); err.closeChildEnd()
+            throw error
+        }
+        out.closeChildEnd()
+        err.closeChildEnd()
         // stderr on its own thread: reading the two pipes one after the
         // other deadlocks when the child fills the second one first. A
         // thread, not a global queue: on a machine with few cores, callers
@@ -40,11 +50,11 @@ public enum Subprocess {
         let errBox = Box()
         let group = DispatchGroup()
         if captureStderr {
-            let h = err.fileHandleForReading
+            let h = err.parentEnd
             group.enter()
             Thread { errBox.data = h.readDataToEndOfFile(); group.leave() }.start()
         }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
+        let data = out.parentEnd.readDataToEndOfFile()
         group.wait()
         p.waitUntilExit()
         return Output(status: p.terminationStatus, stdout: data, stderr: errBox.data)

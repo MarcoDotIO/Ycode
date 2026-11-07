@@ -1,6 +1,11 @@
 import Foundation
 import Testing
 @testable import YcodeAssistant
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
 
 /// Collects a response stream.
 func collect(_ s: AsyncThrowingStream<ChatEvent, Error>) async throws -> (text: String, events: [ChatEvent]) {
@@ -33,12 +38,30 @@ final class Recorder: @unchecked Sendable {
     var requests: [LoopbackServer.Request] { lock.lock(); defer { lock.unlock() }; return items }
 }
 
-/// A port nothing listens on.
+/// A port nothing listens on. On Linux it stays bound, to a socket that
+/// never listens (a connection is refused at once), until the tests end, so
+/// that no other test's server is given the port meanwhile. Darwin does not
+/// refuse a connection to such a socket (it times out), and there the port
+/// of a stopped server is used.
 func closedPort() throws -> String {
+    #if canImport(Glibc)
+    let s = socket(AF_INET, Int32(SOCK_STREAM.rawValue) | Int32(SOCK_CLOEXEC.rawValue), 0)
+    guard s >= 0 else { throw AssistantError.failed("no socket") }
+    var addr = sockaddr_in()
+    addr.sin_family = sa_family_t(AF_INET)
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+    var len = socklen_t(MemoryLayout<sockaddr_in>.size)
+    let bound = withUnsafeMutablePointer(to: &addr) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(s, $0, len) == 0 && getsockname(s, $0, &len) == 0 }
+    }
+    guard bound else { close(s); throw AssistantError.failed("no port") }
+    return "http://127.0.0.1:\(UInt16(bigEndian: addr.sin_port))"
+    #else
     let s = try LoopbackServer { _ in .text("") }
     let url = s.baseURL
     s.stop()
     return url
+    #endif
 }
 
 @Suite struct OllamaProviderTests {
@@ -59,7 +82,8 @@ func closedPort() throws -> String {
         guard case .noModels(let hint) = await OllamaProvider(baseURL: empty.baseURL).availability() else { Issue.record("expected noModels"); return }
         #expect(hint.contains("ollama pull qwen2.5-coder"))
 
-        guard case .notRunning(let h) = await OllamaProvider(baseURL: try closedPort()).availability() else { Issue.record("expected notRunning"); return }
+        let stopped = await OllamaProvider(baseURL: try closedPort()).availability()
+        guard case .notRunning(let h) = stopped else { Issue.record("expected notRunning, got \(stopped)"); return }
         #expect(h.contains("ollama serve"))
     }
 
@@ -165,7 +189,8 @@ func closedPort() throws -> String {
         await #expect(throws: AssistantError.http(status: 400, message: "the request exceeds the available context size")) {
             _ = try await collect(ChatCompletionsProvider(baseURL: server.baseURL).send(ChatRequest(model: nil, instructions: "", messages: [])))
         }
-        guard case .notRunning(let h) = await ChatCompletionsProvider(baseURL: try closedPort()).availability() else { Issue.record("expected notRunning"); return }
+        let stopped = await ChatCompletionsProvider(baseURL: try closedPort()).availability()
+        guard case .notRunning(let h) = stopped else { Issue.record("expected notRunning, got \(stopped)"); return }
         #expect(h.contains("llama-server"))
         let truncated = try LoopbackServer { _ in .init(contentType: "text/event-stream", chunks: sse([["choices": [["delta": ["content": "a"]]]]])) }
         await #expect(throws: AssistantError.incomplete("the server closed the stream")) {

@@ -42,26 +42,37 @@ public enum StreamingSubprocess {
             p.arguments = arguments
             if let environment { p.environment = environment }
             if let currentDirectory { p.currentDirectoryURL = currentDirectory }
-            let out = Pipe(), err = Pipe()
-            let inPipe = input == nil ? nil : Pipe()
-            p.standardOutput = out
-            p.standardError = err
-            p.standardInput = inPipe ?? FileHandle.nullDevice
-            let state = RunState()
-            continuation.onTermination = { reason in
-                if case .cancelled = reason { state.cancel(p) }
-            }
+            let out: SpawnPipe, err: SpawnPipe, inPipe: SpawnPipe?
             do {
-                try p.run()
+                out = try SpawnPipe(childReads: false)
+                err = try SpawnPipe(childReads: false)
+                inPipe = input == nil ? nil : try SpawnPipe(childReads: true)
             } catch {
                 continuation.finish(throwing: error)
                 return
             }
-            state.started()
+            p.standardOutput = out.childEnd
+            p.standardError = err.childEnd
+            p.standardInput = inPipe?.childEnd ?? FileHandle.nullDevice
+            let state = RunState()
+            continuation.onTermination = { reason in
+                if case .cancelled = reason { state.cancel() }
+            }
+            do {
+                try p.runWithSignalsUnblocked()
+            } catch {
+                [out, err, inPipe].forEach { $0?.closeChildEnd() }
+                state.finished()
+                continuation.finish(throwing: error)
+                return
+            }
+            // The child has its copies; the parent's ends now see end of file
+            // (or a broken pipe) when the child, and whatever it started, is gone.
+            [out, err, inPipe].forEach { $0?.closeChildEnd() }
+            state.started(p.processIdentifier)
             if let inPipe, let input {
-                let h = inPipe.fileHandleForWriting
+                let h = inPipe.parentEnd
                 Thread.detachNewThread {
-                    // A child that exits early closes its end; ignore SIGPIPE's error.
                     h.writeQuietly(input)
                     try? h.close()
                 }
@@ -69,7 +80,7 @@ public enum StreamingSubprocess {
             let errBox = DataBox()
             let errDone = DispatchSemaphore(value: 0)
             Thread.detachNewThread {
-                let h = err.fileHandleForReading
+                let h = err.parentEnd
                 while true {
                     let d = h.availableData
                     if d.isEmpty { break }
@@ -78,7 +89,7 @@ public enum StreamingSubprocess {
                 errDone.signal()
             }
             Thread.detachNewThread {
-                let h = out.fileHandleForReading
+                let h = out.parentEnd
                 var buffer = Data()
                 while true {
                     let d = h.availableData
@@ -118,43 +129,83 @@ public enum StreamingSubprocess {
         }
     }
 
-    /// Escalating stop: SIGINT, then SIGTERM, then SIGKILL while it runs.
+    /// Escalating stop of the child and the processes it started (its
+    /// process group): SIGINT, then SIGTERM, then SIGKILL, while it runs.
+    /// A stop asked for before the child has started is carried out as soon
+    /// as it starts, so a stop button pressed early still ends the tool.
     final class RunState: @unchecked Sendable {
         private let lock = NSLock()
-        private var running = false
+        private var pid: pid_t = 0
         private var done = false
         private var cancelled = false
+        private var stopping = false
         var wasCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
 
-        func started() { lock.lock(); running = !done; lock.unlock() }
-        func finished() { lock.lock(); done = true; running = false; lock.unlock() }
+        func started(_ pid: pid_t) {
+            lock.lock()
+            self.pid = pid
+            let stop = beginStop()
+            lock.unlock()
+            if stop { escalate(pid) }
+        }
 
-        func cancel(_ p: Process) {
+        func finished() { lock.lock(); done = true; lock.unlock() }
+
+        func cancel() {
             lock.lock()
             cancelled = true
-            let live = running
+            let stop = beginStop()
+            let pid = self.pid
             lock.unlock()
-            guard live else { return }
-            let pid = p.processIdentifier
-            p.interrupt()
+            if stop { escalate(pid) }
+        }
+
+        /// Called with the lock held: true once, when there is a running child to stop.
+        private func beginStop() -> Bool {
+            guard cancelled, pid > 0, !done, !stopping else { return false }
+            stopping = true
+            return true
+        }
+
+        private func escalate(_ pid: pid_t) {
+            ChildSignals.send(SIGINT, to: pid)
             let grace = StreamingSubprocess.interruptGrace
             DispatchQueue.global().asyncAfter(deadline: .now() + grace) { [self] in
                 guard isRunning else { return }
-                kill(pid, SIGTERM)
+                ChildSignals.send(SIGTERM, to: pid)
                 DispatchQueue.global().asyncAfter(deadline: .now() + grace) { [self] in
-                    if isRunning { kill(pid, SIGKILL) }
+                    if isRunning { ChildSignals.send(SIGKILL, to: pid) }
                 }
             }
         }
 
-        private var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return running }
+        private var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return !done }
     }
 }
 
 extension FileHandle {
-    /// Writes all of `data`, stopping silently when the reader has gone.
+    /// Writes all of `data`, stopping silently when the reader has gone. A
+    /// child that exits without reading all of its input makes the write
+    /// fail with EPIPE; the SIGPIPE that comes with it, which would end
+    /// this whole process, is blocked on this thread and consumed.
     func writeQuietly(_ data: Data) {
         let fd = fileDescriptor
+        #if canImport(Darwin)
+        _ = fcntl(fd, F_SETNOSIGPIPE, 1)
+        #else
+        var pipeSignal = sigset_t(), saved = sigset_t()
+        sigemptyset(&pipeSignal)
+        sigaddset(&pipeSignal, SIGPIPE)
+        pthread_sigmask(SIG_BLOCK, &pipeSignal, &saved)
+        var broken = false
+        defer {
+            if broken && sigismember(&saved, SIGPIPE) == 0 {
+                var zero = timespec(tv_sec: 0, tv_nsec: 0)
+                while sigtimedwait(&pipeSignal, nil, &zero) == SIGPIPE {}
+            }
+            pthread_sigmask(SIG_SETMASK, &saved, nil)
+        }
+        #endif
         data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             guard var p = raw.baseAddress else { return }
             var left = raw.count
@@ -166,6 +217,9 @@ extension FileHandle {
                 #endif
                 if n < 0 {
                     if errno == EINTR { continue }
+                    #if !canImport(Darwin)
+                    broken = errno == EPIPE
+                    #endif
                     return
                 }
                 left -= n

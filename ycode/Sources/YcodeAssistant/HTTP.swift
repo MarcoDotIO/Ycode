@@ -142,8 +142,15 @@ public enum HTTP {
     /// an HTTP error or a cancelled request).
     public static func isUnreachable(_ error: Error) -> Bool {
         guard let e = error as? URLError else { return false }
-        return [.cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet, .timedOut,
-                .dnsLookupFailed, .badServerResponse].contains(e.code)
+        if [.cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet, .timedOut,
+            .dnsLookupFailed, .badServerResponse].contains(e.code) { return true }
+        // FoundationNetworking (Linux) reports curl's failed connect as
+        // `.unknown` unless the connect's errno was ECONNREFUSED or
+        // ETIMEDOUT; curl's message still says what happened.
+        guard e.code == .unknown else { return false }
+        let message = e.localizedDescription.lowercased()
+        return message.contains("could not connect to server") || message.contains("couldn't connect to server")
+            || message.hasPrefix("failed to connect to")
     }
 
     public static func isCancellation(_ error: Error) -> Bool {
